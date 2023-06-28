@@ -37,10 +37,32 @@ class LogParser:
     representation.
     """
 
-    def __init__(self, logger, input: Iterable[str] = ()):
-        self.input = input
-        self.error_handler = LoggingContext(logger)
-        self.data: List[Tuple[str, ir.Entry]] = []
+    def __init__(self, writer, input=""):
+        # each data entry is a dictionary that consists of:
+        # engine(str),
+        # primitive(str),
+        # implementation(str),
+        # prop_kind(str),
+        # aux({field(str) : value(str)}),
+        # mds(
+        #     {
+        #         arg(str): {
+        #             data_type(str),
+        #             properties(str),
+        #             format_kind(str),
+        #             tag(str),
+        #             strides(str),
+        #             flags(str),
+        #         }
+        #     }
+        # )
+        # shapes(str)
+        # extensions(str)
+        # time(float)
+        self.__raw_data = []
+        self.__data = {}
+        self.__writer = writer
+        self.__input = input
 
     def process(self, filter_events):
         """
@@ -478,7 +500,7 @@ class LogParser:
                 opt = l_raw[2]
                 if opt.split(":")[0] == "template":
                     verbose_template = "onednn_verbose," + line.split(":")[1]
-            if event in ["exec", "create"]:
+            if event in filter_events:
                 l_converted = convert_primitive(
                     l_raw, verbose_template + ",exec_time", verbose_version
                 )

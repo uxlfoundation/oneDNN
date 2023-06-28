@@ -29,6 +29,19 @@ from src.utils import check_version  # type: ignore
 logger = logging.getLogger("verbose_converter")
 logger.setLevel(logging.CRITICAL + 10)  # off
 
+def convert(
+    verbose_level,
+    parser,
+    input,
+    action,
+    generator,
+    split_output,
+    agg_keys,
+    events=["create", "exec"],
+):
+    status = utils.check_version()
+    if status != utils.status.get("SUCCESS"):
+        return status
 
 def one_line(multiline: str):
     return " ".join(map(str.strip, multiline.split("\n")))
@@ -60,7 +73,7 @@ def convert(
     else:
         raise ConverterError("Unsupported parser")
 
-    logger.info("Processing input ...")
+    logger.print(f"Processing input ...", "INFO")
     log_parser.process(events)
 
     if action == "dumpIR":
@@ -162,11 +175,7 @@ def main() -> int:
         "--events",
         nargs="+",
         default=event_opts,
-        help=one_line(
-            f"""
-             events to parse (default: create and exec). Values: {event_opts}.
-             """
-        ),
+        help=f"events to parse (default: create and exec).\nValues: {event_opts}.",
     )
     args = args_parser.parse_args()
 
@@ -197,51 +206,46 @@ def main() -> int:
         try:
             input_data = open(args.input, "r").readlines()
         except BaseException as e:
-            logger.error(f"While reading input: {e!s}")
-            return 1
+            print(f"Error while reading input: {e}")
 
-    event_sets = (
-        [[e] for e in args.events]
-        if args.generator == "breakdown"
-        else [args.events]
-    )
-    verbose_level = [logging.WARN, logging.INFO][args.verbose_level]
-    logger.setLevel(verbose_level)
+    output = None
+
+    event_sets = args.events if args.generator == 'breakdown' else [args.events]
 
     for events in event_sets:
-        try:
-            output = convert(
-                parser=args.parser,
-                input=input_data,
-                action=args.action,
-                generator=args.generator,
-                split_output=args.split,
-                agg_keys=args.aggregate,
-                events=events,
-            )
-        except ConverterError as e:
-            logger.error(str(e))
-            return 1
+        status, output = convert(
+            verbose_level=args.verbose_level,
+            parser=args.parser,
+            input=input_data,
+            action=args.action,
+            generator=args.generator,
+            split_output=args.split,
+            agg_keys=args.aggregate,
+            events=events
+        )
 
-        for key, value in output.items():
-            fd: IO
-            filename = args.output
-            if args.split:
-                filename += f".{key}"
+        if status != utils.status.get("SUCCESS"):
+            return status
+
+        if output != None:
             if args.output != "stdout":
-                fd = open(filename, "w")
+                if output != None:
+                    for key, value in output.items():
+                        filename = args.output
+                        if args.split == True:
+                            filename += "." + key
+                        of = open(filename, "w")
+                    if args.generator == "breakdown":
+                        print(f"Event: {events}", file=of)
+                    print(value, end="", file=of)
             else:
-                fd = sys.stdout
-            if args.generator == "breakdown":
-                fd.write(f"Event: {events[0]}\n")
-                fd.write(f"{value}\n")
-            else:
-                if args.split:
-                    fd.write(f"--{key}\n")
-                fd.write(f"{value}\n")
-            if args.output != "stdout":
-                fd.close()
-    return 0
+                if args.generator == "breakdown":
+                    print(f"Event: {events}")
+                for key, value in output.items():
+                    if args.split == False:
+                        print(f"{value}")
+                    else:
+                        print(f"--{key}\n{value}")
 
 
 if __name__ == "__main__":

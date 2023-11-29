@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2025 Intel Corporation
+* Copyright 2016-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -266,7 +266,7 @@ struct numeric_limits<float16_t> {
 template <>
 struct numeric_limits<uint4_t> {
     static constexpr uint4_t lowest() { return uint4_t(0); }
-    static constexpr uint4_t min() { return lowest(); }
+
     static constexpr uint4_t max() { return uint4_t(15); }
 
     static constexpr int digits = 4;
@@ -277,7 +277,7 @@ struct numeric_limits<uint4_t> {
 template <>
 struct numeric_limits<int4_t> {
     static constexpr int4_t lowest() { return int4_t(-8); }
-    static constexpr int4_t min() { return lowest(); }
+
     static constexpr int4_t max() { return int4_t(7); }
 
     static constexpr int digits = 4;

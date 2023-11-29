@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,23 +25,39 @@
 namespace dnnl {
 namespace impl {
 
+inline uint8_t extract_half_byte(uint8_t val, bool high_half) {
+    uint8_t shift = high_half ? 4 : 0;
+    return (val >> shift) & 0xF;
+}
+
+inline uint8_t insert_half_byte(uint8_t src, uint8_t val, bool high_half) {
+    uint8_t shift = high_half ? 4 : 0;
+    uint8_t mask = high_half ? 0x0F : 0xF0;
+    return (src & mask) | (uint8_t)(val << shift);
+}
+
 struct uint4_t {
     template <typename IntegerType,
             typename SFINAE = typename std::enable_if<
                     std::is_integral<IntegerType>::value>::type>
-    constexpr uint4_t(IntegerType raw) : raw_bits_(static_cast<uint8_t>(raw)) {
-#if __cplusplus >= 201402L
-        assert(0 <= raw && raw <= std::numeric_limits<uint8_t>::max());
-#endif
-    }
+    constexpr uint4_t(IntegerType raw) : raw_(raw) {}
     uint4_t(float val_f32) {
         uint8_t val_uint8 = static_cast<uint8_t>(val_f32);
-        raw_bits_ = val_uint8 & 0xF;
+        raw_ = val_uint8 & 0xF;
     }
 
-    operator float() const { return (float)raw_bits_; }
+    explicit operator float() const { return (float)raw_; }
 
-    uint8_t raw_bits_;
+    uint8_t insert(uint8_t src, bool high_half) const {
+        return insert_half_byte(src, raw_, high_half);
+    }
+
+    static uint4_t extract(uint8_t val, bool high_half) {
+        return uint4_t(extract_half_byte(val, high_half));
+    }
+
+private:
+    uint8_t raw_;
 };
 
 static_assert(sizeof(uint4_t) == 1, "uint4_t must be 1 byte");
@@ -50,21 +66,30 @@ struct int4_t {
     template <typename IntegerType,
             typename SFINAE = typename std::enable_if<
                     std::is_integral<IntegerType>::value>::type>
-    constexpr int4_t(IntegerType i) : raw_bits_(static_cast<uint8_t>(i)) {}
+    constexpr int4_t(IntegerType i) : raw_(static_cast<uint8_t>(i)) {}
     int4_t(float val_f32) {
         int8_t val_int8 = static_cast<int8_t>(val_f32);
         bool negative = val_f32 < 0;
         // positive numbers have the most significant bit set to 0
         // negative numbers have the most significant bit set to 1
-        raw_bits_ = negative ? (val_int8 & 0xF) | 0x8 : val_int8 & 0x7;
+        raw_ = negative ? (val_int8 & 0xF) | 0x8 : val_int8 & 0x7;
     }
 
-    operator float() const {
-        float sign = (raw_bits_ & (1 << 3)) ? -1.f : 1.f;
-        return sign * (float)(sign == -1 ? (~raw_bits_ & 0xF) + 1 : raw_bits_);
+    explicit operator float() const {
+        float sign = (raw_ & (1 << 3)) ? -1.f : 1.f;
+        return sign * (float)(sign == -1 ? (~raw_ & 0xF) + 1 : raw_);
     }
 
-    uint8_t raw_bits_;
+    uint8_t insert(uint8_t src, bool high_half) const {
+        return insert_half_byte(src, raw_, high_half);
+    }
+
+    static int4_t extract(uint8_t val, bool high_half) {
+        return int4_t(extract_half_byte(val, high_half));
+    }
+
+private:
+    uint8_t raw_;
 };
 
 static_assert(sizeof(int4_t) == 1, "int4_t must be 1 byte");

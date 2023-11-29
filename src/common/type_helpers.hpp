@@ -1275,8 +1275,8 @@ inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
     if (ndims == 0) return true;
 
     bool ok = dims != nullptr && 0 < ndims && ndims <= DNNL_MAX_NDIMS
-            && utils::one_of(data_type, f4_e3m0, f4_e2m1, e8m0, f8_e5m2,
-                    f8_e4m3, f16, bf16, f32, f64, s32, s8, u8, s4, u4);
+            && utils::one_of(data_type, f8_e5m2, f8_e4m3, f16, bf16, f32, f64,
+                    s32, s8, u8, s4, u4);
     if (!ok) return false;
 
     bool has_runtime_dims = false;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -102,12 +102,6 @@ typedef enum {
     dnnl_s4 = 11,
     /// 4-bit unsigned integer.
     dnnl_u4 = 12,
-    /// [MX-compliant 8-bit compliant scale data type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 8-bit exponent.
-    dnnl_e8m0 = 13,
-    /// [MX-compliant 4-bit float data type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 2-bit exponent and 1 bit mantissa.
-    dnnl_f4_e2m1 = 14,
-    /// 4-bit float data type with 3-bit exponent and 0 bit mantissa.
-    dnnl_f4_e3m0 = 15,
 
     /// Parameter to allow internal only data_types without undefined behavior.
     /// This parameter is chosen to be valid for so long as sizeof(int) >= 2.

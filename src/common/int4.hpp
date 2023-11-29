@@ -25,16 +25,14 @@
 namespace dnnl {
 namespace impl {
 
-enum class int4_extract_t : uint8_t { low_half = 0, high_half = 4 };
-
-inline uint8_t extract_half_byte(uint8_t val, int4_extract_t half) {
-    uint8_t shift = static_cast<uint8_t>(half);
+inline uint8_t extract_half_byte(uint8_t val, bool high_half) {
+    uint8_t shift = high_half ? 4 : 0;
     return (val >> shift) & 0xF;
 }
 
-inline uint8_t insert_half_byte(uint8_t src, uint8_t val, int4_extract_t half) {
-    uint8_t shift = static_cast<uint8_t>(half);
-    uint8_t mask = half == int4_extract_t::high_half ? 0x0F : 0xF0;
+inline uint8_t insert_half_byte(uint8_t src, uint8_t val, bool high_half) {
+    uint8_t shift = high_half ? 4 : 0;
+    uint8_t mask = high_half ? 0x0F : 0xF0;
     return (src & mask) | (uint8_t)(val << shift);
 }
 
@@ -48,14 +46,14 @@ struct uint4_t {
         raw_ = val_uint8 & 0xF;
     }
 
-    operator float() const { return (float)raw_; }
+    explicit operator float() const { return (float)raw_; }
 
-    uint8_t insert(uint8_t src, int4_extract_t half) const {
-        return insert_half_byte(src, raw_, half);
+    uint8_t insert(uint8_t src, bool high_half) const {
+        return insert_half_byte(src, raw_, high_half);
     }
 
-    static uint4_t extract(uint8_t val, int4_extract_t half) {
-        return uint4_t(extract_half_byte(val, half));
+    static uint4_t extract(uint8_t val, bool high_half) {
+        return uint4_t(extract_half_byte(val, high_half));
     }
 
 private:
@@ -77,17 +75,17 @@ struct int4_t {
         raw_ = negative ? (val_int8 & 0xF) | 0x8 : val_int8 & 0x7;
     }
 
-    operator float() const {
+    explicit operator float() const {
         float sign = (raw_ & (1 << 3)) ? -1.f : 1.f;
         return sign * (float)(sign == -1 ? (~raw_ & 0xF) + 1 : raw_);
     }
 
-    uint8_t insert(uint8_t src, int4_extract_t half) const {
-        return insert_half_byte(src, raw_, half);
+    uint8_t insert(uint8_t src, bool high_half) const {
+        return insert_half_byte(src, raw_, high_half);
     }
 
-    static int4_t extract(uint8_t val, int4_extract_t half) {
-        return int4_t(extract_half_byte(val, half));
+    static int4_t extract(uint8_t val, bool high_half) {
+        return int4_t(extract_half_byte(val, high_half));
     }
 
 private:

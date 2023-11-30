@@ -673,6 +673,16 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         return;
     }
 
+    // Zero-points for non-integral data type does not make sense
+    if (!prb->attr.zero_points.is_def()
+            && (prb->wei_dt() != dnnl_s8 && prb->wei_dt() != dnnl_u8
+                    && prb->wei_dt() != dnnl_s4 && prb->wei_dt() != dnnl_u4)) {
+        res->state = SKIPPED, res->reason = INVALID_CASE;
+        return;
+    }
+
+    // Weights decompression requires IC to be divisible by groups
+    // for both scales and zero points
     if (!prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def()) {
         const auto &groups = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
         if (!groups.empty()) {

@@ -1141,10 +1141,8 @@ int check_zero_padding(
             CASE(dnnl_s32, int32_t);
             CASE(dnnl_s8, int8_t);
             CASE(dnnl_u8, uint8_t);
-            CASE(dnnl_s4, dnnl::impl::int4_t);
-            CASE(dnnl_u4, dnnl::impl::uint4_t);
-            CASE(dnnl_f4_e2m1, dnnl::impl::float4_e2m1_t);
-            CASE(dnnl_f4_e3m0, dnnl::impl::float4_e3m0_t);
+            CASE(dnnl_s4, int8_t);
+            CASE(dnnl_u4, uint8_t);
         default: assert(!"bad data_type");
     };
 #undef CASE

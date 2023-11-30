@@ -188,9 +188,9 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             : 0;
 
     // s4/u4 requires n to be multiple of 2
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_desc->data_type,
+    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_md->data_type,
                                       data_type::s4, data_type::u4),
-                          weights_desc->dims[n_idx] % 2 == 0),
+                          weights_md->dims[n_idx] % 2 == 0),
             VERBOSE_BAD_DIM, "weights", n_idx);
 
     // check if other dims match.

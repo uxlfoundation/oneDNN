@@ -53,19 +53,13 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     // Matmul supports scales for floating point data types
     attr_mask |= smask_t::scales_runtime;
 
-    const bool src_is_int8
-            = utils::one_of(src_dt, data_type::s8, data_type::u8);
-    const bool src_is_fp8
-            = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (src_is_int8 || src_is_fp8) attr_mask |= smask_t::zero_points_runtime;
+    const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8);
+    if (is_int8) attr_mask |= smask_t::zero_points_runtime;
 
-    // Matmul supports zero points for floating point data types as part of
-    // weights decompression.
-    const bool wei_is_fp8
-            = utils::one_of(wei_dt, data_type::f8_e5m2, data_type::f8_e4m3);
+    // Matmul supports zero points for floating point data types as part of weights decompression
     const bool wei_is_int = utils::one_of(
             wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
-    if (wei_is_int || wei_is_fp8) {
+    if (!is_int8 && wei_is_int) {
         attr_mask |= smask_t::zero_points_runtime_data_type;
         attr_mask |= smask_t::zero_points_runtime_groups;
         attr_mask |= smask_t::scales_runtime_data_type;
@@ -228,9 +222,9 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             : 0;
 
     // s4/u4 requires n to be multiple of 2
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_desc->data_type,
+    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_md->data_type,
                                       data_type::s4, data_type::u4),
-                          weights_desc->dims[n_idx] % 2 == 0),
+                          weights_md->dims[n_idx] % 2 == 0),
             VERBOSE_BAD_DIM, "weights", n_idx);
 
     // check if other dims match.

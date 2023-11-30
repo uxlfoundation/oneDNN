@@ -2152,29 +2152,18 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
-                        && tag_o == format_tag::any && type_i == data_type::f32
-                        && utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::f4_e3m0),
+                        && tag_i == format_tag::any
+                        && utils::one_of(type_o, dnnl_s4, dnnl_u4),
                 spec::reference>::type> {
-    static status_t is_applicable(const memory_desc_wrapper &input_d,
+    static bool is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
-        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
-                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-
-        VDISPATCH_REORDER_IC(
-                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
-        VDISPATCH_REORDER_IC(
-                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
-
-        return status::success;
+        return !input_d.has_runtime_dims_or_strides()
+                && input_d.similar_to(output_d, true, false, 0)
+                && input_d.is_dense() && output_d.is_dense()
+                && simple_attr_check(attr, false, true);
     }
 
-    static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
-            const memory_desc_wrapper &output_d) {
-        return input_d.size();
-    }
+    GET_SCRATCHPAD_SIZE_ZERO();
 
     static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
         DECLARE_COMMON_PARAMS();
@@ -2182,30 +2171,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
         input += input_d.blk_off(0);
         output += output_d.blk_off(0);
-
-        data_t<type_i> *wspace = scratchpad.template get<data_t<type_i>>(
-                memory_tracking::names::key_reorder_space);
-
-        // When formats of the input and the output are not identical, the idea
-        // is to reorder the data from the input format to the output format
-        // but within the same data type, and after the format reorder apply
-        // the compression into int4 as on `abx` format.
-        const bool need_transform
-                = output_d.strides()[output_d.ndims() - 1] != 1;
-        wspace = need_transform ? wspace : const_cast<data_t<type_i> *>(input);
-        if (need_transform) {
-            const dim_t work_amount = input_d.nelems();
-            parallel(0, [&](const int ithr, const int nthr) {
-                dim_t start {0}, end {0};
-                balance211(work_amount, nthr, ithr, start, end);
-                PRAGMA_OMP_SIMD()
-                for (dim_t idx = start; idx < end; idx++) {
-                    const auto i_off = input_d.off_l(idx);
-                    const auto o_off = output_d.off_l(idx);
-                    wspace[o_off] = input[i_off];
-                }
-            });
-        }
 
         // To avoid clashes between threads each byte (or 2 elements)
         // is handled by a single thread
@@ -2215,183 +2180,27 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
             dim_t start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
             PRAGMA_OMP_SIMD()
-            for (dim_t j = start; j < end; j++) {
-                const auto idx = 2 * j;
-
-                const auto i0_off = need_transform ? idx : input_d.off_l(idx);
-                auto val0 = _qz_a1b0<data_type::f32, type_o>()(wspace[i0_off]);
-
-                const auto i1_off
-                        = need_transform ? idx + 1 : input_d.off_l(idx + 1);
-                auto val1 = _qz_a1b0<data_type::f32, type_o>()(wspace[i1_off]);
-
-                const auto o_off = need_transform ? idx : output_d.off_l(idx);
-                nibble2_t o_val(val0.raw_bits_, val1.raw_bits_);
-                reinterpret_cast<uint8_t *>(output)[o_off / 2] = o_val.get();
-            }
-        });
-
-        return status::success;
-    }
-};
-
-template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
-        typename utils::enable_if<tag_i == format_tag::any
-                        && tag_o == format_tag::any
-                        && utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::f4_e3m0)
-                        && utils::one_of(type_o, data_type::f32,
-                                data_type::bf16, data_type::f16),
-                spec::reference>::type> {
-    static status_t is_applicable(const memory_desc_wrapper &input_d,
-            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
-        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
-                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-
-        VDISPATCH_REORDER_IC(
-                input_d.nelems() % 2 == 0, "Unsupported dimensions");
-        VDISPATCH_REORDER_IC(
-                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
-
-        using smask_t = primitive_attr_t::skip_mask_t;
-        smask_t skip_mask = smask_t::scales_runtime_data_type
-                | smask_t::scales_runtime_groups
-                | smask_t::zero_points_runtime_data_type
-                | smask_t::zero_points_runtime_groups;
-        VDISPATCH_REORDER_IC(
-                attr->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
-        VDISPATCH_REORDER_IC(
-                attr->scales_.get(DNNL_ARG_DST).has_default_values(),
-                VERBOSE_UNSUPPORTED_SCALES_CFG);
-        return status::success;
-    }
-
-    static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
-            const memory_desc_wrapper &output_d) {
-        return output_d.size();
-    }
-
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
-        DECLARE_COMMON_PARAMS();
-        using namespace utils;
-
-        input += input_d.blk_off(0);
-        output += output_d.blk_off(0);
-
-        // TODO: optimization: use int8/f8 types for workspace to save memory.
-        data_t<type_o> *wspace = scratchpad.template get<data_t<type_o>>(
-                memory_tracking::names::key_reorder_space);
-
-        // The implementation splits data conversion and format conversion in
-        // two passes for cases when it's not straightforward to perform both
-        // at once. The second pass applicability is determined by:
-        // * Transformation between incompatible formats is needed, especially
-        //   when int4 source in not dense in the last dimension...
-        const bool need_transform = input_d.strides()[input_d.ndims() - 1] != 1;
-        // * Post-processing, including advanced dequantization parameters as
-        //   groups.
-        const auto &sc_src = pd->attr()->scales_.get(DNNL_ARG_SRC);
-        const bool has_src_scales = !sc_src.has_default_values();
-        const auto &zps = pd->attr()->zero_points_;
-        const bool has_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
-
-        const bool need_second_pass
-                = need_transform || has_src_scales || has_src_zps;
-        wspace = need_second_pass ? wspace : output;
-
-        // To avoid clashes between threads each byte (or 2 elements)
-        // is handled by a single thread
-        const dim_t work_amount = input_d.nelems() / 2;
-
-        parallel(0, [&](const int ithr, const int nthr) {
-            auto u8_input = reinterpret_cast<const uint8_t *>(input);
-            dim_t start {0}, end {0};
-            balance211(work_amount, nthr, ithr, start, end);
-            PRAGMA_OMP_SIMD()
-            for (dim_t j = start; j < end; j++) {
-                const auto idx = 2 * j;
-                const auto i_off = need_second_pass ? idx : input_d.off_l(idx);
-                const nibble2_t in_nibble(u8_input[i_off / 2]);
-
-                for (int i = 0; i < 2; ++i) {
-                    const auto o_off = need_second_pass
-                            ? idx + i
-                            : output_d.off_l(idx + i);
-                    data_t<type_i> src_val(in_nibble.get(i));
-                    reinterpret_cast<data_t<type_o> *>(wspace)[o_off]
+            for_(dim_t idx = start; idx < end; idx++)
+            for (int i = 0; i < 2; ++i) {
+                const auto i_off = input_d.off_l(2 * idx + i);
+                const auto o_off = output_d.off_l(2 * idx + i);
+                if (order_keep) {
+                    // f32 -> u4/s4
+                    // XXX: add support for quantization with saturation and scales?
+                    // Currently this pass is not required since weights are already in s4/u4
+                    auto src_val = data_t<type_o>(input[i_off]);
+                    const uint8_t dst_val = i == 0
+                            ? 0
+                            : reinterpret_cast<uint8_t *>(output)[o_off / 2];
+                    output[o_off / 2] = src_val.insert(dst_val, i % 2);
+                } else {
+                    // u4/s4 -> f32
+                    auto src_val
+                            = data_t<type_o>::extract(input[i_off / 2], i % 2);
+                    reinterpret_cast<data_t<type_i> *>(output)[o_off]
                             = static_cast<float>(src_val);
                 }
             }
-        });
-
-        if (!need_second_pass) return status::success;
-
-        const int ndims = input_d.ndims();
-        // Applied to the pre-last dimension.
-        const auto src_scales_group0
-                = sc_src.ndims_ > 0 ? sc_src.group_dims_[0] : 1;
-        // Applied to the last dimension.
-        const auto src_scales_group1
-                = sc_src.ndims_ > 0 ? sc_src.group_dims_[1] : 1;
-
-        memory_desc_t src_scales_md {};
-        if (has_src_scales) {
-            get_quant_md(src_scales_md, ndims, input_d.dims(), src_scales_mask,
-                    src_scales_group0, src_scales_group1,
-                    src_scales_d.data_type());
-        }
-
-        int src_zps_mask = -1;
-        CHECK(zps.get(DNNL_ARG_SRC, &src_zps_mask));
-        // Applied to the pre-last dimension.
-        const auto src_zps_group0 = zps.get_groups_ndims(DNNL_ARG_SRC) > 0
-                ? zps.get_groups(DNNL_ARG_SRC)[0]
-                : 1;
-        // Applied to the last dimension.
-        const auto src_zps_group1 = zps.get_groups_ndims(DNNL_ARG_SRC) > 0
-                ? zps.get_groups(DNNL_ARG_SRC)[1]
-                : 1;
-        memory_desc_t src_zps_md {};
-        if (has_src_zps) {
-            get_quant_md(src_zps_md, ndims, input_d.dims(), src_zps_mask,
-                    src_zps_group0, src_zps_group1, src_zps_d.data_type());
-        }
-
-        parallel_nd(input_d.nelems(), [&](dim_t idx) {
-            // Must be per thread; when shared, race condition happens.
-            dims_t input_idx {};
-            float src_scale = 1.f;
-            if (has_src_scales || has_src_zps) {
-                utils::l_dims_by_l_offset(
-                        input_idx, idx, input_d.dims(), ndims);
-            }
-            if (has_src_scales) {
-                const dim_t src_scales_off = get_quant_off(input_idx, ndims,
-                        src_scales_mask, src_scales_group0, src_scales_group1,
-                        src_scales_md);
-                // A single scale has already been pre-processed by the
-                // library-managed macros.
-                src_scale = src_scales_d.nelems() == 1
-                        ? src_scales[0]
-                        : io::load_float_value(src_scales_d.data_type(),
-                                src_scales, src_scales_off);
-            }
-
-            int src_zp_val = 0; // Avoid clashing with the one defined for rest.
-            if (has_src_zps) {
-                const dim_t src_zps_off
-                        = get_quant_off(input_idx, ndims, src_zps_mask,
-                                src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
-            }
-
-            const auto i_off = input_d.off_l(idx);
-            const auto o_off = output_d.off_l(idx);
-            output[o_off] = src_scale * (wspace[i_off] - src_zp_val);
         });
 
         return status::success;
@@ -2507,11 +2316,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any
-                        // u4/s4 requires a special implementation
-                        && !utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::f4_e3m0)
-                        && !utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::f4_e3m0),
+                        && !utils::one_of(type_o, dnnl_s4, dnnl_u4),
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {

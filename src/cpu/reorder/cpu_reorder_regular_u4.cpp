@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,17 +22,11 @@ namespace cpu {
 
 // clang-format off
 
-const impl_list_map_t &regular_u4_impl_list_map() {
+const impl_list_map_t &regular_f32_u4_impl_list_map() {
     static const impl_list_map_t the_map = REG_REORDER_P({
+        // f32 -> u4
         {{f32, u4, 0}, {
             REG_SR(f32, any, u4, any, fmt_order::any, spec::reference)
-            nullptr,
-        }},
-        {{u4, data_type::undef, 0}, {
-            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::brgemm_matmul_copy_reorder_t))
-            REG_SR(u4, any, f32, any, fmt_order::any, spec::reference)
-            REG_SR(u4, any, bf16, any, fmt_order::any, spec::reference)
-            REG_SR(u4, any, f16, any, fmt_order::any, spec::reference)
             nullptr,
         }},
     });

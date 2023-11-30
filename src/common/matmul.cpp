@@ -106,18 +106,6 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         VCHECK_MATMUL_UNIMPL(mask_dst == 0
                         || (desc.dst_desc.ndims == 2 && mask_dst == 1 << 1),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
-
-        if (utils::one_of(zp.get_data_type(DNNL_ARG_WEIGHTS), data_type::s4,
-                    data_type::u4)) {
-            dim_t k = desc.weights_desc.dims[ndims_wei - 2];
-            dim_t n = desc.weights_desc.dims[ndims_wei - 1];
-            VCHECK_MATMUL_UNIMPL(
-                    IMPLICATION(mask_wei & wei_qmask_K, k % 2 == 0),
-                    VERBOSE_UNSUPPORTED_ZP_CFG);
-            VCHECK_MATMUL_UNIMPL(
-                    IMPLICATION(mask_wei & wei_qmask_N, n % 2 == 0),
-                    VERBOSE_UNSUPPORTED_ZP_CFG);
-        }
     }
 
     // Check post-ops
@@ -138,27 +126,26 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
 } // namespace
 
-namespace dnnl {
-namespace impl {
-status_t matmul_desc_init(matmul_desc_t *matmul_desc,
-        const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
-        const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
-    VCHECK_MATMUL(
-            !any_null(src_desc, weights_desc, dst_desc), VERBOSE_NULL_ARG);
+status_t dnnl_matmul_primitive_desc_create(
+        primitive_desc_iface_t **primitive_desc_iface, engine_t *engine,
+        const memory_desc_t *src_md, const memory_desc_t *weights_md,
+        const memory_desc_t *bias_md, const memory_desc_t *dst_md,
+        const primitive_attr_t *attr) {
+    VCHECK_MATMUL(!any_null(src_md, weights_md, dst_md), VERBOSE_NULL_ARG);
 
     auto op_d = matmul_desc_t();
     op_d.primitive_kind = primitive_kind::matmul;
 
-    op_d.src_desc = *src_desc;
-    op_d.weights_desc = *weights_desc;
-    if (bias_desc) op_d.bias_desc = *bias_desc;
-    op_d.dst_desc = *dst_desc;
+    op_d.src_desc = *src_md;
+    op_d.weights_desc = *weights_md;
+    if (bias_md) op_d.bias_desc = *bias_md;
+    op_d.dst_desc = *dst_md;
 
     const bool with_bias = op_d.bias_desc.ndims != 0;
-    const int ndims = dst_desc->ndims;
+    const int ndims = dst_md->ndims;
     VCHECK_MATMUL(ndims >= 2 && ndims <= DNNL_MAX_NDIMS, VERBOSE_BAD_NDIMS,
             "dst", ndims);
-    VCHECK_MATMUL(everyone_is(ndims, src_desc->ndims, weights_desc->ndims),
+    VCHECK_MATMUL(everyone_is(ndims, src_md->ndims, weights_md->ndims),
             VERBOSE_INCONSISTENT_NDIMS, "src", "weights");
     VCHECK_MATMUL(IMPLICATION(with_bias, op_d.bias_desc.ndims == ndims),
             VERBOSE_BAD_NDIMS, "bias", op_d.bias_desc.ndims);
@@ -168,36 +155,36 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     const int k_idx_src = m_idx + 1;
     const int k_idx_wei = m_idx;
     const int n_idx = ndims - 1;
-    VCHECK_MATMUL(dst_desc->dims[m_idx] == src_desc->dims[m_idx],
+    VCHECK_MATMUL(dst_md->dims[m_idx] == src_md->dims[m_idx],
             VERBOSE_INCONSISTENT_DIM, "dst", m_idx, "src", m_idx);
-    VCHECK_MATMUL(dst_desc->dims[n_idx] == weights_desc->dims[n_idx],
+    VCHECK_MATMUL(dst_md->dims[n_idx] == weights_md->dims[n_idx],
             VERBOSE_INCONSISTENT_DIM, "dst", n_idx, "weights", n_idx);
-    VCHECK_MATMUL(src_desc->dims[k_idx_src] == weights_desc->dims[k_idx_wei],
+    VCHECK_MATMUL(src_md->dims[k_idx_src] == weights_md->dims[k_idx_wei],
             VERBOSE_INCONSISTENT_DIM, "src", k_idx_src, "weights", k_idx_wei);
-    VCHECK_MATMUL(IMPLICATION(with_bias,
-                          one_of(op_d.bias_desc.dims[n_idx], 1,
-                                  dst_desc->dims[n_idx])),
+    VCHECK_MATMUL(
+            IMPLICATION(with_bias,
+                    one_of(op_d.bias_desc.dims[n_idx], 1, dst_md->dims[n_idx])),
             VERBOSE_INCONSISTENT_DIM, "bias", n_idx, "dst", n_idx);
-    VCHECK_MATMUL(IMPLICATION(with_bias,
-                          one_of(op_d.bias_desc.dims[m_idx], 1,
-                                  dst_desc->dims[m_idx])),
+    VCHECK_MATMUL(
+            IMPLICATION(with_bias,
+                    one_of(op_d.bias_desc.dims[m_idx], 1, dst_md->dims[m_idx])),
             VERBOSE_INCONSISTENT_DIM, "bias", m_idx, "dst", m_idx);
 
     const int bia_mask = with_bias
-            ? utils::get_dims_mask(dst_desc->dims, op_d.bias_desc.dims, ndims)
+            ? utils::get_dims_mask(dst_md->dims, op_d.bias_desc.dims, ndims)
             : 0;
 
     // s4/u4 requires n to be multiple of 2
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_desc->data_type,
+    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_md->data_type,
                                       data_type::s4, data_type::u4),
-                          weights_desc->dims[n_idx] % 2 == 0),
+                          weights_md->dims[n_idx] % 2 == 0),
             VERBOSE_BAD_DIM, "weights", n_idx);
 
     // check if other dims match.
     for (int d = 0; d < ndims - 2; ++d) {
-        const dim_t s_dim = src_desc->dims[d];
-        const dim_t w_dim = weights_desc->dims[d];
-        const dim_t d_dim = dst_desc->dims[d];
+        const dim_t s_dim = src_md->dims[d];
+        const dim_t w_dim = weights_md->dims[d];
+        const dim_t d_dim = dst_md->dims[d];
         const dim_t b_dim = with_bias ? op_d.bias_desc.dims[d] : 0;
 
         if (one_of(DNNL_RUNTIME_DIM_VAL, s_dim, w_dim, d_dim, b_dim)) {
@@ -220,25 +207,11 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         }
     }
 
-    op_d.accum_data_type = types::default_accum_data_type(src_desc->data_type,
-            weights_desc->data_type, dst_desc->data_type, prop_kind::forward);
+    op_d.accum_data_type = types::default_accum_data_type(src_md->data_type,
+            weights_md->data_type, dst_md->data_type, prop_kind::forward);
     VCHECK_MATMUL(op_d.accum_data_type != data_type::undef,
             VERBOSE_INVALID_DATATYPE, "accumulation");
-    *matmul_desc = op_d;
-    return status::success;
-}
-} // namespace impl
-} // namespace dnnl
-
-status_t dnnl_matmul_primitive_desc_create(
-        primitive_desc_iface_t **primitive_desc_iface, engine_t *engine,
-        const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
-        const memory_desc_t *bias_desc, const memory_desc_t *dst_desc,
-        const primitive_attr_t *attr) {
-    auto matmul_desc = matmul_desc_t();
-    CHECK(matmul_desc_init(
-            &matmul_desc, src_desc, weights_desc, bias_desc, dst_desc));
-    CHECK(matmul_attr_check(matmul_desc, engine, attr));
+    CHECK(matmul_attr_check(op_d, engine, attr));
     return primitive_desc_create(primitive_desc_iface, engine,
-            (const op_desc_t *)&matmul_desc, nullptr, attr);
+            (const op_desc_t *)&op_d, nullptr, attr);
 }

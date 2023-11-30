@@ -616,15 +616,11 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     }
 #endif
 
+    // Zero-points for non-integral data type does not make sense
     if (!prb->attr.zero_points.is_def()
             && (prb->wei_dt() != dnnl_s8 && prb->wei_dt() != dnnl_u8
                     && prb->wei_dt() != dnnl_s4 && prb->wei_dt() != dnnl_u4)) {
-        BENCHDNN_PRINT(2,
-                "[INVALID][%s:%d]: Zero-points applied to a non-integral data "
-                "type.\n",
-                __FILE__, __LINE__);
-        res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->state = SKIPPED, res->reason = INVALID_CASE;
         return;
     }
 

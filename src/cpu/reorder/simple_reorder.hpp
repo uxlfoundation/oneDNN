@@ -888,8 +888,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 && mask_ok(req_comp, output_d.extra().compensation_mask)
                 && mask_ok(req_asymmetric_comp,
                         output_d.extra().asymm_compensation_mask)
-                && one_of(input_d.data_type(), f32, s8, bf16, f16, f8_e5m2,
-                        f8_e4m3)
+                && one_of(input_d.data_type(), f32, s8, bf16, f16)
                 && output_d.data_type() == s8 && D_mask == 1;
     }
 
@@ -2003,8 +2002,6 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
             for (int i = 0; i < 2; ++i) {
                 const auto i_off = input_d.off_l(2 * idx + i);
                 const auto o_off = output_d.off_l(2 * idx + i);
-                const auto shift = i % 2 ? int4_extract_t::high_half
-                                         : int4_extract_t::low_half;
                 if (order_keep) {
                     // f32 -> u4/s4
                     // XXX: add support for quantization with saturation and scales?
@@ -2013,11 +2010,11 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                     const uint8_t dst_val = i == 0
                             ? 0
                             : reinterpret_cast<uint8_t *>(output)[o_off / 2];
-                    output[o_off / 2] = src_val.insert(dst_val, shift);
+                    output[o_off / 2] = src_val.insert(dst_val, i % 2);
                 } else {
                     // u4/s4 -> f32
                     auto src_val
-                            = data_t<type_o>::extract(input[i_off / 2], shift);
+                            = data_t<type_o>::extract(input[i_off / 2], i % 2);
                     reinterpret_cast<data_t<type_i> *>(output)[o_off]
                             = static_cast<float>(src_val);
                 }

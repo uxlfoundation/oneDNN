@@ -49,36 +49,23 @@ struct ref_matmul_t : public primitive_t {
             const auto bia_type = weights_md(1)->data_type;
             const auto dst_type = dst_md(0)->data_type;
 
-            VDISPATCH_MATMUL(
-                    is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_MATMUL(utils::one_of(src_type, f32, bf16, f16, f8_e5m2,
-                                     f8_e4m3, f4_e2m1, f4_e3m0),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(utils::one_of(wei_type, f32, bf16, f16, f8_e5m2,
-                                     f8_e4m3, f4_e2m1, f4_e3m0, u8, s8, u4, s4),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(utils::one_of(dst_type, f32, bf16, f16, f8_e5m2,
-                                     f8_e4m3, f4_e2m1, f4_e3m0),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL((src_type == wei_type
-                                     || utils::one_of(wei_type, bf16, f16, u8,
-                                             s8, u4, s4, f4_e3m0)),
-                    VERBOSE_UNSUPPORTED_DT);
-            /* int8 weights decompression support */
-            VDISPATCH_MATMUL(IMPLICATION(utils::one_of(wei_type, u8, s8),
-                                     attr_.mayiconvert(wei_type, src_type)),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(IMPLICATION(src_type == f32, dst_type == f32),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(IMPLICATION(src_type == bf16,
-                                     utils::one_of(dst_type, f32, bf16)),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(IMPLICATION(src_type == f16,
-                                     utils::one_of(dst_type, f32, f16)),
-                    VERBOSE_UNSUPPORTED_DT);
-            // TODO: any implication on allowed dst data type for fp8?
-            VDISPATCH_MATMUL(
-                    IMPLICATION(with_bias(),
+            bool ok = is_dense_format_kind()
+                    && utils::one_of(src_type, f32, bf16, f16, f8_e5m2, f8_e4m3)
+                    && utils::one_of(wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3,
+                            u8, s8, u4, s4)
+                    && utils::one_of(dst_type, f32, bf16, f16, f8_e5m2, f8_e4m3)
+                    && (src_type == wei_type
+                            || utils::one_of(wei_type, u8, s8, u4, s4))
+                    /* int8 weights decompression support */
+                    && IMPLICATION(utils::one_of(wei_type, u8, s8),
+                            attr_.mayiconvert(wei_type, src_type))
+                    && IMPLICATION(src_type == f32, dst_type == f32)
+                    && IMPLICATION(src_type == bf16,
+                            utils::one_of(dst_type, f32, bf16))
+                    && IMPLICATION(
+                            src_type == f16, utils::one_of(dst_type, f32, f16))
+                    // TODO: any implication on allowed dst data type for fp8?
+                    && IMPLICATION(with_bias(),
                             utils::one_of(
                                     bia_type, f32, bf16, f16, f8_e5m2, f8_e4m3)
                                     && IMPLICATION(

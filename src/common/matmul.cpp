@@ -53,21 +53,14 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             | smask_t::rounding_mode;
     // Matmul supports scales for floating point data types
     attr_mask |= smask_t::scales_runtime;
-    attr_mask |= smask_t::scales_runtime_data_type;
 
-    const bool src_is_int8
-            = utils::one_of(src_dt, data_type::s8, data_type::u8);
-    const bool src_is_fp8
-            = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (src_is_int8 || src_is_fp8) attr_mask |= smask_t::zero_points_runtime;
+    const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8);
+    if (is_int8) attr_mask |= smask_t::zero_points_runtime;
 
-    // Matmul supports zero points for floating point data types as part of
-    // weights decompression.
+    // Matmul supports zero points for floating point data types as part of weights decompression
     const bool wei_is_int = utils::one_of(
             wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
-    const bool wei_is_fp8
-            = utils::one_of(wei_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (wei_is_int || wei_is_fp8) {
+    if (!is_int8 && wei_is_int) {
         attr_mask |= smask_t::zero_points_runtime_data_type;
         attr_mask |= smask_t::zero_points_runtime_groups;
         attr_mask |= smask_t::scales_runtime_groups;
@@ -295,21 +288,11 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             ? utils::get_dims_mask(dst_desc->dims, op_d.bias_desc.dims, ndims)
             : 0;
 
-    // TODO: requirement is for innermost dim to be multiple of 2 for
-    // the memory to be byte aligned.
-
-    // s4/u4/f4 weights requires n to be multiple of 2 to be byte aligned
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_desc->data_type,
-                                      data_type::s4, data_type::u4,
-                                      data_type::f4_e2m1, data_type::f4_e3m0),
-                          weights_desc->dims[n_idx] % 2 == 0),
+    // s4/u4 requires n to be multiple of 2
+    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_md->data_type,
+                                      data_type::s4, data_type::u4),
+                          weights_md->dims[n_idx] % 2 == 0),
             VERBOSE_BAD_DIM, "weights", n_idx);
-    // s4/u4/f4 src requires k to be multiple of 2 to be byte aligned
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(src_desc->data_type, data_type::s4,
-                                      data_type::u4, data_type::f4_e2m1,
-                                      data_type::f4_e3m0),
-                          src_desc->dims[k_idx_src] % 2 == 0),
-            VERBOSE_BAD_DIM, "src", n_idx);
 
     // check if other dims match.
     for (int d = 0; d < ndims - 2; ++d) {

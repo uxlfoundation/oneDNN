@@ -80,29 +80,14 @@ inline float load_float_value(data_type_t dt, const void *ptr, dim_t idx) {
         CASE(s32);
         CASE(s8);
         CASE(u8);
-        CASE(e8m0);
         case s4: {
-            const nibble2_t nibble_pair(
-                    static_cast<const uint8_t *>(ptr)[idx / 2]);
-            int4_t val(nibble_pair.get(idx % 2));
+            auto val = int4_t::extract(
+                    reinterpret_cast<const uint8_t *>(ptr)[idx / 2], idx % 2);
             return static_cast<float>(val);
         }
         case u4: {
-            const nibble2_t nibble_pair(
-                    static_cast<const uint8_t *>(ptr)[idx / 2]);
-            uint4_t val(nibble_pair.get(idx % 2));
-            return static_cast<float>(val);
-        }
-        case f4_e2m1: {
-            const nibble2_t nibble_pair
-                    = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];
-            float4_e2m1_t val(nibble_pair.get(idx % 2), true);
-            return static_cast<float>(val);
-        }
-        case f4_e3m0: {
-            const nibble2_t nibble_pair
-                    = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];
-            float4_e3m0_t val(nibble_pair.get(idx % 2), true);
+            auto val = uint4_t::extract(
+                    reinterpret_cast<const uint8_t *>(ptr)[idx / 2], idx % 2);
             return static_cast<float>(val);
         }
         default: assert(!"bad data_type");

@@ -41,6 +41,9 @@ inline std::string to_string(ngen::HW hw) {
         CASE(XeHPG)
         CASE(XeHPC)
         CASE(Xe2)
+#if XE3P
+        CASE(Xe3p)
+#endif
         default: ir_error_not_expected();
     }
 #undef CASE
@@ -63,6 +66,9 @@ inline ngen::HW str_to_ngen_hw(const std::string &s) {
     CASE(XeHPG);
     CASE(XeHPC);
     CASE(Xe2);
+#if XE3P
+    CASE(Xe3p);
+#endif
 #undef CASE
     return ngen::HW::Unknown;
 }

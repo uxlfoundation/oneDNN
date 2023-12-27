@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,6 +53,9 @@ hw_t to_hw(ngen::HW hw) {
         case ngen::HW::XeHPG: return hw_t::xehpg;
         case ngen::HW::XeHPC: return hw_t::xehpc;
         case ngen::HW::Xe2: return hw_t::xehpc;
+#if XE3P
+        case ngen::HW::Xe3p: return hw_t::xehpc;
+#endif
         default: ir_error_not_expected() << "Unknown HW: " << to_string(hw);
     }
     return hw_t::undef;

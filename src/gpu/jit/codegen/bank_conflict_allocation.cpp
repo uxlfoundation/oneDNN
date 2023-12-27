@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -89,7 +89,11 @@ struct hw_context_t {
             case ngen::HW::XeHP:
             case ngen::HW::XeHPG: return 8;
             case ngen::HW::Xe2:
-            case ngen::HW::XeHPC: return 16;
+            case ngen::HW::XeHPC:
+#if XE3P
+            case ngen::HW::Xe3p:
+#endif
+                return 16;
             default: ir_error_not_expected();
         }
         return -1;

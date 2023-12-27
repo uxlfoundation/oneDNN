@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +38,9 @@ constexpr gpu_gen_t gpu_xe_hp = ngen::HW::XeHP;
 constexpr gpu_gen_t gpu_xe_hpg = ngen::HW::XeHPG;
 constexpr gpu_gen_t gpu_xe_hpc = ngen::HW::XeHPC;
 constexpr gpu_gen_t gpu_xe2 = ngen::HW::Xe2;
+#if XE3P
+constexpr gpu_gen_t gpu_xe3p = ngen::HW::Xe3p;
+#endif
 
 // nGEN jit generator
 //

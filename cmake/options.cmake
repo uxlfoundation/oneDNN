@@ -383,3 +383,9 @@ option(DNNL_AARCH64_USE_ACL "Enables use of AArch64 optimised functions
     This is only supported on AArch64 builds and assumes there is a
     functioning Compute Library build available at the location specified by the
     environment variable ACL_ROOT_DIR." OFF)
+
+# ======================
+# Prerelease GPU Support
+# ======================
+
+option(DNNL_WITH_XE3P "Enables support for prerelease Xe3p GPU platform" TRUE)

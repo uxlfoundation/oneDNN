@@ -46,6 +46,9 @@ inline size_t icache_size(ngen::HW arch) {
         case gpu_xe_hpg: return 96 * 1024;
         case gpu_xe_hpc: return 80 * 1024;
         case gpu_xe2: return 96 * 1024;
+#if XE3P
+        case gpu_xe3p: return 80 * 1024;
+#endif
         default: return 0;
     }
 }
@@ -93,6 +96,9 @@ compute::kernel_t make_kernel(
         REG_XEHPG_ISA(CASE(gpu_xe_hpg));
         REG_XEHPC_ISA(CASE(gpu_xe_hpc));
         REG_XE2_ISA(CASE(gpu_xe2));
+#if XE3P
+        REG_XE3P_ISA(CASE(gpu_xe3p));
+#endif
         default: break;
     }
 #undef CASE
@@ -107,6 +113,9 @@ compute::kernel_t make_kernel(
         case gpu_arch_t::xe_hpg: actual_arch = gpu_xe_hpg; break;
         case gpu_arch_t::xe_hpc: actual_arch = gpu_xe_hpc; break;
         case gpu_arch_t::xe2: actual_arch = gpu_xe2; break;
+#if XE3P
+        case gpu_arch_t::xe3p: actual_arch = gpu_xe3p; break;
+#endif
         case gpu_arch_t::unknown: actual_arch = ngen::HW::Unknown; break;
     }
     ir_assert(actual_arch == arch)

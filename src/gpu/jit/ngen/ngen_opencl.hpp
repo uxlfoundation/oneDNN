@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -62,6 +62,10 @@ public:
 
     static inline HW detectHW(cl_context context, cl_device_id device);
     static inline void detectHWInfo(cl_context context, cl_device_id device, HW &outHW, Product &outProduct);
+
+#if XE3P
+    static inline bool detectEfficient64Bit(cl_context context, cl_device_id device, HW inHW = HW::Unknown);
+#endif
 
     /* Deprecated. Use the Product-based API instead. */
     static inline void detectHWInfo(cl_context context, cl_device_id device, HW &outHW, int &outStepping);
@@ -294,6 +298,20 @@ void OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id devi
 
     ELFCodeGenerator<hw>::getBinaryHWInfo(binary, outHW, outProduct);
 }
+
+#if XE3P
+template <HW hw>
+bool OpenCLCodeGenerator<hw>::detectEfficient64Bit(cl_context context, cl_device_id device, HW inHW)
+{
+    const char *dummyCL = "kernel void _ngen_eff64b_detect(){}";
+
+    if (inHW == HW::Unknown) inHW = hw;
+    if (inHW < HW::Xe3p) return false;
+
+    auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, "");
+    return npack::isBinaryEfficient64Bit(binary, inHW);
+}
+#endif
 
 } /* namespace ngen */
 

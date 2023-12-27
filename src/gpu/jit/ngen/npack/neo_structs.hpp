@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,6 +44,12 @@ enum class GfxCoreFamily : uint32_t {
     XeHPG = 0xC07,
     XeHPC = 0xC08,
     Xe2 = 0xC09,
+#if XE3
+    Xe3 = 0x1010,
+#endif
+#if XE3P
+    Xe3p = 0x1011,
+#endif
 };
 
 enum class ProductFamily : uint32_t {
@@ -58,8 +64,18 @@ enum class ProductFamily : uint32_t {
     PVC = 1271,
     MTL = 1272,
     ARL = 1273,
+#ifdef PRERELEASE_HW
+    RLT = 1280,
+    ELG = 1274,
+#endif
     LNL = 1275,
     LNL_M = 1276,
+#if XE3
+    PTL = 1300,
+#endif
+#if XE3P
+    FCS = 1350,
+#endif
 };
 
 typedef struct

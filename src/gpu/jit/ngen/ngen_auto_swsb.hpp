@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +38,28 @@ namespace autoswsb {
 /*******************/
 
 typedef uint8_t PipeMask;
+#if XE3
+enum {
+    PipeMaskNone = 0,
+    PipeMaskA = 1,      // All in-order pipes
+    PipeMaskF = 2,
+    PipeMaskI = 4,
+    PipeMaskL = 8,
+    PipeMaskM = 0x10,
+    PipeMaskS = 0x20,
+    PipeMaskC = 0x40,   // All instructions (in-order/out-of-order).
+    PipeMaskO = 0x80,   // All out-of-order pipes. Not a valid GeneralizedPipe.
+    PipeBitA = 0,
+    PipeBitF = 1,
+    PipeBitI = 2,
+    PipeBitL = 3,
+    PipeBitM = 4,
+    PipeBitS = 5,
+    PipeBitC = 6,
+    PipeBitO = 7,
+};
+static constexpr int NPipes = 7;
+#else
 enum {
     PipeMaskNone = 0,
     PipeMaskA = 1,      // All in-order pipes
@@ -56,6 +78,7 @@ enum {
     PipeBitO = 6,
 };
 static constexpr int NPipes = 6;
+#endif
 
 static inline PipeMask toMask(Pipe pipe)   { return (1 << (static_cast<unsigned>(pipe) - 1)); }
 static inline Pipe fromMask(PipeMask mask) { return mask ? static_cast<Pipe>(1 + utils::log2(mask)) : Pipe::Default; }
@@ -102,7 +125,11 @@ public:
 };
 
 struct DependencyRegion {
+#if XE3P
+    uint16_t base, size;
+#else
     uint8_t base, size;
+#endif
     uint8_t unspecified : 1;
     uint8_t checkWAW : 1;
     uint8_t arf : 1;
@@ -128,6 +155,14 @@ struct DependencyRegion {
         return true;
     }
     void clear()        { *this = DependencyRegion(hw); unspecified = false; checkWAW = false; arf = false; }
+
+#if XE3P
+    void duplicateLH() {
+        for (int i = 0; i < size; i++)
+            masks[size + i] = masks[i];
+        size *= 2;
+    }
+#endif
 
 #ifdef NGEN_DEBUG
     inline void dump() const;
@@ -196,7 +231,11 @@ class DependencyTable {
     };
 
     enum : int {
+#if XE3P
+        maxGRF = 512,
+#else
         maxGRF = 256,
+#endif
         grfListIdxUnspecified = maxGRF      // GRF list index for all unspecified regions.
     };
 
@@ -210,7 +249,11 @@ class DependencyTable {
 
     std::vector<Dependency<consumer>> deps;         // List of all Dependencies (active or not)
     std::vector<DependencyFragment> frags;          // List of all DependencyFragments (active or not)
+#if XE3P
+    std::array<uint32_t, 512+1> heads[NListTypes];  // Heads of doubly-linked lists.
+#else
     std::array<uint32_t, 257> heads[NListTypes];    // Heads of doubly-linked lists.
+#endif
 
     static bool isHeadLink(uint32_t id)         { return ((id & 0x80000000) != 0) && (id != none); }
     static uint32_t readHeadLink(uint32_t id)   { return id & 0x7FFFFFFF; }
@@ -320,6 +363,13 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
                 return GeneralizedPipe::Math();
             case Opcode::send:
             case Opcode::sendc:
+#if XE3
+            case Opcode::sendg:
+            case Opcode::sendgc:
+#endif
+#if XE3P
+            case Opcode::sendgx:
+#endif
                 return GeneralizedPipe(insn.sfid());
         }
     }
@@ -337,6 +387,10 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
         unsigned lmask = (hw >= HW::XeHPC) ? 0b1011 : 0b0011;   // Note: assumes PVC-XT
         if ((dt & lmask) == lmask)
             mask |= PipeMaskL;
+#if XE3P
+        else if ((hw >= HW::Xe3p) && (op == Opcode::mov_gen12 || op == Opcode::srnd) && (dt != insn.src0Typecode()))
+            mask |= PipeMaskI;
+#endif
         else if (dt & 8)
             mask |= PipeMaskF;
         else
@@ -349,6 +403,13 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
                 mask = PipeMaskL;
         }
 
+#if XE3
+        if (hw >= HW::Xe3) {
+            ARFType dstARF;
+            if (insn.getARFType(dstARF, -1, hw) && dstARF == ARFType::s)
+                mask = PipeMaskS;
+        }
+#endif
     } else
         mask = PipeMaskA;
     return mask;
@@ -528,7 +589,11 @@ inline bool contains(const DependencyRegion &dep1, const DependencyRegion &dep2)
 // Check if an ARF type needs SWSB tracking.
 inline bool trackableARF(ARFType type)
 {
+#if XE3
+    return (type == ARFType::acc || type == ARFType::a || type == ARFType::s);
+#else
     return (type == ARFType::acc || type == ARFType::a);
+#endif
 }
 
 // Distance in an in-order pipe after which a dependency can be ignored.
@@ -540,6 +605,9 @@ inline int timeout(GeneralizedPipe pipe)
         case PipeMaskF: return 11;
         case PipeMaskL: return 15;
         case PipeMaskM: return 19;
+#if XE3
+        case PipeMaskS: return 11; // FIXME: use correct value when available
+#endif
         default:        return std::numeric_limits<int>::max();
     }
 }
@@ -553,6 +621,13 @@ inline int estimateLatency(HW hw, const Instruction &insn)
         case Opcode::math: return (hw == HW::Gen12LP) ? 20 : 17;
         case Opcode::dpas:
         case Opcode::dpasw: return 20;   // need correct value
+#if XE3
+        case Opcode::sendg:
+        case Opcode::sendgc:
+#endif
+#if XE3P
+        case Opcode::sendgx:
+#endif
         case Opcode::send:
         case Opcode::sendc: {
             switch (insn.sfid()) {
@@ -600,6 +675,9 @@ inline bool intersects(const Dependency<false> &dep1, const Dependency<true> &de
         if (dep1.read() || dep1.pipe.inOrder())
         if (dep2.write() && (dep1.pipe == dep2.pipe) && (dep1.pipe != GeneralizedPipe::Math()))     return false;
         if (dep1.pipe.inOrder() && (distance(dep1, dep2, dep1.pipe) >= timeout(dep1.pipe)))         return false;
+#if XE3
+        if ((dep2.region.base >> 4) != (static_cast<uint8_t>(ARFType::s) & 0xF))
+#endif
         if (dep2.region.arf && (dep2.read() || dep2.region.hw == HW::Gen12LP))                      return false;
         return intersects(dep1.region, dep2.region);
     } else {
@@ -962,6 +1040,9 @@ inline void dumpPipeMask(PipeMask mask, bool spacers = true)
         std::cerr << char((mask & PipeMaskI) ? 'I' : ' ');
         std::cerr << char((mask & PipeMaskL) ? 'L' : ' ');
         std::cerr << char((mask & PipeMaskM) ? 'M' : ' ');
+#if XE3
+        std::cerr << char((mask & PipeMaskS) ? 'S' : ' ');
+#endif
         std::cerr << char((mask & PipeMaskO) ? 'O' : ' ');
     } else {
         if (mask & PipeMaskA) std::cerr << 'A';
@@ -969,6 +1050,9 @@ inline void dumpPipeMask(PipeMask mask, bool spacers = true)
         if (mask & PipeMaskI) std::cerr << 'I';
         if (mask & PipeMaskL) std::cerr << 'L';
         if (mask & PipeMaskM) std::cerr << 'M';
+#if XE3
+        if (mask & PipeMaskS) std::cerr << 'S';
+#endif
         if (mask & PipeMaskO) std::cerr << 'O';
         if (mask == PipeMaskNone) std::cerr << '-';
     }
@@ -1088,7 +1172,11 @@ void DependencyTable<consumer>::dump() const
                         if (i > NPipes)
                             std::cerr << '?';
                         else
+#if XE3
+                            std::cerr << "AFILMSCO"[i % (NPipes + 1)];
+#else
                             std::cerr << "AFILMCO"[i % (NPipes + 1)];
+#endif
                         break;
                 }
                 std::cerr << ":\t";
@@ -1920,6 +2008,15 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
 
         // First pass: record pipeline SWSB dependencies for later entry into consumer table.
         recordIOPreconsumes(generated);
+
+#if XE3P
+        // mullh takes up two execution slots. Consume dependencies on the first;
+        //  (already done); produce them on the second (up next).
+        if (insn.opcode() == Opcode::mullh) {
+            incrementCounters(getPipeMask(hw, insn));
+            consumeOp.counters = counters;
+        }
+#endif
 
         // Add producer dependencies for all operands.
         // Also record instruction number and token timeout.

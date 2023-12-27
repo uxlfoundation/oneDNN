@@ -207,8 +207,22 @@ public:
 };
 class invalid_address_modifier_exception : public std::runtime_error {
 public:
+#if XE3P
+    invalid_address_modifier_exception() : std::runtime_error("Invalid address offset or scaling factor") {}
+#else
     invalid_address_modifier_exception() : std::runtime_error("Invalid address offset") {}
+#endif
 };
+#if XE3P
+class limited_to_256_grf_exception : public std::runtime_error {
+public:
+    limited_to_256_grf_exception() : std::runtime_error("This instruction only supports r0-r255") {}
+};
+class r511_not_allowed_exception : public std::runtime_error {
+public:
+    r511_not_allowed_exception() : std::runtime_error("r511 cannot be used here") {}
+};
+#endif
 #endif
 
 // Graphics core generations.
@@ -226,6 +240,12 @@ enum class Core {
     XeHPC,
     Gen12p8 = XeHPC,    /* Deprecated -- will be removed in the future */
     Xe2,
+#if XE3
+    Xe3,
+#endif
+#if XE3P
+    Xe3p,
+#endif
 };
 
 typedef Core HW;
@@ -247,7 +267,16 @@ enum class ProductFamily : int {
     ARL,
     GenericXeHPC,
     PVC,
+#ifdef PRERELEASE_HW
+    RLT,
+#endif
     GenericXe2,
+#if XE3
+    GenericXe3,
+#endif
+#if XE3P
+    GenericXe3p,
+#endif
 };
 
 struct Product {
@@ -273,12 +302,24 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
         case HW::XeHPG: return ProductFamily::GenericXeHPG;
         case HW::XeHPC: return ProductFamily::GenericXeHPC;
         case HW::Xe2:   return ProductFamily::GenericXe2;
+#if XE3
+        case HW::Xe3:   return ProductFamily::GenericXe3;
+#endif
+#if XE3P
+        case HW::Xe3p:  return ProductFamily::GenericXe3p;
+#endif
         default:        return ProductFamily::Unknown;
     }
 }
 
 static inline constexpr14 Core getCore(ProductFamily family)
 {
+#if XE3P
+    if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
+#endif
+#if XE3
+    if (family >= ProductFamily::GenericXe3)   return Core::Xe3;
+#endif
     if (family >= ProductFamily::GenericXe2)   return Core::Xe2;
     if (family >= ProductFamily::GenericXeHPC) return Core::XeHPC;
     if (family >= ProductFamily::GenericXeHPG) return Core::XeHPG;
@@ -455,6 +496,22 @@ static inline std::ostream &operator<<(std::ostream &str, SyncFunction func)
 }
 #endif
 
+#if XE3P
+// Shuffle function codes.
+enum class ShuffleFunction : uint8_t {
+    idx4 = 0x6,
+};
+
+#ifdef NGEN_ASM
+static inline std::ostream &operator<<(std::ostream &str, ShuffleFunction func)
+{
+    static const char *names[16] = {"", "", "", "", "", "", "idx4", "", "", "", "", "", "", "", "", ""};
+    str << names[static_cast<uint8_t>(func) & 0xF];
+    return str;
+}
+#endif
+#endif
+
 // Shared function IDs (SFIDs).
 enum class SharedFunction : uint8_t {
     null = 0x0,
@@ -509,6 +566,9 @@ enum class ARFType : uint8_t {
     ce   = 4,
     msg  = 5,
     sp   = 6,
+#if XE3
+    s    = 0x16,
+#endif
     sr   = 7,
     cr   = 8,
     n    = 9,
@@ -523,7 +583,11 @@ enum class ARFType : uint8_t {
 static inline std::ostream &operator<<(std::ostream &str, ARFType type)
 {
     static const char *names[32] = {"null", "a", "acc", "f", "ce", "msg", "sp", "sr", "cr", "n", "ip", "tdr", "tm", "fc", "", "dbg",
+#if XE3
+                                    ""    , "" , "",    "",  "",   "",    "s",  "",   "",   "",  "",   "",    "",   "",   "", ""};
+#else
                                     ""    , "" , "",    "",  "",   "",    "",   "",   "",   "",  "",   "",    "",   "",   "", ""};
+#endif
     str << names[static_cast<uint8_t>(type) & 0x1F];
     return str;
 }
@@ -1066,6 +1130,9 @@ public:
 
     inline GRFDisp operator+(Offset2D offset) const;
     inline GRFDisp operator-(Offset2D offset) const;
+#if XE3P
+    inline GRFDisp operator*(int scale) const;
+#endif
 
     static constexpr int log2Bytes(HW hw)                  { return (hw >= HW::XeHPC) ? 6 : 5;  }
     static constexpr int bytes(HW hw)                      { return (1 << log2Bytes(hw)); }
@@ -1137,7 +1204,11 @@ public:
 };
 
 constexpr14 RegData RegData::getIndirectReg() const {
+#if XE3
+    auto type = (base & 0x100) ? ARFType::s : ARFType::a;
+#else
     auto type = ARFType::a;
+#endif
     return ARF(type, 0)[getIndirectOff()];
 }
 
@@ -1219,6 +1290,22 @@ public:
     explicit constexpr StackPointerRegister(int reg_ = 0) : ARF(ARFType::sp, reg_, DataType::uq) {}
 };
 
+#if XE3
+class ScalarRegister : public ARF
+{
+public:
+    explicit constexpr ScalarRegister(int reg_, int off_ = 0, DataType type_ = DataType::ub) : ARF(ARFType::s, reg_, type_, off_) {}
+
+    constexpr ScalarRegister operator[](int offset) const { return ScalarRegister(getARFBase(), getOffset() + offset); }
+    constexpr ScalarRegister uq(int offset) const { return ScalarRegister(getARFBase(), (getByteOffset() >> 3) + offset, DataType::uq); }
+    constexpr ScalarRegister  q(int offset) const { return ScalarRegister(getARFBase(), (getByteOffset() >> 3) + offset, DataType::q); }
+
+    RegisterRegion operator()(int vs, int width, int hs) const { return reinterpret_cast<const Subregister &>(*this)(vs, width, hs); }
+    RegisterRegion operator()(int vs, int hs) const            { return reinterpret_cast<const Subregister &>(*this)(vs, hs); }
+    RegisterRegion operator()(int hs) const                    { return reinterpret_cast<const Subregister &>(*this)(vs); }
+};
+#endif
+
 class StateRegister : public ARF
 {
 public:
@@ -1279,6 +1366,10 @@ class GRFDisp {
 protected:
     GRF base;
     int32_t disp;
+#if XE3P
+    uint16_t scale = 0;
+    int16_t ind0SubReg = -1;
+#endif
 
 public:
     GRFDisp(const GRF &base_, int32_t disp_) : base(base_), disp(disp_) {}
@@ -1286,14 +1377,35 @@ public:
 
     GRFDisp(const GRF &base_, Offset2D offset) : base(base_), disp((uint32_t(uint16_t(offset.y)) << 16) | uint16_t(offset.x)) {}
 
+#if XE3P
+    GRFDisp(const GRF &base_, int32_t disp_, int scale_, int ind0SubReg_ = -1) : base(base_), disp(disp_), scale(scale_), ind0SubReg(ind0SubReg_) {}
+    GRFDisp(const GRF &base_, int32_t disp_, int scale_, ScalarRegister ind0) : base(base_), disp(disp_), scale(scale_), ind0SubReg(ind0.getByteOffset()) {}
+#endif
+
     constexpr GRF     getBase()  const { return base; }
     constexpr int32_t getDisp()  const { return disp; }
 
     constexpr int16_t getDispX() const { return disp & 0xFFFF; }
     constexpr int16_t getDispY() const { return disp >> 16; }
 
+    void clearDisp()                   { disp = 0; }
+
+#if XE3P
+    constexpr int     getScale() const { return scale; }
+
+    RegData getInd0() const {
+        if (ind0SubReg >= 0)
+            return ScalarRegister(0)[ind0SubReg];
+        else
+            return NullRegister();
+    }
+
+    GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset, scale, ind0SubReg); }
+    GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset, scale, ind0SubReg); }
+#else
     GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset); }
     GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset); }
+#endif
 };
 
 GRFDisp GRF::operator+(int offset)      const { return GRFDisp(*this, offset); }
@@ -1301,6 +1413,19 @@ GRFDisp GRF::operator-(int offset)      const { return *this + (-offset); }
 
 GRFDisp GRF::operator+(Offset2D offset) const { return GRFDisp(*this, offset); }
 GRFDisp GRF::operator-(Offset2D offset) const { return *this + (-offset); }
+
+#if XE3P
+GRFDisp GRF::operator*(int scale)       const { return GRFDisp(*this, 0, scale); }
+
+inline GRFDisp operator+(ScalarRegister s, GRF base) {
+    return GRFDisp(base, 0, 0, s);
+}
+inline GRFDisp operator+(ScalarRegister s, GRFDisp addr) {
+    return GRFDisp(addr.getBase(), addr.getDisp(), addr.getScale(), s);
+}
+inline GRFDisp operator+(GRF base,     ScalarRegister s) { return s + base; }
+inline GRFDisp operator+(GRFDisp addr, ScalarRegister s) { return s + addr; }
+#endif
 
 inline RegisterRegion Subregister::operator()(int vs, int width, int hs) const
 {
@@ -1350,6 +1475,10 @@ inline Subregister Subregister::reinterpret(int offset, DataType type_) const
 class IndirectRegister : public Register {
 protected:
     explicit constexpr14 IndirectRegister(const RegData &reg) : Register(reg.getOffset(), false) {
+#if XE3
+        if (reg.getARFType() == ARFType::s)
+            base |= 0x100;
+#endif
         indirect = true;
     }
     friend class IndirectRegisterFrame;
@@ -1361,8 +1490,15 @@ class IndirectRegisterFrame {
 public:
     IndirectRegister operator[](const RegData &reg) const {
 #ifdef NGEN_SAFE
+#if XE3
+        if (!reg.isARF())
+            throw invalid_arf_exception();
+        if (reg.getARFType() != ARFType::a && reg.getARFType() != ARFType::s)
+            throw invalid_arf_exception();
+#else
         if (!reg.isARF() || reg.getARFType() != ARFType::a)
             throw invalid_arf_exception();
+#endif
 #endif
         return IndirectRegister(reg);
     }
@@ -1371,10 +1507,17 @@ public:
 // GRFRange represents a contiguous range of GRF registers.
 class GRFRange {
 protected:
+#if XE3P
+    uint16_t base;
+    uint16_t len;
+
+    static constexpr uint16_t invalidLen = 0xFFFF;
+#else
     uint8_t base;
     uint8_t len;
 
     static constexpr uint8_t invalidLen = 0xFF;
+#endif
 
 public:
     GRFRange() : GRFRange(0, invalidLen) {}
@@ -1561,6 +1704,11 @@ enum class Opcode {
     sendc = 0x32,
     sends = 0x33,
     sendsc = 0x34,
+#if XE3P
+    sendg = 0x33,
+    sendgc = 0x34,
+    sendgx = 0x35,
+#endif
     math = 0x38,
     add = 0x40,
     mul = 0x41,
@@ -1579,6 +1727,9 @@ enum class Opcode {
     addc = 0x4E,
     subb = 0x4F,
     sad2 = 0x50,
+#if XE3P
+    shfl = 0x50,
+#endif
     sada2 = 0x51,
     add3 = 0x52,
     macl = 0x53,
@@ -1595,6 +1746,9 @@ enum class Opcode {
     mad = 0x5B,
     lrp = 0x5C,
     madm = 0x5D,
+#if XE3P
+    mullh = 0x5F,
+#endif
     nop_gen12 = 0x60,
     mov_gen12 = 0x61,
     sel_gen12 = 0x62,
@@ -1638,6 +1792,9 @@ static inline bool isSend(Opcode op)
         case Opcode::sendc:
         case Opcode::sends:
         case Opcode::sendsc:
+#if XE3P
+        case Opcode::sendgx:
+#endif
             return true;
         default:
             return false;
@@ -1674,12 +1831,23 @@ static const char *getMnemonic(Opcode op, HW hw)
         "bfe", "bfi1", "bfi2", "", "", "", "", "",
         "jmpi", "brd", "if", "brc", "else", "endif", "", "while",
         "break", "cont", "halt", "calla", "call", "ret", "goto", "join",
+#if XE3P
+        "wait", "send", "sendc", "sendg", "sendgc", "sendgx", "", "",
+#elif XE3
+        "wait", "send", "sendc", "sendg", "sendgc", "", "", "",
+#else
         "wait", "send", "sendc", "sends", "sendsc", "", "", "",
+#endif
         "math", "", "", "", "", "", "", "",
         "add", "mul", "avg", "frc", "rndu", "rndd", "rnde", "rndz",
         "mac", "mach", "lzd", "fbh", "fbl", "cbit", "addc", "subb",
+#if XE3P
+        "shfl", "sada2", "add3", "macl", "srnd", "dph", "dp3", "dp2",
+        "dp4a", "dpas", "dpasw", "mad", "lrp", "madm", "", "mullh",
+#else
         "sad2", "sada2", "add3", "macl", "srnd", "dph", "dp3", "dp2",
         "dp4a", "dpas", "dpasw", "mad", "lrp", "madm", "", "",
+#endif
         "nop", "mov", "sel", "movi", "not", "and", "or", "xor",
         "shr", "shl", "smov", "bfn", "asr", "", "ror", "rol",
         "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
@@ -1689,6 +1857,13 @@ static const char *getMnemonic(Opcode op, HW hw)
     const char *mnemonic = names[static_cast<int>(op) & 0x7F];
 
     if (hw < HW::Gen12LP) switch (op) {
+#if XE3
+        case Opcode::sends:  mnemonic = "sends";  break;
+        case Opcode::sendsc: mnemonic = "sendsc"; break;
+#endif
+#if XE3P
+        case Opcode::sad2:   mnemonic = "sad2";   break;
+#endif
         case Opcode::mov:    mnemonic = "mov";    break;
         case Opcode::line:   mnemonic = "line";   break;
         case Opcode::pln:    mnemonic = "pln";    break;
@@ -1708,12 +1883,19 @@ enum class Pipe : uint8_t {
     I = 3, Integer = I,
     L = 4, Long = L,
     M = 5, Math = M,
+#if XE3
+    S = 6, Scalar = S,
+#endif
 };
 
 #ifdef NGEN_ASM
 static inline std::ostream &operator<<(std::ostream &str, Pipe pipe)
 {
+#if XE3
+    static const char *names[8] = {"", "A", "F", "I", "L", "M", "S", ""};
+#else
     static const char *names[8] = {"", "A", "F", "I", "L", "M", "", ""};
+#endif
     str << names[static_cast<uint8_t>(pipe) & 7];
     return str;
 }
@@ -1840,6 +2022,9 @@ public:
     constexpr ConditionModifier getCMod()  const { return static_cast<ConditionModifier>(parts.cmod); }
     constexpr bool isAccWrEn()             const { return parts.accWrCtrl; }
     constexpr bool getBranchCtrl()         const { return parts.accWrCtrl; }
+#ifdef PRERELEASE_HW
+    constexpr bool isFwd()                 const { return parts.accWrCtrl; }
+#endif
     constexpr bool isCompact()             const { return parts.cmptCtrl; }
     constexpr bool isBreakpoint()          const { return parts.debugCtrl; }
     constexpr bool isSaturate()            const { return parts.saturate; }
@@ -1906,6 +2091,11 @@ public:
     static constexpr InstructionModifier createAccWrCtrl() {
         return InstructionModifier(false, false, false, 0, true, false, false, false, false, false, false, false);
     }
+#ifdef PRERELEASE_HW
+    static constexpr InstructionModifier createFwd() {
+        return createAccWrCtrl();
+    }
+#endif
     static constexpr InstructionModifier createDebugCtrl() {
         return InstructionModifier(false, false, false, 0, false, true, false, false, false, false, false, false);
     }
@@ -2283,7 +2473,11 @@ union MessageDescriptor {
         unsigned cache : 4;
         unsigned : 9;
         unsigned model : 2;
+#if XE3P
+        unsigned overfetch : 1;     /* storage location only, not supported in HW */
+#else
         unsigned : 1;
+#endif
     } standardLSC;
     struct {
         unsigned : 12;
@@ -2337,6 +2531,10 @@ union ExtendedMessageDescriptor {
     ExtendedMessageDescriptor& operator=(SharedFunction sfid_) { parts.sfid = static_cast<int>(sfid_); return *this; }
 };
 
+#if XE3P
+union SendgMessageDescriptor;
+#endif
+
 enum class AtomicOp : uint16_t {
     cmpwr_2w = 0x00,
     and_ = 0x1801,
@@ -2365,6 +2563,13 @@ enum class AtomicOp : uint16_t {
     store = mov,
     cmpxchg = cmpwr,
     fcmpxchg = fcmpwr,
+#if XE3P
+    bfadd = 0x21FF,
+    bfsub = 0x22FF,
+    bfmin = 0x23FF,
+    bfmax = 0x24FF,
+    bfcmpxchg = 0x25FF,
+#endif
 };
 
 static inline int operandCount(AtomicOp op) {
@@ -2377,6 +2582,9 @@ static inline int operandCount(AtomicOp op) {
     case AtomicOp::cmpwr_2w:
     case AtomicOp::cmpwr:
     case AtomicOp::fcmpwr:
+#if XE3P
+    case AtomicOp::bfcmpxchg:
+#endif
         return 3;
     default:
         return 2;
@@ -2402,6 +2610,10 @@ enum AddressModel : uint8_t {
     ModelScratch = 0x40,
     ModelSS = 0x80,
     ModelBSS = 0x81,
+#if XE3P
+    ModelA64A32U = 0xA4,
+    ModelA64A32S = 0xB4,
+#endif
 };
 
 class AddressBase {
@@ -2431,6 +2643,14 @@ public:
     static constexpr AddressBase createA64(bool coherent) {
         return AddressBase(coherent ? 0xFF : 0xFD, ModelA64);
     }
+#if XE3P
+    static constexpr AddressBase createA64A32U() {
+        return AddressBase(0, ModelA64A32U);
+    }
+    static constexpr AddressBase createA64A32S() {
+        return AddressBase(0, ModelA64A32S);
+    }
+#endif
     static constexpr AddressBase createSLM() {
         return AddressBase(0xFE, ModelSLM);
     }
@@ -2467,6 +2687,14 @@ public:
 };
 
 class hdc_base {
+#if XE3
+public:
+    template <Access access> inline void getDescriptor(HW hw, int esize, SharedFunction &sfid, AddressBase base, SendgMessageDescriptor &desc, int &addrLen, int &dataLen, const GRFDisp &addr) const {
+#ifdef NGEN_SAFE
+        throw unsupported_message();
+#endif
+    }
+#endif
 protected:
     void hwCheck(HW hw) const {
 #ifdef NGEN_SAFE
@@ -2634,9 +2862,18 @@ class scattered_atomic : public hdc_base {
 public:
     void applyAtomicOp(AtomicOp op, const RegData &dst, MessageDescriptor &desc) const
     {
+#if XE3P
+#ifdef NGEN_SAFE
+        if ((static_cast<int>(op) & 0xFF) == 0xFF)
+            throw unsupported_message();
+#endif
+#endif
         desc.atomic.returnData = !dst.isNull();
         desc.atomic.atomicOp = static_cast<int>(op) & 0xF;
     }
+#if XE3
+    inline void applyAtomicOp(AtomicOp op, SendgMessageDescriptor &desc) const {}
+#endif
 };
 
 class scattered_word : public scattered_atomic {
@@ -2895,6 +3132,13 @@ enum class LSCOpcode : uint8_t {
     ccs_update = 0x1D,
     rsi = 0x1E,
     fence = 0x1F,
+#if XE3P
+    atomic_bfadd = 0x21,
+    atomic_bfsub = 0x22,
+    atomic_bfmin = 0x23,
+    atomic_bfmax = 0x24,
+    atomic_bfcmpxchg = 0x25,
+#endif
 };
 
 enum class DataSizeLSC : uint16_t {
@@ -2921,6 +3165,22 @@ enum class CacheSettingsLSC : uint8_t {
     L1IAR_L3C = 14,   L1WB_L3WB = 14,
     L1UC_L3CC = 5,
     L1C_L3CC  = 9,
+#if XE3P
+    L1UC_L2UC_L3UC = 2,
+    L1UC_L2UC_L3C  = 3,     L1UC_L2UC_L3WB = 3,
+    L1UC_L2C_L3UC  = 4,     L1UC_L2WB_L3UC = 4,
+    L1UC_L2C_L3C   = 5,
+    L1C_L2UC_L3UC  = 6,     L1WT_L2UC_L3UC = 6,
+    L1C_L2UC_L3C   = 7,     L1WT_L2UC_L3WB = 7,
+    L1C_L2C_L3UC   = 8,     L1WT_L2WB_L3UC = 8,
+    L1C_L2C_L3C    = 9,
+    L1S_L2UC_L3UC  = 10,
+    L1S_L2UC_L3C   = 11,    L1S_L2UC_L3WB  = 11,
+    L1S_L2C_L3UC   = 12,    L1S_L2WB_L3UC  = 12,
+    L1S_L2C_L3C    = 13,    L1S_L2WB_L3WB  = 13,
+    L1IAR_L2IAR_L3IAR = 14, L1WB_L2WB_L3UC = 14,
+                            L1WB_L2UC_L3WB = 15,
+#endif
 };
 
 enum FenceScopeLSC : uint8_t {
@@ -2974,6 +3234,9 @@ struct DataSpecLSC {
     static constexpr DataSpecLSC createV(unsigned vcount, unsigned venc) { return DataSpecLSC{MessageDescriptor(venc << 12), uint8_t(vcount), 0}; }
     static constexpr DataSpecLSC createTranspose()                       { return DataSpecLSC{MessageDescriptor(1 << 15)}; }
     static constexpr DataSpecLSC createVNNI()                            { return DataSpecLSC{MessageDescriptor(1 << 7)}; }
+#if XE3P
+    static constexpr DataSpecLSC createOverfetch()                       { return DataSpecLSC{MessageDescriptor(1u << 31)}; }
+#endif
 
     template <Access access> void getDescriptors(HW hw, const InstructionModifier &mod, AddressBase base, MessageDescriptor &desc, ExtendedMessageDescriptor &exdesc, const GRFDisp &addr) const
     {
@@ -2982,6 +3245,9 @@ struct DataSpecLSC {
         exdesc = (base.getModel() == ModelSLM) ? SharedFunction::slm : SharedFunction::ugm;
 
         desc.standardLSC.addrSize = a64 ? AddrSize64 : AddrSize32;
+#if XE3P
+        desc.standardLSC.overfetch = false;
+#endif
 
         if (base.getModel() == ModelA32) base = AddressBase::createBTS(0xFF);
 
@@ -3035,6 +3301,10 @@ struct DataSpecLSC {
         desc.standardLSC.opcode = static_cast<uint16_t>(op) >> 8;
     }
 
+#if XE3P
+    template <Access access> inline void getDescriptor(HW hw, int esize, SharedFunction &sfid, AddressBase base, SendgMessageDescriptor &desc, int &addrLen, int &dataLen, const GRFDisp &addr) const;
+    inline void applyAtomicOp(AtomicOp op, SendgMessageDescriptor &desc) const;
+#endif
 };
 
 static inline DataSpecLSC scattered(const DataSpecLSC &dtype, int vsize = 1) { return dtype(vsize); }
@@ -3061,6 +3331,9 @@ public:
         base.checkModel(ModelA64);
 
         desc = this->desc;
+#if XE3P
+        desc.standardLSC.overfetch = false;
+#endif
 
         desc.standardLSC.opcode = static_cast<uint8_t>((access == Access::Write) ? LSCOpcode::store_2dblock : LSCOpcode::load_2dblock);
         desc.standardLSC.model = AddrFlat;
@@ -3076,6 +3349,9 @@ public:
         exdesc.block2D.yOffset = addr.getDispY();
     }
 
+#if XE3P
+    template <Access access> inline void getDescriptor(HW hw, int esize, SharedFunction &sfid, AddressBase base, SendgMessageDescriptor &desc, int &addrLen, int &dataLen, const GRFDisp &addr) const;
+#endif
 };
 
 // Generate descriptors for a load operation.
@@ -3119,6 +3395,291 @@ static inline void encodeAtomicDescriptors(HW hw, MessageDescriptor &desc, Exten
         desc.parts.responseLen = 0;
 }
 
+
+#if XE3P
+/********************************************************************/
+/* New send encoding and decoding.                                  */
+/********************************************************************/
+enum GatewayOpcode {
+    eot = 0,
+    bar = 4,
+    nbar = 5,
+    save_bar = 8,
+    restore_bar = 9,
+    eotr = 10,
+    restore_btd_stack = 11,
+    sip_bar = 12,
+};
+
+union SendgMessageDescriptor {
+    uint64_t all;
+    struct {
+        uint64_t opcode : 6;
+        uint64_t : 58;
+    } common;
+    struct {
+        uint64_t : 7;
+        uint64_t vlen : 3;
+        uint64_t transpose : 1;
+        uint64_t dataSize : 3;
+        uint64_t addrSize : 2;
+        uint64_t cacheMode : 4;
+        uint64_t : 1;
+        uint64_t overfetch : 1;
+        uint64_t : 22;
+        uint64_t scale : 2;
+        uint64_t : 18;
+    } mem;
+    struct {
+        uint64_t : 7;
+        uint64_t cmask : 4;
+        uint64_t : 53;
+    } cmask;
+    struct {
+        uint64_t : 22;
+         int64_t offset : 22;
+        uint64_t : 20;
+    } flat;
+    struct {
+        uint64_t : 22;
+        uint64_t ssIdx : 5;
+         int64_t offset : 17;
+        uint64_t : 20;
+    } surface;
+    struct {
+        uint64_t : 9;
+        uint64_t vnni : 1;
+        uint64_t transpose : 1;
+        uint64_t : 11;
+         int64_t xOffset : 12;
+         int64_t yOffset : 12;
+        uint64_t : 18;
+    } block2D;
+    struct {
+        uint64_t : 8;
+        uint64_t flushType : 3;
+        uint64_t fenceScope : 3;
+        uint64_t : 50;
+    } fence;
+    struct {
+        uint64_t : 7;
+        uint64_t activeOnly : 1;
+        uint64_t legacy : 1;
+        uint64_t : 55;
+    } barrier;
+    struct {
+        uint64_t : 7;
+        uint64_t replay : 2;
+        uint64_t : 55;
+    } eot;
+
+    constexpr SendgMessageDescriptor() : all(0) {}
+    explicit constexpr SendgMessageDescriptor(uint64_t all_) : all(all_) {}
+
+    // Return # destination GRFs if known, and -1 if not.
+    inline int dstLen(HW hw, int execSize, SharedFunction sfid) const {
+        int vlDecode[8] = {1, 2, 3, 4, 8, 16, 32, 64};
+        int dsDecode[8] = {1, 2, 4, 8, 4, 4, 0, 0};
+        int effSIMDGRFs = 1 + (execSize >> (GRF::log2Bytes(hw) - 1));
+
+        switch (sfid) {
+            case SharedFunction::ugm:
+            case SharedFunction::tgm:
+            case SharedFunction::slm:
+            case SharedFunction::urb:
+                switch (static_cast<LSCOpcode>(common.opcode)) {
+                    case LSCOpcode::load: {
+                        int vc = vlDecode[mem.vlen];
+                        int dbytes = dsDecode[mem.dataSize];
+                        if (mem.transpose) {
+                            return GRF::bytesToGRFs(hw, dbytes * vc);
+                        } else {
+                            return effSIMDGRFs * vc * (1 + (dbytes >> 3));
+                        }
+                        break;
+                    }
+                    case LSCOpcode::load_cmask: {
+                        int vc = utils::popcnt(cmask.cmask);
+                        return effSIMDGRFs * vc;
+                        break;
+                    }
+                    case LSCOpcode::load_2dblock:
+                        return -1;      /* cannot determine from descriptor */
+                    case LSCOpcode::fence:
+                        return 1;
+                    case LSCOpcode::atomic_inc:
+                    case LSCOpcode::atomic_dec:
+                    case LSCOpcode::atomic_load:
+                    case LSCOpcode::atomic_add:
+                    case LSCOpcode::atomic_sub:
+                    case LSCOpcode::atomic_min:
+                    case LSCOpcode::atomic_max:
+                    case LSCOpcode::atomic_umin:
+                    case LSCOpcode::atomic_umax:
+                    case LSCOpcode::atomic_cmpxchg:
+                    case LSCOpcode::atomic_fadd:
+                    case LSCOpcode::atomic_fsub:
+                    case LSCOpcode::atomic_fmin:
+                    case LSCOpcode::atomic_fmax:
+                    case LSCOpcode::atomic_fcmpxchg:
+                    case LSCOpcode::atomic_and:
+                    case LSCOpcode::atomic_or:
+                    case LSCOpcode::atomic_xor: {
+                        int dbytes = dsDecode[mem.dataSize];
+                        return effSIMDGRFs * (1 + (dbytes >> 3));
+                    }
+                    default: break;
+                }
+                break;
+            case SharedFunction::gtwy:
+                switch (static_cast<GatewayOpcode>(common.opcode)) {
+                    case GatewayOpcode::sip_bar:
+                    case GatewayOpcode::save_bar:
+                        return 1;
+                    default: break;
+                }
+                break;
+            default: break;
+        }
+
+        return -1;
+    }
+};
+
+static_assert(sizeof(SendgMessageDescriptor) == 8, "SendgMessageDescriptor has been padded by compiler");
+
+static inline unsigned encodeScaleLSC(int scale)
+{
+    if (scale <= 2) return scale;
+    if (scale == 4) return 3;
+#ifdef NGEN_SAFE
+    throw invalid_address_modifier_exception();
+#endif
+    return 0;
+}
+
+template <Access access>
+void DataSpecLSC::getDescriptor(HW hw, int execSize, SharedFunction &sfid, AddressBase base, SendgMessageDescriptor &desc, int &addrLen, int &dataLen, const GRFDisp &addr) const
+{
+    SharedFunction defaultSFID = SharedFunction::ugm;
+
+    desc.common.opcode = this->desc.standardLSC.opcode;
+    if (access == Access::Write)
+        desc.common.opcode |= static_cast<uint8_t>(LSCOpcode::store);
+    desc.cmask.cmask = this->desc.cmask.cmask;      /* or vlen + transpose */
+    desc.mem.dataSize = this->desc.standardLSC.dataSize;
+    desc.mem.cacheMode = this->desc.standardLSC.cache;
+    desc.mem.scale = encodeScaleLSC(addr.getScale());
+    desc.mem.overfetch = this->desc.standardLSC.overfetch;
+
+    bool flat = true;
+    switch (base.getModel()) {
+        case ModelA64:          desc.mem.addrSize = 0b10; break;
+        case ModelA64A32U:      desc.mem.addrSize = 0b00; break;
+        case ModelA64A32S:      desc.mem.addrSize = 0b01; break;
+        case ModelSLM:
+            defaultSFID = SharedFunction::slm;
+            desc.mem.addrSize = 0b00;
+            break;
+        case ModelSS:
+        case ModelBSS:
+            flat = false;
+            desc.mem.addrSize = 0b11;
+            desc.surface.ssIdx = base.getIndex();
+            break;
+        default:
+#ifdef NGEN_SAFE
+            throw invalid_model_exception();
+#endif
+            break;
+    }
+
+    int offsetShift = (desc.mem.dataSize & 0x3);    // log2(bytes per element)
+    int sdisp = addr.getDisp() >> offsetShift;
+
+    if (flat) {
+        desc.flat.offset = sdisp;
+#ifdef NGEN_SAFE
+        if ((desc.flat.offset << offsetShift) != addr.getDisp())
+            throw invalid_address_modifier_exception();
+#endif
+    } else {
+        desc.surface.offset = sdisp;
+#ifdef NGEN_SAFE
+        if ((desc.surface.offset << offsetShift) != addr.getDisp())
+            throw invalid_address_modifier_exception();
+#endif
+    }
+
+    auto vc = std::max<unsigned>(vcount, 1);
+    bool block = this->desc.standardLSC.transpose && this->desc.standardLSC.opcode == static_cast<uint8_t>(LSCOpcode::load);
+    if (block) {
+        addrLen = 1;
+        dataLen = GRF::bytesToGRFs(hw, dbytes * vc);
+    } else {
+        auto effSIMDGRFs = 1 + (execSize >> (GRF::log2Bytes(hw) - 1));
+        addrLen = effSIMDGRFs * (base.isA64() ? 2 : 1);
+        dataLen = effSIMDGRFs * vc * (1 + (dbytes >> 3));
+    }
+
+    if (sfid == SharedFunction::automatic)
+        sfid = defaultSFID;
+}
+
+void DataSpecLSC::applyAtomicOp(AtomicOp op, SendgMessageDescriptor &desc) const
+{
+    desc.common.opcode = static_cast<uint16_t>(op) >> 8;
+}
+
+template <Access access>
+void block_2d::getDescriptor(HW hw, int execSize, SharedFunction &sfid, AddressBase base, SendgMessageDescriptor &desc, int &addrLen, int &dataLen, const GRFDisp &addr) const
+{
+    auto addrNoDisp = addr;
+    addrNoDisp.clearDisp();
+
+    DataSpecLSC::getDescriptor<access>(hw, execSize, sfid, base, desc, addrLen, dataLen, addrNoDisp);
+    desc.common.opcode = static_cast<uint8_t>((access == Access::Write) ? LSCOpcode::store_2dblock : LSCOpcode::load_2dblock);
+    desc.block2D.vnni = this->desc.block2D.vnni;
+    desc.block2D.xOffset = addr.getDispX();
+    desc.block2D.yOffset = addr.getDispY();
+
+#ifdef NGEN_SAFE
+    if (desc.block2D.xOffset != addr.getDispX() || desc.block2D.yOffset != addr.getDispY())
+        throw invalid_address_modifier_exception();
+#endif
+
+    auto w = width, h = height;
+    if (desc.mem.transpose) std::swap(w, h);
+
+    addrLen = 1;
+    dataLen = std::min(count * GRF::bytesToGRFs(hw, utils::roundup_pow2(w) * h * this->dbytes), 31);
+
+    if (sfid == SharedFunction::automatic)
+        sfid = SharedFunction::ugm;
+}
+
+template <typename DataSpec>
+static inline void encodeLoadDescriptor(HW hw, SendgMessageDescriptor &desc, SharedFunction &sfid, int &dstLen, int &src0Len,
+    const InstructionModifier &mod, const DataSpec &spec, AddressBase base, const GRFDisp &addr)
+{
+    spec.template getDescriptor<Access::Read>(hw, mod.getExecSize(), sfid, base, desc, src0Len, dstLen, addr);
+}
+
+template <typename DataSpec>
+static inline void encodeStoreDescriptor(HW hw, SendgMessageDescriptor &desc, SharedFunction &sfid, int &src0Len, int &src1Len,
+    const InstructionModifier &mod, const DataSpec &spec, AddressBase base, const GRFDisp &addr)
+{
+    spec.template getDescriptor<Access::Write>(hw, mod.getExecSize(), sfid, base, desc, src0Len, src1Len, addr);
+}
+
+template <typename DataSpec>
+static inline void encodeAtomicDescriptor(HW hw, SendgMessageDescriptor &desc, SharedFunction &sfid, int &src0Len, int &src1Len,
+    AtomicOp op, const InstructionModifier &mod, const DataSpec &spec, AddressBase base, const GRFDisp &addr)
+{
+    spec.template getDescriptor<Access::AtomicInteger>(hw, mod.getExecSize(), sfid, base, desc, src0Len, src1Len, addr);
+    spec.applyAtomicOp(op, desc);
+}
+#endif
 
 } /* namespace ngen */
 

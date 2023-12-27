@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -487,11 +487,307 @@ PREFIX constexpr const ngen::InstructionModifier &CG::W;
 PREFIX constexpr ngen::CacheSettingsLSC CG::L1C_L3CC; \
 PREFIX constexpr ngen::CacheSettingsLSC CG::L1UC_L3CC;
 
+#if !XE3
 #define NGEN_REGISTER_DECL_EXTRA2(CG,PREFIX)
+#else
+#define NGEN_REGISTER_DECL_EXTRA2(CG,PREFIX) \
+PREFIX constexpr ngen::ScalarRegister CG::s0;
+#endif
 
+#ifndef PRERELEASE_HW
 #define NGEN_REGISTER_DECL_EXTRA3(CG,PREFIX)
+#else
+#define NGEN_REGISTER_DECL_EXTRA3(CG,PREFIX) \
+PREFIX constexpr ngen::InstructionModifier CG::Fwd;
+#endif
 
+#if !XE3P
 #define NGEN_REGISTER_DECL_EXTRA4(CG,PREFIX)
+#else
+#define NGEN_REGISTER_DECL_EXTRA4(CG,PREFIX) \
+PREFIX constexpr ngen::GRF CG::r256; \
+PREFIX constexpr ngen::GRF CG::r257; \
+PREFIX constexpr ngen::GRF CG::r258; \
+PREFIX constexpr ngen::GRF CG::r259; \
+PREFIX constexpr ngen::GRF CG::r260; \
+PREFIX constexpr ngen::GRF CG::r261; \
+PREFIX constexpr ngen::GRF CG::r262; \
+PREFIX constexpr ngen::GRF CG::r263; \
+PREFIX constexpr ngen::GRF CG::r264; \
+PREFIX constexpr ngen::GRF CG::r265; \
+PREFIX constexpr ngen::GRF CG::r266; \
+PREFIX constexpr ngen::GRF CG::r267; \
+PREFIX constexpr ngen::GRF CG::r268; \
+PREFIX constexpr ngen::GRF CG::r269; \
+PREFIX constexpr ngen::GRF CG::r270; \
+PREFIX constexpr ngen::GRF CG::r271; \
+PREFIX constexpr ngen::GRF CG::r272; \
+PREFIX constexpr ngen::GRF CG::r273; \
+PREFIX constexpr ngen::GRF CG::r274; \
+PREFIX constexpr ngen::GRF CG::r275; \
+PREFIX constexpr ngen::GRF CG::r276; \
+PREFIX constexpr ngen::GRF CG::r277; \
+PREFIX constexpr ngen::GRF CG::r278; \
+PREFIX constexpr ngen::GRF CG::r279; \
+PREFIX constexpr ngen::GRF CG::r280; \
+PREFIX constexpr ngen::GRF CG::r281; \
+PREFIX constexpr ngen::GRF CG::r282; \
+PREFIX constexpr ngen::GRF CG::r283; \
+PREFIX constexpr ngen::GRF CG::r284; \
+PREFIX constexpr ngen::GRF CG::r285; \
+PREFIX constexpr ngen::GRF CG::r286; \
+PREFIX constexpr ngen::GRF CG::r287; \
+PREFIX constexpr ngen::GRF CG::r288; \
+PREFIX constexpr ngen::GRF CG::r289; \
+PREFIX constexpr ngen::GRF CG::r290; \
+PREFIX constexpr ngen::GRF CG::r291; \
+PREFIX constexpr ngen::GRF CG::r292; \
+PREFIX constexpr ngen::GRF CG::r293; \
+PREFIX constexpr ngen::GRF CG::r294; \
+PREFIX constexpr ngen::GRF CG::r295; \
+PREFIX constexpr ngen::GRF CG::r296; \
+PREFIX constexpr ngen::GRF CG::r297; \
+PREFIX constexpr ngen::GRF CG::r298; \
+PREFIX constexpr ngen::GRF CG::r299; \
+PREFIX constexpr ngen::GRF CG::r300; \
+PREFIX constexpr ngen::GRF CG::r301; \
+PREFIX constexpr ngen::GRF CG::r302; \
+PREFIX constexpr ngen::GRF CG::r303; \
+PREFIX constexpr ngen::GRF CG::r304; \
+PREFIX constexpr ngen::GRF CG::r305; \
+PREFIX constexpr ngen::GRF CG::r306; \
+PREFIX constexpr ngen::GRF CG::r307; \
+PREFIX constexpr ngen::GRF CG::r308; \
+PREFIX constexpr ngen::GRF CG::r309; \
+PREFIX constexpr ngen::GRF CG::r310; \
+PREFIX constexpr ngen::GRF CG::r311; \
+PREFIX constexpr ngen::GRF CG::r312; \
+PREFIX constexpr ngen::GRF CG::r313; \
+PREFIX constexpr ngen::GRF CG::r314; \
+PREFIX constexpr ngen::GRF CG::r315; \
+PREFIX constexpr ngen::GRF CG::r316; \
+PREFIX constexpr ngen::GRF CG::r317; \
+PREFIX constexpr ngen::GRF CG::r318; \
+PREFIX constexpr ngen::GRF CG::r319; \
+PREFIX constexpr ngen::GRF CG::r320; \
+PREFIX constexpr ngen::GRF CG::r321; \
+PREFIX constexpr ngen::GRF CG::r322; \
+PREFIX constexpr ngen::GRF CG::r323; \
+PREFIX constexpr ngen::GRF CG::r324; \
+PREFIX constexpr ngen::GRF CG::r325; \
+PREFIX constexpr ngen::GRF CG::r326; \
+PREFIX constexpr ngen::GRF CG::r327; \
+PREFIX constexpr ngen::GRF CG::r328; \
+PREFIX constexpr ngen::GRF CG::r329; \
+PREFIX constexpr ngen::GRF CG::r330; \
+PREFIX constexpr ngen::GRF CG::r331; \
+PREFIX constexpr ngen::GRF CG::r332; \
+PREFIX constexpr ngen::GRF CG::r333; \
+PREFIX constexpr ngen::GRF CG::r334; \
+PREFIX constexpr ngen::GRF CG::r335; \
+PREFIX constexpr ngen::GRF CG::r336; \
+PREFIX constexpr ngen::GRF CG::r337; \
+PREFIX constexpr ngen::GRF CG::r338; \
+PREFIX constexpr ngen::GRF CG::r339; \
+PREFIX constexpr ngen::GRF CG::r340; \
+PREFIX constexpr ngen::GRF CG::r341; \
+PREFIX constexpr ngen::GRF CG::r342; \
+PREFIX constexpr ngen::GRF CG::r343; \
+PREFIX constexpr ngen::GRF CG::r344; \
+PREFIX constexpr ngen::GRF CG::r345; \
+PREFIX constexpr ngen::GRF CG::r346; \
+PREFIX constexpr ngen::GRF CG::r347; \
+PREFIX constexpr ngen::GRF CG::r348; \
+PREFIX constexpr ngen::GRF CG::r349; \
+PREFIX constexpr ngen::GRF CG::r350; \
+PREFIX constexpr ngen::GRF CG::r351; \
+PREFIX constexpr ngen::GRF CG::r352; \
+PREFIX constexpr ngen::GRF CG::r353; \
+PREFIX constexpr ngen::GRF CG::r354; \
+PREFIX constexpr ngen::GRF CG::r355; \
+PREFIX constexpr ngen::GRF CG::r356; \
+PREFIX constexpr ngen::GRF CG::r357; \
+PREFIX constexpr ngen::GRF CG::r358; \
+PREFIX constexpr ngen::GRF CG::r359; \
+PREFIX constexpr ngen::GRF CG::r360; \
+PREFIX constexpr ngen::GRF CG::r361; \
+PREFIX constexpr ngen::GRF CG::r362; \
+PREFIX constexpr ngen::GRF CG::r363; \
+PREFIX constexpr ngen::GRF CG::r364; \
+PREFIX constexpr ngen::GRF CG::r365; \
+PREFIX constexpr ngen::GRF CG::r366; \
+PREFIX constexpr ngen::GRF CG::r367; \
+PREFIX constexpr ngen::GRF CG::r368; \
+PREFIX constexpr ngen::GRF CG::r369; \
+PREFIX constexpr ngen::GRF CG::r370; \
+PREFIX constexpr ngen::GRF CG::r371; \
+PREFIX constexpr ngen::GRF CG::r372; \
+PREFIX constexpr ngen::GRF CG::r373; \
+PREFIX constexpr ngen::GRF CG::r374; \
+PREFIX constexpr ngen::GRF CG::r375; \
+PREFIX constexpr ngen::GRF CG::r376; \
+PREFIX constexpr ngen::GRF CG::r377; \
+PREFIX constexpr ngen::GRF CG::r378; \
+PREFIX constexpr ngen::GRF CG::r379; \
+PREFIX constexpr ngen::GRF CG::r380; \
+PREFIX constexpr ngen::GRF CG::r381; \
+PREFIX constexpr ngen::GRF CG::r382; \
+PREFIX constexpr ngen::GRF CG::r383; \
+PREFIX constexpr ngen::GRF CG::r384; \
+PREFIX constexpr ngen::GRF CG::r385; \
+PREFIX constexpr ngen::GRF CG::r386; \
+PREFIX constexpr ngen::GRF CG::r387; \
+PREFIX constexpr ngen::GRF CG::r388; \
+PREFIX constexpr ngen::GRF CG::r389; \
+PREFIX constexpr ngen::GRF CG::r390; \
+PREFIX constexpr ngen::GRF CG::r391; \
+PREFIX constexpr ngen::GRF CG::r392; \
+PREFIX constexpr ngen::GRF CG::r393; \
+PREFIX constexpr ngen::GRF CG::r394; \
+PREFIX constexpr ngen::GRF CG::r395; \
+PREFIX constexpr ngen::GRF CG::r396; \
+PREFIX constexpr ngen::GRF CG::r397; \
+PREFIX constexpr ngen::GRF CG::r398; \
+PREFIX constexpr ngen::GRF CG::r399; \
+PREFIX constexpr ngen::GRF CG::r400; \
+PREFIX constexpr ngen::GRF CG::r401; \
+PREFIX constexpr ngen::GRF CG::r402; \
+PREFIX constexpr ngen::GRF CG::r403; \
+PREFIX constexpr ngen::GRF CG::r404; \
+PREFIX constexpr ngen::GRF CG::r405; \
+PREFIX constexpr ngen::GRF CG::r406; \
+PREFIX constexpr ngen::GRF CG::r407; \
+PREFIX constexpr ngen::GRF CG::r408; \
+PREFIX constexpr ngen::GRF CG::r409; \
+PREFIX constexpr ngen::GRF CG::r410; \
+PREFIX constexpr ngen::GRF CG::r411; \
+PREFIX constexpr ngen::GRF CG::r412; \
+PREFIX constexpr ngen::GRF CG::r413; \
+PREFIX constexpr ngen::GRF CG::r414; \
+PREFIX constexpr ngen::GRF CG::r415; \
+PREFIX constexpr ngen::GRF CG::r416; \
+PREFIX constexpr ngen::GRF CG::r417; \
+PREFIX constexpr ngen::GRF CG::r418; \
+PREFIX constexpr ngen::GRF CG::r419; \
+PREFIX constexpr ngen::GRF CG::r420; \
+PREFIX constexpr ngen::GRF CG::r421; \
+PREFIX constexpr ngen::GRF CG::r422; \
+PREFIX constexpr ngen::GRF CG::r423; \
+PREFIX constexpr ngen::GRF CG::r424; \
+PREFIX constexpr ngen::GRF CG::r425; \
+PREFIX constexpr ngen::GRF CG::r426; \
+PREFIX constexpr ngen::GRF CG::r427; \
+PREFIX constexpr ngen::GRF CG::r428; \
+PREFIX constexpr ngen::GRF CG::r429; \
+PREFIX constexpr ngen::GRF CG::r430; \
+PREFIX constexpr ngen::GRF CG::r431; \
+PREFIX constexpr ngen::GRF CG::r432; \
+PREFIX constexpr ngen::GRF CG::r433; \
+PREFIX constexpr ngen::GRF CG::r434; \
+PREFIX constexpr ngen::GRF CG::r435; \
+PREFIX constexpr ngen::GRF CG::r436; \
+PREFIX constexpr ngen::GRF CG::r437; \
+PREFIX constexpr ngen::GRF CG::r438; \
+PREFIX constexpr ngen::GRF CG::r439; \
+PREFIX constexpr ngen::GRF CG::r440; \
+PREFIX constexpr ngen::GRF CG::r441; \
+PREFIX constexpr ngen::GRF CG::r442; \
+PREFIX constexpr ngen::GRF CG::r443; \
+PREFIX constexpr ngen::GRF CG::r444; \
+PREFIX constexpr ngen::GRF CG::r445; \
+PREFIX constexpr ngen::GRF CG::r446; \
+PREFIX constexpr ngen::GRF CG::r447; \
+PREFIX constexpr ngen::GRF CG::r448; \
+PREFIX constexpr ngen::GRF CG::r449; \
+PREFIX constexpr ngen::GRF CG::r450; \
+PREFIX constexpr ngen::GRF CG::r451; \
+PREFIX constexpr ngen::GRF CG::r452; \
+PREFIX constexpr ngen::GRF CG::r453; \
+PREFIX constexpr ngen::GRF CG::r454; \
+PREFIX constexpr ngen::GRF CG::r455; \
+PREFIX constexpr ngen::GRF CG::r456; \
+PREFIX constexpr ngen::GRF CG::r457; \
+PREFIX constexpr ngen::GRF CG::r458; \
+PREFIX constexpr ngen::GRF CG::r459; \
+PREFIX constexpr ngen::GRF CG::r460; \
+PREFIX constexpr ngen::GRF CG::r461; \
+PREFIX constexpr ngen::GRF CG::r462; \
+PREFIX constexpr ngen::GRF CG::r463; \
+PREFIX constexpr ngen::GRF CG::r464; \
+PREFIX constexpr ngen::GRF CG::r465; \
+PREFIX constexpr ngen::GRF CG::r466; \
+PREFIX constexpr ngen::GRF CG::r467; \
+PREFIX constexpr ngen::GRF CG::r468; \
+PREFIX constexpr ngen::GRF CG::r469; \
+PREFIX constexpr ngen::GRF CG::r470; \
+PREFIX constexpr ngen::GRF CG::r471; \
+PREFIX constexpr ngen::GRF CG::r472; \
+PREFIX constexpr ngen::GRF CG::r473; \
+PREFIX constexpr ngen::GRF CG::r474; \
+PREFIX constexpr ngen::GRF CG::r475; \
+PREFIX constexpr ngen::GRF CG::r476; \
+PREFIX constexpr ngen::GRF CG::r477; \
+PREFIX constexpr ngen::GRF CG::r478; \
+PREFIX constexpr ngen::GRF CG::r479; \
+PREFIX constexpr ngen::GRF CG::r480; \
+PREFIX constexpr ngen::GRF CG::r481; \
+PREFIX constexpr ngen::GRF CG::r482; \
+PREFIX constexpr ngen::GRF CG::r483; \
+PREFIX constexpr ngen::GRF CG::r484; \
+PREFIX constexpr ngen::GRF CG::r485; \
+PREFIX constexpr ngen::GRF CG::r486; \
+PREFIX constexpr ngen::GRF CG::r487; \
+PREFIX constexpr ngen::GRF CG::r488; \
+PREFIX constexpr ngen::GRF CG::r489; \
+PREFIX constexpr ngen::GRF CG::r490; \
+PREFIX constexpr ngen::GRF CG::r491; \
+PREFIX constexpr ngen::GRF CG::r492; \
+PREFIX constexpr ngen::GRF CG::r493; \
+PREFIX constexpr ngen::GRF CG::r494; \
+PREFIX constexpr ngen::GRF CG::r495; \
+PREFIX constexpr ngen::GRF CG::r496; \
+PREFIX constexpr ngen::GRF CG::r497; \
+PREFIX constexpr ngen::GRF CG::r498; \
+PREFIX constexpr ngen::GRF CG::r499; \
+PREFIX constexpr ngen::GRF CG::r500; \
+PREFIX constexpr ngen::GRF CG::r501; \
+PREFIX constexpr ngen::GRF CG::r502; \
+PREFIX constexpr ngen::GRF CG::r503; \
+PREFIX constexpr ngen::GRF CG::r504; \
+PREFIX constexpr ngen::GRF CG::r505; \
+PREFIX constexpr ngen::GRF CG::r506; \
+PREFIX constexpr ngen::GRF CG::r507; \
+PREFIX constexpr ngen::GRF CG::r508; \
+PREFIX constexpr ngen::GRF CG::r509; \
+PREFIX constexpr ngen::GRF CG::r510; \
+PREFIX constexpr ngen::GRF CG::r511; \
+PREFIX constexpr ngen::AddressBase CG::A64_A32U; \
+PREFIX constexpr ngen::AddressBase CG::A64_A32S; \
+PREFIX constexpr ngen::DataSpecLSC CG::Overfetch; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1UC_L2UC_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1UC_L2UC_L3C; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1UC_L2C_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1UC_L2C_L3C; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1C_L2UC_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1C_L2UC_L3C; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1C_L2C_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1C_L2C_L3C; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1S_L2UC_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1S_L2UC_L3C; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1S_L2C_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1S_L2C_L3C; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1IAR_L2IAR_L3IAR; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1UC_L2UC_L3WB; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1UC_L2WB_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1WT_L2UC_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1WT_L2UC_L3WB; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1WT_L2WB_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1S_L2UC_L3WB; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1S_L2WB_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1S_L2WB_L3WB; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1WB_L2WB_L3UC; \
+PREFIX constexpr ngen::CacheSettingsLSC CG::L1WB_L2UC_L3WB;
+#endif
 
 #define NGEN_REGISTER_DECL(CG,PREFIX) \
 NGEN_REGISTER_DECL_MAIN(CG,PREFIX) \
@@ -518,5 +814,11 @@ template class ngen::BinaryCodeGenerator<ngen::HW::XeHP>;
 template class ngen::BinaryCodeGenerator<ngen::HW::XeHPG>;
 template class ngen::BinaryCodeGenerator<ngen::HW::XeHPC>;
 template class ngen::BinaryCodeGenerator<ngen::HW::Xe2>;
+#if XE3
+template class ngen::BinaryCodeGenerator<ngen::HW::Xe3>;
+#endif
+#if XE3P
+template class ngen::BinaryCodeGenerator<ngen::HW::Xe3p>;
+#endif
 
 #endif /* (defined(NGEN_CPP11) || defined(NGEN_CPP14)) && !defined(NGEN_GLOBAL_REGS) */

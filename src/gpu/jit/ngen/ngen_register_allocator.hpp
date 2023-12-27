@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ struct Bundle {
     Bundle(int8_t bank_id_, int8_t bundle_id_) : bundle_id(bundle_id_), bank_id(bank_id_) {}
 
     // Number of bundles in each bank (per thread).
-    static int bundle_count(HW hw) {
+    static constexpr14 int bundle_count(HW hw) {
         if (hw >= HW::Xe2) return 8;
         if (hw >= HW::XeHP) return 16;
         if (hw == HW::Gen12LP) return 8;
@@ -98,7 +98,11 @@ struct BundleGroup {
 private:
     HW hw;
 
+#if XE3P
+    static constexpr int max_regs = 512;
+#else
     static constexpr int max_regs = 256;
+#endif
     static constexpr int nmasks = max_regs / 64;
 
     uint64_t reg_masks[nmasks] = {0};
@@ -120,6 +124,9 @@ public:
     template <typename T>
     Subregister alloc_sub(Bundle bundle = Bundle()) { return alloc_sub(getDataType<T>(), bundle); }
 
+    // Allocate flag registers.
+    //   sub = true (default):  a 16-bit subregister   (fX.Y:uw)
+    //   sub = false:           a full 32-bit register (fX.0:ud)
     FlagRegister alloc_flag(bool sub = true);
 
     // Attempted allocation. Return value is invalid if allocation failed.
@@ -157,7 +164,11 @@ public:
     void dump(std::ostream &str);
 
 protected:
+#if XE3P
+    static constexpr int max_regs = 512;
+#else
     static constexpr int max_regs = 256;
+#endif
     using mtype = uint16_t;
 
     HW hw;                              // HW generation.

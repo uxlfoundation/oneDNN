@@ -21,10 +21,6 @@
 #include "common/bfloat16.hpp"
 #include "common/float16.hpp"
 
-#ifndef PRERELEASE_HW
-#define PRERELEASE_HW 1
-#endif
-
 namespace ngen {
 using bfloat16 = dnnl::impl::bfloat16_t;
 using half = dnnl::impl::float16_t;

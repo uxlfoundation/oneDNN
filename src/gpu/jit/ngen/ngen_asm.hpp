@@ -595,10 +595,10 @@ private:
     }
 #endif
     void opDpas(Opcode op, DataType defaultType, const InstructionModifier &mod, int sdepth, int rcount, RegData dst, RegData src0, RegData src1, RegData src2) {
-        dst.fixup(hardware, 1, 0, defaultType, -1, 3);
-        src0.fixup(hardware, 1, 0, defaultType, 0, 3);
-        src1.fixup(hardware, 1, 0, defaultType, 1, 3);
-        src2.fixup(hardware, 1, 0, defaultType, 2, 3);
+        dst.fixup(hardware, 1, defaultType, -1, 3);
+        src0.fixup(hardware, 1, defaultType, 0, 3);
+        src1.fixup(hardware, 1, defaultType, 1, 3);
+        src2.fixup(hardware, 1, defaultType, 2, 3);
         (void) streamStack.back()->append(op, (sdepth << 8) | rcount, mod | defaultModifier, &labelManager, dst, src0, src1, src2);
     }
     template <typename D, typename S0> void opCall(Opcode op, const InstructionModifier &mod, D dst, S0 src0) {

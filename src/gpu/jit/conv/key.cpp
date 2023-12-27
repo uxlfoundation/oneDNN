@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,6 +48,9 @@ enum class key_hw_kind_t {
     xehpg,
     xehpc,
     xe2,
+#if XE3P
+    xe3p,
+#endif
 };
 
 std::string to_string(key_hw_kind_t kind) {
@@ -61,6 +64,9 @@ std::string to_string(key_hw_kind_t kind) {
         CASE(xehpg);
         CASE(xehpc);
         CASE(xe2);
+#if XE3P
+        CASE(xe3p);
+#endif
         default: ir_error_not_expected();
     }
 #undef CASE
@@ -75,6 +81,9 @@ key_hw_kind_t to_hw_kind(ngen::HW hw) {
         case ngen::HW::XeHPG: return key_hw_kind_t::xehpg;
         case ngen::HW::XeHPC: return key_hw_kind_t::xehpc;
         case ngen::HW::Xe2: return key_hw_kind_t::xe2;
+#if XE3P
+        case ngen::HW::Xe3p: return key_hw_kind_t::xe3p;
+#endif
         default: ir_error_not_expected(); return key_hw_kind_t::undef;
     }
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -63,6 +63,9 @@ public:
         requireSIMD((GRF::bytes(hw) == 64) ? 16 : 8);
         requireLocalID(3); // r1-r3
         requireLocalSize(); // r7.0-2:ud
+#if XE3P
+        if (hw == ngen::HW::Xe3p) setEfficient64Bit(false);
+#endif
         finalizeInterface();
 
         Label doWrite;
@@ -191,6 +194,12 @@ public:
                     kernel = binary_format_kernel_t<HW::Xe2>::make_kernel(
                             engine, skip_check);
                     break;
+#if XE3P
+                case compute::gpu_arch_t::xe3p:
+                    kernel = binary_format_kernel_t<HW::Xe3p>::make_kernel(
+                            engine, skip_check);
+                    break;
+#endif
                 case compute::gpu_arch_t::unknown: kernel = nullptr; break;
             }
         }

@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2020-2023 Intel Corporation
+# Copyright 2020-2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,14 @@ add_definitions_with_host_compiler(-DNGEN_SAFE)
 add_definitions_with_host_compiler(-DNGEN_NEO_INTERFACE)
 add_definitions_with_host_compiler(-DNGEN_NO_OP_NAMES)
 add_definitions_with_host_compiler(-DNGEN_WINDOWS_COMPAT)
+
+if(DNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+# XE3 macro is required to compile nGEN with XE3P support.
+add_definitions_with_host_compiler(-DXE3)
+add_definitions_with_host_compiler(-DXE3P)
+endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})

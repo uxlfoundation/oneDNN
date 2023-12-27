@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,6 +44,9 @@ enum class gpu_arch_t {
     xe_hpg,
     xe_hpc,
     xe2,
+#if XE3P
+    xe3p,
+#endif
 };
 
 static inline gpu_arch_t str2gpu_arch(const char *str) {
@@ -57,6 +60,9 @@ static inline gpu_arch_t str2gpu_arch(const char *str) {
     CASE(xe_hpg);
     CASE(xe_hpc);
     CASE(xe2);
+#if XE3P
+    CASE(xe3p);
+#endif
     return gpu_arch_t::unknown;
 #undef CASE
 }

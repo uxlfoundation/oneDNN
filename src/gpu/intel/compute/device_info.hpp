@@ -43,9 +43,6 @@ enum class gpu_arch_t {
     xe_hpg,
     xe_hpc,
     xe2,
-#if XE3
-    xe3,
-#endif
 #if XE3P
     xe3p,
 #endif
@@ -62,9 +59,6 @@ static inline gpu_arch_t str2gpu_arch(const char *str) {
     CASE(xe_hpg);
     CASE(xe_hpc);
     CASE(xe2);
-#if XE3
-    CASE(xe3);
-#endif
 #if XE3P
     CASE(xe3p);
 #endif

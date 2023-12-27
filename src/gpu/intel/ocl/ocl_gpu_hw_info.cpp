@@ -60,6 +60,21 @@ void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
             device, native_extensions, is_xelpg);
     assert(ret == CL_SUCCESS);
     MAYBE_UNUSED(ret);
+#else
+    using arch_t = gpu::compute::gpu_arch_t;
+    switch (gpu_arch) {
+        case arch_t::xe_hp:
+        case arch_t::xe2:
+        case arch_t::xe_hpc: mayiuse_systolic = true; break;
+#if XE3P
+        case arch_t::xe3p: mayiuse_systolic = true; break;
+#endif
+        case arch_t::xe_hpg:
+            mayiuse_systolic = (product.family != ProductFamily::MTL);
+            break;
+        default: mayiuse_systolic = false;
+    }
+#endif
 
     auto status
             = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);

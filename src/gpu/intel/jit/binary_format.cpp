@@ -66,8 +66,7 @@ public:
         requireLocalID(3); // r1-r3
         requireLocalSize(); // r7.0-2:ud
 #if XE3P
-        if (hw == ngen::HW::Xe3p)
-            setEfficient64Bit(engine->device_info()->is_efficient_64bit());
+        if (hw == ngen::HW::Xe3p) setEfficient64Bit(false);
 #endif
         finalizeInterface();
 
@@ -197,12 +196,6 @@ public:
                     kernel = binary_format_kernel_t<HW::Xe2>::make_kernel(
                             engine, skip_check);
                     break;
-#if XE3
-                case compute::gpu_arch_t::xe3:
-                    kernel = binary_format_kernel_t<HW::Xe3>::make_kernel(
-                            engine, skip_check);
-                    break;
-#endif
 #if XE3P
                 case compute::gpu_arch_t::xe3p:
                     kernel = binary_format_kernel_t<HW::Xe3p>::make_kernel(

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -190,6 +190,9 @@ protected:
 
 private:
     InstructionModifier defaultModifier;
+#if XE3P
+    bool useEfficient64Bit = (hw >= HW::Xe3p);
+#endif
 
     LabelManager labelManager;
     InstructionStream rootStream;
@@ -256,6 +259,10 @@ private:
     template <typename D, HW hw_ = hw>
     typename std::enable_if<hwGE(hw_, HW::Gen12LP)>::type opSends(Opcode op, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, RegData exdesc, D desc);
 
+#if XE3P
+    void opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sfid, const RegData &dst, RegData src0, int src0Len, const RegData &src1, int src1Len, const RegData &ind0, const RegData &ind1, uint64_t desc);
+#endif
+
     template <HW hw_ = hw>
     typename std::enable_if<hwLT(hw_, HW::Gen12LP)>::type opBranch(Opcode op, const InstructionModifier &mod, const RegData &dst, int32_t jip, int32_t uip);
     template <HW hw_ = hw>
@@ -280,6 +287,10 @@ private:
     typename std::enable_if<hwGE(hw_, HW::Gen12LP)>::type opJmpi(Opcode op, const InstructionModifier &mod, const RegData &dst, RegData src0, uint32_t jip);
     void opJmpi(Opcode op, const InstructionModifier &mod, const RegData &dst, const RegData &src0, Label &jip);
 
+#if XE3P
+    void opShfl(Opcode op, ShuffleFunction fc, DataType defaultType, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1);
+#endif
+
     void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod);
     void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod, RegData src0);
     void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod, const Immediate &src0);
@@ -292,6 +303,9 @@ private:
 
 public:
     explicit BinaryCodeGenerator(Product product_) : product{product_}, defaultModifier{}, labelManager{},
+#if XE3P
+                                                     shfl{this},
+#endif
                                                      sync{this}, load{this}, store{this}, atomic{this}
     {
         _workaround_();
@@ -322,6 +336,11 @@ protected:
     void setDefaultAutoSWSB(bool def = true)        { defaultModifier.setAutoSWSB(def); }
     bool getDefaultNoMask() const                   { return defaultModifier.isWrEn(); }
     bool getDefaultAutoSWSB() const                 { return defaultModifier.isAutoSWSB(); }
+
+#if XE3P
+    void setEfficient64Bit(bool def = true)         { useEfficient64Bit = def; }
+    bool getEfficient64Bit() const                  { return useEfficient64Bit; }
+#endif
 
     // Stream handling.
     void pushStream()                               { pushStream(new InstructionStream()); }
@@ -729,23 +748,46 @@ protected:
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
 #ifdef NGEN_SAFE
+#if XE3P
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
         if (hw < HW::Gen10) unsupported();
 #endif
         opX((hw >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
@@ -753,6 +795,9 @@ protected:
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1) {
 #ifdef NGEN_SAFE
+#if XE3P
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
         if (hw < HW::Gen10) unsupported();
 #endif
         opX((hw >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
@@ -888,6 +933,16 @@ protected:
             src1 = src1.forceInt32();
         opX(Opcode::mul, getDataType<DT>(), mod, dst, src0, src1);
     }
+#if XE3P
+    template <typename DT = void>
+    void mullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
+        opX(Opcode::mullh, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void mullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, Immediate src1) {
+        opX(Opcode::mullh, getDataType<DT>(), mod, dst, src0, src1);
+    }
+#endif
     void nop() {
         opNop(isGen12 ? Opcode::nop_gen12 : Opcode::nop);
     }
@@ -1117,6 +1172,92 @@ protected:
     void sendsc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &exdesc, const RegData &desc) {
         opSends(Opcode::sendsc, mod, dst, src0, src1, exdesc, desc);
     }
+#if XE3P
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, NullRegister(), 0, NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc);
+    }
+#endif
 
     template <typename DT = void>
     void shl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
@@ -1180,6 +1321,26 @@ protected:
     void xor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1) {
         xor_<DT>(mod, dst, src0, src1);
     }
+#endif
+
+#if XE3P
+private:
+    struct Shfl {
+        BinaryCodeGenerator<hw> &parent;
+
+        Shfl(BinaryCodeGenerator<hw> *parent_) : parent(*parent_) {}
+
+        void operator()(ShuffleFunction fc, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
+            parent.opShfl(Opcode::shfl, fc, DataType::invalid, mod, dst, src0, src1);
+        }
+
+        template <typename DT = void>
+        void idx4(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
+            parent.opShfl(Opcode::shfl, ShuffleFunction::idx4, getDataType<DT>(), mod, dst, src0, src1);
+        }
+    };
+public:
+    Shfl shfl;
 #endif
 
 private:
@@ -1301,10 +1462,11 @@ public:
 };
 
 #define NGEN_FORWARD(hw) \
-NGEN_FORWARD_NO_REQGRF(hw) \
+NGEN_FORWARD_NO_ELF_OVERRIDES(hw) \
+NGEN_FORWARD_EXTRA_ELF_OVERRIDES(hw) \
 void requireGRF(int grfs) { ngen::BinaryCodeGenerator<hw>::requireGRF(grfs); }
 
-#define NGEN_FORWARD_NO_REQGRF(hw) \
+#define NGEN_FORWARD_NO_ELF_OVERRIDES(hw) \
 using InstructionStream = typename ngen::BinaryCodeGenerator<hw>::InstructionStream; \
 using ngen::BinaryCodeGenerator<hw>::isGen12; \
 template <typename DT = void, typename... Targs> void add(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::template add<DT>(std::forward<Targs>(args)...); } \
@@ -1439,17 +1601,29 @@ int getStepping() { return ngen::BinaryCodeGenerator<hw>::getStepping(); } \
 void setProduct(ngen::Product product_) { ngen::BinaryCodeGenerator<hw>::setProduct(product_); } \
 void setProductFamily(ngen::ProductFamily family_) { ngen::BinaryCodeGenerator<hw>::setProductFamily(family_); } \
 void setStepping(int stepping_) { ngen::BinaryCodeGenerator<hw>::setStepping(stepping_); } \
-NGEN_FORWARD_EXTRA \
-NGEN_FORWARD_OP_NAMES \
-NGEN_FORWARD_MIN_MAX \
-NGEN_FORWARD_REGISTERS
+NGEN_FORWARD_EXTRA(hw) \
+NGEN_FORWARD_OP_NAMES(hw) \
+NGEN_FORWARD_MIN_MAX(hw) \
+NGEN_FORWARD_REGISTERS(hw)
 
-#define NGEN_FORWARD_EXTRA
+#if !XE3P
+#define NGEN_FORWARD_EXTRA(hw)
+#define NGEN_FORWARD_EXTRA_ELF_OVERRIDES(hw)
+#else
+#define NGEN_FORWARD_EXTRA(hw) \
+template <typename... Targs> void sendg(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::sendg(std::forward<Targs>(args)...); } \
+template <typename... Targs> void sendgc(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::sendgc(std::forward<Targs>(args)...); } \
+template <typename... Targs> void sendgx(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::sendgx(std::forward<Targs>(args)...); } \
+bool getEfficient64Bit() { return ngen::BinaryCodeGenerator<hw>::getEfficient64Bit(); }
+
+#define NGEN_FORWARD_EXTRA_ELF_OVERRIDES(hw) \
+template <typename... Targs> void setEfficient64Bit(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::setEfficient64Bit(std::forward<Targs>(args)...); }
+#endif
 
 #ifdef NGEN_NO_OP_NAMES
-#define NGEN_FORWARD_OP_NAMES
+#define NGEN_FORWARD_OP_NAMES(hw)
 #else
-#define NGEN_FORWARD_OP_NAMES \
+#define NGEN_FORWARD_OP_NAMES(hw) \
 template <typename DT = void, typename... Targs> void and(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::template and_<DT>(std::forward<Targs>(args)...); } \
 template <typename DT = void, typename... Targs> void not(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::template not_<DT>(std::forward<Targs>(args)...); } \
 template <typename DT = void, typename... Targs> void or(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::template or_<DT>(std::forward<Targs>(args)...); } \
@@ -1457,17 +1631,17 @@ template <typename DT = void, typename... Targs> void xor(Targs&&... args) { nge
 #endif
 
 #ifdef NGEN_WINDOWS_COMPAT
-#define NGEN_FORWARD_MIN_MAX
+#define NGEN_FORWARD_MIN_MAX(hw)
 #else
-#define NGEN_FORWARD_MIN_MAX \
+#define NGEN_FORWARD_MIN_MAX(hw) \
 template <typename DT = void, typename... Targs> void min(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::template min<DT>(std::forward<Targs>(args)...); } \
 template <typename DT = void, typename... Targs> void max(Targs&&... args) { ngen::BinaryCodeGenerator<hw>::template max<DT>(std::forward<Targs>(args)...); }
 #endif
 
 #ifdef NGEN_GLOBAL_REGS
-#define NGEN_FORWARD_REGISTERS
+#define NGEN_FORWARD_REGISTERS(hw)
 #else
-#define NGEN_FORWARD_REGISTERS_BASE \
+#define NGEN_FORWARD_REGISTERS_BASE(hw) \
 using ngen::BinaryCodeGenerator<hw>::indirect; \
 using ngen::BinaryCodeGenerator<hw>::r0; using ngen::BinaryCodeGenerator<hw>::r1; using ngen::BinaryCodeGenerator<hw>::r2; using ngen::BinaryCodeGenerator<hw>::r3; \
 using ngen::BinaryCodeGenerator<hw>::r4; using ngen::BinaryCodeGenerator<hw>::r5; using ngen::BinaryCodeGenerator<hw>::r6; using ngen::BinaryCodeGenerator<hw>::r7; \
@@ -1591,13 +1765,99 @@ using ngen::BinaryCodeGenerator<hw>::transpose; \
 using ngen::BinaryCodeGenerator<hw>::vnni; \
 using ngen::BinaryCodeGenerator<hw>::L1UC_L3UC; using ngen::BinaryCodeGenerator<hw>::L1UC_L3C; using ngen::BinaryCodeGenerator<hw>::L1C_L3UC; using ngen::BinaryCodeGenerator<hw>::L1C_L3C; \
 using ngen::BinaryCodeGenerator<hw>::L1S_L3UC; using ngen::BinaryCodeGenerator<hw>::L1S_L3C; using ngen::BinaryCodeGenerator<hw>::L1IAR_L3C; using ngen::BinaryCodeGenerator<hw>::L1UC_L3WB; \
-using ngen::BinaryCodeGenerator<hw>::L1WT_L3UC; using ngen::BinaryCodeGenerator<hw>::L1WT_L3WB; using ngen::BinaryCodeGenerator<hw>::L1S_L3WB; using ngen::BinaryCodeGenerator<hw>::L1WB_L3WB;
-#define NGEN_FORWARD_REGISTERS_EXTRA1A \
+using ngen::BinaryCodeGenerator<hw>::L1WT_L3UC; using ngen::BinaryCodeGenerator<hw>::L1WT_L3WB; using ngen::BinaryCodeGenerator<hw>::L1S_L3WB; using ngen::BinaryCodeGenerator<hw>::L1WB_L3WB; \
 using ngen::BinaryCodeGenerator<hw>::L1C_L3CC; using ngen::BinaryCodeGenerator<hw>::L1UC_L3CC;
-#define NGEN_FORWARD_REGISTERS_EXTRA1
-#define NGEN_FORWARD_REGISTERS_EXTRA2
-#define NGEN_FORWARD_REGISTERS_EXTRA3
-#define NGEN_FORWARD_REGISTERS NGEN_FORWARD_REGISTERS_BASE NGEN_FORWARD_REGISTERS_EXTRA1A NGEN_FORWARD_REGISTERS_EXTRA1 NGEN_FORWARD_REGISTERS_EXTRA2 NGEN_FORWARD_REGISTERS_EXTRA3
+#if !XE3
+#define NGEN_FORWARD_REGISTERS_EXTRA1(hw)
+#else
+#define NGEN_FORWARD_REGISTERS_EXTRA1(hw) \
+using ngen::BinaryCodeGenerator<hw>::s0;
+#endif
+#ifndef PRERELEASE_HW
+#define NGEN_FORWARD_REGISTERS_EXTRA2(hw)
+#else
+#define NGEN_FORWARD_REGISTERS_EXTRA2(hw) \
+using ngen::BinaryCodeGenerator<hw>::Fwd;
+#endif
+#if !XE3P
+#define NGEN_FORWARD_REGISTERS_EXTRA3(hw)
+#else
+#define NGEN_FORWARD_REGISTERS_EXTRA3(hw) \
+using ngen::BinaryCodeGenerator<hw>::r256; using ngen::BinaryCodeGenerator<hw>::r257; using ngen::BinaryCodeGenerator<hw>::r258; using ngen::BinaryCodeGenerator<hw>::r259; \
+using ngen::BinaryCodeGenerator<hw>::r260; using ngen::BinaryCodeGenerator<hw>::r261; using ngen::BinaryCodeGenerator<hw>::r262; using ngen::BinaryCodeGenerator<hw>::r263; \
+using ngen::BinaryCodeGenerator<hw>::r264; using ngen::BinaryCodeGenerator<hw>::r265; using ngen::BinaryCodeGenerator<hw>::r266; using ngen::BinaryCodeGenerator<hw>::r267; \
+using ngen::BinaryCodeGenerator<hw>::r268; using ngen::BinaryCodeGenerator<hw>::r269; using ngen::BinaryCodeGenerator<hw>::r270; using ngen::BinaryCodeGenerator<hw>::r271; \
+using ngen::BinaryCodeGenerator<hw>::r272; using ngen::BinaryCodeGenerator<hw>::r273; using ngen::BinaryCodeGenerator<hw>::r274; using ngen::BinaryCodeGenerator<hw>::r275; \
+using ngen::BinaryCodeGenerator<hw>::r276; using ngen::BinaryCodeGenerator<hw>::r277; using ngen::BinaryCodeGenerator<hw>::r278; using ngen::BinaryCodeGenerator<hw>::r279; \
+using ngen::BinaryCodeGenerator<hw>::r280; using ngen::BinaryCodeGenerator<hw>::r281; using ngen::BinaryCodeGenerator<hw>::r282; using ngen::BinaryCodeGenerator<hw>::r283; \
+using ngen::BinaryCodeGenerator<hw>::r284; using ngen::BinaryCodeGenerator<hw>::r285; using ngen::BinaryCodeGenerator<hw>::r286; using ngen::BinaryCodeGenerator<hw>::r287; \
+using ngen::BinaryCodeGenerator<hw>::r288; using ngen::BinaryCodeGenerator<hw>::r289; using ngen::BinaryCodeGenerator<hw>::r290; using ngen::BinaryCodeGenerator<hw>::r291; \
+using ngen::BinaryCodeGenerator<hw>::r292; using ngen::BinaryCodeGenerator<hw>::r293; using ngen::BinaryCodeGenerator<hw>::r294; using ngen::BinaryCodeGenerator<hw>::r295; \
+using ngen::BinaryCodeGenerator<hw>::r296; using ngen::BinaryCodeGenerator<hw>::r297; using ngen::BinaryCodeGenerator<hw>::r298; using ngen::BinaryCodeGenerator<hw>::r299; \
+using ngen::BinaryCodeGenerator<hw>::r300; using ngen::BinaryCodeGenerator<hw>::r301; using ngen::BinaryCodeGenerator<hw>::r302; using ngen::BinaryCodeGenerator<hw>::r303; \
+using ngen::BinaryCodeGenerator<hw>::r304; using ngen::BinaryCodeGenerator<hw>::r305; using ngen::BinaryCodeGenerator<hw>::r306; using ngen::BinaryCodeGenerator<hw>::r307; \
+using ngen::BinaryCodeGenerator<hw>::r308; using ngen::BinaryCodeGenerator<hw>::r309; using ngen::BinaryCodeGenerator<hw>::r310; using ngen::BinaryCodeGenerator<hw>::r311; \
+using ngen::BinaryCodeGenerator<hw>::r312; using ngen::BinaryCodeGenerator<hw>::r313; using ngen::BinaryCodeGenerator<hw>::r314; using ngen::BinaryCodeGenerator<hw>::r315; \
+using ngen::BinaryCodeGenerator<hw>::r316; using ngen::BinaryCodeGenerator<hw>::r317; using ngen::BinaryCodeGenerator<hw>::r318; using ngen::BinaryCodeGenerator<hw>::r319; \
+using ngen::BinaryCodeGenerator<hw>::r320; using ngen::BinaryCodeGenerator<hw>::r321; using ngen::BinaryCodeGenerator<hw>::r322; using ngen::BinaryCodeGenerator<hw>::r323; \
+using ngen::BinaryCodeGenerator<hw>::r324; using ngen::BinaryCodeGenerator<hw>::r325; using ngen::BinaryCodeGenerator<hw>::r326; using ngen::BinaryCodeGenerator<hw>::r327; \
+using ngen::BinaryCodeGenerator<hw>::r328; using ngen::BinaryCodeGenerator<hw>::r329; using ngen::BinaryCodeGenerator<hw>::r330; using ngen::BinaryCodeGenerator<hw>::r331; \
+using ngen::BinaryCodeGenerator<hw>::r332; using ngen::BinaryCodeGenerator<hw>::r333; using ngen::BinaryCodeGenerator<hw>::r334; using ngen::BinaryCodeGenerator<hw>::r335; \
+using ngen::BinaryCodeGenerator<hw>::r336; using ngen::BinaryCodeGenerator<hw>::r337; using ngen::BinaryCodeGenerator<hw>::r338; using ngen::BinaryCodeGenerator<hw>::r339; \
+using ngen::BinaryCodeGenerator<hw>::r340; using ngen::BinaryCodeGenerator<hw>::r341; using ngen::BinaryCodeGenerator<hw>::r342; using ngen::BinaryCodeGenerator<hw>::r343; \
+using ngen::BinaryCodeGenerator<hw>::r344; using ngen::BinaryCodeGenerator<hw>::r345; using ngen::BinaryCodeGenerator<hw>::r346; using ngen::BinaryCodeGenerator<hw>::r347; \
+using ngen::BinaryCodeGenerator<hw>::r348; using ngen::BinaryCodeGenerator<hw>::r349; using ngen::BinaryCodeGenerator<hw>::r350; using ngen::BinaryCodeGenerator<hw>::r351; \
+using ngen::BinaryCodeGenerator<hw>::r352; using ngen::BinaryCodeGenerator<hw>::r353; using ngen::BinaryCodeGenerator<hw>::r354; using ngen::BinaryCodeGenerator<hw>::r355; \
+using ngen::BinaryCodeGenerator<hw>::r356; using ngen::BinaryCodeGenerator<hw>::r357; using ngen::BinaryCodeGenerator<hw>::r358; using ngen::BinaryCodeGenerator<hw>::r359; \
+using ngen::BinaryCodeGenerator<hw>::r360; using ngen::BinaryCodeGenerator<hw>::r361; using ngen::BinaryCodeGenerator<hw>::r362; using ngen::BinaryCodeGenerator<hw>::r363; \
+using ngen::BinaryCodeGenerator<hw>::r364; using ngen::BinaryCodeGenerator<hw>::r365; using ngen::BinaryCodeGenerator<hw>::r366; using ngen::BinaryCodeGenerator<hw>::r367; \
+using ngen::BinaryCodeGenerator<hw>::r368; using ngen::BinaryCodeGenerator<hw>::r369; using ngen::BinaryCodeGenerator<hw>::r370; using ngen::BinaryCodeGenerator<hw>::r371; \
+using ngen::BinaryCodeGenerator<hw>::r372; using ngen::BinaryCodeGenerator<hw>::r373; using ngen::BinaryCodeGenerator<hw>::r374; using ngen::BinaryCodeGenerator<hw>::r375; \
+using ngen::BinaryCodeGenerator<hw>::r376; using ngen::BinaryCodeGenerator<hw>::r377; using ngen::BinaryCodeGenerator<hw>::r378; using ngen::BinaryCodeGenerator<hw>::r379; \
+using ngen::BinaryCodeGenerator<hw>::r380; using ngen::BinaryCodeGenerator<hw>::r381; using ngen::BinaryCodeGenerator<hw>::r382; using ngen::BinaryCodeGenerator<hw>::r383; \
+using ngen::BinaryCodeGenerator<hw>::r384; using ngen::BinaryCodeGenerator<hw>::r385; using ngen::BinaryCodeGenerator<hw>::r386; using ngen::BinaryCodeGenerator<hw>::r387; \
+using ngen::BinaryCodeGenerator<hw>::r388; using ngen::BinaryCodeGenerator<hw>::r389; using ngen::BinaryCodeGenerator<hw>::r390; using ngen::BinaryCodeGenerator<hw>::r391; \
+using ngen::BinaryCodeGenerator<hw>::r392; using ngen::BinaryCodeGenerator<hw>::r393; using ngen::BinaryCodeGenerator<hw>::r394; using ngen::BinaryCodeGenerator<hw>::r395; \
+using ngen::BinaryCodeGenerator<hw>::r396; using ngen::BinaryCodeGenerator<hw>::r397; using ngen::BinaryCodeGenerator<hw>::r398; using ngen::BinaryCodeGenerator<hw>::r399; \
+using ngen::BinaryCodeGenerator<hw>::r400; using ngen::BinaryCodeGenerator<hw>::r401; using ngen::BinaryCodeGenerator<hw>::r402; using ngen::BinaryCodeGenerator<hw>::r403; \
+using ngen::BinaryCodeGenerator<hw>::r404; using ngen::BinaryCodeGenerator<hw>::r405; using ngen::BinaryCodeGenerator<hw>::r406; using ngen::BinaryCodeGenerator<hw>::r407; \
+using ngen::BinaryCodeGenerator<hw>::r408; using ngen::BinaryCodeGenerator<hw>::r409; using ngen::BinaryCodeGenerator<hw>::r410; using ngen::BinaryCodeGenerator<hw>::r411; \
+using ngen::BinaryCodeGenerator<hw>::r412; using ngen::BinaryCodeGenerator<hw>::r413; using ngen::BinaryCodeGenerator<hw>::r414; using ngen::BinaryCodeGenerator<hw>::r415; \
+using ngen::BinaryCodeGenerator<hw>::r416; using ngen::BinaryCodeGenerator<hw>::r417; using ngen::BinaryCodeGenerator<hw>::r418; using ngen::BinaryCodeGenerator<hw>::r419; \
+using ngen::BinaryCodeGenerator<hw>::r420; using ngen::BinaryCodeGenerator<hw>::r421; using ngen::BinaryCodeGenerator<hw>::r422; using ngen::BinaryCodeGenerator<hw>::r423; \
+using ngen::BinaryCodeGenerator<hw>::r424; using ngen::BinaryCodeGenerator<hw>::r425; using ngen::BinaryCodeGenerator<hw>::r426; using ngen::BinaryCodeGenerator<hw>::r427; \
+using ngen::BinaryCodeGenerator<hw>::r428; using ngen::BinaryCodeGenerator<hw>::r429; using ngen::BinaryCodeGenerator<hw>::r430; using ngen::BinaryCodeGenerator<hw>::r431; \
+using ngen::BinaryCodeGenerator<hw>::r432; using ngen::BinaryCodeGenerator<hw>::r433; using ngen::BinaryCodeGenerator<hw>::r434; using ngen::BinaryCodeGenerator<hw>::r435; \
+using ngen::BinaryCodeGenerator<hw>::r436; using ngen::BinaryCodeGenerator<hw>::r437; using ngen::BinaryCodeGenerator<hw>::r438; using ngen::BinaryCodeGenerator<hw>::r439; \
+using ngen::BinaryCodeGenerator<hw>::r440; using ngen::BinaryCodeGenerator<hw>::r441; using ngen::BinaryCodeGenerator<hw>::r442; using ngen::BinaryCodeGenerator<hw>::r443; \
+using ngen::BinaryCodeGenerator<hw>::r444; using ngen::BinaryCodeGenerator<hw>::r445; using ngen::BinaryCodeGenerator<hw>::r446; using ngen::BinaryCodeGenerator<hw>::r447; \
+using ngen::BinaryCodeGenerator<hw>::r448; using ngen::BinaryCodeGenerator<hw>::r449; using ngen::BinaryCodeGenerator<hw>::r450; using ngen::BinaryCodeGenerator<hw>::r451; \
+using ngen::BinaryCodeGenerator<hw>::r452; using ngen::BinaryCodeGenerator<hw>::r453; using ngen::BinaryCodeGenerator<hw>::r454; using ngen::BinaryCodeGenerator<hw>::r455; \
+using ngen::BinaryCodeGenerator<hw>::r456; using ngen::BinaryCodeGenerator<hw>::r457; using ngen::BinaryCodeGenerator<hw>::r458; using ngen::BinaryCodeGenerator<hw>::r459; \
+using ngen::BinaryCodeGenerator<hw>::r460; using ngen::BinaryCodeGenerator<hw>::r461; using ngen::BinaryCodeGenerator<hw>::r462; using ngen::BinaryCodeGenerator<hw>::r463; \
+using ngen::BinaryCodeGenerator<hw>::r464; using ngen::BinaryCodeGenerator<hw>::r465; using ngen::BinaryCodeGenerator<hw>::r466; using ngen::BinaryCodeGenerator<hw>::r467; \
+using ngen::BinaryCodeGenerator<hw>::r468; using ngen::BinaryCodeGenerator<hw>::r469; using ngen::BinaryCodeGenerator<hw>::r470; using ngen::BinaryCodeGenerator<hw>::r471; \
+using ngen::BinaryCodeGenerator<hw>::r472; using ngen::BinaryCodeGenerator<hw>::r473; using ngen::BinaryCodeGenerator<hw>::r474; using ngen::BinaryCodeGenerator<hw>::r475; \
+using ngen::BinaryCodeGenerator<hw>::r476; using ngen::BinaryCodeGenerator<hw>::r477; using ngen::BinaryCodeGenerator<hw>::r478; using ngen::BinaryCodeGenerator<hw>::r479; \
+using ngen::BinaryCodeGenerator<hw>::r480; using ngen::BinaryCodeGenerator<hw>::r481; using ngen::BinaryCodeGenerator<hw>::r482; using ngen::BinaryCodeGenerator<hw>::r483; \
+using ngen::BinaryCodeGenerator<hw>::r484; using ngen::BinaryCodeGenerator<hw>::r485; using ngen::BinaryCodeGenerator<hw>::r486; using ngen::BinaryCodeGenerator<hw>::r487; \
+using ngen::BinaryCodeGenerator<hw>::r488; using ngen::BinaryCodeGenerator<hw>::r489; using ngen::BinaryCodeGenerator<hw>::r490; using ngen::BinaryCodeGenerator<hw>::r491; \
+using ngen::BinaryCodeGenerator<hw>::r492; using ngen::BinaryCodeGenerator<hw>::r493; using ngen::BinaryCodeGenerator<hw>::r494; using ngen::BinaryCodeGenerator<hw>::r495; \
+using ngen::BinaryCodeGenerator<hw>::r496; using ngen::BinaryCodeGenerator<hw>::r497; using ngen::BinaryCodeGenerator<hw>::r498; using ngen::BinaryCodeGenerator<hw>::r499; \
+using ngen::BinaryCodeGenerator<hw>::r500; using ngen::BinaryCodeGenerator<hw>::r501; using ngen::BinaryCodeGenerator<hw>::r502; using ngen::BinaryCodeGenerator<hw>::r503; \
+using ngen::BinaryCodeGenerator<hw>::r504; using ngen::BinaryCodeGenerator<hw>::r505; using ngen::BinaryCodeGenerator<hw>::r506; using ngen::BinaryCodeGenerator<hw>::r507; \
+using ngen::BinaryCodeGenerator<hw>::r508; using ngen::BinaryCodeGenerator<hw>::r509; using ngen::BinaryCodeGenerator<hw>::r510; using ngen::BinaryCodeGenerator<hw>::r511; \
+using ngen::BinaryCodeGenerator<hw>::A64_A32U; using ngen::BinaryCodeGenerator<hw>::A64_A32S; using ngen::BinaryCodeGenerator<hw>::Overfetch; \
+using ngen::BinaryCodeGenerator<hw>::L1UC_L2UC_L3UC;    using ngen::BinaryCodeGenerator<hw>::L1UC_L2UC_L3C;  using ngen::BinaryCodeGenerator<hw>::L1UC_L2C_L3UC; \
+using ngen::BinaryCodeGenerator<hw>::L1UC_L2C_L3C;      using ngen::BinaryCodeGenerator<hw>::L1C_L2UC_L3UC;  using ngen::BinaryCodeGenerator<hw>::L1C_L2UC_L3C; \
+using ngen::BinaryCodeGenerator<hw>::L1C_L2C_L3UC;      using ngen::BinaryCodeGenerator<hw>::L1C_L2C_L3C;    using ngen::BinaryCodeGenerator<hw>::L1S_L2UC_L3UC; \
+using ngen::BinaryCodeGenerator<hw>::L1S_L2UC_L3C;      using ngen::BinaryCodeGenerator<hw>::L1S_L2C_L3UC;   using ngen::BinaryCodeGenerator<hw>::L1S_L2C_L3C; \
+using ngen::BinaryCodeGenerator<hw>::L1IAR_L2IAR_L3IAR; using ngen::BinaryCodeGenerator<hw>::L1UC_L2UC_L3WB; using ngen::BinaryCodeGenerator<hw>::L1UC_L2WB_L3UC; \
+using ngen::BinaryCodeGenerator<hw>::L1WT_L2UC_L3UC;    using ngen::BinaryCodeGenerator<hw>::L1WT_L2UC_L3WB; using ngen::BinaryCodeGenerator<hw>::L1WT_L2WB_L3UC; \
+using ngen::BinaryCodeGenerator<hw>::L1S_L2UC_L3WB;     using ngen::BinaryCodeGenerator<hw>::L1S_L2WB_L3UC;  using ngen::BinaryCodeGenerator<hw>::L1S_L2WB_L3WB; \
+using ngen::BinaryCodeGenerator<hw>::L1WB_L2WB_L3UC;    using ngen::BinaryCodeGenerator<hw>::L1WB_L2UC_L3WB;
+#endif
+#define NGEN_FORWARD_REGISTERS(hw) NGEN_FORWARD_REGISTERS_BASE(hw) NGEN_FORWARD_REGISTERS_EXTRA1(hw) NGEN_FORWARD_REGISTERS_EXTRA2(hw) NGEN_FORWARD_REGISTERS_EXTRA3(hw)
 #endif
 
 template <HW hw>
@@ -1742,6 +2002,15 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     i.binary.cmod = static_cast<int>(mod.getCMod());
 
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        if (op == Opcode::math)
+            i.binaryXe3pImm.src0Reg8 = 0;
+        i.binaryXe3p.dstReg8 = getHighBit(dst);
+        i.binaryXe3p.src0Reg8 = getHighBit(src0);
+    }
+#endif
+
     db(i);
 }
 
@@ -1815,6 +2084,11 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 #endif
         i.imm64.high = val >> 32;
     }
+
+#if XE3P
+    if (hw >= HW::Xe3p)
+        i.unaryXe3pImm.dstReg8 = getHighBit(dst);
+#endif
 
     db(i);
 }
@@ -1893,6 +2167,16 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     i.binary.cmod = static_cast<int>(mod.getCMod());
 
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        i.binaryXe3pImm.src0Reg8 = 0;
+        i.binaryXe3p.dstReg8 = getHighBit(dst);
+        i.binaryXe3p.src0Reg8 = getHighBit(src0);
+        i.binaryXe3p.src1Reg8 = getHighBit(src1);
+        i.binaryXe3p.src1Scalar = checkSrc1Scalar(op, src1, dst, tag);
+    }
+#endif
+
     db(i);
 }
 
@@ -1965,6 +2249,13 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     i.binary.src1Imm = true;
     i.imm32.value = static_cast<uint64_t>(src1);
+
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        i.binaryXe3pImm.dstReg8 = getHighBit(dst);
+        i.binaryXe3pImm.src0Reg8 = getHighBit(src0);
+    }
+#endif
 
     db(i);
 }
@@ -2076,6 +2367,10 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     i.ternary.cmod = static_cast<int>(mod.getCMod());
 
+#if XE3P
+    encodeTernary512GRF(i, dst, src0, src1, src2, tag);
+#endif
+
     db(i);
 }
 
@@ -2128,6 +2423,10 @@ void BinaryCodeGenerator<hw>::opBfn(Opcode op, DataType defaultType, const Instr
     i.bfn.bfnCtrl03 = (bfnCtrl >> 0);
     i.bfn.bfnCtrl47 = (bfnCtrl >> 4);
 
+#if XE3P
+    encodeTernary512GRF(i, dst, src0, src1, src2, tag);
+#endif
+
     db(i);
 }
 
@@ -2154,6 +2453,9 @@ void BinaryCodeGenerator<hw>::opDpas(Opcode op, DataType defaultType, const Inst
     i.ternary.src2 = encodeTernaryOperand12<false, false>(src2, tag).bits;
 
     encodeTernaryTypes(i, dst, src0, src1, src2);
+#if XE3P
+    encodeTernary512GRF(i, dst, src0, src1, src2, tag);
+#endif
 
     i.dpas.rcount = rcount - 1;
     i.dpas.sdepth = utils::log2(sdepth);
@@ -2193,6 +2495,11 @@ BinaryCodeGenerator<hw>::opSend(Opcode op, const InstructionModifier &mod, Share
     InstructionModifier emod = mod | defaultModifier;
 
     auto src0 = src0_;
+#if XE3
+    bool src0Indirect = (hw >= HW::Xe3 && src0.isIndirect());
+    if (src0Indirect)
+        src0 = src0.getIndirectReg();
+#endif
 
     encodeCommon12(i, op, emod, dst, tag);
 
@@ -2213,6 +2520,18 @@ BinaryCodeGenerator<hw>::opSend(Opcode op, const InstructionModifier &mod, Share
 
     encodeSendDesc(i, desc);
     encodeSendExDesc(i, exdesc, mod, src1Length, hw);
+
+#if XE3
+    if (src0Indirect)
+        i.send.exDesc6_10 = src0.getOffset() >> 1;
+#endif
+
+#if XE3P
+#ifdef NGEN_SAFE
+    if (getHighBit(dst) || getHighBit(src0) || getHighBit(src1))
+        throw limited_to_256_grf_exception();
+#endif
+#endif
 
     db(i);
 }
@@ -2341,6 +2660,103 @@ BinaryCodeGenerator<hw>::opSends(Opcode op, const InstructionModifier &mod, cons
     opSend(mop, mod, static_cast<SharedFunction>(exdesc & 0x1F), dst, src0, src1, -1, exdesc, desc);
 }
 
+#if XE3P
+static inline unsigned encodeSendgxRegNum(RegData r)
+{
+    if (r.isNull())
+        return 0x1FF;
+#ifdef NGEN_SAFE
+    else if (r.isARF())
+        throw invalid_arf_exception();
+    else if (r.getBase() == 0x1FF)
+        throw r511_not_allowed_exception();
+#endif
+    else
+        return r.getBase();
+}
+
+template <HW hw>
+void BinaryCodeGenerator<hw>::opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sfid,
+                                      const RegData &dst, RegData src0, int src0Len, const RegData &src1, int src1Len,
+                                      const RegData &ind0, const RegData &ind1, uint64_t desc)
+{
+    typename EncodingTag12Dispatch<hw>::tag tag;
+    Instruction12 i{};
+    InstructionModifier emod = mod | defaultModifier;
+
+    bool src0Indirect = src0.isIndirect();
+    if (src0Indirect)
+        src0 = src0.getIndirectReg();
+
+    encodeCommon12(i, op, emod, dst, tag);
+
+    i.sendg.eot = emod.isEOT();
+
+    if (op == Opcode::sendgx) {
+        unsigned dstReg = encodeSendgxRegNum(dst);
+        unsigned src0Reg = encodeSendgxRegNum(src0);
+        unsigned src1Reg = encodeSendgxRegNum(src1);
+
+        i.sendg.dstReg = dstReg;
+        i.sendg.src0Reg = src0Reg;
+        i.sendg.src1Reg = src1Reg;
+
+        i.sendgx.dstReg8 = dstReg >> 8;
+        i.sendgx.src0Reg8 = src0Reg >> 8;
+        i.sendgx.src1Reg8 = src1Reg >> 8;
+    } else {
+        i.sendg.dstReg = dst.getBase();
+        i.sendg.src0Reg = src0.getBase();
+        i.sendg.src1Reg = src1.getBase();
+
+        i.sendg.dstRegFile = getRegFile(dst);
+        i.sendg.src0RegFile = getRegFile(src0);
+        i.sendg.src1RegFile = getRegFile(src1);
+
+#ifdef NGEN_SAFE
+        if (getHighBit(dst) || getHighBit(src0) || getHighBit(src1))
+            throw limited_to_256_grf_exception();
+#endif
+    }
+
+    i.sendg.src0Len = src0Len;
+    i.sendg.src1Len = src1Len;
+
+    i.sendg.sfid = static_cast<int>(sfid) & 0xF;
+
+    i.sendg.desc0_15 = desc;
+    i.sendg.desc16_27 = desc >> 16;
+    i.sendg.desc28_29 = desc >> 28;
+    i.sendg.desc30_31 = desc >> 30;
+    i.sendg.desc32_39 = desc >> 32;
+    i.sendg.desc40_41 = desc >> 40;
+    i.sendg.ind1_desc42_46 = desc >> 42;
+
+    if (src0Indirect)
+        i.sendg.src1Len = src0.getOffset() >> 1;
+
+    i.sendg.ind0Present = !ind0.isNull();
+    i.sendg.ind1Present = !ind1.isNull();
+
+    if (i.sendg.ind0Present) {
+#ifdef NGEN_SAFE
+        if (!ind0.isARF() || ind0.getARFType() != ARFType::s)
+            throw invalid_arf_exception();
+#endif
+        i.sendg.ind0 = ind0.getByteOffset() >> 3;
+    }
+    if (i.sendg.ind1Present) {
+#ifdef NGEN_SAFE
+        if (!ind1.isARF() || ind1.getARFType() != ARFType::s)
+            throw invalid_arf_exception();
+#endif
+        i.sendg.ind1_desc42_46 = ind1.getByteOffset() >> 3;
+    }
+
+    db(i);
+}
+#endif
+
 template <HW hw>
 template <HW hw_>
 typename std::enable_if<hwLT(hw_, HW::Gen12LP)>::type
@@ -2382,6 +2798,11 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
 
     i.branches.jip = jip;
     i.branches.uip = uip;
+
+#if XE3P
+    if (hw >= HW::Xe3p)
+        i.branchXe3p.dstReg8 = getHighBit(dst);
+#endif
 
     db(i);
 }
@@ -2426,6 +2847,11 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
     i.binary.dst = encodeBinaryOperand12<-1, false>(dst, tag).bits;
     i.binary.src0Imm = true;
     i.branches.jip = jip;
+
+#if XE3P
+    if (hw >= HW::Xe3p)
+        i.branchXe3p.dstReg8 = getHighBit(dst);
+#endif
 
     db(i);
 }
@@ -2472,6 +2898,13 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
     if (small12)
         i.binary.src0 &= 0xFFFF;
 
+
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        i.branchXe3p.dstReg8 = getHighBit(dst);
+        i.branchXe3p.src0Reg8 = getHighBit(src0);
+    }
+#endif
 
     db(i);
 }
@@ -2542,6 +2975,17 @@ void BinaryCodeGenerator<hw>::opJmpi(Opcode op, const InstructionModifier &mod, 
     if (hw < HW::Gen12LP)
         addFixup(LabelFixup(jip.getID(labelManager), LabelFixup::JIPOffsetJMPI));
 }
+
+#if XE3P
+template <HW hw>
+void BinaryCodeGenerator<hw>::opShfl(Opcode op, ShuffleFunction fc, DataType defaultType, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1)
+{
+    InstructionModifier mmod = mod;
+
+    mmod.setCMod(static_cast<ConditionModifier>(fc));
+    opX(op, defaultType, mmod, dst, src0, src1);
+}
+#endif
 
 template <HW hw>
 void BinaryCodeGenerator<hw>::opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod)

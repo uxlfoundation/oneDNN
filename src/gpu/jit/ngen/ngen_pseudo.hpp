@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -341,6 +341,11 @@ void sqt_ieee(const InstructionModifier &mod, FlagRegister flag, RegData dst, Re
 // Thread spawner messages.
 void threadend(const InstructionModifier &mod, const RegData &r0_info)
 {
+#if XE3P
+    if (useEfficient64Bit)
+        sendgx(1 | EOT | mod | NoMask, SharedFunction::gtwy, null, GRFRange(r0_info.getBase(), 1), 0);
+    else
+#endif
     {
         auto sf = (hardware <= HW::XeHP) ? SharedFunction::ts
                                          : SharedFunction::gtwy;
@@ -354,6 +359,11 @@ void threadend(const RegData &r0_info) { threadend(InstructionModifier(), r0_inf
 // Gateway messages.
 void barriermsg(const InstructionModifier &mod, const GRF &header)
 {
+#if XE3P
+    if (useEfficient64Bit)
+        sendgx(1 | mod | NoMask, SharedFunction::gtwy, null, GRFRange(header, 1), 4);
+    else
+#endif
     {
         uint32_t exdesc = static_cast<int>(SharedFunction::gtwy) & 0xF;
         send(1 | mod | NoMask, null, header, exdesc, 0x2000004);
@@ -365,6 +375,11 @@ void barriermsg(const GRF &header) { barriermsg(InstructionModifier(), header); 
 // Prepare barrier header.
 void barrierheader(const GRF &header, const GRF &r0_info = r0)
 {
+#if XE3P
+    if (useEfficient64Bit)
+        mov<uint32_t>(1 | NoMask, header[2], r0_info[2]);
+    else
+#endif
     if (hardware >= HW::XeHPG) {
         mov(1 | NoMask, header.hf(4), Immediate::hf(0));
         mov(2 | NoMask, header.ub(10)(1), r0_info.ub(11)(0));
@@ -374,6 +389,11 @@ void barrierheader(const GRF &header, const GRF &r0_info = r0)
 
 void barrierheader(const GRF &header, uint32_t threadCount, const GRF &r0_info = r0)
 {
+#if XE3P
+    if (useEfficient64Bit)
+        mov(1 | NoMask, header.ud(2), threadCount << 24);
+    else
+#endif
     if (hardware >= HW::XeHPG)
         mov(1 | NoMask, header.ud(2), (threadCount << 24) | (threadCount << 16));
     else {
@@ -384,6 +404,11 @@ void barrierheader(const GRF &header, uint32_t threadCount, const GRF &r0_info =
 
 void barriersignal(const InstructionModifier &mod, const GRF &temp, const GRF &r0_info = r0)
 {
+#if XE3P
+    if (useEfficient64Bit)
+        barriermsg(mod, r0_info);
+    else
+#endif
     {
         barrierheader(temp, r0_info);
         barriermsg(mod, temp);
@@ -402,6 +427,11 @@ void barriersignal(const GRF &temp, uint32_t threadCount, const GRF &r0_info = r
 // Named barriers.
 void nbarriermsg(const InstructionModifier &mod, const GRF &header)
 {
+#if XE3P
+    if (useEfficient64Bit)
+        sendgx(1 | mod | NoMask, SharedFunction::gtwy, null, GRFRange(header, 1), 5);
+    else
+#endif
         barriermsg(mod, header);
 }
 
@@ -447,7 +477,7 @@ void barrier(const Targs &...barrierArgs)
 }
 
 // Global memory fence.
-void memfence(const InstructionModifier &mod, const RegData &dst, const RegData &header = GRF(0))
+void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     if (hardware <= HW::XeHP) {
         const uint32_t exdesc = static_cast<int>(SharedFunction::dc0) & 0xF;
@@ -456,8 +486,16 @@ void memfence(const InstructionModifier &mod, const RegData &dst, const RegData 
         memfence(mod, FenceScopeLSC::GPU, FlushTypeLSC::None, dst, header);
 }
 
-void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst, const RegData &header)
+void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
+#if XE3P
+    if (useEfficient64Bit) {
+        uint32_t desc = 0x1F;
+        desc |= static_cast<uint32_t>(flushing) << 8;
+        desc |= static_cast<uint32_t>(scope) << 11;
+        sendgx(1 | mod | NoMask, SharedFunction::ugm, null, desc);
+    } else
+#endif
     if (hardware >= HW::XeHPG) {
         if (flushing == FlushTypeLSC::None && hardware == HW::XeHPG && scope > FenceScopeLSC::Subslice)
             flushing = static_cast<FlushTypeLSC>(6);    /* workaround for DG2 bug */
@@ -470,19 +508,24 @@ void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC 
         memfence(mod, dst, header);
 }
 
-void memfence(const RegData &dst, const RegData &header = GRF(0))
+void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     memfence(InstructionModifier(), dst, header);
 }
 
-void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst, const RegData &header = GRF(0))
+void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     memfence(InstructionModifier(), scope, flushing, dst, header);
 }
 
 // SLM-only memory fence.
-void slmfence(const InstructionModifier &mod, const RegData &dst, const RegData &header = GRF(0))
+void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
+#if XE3P
+    if (useEfficient64Bit)
+        sendgx(1 | mod | NoMask, SharedFunction::slm, null, 0x1F);
+    else
+#endif
     if (hardware >= HW::XeHPG)
         send(1 | mod | NoMask, SharedFunction::slm, dst, header, null, 0, 0x210011F);
     else {
@@ -491,7 +534,7 @@ void slmfence(const InstructionModifier &mod, const RegData &dst, const RegData 
     }
 }
 
-void slmfence(const RegData &dst, const RegData &header = GRF(0)) { slmfence(InstructionModifier(), dst, header); }
+void slmfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0)) { slmfence(InstructionModifier(), dst, header); }
 
 // XeHP+ prologues.
 void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127), int paddedSize = 0)
@@ -511,6 +554,23 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
             defaultModifier |= NoMask | AutoSWSB;
 
 
+#if XE3P
+            if (useEfficient64Bit) {        /* to do: SIMD1 */
+                uint16_t stride = simdGRFs * grfSize;
+                auto base = s0.uq(2);
+                and_<uint32_t>(1, acc0[0], r0.uw(4), 0xFF);
+                mov<uint64_t>(1, base, r0.uq(7));
+                mad<uint32_t>(1, acc0[0], uint16_t(argBytes), acc0[0], uint16_t(3 * stride));
+                mov<uint32_t>(16, r4, r1);
+                add<uint32_t>(1, temp[0], acc0[0], Immediate::ud(0));   /* relocation */
+                load(1, r1, D32T(std::min(dims, 2) * stride / 4) | L1C_L3CC, A64_A32U, temp + base);
+                insns = 6;
+                if (dims == 3) {
+                    load(1, GRF(1 + 2 * simdGRFs), D32T(stride / 4) | L1C_L3CC, A64_A32U, temp + base + stride/2);
+                    insns++;
+                }
+            } else
+#endif
             {
                 insns = lsc ? 5 : 6;
                 if (!lsc)
@@ -550,6 +610,13 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
 
         if (!_labelLocalIDsLoaded.defined(labelManager))
             mark(_labelLocalIDsLoaded);
+
+#if XE3P
+        /* Workaround for incorrect NEO/XeSim handling of crossthread entrance */
+        if (useEfficient64Bit)
+            for (int i = 0; i < 4; i++)
+                nop();
+#endif
     }
 }
 
@@ -563,6 +630,22 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127))
             auto dmSave = defaultModifier;
             defaultModifier |= NoMask | AutoSWSB;
 
+#if XE3P
+            if (useEfficient64Bit) {        /* to do: SIMD1 */
+                int offset = 0;
+                auto offsetRT = s0.uq(3);
+                auto addr = r4;
+                mov(1, offsetRT, Immediate::uq(0));     /* relocation */
+                while (argGRFs > 0) {
+                    int nload = std::min(utils::rounddown_pow2(argGRFs), 8);
+                    int loadBytes = nload * GRF::bytes(hardware);
+                    load(1, dst, D64T(loadBytes >> 3) | L1C_L3CC, A64, addr + offsetRT + offset);
+                    argGRFs -= nload;
+                    dst += nload;
+                    offset += loadBytes;
+                }
+            } else
+#endif
             {
                 if (!lsc)
                     mov<uint32_t>(8, temp, uint16_t(0));
@@ -652,6 +735,16 @@ struct Load {
     template <typename DataSpec>
     void operator()(SharedFunction sfid, const InstructionModifier &mod, const RegData &dst, const DataSpec &spec, AddressBase base, const GRFDisp &addr)
     {
+#if XE3P
+        if (parent.useEfficient64Bit) {
+            SendgMessageDescriptor desc;
+            int dstLen, src0Len;
+            encodeLoadDescriptor(parent.hardware, desc, sfid, dstLen, src0Len, mod, spec, base, addr);
+            if (!dst.isNull() && dstLen > 0)
+                parent.subdep(Operand::dst, GRFRange(dst.getBase(), dstLen));
+            parent.sendgx(mod, sfid, dst, GRFRange(addr.getBase(), src0Len), addr.getInd0(), desc.all);
+        } else
+#endif
         {
             MessageDescriptor desc;
             ExtendedMessageDescriptor exdesc;
@@ -703,6 +796,14 @@ struct Store {
     template <typename DataSpec>
     void operator()(SharedFunction sfid, const InstructionModifier &mod, const DataSpec &spec, AddressBase base, const GRFDisp &addr, const RegData &data)
     {
+#if XE3P
+        if (parent.useEfficient64Bit) {
+            SendgMessageDescriptor desc;
+            int src0Len, src1Len;
+            encodeStoreDescriptor(parent.hardware, desc, sfid, src0Len, src1Len, mod, spec, base, addr);
+            parent.sendgx(mod, sfid, NullRegister(), GRFRange(addr.getBase(), src0Len), GRFRange(data.getBase(), src1Len), addr.getInd0(), desc.all);
+        } else
+#endif
         {
             MessageDescriptor desc;
             ExtendedMessageDescriptor exdesc;
@@ -763,6 +864,17 @@ struct Atomic_ {
     template <typename DataSpec>
     void operator()(SharedFunction sfid, AtomicOp op, const InstructionModifier &mod, const RegData &dst, const DataSpec &spec, AddressBase base, const GRFDisp &addr, const RegData &data)
     {
+#if XE3P
+        if (parent.useEfficient64Bit) {
+            SendgMessageDescriptor desc;
+            int src0Len, src1Len;
+            encodeAtomicDescriptor(parent.hardware, desc, sfid, src0Len, src1Len, op, mod, spec, base, addr);
+            if (data.isNull())
+                parent.sendgx(mod, sfid, dst, GRFRange(addr.getBase(), src0Len), addr.getInd0(), desc.all);
+            else
+                parent.sendgx(mod, sfid, dst, GRFRange(addr.getBase(), src0Len), GRFRange(data.getBase(), src1Len), addr.getInd0(), desc.all);
+        } else
+#endif
         {
             MessageDescriptor desc;
             ExtendedMessageDescriptor exdesc;

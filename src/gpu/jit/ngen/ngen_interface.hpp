@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -67,7 +67,10 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
-                             , inlineGRFs(defaultInlineGRFs(hw))
+#ifdef XE3P
+                             , useEfficient64Bit(hw_ >= HW::Xe3p)
+#endif
+                             , requestedInlineGRFs(defaultInlineGRFs(hw))
     {}
 
     inline void externalName(const std::string &name)   { kernelName = name; }
@@ -89,6 +92,9 @@ public:
     int getSIMD() const                                  { return simd; }
     int getGRFCount() const                              { return needGRF; }
     size_t getSLMSize() const                            { return slmSize; }
+#if XE3P
+    bool getEfficient64Bit() const                       { return useEfficient64Bit; }
+#endif
 
     void require32BitBuffers()                           { allow64BitBuffers = false; }
     void requireArbitrationMode(ThreadArbitrationMode m) { arbitrationMode = m; }
@@ -112,9 +118,12 @@ public:
     void requireWorkgroup(size_t x, size_t y = 1,
                           size_t z = 1)                  { wg[0] = x; wg[1] = y; wg[2] = z; }
 
-    void setInlineGRFCount(int grfs)                     { inlineGRFs = grfs; }
+    void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
+#if XE3P
+    void setEfficient64Bit(bool def = true)              { useEfficient64Bit = def; }
+#endif
 
     inline GRF getCrossthreadBase(bool effective = true) const;
     inline GRF getArgLoadBase() const;
@@ -176,15 +185,20 @@ protected:
     int walkOrder[3] = {-1, -1, -1};
     size_t wg[3] = {0, 0, 0};
 
+#if XE3P
+    bool useEfficient64Bit = false;
+#endif
     int crossthreadBytes = 0;
     int crossthreadGRFs = 0;
-    int inlineGRFs = 0;
+    int requestedInlineGRFs = 0;
+    inline int inlineGRFs() const;
     inline int getCrossthreadGRFs() const;
     inline int getCrossthreadBytes() const;
     int grfsPerLID() const { return (simd > 16 && GRF::bytes(hw) < 64) ? 2 : 1; }
 
     static inline GlobalAccessType defaultGlobalAccess(HW hw);
     static inline int defaultInlineGRFs(HW hw);
+
 };
 
 using NEOInterfaceHandler = InterfaceHandler;
@@ -464,6 +478,14 @@ void InterfaceHandler::finalize()
     finalized = true;
 }
 
+int InterfaceHandler::inlineGRFs() const
+{
+#if XE3P
+    if (useEfficient64Bit) return 1;
+#endif
+    return requestedInlineGRFs;
+}
+
 GRF InterfaceHandler::getCrossthreadBase(bool effective) const
 {
     if (!needLocalID)
@@ -476,7 +498,7 @@ GRF InterfaceHandler::getCrossthreadBase(bool effective) const
 
 GRF InterfaceHandler::getArgLoadBase() const
 {
-    return getCrossthreadBase().advance(inlineGRFs);
+    return getCrossthreadBase().advance(inlineGRFs());
 }
 
 int InterfaceHandler::getCrossthreadBytes() const
@@ -513,8 +535,8 @@ void InterfaceHandler::generatePrologue(CodeGenerator &generator, const GRF &tem
 {
     if (needLocalID)
         generator.loadlid(getCrossthreadBytes(), needLocalID, simd, temp, -1);
-    if (getCrossthreadGRFs() > inlineGRFs)
-        generator.loadargs(getArgLoadBase(), getCrossthreadGRFs() - inlineGRFs, temp);
+    if (getCrossthreadGRFs() > inlineGRFs())
+        generator.loadargs(getArgLoadBase(), getCrossthreadGRFs() - inlineGRFs(), temp);
 }
 
 std::string InterfaceHandler::generateZeInfo() const
@@ -525,7 +547,12 @@ std::string InterfaceHandler::generateZeInfo() const
 
     std::stringstream md;
 
-    md << "version: 1.8\n"
+    const char *version = "1.8";
+#if XE3P
+    if (useEfficient64Bit) version = "1.35";
+#endif
+
+    md << "version: " << version << "\n"
           "kernels: \n"
           "  - name: \"" << kernelName << "\"\n"
           "    execution_env: \n"
@@ -570,12 +597,19 @@ std::string InterfaceHandler::generateZeInfo() const
             default: break;
         }
     }
-    if (inlineGRFs > 0)
-        md << "      inline_data_payload_size: " << inlineGRFs * GRF::bytes(hw) << "\n";
+    if (inlineGRFs() > 0)
+        md << "      inline_data_payload_size: " << inlineGRFs() * GRF::bytes(hw) << "\n";
     if (!assignments.empty()) {
         md << "\n"
               "    payload_arguments: \n";
     }
+#if XE3P
+    if (useEfficient64Bit) {
+        md << "      - arg_type: indirect_data_pointer\n"
+              "        offset: 0\n"
+              "        size: 8\n";
+    }
+#endif
     for (auto &assignment : assignments) {
         uint32_t size = 0;
         bool skipArg = false;

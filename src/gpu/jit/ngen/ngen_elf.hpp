@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,6 +66,10 @@ protected:
     void requireWalkOrder(int o1, int o2)                                { interface_.requireWalkOrder(o1, o2); }
     void requireWalkOrder(int o1, int o2, int o3)                        { interface_.requireWalkOrder(o1, o2, o3); }
     void requireWorkgroup(size_t x, size_t y = 1, size_t z = 1)          { interface_.requireWorkgroup(x, y, z); }
+
+#if XE3P
+    void setEfficient64Bit(bool def = true)                              { BinaryCodeGenerator<hw>::setEfficient64Bit(def); interface_.setEfficient64Bit(def); }
+#endif
 
     void finalizeInterface()                                             { interface_.finalize(); }
 
@@ -273,7 +277,9 @@ private:
     };
 };
 
-#define NGEN_FORWARD_ELF(hw) NGEN_FORWARD_NO_REQGRF(hw) \
+#define NGEN_FORWARD_ELF(hw) \
+NGEN_FORWARD_NO_ELF_OVERRIDES(hw) \
+NGEN_FORWARD_ELF_EXTRA(hw) \
 template <typename... Targs> void externalName(Targs&&... args) { ngen::ELFCodeGenerator<hw>::externalName(std::forward<Targs>(args)...); } \
 const std::string &getExternalName() const { return ngen::ELFCodeGenerator<hw>::getExternalName(); } \
 int getSIMD() const { return ngen::ELFCodeGenerator<hw>::getSIMD(); } \
@@ -282,6 +288,8 @@ size_t getSLMSize() const { return ngen::ELFCodeGenerator<hw>::getSLMSize(); } \
 template <typename... Targs> void require32BitBuffers(Targs&&... args) { ngen::ELFCodeGenerator<hw>::require32BitBuffers(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireArbitrationMode(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireArbitrationMode(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireBarrier(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireBarrier(std::forward<Targs>(args)...); } \
+template <typename... Targs> void requireBarriers(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireBarriers(std::forward<Targs>(args)...); } \
+template <typename... Targs> void requireDPAS(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireDPAS(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireGlobalAtomics(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireGlobalAtomics(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireGRF(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireGRF(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireLocalID(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireLocalID(std::forward<Targs>(args)...); } \
@@ -305,17 +313,15 @@ template <typename... Targs> int getArgumentSurfaceIfExists(Targs&&... args) { r
 template <typename... Targs> ngen::GRF getLocalID(Targs&&... args) { return ngen::ELFCodeGenerator<hw>::getLocalID(std::forward<Targs>(args)...); } \
 template <typename... Targs> ngen::RegData getSIMD1LocalID(Targs&&... args) { return ngen::ELFCodeGenerator<hw>::getSIMD1LocalID(std::forward<Targs>(args)...); } \
 template <typename... Targs> ngen::Subregister getLocalSize(Targs&&... args) { return ngen::ELFCodeGenerator<hw>::getLocalSize(std::forward<Targs>(args)...); } \
-void epilogue(const ngen::RegData &r0_info = ngen::RegData()) { ngen::ELFCodeGenerator<hw>::epilogue(r0_info); } \
-NGEN_FORWARD_ELF_EXTRA \
-NGEN_FORWARD_ELF_EXTRA2
+void prologue() { ngen::ELFCodeGenerator<hw>::prologue(); } \
+void epilogue(const ngen::RegData &r0_info = ngen::RegData()) { ngen::ELFCodeGenerator<hw>::epilogue(r0_info); }
 
-#define NGEN_FORWARD_ELF_EXTRA \
-template <typename... Targs> void requireDPAS(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireDPAS(std::forward<Targs>(args)...); } \
-void prologue() { ngen::ELFCodeGenerator<hw>::prologue(); }
-
-#define NGEN_FORWARD_ELF_EXTRA2 \
-template <typename... Targs> void requireBarriers(Targs&&... args) { ngen::ELFCodeGenerator<hw>::requireBarriers(std::forward<Targs>(args)...); }
-
+#if !XE3P
+#define NGEN_FORWARD_ELF_EXTRA(hw)
+#else
+#define NGEN_FORWARD_ELF_EXTRA(hw) \
+template <typename... Targs> void setEfficient64Bit(Targs&&... args) { ngen::ELFCodeGenerator<hw>::setEfficient64Bit(std::forward<Targs>(args)...); }
+#endif
 
 template <HW hw>
 std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary()

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -86,6 +86,72 @@ void _workaround_() {
     (void) r244.getBase(); (void) r245.getBase(); (void) r246.getBase(); (void) r247.getBase();
     (void) r248.getBase(); (void) r249.getBase(); (void) r250.getBase(); (void) r251.getBase();
     (void) r252.getBase(); (void) r253.getBase(); (void) r254.getBase(); (void) r255.getBase();
+#if XE3P
+    (void) r256.getBase(); (void) r257.getBase(); (void) r258.getBase(); (void) r259.getBase();
+    (void) r260.getBase(); (void) r261.getBase(); (void) r262.getBase(); (void) r263.getBase();
+    (void) r264.getBase(); (void) r265.getBase(); (void) r266.getBase(); (void) r267.getBase();
+    (void) r268.getBase(); (void) r269.getBase(); (void) r270.getBase(); (void) r271.getBase();
+    (void) r272.getBase(); (void) r273.getBase(); (void) r274.getBase(); (void) r275.getBase();
+    (void) r276.getBase(); (void) r277.getBase(); (void) r278.getBase(); (void) r279.getBase();
+    (void) r280.getBase(); (void) r281.getBase(); (void) r282.getBase(); (void) r283.getBase();
+    (void) r284.getBase(); (void) r285.getBase(); (void) r286.getBase(); (void) r287.getBase();
+    (void) r288.getBase(); (void) r289.getBase(); (void) r290.getBase(); (void) r291.getBase();
+    (void) r292.getBase(); (void) r293.getBase(); (void) r294.getBase(); (void) r295.getBase();
+    (void) r296.getBase(); (void) r297.getBase(); (void) r298.getBase(); (void) r299.getBase();
+    (void) r300.getBase(); (void) r301.getBase(); (void) r302.getBase(); (void) r303.getBase();
+    (void) r304.getBase(); (void) r305.getBase(); (void) r306.getBase(); (void) r307.getBase();
+    (void) r308.getBase(); (void) r309.getBase(); (void) r310.getBase(); (void) r311.getBase();
+    (void) r312.getBase(); (void) r313.getBase(); (void) r314.getBase(); (void) r315.getBase();
+    (void) r316.getBase(); (void) r317.getBase(); (void) r318.getBase(); (void) r319.getBase();
+    (void) r320.getBase(); (void) r321.getBase(); (void) r322.getBase(); (void) r323.getBase();
+    (void) r324.getBase(); (void) r325.getBase(); (void) r326.getBase(); (void) r327.getBase();
+    (void) r328.getBase(); (void) r329.getBase(); (void) r330.getBase(); (void) r331.getBase();
+    (void) r332.getBase(); (void) r333.getBase(); (void) r334.getBase(); (void) r335.getBase();
+    (void) r336.getBase(); (void) r337.getBase(); (void) r338.getBase(); (void) r339.getBase();
+    (void) r340.getBase(); (void) r341.getBase(); (void) r342.getBase(); (void) r343.getBase();
+    (void) r344.getBase(); (void) r345.getBase(); (void) r346.getBase(); (void) r347.getBase();
+    (void) r348.getBase(); (void) r349.getBase(); (void) r350.getBase(); (void) r351.getBase();
+    (void) r352.getBase(); (void) r353.getBase(); (void) r354.getBase(); (void) r355.getBase();
+    (void) r356.getBase(); (void) r357.getBase(); (void) r358.getBase(); (void) r359.getBase();
+    (void) r360.getBase(); (void) r361.getBase(); (void) r362.getBase(); (void) r363.getBase();
+    (void) r364.getBase(); (void) r365.getBase(); (void) r366.getBase(); (void) r367.getBase();
+    (void) r368.getBase(); (void) r369.getBase(); (void) r370.getBase(); (void) r371.getBase();
+    (void) r372.getBase(); (void) r373.getBase(); (void) r374.getBase(); (void) r375.getBase();
+    (void) r376.getBase(); (void) r377.getBase(); (void) r378.getBase(); (void) r379.getBase();
+    (void) r380.getBase(); (void) r381.getBase(); (void) r382.getBase(); (void) r383.getBase();
+    (void) r384.getBase(); (void) r385.getBase(); (void) r386.getBase(); (void) r387.getBase();
+    (void) r388.getBase(); (void) r389.getBase(); (void) r390.getBase(); (void) r391.getBase();
+    (void) r392.getBase(); (void) r393.getBase(); (void) r394.getBase(); (void) r395.getBase();
+    (void) r396.getBase(); (void) r397.getBase(); (void) r398.getBase(); (void) r399.getBase();
+    (void) r400.getBase(); (void) r401.getBase(); (void) r402.getBase(); (void) r403.getBase();
+    (void) r404.getBase(); (void) r405.getBase(); (void) r406.getBase(); (void) r407.getBase();
+    (void) r408.getBase(); (void) r409.getBase(); (void) r410.getBase(); (void) r411.getBase();
+    (void) r412.getBase(); (void) r413.getBase(); (void) r414.getBase(); (void) r415.getBase();
+    (void) r416.getBase(); (void) r417.getBase(); (void) r418.getBase(); (void) r419.getBase();
+    (void) r420.getBase(); (void) r421.getBase(); (void) r422.getBase(); (void) r423.getBase();
+    (void) r424.getBase(); (void) r425.getBase(); (void) r426.getBase(); (void) r427.getBase();
+    (void) r428.getBase(); (void) r429.getBase(); (void) r430.getBase(); (void) r431.getBase();
+    (void) r432.getBase(); (void) r433.getBase(); (void) r434.getBase(); (void) r435.getBase();
+    (void) r436.getBase(); (void) r437.getBase(); (void) r438.getBase(); (void) r439.getBase();
+    (void) r440.getBase(); (void) r441.getBase(); (void) r442.getBase(); (void) r443.getBase();
+    (void) r444.getBase(); (void) r445.getBase(); (void) r446.getBase(); (void) r447.getBase();
+    (void) r448.getBase(); (void) r449.getBase(); (void) r450.getBase(); (void) r451.getBase();
+    (void) r452.getBase(); (void) r453.getBase(); (void) r454.getBase(); (void) r455.getBase();
+    (void) r456.getBase(); (void) r457.getBase(); (void) r458.getBase(); (void) r459.getBase();
+    (void) r460.getBase(); (void) r461.getBase(); (void) r462.getBase(); (void) r463.getBase();
+    (void) r464.getBase(); (void) r465.getBase(); (void) r466.getBase(); (void) r467.getBase();
+    (void) r468.getBase(); (void) r469.getBase(); (void) r470.getBase(); (void) r471.getBase();
+    (void) r472.getBase(); (void) r473.getBase(); (void) r474.getBase(); (void) r475.getBase();
+    (void) r476.getBase(); (void) r477.getBase(); (void) r478.getBase(); (void) r479.getBase();
+    (void) r480.getBase(); (void) r481.getBase(); (void) r482.getBase(); (void) r483.getBase();
+    (void) r484.getBase(); (void) r485.getBase(); (void) r486.getBase(); (void) r487.getBase();
+    (void) r488.getBase(); (void) r489.getBase(); (void) r490.getBase(); (void) r491.getBase();
+    (void) r492.getBase(); (void) r493.getBase(); (void) r494.getBase(); (void) r495.getBase();
+    (void) r496.getBase(); (void) r497.getBase(); (void) r498.getBase(); (void) r499.getBase();
+    (void) r500.getBase(); (void) r501.getBase(); (void) r502.getBase(); (void) r503.getBase();
+    (void) r504.getBase(); (void) r505.getBase(); (void) r506.getBase(); (void) r507.getBase();
+    (void) r508.getBase(); (void) r509.getBase(); (void) r510.getBase(); (void) r511.getBase();
+#endif
 
     (void) null.getBase();
     (void) a0.getBase();
@@ -109,6 +175,9 @@ void _workaround_() {
 
     (void) ce0.getBase();
     (void) sp.getBase();
+#if XE3
+    (void) s0.getBase();
+#endif
     (void) sr0.getBase();
     (void) sr1.getBase();
     (void) cr0.getBase();
@@ -132,6 +201,9 @@ void _workaround_() {
     (void) NoDDChk.getAll();
     (void) AccWrEn.getAll();
     (void) NoSrcDepSet.getAll();
+#ifdef PRERELEASE_HW
+    (void) Fwd.getAll();
+#endif
     (void) Breakpoint.getAll();
     (void) sat.getAll();
     (void) NoMask.getAll();
@@ -184,6 +256,10 @@ void _workaround_() {
     (void) A64.getModel();
     (void) A64NC.getModel();
     (void) SLM.getModel();
+#if XE3P
+    (void) A64_A32U.getModel();
+    (void) A64_A32S.getModel();
+#endif
     (void) D8.desc;     (void) D8T.desc;
     (void) D16.desc;    (void) D16T.desc;
     (void) D32.desc;    (void) D32T.desc;
@@ -200,4 +276,7 @@ void _workaround_() {
     (void) V64.desc;    (void) V64T.desc;
     (void) transpose.desc;
     (void) vnni.desc;
+#if XE3P
+    (void) Overfetch.desc;
+#endif
 }

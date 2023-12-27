@@ -196,6 +196,12 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
         case HW::XeHPG:   return GfxCoreFamily::XeHPG;
         case HW::XeHPC:   return GfxCoreFamily::XeHPC;
         case HW::Xe2:     return GfxCoreFamily::Xe2;
+#if XE3
+        case HW::Xe3:     return GfxCoreFamily::Xe3;
+#endif
+#if XE3P
+        case HW::Xe3p:    return GfxCoreFamily::Xe3p;
+#endif
         default:          return GfxCoreFamily::Unknown;
     }
 }
@@ -211,8 +217,39 @@ inline ngen::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::MTL) return ngen::ProductFamily::MTL;
     if (family == ProductFamily::PVC) return ngen::ProductFamily::PVC;
     if (family == ProductFamily::ARL) return ngen::ProductFamily::ARL;
+#ifdef PRERELEASE_HW
+    if (family == ProductFamily::RLT) return ngen::ProductFamily::RLT;
+#endif
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return ngen::ProductFamily::GenericXe2;
+#ifdef PRERELEASE_HW
+    if (family == ProductFamily::ELG) return ngen::ProductFamily::GenericXe2;
+#endif
+#if XE3
+    if (family == ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
+#endif
+#if XE3P
+    if (family == ProductFamily::FCS) return ngen::ProductFamily::GenericXe3p;
+#endif
     return ngen::ProductFamily::Unknown;
+}
+
+inline bool hasGatewayEOTSend(const std::vector<uint8_t> &binary)
+{
+    using b16 = std::array<uint8_t, 16>;
+    b16 gtwyEOT = {0x31, 0,    0, 0x80, 0x04,    0,    0,    0, 0x0C, 0, 0x20, 0x30,    0,    0,    0,    0};
+    b16 mask    = {0xFF, 0, 0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    b16 temp;
+
+    for (size_t i = 0; i < binary.size() - 0x10; i++) {
+        if (binary[i] == 0x31) {
+            for (int j = 0; j < 0x10; j++)
+                temp[j] = binary[i + j] & mask[j];
+            if (temp == gtwyEOT)
+                return true;
+        }
+    }
+
+    return false;
 }
 
 inline void getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Product &outProduct)
@@ -225,14 +262,8 @@ inline void getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Produ
     outProduct.stepping = pheader->SteppingId;
 
     // XeHPG identifies with older runtimes as XeHP. Check whether EOT goes to TS (XeHP) or gateway (XeHPG).
-    using b14 = std::array<uint8_t, 14>;
-    b14 gtwyEOT{{3, 0x80, 4, 0, 0, 0, 0xC, 0x7F, 0x20, 0x30, 0, 0, 0, 0}};
-    if (outHW == HW::XeHP) for (size_t i = 0; i < binary.size() - 0x10; i++) {
-        if (binary[i] == 0x31 && *(b14 *)(binary.data() + i + 2) == gtwyEOT) {
-            outHW = HW::XeHPG;
-            break;
-        }
-    }
+    if (outHW == HW::XeHP && hasGatewayEOTSend(binary))
+        outHW = HW::XeHPG;
 }
 
 inline ngen::Product decodeHWIPVersion(uint32_t rawVersion)
@@ -264,12 +295,22 @@ inline ngen::Product decodeHWIPVersion(uint32_t rawVersion)
                 outProduct.family = ngen::ProductFamily::DG2;
             else if (version.release >= 60 && version.release <= 61)
                 outProduct.family = ngen::ProductFamily::PVC;
+#ifdef PRERELEASE_HW
+            else if (version.release == 65)
+                outProduct.family = ngen::ProductFamily::RLT;
+#endif
             else if (version.release >= 70 && version.release <= 71)
                 outProduct.family = ngen::ProductFamily::MTL;
             else if (version.release >= 73 && version.release <= 74)
-                 outProduct.family = ngen::ProductFamily::ARL;
+                outProduct.family = ngen::ProductFamily::ARL;
             break;
         case 20: outProduct.family = ngen::ProductFamily::GenericXe2; break;
+#if XE3
+        case 30: outProduct.family = ngen::ProductFamily::GenericXe3; break;
+#endif
+#if XE3P
+        case 35: outProduct.family = ngen::ProductFamily::GenericXe3p; break;
+#endif
         default: outProduct.family = ngen::ProductFamily::Unknown; break;
     }
 
@@ -278,6 +319,13 @@ inline ngen::Product decodeHWIPVersion(uint32_t rawVersion)
 
     return outProduct;
 }
+
+#if XE3P
+inline bool isBinaryEfficient64Bit(const std::vector<uint8_t> &binary, HW hw)
+{
+    return (hw >= HW::Xe3p) && !hasGatewayEOTSend(binary);
+}
+#endif
 
 } /* namespace npack */
 } /* namespace ngen */

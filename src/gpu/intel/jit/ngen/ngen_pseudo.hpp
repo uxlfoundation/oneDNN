@@ -488,7 +488,8 @@ void barrier(const Targs &...barrierArgs)
     barrierwait();
 }
 
-void registerfence(const RegData &dst)
+// Global memory fence.
+void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     _lastFenceDst = dst;
     if (isGen12) {
@@ -497,17 +498,14 @@ void registerfence(const RegData &dst)
     }
 }
 
-// Global memory fence.
 void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
-    registerfence(dst);
-
 #if XE3P
     if (useEfficient64Bit) {
         uint32_t desc = 0x1F;
         desc |= static_cast<uint32_t>(flushing) << 8;
         desc |= static_cast<uint32_t>(scope) << 11;
-        sendgx(1 | mod | NoMask, SharedFunction::ugm, null, GRFRange(header.getBase(), 1), desc);
+        sendgx(1 | mod | NoMask, SharedFunction::ugm, null, desc);
     } else
 #endif
     if (hardware >= HW::XeHPG) {
@@ -524,7 +522,7 @@ void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC 
     }
 }
 
-void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
+void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     memfence(mod, FenceScopeLSC::GPU, FlushTypeLSC::None, dst, header);
 }
@@ -542,11 +540,9 @@ void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0
 // SLM-only memory fence.
 void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
-    registerfence(dst);
-
 #if XE3P
     if (useEfficient64Bit)
-        sendgx(1 | mod | NoMask, SharedFunction::slm, null, GRFRange(header.getBase(), 1), 0x1F);
+        sendgx(1 | mod | NoMask, SharedFunction::slm, null, 0x1F);
     else
 #endif
     if (hardware >= HW::XeHPG)
@@ -558,15 +554,6 @@ void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(
 }
 
 void slmfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0)) { slmfence(InstructionModifier(), dst, header); }
-
-// Wait on the last global memory or SLM fence.
-void fencewait()
-{
-    if (isGen12)
-        fencedep(_lastFenceLabel);
-    else
-        mov<uint32_t>(8 | NoMask, null, _lastFenceDst);
-}
 
 // XeHP+ prologues.
 void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127), int paddedSize = 0)
@@ -666,9 +653,7 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inP
             if (useEfficient64Bit) {        /* to do: SIMD1 */
                 int offset = 0;
                 auto offsetRT = s0.uq(3);
-                auto addr = inPrologue ? r4 : temp;
-                if (!inPrologue)
-                    mov<uint64_t>(1, addr, r0[7]);
+                auto addr = r4;
                 mov(1, offsetRT, Immediate::uq(0));     /* relocation */
                 while (argGRFs > 0) {
                     int nload = std::min(utils::rounddown_pow2(argGRFs), 8);

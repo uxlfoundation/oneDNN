@@ -208,29 +208,29 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
 
 inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
 {
-    if (family >= ProductFamily::SKL && family < ProductFamily::CNL) return NGEN_NAMESPACE::ProductFamily::GenericGen9;
-    if (family >= ProductFamily::CNL && family < ProductFamily::ICL) return NGEN_NAMESPACE::ProductFamily::GenericGen10;
-    if (family >= ProductFamily::ICL && family < ProductFamily::TGLLP) return NGEN_NAMESPACE::ProductFamily::GenericGen11;
-    if (family >= ProductFamily::TGLLP && family <= ProductFamily::DG1) return NGEN_NAMESPACE::ProductFamily::GenericGen12LP;
-    if (family == ProductFamily::XE_HP_SDV) return NGEN_NAMESPACE::ProductFamily::GenericXeHP;
-    if (family == ProductFamily::DG2) return NGEN_NAMESPACE::ProductFamily::DG2;
-    if (family == ProductFamily::MTL) return NGEN_NAMESPACE::ProductFamily::MTL;
-    if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
-    if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
+    if (family >= ProductFamily::SKL && family < ProductFamily::CNL) return ngen::ProductFamily::GenericGen9;
+    if (family >= ProductFamily::CNL && family < ProductFamily::ICL) return ngen::ProductFamily::GenericGen10;
+    if (family >= ProductFamily::ICL && family < ProductFamily::TGLLP) return ngen::ProductFamily::GenericGen11;
+    if (family >= ProductFamily::TGLLP && family <= ProductFamily::DG1) return ngen::ProductFamily::GenericGen12LP;
+    if (family == ProductFamily::XE_HP_SDV) return ngen::ProductFamily::GenericXeHP;
+    if (family == ProductFamily::DG2) return ngen::ProductFamily::DG2;
+    if (family == ProductFamily::MTL) return ngen::ProductFamily::MTL;
+    if (family == ProductFamily::PVC) return ngen::ProductFamily::PVC;
+    if (family == ProductFamily::ARL) return ngen::ProductFamily::ARL;
 #ifdef PRERELEASE_HW
-    if (family == ProductFamily::RLT) return NGEN_NAMESPACE::ProductFamily::RLT;
+    if (family == ProductFamily::RLT) return ngen::ProductFamily::RLT;
 #endif
-    if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
+    if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return ngen::ProductFamily::GenericXe2;
 #ifdef PRERELEASE_HW
-    if (family == ProductFamily::ELG) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
+    if (family == ProductFamily::ELG) return ngen::ProductFamily::GenericXe2;
 #endif
 #if XE3
-    if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
+    if (family == ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
 #endif
 #if XE3P
-    if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
+    if (family == ProductFamily::FCS) return ngen::ProductFamily::GenericXe3p;
 #endif
-    return NGEN_NAMESPACE::ProductFamily::Unknown;
+    return ngen::ProductFamily::Unknown;
 }
 
 inline bool hasGatewayEOTSend(const std::vector<uint8_t> &binary)
@@ -294,26 +294,24 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
             else if (version.release > 50 && version.release <= 59)
                 outProduct.family = NGEN_NAMESPACE::ProductFamily::DG2;
             else if (version.release == 60)
-                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVC;
-            else if (version.release == 61)
-                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVCVG;
+                outProduct.family = ngen::ProductFamily::PVC;
 #ifdef PRERELEASE_HW
             else if (version.release == 65)
-                outProduct.family = NGEN_NAMESPACE::ProductFamily::RLT;
+                outProduct.family = ngen::ProductFamily::RLT;
 #endif
             else if (version.release >= 70 && version.release <= 71)
                 outProduct.family = NGEN_NAMESPACE::ProductFamily::MTL;
             else if (version.release >= 73 && version.release <= 74)
-                outProduct.family = NGEN_NAMESPACE::ProductFamily::ARL;
+                outProduct.family = ngen::ProductFamily::ARL;
             break;
-        case 20: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe2; break;
+        case 20: outProduct.family = ngen::ProductFamily::GenericXe2; break;
 #if XE3
-        case 30: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3; break;
+        case 30: outProduct.family = ngen::ProductFamily::GenericXe3; break;
 #endif
 #if XE3P
-        case 35: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3p; break;
+        case 35: outProduct.family = ngen::ProductFamily::GenericXe3p; break;
 #endif
-        default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
+        default: outProduct.family = ngen::ProductFamily::Unknown; break;
     }
 
     if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)

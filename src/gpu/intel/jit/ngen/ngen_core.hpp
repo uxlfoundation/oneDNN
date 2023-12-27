@@ -226,6 +226,16 @@ class r511_not_allowed_exception : public std::runtime_error {
 public:
     r511_not_allowed_exception() : std::runtime_error("r511 cannot be used here") {}
 };
+#if XE3P
+class limited_to_256_grf_exception : public std::runtime_error {
+public:
+    limited_to_256_grf_exception() : std::runtime_error("This instruction only supports r0-r255") {}
+};
+class r511_not_allowed_exception : public std::runtime_error {
+public:
+    r511_not_allowed_exception() : std::runtime_error("r511 cannot be used here") {}
+};
+#endif
 #endif
 #endif
 
@@ -271,7 +281,6 @@ enum class ProductFamily : int {
     ARL,
     GenericXeHPC,
     PVC,
-    PVCVG,
 #ifdef PRERELEASE_HW
     RLT,
 #endif
@@ -3726,7 +3735,7 @@ static inline void encodeAtomicDescriptor(HW hw, SendgMessageDescriptor &desc, S
 }
 #endif
 
-} /* namespace NGEN_NAMESPACE */
+} /* namespace ngen */
 
 
 #endif /* header guard */

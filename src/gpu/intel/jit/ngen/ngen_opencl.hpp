@@ -313,6 +313,6 @@ bool OpenCLCodeGenerator<hw>::detectEfficient64Bit(cl_context context, cl_device
 }
 #endif
 
-} /* namespace NGEN_NAMESPACE */
+} /* namespace ngen */
 
 #endif

@@ -578,7 +578,6 @@ struct Instruction12 {
     inline bool getImm32(uint32_t &imm) const;
     inline bool getSendDesc(MessageDescriptor &desc) const;
     inline bool getARFType(ARFType &arfType, int opNum, HW hw) const;
-    inline int getFencedepJIP() const;
 #if XE3P
     inline SendgMessageDescriptor getSendgDesc() const;
 #endif
@@ -648,9 +647,9 @@ static inline unsigned getTypecode12(DataType type)
 {
     static const uint8_t conversionTable[32] = {2,6,1,5,0,4,11,10,3,7,9,13,8,0,4,8,
 #ifdef PRERELEASE_HW
-                                                14,12,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
+                                                14,12,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
 #else
-                                                14,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
+                                                14,2,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
 #endif
     return conversionTable[static_cast<unsigned>(type) & 0x1F];
 }
@@ -1221,6 +1220,9 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     if (decodeDPASTypecodeBytes12(ternary.src2Type) == 8)
                         len = rcount;
 #endif
+#if XE3P
+                    regNum8 = ternaryXe3p.src2Reg8;
+#endif
                     break;
                 }
                 default: return false;
@@ -1581,13 +1583,6 @@ bool Instruction12::getSendDesc(MessageDescriptor &desc) const
         desc.all = send.desc0_10 | (send.desc11_19 << 11) | (send.desc20_24 << 20)
                                  | (send.desc25_29 << 25) | (send.desc30_31 << 30);
     return !send.descIsReg;
-}
-
-int Instruction12::getFencedepJIP() const
-{
-    uint32_t imm = 0;
-    (void) getImm32(imm);
-    return int32_t(imm) / sizeof(Instruction12);
 }
 
 #if XE3P

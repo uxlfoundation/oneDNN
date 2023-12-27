@@ -398,10 +398,7 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
             SendgMessageDescriptor desc;
             desc.all = static_cast<uint64_t>(src[4].imm);
             int len = desc.dstLen(hw, mod.getExecSize(), static_cast<SharedFunction>(ext & 0xF));
-            if (len == -1)
-                region = DependencyRegion();
-            else
-                region = DependencyRegion(hw, GRFRange(rd.getBase(), len));
+            region = DependencyRegion(hw, GRFRange(rd.getBase(), len));
         } else
             region = DependencyRegion(hw, mod.getExecSize(), rd);
 #endif
@@ -607,10 +604,10 @@ private:
     }
 #endif
     void opDpas(Opcode op, DataType defaultType, const InstructionModifier &mod, int sdepth, int rcount, RegData dst, RegData src0, RegData src1, RegData src2) {
-        dst.fixup(hardware, 1, 0, defaultType, -1, 3);
-        src0.fixup(hardware, 1, 0, defaultType, 0, 3);
-        src1.fixup(hardware, 1, 0, defaultType, 1, 3);
-        src2.fixup(hardware, 1, 0, defaultType, 2, 3);
+        dst.fixup(hardware, 1, defaultType, -1, 3);
+        src0.fixup(hardware, 1, defaultType, 0, 3);
+        src1.fixup(hardware, 1, defaultType, 1, 3);
+        src2.fixup(hardware, 1, defaultType, 2, 3);
         (void) streamStack.back()->append(op, (sdepth << 8) | rcount, mod | defaultModifier, &labelManager, dst, src0, src1, src2);
     }
     template <typename D, typename S0> void opCall(Opcode op, const InstructionModifier &mod, D dst, S0 src0) {
@@ -1493,6 +1490,9 @@ protected:
     }
     void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, ind0, ind1, desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, uint64_t desc) {
+        opSendg(Opcode::sendgx, mod, sf, dst, NullRegister(), NullRegister(), NoOperand(), NoOperand(), desc);
     }
     void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
         opSendg(Opcode::sendgx, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);

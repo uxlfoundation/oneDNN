@@ -72,7 +72,7 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
-#if XE3P
+#ifdef XE3P
                              , useEfficient64Bit(hw_ >= HW::Xe3p)
 #endif
                              , requestedInlineGRFs(defaultInlineGRFs(hw))
@@ -127,7 +127,6 @@ public:
     void requireWorkgroup(size_t x, size_t y = 1,
                           size_t z = 1)                  { wg[0] = x; wg[1] = y; wg[2] = z; }
 
-    void setArgumentBase(RegData base)                   { baseOverride = base; }
     void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
@@ -211,6 +210,7 @@ protected:
 
     static inline GlobalAccessType defaultGlobalAccess(HW hw);
     static inline int defaultInlineGRFs(HW hw);
+
 };
 
 using NEOInterfaceHandler = InterfaceHandler;   /* Deprecated -- do not use in new code. */

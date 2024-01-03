@@ -648,9 +648,9 @@ static inline unsigned getTypecode12(DataType type)
 {
     static const uint8_t conversionTable[32] = {2,6,1,5,0,4,11,10,3,7,9,13,8,0,4,8,
 #ifdef PRERELEASE_HW
-                                                14,12,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
+                                                14,12,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
 #else
-                                                14,2,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
+                                                14,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
 #endif
     return conversionTable[static_cast<unsigned>(type) & 0x1F];
 }
@@ -1220,9 +1220,6 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
 #ifdef PRERELEASE_HW
                     if (decodeDPASTypecodeBytes12(ternary.src2Type) == 8)
                         len = rcount;
-#endif
-#if XE3P
-                    regNum8 = ternaryXe3p.src2Reg8;
 #endif
                     break;
                 }

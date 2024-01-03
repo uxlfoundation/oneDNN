@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -371,7 +371,11 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
             case 1: len = sdepth; break;
             case 2:
                 if (op == Opcode::dpasw) rcount = (rcount + 1) >> 1;
+#ifdef PRERELEASE_HW
+                len = GRF::bytesToGRFs(hw, operand.reg.getByteOffset() + sdepth * rcount * 4 * operand.reg.getDwords());
+#else
                 len = GRF::bytesToGRFs(hw, operand.reg.getByteOffset() + sdepth * rcount * 4);
+#endif
                 break;
             default: return false;
         }

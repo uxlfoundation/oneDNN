@@ -316,6 +316,9 @@ enum class DataType : uint8_t {
     vf = 0x4F,
     bf8 = 0x0C,
     tf32 = 0x50,
+#ifdef PRERELEASE_HW
+    hf8 = 0x11,
+#endif
     u4 = 0x1C,
     s4 = 0x1D,
     u2 = 0x1E,
@@ -327,7 +330,11 @@ enum class DataType : uint8_t {
 static inline std::ostream &operator<<(std::ostream &str, DataType type)
 {
     static const char *names[32] = {"ud",   "d",   "uw", "w", "ub", "b", "df", "f", "uq", "q", "hf", "bf", "bf8", "uv", "v",  "vf",
+#if PRERELEASE_HW
+                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
+#else
                                     "tf32", "",    "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
+#endif
     str << names[static_cast<uint8_t>(type) & 0x1F];
     return str;
 }
@@ -367,6 +374,11 @@ template <> inline DataType getDataType<bfloat16>() { return DataType::bf; }
 #endif
 #ifdef NGEN_BFLOAT8_TYPE
 template <> inline DataType getDataType<bfloat8>() { return DataType::bf8; }
+#endif
+#ifdef PRERELEASE_HW
+#ifdef NGEN_HFLOAT8_TYPE
+template <> inline DataType getDataType<hfloat8>() { return DataType::hf8; }
+#endif
 #endif
 #ifdef NGEN_TFLOAT32_TYPE
 template <> inline DataType getDataType<tfloat32>() { return DataType::tf32; }
@@ -883,6 +895,9 @@ public:
     Subregister   bf(int offset = 0) const { return reinterpret(offset, DataType::bf); }
     Subregister tf32(int offset = 0) const { return reinterpret(offset, DataType::tf32); }
     Subregister  bf8(int offset = 0) const { return reinterpret(offset, DataType::bf8); }
+#ifdef PRERELEASE_HW
+    Subregister  hf8(int offset = 0) const { return reinterpret(offset, DataType::hf8); }
+#endif
 };
 
 // Single register.
@@ -925,6 +940,9 @@ public:
     constexpr14 Subregister   bf(int offset) const { return sub(offset, DataType::bf); }
     constexpr14 Subregister tf32(int offset) const { return sub(offset, DataType::tf32); }
     constexpr14 Subregister  bf8(int offset) const { return sub(offset, DataType::bf8); }
+#ifdef PRERELEASE_HW
+    constexpr14 Subregister  hf8(int offset) const { return sub(offset, DataType::hf8); }
+#endif
 
     constexpr14 Register   uq() const { return retype(DataType::uq); }
     constexpr14 Register    q() const { return retype(DataType::q);  }
@@ -944,6 +962,9 @@ public:
     constexpr14 Register   bf() const { return retype(DataType::bf); }
     constexpr14 Register tf32() const { return retype(DataType::tf32); }
     constexpr14 Register  bf8() const { return retype(DataType::bf8); }
+#ifdef PRERELEASE_HW
+    constexpr14 Register  hf8() const { return retype(DataType::hf8); }
+#endif
 
     constexpr14 Subregister operator[](int offset) const { return sub(offset, getType()); }
 
@@ -985,6 +1006,9 @@ public:
     constexpr14 Subregister   bf(int offset) const { return sub(offset, DataType::bf); }
     constexpr14 Subregister tf32(int offset) const { return sub(offset, DataType::tf32); }
     constexpr14 Subregister  bf8(int offset) const { return sub(offset, DataType::bf8); }
+#ifdef PRERELEASE_HW
+    constexpr14 Subregister  hf8(int offset) const { return sub(offset, DataType::hf8); }
+#endif
 
     constexpr14 GRF   uq() const { return retype(DataType::uq); }
     constexpr14 GRF    q() const { return retype(DataType::q);  }
@@ -1004,6 +1028,9 @@ public:
     constexpr14 GRF   bf() const { return retype(DataType::bf); }
     constexpr14 GRF tf32() const { return retype(DataType::tf32); }
     constexpr14 GRF  bf8() const { return retype(DataType::bf8); }
+#ifdef PRERELEASE_HW
+    constexpr14 GRF  hf8() const { return retype(DataType::hf8); }
+#endif
 
     Align16Operand swizzle(int s0, int s1, int s2, int s3)    const { return Align16Operand(*this, s0, s1, s2, s3); }
     Align16Operand enable(bool c0, bool c1, bool c2, bool c3) const { return Align16Operand(*this, (int(c3) << 3) | (int(c2) << 2) | (int(c1) << 1) | int(c0)); }

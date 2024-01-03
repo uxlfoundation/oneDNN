@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -480,7 +480,11 @@ static_assert(sizeof(InstructionXeHPC) == 16, "Internal error: InstructionXeHPC 
 static inline unsigned getTypecode12(DataType type)
 {
     static const uint8_t conversionTable[32] = {2,6,1,5,0,4,11,10,3,7,9,13,8,0,4,8,
-                                                14,2,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
+#ifdef PRERELEASE_HW
+                                                14,12,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
+#else
+                                                14,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
+#endif
     return conversionTable[static_cast<unsigned>(type) & 0x1F];
 }
 
@@ -869,12 +873,18 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 case -1: {
                     int typebytes = decodeDPASTypecodeBytes12(ternary.dstType);
                     len = (rcount * typebytes + 3) >> 2;
+#ifdef PRERELEASE_HW
+                    if (typebytes == 8) len = rcount;
+#endif
                     o.bits = ternary.dst;
                     break;
                 }
                 case 0: {
                     int typebytes = decodeDPASTypecodeBytes12(ternary.src0Type);
                     len = (rcount * typebytes + 3) >> 2;
+#ifdef PRERELEASE_HW
+                    if (typebytes == 8) len = rcount;
+#endif
                     o.bits = ternary.src0;
                     break;
                 }
@@ -890,6 +900,10 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                         len = ((sr << 1) + sdepth * rcount * 4 + 63) >> 6;
                     else
                         len = (sr + sdepth * rcount * 4 + 31) >> 5;
+#ifdef PRERELEASE_HW
+                    if (decodeDPASTypecodeBytes12(ternary.src2Type) == 8)
+                        len = rcount;
+#endif
                     break;
                 }
                 default: return false;

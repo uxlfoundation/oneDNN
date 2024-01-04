@@ -230,94 +230,17 @@ static status_t init_ocl_conf(rnn_utils::ocl_conf_t &ocl_conf,
     if (ocl_conf.cell_comp.is_enabled) {
         bool fuse_gemm_layer = rnn.cell_fusion.gemm_layer;
         bool fuse_gemm_iter = rnn.cell_fusion.gemm_iter;
-
-        // Due to poor performing tail handling, exact divisibility on subgroup
-        // size is preferred
-        for (int subgroup_size = ocl_conf.subgroup_size;
-                subgroup_size >= device_info.min_subgroup_size();
-                subgroup_size /= 2) {
-            if (rnn.dhc % subgroup_size == 0) {
-                ocl_conf.subgroup_size = subgroup_size;
-                break;
-            }
-        }
-
         int dhc_thr = dev_getenv("dhc_thr", 1);
-        int mb_thr = dev_getenv("mb_thr", 1);
-
-        std::array<dim_t, 9> dhc_hw_threads = {1, 2, 3, 4, 5, 6, 7, 8, 16};
-        std::array<dim_t, 3> mb_hw_threads = {1, 2, 4};
-        int dhc_tg_best = 1;
-        int mb_tg_best = 1;
-        double best_score = 0;
-        for (auto b_thread : mb_hw_threads) {
-            for (auto d_thread : dhc_hw_threads) {
-                dim_t dhc_tg = d_thread * ocl_conf.subgroup_size;
-                dim_t dhc_block = dhc_thr * dhc_tg;
-                dim_t mb_tg = b_thread;
-                dim_t mb_block = mb_thr * mb_tg;
-
-                double score = [&]() {
-                    // subslice efficiency
-                    dim_t used_b_threads
-                            = std::min(utils::div_up(rnn.mb, mb_thr), b_thread);
-                    dim_t used_d_threads = std::min(
-                            utils::div_up(
-                                    rnn.dhc, dhc_thr * ocl_conf.subgroup_size),
-                            d_thread);
-                    double ss_eff = 1.0 * (used_d_threads * used_b_threads)
-                            / device_info.max_eus_per_wg();
-                    {
-                        // Scale to prefer device efficiency over subslice
-                        // saturation
-                        std::array<double, 4> c {.7, .13, .10, .07};
-
-                        ss_eff = c[0] * nstl::clamp(ss_eff - 0, 0.0, 1.0)
-                                + c[1] * nstl::clamp(ss_eff - 1, 0.0, 1.0)
-                                + c[2] * nstl::clamp(ss_eff - 2, 0.0, 1.0)
-                                + c[3] * nstl::clamp(ss_eff - 3, 0.0, 1.0);
-                    }
-
-                    double work_eff
-                            = (1.0 * rnn.dhc
-                                      / utils::rnd_up(rnn.dhc, dhc_block))
-                            * (1.0 * rnn.mb / utils::rnd_up(rnn.mb, mb_block));
-
-                    dim_t ss_count = device_info.eu_count()
-                            / device_info.max_eus_per_wg();
-                    dim_t wg_to_fill_ss_eu
-                            = utils::div_up(device_info.max_eus_per_wg(),
-                                    (b_thread * d_thread));
-                    dim_t ss_work
-                            = utils::div_up(utils::div_up(rnn.dhc, dhc_block)
-                                            * utils::div_up(rnn.mb, mb_block),
-                                    wg_to_fill_ss_eu);
-
-                    double device_eff
-                            = 1.0 * ss_work / utils::rnd_up(ss_work, ss_count);
-
-                    return ss_eff * work_eff * device_eff;
-                }();
-
-                if (score > best_score) {
-                    dhc_tg_best = dhc_tg;
-                    mb_tg_best = mb_tg;
-                    best_score = score;
-                }
-            }
-        }
-
-        int dhc_tg = dev_getenv("dhc_tg", dhc_tg_best);
-        int mb_tg = dev_getenv("mb_tg", mb_tg_best);
-
-        int mb_tail = dev_getenv("mb_tail",
-                rnn.mb % (mb_tg * mb_thr) != 0
-                        || rnn.mb % ocl_conf.subgroup_size != 0);
+        int dhc_tg = dev_getenv("dhc_tg", ocl_conf.subgroup_size);
         int dhc_tail
                 = dev_getenv("dhc_tail", rnn.dhc % (dhc_tg * dhc_thr) != 0);
+        int mb_thr = dev_getenv("mb_thr", 1);
+        int mb_tg = dev_getenv("mb_tg", 1);
+        int mb_tail = dev_getenv("mb_tail", rnn.mb % (mb_tg * mb_thr) != 0);
         int k_block = ocl_conf.subgroup_size;
 
-        gpu_assert(dhc_tg % ocl_conf.subgroup_size == 0);
+        gpu_assert(dhc_tg % (dhc_thr * ocl_conf.subgroup_size) == 0);
+        gpu_assert(mb_tg % mb_thr == 0);
 
         ocl_conf.cell_comp.compute_gemm_layer = fuse_gemm_layer;
         ocl_conf.cell_comp.gemm_layer_k_tail
@@ -428,7 +351,6 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
 
     def_data_type(kernel_ctx, src_dt, "WS_STATE");
     def_data_type(kernel_ctx, src_dt, "SRC");
-    def_data_type(kernel_ctx, src_c_dt, "SRC_C");
     def_data_type(kernel_ctx, wei_dt, "WEI_LAYER");
     def_data_type(kernel_ctx, wei_dt, "WEI_ITER");
     def_data_type(kernel_ctx, acc_dt, "ACC");
@@ -444,6 +366,24 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.define_int("COPY_BIAS", copy_bias);
     kernel_ctx.define_int("WEI_QPARAM_MASK", wei_qparam_mask);
     kernel_ctx.define_int("IS_TESTMODE", is_testmode);
+
+    if (cell_comp.is_enabled) {
+        kernel_ctx.define_int("CELL_COMP_ENABLED", cell_comp.is_enabled);
+        kernel_ctx.define_int(
+                "CELL_COMPUTE_GEMM_LAYER", cell_comp.compute_gemm_layer);
+        kernel_ctx.define_int(
+                "CELL_GEMM_LAYER_K_TAIL", cell_comp.gemm_layer_k_tail);
+        kernel_ctx.define_int(
+                "CELL_COMPUTE_GEMM_ITER", cell_comp.compute_gemm_iter);
+        kernel_ctx.define_int(
+                "CELL_GEMM_ITER_K_TAIL", cell_comp.gemm_iter_k_tail);
+        kernel_ctx.define_int("CELL_DHC_TAIL", cell_comp.dhc_tail);
+        kernel_ctx.define_int("CELL_MB_TAIL", cell_comp.mb_tail);
+        kernel_ctx.define_int(
+                "CELL_ENABLE_ITER_BLOCK", cell_comp.enable_iter_block);
+        kernel_ctx.define_int("CELL_DHC_THR", cell_comp.dhc_thr);
+        kernel_ctx.define_int("CELL_BATCH_THR", cell_comp.mb_thr);
+    }
 
     return status::success;
 }
@@ -663,7 +603,6 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
 
     init_rnn_conf(rnn_conf, *this->desc(), this->src_md(0), this->src_md(1),
             this->weights_md(0), this->weights_md(1), this->dst_md(0),
-            this->dst_md(1), this->diff_dst_md(0), this->desc()->bias_desc,
             acc_data_t, device_info);
 
     if (rnn_conf.is_int8) {

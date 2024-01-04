@@ -154,6 +154,7 @@ constexpr size_t copy_res_layer = 3;
 constexpr size_t copy_res_iter = 4;
 constexpr size_t elemwise_fwd = 5;
 constexpr size_t elemwise_bwd = 6;
+constexpr size_t cell_fwd = 7;
 } // namespace kernel_id
 
 struct ocl_conf_t {
@@ -166,10 +167,11 @@ struct ocl_conf_t {
                 bundle, get_kernel_names(), kernel_ctx);
     }
     const std::vector<const char *> &get_kernel_names() const {
-        static const std::vector<const char *> names = {"ref_rnn_bias_prepare",
-                "ref_rnn_copy_init_layer", "ref_rnn_copy_init_iter",
-                "ref_rnn_copy_res_layer", "ref_rnn_copy_res_iter",
-                "ref_rnn_elemwise_fwd", "ref_rnn_elemwise_bwd"};
+        static const std::vector<const char *> names
+                = {"ref_rnn_bias_prepare", "ref_rnn_copy_init_layer",
+                        "ref_rnn_copy_init_iter", "ref_rnn_copy_res_layer",
+                        "ref_rnn_copy_res_iter", "ref_rnn_elemwise_fwd",
+                        "ref_rnn_elemwise_bwd", "ref_rnn_cell_fwd"};
         return names;
     }
 
@@ -379,7 +381,9 @@ dim_t get_workspace_size(const conf_t &rnn);
 status_t set_weights_desc(memory_desc_t &weights_md, const conf_t &rnn);
 status_t set_good_strides(
         dim_t ld_, memory_desc_t &weights_md, format_tag_t tag);
-memory_storage_t &get_storage(const std::unique_ptr<memory_storage_t> &storage);
+const memory_storage_t &get_storage(const memory_storage_t *storage);
+const memory_storage_t &get_storage(
+        const std::unique_ptr<memory_storage_t> &storage);
 
 struct sub_buffer_t {
     static constexpr dim_t unset = 0;
@@ -515,62 +519,6 @@ struct user_data_t : public data_helper_t {
         // Use negative iterations stride for backwards iteration
         ret[0] *= (0 == normalized_iter(dir, 0)) ? 1 : -1;
         return ret;
-    }
-
-    const mst &wei_layer() const { return wei_layer_; }
-    sub_buffer_t wei_layer(
-            dim_t lay, dim_t dir, bool is_multi_cell = false) const {
-
-        // wei_layer dimension order: layer, dir, src c, gate, dst c
-        dim_t t = type_size(conf_.wei_layer_type);
-        dim_t lay_stride = offsets_.weights_layer[0];
-        dim_t dir_stride = offsets_.weights_layer[1];
-        dim_t offset = (lay * lay_stride + dir * dir_stride) * t;
-        dim_t cell_size = dir_stride * t;
-
-        if (is_multi_cell) return {wei_layer(), offset};
-
-        return {wei_layer(), offset, cell_size};
-    }
-
-    const mst &wei_iter() const { return wei_iter_; }
-    sub_buffer_t wei_iter(dim_t lay, dim_t dir) const {
-        // wei_iter dimension order: layer, dir, src c, gate, dst c
-        dim_t t = type_size(conf_.wei_iter_type);
-        dim_t lay_stride = offsets_.weights_iter[0];
-        dim_t dir_stride = offsets_.weights_iter[1];
-        dim_t offset = (lay * lay_stride + dir * dir_stride) * t;
-        dim_t cell_size = dir_stride * t;
-        return {wei_iter(), offset, cell_size};
-    }
-
-    const mst &diff_wei_layer() const { return diff_wei_layer_; }
-    sub_buffer_t diff_wei_layer(
-            dim_t lay, dim_t dir, bool is_multi_cell = false) const {
-
-        // diff_wei_layer dimension order: layer, dir, src c, gate, dst c
-        dim_t t = sizeof(float);
-        dim_t lay_stride = offsets_.diff_weights_layer[0];
-        dim_t dir_stride = offsets_.diff_weights_layer[1];
-        dim_t offset = (lay * lay_stride + dir * dir_stride) * t;
-        dim_t cell_size = dir_stride * t;
-
-        if (is_multi_cell) return {diff_wei_layer(), offset};
-
-        return {diff_wei_layer(), offset, cell_size};
-    }
-
-    const mst &diff_wei_iter() const { return diff_wei_iter_; }
-    sub_buffer_t diff_wei_iter(
-            dim_t lay, dim_t dir, bool is_multi_cell = false) const {
-        // diff_wei_iter dimension order: layer, dir, src c, gate, dst c
-        dim_t t = sizeof(float);
-        dim_t lay_stride = offsets_.diff_weights_iter[0];
-        dim_t dir_stride = offsets_.diff_weights_iter[1];
-        dim_t offset = (lay * lay_stride + dir * dir_stride) * t;
-        dim_t cell_size = dir_stride * t;
-        if (is_multi_cell) return {diff_wei_iter(), offset};
-        return {diff_wei_iter(), offset, cell_size};
     }
 
     const mst &bias() const { return bias_; }

@@ -1584,9 +1584,6 @@ private:
         auto t = tmp.format(0, w_type, obj.elems());
         reg_buf_data_t t_strided;
         bool align_with_dst = false;
-#if XE3P
-        if (hw == ngen::HW::Xe3p) align_with_dst = true;
-#endif
         if (align_with_dst) {
             int w_stride = dst_stride * (ngen::getBytes(dst.type()) / w_size);
             int tmp_strided_regs
@@ -1595,7 +1592,7 @@ private:
             t_strided = tmp_strided.format(0, w_type, obj.elems(), w_stride);
             host_->emov(obj.elems(), t_strided, t);
         } else {
-            t_strided = std::move(t);
+            t_strided = t;
         }
         if (factor != 1) {
             host_->emul(obj.elems(), d, t_strided, ngen::Immediate(factor));

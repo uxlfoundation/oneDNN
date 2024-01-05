@@ -323,6 +323,10 @@ public:
         requireBarrier();
         if (require_dpas_) requireDPAS();
         if (has_send_atomics(kernel_body)) requireGlobalAtomics();
+#if XE3P
+        if (hw == ngen::HW::Xe3p && !exec_cfg_.hw().is_efficient_64bit())
+            setEfficient64Bit(false);
+#endif
 
         for (int i = 0; i < kernel_info_.nargs(); i++) {
             auto &name = kernel_info_.arg_name(i);
@@ -853,6 +857,9 @@ public:
 
         // qot = (x * m) >> p
         bool use_mach = true;
+#if XE3P
+        if (hw == ngen::HW::Xe3p) use_mach = false;
+#endif
         if (use_mach) {
             auto acc = acc0.retype(div_type);
             mul(1, acc[0], _x, m & 0xFFFF);

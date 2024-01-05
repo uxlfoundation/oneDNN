@@ -139,7 +139,6 @@ bool is_commutative_op(op_kind_t op_kind) {
         case op_kind_t::_eq:
         case op_kind_t::_ne:
         case op_kind_t::_and:
-        case op_kind_t::_or:
         case op_kind_t::_add3: return true;
         default: return false;
     }

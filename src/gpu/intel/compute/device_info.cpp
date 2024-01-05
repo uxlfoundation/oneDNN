@@ -270,26 +270,6 @@ int device_info_t::max_slm_size_per_tg(
     return std::min(max_slm_size_per_tg(gpu_arch), slm_per_tg);
 }
 
-size_t device_info_t::icache_size() const {
-    switch (gpu_arch_) {
-        case gpu::intel::compute::gpu_arch_t::gen9:
-        case gpu::intel::compute::gpu_arch_t::gen11:
-        case gpu::intel::compute::gpu_arch_t::xe_lp:
-        case gpu::intel::compute::gpu_arch_t::xe_hp: return 48 * 1024;
-        case gpu::intel::compute::gpu_arch_t::xe_hpg: return 96 * 1024;
-        case gpu::intel::compute::gpu_arch_t::xe_hpc: return 80 * 1024;
-        case gpu::intel::compute::gpu_arch_t::xe2: return 96 * 1024;
-#if XE3
-        case gpu::intel::compute::gpu_arch_t::xe3: return 96 * 1024;
-#endif
-#if XE3P
-        case gpu::intel::compute::gpu_arch_t::xe3p: return 80 * 1024;
-#endif
-        case gpu::intel::compute::gpu_arch_t::unknown: assert(!"not expected");
-    }
-    return 0;
-}
-
 status_t device_info_t::init_attributes_common(engine_t *engine) {
     bool ocl_backend = true;
 

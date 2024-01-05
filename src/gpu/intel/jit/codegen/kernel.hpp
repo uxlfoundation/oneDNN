@@ -947,9 +947,6 @@ public:
 
         // qot = (x * m) >> p
         bool use_mach = true;
-#if XE3P
-        if (hw == ngen::HW::Xe3p) use_mach = false;
-#endif
         if (use_mach) {
             auto acc = acc0.retype(div_type);
             mul(1, acc[0], _x, m & 0xFFFF);

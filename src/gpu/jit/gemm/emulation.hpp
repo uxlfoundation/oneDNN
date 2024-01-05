@@ -51,6 +51,9 @@ struct EmulationStrategy {
             else
                 emulate64_mul = emulate64_logic = true;
         }
+#if XE3P
+        if (hw_ >= HW::Xe3p) emulateDWxDW = emulate64_mul = false;
+#endif
         emulate64_mul |= emulate64;
     }
 };

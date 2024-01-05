@@ -45,7 +45,7 @@ class binary_format_kernel_t : public jit_generator<hw> {
     NGEN_FORWARD_OPENCL(hw);
 
 public:
-    binary_format_kernel_t() {
+    binary_format_kernel_t(const compute::compute_engine_t *engine) {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
         auto high_half = [](uint64_t q) -> uint32_t { return q >> 32; };
@@ -64,7 +64,10 @@ public:
         requireLocalID(3); // r1-r3
         requireLocalSize(); // r7.0-2:ud
 #if XE3P
-        if (hw == ngen::HW::Xe3p) setEfficient64Bit(false);
+        if (hw == ngen::HW::Xe3p) {
+            if (engine->device_info()->is_efficient_64bit())
+                setEfficient64Bit(false);
+        }
 #endif
         finalizeInterface();
 
@@ -157,7 +160,7 @@ public:
         *skip_check = false;
 
         if (hw != HW::Unknown) {
-            binary_format_kernel_t<hw> binary_format_kernel;
+            binary_format_kernel_t<hw> binary_format_kernel(engine);
 
             auto status
                     = engine->create_kernel(&kernel, &binary_format_kernel, {});

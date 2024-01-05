@@ -946,9 +946,6 @@ public:
 
         // qot = (x * m) >> p
         bool use_mach = true;
-#if XE3P
-        if (hw == ngen::HW::Xe3p) use_mach = false;
-#endif
         if (use_mach) {
             auto acc = acc0.retype(div_type);
             mul(1, acc[0], _x, m & 0xFFFF);
@@ -959,6 +956,7 @@ public:
             emul(1, q_tmp[0], _x, m);
             eshr(1, q_tmp.uq(0), q_tmp.uq(0), p);
         }
+        if (!qot.isInvalid()) mov(mod, qot, _qot);
 
         if (!rem.isInvalid()) {
             // rem = x - qot * y

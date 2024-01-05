@@ -1543,9 +1543,6 @@ private:
         auto t = tmp.format(0, w_type, obj.elems());
         reg_buf_data_t t_strided;
         bool align_with_dst = false;
-#if XE3P
-        if (hw == ngen::HW::Xe3p) align_with_dst = true;
-#endif
         if (align_with_dst) {
             int w_stride = dst_stride * (ngen::getBytes(dst.type()) / w_size);
             int tmp_strided_regs

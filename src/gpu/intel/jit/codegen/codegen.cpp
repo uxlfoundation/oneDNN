@@ -1261,12 +1261,10 @@ private:
         auto src0 = _src0;
         auto src1 = _src1;
         align_src_dst_offset(host_, scope_, mod, dst, src0, src1);
-        if (is_commutative_op(obj.op_kind)
-                && !is_src1_ok(hw, dst, src0, src1)) {
+        if (is_commutative_op(obj.op_kind) && !is_src1_ok(hw, dst, src0, src1)) {
             std::swap(src0, src1);
         }
         ir_assert(is_src1_ok(hw, dst, src0, src1));
-
         switch (obj.op_kind) {
             case op_kind_t::_add: host_->eadd(mod, dst, src0, src1); break;
             case op_kind_t::_sub: host_->eadd(mod, dst, src0, -src1); break;
@@ -1543,6 +1541,9 @@ private:
         auto t = tmp.format(0, w_type, obj.elems());
         reg_buf_data_t t_strided;
         bool align_with_dst = false;
+#if XE3P
+        if (hw == ngen::HW::Xe3p) align_with_dst = true;
+#endif
         if (align_with_dst) {
             int w_stride = dst_stride * (ngen::getBytes(dst.type()) / w_size);
             int tmp_strided_regs
@@ -1596,9 +1597,10 @@ REG_XE2_ISA(template void convert_ir_to_ngen(const stmt_t &body,
 REG_XEHPC_ISA(template void convert_ir_to_ngen(const stmt_t &body,
         ir_kernel_t<ngen::HW::XeHPC> *host,
         const expr_binding_t &expr_binding));
+#if XE3P
 REG_XE3P_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeHPC> *host,
-        const expr_binding_t &expr_binding));
+        ir_kernel_t<ngen::HW::Xe3p> *host, const expr_binding_t &expr_binding));
+#endif
 
 } // namespace jit
 } // namespace intel

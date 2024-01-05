@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -51,6 +51,9 @@ struct EmulationStrategy {
             else
                 emulate64_mul = emulate64_logic = true;
         }
+#if XE3P
+        if (hw_ >= HW::Xe3p) emulateDWxDW = emulate64_mul = false;
+#endif
         emulate64_mul |= emulate64;
     }
 };

@@ -26,9 +26,15 @@ namespace impl {
 namespace gpu {
 namespace ocl {
 
+#if XE3P
+void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
+        compute::gpu_arch_t &gpu_arch, int &stepping_id, bool &mayiuse_systolic,
+        bool &mayiuse_ngen_kernels, bool &is_efficient_64bit) {
+#else
 void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
         compute::gpu_arch_t &gpu_arch, int &stepping_id, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels) {
+#endif
     using namespace ngen;
     HW hw = HW::Unknown;
     Product product = {ProductFamily::Unknown, 0};
@@ -46,6 +52,10 @@ void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
     auto status
             = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
     if (status != status::success) mayiuse_ngen_kernels = false;
+#if XE3P
+    is_efficient_64bit = jit::jit_generator<HW::Unknown>::detectEfficient64Bit(
+            context, device, hw);
+#endif
 }
 
 } // namespace ocl

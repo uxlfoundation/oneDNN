@@ -91,6 +91,9 @@ public:
                 device_info->max_wg_size(/*large_grf_mode=*/false));
         large_grf_support_ = compute_engine->mayiuse_large_grf_mode();
         systolic_support_ = device_info->mayiuse_systolic();
+#if XE3P
+        is_efficient_64bit_ = device_info->is_efficient_64bit();
+#endif
 
 #ifdef DNNL_DEV_MODE
         gpu_arch_t old_arch = gpu_arch;
@@ -110,6 +113,9 @@ public:
     int large_grf_support() const { return large_grf_support_; }
     int grf_size() const { return ngen::GRF::bytes(hw_); }
     int systolic_support() const { return systolic_support_; }
+#if XE3P
+    int is_efficient_64bit() const { return is_efficient_64bit_; }
+#endif
 
     int max_tg_size(int regs, int simd) const {
         int wg_size = max_wg_size(regs);
@@ -162,14 +168,22 @@ public:
         if (max_wg_size_ != other.max_wg_size_) return false;
         if (large_grf_support_ != other.large_grf_support_) return false;
         if (systolic_support_ != other.systolic_support_) return false;
+#if XE3P
+        if (is_efficient_64bit_ != other.is_efficient_64bit_) return false;
+#endif
         return true;
     }
 
     bool operator!=(const hw_t &other) const { return !operator==(other); }
 
     size_t get_hash() const {
+#if XE3P
+        return ir_utils::get_hash(hw_, stepping_id_, eu_count_, max_wg_size_,
+                large_grf_support_, systolic_support_, is_efficient_64bit_);
+#else
         return ir_utils::get_hash(hw_, stepping_id_, eu_count_, max_wg_size_,
                 large_grf_support_, systolic_support_);
+#endif
     }
 
     void serialize(std::ostream &out) const {
@@ -179,6 +193,9 @@ public:
         ir_utils::serialize(max_wg_size_, out);
         ir_utils::serialize(large_grf_support_, out);
         ir_utils::serialize(systolic_support_, out);
+#if XE3P
+        ir_utils::serialize(is_efficient_64bit_, out);
+#endif
     }
 
     void deserialize(std::istream &in) {
@@ -188,6 +205,9 @@ public:
         ir_utils::deserialize(max_wg_size_, in);
         ir_utils::deserialize(large_grf_support_, in);
         ir_utils::deserialize(systolic_support_, in);
+#if XE3P
+        ir_utils::deserialize(is_efficient_64bit_, in);
+#endif
     }
 
 private:
@@ -202,6 +222,9 @@ private:
     int max_wg_size_ = 0;
     bool large_grf_support_ = false;
     bool systolic_support_ = false;
+#if XE3P
+    bool is_efficient_64bit_ = false;
+#endif
 };
 
 inline hw_t str_to_hw(const std::string &s) {

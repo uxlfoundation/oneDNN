@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,9 +27,15 @@ namespace impl {
 namespace gpu {
 namespace ocl {
 
+#if XE3P
+void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
+        compute::gpu_arch_t &gpu_arch, int &stepping_id, bool &mayiuse_systolic,
+        bool &mayiuse_ngen_kernels, bool &is_efficient_64bit);
+#else
 void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
         compute::gpu_arch_t &gpu_arch, int &stepping_id, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels);
+#endif
 
 } // namespace ocl
 } // namespace gpu

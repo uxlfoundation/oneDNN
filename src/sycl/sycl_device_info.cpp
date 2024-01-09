@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,9 +50,15 @@ status_t sycl_device_info_t::init_arch(engine_t *engine) {
                 clCreateContext(nullptr, 1, &ocl_dev, nullptr, nullptr, &err));
         OCL_CHECK(err);
 
+#if XE3P
+        gpu::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper, ocl_ctx_wrapper,
+                gpu_arch_, stepping_id_, mayiuse_systolic_,
+                mayiuse_ngen_kernels_, is_efficient_64bit_);
+#else
         gpu::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper, ocl_ctx_wrapper,
                 gpu_arch_, stepping_id_, mayiuse_systolic_,
                 mayiuse_ngen_kernels_);
+#endif
     } else if (be == backend_t::level0) {
         // TODO: add support for L0 binary ngen check
         // XXX: query from ocl_engine for now

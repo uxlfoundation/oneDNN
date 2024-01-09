@@ -267,6 +267,10 @@ public:
 
     bool has_native(data_type_t type) const;
 
+#if XE3P
+    bool is_efficient_64bit() const { return is_efficient_64bit_; }
+#endif
+
     const std::vector<uint8_t> &get_cache_blob() const {
         return serialized_device_info_.get_data();
     }
@@ -294,6 +298,9 @@ protected:
     int stepping_id_ = 0;
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;
+#if XE3P
+    bool is_efficient_64bit_ = false;
+#endif
 
     std::string name_;
     runtime_version_t runtime_version_;

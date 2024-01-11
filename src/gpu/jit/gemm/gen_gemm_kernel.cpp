@@ -80,6 +80,16 @@ status_t gen_gemm_kernel_desc_t::finalize() {
         if (strategy_.optAlignAB == 8) strategy_.optAlignAB = 64;
     }
 
+#if XE3P
+    if (hw_ == ngen::HW::Xe3p) {
+        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
+        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
+
+        // Disable block 2D C remainders for small C to avoid simulator errors.
+        strategy_.block2DCRemainder &= (m_ * problem_.Tc >= 64);
+    }
+#endif
+
     // Disable global k parallelization if it wouldn't be used.
     if (strategy_.kParallel && k_ >= 0) {
         auto k_min = aux_params_.k0 * aux_params_.wgK;
@@ -150,6 +160,9 @@ void gen_gemm_kernel_desc_t::update_driver_info() {
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
+#if XE3P
+        REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+#endif
         default:
             assert(!"Unsupported architecture");
             driver_info_ = entry_->driverInfo;
@@ -231,6 +244,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
+    using arch_t = compute::gpu_arch_t;
 
     arch_ = arch;
     hw_ = convert_dnnl_arch_to_hw(arch);
@@ -250,11 +264,20 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool can_2d_c = (ldc * problem_.Tc <= 16777216);
 
     // Xe2 requires stronger alignment for block 2D.
-    if (arch == compute::gpu_arch_t::xe2) {
+    if (arch == arch_t::xe2) {
         can_2d_a &= (align_a % 16 == 0);
         can_2d_b &= (align_b % 16 == 0);
         can_2d_c &= (align_c % 16 == 0);
     }
+
+#if XE3P
+    // Disable block 2D for small matrices (width < 1 cache line) to avoid simulator errors.
+    if (arch == arch_t::xe3p) {
+        can_2d_a &= ((trans_a ? k : m) * types::data_type_size(a_type)) >= 64;
+        can_2d_b &= ((trans_b ? n : k) * types::data_type_size(b_type)) >= 64;
+        can_2d_c &= (m * types::data_type_size(c_type)) >= 64;
+    }
+#endif
 
     // Set up problem structure.
     problem_.Ta = problem_.Ta_ext = convert_dnnl_to_kernel_type(a_type);
@@ -304,6 +327,12 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     int npatterns = 1;
 
     match_params[0] = MatchParams(hw_, problem_);
+
+#if XE3P
+    /* Reuse PVC strategies for legacy mode on Xe3p */
+    if (arch == arch_t::xe3p && !efficient_64b_)
+        match_params[0].selector.hw = kcatalog::HWTagXeHPC;
+#endif
 
     match_params[0].sizes.m = m;
     match_params[0].sizes.n = n;
@@ -628,6 +657,10 @@ void gen_gemm_kernel_t::init_interface() {
         interface_.newArgument("local_mem", ExternalArgumentType::LocalPtr);
 
     interface_.externalName(kernel_name());
+
+#if XE3P
+    interface_.setEfficient64Bit(desc_.efficient_64b_);
+#endif
 }
 
 gpu::compute::binary_t gen_gemm_kernel_t::get_binary(
@@ -652,6 +685,9 @@ gpu::compute::binary_t gen_gemm_kernel_t::get_binary(
             REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
             REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
             REG_XE2_ISA(ARCH_DISPATCH(Xe2))
+#if XE3P
+            REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+#endif
             default: assert(!"Unsupported architecture"); break;
         }
     } catch (...) {}

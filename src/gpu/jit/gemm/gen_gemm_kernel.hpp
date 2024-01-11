@@ -73,6 +73,12 @@ struct gen_gemm_kernel_desc_t {
         return *entry_;
     };
 
+#if XE3P
+    void set_efficient_64b(bool efficient_64b) {
+        efficient_64b_ = efficient_64b;
+    }
+#endif
+
 protected:
     static Type convert_dnnl_to_kernel_type(data_type_t type) {
         switch (type) {
@@ -96,6 +102,9 @@ protected:
             case compute::gpu_arch_t::xe_hpg: return ngen::HW::XeHPG;
             case compute::gpu_arch_t::xe_hpc: return ngen::HW::XeHPC;
             case compute::gpu_arch_t::xe2: return ngen::HW::Xe2;
+#if XE3P
+            case compute::gpu_arch_t::xe3p: return ngen::HW::Xe3p;
+#endif
             default: return ngen::HW::Unknown;
         }
     }
@@ -108,6 +117,10 @@ protected:
     const kcatalog::Entry *entry_ = nullptr;
     EvaluateAuxOutput aux_params_;
     CommonDriverInfo driver_info_;
+
+#if XE3P
+    bool efficient_64b_ = false;
+#endif
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;

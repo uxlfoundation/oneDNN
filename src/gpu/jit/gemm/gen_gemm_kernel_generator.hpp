@@ -326,8 +326,8 @@ struct GRFMultirange {
             append(rr);
     }
 
-    uint8_t getLen() const {
-        uint8_t len = 0;
+    int getLen() const {
+        int len = 0;
         for (auto &r : ranges)
             len += r.getLen();
         return len;
@@ -717,7 +717,7 @@ struct CommonState {
     std::array<VirtualFlag, 8> activeVFlags;
     VirtualFlagAllocator raVFlag;
     TokenAllocator tokenAllocator;
-    std::vector<std::pair<uint8_t, int8_t>> tokenMap;
+    std::vector<std::pair<uint16_t, int8_t>> tokenMap;
     ngen::Subregister readFailures;
     ngen::Subregister fusedID;
     ngen::Subregister lsDescConstant[4];
@@ -1066,6 +1066,8 @@ struct GEMMStrategyPOD : public CommonStrategy {
             = false; //   Fuse post-operations into kernel? (kParallel/kParallelVariable, requires linear ordering)
     bool altFusedBeta
             = false; //   Enable alternate beta fusion implementation? (requires sequential dispatch)
+    bool zeroTempC = false; //   Use pre-zeroed temporary C memory.
+    uint8_t pad7[3] = {};
     int kPadding
             = 32; //   Pad k dimension when load balancing (kParallel/kParallelVariable)
     bool doubleWA
@@ -2593,6 +2595,8 @@ protected:
     void broadcastToWG(ngen::FlagRegister leaderFlag, ngen::GRF value,
             const CommonStrategy &strategy, CommonState &state,
             int slmOffset = 0);
+    void gemmStoreZeroC(GEMMProblem problem, GEMMStrategy strategy,
+            GEMMState state, bool initialZeroing = true);
     void gemmFusedBetaPOInit(const ngen::Subregister &groupID,
             const GEMMProblem &problem, const GEMMStrategy &strategy,
             GEMMState &state);

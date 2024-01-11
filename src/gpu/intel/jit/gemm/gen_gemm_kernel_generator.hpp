@@ -758,7 +758,7 @@ struct CommonState {
     std::array<VirtualFlag, 8> activeVFlags;
     VirtualFlagAllocator raVFlag;
     TokenAllocator tokenAllocator;
-    std::vector<std::pair<uint8_t, int8_t>> tokenMap;
+    std::vector<std::pair<uint16_t, int8_t>> tokenMap;
     ngen::Subregister readFailures;
     ngen::Subregister fusedID;
     ngen::Subregister lsDescConstant[4];

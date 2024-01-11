@@ -156,21 +156,15 @@ static inline bool hasNativeAtomicAdd(HW hw, Type T,
     bool floatAtomics = (astrategy.base.getModel() == ModelA64);
     if (astrategy.newDP)
         floatAtomics |= (astrategy.base.getModel() != ModelSLM);
-#if XE3P
     if (hw >= HW::Xe3p) floatAtomics = true;
-#endif
 
     if (T.isInt4()) return false;
     if (T.isInteger() && T.size() >= (astrategy.newDP ? 2 : 4))
         return true;
     else if (T == Type::f32)
         return floatAtomics && (hw >= HW::XeHP);
-#if XE3P
     else if (T == Type::f16 || T == Type::bf16)
         return (hw >= HW::Xe3p);
-#endif
-    else if (T == Type::f64)
-        return floatAtomics && (hw >= HW::XeHPC);
     else
         return false;
 }
@@ -184,12 +178,8 @@ static inline size_t slmCapacity(HW hw) {
         case HW::XeHPG:
         case HW::XeHPC:
         case HW::Xe2: return 131072;
-#if XE3
         case HW::Xe3: return 131072;
-#endif
-#if XE3P
         case HW::Xe3p: return 393216;
-#endif
         default: return 0;
     }
 }
@@ -214,10 +204,8 @@ static inline int eusPerSubslice(HW hw) {
         case HW::Gen11:
         case HW::XeHPC:
         case HW::Xe2:
-#if XE3P
         case HW::Xe3:
         case HW::Xe3p: return 8;
-#endif
         case HW::Gen12LP:
         case HW::XeHP:
         case HW::XeHPG: return 16;
@@ -226,9 +214,7 @@ static inline int eusPerSubslice(HW hw) {
 }
 
 static inline int r0DWords(HW hw) {
-#if XE3P
     if (hw >= HW::Xe3p) return 16;
-#endif
     return 8;
 }
 
@@ -2286,17 +2272,6 @@ static inline int minScatteredSIMD(
     return maxScatteredSIMD(hw, astrategy) >> 1;
 }
 
-// Get minimum alignment for block 2D message.
-static inline int block2DMinAlignment(HW hw, const MatrixAddressing &atype,
-        const MatrixAddressingStrategy &astrategy, bool asIfBlock2D = false) {
-    if (!isBlock2D(astrategy.accessType) && !asIfBlock2D) return 0;
-    if (hw == HW::Xe2) return 16;
-#if XE3P
-    if (hw >= HW::Xe3p) return 4;
-#endif
-    return (isTransposing(astrategy.accessType) || astrategy.prefetch) ? 4 : 8;
-}
-
 // Get width/height/array size parameters for underlying 2D block load message.
 static void getBlock2DWH(int &w, int &h, int &count,
         const MatrixAddressing &atype, const RegisterBlock &block,
@@ -2693,9 +2668,9 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
                 int simdCap = maxSIMD;
                 if (atomic && !nativeAtomic) simdCap = 16;
                 maxElements = simdCap * maxNPack;
-                if (T.paddedSize() > stride)
-                    maxElements = maxElements * stride / T;
-                if (allowFixedMasks) R = r, C = c;
+                if (T.size() > stride) maxElements = maxElements * stride / T;
+                R = r;
+                C = c;
             }
 
             auto maxABlock = maxElements / (byte1PerSlot ? 1 : atype.crosspack);
@@ -2939,6 +2914,11 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
 
             if (hw < HW::XeHPC || !astrategy.newDP) hw_unsupported();
 
+            int minAlign = (astrategy.prefetch ? 4 : 8);
+            // temporarily disabled pending catalog update:
+            // if (hw >= HW::Xe2) minAlign = 16;
+            if (hw >= HW::Xe3p) minAlign = 4; /* alignment drama */
+
             // Choose underlying type.
             auto Tblock = T;
             if (transpose) {
@@ -2951,9 +2931,7 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
                 } else {
                     Tblock = Type::u32;
                     maxW = 8;
-#if XE3P
                     if (hw >= HW::Xe3p) maxW = 16;
-#endif
                 }
                 maxXBlock = std::min(maxXBlock, (maxW * Tblock) / T);
             } else if (vnni) {
@@ -3003,7 +2981,6 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
             }
             xblock = std::min(xblock, maxXBlock * count);
 
-#if XE3P
             // On Xe3p and later, large-height transpose messages effectively behave
             //  like block arrays.
             if (hw >= HW::Xe3p && transpose) {
@@ -3013,7 +2990,6 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
                     yblock = count * ychunk;
                 }
             }
-#endif
 
             // Crosspack calculation.
             int crosspack = (transpose || vnni) ? std::max(1, 4 / T) : 1;
@@ -5251,6 +5227,7 @@ void gemm_kernel_generator_t<hw>::atomicAddMatrixBlock(Type T, const GRF &src,
                     if (block.ebytes * block.count != T.real().size()) stub();
                     if (astrategy.newDP) {
                         auto op = T.isFP() ? AtomicOp::fadd : AtomicOp::add;
+                        if (T.real() == Type::bf16) op = AtomicOp::bfadd;
                         atomic(op, mod, specLSC, astrategy.base,
                                 getAddress(addr[hoff], block, astrategy),
                                 curSrc);
@@ -5901,9 +5878,7 @@ static inline int block2DWidthAlignment(Type T, const RegisterBlock &block,
 }
 
 static inline int block2DBaseAlignment(HW hw, int stepping) {
-#if XE3P
     if (hw >= HW::Xe3p) return 4;
-#endif
     if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
     return 64;
 }
@@ -6021,7 +5996,6 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
                     eadd(simd1, addr[0].uq(), addr[0].ud(0)(udStride),
                             ptrShifted, strategy, state);
                 } else if (ptrShifted != 0) {
-#if XE3P
                     if (consecutive > 1 || tblock > 1 || hw >= HW::Xe3p) {
                         mulConstant<uint32_t>(simdSize, addr, iv, stride);
                         add<uint32_t>(simdSize, addr, addr, ptrShifted);
@@ -6175,8 +6149,7 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
             else {
                 if (remW.isValid() && multiX > 1) stub();
                 remW.isValid()
-                        ? addScaled(
-                                1, addr[0].ud(2), -1, remW.uw(), T, state, true)
+                        ? mad(1, addr[0].ud(2), -1, remW.uw(), T.size())
                         : mov(1, addr[0].ud(2), bw * bcount * block.ebytes - 1);
                 remH.isValid() ? mad(1, addr[0].ud(3), -1, remH.uw(), multiX)
                                : mov(1, addr[0].ud(3), bh - 1);
@@ -7027,7 +7000,8 @@ void gemm_kernel_generator_t<hw>::outerProduct(int h, int ha, int hb,
 
     bool mixedMode = ((Tc.real() == Type::f32)
             && (Ta.real() != Type::f32 || Tb.real() != Type::f32));
-    bool useDP4A = (hw >= HW::Gen12LP && isIGEMM(Ta, Tb, Tc));
+    bool useDP4A = (Ta.size() == 1 && Tb.size() == 1 && Tc.size() == 4
+            && hw >= HW::Gen12LP);
     bool atomicFMA = strategy.atomicFMA;
     bool noAccSBSet = strategy.extendedAtomicFMA && (hw >= HW::XeHPC);
 
@@ -15216,15 +15190,10 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         int last = unrollK;
         if (hasFlags(state.A_layout)) last = std::min(last, ka_loadMain);
         if (hasFlags(state.B_layout)) last = std::min(last, kb_loadMain);
-        if (hasFlags(state.Ap_layout))
-            last = std::min(last, 1 + (strategy.prefetchA - 1) % ka_pfStride);
-        if (hasFlags(state.Bp_layout))
-            last = std::min(last, 1 + (strategy.prefetchB - 1) % kb_pfStride);
-        if (hasFlags(state.Ai_layout) || hasFlags(state.Bi_layout)) {
+        if (hasFlags(state.Ap_layout)) last = std::min(last, ka_pfStride);
+        if (hasFlags(state.Bp_layout)) last = std::min(last, kb_pfStride);
+        if (hasFlags(state.Ai_layout) || hasFlags(state.Bi_layout))
             last = std::min(last, unrollKSLM);
-            if (lookaheadSLMReload % unrollKSLM != 0)
-                last = std::min(last, lookaheadSLMReload % unrollKSLM);
-        }
         reqLoopCheck = reqLoopCheck.delay(unrollK - last);
     }
 
@@ -16148,6 +16117,14 @@ bool gemm_kernel_generator_t<hw>::gemmKLoop(
     return kLoopSingle(KLoop::GEMM, problem, strategy, state);
 }
 
+// Get minimum alignment for block 2D message.
+static inline int block2DCMinAlignment(HW hw, const MatrixAddressing &atype,
+        const MatrixAddressingStrategy &astrategy) {
+    if (hw == HW::Xe2) return 16;
+    if (hw >= HW::Xe3p) return 4;
+    return isTransposing(astrategy.accessType) ? 4 : 8;
+}
+
 // Decide whether C layout needs m/n remainder handling.
 static inline void getCRemainders(HW hw, const GEMMProblem &problem,
         const GEMMStrategy &strategy, bool &remM_C, bool &remN_C) {
@@ -16965,6 +16942,9 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
         if (!state.slmASums && !globalCM && strategy.dpasw)
             stub(); /* don't have full A data */
 
+        if (!state.slmASums && !globalCM && strategy.dpasw)
+            stub(); /* don't have full A data */
+
         auto As_srcLayout = state.slmASums ? state.Ao_layout
                 : state.repackA            ? state.Ar_layout
                                            : state.A_layout;
@@ -16977,6 +16957,8 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
     if (problem.needsBSums()) {
         state.systolicSumB = strategy.systolic && !globalCM;
         state.slmBSums = slmB && !state.systolicSumB;
+
+        if (!state.slmBSums && globalCM && strategy.dpasw) stub();
 
         if (!state.slmBSums && globalCM && strategy.dpasw) stub();
 
@@ -18115,9 +18097,13 @@ bool gemm_kernel_generator_t<hw>::gemmAccessC(COperation op,
         params.rows = state.remainders[LoopM];
         params.cols = state.remainders[LoopN];
 
-        GRFRange C_addr0[2], C_addr0Unmasked[2];
-        setupCAddr0(C_addr0, C_addr0Unmasked, C_layoutExt, C_layoutExtUnmasked,
-                C_count, modProblem, modStrategy, modState, &params);
+        if (strategy.zeroTempC) {
+            status << "Reset temporary memory to zero" << status_stream::endl;
+            modStrategy.altCRemainder = false;
+            gemmStoreZeroC(modProblem, modStrategy, modState, false);
+        }
+
+        jmpi(1, labelFPODone);
 
         bool columns[2] = {false, true};
         StdCRemType remTypes[2] = {StdCRemType::Ignore, StdCRemType::Ignore};
@@ -22689,9 +22675,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
                 || barrierFreq || fuseBeta)
             moveR0 = MoveR0::None;
 
-#if XE3P
     if (hw >= HW::Xe3p) moveR0 = MoveR0::None;
-#endif
 
     // Mixed mode restrictions:
     //  - mixed hf/f is max SIMD 8 on Gen9
@@ -22985,6 +22969,21 @@ bool GEMMStrategy::needsTempC(const GEMMProblem &problem) const {
     if (!problem.beta0() && !problem.beta1() && altFusedBeta) return true;
     for (size_t i = 1; i < problem.postOps.len(); i++)
         if (problem.postOps[i].is_sum()) return true;
+    return false;
+}
+
+// Check if this strategy is nondeterministic.
+bool GEMMStrategy::nondeterministic(const GEMMProblem &problem) const {
+    if (!problem.Tc.isInteger()) {
+        if (kParallel) return true;
+        if (kParallelVariable && !altFusedBeta)
+            return true; /* Note: may still be nondeterministic with alt fused beta;
+                                                                         handled by kernel selector. */
+    }
+    if (problem.sumA && slmA && coopA == CoopSplit::K && wg[LoopN] > 2)
+        return true;
+    if (problem.sumB && slmB && coopB == CoopSplit::K && wg[LoopM] > 2)
+        return true;
     return false;
 }
 
@@ -28246,9 +28245,7 @@ REG_XEHP_ISA(template class gemm_kernel_generator_t<HW::XeHP>);
 REG_XEHPG_ISA(template class gemm_kernel_generator_t<HW::XeHPG>);
 REG_XEHPC_ISA(template class gemm_kernel_generator_t<HW::XeHPC>);
 REG_XE2_ISA(template class gemm_kernel_generator_t<HW::Xe2>);
-#if XE3P
 REG_XE3P_ISA(template class gemm_kernel_generator_t<HW::Xe3p>);
-#endif
 
 } // namespace jit
 } // namespace intel

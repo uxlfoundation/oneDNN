@@ -64,10 +64,8 @@ public:
         requireLocalID(3); // r1-r3
         requireLocalSize(); // r7.0-2:ud
 #if XE3P
-        if (hw == ngen::HW::Xe3p) {
-            if (engine->device_info()->is_efficient_64bit())
-                setEfficient64Bit(false);
-        }
+        if (hw == ngen::HW::Xe3p)
+            setEfficient64Bit(engine->device_info()->is_efficient_64bit());
 #endif
         finalizeInterface();
 

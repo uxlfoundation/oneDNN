@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -92,6 +92,8 @@ enum HWTags : char {
     HWTagXeHPG = 'E',
     HWTagXeHPC = 'F',
     HWTagXe2 = 'G',
+    HWTagXe3 = 'H',
+    HWTagXe3p = 'I',
 };
 
 struct Selector {

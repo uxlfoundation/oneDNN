@@ -85,8 +85,37 @@ CacheSettingsLSC getCaching(char l1, char l3) {
     }
 }
 
+CacheSettingsLSC getCaching(char l1, char l2, char l3) {
+    if (l3 == 'u' || l3 == 'i') return getCaching(l1, l2);
+
+    if (l3 == 'c' || l3 == 'b') {
+        bool l2cached = (l2 == 'c') || (l2 == 'b');
+        switch (l1) {
+            case 'u':
+                return l2cached ? CacheSettingsLSC::L1UC_L2C_L3C
+                                : CacheSettingsLSC::L1UC_L2UC_L3C;
+            case 't':
+            case 'c':
+                return l2cached ? CacheSettingsLSC::L1C_L2C_L3C
+                                : CacheSettingsLSC::L1C_L2UC_L3C;
+            case 's':
+                return l2cached ? CacheSettingsLSC::L1S_L2C_L3C
+                                : CacheSettingsLSC::L1S_L2UC_L3C;
+            case 'b':
+                if (!l2cached) return CacheSettingsLSC::L1WB_L2UC_L3WB;
+            default: break;
+        }
+    }
+
+    throw std::runtime_error("Unknown cache setting");
+}
+
 CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw) {
-    {
+    if (hw >= HW::Xe3p) {
+        char l1, l2, l3;
+        s >> l1 >> l2 >> l3;
+        return getCaching(l1, l2, l3);
+    } else {
         char l1, l3;
         s >> l1 >> l3;
         return getCaching(l1, l3);
@@ -102,6 +131,8 @@ void getCaching(
     cachingW = CacheSettingsLSC::L1WB_L3WB;
 
     if (hw >= HW::XeHPC) cachingW = CacheSettingsLSC::L1UC_L3WB;
+
+    if (hw >= HW::Xe3p) cachingR = CacheSettingsLSC::L1C_L2C_L3C;
 
     if (s.peek() == '{') {
         char eat;
@@ -202,6 +233,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
     strategy.A.cachingW = CacheSettingsLSC::Default;
     strategy.B.cachingW = CacheSettingsLSC::Default;
     strategy.CO.cachingR = CacheSettingsLSC::L1C_L3C;
+    if (hw >= HW::Xe3p) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
     strategy.A_prefetch.prefetch = true;
     strategy.B_prefetch.prefetch = true;
     strategy.C_prefetch.prefetch = true;
@@ -222,6 +254,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
 
     strategy.unroll[LoopK] = 1;
     strategy.checkAdd32 = !native64Bit(hw) || (hw >= HW::XeHPC);
+    strategy.checkAdd32 &= (hw < HW::Xe3p);
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block)
             || strategy.kParallel;
 
@@ -303,6 +336,8 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
             strategy.fmaBoustrophedon = true;
         else if (mod == "ch")
             strategy.checkAdd32 = true;
+        else if (mod == "nch")
+            strategy.checkAdd32 = false;
         else if (mod == "ws")
             strategy.wgInSS = true;
         else if (mod == "wc")
@@ -358,10 +393,12 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
             strategy.kParallelLocal = strategy.kInterleave = true;
         else if (mod == "fb")
             strategy.fuseBeta = true;
-        else if (mod == "fp")
-            strategy.fusePostOps = true;
         else if (mod == "afb")
             strategy.fuseBeta = strategy.altFusedBeta = true;
+        else if (mod == "fp")
+            strategy.fusePostOps = true;
+        else if (mod == "zt")
+            strategy.zeroTempC = true;
         else if (mod == "fg") {
             float fillGoal;
             s >> fillGoal;

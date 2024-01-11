@@ -46,6 +46,10 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(engine_t *engine) {
     dev_info_ = compute_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
+    if (!utils::one_of(arch, arch_t::xe_hp, arch_t::xe_hpg, arch_t::xe_hpc,
+                arch_t::xe2))
+        return status::unimplemented;
+
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()
@@ -87,10 +91,7 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(engine_t *engine) {
 
     if (dt_int_ok) attr_skip_mask |= smask_t::zero_points_runtime;
 
-    bool arch_ok = utils::one_of(
-            arch, arch_t::xe_hp, arch_t::xe_hpg, arch_t::xe_hpc, arch_t::xe2);
-
-    bool ok = limits_ok && (dt_float_ok || dt_int_ok) && arch_ok
+    bool ok = limits_ok && (dt_float_ok || dt_int_ok)
             && compute_engine->mayiuse(compute::device_ext_t::
                             intel_subgroup_split_matrix_multiply_accumulate)
             && attr()->has_default_values(attr_skip_mask)

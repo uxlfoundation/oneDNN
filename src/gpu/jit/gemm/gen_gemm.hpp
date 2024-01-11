@@ -181,6 +181,9 @@ struct gen_gemm_t : public gpu_gemm_t {
             bool arch_ok = utils::one_of(arch_, arch_t::gen9, arch_t::gen11,
                     arch_t::xe_lp, arch_t::xe_hp, arch_t::xe_hpg,
                     arch_t::xe_hpc, arch_t::xe2);
+#if XE3P
+            arch_ok |= (arch_ == arch_t::xe3p);
+#endif
 
             ok &= arch_ok;
             ok &= IMPLICATION(with_binary, arch_ >= arch_t::xe_hp);
@@ -240,6 +243,11 @@ struct gen_gemm_t : public gpu_gemm_t {
             gpu_post_ops_t gpu_post_ops;
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
+
+#if XE3P
+            if (arch_ == arch_t::xe3p)
+                kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
+#endif
 
             status = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, mode, batch_dims(),

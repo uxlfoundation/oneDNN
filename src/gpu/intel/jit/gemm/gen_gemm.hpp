@@ -328,7 +328,8 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (arch_ == arch_t::xe3p)
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 #endif
-            CHECK(kernel_desc_.select_kernel(arch_, stepping,
+
+            status = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, mode, batch_dims(),
                     eff_transa(), eff_transb(), eff_trans_bias(), swap_ab(),
                     ao_dims_, bo_dims_, wei_scales_2d_, wei_q2d_group_k,

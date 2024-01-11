@@ -96,26 +96,17 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(engine_t *engine) {
 
     if (dt_int_ok) attr_skip_mask |= smask_t::zero_points_runtime;
 
-    bool arch_ok = utils::one_of(
-            arch, arch_t::xe_hp, arch_t::xe_hpg, arch_t::xe_hpc, arch_t::xe2);
+    bool ok = limits_ok && (dt_float_ok || dt_int_ok)
+            && compute_engine->mayiuse(compute::device_ext_t::
+                            intel_subgroup_split_matrix_multiply_accumulate)
+            && attr()->has_default_values(attr_skip_mask)
+            && desc()->sum_ab == sum_ab::sum_none
+            && IMPLICATION(with_bias(),
+                    utils::one_of(d->bias_type(), d->a_type(), f32)
+                            && utils::one_of(bias_cmask(), 0, 1, 2, 3));
 
-    VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VDISPATCH_GEMM((dt_float_ok || dt_int_ok), VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
-    VDISPATCH_GEMM(
-            compute_engine->mayiuse(compute::device_ext_t::
-                            intel_subgroup_split_matrix_multiply_accumulate),
-            VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "systolic array");
-    VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
-            VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_GEMM(desc()->sum_ab == sum_ab::sum_none,
-            VERBOSE_UNSUPPORTED_FEATURE, "bias reduction");
-    VDISPATCH_GEMM(IMPLICATION(with_bias(),
-                           utils::one_of(d->bias_type(), d->a_type(), f32)
-                                   && utils::one_of(bias_cmask(), 0, 1, 2, 3)),
-            VERBOSE_UNSUPPORTED_BIAS_CFG);
-
-    VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+    status = init_post_ops();
+    if (status != status::success) return status;
 
     if (dt_int_ok) {
         VDISPATCH_GEMM(IMPLICATION(a_zp_, !packed_b())

@@ -145,7 +145,8 @@ inline void Label::outputText(std::ostream &str, PrintDetail detail, LabelManage
 
 struct NoOperand {
     static const bool emptyOp = true;
-    void fixup(HW hw, int esize, DataType defaultType, int srcN, int arity) const {}
+    void fixup(HW hw, int esize, int ewidth, DataType defaultType, int srcN, int arity) const {}
+    constexpr DataType getType() const { return DataType::invalid; }
     constexpr bool isScalar() const { return false; }
 
     void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const {}
@@ -594,10 +595,10 @@ private:
     }
 #endif
     void opDpas(Opcode op, DataType defaultType, const InstructionModifier &mod, int sdepth, int rcount, RegData dst, RegData src0, RegData src1, RegData src2) {
-        dst.fixup(hardware, 1, defaultType, -1, 3);
-        src0.fixup(hardware, 1, defaultType, 0, 3);
-        src1.fixup(hardware, 1, defaultType, 1, 3);
-        src2.fixup(hardware, 1, defaultType, 2, 3);
+        dst.fixup(hardware, 1, 0, defaultType, -1, 3);
+        src0.fixup(hardware, 1, 0, defaultType, 0, 3);
+        src1.fixup(hardware, 1, 0, defaultType, 1, 3);
+        src2.fixup(hardware, 1, 0, defaultType, 2, 3);
         (void) streamStack.back()->append(op, (sdepth << 8) | rcount, mod | defaultModifier, &labelManager, dst, src0, src1, src2);
     }
     template <typename D, typename S0> void opCall(Opcode op, const InstructionModifier &mod, D dst, S0 src0) {
@@ -1803,10 +1804,11 @@ void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionMod
         throw invalid_execution_size_exception();
 #endif
 
-    dst.fixup(hardware, esize, defaultType, -1, arity);
-    src0.fixup(hardware, esize, defaultType, 0, arity);
-    src1.fixup(hardware, esize, defaultType, 1, arity);
-    src2.fixup(hardware, esize, defaultType, 2, arity);
+    auto ewidth = getExecWidth({defaultType, dst.getType(), src0.getType(), src1.getType(), src2.getType()});
+    dst.fixup(hardware,  esize, ewidth, defaultType, -1, arity);
+    src0.fixup(hardware, esize, ewidth, defaultType, 0, arity);
+    src1.fixup(hardware, esize, ewidth, defaultType, 1, arity);
+    src2.fixup(hardware, esize, ewidth, defaultType, 2, arity);
 
     streamStack.back()->append(op, ext, emod, &labelManager, dst, src0, src1, src2);
 }

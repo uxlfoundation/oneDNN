@@ -1434,6 +1434,9 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
 #endif
                     break;
                 case 0:
+#if XE3P
+                    if (unaryXe3p)
+#endif
                     if (binary.src0Imm) return false;
                     o.bits = binary.src0;
                     dt = binary.src0Type;
@@ -1487,7 +1490,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
     }
 
     auto esize = 1 << ((hw >= HW::XeHPC) ? commonXeHPC.execSize : common.execSize);
-    rd.fixup(hw, esize, DataType::invalid, opNum, 2);
+    rd.fixup(hw, esize, 0, DataType::invalid, opNum, 2);
     region = DependencyRegion(hw, esize, rd);
 #if XE3P
     if (op == Opcode::mullh) region.duplicateLH();

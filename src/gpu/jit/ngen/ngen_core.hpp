@@ -663,8 +663,9 @@ public:
     }
 
     /* for compatibility with RegData */
-    void fixup(HW hw, int execSize, DataType defaultType, int srcN, int arity) {}
-    constexpr14 bool isScalar() const { return false; }
+    void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
+    constexpr DataType getType() const { return DataType::invalid; }
+    constexpr bool isScalar() const { return false; }
 
 #ifdef NGEN_ASM
     static const bool emptyOp = false;
@@ -743,7 +744,7 @@ public:
     void invalidate()                     { invalid = true; }
     RegData &operator=(const Invalid &i)  { this->invalidate(); return *this; }
 
-    inline void fixup(HW hw, int execSize, DataType defaultType, int srcN, int arity);                    // Adjust automatically-computed strides given ESize.
+    inline void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity);                    // Adjust automatically-computed strides given ESize.
 
     constexpr RegData operator+() const { return *this; }
     constexpr14 RegData operator-() const {
@@ -780,7 +781,7 @@ inline RegData abs(const RegData &r)
     return result.setMods(1);
 }
 
-inline void RegData::fixup(HW hw, int execSize, DataType defaultType, int srcN, int arity)
+inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity)
 {
 #ifdef NGEN_SAFE
     if (isInvalid()) throw invalid_object_exception();
@@ -808,11 +809,19 @@ inline void RegData::fixup(HW hw, int execSize, DataType defaultType, int srcN, 
                 vs = 1;
                 hs = 0;
             }
-        }
+        } else if (execSize == width)
+            vs = width * hs;
         bool isDest = srcN < 0;
         if (isDest && hs == 0)
-            hs = 1;
+            hs = (execWidth > getBytes()) ? (execWidth / getBytes()) : 1;
     }
+}
+
+inline int getExecWidth(std::initializer_list<DataType> types)
+{
+    int ewidth = 1;
+    for (auto dt: types) ewidth = std::max(ewidth, getBytes(dt));
+    return ewidth;
 }
 
 // Operands for Align16 instructions
@@ -858,8 +867,8 @@ public:
     bool isValid()                        const { return !rd.isInvalid(); }
     constexpr bool isScalar()             const { return rd.isScalar(); }
 
-    void fixup(HW hw, int execSize, DataType defaultType, int srcN, int arity) {
-        rd.fixup(hw, execSize, defaultType, srcN, arity);
+    void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {
+        rd.fixup(hw, execSize, execWidth, defaultType, srcN, arity);
     }
 
 #ifdef NGEN_ASM
@@ -1138,7 +1147,11 @@ public:
     static constexpr int bytes(HW hw)                      { return (1 << log2Bytes(hw)); }
     static constexpr int bytesToGRFs(HW hw, unsigned x)    { return (x + bytes(hw) - 1) >> log2Bytes(hw); }
 
+#if XE3P
+    static constexpr int maxRegs()                         { return 512; }
+#else
     static constexpr int maxRegs()                         { return 256; }
+#endif
 };
 
 class ARF : public Register
@@ -1221,8 +1234,8 @@ public:
     constexpr ExtendedReg(RegData base_, uint8_t mmeNum_) : base(base_), mmeNum(mmeNum_) {}
     constexpr ExtendedReg(RegData base_, SpecialAccumulatorRegister acc) : base(base_), mmeNum(acc.getMME()) {}
 
-    void fixup(HW hw, int execSize, DataType defaultType, int srcN, int arity) {
-        base.fixup(hw, execSize, defaultType, srcN, arity);
+    void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {
+        base.fixup(hw, execSize, execWidth, defaultType, srcN, arity);
     }
 
     constexpr int getMods()         const { return base.getMods(); }
@@ -1546,7 +1559,8 @@ public:
 
     inline Subregister sub(HW hw, int offset, DataType type) const;
 
-    void fixup(HW hw, int execSize, DataType defaultType, int srcN, int arity) {}
+    void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
+    constexpr DataType getType() const { return DataType::invalid; }
 
 #ifdef NGEN_ASM
     static const bool emptyOp = false;
@@ -2347,7 +2361,7 @@ public:
         return Immediate(payload, DataType::vf);
     }
 
-    void fixup(HW hw, int execSize, DataType defaultType, int srcN, int arity) const {
+    void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) const {
 #ifdef NGEN_SAFE
         if (getBytes(type) > (16 >> arity))
             throw invalid_immediate_exception();

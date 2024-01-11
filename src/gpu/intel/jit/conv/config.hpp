@@ -657,11 +657,11 @@ tensor_config_t get_tensor_config(
 int estimate_register_count(const conv_config_t &cfg);
 int default_regs(const conv_config_t &cfg);
 void init_kernel_grid(conv_config_t &cfg);
-void init_walk_order(conv_config_t &cfg);
 void init_thread_group_grid(conv_config_t &cfg);
-std::array<prb_tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
-std::array<prb_tile_t, 3> get_thread_group_grid_conv_dims(
-        const conv_config_t &cfg);
+const std::array<prb_tile_t, 3> &get_kernel_grid_conv_dims(
+        const conv_problem_t &prb);
+const std::array<prb_tile_t, 3> &get_thread_group_grid_conv_dims(
+        const conv_problem_t &prb);
 
 } // namespace jit
 } // namespace intel

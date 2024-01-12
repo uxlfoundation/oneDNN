@@ -203,7 +203,7 @@ static inline bool isColMajor(MatrixLayout l) {
 }
 
 static inline bool isLargeCrosspack(Type T, int crosspack) {
-    return (crosspack * T > 4) && (crosspack > 1);
+    return ((crosspack > 1) && crosspack * T > 4);
 }
 
 static inline MatrixLayout transposeLayout(MatrixLayout l) {

@@ -70,30 +70,21 @@ struct gen_gemm_t : public gpu_gemm_t {
                                   && utils::one_of(d->a_type(), u8, s8, s4, u4)
                                   && utils::one_of(d->b_type(), f16, f32, bf16))
                     && attr()->mayiconvert(d->a_type(), f32);
-            CHECK(set_default_formats(false));
+            auto status = set_default_formats();
+
+            if (status != status::success) return status;
 
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             eff_lda_ = d->lda();
             eff_ldb_ = d->ldb();
-            eff_transa_ = d->transa() == dnnl_trans;
-            eff_transb_ = d->transb() == dnnl_trans;
 
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
                     || (d->transa() == dnnl_trans));
-            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
-                    || d->transc() == dnnl_trans;
+            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda);
 
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
-                std::swap(eff_transa_, eff_transb_);
-                eff_transa_ = !eff_transa_;
-                eff_transb_ = !eff_transb_;
-
-                // Do not use transposed B when it is unnecessary
-                if (eff_transb_ && eff_n() == 1) {
-                    eff_transb_ = false;
-                    eff_ldb_ = d->k();
-                }
+                if (d->transa() == dnnl_notrans) eff_ldb_ = d->k();
             }
 
             // Pad leading dimensions in case of a single row/column.
@@ -108,11 +99,9 @@ struct gen_gemm_t : public gpu_gemm_t {
             }
 
             if (wei_decomp_) {
-                attr_skip_mask |= smask_t::fpmath_mode
-                        | smask_t::scales_runtime_data_type
-                        | smask_t::scales_runtime_groups
-                        | smask_t::zero_points_runtime_data_type
-                        | smask_t::zero_points_runtime_groups;
+                attr_skip_mask |= smask_t::fpmath_mode;
+                attr_skip_mask |= smask_t::scales_runtime_data_type;
+                attr_skip_mask |= smask_t::zero_points_runtime_data_type;
             }
 
             bool wei_zp = false, wei_zp_2d = false;
@@ -121,8 +110,9 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, f32, u8, s8)
-                    && utils::one_of(d->a_type(), u8, s8)) {
-                ok &= (utils::one_of(d->b_type(), u8, s8) || wei_decomp);
+                    && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
+                ok &= (utils::one_of(d->b_type(), u8, s8) || wei_decomp_);
+
                 bool a_zp
                         = !attr()->zero_points_.has_default_values(DNNL_ARG_A);
                 bool b_zp
@@ -150,7 +140,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                 ok = ok && d->b_type() == bf16
                         && utils::one_of(d->c_type(), bf16, f32)
                         && utils::one_of(d->acc_type, bf16, f32);
-            } else if (!wei_decomp) {
+            } else if (!wei_decomp_) {
                 ok = ok && utils::one_of(d->a_type(), f32, f16, f8_e5m2)
                         && d->b_type() == d->a_type()
                         && utils::one_of(d->acc_type, d->a_type(), f32)

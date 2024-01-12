@@ -59,7 +59,25 @@ struct gen_gemm_kernel_desc_t {
     const CommonDriverInfo *driver_info() const { return &driver_info_; };
     const EvaluateAuxOutput *aux_params() const { return &aux_params_; };
 
-    compute::scalar_type_t scalar_type() const;
+    compute::scalar_type_t scalar_type() const {
+        switch (problem_.Ts) {
+            case Type::s4: return compute::scalar_type_t::_int4;
+            case Type::u4: return compute::scalar_type_t::_uint4;
+            case Type::s8: return compute::scalar_type_t::_char;
+            case Type::u8: return compute::scalar_type_t::_uchar;
+            case Type::s16: return compute::scalar_type_t::_short;
+            case Type::u16: return compute::scalar_type_t::_ushort;
+            case Type::s32: return compute::scalar_type_t::_int;
+            case Type::u32: return compute::scalar_type_t::_uint;
+            case Type::s64: return compute::scalar_type_t::_long;
+            case Type::u64: return compute::scalar_type_t::_ulong;
+            case Type::bf8: return compute::scalar_type_t::_bfloat8;
+            case Type::bf16: return compute::scalar_type_t::_bfloat16;
+            case Type::f16: return compute::scalar_type_t::_half;
+            case Type::f32: return compute::scalar_type_t::_float;
+            default: return compute::scalar_type_t::undef;
+        }
+    }
 
     status_t create_generator(const compute::compute_engine_t &engine,
             compute::kernel_t &kernel) const;
@@ -72,9 +90,33 @@ struct gen_gemm_kernel_desc_t {
         return *entry_;
     };
 
-#if XE3P
-    void set_efficient_64b(bool efficient_64b) {
-        efficient_64b_ = efficient_64b;
+protected:
+    static Type convert_dnnl_to_kernel_type(data_type_t type) {
+        switch (type) {
+            default: assert(!"Unknown type");
+            case data_type::f32: return Type::f32;
+            case data_type::f16: return Type::f16;
+            case data_type::bf16: return Type::bf16;
+            case data_type::f8_e5m2: return Type::bf8;
+            case data_type::s32: return Type::s32;
+            case data_type::u8: return Type::u8;
+            case data_type::s8: return Type::s8;
+            case data_type::u4: return Type::u4;
+            case data_type::s4: return Type::s4;
+        }
+    }
+
+    static ngen::HW convert_dnnl_arch_to_hw(compute::gpu_arch_t arch) {
+        switch (arch) {
+            case compute::gpu_arch_t::gen9: return ngen::HW::Gen9;
+            case compute::gpu_arch_t::gen11: return ngen::HW::Gen11;
+            case compute::gpu_arch_t::xe_lp: return ngen::HW::XeLP;
+            case compute::gpu_arch_t::xe_hp: return ngen::HW::XeHP;
+            case compute::gpu_arch_t::xe_hpg: return ngen::HW::XeHPG;
+            case compute::gpu_arch_t::xe_hpc: return ngen::HW::XeHPC;
+            case compute::gpu_arch_t::xe2: return ngen::HW::Xe2;
+            default: return ngen::HW::Unknown;
+        }
     }
 #endif
 

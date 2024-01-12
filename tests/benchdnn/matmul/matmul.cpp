@@ -460,8 +460,9 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             float val = 0;
             while (val <= 0)
                 val = gen(int_seed);
-            mem_fp.set_elem(
-                    0, round_to_nearest_representable(cfg.get_dt(kind), val));
+            mem_fp.set_elem(0,
+                    round_to_nearest_representable(
+                            cfg.get_dt(kind), val));
             idx_start += 1;
         }
 
@@ -476,8 +477,12 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             } else {
                 val = is_one * gen(int_seed);
             }
-            mem_fp.set_elem(
-                    idx, round_to_nearest_representable(cfg.get_dt(kind), val));
+#else
+            float val = is_one * gen(int_seed);
+#endif
+            mem_fp.set_elem(idx,
+                    round_to_nearest_representable(
+                            cfg.get_dt(kind), val));
         }
     });
 

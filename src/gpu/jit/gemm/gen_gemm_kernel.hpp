@@ -71,12 +71,6 @@ struct gen_gemm_kernel_desc_t {
         return *entry_;
     };
 
-#if XE3P
-    void set_efficient_64b(bool efficient_64b) {
-        efficient_64b_ = efficient_64b;
-    }
-#endif
-
 protected:
     static Type convert_dnnl_to_kernel_type(data_type_t type) {
         switch (type) {
@@ -90,7 +84,19 @@ protected:
             case data_type::s8: return Type::s8;
             case data_type::u4: return Type::u4;
             case data_type::s4: return Type::s4;
-            case data_type::undef: return Type::invalid;
+        }
+    }
+
+    static ngen::HW convert_dnnl_arch_to_hw(compute::gpu_arch_t arch) {
+        switch (arch) {
+            case compute::gpu_arch_t::gen9: return ngen::HW::Gen9;
+            case compute::gpu_arch_t::gen11: return ngen::HW::Gen11;
+            case compute::gpu_arch_t::xe_lp: return ngen::HW::XeLP;
+            case compute::gpu_arch_t::xe_hp: return ngen::HW::XeHP;
+            case compute::gpu_arch_t::xe_hpg: return ngen::HW::XeHPG;
+            case compute::gpu_arch_t::xe_hpc: return ngen::HW::XeHPC;
+            case compute::gpu_arch_t::xe2: return ngen::HW::Xe2;
+            default: return ngen::HW::Unknown;
         }
     }
 
@@ -103,10 +109,6 @@ protected:
     EvaluateAuxOutput aux_params_;
     CommonDriverInfo driver_info_;
 
-#if XE3P
-    bool efficient_64b_ = false;
-#endif
-
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;
     int eu_count_ = -1;
@@ -114,7 +116,7 @@ protected:
 
     status_t transfer_post_ops(gpu_post_ops_t &&post_ops, bool swap_ab);
 
-    status_t finalize(const char *tags);
+    status_t finalize();
     void update_driver_info();
 };
 
@@ -134,10 +136,9 @@ struct gen_gemm_nocopy_kernel_desc_t : public gen_gemm_kernel_desc_t {
     status_t select_kernel(compute::gpu_arch_t arch, int stepping, int eu_count,
             bool has_systolic, compute_mode mode, int batch_dims, bool trans_a,
             bool trans_b, bool trans_co, bool swap_ab, int ao_dims, int bo_dims,
-            bool wei_scale_2d, int wei_q2d_group_k, bool c_offset, bool bias,
-            sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
-            data_type_t b_type, data_type_t c_type, data_type_t ao_type,
-            data_type_t bo_type, data_type_t wei_scales_type,
+            bool c_offset, bool bias, sum_ab_t reduce_ab, float alpha,
+            float beta, data_type_t a_type, data_type_t b_type,
+            data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
             data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
             int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb,
             dim_t ldc, dim_t batch, gpu_post_ops_t &&post_ops);

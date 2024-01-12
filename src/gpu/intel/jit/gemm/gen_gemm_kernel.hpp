@@ -110,6 +110,8 @@ protected:
             case data_type::s32: return Type::s32;
             case data_type::u8: return Type::u8;
             case data_type::s8: return Type::s8;
+            case data_type::u4: return Type::u4;
+            case data_type::s4: return Type::s4;
         }
     }
 

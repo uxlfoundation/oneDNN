@@ -65,47 +65,25 @@ struct gen_gemm_t : public gpu_gemm_t {
             int stepping = dev_info_->stepping_id();
 
             const auto d = desc();
-            bool all_f8 = (utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
-                    && utils::one_of(d->b_type(), f8_e5m2, f8_e4m3)
-                    && utils::one_of(
-                            d->c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
-            bool wei_decomp
-                    = (utils::one_of(
-                               d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
-                              && utils::one_of(d->a_type(), u8, s8, s4, u4)
-                              && utils::one_of(d->b_type(), f16, f32, bf16,
-                                      f8_e5m2, f8_e4m3))
+            wei_decomp_ = (utils::one_of(d->c_type(), f32, f16, bf16)
+                                  && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                                  && utils::one_of(d->b_type(), f16, f32, bf16))
                     && attr()->mayiconvert(d->a_type(), f32);
-            bool dy_quant_enabled
-                    = (utils::one_of(d->c_type(), f32, f16, bf16)
-                              && utils::one_of(d->a_type(), u8, s8, s4, u4)
-                              && utils::one_of(d->b_type(), u8, s8))
-                    || all_f8;
-            bool quant_enabled = wei_decomp || dy_quant_enabled;
-            CHECK(set_default_formats(false));
+            auto status = set_default_formats();
+
+            if (status != status::success) return status;
 
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             eff_lda_ = d->lda();
             eff_ldb_ = d->ldb();
-            eff_transa_ = d->transa() == dnnl_trans;
-            eff_transb_ = d->transb() == dnnl_trans;
 
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
                     || (d->transa() == dnnl_trans));
-            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
-                    || d->transc() == dnnl_trans;
+            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda);
 
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
-                std::swap(eff_transa_, eff_transb_);
-                eff_transa_ = !eff_transa_;
-                eff_transb_ = !eff_transb_;
-
-                // Do not use transposed B when it is unnecessary
-                if (eff_transb_ && eff_n() == 1) {
-                    eff_transb_ = false;
-                    eff_ldb_ = d->k();
-                }
+                if (d->transa() == dnnl_notrans) eff_ldb_ = d->k();
             }
 
             // Pad leading dimensions in case of a single row/column.
@@ -119,12 +97,10 @@ struct gen_gemm_t : public gpu_gemm_t {
                 eff_ldb_ = utils::rnd_up(eff_ldb_, 16);
             }
 
-            if (quant_enabled) {
-                attr_skip_mask |= smask_t::fpmath_mode
-                        | smask_t::scales_runtime_data_type
-                        | smask_t::scales_runtime_groups
-                        | smask_t::zero_points_runtime_data_type
-                        | smask_t::zero_points_runtime_groups;
+            if (wei_decomp_) {
+                attr_skip_mask |= smask_t::fpmath_mode;
+                attr_skip_mask |= smask_t::scales_runtime_data_type;
+                attr_skip_mask |= smask_t::zero_points_runtime_data_type;
             }
 
             bool wei_zp_2d = false;
@@ -136,83 +112,12 @@ struct gen_gemm_t : public gpu_gemm_t {
             // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, f32, u8, s8)
                     && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
-                VDISPATCH_GEMM(
-                        (utils::one_of(d->b_type(), u8, s8) || wei_decomp),
-                        VERBOSE_UNSUPPORTED_DT);
-                attr_skip_mask |= smask_t::zero_points_runtime;
+                ok &= (utils::one_of(d->b_type(), u8, s8) || wei_decomp_);
 
-                VDISPATCH_GEMM(IMPLICATION(utils::one_of(d->c_type(), f32, s8,
-                                                   u8, f16),
-                                       arch_ >= arch_t::xe_hp),
-                        VERBOSE_ISA_DT_MISMATCH);
-            } else if (d->a_type() == bf16) {
-                VDISPATCH_GEMM(
-                        d->b_type() == bf16, VERBOSE_INCONSISTENT_DT, "a", "b");
-                VDISPATCH_GEMM(utils::one_of(d->c_type(), bf16, f32),
-                        VERBOSE_INCONSISTENT_DT, "a", "c");
-                VDISPATCH_GEMM(utils::one_of(d->acc_type, bf16, f32),
-                        VERBOSE_INCONSISTENT_DT, "a", "acc");
-            } else if (!wei_decomp) {
-                VDISPATCH_GEMM(utils::one_of(d->a_type(), f64, f32, f16,
-                                       f8_e5m2, f8_e4m3),
-                        VERBOSE_UNSUPPORTED_DT);
-                VDISPATCH_GEMM(d->b_type() == d->a_type()
-                                || (utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
-                                        && utils::one_of(
-                                                d->b_type(), f8_e5m2, f8_e4m3)),
-                        VERBOSE_INCONSISTENT_DT, "a", "b");
-                VDISPATCH_GEMM(utils::one_of(d->acc_type, d->a_type(), f32),
-                        VERBOSE_UNSUPPORTED_DT);
-                VDISPATCH_GEMM(IMPLICATION(utils::one_of(f64, d->a_type(),
-                                                   d->b_type()),
-                                       dev_info_->has_native(f64)),
-                        VERBOSE_UNSUPPORTED_DT);
-                VDISPATCH_GEMM(
-                        IMPLICATION(utils::one_of(f8_e5m2, f8_e4m3, d->a_type(),
-                                            d->b_type(), d->c_type()),
-                                arch_ >= arch_t::xe_hpc),
-                        VERBOSE_ISA_DT_MISMATCH);
-            }
-
-            VDISPATCH_GEMM(!has_blocks(), VERBOSE_BLOCKING_FAIL, "");
-            VDISPATCH_GEMM(
-                    batch_dims() <= 4, VERBOSE_BAD_DIM, "batch", batch_dims());
-            VDISPATCH_GEMM(
-                    !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k(),
-                            d->lda(), d->ldb(), d->ldc(), d->batch()),
-                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-            VDISPATCH_GEMM(IMPLICATION(with_bias(),
-                                   utils::one_of(d->bias_type(), f64, f32, bf16,
-                                           f16, f8_e5m2, f8_e4m3)
-                                           && (d->bias_desc.ndims <= 6)
-                                           && d->bias_mask() < 8),
-                    VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VDISPATCH_GEMM(
-                    IMPLICATION(with_bias(),
-                            (d->c_type() != f64 || d->bias_type() == f64)),
-                    VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VDISPATCH_GEMM(
-                    IMPLICATION(with_bias(),
-                            (d->c_type() != f64 || d->bias_type() == f64)),
-                    VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
-                    VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
-            VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_GEMM(attr()->output_scales_.mask_ == 0,
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_GEMM(IMPLICATION(with_sum_ab(),
-                                   !with_bias()
-                                           && (attr_zps.has_default_values(
-                                                   DNNL_ARG_DST))),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_GEMM(attr()->post_ops_.check_sum_consistency(d->c_type(),
-                                   utils::one_of(d->a_type(), s8, u8)),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-
-            if (!attr()->zero_points_.has_default_values()) {
-                bool a_zp = !attr_zps.has_default_values(DNNL_ARG_A);
-                bool b_zp = !attr_zps.has_default_values(DNNL_ARG_B);
+                bool a_zp
+                        = !attr()->zero_points_.has_default_values(DNNL_ARG_A);
+                bool b_zp
+                        = !attr()->zero_points_.has_default_values(DNNL_ARG_B);
 
                 int cmask_a = 0, cmask_b = 0, cmask_c = 0;
                 CHECK(attr()->zero_points_.get(DNNL_ARG_A, &cmask_a));
@@ -243,7 +148,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                 ok = ok && d->b_type() == bf16
                         && utils::one_of(d->c_type(), bf16, f32)
                         && utils::one_of(d->acc_type, bf16, f32);
-            } else if (!wei_decomp) {
+            } else if (!wei_decomp_) {
                 ok = ok && utils::one_of(d->a_type(), f32, f16, f8_e5m2)
                         && d->b_type() == d->a_type()
                         && utils::one_of(d->acc_type, d->a_type(), f32)
@@ -351,7 +256,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (attr()->deterministic_)
                 set_mode(mode, kernel_desc_t::mode_deterministic);
 
-            if (wei_decomp) {
+            if (wei_decomp_) {
                 acc_type = data_type::f32;
                 set_mode(mode, kernel_desc_t::mode_w_decomp);
             }
@@ -631,9 +536,7 @@ struct gen_gemm_t : public gpu_gemm_t {
         bool swap_ab_ = false;
         int ao_dims_ = -1, bo_dims_ = -1;
         bool a_zp_ = false, b_zp_ = false;
-        bool wei_scales_2d_ = false;
-        bool src_scales_2d_ = false;
-        bool src_po_sc_ = false;
+        bool wei_decomp_ = false;
         dim_t eff_lda_ = 0, eff_ldb_ = 0;
         bool eff_transa_ = false, eff_transb_ = false;
 

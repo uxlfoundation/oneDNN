@@ -92,9 +92,33 @@ struct gen_gemm_kernel_desc_t {
         return *entry_;
     };
 
-#if XE3P
-    void set_efficient_64b(bool efficient_64b) {
-        efficient_64b_ = efficient_64b;
+protected:
+    static Type convert_dnnl_to_kernel_type(data_type_t type) {
+        switch (type) {
+            default: assert(!"Unknown type");
+            case data_type::f32: return Type::f32;
+            case data_type::f16: return Type::f16;
+            case data_type::bf16: return Type::bf16;
+            case data_type::f8_e5m2: return Type::bf8;
+            case data_type::s32: return Type::s32;
+            case data_type::u8: return Type::u8;
+            case data_type::s8: return Type::s8;
+            case data_type::u4: return Type::u4;
+            case data_type::s4: return Type::s4;
+        }
+    }
+
+    static ngen::HW convert_dnnl_arch_to_hw(compute::gpu_arch_t arch) {
+        switch (arch) {
+            case compute::gpu_arch_t::gen9: return ngen::HW::Gen9;
+            case compute::gpu_arch_t::gen11: return ngen::HW::Gen11;
+            case compute::gpu_arch_t::xe_lp: return ngen::HW::XeLP;
+            case compute::gpu_arch_t::xe_hp: return ngen::HW::XeHP;
+            case compute::gpu_arch_t::xe_hpg: return ngen::HW::XeHPG;
+            case compute::gpu_arch_t::xe_hpc: return ngen::HW::XeHPC;
+            case compute::gpu_arch_t::xe2: return ngen::HW::Xe2;
+            default: return ngen::HW::Unknown;
+        }
     }
 #endif
 

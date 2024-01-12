@@ -67,17 +67,16 @@ public:
         invalid = 0,
         f16 = 0x01000201,
         f32 = 0x01010402,
-        f64 = 0x01020803,
-        u4 = 0x21120100,
-        s4 = 0x21130100,
-        u8 = 0x01140100,
-        s8 = 0x01150100,
-        u16 = 0x01160201,
-        s16 = 0x01170201,
-        u32 = 0x01180402,
-        s32 = 0x01190402,
-        u64 = 0x011A0803,
-        s64 = 0x011B0803,
+        u8 = 0x01840100,
+        s8 = 0x01850100,
+        u4 = 0x11840100,
+        s4 = 0x11850100,
+        u16 = 0x01860201,
+        s16 = 0x01870201,
+        u32 = 0x01880402,
+        s32 = 0x01890402,
+        u64 = 0x018A0803,
+        s64 = 0x018B0803,
         bf8 = 0x010E0100,
         hf8 = 0x010F0100,
         bf16 = 0x010C0201,
@@ -98,15 +97,11 @@ public:
     constexpr int components() const { return 1; }
     constexpr bool isInteger() const { return uint32_t(val) & 0x100000; }
     constexpr bool isFP() const { return !isInteger(); }
-    constexpr bool isInt4() const { return uint32_t(val) & 0x20000000; }
+    constexpr bool isInt4() const {
+        return utils::one_of(val, Type::u4, Type::s4);
+    }
     constexpr bool isInt8() const {
-        return (val == Type::u8) || (val == Type::s8);
-    }
-    constexpr bool isInt16() const {
-        return (val == Type::u16) || (val == Type::s16);
-    }
-    constexpr bool isF8() const {
-        return (val == Type::bf8) || (val == Type::hf8);
+        return utils::one_of(val, Type::u8, Type::s8);
     }
     constexpr bool isSigned() const {
         return (uint32_t(val) & 0x110000) != 0x100000;
@@ -131,6 +126,11 @@ public:
     void subByteCheck() const {
         if (isInt4()) stub();
     }
+    constexpr int log2Size() const { return uint32_t(val) & 0xFF; }
+    int size() const {
+        assert(!isInt4());
+        return (uint32_t(val) >> 8) & 0xFF;
+    }
 
     constexpr Type arithmetic() const {
         return (val == tf32) ? Type(f32) : real();
@@ -150,21 +150,12 @@ public:
     constexpr Type baseType() const { return *this; }
 
     template <typename U>
-    constexpr friend int operator*(U a, Type t) {
-        return t.isInt4() ? int((a + 1) >> 1) : int(a << t.log2Size());
-    }
-    template <typename U>
-    constexpr friend int operator*(Type t, U a) {
-        return a * t;
-    }
-    template <typename U>
-    friend int operator*=(U &a, Type t) {
-        a = a * t;
-        return a;
+    friend int operator*(U a, Type t) {
+        return (t.isInt4()) ? std::max(int(a >> 1), 1) : int(a << t.log2Size());
     }
     template <typename U>
     constexpr friend int operator/(U a, Type t) {
-        return t.isInt4() ? int(a << 1) : int(a >> t.log2Size());
+        return (t.isInt4()) ? int(a << 1) : int(a >> t.log2Size());
     }
 
     ngen::DataType ngen() const {
@@ -206,7 +197,7 @@ static inline bool isColMajor(MatrixLayout l) {
 }
 
 static inline bool isLargeCrosspack(Type T, int crosspack) {
-    return (crosspack * T > 4) && (crosspack > 1);
+    return ((crosspack > 1) && crosspack * T > 4);
 }
 
 static inline MatrixLayout transposeLayout(MatrixLayout l) {
@@ -1270,13 +1261,15 @@ struct GEMMStrategy : public GEMMStrategyPOD {
 
     int slmABufBlockSize(const GEMMProblem &problem) const {
         return fixedSystolic ? 1152
-                             : int(slmA) * unroll[LoopM] * unrollKSLM
-                        * problem.Ta * problem.Ta.components();
+                             : (int(slmA) * problem.Ta.components()
+                                       * unroll[LoopM] * unrollKSLM)
+                        * problem.Ta;
     }
     int slmBBufBlockSize(const GEMMProblem &problem) const {
         return fixedSystolic ? 1536
-                             : int(slmB) * unroll[LoopN] * unrollKSLM
-                        * problem.Tb * problem.Tb.components();
+                             : (int(slmB) * problem.Tb.components()
+                                       * unroll[LoopN] * unrollKSLM)
+                        * problem.Tb;
     }
     int slmGEMMABufSize(const GEMMProblem &problem) const {
         return slmABufBlockSize(problem) * wg[LoopM] * wg[LoopK] * slmBuffers;
@@ -3085,9 +3078,8 @@ inline char precisionChar(Type T) {
         case Type::bf8: return 'Q';
         case Type::hf8: return 'q';
         case Type::f32: return 'S';
-        case Type::f64: return 'D';
-        case Type::u4: return 'f';
-        case Type::s4: return 'F';
+        case Type::u4: return 'o';
+        case Type::s4: return 'O';
         case Type::u8: return 'o';
         case Type::s8: return 'O';
         case Type::u16: return 'w';

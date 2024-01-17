@@ -1379,6 +1379,57 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 + get_data_C_off(0, m, n) * bgmmc_.acc_dt_sz / bgmmc_.c_dt_sz;
     }
 
+    // Auxiliary functions for getting offsets with pre-calculated memory
+    // strides for each tensor to get general solution for all possible
+    // dimension without significant overhead
+    dim_t get_data_A_off(int b, int m, int k) const {
+        using namespace format_tag;
+        if (one_of(bgmmc_.src_tag, acbd, adbc)
+                /* this is a special case when src can be represented
+                   by plain and transposed tags due to a batch dim equal to 1 */
+                || (one_of(bgmmc_.src_tag, abcd, abdc)
+                        && bgmmc_.A_ptr_shift_b != 0)) {
+            dim_t b_off = 0;
+            if (!bgmmc_.bcast_A_desc.bcast_mask) { // no broadcast
+                const dim_t batch_dim1 = bgmmc_.bcast_A_desc.batch_dims[1];
+                b_off = A_strides_[2] * (b % batch_dim1)
+                        + (b / batch_dim1) * A_ptr_shift_b_;
+            } else {
+                b_off = b * A_ptr_shift_b_;
+            }
+            return b_off + A_strides_[1] * m + A_strides_[0] * k;
+        } else {
+            return A_strides_[2] * b + A_strides_[1] * m + A_strides_[0] * k;
+        }
+    }
+
+    dim_t get_data_B_off(int b, int k, int n) const {
+        using namespace format_tag;
+        if (one_of(bgmmc_.wei_tag, acbd, adbc)
+                /* this is a special case when weights can be represented
+                   by plain and transposed tags due to a batch dim equal to 1 */
+                || (one_of(bgmmc_.wei_tag, abcd, abdc)
+                        && bgmmc_.B_ptr_shift_b != 0)) {
+            dim_t b_off = 0;
+            if (!bgmmc_.bcast_B_desc.bcast_mask) { // no broadcast
+                const dim_t batch_dim1 = bgmmc_.bcast_B_desc.batch_dims[1];
+                b_off = B_strides_[2] * (b % batch_dim1)
+                        + (b / batch_dim1) * B_ptr_shift_b_;
+            } else {
+                b_off = b * B_ptr_shift_b_;
+            }
+            return b_off + B_strides_[1] * k + B_strides_[0] * n;
+        } else {
+            int dt_b_k_blk = bgmmc_.is_bf32
+                    ? data_type_vnni_simd_elems(f32, bgmmc_.isa)
+                    : bgmmc_.wei_k_blk;
+            int k_idx = bgmmc_.blocked_B ? k / dt_b_k_blk : k;
+            int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
+            return B_strides_[2] * b + B_strides_[1] * k_idx
+                    + B_strides_[0] * n_idx + get_data_B_off_within_block(k, n);
+        }
+    }
+
     dim_t get_data_B_off_within_block(int k, int n) const {
         using namespace format_tag;
 

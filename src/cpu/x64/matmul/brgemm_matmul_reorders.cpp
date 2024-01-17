@@ -93,7 +93,7 @@ format_tag_t get_blocked_otag(const memory_desc_t &dst_md) {
     matmul_conf_for_reorder_.K = dims[ndims - 2];
     matmul_conf_for_reorder_.N = dims[ndims - 1];
     matmul_conf_for_reorder_.wei_n_blk = matmul_conf_for_reorder_.N_blk
-            = matmul_conf_for_reorder_.LDB = matmul::get_default_n_block(otag);
+            = matmul_conf_for_reorder_.LDB = matmul::get_n_block_from_tag(otag);
     matmul_conf_for_reorder_.N_tail
             = matmul_conf_for_reorder_.N % matmul_conf_for_reorder_.N_blk;
     matmul_conf_for_reorder_.K_blk = 16 * vnni_granularity;

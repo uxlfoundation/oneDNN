@@ -887,7 +887,7 @@ inline void construct_f32_MHA(dnnl::impl::graph::graph_t *agraph,
 inline void construct_dnnl_float_MHA(dnnl::impl::graph::graph_t *agraph,
         impl::data_type_t dtype = impl::data_type::f32, int batch_size = 1,
         int seq_len = 384, int num_head = 16, int head_dim = 1024,
-        bool transpose = false, bool attention_mask = true) {
+        bool transpose = false) {
     using namespace dnnl::impl::graph;
     using namespace dnnl::graph::tests;
 
@@ -1390,8 +1390,7 @@ inline void construct_dnnl_float_JAX_MQA(dnnl::impl::graph::graph_t *agraph,
 
 inline void construct_int8_MHA(dnnl::impl::graph::graph_t *agraph,
         int batch_size = 1, int seq_len = 384, int num_head = 16,
-        int head_dim = 1024, bool transpose = false,
-        bool attention_mask = true) {
+        int head_dim = 1024, bool transpose = false) {
     using namespace dnnl::impl::graph;
     using namespace dnnl::graph::tests;
 
@@ -1786,18 +1785,13 @@ inline void construct_select_int8_MHA(dnnl::impl::graph::graph_t *agraph,
 
 inline void construct_int8_bf16_MHA(dnnl::impl::graph::graph_t *agraph,
         int batch_size = 1, int seq_len = 384, int num_head = 16,
-        int head_dim = 1024, bool transpose = false, bool attention_mask = true,
-        bool distil = false, bool gpt = false) {
+        int head_dim = 1024, bool transpose = false) {
     using namespace dnnl::impl::graph;
     using namespace dnnl::graph::tests;
 
     // construct a int8 MHA pattern first
-    if (!distil && !gpt)
-        construct_int8_MHA(agraph, batch_size, seq_len, num_head, head_dim,
-                transpose, attention_mask);
-    else
-        construct_select_int8_MHA(agraph, batch_size, seq_len, num_head,
-                head_dim, transpose, distil, gpt);
+    construct_int8_MHA(
+            agraph, batch_size, seq_len, num_head, head_dim, transpose);
 
     // change the f32 logical tensor to bf16
     for (auto &op : agraph->get_ops()) {

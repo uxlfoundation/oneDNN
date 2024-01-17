@@ -75,6 +75,9 @@ public:
 #else
         return false;
 #endif
+        bool enable_sdp_decomp
+                = graph::utils::getenv_int_internal("ENABLE_SDP_DECOMP", 1) > 0;
+        return enable_sdp_decomp;
     }
 
     status_t execute_impl(const stream_t *g_stream,

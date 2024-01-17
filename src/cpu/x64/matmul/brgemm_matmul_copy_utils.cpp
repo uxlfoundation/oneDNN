@@ -867,25 +867,26 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
             A_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
-
-    const dim_t src_C_offset = src_stride * avx2_transpose_size;
-    const dim_t dst_C_offset = sizeof(float) * avx2_transpose_size;
-    const int C_rows = nstl::max(nrows - avx2_transpose_size, 0);
-    const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
-    add(reg_src, src_C_offset);
-    add(reg_dst, dst_C_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
-            C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    if (rows_step <= 8) return;
 
     const dim_t src_B_offset = sizeof(float) * avx2_transpose_size;
     const dim_t dst_B_offset = dst_stride * avx2_transpose_size;
     const int B_rows = nstl::min(avx2_transpose_size, nrows);
     const int B_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, -src_C_offset + src_B_offset);
-    add(reg_dst, -dst_C_offset + dst_B_offset);
+    add(reg_src, src_B_offset);
+    add(reg_dst, dst_B_offset);
     jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
             B_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
+            xmm_upper_tail_mask);
+
+    const dim_t src_C_offset = src_stride * avx2_transpose_size;
+    const dim_t dst_C_offset = sizeof(float) * avx2_transpose_size;
+    const int C_rows = nstl::max(nrows - avx2_transpose_size, 0);
+    const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
+    add(reg_src, -src_B_offset + src_C_offset);
+    add(reg_dst, -dst_B_offset + dst_C_offset);
+    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
+            C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
 
     const dim_t src_D_offset = src_stride * avx2_transpose_size
@@ -894,8 +895,8 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
             + sizeof(float) * avx2_transpose_size;
     const int D_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int D_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, -src_B_offset + src_D_offset);
-    add(reg_dst, -dst_B_offset + dst_D_offset);
+    add(reg_src, -src_C_offset + src_D_offset);
+    add(reg_dst, -dst_C_offset + dst_D_offset);
     jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
             D_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
@@ -3343,9 +3344,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
     constexpr int reserved_regs = 2;
     const int max_regs_available = max_isa_regs - reserved_regs;
 
-    auto get_vmm = [max_regs_available, reserved_regs](int reg_idx) {
+    auto get_vmm = [max_regs_available](int reg_idx) {
         MAYBE_UNUSED(max_regs_available);
-        MAYBE_UNUSED(reserved_regs); // some compilers detect it as unused
         assert(reg_idx >= 0 && reg_idx < max_regs_available);
         return Vmm(reg_idx + reserved_regs);
     };
@@ -4438,8 +4438,7 @@ status_t create_brgemm_matmul_copy_a(
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_a_impl_t<Ymm>(conf)));
             } else {
-                assert("Unsupported isa for jit_brgemm_matmul_copy_a_impl_t");
-                return status::unimplemented;
+                assert("Unsoported isa for jit_brgemm_matmul_copy_a_impl_t");
             }
         }
     }

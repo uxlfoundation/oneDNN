@@ -27,10 +27,6 @@
 #include <vector>
 
 #include "common/dnnl_thread.hpp"
-#include "common/utils.hpp"
-#include "cpu/cpu_stream.hpp"
-#include "oneapi/dnnl/dnnl_threadpool.h"
-
 #include "graph/interface/backend.hpp"
 #include "graph/interface/graph.hpp"
 
@@ -134,8 +130,6 @@ public:
     // shared memory
     memory sub_max_src1_src2, sub_max_dst1_wei2;
 
-    bool attention_mask;
-
 private:
     // Used to record the ops contained in SDP
     std::vector<std::shared_ptr<op_t>> sdp_op;
@@ -143,12 +137,19 @@ private:
 public:
     // The function is used to check if the configuration of SDP is supported by
     // current implementation of decomp kernel. Currently, this implementation
-    // can handle 4-dims tensor and limits the numerical relationship between
-    // batch_size, num_head and thread num.
+    // can only handle 4-dims tensor and limits the layout of the SDP's input.
+    // For better performance, we also limit the numerical relationship between
+    // batch size and thread num.
     // If the check passes, initialize few members according to inputs
     // If no, return unimplemented status directly and fallback to large kernel
+    // TODOs: we have follow to-do tasks in the future:
+    //   1. The batch_size and max_threads conditions need to be further checked
+    //   2. Enable the latency scenario with batch_size = 1
     bool initial_check(const std::shared_ptr<subgraph_t> &sg,
             const std::vector<logical_tensor_t> &inputs) {
+        // Initialize nthr with current threads num
+        nthr = dnnl_get_current_num_threads();
+
         // The order of input logical tensors in inputs is not certain, we need
         // to record the input offset in a certain order of ops.
         record_input_offset(sg, inputs);
@@ -162,24 +163,7 @@ public:
         seq_len = src1_user_dims[2];
         size_per_head = src1_user_dims[3];
 
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
-// RATIO is an empirical value used to determine the numerical relationship
-// between batch_size, num_head and thread number to determine whether to use
-// decompose kernel. The key to the decompose kernel is that we do parallel in
-// the batch_size and num_head dimensions. Therefore, if the batch_size or
-// num_head is too small, it will cause many idle threads and affect efficiency
-// which may even worse than the original sequential kernel. Here we set this
-// ratio based on the experimental value to ensure that users do not have any
-// regression when using the decompose kernel.
-// TODO: Refine the inequation based on the relationship of cache size and sdp
-// memory footprint requirements.
-#define RATIO 2
-        // Initialize nthr with current threads num
-        nthr = dnnl_get_current_num_threads();
-        return batch_size * num_head > RATIO * nthr;
-#else
         return true;
-#endif
     }
 
     // Used to construct all params that SDP need
@@ -266,18 +250,16 @@ public:
         // TODO: It is presupposed that the dims of scale and add's src are certain,
         // which may not always be true.
         sub_mm1_post_scale_md = memory::desc({1, 1, 1, 1}, scale_dt, tag::abcd);
+        auto post_add_shape = ltw(inputs[input_id[3]]).vdims();
+        post_add_strides = ltw(inputs[input_id[3]]).vstrides();
+        sub_mm1_post_add_md
+                = memory::desc({1, 1, post_add_shape[2], post_add_shape[3]},
+                        dt_inter, tag::abcd);
         auto ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
         auto alg = static_cast<algorithm>(
                 ori_dnnl_pops.get()->entry_[0].binary.alg);
         dnnl_pops.append_binary(alg, sub_mm1_post_scale_md);
-        if (attention_mask) {
-            auto post_add_shape = ltw(inputs[input_id[3]]).vdims();
-            post_add_strides = ltw(inputs[input_id[3]]).vstrides();
-            sub_mm1_post_add_md
-                    = memory::desc({1, 1, post_add_shape[2], post_add_shape[3]},
-                            dt_inter, tag::abcd);
-            dnnl_pops.append_binary(algorithm::binary_add, sub_mm1_post_add_md);
-        }
+        dnnl_pops.append_binary(algorithm::binary_add, sub_mm1_post_add_md);
         sub_matmul1_attr.set_post_ops(std::move(dnnl_pops));
         auto sub_mm1_pd = matmul::primitive_desc(p_engine, sub_mm1_src_md,
                 sub_mm1_wei_md, sub_mm1_dst_md, sub_matmul1_attr);
@@ -411,12 +393,9 @@ public:
                 {DNNL_ARG_WEIGHTS, sub_mm1_wei}, {DNNL_ARG_DST, sub_mm1_dst},
                 {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
                         sub_mm1_post_scale},
+                {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
+                        sub_mm1_post_add},
                 {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
-        if (attention_mask) {
-            sub_mm1_args.insert(
-                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
-                            sub_mm1_post_add});
-        }
 
         sub_softmax_args
                 = {{DNNL_ARG_SRC, sub_mm1_dst}, {DNNL_ARG_DST, sub_softmax_dst},
@@ -482,13 +461,7 @@ private:
                     || post_op->get_kind() == graph::op_kind::Multiply) {
                 mm1 = cur_op;
                 scale = post_op;
-                if (get_post_op(post_op)->get_kind() == graph::op_kind::Add) {
-                    add = get_post_op(post_op);
-                    attention_mask = true;
-                } else {
-                    add = nullptr;
-                    attention_mask = false;
-                }
+                add = get_post_op(post_op);
             } else
                 mm2 = cur_op;
         }
@@ -500,14 +473,9 @@ private:
         int scale_id = find_input_id(scale->get_input_value(1));
         if (scale_id == -1) scale_id = find_input_id(scale->get_input_value(0));
         input_id.emplace_back(scale_id);
-        if (add) {
-            int add_id = find_input_id(add->get_input_value(1));
-            if (add_id == -1) add_id = find_input_id(add->get_input_value(0));
-            input_id.emplace_back(add_id);
-        } else {
-            //placeholder
-            input_id.emplace_back(-1);
-        }
+        int add_id = find_input_id(add->get_input_value(1));
+        if (add_id == -1) add_id = find_input_id(add->get_input_value(0));
+        input_id.emplace_back(add_id);
         int wei2_id = find_input_id(mm2->get_input_value(1));
         input_id.emplace_back(wei2_id);
         return status::success;
@@ -564,15 +532,15 @@ private:
                 {sub_mm2_dst.get(), 3}, {sub_scratchpad.get(), 4}};
 
         temporary_registrar.book(mem_key_map[sub_max_src1_src2.get()],
-                sub_max_src1_src2.get_desc().get_size());
+                sub_max_src1_src2.get_desc().get_size() * nthr);
         temporary_registrar.book(mem_key_map[sub_mm1_wei.get()],
-                sub_mm1_wei.get_desc().get_size());
+                sub_mm1_wei.get_desc().get_size() * nthr);
         temporary_registrar.book(mem_key_map[sub_max_dst1_wei2.get()],
-                sub_max_dst1_wei2.get_desc().get_size());
+                sub_max_dst1_wei2.get_desc().get_size() * nthr);
         temporary_registrar.book(mem_key_map[sub_mm2_dst.get()],
-                sub_mm2_dst.get_desc().get_size());
+                sub_mm2_dst.get_desc().get_size() * nthr);
         temporary_registrar.book(mem_key_map[sub_scratchpad.get()],
-                sub_scratchpad.get_desc().get_size());
+                sub_scratchpad.get_desc().get_size() * nthr);
     }
 
     impl::status_t prepare_sdp_scales_zps(const fusion_info_mgr_t &mgr,
@@ -818,58 +786,45 @@ public:
     }
 
     void prepare_sub_args(const grantor_t &var_grantor, const int id,
-            const size_t block_size,
             std::unordered_map<dnnl_memory_t, std::vector<memory>> &mem_map) {
-        auto size_offset = id * block_size;
         mem_map[sdp_cfg_.sub_mm1_wei.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_mm1_wei.get()])
-                + size_offset);
+                + id * sdp_cfg_.sub_mm1_wei.get_desc().get_size());
         // mm1
         mem_map[sdp_cfg_.sub_mm1_src.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_src1_src2.get()])
-                + size_offset);
+                + id * sdp_cfg_.sub_max_src1_src2.get_desc().get_size());
         mem_map[sdp_cfg_.sub_mm1_dst.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_dst1_wei2.get()])
-                + size_offset);
+                + id * sdp_cfg_.sub_max_dst1_wei2.get_desc().get_size());
         // softmax
         mem_map[sdp_cfg_.sub_softmax_dst.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_src1_src2.get()])
-                + size_offset);
+                + id * sdp_cfg_.sub_max_src1_src2.get_desc().get_size());
         // mm2
         mem_map[sdp_cfg_.sub_mm2_wei.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_dst1_wei2.get()])
-                + size_offset);
+                + id * sdp_cfg_.sub_max_dst1_wei2.get_desc().get_size());
         mem_map[sdp_cfg_.sub_mm2_dst.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_mm2_dst.get()])
-                + size_offset);
+                + id * sdp_cfg_.sub_mm2_dst.get_desc().get_size());
         // scratchpad, each thread will have a largest scratchpad.
         mem_map[sdp_cfg_.sub_scratchpad.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_scratchpad.get()])
-                + size_offset);
+                + id * sdp_cfg_.sub_scratchpad.get_desc().get_size());
     }
 
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs) override {
         dnnl::stream strm = make_dnnl_stream(p_engine_, *g_stream);
-
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-        auto *tp_stream
-                = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                        const_cast<stream_t *>(g_stream));
-        tp_stream->before_exec_hook();
-        int thread_num = 1;
-        dnnl_threadpool_interop_get_max_concurrency(&thread_num);
-        sdp_cfg_.nthr = thread_num;
-#endif
-
         // each thread's own local resource
         thread_local_cache_t<sdp_args_set_t> res_cache;
         sdp_args_set_t *res = res_cache.get_or_add(
@@ -887,9 +842,8 @@ public:
                 = static_cast<char *>(outputs[0].get_data_handle());
 
         // allocate the internal memory
-        size_t block_size = sdp_registry_.size();
         temporary_scratchpad_t scratchpad(
-                block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
+                sdp_registry_.size(), p_engine_, *g_alloc_);
         assertm(scratchpad.size() >= sdp_registry_.size(),
                 "no enough scratchpad memory");
         grantor_t var_grantor = sdp_registry_.grantor(scratchpad.get_buffer());
@@ -900,7 +854,7 @@ public:
 
         const auto loop = [&](int tid, int nthr, dim_t bo, dim_t bi) {
             // prepare execution args and allocate real memory
-            prepare_sub_args(var_grantor, tid, block_size, res->mem_map);
+            prepare_sub_args(var_grantor, tid, res->mem_map);
 
             // reorder0
             auto &sub_src1_tid = res->mem_map[sdp_cfg_.sub_src1.get()][tid];
@@ -911,6 +865,8 @@ public:
             // matmul1
             auto &sub_mm1_post_scale_tid
                     = res->mem_map[sdp_cfg_.sub_mm1_post_scale.get()][tid];
+            auto &sub_mm1_post_add_tid
+                    = res->mem_map[sdp_cfg_.sub_mm1_post_add.get()][tid];
             sub_mm1_post_scale_tid.set_data_handle(
                     inputs[sdp_cfg_.input_id[2]].get_data_handle());
 
@@ -923,6 +879,17 @@ public:
                         + bo * sdp_cfg_.post_add_strides[1]
                                 * get_mem_dt_size(sdp_cfg_.sub_mm1_post_add));
             }
+=======
+            auto &sub_mm1_post_add_tid
+                    = res->mem_map[sdp_cfg_.sub_mm1_post_add.get()][tid];
+            sub_mm1_post_scale_tid.set_data_handle(
+                    inputs[sdp_cfg_.input_id[2]].get_data_handle());
+            sub_mm1_post_add_tid.set_data_handle(
+                    static_cast<char *>(
+                            inputs[sdp_cfg_.input_id[3]].get_data_handle())
+                    + bo * sdp_cfg_.post_add_strides[1]
+                            * get_mem_dt_size(sdp_cfg_.sub_mm1_post_add));
+>>>>>>> be0cf60710... graph: backend: dnnl: extend mha decompose for any layout
 
             // reorder2:
             auto &sub_wei2_user_tid
@@ -973,12 +940,7 @@ public:
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
         omp_set_num_threads(sdp_cfg_.nthr);
 #endif
-
         parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
-
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-        tp_stream->after_exec_hook();
-#endif
         return status::success;
     }
 

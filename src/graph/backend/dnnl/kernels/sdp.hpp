@@ -94,6 +94,10 @@ public:
     memory::dims src1_strides, wei1_strides, wei2_strides, dst_strides,
             post_add_strides;
 
+    // SDP input and output strides
+    memory::dims src1_strides, wei1_strides, wei2_strides, dst_strides,
+            post_add_strides;
+
     // Thread nums during the workflow
     int nthr;
 

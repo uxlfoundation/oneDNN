@@ -878,25 +878,26 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
             A_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
-
-    const dim_t src_C_offset = src_stride * avx2_transpose_size;
-    const dim_t dst_C_offset = sizeof(float) * avx2_transpose_size;
-    const int C_rows = nstl::max(nrows - avx2_transpose_size, 0);
-    const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
-    add(reg_src, src_C_offset);
-    add(reg_dst, dst_C_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
-            C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    if (rows_step <= 8) return;
 
     const dim_t src_B_offset = sizeof(float) * avx2_transpose_size;
     const dim_t dst_B_offset = dst_stride * avx2_transpose_size;
     const int B_rows = nstl::min(avx2_transpose_size, nrows);
     const int B_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, -src_C_offset + src_B_offset);
-    add(reg_dst, -dst_C_offset + dst_B_offset);
+    add(reg_src, src_B_offset);
+    add(reg_dst, dst_B_offset);
     jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
             B_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
+            xmm_upper_tail_mask);
+
+    const dim_t src_C_offset = src_stride * avx2_transpose_size;
+    const dim_t dst_C_offset = sizeof(float) * avx2_transpose_size;
+    const int C_rows = nstl::max(nrows - avx2_transpose_size, 0);
+    const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
+    add(reg_src, -src_B_offset + src_C_offset);
+    add(reg_dst, -dst_B_offset + dst_C_offset);
+    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
+            C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
 
     const dim_t src_D_offset = src_stride * avx2_transpose_size
@@ -905,8 +906,8 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
             + sizeof(float) * avx2_transpose_size;
     const int D_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int D_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, -src_B_offset + src_D_offset);
-    add(reg_dst, -dst_B_offset + dst_D_offset);
+    add(reg_src, -src_C_offset + src_D_offset);
+    add(reg_dst, -dst_C_offset + dst_D_offset);
     jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
             D_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
@@ -3289,12 +3290,9 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
         , jit_generator(jit_name())
-        , dt_in_(conf->orig_wei_dt)
+        , dt_in_(conf->isa == avx512_core_fp16 ? data_type::f16
+                                               : data_type::f32)
         , simd_w_(vreg_traits<Vmm>::vlen / sizeof(float))
-        , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
-        , req_zp_b_shift_(
-                  conf->has_zero_point_b && conf->with_wei_decompression)
-        , req_apply_scales_(conf->apply_scales_in_buffer_b)
         , typesize_in_(types::data_type_size(dt_in_))
         , typesize_scale_(is_src_int4_ ? 2 : 1)
         , scales_typesize_(sizeof(float))
@@ -3309,12 +3307,10 @@ private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
 
     const data_type_t dt_in_;
     const int simd_w_;
-    const bool is_src_int4_, req_zp_b_shift_, req_apply_scales_;
-    const size_t typesize_in_, typesize_scale_, scales_typesize_;
+    const size_t typesize_in_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_, scales_N_stride_;
 
@@ -3336,8 +3332,6 @@ private:
 
     Vmm vmm_zero = Vmm(0);
     Vmm vmm_permw = Vmm(1);
-    Vmm vmm_permd = Vmm(2);
-    Vmm vmm_zp_b_shift = Vmm(3);
     Ymm ymm_tail_mask = ymm1;
 
     inline void kmovw(Opmask k, unsigned w) {
@@ -3367,55 +3361,14 @@ private:
 };
 
 template <typename Vmm>
-void jit_brgemm_matmul_copy_b_f32_t<Vmm>::load_data(
-        const Vmm vmm_in, const Xbyak::Operand &op, bool is_tail) {
-    const auto vmm = maybe_mask(vmm_in, is_tail);
-    const auto vmm_lower = Vmm_lower_t(vmm.getIdx());
-    MAYBE_UNUSED(vmm_lower);
-
-    switch (dt_in_) {
-        case data_type::f32: uni_vmovups(vmm, op); break;
-        case data_type::f16: vcvtph2psx(vmm, op); break;
-        case data_type::s8: uni_vpmovsxbd(vmm, op); break;
-        case data_type::u8: uni_vpmovzxbd(vmm, op); break;
-        // For int4, we see two int4 as one int8 and extend them int32
-        // low half stores in lower bytes of vmm and high half in higher
-        // bytes of vmm, then permute them into correct order
-        // Finally, we process the extend bytes for s4/u4 accordingly
-        case data_type::s4:
-            uni_vpmovsxbd(maybe_mask(vmm_lower, is_tail), op);
-            copy_half_int4(vmm_in, vmm_lower);
-            vpermd(vmm_in, vmm_permd, vmm_in);
-            uni_vpslld(vmm_in | k5555, vmm_in, 28);
-            vpsrad(vmm_in | k5555, vmm_in, 28);
-            vpsrad(vmm_in | kAAAA, vmm_in, 4);
-            break;
-        case data_type::u4:
-            uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
-            copy_half_int4(vmm_in, vmm_lower);
-            vpermd(vmm_in, vmm_permd, vmm_in);
-            uni_vpslld(vmm_in | k5555, vmm_in, 28);
-            vpsrld(vmm_in | k5555, vmm_in, 28);
-            vpsrld(vmm_in | kAAAA, vmm_in, 4);
-            break;
-        default: assert(!"unsupported data type");
-    }
-
-    if (one_of(dt_in_, data_type::s8, data_type::u8, data_type::s4,
-                data_type::u4))
-        uni_vcvtdq2ps(vmm_in, vmm_in);
-}
-
-template <typename Vmm>
 void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         int nrows, int ncolumns) {
     const int max_isa_regs = isa_num_vregs(conf_->isa);
-    const int reserved_regs = req_zp_b_shift_ ? 4 : is_src_int4_ ? 3 : 2;
+    constexpr int reserved_regs = 2;
     const int max_regs_available = max_isa_regs - reserved_regs;
 
-    auto get_vmm = [max_regs_available, reserved_regs](int reg_idx) {
+    auto get_vmm = [max_regs_available](int reg_idx) {
         MAYBE_UNUSED(max_regs_available);
-        MAYBE_UNUSED(reserved_regs); // some compilers detect it as unused
         assert(reg_idx >= 0 && reg_idx < max_regs_available);
         return Vmm(reg_idx + reserved_regs);
     };
@@ -3423,20 +3376,18 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
     auto load = [this, get_vmm, ncolumns](int blk, int k, int n) {
         auto src_vmm = get_vmm(blk);
         const bool is_tail = ncolumns - n < simd_w_;
-        auto addr = maybe_EVEX_compress_addr(reg_src,
-                (k * src_stride_ + n * typesize_in_) / typesize_scale_);
+        const opmask_t current_mask = is_tail ? kTail : kFFFF;
+        auto src_vmm_m = isa_has_masks(conf_->isa)
+                ? src_vmm | current_mask | T_z
+                : src_vmm;
+        auto addr = maybe_EVEX_compress_addr(
+                reg_src, k * src_stride_ + n * typesize_in_);
         if (is_tail && !isa_has_masks(conf_->isa))
             vmaskmovps(src_vmm, ymm_tail_mask, addr);
+        else if (dt_in_ == data_type::f16)
+            vcvtph2psx(src_vmm_m, addr);
         else
-            load_data(src_vmm, addr, is_tail);
-
-        if (req_zp_b_shift_)
-            uni_vsubps(maybe_mask(src_vmm, is_tail), src_vmm, vmm_zp_b_shift);
-        if (req_apply_scales_) {
-            const auto scales_addr = maybe_EVEX_compress_addr(
-                    reg_scales, k * scales_N_stride_ + n * scales_typesize_);
-            vmulps(maybe_mask(src_vmm, is_tail), src_vmm, scales_addr);
-        }
+            uni_vmovups(src_vmm_m, addr);
     };
 
     const int columns_tail = ncolumns % simd_w_;
@@ -3444,11 +3395,6 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         if (isa_has_masks(conf_->isa)) {
             const auto tail_mask = (1 << columns_tail) - 1;
             kmovw(kTail, tail_mask);
-            if (is_src_int4_) {
-                const auto int4_tail_mask
-                        = (1 << (columns_tail / typesize_scale_)) - 1;
-                kmovw(kTail_int4, int4_tail_mask);
-            }
         } else {
             init_f32_avx2_mask_ymm(ymm_tail_mask, reg_tmp, columns_tail);
         }
@@ -4606,7 +4552,7 @@ status_t create_brgemm_matmul_copy_b(
             CHECK(safe_ptr_assign(copy_ker,
                     new jit_brgemm_matmul_copy_b_transposed_t<Zmm>(conf)));
         else {
-            assert(is_superset(conf->isa, avx2));
+            assert(one_of(conf->isa, avx2));
             CHECK(safe_ptr_assign(copy_ker,
                     new jit_brgemm_matmul_copy_b_transposed_t<Ymm>(conf)));
         }
@@ -4624,10 +4570,7 @@ status_t create_brgemm_matmul_copy_b(
             else
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_b_bf16_t<Ymm>(conf)));
-        } else if (is_f32
-                || (conf->isa == avx512_core_fp16
-                        && conf->orig_wei_dt == data_type::f16)) {
-            // See the note above why `orig_wei_dt` is used.
+        } else if (is_f32 || conf->isa == avx512_core_fp16) {
             if (is_superset(conf->isa, avx512_core))
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_b_f32_t<Zmm>(conf)));
@@ -4674,8 +4617,7 @@ status_t create_brgemm_matmul_copy_a(
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_a_impl_t<Ymm>(conf)));
             } else {
-                assert(!"Unsupported isa for jit_brgemm_matmul_copy_a_impl_t");
-                return status::unimplemented;
+                assert("Unsoported isa for jit_brgemm_matmul_copy_a_impl_t");
             }
         }
     }

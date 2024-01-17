@@ -18,7 +18,6 @@
 
 #include "common/dnnl_thread.hpp"
 #include "cpu/binary_injector_utils.hpp"
-#include "cpu/matmul/gemm_based_common.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
@@ -275,9 +274,8 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
             : nstl::min<int>(24, rnd_up(bgmmc.N, simd_w));
 }
 
-status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
-        const matmul_helper_t &helper, bool init_n_tag) const {
-    const memory_desc_wrapper B_d(&B_md);
+status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
+        memory_desc_t &B_md, bool init_n_tag) const {
     if (B_any_layout) {
         const int default_n_block = init_n_tag
                 ? get_default_n_block(format_tag::undef)
@@ -307,25 +305,14 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                 : memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
                         transposed_tensor_layout_tag, acbd, adbc);
 
-        if (bgmmc.wei_tag == format_tag::undef) {
-            if (gemm_based::check_gemm_input_format(B_md)) {
-                // Note: Here we batch layout may not be accurately represented
-                // by the wei_tag string, due to all the permutations of the
-                // batch. Only the gemm dimensions "n, k" are accurately
-                // represented in the string representing transposed or not.
-                bgmmc.wei_tag = helper.transB() == 'N'
-                        ? plain_tensor_layout_tag
-                        : transposed_tensor_layout_tag;
-            }
-        }
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
     }
     return status::success;
 }
 
-status_t brgemm_matmul_conf_utils_t::update_and_check_B_tag(memory_desc_t &B_md,
-        int n_blk_size, const matmul_helper_t &helper) const {
+status_t brgemm_matmul_conf_utils_t::update_and_check_B_tag(
+        memory_desc_t &B_md, int n_blk_size) const {
     if (n_blk_fixed && n_blk_size != bgmmc.wei_n_blk)
         return status::unimplemented;
 
@@ -1200,6 +1187,11 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(is_superset(bm_conf_utils.get_isa(), avx2),
                 VERBOSE_UNSUPPORTED_ISA)
         const bool is_f32 = bm_conf_utils.is_f32() && bgmmc.isa == avx2;
+        if (is_f32
+                && (bgmmc.N <= 128 || bgmmc.K <= 512
+                        || (bm_conf_utils.check_is_transposed(bgmmc.src_tag))))
+            return status::unimplemented;
+        if (bgmmc.N == 1) return status::unimplemented;
 
         const matmul_avx512_blocking_params_t::matmul_params_t matmul(
                 bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
@@ -1385,14 +1377,19 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // required granularity for k dimension
     bgmmc.required_k_granularity
             = bgmmc.is_amx ? data_type_vnni_granularity(bgmmc.wei_dt) : 1;
-    VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL);
+
+    VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
+
     bgmmc.wei_k_blk = data_type_vnni_simd_elems(bgmmc.wei_dt, bgmmc.isa);
 
     VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md),
             VERBOSE_UNSUPPORTED_TAG);
 
     bgmmc.req_wei_vnni_downconvert = bm_conf_utils.wei_down_convert_to_vnni();
-    bgmmc.wei_n_blk = get_default_n_block(bgmmc.wei_tag);
+
+    VCHECK_BG(attr.set_default_formats(&dst_md), VERBOSE_UNSUPPORTED_TAG);
+
+    bgmmc.wei_n_blk = bm_conf_utils.get_default_n_block(bgmmc.wei_tag);
 
     bgmmc.blocked_B = bm_conf_utils.get_blocked_B();
     bgmmc.transposed_B = bm_conf_utils.check_is_transposed(bgmmc.wei_tag)
@@ -1488,8 +1485,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
 
     bool prefer_copy_a
-            = (bm_conf_utils.is_bf16() || bm_conf_utils.is_bf16_with_int_wei()
-                      || bgmmc.is_amx)
+            = one_of(true, bm_conf_utils.is_f32() && bgmmc.isa == avx2,
+                      bm_conf_utils.is_bf16(),
+                      bm_conf_utils.is_bf16_with_int_wei(),
+                      (bgmmc.is_amx && bm_conf_utils.is_f16()))
             && (bgmmc.isa != avx2_vnni_2) // no perf study yet.
             && bgmmc.lda_big_pow2() && bgmmc.M >= 1024;
 
@@ -1600,7 +1599,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     if (bm_conf_utils.is_bf16() || bm_conf_utils.is_f16()
             || bm_conf_utils.is_bf16_with_int_wei()) {
-        // empirical observation for performance breakpoint between amx and vnni bf16/f16
+        // empirical observation for performance breakpoint between amx and vnni
+        // bf16/f16
         const dim_t buffer_a_chunk_sz_limit = 126;
         is_small_shapes = is_small_shapes
                 && bgmmc.buffer_a_chunk_sz <= buffer_a_chunk_sz_limit;

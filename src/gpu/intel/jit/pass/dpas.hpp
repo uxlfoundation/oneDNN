@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,12 +26,7 @@ namespace intel {
 namespace jit {
 
 // Adds {Atomic} modifier to dpas/dpasw instructions when applicable.
-stmt_t inject_dpas_atomic(const stmt_t &stmt, bool filter_by_label = true);
-
-#if XE3P
-// Adds {Fwd} modifier to dpas/dpasw instructions when applicable.
-stmt_t inject_dpas_fwd(const stmt_t &stmt);
-#endif
+stmt_t inject_dpas_atomic(const stmt_t &stmt);
 
 } // namespace jit
 } // namespace intel

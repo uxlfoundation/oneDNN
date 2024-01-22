@@ -46,7 +46,7 @@ status_t ocl_gpu_device_info_t::init_arch(engine_t *engine) {
             mayiuse_systolic_, mayiuse_ngen_kernels_, is_efficient_64bit_);
 #else
     init_gpu_hw_info(engine, device, context, gpu_arch_, stepping_id_,
-            mayiuse_systolic_, mayiuse_ngen_kernels_, is_efficient_64bit_);
+            mayiuse_systolic_, mayiuse_ngen_kernels_);
 #endif
 
     err = clReleaseContext(context);

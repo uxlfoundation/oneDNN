@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2023 Intel Corporation
+# Copyright 2019-2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,14 @@ if(DNNL_CPU_RUNTIME STREQUAL "NONE")
             "${CMAKE_CURRENT_SOURCE_DIR}/sycl_stream_cpu_thunk.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/sycl_stream_submit_cpu_primitive.cpp"
             )
+endif()
+
+if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+# XE3 macro is required to compile nGEN with XE3P support.
+add_definitions_with_host_compiler(-DXE3)
+add_definitions_with_host_compiler(-DXE3P)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_sycl)

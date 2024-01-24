@@ -75,13 +75,14 @@ struct ref_reorder_t : public gpu_primitive_t {
                                               .has_runtime_dims_or_strides()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
+            using namespace data_type;
             VDISPATCH_REORDER(
-                    utils::one_of(sdt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, s32, s8, u8, s4, u4, f64),
+                    utils::one_of(src_md()->data_type, f32, f16, bf16, f8_e5m2,
+                            f8_e4m3, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REORDER(
-                    utils::one_of(ddt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, s32, s8, u8, s4, u4, f64),
+                    utils::one_of(dst_md()->data_type, f32, f16, bf16, f8_e5m2,
+                            f8_e4m3, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_REORDER(
@@ -109,9 +110,20 @@ struct ref_reorder_t : public gpu_primitive_t {
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_REORDER(
-                    IMPLICATION(utils::one_of(data_type::f64, sdt, ddt),
-                            compute_engine->mayiuse(device_ext_t::khr_fp64)
-                                    && attr()->post_ops_.has_default_values()),
+                    IMPLICATION(
+                            utils::one_of(data_type::f64, src_md()->data_type,
+                                    dst_md()->data_type),
+                            compute_engine->mayiuse(
+                                    compute::device_ext_t::khr_fp64)
+                                    && attr()->post_ops_.has_default_values())
+                            && IMPLICATION(
+                                    (utils::one_of(data_type::u4,
+                                             src_md()->data_type,
+                                             dst_md()->data_type)
+                                            || utils::one_of(data_type::s4,
+                                                    src_md()->data_type,
+                                                    dst_md()->data_type)),
+                                    attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_REORDER(
                     IMPLICATION(

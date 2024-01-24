@@ -73,11 +73,10 @@ struct custom_reorder_t : public gpu_primitive_t {
                                             data_type::bf16, data_type::f64)),
                     VERBOSE_UNSUPPORTED_DT);
 
-            VDISPATCH_REORDER(
-                    !(utils::one_of(data_type::s4, dst_md()->data_type,
-                              src_md()->data_type)
+            VDISPATCH_REORDER(!utils::one_of(data_type::s4, dst_md()->data_type,
+                                      src_md()->data_type)
                             || utils::one_of(data_type::u4, dst_md()->data_type,
-                                    src_md()->data_type)),
+                                    src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_REORDER(!memory_desc_ndims_ok(src_md(), dst_md()),
@@ -100,8 +99,7 @@ struct custom_reorder_t : public gpu_primitive_t {
                             dst_md()->data_type)),
                     VERBOSE_UNSUPPORTED_DT);
 
-            VDISPATCH_REORDER_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "reorder");
+            VDISPATCH_REORDER_SC(init_conf(engine), "init_conf()");
             init_scratchpad();
 
             return status::success;

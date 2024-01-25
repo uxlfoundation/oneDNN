@@ -1435,7 +1435,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     break;
                 case 0:
 #if XE3P
-                    if (unaryXe3p)
+                    if (!xe3p || unaryXe3p)
 #endif
                     if (binary.src0Imm) return false;
                     o.bits = binary.src0;

@@ -21333,21 +21333,6 @@ bool GEMMStrategy::nondeterministic(const GEMMProblem &problem) const {
     return false;
 }
 
-// Check if this strategy is nondeterministic.
-bool GEMMStrategy::nondeterministic(const GEMMProblem &problem) const {
-    if (!problem.Tc.isInteger()) {
-        if (kParallel) return true;
-        if (kParallelVariable && !altFusedBeta)
-            return true; /* Note: may still be nondeterministic with alt fused beta;
-                                                                         handled by kernel selector. */
-    }
-    if (problem.sumA && slmA && coopA == CoopSplit::K && wg[LoopN] > 2)
-        return true;
-    if (problem.sumB && slmB && coopB == CoopSplit::K && wg[LoopM] > 2)
-        return true;
-    return false;
-}
-
 // Validate a GEMM superkernel strategy, correcting settings as necessary.
 void GEMMSuperkernelStrategy::preflight(HW hw, const GEMMProblem &problem) {
     if (substrategies.size() <= 0)

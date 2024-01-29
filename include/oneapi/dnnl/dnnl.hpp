@@ -2930,8 +2930,7 @@ struct memory : public handle<dnnl_memory_t> {
             dnnl_memory_desc_t md = nullptr;
             error::wrap_c_api(
                     dnnl_memory_desc_create_with_blob(&md, blob.data()),
-                    err_message_list::init_error(
-                            "memory descriptor from blob"));
+                    "could not create a memory descriptor from blob");
             reset(md);
         }
 
@@ -3230,14 +3229,12 @@ struct memory : public handle<dnnl_memory_t> {
             size_t size;
             dnnl_status_t status
                     = dnnl_memory_desc_get_blob(nullptr, &size, get());
-            error::wrap_c_api(status,
-                    err_message_list::desc_query(
-                            "blob size", "memory descriptor"));
+            error::wrap_c_api(
+                    status, "could not get memory descriptor blob size");
 
             std::vector<uint8_t> out_blob(size);
             status = dnnl_memory_desc_get_blob(out_blob.data(), &size, get());
-            error::wrap_c_api(status,
-                    err_message_list::get_failure("memory descriptor blob"));
+            error::wrap_c_api(status, "could not get memory descriptor blob");
             return out_blob;
         }
 

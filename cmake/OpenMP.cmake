@@ -31,6 +31,19 @@ else()
     set(_omp_severity "FATAL_ERROR")
 endif()
 
+macro(set_openmp_values_for_old_cmake)
+    #newer version for findOpenMP (>= v. 3.9)
+    if(CMAKE_VERSION VERSION_LESS "3.9" AND OPENMP_FOUND)
+        if(${CMAKE_MAJOR_VERSION} VERSION_LESS "3" AND ${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
+            # Override FindOpenMP flags for Intel Compiler (otherwise deprecated)
+            set(OpenMP_CXX_FLAGS "-fopenmp")
+            set(OpenMP_C_FLAGS "-fopenmp")
+        endif()
+        set(OpenMP_C_FOUND true)
+        set(OpenMP_CXX_FOUND true)
+    endif()
+endmacro()
+
 if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
     # XXX: workaround: when -fsycl is specified the compiler doesn't define
     # _OPENMP macro causing `find_package(OpenMP)` to fail.

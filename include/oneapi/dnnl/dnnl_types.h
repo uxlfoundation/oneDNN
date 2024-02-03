@@ -2921,6 +2921,20 @@ typedef enum {
     dnnl_cpu_isa_avx10_1_512_amx_fp16 = 0x1fef,
     /// @copydoc dnnl_cpu_isa_avx10_1_512_amx_fp16
     dnnl_cpu_isa_avx512_core_amx_fp16 = dnnl_cpu_isa_avx10_1_512_amx_fp16,
+
+    // TODO: Include new features description
+    /// Intel AVX10.2 with 512bit vector support (preview support)
+    dnnl_cpu_isa_avx10_2_512 = 0x201ff,
+
+    // TODO: Include new features description
+    /// Intel AVX10.2 with 512bit vector support
+    /// Intel AMX with 8-bit integer, bfloat16, float16 support
+    /// (preview support)
+    dnnl_cpu_isa_avx10_2_512_amx_2 = 0x22fff,
+
+    // TODO: Include new features description
+    /// Intel AVX10.2 with 256bit vector support (preview support)
+    dnnl_cpu_isa_avx10_2_256 = 0x201df,
 } dnnl_cpu_isa_t;
 
 /// CPU ISA hints flags

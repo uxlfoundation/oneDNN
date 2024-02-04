@@ -30,7 +30,6 @@
 #include "backend/dnnl/dnnl_backend.hpp"
 #include "backend/dnnl/dnnl_partition_impl.hpp"
 
-#include "graph/backend/dnnl/patterns/data_type_check_pass.hpp"
 #include "graph/backend/dnnl/platform.hpp"
 #include "graph/unit/unit_test_common.hpp"
 #include "graph/unit/utils.hpp"
@@ -64,9 +63,10 @@ bool is_supported_partition(const std::shared_ptr<graph::partition_impl_t> &p) {
             && (p->get_assigned_backend()->get_name() != "fake_backend");
 }
 
-bool is_supported_dtype(data_type_t dt, dir_t dir = dir_t::FLAG_FWD) {
+bool is_supported_dtype(data_type_t dt) {
     static graph::engine_t *engine = get_engine();
-    return get_dtype_support_status(engine->kind(), dt, dir);
+    return dnnl::impl::graph::dnnl_impl::platform::get_dtype_support_status(
+            engine->kind(), dt);
 }
 
 } // namespace
@@ -4797,10 +4797,7 @@ public:
         auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
         pm.run_passes(agraph, "no_config");
 
-        const auto aop_ptr = std::make_shared<op_t>(aop);
-        if (!is_supported_dtype(params.data_type,
-                    dnnl::impl::graph::dnnl_impl::pattern::get_op_dir(
-                            aop_ptr))) {
+        if (!is_supported_dtype(params.data_type)) {
             ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
             auto p = agraph.get_partitions().front();
@@ -9160,7 +9157,10 @@ TEST(test_pass_pass, FuseToX8s8bf16Matmul) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 6U);
 }
 
-TEST(test_pass_pass_system, FuseToX8s8bf16Matmul_CPU) {
+TEST(test_pass_pass_system, FuseToX8s8bf16Matmul) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
+
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -9310,7 +9310,9 @@ TEST(test_pass_pass, FuseToX8s8bf16MatmulDiv) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 8U);
 }
 
-TEST(test_pass_pass_system, FuseToX8s8bf16MatmulDiv_CPU) {
+TEST(test_pass_pass_system, FuseToX8s8bf16MatmulDiv) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -9509,7 +9511,9 @@ TEST(test_pass_pass, FuseToX8s8bf16MatmulScaleAdd) {
     }
 }
 
-TEST(test_pass_pass_system, FuseToX8s8bf16MatmulScaleAdd_CPU) {
+TEST(test_pass_pass_system, FuseToX8s8bf16MatmulScaleAdd) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -9677,6 +9681,8 @@ TEST(test_pass_pass, FuseToX8s8bf16MatmulBias) {
 }
 
 TEST(test_pass_pass_system, FuseToX8s8bf16MatmulBias) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -9858,6 +9864,8 @@ TEST(test_pass_pass, FuseToX8s8bf16MatmulBiasAddBF16) {
 }
 
 TEST(test_pass_pass_system, FuseToX8s8bf16MatmulBiasAddBF16) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -10039,6 +10047,8 @@ TEST(test_pass_pass, MixInt8AndBf16MatmulBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulBiasGelu) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10227,6 +10237,8 @@ TEST(test_pass_pass, MixInt8AndBf16MatmulGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulGelu) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10416,6 +10428,8 @@ TEST(test_pass_pass, MixInt8AndBf16MatmulBias) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulBias) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10596,6 +10610,8 @@ TEST(test_pass_pass, MixInt8AndBf16Matmul) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16Matmul) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10689,7 +10705,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16Matmul) {
 TEST(test_pass_pass_system, QuantWeiMixBf16MatmulBiasTransposeReshapeQuantize) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
-    const auto engine_kind = get_test_engine_kind();
+
     auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<bool> with_bias_typecasts {false, true};
@@ -10908,6 +10924,8 @@ TEST(test_pass_pass, MixInt8AndBf16ConvolutionBias) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBias) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11189,6 +11207,8 @@ TEST(test_pass_pass, MixInt8AndBf16ConvolutionBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11293,6 +11313,8 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionAdd) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11626,6 +11648,8 @@ TEST(test_pass_pass_system, FuseLayernormQuantize_CPU) {
 }
 
 TEST(test_pass_pass_system, FuseSoftmaxTypecast) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            softmax
@@ -11667,7 +11691,9 @@ TEST(test_pass_pass_system, FuseSoftmaxTypecast) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 2U);
 }
 
-TEST(test_pass_pass_system, FuseLayernormTypecast_CPU) {
+TEST(test_pass_pass_system, FuseLayernormTypecast) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            layernorm
@@ -11720,6 +11746,8 @@ TEST(test_pass_pass_system, FuseLayernormTypecast_CPU) {
 }
 
 TEST(test_pass_pass_system, FuseSoftmaxTypecastQuantize) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            softmax
@@ -11773,7 +11801,9 @@ TEST(test_pass_pass_system, FuseSoftmaxTypecastQuantize) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 3U);
 }
 
-TEST(test_pass_pass_system, FuseLayernormTypecastQuantize_CPU) {
+TEST(test_pass_pass_system, FuseLayernormTypecastQuantize) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            layernorm
@@ -11836,7 +11866,9 @@ TEST(test_pass_pass_system, FuseLayernormTypecastQuantize_CPU) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 5U);
 }
 
-TEST(test_pass_pass_system, NotFuseLayernormTypecast_GPU) {
+TEST(test_pass_pass_system, NotFuseLayernormTypecast) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            layernorm
@@ -11973,7 +12005,8 @@ TEST(test_pass_pass, ShuffleFusion) {
 }
 
 TEST(test_pass_pass_system, FuseTypecaseQuantize) {
-
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            typecast
@@ -12021,6 +12054,8 @@ TEST(test_pass_pass_system, FuseTypecaseQuantize) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -12132,6 +12167,8 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulDiv) {
+    SKIP_IF(!is_supported_dtype(data_type::bf16),
+            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -15123,8 +15160,7 @@ TEST(test_pass_pass_system, LayernormWithSpecialAxis) {
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     pm.run_passes(agraph, "no_config");
 
-    if (!is_supported_dtype(data_type::bf16,
-                dnnl::impl::graph::dnnl_impl::platform::dir_t::FWD_I)) {
+    if (!is_supported_dtype(data_type::bf16)) {
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
         auto p = agraph.get_partitions().front();

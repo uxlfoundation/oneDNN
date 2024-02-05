@@ -66,6 +66,7 @@ struct reusable_lnorm_params_t
     // Not used by bwd impl, but would be padding otherwise
     bool with_src_scale = false;
     bool with_dst_scale = false;
+    uint8_t padding[4] = {0};
 
     compute::dispatch_compile_params_t gws_params;
     compute::dispatch_compile_params_t stat_params;

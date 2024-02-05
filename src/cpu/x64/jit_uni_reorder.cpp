@@ -176,12 +176,22 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         using namespace data_type;
 
         bool ok = p.ndims > 0
-                && utils::one_of(p.itype, f32, bf16, f16, s32, s8, u8)
-                && utils::one_of(p.otype, f32, bf16, f16, s32, s8, u8)
-                && IMPLICATION(utils::one_of(p.itype, bf16, f16),
-                        utils::one_of(p.otype, s8, u8, f32, bf16, f16))
-                && IMPLICATION(utils::one_of(p.otype, bf16, f16),
-                        utils::one_of(p.itype, s8, u8, f32, bf16, f16))
+                && utils::one_of(
+                        p.itype, f32, bf16, f16, s32, f8_e5m2, f8_e4m3, s8, u8)
+                && utils::one_of(
+                        p.otype, f32, bf16, f16, s32, f8_e5m2, f8_e4m3, s8, u8)
+                && IMPLICATION(
+                        utils::one_of(p.itype, bf16, f16, f8_e5m2, f8_e4m3),
+                        utils::one_of(p.otype, s8, u8, f32, bf16, f16, f8_e5m2,
+                                f8_e4m3))
+                && IMPLICATION(
+                        utils::one_of(p.otype, bf16, f16, f8_e5m2, f8_e4m3),
+                        utils::one_of(p.itype, s8, u8, f32, bf16, f16, f8_e5m2,
+                                f8_e4m3))
+                && IMPLICATION(utils::one_of(p.itype, f8_e5m2, f8_e4m3)
+                                || utils::one_of(p.otype, f8_e5m2, f8_e4m3),
+                        !utils::one_of(p.itype, u8, s8)
+                                && !utils::one_of(p.otype, u8, s8))
                 && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
                 && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
                 && simple_impl_desc_init(p, nullptr) && mayiuse(sse41)
@@ -189,6 +199,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                         mayiuse(avx512_core) || mayiuse(avx2_vnni_2))
                 && IMPLICATION(utils::one_of(f16, p.itype, p.otype),
                         mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2))
+                && IMPLICATION(utils::one_of(f8_e5m2, p.itype, p.otype)
+                                || utils::one_of(f8_e4m3, p.itype, p.otype),
+                        mayiuse(avx512_core_amx))
                 && IMPLICATION(!is_direct_copy(p), prb_has_small_strides(p))
                 && !prb_has_huge_prime_number(p);
         return ok;
@@ -605,11 +618,15 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         io::io_emu_bf16_conf_t io_bf16_conf(bf16_emu_zmm_1_idx_,
                 bf16_emu_zmm_2_idx_, bf16_emu_zmm_3_idx_, reg_tmp_,
                 bf16_emu_zmm_4_idx_);
+        io::io_emu_fp8_conf_t io_fp8_conf(fp8_emu_zmm_1_idx_,
+                fp8_emu_zmm_2_idx_, fp8_emu_zmm_3_idx_, fp8_emu_zmm_4_idx_, fp8_emu_zmm_5_idx_, fp8_emu_kmask_aux_idx_,
+                fp8_emu_scratch_);
         io::io_saturation_conf_t io_saturation_conf(
                 zero_idx, saturation_ubound_idx, reg_tmp_);
         io::jit_io_multi_dt_helper_t<Vmm> io(this, isa_,
                 {prb_.itype, prb_.otype}, io_conf, io_tail_conf, io_bf16_conf,
-                {{prb_.otype, io_saturation_conf}});
+                {{prb_.otype, io_saturation_conf}}, utils::nullopt,
+                io_fp8_conf);
 
         io.init_saturate_f32({prb_.otype});
 

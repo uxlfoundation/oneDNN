@@ -1012,7 +1012,14 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 "zero-points compensation configuration is not supported");
         VDISPATCH_REORDER_IC(D_mask == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        return status::success;
+        return simple_attr_check(attr, true, false)
+                && input_d.matches_tag(tag_i) && output_d.matches_tag(tag_o)
+                && mask_ok(req_comp, output_d.extra().compensation_mask)
+                && mask_ok(req_asymmetric_comp,
+                        output_d.extra().asymm_compensation_mask)
+                && one_of(input_d.data_type(), f32, s8, bf16, f16, f8_e5m2,
+                        f8_e4m3)
+                && output_d.data_type() == s8 && D_mask == 1;
     }
 
     GET_SCRATCHPAD_SIZE_ZERO();

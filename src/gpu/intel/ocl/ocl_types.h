@@ -87,6 +87,7 @@
 #ifndef GPU_OCL_OCL_TYPES_H
 #define GPU_OCL_OCL_TYPES_H
 
+#include "gpu/ocl/ocl_custom_types.h"
 #include "gpu/ocl/ocl_math_utils.h"
 #include "gpu/ocl/ocl_utils.h"
 

@@ -21,15 +21,14 @@
 #include "common/memory_tracking.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/block_structure.hpp"
-#include "gpu/intel/compute/data_type_converter.hpp"
-#include "gpu/intel/compute/dispatch_reusable.hpp"
-#include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/lnorm_utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
-#include "gpu/intel/ocl/reusable_lnorm.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/block_structure.hpp"
+#include "gpu/compute/data_type_converter.hpp"
+#include "gpu/compute/dispatch_reusable.hpp"
+#include "gpu/compute/kernel_arg_list.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
+#include "gpu/ocl/reusable_lnorm.hpp"
+#include "gpu/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -45,8 +44,13 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
         const compute::named_buffer_t &ss_buf) {
     conf->use_scale = pd->use_scale();
     conf->use_shift = pd->use_shift();
-    conf->src_dt = src_buf.data_type;
-    conf->dst_dt = dst_buf.data_type;
+    conf->input_dt = input_buf.data_type;
+    conf->output_dt = output_buf.data_type;
+
+    conf->acc_dt
+            = types::default_accum_data_type(conf->input_dt, data_type::f32);
+    conf->acc_bwd_dt
+            = types::default_accum_data_type(conf->output_dt, data_type::f32);
 
     auto scales = pd->attr()->scales_;
     conf->with_src_scale = !scales.get(DNNL_ARG_SRC).has_default_values();
@@ -173,10 +177,7 @@ status_t reusable_layer_normalization_fwd_t::pd_t::init_conf(
 
 compute::kernel_ctx_t reusable_lnorm_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
-
-    data_type_t acc_dt = types::default_accum_data_type(src_dt, data_type::f32);
-    data_type_t acc_bwd_dt
-            = types::default_accum_data_type(dst_dt, data_type::f32);
+    kernel_ctx.set_data_type(input_dt);
 
     compute::data_type_converter_t converter;
     converter.register_type("ACC", acc_dt);

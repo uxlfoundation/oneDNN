@@ -554,9 +554,6 @@ public:
                 compile_params.buffer_term_index[buf_idx][j] = buf_terms[j];
             }
 
-            // Save the data type
-            compile_params.buffer_types[buf_idx] = buffer.data_type;
-
             // Check buffer sizes to see if we can use int32_t offsets
             max_buffer_size = std::max(max_buffer_size, buffer.nelems(true));
         }

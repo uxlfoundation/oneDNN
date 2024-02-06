@@ -1456,7 +1456,13 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                     } else
                         assert(!"Error, native conversion unsupported");
                     break;
-                case data_type::s8: vpmovsdb(addr, r_vmm); break;
+                case data_type::s8:
+                    if (dt_requires_saturation
+                            && isa_has_sat_cvt(brg.isa_impl, brg.dt_d))
+                        vpmovusdb(addr, r_vmm);
+                    else
+                        vpmovsdb(addr, r_vmm);
+                    break;
                 case data_type::u8: vpmovusdb(addr, r_vmm); break;
                 default: assert(!"unknown dst_dt");
             }

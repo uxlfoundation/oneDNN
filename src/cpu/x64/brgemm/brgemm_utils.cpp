@@ -175,11 +175,13 @@ void set_isa_impl(brgemm_desc_t *brg) {
         }
     } else if (brg->is_int8) {
         brg->isa_impl
-                = utils::map(true, isa_undef, is_isa_ok(avx512_core_amx_fp16),
+                = utils::map(true, isa_undef, is_isa_ok(avx10_2_512_amx_2),
+                        avx10_2_512_amx_2, is_isa_ok(avx512_core_amx_fp16),
                         avx512_core_amx_fp16, is_isa_ok(avx512_core_amx),
-                        avx512_core_amx, is_isa_ok(avx512_core_fp16),
-                        avx512_core_fp16, is_isa_ok(avx512_core_vnni),
-                        avx512_core_vnni, is_isa_ok(avx512_core), avx512_core,
+                        avx512_core_amx, is_isa_ok(avx10_2_512), avx10_2_512,
+                        is_isa_ok(avx512_core_fp16), avx512_core_fp16,
+                        is_isa_ok(avx512_core_vnni), avx512_core_vnni,
+                        is_isa_ok(avx512_core), avx512_core,
                         is_isa_ok(avx2_vnni_2), avx2_vnni_2,
                         is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2), avx2);
     } else if (brg->is_fp8) {
@@ -908,8 +910,10 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     set_isa_impl(brg);
     brg->is_int8_tmm
             = brg->is_int8 && is_superset(brg->isa_impl, avx512_core_amx);
-    brg->is_bf16_tmm = brg->is_bf16 && brg->isa_impl == avx512_core_amx;
-    brg->is_f16_tmm = brg->is_f16 && brg->isa_impl == avx512_core_amx_fp16;
+    brg->is_bf16_tmm
+            = brg->is_bf16 && is_superset(brg->isa_impl, avx512_core_amx);
+    brg->is_f16_tmm
+            = brg->is_f16 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
     brg->is_bf32 = is_bf32
             && utils::one_of(brg->isa_user, isa_undef, avx512_core_amx)
             && mayiuse(avx512_core_amx);
@@ -985,9 +989,10 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx512_core_fp16),
                 avx512_core_fp16, is_isa_ok(avx2_vnni_2), avx2_vnni_2);
     } else if (brg->is_int8) {
-        brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx512_core_vnni),
-                avx512_core_vnni, is_isa_ok(avx2_vnni_2), avx2_vnni_2,
-                is_isa_ok(avx2_vnni), avx2_vnni);
+        brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx10_2_512),
+                avx10_2_512, is_isa_ok(avx512_core_vnni), avx512_core_vnni,
+                is_isa_ok(avx2_vnni_2), avx2_vnni_2, is_isa_ok(avx2_vnni),
+                avx2_vnni);
     }
 
     brg->req_s8s8_compensation = brg->is_int8 && brg->dt_a == data_type::s8

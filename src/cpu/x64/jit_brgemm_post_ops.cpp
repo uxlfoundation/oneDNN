@@ -825,11 +825,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
     // compensation to avoid the loss of accuracy when converting s32 to f32
     for_(int m = 0; m < m_block; m++)
     for (int n = 0; n < n_block; n++) {
-        if (brg_.alpha == 0) {
-            // have to init vmm each time because vectors may have been
-            // changed in the previous iterations
+        if (brg_.alpha == 0 && brg_.beta != 0) {
+            // if postwork then have to init vmm each time
             uni_vpxor(vector(m, n), vector(m, n), vector(m, n));
-        } else {
+        } else if (brg_.alpha != 0) {
             auto inp_addr = ptr[aux_reg_in
                     + inp_typesize_ * (m * brg_.LDC + n * brg_.ld_block)];
             cvt2ps(inp_dt_, vector(m, n), inp_addr, tail, false, k_mask,
@@ -945,9 +944,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         if (is_superset(brg_.isa_impl, avx512_core)) {
             auto vmm_masked = maybe_mask(vmm, tail > 0, true, k_mask);
             Vmm_lower_t vmm_low = Vmm_lower_t(vmm.getIdx());
-            Vmm_lower2_t vmm_low2 = Vmm_lower2_t(vmm_low.getIdx());
             auto vmm_low_masked = maybe_mask(vmm_low, tail > 0, true, k_mask);
-            auto vmm_low2_masked = maybe_mask(vmm_low2, tail > 0, true, k_mask);
             switch (out_dt_) {
                 case data_type::f32:
                 case data_type::s32: uni_vmovups(addr, vmm_masked); break;
@@ -964,21 +961,13 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
                     vcvtps2ph(vmm_low, vmm, _op_mxcsr);
                     vmovdqu16(addr, vmm_low_masked);
                     break;
-                case data_type::f8_e5m2:
-                    if (brg_.is_fp8_via_convert()) {
-                        f8_e5m2_emulator_->vcvt_f32_to_f8(vmm_low2, vmm);
-                        vmovdqu8(addr, vmm_low2_masked);
-                    } else
-                        assert(!"Not supported yet");
+                case data_type::s8:
+                    if (dt_requires_saturation
+                            && isa_has_sat_cvt(brg_.isa_impl, out_dt_))
+                        vpmovusdb(addr, vmm_masked);
+                    else
+                        vpmovsdb(addr, vmm_masked);
                     break;
-                case data_type::f8_e4m3:
-                    if (brg_.is_fp8_via_convert()) {
-                        f8_e4m3_emulator_->vcvt_f32_to_f8(vmm_low2, vmm);
-                        vmovdqu8(addr, vmm_low2_masked);
-                    } else
-                        assert(!"Not supported yet");
-                    break;
-                case data_type::s8: vpmovsdb(addr, vmm_masked); break;
                 case data_type::u8: vpmovusdb(addr, vmm_masked); break;
                 default: assert(!"unknown dst_dt");
             }
@@ -1107,11 +1096,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
     int nb2_tail = nb % n_block2_;
     int n_block = (nb2 == 0) ? nstl::max(1, nb2_tail) : n_block2_;
 
-    int m_max_regs = (brg_.is_bf16_emu
-                    ? 24
-                    : (brg_.is_fp8_via_convert() ? 23 : max_vregs_ - 4));
-    m_max_regs /= n_block;
-
+    int m_max_regs = (brg_.is_bf16_emu ? 24 : max_vregs_ - 4) / n_block;
     int m_block = nstl::min(brg_.bcast_dim, m_max_regs);
 
     int mb = brg_.bcast_dim / m_block;
@@ -1157,6 +1142,16 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
     }
     mov(reg_out, ptr[param1 + GET_OFF(ptr_out)]);
 
+    // brg_.alpha == 0 means initialize registers, 1 means read from input
+    // brg_.beta == 0 means skip postwork, 1 means do postwork
+    if (brg_.alpha == 0 && brg_.beta == 0) {
+        for_(int m = 0; m < m_block; m++)
+        for (int n = 0; n < n_block; n++) {
+            auto vmm = Vmm(m * n_block + n);
+            uni_vpxor(vmm, vmm, vmm);
+        }
+    }
+
     for (int mb_ = 0; mb_ < mb; mb_++) {
         loop_by_N(m_block, nb2, nb2_tail, nb_tail);
 
@@ -1183,10 +1178,6 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
 
     if (postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
-    if (brg_.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
-    }
 }
 
 #undef GET_OFF

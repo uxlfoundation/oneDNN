@@ -1449,7 +1449,13 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
             f8_e4m3_emulator_->vcvt_f32_to_f8(xmm, zmm);
             vmovdqu8(addr, r_xmm);
             break;
-        case data_type::s8: vpmovsdb(addr, r_zmm); break;
+        case data_type::s8:
+            if (dt_requires_saturation_
+                    && isa_has_sat_cvt(brg.isa_impl, brg.dt_d))
+                vpmovusdb(addr, r_zmm);
+            else
+                vpmovsdb(addr, r_zmm);
+            break;
         case data_type::u8: vpmovusdb(addr, r_zmm); break;
         default: assert(!"unknown dst_dt");
     }

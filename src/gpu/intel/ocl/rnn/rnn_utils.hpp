@@ -413,6 +413,9 @@ struct sub_buffer_t {
     }
 
 private:
+    static constexpr bool use_clone(dim_t size, dim_t offset) {
+        return size == unset || offset % OCL_BUFFER_ALIGNMENT != 0;
+    }
     std::unique_ptr<memory_storage_t> buffer_;
 };
 

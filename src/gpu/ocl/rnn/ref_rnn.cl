@@ -16,7 +16,6 @@
 
 #include "gpu/ocl/ocl_math_utils.h"
 #include "gpu/ocl/rnn/rnn_types.h"
-#include "gpu/ocl/types_interop.h"
 
 float one_m_square(float a) {
     return 1.0f - a * a;
@@ -123,7 +122,7 @@ float activation_bwd(float s, float alpha, float cliping) {
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 ref_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
-        __global char *src_base, __global AUX_DATA_T *scratch_diff_states,
+        __global char *src_base, __global DIFF_DATA_T *scratch_diff_states,
         int lr, int rl, int batch, int dhc, int slc, int n_iter, int n_layer,
         int n_dir, int n_states, int states_ws_ld, int scratch_diff_states_ld,
         int64x3_t strides) {
@@ -159,7 +158,7 @@ ref_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
     const int s = get_global_id(0);
     if (s >= dhc || b >= batch || it >= n_iter) return;
 
-    __global AUX_DATA_T *dst = scratch_diff_states;
+    __global DIFF_DATA_T *dst = scratch_diff_states;
 
 #if DIRECTION_KIND == CONCAT
     __global DIFF_DATA_T *src = (__global DIFF_DATA_T *)src_base
@@ -201,7 +200,7 @@ ref_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
 
 __kernel void ref_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
         __global AUX_DATA_T *dst_c_base, __global char *src_base,
-        __global char *src_c_base, __global AUX_DATA_T *scratch_diff_states,
+        __global char *src_c_base, __global char *scratch_diff_states,
         int batch, int dhc, int sic, int n_iter, int n_layer, int n_dir,
         int n_states, int states_ws_ld,
 #if IS_FWD
@@ -237,21 +236,21 @@ __kernel void ref_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
                 : TO_WS_STATE(0.0f);
     }
 #if WITH_SRC_ITER_C
-    __global SRC_C_DATA_T *src_c = (__global SRC_C_DATA_T *)(src_c_base);
+    __global AUX_DATA_T *src_c = (__global AUX_DATA_T *)(src_c_base);
     __global AUX_DATA_T *dst_c = dst_c_base;
     if (s < dhc) {
         int ws_c_state_offset = off_ws_c_state(n_layer, n_dir, n_iter, batch,
                 states_ws_ld, lay, dir, -1, b, s);
         dst_c[ws_c_state_offset] = src_c_base
-                ? TO_AUX(src_c[src_i_c_off(src_iter_c_strides, lay, dir, b, s)])
-                : TO_AUX(0.0f);
+                ? src_c[src_i_c_off(src_iter_c_strides, lay, dir, b, s)]
+                : TO_WS_STATE(0.0f);
     }
 #endif
 
 #else // BWD
 
     __global DIFF_DATA_T *src = (__global DIFF_DATA_T *)(src_base);
-    __global AUX_DATA_T *dst = scratch_diff_states;
+    __global DIFF_DATA_T *dst = (__global DIFF_DATA_T *)scratch_diff_states;
 
     if (s < dhc)
         dst[off_scratch_diff_states(n_layer, n_dir, n_states, n_iter, batch,
@@ -275,8 +274,8 @@ __kernel void ref_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 ref_rnn_copy_res_layer(
         __global WS_STATE_DATA_T *src_base, __global char *dst_base,
-        __global AUX_DATA_T *scratch_diff_states, int lr, int rl, int batch,
-        int dhc, int slc, int n_iter, int n_layer, int n_dir, int n_states,
+        __global char *scratch_diff_states, int lr, int rl, int batch, int dhc,
+        int slc, int n_iter, int n_layer, int n_dir, int n_states,
         int states_ws_ld, int scratch_diff_states_ld, int64x3_t strides
 #if IS_FWD
         ,
@@ -343,7 +342,7 @@ ref_rnn_copy_res_layer(
 #else // BWD
 
     if (s >= slc || b >= batch || it >= n_iter) return;
-    __global AUX_DATA_T *src = scratch_diff_states;
+    __global DIFF_DATA_T *src = (__global DIFF_DATA_T *)(scratch_diff_states);
     __global DIFF_DATA_T *dst = (__global DIFF_DATA_T *)(dst_base);
     int dir = 0;
 
@@ -366,7 +365,7 @@ ref_rnn_copy_res_layer(
 __kernel void ref_rnn_copy_res_iter(
         __global WS_STATE_DATA_T *src_base, __global AUX_DATA_T *src_c_base,
         __global char *dst_base, __global char *dst_c_base,
-        __global AUX_DATA_T *scratch_diff_states, int batch, int dhc, int sic,
+        __global char *scratch_diff_states, int batch, int dhc, int sic,
         int n_iter, int n_layer, int n_dir, int n_states, int states_ws_ld,
         int scratch_diff_states_ld, int64x4_t strides
 #if (IS_FWD && WITH_DST_ITER_C) || (!IS_FWD && WITH_SRC_ITER_C)
@@ -400,7 +399,7 @@ __kernel void ref_rnn_copy_res_iter(
     }
 #if WITH_DST_ITER_C
     __global AUX_DATA_T *src_c = src_c_base;
-    __global DST_C_DATA_T *dst_c = (__global DST_C_DATA_T *)(dst_c_base);
+    __global AUX_DATA_T *dst_c = (__global AUX_DATA_T *)(dst_c_base);
     if (dst_c_base && s < dhc) {
         dst_c[dst_i_c_off(c_strides, lay, dir, b, s)]
                 = src_c[off_ws_c_state(n_layer, n_dir, n_iter, batch,
@@ -410,7 +409,7 @@ __kernel void ref_rnn_copy_res_iter(
 
 #else // BWD
 
-    __global AUX_DATA_T *src = scratch_diff_states;
+    __global DIFF_DATA_T *src = (__global DIFF_DATA_T *)(scratch_diff_states);
     __global DIFF_DATA_T *dst = (__global DIFF_DATA_T *)(dst_base);
     __global DIFF_DATA_T *dst_c = (__global DIFF_DATA_T *)(dst_c_base);
     if (dst_base && s < sic) {
@@ -428,11 +427,132 @@ __kernel void ref_rnn_copy_res_iter(
 #endif
 }
 
+__kernel void ref_rnn_ws_set(
+        __global char *ws, OFFTYPE ws_offset, float val, int ws_part) {
+
+    if (ws_part == WS_C_STATES || ws_part == WS_BIAS) {
+        __global DIFF_DATA_T *dst = (__global DIFF_DATA_T *)(ws + ws_offset);
+        dst[get_global_id(0)] = CONVERT_DATA_T(val);
+    } else if (ws_part == WS_GATES) {
+        __global ACC_DATA_T *dst = (__global ACC_DATA_T *)(ws + ws_offset);
+        dst[get_global_id(0)] = TO_ACC(val);
+    } else { // ws_part == WS_STATES
+        __global WS_STATE_DATA_T *dst
+                = (__global WS_STATE_DATA_T *)(ws + ws_offset);
+        dst[get_global_id(0)] = TO_WS_STATE(val);
+    }
+}
+
+// useful for debug
+#if DEBUGPRINT
+__kernel void ref_rnn_ws_print(__global ACC_DATA_T *gates_base,
+        __global WS_STATE_DATA_T *states_base,
+        __global AUX_DATA_T *c_states_base, __global AUX_DATA_T *bias_base,
+        __global ACC_DATA_T *grid_comp_base, int batch, int n_layer, int n_dir,
+        int n_iter, int dhc, int states_ws_ld, int gates_ws_ld, int wic) {
+    {
+        __global ACC_DATA_T *wt = gates_base;
+        printf("[lay,dir,iter,batch]\n");
+        for_(int j = 0; j < n_layer; j++)
+        for_(int dir = 0; dir < n_dir; dir++)
+        for_(int i = 0; i < n_iter; i++)
+        for (int b = 0; b < batch; b++) {
+            printf("[%d,%d,%d,%d]: ", j, dir, i, b);
+            for_(int g = 0; g < n_gates; g++)
+            for (int s = 0; s < dhc; s++) {
+                printf(" %f",
+                        SRC_TO_REF(*(wt
+                                + off_ws_gates(n_dir, n_iter, batch,
+                                        gates_ws_ld, dhc, j, dir, i, b, g,
+                                        s))));
+            }
+            printf("\n");
+        }
+    }
+    {
+        __global WS_STATE_DATA_T *wt = states_base;
+        printf("[lay,dir,iter]\n");
+        for_(int j = 0; j < n_layer + 1; j++)
+        for_(int dir = 0; dir < n_dir; dir++)
+        for (int i = 1; i < n_iter + 1; i++) {
+            printf("[%d,%d,%d] : ", j, dir, i);
+            for_(int b = 0; b < batch; b++)
+            for (int s = 0; s < wic; s++) {
+                printf(" %f",
+                        SRC_TO_REF(*(wt
+                                + off_ws_state(n_layer, n_dir, n_iter, batch,
+                                        states_ws_ld, j - 1, dir, i - 1, b,
+                                        s))));
+            }
+            printf("\n");
+        }
+    }
+#if IS_TRAINING && CELL_KIND == LBR_GRU
+    {
+        __global ACC_DATA_T *wt = grid_comp_base;
+        printf("[lay,dir,iter,batch]\n");
+        for_(int j = 0; j < n_layer; j++)
+        for_(int dir = 0; dir < n_dir; dir++)
+        for_(int i = 0; i < n_iter; i++)
+        for (int b = 0; b < batch; b++) {
+            printf("[%d,%d,%d,%d]: ", j, dir, i, b);
+            for (int s = 0; s < dhc; s++) {
+                printf(" %f",
+                        *(wt
+                                + off_ws_grid_offset(n_layer, n_dir, n_iter,
+                                        batch, dhc, j, dir, i, b, s)));
+            }
+            printf("\n");
+        }
+    }
+#endif
+#if IS_FWD && CELL_KIND == VANILLA_LSTM
+    {
+        __global AUX_DATA_T *wt = c_states_base;
+        printf("[lay,dir,iter]\n");
+        for_(int j = 0; j < n_layer; j++)
+        for_(int dir = 0; dir < n_dir; dir++)
+        for (int i = 0; i < n_iter + 1; i++) {
+            printf("[%d,%d,%d] : ", j, dir, i);
+            for_(int b = 0; b < batch; b++)
+            for (int s = 0; s < wic; s++) {
+                printf(" %f",
+                        *(wt
+                                + off_ws_state(n_layer, n_dir, n_iter, batch,
+                                        states_ws_ld, j - 1, dir, i - 1, b,
+                                        s)));
+            }
+            printf("\n");
+        }
+    }
+#endif
+#if COPY_BIAS
+    {
+        __global AUX_DATA_T *wt = bias_base;
+        printf("[lay,dir]\n");
+        for_(int j = 0; j < n_layer; j++)
+        for_(int dir = 0; dir < n_dir; dir++)
+        {
+            printf("[%d,%d] : ", j, dir);
+            for_(int nb = 0; nb < n_bias; nb++)
+            for (int dhc_ = 0; dhc_ < dhc; dhc_++) {
+                printf(" %f",
+                        *(wt
+                                + off_ws_bias(n_layer, n_dir, dhc, j, dir, nb,
+                                        dhc_)));
+            }
+            printf("\n");
+        }
+    }
+#endif
+}
+#endif
+
 __kernel void ref_rnn_bias_prepare(__global float *ws_bias,
         __global float *scales, __global char *wei_layer,
-        __global char *wei_iter, __global BIAS_DATA_T *bias, int dhc,
-        int n_layer, int n_dir, float data_shift, float data_scale,
-        int wei_l_comp_off, int wei_i_comp_off, int64x4_t bias_strides) {
+        __global char *wei_iter, __global float *bias, int dhc, int n_layer,
+        int n_dir, float data_shift, float data_scale, int wei_l_comp_off,
+        int wei_i_comp_off, int64x4_t bias_strides) {
 #if COPY_BIAS
 
     const int dhc_ = get_global_id(0);
@@ -462,15 +582,23 @@ __kernel void ref_rnn_bias_prepare(__global float *ws_bias,
 
 #endif
 }
-
+#if CELL_KIND == VANILLA_LSTM
 typedef struct vanilla_lstm_gates_t {
-    float G[vanilla_lstm_n_gates];
+    float G[4];
 } vanilla_lstm_gates_t;
 
-vanilla_lstm_gates_t vanilla_lstm_compute_gates(
-        const float G[vanilla_lstm_n_gates],
-        const float B[vanilla_lstm_n_gates],
-        const __global float *restrict tm_scales) {
+vanilla_lstm_gates_t compute_gates_vanilla_lstm(
+        const __global AUX_DATA_T *restrict scratch_gates,
+        const __global AUX_DATA_T *restrict bias,
+        const __global float *restrict tm_scales, int scratch_gates_ld, int dhc,
+        int mb, int c) {
+    float G[n_gates];
+    float B[n_bias];
+    for (int i = 0; i < n_gates; i++) {
+        G[i] = convert_float(scratch_gates[cell_scratch_mem(
+                scratch_gates_ld, dhc, mb, i, c)]);
+        B[i] = convert_float(bias[off_ker_bias(dhc, i, c)]);
+    }
 
     vanilla_lstm_gates_t ret;
     ret.G[0] = logistic_fwd_tm(G[0] + B[0], tm_scales[0]);
@@ -480,34 +608,17 @@ vanilla_lstm_gates_t vanilla_lstm_compute_gates(
     return ret;
 }
 
-void vanilla_lstm_store(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
-        __global WS_STATE_DATA_T *h_states_t_l,
-        __global AUX_DATA_T *c_states_t_l,
-        const __global AUX_DATA_T *c_states_tm1_l, int states_ws_ld, int dhc,
-        int n, int c, float tm_cscale, vanilla_lstm_gates_t gates) {
-    float g_i = gates.G[0];
-    float g_f = gates.G[1];
-    float g_z = gates.G[2];
-    float g_o = gates.G[3];
+#elif CELL_KIND == VANILLA_RNN
 
-    if (!RECOMPUTE_GATES && IS_TRAINING) {
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 0, c)] = g_i;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 1, c)] = g_f;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 2, c)] = g_z;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 3, c)] = g_o;
-    }
-
-    float Ct = g_f * c_states_tm1_l[cell_ws_state(states_ws_ld, n, c)]
-            + g_i * g_z;
-    float Ht = g_o * tanh_fwd_tm(Ct, tm_cscale);
-
-    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_WS_STATE(Ht);
-    c_states_t_l[cell_ws_state(states_ws_ld, n, c)] = Ct;
-}
-
-float vanilla_rnn_compute_gates(float G0, float B0, float alpha,
-        const __global float *restrict tm_scales) {
-    float G = activation_fwd(G0 + B0,
+float compute_gates_vanilla_rnn(
+        const __global AUX_DATA_T *restrict scratch_gates,
+        const __global AUX_DATA_T *restrict bias,
+        const __global float *restrict tm_scales, float alpha,
+        int scratch_gates_ld, int dhc, int mb, int c) {
+    float G = activation_fwd(
+            convert_float(scratch_gates[cell_scratch_mem(
+                                  scratch_gates_ld, dhc, mb, 0, c)]
+                    + convert_float(bias[off_ker_bias(dhc, 0, c)])),
 #if IS_TESTMODE
             tm_scales[0], 0);
 #else
@@ -516,25 +627,16 @@ float vanilla_rnn_compute_gates(float G0, float B0, float alpha,
     return G;
 }
 
-void store_vanilla_rnn(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
-        __global WS_STATE_DATA_T *h_states_t_l, int states_ws_ld, int dhc,
-        int n, int c, float g) {
-    if (!RECOMPUTE_GATES && IS_TRAINING) {
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 0, c)] = g;
-    }
-    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_WS_STATE(g);
-}
-
-#if CELL_KIND == LBR_GRU
+#elif CELL_KIND == LBR_GRU
 typedef struct lbr_gru_gates_t {
     float Wh_b;
     float G[3];
 } lbr_gru_gates_t;
 
 lbr_gru_gates_t compute_gates_lbr_gru(
-        const __global ACC_DATA_T *restrict scratch_gates,
+        const __global AUX_DATA_T *restrict scratch_gates,
         const __global AUX_DATA_T *restrict scratch_cell,
-        const __global BIAS_DATA_T *restrict bias,
+        const __global AUX_DATA_T *restrict bias,
         const __global float *restrict tm_scales, int scratch_gates_ld, int dhc,
         int mb, int c) {
     float G[n_gates];
@@ -631,8 +733,8 @@ ref_rnn_elemwise_fwd(int dir, int lay, int iter,
 #else
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
-        dim_t scratch_gates_off, __global BIAS_DATA_T *bias_, dim_t bias_off,
+ref_rnn_elemwise_fwd(__global AUX_DATA_T *scratch_gates_,
+        dim_t scratch_gates_off, __global AUX_DATA_T *bias_, dim_t bias_off,
         float alpha, __global float *tm_scales,
         __global WS_STATE_DATA_T *h_states_t_l_, dim_t h_states_t_l_off,
         __global AUX_DATA_T *c_states_t_l_, dim_t c_states_t_l_off,
@@ -655,8 +757,8 @@ ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 
     if (j >= dhc || i >= batch) return;
 
-    __global ACC_DATA_T *scratch_gates = scratch_gates_ + scratch_gates_off;
-    __global BIAS_DATA_T *bias = bias_ + bias_off;
+    __global AUX_DATA_T *scratch_gates = scratch_gates_ + scratch_gates_off;
+    __global AUX_DATA_T *bias = bias_ + bias_off;
     __global WS_STATE_DATA_T *h_states_t_l = h_states_t_l_ + h_states_t_l_off;
     __global AUX_DATA_T *c_states_t_l = c_states_t_l_ + c_states_t_l_off;
     __global AUX_DATA_T *c_states_tm1_l = c_states_tm1_l_ + c_states_tm1_l_off;
@@ -668,24 +770,36 @@ ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 #endif
 
 #if CELL_KIND == VANILLA_LSTM
-    float G[vanilla_lstm_n_gates];
-    float B[vanilla_lstm_n_bias];
-    for (int gate_idx = 0; gate_idx < vanilla_lstm_n_gates; gate_idx++) {
-        G[gate_idx] = convert_float(scratch_gates[cell_scratch_mem(
-                scratch_gates_ld, dhc, i, gate_idx, j)]);
-        B[gate_idx] = convert_float(bias[off_ker_bias(dhc, gate_idx, j)]);
+    vanilla_lstm_gates_t gates = compute_gates_vanilla_lstm(
+            scratch_gates, bias, tm_scales, scratch_gates_ld, dhc, i, j);
+    float g_i = gates.G[0];
+    float g_f = gates.G[1];
+    float g_z = gates.G[2];
+    float g_o = gates.G[3];
+
+    if (!RECOMPUTE_GATES && IS_TRAINING) {
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)] = g_i;
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)] = g_f;
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)] = g_z;
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 3, j)] = g_o;
     }
-    vanilla_lstm_gates_t gates = vanilla_lstm_compute_gates(G, B, tm_scales);
-    vanilla_lstm_store(ws_gates, gates_ws_ld, h_states_t_l, c_states_t_l,
-            c_states_tm1_l, states_ws_ld, dhc, i, j, tm_cscale, gates);
+
+    float Ct = g_f * c_states_tm1_l[cell_ws_state(states_ws_ld, i, j)]
+            + g_i * g_z;
+    float Ht = g_o * tanh_fwd_tm(Ct, tm_cscale);
+
+    h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_INPUT(Ht);
+    c_states_t_l[cell_ws_state(states_ws_ld, i, j)] = Ct;
 
 #elif CELL_KIND == VANILLA_RNN
-    float g = vanilla_rnn_compute_gates(
-            convert_float(scratch_gates[cell_scratch_mem(
-                    scratch_gates_ld, dhc, i, 0, j)]),
-            convert_float(bias[off_ker_bias(dhc, 0, j)]), alpha, tm_scales);
-    store_vanilla_rnn(
-            ws_gates, gates_ws_ld, h_states_t_l, states_ws_ld, dhc, i, j, g);
+
+    float g = compute_gates_vanilla_rnn(
+            scratch_gates, bias, tm_scales, alpha, scratch_gates_ld, dhc, i, j);
+
+    if (!RECOMPUTE_GATES && IS_TRAINING) {
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)] = g;
+    }
+    h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_INPUT(g);
 
 #elif CELL_KIND == LBR_GRU
     // AUX and SCRATCH data type is same for fwd prop
@@ -702,7 +816,7 @@ ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
     float Ht = G0 * TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)])
             + (1 - G0) * G2;
 
-    h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_WS_STATE(Ht);
+    h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_INPUT(Ht);
 
     if (!RECOMPUTE_GATES && IS_TRAINING) {
         ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)] = G0;
@@ -726,17 +840,17 @@ ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
         /* TODO from CPU: Can be optimized for fwd_training by using
         ws_gates instead of scratch_gates in p2 */
         scratch_gates[cell_scratch_mem(scratch_gates_ld, dhc, i, 0, j)]
-                = TO_ACC(G0);
+                = TO_INPUT(G0);
         scratch_gates[cell_scratch_mem(scratch_gates_ld, dhc, i, 1, j)]
-                = TO_ACC(G1);
+                = TO_INPUT(G1);
         float tmp = TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)]);
-        h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_WS_STATE(tmp * G1);
+        h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_INPUT(tmp * G1);
         if (!RECOMPUTE_GATES && IS_TRAINING) {
             ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)] = G0;
             ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)] = G1;
         }
     } else if (n_part == 2) {
-        float G0 = convert_float(scratch_gates[cell_scratch_mem(
+        float G0 = TO_REF(scratch_gates[cell_scratch_mem(
                 scratch_gates_ld, dhc, i, 0, j)]);
         float G2 = tanh_fwd_tm(
                 scratch_gates[cell_scratch_mem(scratch_gates_ld, dhc, i, 2, j)]
@@ -744,7 +858,7 @@ ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
                 tm_scales[2]);
         float tmp = TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)]);
         h_states_t_l[cell_ws_state(states_ws_ld, i, j)]
-                = TO_WS_STATE(tmp * G0 + (1.0f - G0) * G2);
+                = TO_INPUT(tmp * G0 + (1.0f - G0) * G2);
         if (!RECOMPUTE_GATES && IS_TRAINING) {
             ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)] = G2;
         }
@@ -763,7 +877,6 @@ ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 #define DIFF_BIAS_DATA_T DIFF_DATA_T
 #endif
 
-#if !IS_FWD
 // The scratch_diff_gates and scratch_gates buffers may refer to the
 // same memory when sizeof(SRC_DATA_T) == sizeof(AUX_DATA_T) or when
 // scratch_gates is unused in order to reduce memory usage
@@ -771,7 +884,7 @@ __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 ref_rnn_elemwise_bwd(int dir, int lay, int iter,
         __global SRC_DATA_T *scratch_diff_gates_, dim_t scratch_diff_gates_off,
         __global AUX_DATA_T *scratch_gates_, dim_t scratch_gates_off,
-        __global BIAS_DATA_T *bias_, dim_t bias_off, float alpha,
+        __global AUX_DATA_T *bias_, dim_t bias_off, float alpha,
         __global float *tm_scales, __global WS_STATE_DATA_T *states_tm1_l_,
         dim_t states_tm1_l_off, __global AUX_DATA_T *c_states_t_l_,
         dim_t c_states_t_l_off, __global AUX_DATA_T *c_states_tm1_l_,
@@ -798,6 +911,7 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
 #endif
         MAYBE_ATOMIC DIFF_BIAS_DATA_T *diff_bias_base,
         int64x4_t diff_bias_strides) {
+#if !IS_FWD
     const int i_ = get_global_id(1) * ELEMWISE_BWD_BATCH_BLOCK; // batch
     const int j = get_global_id(0); // dhc
 
@@ -809,7 +923,7 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
     __global SRC_DATA_T *scratch_diff_gates
             = scratch_diff_gates_ + scratch_diff_gates_off;
     __global AUX_DATA_T *scratch_gates = scratch_gates_ + scratch_gates_off;
-    __global BIAS_DATA_T *bias = bias_ + bias_off;
+    __global AUX_DATA_T *bias = bias_ + bias_off;
     __global WS_STATE_DATA_T *states_tm1_l = states_tm1_l_ + states_tm1_l_off;
     __global AUX_DATA_T *c_states_t_l = c_states_t_l_ + c_states_t_l_off;
     __global AUX_DATA_T *c_states_tm1_l = c_states_tm1_l_ + c_states_tm1_l_off;
@@ -842,15 +956,8 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
         float G2 = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)];
         float G3 = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 3, j)];
 #else
-        float G[vanilla_lstm_n_gates];
-        float B[vanilla_lstm_n_bias];
-        for (int gate_idx = 0; gate_idx < vanilla_lstm_n_gates; gate_idx++) {
-            G[gate_idx] = convert_float(scratch_gates[cell_scratch_mem(
-                    scratch_gates_ld, dhc, i, gate_idx, j)]);
-            B[gate_idx] = convert_float(bias[off_ker_bias(dhc, gate_idx, j)]);
-        }
-        vanilla_lstm_gates_t gates
-                = vanilla_lstm_compute_gates(G, B, tm_scales);
+        vanilla_lstm_gates_t gates = compute_gates_vanilla_lstm(
+                scratch_gates, bias, tm_scales, scratch_gates_ld, dhc, i, j);
         float G0 = gates.G[0];
         float G1 = gates.G[1];
         float G2 = gates.G[2];
@@ -883,19 +990,19 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
 
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
-                = TO_SRC(dG0);
+                = TO_INPUT(dG0);
         diff_bias_acc[0] += dG0;
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 1, j)]
-                = TO_SRC(dG1);
+                = TO_INPUT(dG1);
         diff_bias_acc[1] += dG1;
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 2, j)]
-                = TO_SRC(dG2);
+                = TO_INPUT(dG2);
         diff_bias_acc[2] += dG2;
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 3, j)]
-                = TO_SRC(dG3);
+                = TO_INPUT(dG3);
         diff_bias_acc[3] += dG3;
 
 #elif CELL_KIND == LBR_GRU
@@ -933,24 +1040,24 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
 
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
-                = TO_SRC(dG0);
+                = TO_INPUT(dG0);
         diff_bias_acc[0] += dG0;
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 1, j)]
-                = TO_SRC(dG1);
+                = TO_INPUT(dG1);
         diff_bias_acc[1] += dG1;
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 2, j)]
-                = TO_SRC(dG2);
+                = TO_INPUT(dG2);
         diff_bias_acc[2] += dG2;
 
         scratch_gate_r[cell_scratch_mem(scratch_diff_gates_ld, dhc, i, 0, j)]
-                = TO_SRC(dG0);
+                = TO_INPUT(dG0);
         scratch_gate_r[cell_scratch_mem(scratch_diff_gates_ld, dhc, i, 1, j)]
-                = TO_SRC(dG1);
+                = TO_INPUT(dG1);
         float tmp = dG2 * ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)];
         scratch_gate_r[cell_scratch_mem(scratch_diff_gates_ld, dhc, i, 2, j)]
-                = TO_SRC(tmp);
+                = TO_INPUT(tmp);
         diff_bias_acc[3] += tmp;
 
 #elif CELL_KIND == VANILLA_RNN
@@ -962,22 +1069,20 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
 #if !RECOMPUTE_GATES
         float g = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)];
 #else
-        float g = vanilla_rnn_compute_gates(
-                convert_float(scratch_gates[cell_scratch_mem(
-                        scratch_gates_ld, dhc, i, 0, j)]),
-                convert_float(bias[off_ker_bias(dhc, 0, j)]), alpha, tm_scales);
+        float g = compute_gates_vanilla_rnn(scratch_gates, bias, tm_scales,
+                alpha, scratch_gates_ld, dhc, i, j);
 #endif
 #if IS_TESTMODE
         float tmp = = dH * activation_bwd(g, tm_scales[0], 0.);
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
-                = TO_SRC(tmp);
+                = TO_INPUT(tmp);
         diff_bias_acc[0] += tmp;
 #else
         float tmp = dH * activation_bwd(g, alpha, 0.);
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
-                = TO_SRC(tmp);
+                = TO_INPUT(tmp);
         diff_bias_acc[0] += tmp;
 #endif
 #elif CELL_KIND == VANILLA_GRU
@@ -1005,11 +1110,11 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
 
             scratch_diff_gates[cell_scratch_mem(
                     scratch_diff_gates_ld, dhc, i, 0, j)]
-                    = TO_SRC(dG0);
+                    = TO_INPUT(dG0);
             diff_bias_acc[0] += dG0;
             scratch_diff_gates[cell_scratch_mem(
                     scratch_diff_gates_ld, dhc, i, 2, j)]
-                    = TO_SRC(dG2);
+                    = TO_INPUT(dG2);
             diff_bias_acc[2] += dG2;
         } else if (n_part == 2) {
             __global SRC_DATA_T *scratch_cell
@@ -1028,10 +1133,10 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
                     * h * x_m_square(dG1);
             scratch_diff_gates[cell_scratch_mem(
                     scratch_diff_gates_ld, dhc, i, 1, j)]
-                    = TO_SRC(tmp);
+                    = TO_INPUT(tmp);
             diff_bias_acc[1] += tmp;
             scratch_cell[off_scratch_cell(batch, states_ws_ld, i, j)]
-                    = TO_SRC(dG1 * h);
+                    = TO_INPUT(dG1 * h);
         }
 #else
 #error "Wrong Cell Kind"
@@ -1044,454 +1149,5 @@ ref_rnn_elemwise_bwd(int dir, int lay, int iter,
         diff_bias[k * dhc + j] += diff_bias_acc[k];
 #endif
     }
-}
-#else
-__kernel void ref_rnn_elemwise_bwd() {}
 #endif // !IS_FWD
-
-#if CELL_COMP_ENABLED
-#define DHC_TG get_local_size(0)
-#define DHC_LOCAL (CELL_DHC_THR * DHC_TG)
-
-#define BATCH_TG get_local_size(1)
-#define BATCH_LOCAL (CELL_BATCH_THR * BATCH_TG)
-
-#define M_THR_BLOCK CELL_BATCH_THR
-#define N_THR_BLOCK CELL_DHC_THR
-#define N_OUTER_BLOCK n_gates
-
-#define K_TG_BLOCK SUBGROUP_SIZE
-#define K_THR_BLOCK 1
-
-const int gemm_k_block = SUBGROUP_SIZE;
-typedef int64_t cell_offset_t;
-typedef int64_t grid_offset_t;
-typedef dim_t cell_dim_t;
-
-typedef struct {
-    cell_dim_t m;
-    cell_dim_t k;
-    cell_dim_t n_inner;
-    cell_dim_t n_outer;
-} gemm_dims_t;
-
-typedef struct {
-    bool m;
-    bool k;
-    bool n;
-} gemm_overflow_t;
-
-void load(float *s, const __global float *data, bool is_valid) {
-    *s = is_valid ? as_float(data[get_sub_group_local_id()]) : 0;
 }
-
-float __attribute__((overloadable)) sg_get(float s, int offset) {
-    return intel_sub_group_shuffle(s, offset);
-}
-
-bool __attribute__((overloadable))
-sg_get(bool s[gemm_k_block / SUBGROUP_SIZE], int offset) {
-    return intel_sub_group_shuffle(
-            s[offset / SUBGROUP_SIZE], offset % SUBGROUP_SIZE);
-}
-
-void gemm_sum_inner(float(C)[M_THR_BLOCK][N_THR_BLOCK],
-        const __global float *restrict A, const int a_stride,
-        const __global float *restrict B, const int b_stride,
-        const int m_thr_stride, const int n_thr_stride, int m_l_end,
-        int k_l_end, int n_l_end, bool mn_valid) {
-
-    // Load A - Invariant across the subgroup, can do cooperative load
-    float A_l[M_THR_BLOCK] = {};
-    unroll_for(int m_l = 0; m_l < M_THR_BLOCK; m_l++) {
-        load(A_l + m_l, A + m_l * m_thr_stride * a_stride,
-                (mn_valid || (m_l * m_thr_stride) < m_l_end)
-                        && (int)get_sub_group_local_id() < k_l_end);
-    }
-
-    // Load B
-    float B_l[gemm_k_block][N_THR_BLOCK] = {};
-    unroll_for(int n_l = 0; n_l < N_THR_BLOCK; n_l++) {
-        unroll_for(int k_l = 0; k_l < gemm_k_block; k_l++) {
-            load(&B_l[k_l][n_l], &B[k_l * b_stride + n_l * n_thr_stride],
-                    k_l < k_l_end
-                            && (mn_valid
-                                    || (int)get_sub_group_local_id()
-                                            < (n_l_end - n_l * n_thr_stride)));
-        }
-    }
-
-    // Compute
-    unroll_for(int m_l = 0; m_l < M_THR_BLOCK; m_l++) {
-        unroll_for(int k_l = 0; k_l < gemm_k_block; k_l++) {
-            unroll_for(int n_l = 0; n_l < N_THR_BLOCK; n_l++) {
-                C[m_l][n_l] += B_l[k_l][n_l] * sg_get(A_l[m_l], k_l);
-            }
-        }
-    }
-}
-
-// Perform C += A * B where all matrices are in row major layout
-void gemm_sum(float(C)[N_OUTER_BLOCK][M_THR_BLOCK][N_THR_BLOCK],
-        const __global float *restrict A, const int a_stride,
-        const __global float *restrict B, const int b_stride, gemm_dims_t size,
-        int m_sg, int m_thr_stride, int n_sg, int n_thr_stride,
-        bool enable_m_tail, bool enable_k_tail, bool enable_n_tail) {
-
-    // Optimization opportunity: Loads across the m and n dimension can overflow
-    // so long as they do not cross the end of the buffer.
-    bool valid_mn
-            = (!enable_m_tail || m_sg + m_thr_stride * M_THR_BLOCK <= size.m)
-            && (!enable_n_tail
-                    || n_sg + n_thr_stride * N_THR_BLOCK <= size.n_inner);
-    if (valid_mn) {
-        int k_outer = 0;
-        while (valid_mn && k_outer < size.k - gemm_k_block + 1) {
-            int k_l_end = gemm_k_block;
-            const int m_l_end = m_thr_stride * M_THR_BLOCK;
-            const int n_l_end = n_thr_stride * N_THR_BLOCK;
-
-            const int a_off_base = m_sg * a_stride + k_outer;
-            for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
-                gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
-                        B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
-                        m_l_end, k_l_end, n_l_end, true);
-            }
-            k_outer += gemm_k_block;
-        }
-        while (enable_k_tail && k_outer < size.k) {
-            int k_l_end = size.k - k_outer;
-            const int m_l_end = size.m - m_sg;
-            const int n_l_end = size.n_inner - n_sg;
-
-            const int a_off_base = m_sg * a_stride + k_outer;
-            for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
-                gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
-                        B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
-                        m_l_end, k_l_end, n_l_end, true);
-            }
-            k_outer += gemm_k_block;
-        }
-    } else {
-        int k_outer = 0;
-        while (k_outer < size.k) {
-            int k_l_end = enable_k_tail ? size.k - k_outer : gemm_k_block;
-            const int m_l_end = size.m - m_sg;
-            const int n_l_end = size.n_inner - n_sg;
-
-            const int a_off_base = m_sg * a_stride + k_outer;
-            for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
-                gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
-                        B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
-                        m_l_end, k_l_end, n_l_end, false);
-            }
-            k_outer += gemm_k_block;
-        }
-    }
-}
-
-// Handles strides required in computation. A different structure is used
-// so that there is a consistent type used for data transfer. Because of this,
-// we can easily change the offset type used to improve performance when
-// overflow is not a concern. The only dimensions iterated over iter, mb, and
-// channel. The channel dimension is required to be dense, so is dropped from
-// these structures.
-typedef struct {
-    cell_offset_t mb;
-    cell_offset_t slc;
-    cell_offset_t sic;
-} cell_strides_t;
-
-typedef struct {
-    grid_offset_t iter;
-    cell_strides_t cell;
-} grid_strides_t;
-
-typedef struct {
-    __global const WEI_LAYER_DATA_T *ptr;
-    cell_strides_t strides;
-} const_wei_layer_cell_t;
-
-typedef struct {
-    __global const WEI_ITER_DATA_T *ptr;
-    cell_strides_t strides;
-} const_wei_iter_cell_t;
-
-typedef struct {
-    __global AUX_DATA_T *ptr;
-    cell_strides_t strides;
-} aux_cell_t;
-
-typedef struct {
-    __global const AUX_DATA_T *ptr;
-    cell_strides_t strides;
-} const_aux_cell_t;
-
-typedef struct {
-    cell_dim_t mb;
-    cell_dim_t dhc;
-    cell_dim_t slc;
-    cell_dim_t sic;
-} cell_dims_t;
-
-// Cell function data used in non-GEMM calculation
-typedef struct {
-    union {
-        struct {
-            float alpha;
-            __global BIAS_DATA_T *bias;
-            __global float *tm_scales;
-        } rnn;
-
-        struct {
-            __global AUX_DATA_T *c_states;
-            __global const AUX_DATA_T *c_states_iter;
-            __global BIAS_DATA_T *bias;
-            __global float *tm_scales;
-            float tm_cscale;
-        } lstm;
-    };
-} cell_ctx_t;
-
-typedef struct {
-    cell_dim_t mb;
-    cell_dim_t dhc;
-} cell_loops_t;
-
-#define NEED_SCRATCH_GATES \
-    (!(CELL_COMPUTE_GEMM_LAYER && CELL_COMPUTE_GEMM_ITER))
-
-void cell_common_inner(const_wei_layer_cell_t wei_layer,
-        const_wei_iter_cell_t wei_iter, const_aux_cell_t cell_layer,
-        const_aux_cell_t cell_iter, aux_cell_t gates, aux_cell_t states,
-        const_aux_cell_t scratch_gates, cell_ctx_t ctx, cell_dims_t outer,
-        cell_dims_t dims) {
-    // Extract local id from the subgroup id rather than `get_local_id` as the
-    // mapping from subgroups to the local work group is not well defined.
-    const int local_sgid0
-            = get_sub_group_id() * SUBGROUP_SIZE % get_local_size(0);
-    const int local_sgid1
-            = get_sub_group_id() * SUBGROUP_SIZE / get_local_size(0);
-
-    const int c_tg = outer.dhc + get_group_id(0) * DHC_LOCAL;
-    const int c_sg = c_tg + local_sgid0 * CELL_DHC_THR;
-    const int c_thr = c_sg + get_sub_group_local_id();
-    const int c_thr_stride = SUBGROUP_SIZE;
-
-    const int n_tg = outer.mb + get_group_id(1) * BATCH_LOCAL;
-    const int n_sg = n_tg + local_sgid1 * CELL_BATCH_THR;
-    const int n_thr = n_sg;
-    const int n_thr_stride = 1;
-
-    float C[n_gates][CELL_BATCH_THR][CELL_DHC_THR] = {};
-
-    if (NEED_SCRATCH_GATES) {
-        // GEMM operations may be calculated in an separate external kernel and are
-        // passed in via `scratch_gates`
-        for_(int gate_idx = 0; gate_idx < n_gates; gate_idx++)
-        for (int n_l = 0; n_l < CELL_BATCH_THR; n_l++) {
-            int n = n_thr + n_l * n_thr_stride;
-            if (CELL_MB_TAIL && n >= dims.mb) break;
-            for (int c_l = 0; c_l < CELL_DHC_THR; c_l++) {
-                int c = c_thr + c_l * c_thr_stride;
-                if (CELL_DHC_TAIL && c >= dims.dhc) break;
-                C[gate_idx][n_l]
-                 [c_l] = convert_float(scratch_gates.ptr[cell_scratch_mem(
-                         scratch_gates.strides.mb, dims.dhc, n, gate_idx, c)]);
-            }
-        }
-    }
-
-    if (CELL_COMPUTE_GEMM_LAYER) {
-        // cell_states = batch x slc
-        // wei_layer = slc x (gates x dhc)
-        // C = batch x (gates x dhc)
-        gemm_dims_t size = {.m = dims.mb,
-                .k = dims.slc,
-                .n_inner = dims.dhc,
-                .n_outer = n_gates};
-        gemm_sum(C, cell_layer.ptr, cell_layer.strides.mb, wei_layer.ptr,
-                wei_layer.strides.slc, size, n_sg, n_thr_stride, c_sg,
-                c_thr_stride, CELL_DHC_TAIL, CELL_GEMM_LAYER_K_TAIL,
-                CELL_MB_TAIL);
-    }
-
-    if (CELL_COMPUTE_GEMM_ITER) {
-        // cell_states = batch x sic
-        // wei_iter  = sic x (gates x dhc)
-        // C = batch x (gates x dhc)
-        gemm_dims_t size = {.m = dims.mb,
-                .k = dims.sic,
-                .n_inner = dims.dhc,
-                .n_outer = n_gates};
-        gemm_sum(C, cell_iter.ptr, cell_iter.strides.mb, wei_iter.ptr,
-                wei_iter.strides.sic, size, n_sg, n_thr_stride, c_sg,
-                c_thr_stride, CELL_DHC_TAIL, CELL_GEMM_ITER_K_TAIL,
-                CELL_MB_TAIL);
-    }
-
-    for (int n_l = 0; n_l < CELL_BATCH_THR; n_l++) {
-        int n = n_thr + n_l * n_thr_stride;
-        if (CELL_MB_TAIL && n >= dims.mb) break;
-        for (int c_l = 0; c_l < CELL_DHC_THR; c_l++) {
-            int c = c_thr + c_l * c_thr_stride;
-            if (CELL_DHC_TAIL && c >= dims.dhc) break;
-            if (CELL_KIND == VANILLA_LSTM) {
-                float G[vanilla_lstm_n_gates];
-                float B[vanilla_lstm_n_bias];
-                for (int gate_idx = 0; gate_idx < vanilla_lstm_n_gates;
-                        gate_idx++) {
-                    G[gate_idx] = C[gate_idx][n_l][c_l];
-                    B[gate_idx] = convert_float(
-                            ctx.lstm.bias[off_ker_bias(dims.dhc, gate_idx, c)]);
-                }
-                vanilla_lstm_gates_t g
-                        = vanilla_lstm_compute_gates(G, B, ctx.lstm.tm_scales);
-                vanilla_lstm_store(gates.ptr, gates.strides.mb, states.ptr,
-                        ctx.lstm.c_states, ctx.lstm.c_states_iter,
-                        states.strides.mb, dims.dhc, n, c, ctx.lstm.tm_cscale,
-                        g);
-            } else if (CELL_KIND == VANILLA_RNN) {
-                float g = vanilla_rnn_compute_gates(C[0][n_l][c_l],
-                        ctx.rnn.bias[off_ker_bias(dims.dhc, 0, c)],
-                        ctx.rnn.alpha, ctx.rnn.tm_scales);
-                store_vanilla_rnn(gates.ptr, gates.strides.mb, states.ptr,
-                        states.strides.mb, dims.dhc, n, c, g);
-            }
-        }
-    }
-}
-
-void cell_common(const_wei_layer_cell_t wei_layer,
-        const_wei_iter_cell_t wei_iter, const_aux_cell_t cell_layer,
-        const_aux_cell_t cell_iter, aux_cell_t gates, aux_cell_t states,
-        const_aux_cell_t scratch_gates, cell_ctx_t ctx, cell_dims_t dims,
-        cell_loops_t loops) {
-
-    for_(cell_dim_t mb_outer = 0; mb_outer < loops.mb; mb_outer += BATCH_LOCAL)
-    for (cell_dim_t dhc_outer = 0; dhc_outer < loops.dhc;
-            dhc_outer += DHC_LOCAL) {
-        cell_dims_t outer = {.mb = mb_outer, .dhc = dhc_outer};
-        cell_common_inner(wei_layer, wei_iter, cell_layer, cell_iter, gates,
-                states, scratch_gates, ctx, outer, dims);
-    }
-}
-
-__attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-ref_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
-        dim_t wei_layer_off, int64x5_t wei_layer_strides_,
-        __global const WEI_ITER_DATA_T *wei_iter_, dim_t wei_iter_off,
-        int64x5_t wei_iter_strides_, __global const AUX_DATA_T *cell_layer_,
-        dim_t cell_layer_off, int64x2_t cell_layer_strides_,
-        __global const AUX_DATA_T *cell_iter_, dim_t cell_iter_off,
-        int64x2_t cell_iter_strides_, __global AUX_DATA_T *gates_,
-        dim_t gates_off, int64x2_t gates_strides_, __global AUX_DATA_T *states_,
-        dim_t states_off, int64x2_t states_strides_,
-#if CELL_KIND == VANILLA_LSTM
-        __global AUX_DATA_T *c_states_, dim_t c_states_off,
-        __global const AUX_DATA_T *c_states_iter_, dim_t c_states_iter_off,
-        float tm_cscale,
-#endif
-#if NEED_SCRATCH_GATES
-        __global AUX_DATA_T *scratch_gates_, dim_t scratch_gates_off,
-        int64x2_t scratch_gates_strides_,
-#endif
-#if CELL_ENABLE_ITER_BLOCK
-        dim_t iter_loop,
-#endif
-        __global BIAS_DATA_T *bias_, dim_t bias_off, float alpha,
-        __global float *tm_scales, dim_t mb, dim_t dhc, dim_t slc, dim_t sic,
-        dim_t dhc_loop) {
-
-#if !NEED_SCRATCH_GATES
-    __global AUX_DATA_T *scratch_gates_ = NULL;
-    dim_t scratch_gates_off = 0;
-    int64x2_t scratch_gates_strides_ = {};
-#endif
-#if !CELL_ENABLE_ITER_BLOCK
-    const dim_t iter_loop = 1;
-#endif
-
-    grid_strides_t wei_layer_strides
-            = {.iter = 0, .cell = {.slc = wei_layer_strides_.array[2]}};
-    grid_strides_t wei_iter_strides
-            = {.iter = 0, .cell = {.sic = wei_iter_strides_.array[2]}};
-    grid_strides_t cell_layer_strides = {.iter = cell_layer_strides_.array[0],
-            .cell = {.mb = cell_layer_strides_.array[1]}};
-    grid_strides_t cell_iter_strides = {.iter = cell_iter_strides_.array[0],
-            .cell = {.mb = cell_iter_strides_.array[1]}};
-    grid_strides_t gates_strides = {.iter = gates_strides_.array[0],
-            .cell = {.mb = gates_strides_.array[1]}};
-    grid_strides_t states_strides = {.iter = states_strides_.array[0],
-            .cell = {.mb = states_strides_.array[1]}};
-    grid_strides_t scratch_gates_strides
-            = {.iter = scratch_gates_strides_.array[0],
-                    .cell = {.mb = scratch_gates_strides_.array[1]}};
-
-    cell_dims_t dims = {.mb = mb, .dhc = dhc, .slc = slc, .sic = sic};
-    cell_loops_t cell_loops = {.mb = BATCH_LOCAL, .dhc = dhc_loop};
-
-    // Optimization Opportunity: The weights buffers are reused across
-    // iterations. Because of this, we can load and reorder the weights buffers
-    // into SLM so that we can get optimal load patterns in the GEMM operations
-    // below.
-    const_wei_layer_cell_t wei_layer = {.ptr = wei_layer_ + wei_layer_off,
-            .strides = wei_layer_strides.cell};
-    const_wei_iter_cell_t wei_iter = {
-            .ptr = wei_iter_ + wei_iter_off, .strides = wei_iter_strides.cell};
-
-    // Optimization Opportunity: bias can be preloaded to a register if n_gates*dhc
-    // is small enough.
-    __global BIAS_DATA_T *bias = bias_ + bias_off;
-
-    for (dim_t iter = 0; iter < iter_loop; iter++) {
-        const_aux_cell_t cell_layer = {.ptr
-                = cell_layer_ + cell_layer_off + cell_layer_strides.iter * iter,
-                .strides = cell_layer_strides.cell};
-        const_aux_cell_t cell_iter = {.ptr
-                = cell_iter_ + cell_iter_off + cell_iter_strides.iter * iter,
-                .strides = cell_iter_strides.cell};
-        aux_cell_t gates
-                = {.ptr = gates_ + gates_off + gates_strides.iter * iter,
-                        .strides = gates_strides.cell};
-        aux_cell_t states
-                = {.ptr = states_ + states_off + states_strides.iter * iter,
-                        .strides = states_strides.cell};
-        const_aux_cell_t scratch_gates = {.ptr = scratch_gates_
-                        + scratch_gates_off + scratch_gates_strides.iter * iter,
-                .strides = scratch_gates_strides.cell};
-
-#if CELL_KIND == VANILLA_RNN
-        cell_ctx_t cell_ctx = {
-                .rnn = {.alpha = alpha, .bias = bias, .tm_scales = tm_scales}};
-        __global AUX_DATA_T *c_states_ = NULL;
-#elif CELL_KIND == VANILLA_LSTM
-        cell_ctx_t cell_ctx
-                = {.lstm = {.c_states = c_states_ + c_states_off
-                                   + states_strides.iter * iter,
-                           .c_states_iter = c_states_iter_ + c_states_iter_off
-                                   + states_strides.iter * iter,
-                           .bias = bias,
-                           .tm_scales = tm_scales,
-                           .tm_cscale = tm_cscale}};
-
-#endif
-
-        cell_common(wei_layer, wei_iter, cell_layer, cell_iter, gates, states,
-                scratch_gates, cell_ctx, dims, cell_loops);
-
-        if (iter < iter_loop - 1) barrier(CLK_GLOBAL_MEM_FENCE);
-    }
-
-    return;
-}
-
-#else
-__kernel void ref_rnn_cell_fwd() {}
-#endif

@@ -23,9 +23,9 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/serialization.hpp"
-#include "gpu/intel/utils.hpp"
+#include "gpu/compute/kernel_arg_list.hpp"
+#include "gpu/serialization.hpp"
+#include "gpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {

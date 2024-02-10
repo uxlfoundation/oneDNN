@@ -22,6 +22,8 @@
 
 #include "oneapi/dnnl/dnnl.hpp"
 
+#include "oneapi/dnnl/dnnl.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

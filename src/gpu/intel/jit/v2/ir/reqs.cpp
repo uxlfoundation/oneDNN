@@ -336,6 +336,22 @@ bool prb_reqs_t::req_t::can_prove(const expr_t &expr_to_prove) const {
     return false;
 }
 
+bool prb_reqs_t::req_t::can_prove(const expr_t &expr_to_prove) const {
+    expr_t lhs_a, rhs_a;
+    int lhs_b, rhs_b;
+    auto lhs = expr.to_ir();
+    auto rhs = expr_to_prove;
+    if (lhs.is_equal(rhs)) return true;
+    if (!is_a_mod_b_eq_0(lhs, lhs_a, lhs_b)) return false;
+    if (!is_a_mod_b_eq_0(rhs, rhs_a, rhs_b)) return false;
+    auto lhs_dim = size_to_prb_dim(lhs_a);
+    auto rhs_dim = size_to_prb_dim(rhs_a);
+    if (lhs_dim.is_undef() || rhs_dim.is_undef() || lhs_dim != rhs_dim)
+        return false;
+    if (lhs_b % rhs_b == 0) return true;
+    return false;
+}
+
 bool to_dims_mod_c(const req_expr_t &re, std::vector<prb_dim_t> &dims, int &c) {
     expr_t e = re.to_ir();
     expr_t a;

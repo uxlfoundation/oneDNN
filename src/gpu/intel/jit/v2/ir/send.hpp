@@ -868,7 +868,7 @@ private:
         int reg_off = 0;
         for (int h = 0; h < plane.h; h += desc.h) {
             for (int w = 0; w < plane.w; w += desc.w * desc.c) {
-                pvar_coord_t<dim_t> coord;
+                prb_coord_t<int> coord;
                 coord[plane.w_dim] = w;
                 coord[plane.h_dim] = h;
                 if (!plan_2d.add_entry(coord, reg_off, prover))

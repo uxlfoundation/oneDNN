@@ -16,12 +16,12 @@
 
 #include "gpu/intel/jit/v2/conv/planner/planner.hpp"
 
-#include "gpu/intel/jit/v2/conv/model.hpp"
-#include "gpu/intel/jit/v2/conv/plan.hpp"
-#include "gpu/intel/jit/v2/conv/plan_registry.hpp"
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-#include "gpu/intel/jit/v2/conv/planner/model_fit.hpp"
-#include "gpu/intel/jit/v2/conv/planner/search.hpp"
+#include "gpu/jit/v2/conv/model.hpp"
+#include "gpu/jit/v2/conv/plan.hpp"
+#include "gpu/jit/v2/conv/planner/bench.hpp"
+#include "gpu/jit/v2/conv/planner/mkl_iface.hpp"
+#include "gpu/jit/v2/conv/planner/model_fit.hpp"
+#include "gpu/jit/v2/conv/planner/search.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -126,6 +126,7 @@ void init_params(
     auto iface = params.desc.parse_iface();
     iface.parse(cmd_args, params.desc);
     params.desc.set_defaults();
+    params.desc.hw = hw_t(bench_mger.get_engine().get());
 }
 
 void planner_main(int argc, const char **argv) {
@@ -133,28 +134,20 @@ void planner_main(int argc, const char **argv) {
     init_params(argc, argv, bench_mger);
     switch (params.mode) {
         case planner_mode_t::trace: {
-            plan_t plan;
-            if (!finalize_conv_desc(params.desc, bench_mger.hw(), &plan)) {
-                std::cout << "Error: cannot create plan\n";
-                exit(1);
-            }
-            std::cout << plan.str() << std::endl;
-            std::cout << "Reqs:\n";
-            std::cout << params.desc.reqs.str() << std::endl;
+            auto plan = create_conv_plan_and_finalize_desc(params.desc);
+            std::cout << std::endl;
+            std::cout << ir_utils::add_tag("plan", plan.str()) << std::endl;
             break;
         }
         case planner_mode_t::bench: {
-            auto bd = bench(bench_mger, params.desc);
-            auto model = model_fit(bd);
+            bench(bench_mger, params.desc);
             break;
         }
         case planner_mode_t::auto_search: {
-            plan_registry() = plan_registry_t();
             auto_search(bench_mger);
             break;
         }
         case planner_mode_t::search: {
-            plan_registry() = plan_registry_t();
             search(bench_mger, params.desc);
             break;
         }

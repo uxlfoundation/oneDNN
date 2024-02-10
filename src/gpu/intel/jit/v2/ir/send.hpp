@@ -492,7 +492,32 @@ struct send_2d_desc_t {
 
     send_2d_desc_t() = default;
     send_2d_desc_t(const view_t &view, const send_params_t &params,
-            const prover_t &prover);
+            const prover_t &prover) {
+        auto &plane = view.plane();
+        if (!params.hint_2d) return;
+        if (!plane) return;
+
+        auto &hint = params.hint_2d;
+        hw = params.hw;
+        op = params.op;
+        type = view.type();
+        transpose = hint.transpose;
+        vnni = hint.vnni;
+        W = plane.W;
+        H = plane.H;
+        P = plane.P;
+        w = hint.width;
+        h = hint.height;
+        c = 1;
+        w_rcount = ir_utils::safe_div(plane.w, w);
+        h_rcount = ir_utils::safe_div(plane.h, h);
+        w_dim = plane.w_dim;
+        h_dim = plane.h_dim;
+        base = get_2d_base(view);
+        try_promote_count();
+        is_valid = is_supported(view, prover);
+    }
+
     explicit operator bool() const { return is_valid; }
 
     // Reduce the number of messages by increasing count per

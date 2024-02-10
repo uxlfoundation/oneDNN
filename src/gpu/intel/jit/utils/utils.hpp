@@ -1201,12 +1201,16 @@ public:
         return oss.str();
     }
 
-    void print_help() const {
-        std::ios_base::fmtflags f(std::cout.flags());
-        for (auto &e : entries_) {
-            std::cout << "  ";
-            std::cout << std::left << std::setw(22) << e.name;
-            std::cout << e.help << std::endl;
+    void parse(const std::string &s, T *obj) {
+        bool is_help = (s.find("--help") != std::string::npos);
+        if (is_help) {
+            for (auto &a : args_) {
+                std::cout << "  ";
+                std::cout << std::left << std::setw(22) << a.key;
+                std::cout << a.help << std::endl;
+            }
+            exit(0);
+            return;
         }
         std::cout.flags(f);
     }

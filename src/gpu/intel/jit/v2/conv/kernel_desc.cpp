@@ -33,64 +33,40 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-void load_desc_t::parse(std::istream &in) {
-    operator=(load_desc_t());
-    a = send_kind_t::undef;
-    b = send_kind_t::undef;
-    std::string s;
-    in >> s;
-    if (s == "x") return;
+load_desc_t str_to_load_desc(const std::string &s) {
     auto parts = gpu_utils::split(s, ",");
+    load_desc_t ret;
     for (auto &p : parts) {
         auto p_parts = gpu_utils::split(p, ":");
         ir_assert(p_parts.size() == 2);
         auto tensor = p_parts[0];
         auto kind = p_parts[1];
         if (tensor == "a") {
-            a = to_enum<send_kind_t>(kind);
+            ret.a = str_to_send_kind(kind);
         } else if (tensor == "b") {
-            b = to_enum<send_kind_t>(kind);
+            ret.b = str_to_send_kind(kind);
         } else {
             ir_error_not_expected() << p;
         }
     }
+    return ret;
 }
 
-void store_desc_t::parse(std::istream &in) {
-    operator=(store_desc_t());
-    std::string s;
-    in >> s;
-    if (s == "x") return;
+store_desc_t str_to_store_desc(const std::string &s) {
     auto parts = gpu_utils::split(s, ",");
+    store_desc_t ret;
     for (auto &p : parts) {
         auto p_parts = gpu_utils::split(p, ":");
         ir_assert(p_parts.size() == 2);
         auto tensor = p_parts[0];
         auto kind = p_parts[1];
         if (tensor == "c") {
-            c = to_enum<send_kind_t>(kind);
+            ret.c = str_to_send_kind(kind);
         } else {
             ir_error_not_expected() << p;
         }
     }
-}
-
-void prefetch_desc_t::parse(std::istream &in) {
-    operator=(prefetch_desc_t());
-    std::string s;
-    in >> s;
-    auto parts = gpu_utils::split(s, ".");
-    ir_assert(utils::one_of((int)parts.size(), 1, 2));
-    ir_assert(parts[0].size() >= 2);
-    dist = std::stoi(parts[0].substr(1));
-    ir_assert(dist >= 0);
-    a = (dist > 0);
-    b = (dist > 0);
-    if (parts.size() == 2 && dist > 0) {
-        ir_assert(utils::one_of(parts[1], "a", "b", "ab"));
-        a = (parts[1].find("a") != std::string::npos);
-        b = (parts[1].find("b") != std::string::npos);
-    }
+    return ret;
 }
 
 layout_desc_t make_conv_layout_desc(
@@ -364,9 +340,8 @@ std::string kernel_desc_t::str() const {
     oss << "Registers:          " << regs << std::endl;
     oss << "Iteration tile:     " << iter_tile << std::endl;
     oss << "Thread group tile:  " << thread_group_tile << std::endl;
-    oss << "Loop desc:          " << loop_desc << std::endl;
+    oss << "Loop nest:          " << loop_nest << std::endl;
     oss << "Load:               " << load.str() << std::endl;
-    oss << "Prefetch:           " << prefetch.str() << std::endl;
     oss << "Store:              " << store.str() << std::endl;
     if (reqs) oss << ir_utils::add_tag("Reqs", reqs.str()) << std::endl;
     oss << "Command:            " << cmd_str();
@@ -545,15 +520,15 @@ ir_utils::cli_iface_t<kernel_desc_t> kernel_desc_t::cli_iface() {
             "kw,kh,kd,ic).",
             MAKE_GETTER(desc->loop_nest.str()),
             MAKE_SETTER(loop_nest, str_to_loop_nest(value)));
-    iface.add_arg("--a-access", "Access type for A (block, scattered, 2d).",
-            MAKE_GETTER(to_string(desc->a_access_kind)),
-            MAKE_SETTER(a_access_kind, str_to_send_kind(value)));
-    iface.add_arg("--b-access", "Access type for B (block, scattered, 2d).",
-            MAKE_GETTER(to_string(desc->b_access_kind)),
-            MAKE_SETTER(b_access_kind, str_to_send_kind(value)));
-    iface.add_arg("--c-access", "Access type for C (block, scattered, 2d).",
-            MAKE_GETTER(to_string(desc->c_access_kind)),
-            MAKE_SETTER(c_access_kind, str_to_send_kind(value)));
+    iface.add_arg("--load",
+            "Load type (block, scattered [default], 2d) for A and B, e.g. "
+            "a:2d,b:block.",
+            MAKE_GETTER(desc->load.str()),
+            MAKE_SETTER(load, str_to_load_desc(value)));
+    iface.add_arg("--store",
+            "Store type (block, scattered [default], 2d) for C,  e.g. c:2d.",
+            MAKE_GETTER(desc->store.str()),
+            MAKE_SETTER(store, str_to_store_desc(value)));
     return iface;
 }
 

@@ -127,11 +127,11 @@ public:
     std::string to_abx_tag(const std::string &tag) const;
 
     template <typename T>
-    T filter_dim_map(const T &map) const {
+    T filter_dim_map(const T &dim_map) const {
         T ret;
-        for (auto &d : map) {
+        for (auto &d : dim_map) {
             if (!letter_map_.has(d)) continue;
-            ret[d] = map[d];
+            ret[d] = dim_map[d];
         }
         return ret;
     }
@@ -182,6 +182,22 @@ private:
     layout_desc_t layout_desc_;
 };
 
+class dim_mapper_t {
+public:
+    void set_dim(const prb_dim_t &dim, const expr_t &expr = expr_t());
+    void set_layout_desc(const layout_desc_t &desc) { layout_desc_ = desc; }
+    bool is_empty() const { return exprs_.is_empty(); }
+    bool has(const prb_dim_t &dim) const { return exprs_.has(dim); }
+    const expr_t &expr(const prb_dim_t &dim) const;
+    const layout_desc_t &layout_desc() const { return layout_desc_; }
+    std::string str() const;
+    IR_DEFINE_DUMP()
+
+private:
+    dim_map_t<prb_dim_t, expr_t> exprs_;
+    layout_desc_t layout_desc_;
+};
+
 struct layout_raw_tag_entry_t {
     char letter = '?';
     int block = 0;
@@ -201,10 +217,8 @@ struct layout_raw_tag_entry_t {
     std::string str() const {
         std::ostringstream oss;
         if (block != 0) oss << block;
-        oss << std::string(1,
-                (is_blocked && block == 0
-                                ? static_cast<char>(std::toupper(letter))
-                                : letter));
+        oss << std::string(
+                1, (is_blocked && block == 0 ? std::toupper(letter) : letter));
         return oss.str();
     }
 
@@ -385,7 +399,6 @@ public:
     bool is_blocked_by(const layout_t &other) const;
     void add_block(const pvar_t &dim, const expr_t &size,
             const expr_t &_stride = expr_t());
-    void remove(const pvar_t &dim);
     void block_by(const std::vector<block_t> &blocks);
     void pad(int elems) { stride_pad_ = elems; }
     void pad_bytes(int bytes) { pad(ir_utils::safe_div(bytes, type().size())); }
@@ -404,10 +417,10 @@ public:
     }
 
     template <typename T = int>
-    layout_t map(const pvar_tile_t &tile) const {
+    layout_t map(const prb_tile_t &tile) const {
         dim_mapper_t mapper;
         mapper.set_layout_desc(desc_);
-        return map(mapper, pvar_coord_t<T>(), tile);
+        return map(mapper, prb_coord_t<T>(), tile);
     }
 
     layout_t make_dense() const;
@@ -476,7 +489,7 @@ public:
     int block_index() const { return block_idx_; }
     block_t remaining_block() const;
     bool is_dense(const prover_t &prover = prover_t::instance()) const;
-    int elems(const pvar_t &dim = pvar_t()) const;
+    int elems(const prb_dim_t &dim = prb_dim_t()) const;
     layout_t sub_layout(int stride = 1) const;
     std::string str() const;
 
@@ -602,7 +615,7 @@ struct plane_t {
 // Helper class for layout splitting across a grid.
 class grid_splitter_t {
 public:
-    void add(const expr_t &idx, dim_t size);
+    void add(const expr_t &idx, int size);
     int size() const {
         int ret = 1;
         for (auto &idx : idxs_)
@@ -615,35 +628,19 @@ public:
         return virt_grid_idxs_;
     }
 
-    const var_range_info_t &var_range_info() const { return var_range_info_; }
-
-    std::string str() const {
-        std::ostringstream oss;
-        bool is_first = true;
-        for (auto &kv : virt_grid_idxs_) {
-            if (!is_first) oss << "\n";
-            oss << kv.first << " -> " << kv.second;
-            is_first = false;
-        }
-        return oss.str();
-    }
-
-    IR_DEFINE_DUMP()
-
 private:
     struct index_t {
         expr_t expr;
-        dim_t size = 0;
+        int size = 0;
 
-        index_t(const expr_t &expr, dim_t size) : expr(expr), size(size) {}
+        index_t(const expr_t &expr, int size) : expr(expr), size(size) {}
         expr_t pop(int &n);
     };
 
-    expr_t register_index(const expr_t &expr, int size);
+    expr_t register_index(const expr_t &expr);
 
     std::vector<index_t> idxs_;
     object_map_t<expr_t, expr_t> virt_grid_idxs_;
-    var_range_info_t var_range_info_;
 };
 
 class view_t {
@@ -669,8 +666,8 @@ public:
     IR_DEFINE_DUMP()
 
     static view_t split(const dim_mapper_t &dim_mapper,
-            const layout_t &base_layout, const pvar_coord_t<expr_t> &coord,
-            const pvar_tile_t &tile, grid_splitter_t &grid_splitter);
+            const layout_t &base_layout, const prb_coord_t<expr_t> &coord,
+            const prb_tile_t &tile, grid_splitter_t &grid_splitter);
 
 private:
     dim_mapper_t dim_mapper_;

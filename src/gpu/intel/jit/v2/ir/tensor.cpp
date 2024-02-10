@@ -20,6 +20,10 @@
 
 #include "gpu/intel/jit/pass/simplify.hpp"
 
+#include <array>
+
+#include "gpu/jit/pass/simplify.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -62,7 +66,7 @@ std::string block_t::str() const {
     return oss.str();
 }
 
-layout_desc_t::layout_desc_t(const pvar_map_t<char> &letter_map)
+layout_desc_t::layout_desc_t(const dim_map_t<prb_dim_t, char> &letter_map)
     : letter_map_(letter_map) {
     auto append = [&](const pvar_t &dim) {
         if (letter_map_.has(dim)) canonical_ += letter_map_[dim];
@@ -137,27 +141,21 @@ std::string layout_desc_t::str() const {
     return oss.str();
 }
 
-void dim_mapper_t::set_dim(
-        const pvar_t &dim, const expr_t &expr, bool has_underflow) {
-    map_.set(dim, {expr.is_empty() ? dim.index_var() : expr, has_underflow});
+void dim_mapper_t::set_dim(const prb_dim_t &dim, const expr_t &expr) {
+    exprs_.set(dim, expr.is_empty() ? index_var(dim) : expr);
 }
 
-const expr_t &dim_mapper_t::expr(const pvar_t &dim) const {
-    if (is_empty()) return dim.index_var();
-    return map_[dim].expr;
-}
-
-bool dim_mapper_t::has_underflow(const pvar_t &dim) const {
-    if (is_empty()) return false;
-    return map_[dim].has_underflow;
+const expr_t &dim_mapper_t::expr(const prb_dim_t &dim) const {
+    if (is_empty()) return index_var(dim);
+    return exprs_[dim];
 }
 
 std::string dim_mapper_t::str() const {
     std::ostringstream oss;
     oss << "dim_mapper:" << std::endl;
-    for (auto &dim : map_) {
+    for (auto &dim : exprs_) {
         oss << "  " << dim.str() << " -> ";
-        oss << map_[dim].str() << std::endl;
+        oss << exprs_[dim].str() << std::endl;
     }
     return oss.str();
 }
@@ -256,6 +254,24 @@ bool layout_raw_tag_t::matches(const layout_raw_tag_t &other,
         i1++;
     }
     return i0 == n0 && i1 == n1;
+}
+
+void layout_raw_tag_t::init_entries(const std::string &s) {
+    ir_assert(is_abx_tag(s)) << s;
+    std::array<bool, 'z' - 'a' + 1> is_blocked;
+    is_blocked.fill(false);
+    auto letter_blocks = parse_letter_blocks(s);
+    for (auto &p : letter_blocks) {
+        if (p.second != 0) is_blocked[std::tolower(p.first) - 'a'] = true;
+    }
+    for (auto &p : letter_blocks) {
+        char letter = std::tolower(p.first);
+        entries_.emplace_back();
+        auto &e = entries_.back();
+        e.letter = letter;
+        e.block = p.second;
+        e.is_blocked = is_blocked[letter - 'a'];
+    }
 }
 
 bool layout_raw_tag_t::has_x() const {
@@ -413,9 +429,9 @@ static inline void advance(
     }
 }
 
-bool layout_tag_t::matches(const layout_tag_t &other, const pvar_tile_t &sizes,
-        bool check_type) const {
-    if (check_type && type_ != other.type_) return false;
+bool layout_tag_t::matches(
+        const layout_tag_t &other, const prb_tile_t &sizes) const {
+    if (type_ != other.type_) return false;
     return raw_tag().matches(other.raw_tag(), desc_, sizes);
 }
 
@@ -578,18 +594,6 @@ void layout_t::add_block(
         }
     }
     blocks_.emplace_back(dim, size, stride);
-}
-
-void layout_t::remove(const pvar_t &dim) {
-    std::vector<block_t> new_blocks;
-    for (auto &b : blocks_) {
-        if (b.dim == dim) continue;
-        new_blocks.push_back(b);
-    }
-    auto new_letter_map = desc_.letter_map();
-    new_letter_map.unset(dim);
-    desc_ = layout_desc_t(new_letter_map);
-    blocks_ = std::move(new_blocks);
 }
 
 void layout_t::block_by(const std::vector<block_t> &inner_blocks) {
@@ -780,14 +784,7 @@ layout_t layout_t::make_dense() const {
         b.stride = expr_t(stride);
         stride *= b.int_size();
     }
-    return layout_t(desc_, type_, base_, new_blocks);
-}
-
-layout_t layout_t::retype(const type_t &new_type, bool dense) const {
-    if (new_type == type_) return *this;
-    auto ret = layout_t(desc_, new_type, base_, blocks_);
-    if (dense) return ret.make_dense();
-    return ret;
+    return layout_t(dim_mapper.layout_desc(), type(), base, mapped_blocks);
 }
 
 template layout_t layout_t::map<int>(const dim_mapper_t &dim_mapper,
@@ -1141,8 +1138,10 @@ mask_desc_t::mask_desc_t(
             const int large_pow2 = (1 << 10);
             block = large_pow2;
         }
-        dim_masks_.emplace_back(d, expr, simplify_rewrite(dim_sizes[d]), block,
-                dim_mapper.has_underflow(d));
+        bool do_zero_cmp
+                = utils::one_of(d, prb_dims::id, prb_dims::ih, prb_dims::iw);
+        dim_masks_.emplace_back(
+                d, expr, simplify_rewrite(dim_sizes[d]), block, do_zero_cmp);
     }
 }
 
@@ -1171,7 +1170,7 @@ bool mask_desc_t::is_uniform(
         int dim_size = it.elems((*it).dim);
         ir_assert(math::is_pow2(dim_size));
         if (dim_size > dm.block) return false;
-        if (!prover.require(dm.bound % dim_size == 0)) return false;
+        if (!prover.prove(dm.bound % dim_size == 0)) return false;
     }
     return true;
 }
@@ -1246,7 +1245,7 @@ plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc) {
     is_valid = true;
 }
 
-void grid_splitter_t::add(const expr_t &idx, dim_t size) {
+void grid_splitter_t::add(const expr_t &idx, int size) {
     ir_assert(size > 1);
     idxs_.emplace_back(idx, size);
 }
@@ -1257,9 +1256,8 @@ bool grid_splitter_t::is_empty() const {
     return true;
 }
 
-expr_t grid_splitter_t::pop(int _size) {
+expr_t grid_splitter_t::pop(int size) {
     expr_t cur = 0;
-    int size = _size;
     for (auto &idx : idxs_) {
         if (idx.size == 1) continue;
         if (size == 1) break;
@@ -1267,14 +1265,14 @@ expr_t grid_splitter_t::pop(int _size) {
         cur += idx.pop(size);
     }
     ir_assert(size == 1);
-    return register_index(simplify_rewrite(cur), _size);
+    return register_index(simplify_rewrite(cur));
 }
 
 expr_t grid_splitter_t::index_t::pop(int &n) {
     if (n == 1) return 0;
     if (size >= n) {
         ir_assert(size % n == 0);
-        auto ret = (size == n ? expr : expr % n);
+        auto ret = expr % n;
         expr = (size == n ? 0 : expr / n);
         size /= n;
         n = 1;
@@ -1288,13 +1286,12 @@ expr_t grid_splitter_t::index_t::pop(int &n) {
     return ret;
 }
 
-expr_t grid_splitter_t::register_index(const expr_t &expr, int size) {
+expr_t grid_splitter_t::register_index(const expr_t &expr) {
     if (expr.is<var_t>()) return expr;
     int idx = (int)virt_grid_idxs_.size();
     auto var
             = var_t::make(type_t::s32(), "virt_grid_idx" + std::to_string(idx));
     virt_grid_idxs_.emplace(var, expr);
-    var_range_info_.set_bound(var, size);
     return var;
 }
 
@@ -1320,55 +1317,8 @@ std::string view_t::str() const {
     return oss.str();
 }
 
-view_t view_t::scatterize(int stride_bytes, const prover_t &prover) const {
-    if (base_layout_.blocks().empty()) return view_t();
-    int type_size = base_layout_.type().size();
-    auto &block0 = base_layout_.blocks()[0];
-    auto &compress_dim = block0.dim;
-    if (!block0.has_const_stride() || block0.int_stride() != 1) return view_t();
-    if (base_layout_.nblocks(compress_dim) != 1) return view_t();
-    if (!tile_.has(compress_dim)) return view_t();
-    if (stride_bytes % type_size != 0) return view_t();
-    int stride = stride_bytes / type_size;
-    dim_t size = tile_.at(compress_dim);
-    if (size % stride != 0) return view_t();
-    int compress_mask_idx = -1;
-    for (int i = 0; i < mask_desc_.nmasks(); i++) {
-        auto &dmd = mask_desc_[i];
-        if (dmd.has(compress_dim)) {
-            if (compress_mask_idx != -1) return view_t();
-            if (!dmd.is_identity()) return view_t();
-            compress_mask_idx = i;
-        }
-    }
-    if (compress_mask_idx != -1) {
-        auto &dmd = mask_desc_[compress_mask_idx];
-        ir_assert(dmd.dim == compress_dim);
-        ir_assert(dmd.x_dim == compress_dim);
-        ir_assert(dmd.bound.is_equal(block0.size));
-        if (!prover.require(dmd.base % stride == 0)) return view_t();
-        if (!prover.require(dmd.bound % stride == 0)) return view_t();
-    }
-    auto new_blocks = base_layout_.blocks();
-    new_blocks[0] = block_t(compress_dim, block0.size / stride, stride);
-    auto base_layout = layout_t(base_layout_.desc(), base_layout_.type(),
-            base_layout_.base(), new_blocks);
-    auto coord = coord_;
-    auto tile = tile_;
-    tile[compress_dim] /= stride;
-    coord[compress_dim] = linear_div(coord[compress_dim], stride);
-    view_t ret(dim_mapper(), base_layout, coord, tile);
-    if (compress_mask_idx != -1) {
-        auto &new_dmd = ret.mask_desc_[compress_mask_idx];
-        new_dmd.a = expr_t(stride);
-        new_dmd.base *= stride;
-        new_dmd.bound = block0.size;
-    }
-    return ret;
-}
-
-layout_t split_layout(const layout_t &layout, dim_t inner_elems,
-        dim_t outer_elems, std::vector<int> &inner_block_idxs,
+layout_t split_layout(const layout_t &layout, int inner_elems, int outer_elems,
+        std::vector<int> &inner_block_idxs,
         std::vector<int> &outer_block_idxs) {
     int cur_elems = 1;
     auto in_inner = [&]() { return cur_elems < inner_elems; };
@@ -1385,7 +1335,7 @@ layout_t split_layout(const layout_t &layout, dim_t inner_elems,
         if (in_inner()) {
             inner_block_idxs.push_back(i);
             if (cur_elems * b_size > inner_elems) {
-                dim_t b_inner = ir_utils::safe_div(inner_elems, cur_elems);
+                int b_inner = ir_utils::safe_div(inner_elems, cur_elems);
                 int b_outer = ir_utils::safe_div(b_size, b_inner);
                 auto new_layout = layout.split_block(&b, b_inner, b_outer);
                 return split_layout(new_layout, inner_elems, outer_elems,
@@ -1410,28 +1360,26 @@ layout_t split_layout(const layout_t &layout, dim_t inner_elems,
 }
 
 view_t view_t::split(const dim_mapper_t &dim_mapper,
-        const layout_t &base_layout, const pvar_coord_t<expr_t> &_coord,
-        const pvar_tile_t &_tile, grid_splitter_t &grid_splitter) {
+        const layout_t &base_layout, const prb_coord_t<expr_t> &_coord,
+        const prb_tile_t &_tile, grid_splitter_t &grid_splitter) {
     auto coord = dim_mapper.layout_desc().filter_dim_map(_coord);
     auto tile = dim_mapper.layout_desc().filter_dim_map(_tile);
-    pvar_tile_t split_tile = tile;
-    pvar_coord_t<expr_t> split_coord = coord;
+    prb_tile_t split_tile = tile;
+    prb_coord_t<expr_t> split_coord = coord;
     int outer_elems = grid_splitter.size();
-    dim_t inner_elems = tile.elems() / outer_elems;
+    int inner_elems = tile.elems() / outer_elems;
     std::vector<int> inner_idxs;
     std::vector<int> outer_idxs;
     auto layout = split_layout(base_layout.map(dim_mapper, coord, tile),
             inner_elems, outer_elems, inner_idxs, outer_idxs);
-    pvar_tile_t inner_dims;
+    prb_tile_t inner_dims(1);
     for (int i = 0; i < layout.nblocks(); i++) {
         auto &b = layout.blocks()[i];
-        if (!inner_dims.has(b.dim)) inner_dims[b.dim] = 1;
         if (std::find(outer_idxs.begin(), outer_idxs.end(), i)
                 != outer_idxs.end()) {
             int b_size = b.int_size();
             split_tile[b.dim]
                     = ir_utils::safe_div(split_tile.at(b.dim), b_size);
-            if (!split_coord.has(b.dim)) split_coord[b.dim] = expr_t(0);
             split_coord[b.dim]
                     += grid_splitter.pop(b_size) * inner_dims.at(b.dim);
             split_coord[b.dim] = simplify_rewrite(split_coord[b.dim]);
@@ -1439,8 +1387,7 @@ view_t view_t::split(const dim_mapper_t &dim_mapper,
         inner_dims[b.dim] *= b.int_size();
     }
     ir_assert(grid_splitter.is_empty());
-    return view_t(dim_mapper, base_layout, split_coord, split_tile,
-            grid_splitter.var_range_info());
+    return view_t(dim_mapper, base_layout, split_coord, split_tile);
 }
 
 } // namespace v2

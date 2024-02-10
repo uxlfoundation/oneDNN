@@ -141,6 +141,11 @@ private:
         kernel_params_t _params;
         if (plan_preset_t::instance().is_set()) {
             _desc = plan_preset_t::instance().get();
+            {
+                ir_utils::ir_check_log_level_t check_level(ir_utils::LOG_FATAL);
+                auto plan = create_conv_plan(_desc);
+                _desc.finalize(plan);
+            }
         } else {
             auto &registry = const_plan_registry();
             _desc = registry.find_best(prb);
@@ -149,8 +154,8 @@ private:
                 return status::unimplemented;
             }
         }
-        _desc.spec_strategy = spec_strategy_t::min_dims;
-        _desc.fit_to(prb);
+        if (_desc.is_empty()) return status::unimplemented;
+        ir_assert(ir_check_fatal(_desc.fits(prb)));
         CHECK(init_layouts(_desc, pd));
         CHECK(pd->attr_.set_default_formats(out_md(pd)));
         _desc.set_post_ops(pd->attr()->post_ops_, out_md(pd));

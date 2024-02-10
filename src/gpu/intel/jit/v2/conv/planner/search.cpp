@@ -398,17 +398,7 @@ void auto_search(const bench_manager_t &bench_mger) {
     // clang-format off
     std::vector<const char *> recipes = {
         "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128",
-        "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:2d --store c:2d",
-        "--prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256 --load a:2d,b:2d --store c:2d --prefetch x3",
-        "--prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256",
-
-        "--prop bwd_d --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --spec-reqs sw1sh1sd1",
-        "--prop bwd_d --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:2d --store c:2d --spec-reqs sw1sh1sd1",
-        "--prop bwd_d --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256 --load a:2d,b:2d --store c:2d --prefetch x3 --spec-reqs sw1sh1sd1",
-        "--prop bwd_d --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256 --spec-reqs sw1sh1sd1",
-
-        "--prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128",
-        "--prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:2d --store c:2d",
+        "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:block --store c:2d",
     };
     // clang-format on
     for (const char *_r : recipes) {

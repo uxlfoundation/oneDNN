@@ -136,7 +136,7 @@ struct tile_info_t {
 
     std::vector<int> iter_tiles() const {
         if (!any(flags & tile_flags_t::iter)) return {1};
-        return pow_range(2, 64, 2);
+        return pow_range(8, 32, 2);
     }
 
     std::vector<int> thread_group_tiles() const {
@@ -191,17 +191,23 @@ public:
 
 private:
     void set(const std::string &key, const std::string &value) {
-        if (key == "iter") {
+        if (key == "prop") {
+            prop_ = ir_utils::str_to_prop_kind(value);
+        } else if (key == "iter") {
             auto dim = prb_dim_t::from_name(value);
             tile_infos_[dim].add(tile_flags_t::iter);
         } else if (key == "tg") {
             auto dim = prb_dim_t::from_name(value);
             tile_infos_[dim].add(tile_flags_t::thread_group);
+        } else if (key == "loop") {
+            auto dim = prb_dim_t::from_name(value);
+            tile_infos_[dim].add(tile_flags_t::loop);
         } else {
             ir_error_not_expected();
         }
     }
 
+    prop_kind_t prop_ = prop_kind::undef;
     dim_map_t<prb_dim_t, tile_info_t> tile_infos_;
 };
 
@@ -295,30 +301,22 @@ private:
     dim_map_t<prb_dim_t, std::vector<dim_tile_t>> tiles_;
 };
 
-std::vector<tile_scheme_t> get_tile_schemes(prop_kind_t prop) {
+// clang-format off
+std::vector<tile_scheme_t> get_tile_schemes() {
     std::vector<tile_scheme_t> schemes;
-    if (prop == prop_kind::forward) {
-        schemes.emplace_back("tg=[oc,ow], iter=[mb,oc,ic]");
-        schemes.emplace_back("tg=[oc,mb], iter=[mb,oc,ic]");
-        schemes.emplace_back("tg=[oc,ow], iter=[ow,oc,ic]");
-    } else if (prop == prop_kind::backward_data) {
-        schemes.emplace_back("tg=[ic,iw], iter=[mb,oc,ic]");
-        schemes.emplace_back("tg=[ic,mb], iter=[mb,oc,ic]");
-        schemes.emplace_back("tg=[ic,iw], iter=[iw,oc,ic]");
-    } else if (prop == prop_kind::backward_weights) {
-        schemes.emplace_back("tg=[oc,ic], iter=[mb,oc,ic]");
-        schemes.emplace_back("tg=[oc,ic], iter=[ow,oc,ic]");
-    } else {
-        ir_error_not_expected();
-    }
+    schemes.emplace_back("prop=fwd, loop=[ic,kd,kh,kw], tg=[oc,ow], iter=[mb,oc,ic]");
+    schemes.emplace_back("prop=fwd, loop=[ic,kd,kh,kw], tg=[oc,mb], iter=[mb,oc,ic]");
+    schemes.emplace_back("prop=fwd, loop=[ic,kd,kh,kw], tg=[oc,ow], iter=[ow,oc,ic]");
     return schemes;
 }
+// clang-format on
 
 class kernel_search_manager_t {
 public:
-    kernel_search_manager_t(
-            const bench_manager_t &bench_mger, const kernel_desc_t &base_desc)
-        : bench_mger_(bench_mger), base_desc_(base_desc) {}
+    kernel_search_manager_t(const kernel_desc_t &base_desc)
+        : base_desc_(base_desc) {
+        eng_ = engine(engine::kind::gpu, 0);
+    }
 
     void search() {
         std::cout << "Starting kernel search" << std::endl;
@@ -328,7 +326,7 @@ public:
             auto &d = descs[i];
             std::cout << "Running benchmark for descriptor: " << d.cmd_str()
                       << std::endl;
-            auto bd = bench(bench_mger_, d);
+            auto bd = bench(d);
             if (!bd) std::cout << "Benchmarking failed" << std::endl;
             if (!bd) continue;
             auto model = model_fit(bd);
@@ -339,13 +337,15 @@ public:
 
 private:
     std::vector<kernel_desc_t> gen_descs() const {
+        hw_t hw(eng_.get());
         std::unordered_set<kernel_desc_t, ir_utils::hasher_t<kernel_desc_t>>
                 descs;
-        for (auto &s : get_tile_schemes(base_desc_.prop)) {
+        for (auto &s : get_tile_schemes()) {
             dim_tile_set_t tile_set(s);
             auto tiling_descs = tile_set.create_tiling_descs();
             for (auto &td : tiling_descs) {
                 auto d = base_desc_;
+                d.hw = hw;
                 d.thread_group_tile = td.thread_group;
                 d.iter_tile = td.iter;
                 if (!is_supported(d)) continue;
@@ -370,37 +370,26 @@ private:
         return true;
     }
 
-    const bench_manager_t &bench_mger_;
+    engine eng_;
     kernel_desc_t base_desc_;
 };
 
-void search(const bench_manager_t &bench_mger, const kernel_desc_t &desc) {
-    kernel_search_manager_t mger(bench_mger, desc);
+void search(const kernel_desc_t &desc) {
+    kernel_search_manager_t mger(desc);
     mger.search();
 }
 
-void auto_search(const bench_manager_t &bench_mger) {
+void auto_search() {
     // clang-format off
     std::vector<const char *> recipes = {
         "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128",
-        "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:2d --store c:2d",
-        "--prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256 --load a:2d,b:2d --store c:2d --prefetch x3",
-        "--prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256",
-
-        "--prop bwd_d --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --spec-reqs sw1sh1sd1",
-        "--prop bwd_d --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:2d --store c:2d --spec-reqs sw1sh1sd1",
-        "--prop bwd_d --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256 --load a:2d,b:2d --store c:2d --prefetch x3 --spec-reqs sw1sh1sd1",
-        "--prop bwd_d --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256 --spec-reqs sw1sh1sd1",
-
-        "--prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128",
-        "--prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:2d --store c:2d",
+        "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:block --store c:2d",
     };
     // clang-format on
     for (const char *r : recipes) {
         kernel_desc_t desc;
         desc.set(r);
-        desc.hw = hw_t(bench_mger.get_engine().get());
-        search(bench_mger, desc);
+        search(desc);
     }
 }
 

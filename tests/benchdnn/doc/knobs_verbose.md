@@ -23,7 +23,6 @@ following information is printed for certain verbosity levels.
 
 ## Level 3
 * Cold cache stats.
-* Graph: the number of partitions and their decomposition.
 
 ## Level 5
 * The library implementation name picked to compute the given problem.
@@ -32,9 +31,6 @@ following information is printed for certain verbosity levels.
 * The problem memory footprint and RAM capacity on devices.
 * Fill configuration stats.
 * Compare configuration stats.
-
-## Level 7
-* Graph: prints the essential part of the graph (after the rewriter pass).
 
 ## Level 50
 * Full path of batch file used.

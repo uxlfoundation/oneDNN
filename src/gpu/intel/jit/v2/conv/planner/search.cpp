@@ -137,7 +137,7 @@ struct tile_info_t {
 
     std::vector<int> iter_tiles() const {
         if (!any(flags & tile_flags_t::iter)) return {1};
-        return pow_range(1, 64, 2);
+        return pow_range(8, 64, 2);
     }
 
     std::vector<int> thread_group_tiles() const {
@@ -350,8 +350,9 @@ public:
 
 private:
     std::vector<kernel_desc_t> gen_descs() const {
-        std::unordered_map<std::string, kernel_desc_t> descs;
-        for (auto &s : get_tile_schemes(base_desc_.prop, base_desc_.is_dw)) {
+        std::unordered_set<kernel_desc_t, ir_utils::hasher_t<kernel_desc_t>>
+                descs;
+        for (auto &s : get_tile_schemes()) {
             dim_tile_set_t tile_set(s);
             auto tiling_descs = tile_set.create_tiling_descs();
             for (auto &td : tiling_descs) {
@@ -398,7 +399,9 @@ void auto_search(const bench_manager_t &bench_mger) {
     // clang-format off
     std::vector<const char *> recipes = {
         "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128",
-        "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:block --store c:2d",
+        "--prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --hw xehpc --fma mad --simd 16 --regs 128 --load a:2d,b:2d --store c:2d",
+        "--prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256 --load a:2d,b:2d --store c:2d --prefetch x3",
+        "--prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --hw xehpc --fma dpas --simd 16 --regs 256",
     };
     // clang-format on
     for (const char *_r : recipes) {

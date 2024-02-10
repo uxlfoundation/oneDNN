@@ -16,12 +16,12 @@
 
 #include "gpu/intel/jit/v2/conv/planner/planner.hpp"
 
-#include "gpu/intel/jit/v2/conv/model.hpp"
-#include "gpu/intel/jit/v2/conv/plan.hpp"
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-#include "gpu/intel/jit/v2/conv/planner/mkl_iface.hpp"
-#include "gpu/intel/jit/v2/conv/planner/model_fit.hpp"
-#include "gpu/intel/jit/v2/conv/planner/search.hpp"
+#include "gpu/jit/v2/conv/model.hpp"
+#include "gpu/jit/v2/conv/plan.hpp"
+#include "gpu/jit/v2/conv/planner/bench.hpp"
+#include "gpu/jit/v2/conv/planner/mkl_iface.hpp"
+#include "gpu/jit/v2/conv/planner/model_fit.hpp"
+#include "gpu/jit/v2/conv/planner/search.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -116,16 +116,10 @@ void init_params(
                   << std::endl;
         exit(1);
     }
-
-    if (params.mode != planner_mode_t::auto_search) {
-        auto iface = params.desc.cli_iface();
-        iface.parse(cmd_args, params.desc);
-        params.desc.set_defaults();
-        params.desc.hw = hw_t(bench_mger.get_engine().get());
-        problem_t prb;
-        prb_tile_t s = problem_t::default_shape();
-        prb.set_shape(s);
-    }
+    auto iface = params.desc.cli_iface();
+    iface.parse(cmd_args, &params.desc);
+    params.desc.set_defaults();
+    params.desc.hw = hw_t(bench_mger.get_engine().get());
 }
 
 void planner_main(int argc, const char **argv) {

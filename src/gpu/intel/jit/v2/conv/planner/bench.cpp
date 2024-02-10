@@ -17,10 +17,10 @@
 #include "gpu/intel/jit/v2/conv/planner/bench.hpp"
 
 #include "common/dnnl_thread.hpp"
-#include "gpu/intel/jit/v2/conv/plan.hpp"
-#include "gpu/intel/jit/v2/conv/plan_preset.hpp"
-#include "gpu/intel/jit/v2/conv/plan_registry.hpp"
-#include "gpu/intel/ocl/usm_utils.hpp"
+#include "gpu/jit/v2/conv/plan.hpp"
+#include "gpu/jit/v2/conv/plan_preset.hpp"
+#include "gpu/jit/v2/conv/plan_registry.hpp"
+#include "gpu/ocl/ocl_usm_utils.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -179,7 +179,6 @@ namespace prb_dims = dnnl::impl::gpu::intel::jit::prb_dims;
 class bench_task_t : public bench_task_base_t {
 public:
     bench_task_t(const problem_t &prb) : prb_(prb) {
-        g = prb.shape()[prb_dims::g];
         mb = prb.shape()[prb_dims::mb];
         oc = prb.shape()[prb_dims::oc];
         ic = prb.shape()[prb_dims::ic];
@@ -205,86 +204,21 @@ public:
             memory::dims padding_l = {ph, pw};
             memory::dims padding_r = {ph, pw};
 
-            switch (prb_.prop()) {
-                case prop_kind::forward_inference:
-                case prop_kind::forward_training: {
-                    auto src_md = to_memory_desc(prb_.src_tag(), src_dims);
-                    auto wei_md = to_memory_desc(
-                            prb_.wei_tag(), wei_dims, /*is_wei=*/true);
-                    auto dst_md = to_memory_desc(prb_.dst_tag(), dst_dims);
+            auto src_md = to_memory_desc(prb_.src_tag(), src_dims);
+            auto wei_md
+                    = to_memory_desc(prb_.wei_tag(), wei_dims, /*is_wei=*/true);
+            auto dst_md = to_memory_desc(prb_.dst_tag(), dst_dims);
 
-                    primitive_attr attr;
-                    auto pd = convolution_forward::primitive_desc(eng,
-                            static_cast<enum prop_kind>(prb_.prop()),
-                            algorithm::convolution_direct, src_md, wei_md,
-                            memory::desc(), dst_md, strides, padding_l,
-                            padding_r, attr);
-                    auto *impl_name = pd.impl_info_str();
-                    if (strcmp(impl_name, "jit:ir_v2") != 0) {
-                        std::cout << "Error: expected conv_v2." << std::endl;
-                        exit(1);
-                    }
-                    auto prim = convolution_forward(pd);
-                    set_primitive(prim);
-                    return true;
-                }
-                case prop_kind::backward_data: {
-                    auto diff_src_md = to_memory_desc(prb_.src_tag(), src_dims);
-                    auto wei_md = to_memory_desc(
-                            prb_.wei_tag(), wei_dims, /*is_wei=*/true);
-                    auto diff_dst_md = to_memory_desc(prb_.dst_tag(), dst_dims);
-
-                    // Uses the C API as fwd_hint is not currently optional
-                    // under the C++ API.
-                    primitive_attr attr;
-                    dnnl_primitive_desc_t c_pd = nullptr;
-                    CHECK(dnnl_convolution_backward_data_primitive_desc_create(
-                            &c_pd, eng.get(), alg_kind::convolution_direct,
-                            diff_src_md.get(), wei_md.get(), diff_dst_md.get(),
-                            &strides[0], nullptr, &padding_l[0], &padding_r[0],
-                            nullptr, attr.get()));
-                    auto pd = convolution_backward_data::primitive_desc(c_pd);
-
-                    auto *impl_name = pd.impl_info_str();
-                    if (strcmp(impl_name, "jit:ir_v2") != 0) {
-                        std::cout << "Error: expected conv_v2." << std::endl;
-                        exit(1);
-                    }
-                    auto prim = convolution_backward_data(pd);
-                    set_primitive(prim);
-                    return true;
-                }
-                case prop_kind::backward_weights: {
-                    auto src_md = to_memory_desc(prb_.src_tag(), src_dims);
-                    auto diff_wei_md = to_memory_desc(
-                            prb_.wei_tag(), wei_dims, /*is_wei=*/true);
-                    auto diff_dst_md = to_memory_desc(prb_.dst_tag(), dst_dims);
-
-                    // Uses the C API as fwd_hint is not currently optional
-                    // under the C++ API.
-                    primitive_attr attr;
-                    dnnl_primitive_desc_t c_pd = nullptr;
-                    CHECK(dnnl_convolution_backward_weights_primitive_desc_create(
-                            &c_pd, eng.get(), alg_kind::convolution_direct,
-                            src_md.get(), diff_wei_md.get(), nullptr,
-                            diff_dst_md.get(), &strides[0], nullptr,
-                            &padding_l[0], &padding_r[0], nullptr, attr.get()));
-                    auto pd = convolution_backward_weights::primitive_desc(
-                            c_pd);
-
-                    auto *impl_name = pd.impl_info_str();
-                    if (strcmp(impl_name, "jit:ir_v2") != 0) {
-                        std::cout << "Error: expected conv_v2." << std::endl;
-                        exit(1);
-                    }
-                    auto prim = convolution_backward_weights(pd);
-                    set_primitive(prim);
-                    return true;
-                }
-                default:
-                    std::cout << "Error: unexpected propagation kind"
-                              << std::endl;
-                    exit(1);
+            primitive_attr attr;
+            auto pd = convolution_forward::primitive_desc(eng,
+                    dnnl::prop_kind::forward_inference,
+                    algorithm::convolution_direct, src_md, wei_md,
+                    memory::desc(), dst_md, strides, padding_l, padding_r,
+                    attr);
+            auto *impl_name = pd.impl_info_str();
+            if (strcmp(impl_name, "jit:ir_v2") != 0) {
+                std::cout << "Error: expected conv_v2." << std::endl;
+                exit(1);
             }
         } catch (dnnl::error &e) {
             std::cout << "Initialization Exception: " << e.message << "\n";
@@ -316,7 +250,7 @@ private:
     }
 
     problem_t prb_;
-    memory::dim mb, g;
+    memory::dim mb;
     memory::dim oc, ic;
     memory::dim ih, iw;
     memory::dim oh, ow;

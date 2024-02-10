@@ -133,12 +133,7 @@ private:
         bool can_prove(const expr_t &expr_to_prove) const;
         void serialize(std::ostream &out) const;
         void deserialize(std::istream &in);
-        void stringify(std::ostream &out) const;
-        void parse(std::istream &in);
         std::string str() const;
-#if __cplusplus >= 202002L
-        bool operator==(const req_t &other) const = default;
-#endif
         IR_DEFINE_DUMP()
     };
 

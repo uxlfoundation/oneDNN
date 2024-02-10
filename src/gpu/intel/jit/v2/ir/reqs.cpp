@@ -360,6 +360,22 @@ bool prb_reqs_t::req_t::can_prove(const expr_t &expr_to_prove) const {
     return false;
 }
 
+bool prb_reqs_t::req_t::can_prove(const expr_t &expr_to_prove) const {
+    expr_t lhs_a, rhs_a;
+    int lhs_b, rhs_b;
+    auto lhs = expr.to_ir();
+    auto rhs = expr_to_prove;
+    if (lhs.is_equal(rhs)) return true;
+    if (!is_a_mod_b_eq_0(lhs, lhs_a, lhs_b)) return false;
+    if (!is_a_mod_b_eq_0(rhs, rhs_a, rhs_b)) return false;
+    auto lhs_dim = size_to_prb_dim(lhs_a);
+    auto rhs_dim = size_to_prb_dim(rhs_a);
+    if (lhs_dim.is_undef() || rhs_dim.is_undef() || lhs_dim != rhs_dim)
+        return false;
+    if (lhs_b % rhs_b == 0) return true;
+    return false;
+}
+
 bool to_dims_mod_c(const req_expr_t &re, std::vector<prb_dim_t> &dims, int &c) {
     expr_t e = re.to_ir();
     expr_t a;
@@ -428,81 +444,6 @@ void prb_reqs_t::req_t::serialize(std::ostream &out) const {
 
 void prb_reqs_t::req_t::deserialize(std::istream &in) {
     expr.deserialize(in);
-}
-
-void stringify_var_mul(std::ostream &out, const expr_t &e) {
-    auto args = op_split(op_kind_t::_mul, e);
-    bool is_first = true;
-    for (auto &a : args) {
-        auto dim = size_to_prb_dim(a);
-        if (dim.is_undef()) ir_error_not_expected() << a;
-        if (!is_first) out << "*";
-        out << dim.str();
-        is_first = false;
-    }
-}
-
-void prb_reqs_t::req_t::stringify(std::ostream &out) const {
-    auto e = expr.to_ir();
-    ir_assert(e.is<binary_op_t>());
-    auto &op = e.as<binary_op_t>();
-    switch (op.op_kind) {
-        case op_kind_t::_le:
-        case op_kind_t::_ge:
-        case op_kind_t::_eq: {
-            ir_assert(is_const(op.b));
-            auto *mod_op = op.a.as_ptr<binary_op_t>();
-            if (mod_op && mod_op->op_kind == op_kind_t::_mod) {
-                ir_assert(is_const(mod_op->b)) << e;
-                stringify_var_mul(out, mod_op->a);
-                out << "%" << mod_op->b;
-            } else {
-                stringify_var_mul(out, op.a);
-            }
-            out << op.op_kind;
-            out << op.b;
-            break;
-        }
-        default: ir_error_not_expected() << e;
-    }
-}
-
-expr_t parse_var_mul(const std::string &s) {
-    auto parts = gpu_utils::split(s, "*");
-    std::vector<expr_t> args;
-    for (auto &p : parts) {
-        auto dim = prb_dim_t::from_name(p);
-        args.push_back(size_var(dim));
-    }
-    return op_combine(op_kind_t::_mul, args);
-}
-
-void prb_reqs_t::req_t::parse(std::istream &in) {
-    std::string s;
-    in >> s;
-    for (op_kind_t op : {op_kind_t::_le, op_kind_t::_ge, op_kind_t::_eq}) {
-        auto s_op = to_string(op);
-        auto pos = s.find(s_op);
-        if (pos == std::string::npos) continue;
-        auto s_lhs = s.substr(0, pos);
-        auto s_rhs = s.substr(pos + s_op.length());
-        auto mod_pos = s_lhs.find("%");
-        expr_t lhs;
-        if (mod_pos != std::string::npos) {
-            auto s_mod_lhs = s_lhs.substr(0, mod_pos);
-            auto s_mod_rhs = s_lhs.substr(mod_pos + 1);
-            auto mod_lhs = parse_var_mul(s_mod_lhs);
-            auto mod_rhs = std::stoi(s_mod_rhs);
-            lhs = mod_lhs % mod_rhs;
-        } else {
-            lhs = parse_var_mul(s_lhs);
-        }
-        auto rhs = std::stoi(s_rhs);
-        auto e = binary_op_t::make(op, lhs, rhs);
-        operator=(to_req_expr(e));
-        return;
-    }
-    ir_error_not_expected() << s;
 }
 
 std::string prb_reqs_t::req_t::str() const {

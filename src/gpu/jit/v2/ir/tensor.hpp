@@ -129,31 +129,17 @@ private:
 
 class dim_mapper_t {
 public:
-    void set_dim(const prb_dim_t &dim, const expr_t &expr = expr_t(),
-            bool has_undeflow = false);
+    void set_dim(const prb_dim_t &dim, const expr_t &expr = expr_t());
     void set_layout_desc(const layout_desc_t &desc) { layout_desc_ = desc; }
-    bool is_empty() const { return map_.is_empty(); }
-    bool has(const prb_dim_t &dim) const { return map_.has(dim); }
+    bool is_empty() const { return exprs_.is_empty(); }
+    bool has(const prb_dim_t &dim) const { return exprs_.has(dim); }
     const expr_t &expr(const prb_dim_t &dim) const;
-    bool has_underflow(const prb_dim_t &dim) const;
     const layout_desc_t &layout_desc() const { return layout_desc_; }
     std::string str() const;
     IR_DEFINE_DUMP()
 
 private:
-    struct map_data_t {
-        std::string str() const {
-            std::ostringstream oss;
-            oss << expr;
-            if (has_underflow) oss << " (has_underflow)";
-            return oss.str();
-        }
-
-        expr_t expr;
-        bool has_underflow;
-    };
-
-    dim_map_t<prb_dim_t, map_data_t> map_;
+    dim_map_t<prb_dim_t, expr_t> exprs_;
     layout_desc_t layout_desc_;
 };
 
@@ -522,7 +508,7 @@ class dim_mask_desc_t {
 public:
     dim_mask_desc_t() = default;
     dim_mask_desc_t(const prb_dim_t &dim, const expr_t &expr,
-            const expr_t &bound, int block, bool has_underflow);
+            const expr_t &bound, int block, bool do_zero_cmp);
     bool is_identity() const { return is_zero(c) && is_one(a) && y.is_empty(); }
 
     template <typename T>
@@ -535,9 +521,10 @@ public:
     IR_DEFINE_DUMP()
 
     prb_dim_t dim;
+    expr_t expr;
     expr_t bound;
     int block = 0;
-    bool has_underflow = false;
+    bool do_zero_cmp = false;
 
     expr_t base;
     expr_t a, b, c;
@@ -554,7 +541,6 @@ public:
     mask_desc_t(const dim_mapper_t &dim_mapper, const layout_t &layout);
     int nmasks() const { return static_cast<int>(dim_masks_.size()); }
     const dim_mask_desc_t &operator[](int idx) const;
-    dim_mask_desc_t &operator[](int idx);
     mask_desc_t map(const prb_coord_t<expr_t> &coord) const;
     bool is_uniform(const block_iterator_t &it,
             const prover_t &prover = prover_t::instance()) const;
@@ -623,7 +609,6 @@ public:
     view_t() = default;
     view_t(const dim_mapper_t &dim_mapper, const layout_t &base_layout,
             const prb_coord_t<expr_t> &coord, const prb_tile_t &tile);
-    bool is_empty() const { return base_layout_.is_empty(); }
     const dim_mapper_t &dim_mapper() const { return dim_mapper_; }
     const layout_t &base_layout() const { return base_layout_; }
     const prb_coord_t<expr_t> &coord() const { return coord_; }
@@ -632,10 +617,6 @@ public:
     const mask_desc_t &mask_desc() const { return mask_desc_; }
     const plane_t &plane() const { return plane_; }
     const type_t &type() const { return layout_.type(); }
-    // Transforms the view to a scattered version where elements are strided
-    // by stride_bytes value. This is used to generate scattered messages
-    // prefetch.
-    view_t scatterize(int stride_bytes, const prover_t &prover) const;
     std::string str() const;
     IR_DEFINE_DUMP()
 

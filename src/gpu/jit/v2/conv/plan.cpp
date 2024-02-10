@@ -637,7 +637,8 @@ private:
                     coord_info_.tg_iter_coord(), coord_info_.tg_iter_tile(),
                     x2r, virt_grid, plan.b_prefetch));
         }
-        return true;
+        c.block_by({block_t(inner_dim, inner_block_size)});
+        return c;
     }
 
     bool init_x_g2r_plan(tensor_kind_t abc, const view_t &view,

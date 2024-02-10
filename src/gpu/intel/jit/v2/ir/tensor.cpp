@@ -20,6 +20,10 @@
 
 #include "gpu/intel/jit/pass/simplify.hpp"
 
+#include <array>
+
+#include "gpu/jit/pass/simplify.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -136,27 +140,21 @@ std::string layout_desc_t::str() const {
     return oss.str();
 }
 
-void dim_mapper_t::set_dim(
-        const prb_dim_t &dim, const expr_t &expr, bool has_underflow) {
-    map_.set(dim, {expr.is_empty() ? index_var(dim) : expr, has_underflow});
+void dim_mapper_t::set_dim(const prb_dim_t &dim, const expr_t &expr) {
+    exprs_.set(dim, expr.is_empty() ? index_var(dim) : expr);
 }
 
 const expr_t &dim_mapper_t::expr(const prb_dim_t &dim) const {
     if (is_empty()) return index_var(dim);
-    return map_[dim].expr;
-}
-
-bool dim_mapper_t::has_underflow(const prb_dim_t &dim) const {
-    if (is_empty()) return false;
-    return map_[dim].has_underflow;
+    return exprs_[dim];
 }
 
 std::string dim_mapper_t::str() const {
     std::ostringstream oss;
     oss << "dim_mapper:" << std::endl;
-    for (auto &dim : map_) {
+    for (auto &dim : exprs_) {
         oss << "  " << dim.str() << " -> ";
-        oss << map_[dim].str() << std::endl;
+        oss << exprs_[dim].str() << std::endl;
     }
     return oss.str();
 }
@@ -255,6 +253,24 @@ bool layout_raw_tag_t::matches(const layout_raw_tag_t &other,
         i1++;
     }
     return i0 == n0 && i1 == n1;
+}
+
+void layout_raw_tag_t::init_entries(const std::string &s) {
+    ir_assert(is_abx_tag(s)) << s;
+    std::array<bool, 'z' - 'a' + 1> is_blocked;
+    is_blocked.fill(false);
+    auto letter_blocks = parse_letter_blocks(s);
+    for (auto &p : letter_blocks) {
+        if (p.second != 0) is_blocked[std::tolower(p.first) - 'a'] = true;
+    }
+    for (auto &p : letter_blocks) {
+        char letter = std::tolower(p.first);
+        entries_.emplace_back();
+        auto &e = entries_.back();
+        e.letter = letter;
+        e.block = p.second;
+        e.is_blocked = is_blocked[letter - 'a'];
+    }
 }
 
 bool layout_raw_tag_t::has_x() const {
@@ -1065,8 +1081,10 @@ mask_desc_t::mask_desc_t(
             const int large_pow2 = (1 << 10);
             block = large_pow2;
         }
-        dim_masks_.emplace_back(d, expr, simplify_rewrite(dim_sizes[d]), block,
-                dim_mapper.has_underflow(d));
+        bool do_zero_cmp
+                = utils::one_of(d, prb_dims::id, prb_dims::ih, prb_dims::iw);
+        dim_masks_.emplace_back(
+                d, expr, simplify_rewrite(dim_sizes[d]), block, do_zero_cmp);
     }
 }
 
@@ -1095,7 +1113,7 @@ bool mask_desc_t::is_uniform(
         int dim_size = it.elems((*it).dim);
         ir_assert(math::is_pow2(dim_size));
         if (dim_size > dm.block) return false;
-        if (!prover.require(dm.bound % dim_size == 0)) return false;
+        if (!prover.prove(dm.bound % dim_size == 0)) return false;
     }
     return true;
 }
@@ -1239,52 +1257,6 @@ std::string view_t::str() const {
     oss << ir_utils::add_tag("layout", layout_.str()) << std::endl;
     oss << ir_utils::add_tag("mask_desc", mask_desc_.str());
     return oss.str();
-}
-
-view_t view_t::scatterize(int stride_bytes, const prover_t &prover) const {
-    if (base_layout_.blocks().empty()) return view_t();
-    int type_size = base_layout_.type().size();
-    auto &block0 = base_layout_.blocks()[0];
-    auto &compress_dim = block0.dim;
-    if (!block0.has_const_stride() || block0.int_stride() != 1) return view_t();
-    if (base_layout_.nblocks(compress_dim) != 1) return view_t();
-    if (!tile_.has(compress_dim)) return view_t();
-    if (stride_bytes % type_size != 0) return view_t();
-    int stride = stride_bytes / type_size;
-    int size = tile_.at(compress_dim);
-    if (size % stride != 0) return view_t();
-    int compress_mask_idx = -1;
-    for (int i = 0; i < mask_desc_.nmasks(); i++) {
-        auto &dmd = mask_desc_[i];
-        if (dmd.has(compress_dim)) {
-            if (compress_mask_idx != -1) return view_t();
-            if (!dmd.is_identity()) return view_t();
-            compress_mask_idx = i;
-        }
-    }
-    if (compress_mask_idx != -1) {
-        auto &dmd = mask_desc_[compress_mask_idx];
-        ir_assert(dmd.dim == compress_dim);
-        ir_assert(dmd.x_dim == compress_dim);
-        ir_assert(dmd.bound.is_equal(block0.size));
-        if (!prover.require(dmd.base % stride == 0)) return view_t();
-        if (!prover.require(dmd.bound % stride == 0)) return view_t();
-    }
-    auto new_blocks = base_layout_.blocks();
-    new_blocks[0] = block_t(compress_dim, block0.size / stride, stride);
-    auto base_layout = layout_t(base_layout_.desc(), base_layout_.type(),
-            base_layout_.base(), new_blocks);
-    auto coord = coord_;
-    auto tile = tile_;
-    tile[compress_dim] /= stride;
-    coord[compress_dim] = linear_div(coord[compress_dim], stride);
-    view_t ret(dim_mapper(), base_layout, coord, tile);
-    if (compress_mask_idx != -1) {
-        auto &new_dmd = ret.mask_desc_[compress_mask_idx];
-        new_dmd.a = expr_t(stride);
-        new_dmd.bound = block0.size;
-    }
-    return ret;
 }
 
 layout_t split_layout(const layout_t &layout, int inner_elems, int outer_elems,

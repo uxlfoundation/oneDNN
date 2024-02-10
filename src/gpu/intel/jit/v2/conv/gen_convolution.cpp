@@ -134,11 +134,10 @@ private:
         kernel_params_t _params;
         if (plan_preset_t::instance().is_set()) {
             _desc = plan_preset_t::instance().get();
-            _desc.hw = hw_t(engine);
-            _desc.spec_reqs.specialize(prb);
             {
                 ir_utils::ir_check_log_level_t check_level(ir_utils::LOG_FATAL);
-                auto plan = create_conv_plan_and_finalize_desc(_desc);
+                auto plan = create_conv_plan(_desc);
+                _desc.finalize(plan);
             }
         } else {
             auto &registry = const_plan_registry();

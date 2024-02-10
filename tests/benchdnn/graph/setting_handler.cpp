@@ -446,9 +446,8 @@ bool get_concat_stag_and_dtag(
             concat::get_concat_prb_vdims(base_op_ref, op_setting.prb_vdims),
             res);
 
-    DNN_GRAPH_CHECK_SETTINGS(concat::get_concat_sdt_and_ddt(
-                                     base_op_ref, op_setting, rewrite_lt_ids),
-            res);
+    DNN_GRAPH_CHECK_SETTINGS(
+            concat::get_concat_sdt_and_ddt(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             concat::get_concat_stag_and_dtag(base_op_ref, op_setting), res);
 
@@ -557,9 +556,12 @@ bool get_conv_dir(const deserialized_op &base_op_ref, dir_t &dir) {
 bool get_conv_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
     dnnl_data_type_t src_dt, wei_dt, dst_dt;
-    auto in_lt0_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
-    auto in_lt1_dt = convert_dt(base_op_ref.in_lts_[1].get_data_type());
-    auto out_lt_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    auto in_lt0_dt
+            = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
+    auto in_lt1_dt
+            = convert_dt(get_data_type(base_op_ref.in_lts_[1].data_type_));
+    auto out_lt_dt
+            = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
 
     const auto &op_kind = base_op_ref.kind_;
 
@@ -764,9 +766,12 @@ bool get_deconv_dir(const deserialized_op &base_op_ref, dir_t &dir) {
 bool get_deconv_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
     dnnl_data_type_t src_dt, wei_dt, dst_dt;
-    auto in_lt0_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
-    auto in_lt1_dt = convert_dt(base_op_ref.in_lts_[1].get_data_type());
-    auto out_lt_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    auto in_lt0_dt
+            = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
+    auto in_lt1_dt
+            = convert_dt(get_data_type(base_op_ref.in_lts_[1].data_type_));
+    auto out_lt_dt
+            = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
     const auto &op_kind = base_op_ref.kind_;
 
     if (op_kind == "ConvTranspose") {
@@ -1270,9 +1275,9 @@ bool get_matmul_prb_vdims(
 
 bool get_matmul_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
-    auto src_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
-    auto wei_dt = convert_dt(base_op_ref.in_lts_[1].get_data_type());
-    auto dst_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    auto src_dt = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
+    auto wei_dt = convert_dt(get_data_type(base_op_ref.in_lts_[1].data_type_));
+    auto dst_dt = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
     dt = {src_dt, wei_dt, dst_dt};
 
     return true;
@@ -1436,8 +1441,8 @@ bool get_pool_dir(const deserialized_op &base_op_ref, dir_t &dir) {
 
 bool get_pool_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
-    auto src_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
-    auto dst_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    auto src_dt = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
+    auto dst_dt = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
     dt = {src_dt, dst_dt};
     return true;
 }
@@ -1668,12 +1673,6 @@ bool get_reorder_dt(const deserialized_op &base_op_ref, dnnl_data_type_t &sdt,
         dnnl_data_type_t &ddt) {
     sdt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
     ddt = convert_dt(base_op_ref.out_lts_.front().get_data_type());
-
-    const auto &op_kind = base_op_ref.kind_;
-    // As we always use f32 computation in the reference path, to link
-    // arguments correctly in the reference path, we need to always create
-    // dequantize ops with f32 output.
-    if (op_kind == "DynamicDequantize") { ddt = dnnl_f32; }
     return true;
 }
 

@@ -740,42 +740,30 @@ class send_plan_builder_t {
 public:
     send_plan_builder_t() = default;
     send_plan_builder_t(const send_params_t &params, const view_t &view)
-        : init_params_(params), init_view_(view) {}
+        : init_params_(params), view_(view) {}
 
     send_plan_t build() const {
         send_params_t params = init_params_;
-        if (params.op == send_op_t::atomic_fadd) {
-            params.kind = send_kind_t::scattered;
-        }
-        prb_reqs_t reqs;
-        auto prover = reqs.prover(*params.external_reqs,
-                /*can_update=*/params.kind != send_kind_t::undef);
         switch (params.kind) {
-            case send_kind_t::_2d:
-                return try_build_2d(params, init_view_, prover);
-            case send_kind_t::compressed_prefetch: {
-                int cache_line_size = params.hw.cache_line_size();
-                auto view = init_view_.scatterize(cache_line_size, prover);
-                if (view.is_empty()) return send_plan_t();
-                params.kind = send_kind_t::scattered;
-                return try_build_1d(params, view, prover);
+            case send_kind_t::_2d: return try_build_2d(params);
+            default: {
+                auto plan = try_build_1d(params);
+                return plan;
             }
-            default: return try_build_1d(params, init_view_, prover);
         }
     }
 
 private:
-    send_plan_t try_build_1d(const send_params_t &params, const view_t &view,
-            prover_t &prover) const {
+    send_plan_t try_build_1d(const send_params_t &params) const {
         send_plan_t plan(params.hw);
-        auto &layout = view.layout();
-        auto &mask_desc = view.mask_desc();
-        auto inner_last = find_inner_last(params, view, mask_desc, prover);
+        prb_reqs_t reqs;
+        auto &layout = view_.layout();
+        auto &mask_desc = view_.mask_desc();
+        auto inner_last = find_inner_last(params, mask_desc, reqs);
         int type_size = layout.type().size();
         int inner_elems = inner_last.elems();
         int inner_bytes = type_size * inner_elems;
         int slot_size = ir_utils::max_pow2_divisor(inner_bytes);
-        if (params.op == send_op_t::atomic_fadd) slot_size = type_size;
         int grf_size = plan.hw.grf_size();
 
         if (slot_size < grf_size)
@@ -813,13 +801,12 @@ private:
 
         send_1d_desc_t desc;
         desc.hw = params.hw;
-        desc.address = params.address;
         desc.op = params.op;
         desc.type_size = slot_size;
         desc.slots = slots;
 
         addr_t addr(layout, slots, elems_per_slot);
-        if (!desc.base_alignment_ok(addr, prover)) return send_plan_t();
+        if (!desc.base_alignment_ok(addr, reqs.prover())) return send_plan_t();
 
         int elem_stride = 1;
         if (slot_stride > slot_size) {
@@ -837,37 +824,38 @@ private:
         auto &plan_1d = plan.get_1d();
         plan_1d = send_1d_plan_t(plan.hw);
         plan_1d.desc = desc;
-        plan_1d.addr = std::move(addr);
+        plan_1d.addr = addr;
         plan_1d.mask = mask_t(mask_desc, layout, slots, elems_per_slot);
-        plan_1d.reg_layout = std::move(reg_layout);
-        plan_1d.entry_tile = std::move(entry_tile);
+        plan_1d.reg_layout = reg_layout;
+        plan_1d.entry_tile = entry_tile;
         for (auto &d : params.skip_mask)
             plan_1d.mask.clear(d);
 
         int step_elems = slots * elems_per_slot;
         layout_iterator_t it(layout);
         int reg_off = 0;
-        plan_1d.add_entry(it, mask_desc, reg_off, prover);
+        plan_1d.add_entry(it, mask_desc, reg_off, reqs.prover());
         while (it.has_next(step_elems)) {
             it.next(step_elems);
             reg_off += slots * slot_stride;
             reg_off = utils::rnd_up(reg_off, grf_size);
-            if (!plan_1d.add_entry(it, mask_desc, reg_off, prover))
+            if (!plan_1d.add_entry(it, mask_desc, reg_off, reqs.prover()))
                 return send_plan_t();
         }
-        plan_1d.reqs = prover.reqs();
+        plan_1d.reqs = reqs;
+        plan_1d.reqs.simplify();
         return plan;
     }
 
-    send_plan_t try_build_2d(const send_params_t &params, const view_t &view,
-            prover_t &prover) const {
+    send_plan_t try_build_2d(const send_params_t &params) const {
         send_plan_t plan(params.hw);
-        send_2d_desc_t desc(view, params, prover);
+        prb_reqs_t reqs;
+        send_2d_desc_t desc(view_, params, reqs.prover());
         if (!desc) return send_plan_t();
 
-        auto &plane = view.plane();
+        auto &plane = view_.plane();
         int grf_size = params.hw.grf_size();
-        auto reg_layout = desc.reg_layout(grf_size, view.layout().desc());
+        auto reg_layout = desc.reg_layout(grf_size, view_.layout().desc());
         int entry_reg_size = utils::rnd_up(reg_layout.size(), grf_size);
         ir_assert(entry_reg_size <= params.max_entry_reg_size);
         reg_layout.pad_bytes(grf_size);
@@ -880,15 +868,15 @@ private:
         plan_2d = send_2d_plan_t(plan.hw);
         plan_2d.desc = desc;
         plan_2d.base = desc.base;
-        plan_2d.x_base = desc.x_base;
-        plan_2d.y_base = desc.y_base;
-        plan_2d.mask = mask_t(view.mask_desc());
+        plan_2d.x_base = plane.x;
+        plan_2d.y_base = plane.y;
+        plan_2d.mask = mask_t(view_.mask_desc());
         plan_2d.mask.clear(plane.x_dim);
         plan_2d.mask.clear(plane.y_dim);
         for (auto &d : params.skip_mask)
             plan_2d.mask.clear(d);
-        plan_2d.reg_layout = std::move(reg_layout);
-        plan_2d.entry_tile = std::move(entry_tile);
+        plan_2d.reg_layout = reg_layout;
+        plan_2d.entry_tile = entry_tile;
 
         int reg_off = 0;
         for (int h = 0; h < plane.h; h += desc.h) {
@@ -896,19 +884,19 @@ private:
                 prb_coord_t<int> coord;
                 coord[plane.w_dim] = w;
                 coord[plane.h_dim] = h;
-                if (!plan_2d.add_entry(coord, reg_off, prover))
+                if (!plan_2d.add_entry(coord, reg_off, reqs.prover()))
                     return send_plan_t();
                 reg_off += entry_reg_size;
             }
         }
-        plan_2d.reqs = prover.reqs();
+        plan_2d.reqs = reqs;
+        plan_2d.reqs.simplify();
         return plan;
     }
 
     block_iterator_t find_inner_last(const send_params_t &params,
-            const view_t &view, const mask_desc_t &mask_desc,
-            prover_t &prover) const {
-        auto &layout = view.layout();
+            const mask_desc_t &mask_desc, prb_reqs_t &reqs) const {
+        auto &layout = view_.layout();
         auto inner_last = begin(layout);
         int type_size = layout.type().size();
         auto ok_to_return = [&]() {
@@ -917,17 +905,10 @@ private:
             return type_size * inner_last.elems() >= grf_size;
         };
         for (auto it = begin(layout); it != end(layout); ++it) {
-            auto _prover
-                    = prover_t(prover, prover.can_update() && !ok_to_return());
-            if (!mask_desc.is_uniform(it, _prover)) break;
+            auto prover = reqs.prover(!ok_to_return());
+            if (!mask_desc.is_uniform(it, prover)) break;
             if (!it.is_dense()) break;
-            int inner_bytes = type_size * it.elems();
-            if (inner_bytes > params.max_entry_reg_size) break;
-            if (params.kind == send_kind_t::scattered
-                    && inner_bytes > max_slot_size * max_slots)
-                break;
-            if (params.op == send_op_t::atomic_fadd && it.elems() > max_slots)
-                break;
+            if (type_size * it.elems() > params.max_entry_reg_size) break;
             inner_last = it;
         }
         return inner_last;
@@ -959,12 +940,11 @@ private:
     }
 
     send_params_t init_params_;
-    view_t init_view_;
+    view_t view_;
 };
 
 inline send_plan_t create_send_plan(const send_params_t &params,
         const view_t &view, bool allow_fail = false) {
-    ir_assert(params.max_entry_reg_size > 0);
     send_plan_builder_t spb(params, view);
     auto plan = spb.build();
     if (!plan) {

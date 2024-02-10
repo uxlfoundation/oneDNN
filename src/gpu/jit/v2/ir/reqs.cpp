@@ -119,7 +119,7 @@ std::string prb_reqs_t::str() const {
     std::ostringstream oss;
     bool is_first = true;
     for (auto &r : reqs_) {
-        if (!is_first) oss << "\n";
+        if (!is_first) oss << std::endl;
         oss << r.expr.to_ir();
         is_first = false;
     }
@@ -310,28 +310,10 @@ bool prb_reqs_t::req_t::fits(const prb_tile_t &sizes) const {
             case op_kind_t::_lt: ret = (a < b); break;
             default: ir_error_not_expected();
         }
-        ir_check(ret) << "Requirement is not satisfied: " << expr.to_ir()
-                      << " evaluates to " << a << " " << op->op_kind << " "
-                      << b;
+        ir_check(ret) << "Requirement is not satisfied: " << expr.to_ir();
         return true;
     }
     ir_error_not_expected() << expr.to_ir();
-    return false;
-}
-
-bool prb_reqs_t::req_t::can_prove(const expr_t &expr_to_prove) const {
-    expr_t lhs_a, rhs_a;
-    int lhs_b, rhs_b;
-    auto lhs = expr.to_ir();
-    auto rhs = expr_to_prove;
-    if (lhs.is_equal(rhs)) return true;
-    if (!is_a_mod_b_eq_0(lhs, lhs_a, lhs_b)) return false;
-    if (!is_a_mod_b_eq_0(rhs, rhs_a, rhs_b)) return false;
-    auto lhs_dim = size_to_prb_dim(lhs_a);
-    auto rhs_dim = size_to_prb_dim(rhs_a);
-    if (lhs_dim.is_undef() || rhs_dim.is_undef() || lhs_dim != rhs_dim)
-        return false;
-    if (lhs_b % rhs_b == 0) return true;
     return false;
 }
 

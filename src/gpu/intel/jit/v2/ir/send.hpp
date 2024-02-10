@@ -524,8 +524,9 @@ struct send_2d_desc_t {
         if (!prover.require(pitch_bytes >= 64)) return false;
         if (!prover.require(pitch_bytes <= (1 << 24))) return false;
         if (!prover.require(pitch_bytes % 8 == 0)) return false;
+        if (!prover.require(plane.y_stride == 1)) return false;
         if (!prover.require(base % base_align == 0)) return false;
-        if (!prover.require(x_base % x_align == 0)) return false;
+        if (!prover.require(plane.x % x_align == 0)) return false;
         return true;
     }
 

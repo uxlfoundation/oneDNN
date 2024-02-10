@@ -369,7 +369,7 @@ expr_t linear_div(const expr_t &e, int64_t factor) {
     return linear_t::to_expr(c, u_vec, v_vec);
 }
 
-expr_t simplify_linear_mod_reduce(const expr_t &e, int64_t factor) {
+expr_t simplify_linear_mod_reduce(const expr_t &e, int factor) {
     if (factor == 1) return 0;
     if (is_const(e)) return to_cpp<int64_t>(e) % factor;
     if (e.is<const_var_t>()) return e;
@@ -391,7 +391,7 @@ expr_t simplify_linear_mod_reduce(const expr_t &e, int64_t factor) {
     return e;
 }
 
-expr_t simplify_linear_mod(const expr_t &e, int64_t factor) {
+expr_t simplify_linear_mod(const expr_t &e, int factor) {
     ir_assert(factor > 0);
     if (factor == 1) return 0;
     auto _linear = to_linear(e);

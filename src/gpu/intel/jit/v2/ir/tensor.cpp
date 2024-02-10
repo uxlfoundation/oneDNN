@@ -1170,7 +1170,7 @@ bool mask_desc_t::is_uniform(
         int dim_size = it.elems((*it).dim);
         ir_assert(math::is_pow2(dim_size));
         if (dim_size > dm.block) return false;
-        if (!prover.prove(dm.bound % dim_size == 0)) return false;
+        if (!prover.require(dm.bound % dim_size == 0)) return false;
     }
     return true;
 }

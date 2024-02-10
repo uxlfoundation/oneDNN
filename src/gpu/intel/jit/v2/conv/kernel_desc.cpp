@@ -494,9 +494,66 @@ kernel_desc_t kernel_desc_t::deserialize(const serialized_t &s) {
     return desc;
 }
 
-parse_iface_t<kernel_desc_t> kernel_desc_t::cli_iface() {
-    parse_iface_t<kernel_desc_t> iface(/*cli=*/true);
-    init_parse_iface(&iface);
+ir_utils::cli_iface_t<kernel_desc_t> kernel_desc_t::cli_iface() {
+#define MAKE_SETTER(lhs, rhs) \
+    *static_cast<void (*)(kernel_desc_t *, const std::string &)>( \
+            [](kernel_desc_t *desc, const std::string &value) { \
+                desc->lhs = rhs; \
+            })
+#define MAKE_GETTER(value) \
+    *static_cast<std::string (*)(const kernel_desc_t *)>( \
+            [](const kernel_desc_t *desc) { return value; })
+    ir_utils::cli_iface_t<kernel_desc_t> iface;
+    iface.add_arg("--prop", "Propagation kind (fwd, bwd_d or bwd_w).",
+            MAKE_GETTER(ir_utils::to_string(desc->prop)),
+            MAKE_SETTER(prop, ir_utils::str_to_prop_kind(value)));
+    iface.add_arg("--dw",
+            "Whether the problem is a depthwise convolution (0 or 1).",
+            MAKE_GETTER(std::string(desc->is_dw ? "1" : "0")),
+            MAKE_SETTER(is_dw, ir_utils::str_to_bool(value)));
+    iface.add_arg("--src", "Source layout tag. Examples: axb:f32, aBx16b:f16).",
+            MAKE_GETTER(desc->src_tag.str()),
+            MAKE_SETTER(
+                    src_tag, make_conv_layout_tag(tensor_kind_t::src, value)));
+    iface.add_arg("--wei", "Weights layout tag (e.g. axcb:f32).",
+            MAKE_GETTER(desc->wei_tag.str()),
+            MAKE_SETTER(
+                    wei_tag, make_conv_layout_tag(tensor_kind_t::wei, value)));
+    iface.add_arg("--dst", "Destination layout tag (e.g. axb:f32).",
+            MAKE_GETTER(desc->dst_tag.str()),
+            MAKE_SETTER(
+                    dst_tag, make_conv_layout_tag(tensor_kind_t::dst, value)));
+    iface.add_arg("--hw", "Hardware (xehpc).",
+            MAKE_GETTER(ir_utils::to_lower(jit::to_string(desc->hw.to_ngen()))),
+            MAKE_SETTER(hw, str_to_hw(value)));
+    iface.add_arg("--fma", "FMA kind (mad).", MAKE_GETTER(to_string(desc->fma)),
+            MAKE_SETTER(fma, str_to_fma_kind(value)));
+    iface.add_arg("--simd", "SIMD size (16 or 32).",
+            MAKE_GETTER(std::to_string(desc->simd)),
+            MAKE_SETTER(simd, std::stoi(value)));
+    iface.add_arg("--regs", "Number of registers (128 or 256).",
+            MAKE_GETTER(std::to_string(desc->regs)),
+            MAKE_SETTER(regs, std::stoi(value)));
+    iface.add_arg("--iter", "Iteration tile (e.g. mb32ic16oc16).",
+            MAKE_GETTER(desc->iter_tile.str()),
+            MAKE_SETTER(iter_tile, str_to_prb_tile(value)));
+    iface.add_arg("--tg", "Threadgroup tile (e.g. ow4oc4).",
+            MAKE_GETTER(desc->thread_group_tile.str()),
+            MAKE_SETTER(thread_group_tile, str_to_prb_tile(value)));
+    iface.add_arg("--loop-nest",
+            "Loop nest, ordered from innermost to outermost (e.g. "
+            "kw,kh,kd,ic).",
+            MAKE_GETTER(desc->loop_nest.str()),
+            MAKE_SETTER(loop_nest, str_to_loop_nest(value)));
+    iface.add_arg("--a-access", "Access type for A (block, scattered, 2d).",
+            MAKE_GETTER(to_string(desc->a_access_kind)),
+            MAKE_SETTER(a_access_kind, str_to_send_kind(value)));
+    iface.add_arg("--b-access", "Access type for B (block, scattered, 2d).",
+            MAKE_GETTER(to_string(desc->b_access_kind)),
+            MAKE_SETTER(b_access_kind, str_to_send_kind(value)));
+    iface.add_arg("--c-access", "Access type for C (block, scattered, 2d).",
+            MAKE_GETTER(to_string(desc->c_access_kind)),
+            MAKE_SETTER(c_access_kind, str_to_send_kind(value)));
     return iface;
 }
 

@@ -776,17 +776,6 @@ layout_t layout_t::map(const dim_mapper_t &dim_mapper,
     return layout_t(dim_mapper.layout_desc(), type(), base, mapped_blocks);
 }
 
-layout_t layout_t::make_dense() const {
-    ir_assert(has_const_sizes() && has_const_strides());
-    dim_t stride = 1;
-    auto new_blocks = blocks_;
-    for (auto &b : new_blocks) {
-        b.stride = expr_t(stride);
-        stride *= b.int_size();
-    }
-    return layout_t(dim_mapper.layout_desc(), type(), base, mapped_blocks);
-}
-
 template layout_t layout_t::map<int>(const dim_mapper_t &dim_mapper,
         const pvar_coord_t<int> &coord, const pvar_tile_t &tile,
         const var_range_info_t &var_range_info) const;

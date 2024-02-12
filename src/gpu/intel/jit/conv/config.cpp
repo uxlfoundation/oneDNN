@@ -803,23 +803,14 @@ bool data_types_ok(
     auto wei = prb.wei_data_type;
     auto dst = prb.dst_data_type;
     auto bia = prb.bia_data_type;
-    bool is_fp8 = utils::one_of(data_type::f8_e5m2, src, wei, dst, bia)
-            || utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
-    if (!prb.is_f64_accumulator()
-            && utils::one_of(data_type::f64, src, wei, dst, bia))
+    bool is_bf8 = utils::one_of(data_type::f8_e5m2, src, wei, dst, bia);
+    bool is_hf8 = utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
+    if (!prb.is_f64_conv() && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
-    auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
-    auto *device_info = compute_engine->device_info();
-    if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
-        return false;
-    if (is_fp8
-#if XE3P
-            && !(utils::one_of(hw, ngen::HW::XeHPC, ngen::HW::Xe3p)
-                    && hw.systolic_support()))
-#else
-            && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
-#endif
+    bool is_xelpg = hw == ngen::HW::XeHPG && !hw.systolic_support();
+    if (prb.is_f64_conv()
+            && (utils::one_of(hw.to_ngen(), ngen::HW::XeLP, ngen::HW::XeHPG)
+                    && !is_xelpg))
         return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;

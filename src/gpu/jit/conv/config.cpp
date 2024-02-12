@@ -693,11 +693,6 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     if (!matches_tag(dst_md, dst_tag) && is_small_oc_g1)
         user_dst_tag = (user_dst_req.empty() ? "axb" : user_dst_req);
 
-    // Avoid reorder for small shapes
-    if (prb.g == 1 && prb.ic < 4 && prb.oc < 4 && prb.mb < 4 && prb.ksp == 1) {
-        src_tag = user_src_tag;
-        dst_tag = user_dst_tag;
-    }
     maybe_set_plain_weights(
             cfg, src_axb && dst_axb, user_wei_req, wei_tag, user_wei_tag);
 
@@ -841,13 +836,12 @@ bool data_types_ok(const conv_problem_t &prb, const hw_t &hw) {
     bool is_hf8 = utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
     if (!prb.is_f64_conv() && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
+    bool is_xelpg = hw == ngen::HW::XeHPG && !hw.systolic_support();
     if (prb.is_f64_conv()
             && (utils::one_of(hw.to_ngen(), ngen::HW::XeLP, ngen::HW::XeHPG)
-                    && !hw.has_fp64_atomic_support()))
+                    && !is_xelpg))
         return false;
-    if (is_bf8
-            && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
-        return false;
+    if (is_bf8 && !(utils::one_of(hw, ngen::HW::XeHPC))) return false;
     if (is_hf8) return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;
@@ -1078,6 +1072,7 @@ status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
     CHECK(init_fma_kind(cfg));
     CHECK(init_simd(cfg));
     CHECK(init_vec_size(cfg));
+    CHECK(init_regs(cfg));
     CHECK(init_tensor_layouts(cfg, pd));
 
     CHECK(attr->set_default_formats(&prb.c_md()));
@@ -1633,8 +1628,7 @@ prb_tile_t conv_config_t::shape(bool pad) const {
     return ret;
 }
 
-tensor_config_t get_tensor_config(
-        const conv_config_t &cfg, const memory_desc_t *zp_src) {
+tensor_config_t get_tensor_config(const conv_config_t &cfg) {
     const auto &prb = cfg.prb();
     tensor_config_t tensor_cfg;
     conv_arg_helper_t h(prb);
@@ -1655,7 +1649,7 @@ tensor_config_t get_tensor_config(
         tensor_cfg.require_zero_out("wei");
         if (prb.with_bias) tensor_cfg.require_zero_out("bia");
     }
-    init_extra_tensors(cfg.zp_cfg(), *prb.conv_pd->attr(), zp_src,
+    init_extra_tensors(cfg.zp_cfg(), *prb.conv_pd->attr(),
             *prb.conv_pd->invariant_dst_md(), (prb.is_fwd) ? prb.ic : prb.oc,
             (prb.is_fwd) ? prb.oc : prb.ic, tensor_cfg);
     return tensor_cfg;

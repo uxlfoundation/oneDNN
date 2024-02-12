@@ -22,7 +22,6 @@
 #include "gpu/jit/ir/kernel_info.hpp"
 #include "gpu/jit/ir/message.hpp"
 #include "gpu/jit/ir/reorder.hpp"
-#include "gpu/jit/pass/dpas_atomic.hpp"
 #include "gpu/jit/pass/pass.hpp"
 #include "gpu/jit/v2/conv/bridge.hpp"
 #include "gpu/jit/v2/conv/plan.hpp"
@@ -305,9 +304,8 @@ class send_mask_t {
 public:
     send_mask_t() = default;
 
-    void add_mask(
-            const offset_t &off, const expr_t &bound, bool has_underflow) {
-        entries_.emplace_back(off, bound, has_underflow);
+    void add_mask(const offset_t &off, const expr_t &bound, bool do_zero_cmp) {
+        entries_.emplace_back(off, bound, do_zero_cmp);
     }
 
     expr_t to_expr() const {
@@ -316,8 +314,7 @@ public:
         for (auto &e : entries_) {
             auto cmp = (e.off.load() < e.off.make_broadcast(e.bound));
             ret = (ret.is_empty() ? cmp : (ret & cmp));
-            if (e.has_underflow)
-                ret &= (e.off.load() >= e.off.make_broadcast(0));
+            if (e.do_zero_cmp) ret &= (e.off.load() >= e.off.make_broadcast(0));
         }
         return ret;
     }
@@ -325,11 +322,11 @@ public:
 private:
     struct entry_t {
         entry_t() = default;
-        entry_t(const offset_t &off, const expr_t &bound, bool has_underflow)
-            : off(off), bound(bound), has_underflow(has_underflow) {}
+        entry_t(const offset_t &off, const expr_t &bound, bool do_zero_cmp)
+            : off(off), bound(bound), do_zero_cmp(do_zero_cmp) {}
         offset_t off;
         expr_t bound;
-        bool has_underflow = false;
+        bool do_zero_cmp = false;
     };
 
     std::vector<entry_t> entries_;
@@ -412,7 +409,7 @@ public:
             params.allow_reuse = true;
             auto off = get_offset(
                     expr_t(0), dm.base, dm.slot_incs, shift, params);
-            ret.add_mask(off, let_ctx_.get(dm.bound), dm.has_underflow);
+            ret.add_mask(off, let_ctx_.get(dm.bound), dm.do_zero_cmp);
         }
         return ret;
     }
@@ -635,7 +632,6 @@ int get_reg_off(const send_1d_plan_t &plan, const prb_coord_t<int> &coord) {
 
 stmt_t create_stmt(const reorder_plan_t &plan, const expr_t &src_buf,
         const expr_t &dst_buf) {
-    if (!plan) return stmt_t();
     return create_reorder_stmt(
             to_ir(plan.src), to_ir(plan.dst), src_buf, dst_buf);
 }
@@ -735,7 +731,6 @@ public:
         , kernel_info_(kernel_info)
         , grid_ctx_(grid_ctx)
         , plan_(plan)
-        , cset_(desc.spec_reqs.as_constraint_set(kernel_info))
         , ir_ctx_(desc.exec_cfg(), cset_)
         , buf_mgr_(ir_ctx_)
         , let_ctx_(kernel_info, grid_ctx, plan.tg_grid, plan.thr_grid,
@@ -921,27 +916,14 @@ private:
         }
     }
 
-    void build_x2r_x_load(const std::string &prefix, const send_plan_t &load,
-            const reorder_plan_t &reorder, const expr_t &mem_buf) {
-        expr_t load_buf;
-        expr_t mul_buf;
-        if (reorder) {
-            load_buf = buf_mgr_.get(prefix + "_tmp", load.reg_layout().size());
-            mul_buf = buf_mgr_.get(prefix, reorder.dst.size());
-        } else {
-            load_buf = buf_mgr_.get(prefix, load.reg_layout().size());
-            mul_buf = load_buf;
-        }
-        auto load_stmt = create_stmt(load, mem_buf, load_buf, off_ctx_);
-        auto reorder_stmt = create_stmt(reorder, load_buf, mul_buf);
-        x2r_mul_stmt_ = x2r_mul_stmt_.append(load_stmt);
-        x2r_mul_stmt_ = x2r_mul_stmt_.append(reorder_stmt);
-    }
-
     void build_x2r() {
         auto &x2r = plan_.x2r;
-        build_x2r_x_load("a", x2r.a_load, x2r.a_reorder, a_mem_buf());
-        build_x2r_x_load("b", x2r.b_load, x2r.b_reorder, b_mem_buf());
+        auto a_buf = buf_mgr_.get("a", x2r.a_load.reg_layout().size());
+        auto b_buf = buf_mgr_.get("b", x2r.b_load.reg_layout().size());
+        auto a_load = create_stmt(x2r.a_load, a_mem_buf(), a_buf, off_ctx_);
+        auto b_load = create_stmt(x2r.b_load, b_mem_buf(), b_buf, off_ctx_);
+        x2r_mul_stmt_ = x2r_mul_stmt_.append(a_load);
+        x2r_mul_stmt_ = x2r_mul_stmt_.append(b_load);
     }
 
     void build_mul() {
@@ -952,11 +934,6 @@ private:
         auto a_buf = buf_mgr_.get("a");
         auto b_buf = buf_mgr_.get("b");
         auto c_buf = buf_mgr_.get("c", c_layout.size());
-
-        for (auto &d : a_layout.dims())
-            ir_assert(fma.inst_tile.has(d)) << d;
-        for (auto &d : b_layout.dims())
-            ir_assert(fma.inst_tile.has(d)) << d;
 
         // BMNK order.
         prb_dim_t dims[4];
@@ -983,22 +960,10 @@ private:
         prb_coord_t<int> off(0);
         bool is_a_bcast = (blocks[0] * blocks[1] * blocks[3] == 1);
         bool is_b_bcast = (blocks[0] * blocks[2] * blocks[3] == 1);
-        func_t fma_func;
-        switch (fma.fma) {
-            case fma_kind_t::mad: {
-                int a_stride = is_a_bcast ? 0 : a_layout.inner_stride();
-                int b_stride = is_b_bcast ? 0 : b_layout.inner_stride();
-                fma_func = mad_t::make(plan_.hw, c_layout.type(), fma.simd,
-                        a_layout.type(), a_stride, b_layout.type(), b_stride);
-                break;
-            }
-            case fma_kind_t::dpas: {
-                fma_func = dpas_t::make(/*is_dpasw=*/false, fma.simd, 8, 8,
-                        c_layout.type(), b_layout.type(), a_layout.type());
-                break;
-            }
-            default: ir_error_not_expected();
-        }
+        int a_stride = is_a_bcast ? 0 : a_layout.inner_stride();
+        int b_stride = is_b_bcast ? 0 : b_layout.inner_stride();
+        auto mad = mad_t::make(plan_.hw, c_layout.type(), fma.simd,
+                a_layout.type(), a_stride, b_layout.type(), b_stride);
         for (int b = 0; b < sizes[i0]; b += blocks[i0]) {
             off[dims[i0]] = b;
             for (int k = 0; k < sizes[i1]; k += blocks[i1]) {
@@ -1010,17 +975,12 @@ private:
                         int a_off = a_layout.offset_in_bytes(off);
                         int b_off = b_layout.offset_in_bytes(off);
                         int c_off = c_layout.offset_in_bytes(off);
-                        auto dst = c_buf[c_off];
-                        auto src1 = a_buf[a_off];
-                        auto src2 = b_buf[b_off];
-                        if (fma.fma == fma_kind_t::dpas) std::swap(src1, src2);
-                        stmt = stmt.append(
-                                fma_func.call({dst, dst, src1, src2}));
+                        stmt = stmt.append(mad.call({c_buf[c_off], c_buf[c_off],
+                                a_buf[a_off], b_buf[b_off]}));
                     }
                 }
             }
         }
-        stmt = inject_atomic(stmt);
         x2r_mul_stmt_ = x2r_mul_stmt_.append(stmt);
     }
 

@@ -841,6 +841,7 @@ bool data_types_ok(const conv_problem_t &prb, const hw_t &hw) {
     bool is_hf8 = utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
     if (!prb.is_f64_conv() && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
+    bool is_xelpg = hw == ngen::HW::XeHPG && !hw.systolic_support();
     if (prb.is_f64_conv()
             && (utils::one_of(hw.to_ngen(), ngen::HW::XeLP, ngen::HW::XeHPG)
                     && !hw.has_fp64_atomic_support()))

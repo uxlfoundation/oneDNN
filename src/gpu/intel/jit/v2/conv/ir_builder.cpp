@@ -18,14 +18,14 @@
 
 #include <sstream>
 
-#include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/ir/reorder.hpp"
-#include "gpu/intel/jit/pass/dpas.hpp"
-#include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/v2/conv/bridge.hpp"
-#include "gpu/intel/jit/v2/conv/plan.hpp"
+#include "gpu/jit/ir/ir.hpp"
+#include "gpu/jit/ir/kernel_info.hpp"
+#include "gpu/jit/ir/message.hpp"
+#include "gpu/jit/ir/reorder.hpp"
+#include "gpu/jit/pass/dpas_atomic.hpp"
+#include "gpu/jit/pass/pass.hpp"
+#include "gpu/jit/v2/conv/bridge.hpp"
+#include "gpu/jit/v2/conv/plan.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -1204,7 +1204,7 @@ private:
                 }
             }
         }
-        stmt = inject_dpas_atomic(stmt);
+        stmt = inject_atomic(stmt);
         x2r_mul_stmt_ = x2r_mul_stmt_.append(stmt);
     }
 

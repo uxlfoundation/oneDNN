@@ -186,12 +186,6 @@ void ref_partition_t::exec_ops(res_t *res) {
         // However, this practice must be limited to the cases when it's
         // mandatory. The requirement for input adjustment is having a parent
         // op, since there's an assumption the current op is unfusable.
-        //
-        // Note: Compiler backend doesn't down-convert to the lower precision
-        // data type when pass data to a transcendental op. However, this
-        // conversion can't be disabled without additional library API which
-        // would provide an info if Compiler or DNNL backend was used, since
-        // fall back to DNNL from Compiler backend fails.
         if (unfusable_transcendental_op && has_parent_op(op)) {
             for (size_t i = 0; i < op.in_lts_.size(); i++) {
                 const auto dt = ref_prim->get_lt_dt(op.in_lts_[i].id_);
@@ -212,14 +206,11 @@ void ref_partition_t::exec_ops(res_t *res) {
         // For an output, because of various graph compositions, there's a more
         // detailed guide when data adjustment should happen. It's covered by
         // `need_unfusable_output_crop` function.
-        //
-        // A data type to where transform the data will also be provided by the
-        // same function since there are corner cases.
-        dnnl_data_type_t dt = dnnl_data_type_undef;
-        if (unfusable_transcendental_op && need_unfusable_output_crop(op, dt)) {
+        if (unfusable_transcendental_op && need_unfusable_output_crop(op)) {
             for (size_t i = 0; i < op.out_lts_.size(); i++) {
-                // There's no need to reorder data for undefined or f32 tensors.
-                if (dt == dnnl_data_type_undef || dt == dnnl_f32) continue;
+                const auto dt = ref_prim->get_lt_dt(op.out_lts_[i].id_);
+                // There's no need to reorder data for f32 tensors.
+                if (dt == dnnl_f32 || dt == dnnl_data_type_undef) continue;
 
                 int arg = get_prim_arg_name_from_graph_op_output_offset(
                         ref_prim->get_kind(), i);
@@ -305,6 +296,69 @@ int ref_partition_t::check_partition_correctness(
     }
 
     return OK;
+}
+
+bool ref_partition_t::has_parent_op(const deserialized_op &op) const {
+    if (partition_ops_ref_.size() < 2) return false;
+
+    for (const auto &in_lt : op.in_lts_) {
+        // Check if parent op exist for an `op`.
+        const auto &parent_op = dg_->get_op_by_out_lt(in_lt.id_);
+        if (parent_op.empty()) continue;
+
+        // If it does, check its ID presents in a partition.
+        for (const auto &op_ref : partition_ops_ref_) {
+            const auto &cur_op = op_ref.get();
+            if (parent_op.id_ == cur_op.id_) return true;
+        }
+    }
+
+    return false;
+}
+
+bool ref_partition_t::has_child_op(
+        const deserialized_op &op, const deserialized_op **child_op_ptr) const {
+    if (partition_ops_ref_.size() < 2) return false;
+
+    for (const auto &out_lt : op.out_lts_) {
+        // Check if child op exist for an `op`.
+        const auto &child_op = dg_->get_op_by_in_lt(out_lt.id_);
+        if (child_op.empty()) continue;
+
+        // If it does, check its ID presents in a partition.
+        for (const auto &op_ref : partition_ops_ref_) {
+            const auto &cur_op = op_ref.get();
+            if (child_op.id_ == cur_op.id_) {
+                if (child_op_ptr) *child_op_ptr = &child_op;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+// This function decides when unfusable transcendental op output should be
+// reordered to lower data type and back to f32 for a reference path.
+bool ref_partition_t::need_unfusable_output_crop(
+        const deserialized_op &op) const {
+    const deserialized_op *child_op = nullptr;
+    // First of all, the output should have a child op...
+    if (!has_child_op(op, &child_op)) return false;
+    // If the child op is not a TypeCast, it's safe to crop.
+    if (child_op->kind_ != "TypeCast") return true;
+    // When it is a TypeCast (it's always cur_dt -> f32), there are options:
+    // * If it's the last one, no crop, as f32 will happen on the other end.
+    const deserialized_op *next_child_op = nullptr;
+    if (!has_child_op(*child_op, &next_child_op)) return false;
+    // * If there's a child Quantize, no crop either, since output would
+    //   perform a reorder with a proper scale value to match the other end.
+    if (next_child_op->kind_ == "Quantize") return false;
+    // * However, a second TypeCast would negate an effect of the previous...
+    if (next_child_op->kind_ == "TypeCast") return true;
+
+    // Rest potential outcomes are default to make a crop.
+    return true;
 }
 
 } // namespace graph

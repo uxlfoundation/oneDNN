@@ -63,6 +63,19 @@ public:
     }
 
 private:
+    // Returns `true` if an `op` has a parent op in the partition.
+    bool has_parent_op(const deserialized_op &op) const;
+    // Returns `true` if an `op` has a child op in the partition.
+    // If `child_op_ptr` is not empty, updates the pointer with a child op.
+    //
+    // Note: double pointer is needed to initialize a pointer. A pointer is
+    // needed to avoid a copy of an `child_op` object.
+    bool has_child_op(const deserialized_op &op,
+            const deserialized_op **child_op_ptr) const;
+    // Returns `true` if unfusable transcendental op should have cropped output.
+    bool need_unfusable_output_crop(const deserialized_op &op) const;
+
+    const deserialized_graph *dg_;
     // Objects below are constructed.
     // OPs in the partition, which is Topo ordered
     op_ref_list_t partition_ops_ref_;

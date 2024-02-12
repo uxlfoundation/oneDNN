@@ -14,9 +14,112 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/rnn/cell_compute.h"
-#include "gpu/intel/ocl/rnn/cell_kind_utility.h"
-#include "gpu/intel/ocl/rnn/rnn_common.h"
+#include "gpu/ocl/ocl_math_utils.h"
+#include "gpu/ocl/rnn/rnn_types.h"
+#include "gpu/ocl/types_interop.h"
+
+float one_m_square(float a) {
+    return 1.0f - a * a;
+}
+float x_m_square(float a) {
+    return (1.0f - a) * a;
+}
+float relu_fwd(float s, float alpha) {
+    return s > 0 ? s : s * alpha;
+}
+float tanh_fwd(float s) {
+    return tanh(s);
+}
+float logistic_fwd(float s) {
+    return 1 / (1 + exp((float)-s));
+}
+float logistic_bwd(float s) {
+    return x_m_square(s);
+}
+float relu_bwd(float s, float alpha) {
+    return s > 0 ? 1.f : alpha;
+}
+float tanh_bwd(float s) {
+    return (1 - s) * (1 + s);
+}
+float linear(float s, float alpha) {
+    return alpha * s;
+}
+
+float relu_fwd_tm(float s, float alpha) {
+#if !IS_TESTMODE
+    return relu_fwd(s, alpha);
+#else
+    return linear(s, alpha);
+#endif
+}
+float tanh_fwd_tm(float s, float alpha) {
+#if !IS_TESTMODE
+    return tanh(s);
+#else
+    return linear(s, alpha);
+#endif
+}
+float logistic_fwd_tm(float s, float alpha) {
+#if !IS_TESTMODE
+    return logistic_fwd(s);
+#else
+    return linear(s, alpha);
+#endif
+}
+
+float relu_bwd_tm(float s, float alpha) {
+#if !IS_TESTMODE
+    return relu_bwd(s, alpha);
+#else
+    return linear(s, alpha);
+#endif
+}
+float tanh_bwd_tm(float s, float alpha) {
+#if !IS_TESTMODE
+    return tanh_bwd(s);
+#else
+    return linear(s, alpha);
+#endif
+}
+float logistic_bwd_tm(float s, float alpha) {
+#if !IS_TESTMODE
+    return logistic_bwd(s);
+#else
+    return linear(s, alpha);
+#endif
+}
+
+float activation_fwd(float s, float alpha, float cliping) {
+#if CELL_KIND == VANILLA_RNN
+#if ACTIVATION_KIND == ELTWISE_RELU
+    return relu_fwd_tm(s, alpha);
+#elif ACTIVATION_KIND == ELTWISE_TANH
+    return tanh_fwd_tm(s, alpha);
+#elif ACTIVATION_KIND == ELTWISE_LOGISTIC
+    return logistic_fwd_tm(s, alpha);
+#else
+#error "Unsupported activation_kind"
+#endif
+#else
+    return 0.0f;
+#endif
+}
+float activation_bwd(float s, float alpha, float cliping) {
+#if CELL_KIND == VANILLA_RNN
+#if ACTIVATION_KIND == ELTWISE_RELU
+    return relu_bwd_tm(s, alpha);
+#elif ACTIVATION_KIND == ELTWISE_TANH
+    return tanh_bwd_tm(s, alpha);
+#elif ACTIVATION_KIND == ELTWISE_LOGISTIC
+    return logistic_bwd_tm(s, alpha);
+#else
+#error "Unsupported activation_kind"
+#endif
+#else
+    return 0.0f;
+#endif
+}
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 simple_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,

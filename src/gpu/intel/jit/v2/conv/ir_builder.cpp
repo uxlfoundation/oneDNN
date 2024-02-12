@@ -1122,6 +1122,23 @@ private:
         }
     }
 
+    void build_x2r_x_load(const std::string &prefix, const send_plan_t &load,
+            const reorder_plan_t &reorder, const expr_t &mem_buf) {
+        expr_t load_buf;
+        expr_t mul_buf;
+        if (reorder) {
+            load_buf = buf_mgr_.get(prefix + "_tmp", load.reg_layout().size());
+            mul_buf = buf_mgr_.get(prefix, reorder.dst.size());
+        } else {
+            load_buf = buf_mgr_.get(prefix, load.reg_layout().size());
+            mul_buf = load_buf;
+        }
+        auto load_stmt = create_stmt(load, mem_buf, load_buf, off_ctx_);
+        auto reorder_stmt = create_stmt(reorder, load_buf, mul_buf);
+        x2r_mul_stmt_ = x2r_mul_stmt_.append(load_stmt);
+        x2r_mul_stmt_ = x2r_mul_stmt_.append(reorder_stmt);
+    }
+
     void build_x2r() {
         auto &x2r = plan_.x2r;
         build_x2r_x_load("a", x2r.a_load, x2r.a_reorder, a_mem_buf());

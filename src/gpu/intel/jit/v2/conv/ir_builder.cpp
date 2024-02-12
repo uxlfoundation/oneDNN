@@ -39,8 +39,27 @@ class loop_nest_t {
 public:
     loop_nest_t() = default;
 
-    void add_loop(const expr_t &idx, const expr_t &size) {
-        loops_.push_back(loop_t {idx, size});
+    let_ctx_t(const kernel_info_t &kernel_info, const grid_context_t &grid_ctx,
+            const grid_t &tg_grid, const grid_t &thr_grid,
+            const virt_grid_t &virt_grid, int simd, ir_context_t &ir_ctx)
+        : kernel_info_(kernel_info), ir_ctx_(ir_ctx) {
+        // Handle thread indices.
+        for (int i = 0; i < grid_ctx.ndims(); i++) {
+            auto value = grid_ctx.local_id(i);
+            if (i == 0) value /= simd;
+            auto thr_idx = thr_grid.index_var(i);
+            let_stmts_.push_back(
+                    let_t::make(thr_idx, cast(value, thr_idx.type())));
+        }
+        // Handle thread group indices.
+        for (int i = 0; i < grid_ctx.ndims(); i++) {
+            auto tg_idx = tg_grid.index_var(i);
+            expr_map_.emplace(tg_idx, grid_ctx.tg_idx(i));
+        }
+        // Handle virtual grid indices.
+        for (auto &kv : virt_grid.idxs()) {
+            expr_map_.emplace(kv.first, get(kv.second));
+        }
     }
 
     int nloops() const { return (int)loops_.size(); }
@@ -48,10 +67,46 @@ public:
     const expr_t &size(int level) const { return loops_[level].size; }
     std::vector<expr_t> indices() const {
         std::vector<expr_t> ret;
-        for (int i = 0; i < nloops(); i++) {
-            ret.push_back(index(i));
-        }
+        for (auto &e : exprs)
+            ret.push_back(get(e));
         return ret;
+    }
+
+    expr_t get_shuffle(const std::vector<expr_t> &exprs) {
+        std::vector<expr_t> vec = get(exprs);
+        return shuffle_t::make(vec);
+    }
+
+private:
+    const expr_t *find(const expr_t &expr) const {
+        auto it = expr_map_.find(expr);
+        if (it != expr_map_.end()) return &it->second;
+        return nullptr;
+    }
+
+    expr_t register_expr(const expr_t &key, const expr_t &value) {
+        if (is_const(key) || key.is<const_var_t>() || key.is<var_t>())
+            return value;
+        if (auto *cached = find(key)) {
+            ir_assert(value.is_same(*cached));
+            return value;
+        }
+        auto tmp_var = ir_ctx_.create_tmp_var(type_t::s32());
+        let_stmts_.push_back(let_t::make(tmp_var, value));
+        expr_map_.emplace(key, tmp_var);
+        return tmp_var;
+    }
+
+    expr_t get_var(const var_t &var) {
+        if (auto *cached = find(var)) return *cached;
+        return var;
+    }
+
+    expr_t get_const_var(const const_var_t &var) {
+        if (auto *cached = find(var)) return *cached;
+
+        auto value = kernel_info_.find_arg(var.name);
+        return register_expr(var, value);
     }
 
     std::string str() const {
@@ -66,14 +121,20 @@ public:
 
     IR_DEFINE_DUMP()
 
+    object_t _mutate(const var_t &obj) override { return ctx_.get_var(obj); }
+
 private:
     struct loop_t {
         expr_t index;
         expr_t size;
     };
 
-    std::vector<loop_t> loops_;
-};
+expr_t let_ctx_t::get(const expr_t &expr) {
+    if (auto *cached = find(expr)) return *cached;
+    let_ctx_mutator_t mutator(*this);
+    auto ret = mutator.mutate(expr);
+    return register_expr(expr, ret);
+}
 
 struct offset_params_t {
     // Type of the offset.
@@ -339,7 +400,7 @@ public:
         return ret;
     }
 
-    stmt_t init_stmt(int version) const {
+    stmt_t init_stmt() const {
         stmt_t ret;
         for (auto &o : offsets_) {
             if (o.version != version) continue;
@@ -600,6 +661,94 @@ private:
     loop_index_t linear_idx_;
 };
 
+class iterator_t {
+public:
+    iterator_t() = default;
+
+    iterator_t(buffer_manager_t &buf_mgr) : buf_mgr_(&buf_mgr) {
+        linear_loop_ = loop_t(loop_nest_entry_t(), 0, buf_mgr);
+    }
+
+    int nloops() const { return (int)loops_.size(); }
+
+    void add_loop(const loop_nest_entry_t &e, const expr_t &bound) {
+        if (is_one(bound)) return;
+        loops_.emplace_back(e, bound, *buf_mgr_);
+    }
+
+    stmt_t init_stmt() const {
+        stmt_t ret;
+        for (auto &l : loops_) {
+            ret = ret.append(l.store_stmt(0));
+        }
+        ret = linear_loop_.store_stmt(linear_bound() - 1).append(ret);
+        return ret;
+    }
+
+    expr_t linear_loop_var() const { return linear_loop_.var(); }
+
+    stmt_t check_bounds_stmt(const stmt_t &body) const {
+        return if_t::make(linear_loop_.var() >= 0, body);
+    }
+
+    stmt_t inc_stmt(const offset_ctx_t &off_ctx) const {
+        stmt_t body;
+        for (int i = nloops() - 1; i >= 0; i--) {
+            auto &l = loops_[i];
+            auto *l_prev = (i - 1 >= 0) ? &loops_[i - 1] : nullptr;
+            auto *l_next = (i + 1 < nloops()) ? &loops_[i + 1] : nullptr;
+            stmt_t stmt;
+            if (l_prev) stmt = stmt.append(l_prev->store_stmt(0));
+            stmt = stmt.append(l.inc_stmt());
+            stmt = stmt.append(off_ctx.inc_loop_stmt(l.entry));
+            if (l_next)
+                stmt = stmt.append(if_t::make(l.var() >= l.bound, body));
+            body = stmt;
+        }
+        body = linear_loop_.inc_stmt(-1).append(body);
+        return body;
+    }
+
+private:
+    struct loop_t {
+        loop_nest_entry_t entry;
+        expr_t bound;
+        expr_t var_buf;
+
+        loop_t() = default;
+        loop_t(const loop_nest_entry_t &entry, const expr_t &bound,
+                buffer_manager_t &buf_mgr)
+            : entry(entry), bound(bound) {
+            auto buf_name = buf_mgr.ir_ctx().create_tmp_name("i");
+            var_buf = buf_mgr.get(buf_name, sizeof(int32_t));
+        }
+
+        stmt_t store_stmt(const expr_t &value) const {
+            return store_t::make(var_buf, 0, value);
+        }
+
+        stmt_t inc_stmt(int inc = 1) const { return store_stmt(var() + inc); }
+
+        expr_t var() const { return load_t::make(type_t::s32(), var_buf, 0); }
+    };
+
+    expr_t linear_bound() const {
+        expr_t ret;
+        for (auto &l : loops_) {
+            if (ret.is_empty()) {
+                ret = l.bound;
+            } else {
+                ret *= l.bound;
+            }
+        }
+        return ret;
+    }
+
+    buffer_manager_t *buf_mgr_ = nullptr;
+    std::vector<loop_t> loops_;
+    loop_t linear_loop_;
+};
+
 type_t to_send_type(const send_1d_desc_t &desc) {
     if (desc.type_size <= 8) return type_t::u(desc.type_size * 8);
     return type_t::oword(desc.type_size / 16);
@@ -771,10 +920,11 @@ public:
         , cset_(desc.spec_reqs.as_constraint_set(kernel_info))
         , ir_ctx_(desc.exec_cfg(), cset_)
         , buf_mgr_(ir_ctx_)
-        , loop_nest_(make_loop_nest(desc_.loop_desc, plan_.coord_info))
-        , off_ctx_(buf_mgr_, ir_ctx_, loop_nest_)
-        , prefetch_off_ctx_(off_ctx_.bump_version())
-        , epilogue_off_ctx_(prefetch_off_ctx_.bump_version()) {}
+        , let_ctx_(kernel_info, grid_ctx, plan.tg_grid, plan.thr_grid,
+                  plan.virt_grid, desc.simd, ir_ctx_)
+        , off_ctx_(let_ctx_, buf_mgr_, desc_.loop_nest, plan_.coord_info)
+        , prefetch_off_ctx_(
+                  let_ctx_, buf_mgr_, desc_.loop_nest, plan_.coord_info) {}
 
     stmt_t build() {
         build_prefetch();
@@ -792,16 +942,12 @@ public:
         epilogue_stmt = epilogue_stmt.append(c_store_stmt_);
 
         stmt_t stmt;
-        stmt = stmt.append(compute_stmt);
-        stmt = stmt.append(epilogue_stmt);
-
-        stmt = inject_alloc_stmts(stmt, buf_mgr_);
-        stmt = off_ctx_.inject_let_stmts(stmt);
-        stmt = inject_global_alloc(stmt);
-        stmt = inject_index_let(stmt);
-        stmt = finalize_vars(
-                stmt, kernel_info_, grid_ctx_, plan_.tg_grid, ir_ctx_);
-
+        stmt = loop();
+        stmt = inject_compute_alloc(stmt);
+        stmt = init_stmt().append(stmt);
+        stmt = zero_out_stmt().append(stmt);
+        stmt = stmt.append(c_store_stmt_);
+        stmt = inject_alloc_and_let(stmt);
         stmt = simplify(stmt, ir_ctx_);
         stmt = optimize_alloc_let(stmt, ir_ctx_);
         stmt = split_wide_stores(stmt, ir_ctx_);
@@ -819,7 +965,11 @@ private:
         stmt_t init_stmt;
         iterator_t prefetch_it;
         if (prefetch_dist > 0) {
-            prefetch_it = iterator_t(buf_mgr_, loop_nest_);
+            prefetch_it = iterator_t(buf_mgr_);
+            for (auto &e : loop_nest) {
+                auto bound = let_ctx_.get(coord_info.loop_size(e.dim));
+                prefetch_it.add_loop(e, bound);
+            }
             init_stmt = init_stmt.append(prefetch_it.init_stmt());
             for (int i = 0; i < prefetch_dist; i++) {
                 auto i_prefetch_stmt = prefetch_stmt_;
@@ -839,10 +989,10 @@ private:
         if (prefetch_dist > 0) {
             ret = ret.append(prefetch_it.inc_stmt(prefetch_off_ctx_));
         }
-        for (auto &e : loop_desc) {
-            auto var = coord_info.loop_index(e.dim);
-            auto bound = coord_info.loop_size(e.dim);
-            ret = ret.append(off_ctx_.inc_loop_stmt(e.idx));
+        for (auto &e : loop_nest) {
+            auto var = let_ctx_.get(coord_info.loop_index(e.dim));
+            auto bound = let_ctx_.get(coord_info.loop_size(e.dim));
+            ret = ret.append(off_ctx_.inc_loop_stmt(e));
             ret = for_t::make(var, 0, bound, ret);
         }
         ret = init_stmt.append(ret);
@@ -854,6 +1004,52 @@ private:
         auto ret = stmt_group_t::make(stmt_label_t::c_zero_out(),
                 funcs::zero_out(c_entry.buf, c_entry.size));
         return ret;
+    }
+
+    stmt_t init_stmt() const {
+        stmt_t ret;
+        ret = ret.append(off_ctx_.init_stmt());
+        ret = ret.append(prefetch_off_ctx_.init_stmt());
+        return ret;
+    }
+
+    stmt_t inject_alloc_and_let(const stmt_t &stmt) const {
+        stmt_t ret = stmt;
+        ret = inject_out_alloc(ret);
+        ret = inject_header_alloc(ret);
+        ret = inject_let_stmts(ret, let_ctx_.let_stmts());
+        ret = inject_global_alloc(ret);
+        ret = inject_index_let(ret);
+        ret = inject_external_var_let(ret, ir_ctx_);
+        return ret;
+    }
+
+    static bool is_compute_alloc_buf(const expr_t &buf) {
+        return !is_out_alloc_buf(buf) && !is_offset_buf(buf);
+    }
+
+    static bool is_out_alloc_buf(const expr_t &buf) {
+        auto &buf_name = buf.as<var_t>().name;
+        return utils::one_of(buf_name, "c", "c_tmp");
+    }
+
+    static bool is_offset_buf(const expr_t &buf) {
+        auto &buf_name = buf.as<var_t>().name;
+        if (buf_name.find("h_") == 0) return true;
+        if (buf_name.find("m_") == 0) return true;
+        return false;
+    }
+
+    stmt_t inject_compute_alloc(const stmt_t &stmt) const {
+        return buf_mgr_.inject_allocs(stmt, is_compute_alloc_buf);
+    }
+
+    stmt_t inject_out_alloc(const stmt_t &stmt) const {
+        return buf_mgr_.inject_allocs(stmt, is_out_alloc_buf);
+    }
+
+    stmt_t inject_header_alloc(const stmt_t &stmt) const {
+        return buf_mgr_.inject_allocs(stmt, is_offset_buf);
     }
 
     stmt_t inject_global_alloc(const stmt_t &stmt) const {
@@ -924,23 +1120,6 @@ private:
                     expr_t(), prefetch_off_ctx_);
             prefetch_stmt_ = prefetch_stmt_.append(b_prefetch);
         }
-    }
-
-    void build_x2r_x_load(const std::string &prefix, const send_plan_t &load,
-            const reorder_plan_t &reorder, const expr_t &mem_buf) {
-        expr_t load_buf;
-        expr_t mul_buf;
-        if (reorder) {
-            load_buf = buf_mgr_.get(prefix + "_tmp", load.reg_layout().size());
-            mul_buf = buf_mgr_.get(prefix, reorder.dst.size());
-        } else {
-            load_buf = buf_mgr_.get(prefix, load.reg_layout().size());
-            mul_buf = load_buf;
-        }
-        auto load_stmt = create_stmt(load, mem_buf, load_buf, off_ctx_);
-        auto reorder_stmt = create_stmt(reorder, load_buf, mul_buf);
-        x2r_mul_stmt_ = x2r_mul_stmt_.append(load_stmt);
-        x2r_mul_stmt_ = x2r_mul_stmt_.append(reorder_stmt);
     }
 
     void build_x2r() {
@@ -1097,7 +1276,6 @@ private:
     loop_nest_t loop_nest_;
     mutable offset_ctx_t off_ctx_;
     mutable offset_ctx_t prefetch_off_ctx_;
-    mutable offset_ctx_t epilogue_off_ctx_;
 
     stmt_t prefetch_stmt_;
     stmt_t x2r_mul_stmt_;

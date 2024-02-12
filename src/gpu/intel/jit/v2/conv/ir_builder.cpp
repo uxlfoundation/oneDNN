@@ -66,6 +66,8 @@ public:
 
     IR_DEFINE_DUMP()
 
+    object_t _mutate(const var_t &obj) override { return ctx_.get_var(obj); }
+
 private:
     struct loop_t {
         expr_t index;
@@ -598,6 +600,94 @@ private:
     loop_nest_t loop_nest_;
     std::vector<loop_index_t> loop_idxs_;
     loop_index_t linear_idx_;
+};
+
+class iterator_t {
+public:
+    iterator_t() = default;
+
+    iterator_t(buffer_manager_t &buf_mgr) : buf_mgr_(&buf_mgr) {
+        linear_loop_ = loop_t(loop_nest_entry_t(), 0, buf_mgr);
+    }
+
+    int nloops() const { return (int)loops_.size(); }
+
+    void add_loop(const loop_nest_entry_t &e, const expr_t &bound) {
+        if (is_one(bound)) return;
+        loops_.emplace_back(e, bound, *buf_mgr_);
+    }
+
+    stmt_t init_stmt() const {
+        stmt_t ret;
+        for (auto &l : loops_) {
+            ret = ret.append(l.store_stmt(0));
+        }
+        ret = linear_loop_.store_stmt(linear_bound() - 1).append(ret);
+        return ret;
+    }
+
+    expr_t linear_loop_var() const { return linear_loop_.var(); }
+
+    stmt_t check_bounds_stmt(const stmt_t &body) const {
+        return if_t::make(linear_loop_.var() >= 0, body);
+    }
+
+    stmt_t inc_stmt(const offset_ctx_t &off_ctx) const {
+        stmt_t body;
+        for (int i = nloops() - 1; i >= 0; i--) {
+            auto &l = loops_[i];
+            auto *l_prev = (i - 1 >= 0) ? &loops_[i - 1] : nullptr;
+            auto *l_next = (i + 1 < nloops()) ? &loops_[i + 1] : nullptr;
+            stmt_t stmt;
+            if (l_prev) stmt = stmt.append(l_prev->store_stmt(0));
+            stmt = stmt.append(l.inc_stmt());
+            stmt = stmt.append(off_ctx.inc_loop_stmt(l.entry));
+            if (l_next)
+                stmt = stmt.append(if_t::make(l.var() >= l.bound, body));
+            body = stmt;
+        }
+        body = linear_loop_.inc_stmt(-1).append(body);
+        return body;
+    }
+
+private:
+    struct loop_t {
+        loop_nest_entry_t entry;
+        expr_t bound;
+        expr_t var_buf;
+
+        loop_t() = default;
+        loop_t(const loop_nest_entry_t &entry, const expr_t &bound,
+                buffer_manager_t &buf_mgr)
+            : entry(entry), bound(bound) {
+            auto buf_name = buf_mgr.ir_ctx().create_tmp_name("i");
+            var_buf = buf_mgr.get(buf_name, sizeof(int32_t));
+        }
+
+        stmt_t store_stmt(const expr_t &value) const {
+            return store_t::make(var_buf, 0, value);
+        }
+
+        stmt_t inc_stmt(int inc = 1) const { return store_stmt(var() + inc); }
+
+        expr_t var() const { return load_t::make(type_t::s32(), var_buf, 0); }
+    };
+
+    expr_t linear_bound() const {
+        expr_t ret;
+        for (auto &l : loops_) {
+            if (ret.is_empty()) {
+                ret = l.bound;
+            } else {
+                ret *= l.bound;
+            }
+        }
+        return ret;
+    }
+
+    buffer_manager_t *buf_mgr_ = nullptr;
+    std::vector<loop_t> loops_;
+    loop_t linear_loop_;
 };
 
 type_t to_send_type(const send_1d_desc_t &desc) {

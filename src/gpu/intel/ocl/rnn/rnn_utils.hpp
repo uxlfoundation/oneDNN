@@ -154,7 +154,6 @@ constexpr size_t copy_res_layer = 3;
 constexpr size_t copy_res_iter = 4;
 constexpr size_t elemwise_fwd = 5;
 constexpr size_t elemwise_bwd = 6;
-constexpr size_t cell_fwd = 7;
 } // namespace kernel_id
 
 struct ocl_conf_t {

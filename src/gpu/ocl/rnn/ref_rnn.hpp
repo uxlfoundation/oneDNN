@@ -64,6 +64,7 @@ struct _ref_rnn_common_t : public gpu_primitive_t {
     typedef cell_execution_sig((class_name::*cell_execution_f));
     typedef grid_execution_sig((class_name::*grid_execution_f));
     typedef gemm_sig((class_name::*gemm_t));
+    typedef weights_assign_sig((class_name::*weights_assign_t));
 
     using base_pd_t =
             typename utils::conditional<false || aprop == prop_kind::forward,
@@ -172,6 +173,8 @@ private:
 
     gemm_sig(gemm_primitive);
 
+    weights_assign_sig(assign_weight_offsets);
+
     float (*activation_func)(float dd, float s, float alpha, float cliping)
             = nullptr;
     status_t bias_prepare(const exec_ctx_t &ctx,
@@ -221,7 +224,16 @@ private:
             const rnn_utils::workspace_t &ws, const float shift,
             const float scale, const bool dequantize) const;
 
-    std::vector<compute::kernel_t> kernels_;
+    compute::kernel_t ws_print_kernel_;
+
+    compute::kernel_t bias_prepare_kernel_;
+    compute::kernel_t copy_init_layer_kernel_;
+    compute::kernel_t copy_init_iter_kernel_;
+    compute::kernel_t copy_res_layer_kernel_;
+    compute::kernel_t copy_res_iter_kernel_;
+
+    compute::kernel_t elemwise_fwd_kernel_;
+    compute::kernel_t elemwise_bwd_kernel_;
 
     // ptrs to GEMM primitives
     std::shared_ptr<primitive_t> gemm_layer_fwd_;

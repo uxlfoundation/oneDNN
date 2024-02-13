@@ -445,24 +445,6 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.define_int("WEI_QPARAM_MASK", wei_qparam_mask);
     kernel_ctx.define_int("IS_TESTMODE", is_testmode);
 
-    if (cell_comp.is_enabled) {
-        kernel_ctx.define_int("CELL_COMP_ENABLED", cell_comp.is_enabled);
-        kernel_ctx.define_int(
-                "CELL_COMPUTE_GEMM_LAYER", cell_comp.compute_gemm_layer);
-        kernel_ctx.define_int(
-                "CELL_GEMM_LAYER_K_TAIL", cell_comp.gemm_layer_k_tail);
-        kernel_ctx.define_int(
-                "CELL_COMPUTE_GEMM_ITER", cell_comp.compute_gemm_iter);
-        kernel_ctx.define_int(
-                "CELL_GEMM_ITER_K_TAIL", cell_comp.gemm_iter_k_tail);
-        kernel_ctx.define_int("CELL_DHC_TAIL", cell_comp.dhc_tail);
-        kernel_ctx.define_int("CELL_MB_TAIL", cell_comp.mb_tail);
-        kernel_ctx.define_int(
-                "CELL_ENABLE_ITER_BLOCK", cell_comp.enable_iter_block);
-        kernel_ctx.define_int("CELL_DHC_THR", cell_comp.dhc_thr);
-        kernel_ctx.define_int("CELL_BATCH_THR", cell_comp.mb_thr);
-    }
-
     return status::success;
 }
 
@@ -999,7 +981,15 @@ status_t _simple_rnn_common_t<aprop>::init(impl::engine_t *engine) {
             ws_c_states_offset_, ws_grid_comp_offset_, ws_bias_offset_);
 
     auto kernel_names = pd()->ocl_conf.get_kernel_names();
-    CHECK(create_kernels(engine, kernels_, kernel_names, pd()->ocl_conf));
+    CHECK(create_kernels(engine, kernels, kernel_names, pd()->ocl_conf));
+
+    bias_prepare_kernel_ = kernels[0];
+    copy_init_layer_kernel_ = kernels[1];
+    copy_init_iter_kernel_ = kernels[2];
+    copy_res_layer_kernel_ = kernels[3];
+    copy_res_iter_kernel_ = kernels[4];
+    elemwise_fwd_kernel_ = kernels[6];
+    elemwise_bwd_kernel_ = kernels[7];
 
     bool gemm_ok = utils::everyone_is(status::success,
             pd()->gemm_layer_fwd_pd_ ? create_nested_primitive(
@@ -1567,53 +1557,6 @@ status_t _simple_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
 }
 
 template <prop_kind_t aprop>
-status_t _ref_rnn_common_t<aprop>::ws_set(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream,
-        const memory_storage_t &workspace_, const dim_t ws_offset,
-        const int ws_part, const float val, const dim_t size) const {
-    compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, workspace_);
-    arg_list.set(1, ws_offset);
-    arg_list.set(2, val);
-    arg_list.set(3, ws_part);
-
-    compute::range_t gws(gpu_utils::into<size_t>(size));
-    auto nd_range = compute::nd_range_t(gws);
-
-    return parallel_for(ctx, nd_range, ws_set_kernel_, arg_list);
-}
-
-template <prop_kind_t aprop>
-status_t _ref_rnn_common_t<aprop>::ws_print(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream,
-        const rnn_utils::workspace_t &workspace_) const {
-    // This is only for use in DNNL_DEV_MODE
-    assert(is_dev_mode());
-    if (!is_dev_mode()) return status::runtime_error;
-
-    compute::kernel_arg_list_t arg_list;
-    arg_list.append(workspace_.gates());
-    arg_list.append(workspace_.states());
-    arg_list.append(workspace_.c_states());
-    arg_list.append(workspace_.bias());
-    arg_list.append(workspace_.grid_comp());
-
-    arg_list.append(into<int32_t>(pd()->rnn_conf.mb));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.n_layer));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.n_dir));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.n_iter));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.n_bias));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.dhc));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.n_gates));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.states_ws_ld));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.gates_ws_ld));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.wic));
-
-    compute::nd_range_t nd_range; // Defaults to 1 work item
-    return parallel_for(ctx, nd_range, ws_print_kernel_, arg_list);
-}
-
-template <prop_kind_t aprop>
 weights_assign_sig((_ref_rnn_common_t<aprop>::assign_weight_offsets)) {
     assert(md->format_kind == format_kind::blocked);
     AOC<dim_t, 3> weights(weights_.data(), rnn.n_layer, rnn.n_dir, n_parts);
@@ -1777,7 +1720,9 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
 
     // run the execution on the grid
     CHECK((this->*grid_computation)(engine, ctx, user_data, workspace, scratch,
-            diff_bias_native_, scales_buf, tm_scales_buf));
+            wei_layer_native_, wei_iter_native_, diff_weights_layer_native_,
+            diff_weights_iter_native_, diff_bias_native_, scales_buf,
+            tm_scales_buf));
 
     // Finally we copy the results to the result buffers
 

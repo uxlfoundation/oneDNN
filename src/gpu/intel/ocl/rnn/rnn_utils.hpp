@@ -104,6 +104,12 @@
             const rnn_utils::sub_buffer_t &b, \
             const rnn_utils::sub_buffer_t &c, gemm_kind_t gemm_kind) const
 
+#define weights_assign_sig(f) \
+    void f(const rnn_utils::conf_t &rnn, const memory_desc_t *md, \
+            std::vector<dim_t> &weights_, dim_t n_parts, \
+            const dim_t *gates_per_part, dim_t ld, dim_t nld, \
+            data_type_t wei_t) const
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -161,11 +167,10 @@ struct ocl_conf_t {
                 bundle, get_kernel_names(), kernel_ctx);
     }
     const std::vector<const char *> &get_kernel_names() const {
-        static const std::vector<const char *> names = {"rnn_bias_prepare",
-                "simple_rnn_copy_init_layer", "simple_rnn_copy_init_iter",
-                "simple_rnn_copy_res_layer", "simple_rnn_copy_res_iter",
-                "simple_rnn_elemwise_fwd", "simple_rnn_elemwise_bwd",
-                "simple_rnn_cell_fwd"};
+        static const std::vector<const char *> names = {"ref_rnn_bias_prepare",
+                "ref_rnn_copy_init_layer", "ref_rnn_copy_init_iter",
+                "ref_rnn_copy_res_layer", "ref_rnn_copy_res_iter",
+                "ref_rnn_elemwise_fwd", "ref_rnn_elemwise_bwd"};
         return names;
     }
 

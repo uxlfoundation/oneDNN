@@ -902,17 +902,8 @@ status_t _ref_rnn_common_t<aprop>::init(engine_t *engine) {
             rnn.n_parts_weights_layer, rnn.parts_weights_layer,
             rnn.weights_layer_ld, rnn.weights_layer_nld, pd()->weights_type);
 
-    std::vector<compute::kernel_t> kernels;
     auto kernel_names = pd()->ocl_conf.get_kernel_names();
-    CHECK(create_kernels(engine, kernels, kernel_names, pd()->ocl_conf));
-
-    bias_prepare_kernel_ = kernels[0];
-    copy_init_layer_kernel_ = kernels[1];
-    copy_init_iter_kernel_ = kernels[2];
-    copy_res_layer_kernel_ = kernels[3];
-    copy_res_iter_kernel_ = kernels[4];
-    elemwise_fwd_kernel_ = kernels[6];
-    elemwise_bwd_kernel_ = kernels[7];
+    CHECK(create_kernels(engine, kernels_, kernel_names, pd()->ocl_conf));
 
     bool gemm_ok = utils::everyone_is(status::success,
             pd()->gemm_layer_fwd_pd_ ? create_nested_primitive(
@@ -1220,7 +1211,7 @@ status_t _ref_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
             compute::nd_range_t({gpu_utils::into<size_t>(dhc),
                     gpu_utils::into<size_t>(n_bias),
                     gpu_utils::into<size_t>(n_layer * n_dir)}),
-            bias_prepare_kernel_, arg_list);
+            kernels_[kernel_id::bias_prepare], arg_list);
 }
 
 template <prop_kind_t aprop>
@@ -1256,7 +1247,7 @@ status_t _ref_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
 
         return parallel_for(ctx,
                 compute::nd_range_t(get_nd_range({slc, batch, n_iter})),
-                copy_init_layer_kernel_, arg_list);
+                kernels_[kernel_id::copy_init_layer], arg_list);
     } else {
         compute::kernel_arg_list_t arg_list;
         arg_list.append(memory_storage_t::empty_storage());
@@ -1278,7 +1269,7 @@ status_t _ref_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
 
         return parallel_for(ctx,
                 compute::nd_range_t(get_nd_range({dhc, batch, n_iter})),
-                copy_init_layer_kernel_, arg_list);
+                kernels_[kernel_id::copy_init_layer], arg_list);
     }
 }
 
@@ -1326,7 +1317,7 @@ status_t _ref_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(max_d),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                copy_init_iter_kernel_, arg_list);
+                kernels_[kernel_id::copy_init_iter], arg_list);
     } else {
         compute::kernel_arg_list_t arg_list;
         arg_list.append(memory_storage_t::empty_storage());
@@ -1352,7 +1343,7 @@ status_t _ref_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(dhc),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                copy_init_iter_kernel_, arg_list);
+                kernels_[kernel_id::copy_init_iter], arg_list);
     }
 }
 
@@ -1393,7 +1384,7 @@ status_t _ref_rnn_common_t<aprop>::copy_res_layer(const exec_ctx_t &ctx,
         arg_list.append(scale);
         arg_list.append(into<int32_t>(dequantize));
         return parallel_for(ctx, get_nd_range({dhc, batch, n_iter}),
-                copy_res_layer_kernel_, arg_list);
+                kernels_[kernel_id::copy_res_layer], arg_list);
     } else {
         compute::kernel_arg_list_t arg_list;
         arg_list.append(memory_storage_t::empty_storage());
@@ -1414,7 +1405,7 @@ status_t _ref_rnn_common_t<aprop>::copy_res_layer(const exec_ctx_t &ctx,
         arg_list.append(pd()->off.diff_src_layer);
 
         return parallel_for(ctx, get_nd_range({slc, batch, n_iter}),
-                copy_res_layer_kernel_, arg_list);
+                kernels_[kernel_id::copy_res_layer], arg_list);
     }
 }
 
@@ -1461,7 +1452,7 @@ status_t _ref_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(dhc),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                copy_res_iter_kernel_, arg_list);
+                kernels_[kernel_id::copy_res_iter], arg_list);
     } else {
         dim_t max_d = std::max(dhc, sic);
         compute::kernel_arg_list_t arg_list;
@@ -1489,7 +1480,7 @@ status_t _ref_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(max_d),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                copy_res_iter_kernel_, arg_list);
+                kernels_[kernel_id::copy_res_iter], arg_list);
     }
 }
 

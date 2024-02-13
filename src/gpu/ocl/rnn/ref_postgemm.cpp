@@ -25,6 +25,22 @@ namespace ocl {
 using namespace dnnl::impl::gpu::gpu_utils;
 using namespace rnn_utils;
 
+struct arg_list_t {
+    template <typename T>
+    void append(const T &t) {
+        args.append(t);
+    }
+    void append(const rnn_utils::sub_buffer_t &buffer, data_type_t dt) {
+        args.append(buffer.get_storage());
+        args.append(gpu_utils::into<dim_t>(buffer.offset(dt)));
+    }
+    compute::kernel_arg_list_t args;
+};
+
+static_assert(sizeof(arg_list_t) == sizeof(compute::kernel_arg_list_t),
+        "The arg_list_t is a helper for injecting RNN specific helper "
+        "functions structures into kernel_args_list_t.");
+
 template <prop_kind_t aprop>
 elemwise_sig((_ref_rnn_common_t<aprop>::rnn_elemwise)) {
     auto nd_range = get_nd_range({dhc,
@@ -42,11 +58,11 @@ elemwise_sig((_ref_rnn_common_t<aprop>::rnn_elemwise)) {
         arg_list.append(into<int32_t>(iter));
     }
     if (aprop == prop_kind::forward) {
-        arg_list.append(scratch_gates, pd()->ocl_conf.acc_dt);
+        arg_list.append(scratch_gates, pd()->ocl_conf.aux_dt);
     } else {
         arg_list.append(scratch_diff_gates, pd()->ocl_conf.src_dt);
         arg_list.append(scratch_gates ? scratch_gates : scratch_diff_gates,
-                pd()->ocl_conf.acc_dt);
+                pd()->ocl_conf.aux_dt);
     }
     auto bias = user_data.bias(lay, dir);
     arg_list.append(bias, pd()->ocl_conf.bia_dt);
@@ -116,11 +132,11 @@ elemwise_sig((_ref_rnn_common_t<aprop>::lstm_elemwise)) {
         arg_list.append(into<int32_t>(iter));
     }
     if (aprop == prop_kind::forward) {
-        arg_list.append(scratch_gates, pd()->ocl_conf.acc_dt);
+        arg_list.append(scratch_gates, pd()->ocl_conf.aux_dt);
     } else {
         arg_list.append(scratch_diff_gates, pd()->ocl_conf.src_dt);
         arg_list.append(scratch_gates ? scratch_gates : scratch_diff_gates,
-                pd()->ocl_conf.acc_dt);
+                pd()->ocl_conf.aux_dt);
     }
     auto bias = user_data.bias(lay, dir);
     arg_list.append(bias, pd()->ocl_conf.bia_dt);
@@ -250,11 +266,11 @@ elemwise_sig_gru_lbr((_ref_rnn_common_t<aprop>::gru_lbr_elemwise)) {
         arg_list.append(into<int32_t>(iter));
     }
     if (aprop == prop_kind::forward) {
-        arg_list.append(scratch_gates, pd()->ocl_conf.acc_dt);
+        arg_list.append(scratch_gates, pd()->ocl_conf.aux_dt);
     } else {
         arg_list.append(scratch_diff_gates, pd()->ocl_conf.src_dt);
         arg_list.append(scratch_gates ? scratch_gates : scratch_diff_gates,
-                pd()->ocl_conf.acc_dt);
+                pd()->ocl_conf.aux_dt);
     }
     auto bias = user_data.bias(lay, dir);
     arg_list.append(bias, pd()->ocl_conf.bia_dt);
@@ -326,11 +342,11 @@ elemwise_sig_gru((_ref_rnn_common_t<aprop>::gru_elemwise)) {
         arg_list.append(into<int32_t>(iter));
     }
     if (aprop == prop_kind::forward) {
-        arg_list.append(scratch_gates, pd()->ocl_conf.acc_dt);
+        arg_list.append(scratch_gates, pd()->ocl_conf.aux_dt);
     } else {
         arg_list.append(scratch_diff_gates, pd()->ocl_conf.src_dt);
         arg_list.append(scratch_gates ? scratch_gates : scratch_diff_gates,
-                pd()->ocl_conf.acc_dt);
+                pd()->ocl_conf.aux_dt);
     }
     auto bias = user_data.bias(lay, dir);
     arg_list.append(bias, pd()->ocl_conf.bia_dt);

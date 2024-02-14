@@ -54,6 +54,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
     const auto interim_dt = data_type::f32;
+    const dim_t ou_stride = pd()->outer_stride();
     const auto is_inplace = (src == dst);
     const auto has_padding = is_padding(dst_d);
     const auto zero_padding = has_padding && !is_inplace;

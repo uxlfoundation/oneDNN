@@ -58,11 +58,11 @@ namespace avx_gemm_f32 {
 using namespace gemm_utils;
 using namespace Xbyak;
 
-struct xbyak_gemm_t : public jit_generator {
+struct xbyak_gemm_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx_gemm_f32_xbyak_gemm)
     xbyak_gemm_t(char isTransA, char isTransB, float beta, bool hasBias = false)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , isTransA(isTransA)
         , isTransB(isTransB)
         , hasBias(hasBias)
@@ -422,10 +422,6 @@ struct xbyak_gemm_t : public jit_generator {
                 }
             }
 
-            if (i == 7) {
-                if (!isTransB) { sub(BO1, -8 * SIZE); }
-            }
-
             if (unroll_n >= 4) {
                 if (!isTransB) {
                     if (i == 3) { prefetcht0(ptr[BO2 + PREFETCHSIZEB * SIZE]); }
@@ -443,9 +439,6 @@ struct xbyak_gemm_t : public jit_generator {
 
             if (unroll_n >= 5) {
                 if (!isTransB) {
-                    if (i == 4) {
-                        prefetcht0(ptr[BO2 + LDB + PREFETCHSIZEB * SIZE]);
-                    }
                     vbroadcastss(
                             ymm2, ptr[BO2 + LDB * 1 + (i - OFFSET) * SIZE]);
                 } else {
@@ -461,9 +454,6 @@ struct xbyak_gemm_t : public jit_generator {
 
             if (unroll_n >= 6) {
                 if (!isTransB) {
-                    if (i == 5) {
-                        prefetcht0(ptr[BO2 + LDB * 2 + PREFETCHSIZEB * SIZE]);
-                    }
                     vbroadcastss(
                             ymm2, ptr[BO2 + LDB * 2 + (i - OFFSET) * SIZE]);
                 } else {

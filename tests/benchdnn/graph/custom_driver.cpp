@@ -51,8 +51,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -119,8 +120,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -185,8 +187,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -203,7 +206,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 int execute(const prb_t *prb, const args_t &args, res_t *res) {
     const auto &src = args.find(DNNL_ARG_SRC);
-    auto tag = ::std::get<0>(prb->arg_mds_.at(DNNL_ARG_SRC));
+    const auto &tag = ::std::get<0>(prb->arg_mds_.at(DNNL_ARG_SRC));
     dnn_mem_t pad(src, src.dt(), tag, get_test_engine());
     ::graph::permute_md(pad, prb->order);
     int ret = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST)).reorder(pad);
@@ -231,8 +234,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -251,7 +255,8 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
     dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
     // generate dense stride
-    dnn_mem_t pad(src.md_, src.dt(), tag::abx, get_test_engine());
+    dnn_mem_t pad(src.md_, src.dt(), tag::abx, get_test_engine(),
+            /* prefill = */ true);
     int ret = pad.reorder(src);
     if (ret != OK) { res->state = FAILED; }
     // update output shape with dense stride
@@ -293,10 +298,20 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
 
 int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max) {
 
+    const auto dt = mem_dt.dt();
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+            && !is_integral_dt(dt)) {
+        // Use data filled by benchdnn for `no_ref_memory`, except some
+        // customized operations in Graph API which expect the input
+        // values to indicate indexing information, especially for integral
+        // inputs. Hence we need to be limited the input value to the
+        // provided range.
+        return OK;
+    }
+
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
 
-    const auto dt = mem_dt.dt();
     f_min = (dt == dnnl_u8 && f_min < 0) ? 0 : f_min;
     const int64_t n_chunks = 16;
     const int64_t chunk_size = div_up(nelems, n_chunks);
@@ -333,14 +348,12 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         mem_map.emplace(exec_arg,
                 dnn_mem_t(static_cast<int>(dims.size()), dnnl_dims,
                         std::get<2>(arg_mds_), ::std::get<0>(arg_mds_),
-                        test_engine));
+                        test_engine, /* prefill = */ true));
     }
 }
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const prb_t *prb, res_t *res) {
-    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
-
     switch (prb->alg) {
         case GENINDEX:
             SAFE(::custom::genindex::init_ref_memory_args(

@@ -87,13 +87,13 @@ platforms follow the general description in @ref dev_guide_data_types.
    - Optimized implementation is available for 4D Q/K/V tensors with shape
      defined as (N, H_q, S, D) for Query and (N, H_kv, S, D) for Key and Value.
    - Optimized implementation is available for floating-point GQA with `f16`
-     data type and `D <= 256` on Intel Graphics Products with Intel(R) Xe Matrix
+     data type and `D <= 512` on Intel Graphics Products with Intel(R) Xe Matrix
      Extensions (Intel(R) XMX) support.
 
 ## Example
 
 oneDNN provides a [GQA
-example](https://github.com/oneapi-src/oneDNN/tree/main/examples/graph/gqa.cpp)
+example](https://github.com/uxlfoundation/oneDNN/tree/main/examples/graph/gqa.cpp)
 demonstrating how to construct a floating-point GQA pattern with oneDNN Graph
 API on CPU and GPU with different runtimes.
 

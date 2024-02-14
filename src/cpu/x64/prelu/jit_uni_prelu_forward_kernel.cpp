@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ bool jit_prelu_forward_kernel_t::any_tensor_bf16() const {
 template <typename Vmm>
 jit_uni_prelu_forward_kernel_t<Vmm>::jit_uni_prelu_forward_kernel_t(
         const cpu_prelu_fwd_pd_t *pd, const cpu_isa_t &isa)
-    : jit_prelu_forward_kernel_t(pd, isa, vreg_traits<Vmm>::vlen,
+    : jit_prelu_forward_kernel_t(pd, isa, vreg_traits_t<Vmm>::vlen,
             (utils::one_of(isa, sse41, avx)
                     || pd->src_md(0)->data_type != data_type::f32)
                     ? 4u

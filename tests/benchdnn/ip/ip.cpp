@@ -99,10 +99,6 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
     if (is_cpu() && (prb->src_dt() == dnnl_f32 && prb->wei_dt() == dnnl_f32))
         return OK;
 
-    // Create a new copy of prb to avoid potentially corrupting the test by
-    // modifying prb in place.
-    auto cpu_attr = prb->attr;
-    update_cpu_ref_attrs(cpu_attr);
     std::vector<std::vector<dnnl_data_type_t>> prim_ref_dt {
             prb->dt, {dnnl_f32}};
     // If there's no bias, undef data type should be used for prim_ref as well.
@@ -116,6 +112,11 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
 
     for_(const auto &prim_ref_dt_i : prim_ref_dt)
     for (const auto &prim_ref_bia_dt_i : prim_ref_bia_dt) {
+        auto cpu_attr = prb->attr;
+        update_cpu_ref_attrs(cpu_attr, prim_ref_dt_i.back());
+
+        // Create a new copy of prb to avoid potentially corrupting the test by
+        // modifying prb in place.
         prb_t prb_cpu {*prb, prb->dir, prim_ref_dt_i, prim_ref_bia_dt_i,
                 tag::any, tag::any, tag::any, prb->mb, cpu_attr, prb->ctx_init,
                 prb->ctx_exe, prb->impl_filter};
@@ -137,7 +138,7 @@ int check_reorder_presence(
     /* Note for x64:
     Both data types of src and weight are s8, oneDNN addds 128 to one of the s8
     input to make it of type u8 instead, as explained in
-    https://oneapi-src.github.io/oneDNN/dev_guide_int8_computations.html or
+    https://uxlfoundation.github.io/oneDNN/dev_guide_int8_computations.html or
     doc/advanced/int8_computations.md
     It is because `VPDPBUSD` instruction uses the combination of s8 and u8 as
     input.
@@ -156,8 +157,10 @@ int check_reorder_presence(
     if (wei_x8x8 || !is_def_zp) {
         // Check that s8 -> s8_comp exists in the library since users may have
         // already quantized data.
-        dnn_mem_t mem_fp_s8(mem_fp.md_, dnnl_s8, tag::abx, get_cpu_engine());
-        dnn_mem_t mem_dt_s8(mem_dt.md_, get_test_engine());
+        dnn_mem_t mem_fp_s8(mem_fp.md_, dnnl_s8, tag::abx, get_cpu_engine(),
+                /* prefill = */ true);
+        dnn_mem_t mem_dt_s8(
+                mem_dt.md_, get_test_engine(), /* prefill = */ true);
         SAFE(mem_fp_s8.reorder(mem_fp), WARN);
         SAFE(mem_dt_s8.reorder(mem_fp_s8), WARN);
         SAFE(mem_dt.size() == mem_dt_s8.size() ? OK : FAIL, WARN);
@@ -212,15 +215,19 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             float val = 0;
             while (val <= 0)
                 val = gen(int_seed);
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     0, round_to_nearest_representable(cfg.get_dt(kind), val));
             idx_start += 1;
         }
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
             bool is_one = density == 1.f ? true : b_dist(b_seed);
-            float val = is_one * gen(int_seed);
-            mem_fp.set_elem(
+            if (!is_one) {
+                mem_fp.set_f32_elem(idx, 0.f);
+                continue;
+            }
+            float val = gen(int_seed);
+            mem_fp.set_f32_elem(
                     idx, round_to_nearest_representable(cfg.get_dt(kind), val));
         }
     });
@@ -239,6 +246,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             prb->dir, res);
     skip_unimplemented_sum_po(prb->attr, res, dnnl_inner_product,
             prb->get_dt(SRC), prb->get_dt(DST));
+    skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_inner_product);
 
     if (is_cpu()) {
@@ -322,7 +330,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -404,6 +413,9 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
             if (res_copy.state == SKIPPED) {
                 v_prim[1].reset(nullptr);
                 SAFE(check_total_size(res), WARN);
+            } else {
+                // Copy estimations back to original `res`.
+                *res = res_copy;
             }
         } else {
             SAFE(check_total_size(res), WARN);
@@ -418,6 +430,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = v_prim[0];
     const auto &prim_ref = v_prim[1];
 
@@ -432,7 +446,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     SAFE(execute_and_wait(prim, args, res), WARN);
 
     check_correctness(prb, get_kinds_to_check(prb), args, ref_args, setup_cmp,
-            res, prim_ref);
+            res, prb->dir, prim_ref);
     SAFE(check_bitwise(prim, get_kinds_to_check(prb), args, prb->attr,
                  prb->inplace, res),
             WARN);

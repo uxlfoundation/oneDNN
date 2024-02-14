@@ -36,6 +36,7 @@ namespace impl {
     VCHECK(primitive, create, dispatch, sdpa, (f), "%s," msg, \
             this->info(engine), ##__VA_ARGS__)
 
+// NOLINTBEGIN(google-default-arguments)
 struct sdpa_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::sdpa;
 
@@ -48,6 +49,9 @@ struct sdpa_pd_t : public primitive_desc_t {
     }
 
     arg_usage_t arg_usage(int arg) const override {
+        // TODO: this is broken for cases when the user passes quantization
+        // memories unconditionally but the primitive desc is not set up for
+        // quantization.
         if (utils::one_of(arg, DNNL_ARG_QUERIES, DNNL_ARG_KEYS, DNNL_ARG_VALUES,
                     DNNL_ARG_ATTN_MASK, DNNL_ARG_SCALE,
                     DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
@@ -106,8 +110,11 @@ struct sdpa_pd_t : public primitive_desc_t {
         return (attn_mask_md()->data_type != data_type::undef);
     }
 
-    /// If true, the attention mask is causal mask
-    bool with_causal_mask() const { return desc_.causal_mask; }
+    /// If true, the attention mask is a causal mask
+    bool with_causal_mask() const {
+        return desc_.mask_type == attn_mask_type::top_left
+                || desc_.mask_type == attn_mask_type::bottom_right;
+    }
 
     /// If true, dequantize the K tensor using scaling in the KQ matmul
     bool with_key_scales() const {
@@ -121,12 +128,12 @@ struct sdpa_pd_t : public primitive_desc_t {
 
     /// If true, dequantize the K tensor with zero points in the KQ matmul
     bool with_key_zp() const {
-        return (!desc()->kq_zero_points.has_default_values(DNNL_ARG_WEIGHTS));
+        return (!desc()->kq_zero_points.has_default_values());
     }
 
     /// If true, dequantize the V tensor with zero points in the VS matmul
     bool with_value_zp() const {
-        return (!desc()->vs_zero_points.has_default_values(DNNL_ARG_WEIGHTS));
+        return (!desc()->vs_zero_points.has_default_values());
     }
 
     /// Returns the data type of the scales tensor for the KQ matmul
@@ -136,7 +143,7 @@ struct sdpa_pd_t : public primitive_desc_t {
 
     /// Returns the data type of the zero points tensor for the KQ matmul
     data_type_t key_zp_dt() const {
-        return desc()->kq_zero_points.get_data_type(DNNL_ARG_WEIGHTS);
+        return desc()->kq_zero_points.get_data_type();
     }
 
     /// Returns the data type of the scales tensor for the VS matmul
@@ -146,16 +153,16 @@ struct sdpa_pd_t : public primitive_desc_t {
 
     /// Returns the data type of the zero points tensor for the VS matmul
     data_type_t value_zp_dt() const {
-        return desc()->vs_zero_points.get_data_type(DNNL_ARG_WEIGHTS);
+        return desc()->vs_zero_points.get_data_type();
     }
 
     // Returns the group size for the quantization parameters for the KQ matmul
     int key_group_size() const {
         int out = 0;
         if (with_key_scales())
-            out = scale_group_size(desc()->kq_scales, *key_md());
+            out = group_size(desc()->kq_scales, *key_md());
         else if (with_key_zp()) {
-            out = zp_group_size(desc()->kq_zero_points, *key_md());
+            out = group_size(desc()->kq_zero_points, *key_md());
         }
         return out;
     }
@@ -164,9 +171,9 @@ struct sdpa_pd_t : public primitive_desc_t {
     int value_group_size() const {
         int out = 0;
         if (with_value_scales())
-            out = scale_group_size(desc()->vs_scales, *val_md());
+            out = group_size(desc()->vs_scales, *val_md());
         else if (with_value_zp()) {
-            out = zp_group_size(desc()->vs_zero_points, *val_md());
+            out = group_size(desc()->vs_zero_points, *val_md());
         }
         return out;
     }
@@ -201,7 +208,7 @@ protected:
     }
 
 private:
-    static int scale_group_size(
+    static int group_size(
             const quant_entry_t &scales, const memory_desc_t &desc) {
         dim_t out = utils::array_product(desc.dims, desc.ndims);
         const auto mask = scales.get_mask();
@@ -220,27 +227,8 @@ private:
         }
         return static_cast<int>(out);
     }
-
-    static int zp_group_size(
-            const zero_points_t &zp, const memory_desc_t &desc) {
-        dim_t out = utils::array_product(desc.dims, desc.ndims);
-        if (zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-            for (int idx : mask_iterator(zp.get_mask(DNNL_ARG_WEIGHTS))) {
-                out /= desc.dims[idx];
-            }
-        } else {
-            for (int idx : mask_iterator(zp.get_mask(DNNL_ARG_WEIGHTS))) {
-                if (idx < 2) {
-                    out /= desc.dims[idx];
-                } else {
-                    out /= (desc.dims[idx]
-                            / zp.get_group(DNNL_ARG_WEIGHTS, idx - 2));
-                }
-            }
-        }
-        return static_cast<int>(out);
-    }
 };
+// NOLINTEND(google-default-arguments)
 
 } // namespace impl
 } // namespace dnnl

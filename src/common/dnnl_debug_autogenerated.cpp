@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2018-2025 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -94,7 +94,6 @@ const char *dnnl_engine_kind2str(dnnl_engine_kind_t v) {
     return "unknown engine_kind";
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 const char *dnnl_sparse_encoding2str(dnnl_sparse_encoding_t v) {
     if (v == dnnl_sparse_encoding_undef) return "undef";
     if (v == dnnl_csr) return "csr";
@@ -104,7 +103,6 @@ const char *dnnl_sparse_encoding2str(dnnl_sparse_encoding_t v) {
     return "unknown sparse_encoding";
 }
 
-#endif
 const char *dnnl_fmt_tag2str(dnnl_format_tag_t v) {
     if (v == dnnl_format_tag_undef) return "undef";
     if (v == dnnl_format_tag_any) return "any";
@@ -953,6 +951,9 @@ const char *dnnl_fmt_tag2str(dnnl_format_tag_t v) {
     if (v == dnnl_aCBdef8b8c) return "aCBdef8b8c";
     if (v == dnnl_abdEC16e4c) return "abdEC16e4c";
     if (v == dnnl_abDC16d4c) return "abDC16d4c";
+    if (v == dnnl_BA24b8a) return "BA24b8a";
+    if (v == dnnl_aCB24c8b) return "aCB24c8b";
+    if (v == dnnl_abDC24d8c) return "abDC24d8c";
     if (v == dnnl_format_tag_last) return "format_tag_last";
     if (v == dnnl_x) return "x";
     if (v == dnnl_nc) return "nc";
@@ -1850,6 +1851,7 @@ const char *dnnl_alg_kind2str(dnnl_alg_kind_t v) {
     if (v == dnnl_reduction_norm_lp_power_p_sum) return "reduction_norm_lp_power_p_sum";
     if (v == dnnl_softmax_accurate) return "softmax_accurate";
     if (v == dnnl_softmax_log) return "softmax_log";
+    if (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero) return "softmax_accurate_inf_as_zero";
     assert(!"unknown alg_kind");
     return "unknown alg_kind";
 }
@@ -1901,6 +1903,8 @@ const char *dnnl_cpu_isa2str(dnnl_cpu_isa_t v) {
     if (v == dnnl_cpu_isa_avx512_core_amx) return "cpu_isa_avx512_core_amx";
     if (v == dnnl_cpu_isa_avx10_1_512_amx_fp16) return "cpu_isa_avx10_1_512_amx_fp16";
     if (v == dnnl_cpu_isa_avx512_core_amx_fp16) return "cpu_isa_avx512_core_amx_fp16";
+    if (v == dnnl_cpu_isa_avx10_2_512) return "cpu_isa_avx10_2_512";
+    if (v == dnnl_cpu_isa_avx10_2_512_amx_2) return "cpu_isa_avx10_2_512_amx_2";
     assert(!"unknown cpu_isa");
     return "unknown cpu_isa";
 }

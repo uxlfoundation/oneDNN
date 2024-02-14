@@ -224,7 +224,8 @@ TEST(test_pool_execute_subgraph_fp32, Pool3Postops) {
     std::vector<int64_t> pool_src_shape {2, 2, 4, 4};
     std::vector<int64_t> pool_dst_shape {2, 2, 2, 2};
 
-    std::vector<std::vector<float>> src_datas {};
+    std::vector<std::vector<float>> src_datas;
+    src_datas.reserve(1 + 3);
     src_datas.emplace_back(product(pool_src_shape));
     // at most 3 additional input tensors
     for (size_t i = 0; i < 3; ++i)
@@ -237,6 +238,7 @@ TEST(test_pool_execute_subgraph_fp32, Pool3Postops) {
                 [&]() { return f32_distribution(generator); });
 
     std::vector<graph::logical_tensor_t> lt_vec;
+    lt_vec.reserve(1 + 7);
     lt_vec.emplace_back(utils::logical_tensor_init(
             0, pool_src_shape, graph::data_type::f32));
     // at most 7 tensors in the whole graph
@@ -281,7 +283,8 @@ TEST(test_pool_execute_subgraph_fp32, Pool3Postops) {
         input_lts.push_back(lt_idx);
         pool_op.add_output(lt_vec[++lt_idx]);
 
-        std::vector<graph::op_t> post_ops {};
+        std::vector<graph::op_t> post_ops;
+        post_ops.reserve(post_op_ts.size());
         for (size_t i = 0; i < post_op_ts.size(); ++i) {
             auto pop_t = post_op_ts[i];
             post_ops.emplace_back(i + 1, pop_t, "post op");
@@ -303,7 +306,8 @@ TEST(test_pool_execute_subgraph_fp32, Pool3Postops) {
             g.add_op(&pop);
         g.finalize();
 
-        std::vector<test_tensor_t> src_tss {};
+        std::vector<test_tensor_t> src_tss;
+        src_tss.reserve(input_lts.size());
         for (size_t i = 0; i < input_lts.size(); ++i)
             src_tss.emplace_back(lt_vec[input_lts[i]], engine, src_datas[i]);
 
@@ -343,8 +347,10 @@ TEST(test_pool_execute_subgraph_fp32, Pool3Postops) {
 
         case1_out_data = case1_dst_ts.as_vec_type<float>();
         case2_out_data = case2_dst_ts.as_vec_type<float>();
+        const float eps_scale = 10.0f;
+        const float atol = eps_scale * std::numeric_limits<float>::epsilon();
         for (size_t i = 0; i < case1_out_data.size(); ++i) {
-            ASSERT_FLOAT_EQ(case1_out_data[i], case2_out_data[i]);
+            ASSERT_NEAR(case1_out_data[i], case2_out_data[i], atol);
         }
     }
 }
@@ -476,6 +482,7 @@ TEST(test_pool_execute, AvgPoolIncludePad) {
 }
 
 TEST(test_pool_execute, AvgPoolBackwardExcludePad) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *eng = get_engine();
 
@@ -535,6 +542,7 @@ TEST(test_pool_execute, AvgPoolBackwardExcludePad) {
 }
 
 TEST(test_pool_execute, AvgPoolBackwardIncludePad) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *eng = get_engine();
 

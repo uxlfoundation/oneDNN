@@ -172,6 +172,7 @@ enum {
     key_concat_nelems,
     key_concat_optrs,
     key_concat_tent_dst,
+    key_conv_pack_space,
     key_conv_adjusted_scales,
     key_conv_amx_inp_buffer,
     key_conv_amx_tilecfg,
@@ -180,6 +181,7 @@ enum {
     key_conv_amx_wsp_buffer,
     key_conv_bia_reduction,
     key_conv_bias_bf16_convert_wsp,
+    key_conv_bias_f16_convert_wsp,
     key_conv_bias_s32_convert,
     key_conv_cudnn,
     key_conv_cudnn_algo,
@@ -197,6 +199,7 @@ enum {
     key_conv_bwd_w_1st_wei_reorder,
     key_conv_gemm_acc,
     key_conv_gemm_col,
+    key_conv_gemm_row,
     key_conv_gemm_imtr,
     key_conv_gemm_zp_src_comp,
     key_conv_int_dat_in_acc_dt,
@@ -253,6 +256,8 @@ enum {
     key_iprod_dst_bf16_convert_wsp,
     key_iprod_dst_reorder,
     key_iprod_int_dat_in_acc_dt,
+    key_iprod_src_reorder,
+    key_iprod_weights_reorder,
     key_lnorm_inv_sqrtvar,
     key_lnorm_tmp_mean,
     key_lnorm_tmp_var,
@@ -271,6 +276,7 @@ enum {
     key_pool_dst_plain2blocked_cvt,
     key_pool_ind_plain2blocked_cvt,
     key_pool_src_bf16cvt,
+    key_pool_src_f32_accum,
     key_pool_src_plain2blocked_cvt,
     key_pool_reduction,
     key_precomputed_scales,
@@ -426,14 +432,8 @@ struct registry_t {
     public:
         common_iterator_t(const void *base_ptr_,
                 const std::unordered_map<key_t, entry_t> &map,
-                bool is_begin = true) {
-            base_ptr = base_ptr_;
-            if (is_begin) {
-                iter = map.cbegin();
-            } else {
-                iter = map.cend();
-            }
-        }
+                bool is_begin = true)
+            : base_ptr(base_ptr_), iter(is_begin ? map.cbegin() : map.cend()) {}
         common_iterator_t &operator++(int) {
             iter++;
             return *this;

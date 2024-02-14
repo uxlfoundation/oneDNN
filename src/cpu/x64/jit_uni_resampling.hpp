@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2021 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_UNI_RESAMPLING_HPP
-#define CPU_X64_UNI_RESAMPLING_HPP
+#ifndef CPU_X64_JIT_UNI_RESAMPLING_HPP
+#define CPU_X64_JIT_UNI_RESAMPLING_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
@@ -50,7 +50,8 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
     };
 
     jit_uni_resampling_fwd_t(const pd_t *apd) : primitive_t(apd) {}
-    virtual ~jit_uni_resampling_fwd_t() = default;
+
+    ~jit_uni_resampling_fwd_t() override = default;
 
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;

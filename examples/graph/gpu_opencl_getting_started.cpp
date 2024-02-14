@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -241,7 +241,7 @@ void ocl_getting_started_tutorial() {
     /// simulate the real behavior.
     //
     /// Create an engine managed by the library. Users can also create engine
-    /// with ocl device and context managed on their side. The API is provied in
+    /// with ocl device and context managed on their side. The API is provided in
     /// `dnnl_graph_ocl.hpp`.
     //[Create engine]
     dnnl::engine eng(engine::kind::gpu, 0);

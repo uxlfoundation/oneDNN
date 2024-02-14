@@ -20,7 +20,7 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/reduction/reduction_utils.hpp"
+#include "gpu/intel/ocl/reduction/utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/utils.hpp"
 
@@ -85,6 +85,7 @@ reduction_phase_conf_t::reduction_phase_conf_t(
     gpu_assert(reduction_block.block != 0) << "Reducing over 0 elements";
     if (outer_block.block == 0 || inner_block.block == 0) {
         nd_range = compute::nd_range_t({0}, {into<size_t>(subgroup_size)});
+        with_block_reads = false;
         return;
     }
     with_block_reads = can_use_block_reads();

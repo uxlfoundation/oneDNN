@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_UNI_RESAMPLING_KERNEL_HPP
-#define CPU_X64_UNI_RESAMPLING_KERNEL_HPP
+#ifndef CPU_X64_JIT_UNI_RESAMPLING_KERNEL_HPP
+#define CPU_X64_JIT_UNI_RESAMPLING_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
@@ -34,15 +34,15 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_uni_resampling_kernel_base_t : public jit_generator {
+struct jit_uni_resampling_kernel_base_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_resampling)
 
     jit_uni_resampling_kernel_base_t(const jit_resampling_conf_t &conf)
-        : jit_generator(jit_name(), conf.isa)
+        : jit_generator_t(jit_name(), conf.isa)
         , conf_(conf)
         , sum_scales_(conf_.sum_scales) {}
 
-    virtual ~jit_uni_resampling_kernel_base_t() = default;
+    ~jit_uni_resampling_kernel_base_t() override = default;
 
     virtual std::size_t get_simd_w() = 0;
 
@@ -57,7 +57,7 @@ struct jit_uni_resampling_kernel_t : public jit_uni_resampling_kernel_base_t {
     jit_uni_resampling_kernel_t(
             const jit_resampling_conf_t &conf, const memory_desc_t *dst_md);
 
-    virtual ~jit_uni_resampling_kernel_t() = default;
+    ~jit_uni_resampling_kernel_t() override = default;
 
     std::size_t get_simd_w() override { return simd_w_; }
 
@@ -70,7 +70,7 @@ private:
     using c_oriented_generation_fn_t = std::function<void(const bool)>;
 
     constexpr int vmm_idx(int idx) const {
-        return (cpu_isa_traits<isa>::n_vregs - 1) - idx;
+        return (cpu_isa_traits_t<isa>::n_vregs - 1) - idx;
     }
 
     bool can_movntps_be_used() const;

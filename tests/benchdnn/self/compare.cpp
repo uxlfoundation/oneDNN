@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,8 +28,10 @@ static int check_compare() {
         res_t res {};
         res.state = EXECUTED;
         dnnl_dims_t dims {100};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         compare::compare_t cmp;
         cmp.set_zero_trust_percent(100.f);
         for (int i = 0; i < dims[0]; i++) {
@@ -48,8 +50,10 @@ static int check_compare() {
         res_t res {};
         res.state = EXECUTED;
         dnnl_dims_t dims {100};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         compare::compare_t cmp;
         cmp.set_threshold(99.f);
         for (int i = 0; i < dims[0]; i++) {
@@ -69,6 +73,7 @@ static int check_compare() {
 }
 
 void compare() {
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return;
     RUN(check_compare());
 }
 

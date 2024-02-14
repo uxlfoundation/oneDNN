@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,6 +45,10 @@ struct ref_resampling_fwd_t : public primitive_t {
 
             VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
+                    !utils::one_of(data_type::f64, src_md()->data_type,
+                            dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
@@ -67,7 +71,8 @@ struct ref_resampling_fwd_t : public primitive_t {
     };
 
     ref_resampling_fwd_t(const pd_t *apd);
-    ~ref_resampling_fwd_t();
+
+    ~ref_resampling_fwd_t() override;
 
     status_t init(engine_t *engine) override {
         ref_post_ops_
@@ -99,6 +104,10 @@ struct ref_resampling_bwd_t : public primitive_t {
             using namespace data_type;
             VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
+                    !utils::one_of(data_type::f64, diff_src_md()->data_type,
+                            diff_dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(diff_src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
@@ -114,7 +123,8 @@ struct ref_resampling_bwd_t : public primitive_t {
     };
 
     ref_resampling_bwd_t(const pd_t *apd);
-    ~ref_resampling_bwd_t();
+
+    ~ref_resampling_bwd_t() override;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         execute_backward(ctx);

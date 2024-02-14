@@ -211,7 +211,8 @@ struct md_t {
         return phys_offset;
     }
 
-    dim_t off_v_masked(const dims_t pos, int mask, bool is_pos_padded = false) {
+    dim_t off_v_masked(
+            const dims_t pos, int mask, bool is_pos_padded = false) const {
         dims_t pos_masked;
         utils::copy_dims_with_mask(pos_masked, pos, ndims(), mask);
         return off_v(pos_masked, is_pos_padded);

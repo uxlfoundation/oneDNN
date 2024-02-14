@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_SVE_1x1_CONV_KERNEL_HPP
-#define CPU_AARCH64_JIT_SVE_1x1_CONV_KERNEL_HPP
+#ifndef CPU_AARCH64_JIT_SVE_1X1_CONV_KERNEL_HPP
+#define CPU_AARCH64_JIT_SVE_1X1_CONV_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"

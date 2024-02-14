@@ -43,12 +43,12 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_kernel : public jit_generator {
-    jit_uni_eltwise_kernel(
+struct jit_uni_eltwise_kernel_t : public jit_generator_t {
+    jit_uni_eltwise_kernel_t(
             const eltwise_pd_t *pd, const char *name, cpu_isa_t isa)
-        : jit_generator(name, isa), pd_(pd) {}
+        : jit_generator_t(name, isa), pd_(pd) {}
 
-    void operator()(jit_args_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_args_t *p) { jit_generator_t::operator()(p); }
 
 protected:
     const eltwise_pd_t *pd_;
@@ -76,14 +76,14 @@ protected:
 // jit kernels
 namespace {
 template <cpu_isa_t isa>
-struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
+struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_kernel)
 
     jit_uni_kernel_t(const eltwise_pd_t *pd)
-        : jit_uni_eltwise_kernel(pd, jit_name(), isa)
-        , vlen_(is_bf16() || is_f16() ? cpu_isa_traits<isa>::vlen / 2
-                          : is_f8()   ? cpu_isa_traits<isa>::vlen / 4
-                                      : cpu_isa_traits<isa>::vlen)
+        : jit_uni_eltwise_kernel_t(pd, jit_name(), isa)
+        , vlen_(is_bf16() || is_f16() ? cpu_isa_traits_t<isa>::vlen / 2
+                          : is_f8()   ? cpu_isa_traits_t<isa>::vlen / 4
+                                      : cpu_isa_traits_t<isa>::vlen)
         , simd_w_(vlen_ / dtype_size())
         , is_fwd_(pd_->is_fwd()) {
 
@@ -92,8 +92,8 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
         // using the first 7 vregs can be considered volatile during the call
         // to eltwise injector
         const bool save_state = is_fwd_ ? false : true;
-        eltwise_injector_.reset(new jit_uni_eltwise_injector<injector_isa>(this,
-                desc.alg_kind, desc.alpha, desc.beta, 1.f, data_type::f32,
+        eltwise_injector_.reset(new jit_uni_eltwise_injector_t<injector_isa>(
+                this, desc.alg_kind, desc.alpha, desc.beta, 1.f, data_type::f32,
                 save_state, reg_injector_table, injector_mask, is_fwd_,
                 pd_->use_dst()));
         io::io_conf_t io_conf;
@@ -231,7 +231,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
     }
 
 private:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     static constexpr cpu_isa_t injector_isa
             = isa == avx512_core_amx ? avx512_core : isa;
 
@@ -261,7 +261,7 @@ private:
     Vmm vmm_src_odd = Vmm(8);
     Vmm vmm_diff_dst_even = vmm_diff_dst;
     Vmm vmm_diff_dst_odd = Vmm(9);
-    std::unique_ptr<jit_uni_eltwise_injector<injector_isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<injector_isa>> eltwise_injector_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 
     /* bf16 and fp8 support */
@@ -460,6 +460,8 @@ template struct jit_uni_eltwise_fwd_t<avx2_vnni_2, data_type::f16>;
 template struct jit_uni_eltwise_fwd_t<avx512_core, data_type::f32>;
 template struct jit_uni_eltwise_fwd_t<avx512_core, data_type::bf16>;
 template struct jit_uni_eltwise_fwd_t<avx512_core_fp16, data_type::f16>;
+template struct jit_uni_eltwise_fwd_t<avx10_2_512, data_type::f8_e5m2>;
+template struct jit_uni_eltwise_fwd_t<avx10_2_512, data_type::f8_e4m3>;
 template struct jit_uni_eltwise_fwd_t<avx512_core_amx, data_type::f8_e5m2>;
 template struct jit_uni_eltwise_fwd_t<avx512_core_amx, data_type::f8_e4m3>;
 
@@ -469,6 +471,8 @@ template struct jit_uni_eltwise_bwd_t<avx2, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<avx512_core, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<avx512_core, data_type::bf16>;
 template struct jit_uni_eltwise_bwd_t<avx512_core_fp16, data_type::f16>;
+template struct jit_uni_eltwise_bwd_t<avx10_2_512, data_type::f8_e5m2>;
+template struct jit_uni_eltwise_bwd_t<avx10_2_512, data_type::f8_e4m3>;
 template struct jit_uni_eltwise_bwd_t<avx512_core_amx, data_type::f8_e5m2>;
 template struct jit_uni_eltwise_bwd_t<avx512_core_amx, data_type::f8_e4m3>;
 

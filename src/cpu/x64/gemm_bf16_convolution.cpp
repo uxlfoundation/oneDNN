@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ void cvt_acc_to_dst(const conv_gemm_conf_t &jcp, size_t g_start, size_t g_end,
 
 template <data_type_t dst_data_type>
 gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp_(pd->jcp_)
     , do_sum_(dst_data_type != data_type::f32 && jcp_.with_sum)
     , max_data_reg_idx_(31)
@@ -87,7 +87,7 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
 
     const auto &post_ops = jcp_.post_ops;
     if (jcp_.with_eltwise || jcp_.with_binary) {
-#define PARAM_OFF(field) offsetof(ker_args, field)
+#define PARAM_OFF(field) offsetof(ker_args_t, field)
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
         static constexpr size_t helper_vmm_idx = 31;
@@ -117,7 +117,7 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
 
     if (jcp_.with_bias) vreg_bias = Zmm(data_reg_base_idx_++);
 
-    vlen_ = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    vlen_ = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
 
     isa_ = mayiuse(avx512_core_bf16) ? avx512_core_bf16
                                      : bf16_emulation_t::get_isa();
@@ -136,7 +136,7 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
 template <data_type_t dst_data_type>
 void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::apply_postops(
         const bool apply_mask, const size_t out_offset, const int vmm_idx) {
-#define PARAM_OFF(x) offsetof(ker_args, x)
+#define PARAM_OFF(x) offsetof(ker_args_t, x)
     if (jcp_.with_eltwise || jcp_.with_binary) {
         if (jcp_.with_binary) {
             binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
@@ -163,7 +163,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::generate() {
     mov(reg_param, rcx);
 #endif
 
-#define PARAM_OFF(x) offsetof(ker_args, x)
+#define PARAM_OFF(x) offsetof(ker_args_t, x)
     mov(reg_dst_base, ptr[reg_param + PARAM_OFF(dst)]);
     mov(reg_acc_base, ptr[reg_param + PARAM_OFF(acc)]);
     if (jcp_.with_bias) mov(reg_bias, ptr[reg_param + PARAM_OFF(bias)]);
@@ -304,7 +304,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
         const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
         const size_t g_oc_offset) {
 
-    ker_args args;
+    ker_args_t args;
     args.acc = acc;
     args.dst = dst;
     args.bias = bias;
@@ -317,7 +317,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
     args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec;
     args.dst_orig = dst_orig;
     args.g_oc_offset = g_oc_offset;
-    jit_generator::operator()(&args);
+    jit_generator_t::operator()(&args);
 }
 
 // operator () specialized for ncsp format
@@ -330,7 +330,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
         const size_t g_oc_offset) {
     if (sp_len == 0) return;
 
-    ker_args args;
+    ker_args_t args;
     args.acc = acc;
     args.dst = dst;
     args.bias = bias;
@@ -343,7 +343,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
     args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec;
     args.dst_orig = dst_orig;
     args.g_oc_offset = g_oc_offset;
-    jit_generator::operator()(&args);
+    jit_generator_t::operator()(&args);
 }
 
 template <data_type_t dst_data_type>
@@ -1335,7 +1335,7 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
                 dim_t offset = offset_ + mb * jcp.ngroups * dst_step;
                 for_(dim_t od = 0; od < jcp.od; ++od)
                 for (dim_t oh = 0; oh < jcp.oh; ++oh) {
-                    PRAGMA_OMP_SIMD(reduction(+ : db))
+                    PRAGMA_OMP_SIMD(reduction(+ : db) linear(offset))
                     for (dim_t ow = 0; ow < jcp.ow; ++ow) {
                         db += diff_dst[offset];
                         offset++;

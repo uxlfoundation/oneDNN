@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2021 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,11 +33,6 @@ namespace cpu {
 struct cpu_convolution_fwd_pd_t : public convolution_fwd_pd_t {
     using convolution_fwd_pd_t::convolution_fwd_pd_t;
 
-    bool has_padded_dst() const {
-        memory_desc_wrapper dst_d(&dst_md_);
-        return OC() != dst_d.padded_dims()[1];
-    }
-
     bool wants_padded_bias() const {
         if (!with_bias()) return false;
         return has_padded_dst();
@@ -58,10 +53,43 @@ struct cpu_convolution_fwd_pd_t : public convolution_fwd_pd_t {
         }
         return !is_zero_preserved;
     }
+
+protected:
+    // See `convolution_pd_t::attr_scales_ok` comment.
+    status_t attr_scales_ok(
+            const std::unordered_map<int, std::vector<int>> &supported_args_map
+            = {{DNNL_ARG_SRC, {0}}, {DNNL_ARG_WEIGHTS, {0, 1}},
+                    {DNNL_ARG_DST, {0}}}) const {
+        return convolution_fwd_pd_t::attr_scales_ok(supported_args_map);
+    }
+
+    // See `convolution_pd_t::attr_zero_points_ok` comment.
+    // Put a default map relevant for most implementations. Once it's changed,
+    // update the default.
+    status_t attr_zero_points_ok(
+            const std::unordered_map<int, std::vector<int>> &supported_args_map
+            = {{DNNL_ARG_SRC, {0}}, {DNNL_ARG_DST, {0}}}) const {
+        return convolution_fwd_pd_t::attr_zero_points_ok(supported_args_map);
+    }
+
+private:
+    bool has_padded_dst() const {
+        memory_desc_wrapper dst_d(&dst_md_);
+        return OC() != dst_d.padded_dims()[1];
+    }
 };
 
 struct cpu_convolution_bwd_data_pd_t : public convolution_bwd_data_pd_t {
     using convolution_bwd_data_pd_t::convolution_bwd_data_pd_t;
+
+protected:
+    // See `convolution_pd_t::attr_scales_ok` comment.
+    status_t attr_scales_ok(
+            const std::unordered_map<int, std::vector<int>> &supported_args_map
+            = {{DNNL_ARG_SRC, {0}}, {DNNL_ARG_WEIGHTS, {0, 1}},
+                    {DNNL_ARG_DST, {0}}}) const {
+        return convolution_bwd_data_pd_t::attr_scales_ok(supported_args_map);
+    }
 };
 
 struct cpu_convolution_bwd_weights_pd_t : public convolution_bwd_weights_pd_t {

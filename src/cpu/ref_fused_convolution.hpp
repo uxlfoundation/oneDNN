@@ -91,6 +91,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
             return status::success;
         }
 
+        // NOLINTBEGIN(google-default-arguments)
         const memory_desc_t *src_md(
                 int index = 0, bool user_input = false) const override {
             if (op_pds_.empty())
@@ -154,14 +155,15 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                 default: return convolution_fwd_pd_t::arg_md(arg, user_input);
             }
         }
+        // NOLINTEND(google-default-arguments)
 
         arg_usage_t arg_usage(int arg) const override {
             if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS))
                 return arg_usage_t::input;
 
-            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS)
-                    && attr_post_op_dw_inputs() > 1)
-                return arg_usage_t::input;
+            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS))
+                return attr_post_op_dw_inputs() > 1 ? arg_usage_t::input
+                                                    : arg_usage_t::unused;
 
             if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_SRC))
                 return arg_usage_t::input;
@@ -373,7 +375,6 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                 name_.append(":");
                 name_.append(op_pd->name());
             }
-            return;
         }
     };
 
@@ -389,7 +390,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#if DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
     status_t create_resource(
             engine_t *engine, resource_mapper_t &mapper) const override {
         for (auto &p : primitives_) {

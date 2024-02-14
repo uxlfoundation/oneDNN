@@ -49,21 +49,11 @@ public:
         const memory_desc_t *dst_md = (pd) ? pd->dst_md() : nullptr;
         set_kernel_iface(kernel_info.iface());
         reorder_ir_builder_t builder(cfg, kernel_info, attr, dst_md);
-        stmt_t body = builder.stmt();
+        const stmt_t &body = builder.stmt();
         setup_interface(body);
-        generate_prologue();
-        expr_binding_t expr_binding(hw);
-        bind_external_vars(body, expr_binding);
 
         // Generate assembly from IR.
-        convert_ir_to_ngen<hw>(body, this, expr_binding);
-
-        generate_epilogue();
-    }
-
-    static compute::nd_range_t nd_range(const exec_config_t &exec_cfg,
-            const layout_t &src, const layout_t &dst) {
-        return reorder_ir_builder_t::nd_range(exec_cfg, src, dst);
+        convert_ir_to_ngen<ir_kernel_t<hw>>(body, this);
     }
 };
 

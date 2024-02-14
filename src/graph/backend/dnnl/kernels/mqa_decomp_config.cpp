@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,6 +21,10 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+#define VCHECK_MQA_DECOMP(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, mqa_decomp_config, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &inputs) {
     // The order of input logical tensors in inputs is not certain, we need
@@ -31,7 +35,10 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     memory::dims src1_user_dims = ltw(inputs[graph_inport[0]]).vdims();
     // Query(3-dims): batch_size * size_per_head * (num_head * seq_len)
     memory::dims wei1_user_dims = ltw(inputs[graph_inport[1]]).vdims();
-    if (src1_user_dims.size() != 3 || wei1_user_dims.size() != 3) return false;
+    VCHECK_MQA_DECOMP(src1_user_dims.size() == 3 && wei1_user_dims.size() == 3,
+            false,
+            "dims of src1 and wei1 should be 3, but got src1: %zu, wei1: %zu",
+            src1_user_dims.size(), wei1_user_dims.size());
 
     // Initialize MQA input dimension according to the src of mm1
     batch_size = src1_user_dims[0];
@@ -41,9 +48,12 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 
     //  Check batch size compatibility.
     dims wei2_user_dims = ltw(inputs[graph_inport[3]]).vdims();
-    if (batch_size != wei1_user_dims[0] || batch_size != wei2_user_dims[0]) {
-        return false;
-    }
+    VCHECK_MQA_DECOMP(
+            batch_size == wei1_user_dims[0] && batch_size == wei2_user_dims[0],
+            false, "batch size mismatch, batch_size: %ld, wei1: %ld, wei2: %ld",
+            static_cast<long int>(batch_size),
+            static_cast<long int>(wei1_user_dims[0]),
+            static_cast<long int>(wei2_user_dims[0]));
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
@@ -59,10 +69,14 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 #define RATIO 2
     // Initialize nthr with current threads num
     nthr = dnnl_get_current_num_threads();
-    return batch_size * num_head > RATIO * nthr;
-#else
-    return true;
+    VCHECK_MQA_DECOMP(batch_size * num_head > RATIO * nthr, false,
+            "doesn't meet condition for decompose:"
+            "batch size * num_head should be larger than ratio * nthr, but got "
+            "batch_size %ld, num_head %ld, ration %d , nthr %d",
+            static_cast<long int>(batch_size), static_cast<long int>(num_head),
+            RATIO, nthr);
 #endif
+    return true;
 }
 
 template <bool quantized, memory::data_type dt>
@@ -71,7 +85,8 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &inputs) {
 
     // Record the ops inside of MQA pattern in a specific order.
-    record_mqa_ops(sg);
+    status_t sta = record_mqa_ops(sg);
+    if (sta != status::success) return sta;
 
     // Acquire the data type from input param for later primitive creation.
     // The src and wei dt of both quantized mqa and float mqa are the same.
@@ -80,7 +95,11 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     memory::data_type dt_wei_user = static_cast<memory::data_type>(
             ltw(inputs[graph_inport[1]]).data_type());
     memory::data_type dt_wei = quantized ? memory::data_type::s8 : dt_src_user;
-    memory::data_type dt_inter = quantized ? dt : dt_src_user;
+    memory::data_type dt_inter = quantized
+            ? dt
+            : static_cast<memory::data_type>(
+                    ltw(mqa_op[1]->get_output_value(0)->get_logical_tensor())
+                            .data_type());
 
     ////////////////////////////////////////////////////////////////////////
     ////////////// Start Creating primitives ///////////////////////////////
@@ -149,7 +168,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     auto alg
             = static_cast<algorithm>(ori_dnnl_pops.get()->entry_[0].binary.alg);
     dnnl_pops.append_binary(alg, sub_mm1_post_add_md);
-    sub_matmul1_attr.set_post_ops(std::move(dnnl_pops));
+    sub_matmul1_attr.set_post_ops(dnnl_pops);
     auto sub_mm1_pd = matmul::primitive_desc(p_engine, sub_mm1_src_md,
             sub_mm1_wei_md, sub_mm1_dst_md, sub_matmul1_attr);
     sub_mm1_prim = matmul(sub_mm1_pd);
@@ -164,9 +183,14 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     dnnl::primitive_attr sub_softmax_attr
             = make_primitive_attr(original_softmax, mgr);
     sub_softmax_dst_md = memory::desc(sub_mm1_dst_dims, dt_src_user, tag::abc);
+    const auto mode = mqa_op[2]->get_attr<std::string>(op_attr::mode);
+    const dnnl::algorithm algo = mode == "inf_as_zero"
+            ? static_cast<dnnl::algorithm>(
+                    dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+            : dnnl::algorithm::softmax_accurate;
     auto sub_softmax_pd = softmax_forward::primitive_desc(p_engine,
-            prop_kind::forward_inference, algorithm::softmax_accurate,
-            sub_mm1_dst_md, sub_softmax_dst_md, sub_mm1_dst_md.get_ndims() - 1,
+            prop_kind::forward_inference, algo, sub_mm1_dst_md,
+            sub_softmax_dst_md, sub_mm1_dst_md.get_ndims() - 1,
             sub_softmax_attr);
     sub_softmax_prim = softmax_forward(sub_softmax_pd);
 
@@ -376,6 +400,12 @@ status_t mqa_decomp_config_t::record_mqa_ops(std::shared_ptr<subgraph_t> &sg) {
             matmul2 = cur_op;
         }
     }
+    VCHECK_MQA_DECOMP(
+            !dnnl::impl::utils::one_of(nullptr, matmul1, matmul2, softmax),
+            status::invalid_graph,
+            "Doesn't find all the ops in mqa pattern, matmul1: %p, matmul2: "
+            "%p, softmax: %p",
+            matmul1.get(), matmul2.get(), softmax.get());
     this->mqa_op = {reorder1, matmul1, softmax, reorder2, matmul2};
     return status::success;
 }

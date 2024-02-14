@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_PRELU_JIT_PRELU_FORWARD_KERNEL_HPP
-#define CPU_X64_PRELU_JIT_PRELU_FORWARD_KERNEL_HPP
+#ifndef CPU_X64_PRELU_JIT_UNI_PRELU_FORWARD_KERNEL_HPP
+#define CPU_X64_PRELU_JIT_UNI_PRELU_FORWARD_KERNEL_HPP
 
 #include <map>
 
@@ -41,7 +41,7 @@ public:
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_prelu_forward_kernel_t)
 
     void operator()(jit_prelu_forward_kernel_t::call_params_t *params) {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
     }
 
 protected:
@@ -75,7 +75,7 @@ public:
     ~jit_uni_prelu_forward_kernel_t() override;
 
 private:
-    using jit_generator::uni_vfmadd132ps;
+    using jit_generator_t::uni_vfmadd132ps;
 
     void prepare_kernel_const_vars() override;
     void compute_dst(size_t unrolling_factor, bool tail) override;

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_SYCL_REF_CONVOLUTION_HPP
-#define GPU_SYCL_REF_CONVOLUTION_HPP
+#ifndef GPU_GENERIC_SYCL_REF_CONVOLUTION_HPP
+#define GPU_GENERIC_SYCL_REF_CONVOLUTION_HPP
 
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"
@@ -66,6 +66,8 @@ inline bool check_convolution_scales_types(const primitive_attr_t *attr) {
 
     const auto &scales = attr->scales_;
     for (auto arg : supported_args) {
+        if (scales.has_default_values(arg)) continue;
+
         const auto dt = scales.get_data_type(arg);
         if (!is_supported_type(dt)) { return false; }
     }
@@ -102,14 +104,14 @@ struct ref_convolution_fwd_t : public gpu::generic::sycl::primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_CONV(check_convolution_formats(data_d, weights_d, dst_d),
                     VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_CONV(attr()->has_default_values(sm::scales_runtime
-                                   | sm::zero_points_runtime | sm::post_ops
-                                   | sm::sum_dt),
-                    VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONV(
-                    IMPLICATION(!attr()->scales_.has_default_values(),
-                            attr_scales_ok()
-                                    && check_convolution_scales_types(attr())),
+                    attr()->has_default_values(sm::scales | sm::zero_points
+                            | sm::post_ops | sm::sum_dt),
+                    VERBOSE_UNSUPPORTED_ATTR);
+            CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}}, {DNNL_ARG_WEIGHTS, {0}},
+                    {DNNL_ARG_DST, {0}}}));
+            VDISPATCH_CONV(IMPLICATION(!attr()->scales_.has_default_values(),
+                                   check_convolution_scales_types(attr())),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_CONV(sycl_post_ops_t::post_ops_ok(attr(), false),
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -171,16 +173,16 @@ struct ref_convolution_bwd_data_t : public gpu::generic::sycl::primitive_t {
             VDISPATCH_CONV(check_convolution_formats(
                                    diff_data_d, weights_d, diff_dst_d),
                     VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_CONV(attr()->has_default_values(sm::scales_runtime
-                                   | sm::zero_points_runtime | sm::sum_dt
-                                   | sm::post_ops),
+            VDISPATCH_CONV(
+                    attr()->has_default_values(sm::scales | sm::zero_points
+                            | sm::sum_dt | sm::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONV(sycl_post_ops_t::post_ops_ok(attr(), false),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_CONV(
-                    IMPLICATION(!attr()->scales_.has_default_values(),
-                            attr_scales_ok()
-                                    && check_convolution_scales_types(attr())),
+            CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}}, {DNNL_ARG_WEIGHTS, {0}},
+                    {DNNL_ARG_DST, {0}}}));
+            VDISPATCH_CONV(IMPLICATION(!attr()->scales_.has_default_values(),
+                                   check_convolution_scales_types(attr())),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);

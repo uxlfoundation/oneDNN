@@ -20,8 +20,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <fstream>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -142,10 +144,19 @@ void parse_result(res_t &res, const char *pstr) {
                 + " total:" + std::to_string(res.total) + ")";
     }
 
+    using bt = timer::timer_t;
+
+    const auto &tct = res.timer_map.get_timer(timer::names::test_case_timer);
+    // Round to integer for nicer input.
+    // Use `sum` mode because it consists of two separate parts - creation and
+    // execution.
+    const int64_t tct_ms = static_cast<int64_t>(tct.ms(bt::mode_t::sum));
+    std::string tct_str = " (" + std::to_string(tct_ms) + " ms)";
+
     // This is the common format of the repro line ([] - for optional entries):
-    // case_num:status[ (reason)][ (error_stats)] __REPRO: prb_str
+    // case_num:status[ (reason)][ (error_stats)] (time) __REPRO: prb_str
     std::string full_repro = std::to_string(bs.tests) + ":" + std::string(state)
-            + reason + error_stat + " __REPRO: " + pstr;
+            + reason + error_stat + tct_str + " __REPRO: " + pstr;
     if (is_failed) {
         bs.failed++;
         bs.failed_cases.emplace(bs.tests, full_repro);
@@ -157,13 +168,10 @@ void parse_result(res_t &res, const char *pstr) {
     assert(bs.tests
             == bs.passed + bs.skipped + bs.mistrusted + bs.failed + bs.listed);
 
-    using bt = timer::timer_t;
-    using namespace timer::names;
-
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         const auto &t = res.timer_map.perf_timer();
         for (int mode = 0; mode < (int)bt::n_modes; ++mode)
-            bs.ms[perf_timer][mode] += t.ms((bt::mode_t)mode);
+            bs.ms[timer::names::perf_timer][mode] += t.ms((bt::mode_t)mode);
     }
 
     for (const auto &e : timer::get_global_service_timers()) {
@@ -206,6 +214,7 @@ static void *zmalloc_protect(size_t size) {
     // Protect one page right after the block of size bytes
     int err = mprotect(ptr_protect, page_sz, PROT_NONE);
     if (err != 0) {
+        printf("Error: mprotect returned \'%s\'.\n", strerror(errno));
         ::free(ptr_start);
         return nullptr;
     }
@@ -236,10 +245,84 @@ static void zfree_protect(void *ptr) {
     ::free(ptr_start);
 }
 #endif
+struct memory_registry_t {
+    void add(void *ptr, size_t size) {
+        std::lock_guard<std::mutex> g(m_);
+        assert(allocations_.find(ptr) == allocations_.end());
+        allocations_.emplace(std::pair<void *, size_t>(ptr, size));
+        total_size_ += size;
+
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: zmalloc request with size %s, total "
+                "allocation size: %s\n",
+                smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+        warn_size_check();
+    }
+    void remove(void *ptr) {
+        std::lock_guard<std::mutex> g(m_);
+        const size_t size = allocations_[ptr];
+        total_size_ -= size;
+
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: zfree request with size %s, total "
+                "allocation size: %s\n",
+                smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+        allocations_.erase(ptr);
+    }
+
+    void set_expected_max(size_t size) {
+        constexpr float expected_trh = 1.1f; // Smooth out small allocations.
+        expected_max_ = static_cast<size_t>(expected_trh * size);
+        has_warned_ = false;
+        warn_size_check();
+    }
+
+private:
+    size_t size() const { return total_size_; }
+    void warn_size_check() {
+        const bool is_max_set = expected_max_ != unset_;
+        // Verify the total amount of allocated memory when it starts exceeding
+        // 1 GB threshold. Small amount of memory is highly unlikely cause OOM.
+        // There's an idea to add a portion of RAM into account as well, keep
+        // only 1 GB so far to check if it proves working well.
+        const bool is_total_size_big = total_size_ >= 1024 * 1024 * 1024;
+        const bool is_total_size_unexpected = total_size_ > expected_max_;
+        if (!has_warned_ && is_max_set && is_total_size_big
+                && is_total_size_unexpected) {
+            BENCHDNN_PRINT(0,
+                    "[CHECK_MEM][ERROR]: Memory use is underestimated. Current "
+                    "allocation size: %s; expected size: %s.\n",
+                    smart_bytes(total_size_).c_str(),
+                    smart_bytes(expected_max_).c_str());
+            // Prevent spamming logs with subsequent overflowing allocations;
+            has_warned_ = true;
+        }
+    }
+    static constexpr size_t unset_ = 0;
+    size_t expected_max_ = unset_;
+    size_t total_size_ = 0;
+    bool has_warned_ = false;
+    std::unordered_map<void *, size_t> allocations_;
+    std::mutex m_;
+};
+
+memory_registry_t &zmalloc_registry() {
+    static memory_registry_t reg {};
+    return reg;
+}
+
+void set_zmalloc_max_expected_size(size_t size) {
+    zmalloc_registry().set_expected_max(size);
+}
 
 void *zmalloc(size_t size, size_t align) {
 #ifdef BENCHDNN_MEMORY_CHECK
-    if (has_bench_mode_bit(mode_bit_t::exec)) { return zmalloc_protect(size); }
+    if (has_bench_mode_bit(mode_bit_t::exec)
+            && !has_bench_mode_bit(mode_bit_t::perf)) {
+        void *ptr = zmalloc_protect(size);
+        zmalloc_registry().add(ptr, size);
+        return ptr;
+    }
 #endif
 
     void *ptr;
@@ -257,14 +340,17 @@ void *zmalloc(size_t size, size_t align) {
     if (has_bench_mode_bit(mode_bit_t::perf) && (size < align)) size = align;
     int rc = ::posix_memalign(&ptr, align, size);
 #endif /* _WIN32 */
+    zmalloc_registry().add(ptr, size);
     return rc == 0 ? ptr : nullptr;
 }
 
 // zfree behavior is aligned with UNIX free().
 void zfree(void *ptr) {
     if (!ptr) return;
+    zmalloc_registry().remove(ptr);
 #ifdef BENCHDNN_MEMORY_CHECK
-    if (has_bench_mode_bit(mode_bit_t::exec)) {
+    if (has_bench_mode_bit(mode_bit_t::exec)
+            && !has_bench_mode_bit(mode_bit_t::perf)) {
         zfree_protect(ptr);
         return;
     }
@@ -421,6 +507,8 @@ std::string locate_file(const std::string &fname) {
                 BENCHDNN_PRINT(50, "file used: %s\n", fullname.c_str());
                 ifs.close();
                 return fullname;
+            } else {
+                BENCHDNN_PRINT(50, "File not found at: %s\n", fullname.c_str());
             }
             ifs.close();
         }
@@ -705,4 +793,27 @@ std::string benchdnn_getenv_string(const char *name) {
     if (getenv(name, value_str, len) > 0) { value = value_str; }
     std::transform(value.begin(), value.end(), value.begin(), ::tolower);
     return value;
+}
+
+std::string smart_bytes(double bytes) {
+    std::string s;
+    static constexpr int oneK = 1024;
+
+    if (bytes < oneK) {
+        s = std::to_string(static_cast<size_t>(bytes)) + " B";
+        return s;
+    }
+    auto KB = bytes / oneK;
+    if (KB < oneK) {
+        s = std::to_string(KB) + " KB";
+        return s;
+    }
+    auto MB = KB / oneK;
+    if (MB < oneK) {
+        s = std::to_string(MB) + " MB";
+        return s;
+    }
+    auto GB = MB / oneK;
+    s = std::to_string(GB) + " GB";
+    return s;
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -181,7 +181,7 @@ private:
         const auto &jcp = pd()->jcp_;
         const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
         if (vnni_granularity == 0) {
-            assert("Invalid vnni granularity.");
+            assert(!"Invalid vnni granularity.");
             return 0;
         }
 

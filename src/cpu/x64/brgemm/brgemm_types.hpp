@@ -27,6 +27,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+// NOLINTBEGIN(modernize-use-using)
+// GCC treats using and typedef differently for enums and structs
+// https://stackoverflow.com/questions/48613758
 // The type defines organization of batch of matrices
 typedef enum {
     // Undefined brgemm batch kind
@@ -56,13 +59,6 @@ typedef enum {
     per_k = 4,
 } brgemm_broadcast_t;
 
-struct brgemm_strides_t {
-    // Stride between A matrices
-    dim_t stride_a;
-    // Stride between B matrices
-    dim_t stride_b;
-};
-
 typedef enum {
     brgemm_lo_default = 0,
     brgemm_lo_bl_1load,
@@ -88,6 +84,46 @@ typedef enum {
     brgemm_hint_nt_false,
     brgemm_hint_nt_true,
 } brgemm_kernel_hint_nt_t;
+// NOLINTEND(modernize-use-using)
+
+struct brgemm_strides_t {
+    // Stride between A matrices
+    dim_t stride_a;
+    // Stride between B matrices
+    dim_t stride_b;
+};
+
+// NOLINTBEGIN(modernize-use-using)
+// memory advice feature heuristic is based on the performance tests done
+// on simulator and lets the tile loading snoop for other cores caches if
+// the A/B matrices are shared. thus, if already shared, no need to fetch
+// from lower level memories the assumption is that if we don't divide
+// the C matrix evenly on row chunks per thread, then it worth checking
+// mem advice as there will be sharing
+typedef enum {
+    brgemm_hint_mem_advice_undef = 0,
+
+    // only matrix A is read shared between threads. selected when
+    // there is sharing of data between threads over the A matrix
+    // when chunks are processed horizontally and the threads don't
+    // divide the A buffer w/o remainder in chunks. Thus, it is worth
+    // sharing between threads
+    // or when chunks are processed vertically and split between threads
+    brgemm_hint_mem_advice_A,
+
+    // only matrix B is read shared between threads. selected when
+    // there is sharing of data between threads over the A matrix
+    // when chunks are processed vertically and the threads don't
+    // divide the A buffer w/o remainder in chunks. Thus, it is worth
+    // sharing between threads.
+    // or when chunks are processed horizontally and split between threads
+    brgemm_hint_mem_advice_B,
+
+    // if both conditions above apply, it worth sharing on both A and B buffer
+    // between threads
+    brgemm_hint_mem_advice_A_B,
+} brgemm_kernel_hint_mem_advice_t;
+// NOLINTEND(modernize-use-using)
 
 struct brgemm_prf_t {
     int dist0 {-1};
@@ -97,11 +133,7 @@ struct brgemm_prf_t {
 };
 
 struct brgemm_batch_element_t {
-    brgemm_batch_element_t() {
-        ptr.A = ptr.B = nullptr;
-        vvpad.top = vvpad.bottom = 0;
-        has_s8s8_comp_batch_pad = 0;
-    }
+    brgemm_batch_element_t() { ptr.A = ptr.B = nullptr; }
     union {
         struct {
             const void *A;
@@ -113,14 +145,14 @@ struct brgemm_batch_element_t {
         } offset;
     };
     struct {
-        dim_t top;
-        dim_t bottom;
+        dim_t top = 0;
+        dim_t bottom = 0;
     } vvpad; // w.r.t. M dimension
 
     // Used to calculate compensation when batch padding is present.
     // Note: batch_pad represent the overlap between weights and the height
     // dimension w.r.t. convolution dimensions.
-    dim_t has_s8s8_comp_batch_pad;
+    dim_t has_s8s8_comp_batch_pad = 0;
 };
 
 struct DNNL_API brgemm_attr_t {
@@ -188,6 +220,8 @@ struct DNNL_API brgemm_attr_t {
     int hint_ld_block2 {0};
     bool hint_ununroll_bd_loop {false};
 
+    brgemm_kernel_hint_mem_advice_t mem_advice {brgemm_hint_mem_advice_undef};
+
     brgemm_kernel_hint_nt_t hint_load_nt_A {brgemm_hint_nt_undef};
     brgemm_kernel_hint_nt_t hint_load_nt_B {brgemm_hint_nt_undef};
     // this variable is used in tile decomposition heuristics
@@ -206,7 +240,7 @@ struct DNNL_API brgemm_attr_t {
 };
 
 struct brgemm_desc_t {
-    brgemm_desc_t() {}
+    brgemm_desc_t() = default;
     brgemm_desc_t(const brgemm_desc_t &other);
     DNNL_API ~brgemm_desc_t();
 
@@ -291,6 +325,7 @@ struct brgemm_desc_t {
     bool is_f16 = false, is_f16_tmm = false;
     bool is_f32 = false;
     bool is_bf32 = false;
+    bool is_tf32 = false;
 
     bool has_int8_vnni = false;
 
@@ -321,7 +356,12 @@ struct brgemm_desc_t {
 
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {
-        return is_fp8 && utils::one_of(isa_impl, avx10_1_512_amx_fp16);
+        return is_fp8
+                && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2_512);
+    }
+
+    bool is_fp8_via_convert_non_amx() const {
+        return is_fp8_via_convert() && isa_impl == avx10_2_512;
     }
 
     bool is_input_convert() const { return is_bf32 || is_fp8_via_convert(); }
@@ -477,8 +517,12 @@ struct brgemm_desc_t {
     bool reduce_by_words() const {
         return is_bf16_tmm || is_f16_tmm || is_input_convert();
     }
-    int max_rd_block() const { return reduce_by_words() ? 32 : 64; }
-    int rd_block_step() const { return (reduce_by_words() && !is_fp8) ? 2 : 4; }
+    int max_rd_block() const {
+        return is_tf32 ? 16 : reduce_by_words() ? 32 : 64;
+    }
+    int rd_block_step() const {
+        return is_tf32 ? 1 : (reduce_by_words() && !is_fp8) ? 2 : 4;
+    }
 
     bool amx_may_extend_k() const {
         return (is_superset(isa_impl, avx512_core_amx) && brgattr.extendable_k
@@ -569,32 +613,32 @@ struct jit_brgemm_kernel_t;
 struct jit_brgemm_amx_uker_base_t;
 template <typename Vmm>
 struct jit_brdgmm_kernel_base_t;
-class jit_generator;
+class jit_generator_t;
 
 struct brgemm_kernel_t {
-    brgemm_kernel_t() {};
-    virtual ~brgemm_kernel_t() {};
+    brgemm_kernel_t() = default;
+    virtual ~brgemm_kernel_t() = default;
     virtual status_t create_kernel() = 0;
     virtual void operator()(brgemm_kernel_params_t *) const = 0;
-    virtual const jit_generator *get_jit_generator() const = 0;
+    virtual const jit_generator_t *get_jit_generator() const = 0;
     virtual const brgemm_desc_t &get_brg() const = 0;
 };
 
-struct jit_base_brgemm_kernel_t : public jit_generator {
+struct jit_base_brgemm_kernel_t : public jit_generator_t {
     jit_base_brgemm_kernel_t(const char *impl_name, cpu_isa_t isa_impl)
-        : jit_generator(impl_name, isa_impl) {}
+        : jit_generator_t(impl_name, isa_impl) {}
     virtual const brgemm_desc_t &get_brg() const = 0;
 };
 
 template <typename Vmm>
 struct brgemm_kernel_common_t : public brgemm_kernel_t {
     brgemm_kernel_common_t(const brgemm_desc_t &abrd);
-    ~brgemm_kernel_common_t();
+    ~brgemm_kernel_common_t() override;
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    virtual const jit_generator *get_jit_generator() const override;
-    virtual const brgemm_desc_t &get_brg() const override {
+    const jit_generator_t *get_jit_generator() const override;
+    const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
 
@@ -606,12 +650,12 @@ private:
 
 struct brgemm_amx_uker_t : public brgemm_kernel_t {
     brgemm_amx_uker_t(const brgemm_desc_t &abrd);
-    ~brgemm_amx_uker_t();
+    ~brgemm_amx_uker_t() override;
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    virtual const jit_generator *get_jit_generator() const override;
-    virtual const brgemm_desc_t &get_brg() const override {
+    const jit_generator_t *get_jit_generator() const override;
+    const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
 
@@ -624,12 +668,12 @@ private:
 template <typename Vmm>
 struct brdgmm_kernel_t : public brgemm_kernel_t {
     brdgmm_kernel_t(const brgemm_desc_t &abrd);
-    ~brdgmm_kernel_t();
+    ~brdgmm_kernel_t() override;
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    virtual const jit_generator *get_jit_generator() const override;
-    virtual const brgemm_desc_t &get_brg() const override {
+    const jit_generator_t *get_jit_generator() const override;
+    const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
 

@@ -49,7 +49,8 @@ status_t softmax_desc_init(softmax_desc_t *softmax_desc, prop_kind_t prop_kind,
     VCHECK_SOFTMAX(
             IMPLICATION(!is_fwd, !any_null(diff_src_desc, diff_dst_desc)),
             VERBOSE_NULL_ARG);
-    VCHECK_SOFTMAX(one_of(alg_kind, softmax_accurate, softmax_log),
+    VCHECK_SOFTMAX(one_of(alg_kind, softmax_accurate, softmax_log,
+                           softmax_accurate_inf_as_zero),
             VERBOSE_BAD_ALGORITHM);
     VCHECK_SOFTMAX(0 <= softmax_axis && softmax_axis < dst_desc->ndims,
             VERBOSE_BAD_AXIS);
@@ -107,7 +108,7 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
 
         const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8)
                 || utils::one_of(dst_dt, data_type::s8, data_type::u8);
-        if (is_int8) fwd_attr_mask |= smask_t::scales_runtime;
+        if (is_int8) fwd_attr_mask |= smask_t::scales;
 
         VCHECK_SOFTMAX_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -137,7 +138,7 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         VCHECK_SOFTMAX_UNIMPL(false, VERBOSE_UNSUPPORTED_ATTR);

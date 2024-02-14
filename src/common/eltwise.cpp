@@ -138,7 +138,7 @@ status_t eltwise_attr_check(const eltwise_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         VCHECK_ELTWISE_IMPL(false, VERBOSE_UNSUPPORTED_ATTR);

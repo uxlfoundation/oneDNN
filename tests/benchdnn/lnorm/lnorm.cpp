@@ -63,7 +63,7 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
             if (prb->dt[0] == dnnl_u8 && mean_val_shift < 2) mean_val_shift = 2;
             val = val_coeff * (1LL << mean_val_shift);
         }
-        mem_fp.set_elem(n, val);
+        mem_fp.set_f32_elem(n, val);
     });
 
     if (mem_dt && IMPLICATION(prb->dir & FLAG_FWD, prb->use_stats()))
@@ -86,7 +86,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
     const float val_coeff = is_integral_dt(prb->dt[0]) ? 1.f : 0.25f;
 
     benchdnn_parallel_nd(prb->n, [&](int64_t n) {
-        const float m = ref_mean.get_elem(n);
+        const float m = ref_mean.get_f32_elem(n);
         // Note: we use a different seed for each chunk to avoid
         // repeating patterns. We could use discard(idx_start) too but
         // it has a complexity in O(idx_start). We also add 1 to avoid
@@ -115,7 +115,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 // Shortcut for zero values.
                 if (cfg.check_alg_ == ALG_0
                         && !flip_coin(l / 2 * 257ULL, cfg.density_)) {
-                    mem_fp.set_elem(off, 0);
+                    mem_fp.set_f32_elem(off, 0);
                     continue;
                 }
 
@@ -130,7 +130,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
             // Update last element with s[c] = m.
             if ((c == cfg.L_ - 1) && cfg.L_ % 2) { val = m; }
 
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     off, round_to_nearest_representable(prb->dt[0], val));
         }
     });
@@ -164,15 +164,16 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         if (prb->flags & GLOB_STATS) {
             val = ((n % 7) << 1);
         } else if (prb->c > 0) {
-            const float m = ref_mean.get_elem(n);
+            // compute RMS statistic in case of rms normalization flag
+            const float m = (prb->skip_mean()) ? 0.f : ref_mean.get_f32_elem(n);
             for (int64_t c = 0; c < prb->c; ++c) {
                 const int64_t off = n * prb->c + c;
-                const float s = ref_src.get_elem(off);
+                const float s = ref_src.get_f32_elem(off);
                 val += (s - m) * (s - m);
             }
             val /= cfg.L_;
         }
-        mem_fp.set_elem(n, val);
+        mem_fp.set_f32_elem(n, val);
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -196,7 +197,7 @@ int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->c, [&](int64_t c) {
         float val = (1.f / 8) * (1 << (c % 7));
         if (prb->flags & GLOB_STATS) val *= 8.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -220,7 +221,7 @@ int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->c, [&](int64_t c) {
         float val = ((c % 3) - 1) * (1.f / 512 * (1 << (c % 7)));
         if (prb->flags & GLOB_STATS) val *= 512.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -281,7 +282,7 @@ int fill_variance_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->n, [&](int64_t n) {
         // final variance = {0.25f, 1.f, 4.f}
         const float val = 0.25f * (1 << ((n % 3) * 2));
-        mem_fp.set_elem(n, val - prb->eps);
+        mem_fp.set_f32_elem(n, val - prb->eps);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -309,12 +310,12 @@ int fill_src_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt,
         // src data to (m+1) and (m-1) points, d_dst data is more or less
         // random but we keep all values as pow2 values to have almost exact
         // summation result.
-        const float m = ref_mean.get_elem(n);
+        const float m = ref_mean.get_f32_elem(n);
 
         for (int64_t c = 0; c < prb->c; ++c) {
             const int64_t off = n * prb->c + c;
             const float val = c % 2 == 0 ? (m - 1.f) : (m + 1.f);
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     off, round_to_nearest_representable(prb->dt[0], val));
         }
     });
@@ -357,7 +358,7 @@ int fill_diff_dst_bwd(
             const float sign = half_dist(b_seed) ? 1.f : -1.f;
             // d_dst = powf(2, {-4, ... , 2})
             const float val = sign * 0.0625f * (1LL << data_dist(int_seed));
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     off, round_to_nearest_representable(prb->dt[0], val));
         }
     });
@@ -454,10 +455,18 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             {prb->dt[0], prb->dt[1], prb->ss_dt}, prb->dir, res);
     skip_unimplemented_sum_po(
             prb->attr, res, dnnl_layer_normalization, prb->dt[0]);
+    skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_layer_normalization);
 
     if (is_gpu() && prb->attr.post_ops.len() != 0) {
         // GPU does not support post-ops
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+        return;
+    }
+    if (is_gpu() && prb->skip_mean()) {
+        // GPU does not support rms normalization
+        // todo: remove the check once supported
         res->state = SKIPPED;
         res->reason = skip_reason::case_not_supported;
         return;
@@ -510,7 +519,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
                 const int64_t c = dst.get_idx(
                         args.idx, 1 << (prb->ndims - 1) /* last_dim_mask */);
-                const float beta = sh.get_elem(c);
+                const float beta = sh.get_f32_elem(c);
                 // Using an empirically derived threshold, check if
                 // cancellation error in `|Y| = |a*X - (-b)|` is huge.
                 const float abs_exp = fabsf(args.exp);
@@ -551,7 +560,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
     return (dir & FLAG_FWD) ? exec_fwd_args : exec_bwd_args;
 };
 
-fill_cfg_t binary_po_fill_cfg(
+void binary_po_fill_cfg(std::unordered_map<int, fill_cfg_t> &fill_cfg_map,
         int exec_arg, const dnn_mem_t &mem, const attr_t &attr) {
     fill_cfg_t cfg;
     const int post_ops_range = DNNL_ARG_ATTR_MULTIPLE_POST_OP(31)
@@ -565,10 +574,16 @@ fill_cfg_t binary_po_fill_cfg(
                 = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
         assert(bin_po_idx < attr.post_ops.len());
         const auto alg = attr.post_ops.entry[bin_po_idx].kind;
-        cfg = fill_cfg_t(mem.dt(), 4.f, 16.f, /* int = */ true, alg,
-                "lnorm_binary_post_op");
+        const bool is_src1_arg = !(exec_arg
+                ^ (DNNL_ARG_ATTR_MULTIPLE_POST_OP(bin_po_idx)
+                        | DNNL_ARG_SRC_1));
+
+        if (is_src1_arg) {
+            cfg = fill_cfg_t(mem.dt(), 4.f, 16.f, /* int = */ true, alg,
+                    "lnorm_binary_post_op");
+            fill_cfg_map.insert({DNNL_ARG_SRC_1, cfg});
+        }
     }
-    return cfg;
 }
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
@@ -595,7 +610,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -606,14 +622,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     const auto &src_md = mem_map[DNNL_ARG_SRC].md_;
                     const auto stat_dims = query_md_dims(src_md);
                     ref_mem_map[exec_arg] = dnn_mem_t(prb->ndims - 1, stat_dims,
-                            dnnl_f32, tag::abx, ref_engine);
+                            dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false);
                 }
                 break;
             default:
-                const auto &binary_fill_cfg
-                        = binary_po_fill_cfg(exec_arg, mem, prb->attr);
-                std::unordered_map<int, fill_cfg_t> fill_cfg_map {
-                        {DNNL_ARG_SRC_1, binary_fill_cfg}};
+                std::unordered_map<int, fill_cfg_t> fill_cfg_map;
+                binary_po_fill_cfg(fill_cfg_map, exec_arg, mem, prb->attr);
                 SAFE(init_ref_memory_args_default_case(exec_arg, mem, ref_mem,
                              prb->attr, res, fill_cfg_map),
                         WARN);
@@ -638,9 +653,9 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     if (prb->dir & FLAG_FWD) {
 // ACL lnorm does not return mean and variance, so these tests would fail
 // even if the normalization layer worked correctly
-#if !(DNNL_AARCH64_USE_ACL)
+#if !defined(DNNL_AARCH64_USE_ACL)
         if (!(prb->flags & GLOB_STATS) && !(prb->dir & FLAG_INF)) {
-            check_kinds.push_back(MEAN);
+            if (!prb->skip_mean()) check_kinds.push_back(MEAN);
             check_kinds.push_back(VAR);
         }
 #endif
@@ -676,6 +691,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
@@ -687,8 +704,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     SAFE(execute_and_wait(prim, args, res), WARN);
 
-    check_correctness(
-            prb, get_kinds_to_check(prb), args, ref_args, setup_cmp, res);
+    check_correctness(prb, get_kinds_to_check(prb), args, ref_args, setup_cmp,
+            res, prb->dir);
     SAFE(check_bitwise(prim, get_kinds_to_check(prb), args, prb->attr,
                  prb->inplace, res),
             WARN);

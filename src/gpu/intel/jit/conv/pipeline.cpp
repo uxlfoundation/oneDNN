@@ -278,7 +278,7 @@ public:
             }
             auto let_info = create_let_info(
                     let, is_preload_let(_let), is_mul_let(_let));
-            let_infos.push_back(let_info);
+            let_infos.push_back(std::move(let_info));
             seen.insert(_let);
         };
         for (auto &_let : inner_let_stmts_)
@@ -622,9 +622,9 @@ struct compute_params_t {
         : slm_bufs(slm_bufs)
         , gmem_bufs(gmem_bufs)
         , slm_buf_size(slm_buf_size)
-        , prefetch_bufs(prefetch_bufs) {
-        use_slm = (slm_buf_size > 0);
-        use_prefetch = (prefetch_bufs > 0);
+        , prefetch_bufs(prefetch_bufs)
+        , use_slm(slm_buf_size > 0)
+        , use_prefetch(prefetch_bufs > 0) {
         gpu_assert(!use_slm || !use_prefetch)
                 << "Can't have both SLM buffering and prefetch enabled.";
         if (use_slm) {
@@ -1041,7 +1041,7 @@ public:
         auto compute_loop_stmt
                 = find_stmt_group(root_, stmt_label_t::compute_loop());
         if (!compute_loop_stmt.has_value()) return root_;
-        auto compute_loop = compute_loop_stmt.value();
+        const auto &compute_loop = compute_loop_stmt.value();
         auto loop_nest = compute_loop_nest_t(compute_loop, ir_ctx_);
         auto &loops = loop_nest.loops();
 

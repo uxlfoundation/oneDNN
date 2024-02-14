@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@ void get_sizes(const prb_t *prb, int64_t &outer_size, int64_t &inner_size,
     axis_size = prb->axis_size();
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 
     float *dst_ptr = (float *)dst;
@@ -53,7 +53,7 @@ void compute_ref(
             for (int64_t as = 0; as < i_axis_size; ++as) {
                 int64_t idx = as * inner_size + in;
                 dst_ptr[off_dst + idx]
-                        = src_i.get_elem(off_src + idx) * scale_i;
+                        = src_i.get_f32_elem(off_src + idx) * scale_i;
             }
             // the next input start point
             off_dst += i_axis_size * inner_size;

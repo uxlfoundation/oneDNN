@@ -27,8 +27,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct fp8_emulation_base_t {
-    fp8_emulation_base_t(jit_generator *host, const Xbyak::Xmm &xmm_aux1,
+struct fp8_conversion_base_t {
+    fp8_conversion_base_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
             const Xbyak::Reg64 reg64_aux)
         : host_(host)
@@ -37,7 +37,7 @@ struct fp8_emulation_base_t {
         , xmm_aux3_(xmm_aux3.getIdx())
         , reg64_aux_(reg64_aux) {}
 
-    virtual ~fp8_emulation_base_t() = default;
+    virtual ~fp8_conversion_base_t() = default;
 
     // Must be called from host kernel after postamble to populate lookup table.
     virtual void prepare_table() = 0;
@@ -68,13 +68,17 @@ struct fp8_emulation_base_t {
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in);
 
 protected:
-    jit_generator *const host_;
+    jit_generator_t *const host_;
     Xbyak::Label label_table_to_f8_;
     Xbyak::Label label_vnni_permute_index_table_;
     const Xbyak::Xmm xmm_aux1_;
     const Xbyak::Xmm xmm_aux2_;
     const Xbyak::Xmm xmm_aux3_;
     const Xbyak::Reg64 reg64_aux_;
+
+    bool is_fp8_native() {
+        return is_superset(host_->max_cpu_isa(), cpu_isa_t::avx10_2_512);
+    }
 
     Xbyak::Zmm zmm_mask(
             const Xbyak::Xmm &xmm_in, const Xbyak::Xmm &xmm_with_mask) const {
@@ -101,12 +105,12 @@ protected:
     }
 };
 
-struct fp8_emulation_e5m2_t : public fp8_emulation_base_t {
-    fp8_emulation_e5m2_t(jit_generator *host, const Xbyak::Xmm &xmm_aux1,
+struct fp8_conversion_e5m2_t : public fp8_conversion_base_t {
+    fp8_conversion_e5m2_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
-            const Xbyak::Opmask kmask_aux_, const Xbyak::Reg64 reg64_aux)
-        : fp8_emulation_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
-        , kmask_aux_(kmask_aux_) {}
+            const Xbyak::Opmask kmask_aux, const Xbyak::Reg64 reg64_aux)
+        : fp8_conversion_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
+        , kmask_aux_(kmask_aux) {}
 
     void prepare_table() override;
 
@@ -135,12 +139,12 @@ private:
             int zmm_permute_idx);
 };
 
-struct fp8_emulation_e4m3_t : public fp8_emulation_base_t {
-    fp8_emulation_e4m3_t(jit_generator *host, const Xbyak::Xmm &xmm_aux1,
+struct fp8_conversion_e4m3_t : public fp8_conversion_base_t {
+    fp8_conversion_e4m3_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
             const Xbyak::Xmm &xmm_aux4, const Xbyak::Xmm &xmm_aux5,
             const Xbyak::Reg64 reg64_aux)
-        : fp8_emulation_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
+        : fp8_conversion_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
         , xmm_aux4_(xmm_aux4.getIdx())
         , xmm_aux5_(xmm_aux5.getIdx()) {}
 
@@ -187,7 +191,7 @@ enum f32_convert_mode_t {
     f32_to_f16,
 };
 
-struct jit_cvt_fp8_t : public jit_generator {
+struct jit_cvt_fp8_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_cvt_fp8_t)
 
     jit_cvt_fp8_t(f32_convert_mode_t mode);
@@ -205,20 +209,20 @@ private:
     const Xbyak::Reg64 reg64_out = abi_param1;
     const Xbyak::Reg64 reg64_inp = abi_param2;
     void generate() override;
-    std::unique_ptr<fp8_emulation_base_t> fp8_emu_;
+    std::unique_ptr<fp8_conversion_base_t> fp8_cvt_;
     f32_convert_mode_t mode_;
 };
 
-bool try_cvt_f8_e5m2_to_f32(float *out, const float8_e5m2_t *inp);
-bool try_cvt_f8_e4m3_to_f32(float *out, const float8_e4m3_t *inp);
-bool try_cvt_f8_e5m2_to_f16(float16_t *out, const float8_e5m2_t *inp);
-bool try_cvt_f8_e4m3_to_f16(float16_t *out, const float8_e4m3_t *inp);
-bool try_cvt_f16_to_f8_e5m2(float8_e5m2_t *out, const float16_t *inp);
-bool try_cvt_f16_to_f8_e4m3(float8_e4m3_t *out, const float16_t *inp);
-bool try_cvt_f32_to_f8_e5m2(float8_e5m2_t *out, const float *inp);
-bool try_cvt_f32_to_f8_e4m3(float8_e4m3_t *out, const float *inp);
-bool try_cvt_f16_to_f32(float *out, const float16_t *inp);
-bool try_cvt_f32_to_f16(float16_t *out, const float *inp);
+bool DNNL_API try_cvt_f8_e5m2_to_f32(float *out, const float8_e5m2_t *inp);
+bool DNNL_API try_cvt_f8_e4m3_to_f32(float *out, const float8_e4m3_t *inp);
+bool DNNL_API try_cvt_f8_e5m2_to_f16(float16_t *out, const float8_e5m2_t *inp);
+bool DNNL_API try_cvt_f8_e4m3_to_f16(float16_t *out, const float8_e4m3_t *inp);
+bool DNNL_API try_cvt_f16_to_f8_e5m2(float8_e5m2_t *out, const float16_t *inp);
+bool DNNL_API try_cvt_f16_to_f8_e4m3(float8_e4m3_t *out, const float16_t *inp);
+bool DNNL_API try_cvt_f32_to_f8_e5m2(float8_e5m2_t *out, const float *inp);
+bool DNNL_API try_cvt_f32_to_f8_e4m3(float8_e4m3_t *out, const float *inp);
+bool DNNL_API try_cvt_f16_to_f32(float *out, const float16_t *inp);
+bool DNNL_API try_cvt_f32_to_f16(float16_t *out, const float *inp);
 
 } // namespace x64
 } // namespace cpu

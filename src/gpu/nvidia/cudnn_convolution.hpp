@@ -51,7 +51,7 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
 
             using sm_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask
-                    = sm_t::scales_runtime | sm_t::post_ops | sm_t::fpmath_mode;
+                    = sm_t::scales | sm_t::post_ops | sm_t::fpmath_mode;
             auto *sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
 
             bool ok = utils::one_of(desc()->prop_kind,
@@ -79,6 +79,10 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
                     && IMPLICATION(
                             desc()->alg_kind == dnnl_convolution_winograd,
                             ndims() < 5 && src_md_.data_type != s8);
+            ok = ok
+                    && IMPLICATION(
+                            desc()->alg_kind == dnnl_convolution_winograd,
+                            check_wino_padding());
             ok = ok
                     && IMPLICATION(!attr()->scales_.has_default_values(),
                             utils::one_of(src_md_.data_type, s8)
@@ -139,6 +143,18 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
                         : utils::pick(ndims() - 3, oiw, oihw, oidhw);
                 return set_default_formats_common(dat_tag, wei_tag, dat_tag);
             }
+        }
+
+        bool check_wino_padding() {
+            auto t_pad = padT();
+            auto b_pad = padB();
+            auto l_pad = padL();
+            auto r_pad = padR();
+
+            auto kh = KH();
+            auto kw = KW();
+
+            return l_pad < kw && r_pad < kw && t_pad < kh && b_pad < kh;
         }
 
         bool check_s8_configuration() const {
@@ -232,6 +248,7 @@ struct cudnn_convolution_bwd_data_t : public gpu::primitive_t {
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());
             ok = ok && this->set_default_formats();
+            ok = ok && attr()->post_ops_.len() == 0;
             ok = ok
                     && (utils::everyone_is(f32, diff_src_md_.data_type,
                                 weights_md_.data_type, diff_dst_md_.data_type)
@@ -309,6 +326,7 @@ struct cudnn_convolution_bwd_weights_t : public gpu::primitive_t {
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());
             ok = ok && this->set_default_formats();
+            ok = ok && attr()->post_ops_.len() == 0;
             ok = ok
                     && (utils::everyone_is(f32, src_md_.data_type,
                                 diff_weights_md_.data_type,

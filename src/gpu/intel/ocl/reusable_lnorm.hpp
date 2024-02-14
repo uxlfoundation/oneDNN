@@ -19,12 +19,12 @@
 
 #include "common/c_types_map.hpp"
 #include "common/layer_normalization_pd.hpp"
+#include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_layer_normalization_pd.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -109,11 +109,12 @@ struct reusable_layer_normalization_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
 
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            VDISPATCH_LNORM(
-                    attr()->has_default_values(skip_mask_t::scales_runtime),
+            VDISPATCH_LNORM(attr()->has_default_values(skip_mask_t::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
             if (stats_are_tmp()) init_scratchpad();
@@ -191,6 +192,8 @@ struct reusable_layer_normalization_bwd_t : public gpu_primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -179,8 +179,9 @@ int bench(int argc, char **argv) {
                         argv[0], "batch-kind", help_batch_kind)
                 || parse_attributes(s, def, argv[0])
                 || parse_test_pattern_match(s.pattern, argv[0])
-                || parse_perf_template(s.perf_template, s.perf_template_def,
-                        s.perf_template_csv(), argv[0])
+                || parse_perf_template(s.perf_template,
+                        settings_t::perf_template_def, s.perf_template_csv(),
+                        argv[0])
                 || parse_reset(s, argv[0]) || parse_help(argv[0]);
         if (!parsed_options) {
             catch_unknown_options(argv[0]);

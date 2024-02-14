@@ -20,7 +20,7 @@
 ## --attr-scratchpad
 `--attr-scratchpad` specifies the scratchpad mode to be used for benchmarking.
 `MODE` values can be `library` (the default) or `user`. Refer to
-[scratchpad primitive attribute](https://oneapi-src.github.io/oneDNN/dev_guide_attributes_scratchpad.html)
+[scratchpad primitive attribute](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_scratchpad.html)
 for details.
 
 ## --attr-fpmath
@@ -29,7 +29,7 @@ for details.
 or `any`.
 `APPLY_TO_INT` values can be either `true` (the default) or `false`.
 Refer to
-[fpmath primitive attribute](https://oneapi-src.github.io/oneDNN/dev_guide_attributes_fpmath_mode.html)
+[fpmath primitive attribute](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_fpmath_mode.html)
 for details.
 
 
@@ -37,7 +37,7 @@ for details.
 `--attr-acc-mode` specifies the accumulation mode to be used for benchmarking.
 `ACCMODE` values can be any of `strict` (the default), `relaxed`, `any`, `f32`,
 `s32` or `f16`. Refer to
-[accumulation mode primitive attribute](https://oneapi-src.github.io/oneDNN/dev_guide_attributes_accumulation_mode.html)
+[accumulation mode primitive attribute](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_accumulation_mode.html)
 for details.
 
 ## --attr-rounding-mode
@@ -48,14 +48,14 @@ for details.
   - `diff_weights` corresponds to `DNNL_ARG_DIFF_WEIGHTS`.
 `MODE` specifies which mode to apply to the corresponding memory
 argument. Supported values are: `environment` (default) and `stochastic`.  Refer
-to [rounding mode primitive attribute](https://oneapi-src.github.io/oneDNN/dev_guide_attributes_rounding_mode.html)
+to [rounding mode primitive attribute](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_rounding_mode.html)
 for details.
 
 ## --attr-deterministic
 `--attr-deterministic` specifies the deterministic mode to be used for
 benchmarking. `BOOL` values can be `true`, which enables the deterministic
 mode and `false` (the default), which disables it. Refer to
-[deterministic primitive attribute](https://oneapi-src.github.io/oneDNN/dev_guide_attributes_deterministic.html)
+[deterministic primitive attribute](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_deterministic.html)
 for details.
 
 ## --attr-dropout
@@ -249,6 +249,20 @@ supported, positioned after `MASK_INPUT`, to specify physical memory format.
 - `mul`
 - `ne`
 - `sub`
+- `select`
+
+For the `select` algorithm, the operation also requires a third conditional 
+tensor to be specified. A different format is thus used for providing the 
+arguments for both the tensors:
+
+```
+--attr-post-ops=select:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]]
+```
+
+The arguments for each tensor are are delimited using `.`, with the arguments 
+for the third tensor positioned after that of the second and are separated by `:`. 
+The arguments are optional for the third tensor and the data type value for 
+the third tensor is fixed at `s8`. 
 
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result

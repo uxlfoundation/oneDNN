@@ -95,7 +95,6 @@ protected:
                                 p.weights_format, p.bias_format, p.dst_format),
                 "Unsupported format tag");
         SKIP_IF_CUDA(p.ndims > 5, "Unsupported number of dimensions");
-        SKIP_IF_GENERIC(true, "Primitive not implemented");
         catch_expected_failures(
                 [&]() { Test(); }, p.expect_to_fail, p.expected_status);
     }
@@ -133,20 +132,6 @@ protected:
         return src_ok && wei_ok && bia_ok && dst_ok;
     }
 
-    std::vector<int> get_dim_order(const memory::dims &strides) {
-        size_t ndims = strides.size();
-        std::vector<int> order(ndims);
-        for (size_t i = 0; i < ndims; ++i) {
-            order[i] = i;
-        }
-
-        std::sort(order.begin(), order.end(), [&strides](size_t i, size_t j) {
-            return strides[i] < strides[j];
-        });
-
-        return order;
-    }
-
     void Test() {
         auto p = ::testing::TestWithParam<inprod_test_params_t>::GetParam();
         test_inner_product_descr_t ipd = p.test_ipd;
@@ -161,7 +146,7 @@ protected:
         ASSERT_EQ(p.aprop_kind, prop_kind::forward);
         auto eng = get_test_engine();
         auto strm = make_stream(eng);
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
         ASSERT_EQ(data_type, dnnl::memory::data_type::f32);
 
         memory::dims src_dims = {ipd.mb, ipd.ic}, wei_dims = {ipd.oc, ipd.ic};
@@ -185,10 +170,6 @@ protected:
                 ? create_md({ipd.oc}, data_type, p.bias_format)
                 : create_md({}, data_type, p.bias_format);
         auto ip_dst_desc = create_md({ipd.mb, ipd.oc}, data_type, p.dst_format);
-
-        SKIP_IF_GENERIC(get_dim_order(ip_src_desc.get_strides())
-                        != get_dim_order(ip_weights_desc.get_strides()),
-                "Unsupported case for generic");
 
         auto ip_primitive_desc = with_bias
                 ? pd_t(eng, p.aprop_kind, ip_src_desc, ip_weights_desc,

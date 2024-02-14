@@ -40,26 +40,20 @@ flag_t str2flag(const char *str);
 std::string flag2str(flag_bit_t flag);
 std::ostream &operator<<(std::ostream &s, const std::vector<flag_t> &oflag);
 
-struct dt_conf_s {
+struct dt_conf_t {
     dnnl_data_type_t dt;
     float min;
     float max;
 };
-typedef const dt_conf_s *dt_conf_t;
-dt_conf_t dt2cfg(dnnl_data_type_t dt);
-dnnl_data_type_t cfg2dt(dt_conf_t cfg);
+const dt_conf_t *dt2cfg(dnnl_data_type_t dt);
+dnnl_data_type_t cfg2dt(const dt_conf_t *cfg);
 
 enum cross_engine_t { NONE, CPU2GPU, GPU2CPU };
 cross_engine_t str2cross_engine(const char *str);
 const char *cross_engine2str(cross_engine_t cross_engine);
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_dims_t prb_dims;
 
@@ -133,7 +127,7 @@ struct prb_t : public prb_dims_t {
     bool is_reorder_with_compensation(flag_bit_t flag) const;
     dims_t get_compensation_dims(flag_bit_t flag) const;
     int get_compensation_mask(flag_bit_t flag) const;
-    dt_conf_t get_conf(data_kind_t kind) const;
+    const dt_conf_t *get_conf(data_kind_t kind) const;
 
     // Used to construct memory desc when dimensions are runtime since such mds
     // can't be used directly from query and memory objects can't be constructed.
@@ -201,7 +195,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);
-void compute_ref(const prb_t *prb, const args_t &args,
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,

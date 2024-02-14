@@ -35,14 +35,14 @@ public:
             if (!is_func_call<send_t>(c)) continue;
             auto header_buf = send_t::arg_mem_off(c);
             gpu_assert(is_var(header_buf)) << header_buf;
-            header_bufs_.insert(header_buf);
+            header_bufs_.insert(std::move(header_buf));
         }
     }
 
     object_t _mutate(const alloc_t &obj) override {
         if (!do_lift(obj)) return ir_mutator_t::_mutate(obj);
         // Remove alloc and insert it before the compute loop.
-        allocs_.push_back(&obj);
+        allocs_.emplace_back(&obj);
         return obj.body;
     }
 

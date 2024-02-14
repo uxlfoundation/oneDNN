@@ -810,8 +810,5 @@ template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3>;
 #if XE3P
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3p>;
 #endif
-#if XE4
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe4>;
-#endif
 
 #endif /* (defined(NGEN_CPP11) || defined(NGEN_CPP14)) && !defined(NGEN_GLOBAL_REGS) */

@@ -226,12 +226,7 @@ struct dt_conf_t {
 };
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     desc_t desc {};
 
@@ -326,18 +321,18 @@ struct prb_t : public desc_t {
         , attr(attr)
         , ctx_init(ctx_init)
         , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , impl_filter(impl_filter)
+        , wei_nscales(0)
+        , wei_scales_mask(0x0)
+        , wei_proj_nscales(0)
+        , wei_proj_scales_mask(0x0) {
 
         if (n_layer) this->n_layer = n_layer;
         if (n_iter) this->n_iter = n_iter;
         if (mb) this->mb = mb;
         count_ops();
 
-        // Broadcast data types if needed
-        if (tag.size() == 1) {
-            const auto val = tag[0]; // Need a copy here.
-            this->tag.assign(3, val);
-        }
+        broadcast_vector(this->tag, 3);
 
         wei_scales = nullptr;
         wei_proj_scales = nullptr;
@@ -585,7 +580,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);
-void compute_ref(const prb_t *prb, const args_t &args,
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 void compute_ref_fwd(const prb_t &prb, const args_t &args);
 void compute_ref_bwd(const prb_t &prb, const args_t &args);

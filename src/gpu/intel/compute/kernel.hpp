@@ -155,7 +155,7 @@ public:
         for (int i = 0; i < arg_list.nargs(); i++) {
             auto &arg = arg_list.get(i);
             auto req_arg_type = arg_types()[i];
-            if (!arg.is_global() && !arg.is_local() && !arg.is_svm_pointer()) {
+            if (!arg.is_global() && !arg.is_local()) {
                 if (req_arg_type == gpu::intel::compute::scalar_type_t::undef) {
                     // Types of kernel arguments may not be available when zebin
                     // is used.
@@ -173,6 +173,20 @@ public:
             }
         }
         return status::success;
+    }
+
+    virtual status_t check_alignment(
+            const kernel_arg_list_t &arg_list) const = 0;
+
+    status_t check_alignment(const void *ptr) const {
+        const int min_alignment = 64;
+        auto addr = reinterpret_cast<uint64_t>(ptr);
+        if (addr % min_alignment == 0) return status::success;
+        // Reference kernels support element-wise alignment.
+        if (name().find("ref_") == 0) return status::success;
+        // Report an error otherwise.
+        VERROR(common, runtime, "found misaligned buffer: %p", ptr);
+        return status::runtime_error;
     }
 };
 
@@ -246,6 +260,7 @@ public:
     kernel_bundle_t &operator=(const kernel_bundle_t &other) = delete;
     kernel_bundle_t(kernel_bundle_t &&other) = default;
     kernel_bundle_t &operator=(kernel_bundle_t &&other) = default;
+    ~kernel_bundle_t() = default;
 
     status_t get_kernels(std::vector<kernel_t> &kernels,
             const std::vector<const char *> &kernel_names) const {

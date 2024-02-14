@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_AVX512_CORE_AMX_1x1_CONVOLUTION_HPP
-#define CPU_X64_JIT_AVX512_CORE_AMX_1x1_CONVOLUTION_HPP
+#ifndef CPU_X64_JIT_AVX512_CORE_AMX_1X1_CONVOLUTION_HPP
+#define CPU_X64_JIT_AVX512_CORE_AMX_1X1_CONVOLUTION_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -60,9 +60,8 @@ struct jit_avx512_core_amx_1x1_convolution_fwd_t : public primitive_t {
                     && IMPLICATION(with_bias(),
                             utils::one_of(
                                     weights_md(1)->data_type, f32, s32, s8, u8))
-                    && attr()->has_default_values(smask_t::scales_runtime
-                                    | smask_t::post_ops
-                                    | smask_t::zero_points_runtime
+                    && attr()->has_default_values(smask_t::scales
+                                    | smask_t::post_ops | smask_t::zero_points
                                     | smask_t::sum_dt,
                             dst_md(0)->data_type);
 
@@ -72,12 +71,12 @@ struct jit_avx512_core_amx_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_ATTR);
+            CHECK(attr_scales_ok());
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(
                                    dst_md(0)->data_type,
                                    /* is_int8 */ is_int8_convolution),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            CHECK(attr_zero_points_ok());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
             CHECK(jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jcp_, *desc(),
@@ -92,24 +91,6 @@ struct jit_avx512_core_amx_1x1_convolution_fwd_t : public primitive_t {
         }
 
         jit_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
-
-    protected:
-        bool zero_points_ok() const {
-            const auto &zp = attr()->zero_points_;
-
-            if (!zp.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = zp.get_mask(DNNL_ARG_SRC);
-                const bool ok = mask_src == 0;
-                if (!ok) return false;
-            }
-            if (!zp.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                const bool ok = mask_dst == 0;
-                if (!ok) return false;
-            }
-
-            return zp.has_default_values(DNNL_ARG_WEIGHTS);
-        }
     };
 
     jit_avx512_core_amx_1x1_convolution_fwd_t(const pd_t *apd)

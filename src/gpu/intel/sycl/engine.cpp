@@ -47,7 +47,7 @@ status_t engine_t::create_stream(
 }
 
 status_t engine_t::init_device_info() {
-    device_info_.reset(new gpu::intel::sycl::device_info_t());
+    device_info_ = std::make_shared<gpu::intel::sycl::device_info_t>();
     CHECK(device_info_->init(this));
     return status::success;
 }

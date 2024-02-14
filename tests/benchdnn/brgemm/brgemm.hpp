@@ -48,12 +48,7 @@
 namespace brgemm {
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_vdims_t prb_vdims;
 
@@ -68,7 +63,7 @@ struct settings_t : public base_settings_t {
     std::vector<std::string> batch_kind {"addr"};
 
     const char *perf_template_csv() const {
-        static const std::string args = "";
+        static const std::string args;
         return perf_template_csv_base(args);
     }
 
@@ -262,7 +257,7 @@ int brgemm_finalize();
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);
-void compute_ref(const prb_t *prb, const args_t &args,
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 
 int doit(const prb_t *prb, res_t *res);

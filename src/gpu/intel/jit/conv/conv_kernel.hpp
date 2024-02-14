@@ -71,26 +71,13 @@ conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
     ir_utils::debug_profiler_t profile("Conv Kernel Construction Profile");
     // Build IR for the kernel.
     conv_ir_builder_t builder(cfg, kernel_info, zp_dst);
-    stmt_t body = builder.stmt();
+    const stmt_t &body = builder.stmt();
     profile.stamp("Kernel Builder");
 
     alloc_manager_t alloc_mgr(body);
     profile.stamp("Alloc_Mgr Construct");
 
     setup_interface(body);
-    profile.stamp("Setup Interface");
-
-    this->require_signal_header_ = true;
-    generate_prologue();
-
-    profile.stamp("Prologue");
-
-    // Bind "external" variables.
-    expr_binding_t expr_binding(hw);
-    bind_external_vars(body, cfg_.plan().gemm_schedule.kernel_grid_walk_order(),
-            expr_binding);
-    profile.stamp("Bind Variables");
-
 #ifdef DNNL_DEV_MODE
     profile.stop();
     verify_grf_usage(cfg, body, ra_.get_alloced_regs());
@@ -98,11 +85,9 @@ conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
 #endif
 
     // Generate assembly from IR.
-    convert_ir_to_ngen<hw>(body, this, expr_binding);
-    profile.stamp("Generate Assembly");
-
-    generate_epilogue();
-    profile.stop("Epilogue");
+    convert_ir_to_ngen<ir_kernel_t<hw>>(
+            body, this, &cfg_.plan().gemm_schedule.kernel_grid_walk_order());
+    profile.stop("Generate Assembly");
 
 #ifdef DNNL_DEV_MODE
     gpu_perf_no_trace() << profile;

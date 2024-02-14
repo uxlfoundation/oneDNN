@@ -58,6 +58,9 @@ status_t brgemm_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
             VERBOSE_BAD_ALGORITHM);
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_CONV(impl::is_dense_format_kind({src_md(0), diff_weights_md(0),
+                           diff_weights_md(1), diff_dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto scratchpad = scratchpad_registry().registrar();
 
@@ -416,7 +419,7 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
         if (jcp.transform_to_vnni) {
             const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
             if (vnni_granularity == 0) {
-                assert("Invalid vnni granularity.");
+                assert(!"Invalid vnni granularity.");
                 return;
             }
 
@@ -978,7 +981,7 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_2d(
                             0, 0, 1, oh_s, ohb_s, ohb_e);
 
                     if (jcp.with_bias && ic_b == 0) {
-                        auto bp = jit_conv_call_s();
+                        auto bp = jit_conv_args_t();
 
                         bp.bias = diff_bias + g * rnd_up(jcp.oc, jcp.oc_block)
                                 + oc_b * jcp.oc_block;
@@ -1167,7 +1170,7 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_3d(
 
                         if (jcp.with_bias && ic_b == 0) {
                             for (int iodb = odb_s; iodb < odb_e; iodb++) {
-                                auto bp = jit_conv_call_s();
+                                auto bp = jit_conv_args_t();
 
                                 bp.bias = diff_bias
                                         + g * rnd_up(jcp.oc, jcp.oc_block)
@@ -1244,7 +1247,7 @@ void brgemm_convolution_bwd_weights_t::store_in_vnni_format(
 
     const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
     if (vnni_granularity == 0) {
-        assert("Invalid vnni granularity.");
+        assert(!"Invalid vnni granularity.");
         return;
     }
 
@@ -1260,7 +1263,7 @@ void brgemm_convolution_bwd_weights_t::store_in_vnni_format(
         const int g = ti->g_start + sub_g_start;
         const int oc_b = ti->oc_b_start + sub_oc_b_start;
         const int ic_b = ti->ic_b_start + vnni_granularity * sub_icb2_start;
-        jit_conv_call_s p = jit_conv_call_s();
+        jit_conv_args_t p = jit_conv_args_t();
 
         float *input = ti->wei_bia_reduction + wei_offset_int(g, oc_b, ic_b, 0);
         char *output = (char *)ti->diff_weights

@@ -152,6 +152,7 @@ inline void replaceKernel(std::vector<uint8_t> &binary, const std::vector<uint8_
     new_kheader->CheckSum = neo_hash(new_elf + start_xsum, new_end_xsum - start_xsum);
     new_kheader->KernelHeapSize = uint32_t(kernel_padded_size);
     new_kheader->KernelUnpaddedSize = uint32_t(kernel_size);
+    new_kheader->PatchListSize += uint32_t(patches_size);
 
     // Disable inline data if requested.
     if (noInlineData) {
@@ -163,7 +164,7 @@ inline void replaceKernel(std::vector<uint8_t> &binary, const std::vector<uint8_
     }
 
     // Update checksum.
-    new_kheader->PatchListSize += uint32_t(patches_size);
+    new_kheader->CheckSum = neo_hash(new_elf + start_xsum, new_end_xsum - start_xsum);
 
     // Copy remainder of ELF.
     utils::copy_into(new_binary, new_end_xsum, binary, end_xsum, elf_size - end_xsum);
@@ -194,12 +195,6 @@ inline HW decodeGfxCoreFamily(GfxCoreFamily family)
         case GfxCoreFamily::XeHPC:    return HW::XeHPC;
         case GfxCoreFamily::Xe2:      return HW::Xe2;
         case GfxCoreFamily::Xe3:      return HW::Xe3;
-#if XE3P
-        case GfxCoreFamily::Xe3p:     return HW::Xe3p;
-#endif
-#if XE4
-        case GfxCoreFamily::Xe4:      return HW::Xe4;
-#endif
         default:                      return HW::Unknown;
     }
 }
@@ -219,9 +214,6 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
 #if XE3P
         case HW::Xe3p:    return GfxCoreFamily::Xe3p;
 #endif
-#if XE4
-        case HW::Xe4:     return GfxCoreFamily::Xe4;
-#endif
         default:          return GfxCoreFamily::Unknown;
     }
 }
@@ -237,14 +229,11 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::MTL) return NGEN_NAMESPACE::ProductFamily::MTL;
     if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
-    if (family == ProductFamily::BMG) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
-    if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
-    if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
+    if (family == ProductFamily::BMG) return NGEN_NAMESPACE::ProductFamily::BMG;
+    if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::LNL;
+    if (family >= ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
 #if XE3P
     if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
-#endif
-#if XE4
-    if (family == ProductFamily::JGS) return NGEN_NAMESPACE::ProductFamily::GenericXe4;
 #endif
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
@@ -282,6 +271,7 @@ inline Product getBinaryHWInfo(const std::vector<uint8_t> &binary)
     Product ret;
     ret.family = genericProductFamily(hw);
     ret.stepping = pheader->SteppingId;
+    ret.type = PlatformType::Unknown;
 
     return ret;
 }
@@ -300,7 +290,7 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
         };
     } version;
 
-    NGEN_NAMESPACE::Product outProduct = {NGEN_NAMESPACE::ProductFamily::Unknown, 0};
+    NGEN_NAMESPACE::Product outProduct = {NGEN_NAMESPACE::ProductFamily::Unknown, 0, NGEN_NAMESPACE::PlatformType::Unknown};
 
     version.raw = rawVersion;
     switch (version.architecture) {
@@ -322,20 +312,25 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
             else if (version.release >= 73 && version.release <= 74)
                 outProduct.family = NGEN_NAMESPACE::ProductFamily::ARL;
             break;
-        case 20: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe2; break;
+        case 20:
+            if (version.release <= 2)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::BMG;
+            else if (version.release == 4)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::LNL;
+            else
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe2;
+            break;
         case 30: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3; break;
 #if XE3P
         case 35: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3p; break;
 #endif
-#if XE4
-        case 40: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe4; break;
-#endif
-
-	default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
+        default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
     }
 
     if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)
         outProduct.stepping = version.revision;
+
+    outProduct.type = getPlatformType(outProduct.family);
 
     return outProduct;
 }

@@ -37,7 +37,7 @@ struct ref_concat_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
-            VDISPATCH_CONCAT(attr()->has_default_values(sm::scales_runtime),
+            VDISPATCH_CONCAT(attr()->has_default_values(sm::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
             tent_dst_md_ = types::zero_md();
             status_t status = cpu_concat_pd_t::init();
@@ -109,7 +109,7 @@ struct ref_concat_t : public primitive_t {
         return status::success;
     }
 
-    ~ref_concat_t() = default;
+    ~ref_concat_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         using namespace memory_tracking::names;

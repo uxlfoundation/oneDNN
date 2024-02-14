@@ -26,7 +26,7 @@
 #include "cpu/aarch64/jit_sve_conv_kernel.hpp"
 #include "cpu/platform.hpp"
 
-#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_call_s, field))
+#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_args_t, field))
 #define A64FX_L2_EFFECTIVE_CAPACITY ((666 - 128) * 1024)
 
 namespace dnnl {
@@ -1850,7 +1850,7 @@ inline void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop(
             compute_loop_fma_core(ur_w, l_overflow, r_overflow, k_offset);
 
     else
-        assert("!unknown convolution version");
+        assert(!"unknown convolution version");
 
     if (generate_ocb_loop) {
         add_imm(reg_dst, reg_dst, jcp.oc_block * typesize, reg_tmp_imm);

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ bool jit_prelu_backward_kernel_t::any_tensor_bf16() const {
 template <typename Vmm>
 jit_uni_prelu_backward_kernel_t<Vmm>::jit_uni_prelu_backward_kernel_t(
         const cpu_prelu_bwd_pd_t *pd, const cpu_isa_t &isa)
-    : jit_prelu_backward_kernel_t(pd, isa, vreg_traits<Vmm>::vlen,
+    : jit_prelu_backward_kernel_t(pd, isa, vreg_traits_t<Vmm>::vlen,
             std::is_same<Vmm, Xbyak::Zmm>::value ? 4u : 6u)
     , saturation_needed_diff_src_(utils::one_of(
               diff_src_dt_, data_type::u8, data_type::s8, data_type::s32))
@@ -306,7 +306,7 @@ const Xbyak::Operand &jit_uni_prelu_backward_kernel_t<Vmm>::get_or_load_weights(
     return weights_vmm;
 }
 
-static void reduce(jit_generator *host, const Xbyak::Xmm &src,
+static void reduce(jit_generator_t *host, const Xbyak::Xmm &src,
         const Xbyak::Xmm &helper, const cpu_isa_t &isa) {
     UNUSED(helper);
     if (isa == sse41) {
@@ -318,7 +318,7 @@ static void reduce(jit_generator *host, const Xbyak::Xmm &src,
     }
 }
 
-static void reduce(jit_generator *host, const Xbyak::Ymm &src,
+static void reduce(jit_generator_t *host, const Xbyak::Ymm &src,
         const Xbyak::Ymm &helper, const cpu_isa_t &isa) {
     const Xbyak::Xmm xmm_helper {helper.getIdx()};
     const Xbyak::Xmm xmm_src {src.getIdx()};
@@ -328,7 +328,7 @@ static void reduce(jit_generator *host, const Xbyak::Ymm &src,
     reduce(host, xmm_src, xmm_helper, isa);
 }
 
-static void reduce(jit_generator *host, const Xbyak::Zmm &src,
+static void reduce(jit_generator_t *host, const Xbyak::Zmm &src,
         const Xbyak::Zmm &helper, const cpu_isa_t &isa) {
     const Xbyak::Ymm ymm_helper {helper.getIdx()};
     const Xbyak::Ymm ymm_src {src.getIdx()};

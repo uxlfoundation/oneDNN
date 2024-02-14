@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2024 Intel Corporation
+ * Copyright 2024-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_OCL_SDPA_UTILS_H
-#define GPU_OCL_SDPA_UTILS_H
+#ifndef GPU_INTEL_OCL_SDPA_UTILS_H
+#define GPU_INTEL_OCL_SDPA_UTILS_H
 
 #define _4D_OFF(tag, x0, x1, x2, x3) \
     (((x0) % tag##_B0) * tag##_SB0 + ((x0) / tag##_B0) * tag##_S0 \

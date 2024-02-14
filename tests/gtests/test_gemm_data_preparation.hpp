@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,12 +53,7 @@ static constexpr int N_test_max = 53;
  * a surjective function from {0, ..., dim-1} onto {0, ..., dim_test-1}.
  */
 struct mapper_t {
-    mapper_t(const mapper_t &other)
-        : dim_(other.dim_)
-        , dim_test_(other.dim_test_)
-        , gen_(other.gen_)
-        , gen_start_(other.gen_start_)
-        , mapper_(other.mapper_) {}
+    mapper_t(const mapper_t &other) = default;
 
     mapper_t(mapper_t &&other) noexcept
         : dim_(other.dim_)
@@ -93,7 +88,7 @@ private:
     std::vector<int64_t> mapper_;
 };
 
-struct test_gemm_data {
+struct test_gemm_data_t {
     std::shared_ptr<test_memory> a_mem;
     std::shared_ptr<test_memory> b_mem;
     std::shared_ptr<test_memory> c_mem;
@@ -112,7 +107,7 @@ template <typename data_t>
 void prepare_matrix(const test_memory &M_mem, int64_t off_beg, layout_t layout,
         int64_t R, int64_t C, int64_t LD, const mapper_t &mapper) {
     auto M = map_memory<data_t>(M_mem);
-    auto dt = data_traits<data_t>::data_type;
+    auto dt = data_traits_t<data_t>::data_type;
     bool is_fp = (false || dt == memory::data_type::f16
             || dt == memory::data_type::bf16 || dt == memory::data_type::f32);
     const data_t mean = (data_t)(is_fp ? 1.f : 4);
@@ -203,7 +198,7 @@ void extend_matrix(const test_memory &M_mem, int64_t off, int64_t R, int64_t C,
 }
 
 inline void get_matrix_size(
-        const test_params &p, size_t &sizeA, size_t &sizeB, size_t &sizeC) {
+        const test_params_t &p, size_t &sizeA, size_t &sizeB, size_t &sizeC) {
     const bool tr_a = (p.transA == 'T' || p.transA == 't');
     const bool tr_b = (p.transB == 'T' || p.transB == 't');
     sizeA = tr_a ? p.lda * p.K : p.lda * p.M;
@@ -214,11 +209,11 @@ inline void get_matrix_size(
 template <typename T>
 inline memory::desc get_matrix_md(memory::dim n, memory::dim off) {
     return create_md(
-            {n + off}, data_traits<T>::data_type, memory::format_tag::x);
+            {n + off}, data_traits_t<T>::data_type, memory::format_tag::x);
 }
 
 template <typename a_dt, typename b_dt, typename c_dt>
-void fill_matrices(const test_params &p, const mapper_t &mapper_m,
+void fill_matrices(const test_params_t &p, const mapper_t &mapper_m,
         const mapper_t &mapper_n, const test_memory &a_mem,
         const test_memory &b_mem, const test_memory &c_mem,
         const test_memory &c_ref_mem, const test_memory &oc_mem) {
@@ -256,23 +251,23 @@ void fill_matrices(const test_params &p, const mapper_t &mapper_m,
 
 template <typename a_dt, typename b_dt, typename c_dt>
 void prepare_data_for_gemm_testing(
-        const test_params &p, test_gemm_data &gemm_data, engine &eng) {
+        const test_params_t &p, test_gemm_data_t &gemm_data, engine &eng) {
     size_t sizeA, sizeB, sizeC;
     get_matrix_size(p, sizeA, sizeB, sizeC);
 
-    gemm_data.a_mem.reset(
-            new test_memory(get_matrix_md<a_dt>(sizeA, p.off.a), eng));
-    gemm_data.b_mem.reset(
-            new test_memory(get_matrix_md<b_dt>(sizeB, p.off.b), eng));
-    gemm_data.c_mem.reset(
-            new test_memory(get_matrix_md<c_dt>(sizeC, p.off.c), eng));
-    gemm_data.c_ref_mem.reset(
-            new test_memory(get_matrix_md<c_dt>(sizeC, p.off.c), eng));
-    gemm_data.oc_mem.reset(
-            new test_memory(get_matrix_md<c_dt>(p.size_oc(), p.off.co), eng));
+    gemm_data.a_mem = std::make_shared<test_memory>(
+            get_matrix_md<a_dt>(sizeA, p.off.a), eng);
+    gemm_data.b_mem = std::make_shared<test_memory>(
+            get_matrix_md<b_dt>(sizeB, p.off.b), eng);
+    gemm_data.c_mem = std::make_shared<test_memory>(
+            get_matrix_md<c_dt>(sizeC, p.off.c), eng);
+    gemm_data.c_ref_mem = std::make_shared<test_memory>(
+            get_matrix_md<c_dt>(sizeC, p.off.c), eng);
+    gemm_data.oc_mem = std::make_shared<test_memory>(
+            get_matrix_md<c_dt>(p.size_oc(), p.off.co), eng);
 
-    gemm_data.mapper_m.reset(new mapper_t(p.M, M_test_max));
-    gemm_data.mapper_n.reset(new mapper_t(p.N, N_test_max));
+    gemm_data.mapper_m = std::make_shared<mapper_t>(p.M, M_test_max);
+    gemm_data.mapper_n = std::make_shared<mapper_t>(p.N, N_test_max);
 
     fill_matrices<a_dt, b_dt, c_dt>(p, *gemm_data.mapper_m, *gemm_data.mapper_n,
             *gemm_data.a_mem, *gemm_data.b_mem, *gemm_data.c_mem,

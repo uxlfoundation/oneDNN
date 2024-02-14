@@ -100,7 +100,7 @@ status_t reduction_helper_t::reshape_weights(
 status_t reduction_helper_t::reshape_for_transpose(
         memory_desc_t &o_md, memory_desc_t &i_md) {
     const int ndims = i_md.ndims;
-    int *perm = new int[ndims];
+    std::vector<int> perm(ndims);
     for (int dim = 0; dim < ndims; dim++) {
         if (dim == ndims - 2)
             perm[dim] = dim + 1;
@@ -109,7 +109,7 @@ status_t reduction_helper_t::reshape_for_transpose(
         else
             perm[dim] = dim;
     }
-    return memory_desc_permute_axes(o_md, i_md, perm);
+    return memory_desc_permute_axes(o_md, i_md, perm.data());
 }
 
 bool reduction_helper_t::is_gemm() {
@@ -232,6 +232,9 @@ status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV(IMPLICATION(with_bias(), weights_md(1)->data_type == f32),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CONV(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     reduction_helper_ = reduction_helper_t(this);
     // TODO: Support attributes in matmul-based convolution.
@@ -400,6 +403,9 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
                                 : data_type::f32),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CONV(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_CONV(impl::is_dense_format_kind(
+                           {src_md(), diff_src_md(), dst_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(init_convolution(engine));
     init_name();
@@ -552,6 +558,10 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
                            diff_dst_md()->data_type, weights_md(0)->data_type),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CONV(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), diff_src_md(), weights_md(0),
+                    weights_md(1), dst_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     if (one_of(data_type::bf16, diff_dst_md_.data_type, weights_md_.data_type)
             && !mayiuse(avx512_core_bf16))

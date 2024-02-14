@@ -122,9 +122,9 @@ set(DNNL_ENABLE_PRIMITIVE "ALL" CACHE STRING
     - ALL (the default). Includes all primitives to be enabled.
     - <PRIMITIVE_NAME>. Includes only the selected primitive to be enabled.
       Possible values are: BATCH_NORMALIZATION, BINARY, CONCAT, CONVOLUTION,
-      DECONVOLUTION, ELTWISE, INNER_PRODUCT, LAYER_NORMALIZATION, LRN, MATMUL,
-      POOLING, PRELU, REDUCTION, REORDER, RESAMPLING, RNN, SDPA, SHUFFLE,
-      SOFTMAX, SUM.
+      DECONVOLUTION, ELTWISE, GROUP_NORMALIZATION, INNER_PRODUCT,
+      LAYER_NORMALIZATION, LRN, MATMUL, POOLING, PRELU, REDUCTION, REORDER,
+      RESAMPLING, RNN, SDPA, SHUFFLE, SOFTMAX, SUM.
     - <PRIMITIVE_NAME>;<PRIMITIVE_NAME>;... Includes only selected primitives to
       be enabled at build time. This is treated as CMake string, thus, semicolon
       is a mandatory delimiter between names. This is the way to specify several
@@ -146,7 +146,7 @@ set(DNNL_ENABLE_PRIMITIVE_GPU_ISA "ALL" CACHE STRING
     implementations will always be available. Valid values:
     - ALL (the default). Includes all ISA to be enabled.
     - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
-    Possible values are: GEN9, GEN11, XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P, XE4.")
+      Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P.")
 
 set(ONEDNN_ENABLE_GEMM_KERNELS_ISA "ALL" CACHE STRING
     "Specifies an ISA set of GeMM kernels residing in x64/gemm folder to be
@@ -203,11 +203,6 @@ option(DNNL_EXPERIMENTAL
     using environment variables."
     OFF) # disabled by default
 
-option(DNNL_EXPERIMENTAL_SPARSE
-    "Enable experimental functionality for sparse domain. This option works
-    independently from DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
-
 option(DNNL_EXPERIMENTAL_UKERNEL
     "Enable experimental functionality for ukernels. This option works
     independently from DNNL_EXPERIMENTAL."
@@ -223,18 +218,11 @@ option(DNNL_EXPERIMENTAL_LOGGING
     independently from DNNL_EXPERIMENTAL."
     OFF) # disabled by default
 
-option(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_BACKEND
-    "builds oneDNN Graph API graph-compiler backend" OFF)
-set(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_CPU_LLVM_CONFIG "AUTO" CACHE STRING
-    "graph-compiler's llvm-config path")
-set(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_CPU_JIT "builtin" CACHE STRING
-    "the optional JIT backends for graph-compiler: llvm;c;builtin")
-
 # ======================
 # Profiling capabilities
 # ======================
 
-# TODO: restore default to ON after the issue with linking C files by 
+# TODO: restore default to ON after the issue with linking C files by
 # Intel oneAPI DPC++ Compiler is fixed. Currently this compiler issues a warning
 # when linking object files built from C and C++ sources.
 option(DNNL_ENABLE_JIT_PROFILING
@@ -245,8 +233,8 @@ option(DNNL_ENABLE_JIT_PROFILING
     ON)
 
 option(DNNL_ENABLE_ITT_TASKS
-    "Enable ITT Tasks tagging feature and tag all primitive execution 
-    (on by default). VTune Profiler can group profiling results based 
+    "Enable ITT Tasks tagging feature and tag all primitive execution
+    (on by default). VTune Profiler can group profiling results based
     on those ITT tasks and show corresponding timeline information."
     ON)
 
@@ -342,7 +330,7 @@ else()
 endif()
 
 if(DNNL_SYCL_HIP AND NOT "${DNNL_AMD_SYCL_KERNELS_TARGET_ARCH}" STREQUAL "")
-    add_definitions(-DDNNL_AMD_ENABLE_SYCL_KERNELS=1)
+    add_definitions(-DDNNL_AMD_ENABLE_SYCL_KERNELS)
     set(DNNL_AMD_ENABLE_SYCL_KERNELS TRUE)
 endif()
 
@@ -380,8 +368,6 @@ set(DNNL_USE_CLANG_TIDY "NONE" CACHE STRING
     - NONE (default)
       Clang-tidy is disabled.
     - CHECK
-      Enables checks from .clang-tidy for source code
-    - CHECK_ALL
       Enables checks from .clang-tidy.
     - FIX
       Enables checks from .clang-tidy and fix found issues.

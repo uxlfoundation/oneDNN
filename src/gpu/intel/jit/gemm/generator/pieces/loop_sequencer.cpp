@@ -31,7 +31,7 @@ namespace loop_sequencer {
 
 void LoopSequencer::schedule(Requirements reqs, ActionFunc action)
 {
-    schedule({{reqs, action}});
+    schedule({{reqs, std::move(action)}});
 }
 
 void LoopSequencer::schedule(std::vector<Item> list)
@@ -49,7 +49,7 @@ void LoopSequencer::schedule(std::vector<Item> list)
 
 void LoopSequencer::schedule_if(Requirements reqs, ActionFunc action, ActionCheckFunc check)
 {
-    schedule_if({{reqs, action, check}});
+    schedule_if({{reqs, std::move(action), std::move(check)}});
 }
 
 void LoopSequencer::schedule_if(std::vector<CheckedItem> list)

@@ -275,7 +275,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type, false,
             false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB, jcp_.LDC,
-            vbrgM, vN, vK, strides_ptr));
+            vbrgM, vN, vK, strides_ptr, jcp_.is_tf32));
     brgattr.use_uker = jcp_.use_uker;
     brgattr.use_interleave_stores = jcp_.use_interleave_stores;
     brgattr.hint_prefetching = jcp_.hint_prefetching;
@@ -363,8 +363,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
-            | skip_mask_t::zero_points_runtime | skip_mask_t::fpmath_mode;
-    if (is_int8) skip_mask |= skip_mask_t::scales_runtime;
+            | skip_mask_t::zero_points | skip_mask_t::fpmath_mode;
+    if (is_int8) skip_mask |= skip_mask_t::scales;
 
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(IMPLICATION(is_int8,
@@ -382,8 +382,11 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(dst_type, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-    VDISPATCH_CONV(arg_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(attr_scales_ok());
+    CHECK(attr_zero_points_ok());
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(0), weights_md(0), dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(brgemm_convolution_utils::init_conf(jcp_, isa, *desc(), src_md_,
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));
@@ -948,6 +951,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         ajcp.nb_ic_int = 1;
         ajcp.is_nspc = true;
         ajcp.is_bf32 = jcp.is_bf32;
+        ajcp.is_tf32 = jcp.is_tf32;
         ajcp.typesize_in = jcp.src_dsz;
         ajcp.ic_block_int = jcp.amx_w;
 
@@ -1538,7 +1542,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                 std::memset(&s8s8_comp_buffer[buffer_offs], 0,
                         sizeof(int32_t) * comp_kw_sz);
 
-            jit_brgemm_conv_comp_pad_call_s p;
+            jit_brgemm_conv_comp_pad_args_t p;
 
             p.kd_l = kd_e - kd_b;
             p.kh_l = kh_e - kh_b;
@@ -1776,7 +1780,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
         if (bmask(icb, btc.odb, btc.ohb, btc.owb)) return;
     }
 
-    auto cp = jit_brgemm_conv_trans_kernel_call_s();
+    auto cp = jit_brgemm_conv_trans_kernel_args_t();
 
     const auto prev_odb
             = (jcp.copy_block_only || btc.odb == 0
@@ -1856,7 +1860,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
                 + iw_buf * jcp.inp_ic_block * (jcp.is_relo_whi() ? KH : 1);
 
         // for relo_whi we copy top and bottom padded lines
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         bool has_inp_buffer_overlap = true && last_btc.g == btc.g
                 && last_btc.n == btc.n && last_btc.owb == btc.owb;
@@ -2416,7 +2420,8 @@ template struct brgemm_convolution_fwd_t<avx512_core_bf16>;
 template struct brgemm_convolution_fwd_t<avx512_core_fp16>;
 template struct brgemm_convolution_fwd_t<avx512_core_amx>;
 template struct brgemm_convolution_fwd_t<avx512_core_amx_fp16>;
-
+template struct brgemm_convolution_fwd_t<avx10_2_512>;
+template struct brgemm_convolution_fwd_t<avx10_2_512_amx_2>;
 } // namespace x64
 
 } // namespace cpu

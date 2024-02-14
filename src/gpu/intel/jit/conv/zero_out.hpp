@@ -22,7 +22,7 @@
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "ngen/ngen.hpp"
+#include "ngen.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -49,8 +49,8 @@ public:
             gpu_primitive_t *primitive, impl::engine_t *engine) const override;
     status_t create_generator(const compute::compute_engine_t &engine,
             compute::kernel_t &kernel) const;
-    serialized_t serialize() const override;
-    static zero_out_kernel_desc_t deserialize(const serialized_t &s);
+    serialization_stream_t serialize() const override;
+    static zero_out_kernel_desc_t deserialize(const serialization_stream_t &s);
 
     static compute::nd_range_t nd_range(int simd, size_t size);
 

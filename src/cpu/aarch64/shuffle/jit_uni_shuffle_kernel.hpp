@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_UNI_SHUFFLE_KERNEL_HPP
-#define CPU_AARCH64_JIT_UNI_SHUFFLE_KERNEL_HPP
+#ifndef CPU_AARCH64_SHUFFLE_JIT_UNI_SHUFFLE_KERNEL_HPP
+#define CPU_AARCH64_SHUFFLE_JIT_UNI_SHUFFLE_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"

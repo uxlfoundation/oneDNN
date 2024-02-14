@@ -125,7 +125,7 @@ status_t ip_attr_check(const inner_product_desc_t &desc, const engine_t *engine,
             is_int8 = is_int8
                     || utils::one_of(dst_dt, data_type::s8, data_type::u8,
                             data_type::s32);
-        if (is_int8) fwd_attr_mask |= smask_t::scales_runtime;
+        if (is_int8) fwd_attr_mask |= smask_t::scales;
 
         VCHECK_IP_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -158,7 +158,7 @@ status_t ip_attr_check(const inner_product_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         auto bwd_attr_mask = smask_t::fpmath_mode | smask_t::accumulation_mode;

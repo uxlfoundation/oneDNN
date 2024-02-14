@@ -86,21 +86,6 @@ void add_floats_and_cvt_to_f8_e5m2(float8_e5m2_t *out, const float *inp0,
 void add_floats_and_cvt_to_f8_e4m3(float8_e4m3_t *out, const float *inp0,
         const float *inp1, size_t nelems);
 
-#if DNNL_X64
-namespace cpu {
-namespace x64 {
-bool DNNL_API try_cvt_f8_e5m2_to_f32(float *, const float8_e5m2_t *);
-bool DNNL_API try_cvt_f8_e4m3_to_f32(float *, const float8_e4m3_t *);
-bool DNNL_API try_cvt_f8_e5m2_to_f16(float16_t *, const float8_e5m2_t *);
-bool DNNL_API try_cvt_f8_e4m3_to_f16(float16_t *, const float8_e4m3_t *);
-bool DNNL_API try_cvt_f16_to_f8_e5m2(float8_e5m2_t *, const float16_t *);
-bool DNNL_API try_cvt_f16_to_f8_e4m3(float8_e4m3_t *, const float16_t *);
-bool DNNL_API try_cvt_f32_to_f8_e5m2(float8_e5m2_t *, const float *);
-bool DNNL_API try_cvt_f32_to_f8_e4m3(float8_e4m3_t *, const float *);
-} // namespace x64
-} // namespace cpu
-#endif
-
 } // namespace impl
 } // namespace dnnl
 

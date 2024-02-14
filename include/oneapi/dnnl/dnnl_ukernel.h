@@ -185,14 +185,16 @@ dnnl_status_t DNNL_API dnnl_brgemm_finalize(dnnl_brgemm_t brgemm);
 
 /// Returns the packing type expected by a tensor B of a BRGeMM ukernel object.
 ///
-/// @param pack_type Output packing type. Can be `dnnl_brgemm_no_trans` if
-///     packing is not expected, and `dnnl_pack_type_pack32`, otherwise.
-/// @param dt_a Data type of tensor A.
-/// @param dt_b Data type of tensor B.
+/// @param pack_type Output packing type. Can be `dnnl_brgemm_pack_undef` when
+///     ukernel and transform are not supported on the target system,
+///     `dnnl_brgemm_no_trans` if packing is not required, and
+///     `dnnl_pack_type_pack32` for x64 backend, otherwise.
+/// @param a_dt Data type of tensor A.
+/// @param b_dt Data type of tensor B.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_brgemm_get_B_pack_type(dnnl_pack_type_t *pack_type,
-        dnnl_data_type_t dt_a, dnnl_data_type_t dt_b);
+        dnnl_data_type_t a_dt, dnnl_data_type_t b_dt);
 
 /// Returns the size of a scratchpad memory needed for the BRGeMM ukernel
 /// object.

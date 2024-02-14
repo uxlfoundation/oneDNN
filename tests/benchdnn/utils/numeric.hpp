@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,9 +32,9 @@ int digits_dt(dnnl_data_type_t dt);
 float epsilon_dt(dnnl_data_type_t dt);
 float lowest_dt(dnnl_data_type_t dt);
 float max_dt(dnnl_data_type_t dt);
-float saturate_and_round(dnnl_data_type_t dt, float value);
 bool is_integral_dt(dnnl_data_type_t dt);
 float maybe_saturate(dnnl_data_type_t dt, float value);
 float round_to_nearest_representable(dnnl_data_type_t dt, float value);
+bool is_subbyte_type(const dnnl_data_type_t &type);
 
 #endif

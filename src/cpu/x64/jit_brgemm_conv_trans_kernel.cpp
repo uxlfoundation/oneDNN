@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,12 +28,12 @@ using namespace data_type;
 
 namespace jit_avx512_core_brgemm_conv_trans_kernel {
 
-#define GET_OFF(field) offsetof(jit_brgemm_conv_trans_kernel_call_s, field)
+#define GET_OFF(field) offsetof(jit_brgemm_conv_trans_kernel_args_t, field)
 
 jit_avx512_core_brgemm_conv_trans_kernel_t::
         jit_avx512_core_brgemm_conv_trans_kernel_t(
                 const jit_brgemm_conv_conf_t &ajcp, const char *name)
-    : jit_generator(name)
+    : jit_generator_t(name)
     , jcp(ajcp)
     , inp_dsz(jcp.src_dsz)
     , ic_block_sz(
@@ -42,7 +42,7 @@ jit_avx512_core_brgemm_conv_trans_kernel_t::
     , iw_size(inp_dsz * jcp.ngroups * jcp.ic_without_padding)
     , dst_w_block(dst_w(jcp, jcp.ow_block))
     , dst_stride(jcp.copy_block_only ? dst_w_block : jcp.iwp)
-    , VL(cpu_isa_traits<avx512_core>::vlen)
+    , VL(cpu_isa_traits_t<avx512_core>::vlen)
     , n_vec(ic_block_sz / jcp.simd_w)
     , n_tail_vec((jcp.ic_without_padding % ic_block_sz) / jcp.simd_w) {
 

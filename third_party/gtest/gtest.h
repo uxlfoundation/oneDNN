@@ -52,6 +52,13 @@
 #ifndef GOOGLETEST_INCLUDE_GTEST_GTEST_H_
 #define GOOGLETEST_INCLUDE_GTEST_GTEST_H_
 
+// To avoid Wundef hits from this file.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC system_header
+#elif defined(__clang__)
+#pragma clang system_header
+#endif
+
 #include <cstddef>
 #include <limits>
 #include <memory>

@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2023 Intel Corporation
+# Copyright 2019-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ set(DNNL_CPU_THREADING_RUNTIME "@DNNL_CPU_THREADING_RUNTIME@")
 set(DNNL_GPU_RUNTIME "@DNNL_GPU_RUNTIME@")
 
 set(DNNL_BLAS_VENDOR "@DNNL_BLAS_VENDOR@")
+
+set(DNNL_GPU_VENDOR "@DNNL_GPU_VENDOR@")
 
 if(DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
     # Try to find TBB using a TBB-provided CMake config file.
@@ -60,8 +62,21 @@ set(CMAKE_MODULE_PATH ${DNNL_ORIGINAL_CMAKE_MODULE_PATH})
 include("${CMAKE_CURRENT_LIST_DIR}/@LIB_EXPORT_NAME@.cmake")
 check_required_components("@LIB_PACKAGE_NAME@")
 
+if((DNNL_GPU_RUNTIME STREQUAL "DPCPP" OR DNNL_GPU_RUNTIME STREQUAL "SYCL") AND
+   DNNL_GPU_VENDOR STREQUAL "INTEL")
+   find_package(OpenCL REQUIRED)
+endif()
+
 if(DNNL_CPU_RUNTIME STREQUAL "SYCL" OR DNNL_CPU_RUNTIME STREQUAL "DPCPP" OR
    DNNL_GPU_RUNTIME STREQUAL "SYCL" OR DNNL_GPU_RUNTIME STREQUAL "DPCPP")
+    if(DNNL_GPU_VENDOR STREQUAL "NVIDIA")
+        set(DNNL_ORIGINAL_CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
+        list(INSERT CMAKE_MODULE_PATH 0 ${PACKAGE_PREFIX_DIR}/@LIB_CONFIG_INSTALL_DIR@)
+        find_package(cuDNN REQUIRED)
+        find_package(cuBLAS REQUIRED)
+        find_package(cublasLt REQUIRED)
+        set(CMAKE_MODULE_PATH ${DNNL_ORIGINAL_CMAKE_MODULE_PATH})
+    endif()
     set(DNNL_COMPILE_FLAGS "-fsycl")
     @HANDLE_BUNDLE_DEBUG_SYCL_CONFIGURATION@
 endif()

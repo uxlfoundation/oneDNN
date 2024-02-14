@@ -36,21 +36,25 @@ namespace x64 {
 
 /* This struct computes the compensation for src_zero_point related to
  * padding */
-struct jit_avx512_core_amx_compute_zp_pbuff_t : public jit_generator {
+struct jit_avx512_core_amx_compute_zp_pbuff_t : public jit_generator_t {
 
     using reg64_t = const Xbyak::Reg64;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_compute_zp_pbuff_t)
 
     jit_avx512_core_amx_compute_zp_pbuff_t(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
     static const int max_regs_ur = 30;
 
 private:
     jit_conv_conf_t jcp;
 
-    typedef enum { no_last_block, last_ic_block } ic_block_t;
+    enum class ic_block_t {
+        no_last_block,
+        last_ic_block,
+    };
+
     const int ic_inner_block = 4;
 
     Xbyak::Label permb_idx_label;
@@ -89,28 +93,28 @@ private:
 
     void generate() override;
 
-    Xbyak::Zmm zmm_out(int i_ur, int i_oc) {
+    Xbyak::Zmm zmm_out(int i_ur, int i_oc) const {
         int idx = i_ur * jcp.nb_oc_blocking + i_oc;
         assert(idx < max_regs_ur);
         return Xbyak::Zmm(idx);
     }
-    int get_ow_start(int ki, int pad_l) {
+    int get_ow_start(int ki, int pad_l) const {
         return nstl::max(0,
                 utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
     }
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    int get_ow_end(int ur_w, int ki, int pad_r) const {
         int filter_overlap = pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
         return ur_w - nstl::max(0, utils::div_up(filter_overlap, jcp.stride_w));
     }
 };
 
-struct jit_avx512_core_amx_copy_to_wbuffer_t : public jit_generator {
+struct jit_avx512_core_amx_copy_to_wbuffer_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_copy_to_wbuffer_t)
 
     using reg64_t = Xbyak::Reg64;
 
     jit_avx512_core_amx_copy_to_wbuffer_t(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
 private:
     jit_conv_conf_t jcp;
@@ -129,13 +133,13 @@ private:
     void generate() override;
 };
 
-struct jit_avx512_core_amx_copy_to_pbuffer_t : public jit_generator {
+struct jit_avx512_core_amx_copy_to_pbuffer_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_copy_to_pbuffer_t)
 
     using reg64_t = Xbyak::Reg64;
 
     jit_avx512_core_amx_copy_to_pbuffer_t(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
 private:
     jit_conv_conf_t jcp;
@@ -185,7 +189,7 @@ private:
     void copy_row_reduced_lowering();
 };
 
-struct jit_avx512_core_amx_fwd_kernel_t : public jit_generator {
+struct jit_avx512_core_amx_fwd_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_fwd_kernel_t)
 
     jit_avx512_core_amx_fwd_kernel_t(const jit_conv_conf_t &ajcp,
@@ -269,7 +273,7 @@ struct jit_avx512_core_amx_fwd_kernel_t : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
             postops_injector_;
     std::unique_ptr<jit_avx512_core_amx_copy_to_pbuffer_t> copy_to_pbuffer_;
@@ -286,12 +290,12 @@ private:
     bool is_store_done_ = false;
     bool is_buffer_empty_ = true;
 
-    struct w_pad_output {
+    struct w_pad_output_t {
         int l_pad_output;
         int r_pad_output;
-        w_pad_output(int l_, int r_) : l_pad_output(l_), r_pad_output(r_) {}
+        w_pad_output_t(int l_, int r_) : l_pad_output(l_), r_pad_output(r_) {}
     };
-    std::queue<w_pad_output> w_padding;
+    std::queue<w_pad_output_t> w_padding;
 
     /* data regs */
     const Xbyak::Reg64 reg_inp_ptr = r15;
@@ -373,7 +377,7 @@ private:
             const int s_pad_output, const int e_pad_output);
     void cvt2ps(data_type_t type_in, const Xbyak::Zmm &ymm_in,
             const Xbyak::Operand &op, bool mask_flag = false);
-    Xbyak::Zmm zmm_out(const int idx) {
+    Xbyak::Zmm zmm_out(const int idx) const {
         const int upper_limit = jcp.src_dt == data_type::bf16
                 ? zmm_idx_limit_bf16
                 : zmm_idx_limit_int8;
@@ -420,13 +424,13 @@ private:
     void generate() override;
 };
 
-struct jit_avx512_core_amx_bwd_data_copy_kernel_t : public jit_generator {
+struct jit_avx512_core_amx_bwd_data_copy_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_bwd_data_copy_kernel_t)
 
     using reg64_t = Xbyak::Reg64;
 
     jit_avx512_core_amx_bwd_data_copy_kernel_t(jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
 private:
     jit_conv_conf_t jcp;
@@ -466,29 +470,29 @@ private:
     void kd_loop(bool is_masked);
 };
 
-struct jit_avx512_core_amx_bwd_data_kernel_t : public jit_generator {
+struct jit_avx512_core_amx_bwd_data_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_bwd_data_kernel_t)
 
     jit_avx512_core_amx_bwd_data_kernel_t(
             const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
-        : jit_generator(jit_name(), avx512_core_amx)
+        : jit_generator_t(jit_name(), avx512_core_amx)
         , jcp(ajcp)
         , attr_(attr)
         , eltwise_injector_(nullptr)
         , bwd_data_copy_kernel_(nullptr) {
         if (jcp.with_eltwise)
-            eltwise_injector_
-                    = utils::make_unique<jit_uni_eltwise_injector<avx512_core>>(
-                            this, jcp.eltwise);
+            eltwise_injector_ = utils::make_unique<
+                    jit_uni_eltwise_injector_t<avx512_core>>(this, jcp.eltwise);
         bwd_data_copy_kernel_ = utils::make_unique<
                 jit_avx512_core_amx_bwd_data_copy_kernel_t>(jcp);
     }
     status_t create_kernel() override {
-        CHECK(jit_generator::create_kernel());
+        CHECK(jit_generator_t::create_kernel());
         CHECK(bwd_data_copy_kernel_->create_kernel());
         return status::success;
     }
-    ~jit_avx512_core_amx_bwd_data_kernel_t() = default;
+
+    ~jit_avx512_core_amx_bwd_data_kernel_t() override = default;
 
     static bool post_ops_ok(const jit_conv_conf_t &jcp, primitive_attr_t &attr);
 
@@ -510,7 +514,7 @@ struct jit_avx512_core_amx_bwd_data_kernel_t : public jit_generator {
     }
 
 private:
-    std::unique_ptr<jit_uni_eltwise_injector<avx512_core>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<avx512_core>> eltwise_injector_;
     std::unique_ptr<jit_avx512_core_amx_bwd_data_copy_kernel_t>
             bwd_data_copy_kernel_;
 
@@ -577,7 +581,7 @@ private:
     int get_inp_tensor(int h) const;
     int get_wei_tensor(int i) const;
 
-    inline bool gaps_in_store() {
+    inline bool gaps_in_store() const {
         const int gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
         return gen_kd < jcp.stride_d || jcp.dilate_d > 0;
     }
@@ -609,12 +613,12 @@ private:
     void generate() override;
 };
 
-struct jit_avx512_core_amx_bwd_weights_kernel_t : public jit_generator {
+struct jit_avx512_core_amx_bwd_weights_kernel_t : public jit_generator_t {
 
     jit_avx512_core_amx_bwd_weights_kernel_t(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
-    ~jit_avx512_core_amx_bwd_weights_kernel_t() {}
+    ~jit_avx512_core_amx_bwd_weights_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_bwd_weights_kernel_t)
 
@@ -696,32 +700,36 @@ private:
     static void balance(const jit_conv_conf_t &j, int &nthr, int &nthr_mb,
             int &nthr_g, int &nthr_oc_b, int &nthr_ic_b);
 
-    inline dim_t filter_w_to_src(int kw, int ow = 0, int pad_l = 0) {
+    inline dim_t filter_w_to_src(int kw, int ow = 0, int pad_l = 0) const {
         return static_cast<dim_t>(kw) * (jcp.dilate_w + 1) + ow - pad_l;
     }
-    inline dim_t filter_h_to_src(int kh) { return kh * (jcp.dilate_h + 1); }
-    inline dim_t filter_d_to_src(int kd) {
+    inline dim_t filter_h_to_src(int kh) const {
+        return static_cast<dim_t>(kh) * (jcp.dilate_h + 1);
+    }
+    inline dim_t filter_d_to_src(int kd) const {
         return static_cast<dim_t>(kd) * (jcp.dilate_d + 1) * jcp.ih;
     }
 
-    inline dim_t get_src_offset(dim_t ic_idx, dim_t w_idx, dim_t hd_idx = 0) {
+    inline dim_t get_src_offset(
+            dim_t ic_idx, dim_t w_idx, dim_t hd_idx = 0) const {
         return static_cast<dim_t>(jcp.typesize_in)
                 * (hd_idx * jcp.tr_iw * jcp.ic_block + jcp.tr_iw * ic_idx
                         + w_idx);
     }
 
-    inline dim_t get_ddst_offset(dim_t w_idx, dim_t hd_idx = 0) {
+    inline dim_t get_ddst_offset(dim_t w_idx, dim_t hd_idx = 0) const {
         int ow_per_oc = 2;
         dim_t w_off = w_idx / ow_per_oc * ow_per_oc * jcp.oc_block
                 + w_idx % ow_per_oc;
         return jcp.typesize_in * (w_off + jcp.tr_ow * jcp.oc_block * hd_idx);
     }
 
-    inline dim_t get_kernel_offset(int ic_idx, dim_t ksp_idx) {
+    inline dim_t get_kernel_offset(int ic_idx, dim_t ksp_idx) const {
         return jcp.typesize_out * jcp.oc_block
                 * (ksp_idx * jcp.ic_block + ic_idx);
     }
-    inline dim_t get_full_kernel_offset(int ocb, int icb, int kh, int kw) {
+    inline dim_t get_full_kernel_offset(
+            int ocb, int icb, int kh, int kw) const {
         return jcp.typesize_out
                 * (static_cast<dim_t>(ocb) * jcp.nb_ic * jcp.kd * jcp.kh
                                 * jcp.kw * jcp.ic_block * jcp.oc_block
@@ -744,12 +752,12 @@ private:
     int ddst_save_offset = 0;
 };
 
-struct jit_avx512_core_amx_bwd_bias_kernel_t : public jit_generator {
+struct jit_avx512_core_amx_bwd_bias_kernel_t : public jit_generator_t {
 
     jit_avx512_core_amx_bwd_bias_kernel_t(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
-    ~jit_avx512_core_amx_bwd_bias_kernel_t() {}
+    ~jit_avx512_core_amx_bwd_bias_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_bwd_bias_kernel_t)
 
@@ -787,7 +795,7 @@ private:
     Xbyak::Reg64 emu_scratch = r10;
     Xbyak::Opmask emu_mask = Xbyak::Opmask(4);
 
-    std::unique_ptr<fp8_emulation_base_t> f8_emu;
+    std::unique_ptr<fp8_conversion_base_t> f8_cvt;
 
     void compute_diff_bias_row(int ocb);
     void compute_diff_bias(int nb_oc_blocking);

@@ -36,12 +36,12 @@ using namespace Xbyak;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_a_impl_t)
 
     jit_brgemm_matmul_copy_a_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize_(conf_->a_dt_sz)
         , tr_typesize_(conf_->tr_a_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(conf_->src_dt))
@@ -64,15 +64,17 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
                           : avx512_core_dot_product_ ? 27
                                                      : 29) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
 
-    static constexpr int vlen_ = vreg_traits<Vmm>::vlen;
+    static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr int num_comp_acc_ = is_ymm_ ? 7 : 8;
 
@@ -184,10 +186,10 @@ void jit_brgemm_matmul_copy_a_impl_t<Zmm>::load_tail(
     const auto kmovx = [this](Opmask k, size_t q) {
         if (conf_->is_bf32) {
             mov(regq_tmp.cvt32(), q);
-            jit_generator::kmovw(k, regq_tmp.cvt32());
+            jit_generator_t::kmovw(k, regq_tmp.cvt32());
         } else {
             mov(regq_tmp, q);
-            jit_generator::kmovq(k, regq_tmp);
+            jit_generator_t::kmovq(k, regq_tmp);
         }
     };
 
@@ -423,7 +425,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_M_loop(
                     ptr[param1 + GET_OFF(zp_a_compensation_result_ptr)]);
             if (!is_ymm_) {
                 mov(regq_tmp, 1);
-                jit_generator::kmovw(kTail_comp, imm_addr64.cvt32());
+                jit_generator_t::kmovw(kTail_comp, imm_addr64.cvt32());
             }
         }
     }
@@ -527,12 +529,12 @@ template struct jit_brgemm_matmul_copy_a_impl_t<Ymm>;
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_a_transposed_impl_t
     : public jit_brgemm_matmul_copy_a_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_a_transposed_impl_t)
 
     jit_brgemm_matmul_copy_a_transposed_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf_->a_dt_sz)
         , tr_typesize(conf_->tr_a_dt_sz)
         , rows_step(16)
@@ -551,8 +553,10 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
                   && conf_->orig_src_dt == data_type::f16
                   && conf_->src_dt == data_type::f32) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
@@ -619,17 +623,17 @@ private:
 
     void vmovdqa64(Vmm v, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(v, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(v, ptr[imm_addr64]);
     }
 
     void vmovdqa32(Vmm v, const int32_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa32(v, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa32(v, ptr[imm_addr64]);
     }
 
     void kmovw(Opmask mask_reg, size_t mask) {
         mov(regw_tmp, mask);
-        jit_generator::kmovw(mask_reg, regw_tmp);
+        jit_generator_t::kmovw(mask_reg, regw_tmp);
     }
 
     void transpose_f32(reg64_t dst, reg64_t src, int nrows, int ncolumns);
@@ -667,9 +671,9 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
                   } else
                       mov(regw_tmp, w);
                   if (use_word_sz)
-                      jit_generator::kmovw(k, regw_tmp);
+                      jit_generator_t::kmovw(k, regw_tmp);
                   else
-                      jit_generator::kmovd(k, regw_tmp);
+                      jit_generator_t::kmovd(k, regw_tmp);
               };
 
     auto store = [this, dst](Zmm r, int i) {
@@ -874,7 +878,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
 
     const int A_rows = nstl::min(avx2_transpose_size, nrows);
     const int A_columns = nstl::min(avx2_transpose_size, ncolumns);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
             A_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
     if (rows_step <= 8) return;
@@ -885,7 +889,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     const int B_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
     add(reg_src, src_B_offset);
     add(reg_dst, dst_B_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
             B_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
 
@@ -895,7 +899,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
     add(reg_src, -src_B_offset + src_C_offset);
     add(reg_dst, -dst_B_offset + dst_C_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
             C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
 
@@ -907,7 +911,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     const int D_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
     add(reg_src, -src_C_offset + src_D_offset);
     add(reg_dst, -dst_C_offset + dst_D_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
             D_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
     sub(reg_src, src_D_offset);
@@ -932,7 +936,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_f32(
             sub(regq_tmp, 1);
         } else
             mov(regw_tmp, q);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     };
 
     const int load_mask
@@ -1280,14 +1284,14 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
 
 struct jit_brgemm_matmul_copy_a_transposed_int8_impl_t
     : public jit_brgemm_matmul_copy_a_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             jit_brgemm_matmul_copy_a_transposed_int8_impl_t)
 
     jit_brgemm_matmul_copy_a_transposed_int8_impl_t(
             const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_stride_(conf_->copy_A_src_stride)
         , dst_stride_(conf_->LDA * conf_->tr_a_dt_sz)
         , m_loop_src_shift_(columns_step_ * conf_->a_dt_sz)
@@ -1302,8 +1306,10 @@ struct jit_brgemm_matmul_copy_a_transposed_int8_impl_t
         , last_m_block_tail_(conf_->M_tail % columns_step_)
         , do_compute_compensation_(conf_->has_zero_point_b) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     constexpr static int rows_step_ = 16;
@@ -1381,7 +1387,7 @@ private:
             sub(reg_tmp_, 1);
         } else
             mov(reg_tmp_, w);
-        jit_generator::kmovd(k, reg_tmp_.cvt32());
+        jit_generator_t::kmovd(k, reg_tmp_.cvt32());
     }
 
     void transpose_int8_vpermb(Reg64 dst, Reg64 src, int nrows, int ncolumns);
@@ -1965,7 +1971,7 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 
     auto kmovw = [this](Opmask k, unsigned w) {
         mov(reg_tmp_, w);
-        jit_generator::kmovw(k, reg_tmp_.cvt32());
+        jit_generator_t::kmovw(k, reg_tmp_.cvt32());
     };
 
     kmovw(kFFFF_, 0xffff);
@@ -1978,7 +1984,7 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 
     auto vmovdqa64 = [this](Zmm z, const int64_t *addr) {
         mov(reg_tmp_, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[reg_tmp_]);
+        jit_generator_t::vmovdqa64(z, ptr[reg_tmp_]);
     };
 
     if (has_vpermb_) {
@@ -2059,12 +2065,12 @@ template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_int8_t)
 
     jit_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_stride_(conf->copy_B_wei_stride)
         , tr_src_stride_(conf->LDB * k_blk_step_ * sizeof(int8_t))
         , is_amx_(mayiuse(avx512_core_amx))
@@ -2078,8 +2084,10 @@ struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
                           : avx512_core_dot_product_ ? 23
                                                      : 25) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 protected:
     using reg64_t = const Xbyak::Reg64;
@@ -2089,7 +2097,7 @@ protected:
     static constexpr int k_blk_step_ = 4;
     static constexpr int n_blk_step_ = 64;
     static constexpr int blk_sz_ = 6;
-    static constexpr int simd_w_ = vreg_traits<Vmm>::vlen;
+    static constexpr int simd_w_ = vreg_traits_t<Vmm>::vlen;
 
     const dim_t src_stride_;
     const dim_t tr_src_stride_;
@@ -2146,7 +2154,7 @@ protected:
 
     inline void vmovdqa64(Vmm vmm, const void *addr) {
         mov(reg_tmp, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(vmm, ptr[reg_tmp]);
+        jit_generator_t::vmovdqa64(vmm, ptr[reg_tmp]);
     }
 
     inline Vmm get_vmm(int blk, int idx) {
@@ -2196,7 +2204,7 @@ inline void jit_brgemm_matmul_copy_b_int8_t<Zmm>::kmovq(Opmask k, size_t q) {
         sub(reg_tmp, 1);
     } else
         mov(reg_tmp, q);
-    jit_generator::kmovq(k, reg_tmp);
+    jit_generator_t::kmovq(k, reg_tmp);
 }
 
 template struct jit_brgemm_matmul_copy_b_int8_t<Zmm>;
@@ -2206,9 +2214,12 @@ struct jit_amx_brgemm_matmul_copy_b_int8_t
     : public jit_brgemm_matmul_copy_b_int8_t<Xbyak::Zmm> {
 
     jit_amx_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_int8_t<Xbyak::Zmm>(conf) {}
+        : jit_brgemm_matmul_copy_b_int8_t<Xbyak::Zmm>(conf)
+        , do_N_loop_(conf->LDB < conf->N_blk) {}
 
 private:
+    const bool do_N_loop_;
+
     void init_permute() override {
         alignas(64) static constexpr const uint8_t idx_lo_16[64] = {0, 1, 64,
                 65, 4, 5, 68, 69, 2, 3, 66, 67, 6, 7, 70, 71, 8, 9, 72, 73, 12,
@@ -2244,7 +2255,8 @@ private:
 
     void copy_block(
             int nrows, int ncolumns, bool n_tail, bool zeropad) override {
-        if (!is_dynamic_N_ || !n_tail) {
+
+        if (!do_N_loop_ && (!is_dynamic_N_ || !n_tail)) {
             copy_4x64(nrows, ncolumns, zeropad);
             return;
         }
@@ -2270,7 +2282,14 @@ private:
             copy_4x64(nrows, n_blk_step_, zeropad);
             add(reg_copy_block_n_shift, n_blk_step_ * typesize);
             add(reg_src, n_blk_step_ * typesize);
-            add(reg_tr_src, n_blk_step_ * k_blk_step_ * typesize);
+
+            if (do_N_loop_)
+                // (n_blk_step_ /conf_->LDB) --> # of LDBs handled by copy_4x64
+                add(reg_tr_src,
+                        (n_blk_step_ / conf_->LDB) * conf_->LDB2 * typesize);
+            else
+                add(reg_tr_src, n_blk_step_ * k_blk_step_ * typesize);
+
             sub(reg_dynamic_tail, n_blk_step_);
 
             cmp(reg_dynamic_tail, 0);
@@ -2290,7 +2309,10 @@ private:
             jle(loop_row_done, T_NEAR);
 
             add(reg_src, reg_copy_block_n_shift);
-            copy_4x64(nrows, 1 /* to force tail case */, zeropad);
+            if (do_N_loop_ && !is_dynamic_N_)
+                copy_4x64(nrows, ncolumns % n_blk_step_, zeropad);
+            else
+                copy_4x64(nrows, 1 /* to force tail case */, zeropad);
         }
         L(loop_row_done);
 
@@ -2300,6 +2322,12 @@ private:
     }
 
     void copy_4x64(int nrows, int ncolumns, bool zeropad) override {
+
+        auto tr_src_off_n = [&](int n_elem) {
+            return ((n_elem / conf_->LDB) * conf_->LDB2
+                    + (n_elem % conf_->LDB) * k_blk_step_);
+        };
+
         const bool is_tail = ncolumns < n_blk_step_;
         const auto tail_mask = size_t(((size_t)1 << ncolumns) - 1);
 
@@ -2354,12 +2382,14 @@ private:
             if (!zeropad && (ncolumns > 16 || dynamic_tail)) {
                 vmovups(get_vmm(k, 3), vreg_idx_hi_128);
                 vpermi2b(get_vmm(k, 3), get_vmm(k, 4), get_vmm(k, 0));
-                vmovups(EVEX_compress_addr(reg_tr_src, tr_src_off_base + 64),
+                vmovups(EVEX_compress_addr(
+                                reg_tr_src, tr_src_off_base + tr_src_off_n(16)),
                         get_vmm(k, 3));
                 if (do_compute_compensation_)
                     vpdpbusd(get_comp_acc(1), vmm_comp_mul, get_vmm(k, 3));
             } else if (conf_->wei_n_blk > 16) {
-                vmovups(EVEX_compress_addr(reg_tr_src, tr_src_off_base + 64),
+                vmovups(EVEX_compress_addr(
+                                reg_tr_src, tr_src_off_base + tr_src_off_n(16)),
                         vmm_zero);
             }
 
@@ -2370,12 +2400,14 @@ private:
             if (!zeropad && (ncolumns > 32 || dynamic_tail)) {
                 vmovups(get_vmm(k, 4), vreg_idx_lo_128);
                 vpermi2b(get_vmm(k, 4), get_vmm(k, 5), get_vmm(k, 2));
-                vmovups(EVEX_compress_addr(reg_tr_src, tr_src_off_base + 128),
+                vmovups(EVEX_compress_addr(
+                                reg_tr_src, tr_src_off_base + tr_src_off_n(32)),
                         get_vmm(k, 4));
                 if (do_compute_compensation_)
                     vpdpbusd(get_comp_acc(2), vmm_comp_mul, get_vmm(k, 4));
             } else if (conf_->wei_n_blk > 32) {
-                vmovups(EVEX_compress_addr(reg_tr_src, tr_src_off_base + 128),
+                vmovups(EVEX_compress_addr(
+                                reg_tr_src, tr_src_off_base + tr_src_off_n(32)),
                         vmm_zero);
             }
 
@@ -2386,12 +2418,14 @@ private:
             if (!zeropad && (ncolumns > 48 || dynamic_tail)) {
                 vmovups(get_vmm(k, 0), vreg_idx_hi_128);
                 vpermi2b(get_vmm(k, 0), get_vmm(k, 5), get_vmm(k, 2));
-                vmovups(EVEX_compress_addr(reg_tr_src, tr_src_off_base + 192),
+                vmovups(EVEX_compress_addr(
+                                reg_tr_src, tr_src_off_base + tr_src_off_n(48)),
                         get_vmm(k, 0));
                 if (do_compute_compensation_)
                     vpdpbusd(get_comp_acc(3), vmm_comp_mul, get_vmm(k, 0));
             } else if (conf_->wei_n_blk > 48) {
-                vmovups(EVEX_compress_addr(reg_tr_src, tr_src_off_base + 192),
+                vmovups(EVEX_compress_addr(
+                                reg_tr_src, tr_src_off_base + tr_src_off_n(48)),
                         vmm_zero);
             }
             L(k_loop_done);
@@ -2859,12 +2893,12 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_bf16_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_bf16_t)
 
     jit_brgemm_matmul_copy_b_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf->b_dt_sz)
         , tr_typesize(conf->tr_b_dt_sz)
         , scales_typesize(sizeof(float))
@@ -2874,13 +2908,16 @@ struct jit_brgemm_matmul_copy_b_bf16_t : public jit_brgemm_matmul_copy_b_t,
         , is_src_int4(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , is_dynamic_stride(is_runtime_value(src_stride))
         , is_dynamic_N(conf->is_runtime_N)
+        , do_N_loop(conf->LDB < conf->N_blk)
         , req_cvtps2bf16(conf->is_bf32 || conf->is_bf16_with_int_wei)
         , req_zp_b_shift(conf->has_zero_point_b && conf->with_wei_decompression)
         , req_apply_scales(conf->apply_scales_in_buffer_b)
         , typesize_scale(is_src_int4 ? 2 : 1) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
@@ -2888,7 +2925,7 @@ private:
     using opmask_t = const Xbyak::Opmask;
     using zmm = const Xbyak::Zmm;
     using ymm = const Xbyak::Ymm;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize, tr_typesize, scales_typesize;
@@ -2896,6 +2933,7 @@ private:
     const bool is_src_int4;
     const bool is_dynamic_stride;
     const bool is_dynamic_N;
+    const bool do_N_loop;
     const bool req_cvtps2bf16;
     const bool req_zp_b_shift;
     const bool req_apply_scales;
@@ -2947,9 +2985,9 @@ private:
         } else
             mov(regw_tmp, w);
         if (req_cvtps2bf16)
-            jit_generator::kmovw(k, regw_tmp);
+            jit_generator_t::kmovw(k, regw_tmp);
         else
-            jit_generator::kmovd(k, regw_tmp);
+            jit_generator_t::kmovd(k, regw_tmp);
     }
     void copy_half_int4(const Zmm &zmm, const Ymm &ymm_half) {
         vinserti64x4(zmm, zmm, ymm_half, 1);
@@ -3083,16 +3121,21 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
     };
 
     int iter = 0;
+    int n_iters;
+    if (is_dynamic_N || do_N_loop) {
+        n_iters = ncolumns;
+    } else {
+        n_iters = conf_->wei_n_blk;
+    }
     for_(int k = 0; k < nrows; k += k_blk_step)
-    for (int n = 0; n < (is_dynamic_N ? ncolumns : conf_->wei_n_blk);
-            n += n_blk_step) {
+    for (int n = 0; n < n_iters; n += n_blk_step) {
         const int k_blk = k / k_blk_step;
         const dim_t tr_src_off
                 = k_blk * tr_src_stride + n * k_blk_step * tr_typesize;
         const auto store_addr
                 = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off);
         const auto store_addr_ymm1
-                = ptr[reg_tr_src + tr_src_off + vreg_traits<Vmm>::vlen];
+                = ptr[reg_tr_src + tr_src_off + vreg_traits_t<Vmm>::vlen];
         const int blk_idx = iter % max_unroll;
         const auto src_vmm0 = get_vmm(blk_idx, 0);
         const auto src_zmm0 = zmm(src_vmm0.getIdx());
@@ -3177,7 +3220,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_block(
         int nrows, int ncolumns, bool n_tail, bool zeropad) {
-    if (!is_dynamic_N || !n_tail) {
+    if (!do_N_loop && (!is_dynamic_N || !n_tail)) {
         copy_2x32(nrows, ncolumns, zeropad);
         return;
     }
@@ -3192,25 +3235,44 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_block(
     mov(ptr[rsp + reg_tr_src_offs], reg_tr_src);
     xor_(reg_copy_block_n_shift, reg_copy_block_n_shift);
 
+    int current_n_blk_step = do_N_loop ? conf_->LDB : n_blk_step;
+
     Label loop_row_start, loop_row_tail, loop_row_done;
-    cmp(reg_dynamic_tail, n_blk_step);
+    cmp(reg_dynamic_tail, current_n_blk_step);
     jl(loop_row_tail, T_NEAR);
     L(loop_row_start);
     {
         mov(ptr[rsp + reg_src_offs], reg_src);
         add(reg_src, reg_copy_block_n_shift);
-        copy_2x32(nrows, n_blk_step, zeropad);
-        add(reg_copy_block_n_shift, n_blk_step * typesize);
-        add(reg_src, n_blk_step * typesize);
-        add(reg_tr_src, n_blk_step * k_blk_step * tr_typesize);
-        sub(reg_dynamic_tail, n_blk_step);
+        copy_2x32(nrows, current_n_blk_step, zeropad);
+
+        if (do_N_loop) {
+            add(reg_tr_src,
+                    (current_n_blk_step / conf_->LDB) * conf_->LDB2
+                            * tr_typesize);
+            add(reg_src,
+                    conf_->B_strides[0] == typesize
+                            ? current_n_blk_step * typesize
+                            : conf_->B_strides[0]);
+            add(reg_copy_block_n_shift,
+                    conf_->B_strides[0] == typesize
+                            ? current_n_blk_step * typesize
+                            : conf_->B_strides[0]);
+
+        } else {
+            add(reg_src, current_n_blk_step * typesize);
+            add(reg_tr_src, current_n_blk_step * k_blk_step * tr_typesize);
+            add(reg_copy_block_n_shift, current_n_blk_step * typesize);
+        }
+
+        sub(reg_dynamic_tail, current_n_blk_step);
 
         cmp(reg_dynamic_tail, 0);
         jle(loop_row_done, T_NEAR);
 
         mov(reg_src, ptr[rsp + reg_src_offs]);
 
-        cmp(reg_dynamic_tail, n_blk_step);
+        cmp(reg_dynamic_tail, current_n_blk_step);
         jl(loop_row_tail, T_NEAR);
 
         jmp(loop_row_start, T_NEAR);
@@ -3222,7 +3284,11 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_block(
         jle(loop_row_done, T_NEAR);
 
         add(reg_src, reg_copy_block_n_shift);
-        copy_2x32(nrows, 1 /* to force tail case */, zeropad);
+        if (do_N_loop) {
+            copy_2x32(nrows, ncolumns % current_n_blk_step, zeropad);
+        } else {
+            copy_2x32(nrows, 1 /* to force tail case */, zeropad);
+        }
     }
     L(loop_row_done);
 
@@ -3343,14 +3409,14 @@ template struct jit_brgemm_matmul_copy_b_bf16_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
-                                        public jit_generator {
+                                        public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_f32_t)
 
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , dt_in_(conf->orig_wei_dt)
-        , simd_w_(vreg_traits<Vmm>::vlen / sizeof(float))
+        , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , req_zp_b_shift_(
                   conf->has_zero_point_b && conf->with_wei_decompression)
@@ -3362,14 +3428,16 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
         , tr_src_stride_(conf_->LDB * typesize_out_)
         , scales_N_stride_(conf_->N * scales_typesize_) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const data_type_t dt_in_;
     const int simd_w_;
@@ -3403,7 +3471,7 @@ private:
     inline void kmovw(Opmask k, unsigned w) {
         if (!isa_has_masks(conf_->isa)) return;
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     }
     void copy_half_int4(const Zmm &zmm, const Ymm &ymm_half) {
         vinserti64x4(zmm, zmm, ymm_half, 1);
@@ -3622,12 +3690,12 @@ template struct jit_brgemm_matmul_copy_b_f32_t<Ymm>;
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_transposed_t
     : public jit_brgemm_matmul_copy_b_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_transposed_t)
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize_(conf_->b_dt_sz)
         , tr_typesize_(conf_->tr_b_dt_sz)
         , scales_typesize_(sizeof(float))
@@ -3670,19 +3738,21 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , typesize_scale_(is_src_int4_ ? 2 : 1)
         , is_dynamic_N_(conf->is_runtime_N) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr cpu_isa_t isa_ = is_ymm_ ? avx2 : avx512_core;
-    static constexpr int max_vmm_regs_ = cpu_isa_traits<isa_>::n_vregs;
-    static constexpr int vlen_ = vreg_traits<Vmm>::vlen;
+    static constexpr int max_vmm_regs_ = cpu_isa_traits_t<isa_>::n_vregs;
+    static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr int n_blk_step_ = is_ymm_ ? 8 : 16;
     static constexpr int req_cvt_bf16_k_blk_step_ = 16;
     static constexpr size_t comp_shift_ = vlen_;
@@ -3708,6 +3778,9 @@ private:
 
     const dim_t src_stride_, tr_src_stride_, scales_K_stride_, typesize_scale_;
     const bool is_dynamic_N_;
+
+    constexpr static int ldb_step_idx_offs = 0;
+    constexpr static int stack_space_needed = 8;
 
     opmask_t k3333 = k1;
     opmask_t k5555 = k2;
@@ -3755,12 +3828,12 @@ private:
 
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     };
 
     void kmovq(Opmask k, size_t q) {
         mov(regq_tmp, q);
-        jit_generator::kmovq(k, regq_tmp);
+        jit_generator_t::kmovq(k, regq_tmp);
     };
 
     Vmm src_vmm(int i) {
@@ -4399,11 +4472,38 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
         cmp(reg_N_iters, n_blk_step_);
         jl(N_loop_tail_or_done, T_NEAR);
     }
+    if (conf_->LDB2 > 0) {
+        mov(regq_tmp, 0);
+        mov(ptr[rsp + ldb_step_idx_offs], regq_tmp);
+    }
 
     L(N_loop);
     compute_K_loop(false, curr_K_tail, is_first_K_iter, is_last_K_iter);
+
     add(reg_src_base, (n_blk_step_ * src_stride_) / typesize_scale_);
-    add(reg_tr_src_base, n_blk_step_ * vnni_granularity_ * tr_typesize_);
+    if (conf_->LDB2 > 0) {
+        Label small_increment, ldb_off_done;
+        mov(regq_tmp, ptr[rsp + ldb_step_idx_offs]);
+        add(regq_tmp, n_blk_step_);
+
+        cmp(regq_tmp, conf_->LDB);
+        jne(small_increment, T_NEAR);
+
+        add(reg_tr_src_base,
+                -conf_->LDB * vnni_granularity_ * tr_typesize_
+                        + n_blk_step_ * vnni_granularity_ * tr_typesize_
+                        + conf_->LDB2 * tr_typesize_);
+        mov(regq_tmp, 0);
+        mov(ptr[rsp + ldb_step_idx_offs], regq_tmp);
+        jmp(ldb_off_done, T_NEAR);
+        L(small_increment);
+        add(reg_tr_src_base, n_blk_step_ * vnni_granularity_ * tr_typesize_);
+        mov(ptr[rsp + ldb_step_idx_offs], regq_tmp);
+        L(ldb_off_done);
+    } else {
+        add(reg_tr_src_base, n_blk_step_ * vnni_granularity_ * tr_typesize_);
+    }
+
     if (req_apply_scales_) add(reg_scales_base, n_blk_step_ * scales_K_stride_);
 
     if (req_zp_comp_) add(reg_zp_comp_ptr, comp_shift_);
@@ -4427,6 +4527,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
     preamble();
+    sub(rsp, stack_space_needed);
 
     if (avx512_core_dot_product_) {
         mov(regq_tmp.cvt16(), 1);
@@ -4539,6 +4640,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
     compute_body(false, false);
     L(done);
 
+    add(rsp, stack_space_needed);
     postamble();
 }
 
@@ -4547,12 +4649,12 @@ template struct jit_brgemm_matmul_copy_b_transposed_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_cvt_bf16_t : public jit_brgemm_matmul_copy_b_t,
-                                             public jit_generator {
+                                             public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_cvt_bf16_t)
 
     jit_brgemm_matmul_copy_b_cvt_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , scales_typesize_(sizeof(float))
@@ -4569,14 +4671,16 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t : public jit_brgemm_matmul_copy_b_t,
                           : req_zp_b_shift_ ? 1
                                             : 0) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using zmm = const Xbyak::Zmm;
     using ymm = const Xbyak::Ymm;
 
@@ -4601,6 +4705,9 @@ private:
     reg64_t reg_scales = r10;
     reg64_t reg_tmp = r11;
     reg32_t regw_tmp = r11d;
+
+    reg64_t reg_src_back = r12;
+    reg64_t reg_tr_src_back = r13;
 
     Vmm vmm_zp_b_val = Vmm(0);
     Vmm vmm_permd = Vmm(1);
@@ -4839,7 +4946,6 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
                       Label K_loop_done;
                       cmp(reg_K, 0);
                       jle(K_loop_done, T_NEAR);
-
                       copy_block(k_blk_tail, ncolumns, zeropad);
                       add(reg_tr_src, tr_src_stride_);
                       sub(reg_K, k_blk_tail);
@@ -4848,29 +4954,61 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
               };
 
     auto compute_K_loop = [&](const int ncolumns) {
+        mov(reg_src_back, reg_src);
+        mov(reg_tr_src_back, reg_tr_src);
+
         mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
         compute_K_loop_body(reg_K_iters, ncolumns, false);
         mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_pad)]);
         compute_K_loop_body(reg_K_iters, ncolumns, true);
+
+        mov(reg_src, reg_src_back);
+        mov(reg_tr_src, reg_tr_src_back);
     };
 
     Label done;
     cmp(reg_N_blk, 0);
     jle(done, T_NEAR);
 
-    if (conf_->N_tail > 0) {
-        Label main_N_blk;
-        cmp(reg_N_blk, conf_->N_blk);
-        je(main_N_blk, T_NEAR);
-        compute_K_loop(conf_->N_tail);
-        jmp(done, T_NEAR);
+    if (conf_->LDB2 != 0) {
+        Label main_N_loop, main_N_loop_tail;
+        int tail = conf_->N % conf_->LDB;
 
-        L(main_N_blk);
+        if (tail != 0) {
+            cmp(reg_N_blk, conf_->LDB);
+            jl(main_N_loop_tail, T_NEAR);
+        }
+
+        L(main_N_loop);
+        compute_K_loop(conf_->LDB);
+        add(reg_src, conf_->LDB2 * typesize_);
+        add(reg_tr_src, conf_->LDB2 * tr_typesize_);
+
+        sub(reg_N_blk, conf_->LDB);
+        cmp(reg_N_blk, conf_->LDB);
+        jge(main_N_loop, T_NEAR);
+
+        if (tail != 0) {
+            L(main_N_loop_tail);
+            cmp(reg_N_blk, 0);
+            jle(done, T_NEAR);
+            compute_K_loop(tail);
+        }
+
+    } else {
+        if (conf_->N_tail > 0) {
+            Label main_N_blk;
+            cmp(reg_N_blk, conf_->N_blk);
+            je(main_N_blk, T_NEAR);
+            compute_K_loop(conf_->N_tail);
+            jmp(done, T_NEAR);
+
+            L(main_N_blk);
+        }
+
+        compute_K_loop(conf_->N_blk);
     }
-
-    compute_K_loop(conf_->N_blk);
     L(done);
-
     postamble();
 }
 

@@ -41,6 +41,9 @@ namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
+#define VCHECK_FUSION_INFO(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, fusion_info, (cond), status, msg, \
+            ##__VA_ARGS__);
 
 // This class is used to represent an op's fusion information, such as the post
 // ops, the zero points or scales.
@@ -113,7 +116,8 @@ public:
                 return nullptr;
             return const_cast<op_t *>(input_scales_.at(index)->get_op());
         } else {
-            assertm(index == 0, "index for output scales must be 0");
+            VCHECK_FUSION_INFO(
+                    index == 0, nullptr, "index for output scales must be 0");
             if (!dst_scales_) return nullptr;
             return const_cast<op_t *>(dst_scales_->get_op());
         }
@@ -144,7 +148,8 @@ public:
             if (input_zps_.find(index) == input_zps_.end()) return nullptr;
             return const_cast<op_t *>(input_zps_.at(index)->get_op());
         } else {
-            assertm(index == 0, "index for output zps must be 0");
+            VCHECK_FUSION_INFO(
+                    index == 0, nullptr, "index for output zps must be 0");
             if (!output_zps_) return nullptr;
             return const_cast<op_t *>(output_zps_->get_op());
         }
@@ -199,7 +204,8 @@ public:
                             == op_kind::dnnl_convolution;
                 });
 
-        assertm(pos != post_ops_.end(), "cannot find post dw_conv");
+        VCHECK_FUSION_INFO(
+                pos != post_ops_.end(), *pos, "cannot find post dw_conv");
         return *pos;
     }
 
@@ -281,21 +287,21 @@ public:
 
     // Initialize an empty fusion info object and return its key
     int64_t init_info() {
-        data_.emplace_back(fusion_info_t());
+        data_.emplace_back();
         return static_cast<int64_t>(data_.size() - 1);
     }
 
     // Get out a mutable fusion info reference according to the key
     fusion_info_t &get_mutable_info(int64_t key) {
         size_t k = static_cast<size_t>(key);
-        assertm(k < data_.size(), "invalid key");
+        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
         return data_[k];
     }
 
     // Get out a constant fusion info reference according to the key
     const fusion_info_t &get_info(int64_t key) const {
         size_t k = static_cast<size_t>(key);
-        assertm(k < data_.size(), "invalid key");
+        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
         return data_[k];
     }
 
@@ -305,7 +311,7 @@ public:
 private:
     std::vector<fusion_info_t> data_;
     // specified floating-point math mode for all fusions
-    fpmath_t fpmath_mode_ {};
+    fpmath_t fpmath_mode_;
     bool can_use_blocked_layout_;
 };
 

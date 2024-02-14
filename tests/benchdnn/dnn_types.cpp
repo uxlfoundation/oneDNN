@@ -75,8 +75,8 @@ std::ostream &operator<<(std::ostream &s, dnnl_engine_kind_t ek) {
 }
 
 dnnl_prop_kind_t prop2prop_kind(const dir_t dir) {
-    if (dir == FWD_D) return dnnl_forward_training;
     if (dir == FWD_I) return dnnl_forward_inference;
+    if (dir & FLAG_FWD) return dnnl_forward_training;
     if (dir == BWD_DW) return dnnl_backward;
     assert(!"unknown dir");
     return dnnl_prop_kind_undef;
@@ -598,6 +598,12 @@ std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
 
         assert(mask >= 0);
         v_masks.emplace_back(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | arg, mask);
+
+        // there is no broadcasting support for the ternary src2 input, hence
+        // no mask is required.
+        if (e.is_binary_kind_with_ternary_op())
+            v_masks.emplace_back(
+                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2, -1);
     }
     return v_masks;
 }
@@ -630,11 +636,10 @@ bool attr_t::post_ops_t::entry_t::is_eltwise_kind() const {
     return kind > ELTWISE_START && kind < ELTWISE_END;
 }
 bool attr_t::post_ops_t::entry_t::is_binary_kind() const {
-    // binary select is a ternary operation and not currently
-    // supported in post-ops for the binary primitive
-    // TODO: add post-ops support for binary select operation
-    return kind > pk_t::BINARY_START && kind < pk_t::BINARY_END
-            && kind != pk_t::SELECT;
+    return kind > pk_t::BINARY_START && kind < pk_t::BINARY_END;
+}
+bool attr_t::post_ops_t::entry_t::is_binary_kind_with_ternary_op() const {
+    return kind == pk_t::SELECT;
 }
 bool attr_t::post_ops_t::entry_t::is_prelu_kind() const {
     return kind == PRELU;
@@ -747,18 +752,42 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
                 s << ":" << e.eltwise.alpha;
         } else if (e.is_binary_kind()) {
             s << ":" << e.binary.src1_dt;
+            const auto src_delim
+                    = e.is_binary_kind_with_ternary_op() ? "." : ":";
+
             using mask_input_t
                     = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
+
             if (e.binary.mask_input != mask_input_t::none
                     || e.binary.tag != tag::any) {
                 if (e.binary.mask_input == mask_input_t::mask) {
-                    s << ":" << e.binary.mask;
+                    s << src_delim << e.binary.mask;
                 } else {
                     assert(e.binary.mask_input == mask_input_t::policy);
-                    s << ":" << e.binary.policy;
+                    s << src_delim << e.binary.policy;
                 }
             }
-            if (e.binary.tag != tag::any) s << ":" << e.binary.tag;
+            if (e.binary.tag != tag::any) s << src_delim << e.binary.tag;
+
+            if (e.is_binary_kind_with_ternary_op()) {
+                bool delim_added = false;
+
+                if (e.binary.src2_mask_input != mask_input_t::none
+                        || e.binary.src2_tag != tag::any) {
+                    s << ":";
+                    delim_added = true;
+                    if (e.binary.src2_mask_input == mask_input_t::mask) {
+                        s << e.binary.src2_mask;
+                    } else {
+                        assert(e.binary.src2_mask_input
+                                == mask_input_t::policy);
+                        s << e.binary.src2_policy;
+                    }
+                }
+                if (e.binary.src2_tag != tag::any) {
+                    s << (delim_added ? src_delim : ":") << e.binary.src2_tag;
+                }
+            }
         } else if (e.is_prelu_kind()) {
             if (e.prelu.policy != policy_t::COMMON) {
                 s << ":" << e.prelu.policy;
@@ -833,7 +862,6 @@ std::ostream &operator<<(std::ostream &s, const attr_t &attr) {
     return s;
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 std::ostream &operator<<(std::ostream &s, dnnl_sparse_encoding_t se) {
     s << sparse_encoding2str(se);
     return s;
@@ -861,7 +889,6 @@ std::ostream &operator<<(
     }
     return s;
 }
-#endif
 
 std::ostream &operator<<(std::ostream &s, memory_kind_ext_t memory_kind) {
     switch (memory_kind) {
@@ -918,8 +945,8 @@ std::ostream &dump_global_params(std::ostream &s) {
     if (canonical || stream_kind != default_stream_kind)
         s << "--stream-kind=" << stream_kind << " ";
 #endif
-    if (canonical || cold_cache_mode != default_cold_cache_mode)
-        s << "--cold-cache=" << cold_cache_mode << " ";
+    if (canonical || cold_cache_input != default_cold_cache_input())
+        s << "--cold-cache=" << cold_cache_input << " ";
     if (canonical || execution_mode != execution_mode_t::direct)
         s << "--execution-mode=" << execution_mode2str(execution_mode) << " ";
 
@@ -1065,6 +1092,15 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));
+
+            if (e.is_binary_kind_with_ternary_op()) {
+                auto rhs_src2_tensor_desc = dnn_mem_t::init_md(
+                        ndims, dims, e.binary.src2_dt, tag::any);
+                mds.emplace(
+                        (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2),
+                        std::move(rhs_src2_tensor_desc));
+            }
+
         } else if (e.is_convolution_kind()) {
             // Update dims for post operations appended after conv_dw
             conv_dw_fusion::get_fused_conv_dst_dims(ndims, e, dims, dims);
@@ -1168,9 +1204,17 @@ dnnl_primitive_attr_t create_dnnl_attr(
             } else if (e.is_binary_kind()) {
                 const auto &src1_md = attr_args.get_md(
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1));
+                const auto &src2_md = attr_args.get_md(
+                        (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2));
                 assert(query_md_ndims(src1_md) != 0);
-                DNN_SAFE_V(dnnl_post_ops_append_binary(
-                        ops, e.binary.alg, src1_md));
+
+                if (e.is_binary_kind_with_ternary_op()) {
+                    assert(query_md_ndims(src2_md) != 0);
+                }
+
+                DNN_SAFE_V(dnnl_post_ops_append_binary_v2(
+                        ops, e.binary.alg, src1_md, src2_md));
+
             } else if (e.is_prelu_kind()) {
                 const auto &policy = e.prelu.policy;
                 const auto mask = attr_t::get_default_mask(policy);
@@ -1678,7 +1722,15 @@ void maybe_post_ops(const attr_t &attr, float &val, float sum_val,
             const auto &b = e.eltwise.beta;
             val = compute_eltwise_fwd(e.kind, val, a, b);
         } else if (e.is_binary_kind()) {
-            val = compute_binary(e.kind, val, *it_po, false);
+
+            auto src1_val = *it_po;
+            bool src2_val = false;
+
+            if (e.is_binary_kind_with_ternary_op()) {
+                it_po++;
+                src2_val = static_cast<bool>(*it_po);
+            }
+            val = compute_binary(e.kind, val, src1_val, src2_val);
             it_po++;
         } else if (e.is_prelu_kind()) {
             val = val > 0 ? val : val * (*it_po);
@@ -1687,24 +1739,33 @@ void maybe_post_ops(const attr_t &attr, float &val, float sum_val,
     }
 }
 
-void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t new_dt) {
+// This is a part of prim_ref setup. Update binary post-op data types and tags
+// to let prim_ref dispatch to the library as GPU may use data types not
+// supported natively on CPU, and output format may not be supported as well.
+// prim_ref will be configured and correspondent reorders used to a selected by
+// the library format.
+//
+// `dst_dt` helps to decide on sum_dt. When it's not f32, `sum.dt` must be
+// preserved, otherwise, updated.
+void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt) {
     auto &po = attr.post_ops;
     for (int idx = 0; idx < po.len(); ++idx) {
         auto &e = po.entry[idx];
-        if (!e.is_binary_kind()) continue;
-
-        e.binary.src1_dt = new_dt;
-        e.binary.tag = tag::abx; // Hardcoded in local fill functions.
-        // Since tag is updated, it might get printed with policy, which means
-        // that mask_input should be specified.
-        using mask_input_t
-                = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
-        if (e.binary.mask_input == mask_input_t::none)
-            e.binary.mask_input = mask_input_t::policy;
+        if (e.is_binary_kind()) {
+            e.binary.src1_dt = dnnl_f32;
+            e.binary.tag = tag::any;
+            // Since tag is updated, it might get printed with policy, which
+            // means that mask_input should be specified.
+            using mask_input_t
+                    = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
+            if (e.binary.mask_input == mask_input_t::none)
+                e.binary.mask_input = mask_input_t::policy;
+        } else if (e.is_sum_kind()) {
+            if (dst_dt == dnnl_f32) e.sum.dt = dnnl_data_type_undef;
+        }
     }
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 int sparse_options_t::from_str(const std::string &s) {
     *this = sparse_options_t();
     if (s.empty()) return OK;
@@ -1721,7 +1782,9 @@ int sparse_options_t::from_str(const std::string &s) {
     int options_count = 0;
     size_t start_pos = 0;
     while (start_pos != std::string::npos) {
-        auto subs = parser::get_substr(s, start_pos, ':');
+        // Note: `csr+0.99::` is a valid input, dangling `:` is legit.
+        auto subs = parser::get_substr(
+                s, start_pos, ':', /* allow_dangling = */ true);
 
         if (subs.empty()) {
             add(get_arg(options_count), sparse_options_t::def_encoding,
@@ -1747,4 +1810,3 @@ int sparse_options_t::from_str(const std::string &s) {
     static const int expected_num_options = 3;
     return options_count == expected_num_options ? OK : FAIL;
 }
-#endif

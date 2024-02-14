@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,17 +32,18 @@ namespace cpu {
 namespace x64 {
 
 template <typename Vmm>
-struct _jit_avx512_core_x8s8s32x_1x1_conv_kernel : public jit_generator {
+struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_avx512_core_x8s8s32x_1x1_conv_fwd_ker_t)
-    _jit_avx512_core_x8s8s32x_1x1_conv_kernel(const jit_1x1_conv_conf_t &ajcp,
-            const primitive_attr_t &attr, const memory_desc_t &dst_md);
+    jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t(
+            const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
+            const memory_desc_t &dst_md);
 
     jit_1x1_conv_conf_t jcp;
     const primitive_attr_t &attr_;
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     using Vmm_down_t =
             typename utils::conditional<std::is_same<Vmm, Xbyak::Zmm>::value,
                     Xbyak::Ymm, Xbyak::Xmm>::type;
@@ -148,26 +149,26 @@ private:
             bool mask_flag);
 };
 
-struct jit_avx512_core_x8s8s32x_1x1_conv_kernel {
-    jit_avx512_core_x8s8s32x_1x1_conv_kernel(const jit_1x1_conv_conf_t &ajcp,
+struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_t {
+    jit_avx512_core_x8s8s32x_1x1_conv_kernel_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
         int ch_block = ajcp.ic_block;
         switch (ch_block) {
             case 16:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Xbyak::Zmm>>(
-                        ajcp, attr, dst_md);
+                        jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<
+                                Xbyak::Zmm>>(ajcp, attr, dst_md);
                 return;
             case 8:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Xbyak::Ymm>>(
-                        ajcp, attr, dst_md);
+                        jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<
+                                Xbyak::Ymm>>(ajcp, attr, dst_md);
                 return;
             case 4:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Xbyak::Xmm>>(
-                        ajcp, attr, dst_md);
+                        jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<
+                                Xbyak::Xmm>>(ajcp, attr, dst_md);
                 return;
             default: assert(!"invalid channel blocking");
         }
@@ -178,7 +179,7 @@ struct jit_avx512_core_x8s8s32x_1x1_conv_kernel {
         return status::out_of_memory;
     }
 
-    ~jit_avx512_core_x8s8s32x_1x1_conv_kernel() = default;
+    ~jit_avx512_core_x8s8s32x_1x1_conv_kernel_t() = default;
 
     static status_t init_conf(jit_1x1_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_t *&src_md,
@@ -189,12 +190,12 @@ struct jit_avx512_core_x8s8s32x_1x1_conv_kernel {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr);
 
-    void operator()(const jit_1x1_conv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_1x1_conv_args_t *p) const { (*kernel_)(p); }
     const Xbyak::uint8 *jit_ker() const { return kernel_->jit_ker(); }
 
 private:
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_x8s8s32x_1x1_conv_kernel);
-    std::unique_ptr<jit_generator> kernel_;
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_x8s8s32x_1x1_conv_kernel_t);
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

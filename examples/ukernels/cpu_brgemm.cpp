@@ -36,9 +36,6 @@
 using namespace dnnl;
 using namespace dnnl::ukernel;
 
-using tag = memory::format_tag;
-using dt = memory::data_type;
-
 void brgemm_example() {
 
     // Create execution dnnl::engine. Needed for reorders to operate over input
@@ -49,34 +46,35 @@ void brgemm_example() {
     dnnl::stream engine_stream(engine);
 
     // ukernel dimensions.
-    // K is for a whole tensor, K_k is for a single ukernel.
-    const memory::dim M = 8, K = 128, K_k = 64, N = 48;
-    if (K % K_k != 0) {
-        printf("K_k must divide K.\n");
+    // K is for a whole tensor, K_blk is for a single ukernel.
+    const memory::dim M = 8, K = 128, K_blk = 64, N = 48;
+    if (K % K_blk != 0) {
+        printf("K_blk must divide K.\n");
         return;
     }
-    const memory::dim n_calls = K / K_k;
+    const memory::dim n_calls = K / K_blk;
 
-    memory::data_type a_dt = dt::u8;
-    memory::data_type b_dt = dt::s8;
-    memory::data_type c_dt = dt::s32; // Accumulator data type.
-    memory::data_type d_dt = dt::f32; // Output data type.
+    memory::data_type a_dt = memory::data_type::u8;
+    memory::data_type b_dt = memory::data_type::s8;
+    memory::data_type c_dt = memory::data_type::s32; // Accumulator data type.
+    memory::data_type d_dt = memory::data_type::f32; // Output data type.
 
     // Query the packing requirement from the ukernel. It's enough to query
-    // packing requirements once for multiple objects.
-    // Based on this information, specific `ldb` value can be used, since
-    // transform has a limited set of values supported.
-    bool need_pack = false;
-    try {
-        need_pack = brgemm::get_B_pack_type(a_dt, b_dt) == pack_type::pack32;
-    } catch (error &e) {
-        if (e.status == dnnl_unimplemented)
-            throw example_allows_unimplemented {
-                    "Kernel is not supported on this platform.\n"};
+    // packing requirements once for multiple ukernel objects.
+    const auto pack = brgemm::get_B_pack_type(a_dt, b_dt);
 
-        // on any other error just re-throw
-        throw;
+    // If the value is `pack_type::undef`, ukernel API is not supported on the
+    // target system.
+    if (pack == pack_type::undef) {
+        printf("Kernel is not supported on this platform.\n");
+        return;
     }
+
+    // Packing is required if the returned value is different from
+    // `pack_type::no_pack`.
+    // If packing is required, specific `ldb` value can be used ahead, since
+    // transform has a limited set of supported values.
+    bool need_pack = pack != pack_type::no_trans;
 
     const memory::dim lda = K;
     // `ldb` for `need_pack = true` must be one of 16, 32, 48, or 64. This
@@ -131,11 +129,16 @@ void brgemm_example() {
 
     // Create f32 memories. They are used as data holders and reorder into
     // memories passed to the ukernel.
-    auto A_f32_md = memory::desc(A_dims, dt::f32, tag::ab);
-    auto B_f32_md = memory::desc(B_dims, dt::f32, tag::ab);
-    auto binary_add_f32_md = memory::desc(binary_add_dims, dt::f32, tag::ab);
-    auto B_scales_f32_md = memory::desc(B_scales_dims, dt::f32, tag::ab);
-    auto D_f32_md = memory::desc(D_dims, dt::f32, tag::ab);
+    auto A_f32_md = memory::desc(
+            A_dims, memory::data_type::f32, memory::format_tag::ab);
+    auto B_f32_md = memory::desc(
+            B_dims, memory::data_type::f32, memory::format_tag::ab);
+    auto binary_add_f32_md = memory::desc(
+            binary_add_dims, memory::data_type::f32, memory::format_tag::ab);
+    auto B_scales_f32_md = memory::desc(
+            B_scales_dims, memory::data_type::f32, memory::format_tag::ab);
+    auto D_f32_md = memory::desc(
+            D_dims, memory::data_type::f32, memory::format_tag::ab);
 
     auto A_f32_mem = memory(A_f32_md, engine, A_user_data.data());
     auto B_f32_mem = memory(B_f32_md, engine, B_user_data.data());
@@ -147,12 +150,14 @@ void brgemm_example() {
 
     // Create ukernel memories in requested data types.
     // Note that all formats are `ab`.
-    auto A_md = memory::desc(A_dims, a_dt, tag::ab);
-    auto B_md = memory::desc(B_dims, b_dt, tag::ab);
-    auto binary_add_md = memory::desc(binary_add_dims, dt::f32, tag::ab);
-    auto B_scales_md = memory::desc(B_scales_dims, dt::f32, tag::ab);
-    auto C_md = memory::desc(C_dims, c_dt, tag::ab);
-    auto D_md = memory::desc(D_dims, d_dt, tag::ab);
+    auto A_md = memory::desc(A_dims, a_dt, memory::format_tag::ab);
+    auto B_md = memory::desc(B_dims, b_dt, memory::format_tag::ab);
+    auto binary_add_md = memory::desc(
+            binary_add_dims, memory::data_type::f32, memory::format_tag::ab);
+    auto B_scales_md = memory::desc(
+            B_scales_dims, memory::data_type::f32, memory::format_tag::ab);
+    auto C_md = memory::desc(C_dims, c_dt, memory::format_tag::ab);
+    auto D_md = memory::desc(D_dims, d_dt, memory::format_tag::ab);
 
     auto A_mem = memory(A_md, engine);
     auto B_mem = memory(B_md, engine);
@@ -178,9 +183,10 @@ void brgemm_example() {
             .execute(engine_stream, B_scales_f32_mem, B_scales_mem);
     reorder(D_f32_mem, D_mem).execute(engine_stream, D_f32_mem, D_mem);
     // Prepare C buffer. Needed to use a single ukernel in the example with
-    // `beta = 1.f`.
-    // Note: to avoid this step, the first ukernel should run `beta = 0`, and it
-    // will initialize C buffer with intermediate values.
+    // `set_add_C(true)`.
+    // Note: to avoid this step, the first ukernel should run
+    // `set_add_C(false)`, and it will initialize C buffer with intermediate
+    // values.
     float *C_ptr = reinterpret_cast<float *>(C_mem.get_data_handle());
     for (memory::dim i = 0; i < M * N; i++) {
         C_ptr[i] = 0;
@@ -195,59 +201,69 @@ void brgemm_example() {
 
     // Create BRGeMM ukernel objects.
     // There are two objects:
-    // * `brg` is the main one which operates over partitioned K dimension. It
-    //   utilizes `beta = 1.f` to accumulate into the same buffer. It also uses
-    //   `batch_size` to process as much as `n_calls - 1` iterations.
+    // * `brg` is the basic one which operates over K dimension divided into
+    //   blocks. It utilizes `set_add_C(true)` to accumulate into the same
+    //   buffer. It also uses `batch_size` to process as much as the number of
+    //   blocks over K minus one.
     // * `brg_po` is the ukernel that would be called the last in the chain
     //   since it has attributes attached to the object and those will execute
     //   after all accumulation over K dimension is done.
-    // Note: `beta = 1.f` makes a ukernel reusable over K but will require
-    // zeroing the correspondent piece of accumulation buffer.
     brgemm brg, brg_po;
     if (batch_size > 0) {
-        try {
-            // Construct a basic brgemm object.
-            brg = brgemm(
-                    M, N, K_k, batch_size, lda, ldb, ldc, a_dt, b_dt, c_dt);
-            // Instruct the kernel to append the result to C tensor.
-            brg.set_add_C(true);
-            // Finalize the initialization.
-            brg.finalize();
-            // Generate the executable JIT code for the objects.
-            brg.generate();
-        } catch (error &e) {
-            if (e.status == dnnl_unimplemented)
-                throw example_allows_unimplemented {
-                        "Kernel is not supported on this platform.\n"};
-
-            // on any other error just re-throw
-            throw;
-        }
-    }
-
-    try {
         // Construct a basic brgemm object.
-        brg_po = brgemm(M, N, K_k, 1, lda, ldb, ldc, a_dt, b_dt, c_dt);
-        // Instruct the kernel to append the result to C tensor.
-        brg_po.set_add_C(true);
-        // Specify post-ops for the brgemm object.
-        brg_po.set_post_ops(ldd, d_dt, brgemm_ops);
-        // Specify quantization scales for B.
-        if (b_dt == dt::s8 || b_dt == dt::u8) {
-            brg_po.set_B_scales(/* mask = */ 2);
+        // `allow_empty` makes the interface to return an empty `brg` object
+        // in case of the critical error.
+        brg = brgemm(M, N, K_blk, batch_size, lda, ldb, ldc, a_dt, b_dt, c_dt,
+                /* allow_empty = */ true);
+        if (!brg) {
+            printf("Error: brg object was not constructed.\n");
+            return;
         }
-        // Finalize the initialization.
-        brg_po.finalize();
-        // Generate the executable JIT code for the objects.
-        brg_po.generate();
-    } catch (error &e) {
-        if (e.status == dnnl_unimplemented)
-            throw example_allows_unimplemented {
-                    "Kernel is not supported on this platform.\n"};
 
-        // on any other error just re-throw
-        throw;
+        // Instruct the ukernel to append the result to the C tensor.
+        brg.set_add_C(true);
+
+        // Finalize the initialization.
+        // Successful completion returns `true`. Otherwise, `brg` object can't
+        // be used due to lack of support or non-compatible settings. The
+        // specific reason may be found by using `ONEDNN_VERBOSE=all` env var.
+        const bool ok = brg.finalize();
+        if (!ok) {
+            printf("Kernel is not supported on this platform.\n");
+            return;
+        }
+
+        // Generate the executable code.
+        brg.generate();
     }
+
+    // Construct a brgemm object with post-ops.
+    brg_po = brgemm(M, N, K_blk, 1, lda, ldb, ldc, a_dt, b_dt, c_dt,
+            /* allow_empty = */ true);
+    if (!brg_po) {
+        printf("Error: brg_po object was not constructed.\n");
+        return;
+    }
+
+    // Instruct the kernel to append the result to the C tensor computed by
+    // `brg` ukernel.
+    brg_po.set_add_C(true);
+    // Specify post-ops.
+    brg_po.set_post_ops(ldd, d_dt, brgemm_ops);
+    // Specify quantization scales for B.
+    if (b_dt == memory::data_type::s8 || b_dt == memory::data_type::u8) {
+        brg_po.set_B_scales(/* mask = */ 2);
+    }
+
+    // Finalize the initialization.
+    const bool ok = brg_po.finalize();
+    if (!ok) {
+        printf("Kernel is not supported on this platform.\n");
+        return;
+    }
+
+    // Generate the executable code.
+    brg_po.generate();
 
     // Query a scratchpad size and initialize a scratchpad buffer if the ukernel
     // is expecting it. This is a service space needed, has nothing in common
@@ -261,59 +277,63 @@ void brgemm_example() {
 
     // If packing is needed, create a dedicated object for data transformation.
     if (need_pack) {
-        // Packing B tensor routine. The BRGeMM ukernel expects B passed in a
-        // special VNNI format for low precision data types, e.g., bfloat16_t.
+        // Transform kernel for tensor B. The ukernel expects B passed in a
+        // special VNNI format for low precision data types, e.g., bfloat16_t
+        // or int8.
         // Note: the routine doesn't provide a `batch_size` argument in the
         // constructor as it can be either incorporated into `K` dimension, or
         // manually iterated over in a for-loop on the user side.
-        transform pack_B(/* K = */ K_k * n_calls, /* N = */ N,
+        transform pack_B(/* K = */ K_blk * n_calls, /* N = */ N,
                 /* in_pack_type = */ pack_type::no_trans, /* in_ld = */ N,
                 /* out_ld = */ ldb, /* in_dt = */ b_dt, /* out_dt = */ b_dt);
 
         // Size of the packed tensor.
-        blocked_B_size = ldb * K_k * memory::data_type_size(b_dt);
+        blocked_B_size = ldb * K_blk * memory::data_type_size(b_dt);
 
         B_blocked = new uint8_t[blocked_B_size * n_calls];
         B_base_ptr = B_blocked;
 
-        // Pack B routine execution.
-        // Note: usually should be split to process only that part of B that the
-        // ukernel will execute.
-
+        // Generate the executable code.
         pack_B.generate();
 
+        // Pack B routine execution.
+        // Note: usually should be split to process only a part of B that the
+        // ukernel will execute.
         pack_B.execute(B_ptr, B_blocked);
     }
 
-    // BRGeMM ukernel execute section.
+    // ukernel execution section.
+    //
     // Prepare buffers for execution.
     std::vector<std::pair<memory::dim, memory::dim>> A_B_offsets(batch_size);
     for (memory::dim i = 0; i < batch_size; i++) {
-        const memory::dim A_offset_i = i * K_k * a_dt_size;
+        const memory::dim A_offset_i = i * K_blk * a_dt_size;
         const memory::dim B_offset_i
-                = need_pack ? i * blocked_B_size : i * N * K_k * b_dt_size;
+                = need_pack ? i * blocked_B_size : i * N * K_blk * b_dt_size;
         A_B_offsets[i] = std::make_pair(A_offset_i, B_offset_i);
     }
 
     if (brg) {
-        // Make an object to call HW specialized routines. For example, prepare
-        // AMX unit.
+        // A call to initialize hardware features. For example, prepare AMX
+        // unit.
         brg.set_hw_context();
 
-        // An execute call. `A_B` is a vector of pointers to A and packed B
-        // tensors. `acc_ptr` is a pointer to an accumulator buffer.
+        // An execute call. `A_B_offsets` is a vector of pairs of offsets to A
+        // and packed B tensors. `C_ptr` is a pointer to an accumulator buffer.
         brg.execute(A_ptr, B_base_ptr, A_B_offsets, C_ptr, scratchpad.data());
     }
 
     // Same set of operations for a ukernel with post-ops.
     std::vector<std::pair<memory::dim, memory::dim>> A_B_po_offsets;
-    const memory::dim A_offset_po = batch_size * K_k * a_dt_size;
+    const memory::dim A_offset_po = batch_size * K_blk * a_dt_size;
     const memory::dim B_offset_po = need_pack
             ? batch_size * blocked_B_size
-            : batch_size * N * K_k * b_dt_size;
+            : batch_size * N * K_blk * b_dt_size;
     A_B_po_offsets.emplace_back(A_offset_po, B_offset_po);
 
-    // This object also requires this call.
+    // This object also requires this call since ukernel with post-ops may
+    // require differently initialized internals underneath. If basic ukernel
+    // was used and they share the same internals, this call will be optimized.
     brg_po.set_hw_context();
 
     // Prepare post-ops arguments and put them in a vector to make sure pointers
@@ -333,7 +353,7 @@ void brgemm_example() {
     // is required.
     //
     // If post operations are not defined, the call is invalid, and a special
-    // API checks the state.
+    // API checks its validity.
     if (brg_po.is_execute_postops_valid()) {
         brg_po.execute(A_ptr, B_base_ptr, A_B_po_offsets, C_ptr,
                 D_mem.get_data_handle(), scratchpad.data(), params);
@@ -342,7 +362,9 @@ void brgemm_example() {
                 A_ptr, B_base_ptr, A_B_po_offsets, C_ptr, scratchpad.data());
     }
 
-    // Once all computations are done, need to release HW context.
+    // Once all computations are done and there are no more calls to ukernels
+    // until they delegate control to the application, need to release the
+    // hardware context.
     brgemm::release_hw_context();
 
     // Clean up an extra buffer.

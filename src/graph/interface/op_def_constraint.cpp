@@ -19,7 +19,8 @@
 #include "graph/interface/op_def_constraint.hpp"
 
 #define VCHECK_SHAPE_INFER(cond, msg, ...) \
-    VCONDCHECK(graph, create, check, add_op, (cond), false, msg, ##__VA_ARGS__);
+    VCONDCHECK(graph, create, check, shape_infer, (cond), false, msg, \
+            ##__VA_ARGS__);
 
 namespace dnnl {
 namespace impl {
@@ -85,12 +86,51 @@ bool check_bn_data_type(const op_t *n) {
     return true;
 }
 
+// For MatMul, it's required that src and wei have the same data type. When
+// src/wei is xf16, dst can be f32 or xf16 (the same type as src/wei). We can
+// disable this check to allow f32f32xf16 when there is a request.
+bool check_matmul_dtype(const op_t *mm) {
+    const auto &inputs = mm->get_input_values();
+    const auto &outputs = mm->get_output_values();
+
+    const logical_tensor_t &src = inputs[0]->get_logical_tensor();
+    const logical_tensor_t &dst = outputs[0]->get_logical_tensor();
+    if (src.data_type != dst.data_type) {
+        if (dst.data_type != data_type::f32) {
+            VCHECK_SHAPE_INFER(false, "%s, %s src + %s dst is not supported",
+                    op_t::kind2str(mm->get_kind()).c_str(),
+                    dnnl_dt2str(src.data_type), dnnl_dt2str(dst.data_type));
+        }
+    }
+
+    return true;
+}
+
+// For SoftMax, if the src is f32, dst can be xf16. Otherwise, src and dst
+// should have the same data type.
+bool check_softmax_dtype(const op_t *n) {
+    const auto &inputs = n->get_input_values();
+    const auto &outputs = n->get_output_values();
+
+    const logical_tensor_t &src = inputs[0]->get_logical_tensor();
+    const logical_tensor_t &dst = outputs[0]->get_logical_tensor();
+    if (src.data_type != dst.data_type) {
+        if (src.data_type != data_type::f32) {
+            VCHECK_SHAPE_INFER(false, "%s, %s src + %s dst is not supported",
+                    op_t::kind2str(n->get_kind()).c_str(),
+                    dnnl_dt2str(src.data_type), dnnl_dt2str(dst.data_type));
+        }
+    }
+
+    return true;
+}
+
 // check function for data_type of LayerNorm and GroupNorm.
 // only when data is bf16, gamma/beta/mean/var can be bf16.
 // If data is bf16, gamma/beta/mean/var can be f32 or bf16.
 bool check_ln_gn_data_type(const op_t *n) {
-    auto input_values = n->get_input_values();
-    auto output_values = n->get_output_values();
+    const auto &input_values = n->get_input_values();
+    const auto &output_values = n->get_output_values();
 
     const logical_tensor_t &src_lt = input_values[0]->get_logical_tensor();
     logical_tensor_t aux_lt;

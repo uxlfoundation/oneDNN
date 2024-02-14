@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,12 +30,12 @@ struct conv_gemm_conf_t;
 
 namespace x64 {
 
-class jit_generator;
+class jit_generator_t;
 
 namespace gemm_x8s8s32x_convolution_utils {
 
-struct jit_gemm_x8s8s32x_zp_pad_comp_helper {
-    jit_gemm_x8s8s32x_zp_pad_comp_helper(jit_generator *host,
+struct jit_gemm_x8s8s32x_zp_pad_comp_helper_t {
+    jit_gemm_x8s8s32x_zp_pad_comp_helper_t(jit_generator_t *host,
             const conv_gemm_conf_t &jcp, const Xbyak::Reg64 &reg_zp_pad_comp,
             const Xbyak::Reg64 &reg_zp_pad_comp_temp,
             const Xbyak::Reg8 &should_apply_zp_src_pad, const dim_t ndims);
@@ -50,12 +50,19 @@ public:
     void load_next_point_zp_src_comp_pad_addr();
     void zp_src_comp_pad_operation(
             const std::function<void(const Xbyak::Reg64 &)> &op);
-    struct zp_src_pad_com_d {
-        bool should_apply_pad_comp_d;
-        dim_t offset;
+
+    // `d` dim in `dhw` spatial.
+    struct zp_src_pad_comp_d_dim_t {
+        zp_src_pad_comp_d_dim_t() = default;
+        zp_src_pad_comp_d_dim_t(bool should_apply_pad_comp_d, dim_t offset)
+            : should_apply_pad_comp_d(should_apply_pad_comp_d)
+            , offset(offset) {}
+
+        bool should_apply_pad_comp_d = false;
+        dim_t offset = 0;
     };
 
-    zp_src_pad_com_d calculate_zp_src_pad_com_d(const dim_t d_off) const;
+    zp_src_pad_comp_d_dim_t calculate_zp_src_pad_com_d(const dim_t d_off) const;
 
 private:
     enum bound { upper, lower };
@@ -84,7 +91,7 @@ private:
     void should_apply_zp_src_pad();
     void next_point();
 
-    jit_generator *const host_;
+    jit_generator_t *const host_;
     const conv_gemm_conf_t &jcp_;
     const Xbyak::Address w_addr_;
     const Xbyak::Address h_addr_;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -109,8 +109,10 @@ static int check_diff_norm() {
 
 static int check_compare_norm() {
     dnnl_dim_t dims {10};
-    dnn_mem_t m0(1, &dims, dnnl_f32, tag::abx, get_test_engine());
-    dnn_mem_t m1(1, &dims, dnnl_f32, tag::abx, get_test_engine());
+    dnn_mem_t m0(1, &dims, dnnl_f32, tag::abx, get_test_engine(),
+            /* prefill = */ false);
+    dnn_mem_t m1(1, &dims, dnnl_f32, tag::abx, get_test_engine(),
+            /* prefill = */ false);
 
 #define N 10
     for (int i = 1; i <= N; i++) {
@@ -139,6 +141,7 @@ static int check_compare_norm() {
 }
 
 void norm() {
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return;
     RUN(check_norm());
     RUN(check_diff_norm());
     RUN(check_compare_norm());

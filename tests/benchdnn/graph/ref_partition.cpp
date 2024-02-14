@@ -38,7 +38,7 @@ void check_memory_fit(
 
 } // namespace
 
-ref_partition_t::ref_partition_t(const deserialized_graph &dg,
+ref_partition_t::ref_partition_t(const deserialized_graph_t &dg,
         const dnnl::graph::partition &par,
         const std::vector<dnnl::graph::logical_tensor> &ins,
         const std::vector<dnnl::graph::logical_tensor> &outs)
@@ -70,8 +70,12 @@ ref_partition_t::ref_partition_t(const deserialized_graph &dg,
     }
 };
 
-int ref_partition_t::init_ref(const std::vector<size_t> &graph_in_ports,
-        partition_mem_map_t &partition_mem_map, res_t *res) {
+int ref_partition_t::init_ref(
+        const std::vector<size_t> &graph_in_ports, res_t *res) {
+
+    // Not create reference primitives and filling data with pre-designed
+    // strategies if reference memories are not required.
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
     for (const auto &par_op_ref : partition_ops_ref_) {
         // res should be independent from op to op
@@ -87,7 +91,7 @@ int ref_partition_t::init_ref(const std::vector<size_t> &graph_in_ports,
         // Check whether the op has any output logical tensor that is the
         // output of the partition. If so, the driver need to allocate memory
         // for correctness check.
-        const auto check_mem_sizes_args = res->mem_size_args;
+        const auto &check_mem_sizes_args = res->mem_size_args;
         const auto is_output = is_output_op(par_op_ref.get());
         SAFE_V(check_partition_total_size(
                 check_mem_sizes_args, is_output, res));
@@ -150,30 +154,49 @@ int ref_partition_t::init_ref(const std::vector<size_t> &graph_in_ports,
         SAFE_V(data_displacer.displace_input_data(
                 entry.first, const_cast<dnn_mem_t &>(entry.second), res));
     }
+    return OK;
+}
+
+int ref_partition_t::init_graph_mem(
+        partition_mem_map_t &partition_mem_map, res_t *res) {
 
     // init graph input/oputput memory from lt_id_2_mems_
     for (const auto &id : partition_in_ids_) {
-        if (lt_id_2_mems_.find(id) == lt_id_2_mems_.end()) {
+        if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+            if (lt_id_2_mems_.find(id) == lt_id_2_mems_.end()) {
+                BENCHDNN_PRINT(0, "Fail: cannot find memory for %zu\n", id);
+                res->state = FAILED;
+                return FAIL;
+            }
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t(lt_id_2_mems_.at(id), lt_id_2_lt_.at(id),
+                            /*is_op_input=*/true));
+        } else
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t({}, lt_id_2_lt_.at(id),
+                            /*is_op_input=*/true));
+    }
+
+    for (const auto &id : partition_out_ids_) {
+
+        if (fake_lt_ids_.find(id) != fake_lt_ids_.end()
+                || has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t({}, lt_id_2_lt_.at(id),
+                            /*is_op_input=*/false, /*use_graph_layout=*/true));
+        } else if (lt_id_2_mems_.find(id) != lt_id_2_mems_.end()) {
+            // For output memories of graph, they need to be in compliance with
+            // the reference memories regarding the shapes and memory tags, as
+            // the memories of both paths will be reordered to abx for
+            // comparison.
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t(lt_id_2_mems_.at(id), lt_id_2_lt_.at(id),
+                            /*is_op_input=*/false));
+        } else {
             BENCHDNN_PRINT(0, "Fail: cannot find memory for %zu\n", id);
             res->state = FAILED;
             return FAIL;
         }
-        partition_mem_map.emplace(id,
-                dnn_graph_mem_t(
-                        lt_id_2_mems_.at(id), lt_id_2_lt_.at(id), true));
-    }
-    for (const auto &id : partition_out_ids_) {
-        if (fake_lt_ids_.find(id) != fake_lt_ids_.end()) {
-            partition_mem_map.emplace(
-                    id, dnn_graph_mem_t({}, lt_id_2_lt_.at(id), false, true));
-        } else if (lt_id_2_mems_.find(id) == lt_id_2_mems_.end()) {
-            BENCHDNN_PRINT(0, "Fail: cannot find memory for %zu\n", id);
-            res->state = FAILED;
-            return FAIL;
-        } else
-            partition_mem_map.emplace(id,
-                    dnn_graph_mem_t(
-                            lt_id_2_mems_.at(id), lt_id_2_lt_.at(id), false));
     }
 
     return OK;
@@ -297,8 +320,8 @@ int ref_partition_t::check_partition_correctness(
 
     for (const auto &op : partition_ops_ref_) {
         size_t op_id = op.get().id_;
-        const auto op_kind = op.get().kind_;
-        const auto ref_prim = ref_prims_.at(op_id);
+        const auto &op_kind = op.get().kind_;
+        const auto &ref_prim = ref_prims_.at(op_id);
 
         // if there is eltwise post-ops or binary div post-ops (GPU test), need
         // to relax compare critria.
@@ -345,6 +368,18 @@ int ref_partition_t::check_partition_correctness(
         // reset the state
         res->state = EXECUTED;
 
+        // TODO(zhitao): need to check whether the operation that produces the
+        // output args is the children of the operations that affect
+        // output_has_nans, such as:
+        //
+        //             |
+        //       _____MatMul_______
+        //      |                  |
+        //      |                  |
+        //     SQRT              ReLU
+        //      |                  |
+        // The graph driver allows nans from the branch of Sqrt, but for the
+        // other branch, the driver should not tolerate that.
         ref_prim->check_correctness(
                 output_args, has_eltwise, output_has_nans, res);
         if (res->state == FAILED) {
@@ -367,7 +402,7 @@ int ref_partition_t::check_partition_correctness(
 }
 
 bool ref_partition_t::has_parent_op(
-        const deserialized_op &op, bool check_all_in_lts) const {
+        const deserialized_op_t &op, bool check_all_in_lts) const {
     if (partition_ops_ref_.size() < 2) return false;
 
     for (const auto &in_lt : op.in_lts_) {
@@ -389,8 +424,8 @@ bool ref_partition_t::has_parent_op(
 }
 
 // TODO: add get_child and remove the second arg.
-bool ref_partition_t::has_child_op(
-        const deserialized_op &op, const deserialized_op **child_op_ptr) const {
+bool ref_partition_t::has_child_op(const deserialized_op_t &op,
+        const deserialized_op_t **child_op_ptr) const {
     if (partition_ops_ref_.size() < 2) return false;
 
     for (const auto &out_lt : op.out_lts_) {
@@ -411,7 +446,7 @@ bool ref_partition_t::has_child_op(
     return false;
 }
 
-const deserialized_op *ref_partition_t::get_parent_op(size_t in_lt_id) const {
+const deserialized_op_t *ref_partition_t::get_parent_op(size_t in_lt_id) const {
     if (partition_ops_ref_.size() < 2) return nullptr;
 
     // Check if a parent op exists for an `op`.
@@ -430,8 +465,8 @@ const deserialized_op *ref_partition_t::get_parent_op(size_t in_lt_id) const {
 // This function decides when unfusable transcendental op output should be
 // reordered to lower data type and back to f32 for a reference path.
 bool ref_partition_t::need_unfusable_output_crop(
-        const deserialized_op &op, dnnl_data_type_t &dt) const {
-    const deserialized_op *child_op = nullptr;
+        const deserialized_op_t &op, dnnl_data_type_t &dt) const {
+    const deserialized_op_t *child_op = nullptr;
     // First of all, the output should have a child op...
     if (!has_child_op(op, &child_op)) return false;
     // If the child op is not a TypeCast, it's safe to crop.
@@ -443,7 +478,7 @@ bool ref_partition_t::need_unfusable_output_crop(
     // When it is a TypeCast (it always changes `cur_dt` <-> f32, both ways are
     // possible), there are options:
     // * If it's the last one, no crop, as f32 will happen on the other end.
-    const deserialized_op *next_child_op = nullptr;
+    const deserialized_op_t *next_child_op = nullptr;
     if (!has_child_op(*child_op, &next_child_op)) return false;
     // * If there's a child Quantize, no crop either, since output would
     //   perform a reorder with a proper scale value to match the other end.
@@ -461,9 +496,9 @@ bool ref_partition_t::need_unfusable_output_crop(
     return true;
 }
 
-bool ref_partition_t::is_output_op(const deserialized_op &op) const {
+bool ref_partition_t::is_output_op(const deserialized_op_t &op) const {
     return std::any_of(op.out_lts_.begin(), op.out_lts_.end(),
-            [this](const deserialized_lt &lt) {
+            [this](const deserialized_lt_t &lt) {
                 return std::find(partition_out_ids_.begin(),
                                partition_out_ids_.end(), lt.id_)
                         != partition_out_ids_.end();
@@ -472,7 +507,7 @@ bool ref_partition_t::is_output_op(const deserialized_op &op) const {
 
 // check the partition memory footprint of the graph path
 int ref_partition_t::check_partition_total_size(
-        const deserialized_op &op, res_t *res) {
+        const deserialized_op_t &op, res_t *res) {
 
     // Prepare the memory limit for benchdnn graph
     static size_t benchdnn_cpu_limit = get_benchdnn_cpu_limit();
@@ -579,17 +614,17 @@ int ref_partition_t::check_partition_total_size(
 // Return the logical tensor ids of the given op which is the input/output of
 // the partition.
 std::vector<size_t> ref_partition_t::get_in_out_lt_ids(
-        const deserialized_op &op) const {
+        const deserialized_op_t &op) const {
     std::vector<size_t> in_out_lt_ids;
     std::for_each(op.in_lts_.begin(), op.in_lts_.end(),
-            [&in_out_lt_ids, this](const deserialized_lt &lt) {
+            [&in_out_lt_ids, this](const deserialized_lt_t &lt) {
                 if (std::find(partition_in_ids_.begin(),
                             partition_in_ids_.end(), lt.id_)
                         != partition_in_ids_.end())
                     in_out_lt_ids.emplace_back(lt.id_);
             });
     std::for_each(op.out_lts_.begin(), op.out_lts_.end(),
-            [&in_out_lt_ids, this](const deserialized_lt &lt) {
+            [&in_out_lt_ids, this](const deserialized_lt_t &lt) {
                 if (std::find(partition_out_ids_.begin(),
                             partition_out_ids_.end(), lt.id_)
                         != partition_out_ids_.end())

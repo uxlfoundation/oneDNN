@@ -399,8 +399,9 @@ private:
                     reorder_info.register_user_arg(user_buf, user_arg_key,
                             /*is_input=*/true);
                     add_compute_arg(reorder_info, compute_buf, false);
-                    reorder_info.set_nd_range(reorder_kernel_t<>::nd_range(
-                            cfg.exec_cfg(), t.user_layout, t.compute_layout));
+                    reorder_config_t reorder_cfg(
+                            cfg.exec_cfg(), t.user_layout, t.compute_layout);
+                    reorder_info.set_nd_range(reorder_cfg.nd_range());
                 }
                 if (!src_conv_precalc && t.is_output) {
                     auto &reorder_info
@@ -408,8 +409,9 @@ private:
                     add_compute_arg(reorder_info, compute_buf, true);
                     reorder_info.register_user_arg(user_buf, user_arg_key,
                             /*is_input=*/false);
-                    reorder_info.set_nd_range(reorder_kernel_t<>::nd_range(
-                            cfg.exec_cfg(), t.compute_layout, t.user_layout));
+                    reorder_config_t reorder_cfg(
+                            cfg.exec_cfg(), t.compute_layout, t.user_layout);
+                    reorder_info.set_nd_range(reorder_cfg.nd_range());
                 }
                 if (src_conv_precalc) {
                     scratchpad_book(++scratchpad_key);
@@ -418,18 +420,19 @@ private:
 
                     zp_precalc_info.register_scratchpad_arg(compute_buf,
                             scratchpad_key, /*is_input=*/true, compute_size);
-                    const auto &dim = ir_utils::max_unique_pad_states;
                     const auto &prb = cfg.prb();
-                    const dim_t KDD = (prb.kd - 1) * (prb.dd + 1) + 1;
-                    const dim_t KDH = (prb.kh - 1) * (prb.dh + 1) + 1;
-                    const dim_t KDW = (prb.kw - 1) * (prb.dw + 1) + 1;
                     compute_size = int64_t(compute_size) * sizeof(int32_t)
-                            * dim(prb.od, prb.id, KDD, prb.pd, prb.sd, true)
-                            * dim(prb.oh, prb.ih, KDH, prb.ph, prb.sh, true)
-                            * dim(prb.ow, prb.iw, KDW, prb.pw, prb.sw, true)
+                            * ir_utils::max_unique_pad_states(prb.od, prb.id,
+                                    prb.kd, prb.dd, prb.pd, prb.sd, true)
+                            * ir_utils::max_unique_pad_states(prb.oh, prb.ih,
+                                    prb.kh, prb.dh, prb.ph, prb.sh, true)
+                            * ir_utils::max_unique_pad_states(prb.ow, prb.iw,
+                                    prb.kw, prb.dw, prb.pw, prb.sw, true)
                             * utils::rnd_up(prb.g * prb.oc, cfg.simd())
-                            / std::min(KDD, prb.id) / std::min(KDH, prb.ih)
-                            / std::min(KDW, prb.iw) / (prb.g * prb.ic);
+                            / std::min((prb.kd - 1) * (prb.dd + 1) + 1, prb.id)
+                            / std::min((prb.kh - 1) * (prb.dh + 1) + 1, prb.ih)
+                            / std::min((prb.kw - 1) * (prb.dw + 1) + 1, prb.iw)
+                            / (prb.g * prb.ic);
                     add_compute_arg(zp_precalc_info, make_buffer("dst"), false);
                 }
                 scratchpad_book(compute_arg_key);
@@ -505,7 +508,7 @@ status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -526,7 +529,7 @@ status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -535,7 +538,7 @@ status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
 }
 
 status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 

@@ -7,8 +7,7 @@ to be the golden standard in deep learning applications and is supported
 in all the library functions. The purpose of low precision data types
 support is to improve performance of compute intensive operations, such as
 convolutions, inner product, and recurrent neural network cells
-in comparison to fp32. Boolean data type is used for Graph Compiler to optimize 
-operations which take bool as inputs and/or outputs data type.
+in comparison to fp32.
 
 | Data type | Description                                                                                                                                                                             |
 |:----------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -17,6 +16,7 @@ operations which take bool as inputs and/or outputs data type.
 | f16       | [IEEE half precision floating-point](https://en.wikipedia.org/wiki/Half-precision_floating-point_format#IEEE_754_half-precision_binary_floating-point_format:_binary16)                 |
 | s8/u8     | signed/unsigned 8-bit integer                                                                                                                                                           |
 | s4/u4     | signed/unsigned 4-bit integer                                                                                                                                                           |
+| s32       | signed/unsigned 32-bit integer                                                                                                                                                          |
 | f64       | [IEEE double precision floating-point](https://en.wikipedia.org/wiki/Double-precision_floating-point_format#IEEE_754_double-precision_binary_floating-point_format:_binary64)           |
 | boolean   | bool (size is C++ implementation defined)                                                                                                                                               |
 | f8\_e5m2  | [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf) with 5 exponent and 2 mantissa bits |
@@ -26,18 +26,14 @@ operations which take bool as inputs and/or outputs data type.
 | f4\_e3m0  | 4-bit floating-point with 3 exponent bits and no mantissa bit                                                                                                                           |
 
 
-@note
-    Boolean is only supported in the Graph Compiler in CPU engines. No
-    primitives support boolean during primitive computation.
-
 ## Inference and Training
 
 oneDNN supports training and inference with the following data types:
 
-| Usage mode | CPU                                                                          | GPU                                           |
-|:-----------|:-----------------------------------------------------------------------------|:----------------------------------------------|
-| Inference  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1, f4\_e3m0, s8/u8, s4/u4, boolean | f32, bf16, f16, f8\_e5m2/f8\_e4m3, s8/u8, f64 |
-| Training   | f32, bf16, f16                                                               | f32, bf16, f16, f64                           |
+| Usage mode | CPU                                                                          | GPU                                                                              |
+|:-----------|:-----------------------------------------------------------------------------|:---------------------------------------------------------------------------------|
+| Inference  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1/f4\_e3m0, s8/u8, s4/u4, boolean  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1/f4\_e3m0, s8/u8, s4/u4, f64, boolean |
+| Training   | f32, bf16, f16, f8\_e5m2/f8\_e4m3                                            | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f64                                           |
 
 @note
     Using lower precision arithmetic may require changes in the deep learning
@@ -48,13 +44,15 @@ oneDNN supports training and inference with the following data types:
     pooling primitives on the GPU engine.
 
 @note
-    Boolean is only supported by the oneDNN graph API when the graph compiler
-    backend is enabled.
-
-@note
     s4/u4 data types are only supported as a storage data type for weights argument
     in case of weights decompression. For more details, refer to
     [Matmul Tutorial: weights decompression](@ref weights_decompression_matmul_cpp).
+
+@note
+    f8\_e5m2/f8\_e4m3 and f4\_e2m1/f4\_e3m0 data types are only supported by
+    convolution, matmul, and reorder primitives on Intel(R) Data Center GPU
+    Max Series or newer. Compute primitives provide support through internal
+    converison into f16 as current GPU architectures lack native support.
 
 See topics for the corresponding data types details:
  * @ref dev_guide_inference_int8
@@ -220,17 +218,23 @@ library:
    * Intel(R) Data Center GPU Flex Series (formerly Arctic Sound)
  * Xe-HPC (accelerated f16, bf16, u8, and s8 support via DPAS and f64 support via MAD)
    * Intel(R) Data Center GPU Max Series (formerly Ponte Vecchio)
+ * Xe2-LPG
+   * Intel(R) Graphics for Intel(R) Core(TM) Ultra processors (Series 2) (formerly Lunar Lake)
+ * Xe2-HPG
+   * Intel(R) Arc(TM) B-Series Graphics (formerly Battlemage)
 
 The following table indicates the data types with performant compute primitives
 for each uArch supported by oneDNN. Unless otherwise noted, all data types have 
 reference support on all architectures.
 
-| uArch  | Supported Data types                                                |
-|:-------|:--------------------------------------------------------------------|
-| Xe-LP  | f32, f16, s8, u8                                                    |
-| Xe-HPG | f32, f16, bf16, s8, u8                                              |
-| Xe-HPC | f64, f32, bf16, f16, s8, u8                                         |
-| TBA    | f64, f32, bf16, f16, s8, u8, f8\_e5m2, f8\_e4m3, f4\_e2m1, f4\_e3m0 |
+| uArch   | Supported Data types                                                |
+|:--------|:--------------------------------------------------------------------|
+| Xe-LP   | f32, f16, s8, u8                                                    |
+| Xe-HPG  | f32, f16, bf16, s8, u8                                              |
+| Xe-HPC  | f64, f32, bf16, f16, s8, u8                                         |
+| Xe2-LPG | f64, f32, bf16, f16, s8, u8                                         |
+| Xe2-HPG | f64, f32, bf16, f16, s8, u8                                         |
+| TBA     | f64, f32, bf16, f16, s8, u8, f8\_e5m2, f8\_e4m3, f4\_e2m1, f4\_e3m0 |
 
 
 @note
@@ -238,13 +242,9 @@ reference support on all architectures.
   double-precision floating-point.
 
 @note
-  f8\_e5m2 compute operations have limited performance through upconversion on
-  Xe-HPC.
+  f8\_e5m2 and f8\_e4m3 compute operations have limited performance through upconversion on
+  Xe-HPC and Xe2 GPUs.
 
 @note
   f16 operations may be faster with f16 accumulation on GPU architectures older
   than Xe-HPC. Newer architectures accumulate to f32.
-
-@note
-  Boolean is only supported by the oneDNN graph API when the graph compiler
-  backend is enabled. The graph compiler backend only supports the CPU engine.

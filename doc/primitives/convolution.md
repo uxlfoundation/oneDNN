@@ -152,7 +152,8 @@ argument index as specified by the following table.
 | \diffbias                   | DNNL_ARG_DIFF_BIAS                                                         |
 | \diffdst                    | DNNL_ARG_DIFF_DST                                                          |
 | \f$depthwise\f$             | DNNL_ARG_ATTR_POST_OP_DW                                                   |
-| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1  |
+| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1, |
+|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  |
 | \f$\text{prelu post-op}\f$  | DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| DNNL_ARG_WEIGHTS |
 
 ## Implementation Details
@@ -166,22 +167,25 @@ N/A.
 Convolution primitive supports the following combination of data types for
 source, destination, and weights memory objects:
 
-| Propagation    | Source    | Weights      | Destination                 | Bias                        |
-|:---------------|:----------|:-------------|:----------------------------|:----------------------------|
-| forward        | f32       | f32          | f32, u8, s8                 | f32                         |
-| forward        | f16       | f16          | f16, f32, u8, s8            | f16, f32                    |
-| forward        | u8, s8    | s8           | u8, s8, s32, f32, f16, bf16 | u8, s8, s32, f32, f16, bf16 |
-| forward        | bf16      | bf16         | f32, bf16                   | f32, bf16                   |
-| forward        | f8_e5m2   | f8_e5m2      | f8_e5m2, f32, f16, bf16     | f32                         |
-| forward        | f64       | f64          | f64                         | f64                         |
-| backward       | f32, bf16 | bf16         | bf16                        |                             |
-| backward       | f32, f16  | f16          | f16                         |                             |
-| backward       | f8_e5m2   | f8_e5m2      | f8_e5m2                     |                             |
-| backward       | f32       | f32          | f32                         | f32                         |
-| backward       | f64       | f64          | f64                         | f64                         |
-| weights update | bf16      | f32, bf16    | bf16, s8, u8                | f32, bf16                   |
-| weights update | f16       | f32, f16     | f16                         | f32, f16                    |
-| weights update | f8_e5m2   | f32, f8_e5m2 | f8_e5m2                     | f32                         |
+| Propagation    | Source           | Weights               | Destination                      | Bias                        |
+|:---------------|:-----------------|:----------------------|:---------------------------------|:----------------------------|
+| forward        | f32              | f32                   | f32, u8, s8                      | f32                         |
+| forward        | f16              | f16                   | f16, f32, u8, s8                 | f16, f32                    |
+| forward        | u8, s8           | s8                    | u8, s8, s32, f32, f16, bf16      | u8, s8, s32, f32, f16, bf16 |
+| forward        | bf16             | bf16                  | f32, bf16                        | f32, bf16                   |
+| forward        | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3      | f8_e5m2, f8_e4m3, f32, f16, bf16 | f32                         |
+| forward        | f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0      | f4_e2m1, f4_e3m0, f32, f16, bf16 | f32                         |
+| forward        | f64              | f64                   | f64                              | f64                         |
+| backward       | f32, bf16        | bf16                  | bf16                             |                             |
+| backward       | f32, f16         | f16                   | f16                              |                             |
+| backward       | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3      | f8_e5m2, f8_e4m3                 |                             |
+| backward       | f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0      | f4_e2m1, f4_e3m0                 |                             |
+| backward       | f32              | f32                   | f32                              | f32                         |
+| backward       | f64              | f64                   | f64                              | f64                         |
+| weights update | bf16             | f32, bf16             | bf16, s8, u8                     | f32, bf16                   |
+| weights update | f16              | f32, f16              | f16                              | f32, f16                    |
+| weights update | f8_e5m2, f8_e4m3 | f32, f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3                 | f32                         |
+| weights update | f4_e2m1, f4_e3m0 | f32, f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0                 | f32                         |
 
 @warning
     There might be hardware and/or implementation specific restrictions.
@@ -438,12 +442,13 @@ of Winograd algorithm implementations.
 
 3. **GPU**
    - Depthwise post-op is not supported
-   - Only reference support is available for f8_e4m3. Optimized implementation
-     is available for f8_e5m2 on Intel(R) Data Center GPU Max Series only.
+   - `f8` iplementation uses Intel XMX cores only on Intel GPUs based on
+     Xe-HPC and Xe2-LPG, and Xe2-HPG uArch.
 
 4. **CPU**
    - Only reference support for fp8 data types (f8_e5m2, f8_e4m3) is
      is available on CPU.
+   - No support is available for f4_e3m0 or f4_e2m1.
    - No support is available for f64.
 
 ## Performance Tips

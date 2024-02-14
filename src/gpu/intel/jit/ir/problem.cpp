@@ -42,19 +42,14 @@ std::string to_string(tensor_kind_t tensor) {
 
 const expr_t &pvar_t::index_var() const {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this)) {
-        auto var = var_t::make(type_t::s32(), name_ + "_idx");
-        vars[*this] = var;
-    }
+    if (!vars.has(*this))
+        vars[*this] = var_t::make(type_t::s32(), name_ + "_idx");
     return vars[*this];
 }
 
 const expr_t &pvar_t::var() const {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this)) {
-        auto var = const_var_t::make(type_t::s32(), name_);
-        vars[*this] = var;
-    }
+    if (!vars.has(*this)) vars[*this] = const_var_t::make(type_t::s32(), name_);
     return vars[*this];
 }
 

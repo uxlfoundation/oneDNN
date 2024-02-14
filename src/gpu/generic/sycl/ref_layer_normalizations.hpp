@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATION_HPP
-#define GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATION_HPP
+#ifndef GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATIONS_HPP
+#define GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATIONS_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
@@ -63,7 +63,7 @@ struct ref_layer_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(check_scale_shift_data_type({f32, bf16, f16}),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(attr()->has_default_values(sm::scales_runtime),
+            VDISPATCH_LNORM(attr()->has_default_values(sm::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(IMPLICATION(!attr()->scales_.has_default_values(),
                                     scales_ok()),
@@ -72,6 +72,8 @@ struct ref_layer_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_LNORM(md_dims_in_range(src_md()), VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
             return init_conf();
         }
 
@@ -81,6 +83,8 @@ struct ref_layer_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
 
             const auto &scales = attr()->scales_;
             for (auto arg : supported_args) {
+                if (scales.has_default_data_type(arg)) continue;
+
                 const auto dt = scales.get_data_type(arg);
                 if (!is_supported_type(dt)) { return false; }
             }
@@ -144,6 +148,8 @@ struct ref_layer_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_LNORM(md_dims_in_range(diff_dst_md()),
                     VERBOSE_OUT_OF_RANGE_DIMS, "diff_dst");
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
             return init_conf();
         }
 

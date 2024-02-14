@@ -367,7 +367,7 @@ public:
 
         reg_layout_ = slm_reduce_builder_.reg_layout();
 
-        auto new_tile = slm_reduce_builder_.thr_tile();
+        const auto &new_tile = slm_reduce_builder_.thr_tile();
         info_ = info_.create_sub_tensor(new_tile);
 
         auto &slm_allocs = slm_reduce_builder_.allocs();
@@ -740,7 +740,7 @@ public:
                 gpu_assert(c_po_idx_ == -1);
                 c_po_idx_ = tensor_idx;
             }
-            post_op_tensors_.push_back(po_tensor);
+            post_op_tensors_.push_back(std::move(po_tensor));
             tensor_idx++;
         }
 
@@ -960,8 +960,7 @@ private:
 
         // S_y -> GMEM.
         auto send_op = gemm_schedule_.with_kernel_grid_k_slicing()
-                ? atomic_send_op(c_mem_tile_view.type(),
-                        ir_ctx_.hw().has_fp64_atomic_support())
+                ? send_op_t::atomic_fadd
                 : send_op_t::store;
         auto offset = c_mem_tile_view.tlayout().offset_in_bytes();
         const int cache_line_size = 64;
@@ -1031,6 +1030,7 @@ private:
 
         // Create sub-tensors for post-ops.
         std::vector<post_op_tensor_t> sub_po_tensors;
+        sub_po_tensors.reserve(post_op_tensors_.size());
         for (auto &t : post_op_tensors_)
             sub_po_tensors.push_back(t.create_sub_tensor(tile));
 

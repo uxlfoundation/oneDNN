@@ -116,6 +116,7 @@ private:
     }
 };
 
+// NOLINTBEGIN(google-default-arguments)
 struct eltwise_fwd_pd_t : public eltwise_pd_t {
     using base_class = eltwise_fwd_pd_t;
     using hint_class = eltwise_fwd_pd_t;
@@ -190,14 +191,18 @@ protected:
                         == status::success);
     }
 };
+// NOLINTEND(google-default-arguments)
 
+// NOLINTBEGIN(google-default-arguments)
 struct eltwise_bwd_pd_t : public eltwise_pd_t {
     using base_class = eltwise_bwd_pd_t;
     using hint_class = eltwise_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
-        if (use_dst() ? arg == DNNL_ARG_DST : arg == DNNL_ARG_SRC)
-            return arg_usage_t::input;
+        if (arg == DNNL_ARG_SRC)
+            return !use_dst() ? arg_usage_t::input : arg_usage_t::unused;
+        if (arg == DNNL_ARG_DST)
+            return use_dst() ? arg_usage_t::input : arg_usage_t::unused;
 
         if (arg == DNNL_ARG_DIFF_DST) return arg_usage_t::input;
         if (arg == DNNL_ARG_DIFF_SRC) return arg_usage_t::output;
@@ -298,6 +303,7 @@ protected:
                                 == status::success);
     }
 };
+// NOLINTEND(google-default-arguments)
 
 } // namespace impl
 } // namespace dnnl

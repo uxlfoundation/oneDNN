@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,10 +30,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx2_1x1_conv_kernel_f32 : public jit_generator {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_1x1_conv_kernel_f32)
+struct jit_avx2_1x1_conv_kernel_f32_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_1x1_conv_kernel_f32_t)
 
-    jit_avx2_1x1_conv_kernel_f32(const jit_1x1_conv_conf_t &ajcp,
+    jit_avx2_1x1_conv_kernel_f32_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
     static status_t init_conf(jit_1x1_conv_conf_t &jcp,
@@ -52,7 +52,7 @@ private:
             postops_injector_;
 
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx2>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx2>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     using ymm_t = const Xbyak::Ymm;
 

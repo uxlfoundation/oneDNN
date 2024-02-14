@@ -131,7 +131,7 @@ private:
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    class pp_ker_t : public jit_generator {
+    class pp_ker_t : public jit_generator_t {
     public:
         DECLARE_CPU_JIT_AUX_FUNCTIONS(gemm_bf16_convolution_fwd_t::pp_kernel);
         pp_ker_t(const pd_t *pd);
@@ -147,19 +147,19 @@ private:
                 const size_t g_oc_offset);
 
     private:
-        struct ker_args {
-            dst_data_t *dst;
-            const acc_data_t *acc;
-            const acc_data_t *bias;
-            float sum_scale;
-            size_t dst_stride_in_bytes;
-            size_t acc_stride_in_bytes;
-            size_t spatial_length;
-            size_t oc_work;
+        struct ker_args_t {
+            dst_data_t *dst = nullptr;
+            const acc_data_t *acc = nullptr;
+            const acc_data_t *bias = nullptr;
+            float sum_scale = 0.f;
+            size_t dst_stride_in_bytes = 0;
+            size_t acc_stride_in_bytes = 0;
+            size_t spatial_length = 0;
+            size_t oc_work = 0;
 
-            size_t g_oc_offset;
-            const void *post_ops_binary_rhs_arg_vec;
-            const void *dst_orig;
+            size_t g_oc_offset = 0;
+            const void *post_ops_binary_rhs_arg_vec = nullptr;
+            const void *dst_orig = nullptr;
         };
 
         enum { default_unroll_2_pow_ = 2 };

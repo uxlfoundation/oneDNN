@@ -74,22 +74,20 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
             VDISPATCH_CONV(
-                    attr()->has_default_values(smask_t::scales_runtime
-                                    | smask_t::zero_points_runtime
-                                    | smask_t::post_ops | smask_t::sum_dt,
+                    attr()->has_default_values(smask_t::scales
+                                    | smask_t::zero_points | smask_t::post_ops
+                                    | smask_t::sum_dt,
                             dst_md(0)->data_type),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_CONV(attr()->scales_.has_default_values({DNNL_ARG_SRC,
-                                   DNNL_ARG_WEIGHTS, DNNL_ARG_DST,
-                                   DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS,
-                                   DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST}),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_CONV(set_default_formats_common(
                                    dat_tag(), format_tag::any, dat_tag()),
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONV(set_or_check_wei_format(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}},
+                    {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0}},
+                    {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS, {0, 1}},
+                    {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST, {0}}}));
+            CHECK(attr_zero_points_ok());
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(
                                    dst_md(0)->data_type, /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -104,14 +102,14 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             rtus_prepare(this, conv_d, src_d, dst_md(), weights_md());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_conf(jcp_,
+            CHECK(jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_conf(jcp_,
                     *conv_d, *src_d, *weights_md(), *dst_md(),
                     with_bias() ? *weights_md(1) : types::zero_md(), attr_,
                     dnnl_get_max_threads(), rtus_.reduce_src_));
             if (jcp_.with_dw_conv) CHECK(depthwise_po_init(engine));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_scratchpad(
+            jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_scratchpad(
                     scratchpad, jcp_, *attr());
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
@@ -123,6 +121,7 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             return cpu_convolution_fwd_pd_t::dst_md(index);
         }
 
+        // NOLINTBEGIN(google-default-arguments)
         const memory_desc_t *dst_md(
                 int index = 0, bool user_input = false) const override {
             return dw_conv_pd_ && jcp_.with_dw_conv
@@ -145,18 +144,15 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             }
             return convolution_fwd_pd_t::arg_md(arg, user_input);
         }
+        // NOLINTEND(google-default-arguments)
 
         arg_usage_t arg_usage(int arg) const override {
             if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS))
                 return arg_usage_t::input;
 
-            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS)
-                    && attr_post_op_dw_inputs() > 1)
-                return arg_usage_t::input;
-
-            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_ATTR_OUTPUT_SCALES)
-                    && jcp_.with_dw_conv)
-                return arg_usage_t::input;
+            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS))
+                return attr_post_op_dw_inputs() > 1 ? arg_usage_t::input
+                                                    : arg_usage_t::unused;
 
             return convolution_fwd_pd_t::arg_usage(arg);
         }
@@ -168,23 +164,6 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
         using dw_pd_t = typename jit_uni_x8s8s32x_convolution_fwd_t<isa>::pd_t;
 
     protected:
-        bool zero_points_ok() const {
-            const auto &zp = attr()->zero_points_;
-
-            if (!zp.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = zp.get_mask(DNNL_ARG_SRC);
-                const bool ok = mask_src == 0;
-                if (!ok) return false;
-            }
-            if (!zp.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                const bool ok = mask_dst == 0;
-                if (!ok) return false;
-            }
-
-            return zp.has_default_values(DNNL_ARG_WEIGHTS);
-        }
-
         status_t copy(const pd_t &other) {
             jcp_ = other.jcp_;
             rtus_ = other.rtus_;
@@ -373,7 +352,7 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_x8s8s32x_1x1_conv_kernel<isa>(
+                new jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_1x1_md())));
         CHECK(kernel_->create_kernel());
 
@@ -406,9 +385,9 @@ private:
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_uni_x8s8s32x_1x1_conv_kernel<isa>> kernel_;
+    std::unique_ptr<jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>> kernel_;
     std::unique_ptr<rtus_driver_t<isa>> rtus_driver_;
-    using dw_conv_kernel_t = jit_uni_x8s8s32x_fwd_kernel<isa>;
+    using dw_conv_kernel_t = jit_uni_x8s8s32x_fwd_kernel_t<isa>;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 

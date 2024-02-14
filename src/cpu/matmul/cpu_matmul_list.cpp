@@ -1,6 +1,6 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2019-2025 Intel Corporation
+* Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2021-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +32,7 @@ using namespace dnnl::impl::cpu::x64::matmul;
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/matmul/brgemm_matmul.hpp"
+#include "cpu/aarch64/matmul/jit_int8_matmul.hpp"
 #ifdef DNNL_AARCH64_USE_ACL
 #include "cpu/aarch64/matmul/acl_lowp_matmul.hpp"
 #include "cpu/aarch64/matmul/acl_lowp_matmul_sq.hpp"
@@ -50,37 +51,18 @@ namespace {
 using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::cpu::matmul;
 
-// Some compilers do not allow guarding implementations with macros
-// in the impl list.
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-
-#define CPU_INSTANCE_SPARSE(...) \
-    impl_list_item_t( \
-            impl_list_item_t::type_deduction_helper_t<__VA_ARGS__::pd_t>()),
-
-#if DNNL_X64
-#define CPU_INSTANCE_SPARSE_X64(...) \
-    impl_list_item_t( \
-            impl_list_item_t::type_deduction_helper_t<__VA_ARGS__::pd_t>()),
-#else
-#define CPU_INSTANCE_SPARSE_X64(...)
-#endif
-
-#else
-#define CPU_INSTANCE_SPARSE(...)
-#define CPU_INSTANCE_SPARSE_X64(...)
-#endif
-
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
-
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_512>)
         CPU_INSTANCE_AARCH64_ACL(acl_lowp_matmul_sq_t)
         CPU_INSTANCE_AARCH64_ACL(acl_lowp_matmul_t)
         CPU_INSTANCE_AARCH64_ACL(acl_matmul_t)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_256>)
+        CPU_INSTANCE_AARCH64(jit_int8_matmul_t)
+        CPU_INSTANCE_AMX(brgemm_matmul_t<avx10_2_512_amx_2>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx_fp16>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx>)
+        CPU_INSTANCE_AVX512(brgemm_matmul_t<avx10_2_512>)
         CPU_INSTANCE_AVX512(brgemm_matmul_t<avx512_core_fp16>)
         CPU_INSTANCE_AVX512(brgemm_matmul_t<avx512_core_bf16>)
         CPU_INSTANCE_AVX512(brgemm_matmul_t<avx512_core_vnni>)
@@ -94,18 +76,13 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE_AVX2(brgemm_matmul_t<avx2>)
         CPU_INSTANCE(ref_matmul_t)
         CPU_INSTANCE(ref_matmul_int8_t)
-        // These implementations are enabled only when DNNL_EXPERIMENTAL_SPARSE
-        // macro is defined.
-        CPU_INSTANCE_SPARSE_X64(jit_uni_sparse_matmul_t)
-        CPU_INSTANCE_SPARSE(ref_sparse_matmul_t)
+        CPU_INSTANCE_X64(jit_uni_sparse_matmul_t)
+        CPU_INSTANCE(ref_sparse_matmul_t)
         /* eol */
         nullptr,
 });
 // clang-format on
 } // namespace
-
-#undef CPU_INSTANCE_SPARSE
-#undef CPU_INSTANCE_SPARSE_X64
 
 const impl_list_item_t *get_matmul_impl_list(const matmul_desc_t *desc) {
     UNUSED(desc);

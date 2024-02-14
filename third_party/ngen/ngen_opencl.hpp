@@ -17,7 +17,7 @@
 #ifndef NGEN_OPENCL_HPP
 #define NGEN_OPENCL_HPP
 
-#include "ngen_config.hpp"
+#include "ngen_config_internal.hpp"
 
 #ifndef __OPENCL_CL_H
 #include <CL/cl.h>
@@ -144,6 +144,7 @@ std::vector<uint8_t> OpenCLCodeGenerator<hw>::getPatchTokenBinary(cl_context con
 {
     using super = ELFCodeGenerator<hw>;
     std::ostringstream dummyCL;
+    dummyCL.imbue(std::locale::classic());
     auto modOptions = options;
 
     if ((hw >= HW::XeHP) && (super::interface_.needGRF > 128))
@@ -218,6 +219,7 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
 
     for (bool defaultFormat : {true, false}) {
         bool legacy = defaultFormat ^ zebinFirst;
+        isZebin = !legacy;
 
         if (legacy) {
             try {
@@ -268,19 +270,25 @@ HW OpenCLCodeGenerator<hw>::detectHW(cl_context context, cl_device_id device)
 template <HW hw>
 Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
 {
-    const char *dummyCL = "kernel void _ngen_hw_detect(){}";
-    const char *dummyOptions = "";
+    Product product;
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
-    if (clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS) {
-        return npack::decodeHWIPVersion(ipVersion);
+    if (clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS)
+        product = npack::decodeHWIPVersion(ipVersion);
+    else {
+        // If it fails, compile a test program and extract the HW information from it.
+        const char *dummyCL = "kernel void _ngen_hw_detect(){}";
+        const char *dummyOptions = "";
+        auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, dummyOptions);
+        product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 
-    // If it fails, compile a test program and extract the HW information from it.
-    auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, dummyOptions);
+    cl_bool integrated;
+    if (clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(integrated), &integrated, nullptr) == CL_SUCCESS)
+        product.type = integrated ? PlatformType::Integrated : PlatformType::Discrete;
 
-    return ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
+    return product;
 }
 
 #if XE3P

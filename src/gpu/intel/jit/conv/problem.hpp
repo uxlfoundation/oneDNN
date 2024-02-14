@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/convolution_pd.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
 namespace dnnl {
@@ -31,6 +32,7 @@ namespace jit {
 
 bool is_conv_index(const pvar_t &dim);
 bool is_conv_index(const pvar_t &dim, prop_kind_t prop);
+pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind);
 const std::vector<pvar_t> &conv_dims();
 const std::vector<pvar_t> &conv_index_dims(prop_kind_t prop);
 
@@ -107,6 +109,12 @@ public:
     }
     bool is_s32_accumulator() const { return acc_data_type == data_type::s32; }
     bool is_f64_accumulator() const { return acc_data_type == data_type::f64; }
+    bool is_fp4_conv() const {
+        return utils::one_of(
+                       src_data_type, data_type::f4_e2m1, data_type::f4_e3m0)
+                || utils::one_of(
+                        wei_data_type, data_type::f4_e2m1, data_type::f4_e3m0);
+    }
     bool is_fp8_conv() const {
         return utils::one_of(
                        src_data_type, data_type::f8_e4m3, data_type::f8_e5m2)
@@ -290,6 +298,16 @@ inline pvar_t to_gemm(const pvar_t &d, const conv_problem_t &prb) {
 inline pvar_tile_t to_gemm(const pvar_tile_t &t, const conv_problem_t &prb) {
     return to_gemm(t, prb.prop_kind(), prb.ab_swap_transpose);
 }
+
+// Matches the user-provided descriptor against the list of supported plain tags.
+std::string get_plain_user_tag(
+        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei);
+
+// Checks if using NCHW layout for activations is optimal, this is dependent on:
+// - Whether the user-side layout is NCHW
+// - Whether the tensor sizes allow to use optimal loads (block 2D messages)
+bool is_nchw_ok(const conv_problem_t &prb, ngen::HW hw, tensor_kind_t kind,
+        bool nested = false);
 
 } // namespace jit
 } // namespace intel

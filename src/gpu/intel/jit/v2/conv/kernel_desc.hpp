@@ -64,21 +64,22 @@ struct hw_desc_t {
 // desc.specialize(problem_t) is required to finish generation.
 enum class specialization_mode_t {
     none,
+    // Whether to reduce dimensions based on the default heuristics (e.g. 3D ->
+    // 2D, see implementation for details).
+    _default,
     // Whether to specialize all problem values.
     max,
-    // Whether to reduce dimensions based on the problem, e.g. 3D -> 2D.
-    min_dims
 };
 
 static auto specialization_mode_names = nstl::to_array({
         make_enum_name(specialization_mode_t::none, "none"),
+        make_enum_name(specialization_mode_t::_default, "default"),
         make_enum_name(specialization_mode_t::max, "max"),
-        make_enum_name(specialization_mode_t::min_dims, "min_dims"),
 });
 GPU_DEFINE_PARSE_ENUM(specialization_mode_t, specialization_mode_names)
 
 struct specialization_t {
-    specialization_mode_t mode;
+    specialization_mode_t mode = specialization_mode_t::none;
     // Dimension values to specialize (e.g. kw1).
     pvar_tile_t dim_values;
     // Dimension modulus to specialize (e.g. oc@64)
@@ -88,7 +89,7 @@ struct specialization_t {
     // that specialize() must be called.
     bool is_dynamic() const { return mode != specialization_mode_t::none; }
 
-    // Deduce problem dimensions based on max/min_dims specialization mode.
+    // Deduce problem dimensions based on the specialization mode.
     void specialize(const problem_t &prb);
 
     explicit operator bool() const {
@@ -292,17 +293,20 @@ public:
 
     prefetch_desc_t prefetch;
     extensions_t ext;
+    scales_t scales;
     gpu_post_ops_t post_ops;
 
     bool is_empty() const { return prop == prop_kind::undef; }
     bool is_supported(const hw_t &hw, const problem_t *prb = nullptr) const;
     prb_reqs_t reqs() const;
     void set(const std::string &s);
-    void set_defaults();
+    void set_missing();
+    void set_stride_reqs(const tensor_kind_t kind, const layout_tag_t &tag,
+            prb_reqs_t &reqs) const;
     bool can_fit(const problem_t &prb) const;
     void fit_to(const problem_t &prb);
-    status_t set_post_ops(const post_ops_t &post_ops,
-            const memory_desc_t *out_md, const convolution_pd_t *pd);
+    status_t set_attr(const convolution_pd_t *pd, const primitive_attr_t *attr,
+            const memory_desc_t *out_md);
     bool matches(const problem_t &prb) const;
     std::string cmd_str() const;
     std::string brief_str() const;
@@ -343,7 +347,7 @@ public:
     std::string kernel_name() const override { return "gen_conv_v2"; }
 
     exec_config_t exec_cfg(const impl::engine_t *engine) const override {
-        return exec_config_t(hw_t(engine), regs, simd);
+        return exec_config_t(hw_t(engine), regs, simd, true);
     }
 
     compute::range_t local_range() const override;
@@ -364,8 +368,8 @@ public:
             compute::kernel_t &kernel) const;
     status_t init_primitive_plan(primitive_init_plan_t &plan,
             const problem_t &prb, convolution_pd_t *pd) const;
-    serialized_t serialize() const override;
-    static kernel_desc_t deserialize(const serialized_t &s);
+    serialization_stream_t serialize() const override;
+    static kernel_desc_t deserialize(const serialization_stream_t &s);
     static void show_help();
 };
 
@@ -375,7 +379,9 @@ public:
     int key(const std::string &name) const;
     bool is_input(const std::string &name) const;
     bool is_output(const std::string &name) const;
+    std::string scales_name(int idx) const;
     std::string post_op_name(size_t idx) const;
+    int scales_key(int arg) const;
     int post_op_key(size_t idx) const;
 
 private:
@@ -391,10 +397,9 @@ public:
     static const int N = 3;
 
     grid_t() = default;
-    grid_t(const std::string &prefix) {
+    grid_t(std::string (*genname)(int)) {
         for (int i = 0; i < N; i++)
-            entries_[i].idx_var
-                    = var_t::make(type_t::s32(), prefix + std::to_string(i));
+            entries_[i].idx_var = var_t::make(type_t::s32(), genname(i));
     }
     grid_t(const std::array<expr_t, N> &idx_vars) {
         for (int i = 0; i < N; i++) {
@@ -477,6 +482,7 @@ dim_t stream_k_thread_groups(
 type_t accumulator_type(const type_t &a_type, const type_t &b_type);
 kernel_desc_t to_stream_k(const kernel_desc_t &desc, bool check_ext = true);
 prb_reqs_t generate_2d_reqs(const kernel_desc_t &desc);
+bool can_use_2d(const kernel_desc_t &desc, tensor_kind_t tensor);
 
 class kernel_params_t : public kernel_params_base_t {
 public:

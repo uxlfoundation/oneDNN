@@ -60,12 +60,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-// TODO: move this to jit_generator class?
+// TODO: move this to jit_generator_t class?
 namespace {
-
-typedef enum {
-    MAX_CODE_SIZE = 256 * 1024,
-} max_code_size_t;
 
 // TODO: move this somewhere else? Although this is only used by jit kernels
 // (Roma)
@@ -144,9 +140,9 @@ constexpr Xbyak::Operand::Code abi_not_param_reg =
 
 #endif
 
-class jit_generator : public Xbyak::MmapAllocator,
-                      public Xbyak::CodeGenerator,
-                      public c_compatible {
+class jit_generator_t : public Xbyak::MmapAllocator,
+                        public Xbyak::CodeGenerator,
+                        public c_compatible {
 public:
     using c_compatible::operator new;
     using c_compatible::operator new[];
@@ -187,7 +183,9 @@ public:
     const int EVEX_max_8b_offt = 0x200;
     const Xbyak::Reg64 reg_EVEX_max_8b_offt = rbp;
 
-    inline size_t get_size_of_abi_save_regs() { return size_of_abi_save_regs; }
+    inline size_t get_size_of_abi_save_regs() const {
+        return size_of_abi_save_regs;
+    }
 
     void preamble() {
         if (xmm_to_preserve) {
@@ -1541,6 +1539,14 @@ public:
         vtestps(x1, op);
     }
 
+    void uni_vptest(const Xbyak::Xmm &x1, const Xbyak::Operand &op) {
+        assert(!(x1.isZMM() || op.isZMM()));
+        if (is_valid_isa(avx))
+            vptest(x1, op);
+        else
+            ptest(x1, op);
+    }
+
     void uni_vblendvps(const Xbyak::Xmm &x1, const Xbyak::Xmm &x2,
             const Xbyak::Operand &op, const Xbyak::Xmm &msk) {
         assert(!x1.isZMM() && !x2.isZMM());
@@ -2078,6 +2084,17 @@ public:
             data_type_t idt, data_type_t odt, bool force_lbound = false) {
         using namespace data_type;
         if (!((idt == f32) && utils::one_of(odt, u8, s8, s32))) return;
+        if (!force_lbound && isa_has_sat_cvt(max_cpu_isa(), odt)) {
+            // Initialize xmm_permb for ISA that has saturating conversion
+            // using vpermb+vmovups is more efficient than vpmovusdb
+            static constexpr char perm_data[] = {0, 4, 8, 12, 16, 20, 24, 28,
+                    32, 36, 40, 44, 48, 52, 56, 60};
+            auto xmm_permb = Xbyak::Xmm(vmm_ubound.getIdx());
+            uni_vpxor(vmm_ubound, vmm_ubound, vmm_ubound);
+            mov(reg_tmp, reinterpret_cast<size_t>(perm_data));
+            vmovups(xmm_permb, ptr[reg_tmp]);
+            return;
+        }
 
         assert(IMPLICATION(idt == u8 || force_lbound,
                 vmm_lbound.getIdx() != vmm_ubound.getIdx()));
@@ -2134,8 +2151,16 @@ public:
     template <typename Vmm>
     void saturate_cvt_f32(const Vmm &vmm, const Vmm &vmm_lbound,
             const Vmm &vmm_ubound, data_type_t odt, bool force_lbound = false) {
-        saturate_f32(vmm, vmm_lbound, vmm_ubound, odt, force_lbound);
-        uni_vcvtps2dq(vmm, vmm);
+        if (isa_has_sat_cvt(max_cpu_isa(), odt)) {
+            switch (odt) {
+                case data_type::s8: vcvtps2ibs(vmm, vmm); break;
+                case data_type::u8: vcvtps2iubs(vmm, vmm); break;
+                default: assert(!"unsupported data type");
+            }
+        } else {
+            saturate_f32(vmm, vmm_lbound, vmm_ubound, odt);
+            uni_vcvtps2dq(vmm, vmm);
+        }
     }
 
     /**
@@ -2161,7 +2186,7 @@ public:
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
         if (!is_vmm_supported) {
-            assert("load_bytes() is only supported for xmm and ymm");
+            assert(!"load_bytes() is only supported for xmm and ymm");
             return;
         }
 
@@ -2180,7 +2205,7 @@ public:
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
         if (!is_vmm_supported) {
-            assert("load_bytes() is only supported for xmm and ymm");
+            assert(!"load_bytes() is only supported for xmm and ymm");
             return;
         }
 
@@ -2471,8 +2496,8 @@ public:
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
         if (!is_vmm_supported) {
-            assert("load_bytes_to_dword_extension() is only supported for xmm "
-                   "and ymm");
+            assert(!"load_bytes_to_dword_extension() is only supported for xmm "
+                    "and ymm");
             return;
         }
 
@@ -2532,7 +2557,7 @@ public:
                 Vmm, Xbyak::Ymm /*dummy*/>::type;
 
         if (!is_vmm_supported) {
-            assert("store_data() not supported");
+            assert(!"store_data() not supported");
             return;
         }
         helper_store_data(type_out, supported_vmm_t(vmm.getIdx()), reg, offset,
@@ -2637,7 +2662,7 @@ public:
                 load_bytes(
                         vmm, src_addr, sizeof(float16_t) * load_size, zero_vmm);
                 vcvtph2ps(vmm,
-                        typename vreg_traits<Vmm>::Vmm_lower_t(vmm.getIdx()));
+                        typename vreg_traits_t<Vmm>::Vmm_lower_t(vmm.getIdx()));
                 break;
             default: assert(!"unsupported source data type");
         }
@@ -2656,7 +2681,7 @@ public:
             const std::function<void(int)> &tail_process,
             const data_type_t data_type = data_type::f32) {
         const auto simd_w
-                = vreg_traits<Vmm>::vlen / types::data_type_size(data_type);
+                = vreg_traits_t<Vmm>::vlen / types::data_type_size(data_type);
 
         Xbyak::Label label_tbl, label_tbl_end;
         std::vector<Xbyak::Label> l_case(simd_w);
@@ -2698,17 +2723,17 @@ public:
             data_type_t dt,
             /*rest of vmms used only if there are tails*/ Xbyak::Ymm &ymm_tmp,
             Xbyak::Ymm &ymm_mask, Xbyak::Xmm &xmm_upper_mask);
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator_t);
 
     /* All uni_ instructions -- apart from uni_vzeroupper() -- will comply with
      * the max_cpu_isa argument */
-    jit_generator(const char *name, cpu_isa_t max_cpu_isa = get_max_cpu_isa())
+    jit_generator_t(const char *name, cpu_isa_t max_cpu_isa = get_max_cpu_isa())
         : Xbyak::MmapAllocator(name)
-        , Xbyak::CodeGenerator(MAX_CODE_SIZE, Xbyak::AutoGrow,
+        , Xbyak::CodeGenerator(max_code_size, Xbyak::AutoGrow,
                   /*allocator=*/this)
         , max_cpu_isa_(max_cpu_isa) {}
 
-    ~jit_generator() override = default;
+    ~jit_generator_t() override = default;
 
     virtual const char *name() const = 0;
     virtual const char *source_file() const = 0;
@@ -2735,6 +2760,8 @@ public:
         return (jit_ker_) ? status::success : status::runtime_error;
     }
 
+    inline cpu_isa_t max_cpu_isa() const noexcept { return max_cpu_isa_; }
+
 private:
     const cpu_isa_t max_cpu_isa_;
     const Xbyak::uint8 *getCode() {
@@ -2752,6 +2779,8 @@ private:
     static inline bool is_initialized() {
         return Xbyak::GetError() == Xbyak::ERR_NONE;
     }
+
+    static constexpr unsigned max_code_size = 256 * 1024;
 
 protected:
     virtual void generate() = 0;

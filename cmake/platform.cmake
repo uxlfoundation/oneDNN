@@ -53,6 +53,10 @@ endif()
 # the macros to avoid code duplication and ensure consistency.
 macro(platform_unix_and_mingw_common_ccxx_flags var)
     append(${var} "-Wall -Wno-unknown-pragmas")
+    # TODO: remove Aarch64 limitation when ACL hits are resolved.
+    if(NOT DNNL_TARGET_ARCH STREQUAL "AARCH64")
+        append(${var} "-Wundef")
+    endif()
     append_if(DNNL_WERROR ${var} "-Werror")
     append(${var} "-fvisibility=internal")
 endmacro()
@@ -285,6 +289,9 @@ elseif(UNIX OR MINGW)
              if (CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
                  append(DEF_ARCH_OPT_FLAGS "-march=native")
              endif()
+        elseif(DNNL_TARGET_ARCH STREQUAL "RV64")
+             # G = General-purpose extensions, C = Compression extension (very common).
+             append(DEF_ARCH_OPT_FLAGS "-march=rv64gc")
         elseif(DNNL_TARGET_ARCH STREQUAL "X64")
              platform_clang_x64_arch_ccxx_flags(DEF_ARCH_OPT_FLAGS)
         endif()
@@ -328,6 +335,7 @@ elseif(UNIX OR MINGW)
             message(STATUS
                 "Using Clang ${DNNL_ENABLED_CLANG_SANITIZER} "
                 "sanitizer (experimental!)")
+            append(CMAKE_CCXX_SANITIZER_FLAGS "-DDNNL_ENABLED_CLANG_SANITIZER")
             append(CMAKE_CCXX_SANITIZER_FLAGS "-g")
             # Already enabled for x64
             if(NOT DNNL_TARGET_ARCH STREQUAL "X64")
@@ -340,18 +348,12 @@ elseif(UNIX OR MINGW)
                    "-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/.clang-ignorelist")
         endif()
 
-        if(DNNL_USE_CLANG_TIDY MATCHES "(CHECK|CHECK_ALL|FIX)")
+        if(DNNL_USE_CLANG_TIDY MATCHES "(CHECK|FIX)")
             find_program(CLANG_TIDY NAMES clang-tidy)
             if(NOT CLANG_TIDY)
                 message(FATAL_ERROR "Clang-tidy not found")
             else()
-                # FIXME: Remove --header-filter option once clang-tidy warnings
-                # are addressed
                 if(DNNL_USE_CLANG_TIDY STREQUAL "CHECK")
-                    set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY}
-                        --header-filter='')
-                    message(STATUS "Using clang-tidy to run checks for source")
-                elseif(DNNL_USE_CLANG_TIDY STREQUAL "CHECK_ALL")
                     set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY})
                     message(STATUS "Using clang-tidy to run checks for source and headers")
                 elseif(DNNL_USE_CLANG_TIDY STREQUAL "FIX")
@@ -464,10 +466,17 @@ endif()
 if (DNNL_TARGET_ARCH STREQUAL "RV64")
     # Check if the RVV Intrinsics can be compiled with the current toolchain and flags
     include(CheckCXXSourceCompiles)
-    check_cxx_source_compiles("#include <riscv_vector.h>
+    check_cxx_source_compiles("#if !defined(__riscv) || !defined(__riscv_v)
+                               #error \"RISC-V or vector extension(RVV) is not supported by the compiler\"
+                               #endif
+
+                               #if defined(__riscv_v_intrinsic) && __riscv_v_intrinsic < 12000
+                               #error \"RISC-V intrinsics v0.12 or higher is required\"
+                               #endif
+
+                               #include <riscv_vector.h>
                                int main() {
-                                size_t size = 64;
-                                return vsetvl_e32m2(size);
+                                return 0;
                                };"
                                CAN_COMPILE_RVV_INTRINSICS
     )

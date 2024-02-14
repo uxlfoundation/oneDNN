@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,34 +47,34 @@ cpu_isa_t get_supported_isa() {
 
 static int get_vlen(const cpu_isa_t &isa) noexcept {
     if (isa == avx512_core_fp16)
-        return cpu_isa_traits<avx512_core_fp16>::vlen;
+        return cpu_isa_traits_t<avx512_core_fp16>::vlen;
     else if (isa == avx512_core_bf16)
-        return cpu_isa_traits<avx512_core_bf16>::vlen;
+        return cpu_isa_traits_t<avx512_core_bf16>::vlen;
     else if (isa == avx512_core)
-        return cpu_isa_traits<avx512_core>::vlen;
+        return cpu_isa_traits_t<avx512_core>::vlen;
     else if (isa == avx2_vnni_2)
-        return cpu_isa_traits<avx2_vnni_2>::vlen;
+        return cpu_isa_traits_t<avx2_vnni_2>::vlen;
     else if (isa == avx2)
-        return cpu_isa_traits<avx2>::vlen;
+        return cpu_isa_traits_t<avx2>::vlen;
     else if (isa == avx)
-        return cpu_isa_traits<avx>::vlen;
-    return cpu_isa_traits<sse41>::vlen;
+        return cpu_isa_traits_t<avx>::vlen;
+    return cpu_isa_traits_t<sse41>::vlen;
 }
 
 int get_n_vregs(const cpu_isa_t &isa) noexcept {
     if (isa == avx512_core_fp16)
-        return cpu_isa_traits<avx512_core_fp16>::n_vregs;
+        return cpu_isa_traits_t<avx512_core_fp16>::n_vregs;
     else if (isa == avx512_core_bf16)
-        return cpu_isa_traits<avx512_core_bf16>::n_vregs;
+        return cpu_isa_traits_t<avx512_core_bf16>::n_vregs;
     else if (isa == avx512_core)
-        return cpu_isa_traits<avx512_core>::n_vregs;
+        return cpu_isa_traits_t<avx512_core>::n_vregs;
     else if (isa == avx2_vnni_2)
-        return cpu_isa_traits<avx2_vnni_2>::n_vregs;
+        return cpu_isa_traits_t<avx2_vnni_2>::n_vregs;
     else if (isa == avx2)
-        return cpu_isa_traits<avx2>::n_vregs;
+        return cpu_isa_traits_t<avx2>::n_vregs;
     else if (isa == avx)
-        return cpu_isa_traits<avx>::n_vregs;
-    return cpu_isa_traits<sse41>::n_vregs;
+        return cpu_isa_traits_t<avx>::n_vregs;
+    return cpu_isa_traits_t<sse41>::n_vregs;
 }
 
 bool is_s8u8(const std::set<data_type_t> &tensor_data_types) noexcept {
@@ -88,7 +88,7 @@ int get_simd_w(const std::set<data_type_t> &tensor_data_types) noexcept {
     const auto &isa = prelu::get_supported_isa();
 
     return (isa == avx && is_s8u8(tensor_data_types))
-            ? vreg_traits<Xbyak::Xmm>::vlen / sizeof(float)
+            ? vreg_traits_t<Xbyak::Xmm>::vlen / sizeof(float)
             : prelu::get_vlen(isa) / sizeof(float);
 }
 
@@ -205,9 +205,9 @@ size_t get_block_tail_size(const memory_desc_t *mem) noexcept {
     return mem_d.padded_dims()[1] - mem_d.dims()[1];
 }
 
-void apply_zero_padding(jit_generator *host, const size_t tail_size,
+void apply_zero_padding(jit_generator_t *host, const size_t tail_size,
         const data_type_t dt, const size_t block_tail_size,
-        const Xbyak::Reg64 &reg_dst, const Xbyak::Reg64 *reg_offset) noexcept {
+        const Xbyak::Reg64 &reg_dst, const Xbyak::Reg64 *reg_offset) {
     using namespace Xbyak;
     using namespace Xbyak::util;
 

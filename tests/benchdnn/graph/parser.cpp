@@ -117,6 +117,22 @@ bool parse_op_attrs(std::vector<std::map<size_t, std::string>> &op_attrs_vec,
     return parse_key_value(op_attrs_vec, op_attrs_str), true;
 }
 
+bool parse_op_kind(std::vector<std::map<size_t, std::string>> &op_kind_map,
+        const char *str, const std::string &option_name) {
+    std::string s;
+    if (!parse_string(s, str, option_name)) return false;
+
+    //--op-kind=ID:KIND[+ID:KIND], change the kind should not change the topology
+    if (s.find(":") == std::string::npos) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: --op-kind is not correctly specified with a pair of op "
+                "id and target op kind.");
+        SAFE_V(FAIL);
+    }
+    parse_key_value(op_kind_map, s, option_name);
+    return true;
+}
+
 bool parse_dt(std::vector<dnnl_data_type_t> &dt,
         std::vector<std::map<size_t, dnnl_data_type_t>> &dt_map,
         const char *str, const std::string &option_name) {
@@ -244,7 +260,7 @@ std::map<std::string, std::string> parse_attrs(const std::string &attrs_str) {
         val_end = attrs_str.find('*', val_pos);
         std::string key_str = attrs_str.substr(key_pos, key_end - key_pos);
         std::string val_str = attrs_str.substr(val_pos, val_end - val_pos);
-        // Validation of input happens at `deserialized_op::create()`.
+        // Validation of input happens at `deserialized_op_t::create()`.
         if (attrs_map.count(key_str)) {
             attrs_map[key_str] = val_str;
             BENCHDNN_PRINT(0, "Repeat attr: %s, will use last value for it.\n",

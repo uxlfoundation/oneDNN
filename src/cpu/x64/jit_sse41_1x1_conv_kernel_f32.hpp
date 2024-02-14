@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2023 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_sse41_1x1_conv_kernel_f32 : public jit_generator {
-    jit_sse41_1x1_conv_kernel_f32(const jit_1x1_conv_conf_t &ajcp,
+struct jit_sse41_1x1_conv_kernel_f32_t : public jit_generator_t {
+    jit_sse41_1x1_conv_kernel_f32_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
     static status_t init_conf(jit_1x1_conv_conf_t &jcp,
@@ -39,13 +39,14 @@ struct jit_sse41_1x1_conv_kernel_f32 : public jit_generator {
             const memory_desc_wrapper &dst_d, const primitive_attr_t &attr,
             int nthreads);
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_1x1_conv_kernel_f32)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_1x1_conv_kernel_f32_t)
 
     jit_1x1_conv_conf_t jcp;
     const primitive_attr_t &attr_;
 
 private:
-    static constexpr auto simd_w_ = cpu_isa_traits<sse41>::vlen / sizeof(float);
+    static constexpr auto simd_w_
+            = cpu_isa_traits_t<sse41>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     using xmm_t = const Xbyak::Xmm;
 

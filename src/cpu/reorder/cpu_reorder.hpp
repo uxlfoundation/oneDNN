@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,10 +38,9 @@
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_reorder.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_reorders.hpp"
-#endif
-
-#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_reorder.hpp"
+#endif
 #endif
 
 #include "cpu/rnn/rnn_reorders.hpp"
@@ -98,24 +97,6 @@ extern const impl_list_map_t &comp_bf16_s8_impl_list_map();
 extern const impl_list_map_t &comp_s8_s8_impl_list_map();
 
 // clang-format off
-
-// Some compilers do not allow guarding implementations with macros
-// in the impl list.
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-
-#if DNNL_X64
-#define REG_SPARSE_SR_X64(idt, ifmt, odt, ofmt) \
-    impl_list_item_t(impl_list_item_t::reorder_type_deduction_helper_t< \
-            simple_sparse_reorder_t<idt, \
-                    std::remove_const<decltype(ifmt)>::type, ifmt, odt, \
-                    std::remove_const<decltype(ofmt)>::type, ofmt>::pd_t>()),
-#else
-#define REG_SPARSE_SR_X64(...)
-#endif
-
-#else
-#define REG_SPARSE_SR_X64(...)
-#endif
 
 #define REG_SR(idt, ifmt, odt, ofmt, ...) \
     impl_list_item_t(impl_list_item_t::reorder_type_deduction_helper_t< \

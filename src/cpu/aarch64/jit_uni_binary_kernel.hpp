@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_UNI_BINARY_KERNEL_HPP
-#define CPU_AARCH64_UNI_BINARY_KERNEL_HPP
+#ifndef CPU_AARCH64_JIT_UNI_BINARY_KERNEL_HPP
+#define CPU_AARCH64_JIT_UNI_BINARY_KERNEL_HPP
 
 #include <cassert>
 
@@ -47,7 +47,7 @@ struct binary_kernel_t : public jit_generator {
             const jit_binary_conf_t conf, bool tail_kernel = false);
     ~binary_kernel_t() override = default;
 
-    void operator()(jit_binary_call_s *p) { jit_generator::operator()(p); }
+    void operator()(jit_uni_binary_args_t *p) { jit_generator::operator()(p); }
 
     size_t simd_w() const noexcept { return simd_w_; }
     size_t vlen() const noexcept { return vlen_; }

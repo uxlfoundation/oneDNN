@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+#ifndef GPU_INTEL_OCL_LNORM_UTILS_HPP
+#define GPU_INTEL_OCL_LNORM_UTILS_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
@@ -67,3 +70,5 @@ static compute::named_buffer_t get_ss_buffer(
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

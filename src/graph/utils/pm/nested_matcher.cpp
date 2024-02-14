@@ -69,11 +69,18 @@ namespace utils {
 namespace pm {
 
 namespace {
-// check if an op's inputs are commutative
-bool has_commutative_inputs(op_t *op) {
+// check if an op has commutative inputs
+bool is_commutative_op(op_t *op) {
     const op_schema_t *opm
             = op_schema_registry_t::get_op_schema(op->get_kind());
-    return opm->get_commutative_inputs();
+    return opm->is_commutative_op();
+}
+
+// check if an op's specific inputs are commutative
+bool is_commutative_inputs(op_t *op, const size_t input0, const size_t input1) {
+    const op_schema_t *opm
+            = op_schema_registry_t::get_op_schema(op->get_kind());
+    return opm->is_commutative_inputs(input0, input1);
 }
 
 // fill local context in map when optional exists
@@ -208,6 +215,9 @@ bool node_inputs_matcher_t::match_commutative_inputs() {
                 ++op_input_offset) {
             if (verified_op_input_ports.find(op_input_offset)
                             == verified_op_input_ports.end()
+                    && (node_input_offset == op_input_offset
+                            || is_commutative_inputs(get_op(),
+                                    node_input_offset, op_input_offset))
                     && match_input_by_offset(
                             op_input_offset, node_input_offset)) {
                 verified_op_input_ports.insert(op_input_offset);
@@ -252,7 +262,7 @@ bool match_node_inputs(const binding_t &b, match_context_t *ctx,
     if (node_inputs_matcher.get_node()->get_inputs().size()
             == VARIADIC_INPUT_NUM) {
         matching_status = node_inputs_matcher.match_variadic_inputs();
-    } else if (!has_commutative_inputs(node_inputs_matcher.get_op())) {
+    } else if (!is_commutative_op(node_inputs_matcher.get_op())) {
         matching_status = node_inputs_matcher.match_non_commutative_inputs();
     } else {
         matching_status = node_inputs_matcher.match_commutative_inputs();
@@ -552,7 +562,8 @@ bool match_node(const binding_t &b, match_context_t *ctx,
                 __FILE__, __LINE__);
         return false;
     }
-    if (!has_commutative_inputs(b.bind_op) && b.bind_op_port != b.bind_port) {
+    if (b.bind_op_port != b.bind_port
+            && !is_commutative_inputs(b.bind_op, b.bind_op_port, b.bind_port)) {
         DEBUG(DEBUGINFO_PM,
                 "matching op & node: %s (%s) <=> %s, matching "
                 "failed \n",
@@ -646,11 +657,8 @@ bool resolve_node(const binding_t &bind_arg, match_context_t *ctx,
 std::vector<value_t::consumer_t> sort_op_consumers(
         std::shared_ptr<value_t> &op_out_value) {
     auto &cons = op_out_value->get_consumers();
-    std::vector<value_t::consumer_t> sorted_consumers;
     if (cons.empty()) return cons;
-    for (size_t i = 0; i < cons.size(); i++) {
-        sorted_consumers.push_back(cons[i]);
-    }
+    std::vector<value_t::consumer_t> sorted_consumers = cons;
     std::sort(sorted_consumers.begin(), sorted_consumers.end(),
             [&](value_t::consumer_t con_1, value_t::consumer_t con_2) {
                 return con_1.get_op().get_attr<int64_t>(op_attr::op_depth)
@@ -771,8 +779,8 @@ inline std::vector<op_t *> reorder_matched_list(
         }
         auto &outputs = op->get_output_values();
         for (auto it = outputs.begin(); it != outputs.end(); ++it) {
-            auto cons = (*it)->get_consumers();
-            for (auto &con : (*it)->get_consumers()) {
+            const auto &cons = (*it)->get_consumers();
+            for (auto &con : cons) {
                 op_t &con_op = con.get_op();
                 if (std::find(dq.begin(), dq.end(), &con_op) == dq.end()
                         && std::find(fusion_ops.begin(), fusion_ops.end(),
@@ -946,6 +954,9 @@ bool match_alternation(const binding_t &bind_arg, match_context_t *ctx,
     if (bind_arg.bind_kind == BIND_IN) {
         DEBUG(DEBUGINFO_PM, "now doing alt matching");
     }
+    // Coverity: Dynamic cast to pointer can return NULL.
+    if (!alt_nodes) return false;
+
     for (pb_graph_t *alt_node : alt_nodes->get_alternatives()) {
         std::unordered_map<op_t *, pb_op_t *> temp_op_map = matched_op_map;
         binding_t temp_bind = bind_arg;
@@ -1237,7 +1248,7 @@ bool repetition_matcher_t::verify_current_matching_round(
     oport_t oport = pmap_.first;
     op_t *cur_op = local_cached_ctx.out_port_map.at(oport).first;
     size_t cur_op_port = local_cached_ctx.out_port_map.at(oport).second;
-    auto cons = cur_op->get_output_value(cur_op_port)->get_consumers();
+    const auto &cons = cur_op->get_output_value(cur_op_port)->get_consumers();
     if (cons.size() <= 1) return true;
 
     // if current op has more than 1 consumers, while the repetition unit

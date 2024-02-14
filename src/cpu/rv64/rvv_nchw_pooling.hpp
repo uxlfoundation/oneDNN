@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef RV64_NCHW_POOLING_HPP
-#define RV64_NCHW_POOLING_HPP
+#ifndef CPU_RV64_RVV_NCHW_POOLING_HPP
+#define CPU_RV64_RVV_NCHW_POOLING_HPP
 
 #include "common/primitive.hpp"
 #include "cpu/cpu_pooling_pd.hpp"

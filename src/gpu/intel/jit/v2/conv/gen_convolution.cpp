@@ -76,24 +76,38 @@ status_t init_layouts(const kernel_desc_t &desc, convolution_pd_t *pd) {
     return status::success;
 }
 
+void iter_md(const convolution_pd_t *pd,
+        const std::function<void(const memory_desc_t &)> &func) {
+    func(*pd->invariant_src_md());
+    func(*pd->invariant_wei_md());
+    func(*pd->invariant_dst_md());
+    func(*pd->invariant_bia_md());
+    auto &post_ops = pd->attr()->post_ops_;
+    for (int i = 0; i < post_ops.len(); i++) {
+        auto &e = post_ops.entry_[i];
+        if (e.is_binary()) func(e.binary.src1_desc);
+    }
+}
+
 bool has_large_buffers(const convolution_pd_t *pd) {
     auto is_large = [](const memory_desc_t &md) {
         memory_desc_wrapper mdw(md);
         gpu_assert(!mdw.format_any());
-        return mdw.size() > std::numeric_limits<int32_t>::max();
+        return mdw.size() > size_t(std::numeric_limits<int32_t>::max());
     };
-    if (is_large(*pd->invariant_src_md())) return true;
-    if (is_large(*pd->invariant_wei_md())) return true;
-    if (is_large(*pd->invariant_dst_md())) return true;
-    if (is_large(*pd->invariant_bia_md())) return true;
-    auto &post_ops = pd->attr()->post_ops_;
-    for (int i = 0; i < post_ops.len(); i++) {
-        auto &e = post_ops.entry_[i];
-        if (e.is_binary()) {
-            if (is_large(e.binary.src1_desc)) return true;
-        }
-    }
-    return false;
+    bool has = false;
+    iter_md(pd, [&](const memory_desc_t &md) {
+        if (is_large(md)) has = true;
+    });
+    return has;
+}
+
+bool has_shifted_mds(const convolution_pd_t *pd) {
+    bool has = false;
+    iter_md(pd, [&](const memory_desc_t &md) {
+        if (md.offset0 != 0) has = true;
+    });
+    return has;
 }
 
 class gen_convolution_t {
@@ -112,7 +126,8 @@ public:
             return false;
         }
         using sm = primitive_attr_t::skip_mask_t;
-        auto skip_mask = sm::post_ops | sm::sum_dt;
+        auto skip_mask
+                = sm::post_ops | sm::sum_dt | sm::scales | sm::scales_data_type;
         if (!pd->attr()->has_default_values(skip_mask)) return false;
         return true;
     }
@@ -133,24 +148,26 @@ public:
         auto prb = to_problem(pd, engine);
         kernel_desc_t _desc;
         if (debug_t::init_kernel_desc(_desc)) {
-            _desc.set_defaults();
+            _desc.set_missing();
+            _desc.spec.mode = specialization_mode_t::_default;
         } else {
             auto &registry = const_plan_registry();
-            _desc = registry.find_best(prb);
+            _desc = registry.find_best(prb, specialization_mode_t::_default);
             if (_desc.is_empty()) {
                 gpu_info() << "Cannot find kernels that can fit the problem.";
                 return status::unimplemented;
             }
         }
-        _desc.spec.mode = specialization_mode_t::min_dims;
         _desc.fit_to(prb);
         CHECK(init_layouts(_desc, pd));
         CHECK(pd->attr_.set_default_formats(out_md(pd)));
 
         // Large buffer support is unimplemented.
         if (has_large_buffers(pd)) return status::unimplemented;
+        // Shifted memory descriptors are not supported.
+        if (has_shifted_mds(pd)) return status::unimplemented;
 
-        CHECK(_desc.set_post_ops(pd->attr()->post_ops_, out_md(pd), pd));
+        CHECK(_desc.set_attr(pd, pd->attr(), out_md(pd)));
         if (!create_conv_plan(_desc, prb)) {
             gpu_info() << "Cannot create kernel descriptor.\n";
             return status::runtime_error;
@@ -191,7 +208,7 @@ status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -204,7 +221,7 @@ status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -218,7 +235,7 @@ status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 

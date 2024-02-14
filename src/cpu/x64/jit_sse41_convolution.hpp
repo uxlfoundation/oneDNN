@@ -57,7 +57,7 @@ struct jit_sse41_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_sse41_conv_fwd_kernel_f32::init_conf(jcp_, *desc(),
+            CHECK(jit_sse41_conv_fwd_kernel_f32_t::init_conf(jcp_, *desc(),
                     *src_md(), *weights_md(), *dst_md(), *attr(),
                     dnnl_get_max_threads()));
 
@@ -108,7 +108,7 @@ struct jit_sse41_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_sse41_conv_fwd_kernel_f32(
+                new jit_sse41_conv_fwd_kernel_f32_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         return kernel_->create_kernel();
     }
@@ -121,7 +121,7 @@ struct jit_sse41_convolution_fwd_t : public primitive_t {
 private:
     void execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_sse41_conv_fwd_kernel_f32> kernel_;
+    std::unique_ptr<jit_sse41_conv_fwd_kernel_f32_t> kernel_;
 };
 
 } // namespace x64

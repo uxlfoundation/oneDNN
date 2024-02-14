@@ -85,7 +85,15 @@ static constexpr char verbose_version[] = "v1";
 
 static setting_t<uint32_t> verbose {0};
 
-void print_header(const filter_status_t &filter_status) noexcept {
+// Component filters help manage verbose output by parsing and printing for
+// matching components. The filter status is tracked from verbose initializaton,
+// allowing queries for the component type during verbose printing.
+filter_status_t &filter_status() {
+    static filter_status_t filter_status;
+    return filter_status;
+}
+
+void print_header() noexcept {
     static std::atomic_flag version_printed = ATOMIC_FLAG_INIT;
     if (!version_printed.test_and_set()) {
         verbose_printf("info,oneDNN v%d.%d.%d (commit %s)\n",
@@ -123,13 +131,6 @@ void print_header(const filter_status_t &filter_status) noexcept {
         verbose_printf("info,GPU convolution v2 is %s\n",
                 experimental::use_gpu_conv_v2() ? "enabled" : "disabled");
 #endif
-
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-        verbose_printf(
-                "info,experimental functionality for sparse domain is "
-                "enabled\n");
-#endif
-
         verbose_printf(
                 "primitive,info,template:%soperation,engine,primitive,"
                 "implementation,prop_kind,memory_descriptors,attributes,"
@@ -150,16 +151,16 @@ void print_header(const filter_status_t &filter_status) noexcept {
                 "mode,implementation,backend,exec_time\n",
                 get_verbose_timestamp() ? "timestamp," : "");
 #endif
-        if (filter_status.status == filter_status_t::flags::valid)
+        if (filter_status().status == filter_status_t::flags::valid)
             verbose_printf(
                     "common,info,filter format is enabled, hit components: "
                     "%s\n",
-                    filter_status.components.c_str());
-        else if (filter_status.status == filter_status_t::flags::invalid)
+                    filter_status().components.c_str());
+        else if (filter_status().status == filter_status_t::flags::invalid)
             verbose_printf(
                     "common,error,filter format is ill-formed and is not "
                     "applied, error: %s\n",
-                    filter_status.err_msg.c_str());
+                    filter_status().err_msg.c_str());
     }
 }
 
@@ -171,8 +172,6 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
 #endif
     // we print all verbose by default
     static int flags = component_t::all;
-    // record filter parsing result to instruct verbose printing
-    static filter_status_t filter_status;
 
     if (!verbose.initialized()) {
         // Assumes that all threads see the same environment
@@ -201,56 +200,55 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
                         std::strtol(s.c_str() + 10, nullptr, 10));
         };
 
-        auto update_filter = [&](const std::string &s,
-                                     filter_status_t &filter_status) -> int {
+        auto update_filter = [&](const std::string &s) -> int {
             int k = component_t::none;
             try {
                 std::regex regexp = std::regex(s);
 
-#define REGEX_SEARCH(k, component, regexp, filter_status) \
+#define REGEX_SEARCH(k, component, regexp) \
     if (std::regex_search("" #component "", regexp)) { \
         (k) |= component_t::component; \
-        (filter_status).components += "" #component ","; \
+        filter_status().components += "" #component ","; \
     }
-                REGEX_SEARCH(k, primitive, regexp, filter_status);
-                REGEX_SEARCH(k, reorder, regexp, filter_status);
-                REGEX_SEARCH(k, shuffle, regexp, filter_status);
-                REGEX_SEARCH(k, concat, regexp, filter_status);
-                REGEX_SEARCH(k, sum, regexp, filter_status);
-                REGEX_SEARCH(k, convolution, regexp, filter_status);
-                REGEX_SEARCH(k, deconvolution, regexp, filter_status);
-                REGEX_SEARCH(k, eltwise, regexp, filter_status);
-                REGEX_SEARCH(k, lrn, regexp, filter_status);
-                REGEX_SEARCH(k, batch_normalization, regexp, filter_status);
-                REGEX_SEARCH(k, inner_product, regexp, filter_status);
-                REGEX_SEARCH(k, rnn, regexp, filter_status);
-                REGEX_SEARCH(k, binary, regexp, filter_status);
-                REGEX_SEARCH(k, matmul, regexp, filter_status);
-                REGEX_SEARCH(k, resampling, regexp, filter_status);
-                REGEX_SEARCH(k, pooling, regexp, filter_status);
-                REGEX_SEARCH(k, reduction, regexp, filter_status);
-                REGEX_SEARCH(k, prelu, regexp, filter_status);
-                REGEX_SEARCH(k, softmax, regexp, filter_status);
-                REGEX_SEARCH(k, layer_normalization, regexp, filter_status);
-                REGEX_SEARCH(k, group_normalization, regexp, filter_status);
-                REGEX_SEARCH(k, graph, regexp, filter_status);
-                REGEX_SEARCH(k, gemm_api, regexp, filter_status);
-                REGEX_SEARCH(k, ukernel, regexp, filter_status);
+                REGEX_SEARCH(k, primitive, regexp);
+                REGEX_SEARCH(k, reorder, regexp);
+                REGEX_SEARCH(k, shuffle, regexp);
+                REGEX_SEARCH(k, concat, regexp);
+                REGEX_SEARCH(k, sum, regexp);
+                REGEX_SEARCH(k, convolution, regexp);
+                REGEX_SEARCH(k, deconvolution, regexp);
+                REGEX_SEARCH(k, eltwise, regexp);
+                REGEX_SEARCH(k, lrn, regexp);
+                REGEX_SEARCH(k, batch_normalization, regexp);
+                REGEX_SEARCH(k, inner_product, regexp);
+                REGEX_SEARCH(k, rnn, regexp);
+                REGEX_SEARCH(k, binary, regexp);
+                REGEX_SEARCH(k, matmul, regexp);
+                REGEX_SEARCH(k, resampling, regexp);
+                REGEX_SEARCH(k, pooling, regexp);
+                REGEX_SEARCH(k, reduction, regexp);
+                REGEX_SEARCH(k, prelu, regexp);
+                REGEX_SEARCH(k, softmax, regexp);
+                REGEX_SEARCH(k, layer_normalization, regexp);
+                REGEX_SEARCH(k, group_normalization, regexp);
+                REGEX_SEARCH(k, graph, regexp);
+                REGEX_SEARCH(k, gemm_api, regexp);
+                REGEX_SEARCH(k, ukernel, regexp);
 #undef REGEX_SEARCH
             } catch (const std::exception &e) {
-                filter_status.status = filter_status_t::flags::invalid;
-                filter_status.err_msg = e.what();
+                filter_status().status = filter_status_t::flags::invalid;
+                filter_status().err_msg = e.what();
                 return component_t::all;
             }
 
             // filter enabled and at least one component is hit
-            if (!filter_status.components.empty()) {
+            if (!filter_status().components.empty()) {
                 // pop out the last comma
-                filter_status.components.pop_back();
-                filter_status.status = filter_status_t::flags::valid;
+                filter_status().components.pop_back();
+                filter_status().status = filter_status_t::flags::valid;
             } else {
-                filter_status.status = filter_status_t::flags::invalid;
-                filter_status.err_msg
+                filter_status().status = filter_status_t::flags::invalid;
+                filter_status().err_msg
                         = "component with name \'" + s + "\' not found";
             }
             return k;
@@ -267,9 +265,7 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
             // update filter flags
             if (tok.rfind("filter=", 0) == 0) {
                 auto filter_str = tok.substr(7);
-                if (!filter_str.empty()) {
-                    flags = update_filter(filter_str, filter_status);
-                }
+                if (!filter_str.empty()) { flags = update_filter(filter_str); }
             }
             if (pos_en == std::string::npos) break;
         }
@@ -287,7 +283,6 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
     int result = verbose.get() & verbosity_kind;
     if (verbosity_kind == verbose_t::debuginfo)
         result = verbose_t::get_debuginfo(verbose.get());
-    if (result) print_header(filter_status);
     bool filter_result = flags & filter_kind;
     return filter_result ? result : 0;
 }
@@ -352,12 +347,10 @@ std::ostream &operator<<(std::ostream &ss, format_kind_t format_kind) {
     return ss;
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 std::ostream &operator<<(std::ostream &ss, sparse_encoding_t encoding) {
     ss << dnnl_sparse_encoding2str(encoding);
     return ss;
 }
-#endif
 
 std::string normalization_flags2str(unsigned flags) {
     std::string s;
@@ -366,6 +359,7 @@ std::string normalization_flags2str(unsigned flags) {
     if (flags & normalization_flags::use_shift) s += "H";
     if (flags & normalization_flags::fuse_norm_relu) s += "R";
     if (flags & normalization_flags::fuse_norm_add_relu) s += "A";
+    if (flags & normalization_flags::rms_norm) s += "M";
     return s;
 }
 
@@ -643,6 +637,7 @@ int get_arg_index(int arg) {
     switch (arg) {
         case DNNL_ARG_SRC_0: return 0;
         case DNNL_ARG_SRC_1: return 1;
+        case DNNL_ARG_SRC_2: return 2;
         default: return -1;
     }
     return -1;
@@ -654,7 +649,8 @@ std::string get_arg(int arg) {
     std::string s;
     switch (arg) {
         case DNNL_ARG_SRC: // DNNL_ARG_SRC_0
-        case DNNL_ARG_SRC_1: s = "src"; break;
+        case DNNL_ARG_SRC_1:
+        case DNNL_ARG_SRC_2: s = "src"; break;
         case DNNL_ARG_DST: s = "dst"; break;
         case DNNL_ARG_WEIGHTS: s = "wei"; break;
         case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST:
@@ -865,17 +861,25 @@ std::string init_info_binary(const engine_t *e, const pd_t *pd) {
 
     auto src0_md = pd->invariant_src_md(0);
     auto src1_md = pd->invariant_src_md(1);
+    auto src2_md = pd->invariant_src_md(2);
     auto dst_md = pd->invariant_dst_md();
 
     ss << md2fmt_str("src", src0_md, pd->invariant_src_user_format_kind(0))
        << " ";
     ss << md2fmt_str("src", src1_md, pd->invariant_src_user_format_kind(1))
        << " ";
+    if (pd->desc()->alg_kind == alg_kind_t::dnnl_binary_select) {
+        ss << md2fmt_str("src", src2_md, pd->invariant_src_user_format_kind(2))
+           << " ";
+    }
+
     ss << md2fmt_str("dst", dst_md, pd->invariant_dst_user_format_kind());
 
     ss << "," << pd->attr() << ",";
     ss << "alg:" << pd->desc()->alg_kind << ",";
     ss << md2dim_str(src0_md) << ":" << md2dim_str(src1_md);
+    if (pd->desc()->alg_kind == alg_kind_t::dnnl_binary_select)
+        ss << ":" << md2dim_str(src2_md);
 
     return ss.str();
 }
@@ -1557,41 +1561,63 @@ std::string init_info_sum(const engine_t *e, const pd_t *pd) {
 template <typename pd_t>
 std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     std::stringstream ss;
-    ss << e << "," << pd->kind() << "," << pd->name() << ",";
+    ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
+       << ",";
 
     const sdpa_desc_t *desc = pd->desc();
+    ss << md2fmt_str(
+            "query", pd->qry_md(), pd->invariant_src_user_format_kind(0))
+       << " ";
+    ss << md2fmt_str("key", pd->key_md(), pd->invariant_src_user_format_kind(1))
+       << " ";
+    ss << md2fmt_str("val", pd->val_md(), pd->invariant_src_user_format_kind(2))
+       << " ";
+    if (pd->with_attn_mask())
+        ss << md2fmt_str("msk", pd->attn_mask_md(),
+                pd->invariant_src_user_format_kind(3))
+           << " ";
+    ss << md2fmt_str("dst", pd->dst_md(), pd->invariant_dst_user_format_kind())
+       << ",";
 
     std::string delimiter;
-    if (!desc->kq_scales.has_default_values()) {
-        ss << delimiter << "kq_attr-scales:wei:" << desc->kq_scales;
-        delimiter = "+";
+    if (pd->with_key_scales() || pd->with_value_scales()) {
+        ss << delimiter << "attr-scales:";
+        delimiter = "";
+        if (pd->with_key_scales()) {
+            ss << delimiter << "kq:" << desc->kq_scales;
+            delimiter = "+";
+        }
+        if (pd->with_value_scales()) {
+            ss << delimiter << "vs:" << desc->vs_scales;
+            delimiter = "+";
+        }
+        delimiter = " ";
     }
-    if (!desc->kq_zero_points.has_default_values()) {
-        ss << delimiter
-           << "kq_attr-zero-points:" << desc->kq_zero_points.get_verbose();
-        delimiter = "+";
+    if (pd->with_key_zp() || pd->with_value_zp()) {
+        ss << delimiter << "attr-zero-points:";
+        delimiter = "";
+        if (pd->with_key_zp()) {
+            ss << delimiter << "kq:" << desc->kq_zero_points;
+            delimiter = "+";
+        }
+        if (pd->with_value_zp()) {
+            ss << delimiter << "vs:" << desc->vs_zero_points;
+            delimiter = "+";
+        }
     }
+    ss << ",";
 
-    if (!desc->vs_scales.has_default_values()) {
-        ss << delimiter << "vs_attr-scales:wei:" << desc->vs_scales;
-        delimiter = "+";
-    }
-    if (!desc->vs_zero_points.has_default_values()) {
-        ss << delimiter
-           << "vs_attr-zero-points:" << desc->vs_zero_points.get_verbose();
-    }
-
-    ss << ",query:" << pd->qry_md()->data_type << ":"
-       << md2dim_str(pd->qry_md());
-    ss << ",key:" << pd->key_md()->data_type << ":" << md2dim_str(pd->key_md())
-       << ":" << md2fmt_tag_str(pd->key_md());
-    ss << ",val:" << pd->val_md()->data_type << ":" << md2dim_str(pd->val_md());
     if (pd->with_attn_mask()) {
-        ss << ",msk:" << pd->attn_mask_md()->data_type << ":"
-           << md2dim_str(pd->attn_mask_md());
+        auto *md = pd->attn_mask_md();
+        ss << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
     } else if (pd->with_causal_mask()) {
-        ss << ",msk:causal";
+        if (desc->mask_type == attn_mask_type::top_left)
+            ss << "msk:causal:top_left";
+        else
+            ss << "msk:causal:bottom_right";
     }
+    ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
+       << ":" << md2dim_str(pd->val_md());
 
     return ss.str();
 }
@@ -1654,6 +1680,8 @@ void verbose_printf_impl(const char *raw_fmt_str, verbose_t::flag_kind kind) {
 #if defined(DISABLE_VERBOSE)
     return;
 #endif
+
+    if (get_verbose(kind)) print_header();
 
     const auto &fmt_str = prepend_identifier_and_version(raw_fmt_str);
 

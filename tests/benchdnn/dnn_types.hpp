@@ -92,7 +92,7 @@ struct attr_t {
 
             bool is_def() const {
                 return policy == COMMON && value == 0 && dt == dnnl_s32
-                        && groups.size() == 0;
+                        && groups.empty();
             }
 
             policy_t policy = COMMON;
@@ -141,7 +141,6 @@ struct attr_t {
                     arg, e.policy, prim_kind, ndims, has_groups);
         }
 
-        zero_points_t() : points() {} // needed for debug icc190 build;
         std::map<int, entry_t> points;
     };
 
@@ -156,7 +155,7 @@ struct attr_t {
 
             bool is_def() const {
                 return policy == COMMON && scale == 1.f && dt == dnnl_f32
-                        && groups.size() == 0;
+                        && groups.empty();
             }
 
             policy_t policy = COMMON;
@@ -165,7 +164,7 @@ struct attr_t {
             std::vector<dnnl_dim_t> groups;
         };
 
-        void set(int arg, entry_t scale) { scales[arg] = scale; }
+        void set(int arg, const entry_t &scale) { scales[arg] = scale; }
 
         entry_t get(int arg) const {
             const auto &s = scales.find(arg);
@@ -193,8 +192,6 @@ struct attr_t {
             return def;
         }
         int from_str(const std::string &s);
-
-        arg_scales_t() : scales() {} // needed for debug icc190 build;
 
         std::map<int, entry_t> scales;
     };
@@ -327,6 +324,14 @@ struct attr_t {
                 int64_t mask = -1;
                 mask_input_t mask_input = mask_input_t::none;
                 std::string tag = tag::any;
+
+                // For the src2 tensor when the algorithm takes ternary inputs
+                dnnl_data_type_t src2_dt = dnnl_data_type_undef;
+                policy_t src2_policy = policy_t::COMMON;
+                int64_t src2_mask = -1;
+                mask_input_t src2_mask_input = mask_input_t::none;
+                std::string src2_tag = tag::any;
+
             } binary;
             struct {
                 policy_t policy = policy_t::COMMON;
@@ -336,10 +341,11 @@ struct attr_t {
             bool is_convolution_kind() const;
             bool is_eltwise_kind() const;
             bool is_binary_kind() const;
+            bool is_binary_kind_with_ternary_op() const;
             bool is_prelu_kind() const;
         };
 
-        post_ops_t() : entry() {}
+        post_ops_t() = default;
 
         int len() const { return (int)entry.size(); }
         bool is_def() const { return len() == 0; }
@@ -460,7 +466,7 @@ struct isa_hints_t {
     cpu_hints_t hints_;
     isa_hints_t(cpu_hints_t hints) : hints_(hints) {}
 
-    cpu_hints_t get() { return hints_; }
+    cpu_hints_t get() const { return hints_; }
 
     static std::string hints2str(const isa_hints_t &isa_hints) {
         switch (isa_hints.hints_) {
@@ -485,7 +491,6 @@ struct isa_hints_t {
 
 using policy_t = attr_t::policy_t;
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 struct sparse_options_t {
     static constexpr dnnl_sparse_encoding_t def_encoding
             = dnnl_sparse_encoding_undef;
@@ -540,6 +545,7 @@ struct sparse_options_t {
 
     std::vector<int> get_args() const {
         std::vector<int> args;
+        args.reserve(options_.size());
         for (const auto &opt : options_) {
             args.push_back(opt.first);
         }
@@ -554,8 +560,6 @@ private:
 
 std::ostream &operator<<(
         std::ostream &s, const sparse_options_t &sparse_options);
-#endif
-
 std::ostream &operator<<(std::ostream &s, const policy_t &policy);
 std::ostream &operator<<(
         std::ostream &s, const attr_t::zero_points_t &zero_points);
@@ -670,9 +674,5 @@ inline void maybe_post_ops(
     maybe_post_ops(attr, val, sum_val, std::vector<float>());
 }
 
-// When using fast-ref option, reference expects everything to be in f32
-// data type and also no additional memories coming from runtime attributes.
-// That's why we update all data types to f32 and remove all runtime arguments
-// to makes them constant when possible.
-void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t new_dt = dnnl_f32);
+void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt);
 #endif

@@ -10,9 +10,15 @@ Data transformation {#dev_guide_ukernel_transform}
 The [BRGeMM ukernel](@ref dev_guide_ukernel_brgemm) might require the B tensor
 in a specific memory layout depending on target data types and the machine
 architecture. Check the requirement by calling the
-[get_B_pack_type()](@ref dnnl::ukernel::brgemm::get_B_pack_type) function. If it
-returns the [pack32](@ref dnnl::ukernel::pack_type::pack32) type, it implies
-that packing is required, otherwise, packing is not required.
+[get_B_pack_type()](@ref dnnl::ukernel::brgemm::get_B_pack_type) function.
+The return value specifies one of the following scenarios:
+* If the call returns the [undef](@ref dnnl::ukernel::pack_type::undef) type, it
+  indicates ukernel API is not supported on the target system.
+* If the call returns the [no_trans](@ref dnnl::ukernel::pack_type::no_trans)
+  type, it indicates the packing is not required.
+* Depending on the backend and packing requirements, the value indicating these
+  requirements can be different. For x64 backend the call returns the
+  [pack32](@ref dnnl::ukernel::pack_type::pack32) type.
 
 The transform ukernel allows the conversion of data from the original layout,
 which is described as either

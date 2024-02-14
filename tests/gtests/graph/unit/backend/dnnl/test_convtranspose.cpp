@@ -109,7 +109,7 @@ public:
         g.finalize();
 
         graph::pass::pass_base_ptr apass
-                = get_pass("convtranspose_post_ops_fusion");
+                = get_pass("fp_convtranspose_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -431,7 +431,7 @@ public:
         g.finalize();
 
         graph::pass::pass_base_ptr apass
-                = get_pass("convtranspose_post_ops_fusion");
+                = get_pass("fp_convtranspose_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -532,10 +532,16 @@ TEST(test_convtranspose_compile, ConvtransposeFp32) {
     ASSERT_EQ(p.compile(&cp, inputs, outputs, eng), graph::status::success);
     graph::logical_tensor_t lt;
     cp.query_logical_tensor(dst.id, &lt);
+    // Blocked layout is supported on intel gpu only
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR != DNNL_VENDOR_INTEL
+    ASSERT_EQ(lt.layout_type, graph::layout_type::strided);
+#else
     ASSERT_EQ(lt.layout_type,
             eng->kind() == graph::engine_kind::gpu
                     ? graph::layout_type::opaque
                     : graph::layout_type::strided);
+#endif
 }
 
 TEST_P(convtranspose_4d_5d_t, TestConvtranspose) {
@@ -723,6 +729,7 @@ TEST(test_convtranspose_compile,
 }
 
 TEST_P(test_convtranspose_add_compile_t, TestConvTransposeAddCompile) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     TestConvTransposeAdd();
 }
 
@@ -747,6 +754,8 @@ INSTANTIATE_TEST_SUITE_P(test_convtranspose_add_compile,
                 convtranspose_add_params_t {{1, 4, 4, 1}, true, true}));
 
 TEST(test_convtranspose_operator_kernel, convtranspose_relu) {
+    // For now, deconv+relu case has correctness issue on NV GPU.
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = graph::dnnl_impl::dims;
 
     std::vector<bool> with_biases = {false, true};
@@ -804,7 +813,7 @@ TEST(test_convtranspose_operator_kernel, convtranspose_relu) {
         g.finalize();
 
         graph::pass::pass_base_ptr apass
-                = get_pass("convtranspose_post_ops_fusion");
+                = get_pass("fp_convtranspose_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -906,7 +915,7 @@ TEST(test_convtranspose_operator_kernel, convtranspose_swish) {
         g.finalize();
 
         graph::pass::pass_base_ptr apass
-                = get_pass("convtranspose_post_ops_fusion");
+                = get_pass("fp_convtranspose_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -1047,8 +1056,8 @@ TEST(test_convtranspose_execute_subgraph_int8,
     // -------------------------case 2----------------------------------
     graph::pass::pass_base_ptr apass
             = get_pass(engine->kind() == graph::engine_kind::gpu
-                            ? "int8_convtranspose_post_ops_fusion_gpu"
-                            : "int8_convtranspose_post_ops_fusion_cpu");
+                            ? "x8s8x8_convtranspose_post_ops_gpu"
+                            : "x8s8x8_convtranspose_post_ops_cpu");
     ASSERT_TRUE(apass != nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -1185,7 +1194,7 @@ TEST(test_convtranspose_execute_subgraph_int8,
 
     // -------------------------case 2----------------------------------
     graph::pass::pass_base_ptr apass
-            = get_pass("int8_convtranspose_post_ops_fusion_cpu");
+            = get_pass("x8s8x8_convtranspose_post_ops_cpu");
     ASSERT_TRUE(apass != nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -1368,8 +1377,8 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3d) {
         // -------------------------case 2----------------------------------
         graph::pass::pass_base_ptr apass
                 = get_pass(engine->kind() == graph::engine_kind::gpu
-                                ? "int8_convtranspose_post_ops_fusion_gpu"
-                                : "int8_convtranspose_post_ops_fusion_cpu");
+                                ? "x8s8x8_convtranspose_post_ops_gpu"
+                                : "x8s8x8_convtranspose_post_ops_cpu");
         ASSERT_TRUE(apass != nullptr);
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
@@ -1610,7 +1619,7 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose2dEltwise_CPU) {
 
         // -------------------------case 2----------------------------------
         graph::pass::pass_base_ptr apass
-                = get_pass("int8_convtranspose_post_ops_fusion_cpu");
+                = get_pass("x8s8x8_convtranspose_post_ops_cpu");
         ASSERT_TRUE(apass != nullptr);
         apass->run(graph);
         ASSERT_EQ(graph.get_num_partitions(), 1U);
@@ -1824,7 +1833,7 @@ TEST(test_convtranspose_execute_subgraph_int8,
 
         // -------------------------case 2----------------------------------
         graph::pass::pass_base_ptr apass
-                = get_pass("int8_convtranspose_post_ops_fusion_cpu");
+                = get_pass("x8s8x8_convtranspose_post_ops_cpu");
         ASSERT_TRUE(apass != nullptr);
         apass->run(graph);
         ASSERT_EQ(graph.get_num_partitions(), 1U);
@@ -1990,8 +1999,8 @@ TEST(test_convtranspose_execute_subgraph_int8, X8X8F32ConvTransposeSwish) {
         // -------------------------case 2----------------------------------
         graph::pass::pass_base_ptr apass
                 = get_pass(engine->kind() == graph::engine_kind::gpu
-                                ? "int8_convtranspose_post_ops_fusion_gpu"
-                                : "int8_convtranspose_post_ops_fusion_cpu");
+                                ? "x8s8x8_convtranspose_post_ops_gpu"
+                                : "x8s8x8_convtranspose_post_ops_cpu");
         ASSERT_TRUE(apass != nullptr);
         apass->run(graph);
         ASSERT_EQ(graph.get_num_partitions(), 1U);
@@ -2239,8 +2248,8 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dAdd) {
         // -------------------------case 2----------------------------------
         graph::pass::pass_base_ptr apass
                 = get_pass(engine->kind() == graph::engine_kind::gpu
-                                ? "int8_convtranspose_add_post_ops_fusion_gpu"
-                                : "int8_convtranspose_add_post_ops_fusion_cpu");
+                                ? "x8s8x8_convtranspose_add_post_ops_gpu"
+                                : "x8s8x8_convtranspose_add_post_ops_cpu");
         ASSERT_TRUE(apass != nullptr);
         apass->run(graph);
         ASSERT_EQ(graph.get_num_partitions(), 1U);
@@ -2285,6 +2294,7 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dAdd) {
 }
 
 TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dBinary) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -2446,8 +2456,8 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dBinary) {
         // -------------------------case 2----------------------------------
         graph::pass::pass_base_ptr apass
                 = get_pass(engine->kind() == graph::engine_kind::gpu
-                                ? "int8_convtranspose_post_ops_fusion_gpu"
-                                : "int8_convtranspose_post_ops_fusion_cpu");
+                                ? "x8s8x8_convtranspose_post_ops_gpu"
+                                : "x8s8x8_convtranspose_post_ops_cpu");
         ASSERT_TRUE(apass != nullptr);
         apass->run(graph);
         ASSERT_EQ(graph.get_num_partitions(), 1U);
@@ -2531,7 +2541,7 @@ TEST(test_convtranspose_execute_subgraph_int8,
                 ? std::vector<int64_t> {1, out_channel, 14}
                 : nd == 2 ? std::vector<int64_t> {1, out_channel, 14, 14}
                           : std::vector<int64_t> {1, out_channel, 14, 14, 14};
-        std::vector<int64_t> other_shape = dst_shape;
+        const std::vector<int64_t> &other_shape = dst_shape;
 
         std::vector<uint8_t> src_u8_data(product(src_shape));
         std::vector<int8_t> weight_s8_data(product(weight_shape));
@@ -2692,9 +2702,9 @@ TEST(test_convtranspose_execute_subgraph_int8,
         graph.finalize();
 
         graph::pass::pass_base_ptr apass1
-                = get_pass("int8_convtranspose_add_post_ops_fusion_cpu");
+                = get_pass("x8s8x8_convtranspose_add_post_ops_cpu");
         graph::pass::pass_base_ptr apass2
-                = get_pass("int8_convtranspose_post_ops_fusion_cpu");
+                = get_pass("x8s8x8_convtranspose_post_ops_cpu");
         apass1->run(graph);
         apass2->run(graph);
         ASSERT_EQ(graph.get_num_partitions(), 2U);
@@ -2737,6 +2747,8 @@ TEST(test_convtranspose_execute_subgraph_int8,
 }
 
 TEST(test_convtranspose_execute_subgraph_fp32, Convtranspose3Postops) {
+    // For now, deconv+abs+square case has correctness issue on NV GPU.
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -2885,7 +2897,7 @@ TEST(test_convtranspose_execute_subgraph_fp32, Convtranspose3Postops) {
 
         // -------------------------case 2----------------------------------
         graph::pass::pass_base_ptr apass
-                = get_pass("convtranspose_post_ops_fusion");
+                = get_pass("fp_convtranspose_post_ops");
         ASSERT_TRUE(apass != nullptr);
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);

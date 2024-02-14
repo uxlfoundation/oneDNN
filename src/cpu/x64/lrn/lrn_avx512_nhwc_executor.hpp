@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_LRN_JIT_LRN_AVX512_NHWC_EXECUTOR_HPP
-#define CPU_X64_LRN_JIT_LRN_AVX512_NHWC_EXECUTOR_HPP
+#ifndef CPU_X64_LRN_LRN_AVX512_NHWC_EXECUTOR_HPP
+#define CPU_X64_LRN_LRN_AVX512_NHWC_EXECUTOR_HPP
 
 #include "cpu/x64/lrn/jit_avx512_common_lrn_bwd_nhwc.hpp"
 #include "cpu/x64/lrn/jit_avx512_common_lrn_fwd_nhwc.hpp"
@@ -73,7 +73,7 @@ public:
         return status::success;
     }
 
-    virtual ~lrn_avx512_nhwc_executor_fwd_t() = default;
+    ~lrn_avx512_nhwc_executor_fwd_t() override = default;
 
 private:
     std::unique_ptr<jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>> ker_;
@@ -126,7 +126,7 @@ public:
         return status::success;
     }
 
-    virtual ~lrn_avx512_nhwc_executor_bwd_t() = default;
+    ~lrn_avx512_nhwc_executor_bwd_t() override = default;
 
 private:
     std::unique_ptr<jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>> ker_;

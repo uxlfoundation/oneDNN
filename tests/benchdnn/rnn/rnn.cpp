@@ -145,8 +145,9 @@ int check_s8s8_reorder(const prb_t &prb, rnn_data_kind_t kind,
     // alignment as packed buffer is aligned internally and the offset
     // is kept in the metadata.
     // Works fine with dnn_mem_t as it is align to 2MB large page boundary
-    dnn_mem_t mem_s8_src(mem_fp.md_, dnnl_s8, tag::abx, get_cpu_engine());
-    dnn_mem_t mem_s8_dst(mem_dt.md_, get_test_engine());
+    dnn_mem_t mem_s8_src(mem_fp.md_, dnnl_s8, tag::abx, get_cpu_engine(),
+            /* prefill = */ true);
+    dnn_mem_t mem_s8_dst(mem_dt.md_, get_test_engine(), /* prefill = */ true);
 
     /* 1. compute f32_plain --quant--> s8_plain_quantized */
     /* Do fixed partitioning to have same filling for any number of threads */
@@ -159,7 +160,7 @@ int check_s8s8_reorder(const prb_t &prb, rnn_data_kind_t kind,
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
             const float current_scale = scales[idx % nscales];
-            float val_f32 = mem_fp.get_elem(idx);
+            float val_f32 = mem_fp.get_f32_elem(idx);
             int8_t val_s8
                     = maybe_saturate(dnnl_s8, val_f32 * current_scale + shift);
             mem_s8_src.set_elem(idx, val_s8);
@@ -257,7 +258,7 @@ int fill_memory(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                 auto ld = kind == SRC_LAYER ? prb.slc : prb.sic;
                 if (idx % (prb.mb * ld) < ld) val *= -1;
             }
-            mem_fp.set_elem(idx, val);
+            mem_fp.set_f32_elem(idx, val);
         }
     };
     switch (kind) {
@@ -300,7 +301,7 @@ int fill_memory(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                           float current_scale = scales[idx % nscales];
                           float val = ((float *)mem_fp)[idx];
                           val = round(current_scale * val);
-                          mem_fp.set_elem(idx, MAX2(MIN2(val, max), min));
+                          mem_fp.set_f32_elem(idx, MAX2(MIN2(val, max), min));
                       }
                   };
         switch (kind) {
@@ -435,7 +436,8 @@ int fill_weights(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
     assert(kind == WEIGHTS_PROJECTION ? mem_fp.ndims() == 4
                                       : mem_fp.ndims() == 5);
 
-    dnn_mem_t mem_pure_fp(mem_dt.md_, dnnl_f32, tag::abx, get_cpu_engine());
+    dnn_mem_t mem_pure_fp(mem_dt.md_, dnnl_f32, tag::abx, get_cpu_engine(),
+            /* prefill = */ false);
 
     const auto dt = prb.cfg[kind].dt;
     const auto &dims = mem_fp.dims();
@@ -452,8 +454,8 @@ int fill_weights(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                                                        : prb.wei_nscales;
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
-        mem_fp.set_elem(i, 0);
-        mem_pure_fp.set_elem(i, 0);
+        mem_fp.set_f32_elem(i, 0);
+        mem_pure_fp.set_f32_elem(i, 0);
     });
 
     // Fill weights sparsely to avoid accumulation errors. Using two memories:
@@ -465,9 +467,10 @@ int fill_weights(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                 int64_t i_off = ((19 * o + 7 * g + 11 * d + 13 * l) % I);
                 int64_t off = (((l * D + d) * I + i_off) * G + g) * O + o;
                 float val = gate_factor;
-                mem_pure_fp.set_elem(off, val);
+                mem_pure_fp.set_f32_elem(off, val);
                 if (prb.is_int8()) val *= scales[off % n_scales];
-                mem_fp.set_elem(off, round_to_nearest_representable(dt, val));
+                mem_fp.set_f32_elem(
+                        off, round_to_nearest_representable(dt, val));
             });
 
     // Pass rnn attributes to f32 -> s8 reorders only
@@ -512,7 +515,7 @@ int fill_bias(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
             bool is_one = b_dist(b_seed);
             float gen_val = gen(norm_seed);
             float val = is_one * gen_val;
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     idx, round_to_nearest_representable(prb.cfg[kind].dt, val));
         }
     });
@@ -522,10 +525,10 @@ int fill_bias(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
     return OK;
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const prb_t &prb_ = *prb;
-    if (prb_.prop != dnnl_backward)
+    if (prop2prop_kind(dir) != dnnl_backward)
         compute_ref_fwd(prb_, args);
     else
         compute_ref_bwd(prb_, args);
@@ -775,6 +778,7 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
     dir_t dir = str2dir(prop2str(prb.prop));
     skip_unimplemented_data_type({prb.cfg[SRC_LAYER].dt}, dir, res);
     skip_unimplemented_sum_po(prb.attr, res, dnnl_rnn, prb.cfg[SRC_LAYER].dt);
+    skip_unimplemented_binary_po(prb.attr, res);
     skip_unimplemented_prelu_po(prb.attr, res, dnnl_rnn);
 
     if (is_cpu()) {
@@ -1080,6 +1084,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim_ref) {
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
+    if (!ref_mem_map.empty()) { erase_unused_args(ref_mem_map, mem_map); }
+
     const auto &prb = *prb_;
     const auto &ref_engine = get_cpu_engine();
 
@@ -1101,7 +1107,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD && exec_arg != DNNL_ARG_WORKSPACE) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -1266,6 +1273,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t &prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = prb.prop != dnnl_backward ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
@@ -1280,7 +1289,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     SAFE(execute_and_wait(v_prim[0], args, res), WARN);
 
     check_correctness(&prb, get_kinds_to_check(&prb, FLAG_FWD), args, ref_args,
-            setup_cmp, res);
+            setup_cmp, res, FLAG_FWD);
     SAFE(check_bitwise(prim, get_kinds_to_check(&prb, FLAG_FWD), args, prb.attr,
                  prb.inplace, res),
             WARN);
@@ -1299,7 +1308,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         SAFE(execute_and_wait(v_prim[1], args, res), WARN);
 
         check_correctness(&prb, get_kinds_to_check(&prb, FLAG_BWD), args,
-                ref_args, setup_cmp, res);
+                ref_args, setup_cmp, res, prb.dir);
         SAFE(check_bitwise(prim, get_kinds_to_check(&prb, FLAG_BWD), args,
                      prb.attr, prb.inplace, res),
                 WARN);

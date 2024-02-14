@@ -651,6 +651,9 @@ struct cudnn_matmul_lt_impl_t {
             void *block_c_scratch, void * /* src_scale */,
             void * /* wei_scale */, void *dst_scale) {
 
+        cudaStream_t cuda_stream;
+        CUBLAS_EXECUTE_FUNC(cublasGetStream, cublas_handle, &cuda_stream);
+
         // use cached params unless using runtime dimensions
         std::shared_ptr<cublas_lt_params> params
                 = matmul_params->has_runtime_params_ ? matmul_params
@@ -707,8 +710,8 @@ struct cudnn_matmul_lt_impl_t {
         float scale = 1.0f;
         float host_dst_scale = 1.0f;
         if (dst_scale && !params->multi_dst_scale_ && acc_type != CUDA_R_32I) {
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_dst_scale,
-                    (CUdeviceptr)dst_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_dst_scale,
+                    (CUdeviceptr)dst_scale, sizeof(float), cuda_stream);
             // only applied here if no post ops used
             scale /= host_dst_scale;
         }

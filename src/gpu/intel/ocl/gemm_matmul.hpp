@@ -95,10 +95,27 @@ struct gemm_matmul_t : public gpu_primitive_t {
                           return status::success;
                       };
             if (!attr()->zero_points_.has_default_values()) {
-                CHECK(map_gemm_zp(DNNL_ARG_SRC, DNNL_ARG_B));
+                CHECK(map_gemm_zp(
+                        DNNL_ARG_SRC, DNNL_ARG_B, false, orig_dims - 2));
                 CHECK(map_gemm_zp(
                         DNNL_ARG_WEIGHTS, DNNL_ARG_A, false, orig_dims - 2));
                 CHECK(map_gemm_zp(DNNL_ARG_DST, DNNL_ARG_C));
+            }
+
+            bool grouped_a_attr = false, grouped_b_attr = false;
+            const auto &scales = gemm_attr.scales_;
+            const auto &zp = attr()->zero_points_;
+            if (!attr()->scales_.has_default_values()) {
+                if (!scales.get(DNNL_ARG_SRC).has_default_groups())
+                    grouped_a_attr = true;
+                if (!scales.get(DNNL_ARG_WEIGHTS).has_default_groups())
+                    grouped_b_attr = true;
+            }
+            if (zp.has_default_values()) {
+                if (!zp.get(DNNL_ARG_SRC).has_default_groups())
+                    grouped_a_attr = true;
+                if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups())
+                    grouped_b_attr = true;
             }
 
             auto maybe_reshape
@@ -118,6 +135,9 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 //for batch dim can map broadcast to 2d: eg. 4x1x4096:1x4096x16 -> 4x4096:4096x16
                 auto reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2);
                 auto reshape_3d = a_md->ndims > 3;
+                // Grouped attrs require non-batch dims to be preserved.
+                if (grouped_a_attr) reshape_2d &= a_md->dims[0] == 1;
+                if (grouped_b_attr) reshape_2d &= b_md->dims[0] == 1;
                 if (reshape_2d || reshape_3d) {
                     auto ndims = a_md->ndims;
                     auto reshape_size = reshape_2d ? 2 : 3;
@@ -241,11 +261,15 @@ struct gemm_matmul_t : public gpu_primitive_t {
                     }
 
                     if (!attr()->scales_.has_default_values())
-                        CHECK(adjust_scales_mask(scales, DNNL_ARG_WEIGHTS,
-                                orig_dims - reshape_size));
-                    if (!attr()->zero_points_.has_default_values())
+                        for (auto i : {DNNL_ARG_WEIGHTS, DNNL_ARG_SRC})
+                            CHECK(adjust_scales_mask(
+                                    scales, i, orig_dims - reshape_size));
+                    if (!attr()->zero_points_.has_default_values()) {
                         CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, DNNL_ARG_A, true,
                                 orig_dims - reshape_size));
+                        CHECK(map_gemm_zp(DNNL_ARG_SRC, DNNL_ARG_B, true,
+                                orig_dims - reshape_size));
+                    }
                     post_ops = tmp_post_ops;
                     gemm_attr.scales_ = std::move(scales);
                     a_md = &a_md_reshaped;

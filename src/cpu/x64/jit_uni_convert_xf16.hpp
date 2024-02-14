@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -51,12 +51,12 @@ struct jit_cvt_xf16_to_ps_params_t {
 } // namespace cvt_xf16_support
 
 template <cpu_isa_t isa>
-struct jit_uni_cvt_ps_to_xf16_t : public jit_generator {
+struct jit_uni_cvt_ps_to_xf16_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_cvt_ps_to_xf16_t)
 
     jit_uni_cvt_ps_to_xf16_t(impl::data_type_t dt, size_t nelems = 0)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , output_dt_(dt)
         , nelems_(nelems)
         , is_dynamic_size_(nelems_ == 0)
@@ -70,9 +70,9 @@ protected:
     const bool is_dynamic_size_;
     const int tail_size_;
 
-    constexpr static int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
-    using Vmm_down_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    constexpr static int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
+    using Vmm_down_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const Vmm vmm_input = Vmm(0);
     const Vmm_down_t vmm_output = Vmm_down_t(1);
@@ -152,18 +152,18 @@ struct jit_cvt_ps_to_xf16_t {
     }
 
 private:
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
     const size_t nelems_;
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_cvt_xf16_to_ps_t : public jit_generator {
+struct jit_uni_cvt_xf16_to_ps_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_cvt_xf16_to_ps_t)
 
     jit_uni_cvt_xf16_to_ps_t(
             impl::data_type_t dt, bool with_add, size_t row_stride)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , input_dt_(dt)
         , with_add_(with_add)
         , row_stride_(row_stride) {
@@ -174,9 +174,9 @@ struct jit_uni_cvt_xf16_to_ps_t : public jit_generator {
 
 protected:
     constexpr static int elem_granularity = isa == avx2_vnni_2 ? 2 : 1;
-    constexpr static int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
-    using Vmm_down_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    constexpr static int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
+    using Vmm_down_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const impl::data_type_t input_dt_;
     const bool with_add_;
@@ -267,7 +267,7 @@ struct jit_cvt_xf16_to_ps_t {
     }
 
 private:
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

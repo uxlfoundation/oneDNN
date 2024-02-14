@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_UNI_LRN_KERNEL_HPP
-#define CPU_X64_JIT_UNI_LRN_KERNEL_HPP
+#ifndef CPU_X64_LRN_JIT_UNI_LRN_KERNEL_HPP
+#define CPU_X64_LRN_JIT_UNI_LRN_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
@@ -84,22 +84,22 @@ class jit_uni_lrn_kernel_t; // primary template
 
 template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
         cpu_isa_t isa, data_type_t d_type>
-class jit_uni_lrn_kernel_t<Derived<isa, d_type>> : public jit_generator {
+class jit_uni_lrn_kernel_t<Derived<isa, d_type>> : public jit_generator_t {
 public:
     jit_uni_lrn_kernel_t(const char *name = jit_name());
     jit_uni_lrn_kernel_t(
             const within_config_t &J, const char *name = jit_name());
 
-    ~jit_uni_lrn_kernel_t();
+    ~jit_uni_lrn_kernel_t() override;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lrn_kernel_t);
     // TODO: why use double simd for sse41?
     static constexpr int VECTOR_LENGTH
-            = (cpu_isa_traits<(isa > sse41 ? isa : avx2)>::vlen
+            = (cpu_isa_traits_t<(isa > sse41 ? isa : avx2)>::vlen
                     / sizeof(float));
 
 protected:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     void load_constant(float constant, const Vmm &v_constant,
             const Xbyak::Xmm &x_constant);
@@ -119,7 +119,8 @@ protected:
     const Xbyak::Reg64 w_ = this->r10;
     const Xbyak::Reg64 imm_addr64_ = this->rbx;
     const Xbyak::Reg64 reg_tmp_ = this->rsi;
-    static constexpr size_t simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
+    static constexpr size_t simd_w_
+            = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     int single_pixel_offset_
             = VECTOR_LENGTH * sizeof(typename prec_traits_t<d_type>::type);
 
@@ -140,7 +141,7 @@ public:
             const nhwc_across_t &J, float A, float K, prop_kind_t pk);
     jit_uni_lrn_fwd_kernel_t(
             const nchw_across_t &J, float A, float K, prop_kind_t pk);
-    ~jit_uni_lrn_fwd_kernel_t();
+    ~jit_uni_lrn_fwd_kernel_t() override;
 
 private:
     using Base = jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<isa, d_type>>;

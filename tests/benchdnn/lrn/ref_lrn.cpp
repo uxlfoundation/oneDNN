@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ float get_omega(const prb_t *prb, const dnn_mem_t &src, int64_t mb, int64_t c,
 
         for (int64_t cs = c_st; cs < c_en; ++cs) {
             const auto off = data_off(prb, mb, cs, d, h, w);
-            const float s = src.get_elem(off);
+            const float s = src.get_f32_elem(off);
             sum += s * s;
         }
     } else if (prb->alg == WITHIN) {
@@ -53,7 +53,7 @@ float get_omega(const prb_t *prb, const dnn_mem_t &src, int64_t mb, int64_t c,
         for_(int64_t hs = h_st; hs < h_en; ++hs)
         for (int64_t ws = w_st; ws < w_en; ++ws) {
             const auto off = data_off(prb, mb, c, ds, hs, ws);
-            const float s = src.get_elem(off);
+            const float s = src.get_f32_elem(off);
             sum += s * s;
         }
     }
@@ -72,7 +72,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
                 const auto off = data_off(prb, mb, c, d, h, w);
                 const float omega = get_omega(prb, src, mb, c, d, h, w);
                 const float omega_in_beta = fast_powf(omega, prb->beta);
-                dst_ptr[off] = src.get_elem(off) * omega_in_beta;
+                dst_ptr[off] = src.get_f32_elem(off) * omega_in_beta;
             });
 }
 
@@ -99,9 +99,10 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
                         const float omega
                                 = get_omega(prb, src, mb, cs, d, h, w);
                         const float omega_in_beta = fast_powf(omega, prb->beta);
-                        const float tmp = omega_in_beta * d_dst.get_elem(off);
+                        const float tmp
+                                = omega_in_beta * d_dst.get_f32_elem(off);
                         if (cs == c) A = tmp;
-                        B += (tmp / omega * src.get_elem(off));
+                        B += (tmp / omega * src.get_f32_elem(off));
                     }
                 } else if (prb->alg == WITHIN) {
                     const int64_t d_st = MAX2(d - half_size + 0, 0);
@@ -118,21 +119,22 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
                         const float omega
                                 = get_omega(prb, src, mb, c, ds, hs, ws);
                         const float omega_in_beta = fast_powf(omega, prb->beta);
-                        const float tmp = omega_in_beta * d_dst.get_elem(off);
+                        const float tmp
+                                = omega_in_beta * d_dst.get_f32_elem(off);
                         if (ds == d && hs == h && ws == w) A = tmp;
-                        B += (tmp / omega * src.get_elem(off));
+                        B += (tmp / omega * src.get_f32_elem(off));
                     }
                 }
                 const auto off = data_off(prb, mb, c, d, h, w);
-                B *= (2.0f * prb->alpha * prb->beta * src.get_elem(off)
+                B *= (2.0f * prb->alpha * prb->beta * src.get_f32_elem(off)
                         / summands);
                 d_src_ptr[off] = A - B;
             });
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
-    if (prb->dir & FLAG_FWD)
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
+    if (dir & FLAG_FWD)
         compute_ref_fwd(prb, args);
     else
         compute_ref_bwd(prb, args);

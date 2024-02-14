@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
 * Copyright 2022 Arm Ltd. and affiliates
 *
@@ -30,7 +30,7 @@ using namespace dnnl::impl::cpu::x64;
 #include "cpu/aarch64/jit_uni_i8i8_pooling.hpp"
 #include "cpu/aarch64/jit_uni_pooling.hpp"
 using namespace dnnl::impl::cpu::aarch64;
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_pooling.hpp"
 #endif // DNNL_AARCH64_USE_ACL
 #elif DNNL_RV64

@@ -124,16 +124,20 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::load_data_to_stack(
             = tail_proc == tail_mode::NextTail ? this->vlen_ : 0;
     this->load_tail(C_tail, this->diffdst_, tail_src_mem_offset,
             get_stack_offset(this->diffdst_, tail_mode::CurrentTail),
-            this->tmp_load_to_stack_idx_tail_);
+            jit_avx512_common_lrn_kernel_bwd_nhwc_t<
+                    d_type>::tmp_load_to_stack_idx_tail_);
     this->load_tail(C_tail, this->workspace0_, tail_src_mem_offset,
             get_stack_offset(this->workspace0_, tail_mode::CurrentTail),
-            this->tmp_load_to_stack_idx_tail_);
+            jit_avx512_common_lrn_kernel_bwd_nhwc_t<
+                    d_type>::tmp_load_to_stack_idx_tail_);
     this->load_tail(C_tail, this->workspace1_, tail_src_mem_offset,
             get_stack_offset(this->workspace1_, tail_mode::CurrentTail),
-            this->tmp_load_to_stack_idx_tail_);
+            jit_avx512_common_lrn_kernel_bwd_nhwc_t<
+                    d_type>::tmp_load_to_stack_idx_tail_);
     this->load_tail(C_tail, this->src_, tail_src_mem_offset,
             get_stack_offset(this->src_, tail_mode::CurrentTail),
-            this->tmp_load_to_stack_idx_tail_);
+            jit_avx512_common_lrn_kernel_bwd_nhwc_t<
+                    d_type>::tmp_load_to_stack_idx_tail_);
 }
 
 template <data_type_t d_type>

@@ -39,6 +39,13 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+#define VCHECK_OP_EXECUTABLE(cond, msg, ...) \
+    if (!(cond)) { VERROR(graph, op_executable, msg, ##__VA_ARGS__); }
+
+#define VCHECK_PATTERN_UTILS(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, pattern, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 const indices_t::type_t input = indices_t::type_t::input;
 const indices_t::type_t output = indices_t::type_t::output;
 
@@ -505,8 +512,7 @@ pool_executable_t::desc_t pool_executable_t::create_desc(
                 ? algorithm::pooling_avg_exclude_padding
                 : algorithm::pooling_avg_include_padding;
     } else {
-        BACKEND_DNNL_ENFORCE(
-                0, "Currently only int8 MaxPool/AvgPool is supported.");
+        assert(!"only int8 MaxPool/AvgPool is supported.");
     }
 
     dnnl::pooling_forward::primitive_desc pd(p_engine, prop, algo, src, dst,
@@ -587,9 +593,7 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
                 ? algorithm::pooling_avg_exclude_padding
                 : algorithm::pooling_avg_include_padding;
     } else {
-        BACKEND_DNNL_ENFORCE(0,
-                "Currently only MaxPoolBackprop/AvgPoolBackprop is "
-                "supported.");
+        assert(!"only MaxPoolBackprop/AvgPoolBackprop is supported.");
     }
 
     if (op->get_attr<std::string>(op_attr::kind) == "maxpool") {
@@ -972,9 +976,7 @@ eltwise_executable_t::desc_t eltwise_executable_t::create_desc(
 
     const algorithm algo = static_cast<dnnl::algorithm>(
             op->get_attr<int64_t>(op_attr::alg_kind));
-    if (algo == algorithm::undef) {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported eltwise op.");
-    }
+    if (algo == algorithm::undef) { assert(!"unsupported eltwise op."); }
 
     dnnl::eltwise_forward::primitive_desc pd;
     pd = dnnl::eltwise_forward::primitive_desc(p_engine, prop_kind::forward,
@@ -1086,7 +1088,7 @@ concat_executable_t::desc_t concat_executable_t::create_desc(
     const auto rank = op->get_output_value(0)->get_logical_tensor().ndims;
     const auto res = utils::try_reverse_axis(
             op->get_attr<int64_t>(op_attr::axis), rank);
-    assertm(res.first, "Incorrect axis value.");
+    VCHECK_OP_EXECUTABLE(res.first, "invalid axis for concat");
     const auto axis = res.second;
 
     dnnl::primitive_attr prm_attr;
@@ -1149,7 +1151,7 @@ resampling_executable_t::desc_t resampling_executable_t::create_desc(
     } else if (mode == "linear" || mode == "bilinear" || mode == "trilinear") {
         algo = algorithm::resampling_linear;
     } else {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported resampling mode.");
+        assert(!"unsupported resampling mode.");
     }
 
     dnnl::resampling_forward::primitive_desc pd;
@@ -1186,7 +1188,7 @@ resampling_bwd_executable_t::desc_t resampling_bwd_executable_t::create_desc(
     } else if (mode == "linear" || mode == "bilinear" || mode == "trilinear") {
         algo = algorithm::resampling_linear;
     } else {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported resampling mode.");
+        assert(!"unsupported resampling mode.");
     }
 
     auto src = make_dnnl_memory_desc(
@@ -1370,10 +1372,17 @@ softmax_executable_t::desc_t softmax_executable_t::create_desc(
     int64_t axis = op->get_attr<int64_t>(op_attr::axis);
     if (axis < 0) { axis += src.get_ndims(); }
 
-    const dnnl::algorithm algo
-            = op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax
-            ? dnnl::algorithm::softmax_log
-            : dnnl::algorithm::softmax_accurate;
+    dnnl::algorithm algo = dnnl::algorithm::undef;
+    if (op->get_kind() == dnnl_impl::op_kind::dnnl_softmax) {
+        const auto mode = op->get_attr<std::string>(op_attr::mode);
+        algo = mode == "inf_as_zero" ? static_cast<dnnl::algorithm>(
+                       dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+                                     : dnnl::algorithm::softmax_accurate;
+    } else if (op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax) {
+        algo = dnnl::algorithm::softmax_log;
+    } else {
+        assert(!"unexpected op kind");
+    }
 
     dnnl::softmax_forward::primitive_desc pd;
     pd = dnnl::softmax_forward::primitive_desc(p_engine,
@@ -1489,9 +1498,7 @@ reduction_executable_t::desc_t reduction_executable_t::create_desc(
 
     const algorithm alg = static_cast<dnnl::algorithm>(
             op->get_attr<int64_t>(op_attr::alg_kind));
-    if (alg == algorithm::undef) {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported reduction op.");
-    }
+    if (alg == algorithm::undef) { assert(!"unsupported reduction op."); }
     float p = op->has_attr(op_attr::p) ? op->get_attr<float>(op_attr::p) : 0.f;
 
     float eps = 0.0f;
@@ -1648,15 +1655,42 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     desc.epsilon_desc_ = memory::desc(
             epsilon_dims, memory::data_type::f32, memory::format_tag::a);
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+    if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
+        primitive_attr add_attr;
+        desc.add_pd_
+                = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
+                        variance, desc.epsilon_desc_, variance, add_attr);
+
+        primitive_attr sqrt_attr;
+        desc.sqrt_pd_ = dnnl::eltwise_forward::primitive_desc(p_engine,
+                prop_kind::forward, algorithm::eltwise_sqrt, variance, variance,
+                0.0f, 0.0f, sqrt_attr);
+    } else {
+        post_ops add_post_ops;
+        // sqrt_variance = sqrt(temp)
+        add_post_ops.append_eltwise(algorithm::eltwise_sqrt, 0.0f, 0.0f);
+
+        primitive_attr add_attr;
+        add_attr.set_post_ops(add_post_ops);
+        desc.add_pd_
+                = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
+                        variance, desc.epsilon_desc_, variance, add_attr);
+    }
+
+#else
     post_ops add_post_ops;
     // sqrt_variance = sqrt(temp)
     add_post_ops.append_eltwise(algorithm::eltwise_sqrt, 0.0f, 0.0f);
 
     primitive_attr add_attr;
-    add_attr.set_post_ops(std::move(add_post_ops));
+    add_attr.set_post_ops(add_post_ops);
     desc.add_pd_ = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
             variance, desc.epsilon_desc_, variance, add_attr);
 
+#endif
     // 2. updated_weight = weights * scale / sqrt_variance
 
     // expand 1D scale and variance to same ndims with weights
@@ -1689,7 +1723,7 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     mul_post_ops.append_binary(algorithm::binary_div, desc.new_variance_desc_);
 
     primitive_attr mul_attr;
-    mul_attr.set_post_ops(std::move(mul_post_ops));
+    mul_attr.set_post_ops(mul_post_ops);
     desc.mul_pd_ = dnnl::binary::primitive_desc(p_engine, algorithm::binary_mul,
             weights, desc.new_scale_desc_, weights, mul_attr);
 
@@ -1707,14 +1741,26 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     sub_post_ops.append_binary(algorithm::binary_add, shift);
 
     primitive_attr sub_attr;
-    sub_attr.set_post_ops(std::move(sub_post_ops));
+    sub_attr.set_post_ops(sub_post_ops);
     desc.sub_pd_ = dnnl::binary::primitive_desc(p_engine, algorithm::binary_sub,
             valid_bias, mean, valid_bias, sub_attr);
 
     memory::dims scratchpad_dims = variance.get_dims();
     // sqrt_variance, zero_bias and others (like epsilon),
     // or no need to alloc bias
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU, so we need
+    // one more scratchpad for sqrt
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    size_t factor = 0;
+    if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
+        factor = bias.is_zero() ? 4 : 3;
+    } else {
+        factor = bias.is_zero() ? 3 : 2;
+    }
+#else
     size_t factor = bias.is_zero() ? 3 : 2;
+#endif
     scratchpad_dims[0] *= factor;
     desc.scratchpad_desc_ = memory::desc(
             scratchpad_dims, variance.get_data_type(), memory::format_tag::a);
@@ -1755,7 +1801,8 @@ groupnorm_executable_t::desc_t groupnorm_executable_t::create_desc(
     if (op->has_attr(op_attr::groups)) {
         group_num = op->get_attr<int64_t>(op_attr::groups);
     } else {
-        assertm(false, "group_num is required.");
+        VCHECK_OP_EXECUTABLE(
+                false, "groups attribute is required for groupnorm");
     }
     auto flags = dnnl::normalization_flags::none;
     if (use_affine)
@@ -2343,6 +2390,17 @@ arg_indices_t reorder_executable_t::get_arg_indices(
     return arg_indices;
 }
 
+arg_indices_t host_scalar_executable_t::get_arg_indices(
+        const op_t *op, fusion_info_mgr_t &mgr) {
+    UNUSED(op);
+    UNUSED(mgr);
+    arg_indices_t arg_indices;
+
+    arg_indices.insert({DNNL_ARG_FROM, indices_t {input, 0}});
+    arg_indices.insert({DNNL_ARG_TO, indices_t {output, 0}});
+    return arg_indices;
+}
+
 arg_indices_t softmax_bwd_executable_t::get_arg_indices(
         const op_t *op, fusion_info_mgr_t &mgr) {
     UNUSED(mgr);
@@ -2402,6 +2460,30 @@ arg_indices_t genindex_executable_t::get_arg_indices(
     arg_indices.insert({DNNL_ARG_SRC, indices_t {input, 0}});
     arg_indices.insert({DNNL_ARG_DST, indices_t {output, 0}});
 
+    return arg_indices;
+}
+
+arg_indices_t sdpa_executable_t::get_arg_indices(
+        const op_t *op, fusion_info_mgr_t &mgr) {
+    UNUSED(mgr);
+
+    arg_indices_t arg_indices;
+    // add input args
+    size_t index = 0;
+    arg_indices.insert({DNNL_ARG_QUERIES, indices_t {input, index++}});
+    arg_indices.insert({DNNL_ARG_KEYS, indices_t {input, index++}});
+    arg_indices.insert({DNNL_ARG_VALUES, indices_t {input, index++}});
+    if (op->get_attr<bool>(op_attr::with_scale)) {
+        arg_indices.insert({DNNL_ARG_SCALE, indices_t {input, index++}});
+    }
+    if (op->get_attr<int64_t>(op_attr::mask_type)
+            == static_cast<int64_t>(attn_mask_type::buffer)) {
+        arg_indices.insert({DNNL_ARG_ATTN_MASK, indices_t {input, index++}});
+    }
+
+    // add output args
+    arg_indices.insert({DNNL_ARG_DST, indices_t {output, 0}});
+    arg_indices.insert({DNNL_ARG_SCRATCHPAD, indices_t {output, 1}});
     return arg_indices;
 }
 

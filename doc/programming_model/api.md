@@ -35,3 +35,31 @@ responsibility to
 to the library
 * Ensure that the data buffers do not overlap unless the functionality
 explicitly permits in-place computations
+
+## Memory Alignment Requirements
+
+On certain architectures, proper memory alignment is required to maximize
+efficiency and avoid runtime issues when using oneDNN primitives.
+
+### Intel(R) Architecture Processors
+
+No memory alignment requirements.
+
+### Intel(R) Processor Graphics and Xe Architecture graphics
+
+For Intel Processor graphics and Xe Architecture graphics, oneDNN requires a
+minimum memory alignment of 64 bytes, with 128 bytes recommended for optimal
+performance.
+
+If your use case requires element-wise alignment, as a possible workaround, you
+can use the reference primitive implementation which provides functional
+coverage, without performance optimizations. To select the reference
+implementation, use @ref dnnl::primitive_desc::next_impl API:
+
+~~~cpp
+auto pd = ...
+while (!strstr(pd.impl_info_str(), "ref")) {
+    pd.next_impl();
+}
+// Now pd points to the reference implementation.
+~~~

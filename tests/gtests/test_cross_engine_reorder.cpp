@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,12 +28,12 @@ using f32_f32 = std::pair<float, float>;
 
 using tag = memory::format_tag;
 
-using cfg_f32 = test_simple_params<f32_f32>;
+using cfg_f32 = test_simple_params_t<f32_f32>;
 
-using reorder_simple_test_f32_f32 = reorder_simple_test<f32_f32>;
+using reorder_simple_test_t_f32_f32 = reorder_simple_test_t<f32_f32>;
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-TEST_P(reorder_simple_test_f32_f32, CPU_GPU) {
+TEST_P(reorder_simple_test_t_f32_f32, CPU_GPU) {
     SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
             "GPU engines not found.");
 
@@ -43,7 +43,7 @@ TEST_P(reorder_simple_test_f32_f32, CPU_GPU) {
     Test(eng_cpu, eng_gpu);
 }
 
-TEST_P(reorder_simple_test_f32_f32, GPU_CPU) {
+TEST_P(reorder_simple_test_t_f32_f32, GPU_CPU) {
     SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
             "GPU engines not found.");
 
@@ -54,7 +54,7 @@ TEST_P(reorder_simple_test_f32_f32, GPU_CPU) {
 }
 #endif
 
-TEST_P(reorder_simple_test_f32_f32, GPU_GPU) {
+TEST_P(reorder_simple_test_t_f32_f32, GPU_GPU) {
     SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
             "GPU engines not found.");
 
@@ -68,7 +68,7 @@ TEST_P(reorder_simple_test_f32_f32, GPU_GPU) {
     Test(eng_gpu1, eng_gpu2);
 }
 
-INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_f32_f32,
+INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {tag::nchw, tag::nhwc, {32, 48, 5, 4}},
                 cfg_f32 {tag::oihw, tag::IOhw16i16o, {32, 48, 2, 3}},
                 cfg_f32 {tag::oihw, tag::OIhw16o16i, {32, 32, 1, 1}},

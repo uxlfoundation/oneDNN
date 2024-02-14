@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,6 +13,34 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+/// @example matmul_perf.cpp
+/// @copybrief matmul_perf_cpp
+/// > Annotated version: @ref matmul_perf_cpp
+
+/// @page matmul_perf_cpp Matrix Multiplication Performance Example
+/// This C++ example runs a simple matrix multiplication (matmul) performance
+/// test using oneDNN.
+///
+/// The workflow includes following steps:
+///   - Set up and execute a matmul operation with the specified engine kind
+///     and matrix dimensions, using f32, f16, bf16 and s8 data types.
+///   - Measure the execution time and prints the achieved performance
+///     in GFlop/s or GOp/s, depending on the data type.
+///
+/// To execute the example, compile it with oneDNN and run the following way:
+/// ~~~sh
+/// ./matmul_perf <engine_kind> <m> [<n> <k>]
+/// ~~~
+/// Input parameters:
+///   - `<engine_kind>`: The kind of oneDNN engine to use (e.g., CPU, GPU).
+///   - `<m>`: (Required) The number of rows in the first matrix.
+///   - `<n>`: (Optional) The number of columns in the second matrix.
+///            If not specified, `n = m`.
+///   - `<k>`: (Optional) The number of columns in the first matrix.
+///            If not specified, `k = m`.
+///
+/// @include matmul_perf.cpp
 
 #include <algorithm>
 #include <chrono>
@@ -28,20 +56,17 @@
 
 using namespace dnnl;
 
-using tag = memory::format_tag;
-using dt = memory::data_type;
-
 struct gemm_dims_t {
     memory::dim m, n, k;
 };
 
 static const int min_runs = 4;
 
-const char *get_type_string(dt type) {
+const char *get_type_string(memory::data_type type) {
     const char *type_string = "unknown";
 
 #define TYPE_CASE(T) \
-    if (type == dt::T) type_string = #T;
+    if (type == memory::data_type::T) type_string = #T;
     TYPE_CASE(f16);
     TYPE_CASE(f32);
     TYPE_CASE(f64);
@@ -53,7 +78,7 @@ const char *get_type_string(dt type) {
     return type_string;
 }
 
-void print_test_case(dt type, gemm_dims_t dims) {
+void print_test_case(memory::data_type type, gemm_dims_t dims) {
     std::cout << '[' << std::setw(4) << get_type_string(type);
     if (dims.m == dims.n && dims.m == dims.k)
         std::cout << " m = n = k = " << dims.m;
@@ -89,9 +114,10 @@ void fill_random(std::vector<float> &out, bool is_integer) {
     }
 }
 
-double run_case(engine::kind engine_kind, dt type, gemm_dims_t dims,
-        double time_limit = 0.) {
-    bool is_integer = (type == dt::s8 || type == dt::u8);
+double run_case(engine::kind engine_kind, memory::data_type type,
+        gemm_dims_t dims, double time_limit = 0.) {
+    bool is_integer
+            = (type == memory::data_type::s8 || type == memory::data_type::u8);
     bool quick_test = (time_limit == 0.);
 
     // Create execution dnnl::engine.
@@ -115,12 +141,14 @@ double run_case(engine::kind engine_kind, dt type, gemm_dims_t dims,
 
     // Create memory descriptors and memory objects for src, weights, bias, and
     // dst.
-    auto a_md = memory::desc(a_dims, type, tag::any);
-    auto b_md = memory::desc(b_dims, type, tag::any);
-    auto c_md = memory::desc(c_dims, type, tag::any);
+    auto a_md = memory::desc(a_dims, type, memory::format_tag::any);
+    auto b_md = memory::desc(b_dims, type, memory::format_tag::any);
+    auto c_md = memory::desc(c_dims, type, memory::format_tag::any);
 
-    auto a_in_md = memory::desc(a_dims, dt::f32, tag::ab);
-    auto b_in_md = memory::desc(b_dims, dt::f32, tag::ab);
+    auto a_in_md = memory::desc(
+            a_dims, memory::data_type::f32, memory::format_tag::ab);
+    auto b_in_md = memory::desc(
+            b_dims, memory::data_type::f32, memory::format_tag::ab);
 
     auto a_in_mem = memory(a_in_md, engine);
     auto b_in_mem = memory(b_in_md, engine);
@@ -197,7 +225,7 @@ double run_case(engine::kind engine_kind, dt type, gemm_dims_t dims,
     return avg_time;
 }
 
-void run(engine::kind engine_kind, dt type, gemm_dims_t dims,
+void run(engine::kind engine_kind, memory::data_type type, gemm_dims_t dims,
         double time_limit) {
     try {
         if (dims.m * dims.n != 0) {
@@ -257,10 +285,10 @@ void matmul_perf(engine::kind engine_kind, int argc, char **argv) {
         if (dims.m <= 0 || dims.n <= 0 || dims.k <= 0) bad_args();
     }
 
-    run(engine_kind, dt::f32, dims, 2.0);
-    run(engine_kind, dt::f16, dims, 2.0);
-    run(engine_kind, dt::bf16, dims, 2.0);
-    run(engine_kind, dt::s8, dims, 2.0);
+    run(engine_kind, memory::data_type::f32, dims, 2.0);
+    run(engine_kind, memory::data_type::f16, dims, 2.0);
+    run(engine_kind, memory::data_type::bf16, dims, 2.0);
+    run(engine_kind, memory::data_type::s8, dims, 2.0);
 }
 
 int main(int argc, char **argv) {

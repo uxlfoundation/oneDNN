@@ -44,8 +44,11 @@ different and auto-broadcasting is allowed if `auto_broadcast` attributes is
 
 Subtract operation supports the following data type combinations.
 
-| Src_0 / Src_1 | Dst  |
-|:--------------|:-----|
-| f32           | f32  |
-| bf16          | bf16 |
-| f16           | f16  |
+| Src_0     | Src_1     | Dst  |
+|:----------|:----------|:-----|
+| f32       | f32       | f32  |
+| bf16      | bf16      | bf16 |
+| f16       | f16       | f16  |
+| f32       | bf16, f16 | f32  |
+| bf16, f16 | f32       | f32  |
+| s32       | s32       | s32  |

@@ -306,6 +306,9 @@ public:
         /// the library. For example, constant weight tensors in inference
         /// scenarios.
         constant = dnnl_graph_tensor_property_constant,
+        /// Host scalar means the tensor will be a 0-D scalar tensor on host.
+        /// It should be used with a CPU engine when creating the tensor.
+        host_scalar = dnnl_graph_tensor_property_host_scalar,
     };
 
     /// default constructor
@@ -365,7 +368,7 @@ public:
             layout_type ltype, property_type ptype = property_type::undef) {
         dnnl_graph_logical_tensor_t val;
         // if dimension size equals to 0, it's a scalar
-        if (adims.size() == 0)
+        if (adims.empty())
             error::wrap_c_api(dnnl_graph_logical_tensor_init(&val, tid,
                                       convert_to_c(dtype), 0,
                                       convert_to_c(ltype), convert_to_c(ptype)),
@@ -420,7 +423,7 @@ public:
             property_type ptype = property_type::undef) {
         dnnl_graph_logical_tensor_t val;
 
-        if (adims.size() == 0) {
+        if (adims.empty()) {
             error::wrap_c_api(dnnl_graph_logical_tensor_init(&val, tid,
                                       convert_to_c(dtype), 0,
                                       convert_to_c(layout_type::opaque),
@@ -959,9 +962,10 @@ public:
         = dnnl_graph_op_attr_coordinate_transformation_mode,
         /// Specifies a data_format of an op. The value can be "NCX" or "NXC".
         data_format = dnnl_graph_op_attr_data_format,
-        /// Specifies a mode attribute of an op. The value can be "nearest",
-        /// "linear", "bilinear", or "trilinear". The attribute is defined for
-        /// Interpolate operations.
+        /// Specifies a mode attribute of an op.
+        /// Interpolate: "nearest", "linear", "bilinear", or "trilinear".
+        /// SoftMax: "none", "inf_as_zero".
+        /// GELU/GELUBackward: "gelu_erf", "gelu_tanh".
         mode = dnnl_graph_op_attr_mode,
         /// Specifies a qtype attribute to an op. The value can be "per_channel"
         /// or "per_tensor". The attribute is defined for quantization

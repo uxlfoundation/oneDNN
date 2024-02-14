@@ -49,14 +49,7 @@ private:
     // used for sdp internal memory planning
     registry_t sdp_registry_;
 
-    // we create 2 subgraph_ for graph which include select op The sdp part is
-    // the first subgraph_ and the select part which didn't fused by sdp is the
-    // second select_subgraph_. The sdp subgraph_ uses decomposition algorithm.
-    // the select_subgraph_ uses sequential algorithm
     std::shared_ptr<subgraph_t> subgraph_;
-    std::shared_ptr<subgraph_t> select_subgraph_;
-    std::function<std::shared_ptr<execution_args_set_t>()>
-            select_resource_ctor_;
     memory_planner_t memory_planner_;
     subgraph_visualizer_t vis_;
 
@@ -76,10 +69,6 @@ public:
         thread_local_cache_t<sdp_args_set_t> res_cache;
         res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
         res_cache.release();
-
-        thread_local_cache_t<execution_args_set_t> select_res_cache;
-        select_res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
-        select_res_cache.release();
     }
 
     status_t compile_impl(const dnnl_partition_impl_t *part,
@@ -90,10 +79,6 @@ public:
     void prepare_sub_args(const grantor_t &var_grantor, const int id,
             const size_t block_size,
             std::unordered_map<dnnl_memory_t, std::vector<memory>> &mem_map);
-
-    void prepare_args_set(const execution_args_set_t *res,
-            const std::vector<tensor_t> &inputs,
-            const scratchpad_t &scratchpad);
 
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
@@ -118,8 +103,7 @@ public:
                             mem_map[ori_mem.get()][tid]
                                     = memory(ori_mem.get_desc(),
                                             ori_mem.get_engine(), nullptr);
-                            if (iter.first >= DNNL_ARG_ATTR_SCALES
-                                    && iter.first <= DNNL_ARG_ATTR_POST_OP_DW) {
+                            if (iter.first >= DNNL_ARG_ATTR_SCALES) {
                                 mem_map[ori_mem.get()][tid].set_data_handle(
                                         ori_mem.get_data_handle());
                             }
@@ -142,12 +126,16 @@ public:
             args_ctor(sdp_kernel->sdp_cfg_.sub_mm2_args, sub_mm2_args);
             args_ctor(
                     sdp_kernel->sdp_cfg_.sub_reorder3_args, sub_reorder3_args);
+            if (sdp_kernel->sdp_cfg_.has_select)
+                args_ctor(
+                        sdp_kernel->sdp_cfg_.sub_select_args, sub_select_args);
         }
         std::unordered_map<dnnl_memory_t, std::vector<memory>> mem_map;
         // execution args for each op in the subgraph
         std::vector<std::unordered_map<int, memory>> sub_reorder0_args,
                 sub_reorder1_args, sub_mm1_args, sub_softmax_args,
-                sub_reorder2_args, sub_mm2_args, sub_reorder3_args;
+                sub_reorder2_args, sub_mm2_args, sub_reorder3_args,
+                sub_select_args;
     };
 
     std::function<std::shared_ptr<sdp_args_set_t>()> resource_ctor_;

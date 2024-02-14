@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ static dim_t get_C(const cpu_prelu_bwd_pd_t *pd) {
 
 jit_prelu_reduction_kernel_t::jit_prelu_reduction_kernel_t(
         const cpu_prelu_bwd_pd_t *pd, int simd_w)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , scratchpad_c_block_offset_(
               utils::rnd_up(get_C(pd), alignment) * sizeof(float))
     , simd_w_(simd_w)
@@ -128,7 +128,7 @@ Xbyak::Address jit_prelu_reduction_kernel_t::diff_scratch_ptr(
 template <typename Vmm>
 jit_uni_prelu_reduction_kernel_t<Vmm>::jit_uni_prelu_reduction_kernel_t(
         const cpu_prelu_bwd_pd_t *pd, const cpu_isa_t &isa)
-    : jit_prelu_reduction_kernel_t(pd, vreg_traits<Vmm>::vlen / sizeof(float))
+    : jit_prelu_reduction_kernel_t(pd, vreg_traits_t<Vmm>::vlen / sizeof(float))
     , isa_(isa)
     , saturation_needed_(utils::one_of(
               data_type_, data_type::s8, data_type::u8, data_type::s32))

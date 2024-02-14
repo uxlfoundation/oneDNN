@@ -38,7 +38,7 @@ public:
         }
     };
 
-    object_t _mutate(const stmt_group_t &obj) {
+    object_t _mutate(const stmt_group_t &obj) override {
         if (obj.label != stmt_label_t::mul()) return ir_mutator_t::_mutate(obj);
         auto body = mutate_mul(obj.body);
         return stmt_group_t::make(obj.label, body);

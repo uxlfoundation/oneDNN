@@ -51,9 +51,25 @@ bool is_reduction_dim(const pvar_t &d, const conv_problem_t &prb) {
     return to_gemm(d, prb) == pvars::k;
 }
 
-bool is_vectorized_dim(const pvar_t &d, const conv_problem_t &prb) {
-    if (prb.is_dw) return d == pvars::g;
-    return to_gemm(d, prb) == pvars::n;
+pvar_t vectorized_dim(const conv_problem_t &prb, const pvar_tile_t &tile) {
+    pvar_t vec_dim;
+    if (prb.is_dw) {
+        vec_dim = pvars::g;
+    } else {
+        for (auto &d : tile) {
+            if (to_gemm(d, prb) != pvars::n) continue;
+            gpu_assert(vec_dim.is_undef()) << "Found 2+ N dimensions: " << tile;
+            vec_dim = d;
+        }
+    }
+    gpu_assert(!vec_dim.is_undef())
+            << "Cannot find vectorized dimension: " << tile;
+    return vec_dim;
+}
+
+bool is_vectorized_dim(
+        const pvar_t &d, const conv_problem_t &prb, const pvar_tile_t &tile) {
+    return d == vectorized_dim(prb, tile);
 }
 
 int tensor_conv_dim_index(const pvar_t &d, tensor_kind_t t) {
@@ -273,7 +289,7 @@ private:
         for (auto &d : iter_) {
             auto &info = tile_info(d);
             int unit = 1;
-            if (is_vectorized_dim(d, prb)) unit = cfg.vec_size();
+            if (is_vectorized_dim(d, prb, iter_)) unit = cfg.vec_size();
             if (is_reduction_dim(d, prb)) {
                 // This is to ensure that reduction-related address shifts are
                 // constant. For example with a_blk = 8 and Ax16a layout there are two
@@ -344,7 +360,7 @@ private:
         x2_info.set_iter_unit(unit);
         x2_info.d0 = info0.div_info;
         x2_info.d1 = info1.div_info;
-        x2_tile_infos_.push_back(x2_info);
+        x2_tile_infos_.push_back(std::move(x2_info));
     }
 
     void finalize_loop_dims(const conv_config_t &cfg) {
@@ -379,7 +395,7 @@ private:
                 ld.size = shape.get(d, 1);
                 if (iter_.has(d))
                     ld.size = utils::div_up(ld.size, iter_dim_hint);
-                loop_dims.push_back(ld);
+                loop_dims.push_back(std::move(ld));
             }
             std::sort(loop_dims.begin(), loop_dims.end(),
                     [&](const loop_dim_t &a, const loop_dim_t &b) {
@@ -565,6 +581,7 @@ public:
     bool is_ok(const blocking_t &blk) const override {
         context_t ctx(blk, cfg_);
         if (!check_vec_ok(ctx)) return false;
+        if (!check_fp4_ok(ctx)) return false;
         if (!check_tg_size_ok(ctx)) return false;
         if (!check_dpas_ok(ctx)) return false;
         if (!check_grf_usage_ok(ctx)) return false;
@@ -581,26 +598,31 @@ public:
 
 private:
     struct context_t {
-        context_t(const blocking_t &blk, const conv_config_t &cfg) : blk(blk) {
-            auto &prb = cfg.prb();
-            auto gemm_iter = to_gemm(blk.iter(), prb);
-            auto gemm_loop = to_gemm(blk.loop(), prb);
-            auto gemm_tg = to_gemm(blk.thread_group(), prb);
-            b_iter = gemm_iter.get(pvars::b, 1);
-            m_iter = gemm_iter.get(pvars::m, 1);
-            n_iter = gemm_iter.get(pvars::n, 1);
-            k_iter = gemm_iter.get(pvars::k, 1);
-            k_loop = gemm_loop.get(pvars::k, 1);
-            b_tg = gemm_tg.get(pvars::b, 1);
-            m_tg = gemm_tg.get(pvars::m, 1);
-            n_tg = gemm_tg.get(pvars::n, 1);
-            k_tg = gemm_tg.get(pvars::k, 1);
-            dpas_2x_depth = get_dpas_2x_depth(blk, cfg);
-        }
+        context_t(const blocking_t &blk, const conv_config_t &cfg)
+            : context_t(blk, cfg, to_gemm(blk.iter(), cfg.prb()),
+                    to_gemm(blk.loop(), cfg.prb()),
+                    to_gemm(blk.thread_group(), cfg.prb())) {}
 
-        bool get_dpas_2x_depth(
-                const blocking_t &blk, const conv_config_t &cfg) const {
-            if (!cfg.is_dp_fma() || cfg.regs() <= 128) return false;
+        context_t(const blocking_t &blk, const conv_config_t &cfg,
+                const pvar_tile_t &iter, const pvar_tile_t &loop,
+                const pvar_tile_t &tg)
+            : blk(blk)
+            , b_iter(iter.get(pvars::b, 1))
+            , m_iter(iter.get(pvars::m, 1))
+            , n_iter(iter.get(pvars::n, 1))
+            , k_iter(iter.get(pvars::k, 1))
+            , k_loop(loop.get(pvars::k, 1))
+            , b_tg(tg.get(pvars::b, 1))
+            , m_tg(tg.get(pvars::m, 1))
+            , n_tg(tg.get(pvars::n, 1))
+            , k_tg(tg.get(pvars::k, 1))
+            , dpas_2x_depth(get_dpas_2x_depth(blk, cfg, m_iter * n_iter)) {}
+
+        static bool get_dpas_2x_depth(
+                const blocking_t &blk, const conv_config_t &cfg, dim_t mn) {
+            if (!cfg.is_dp_fma() || cfg.regs() <= 128
+                    || cfg.prb().is_fp8_conv())
+                return false;
 
             // Use 2x reduction when the reduction dimension is dense to avoid
             // partial cache line loads.
@@ -609,7 +631,6 @@ private:
                     if (is_inner_non_blocked(cfg, d)) return true;
 
             // Use larger reduction when M/N are small.
-            dim_t mn = m_iter * n_iter;
             if (mn <= 128) return true;
 
             return false;
@@ -679,9 +700,23 @@ private:
 
         int vec_ndims = 0;
         for (auto &d : ctx.blk.iter()) {
-            if (is_vectorized_dim(d, cfg_.prb())) vec_ndims++;
+            if (is_vectorized_dim(d, cfg_.prb(), ctx.blk.iter())) vec_ndims++;
         }
         return vec_ndims == 1;
+    }
+
+    bool check_fp4_ok(const context_t &ctx) const {
+        auto prb = cfg_.prb();
+        if (prb.is_fp4_conv()) {
+            for (auto &d : ctx.blk.iter())
+                for (auto t : input_tensors(cfg_.prb())) {
+                    if (tensor_conv_dim_index(d, t) == -1) continue;
+                    if (inner_stride(cfg_, t, d) == 1
+                            && inner_block(cfg_, d) % 8)
+                        return false;
+                }
+        }
+        return true;
     }
 
     bool check_tg_size_ok(const context_t &ctx) const {
@@ -954,21 +989,16 @@ namespace conv_schemes {
 //   #dim - remove minimum block restriction (minimum is 1)
 conv_blocking_scheme_t fwd_T_wo_I_noi("ls:[ic,kd,kh,kw],T:[oc,ow],i:[mb,oc,ic]");
 conv_blocking_scheme_t fwd_T_no_I_noi("ls:[ic,kd,kh,kw],T:[oc,mb],i:[mb,oc,ic]");
-conv_blocking_scheme_t fwd_T_wn_I_wnoi("ls:[ic,kd,kh,kw],T:[ow,mb],i:[ow,mb,oc,ic]");
 conv_blocking_scheme_t fwd_T_i_I_noi("ls:[ic,kd,kh,kw],T:[ic],i:[mb,oc,ic]");
-conv_blocking_scheme_t fwd_T_iw_I_wnoi("ls:[ic,kd,kh,kw],T:[ic,ow],i:[ow,mb,oc,ic]");
 conv_blocking_scheme_t fwd_T_wo_I_woi("ls:[ic,kd,kh,kw],T:[oc,ow],i:[ow,oc,ic]");
 conv_blocking_scheme_t fwd_T_i_I_woi("ls:[ic,kd,kh,kw],T:[ic],i:[ow,oc,ic]");
 conv_blocking_scheme_t fwd_T_wo_I_woki("ls:[ic,kd,kh,kw],T:[oc,ow],i:[ow,oc,kw,ic]");
-conv_blocking_scheme_t fwd_T_w_I_woki("ls:[ic,kd,kh,kw],T:[ow],i:[ow,oc,kw,ic]");
-conv_blocking_scheme_t fwd_T_w_I_noki("ls:[ic,kd,kh,kw],T:[ow],i:[mb,ow,oc,kw,ic]");
 conv_blocking_scheme_t fwd_T_wo_I_noki("ls:[ic,kd,kh,kw],T:[oc,ow],i:[mb,oc,kw,ic]");
 conv_blocking_scheme_t fwd_dw_T_w_I_wgk("ls:[kd,kh,kw],T:[ow],i:[ow,g,#kw]");
 conv_blocking_scheme_t fwd_dw_T_w_I_ngk("ls:[kd,kh,kw],T:[ow],i:[mb,g,#kw]");
 conv_blocking_scheme_t bwd_d_T_wi_I_nio("ls:[oc,kd,kh,kw],T:[ic,iw],i:[mb,ic,oc]");
 conv_blocking_scheme_t bwd_d_T_ni_I_nio("ls:[oc,kd,kh,kw],T:[ic,mb],i:[mb,ic,oc]");
 conv_blocking_scheme_t bwd_d_T_o_I_nio("ls:[oc,kd,kh,kw],T:[oc],i:[mb,ic,oc]");
-conv_blocking_scheme_t bwd_d_T_w_I_on("ls:[oc,kd,kh,kw],T:[iw],i:[oc,mb]");
 conv_blocking_scheme_t bwd_d_T_wi_I_wio("ls:[oc,kd,kh,kw],T:[ic,iw],i:[iw,ic,oc]");
 conv_blocking_scheme_t bwd_d_T_o_I_wio("ls:[oc,kd,kh,kw],T:[oc],i:[iw,ic,oc]");
 conv_blocking_scheme_t bwd_d_dw_T_w_I_wg("ls:[kd,kh,kw],T:[iw],i:[iw,g]");
@@ -1081,45 +1111,33 @@ conv_blocking_scheme_list_t get_blocking_schemes_bwd_w_dw(
 
 conv_blocking_scheme_list_t get_blocking_schemes_fwd(const conv_config_t &cfg) {
     conv_blocking_scheme_list_t ret(conv_tune_level());
-    auto m_iter_dim = cfg.prb().ab_swap_transpose
-            ? pvars::oc
-            : select_iter_dim(cfg, {pvars::mb, pvars::ow});
-    bool m_is_mb = (m_iter_dim == pvars::mb);
-    bool m_is_ow = (m_iter_dim == pvars::ow);
-    bool m_is_oc = (m_iter_dim == pvars::oc);
+    auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::ow});
+    bool mb_iter = (m_iter_dim == pvars::mb);
+    bool ow_iter = (m_iter_dim == pvars::ow);
     bool ge_xelp = (cfg.hw() >= ngen::HW::XeLP);
     bool small_ic = (is_small_ic(cfg.prb()) && cfg.prb().kw > 1);
-    ret.add(m_is_mb, conv_schemes::fwd_T_wo_I_noi);
-    ret.add(m_is_mb, conv_schemes::fwd_T_no_I_noi);
-    ret.add(m_is_mb && ge_xelp, conv_schemes::fwd_T_i_I_noi);
-    ret.add(m_is_oc, conv_schemes::fwd_T_wn_I_wnoi);
-    ret.add(m_is_oc && ge_xelp, conv_schemes::fwd_T_i_I_noi);
-    ret.add(m_is_oc && ge_xelp, conv_schemes::fwd_T_iw_I_wnoi);
-    ret.add(m_is_ow, conv_schemes::fwd_T_wo_I_woi);
-    ret.add(m_is_ow && ge_xelp, conv_schemes::fwd_T_i_I_woi);
-    ret.add(m_is_mb && small_ic, conv_schemes::fwd_T_wo_I_noki);
-    ret.add(m_is_oc && small_ic, conv_schemes::fwd_T_w_I_woki);
-    ret.add(m_is_oc && small_ic, conv_schemes::fwd_T_w_I_noki);
-    ret.add(m_is_ow && small_ic, conv_schemes::fwd_T_wo_I_woki);
+    ret.add(mb_iter, conv_schemes::fwd_T_wo_I_noi);
+    ret.add(mb_iter, conv_schemes::fwd_T_no_I_noi);
+    ret.add(mb_iter && ge_xelp, conv_schemes::fwd_T_i_I_noi);
+    ret.add(ow_iter, conv_schemes::fwd_T_wo_I_woi);
+    ret.add(ow_iter && ge_xelp, conv_schemes::fwd_T_i_I_woi);
+    ret.add(mb_iter && small_ic, conv_schemes::fwd_T_wo_I_noki);
+    ret.add(ow_iter && small_ic, conv_schemes::fwd_T_wo_I_woki);
     return ret;
 }
 
 conv_blocking_scheme_list_t get_blocking_schemes_bwd_d(
         const conv_config_t &cfg) {
     conv_blocking_scheme_list_t ret(conv_tune_level());
-    auto m_iter_dim = cfg.prb().ab_swap_transpose
-            ? pvars::ic
-            : select_iter_dim(cfg, {pvars::mb, pvars::iw});
-    bool m_is_mb = (m_iter_dim == pvars::mb);
-    bool m_is_iw = (m_iter_dim == pvars::iw);
-    bool m_is_ic = (m_iter_dim == pvars::ic);
+    auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::iw});
+    bool mb_iter = (m_iter_dim == pvars::mb);
+    bool iw_iter = (m_iter_dim == pvars::iw);
     bool ge_xelp = (cfg.hw() >= ngen::HW::XeLP);
-    ret.add(m_is_mb, conv_schemes::bwd_d_T_ni_I_nio);
-    ret.add(m_is_mb, conv_schemes::bwd_d_T_wi_I_nio);
-    ret.add(m_is_mb && ge_xelp, conv_schemes::bwd_d_T_o_I_nio);
-    ret.add(m_is_iw, conv_schemes::bwd_d_T_wi_I_wio);
-    ret.add(m_is_iw && ge_xelp, conv_schemes::bwd_d_T_o_I_wio);
-    ret.add(m_is_ic, conv_schemes::bwd_d_T_w_I_on);
+    ret.add(mb_iter, conv_schemes::bwd_d_T_ni_I_nio);
+    ret.add(mb_iter, conv_schemes::bwd_d_T_wi_I_nio);
+    ret.add(mb_iter && ge_xelp, conv_schemes::bwd_d_T_o_I_nio);
+    ret.add(iw_iter, conv_schemes::bwd_d_T_wi_I_wio);
+    ret.add(iw_iter && ge_xelp, conv_schemes::bwd_d_T_o_I_wio);
     return ret;
 }
 

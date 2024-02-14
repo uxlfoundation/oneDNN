@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,19 +27,19 @@ namespace x64 {
 
 template <cpu_isa_t isa, impl::data_type_t src_data_t,
         impl::data_type_t scratch_data_t>
-struct jit_uni_gru_cell_postgemm_part1_fwd : public jit_uni_rnn_postgemm {
+struct jit_uni_gru_cell_postgemm_part1_fwd : public jit_uni_rnn_postgemm_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_gru_cell_postgemm_part1_fwd)
 
     using injector_t = typename utils::conditional<isa == avx512_core,
-            jit_uni_eltwise_injector<avx512_core>,
-            jit_uni_eltwise_injector<isa>>::type;
+            jit_uni_eltwise_injector_t<avx512_core>,
+            jit_uni_eltwise_injector_t<isa>>::type;
 
     jit_uni_gru_cell_postgemm_part1_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm(rnn, pd, jit_name()) {}
+        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name()) {}
 
     status_t init(data_type_t sdt) override {
-        CHECK(jit_uni_rnn_postgemm::init(src_data_t));
+        CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
         // no need to save state of registers
         // (unless emulating bf16 support)
         const bool save_state
@@ -55,8 +55,8 @@ protected:
     std::unique_ptr<injector_t> sigmoid_injector_;
 
     // register size in bytes
-    using Vmm = typename jit_uni_eltwise_injector<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits<isa>::vlen;
+    using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
+    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr size_t qscale_dt_size = sizeof(float);
     const size_t vlen_dst
             = vlen / (sizeof(float) / types::data_type_size(src_data_t));

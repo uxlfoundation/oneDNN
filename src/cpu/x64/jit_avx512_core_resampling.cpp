@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -752,7 +752,7 @@ private:
     }
 
     static constexpr std::size_t simd_w() {
-        return cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+        return cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     }
 
     Zmm zmm_src = Zmm(1);
@@ -801,7 +801,7 @@ private:
 jit_avx512_core_resampling_kernel_base_t::
         jit_avx512_core_resampling_kernel_base_t(
                 const resampling_pd_t *pd, const char *name)
-    : jit_generator(name), pd_(pd) {}
+    : jit_generator_t(name), pd_(pd) {}
 
 data_type_t jit_avx512_core_resampling_kernel_base_t::src_data_type() const {
     if (pd_->is_fwd())

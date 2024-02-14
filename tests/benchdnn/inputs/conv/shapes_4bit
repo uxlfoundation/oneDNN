@@ -1,0 +1,18 @@
+# one dimensional shapes
+ic16oc16_iw5ow5kw1pw0_n"conv_basic_1d:1x1"
+g1ic16oc16_iw5ow5kw3pw1_n"conv_basic_1d:3x3"
+g1ic16oc16_iw5ow8kw3pw3_n"conv_basic_1d:gemm"
+g4ic16oc16_iw5ow5kw3pw1_n"conv_basic_1d:grouped"
+
+# two dimensional shapes
+# Used in smoke validation, don't change the name
+ic16oc16_ih5oh5kh1ph0_n"conv_basic_2d:1x1"
+g1ic16oc16_ih5oh5kh3ph1_n"conv_basic_2d:3x3"
+g1ic16oc16_ih5oh8kh3ph3_n"conv_basic_2d:gemm"
+g4ic16oc16_ih5oh5kh3ph1_n"conv_basic_2d:grouped"
+
+# three dimensional shapes
+ic16oc16_id5od5kd1pd0_n"conv_basic_3d:1x1"
+g1ic16oc16_id5od5kd3pd1_n"conv_basic_3d:3x3"
+g1ic16oc16_id5od8kd3pd3_n"conv_basic_3d:gemm"
+g4ic16oc16_id5od5kd3pd1_n"conv_basic_3d:grouped"

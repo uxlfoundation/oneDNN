@@ -7,7 +7,9 @@ GELUBackward operation computes gradient for GELU.
 
 ## Operation attributes
 
-GELUBackward operation does not support any attribute.
+| Attribute Name                             | Description                                     | Value Type | Supported Values                  | Required or Optional |
+|:-------------------------------------------|:------------------------------------------------|:-----------|:----------------------------------|:---------------------|
+| [mode](@ref dnnl::graph::op::attr::mode)   | Specifies the computation mode of GELUBackward. | string     | `gelu_erf` (default), `gelu_tanh` | Optional             |
 
 ## Execution arguments
 

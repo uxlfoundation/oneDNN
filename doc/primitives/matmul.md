@@ -53,7 +53,8 @@ argument index as specified by the following table.
 | \f$\text{dropout output mask}\f$ | DNNL_ARG_ATTR_DROPOUT_MASK                                                 |
 | \f$\text{dropout probability}\f$ | DNNL_ARG_ATTR_DROPOUT_PROBABILITY                                          |
 | \f$\text{dropout rng seed}\f$    | DNNL_ARG_ATTR_DROPOUT_SEED                                                 |
-| \f$\text{binary post-op}\f$      | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1  |
+| \f$\text{binary post-op}\f$      | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1, |
+|                                  | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  |
 | \f$\text{prelu post-op}\f$       | DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| DNNL_ARG_WEIGHTS |
 
 ## Implementation Details
@@ -103,6 +104,7 @@ types for source, destination, weights, and bias tensors:
 | bf16             | bf16, u8, s8, u4, s4 | f32, bf16                        | f32, bf16                   |
 | f32, bf16, f16   | u8, s8               | f32, bf16, f16                   | f32, bf16, f16              |
 | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3     | f32, f16, bf16, f8_e5m2, f8_e4m3 | f32, bf16, f16              |
+| f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0     | f32, f16, bf16, f4_e2m1, f4_e3m0 | f32, bf16, f16              |
 | u8, s8           | s8                   | u8, s8, s32, f32, f16, bf16      | u8, s8, s32, f32, f16, bf16 |
 
 
@@ -171,6 +173,87 @@ memory buffer that shares its shape with the destination buffer).
 
 @note Please check tutorials below to see run-time attributes in use.
 
+### Sparsity
+
+#### CSR encoding
+Supported only for the CPU engine. Only one of the input tensors can be sparse.
+The output tensor is always dense.
+
+The following data type combinations are supported:
+
+| Values (src, weight, dst)   | Indices  |
+|:----------------------------|:---------|
+| f16, f16, f16               | s32      |
+| f32, f32, f32               | s32      |
+
+The following format tags are supported for dense input/output
+tensors:
+
+* ab
+
+See the example [here](@ref cpu_matmul_csr_cpp).
+
+Benchdnn can be used to test matmul with a CSR input tensor as follows:
+`./benchdnn --matmul --encoding=csr+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
+
+For the case above, the number of non-zero elements for the source tensor is
+calculated as max(4 * 1000000 * (1 - 0.99), 1).
+
+#### COO encoding
+Supported only for the CPU and GPU engines. Only one of the input tensors can
+be sparse. The output tensor is always dense.
+
+The following data type combinations are supported:
+
+| Values (src, weight, dst)   | Indices  |
+|:----------------------------|:---------|
+| f16, f16, f16               | s32      |
+| f32, f32, f32               | s32      |
+
+The following format tags are supported for dense weights tensor:
+
+* ab
+* ba
+
+The following format tags are supported for dense destination tensor:
+
+* ab
+
+See the example [here](@ref cpu_matmul_coo_cpp).
+
+Benchdnn can be used to test matmul with a COO input tensor as follows:
+`./benchdnn --matmul --encoding=coo+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
+
+For the case above, the number of non-zero elements for the source tensor is
+calculated as max(4 * 1000000 * (1 - 0.99), 1).
+
+#### PACKED encoding
+
+Only the weights tensor is allowed to be sparse. The other tensors
+are always dense.
+
+In general, it is expected that all matmul related functionality (e.g. post-ops,
+scales, zero-points, etc) that is supported for the dense weights should
+also work for the sparse weights.
+
+Currently, matmul has the following limitations for the PACKED encoding:
+* Supported only for the CPU engine
+* Only Intel Advanced Matrix Extensions (Intel AMX) instruction set
+architecture (ISA) is supported
+* Only `s8` data type for the weights is supported
+* Only 1 batch dimension is supported
+
+See the example [here](@ref cpu_matmul_weights_compression_cpp).
+
+Benchdnn can be used to test matmul with the PACKED weights tensor as follows:
+`./benchdnn --matmul --dt=s8:s8:s32 --encoding=:packed+0.99: 3x512x1024:1x1024x512`
+
+For the case above, the number of non-zero elements for the weights tensor is
+calculated as max(1024 * 512 * (1 - 0.99), 1).
+
+Refer to [Sparsity Advanced Topic](@ref dev_guide_sparsity) page for more
+information on sparse encding.
+
 ## Implementation Limitations
 
 1. Check @ref dev_guide_data_types.
@@ -181,8 +264,8 @@ memory buffer that shares its shape with the destination buffer).
    - Sum post-op doesn't support data type other than destination data type.
    - Bias of bf16 data type is supported for configuration with bf16 source data
      type and weights bf16 data type, and up to three dimensional matrices.
-   - Only reference support is available for f8_e4m3. Optimized implementation
-     for f8_e5m2 is available only on Intel(R) Data Center GPU Max Series.
+   - Optimized implementations for fp8 data type are available only on Intel(R) 
+     Data Center GPU Max Series and Intel(R) Xe2 Graphics.
    - Configuration with int8 source data type, s8 weight data type and bf16
      destination data type don't support:
      * Destination zero point.
@@ -196,8 +279,6 @@ memory buffer that shares its shape with the destination buffer).
      destination data type isn't supported.
    - Configuration with floating point source data type, integer weights data
      type and floating point destination data type is not optimized.
-   - Only reference support for fp8 data types (f8_e5m2, f8_e4m3) is
-     is available on CPU.
    - The layout of dropout mask has to be exactly the same as that of dst.
  
 ## Performance Tips

@@ -44,7 +44,7 @@ struct gen9_binary_t : public gpu_primitive_t {
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
 
-            const auto attr_skip_mask = sm::post_ops | sm::scales_runtime;
+            const auto attr_skip_mask = sm::post_ops | sm::scales;
             VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_BINARY(
                     !memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
@@ -53,14 +53,16 @@ struct gen9_binary_t : public gpu_primitive_t {
                     ((utils::everyone_is(
                               bf16, src_md(0)->data_type, src_md(1)->data_type)
                              && utils::one_of(dst_md()->data_type, bf16, u8))
-                            || (utils::one_of(
-                                        src_md(0)->data_type, f16, f32, s8, u8)
+                            || (utils::one_of(src_md(0)->data_type, f16, f32,
+                                        s8, u8, s32)
                                     && utils::one_of(src_md(1)->data_type, f16,
-                                            f32, s8, u8)
+                                            f32, s8, u8, s32)
                                     && utils::one_of(dst_md()->data_type, f16,
-                                            f32, s8, u8))),
+                                            f32, s8, u8, s32))),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BINARY(!is_ternary_op(), VERBOSE_BAD_ALGORITHM);
+            VDISPATCH_BINARY(IMPLICATION(is_ternary_op(),
+                                     utils::one_of(src_md(2)->data_type, s8)),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
                     IMPLICATION(!attr()->scales_.has_default_values(),
                             utils::one_of(dst_md()->data_type, s8, u8)),
@@ -90,8 +92,8 @@ struct gen9_binary_t : public gpu_primitive_t {
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_BINARY(post_ops_with_binary_ok(
-                                     attr(), dst_md()->data_type, MAX_NDIMS),
+            VDISPATCH_BINARY(
+                    post_ops_with_binary_ok(attr(), *dst_md(), MAX_NDIMS),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_BINARY_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -146,13 +148,19 @@ struct gen9_binary_t : public gpu_primitive_t {
         auto &src1_scale
                 = CTX_IN_STORAGE(DNNL_ARG_SRC_1 | DNNL_ARG_ATTR_SCALES);
 
+        unsigned arg_idx = 0;
         compute::kernel_arg_list_t arg_list;
-        arg_list.set(0, src0);
-        arg_list.set(1, src1);
-        arg_list.set(2, dst);
+        arg_list.set(arg_idx++, src0);
+        arg_list.set(arg_idx++, src1);
 
-        unsigned arg_idx = append_post_ops_to_arg_list(
-                ctx, arg_list, 3, pd()->attr()->post_ops_);
+        if (pd()->is_ternary_op()) {
+            auto &src2 = CTX_IN_STORAGE(DNNL_ARG_SRC_2);
+            arg_list.set(arg_idx++, src2);
+        }
+
+        arg_list.set(arg_idx++, dst);
+        arg_idx = append_post_ops_to_arg_list(
+                ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
 
         arg_list.set(arg_idx++, src0_scale);
         arg_list.set(arg_idx, src1_scale);

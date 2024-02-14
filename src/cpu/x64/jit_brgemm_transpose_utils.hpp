@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,12 +39,12 @@ struct jit_brgemm_trans_src_t {
 
     jit_brgemm_trans_src_t(const jit_brgemm_primitive_conf_t *conf)
         : conf_(conf) {}
-    virtual ~jit_brgemm_trans_src_t() {}
+    virtual ~jit_brgemm_trans_src_t() = default;
 
     const jit_brgemm_primitive_conf_t *conf_;
 };
 
-struct jit_brgemm_copy_to_coarse_t : public jit_generator {
+struct jit_brgemm_copy_to_coarse_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_copy_to_coarse_t)
 
     struct ctx_t {
@@ -55,11 +55,13 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator {
         dim_t last_row_blk;
     };
 
-    void operator()(ctx_t *ctx) { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_brgemm_copy_to_coarse_t(const jit_brgemm_primitive_conf_t *conf)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , conf_(conf)
         , typesize_(sizeof(float) / data_type_vnni_granularity(conf_->wei_dt))
         , is_fwd_dir_(utils::one_of(conf_->prop_kind,
@@ -80,7 +82,8 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator {
 
         MAYBE_UNUSED(row_granularity_);
     }
-    ~jit_brgemm_copy_to_coarse_t() {}
+
+    ~jit_brgemm_copy_to_coarse_t() override = default;
 
 private:
     enum {
@@ -96,7 +99,7 @@ private:
             row_step_;
     const dim_t data_stride_, tr_data_stride_;
 
-    inline size_t addr_offset(int row_idx) {
+    inline size_t addr_offset(int row_idx) const {
         return row_idx * row_step_ * typesize_;
     }
 
@@ -142,10 +145,10 @@ struct jit_brgemm_trans_to_vnni_t {
         dim_t current_col_size, current_row_size;
     };
 
-    typedef enum matrix_to_transform {
+    enum class matrix_to_transform_t {
         matrix_B,
-        matrix_C
-    } matrix_to_transform_t;
+        matrix_C,
+    };
 
     virtual void operator()(ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
@@ -153,7 +156,8 @@ struct jit_brgemm_trans_to_vnni_t {
     jit_brgemm_trans_to_vnni_t(const jit_brgemm_primitive_conf_t *conf,
             matrix_to_transform_t matrix_to_transform)
         : conf_(conf), matrix_to_transform_(matrix_to_transform) {}
-    virtual ~jit_brgemm_trans_to_vnni_t() {}
+
+    virtual ~jit_brgemm_trans_to_vnni_t() = default;
 
     const jit_brgemm_primitive_conf_t *conf_;
     matrix_to_transform_t matrix_to_transform_;
@@ -173,12 +177,12 @@ struct jit_brgemm_trans_wei_t {
 
     jit_brgemm_trans_wei_t(const jit_brgemm_primitive_conf_t *conf)
         : conf_(conf) {}
-    virtual ~jit_brgemm_trans_wei_t() {}
+    virtual ~jit_brgemm_trans_wei_t() = default;
 
     const jit_brgemm_primitive_conf_t *conf_;
 };
 
-struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator {
+struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator_t {
     struct cfg_t {
         data_type_t wei_dt {data_type_t::dnnl_data_type_undef};
         int out_oc_block {0};
@@ -200,7 +204,7 @@ struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator {
     using reg64_t = Xbyak::Reg64;
 
     jit_brgemm_relo_copy_to_wbuffer_t(const cfg_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), wjcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), wjcp(ajcp) {}
 
 private:
     cfg_t wjcp;
@@ -221,7 +225,7 @@ private:
     void generate() override;
 };
 
-struct jit_amx_ip_trans_diff_wei {
+struct jit_amx_ip_trans_diff_wei_t {
     struct ctx_t {
         const void *src;
         const void *dst;
@@ -233,13 +237,13 @@ struct jit_amx_ip_trans_diff_wei {
     virtual void operator()(ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
-    jit_amx_ip_trans_diff_wei(const jit_brgemm_primitive_conf_t *jbgp,
+    jit_amx_ip_trans_diff_wei_t(const jit_brgemm_primitive_conf_t *jbgp,
             const int ext_ic_block, const int ext_oc_block)
         : jbgp_(jbgp)
         , ext_ic_block_(ext_ic_block)
         , ext_oc_block_(ext_oc_block) {}
 
-    virtual ~jit_amx_ip_trans_diff_wei() {}
+    virtual ~jit_amx_ip_trans_diff_wei_t() = default;
 
     const jit_brgemm_primitive_conf_t *jbgp_;
 
@@ -261,7 +265,7 @@ status_t create_brgemm_trans_wei(
         std::unique_ptr<jit_brgemm_trans_wei_t> &trans_ker,
         const jit_brgemm_primitive_conf_t *conf);
 status_t create_brgemm_amx_ip_trans_wei(
-        std::unique_ptr<jit_amx_ip_trans_diff_wei> &trans_ker,
+        std::unique_ptr<jit_amx_ip_trans_diff_wei_t> &trans_ker,
         const jit_brgemm_primitive_conf_t *conf, const int ext_ic_block,
         const int ext_oc_block);
 } // namespace x64

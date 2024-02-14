@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 
 namespace binary {
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
 
     const dnn_mem_t &src0 = args.find(DNNL_ARG_SRC_0);
     const dnn_mem_t &src1 = args.find(DNNL_ARG_SRC_1);
@@ -45,7 +45,7 @@ void compute_ref(
         const auto idx_B = dst.get_idx(i, broadcast_mask_B);
 
         const bool c_val = prb->is_ternary_op()
-                ? static_cast<bool>(src2.get_elem(idx_A))
+                ? static_cast<bool>(src2.get_f32_elem(idx_A))
                 : false;
 
         float res = compute_binary(

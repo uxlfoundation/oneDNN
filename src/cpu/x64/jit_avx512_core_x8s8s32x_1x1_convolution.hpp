@@ -73,15 +73,10 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
             VDISPATCH_CONV(
-                    attr()->has_default_values(smask_t::scales_runtime
-                                    | smask_t::zero_points_runtime
-                                    | smask_t::post_ops | smask_t::sum_dt,
+                    attr()->has_default_values(smask_t::scales
+                                    | smask_t::zero_points | smask_t::post_ops
+                                    | smask_t::sum_dt,
                             dst_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_CONV(attr()->scales_.has_default_values({DNNL_ARG_SRC,
-                                   DNNL_ARG_WEIGHTS, DNNL_ARG_DST,
-                                   DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS,
-                                   DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST}),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             VDISPATCH_CONV(set_default_formats_common(
@@ -95,8 +90,11 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
                                    /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}},
+                    {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0}},
+                    {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS, {0, 1}},
+                    {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST, {0}}}));
+            CHECK(attr_zero_points_ok());
 
             const convolution_desc_t *conv_d = desc();
             const memory_desc_t *src_d = src_md();
@@ -105,13 +103,13 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             rtus_prepare(this, conv_d, src_d, dst_md(), weights_md());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_conf(jcp_,
+            CHECK(jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(jcp_,
                     *conv_d, src_d, weights_md_, dst_md_, bias_md_, *attr(),
                     dnnl_get_max_threads(), rtus_.reduce_src_));
             if (jcp_.with_dw_conv) CHECK(depthwise_po_init(engine));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_scratchpad(
+            jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_scratchpad(
                     scratchpad, jcp_, *attr());
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
@@ -123,6 +121,7 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             return cpu_convolution_fwd_pd_t::dst_md(index);
         }
 
+        // NOLINTBEGIN(google-default-arguments)
         const memory_desc_t *dst_md(
                 int index = 0, bool user_input = false) const override {
             return dw_conv_pd_ && jcp_.with_dw_conv
@@ -145,18 +144,16 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             }
             return convolution_fwd_pd_t::arg_md(arg, user_input);
         }
+        // NOLINTEND(google-default-arguments)
 
         arg_usage_t arg_usage(int arg) const override {
             if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS))
                 return arg_usage_t::input;
 
-            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS)
-                    && attr_post_op_dw_inputs() > 1)
-                return arg_usage_t::input;
+            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS))
+                return attr_post_op_dw_inputs() > 1 ? arg_usage_t::input
+                                                    : arg_usage_t::unused;
 
-            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_ATTR_OUTPUT_SCALES)
-                    && jcp_.with_dw_conv)
-                return arg_usage_t::input;
             return convolution_fwd_pd_t::arg_usage(arg);
         }
 
@@ -171,23 +168,6 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
         format_tag_t dat_tag() const {
             return utils::pick(src_md_.ndims - 3, format_tag::nwc,
                     format_tag::nhwc, format_tag::ndhwc);
-        }
-
-        bool zero_points_ok() const {
-            const auto &zp = attr()->zero_points_;
-
-            if (!zp.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = zp.get_mask(DNNL_ARG_SRC);
-                const bool ok = mask_src == 0;
-                if (!ok) return false;
-            }
-            if (!zp.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                const bool ok = mask_dst == 0;
-                if (!ok) return false;
-            }
-
-            return zp.has_default_values(DNNL_ARG_WEIGHTS);
         }
 
         status_t copy(const pd_t &other) {
@@ -318,7 +298,7 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_avx512_core_x8s8s32x_1x1_conv_kernel(
+                new jit_avx512_core_x8s8s32x_1x1_conv_kernel_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_1x1_md(0))));
         CHECK(kernel_->create_kernel());
 
@@ -349,9 +329,15 @@ private:
             const void *post_ops_binary_rhs_arg_vec,
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_avx512_core_x8s8s32x_1x1_conv_kernel> kernel_;
+    const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
+            const float *src_scales, const float *wei_scales) const;
+    const float *maybe_adjust_dw_oscales(
+            const memory_tracking::grantor_t &scratchpad,
+            const float *dst_scales, const float *dw_wei_scales) const;
+
+    std::unique_ptr<jit_avx512_core_x8s8s32x_1x1_conv_kernel_t> kernel_;
     std::unique_ptr<rtus_driver_t<avx512_core>> rtus_driver_;
-    using dw_conv_kernel_t = jit_avx512_core_x8s8s32x_fwd_kernel;
+    using dw_conv_kernel_t = jit_avx512_core_x8s8s32x_fwd_kernel_t;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 

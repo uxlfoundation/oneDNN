@@ -84,13 +84,12 @@ struct stride_t {
             }
             if (found) new_pvars.push_back(a);
         }
-        pvars = new_pvars;
+        pvars = std::move(new_pvars);
     }
 };
 
 struct block_2d_params_t {
     stride_t base_stride;
-    dim_t x_stride;
     expr_t y_stride;
     pvar_t w_dim;
     pvar_t h_dim;
@@ -99,7 +98,7 @@ struct block_2d_params_t {
 block_2d_params_t to_block_2d_params(const prop_kind_t &prop,
         const tensor_kind_t &tensor_kind, int type_size,
         const pvar_tile_t &tg_tile, const pvar_tile_t &iter_tile,
-        const pvar_map_t<stride_t> &strides) {
+        const pvar_map_t<stride_t> &strides, const prb_reqs_t &reqs) {
     bool is_fwd = (prop == prop_kind::forward);
     bool is_bwd_d = (prop == prop_kind::backward_data);
     bool is_bwd_w = (prop == prop_kind::backward_weights);
@@ -125,10 +124,10 @@ block_2d_params_t to_block_2d_params(const prop_kind_t &prop,
         if (d.is_undef()) continue;
         if (strides.at(d).is_one()) {
             gpu_assert(params.w_dim.is_undef());
-            params.w_dim = d;
+            params.w_dim = std::move(d);
         } else {
             gpu_assert(params.h_dim.is_undef());
-            params.h_dim = d;
+            params.h_dim = std::move(d);
         }
     }
     gpu_assert(!params.w_dim.is_undef());
@@ -139,36 +138,58 @@ block_2d_params_t to_block_2d_params(const prop_kind_t &prop,
     }
     for (auto &d : strides) {
         if (utils::one_of(d, params.w_dim, params.h_dim)) continue;
+        if (reqs.is_equal(d, 1)) continue;
         params.base_stride.intersect(strides[d]);
     }
     params.base_stride *= type_size;
     return params;
 }
 
+void generate_2d_stride_var_reqs(const layout_tag_t &tag, prb_reqs_t &reqs,
+        const tensor_kind_t &tensor_kind, const block_2d_params_t &params,
+        const int base_align) {
+    using ir_utils::safe_div;
+    std::vector<pvar_t> pvars;
+    for (int i = tag.raw_tag().nentries() - 2; i >= 0; i--) {
+        auto &e = tag.raw_tag().entries()[i];
+        gpu_assert(!e.is_blocked);
+        auto dim = tag.desc().prb_dim(e.index());
+        if (utils::one_of(dim, params.w_dim, params.h_dim)) continue;
+        reqs.add_no_simplify(
+                prb_stride(dim, tensor_kind).var() % base_align == 0);
+    }
+    auto &e = tag.raw_tag().entries()[tag.raw_tag().nentries() - 1];
+    auto dim = tag.desc().prb_dim(e.index());
+    reqs.add_no_simplify(dim.var() % base_align == 0);
+}
+
 void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
         prb_reqs_t &reqs) {
     using ir_utils::safe_div;
-    if (to_abc(desc.prop, tensor_kind) == tensor_kind_t::c
-            && desc.use_stream_k) {
-        // No block 2D access with atomics.
-        return;
-    }
+    if (!can_use_2d(desc, tensor_kind)) return;
     bool is_fwd = (desc.prop == prop_kind::forward);
     bool is_bwd_w = (desc.prop == prop_kind::backward_weights);
     auto tag = append_groups(
             tensor_kind, desc.layout_tag(tensor_kind), desc.is_dw);
+    if (tag.raw_tag().is_blocked()) return;
     pvar_map_t<stride_t> strides;
     stride_t stride(1);
     for (int i = tag.raw_tag().nentries() - 1; i >= 0; i--) {
         auto &e = tag.raw_tag().entries()[i];
         gpu_assert(!e.is_blocked);
         auto dim = tag.desc().prb_dim(e.index());
-        strides[dim] = stride;
-        stride *= dim;
+        if (tag.is_strided() && i < tag.raw_tag().nentries() - 1) {
+            stride_t s_stride(1);
+            s_stride *= prb_stride(dim, tensor_kind);
+            strides[dim] = s_stride;
+        } else {
+            strides[dim] = stride;
+            stride *= dim;
+        }
     }
     int type_size = tag.type().size();
     auto params = to_block_2d_params(desc.prop, tensor_kind, type_size,
-            desc.thread_group_tile, desc.iter_tile, strides);
+            desc.thread_group_tile, desc.iter_tile, strides, reqs);
     int base_align = block_2d_base_alignment(desc.hw_desc);
     auto W = params.w_dim.var();
     auto H = params.h_dim.var();
@@ -189,7 +210,10 @@ void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
     reqs.add_no_simplify(
             P.mod(safe_div(block_2d_pitch_alignment(desc.hw_desc), type_size))
             == 0);
-    reqs.add_no_simplify(params.base_stride.mod(base_align) == 0);
+    if (tag.is_strided())
+        generate_2d_stride_var_reqs(tag, reqs, tensor_kind, params, base_align);
+    else
+        reqs.add_no_simplify(params.base_stride.mod(base_align) == 0);
     if ((is_fwd || is_bwd_w) && params.h_dim == pvars::iw) {
         reqs.add_no_simplify((params.y_stride == 1) | (pvars::pw.var() == 0));
         reqs.add_no_simplify((params.y_stride == 1) | (pvars::kw.var() == 1));

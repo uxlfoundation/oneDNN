@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2021-2024 Intel Corporation
+ * Copyright 2021-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +57,11 @@ status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg);
 /// 1) reshape src0 to 2d(keep last dimension and flatten others)
 /// 2) reshape dst back to nd after compilation
 status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg);
+
+/// Insert reshape for 5D sdpa. sdpa only support 4D input/output
+/// 1) reshape Q/K/V/scale/mask from 5D to 4D
+/// 2) reshape output from 4D to 5D
+status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg);
 
 // Insert an unsqueeze-squeeze pair for matmul
 //
@@ -120,6 +125,9 @@ status_t insert_unsqueeze_and_squeeze_for_prelu_bwd(
 //   to true.
 status_t insert_unsqueeze_and_squeeze_for_reduction(
         std::shared_ptr<subgraph_t> &sg);
+
+///  This pass insert host_scalar op for logical tensor with scalar value
+status_t insert_host_scalar(std::shared_ptr<subgraph_t> &sg);
 
 } // namespace dnnl_impl
 } // namespace graph

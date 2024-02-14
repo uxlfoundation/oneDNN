@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,9 +61,11 @@ struct sycl_convolution_common_conf_t {
     bool single_weight_scale;
 
     bool use_data_zeropoints;
+    bool use_wei_zeropoints;
     bool use_dst_zeropoints;
-    bool single_data_zeropoint;
-    bool single_dst_zeropoint;
+    int data_zp_mask;
+    int wei_zp_mask;
+    int dst_zp_mask;
 
     int ndims;
 
@@ -198,16 +200,19 @@ struct sycl_shuffle_conf_t {
 struct sycl_reorder_conf_t {
     xpu::sycl::md_t src_md;
     xpu::sycl::md_t dst_md;
-    xpu::sycl::md_t scales;
 
-    bool do_scale_src;
-    int scale_src_mask;
-    bool do_scale_dst;
-    int scale_dst_mask;
+    bool apply_src_scale;
+    int src_scale_mask;
+    bool apply_dst_scale;
+    int dst_scale_mask;
+    bool apply_src_zp;
+    int src_zp_mask;
+    bool apply_dst_zp;
+    int dst_zp_mask;
 
     int ndims;
 
-    int wk_size;
+    std::size_t num_elements;
 
     sycl_post_ops_t post_ops;
 };
@@ -471,6 +476,9 @@ struct sycl_rnn_copy_conf_t {
     dim_t states_ws_ld;
     bool layer;
     bool to_state;
+    bool l2r;
+    bool r2l;
+    bool sum;
 };
 
 struct sycl_rnn_bias_conf_t {
@@ -515,6 +523,32 @@ inline outer_strides_getter_t get_outer_strides(const memory_desc_wrapper &md) {
     return {md};
 }
 
+struct sycl_group_norm_conf_t {
+    xpu::sycl::md_t src_desc;
+    xpu::sycl::md_t dst_desc;
+    bool use_global_stats;
+    int32_t num_groups;
+    int32_t num_channels_per_group;
+    bool use_scale;
+    bool use_shift;
+    bool src_scaling;
+    bool dst_scaling;
+    float eta;
+    sycl_post_ops_t post_ops;
+};
+
+struct sycl_gnorm_bwd_conf_t {
+    xpu::sycl::md_t src_desc;
+    xpu::sycl::md_t diff_src_desc;
+    xpu::sycl::md_t diff_dst_desc;
+    int32_t num_groups;
+    int32_t num_channels_per_group;
+    bool scale_diff_required;
+    bool bias_diff_required;
+    bool used_global_stats;
+    float eta;
+};
+
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_binary_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_prelu_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_shuffle_conf_t);
@@ -535,6 +569,9 @@ CHECK_SYCL_KERNEL_ARG_TYPE(sycl_simple_reduction_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_reduction_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_copy_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_bias_conf_t);
+CHECK_SYCL_KERNEL_ARG_TYPE(sycl_group_norm_conf_t);
+CHECK_SYCL_KERNEL_ARG_TYPE(sycl_gnorm_bwd_conf_t);
+
 } // namespace sycl
 } // namespace generic
 } // namespace gpu

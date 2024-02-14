@@ -78,7 +78,7 @@ bool BLASKernelGenerator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &st
         if (problem.hasBinaryPostOp()) stub();
 
         const int eu_count = 0;
-        postOpInjector.reset(new Injector(this, problem.Ts.get_dnnl_type(), problem.postOps, eu_count, GRFRange(), problem.postOpFwd));
+        postOpInjector.reset(new Injector(this, problem.Ts.ngen(), problem.postOps.ops, eu_count, GRFRange(), problem.postOps.fwd));
         if (!postOpInjector) stub();
 
         postOpScratch = state.ra.try_alloc_range(postOpInjector->preferred_scratch_regs());
@@ -151,7 +151,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         auto modProblem = problem;
         modProblem.alpha = 1;
         modProblem.beta = 0;
-        modProblem.postOps = gpu_post_ops_t{};
+        modProblem.postOps = PostOps{};
         modProblem.cOffset = COffset::None;
         return gemmAccessC(COperation::UpdateStore, modProblem, strategy, state);
     }
@@ -220,7 +220,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         // Do any post-sum post-ops.
         if (newPostOps)
             gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
-        storeProblem.postOps = gpu_post_ops_t{};
+        storeProblem.postOps = PostOps{};
 
         if (problem.cOffset == COffset::Post)
             ok = ok && gemmApplyCOffsetDispatch(problem, strategy, state);
@@ -1078,9 +1078,9 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
                             break;
                         case 1:
                             {
-                                C_accs.push_back(C_acc);
-                                C_accSwaps.push_back(C_accSwap);
-                                C_loads.push_back(C_load);
+                                C_accs.push_back(std::move(C_acc));
+                                C_accSwaps.push_back(std::move(C_accSwap));
+                                C_loads.push_back(std::move(C_load));
                             }
                             break;
                         case 2:
@@ -2368,7 +2368,7 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
     if (state.r0_info.isARF()) stub();
     GRF r0_info{state.r0_info.getBase()};
 
-    bool initialBarrier = (strategy.slmBuffers > 0 || strategy.persistent);
+    bool initialBarrier = (strategy.slmBuffers > 0 || strategy.persistentLoop());
     MOCK_BARRIERS if (initialBarrier)
         activeThreadBarrierSignal(barrierTemp, r0_info, strategy);
 

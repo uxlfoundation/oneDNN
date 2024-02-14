@@ -17,11 +17,11 @@
 #ifndef GPU_INTEL_OCL_GEMM_REF_GEMM_HPP
 #define GPU_INTEL_OCL_GEMM_REF_GEMM_HPP
 
+#include "common/serialization.hpp"
 #include "gpu/gpu_gemm_pd.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gemm/gpu_gemm.hpp"
 #include "gpu/intel/primitive_conf.hpp"
-#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -126,9 +126,8 @@ struct ref_gemm_t : public gpu_gemm_t {
             VDISPATCH_GEMM(IMPLICATION(acc_dt != s32 && !wei_decompress,
                                    attr()->zero_points_.has_default_values()),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
-            VDISPATCH_GEMM(
-                    attr()->has_default_values(smask_t::zero_points_runtime
-                            | smask_t::post_ops | smask_t::fpmath_mode),
+            VDISPATCH_GEMM(attr()->has_default_values(smask_t::zero_points
+                                   | smask_t::post_ops | smask_t::fpmath_mode),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(attr_oscale_ok(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(attr_zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);

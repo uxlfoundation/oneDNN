@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
 * Copyright 2022, 2024 Arm Ltd. and affiliates
 *
@@ -29,7 +29,7 @@
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_sve_512_core_x8s8s32x_deconvolution.hpp"
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_deconvolution.hpp"
 #endif
 using namespace dnnl::impl::cpu::aarch64;
@@ -47,9 +47,11 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     static const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> the_map = REG_DECONV_P({
         {{forward}, {
+            CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx10_2_512_amx_2>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx_fp16>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(jit_avx512_core_amx_deconvolution_fwd_t)
+            CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx10_2_512>)
             CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx512_core_fp16>)
             CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx512_core_bf16>)
             CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx512_core_vnni>)

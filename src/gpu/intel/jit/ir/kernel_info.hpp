@@ -24,9 +24,9 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive_exec_types.hpp"
+#include "common/serialization.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
-#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -40,6 +40,8 @@ public:
         : unique_ptr_(std::move(ptr)) {}
     memory_storage_ptr_t(const memory_storage_t *ptr) : raw_ptr_(ptr) {}
     memory_storage_ptr_t(const memory_storage_ptr_t &) = delete;
+    memory_storage_ptr_t &operator=(const memory_storage_ptr_t &) = delete;
+    ~memory_storage_ptr_t() = default;
 
     const memory_storage_t *get() const {
         if (unique_ptr_) return unique_ptr_.get();

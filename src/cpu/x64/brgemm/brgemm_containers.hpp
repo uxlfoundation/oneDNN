@@ -34,7 +34,7 @@ namespace brgemm_containers {
 
 struct brgemm_desc_container_t {
 public:
-    brgemm_desc_container_t() {}
+    brgemm_desc_container_t() = default;
     brgemm_desc_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
     inline const brgemm_desc_t *operator[](int idx) const { return refs_[idx]; }
@@ -71,7 +71,7 @@ private:
 // #define BRGEMM_KERNEL_GLOBAL_STORAGE
 
 struct brgemm_kernel_container_t {
-    brgemm_kernel_container_t() {}
+    brgemm_kernel_container_t() = default;
     brgemm_kernel_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
     inline const brgemm_kernel_t *operator[](int idx) const {
@@ -113,7 +113,7 @@ private:
 struct brgemm_palette_container_t {
     using S_t = std::array<char, AMX_PALETTE_SIZE>;
 
-    brgemm_palette_container_t() {}
+    brgemm_palette_container_t() = default;
     brgemm_palette_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
 

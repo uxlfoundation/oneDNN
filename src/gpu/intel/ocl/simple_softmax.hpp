@@ -74,9 +74,8 @@ struct simple_softmax_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(!memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
-            VDISPATCH_SOFTMAX(
-                    attr()->has_default_values(skip_mask_t::scales_runtime
-                            | skip_mask_t::post_ops),
+            VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
+                                      | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SOFTMAX(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_SOFTMAX(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
@@ -138,6 +137,8 @@ struct simple_softmax_fwd_t : public gpu_primitive_t {
         kernel_ctx.define_int("SUB_GROUP_SIZE", pd()->subgroup_size);
         kernel_ctx.define_int("IS_FWD", 1);
         kernel_ctx.add_option("-cl-std=CL2.0");
+        kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO",
+                pd()->alg_kind() == alg_kind::softmax_accurate_inf_as_zero);
         kernel_ctx.define_int("LOGSOFTMAX", pd()->is_logsoftmax());
         kernel_ctx.define_int("WITH_SRC_SCALES",
                 !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC));

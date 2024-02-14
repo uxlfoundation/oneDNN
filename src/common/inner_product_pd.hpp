@@ -196,6 +196,7 @@ protected:
     }
 };
 
+// NOLINTBEGIN(google-default-arguments)
 struct inner_product_fwd_pd_t : public inner_product_pd_t {
     using base_class = inner_product_fwd_pd_t;
     using hint_class = inner_product_fwd_pd_t;
@@ -204,7 +205,8 @@ struct inner_product_fwd_pd_t : public inner_product_pd_t {
         if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS))
             return arg_usage_t::input;
 
-        if (arg == DNNL_ARG_BIAS && with_bias()) return arg_usage_t::input;
+        if (arg == DNNL_ARG_BIAS)
+            return with_bias() ? arg_usage_t::input : arg_usage_t::unused;
 
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
@@ -265,7 +267,9 @@ protected:
                 weights_md_, wei_tag, dst_md_, dst_tag, bias_md_);
     }
 };
+// NOLINTEND(google-default-arguments)
 
+// NOLINTBEGIN(google-default-arguments)
 struct inner_product_bwd_data_pd_t : public inner_product_pd_t {
     using base_class = inner_product_bwd_data_pd_t;
     using hint_class = inner_product_fwd_pd_t;
@@ -331,7 +335,9 @@ protected:
                 weights_md_, wei_tag, diff_dst_md_, diff_dst_tag, dummy_md);
     }
 };
+// NOLINTEND(google-default-arguments)
 
+// NOLINTBEGIN(google-default-arguments)
 struct inner_product_bwd_weights_pd_t : public inner_product_pd_t {
     using base_class = inner_product_bwd_weights_pd_t;
     using hint_class = inner_product_fwd_pd_t;
@@ -342,8 +348,8 @@ struct inner_product_bwd_weights_pd_t : public inner_product_pd_t {
 
         if (arg == DNNL_ARG_DIFF_WEIGHTS) return arg_usage_t::output;
 
-        if (arg == DNNL_ARG_DIFF_BIAS && with_bias())
-            return arg_usage_t::output;
+        if (arg == DNNL_ARG_DIFF_BIAS)
+            return with_bias() ? arg_usage_t::output : arg_usage_t::unused;
 
         return primitive_desc_t::arg_usage(arg);
     }
@@ -404,6 +410,7 @@ protected:
                 diff_bias_md_);
     }
 };
+// NOLINTEND(google-default-arguments)
 
 } // namespace impl
 } // namespace dnnl

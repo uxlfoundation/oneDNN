@@ -21,7 +21,7 @@
 #include "type.hpp"
 #include "register_block.hpp"
 #include "allocators.hpp"
-#include "emulation.hpp"
+#include "ngen_emulation.hpp"
 #include "driver_info.hpp"
 #include "problem.hpp"
 #include "strategy.hpp"
@@ -148,7 +148,7 @@ struct CommonState {
     ngen::Subregister fusedID;
     ngen::Subregister lsDescConstant[4];
     ngen::FlagRegister flagSwizzle;
-    EmulationState emulate;
+    ngen::EmulationState emulate;
     ngen::GRFRange eatomicAddRegs[2];
     ngen::GRFRange remaskRegs[3];
     VirtualFlag vflagEAtomicAdd;
@@ -181,7 +181,7 @@ struct CommonState {
     bool vflagsEnabled() const                    { return !vflagStorage.empty(); }
     void usePhysicalFlag(ngen::FlagRegister flag) { activeVFlags[flag.index()] = flag; }
 
-    void allocEmulate64Temp(const EmulationStrategy &estrategy);
+    void allocEmulate64Temp(const ngen::EmulationStrategy &estrategy);
 };
 
 // GEMM kernel generator state.
@@ -211,7 +211,8 @@ struct GEMMState : public CommonState {
         ngen::Subregister groupCountMN;                     // ud
         ngen::Subregister gcMNRecip;                        // ud
         ngen::Subregister groupStride;                      // ud
-        ngen::Subregister kParallelStart, kRecip, k0Recip;  // ud
+        ngen::Subregister kvConfig, kRecip;                 // ud
+        ngen::Subregister kSlicedTiles, kSyncSlabs;         // uw
         ngen::Subregister hilbertVD, hilbertUVDRecip;       // ud
         ngen::Subregister hilbertBail;                      // ud
         ngen::Subregister bslice, bthresh;                  // d
@@ -283,7 +284,7 @@ struct GEMMState : public CommonState {
     std::vector<MaskAssignment> AB_masks, AB_masksCoop;
     ngen::GRFRange broadcast_regs;
     std::vector<ngen::GRFRange> tempMul_regs;
-    ngen::Subregister groupIDMN;                            // d
+    ngen::Subregister groupCountMN, groupIDMN;              // ud
     ngen::Subregister i0, j0, h0;                           // d
     ngen::Subregister wgI0, wgJ0;                           // d
     ngen::Subregister threadK0, k0Rem, wgK;                 // ud

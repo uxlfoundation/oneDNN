@@ -135,11 +135,11 @@ private:
 
 protected:
     void SetUp() override {
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
         SKIP_IF(unsupported_data_type(data_type),
                 "Engine does not support this data type.");
 
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 deconvolution_test_params_t>::GetParam();
 
         SKIP_IF_CUDA(
@@ -224,7 +224,7 @@ protected:
         strm = make_stream(eng);
 
         ASSERT_EQ(p.aalgorithm, algorithm::deconvolution_direct);
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
 
         test_convolution_sizes_t dd = p.sizes;
         with_bias = p.formats.bias_format != memory::format_tag::undef;
@@ -394,7 +394,7 @@ protected:
     }
 
     void BackwardData() {
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 deconvolution_test_params_t>::GetParam();
         // deconv specific types and values
         using pd_t = deconvolution_backward_data::primitive_desc;
@@ -467,7 +467,7 @@ protected:
     }
 
     void BackwardWeights() {
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 deconvolution_test_params_t>::GetParam();
 
         // deconv specific types and values

@@ -136,15 +136,7 @@ status_t create_ocl_kernel_from_cache_blob(const engine_t *ocl_engine,
         auto ocl_kernel = xpu::ocl::make_wrapper(
                 clCreateKernel(program, kernel_name.c_str(), &err));
         OCL_CHECK(err);
-
-        std::vector<gpu::intel::compute::scalar_type_t> arg_types;
-        CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
-        OCL_CHECK(err);
-
-        std::shared_ptr<compute::kernel_impl_t> kernel_impl
-                = std::make_shared<kernel_t>(std::move(ocl_kernel), arg_types,
-                        compute::program_src_t());
-        (*kernels)[i] = std::move(kernel_impl);
+        CHECK(kernel_t::make((*kernels)[i], std::move(ocl_kernel), {}));
     }
 
     return status::success;
@@ -153,16 +145,16 @@ status_t create_ocl_kernel_from_cache_blob(const engine_t *ocl_engine,
 cl_int maybe_print_debug_info(
         cl_int err_, cl_program program, cl_device_id dev) {
     // Return error code if verbose is not enabled.
-    if (!get_verbose(verbose_t::error) && !get_verbose(verbose_t::warn))
-        return err_;
+    bool is_err = get_verbose(verbose_t::error) && err_ != CL_SUCCESS;
+    bool is_warn = get_verbose(verbose_t::warn);
+
+    if (!is_err && !is_warn) return err_;
 
     size_t log_length = 0;
     auto err = clGetProgramBuildInfo(
             program, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_length);
     gpu_assert(err == CL_SUCCESS);
 
-    bool is_err = get_verbose(verbose_t::error) && err_ != status::success;
-    bool is_warn = get_verbose(verbose_t::warn);
     if (log_length > 1 && (is_err || is_warn)) {
         std::vector<char> log_buf(log_length);
         err = clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
@@ -294,13 +286,7 @@ status_t engine_t::create_kernel_from_binary(compute::kernel_t &kernel,
     auto ocl_kernel = xpu::ocl::make_wrapper(
             clCreateKernel(program, kernel_name, &err));
     OCL_CHECK(err);
-
-    std::vector<gpu::intel::compute::scalar_type_t> arg_types;
-    CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
-
-    std::shared_ptr<compute::kernel_impl_t> kernel_impl
-            = std::make_shared<kernel_t>(std::move(ocl_kernel), arg_types, src);
-    kernel = std::move(kernel_impl);
+    CHECK(kernel_t::make(kernel, std::move(ocl_kernel), src));
 
     return status::success;
 }
@@ -315,12 +301,7 @@ status_t engine_t::create_kernels_from_cache_blob(
 status_t engine_t::create_kernel(
         compute::kernel_t *kernel, jit::generator_base_t *jitter) const {
     if (!jitter) return status::invalid_arguments;
-    xpu::binary_t binary = jitter->get_binary(this);
-    if (binary.empty()) return status::runtime_error;
-    VCHECK_KERNEL(create_kernel_from_binary(
-                          *kernel, binary, jitter->kernel_name(), {}),
-            VERBOSE_KERNEL_CREATION_FAIL, jitter->kernel_name());
-    return status::success;
+    return jitter->get_kernel(*kernel, this);
 }
 
 status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
@@ -385,13 +366,7 @@ status_t engine_t::create_kernels_from_program(
         xpu::ocl::wrapper_t<cl_kernel> ocl_kernel
                 = clCreateKernel(program, kernel_names[i], &err);
         OCL_CHECK(err);
-        std::vector<gpu::intel::compute::scalar_type_t> arg_types;
-        CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
-
-        std::shared_ptr<compute::kernel_impl_t> kernel_impl
-                = std::make_shared<kernel_t>(
-                        std::move(ocl_kernel), arg_types, src);
-        (*kernels)[i] = std::move(kernel_impl);
+        CHECK(kernel_t::make((*kernels)[i], std::move(ocl_kernel), src));
     }
 
     return status::success;
@@ -418,11 +393,12 @@ status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
             platform_name.size(), platform_name.data(), nullptr);
     OCL_CHECK(err);
 
-    sstream.write(platform_name.data(), platform_name.size());
-    sstream.write(device_info()->name().data(), device_info()->name().size());
-    sstream.write(&device_info()->runtime_version().major);
-    sstream.write(&device_info()->runtime_version().minor);
-    sstream.write(&device_info()->runtime_version().build);
+    sstream.append_array(platform_name.size(), platform_name.data());
+    sstream.append_array(
+            device_info()->name().size(), device_info()->name().data());
+    sstream.append(device_info()->runtime_version().major);
+    sstream.append(device_info()->runtime_version().minor);
+    sstream.append(device_info()->runtime_version().build);
 
     return status::success;
 }

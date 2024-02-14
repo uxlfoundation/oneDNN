@@ -108,7 +108,7 @@ protected:
     }
 
     void SetUp() override {
-        auto data_type = data_traits<data_t>::data_type;
+        auto data_type = data_traits_t<data_t>::data_type;
         SKIP_IF_HIP(true, "Concat operator is not supported");
         SKIP_IF(unsupported_data_type(data_type),
                 "Engine does not support this data type.");
@@ -153,14 +153,13 @@ protected:
 
         auto eng = get_test_engine();
         auto strm = make_stream(eng);
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
 
         std::vector<memory::desc> srcs_md;
+        srcs_md.reserve(p.srcs_cds.size());
         std::vector<memory> srcs;
-        for (size_t i = 0; i < p.srcs_cds.size(); i++) {
-            auto md = memory::desc(p.srcs_cds[i], data_type, p.srcs_format[i]);
-            srcs_md.push_back(md);
-        }
+        for (size_t i = 0; i < p.srcs_cds.size(); i++)
+            srcs_md.emplace_back(p.srcs_cds[i], data_type, p.srcs_format[i]);
 
         auto dst_desc = memory::desc(p.dst_cds, data_type, p.dst_format);
         auto concat_pd = pd_t(
@@ -196,7 +195,7 @@ protected:
             const size_t sz = src_memory.get_desc().get_size() / sizeof(data_t);
             fill_data<data_t>(sz, src_memory);
             check_zero_tail<data_t>(1, src_memory);
-            srcs.push_back(src_memory);
+            srcs.push_back(std::move(src_memory));
         }
 
         for (int i = 0; i < (int)srcs.size(); i++)

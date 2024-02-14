@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ inline void check_reorder(const memory::desc &md_i, const memory::desc &md_o,
 }
 
 template <typename reorder_types>
-struct test_simple_params {
+struct test_simple_params_t {
     memory::format_tag fmt_i;
     memory::format_tag fmt_o;
     memory::dims dims;
@@ -59,22 +59,22 @@ struct test_simple_params {
 };
 
 template <typename reorder_types>
-class reorder_simple_test
-    : public ::testing::TestWithParam<test_simple_params<reorder_types>> {
+class reorder_simple_test_t
+    : public ::testing::TestWithParam<test_simple_params_t<reorder_types>> {
 protected:
 #ifdef DNNL_TEST_WITH_ENGINE_PARAM
     void Test() {
         using data_i_t = typename reorder_types::first_type;
         using data_o_t = typename reorder_types::second_type;
-        memory::data_type prec_i = data_traits<data_i_t>::data_type;
-        memory::data_type prec_o = data_traits<data_o_t>::data_type;
+        memory::data_type prec_i = data_traits_t<data_i_t>::data_type;
+        memory::data_type prec_o = data_traits_t<data_o_t>::data_type;
 
         SKIP_IF(unsupported_data_type(prec_i),
                 "Engine does not support this data type.");
         SKIP_IF(unsupported_data_type(prec_o),
                 "Engine does not support this data type.");
 
-        test_simple_params<reorder_types> p
+        test_simple_params_t<reorder_types> p
                 = ::testing::TestWithParam<decltype(p)>::GetParam();
 
         SKIP_IF_CUDA(!((supported_format(p.fmt_i)
@@ -116,15 +116,15 @@ protected:
     void Test(engine &eng_i, engine &eng_o) {
         using data_i_t = typename reorder_types::first_type;
         using data_o_t = typename reorder_types::second_type;
-        memory::data_type prec_i = data_traits<data_i_t>::data_type;
-        memory::data_type prec_o = data_traits<data_o_t>::data_type;
+        memory::data_type prec_i = data_traits_t<data_i_t>::data_type;
+        memory::data_type prec_o = data_traits_t<data_o_t>::data_type;
 
         SKIP_IF(unsupported_data_type(prec_i, eng_i),
                 "Engine does not support this data type.");
         SKIP_IF(unsupported_data_type(prec_o, eng_o),
                 "Engine does not support this data type.");
 
-        test_simple_params<reorder_types> p
+        test_simple_params_t<reorder_types> p
                 = ::testing::TestWithParam<decltype(p)>::GetParam();
 
 #ifdef DNNL_SYCL_CUDA
@@ -154,14 +154,14 @@ protected:
         using data_i_t = typename reorder_types::first_type;
         using data_o_t = typename reorder_types::second_type;
 
-        test_simple_params<reorder_types> p
+        test_simple_params_t<reorder_types> p
                 = ::testing::TestWithParam<decltype(p)>::GetParam();
 
         const size_t nelems = std::accumulate(p.dims.begin(), p.dims.end(),
                 size_t(1), std::multiplies<size_t>());
 
-        memory::data_type prec_i = data_traits<data_i_t>::data_type;
-        memory::data_type prec_o = data_traits<data_o_t>::data_type;
+        memory::data_type prec_i = data_traits_t<data_i_t>::data_type;
+        memory::data_type prec_o = data_traits_t<data_o_t>::data_type;
         auto md_i = memory::desc(p.dims, prec_i, p.fmt_i);
         auto md_o = memory::desc(p.dims, prec_o, p.fmt_o);
 

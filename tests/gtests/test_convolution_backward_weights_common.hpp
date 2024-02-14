@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -118,11 +118,11 @@ void compute_ref_conv_bwd_weights(const test_convolution_sizes_t &c,
 
 template <typename data_t_src, typename data_t_diff_dst,
         typename data_t_diff_weights, typename data_t_diff_bias>
-class convolution_backward_weights_test
+class convolution_backward_weights_test_t
     : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
-    virtual void SetUp() {
-        auto p = ::testing::TestWithParam<
+    void SetUp() override {
+        const auto &p = ::testing::TestWithParam<
                 test_convolution_params_t>::GetParam();
 
         SKIP_IF_CUDA(
@@ -138,11 +138,11 @@ protected:
                                         memory::format_tag::owi,
                                         memory::format_tag::ohwi,
                                         memory::format_tag::odhwi)))
-                        && data_traits<data_t_src>::data_type
+                        && data_traits_t<data_t_src>::data_type
                                 == memory::data_type::f32
-                        && data_traits<data_t_diff_dst>::data_type
+                        && data_traits_t<data_t_diff_dst>::data_type
                                 == memory::data_type::f32
-                        && data_traits<data_t_diff_weights>::data_type
+                        && data_traits_t<data_t_diff_weights>::data_type
                                 == memory::data_type::f32
                         && check_cuda_alg_format(p.formats.dst_format,
                                 p.formats.weights_format, p.aalgorithm)),
@@ -160,11 +160,11 @@ protected:
                                             memory::format_tag::owi,
                                             memory::format_tag::ohwi,
                                             memory::format_tag::odhwi)))
-                            && data_traits<data_t_src>::data_type
+                            && data_traits_t<data_t_src>::data_type
                                     == memory::data_type::f32
-                            && data_traits<data_t_diff_dst>::data_type
+                            && data_traits_t<data_t_diff_dst>::data_type
                                     == memory::data_type::f32
-                            && data_traits<data_t_diff_weights>::data_type
+                            && data_traits_t<data_t_diff_weights>::data_type
                                     == memory::data_type::f32
                             && check_hip_alg_format(p.formats.dst_format,
                                     p.formats.weights_format, p.aalgorithm)),
@@ -246,26 +246,26 @@ protected:
 
     template <typename dt>
     bool check_generic_dt() {
-        return impl::utils::one_of(data_traits<dt>::data_type,
+        return impl::utils::one_of(data_traits_t<dt>::data_type,
                 memory::data_type::f32, memory::data_type::bf16,
                 memory::data_type::f16, memory::data_type::s32,
                 memory::data_type::s8, memory::data_type::u8);
     }
 
     void Test() {
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 test_convolution_params_t>::GetParam();
 
         ASSERT_EQ(p.aalgorithm, algorithm::convolution_direct);
         auto eng = get_test_engine();
         auto strm = stream(eng);
-        memory::data_type data_type_src = data_traits<data_t_src>::data_type;
+        memory::data_type data_type_src = data_traits_t<data_t_src>::data_type;
         memory::data_type data_type_diff_dst
-                = data_traits<data_t_diff_dst>::data_type;
+                = data_traits_t<data_t_diff_dst>::data_type;
         memory::data_type data_type_diff_weights
-                = data_traits<data_t_diff_weights>::data_type;
+                = data_traits_t<data_t_diff_weights>::data_type;
         memory::data_type data_type_diff_bias
-                = data_traits<data_t_diff_bias>::data_type;
+                = data_traits_t<data_t_diff_bias>::data_type;
 
         test_convolution_sizes_t cd = p.sizes;
 

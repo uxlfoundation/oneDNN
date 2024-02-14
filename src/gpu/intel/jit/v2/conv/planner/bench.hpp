@@ -71,15 +71,16 @@ struct bench_input_params_t {
     bench_input_params_t() = default;
     bench_input_params_t(const kernel_desc_t &kernel_desc, const hw_t &hw,
             int nprbs = default_nprbs)
-        : hw(hw), nprbs(nprbs) {
-        prop = kernel_desc.prop;
-        src_tag = kernel_desc.src_tag;
-        wei_tag = kernel_desc.wei_tag;
-        dst_tag = kernel_desc.dst_tag;
-        reqs = kernel_desc.reqs();
-        is_dw = kernel_desc.is_dw;
-        bias_type = kernel_desc.bias_type;
-        tile = kernel_desc.iter_tile;
+        : hw(hw)
+        , prop(kernel_desc.prop)
+        , src_tag(kernel_desc.src_tag)
+        , wei_tag(kernel_desc.wei_tag)
+        , dst_tag(kernel_desc.dst_tag)
+        , reqs(kernel_desc.reqs())
+        , is_dw(kernel_desc.is_dw)
+        , bias_type(kernel_desc.bias_type)
+        , tile(kernel_desc.iter_tile)
+        , nprbs(nprbs) {
         for (auto &d : kernel_desc.thread_group_tile) {
             tile[d] = tile.get(d, 1) * kernel_desc.thread_group_tile[d];
         }

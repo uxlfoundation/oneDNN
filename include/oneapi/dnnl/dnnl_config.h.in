@@ -163,9 +163,6 @@
 // When defined, experimental features are enabled.
 #cmakedefine DNNL_EXPERIMENTAL
 
-// When defined, experimental functionality for sparse domain is enabled.
-#cmakedefine DNNL_EXPERIMENTAL_SPARSE
-
 // When defined, experimental functionality for ukernels is enabled.
 #cmakedefine DNNL_EXPERIMENTAL_UKERNEL
 
@@ -215,8 +212,6 @@
 #cmakedefine01 BUILD_AMX
 // Primitives GPU ISA controls
 #cmakedefine01 BUILD_PRIMITIVE_GPU_ISA_ALL
-#cmakedefine01 BUILD_GEN9
-#cmakedefine01 BUILD_GEN11
 #cmakedefine01 BUILD_XELP
 #cmakedefine01 BUILD_XEHP
 #cmakedefine01 BUILD_XEHPG
@@ -224,7 +219,6 @@
 #cmakedefine01 BUILD_XE2
 #cmakedefine01 BUILD_XE3
 #cmakedefine01 BUILD_XE3P
-#cmakedefine01 BUILD_XE4
 // GeMM kernels ISA controls
 #cmakedefine01 BUILD_GEMM_KERNELS_ALL
 #cmakedefine01 BUILD_GEMM_KERNELS_NONE

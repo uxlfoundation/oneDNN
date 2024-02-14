@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,15 +45,18 @@ struct dnn_mem_t {
     };
 
     dnn_mem_t() { map(); }
-    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
+    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
+
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine);
+            const std::string &tag, dnnl_engine_t engine, bool prefill);
+    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
+            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
 
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine);
+            const std::string &tag, dnnl_engine_t engine, bool prefill);
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const dnnl_dims_t strides, dnnl_engine_t engine);
+            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
 
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
             dnnl_engine_t engine);
@@ -115,6 +118,11 @@ struct dnn_mem_t {
     const dnnl_dims_t &inner_blks() const;
     const dnnl_dims_t &inner_idxs() const;
 
+    // Sparse memories require special handling for `no_ref_memory` modifier
+    // because of indirect access. Thus, filling should apply to metadata and
+    // it must be meaningful. It implies unconditional mapping.
+    bool is_sparse_md() const;
+
     size_t sizeof_dt() const;
 
     template <typename T>
@@ -132,7 +140,20 @@ struct dnn_mem_t {
 
     explicit operator bool() const { return active_; }
 
+    // This interface is a shortcut version of the one below to speed up access
+    // to the memory that is guaranteedly of f32 data type.
+    // Keep the body in the header to help compiler to inline better.
+    float get_f32_elem(int64_t idx) const {
+        return static_cast<float *>(*this)[idx];
+    }
     float get_elem(int64_t idx, int buffer_index = 0) const;
+
+    // This interface is a shortcut version of the one below to speed up access
+    // to the memory that is guaranteedly of f32 data type.
+    // Keep the body in the header to help compiler to inline better.
+    void set_f32_elem(int64_t idx, float value) const {
+        static_cast<float *>(*this)[idx] = value;
+    }
     void set_elem(int64_t idx, float value, int buffer_index = 0) const;
 
     int64_t get_idx(int64_t logical_idx, int dims_mask, const int ndims,
@@ -150,7 +171,7 @@ struct dnn_mem_t {
 
     void map() const;
     void unmap() const;
-    void memset(int value, size_t size) const;
+    void memset(int value, size_t size, int buffer_index) const;
 
     static dnn_mem_t create_from_host_ptr(
             const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr);
@@ -167,7 +188,6 @@ struct dnn_mem_t {
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_md(int ndims,
             const dnnl_dims_t dims, dnnl_data_type_t data_type,
             const std::string &tag, const dims_t &strides_ = {});
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     // Initializes memory descriptor for CSR encoding.
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_csr_md(int ndims,
             const dnnl_dims_t dims, dnnl_data_type_t data_type, dnnl_dim_t nnz,
@@ -180,7 +200,6 @@ struct dnn_mem_t {
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_sparse_packed_md(
             int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
             dnnl_dim_t nnz);
-#endif
 
     /* fields */
     dnnl_memory_desc_t md_ {};
@@ -197,7 +216,7 @@ private:
     bool active_ = false;
 
     dnnl_engine_kind_t engine_kind_ = dnnl_any_engine;
-    dnnl_engine_t engine_ = NULL;
+    dnnl_engine_t engine_ = nullptr;
 
     mutable bool is_mapped_ = false;
     mutable std::vector<void *> mapped_ptrs_;
@@ -206,7 +225,18 @@ private:
     int initialize_memory_create_opencl(const handle_info_t &handle_info);
     int initialize_memory_create(const handle_info_t &handle_info);
 
-    int initialize(dnnl_engine_t engine,
+    // `prefill` is a flag that controls whether the underlying memory buffer
+    // will be accessed to set a special value across the buffer, such as NaN,
+    // to catch issues with no/bad access.
+    //
+    // Some memory objects created will be filled right away with different
+    // values, e.g., reference f32 memories. In that case, read/write access
+    // with a special value is a waste of memory bandwidth so developer decides
+    // when to enable/disable it.
+    //
+    // The flag is propagated to the toppest dnn_mem_t constructors. In case
+    // when in doubt, always use `true` to stay on the safe side of things.
+    int initialize(dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
 
     void set_dt(dnnl_data_type_t dt) const;
@@ -215,6 +245,8 @@ private:
 };
 
 using dnn_mem_map_t = std::unordered_map<int, dnn_mem_t>;
+
+bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map);
 
 dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md);
 

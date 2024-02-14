@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -159,7 +159,9 @@ int init_op(std::unordered_map<int, graph_link_t> &op_graph,
     SAFE(execute_and_wait(prim, args, res), WARN);
 
     // Execute reference.
-    if (has_bench_mode_bit(mode_bit_t::corr)) { compute_ref(prb, ref_args); }
+    if (has_bench_mode_bit(mode_bit_t::corr)) {
+        compute_ref(prb, prb->dir, ref_args);
+    }
 
     return OK;
 }
@@ -214,8 +216,8 @@ int check_correctness(std::unordered_map<int, graph_link_t> &op_graph,
         // non-f32 data type and non-abx data format, so we reorder `mem_fp` to
         // a golden standard first.
         const auto &mem_fp_md = mem_fp.md_;
-        dnn_mem_t mem_fp_golden(
-                mem_fp_md, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t mem_fp_golden(mem_fp_md, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ true);
         SAFE(mem_fp_golden.reorder(mem_fp), WARN);
 
         SAFE(cmp.compare(mem_fp_golden, mem_dt, attr_t(), res), WARN);

@@ -61,7 +61,7 @@ namespace cpu {
     type_i, fmt_i_t, fmt_i, type_o, fmt_o_t, fmt_o
 
 template <SIMPLE_SPARSE_REORDER_TEMPL_DECL, typename spec = void>
-struct simple_sparse_reorder_impl {};
+struct simple_sparse_reorder_impl_t {};
 
 namespace {
 template <typename T>
@@ -71,7 +71,7 @@ constexpr bool is_format_tag(T) {
 } // namespace
 
 template <SIMPLE_SPARSE_REORDER_TEMPL_DECL>
-struct simple_sparse_reorder_impl<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
+struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(is_format_tag(fmt_i)
                                           && (fmt_i == format_tag::any))
                 && (is_format_tag(fmt_o)
@@ -210,7 +210,7 @@ struct simple_sparse_reorder_t : public primitive_t {
                     && dst_md->data_type == type_o;
             if (!ok) return status::invalid_arguments;
 
-            CHECK(simple_sparse_reorder_impl<
+            CHECK(simple_sparse_reorder_impl_t<
                     SIMPLE_SPARSE_REORDER_TEMPL_CALL>::is_applicable(src_md,
                     dst_md, attr));
 
@@ -230,7 +230,7 @@ struct simple_sparse_reorder_t : public primitive_t {
             CHECK(reorder_primitive_desc_create(
                     reorder_pd_, engine, src_md(), &converted_dst_md, attr()));
 
-            const size_t scratchpad_sz_ = simple_sparse_reorder_impl<
+            const size_t scratchpad_sz_ = simple_sparse_reorder_impl_t<
                     SIMPLE_SPARSE_REORDER_TEMPL_CALL>::
                     get_scratchpad_size(src_md(), dst_md());
             auto scratchpad = scratchpad_registry().registrar();
@@ -251,7 +251,7 @@ struct simple_sparse_reorder_t : public primitive_t {
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return simple_sparse_reorder_impl<
+        return simple_sparse_reorder_impl_t<
                 SIMPLE_SPARSE_REORDER_TEMPL_CALL>::execute(pd(), ctx, reorder_);
     }
 

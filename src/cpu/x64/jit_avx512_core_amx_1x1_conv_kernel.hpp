@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_core_amx_1x1_fwd_kernel_t : public jit_generator {
+struct jit_avx512_core_amx_1x1_fwd_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_1x1_fwd_kernel_t)
 
     jit_avx512_core_amx_1x1_fwd_kernel_t(const jit_conv_conf_t &ajcp,
@@ -52,7 +52,7 @@ struct jit_avx512_core_amx_1x1_fwd_kernel_t : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
             postops_injector_;
 

@@ -59,11 +59,11 @@ struct jit_avx2_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx2_conv_fwd_kernel_f32::init_conf(
+            CHECK(jit_avx2_conv_fwd_kernel_f32_t::init_conf(
                     jcp_, *desc(), src_md(), weights_md(), dst_md(), *attr()));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx2_conv_fwd_kernel_f32::init_scratchpad(scratchpad, jcp_);
+            jit_avx2_conv_fwd_kernel_f32_t::init_scratchpad(scratchpad, jcp_);
 
             return status::success;
         }
@@ -113,7 +113,7 @@ struct jit_avx2_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_avx2_conv_fwd_kernel_f32(
+                new jit_avx2_conv_fwd_kernel_f32_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         return kernel_->create_kernel();
     }
@@ -127,7 +127,7 @@ private:
     void execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_avx2_conv_fwd_kernel_f32> kernel_;
+    std::unique_ptr<jit_avx2_conv_fwd_kernel_f32_t> kernel_;
 };
 
 struct jit_avx2_convolution_bwd_data_t : public primitive_t {
@@ -153,11 +153,11 @@ struct jit_avx2_convolution_bwd_data_t : public primitive_t {
             VDISPATCH_CONV(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx2_conv_bwd_data_kernel_f32::init_conf(jcp_, *desc(),
+            CHECK(jit_avx2_conv_bwd_data_kernel_f32_t::init_conf(jcp_, *desc(),
                     *diff_src_md(), *weights_md(), *diff_dst_md()));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx2_conv_bwd_data_kernel_f32::init_scratchpad(
+            jit_avx2_conv_bwd_data_kernel_f32_t::init_scratchpad(
                     scratchpad, jcp_);
 
             return status::success;
@@ -201,7 +201,7 @@ struct jit_avx2_convolution_bwd_data_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(
-                kernel_, new jit_avx2_conv_bwd_data_kernel_f32(pd()->jcp_)));
+                kernel_, new jit_avx2_conv_bwd_data_kernel_f32_t(pd()->jcp_)));
         return kernel_->create_kernel();
     }
 
@@ -214,7 +214,7 @@ private:
     void execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_avx2_conv_bwd_data_kernel_f32> kernel_;
+    std::unique_ptr<jit_avx2_conv_bwd_data_kernel_f32_t> kernel_;
 };
 
 struct jit_avx2_convolution_bwd_weights_t : public primitive_t {
@@ -240,13 +240,13 @@ struct jit_avx2_convolution_bwd_weights_t : public primitive_t {
             VDISPATCH_CONV(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx2_conv_bwd_weights_kernel_f32::init_conf(jcp_, *desc(),
-                    *src_md(), *diff_weights_md(), *diff_dst_md()));
+            CHECK(jit_avx2_conv_bwd_weights_kernel_f32_t::init_conf(jcp_,
+                    *desc(), *src_md(), *diff_weights_md(), *diff_dst_md()));
 
             init_balancers();
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx2_conv_bwd_weights_kernel_f32::init_scratchpad(
+            jit_avx2_conv_bwd_weights_kernel_f32_t::init_scratchpad(
                     scratchpad, jcp_);
 
             auto reducer_bia_scratchpad = memory_tracking::registrar_t(
@@ -323,8 +323,8 @@ struct jit_avx2_convolution_bwd_weights_t : public primitive_t {
     using data_t = typename prec_traits_t<data_type::f32>::type;
 
     status_t init(engine_t *engine) override {
-        CHECK(safe_ptr_assign(
-                kernel_, new jit_avx2_conv_bwd_weights_kernel_f32(pd()->jcp_)));
+        CHECK(safe_ptr_assign(kernel_,
+                new jit_avx2_conv_bwd_weights_kernel_f32_t(pd()->jcp_)));
         CHECK(safe_ptr_assign(reducer_bias_,
                 new cpu_reducer_t<data_type::f32>(pd()->reducer_bia_conf_)));
         CHECK(safe_ptr_assign(reducer_weights_,
@@ -344,7 +344,7 @@ private:
     void execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_avx2_conv_bwd_weights_kernel_f32> kernel_;
+    std::unique_ptr<jit_avx2_conv_bwd_weights_kernel_f32_t> kernel_;
     std::unique_ptr<cpu_reducer_t<data_type::f32>> reducer_weights_,
             reducer_bias_;
 };

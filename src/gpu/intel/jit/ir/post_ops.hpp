@@ -105,7 +105,7 @@ public:
     }
 
 private:
-    bool can_use_src_reorder_precalc(const primitive_desc_t *pd) {
+    bool can_use_src_reorder_precalc(const primitive_desc_t *pd) const {
         if (pd->kind() != primitive_kind_t::dnnl_convolution) return false;
         // Reorder-based precomputed ZPs are only available if the user did not
         // specify the weights mem desc so the convolution can choose it freely
@@ -115,16 +115,41 @@ private:
                 && pd->attr()->zero_points_.has_default_values(
                         DNNL_ARG_WEIGHTS);
     }
-    bool can_use_src_conv_precalc(const primitive_desc_t *pd) {
+    bool can_use_src_conv_precalc(const primitive_desc_t *pd) const {
         if (pd->kind() != primitive_kind_t::dnnl_convolution) return false;
         // In general, conv-based precomputed ZPs are slower than the regular
         // ZPs up to a point where a nested convolution that does the precalc
         // takes less time than the in-situ compensations; that usually happens
-        // around MB = 64, but the exact number is just a heuristic.
+        // around MB = 64 if IDHW > 16 or KDHW > 1, but the exact numbers are
+        // just heuristics.
         // TODO: a finer-grained estimate
-        return (pd->invariant_src_md()->dims[0] >= 64)
+        auto mb_threshold = gpu_utils::dev_getenv("DNNL_CBP_ZP_MB", 64);
+        auto idhw_threshold = gpu_utils::dev_getenv("DNNL_CBP_ZP_IDHW", 16);
+        auto kdhw_threshold = gpu_utils::dev_getenv("DNNL_CBP_ZP_KDHW", 1);
+        auto small_ik = (dhw_product(pd, abc_kind_t::a) <= idhw_threshold)
+                && (dhw_product(pd, abc_kind_t::b) <= kdhw_threshold);
+        return (pd->invariant_src_md()->dims[0] >= mb_threshold) && !small_ik
                 && pd->attr()->zero_points_.has_default_values(
                         DNNL_ARG_WEIGHTS);
+    }
+    dim_t dhw_product(const primitive_desc_t *pd, abc_kind_t kind) const {
+        int swap = (pd->get_prop_kind() != prop_kind::backward_data)
+                ? (pd->get_prop_kind() != prop_kind::backward_weights) ? 2 : 1
+                : 0;
+        std::array<const memory_desc_t *, 3> tensors = {pd->invariant_src_md(),
+                pd->invariant_wei_md(), pd->invariant_dst_md()};
+        std::swap(tensors[swap], tensors[2]); // swap(x, x) is OK for POD
+        const memory_desc_t *md;
+        dim_t retn = 1;
+        switch (kind) {
+            case abc_kind_t::a: md = tensors[0]; break;
+            case abc_kind_t::b: md = tensors[1]; break;
+            case abc_kind_t::c: md = tensors[2]; break;
+            default: return retn;
+        }
+        for (int i = 2; i < md->ndims; i++)
+            retn *= std::max(md->dims[i], dim_t(1));
+        return retn;
     }
 };
 

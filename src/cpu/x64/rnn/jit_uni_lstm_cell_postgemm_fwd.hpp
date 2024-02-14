@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,27 +29,27 @@ namespace x64 {
 template <cpu_isa_t isa, impl::data_type_t src_data_t,
         impl::data_type_t scratch_data_t>
 struct jit_uni_lstm_cell_postgemm_fwd
-    : public jit_uni_rnn_postgemm,
+    : public jit_uni_rnn_postgemm_t,
       public jit_uni_lstm_cell_postgemm_t<isa> {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lstm_cell_postgemm_fwd)
 
     jit_uni_lstm_cell_postgemm_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm(rnn, pd, jit_name())
+        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name())
         , jit_uni_lstm_cell_postgemm_t<isa>(this,
                   get_last_preserved_vmm_idx(1) + 1,
-                  // usage of jit_uni_rnn_postgemm::bf16_emu_ to identify bf16
+                  // usage of jit_uni_rnn_postgemm_t::bf16_emu_ to identify bf16
                   // emulation case is illegal here, it's created in
-                  // jit_uni_rnn_postgemm::init(), not in constructor, so
-                  // jit_uni_rnn_postgemm::bf16_emu_ = nullptr always on this
+                  // jit_uni_rnn_postgemm_t::init(), not in constructor, so
+                  // jit_uni_rnn_postgemm_t::bf16_emu_ = nullptr always on this
                   // stage
                   src_data_t == data_type::bf16 && !mayiuse(avx512_core_bf16)) {
     }
 
-    ~jit_uni_lstm_cell_postgemm_fwd() = default;
+    ~jit_uni_lstm_cell_postgemm_fwd() override = default;
 
     status_t init(data_type_t sdt) override {
-        CHECK(jit_uni_rnn_postgemm::init(src_data_t));
+        CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
         // we use rax for both constant tables and load correspondent label
         // into it when calling correspondent injector.
         sigmoid_injector_ = utils::make_unique<injector_t>(this,
@@ -69,7 +69,7 @@ protected:
     std::unique_ptr<injector_t> tanh_injector_;
 
     // register size in bytes
-    static constexpr size_t vlen_ = cpu_isa_traits<isa>::vlen;
+    static constexpr size_t vlen_ = cpu_isa_traits_t<isa>::vlen;
     static constexpr size_t qscale_dt_size = sizeof(float);
     static constexpr size_t weights_peephole_dt_size_ = sizeof(float);
     const size_t vlen_dst_

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_LRN_JIT_AVX512_COMMON_UTILS_HPP
-#define CPU_X64_LRN_JIT_AVX512_COMMON_UTILS_HPP
+#ifndef CPU_X64_LRN_JIT_AVX512_COMMON_LRN_UTILS_HPP
+#define CPU_X64_LRN_JIT_AVX512_COMMON_LRN_UTILS_HPP
 
 namespace dnnl {
 namespace impl {
@@ -32,12 +32,14 @@ enum class direction { forward, backward };
 
 enum class across_version : char { First, Middle, Last, Single };
 
+// NOLINTBEGIN(readability-identifier-naming)
 struct nChw16c_across_t {
     int H, W;
     across_version version;
     constexpr nChw16c_across_t(int h, int w, across_version version)
         : H(h), W(w), version(version) {}
 };
+// NOLINTEND(readability-identifier-naming)
 
 enum class tail_mode { NoTail, NextTail, CurrentTail };
 

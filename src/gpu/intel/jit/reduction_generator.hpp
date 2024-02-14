@@ -25,8 +25,8 @@
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/reduction_injector.hpp"
 #include "gpu/intel/utils.hpp"
-#include "ngen/ngen_core.hpp"
-#include "ngen/ngen_interface.hpp"
+#include "ngen_core.hpp"
+#include "ngen_interface.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -37,14 +37,14 @@ namespace jit {
 template <gpu_gen_t hw>
 class reduction_generator_t : public emulated_generator_t<hw> {
 protected:
-    NGEN_FORWARD_OPENCL(hw);
+    NGEN_FORWARD_ELF(hw)
     FORWARD_EMULATION(hw);
 
 public:
     reduction_generator_t(const compute::device_info_t &device_info,
             alg_kind_t alg, dim_t stride, dim_t iters, int nregs)
-        : emulated_generator_t<hw>(device_info, "ngen_jit_reduction",
-                {GENERATOR_NAME, GENERATOR_LINE}) {
+        : emulated_generator_t<hw>(
+                device_info, {GENERATOR_NAME, GENERATOR_LINE}) {
         constexpr auto GlobalPtr = ngen::ExternalArgumentType::GlobalPtr;
 
         // Number of dst elements computed per thread
@@ -94,7 +94,7 @@ public:
         ra().release(outer_off);
 
         ngen::GRFRange acc = ra().alloc_range(nregs);
-        reduction_injector_f32_t<hw> reduce(
+        reduction_injector_f32_t<generator_t<hw>> reduce(
                 *this, alg, ra(), device_info.stepping_id());
         reduce.compute(src_addr, acc, stride, iters);
         ra().release(src_addr);

@@ -41,8 +41,7 @@ struct fill_cfg_t {
         , range_min_val_(-16.f)
         , range_max_val_(16.f)
         , predefined_set_({})
-        , only_integer_(false)
-        , name_("") {}
+        , only_integer_(false) {}
 
     fill_cfg_t(dnnl_data_type_t dt, float range_min_val, float range_max_val,
             bool only_integer, attr_t::post_ops_t::kind_t alg,

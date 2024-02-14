@@ -40,7 +40,7 @@ struct simple_binary_t : public gpu_primitive_t {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 
-            const auto attr_skip_mask = sm::post_ops | sm::scales_runtime;
+            const auto attr_skip_mask = sm::post_ops | sm::scales;
 
             VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_BINARY(
@@ -48,12 +48,12 @@ struct simple_binary_t : public gpu_primitive_t {
                               bf16, src_md(0)->data_type, src_md(1)->data_type)
                              && utils::one_of(
                                      dst_md()->data_type, bf16, u8, f32))
-                            || (utils::one_of(
-                                        src_md(0)->data_type, f16, f32, s8, u8)
+                            || (utils::one_of(src_md(0)->data_type, f16, f32,
+                                        s8, u8, s32)
                                     && utils::one_of(src_md(1)->data_type, f16,
-                                            f32, s8, u8)
+                                            f32, s8, u8, s32)
                                     && utils::one_of(dst_md()->data_type, f16,
-                                            f32, s8, u8))
+                                            f32, s8, u8, s32))
                             || (src_md(0)->data_type == f32
                                     && src_md(1)->data_type == bf16
                                     && utils::one_of(
@@ -62,12 +62,12 @@ struct simple_binary_t : public gpu_primitive_t {
                                     && src_md(1)->data_type == f32
                                     && dst_md()->data_type == bf16)),
                     VERBOSE_UNSUPPORTED_DT);
-
+            VDISPATCH_BINARY(IMPLICATION(is_ternary_op(),
+                                     utils::one_of(src_md(2)->data_type, s8)),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
                     !memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
-
-            VDISPATCH_BINARY(!is_ternary_op(), VERBOSE_BAD_ALGORITHM);
+                    VERBOSE_INCONSISTENT_NDIMS, "src_0", "dst");
 
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
                                      check_scales_mask()),
@@ -76,8 +76,8 @@ struct simple_binary_t : public gpu_primitive_t {
             VDISPATCH_BINARY(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            VDISPATCH_BINARY(post_ops_with_binary_ok(
-                                     attr(), dst_md()->data_type, MAX_NDIMS),
+            VDISPATCH_BINARY(
+                    post_ops_with_binary_ok(attr(), *dst_md(), MAX_NDIMS),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_BINARY_SC(attr_.set_default_formats(dst_md(0)),

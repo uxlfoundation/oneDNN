@@ -36,11 +36,6 @@ if(POLICY CMP0146)
     cmake_policy(SET CMP0146 OLD)
 endif()
 
-# CMake 3.27: The FindPythonInterp and FindPythonLibs modules are removed.
-if(POLICY CMP0148)
-    cmake_policy(SET CMP0148 NEW)
-endif()
-
 if("${CMAKE_BUILD_TYPE}" STREQUAL "")
     message(STATUS "CMAKE_BUILD_TYPE is unset, defaulting to Release")
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING
@@ -57,7 +52,7 @@ endif()
 
 set(PROJECT_NAME "oneDNN")
 set(PROJECT_FULL_NAME "oneAPI Deep Neural Network Library (oneDNN)")
-set(PROJECT_VERSION "3.8.0")
+set(PROJECT_VERSION "3.9.0")
 
 project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)
 

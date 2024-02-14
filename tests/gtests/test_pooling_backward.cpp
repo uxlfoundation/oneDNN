@@ -118,7 +118,7 @@ protected:
 
         eng = get_test_engine();
         strm = make_stream(eng);
-        data_type = data_traits<data_t>::data_type;
+        data_type = data_traits_t<data_t>::data_type;
         ASSERT_EQ(data_type, dnnl::memory::data_type::f32);
 
         if (p.ndims == 5) {

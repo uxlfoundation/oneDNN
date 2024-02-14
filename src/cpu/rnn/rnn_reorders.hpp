@@ -76,7 +76,7 @@ static inline void quantize_igo(int8_t *scratch_quantized,
             for (int go = 0; go < G * O; go++) {
                 const float s = scales[(mask == 0) ? 0 : go];
                 scratch_quantized[ldi * G * O + go]
-                        = q10n::qz_b0<in_data_t, int8_t>()(
+                        = q10n::qz_b0_t<in_data_t, int8_t>()(
                                 src[ldi * G * O + go], s);
             }
         }
@@ -100,7 +100,7 @@ static inline void quantize_goi(int8_t *scratch_quantized,
         PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < I; i++) {
             scratch_quantized[ld * I * G * O + i * G * O + go]
-                    = q10n::qz_b0<in_data_t, int8_t>()(
+                    = q10n::qz_b0_t<in_data_t, int8_t>()(
                             src[ld * G * O * I + go * I + i], s);
         }
     });
@@ -271,7 +271,7 @@ private:
                 PRAGMA_OMP_SIMD()
                 for (int j = 0; j < inner_dim; ++j) {
                     const float in = (float)i_[j] * scale + shift;
-                    o_[j] = q10n::qz_a1b0<float, out_data_t>()(in);
+                    o_[j] = q10n::qz_a1b0_t<float, out_data_t>()(in);
                 }
             }
         });
@@ -288,7 +288,8 @@ private:
         const size_t nelems = input_d.nelems();
         parallel_nd(nelems, [&](size_t i) {
             const float in = (float)input[input_d.off_l(i)] * scale + shift;
-            output[output_d.off_l(i)] = q10n::qz_a1b0<float, out_data_t>()(in);
+            output[output_d.off_l(i)]
+                    = q10n::qz_a1b0_t<float, out_data_t>()(in);
         });
         return status::success;
     }
@@ -312,7 +313,7 @@ template <data_type_t type_i>
 struct rnn_weights_reorder_s8_t : public primitive_t {
     struct pd_t : public cpu_reorder_pd_t {
         using cpu_reorder_pd_t::cpu_reorder_pd_t;
-        typedef dnnl_status_t (*gemm_pack_f)(const char *identifier,
+        using gemm_pack_f = dnnl_status_t (*)(const char *identifier,
                 const char *transa, const char *transb, const dim_t *M,
                 const dim_t *N, const dim_t *K, const dim_t *lda,
                 const dim_t *ldb, const void *src, void *dst);

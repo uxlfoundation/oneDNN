@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
+#include "common/convolution_pd.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
@@ -25,7 +26,7 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_amx_1x1_conv_kernel.hpp"
 
-#define GET_OFF(field) offsetof(jit_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_conv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -40,7 +41,7 @@ using namespace Xbyak;
 jit_avx512_core_amx_1x1_fwd_kernel_t::jit_avx512_core_amx_1x1_fwd_kernel_t(
         const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
-    : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp), attr_(attr) {
+    : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp), attr_(attr) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
         using namespace binary_injector;
         const auto &rhs_addr_reg = bin_injector_helper_reg_1;
@@ -952,6 +953,11 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     bool is_1d = ndims == 3;
     bool is_3d = ndims == 5;
 
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
+
     const bool is_bf16_convolution
             = everyone_is(true, src_d.data_type() == data_type::bf16,
                     weights_d.data_type() == data_type::bf16,
@@ -1138,9 +1144,16 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const bool sum_at_pos_0_only = (jcp.src_dt == data_type::bf16);
     const bool sum_requires_scale_one = sum_at_pos_0_only;
     const bool sum_requires_zp_zero = sum_at_pos_0_only;
-    const bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
+    bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
             {eltwise, binary, sum}, jcp.post_ops, &dst_d, sum_at_pos_0_only,
             sum_requires_scale_one, sum_requires_zp_zero));
+    // temporary workaround that skips avx512 implementation for ternary
+    // post-ops with scalar broadcasting to avoid register collisions.
+    post_ops_ok_ = post_ops_ok_
+            && IMPLICATION(jcp.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    p, dst_d));
     if (!post_ops_ok_) return status::unimplemented;
 
     jcp.typesize_in = types::data_type_size(src_d.data_type());

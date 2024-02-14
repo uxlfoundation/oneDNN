@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,10 +35,10 @@ class init_kernel;
 
 namespace dnnl {
 
-class sycl_memory_buffer_test : public ::testing::TestWithParam<engine::kind> {
-};
+class sycl_memory_buffer_test_t
+    : public ::testing::TestWithParam<engine::kind> {};
 
-TEST_P(sycl_memory_buffer_test, BasicInteropCtor) {
+TEST_P(sycl_memory_buffer_test_t, BasicInteropCtor) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -76,7 +76,7 @@ TEST_P(sycl_memory_buffer_test, BasicInteropCtor) {
     }
 }
 
-TEST_P(sycl_memory_buffer_test, ConstructorNone) {
+TEST_P(sycl_memory_buffer_test_t, ConstructorNone) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -100,7 +100,7 @@ TEST_P(sycl_memory_buffer_test, ConstructorNone) {
     (void)buf;
 }
 
-TEST_P(sycl_memory_buffer_test, ConstructorAllocate) {
+TEST_P(sycl_memory_buffer_test_t, ConstructorAllocate) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -138,7 +138,7 @@ TEST_P(sycl_memory_buffer_test, ConstructorAllocate) {
     mem.unmap_data(mapped_ptr);
 }
 
-TEST_P(sycl_memory_buffer_test, BasicInteropGetSet) {
+TEST_P(sycl_memory_buffer_test_t, BasicInteropGetSet) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -178,7 +178,7 @@ TEST_P(sycl_memory_buffer_test, BasicInteropGetSet) {
     }
 }
 
-TEST_P(sycl_memory_buffer_test, InteropReorder) {
+TEST_P(sycl_memory_buffer_test_t, InteropReorder) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 #ifdef DNNL_SYCL_HIP
@@ -246,7 +246,7 @@ TEST_P(sycl_memory_buffer_test, InteropReorder) {
     }
 }
 
-TEST_P(sycl_memory_buffer_test, InteropReorderAndUserKernel) {
+TEST_P(sycl_memory_buffer_test_t, InteropReorderAndUserKernel) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -328,7 +328,7 @@ TEST_P(sycl_memory_buffer_test, InteropReorderAndUserKernel) {
     }
 }
 
-TEST_P(sycl_memory_buffer_test, EltwiseWithUserKernel) {
+TEST_P(sycl_memory_buffer_test_t, EltwiseWithUserKernel) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -388,7 +388,7 @@ TEST_P(sycl_memory_buffer_test, EltwiseWithUserKernel) {
     }
 }
 
-TEST_P(sycl_memory_buffer_test, MemoryOutOfScope) {
+TEST_P(sycl_memory_buffer_test_t, MemoryOutOfScope) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -414,8 +414,7 @@ TEST_P(sycl_memory_buffer_test, MemoryOutOfScope) {
     s.wait();
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-TEST_P(sycl_memory_buffer_test, TestSparseMemoryCreation) {
+TEST_P(sycl_memory_buffer_test_t, TestSparseMemoryCreation) {
     engine::kind eng_kind = GetParam();
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
@@ -465,7 +464,7 @@ TEST_P(sycl_memory_buffer_test, TestSparseMemoryCreation) {
     ASSERT_EQ(h3, buf_col_indices);
 }
 
-TEST_P(sycl_memory_buffer_test, TestSparseMemoryMapUnmap) {
+TEST_P(sycl_memory_buffer_test_t, TestSparseMemoryMapUnmap) {
     engine::kind eng_kind = GetParam();
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
@@ -522,10 +521,9 @@ TEST_P(sycl_memory_buffer_test, TestSparseMemoryMapUnmap) {
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_row_indices, 1));
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_col_indices, 2));
 }
-#endif
 
 namespace {
-struct PrintToStringParamName {
+struct print_to_string_param_name_t {
     template <class ParamType>
     std::string operator()(
             const ::testing::TestParamInfo<ParamType> &info) const {
@@ -534,8 +532,8 @@ struct PrintToStringParamName {
 };
 } // namespace
 
-INSTANTIATE_TEST_SUITE_P(Simple, sycl_memory_buffer_test,
+INSTANTIATE_TEST_SUITE_P(Simple, sycl_memory_buffer_test_t,
         ::testing::Values(engine::kind::cpu, engine::kind::gpu),
-        PrintToStringParamName());
+        print_to_string_param_name_t());
 
 } // namespace dnnl

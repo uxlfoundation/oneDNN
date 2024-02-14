@@ -86,12 +86,15 @@ status_t sdp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
                 // 3. locate mask if have
                 if (post_op->get_kind() == op_kind::dnnl_binary) {
                     add = post_op;
+                    mask_type_ = attn_mask_type::buffer;
                 } else if (post_op->get_kind() == op_kind::dnnl_mask) {
                     // implicit causal mask
-                    causal_mask_ = true;
+                    mask_type_ = static_cast<attn_mask_type_t>(
+                            post_op->get_attr<int64_t>(op_attr::mask_type));
                 }
             } else if (post_op->get_kind() == op_kind::dnnl_mask) {
-                causal_mask_ = true;
+                mask_type_ = static_cast<attn_mask_type_t>(
+                        post_op->get_attr<int64_t>(op_attr::mask_type));
             }
         } else {
             VCHECK_SDP_PRIMITIVE(mm2 == nullptr, status::unimplemented,
@@ -166,10 +169,28 @@ status_t sdp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
 
 status_t sdp_primitive_config_t::initial_check(
         const std::shared_ptr<subgraph_t> &sg,
-        const std::vector<logical_tensor_t> &inputs) {
+        const std::vector<logical_tensor_t> &inputs, bool v1_kernel) {
     // At least 3 inputs: Q, K, V
     VCHECK_SDP_PRIMITIVE(inputs.size() >= 3, status::invalid_arguments,
             "At least 3 inputs are required");
+
+    // Ukernel doesn't support f32 datatype now
+    VCHECK_SDP_PRIMITIVE(inputs[0].data_type != dnnl_data_type_t::dnnl_f32,
+            status::invalid_arguments,
+            "SDPA ukernel doesn't support f32 datatype now");
+
+    // Note: sdpa_primitive_v1 kernel currently don't support legacy GQA pattern.
+    if (v1_kernel) {
+        for (auto &cur_op : sg->get_ops()) {
+            if (cur_op->get_kind() == graph::op_kind::StaticReshape) {
+                auto in = cur_op->get_input_value(0)->get_logical_tensor();
+                auto out = cur_op->get_output_value(0)->get_logical_tensor();
+                if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
+                    return status::unimplemented;
+                }
+            }
+        }
+    }
 
     // step1(pattern check): Not support sdpa variants with select as mask
     // We already have a pattern matcher to ensure that the sdpa patterns
@@ -180,6 +201,7 @@ status_t sdp_primitive_config_t::initial_check(
                     graph::op_kind::Add, graph::op_kind::Select,
                     graph::op_kind::SoftMax};
     op_ptr mm1 = nullptr, mm2 = nullptr, scale = nullptr;
+    bool f32_inter = true;
     for (const auto &cur_op : sg->get_ops()) {
         const auto &op_kind = cur_op->get_kind();
         if (op_kind == graph::op_kind::DynamicDequantize
@@ -213,6 +235,10 @@ status_t sdp_primitive_config_t::initial_check(
         auto post_op = get_post_op(cur_op);
         if (post_op && mm1_post_op_kind.count(post_op->get_kind())) {
             mm1 = cur_op;
+            const auto &lt_score
+                    = mm1->get_output_value(0)->get_logical_tensor();
+            f32_inter = f32_inter
+                    && (ltw(lt_score).data_type() == data_type::f32);
             // Not support select between mm1 and scale(optional)
             // GPT-J:[mm1] --> [select] --> [scale]* --> [mask]* --> ...
             VCHECK_SDP_PRIMITIVE(post_op->get_kind() != graph::op_kind::Select,
@@ -224,11 +250,20 @@ status_t sdp_primitive_config_t::initial_check(
                 // Scale exists, update post_op and traverse to next op
                 scale = post_op;
                 post_op = get_post_op(post_op);
+                const auto &lt_ss
+                        = scale->get_output_value(0)->get_logical_tensor();
+                f32_inter = f32_inter
+                        && (ltw(lt_ss).data_type() == data_type::f32);
             }
             // mask
             if (post_op) {
                 if (post_op->get_kind() == graph::op_kind::Add) {
                     // Mask exists, update post_op and traverse to next op
+                    const auto mask = post_op;
+                    const auto &lt_ms
+                            = mask->get_output_value(0)->get_logical_tensor();
+                    f32_inter = f32_inter
+                            && (ltw(lt_ms).data_type() == data_type::f32);
                     post_op = get_post_op(post_op);
                 }
                 // Not support select after scale(optional) and mask(optional)
@@ -240,10 +275,21 @@ status_t sdp_primitive_config_t::initial_check(
                         "Not support select after scale(optional) and "
                         "mask(optional)");
             }
+
+            if (post_op) {
+                if (post_op->get_kind() == graph::op_kind::SoftMax) {
+                    const auto &softmax = post_op;
+                    softmax_mode_
+                            = softmax->get_attr<std::string>(op_attr::mode);
+                }
+            }
         } else {
             mm2 = cur_op;
         }
     }
+
+    VCHECK_SDP_PRIMITIVE(f32_inter, status::invalid_graph,
+            "only supports f32 intermediates.");
 
     auto find_graph_inport = [&inputs](const std::shared_ptr<value_t> &val) {
         auto tmp_val = val;
@@ -268,10 +314,15 @@ status_t sdp_primitive_config_t::initial_check(
 
     VCHECK_SDP_PRIMITIVE(q_id != -1 && k_id != -1 && v_id != -1,
             status::unimplemented, "Q, K, V are not found");
-    VCHECK_SDP_PRIMITIVE(ltw(inputs[q_id]).vdims().size() == 4
-                    && ltw(inputs[k_id]).vdims().size() == 4
-                    && ltw(inputs[v_id]).vdims().size() == 4,
-            status::unimplemented, "Q, K, V should be 4-dims");
+
+    // Note: sdpa_primitive_v1 kernel accept 5D GQA pattern, and will reshape to
+    // 4D in later compilation pass.
+    if (!v1_kernel) {
+        VCHECK_SDP_PRIMITIVE(ltw(inputs[q_id]).vdims().size() == 4
+                        && ltw(inputs[k_id]).vdims().size() == 4
+                        && ltw(inputs[v_id]).vdims().size() == 4,
+                status::unimplemented, "Q, K, V should be 4-dims");
+    }
 
     // sdp_primitive only supports single scale value.
     if (scale) {
@@ -321,9 +372,12 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
         vs_attr = make_dnnl_primitive_attr(mm2_, mgr.get_info(key));
     }
 
+    const alg_kind_t softmax_alg = softmax_mode_ == "inf_as_zero"
+            ? alg_kind::softmax_accurate_inf_as_zero
+            : alg_kind::softmax_accurate;
     CHECK(create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(), md_k.get(),
             md_v.get(), md_dst.get(), md_mask.get(), scale_dt, invert_scale_,
-            kv_head_number_, causal_mask_, attr.get(), qk_attr.get(),
+            kv_head_number_, mask_type_, softmax_alg, attr.get(), qk_attr.get(),
             vs_attr.get()));
 
     auto status = sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());

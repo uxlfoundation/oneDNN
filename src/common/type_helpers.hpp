@@ -62,7 +62,7 @@ status_t safe_ptr_assign(
 }
 
 template <typename T, typename U>
-struct is_subset {
+struct is_subset { // NOLINT(readability-identifier-naming)
     static constexpr bool value = false;
 };
 template <typename T>
@@ -135,6 +135,10 @@ inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
         case u4: return bytes * 2;
         default: return utils::div_up(bytes, data_type_size(data_type));
     }
+}
+
+inline size_t data_type_bits(data_type_t data_type) {
+    return elements_to_bytes(data_type, 8);
 }
 
 template <typename T>
@@ -984,7 +988,8 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(scale_dt)
             && COMPARE_DESC_MEMBERS(invert_scale)
             && COMPARE_DESC_MEMBERS(kv_head_number)
-            && COMPARE_DESC_MEMBERS(causal_mask);
+            && COMPARE_DESC_MEMBERS(mask_type)
+            && COMPARE_DESC_MEMBERS(softmax_alg);
     return ret;
 }
 
@@ -998,10 +1003,8 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
 
 inline bool is_dense_format_kind(
         const std::vector<const memory_desc_t *> &mds) {
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     for (const auto *md : mds)
         if (md->format_kind == format_kind::sparse) return false;
-#endif
     return true;
 }
 

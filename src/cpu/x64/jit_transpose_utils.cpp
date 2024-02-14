@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,20 +34,22 @@ using namespace Xbyak;
 
 #define GET_OFF(x) offsetof(ctx_t, x)
 
-struct jit_trans_iw_ic_t : public jit_trans_src_t, public jit_generator {
+struct jit_trans_iw_ic_t : public jit_trans_src_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_trans_iw_ic_t)
     jit_trans_iw_ic_t(const jit_conv_conf_t *conf)
         : jit_trans_src_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf->src_dt == data_type::undef
                           ? 2
                           : types::data_type_size(conf->src_dt))
         , is_layout_nxc(utils::one_of(conf_->src_tag, format_tag::ndhwc,
                   format_tag::nhwc, format_tag::nwc)) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     int typesize = 0;
@@ -82,11 +84,11 @@ private:
 
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     }
     void kmovd(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     }
     Zmm src_zmm(int i) { return Zmm(i); }
     Ymm src_ymm(int i) {
@@ -99,12 +101,12 @@ private:
     }
     void vmovdqa64(Zmm z, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(z, ptr[imm_addr64]);
     }
 
     void vmovdqa32(Zmm z, const int32_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa32(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa32(z, ptr[imm_addr64]);
     }
 
     void transpose(int nrows, int l_pad, int r_pad, bool nontemporal_stores);
@@ -135,7 +137,7 @@ void jit_trans_iw_ic_t::transpose_2b(
 
     auto kmovd = [this](Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     };
     int l_pad_tail {0}, l_pad_rows {0};
     int r_pad_tail {0}, r_pad_rows {0};
@@ -680,11 +682,11 @@ void jit_trans_iw_ic_t::generate() {
     postamble();
 }
 
-struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator {
+struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_trans_ow_oc_t)
     jit_trans_ow_oc_t(const jit_conv_conf_t *conf)
         : jit_trans_dst_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf->dst_dt == data_type::undef
                           ? 2
                           : types::data_type_size(conf->dst_dt))
@@ -694,9 +696,11 @@ struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator {
                           ? 2
                           : data_type_vnni_granularity(conf->dst_dt)) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     int typesize = 0;
@@ -725,15 +729,15 @@ private:
 
     void vmovdqa64(Zmm z, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(z, ptr[imm_addr64]);
     }
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     }
     void kmovd(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     }
     Zmm src_zmm(int i) { return Zmm(i); }
     Ymm src_ymm(int i) {
@@ -1063,11 +1067,11 @@ void jit_trans_ow_oc_t::generate() {
 
 /*
 // -------------------------------------------------
-// jit_transpose4x16_src
+// jit_transpose4x16_src_t
 // -------------------------------------------------
 */
 
-void jit_transpose4x16_src::transpose(int nrows) {
+void jit_transpose4x16_src_t::transpose(int nrows) {
     assert(nrows >= 0 && nrows <= transpose_size);
     static_assert(transpose_size == 4, "Unsupported transpose size");
     if (!nrows) return;
@@ -1187,7 +1191,7 @@ alignas(64) static constexpr const int64_t idx1[8] = {2, 3, 0, 1, 6, 7, 4, 5};
 alignas(64) static constexpr const int32_t idxP[16]
         = {0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15};
 
-void jit_transpose4x16_src::generate() {
+void jit_transpose4x16_src_t::generate() {
     preamble();
 
     const int ic_block = params->ic_block;
@@ -1201,7 +1205,7 @@ void jit_transpose4x16_src::generate() {
     const int src_step = ic_block * transpose_size * typesize;
     const int tr_src_step = ic_block * transpose_size * typesize;
 
-#define GET_TR_OFF(x) offsetof(jit_src_transpose_s, x)
+#define GET_TR_OFF(x) offsetof(jit_transpose_src_args_t, x)
     mov(reg_loop, ptr[param1 + GET_TR_OFF(size)]);
     mov(reg_src, ptr[param1 + GET_TR_OFF(src)]);
     mov(reg_tr_src, ptr[param1 + GET_TR_OFF(tr_src)]);
@@ -1211,17 +1215,17 @@ void jit_transpose4x16_src::generate() {
 
     auto kmovw = [this](Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     };
 
     auto vmovdqa64 = [this](Zmm z, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(z, ptr[imm_addr64]);
     };
 
     auto vmovdqa32 = [this](Zmm z, const int32_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa32(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa32(z, ptr[imm_addr64]);
     };
 
     kmovw(kF0, 0xf0); // 11110000
@@ -1259,7 +1263,7 @@ void jit_transpose4x16_src::generate() {
 
 #undef GET_OFF
 
-#define GET_OFF(field) offsetof(jit_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_conv_args_t, field)
 
 void jit_diff_wei_trans_to_vnni_t::generate() {
     /* Reorder part of F32 weights tensor
@@ -1288,17 +1292,17 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     Reg64 emu_scratch = reg_tmp;
     Xbyak::Opmask emu_mask = Xbyak::Opmask(4);
 
-    std::unique_ptr<fp8_emulation_base_t> f8_emu;
+    std::unique_ptr<fp8_conversion_base_t> f8_cvt;
     if (out_dt_ == data_type::f8_e5m2)
-        f8_emu = utils::make_unique<fp8_emulation_e5m2_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e5m2_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_mask, emu_scratch);
     else if (out_dt_ == data_type::f8_e4m3)
-        f8_emu = utils::make_unique<fp8_emulation_e4m3_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e4m3_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_reserv_4, emu_reserv_5,
                 emu_scratch);
     if (utils::one_of(out_dt_, data_type::f8_e5m2, data_type::f8_e4m3)
-            && f8_emu == nullptr) {
-        assert("Failed to create f8 emulation kernel.");
+            && f8_cvt == nullptr) {
+        assert(!"Failed to create f8 emulation kernel.");
         return;
     }
 
@@ -1410,13 +1414,13 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
                             const auto src_off2 = src_off1 + ts_inp * oc_block_;
                             const auto src_off3 = src_off2 + ts_inp * oc_block_;
 
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_0, ptr[reg_input_kw + src_off0]);
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_1, ptr[reg_input_kw + src_off1]);
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_2, ptr[reg_input_kw + src_off2]);
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_3, ptr[reg_input_kw + src_off3]);
                             vinserti64x2(zmm_out, zmm_out, xmm_src_0, 0);
                             vinserti64x2(zmm_out, zmm_out, xmm_src_1, 1);
@@ -1490,7 +1494,7 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     for (int i = 0; i < ts_inp * oc_block_ * ic_block_; ++i)
         db(zero);
 
-    if (f8_emu) f8_emu->prepare_table();
+    if (f8_cvt) f8_cvt->prepare_table();
 }
 
 #undef GET_OFF

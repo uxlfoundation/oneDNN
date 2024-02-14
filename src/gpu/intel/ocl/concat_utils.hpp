@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,7 +13,10 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#pragma once
+
+#ifndef GPU_INTEL_OCL_CONCAT_UTILS_HPP
+#define GPU_INTEL_OCL_CONCAT_UTILS_HPP
+
 #include <algorithm>
 #include <numeric>
 
@@ -132,6 +135,7 @@ public:
 
     data_type_t data_type() const { return data_type_; }
     size_t data_type_size() const { return types::data_type_size(data_type_); }
+    void set_pessimistic_chunk_size() { chunk_size_ = 1; }
 
     dim_t max_write_size() const {
         dim_t write_size = 1;
@@ -156,6 +160,10 @@ public:
     }
 
     void operator()(memory_desc_t &) const;
+
+    bool has_internal_padding() const {
+        return (padding_type_ == padding_t::internal);
+    }
 
 private:
     static bool striding_ok(striding_t striding) {
@@ -387,3 +395,5 @@ struct prb_info_t {
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

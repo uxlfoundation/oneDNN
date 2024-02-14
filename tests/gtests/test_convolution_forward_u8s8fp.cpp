@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2020 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 namespace dnnl {
 
 using convolution_test
-        = convolution_forward_test<uint8_t, int8_t, int32_t, float>;
+        = convolution_forward_test_t<uint8_t, int8_t, int32_t, float>;
 
 TEST_P(convolution_test, TestConvolution) {}
 

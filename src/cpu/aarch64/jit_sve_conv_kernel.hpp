@@ -230,7 +230,7 @@ struct jit_sve_conv_bwd_data_kernel_f32 : public jit_generator {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_conv_bwd_data_kernel_f32)
     jit_conv_conf_t jcp;
-    void (*jit_ker_)(jit_conv_call_s *);
+    void (*jit_ker_)(jit_conv_args_t *);
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &diff_src_d,

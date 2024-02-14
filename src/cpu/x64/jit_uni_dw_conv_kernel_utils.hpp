@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@
 #include "cpu/x64/jit_primitive_conf.hpp"
 
 #include "cpu/x64/jit_avx512_core_bf16_dw_conv_kernel.hpp"
+#include "cpu/x64/jit_avx512_core_f16_dw_conv_kernel.hpp"
 #include "cpu/x64/jit_uni_dw_conv_kernel_f32.hpp"
 
 namespace dnnl {
@@ -36,9 +37,9 @@ namespace cpu {
 namespace x64 {
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-struct jit_uni_dw_conv_fwd_kernel {
+struct jit_uni_dw_conv_fwd_kernel_t {
 
-    jit_uni_dw_conv_fwd_kernel(
+    jit_uni_dw_conv_fwd_kernel_t(
             const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md)
         : ker_(utils::make_unique<jit_kernel_t>(ajcp, dst_md)) {}
 
@@ -46,7 +47,7 @@ struct jit_uni_dw_conv_fwd_kernel {
         if (ker_) return ker_->create_kernel();
         return status::out_of_memory;
     }
-    ~jit_uni_dw_conv_fwd_kernel() = default;
+    ~jit_uni_dw_conv_fwd_kernel_t() = default;
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &src_md,
@@ -56,30 +57,33 @@ struct jit_uni_dw_conv_fwd_kernel {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp);
 
-    jit_generator *ker() const { return ker_.get(); }
-    void operator()(const jit_conv_call_s *p) const { (*ker_)(p); }
+    jit_generator_t *ker() const { return ker_.get(); }
+    void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     constexpr static bool ker_condition_
-            = isa == avx512_core && kernel_dt == data_type::bf16;
+            = (isa == avx512_core && kernel_dt == data_type::bf16)
+            || (isa == avx512_core_fp16 && kernel_dt == data_type::f16);
     using jit_kernel_t = typename utils::conditional<ker_condition_,
-            jit_avx512_dw_conv_fwd_kernel_bf16,
-            jit_uni_dw_conv_fwd_kernel_f32<isa>>::type;
+            typename utils::conditional<kernel_dt == data_type::bf16,
+                    jit_avx512_dw_conv_fwd_kernel_bf16_t,
+                    jit_avx512_dw_conv_fwd_kernel_f16_t>::type,
+            jit_uni_dw_conv_fwd_kernel_f32_t<isa>>::type;
     std::unique_ptr<jit_kernel_t> ker_;
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel)
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_t)
 };
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-struct jit_uni_dw_conv_bwd_data_kernel {
+struct jit_uni_dw_conv_bwd_data_kernel_t {
 
-    jit_uni_dw_conv_bwd_data_kernel(const jit_conv_conf_t &ajcp)
+    jit_uni_dw_conv_bwd_data_kernel_t(const jit_conv_conf_t &ajcp)
         : ker_(utils::make_unique<jit_kernel_t>(ajcp)) {}
 
     status_t create_kernel() {
         if (ker_) return ker_->create_kernel();
         return status::out_of_memory;
     }
-    ~jit_uni_dw_conv_bwd_data_kernel() = default;
+    ~jit_uni_dw_conv_bwd_data_kernel_t() = default;
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &diff_src_md,
@@ -88,28 +92,28 @@ struct jit_uni_dw_conv_bwd_data_kernel {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp);
 
-    void operator()(const jit_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     using jit_kernel_t = typename utils::conditional<isa == avx512_core
                     && kernel_dt == data_type::bf16,
-            jit_avx512_dw_conv_bwd_data_kernel_bf16,
-            jit_uni_dw_conv_bwd_data_kernel_f32<isa>>::type;
+            jit_avx512_dw_conv_bwd_data_kernel_bf16_t,
+            jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>>::type;
     std::unique_ptr<jit_kernel_t> ker_;
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_bwd_data_kernel)
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_bwd_data_kernel_t)
 };
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-struct jit_uni_dw_conv_bwd_weights_kernel {
+struct jit_uni_dw_conv_bwd_weights_kernel_t {
 
-    jit_uni_dw_conv_bwd_weights_kernel(const jit_conv_conf_t &ajcp)
+    jit_uni_dw_conv_bwd_weights_kernel_t(const jit_conv_conf_t &ajcp)
         : ker_(utils::make_unique<jit_kernel_t>(ajcp)) {}
 
     status_t create_kernel() {
         if (ker_) return ker_->create_kernel();
         return status::out_of_memory;
     }
-    ~jit_uni_dw_conv_bwd_weights_kernel() = default;
+    ~jit_uni_dw_conv_bwd_weights_kernel_t() = default;
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &src_md,
@@ -123,15 +127,15 @@ struct jit_uni_dw_conv_bwd_weights_kernel {
             jit_conv_conf_t &jcp, int nthreads, bool prioritize_threading);
     static void balance(jit_conv_conf_t &jcp, int nthreads);
 
-    void operator()(const jit_dw_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_dw_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     using jit_kernel_t = typename utils::conditional<isa == avx512_core
                     && kernel_dt == data_type::bf16,
-            jit_avx512_dw_conv_bwd_weights_kernel_bf16,
-            jit_uni_dw_conv_bwd_weights_kernel_f32<isa>>::type;
+            jit_avx512_dw_conv_bwd_weights_kernel_bf16_t,
+            jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>>::type;
     std::unique_ptr<jit_kernel_t> ker_;
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_bwd_weights_kernel)
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_bwd_weights_kernel_t)
 };
 
 } // namespace x64

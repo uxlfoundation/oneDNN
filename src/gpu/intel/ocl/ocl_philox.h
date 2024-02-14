@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+#ifndef GPU_INTEL_OCL_OCL_PHILOX_H
+#define GPU_INTEL_OCL_OCL_PHILOX_H
 
 #define DT_UNDEF 1
 #include "gpu/intel/ocl/ocl_types.h"
@@ -68,4 +71,6 @@ float stochastic_round_fwd(float s, long idx, uint seed) {
     if (fabs(r) > 0 && fabs(r) < DST_DATA_FMIN) r = 0;
     return r;
 }
+#endif
+
 #endif

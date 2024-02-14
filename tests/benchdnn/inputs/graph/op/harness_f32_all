@@ -1,7 +1,7 @@
---reset --case=op/f32/abs.json
---reset --case=op/f32/abs_bwd.json
---reset --case=op/f32/add.json
---reset --in-shapes=1:- --case=op/f32/add.json
+--reset --op-kind=0:Add,0:Divide,0:Maximum,0:Minimum,0:Multiply,0:Subtract --in-shapes=,1:- --case=op/f32/add.json
+--reset --in-shapes=0:1x2048x28x28+1:1x2048x28x28,0:64x128x28x28+1:64x128x28x28,0:64x256x14x14+1:64x256x14x14,0:16x512+1:16x512,0:64x128x28x28+1:64x128x28x28,0:64x128x28x0+1:64x128x28x0,0:64x128x28x28*acdb+1:64x128x28x28*acdb --op-attrs=0:auto_broadcast:none --op-kind=0:Add,0:Divide,0:Maximum,0:Minimum,0:Multiply,0:Subtract --case=op/f32/add.json
+--reset  --in-shapes=0:1x1x1x1+1:64x128x28x28,0:16x13+1:1x13 --op-attrs=0:auto_broadcast:numpy --op-kind=0:Add,0:Divide,0:Maximum,0:Minimum,0:Multiply,0:Subtract --case=op/f32/add.json
+--reset --in-shapes=,0:64x16x28x28,0:64x16x28x28*acdb --op-kind=0:Abs,0:Exp,0:GELU,0:HardSwish,0:Log,0:Mish,0:Round,0:Sigmoid,0:Sqrt,0:Square,0:Tanh --case=op/f32/abs.json
 --reset --case=op/f32/avgpool.json
 --reset --op-attrs=0:auto_pad:SAME_UPPER*kernel:2x2 --case=op/f32/avgpool.json
 --reset --op-attrs=0:auto_pad:SAME_LOWER*kernel:2x2 --case=op/f32/avgpool.json
@@ -21,7 +21,6 @@
 --reset --in-shapes=0:2x71x71x192 --op-attrs=0:data_format:NXC --case=op/f32/bnorm.json
 --reset --in-shapes=0:2x71x71x192 --op-attrs=0:data_format:NXC --case=op/f32/bnorm_fwd_d.json
 --reset --in-shapes=0:2x71x71x192+1:2x71x71x192 --op-attrs=0:data_format:NXC --case=op/f32/bnorm_bwd.json
---reset --case=op/f32/biasadd.json
 --reset --in-shapes=0:1x32x32x128 --op-attrs=0:data_format:NXC --case=op/f32/biasadd.json
 --reset --case=op/f32/clamp.json
 --reset --case=op/f32/clamp_bwd.json
@@ -81,17 +80,10 @@
 --reset --case=op/f32/dequantize_f8_e5m2.json
 --reset --case=op/f32/dynamicdq_s4.json
 --reset --case=op/f32/dynamicdq_u4.json
---reset --case=op/f32/div.json
---reset --op-attrs=0:auto_broadcast:numpy --case=op/f32/div.json
---reset --case=op/f32/elu.json
+--reset --in-shapes=,0:64x16x28x28 --op-kind=0:Elu,0:LeakyReLU --case=op/f32/elu.json
 --reset --case=op/f32/elu_bwd.json
---reset --case=op/f32/exp.json
---reset --case=op/f32/gelu.json
---reset --case=op/f32/gelu_bwd.json
 --reset --case=op/f32/hardsigmoid.json
 --reset --case=op/f32/hardsigmoid_bwd.json
---reset --case=op/f32/hardswish.json
---reset --case=op/f32/hardswish_bwd.json
 --reset --case=op/f32/interpolate.json
 --reset --op-attrs=0:mode:bilinear --case=op/f32/interpolate.json
 --reset --op-attrs=0:mode:trilinear --case=op/f32/interpolate.json
@@ -101,11 +93,9 @@
 --reset --op-attrs=0:mode:trilinear --case=op/f32/interpolate_bwd.json
 --reset --op-attrs=0:mode:linear --case=op/f32/interpolate_bwd.json
 --reset --in-shapes=0:2x7x14x17+1:2x6x12x17 --op-attrs=0:data_format:NXC --case=op/f32/interpolate_bwd.json
---reset --case=op/f32/leakyrelu.json
 --reset --case=op/f32/lnorm.json
 --reset --op-attrs=0:keep_stats:1 --case=op/f32/lnorm_ks.json
 --reset --case=op/f32/lnorm_bwd.json
---reset --case=op/f32/log.json
 --reset --case=op/f32/logsoftmax.json
 --reset --case=op/f32/logsoftmax_bwd.json
 --reset --case=op/f32/matmul_2d_4d.json
@@ -127,11 +117,6 @@
 --reset --op-attrs=0:auto_pad:VALID*kernel:2x2 --case=op/f32/maxpool_bwd.json
 --reset --in-shapes=0:1x600x600x64+1:1x300x300x64+2:1x300x300x64 --op-attrs=0:data_format:NXC --case=op/f32/maxpool_bwd.json
 --reset --in-shapes=0:acdb+1:acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool_bwd.json
---reset --case=op/f32/max.json
---reset --case=op/f32/min.json
---reset --case=op/f32/mish.json
---reset --case=op/f32/mish_bwd.json
---reset --case=op/f32/mul.json
 --reset --case=op/f32/prelu.json
 --reset --op-attrs=0:per_channel_broadcast:1 --case=op/f32/prelu.json
 --reset --op-attrs=0:data_format:NXC --case=op/f32/prelu.json
@@ -156,17 +141,10 @@
 --reset --op-attrs=0:keep_dims:0 --case=op/f32/reducesum.json
 --reset --op-attrs=0:keep_dims:0*axes:0x1x2x3 --case=op/f32/reducel1.json
 --reset --case=op/f32/relu.json
---reset --case=op/f32/relu_bwd.json
+--reset --in-shapes=,0:64x16x28x28*abcd+1:64x16x28x28*abcd,0:64x16x28x28*acdb+1:64x16x28x28*acdb,0:64x2048x7x7+1:64x2048x7x7,0:64x512x28x28*acdb+1:64x512x28x28*acdb --op-attrs=,0:use_dst:1 --op-kind=0:ReLUBackward,0:SigmoidBackward,0:SqrtBackward,0:TanhBackward --case=op/f32/relu_bwd.json
 --reset --case=op/f32/reorder.json
---reset --case=op/f32/round.json
---reset --case=op/f32/sigmoid.json
---reset --case=op/f32/sigmoid_bwd.json
 --reset --case=op/f32/softmax.json
 --reset --case=op/f32/softmax_bwd.json
---reset --case=op/f32/square.json
---reset --case=op/f32/sub.json
---reset --case=op/f32/tanh.json
---reset --case=op/f32/tanh_bwd.json
 --reset --case=op/f32/typecast.json
 # concat
 --reset --in-shapes=0:1x128x150x150+1:1x128x150x150+2:1x128x150x150 --case=op/f32/concat_2.json
@@ -263,6 +241,7 @@
 --reset --in-shapes=0:8x384x1024*acb --op-attrs=0:axis:1 --case=op/f32/logsoftmax.json
 --reset --in-shapes=0:8x384x1024*acb --op-attrs=0:axis:0 --case=op/f32/logsoftmax.json
 --reset --in-shapes=0:8x384x1024*acb --op-attrs=0:axis:2 --case=op/f32/logsoftmax.json
+--reset --op-attrs=0:mode:inf_as_zero --case=op/f32/softmax.json
 --reset --in-shapes=0:8x384x1024 --op-attrs=0:axis:1 --case=op/f32/softmax.json
 --reset --in-shapes=0:8x384x1024 --op-attrs=0:axis:0 --case=op/f32/softmax.json
 --reset --in-shapes=0:8x384x1024 --op-attrs=0:axis:2 --case=op/f32/softmax.json
@@ -296,15 +275,8 @@
 --reset --in-shapes=0:1x64x600x600*acdb+1:1x64x300x300*acdb+2:1x64x300x300*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool_bwd.json
 # eltwise
 --reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/elu_bwd.json
---reset --in-shapes=0:64x16x28x28+1:64x16x28x28 --case=op/f32/gelu_bwd.json
---reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/gelu_bwd.json
 --reset --in-shapes=0:64x16x28x28+1:64x16x28x28 --case=op/f32/softplus_bwd.json
 --reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/softplus_bwd.json
---reset --in-shapes=0:64x16x28x28+1:64x16x28x28 --case=op/f32/sqrt_bwd.json
---reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/sqrt_bwd.json
---reset --in-shapes=0:64x16x28x28*acdb+1:64x16x28x28*acdb --case=op/f32/tanh_bwd.json
---reset --in-shapes=0:64x512x28x28*acdb+1:64x512x28x28*acdb --case=op/f32/tanh_bwd.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/sqrt.json
 # deconv
 --reset --in-shapes=0:2x16x5x5+1:17x16x3x3 --op-attrs=0:strides:1x1*dilations:1x1*pads_begin:3x3*pads_end:2x2*groups:1 --case=op/f32/deconv_bwd_d.json
 --reset --in-shapes=0:2x16x5x5+1:16x16x1x1 --op-attrs=0:strides:1x1*dilations:1x1*pads_begin:0x0*pads_end:0x0*groups:1 --case=op/f32/deconv_bwd_d.json
@@ -328,11 +300,6 @@
 --reset --in-shapes=0:abcd --case=op/f32/reorder.json
 --reset --in-shapes=0:cdba --case=op/f32/reorder.json
 --reset --in-shapes=0:acdb --case=op/f32/reorder.json
---reset --in-shapes=0:64x16x28x28*abcd+1:64x16x28x28*abcd --op-attrs=0:use_dst:1 --case=op/f32/relu_bwd.json
---reset --in-shapes=0:64x16x28x28*acdb+1:64x16x28x28*acdb --op-attrs=0:use_dst:1 --case=op/f32/relu_bwd.json
---reset --in-shapes=0:64x2048x7x7+1:64x2048x7x7 --case=op/f32/relu_bwd.json
---reset --in-shapes=0:64x512x28x28*acdb+1:64x512x28x28*acdb --op-attrs=0:use_dst:1 --case=op/f32/relu_bwd.json
---reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --op-attrs=0:use_dst:1 --case=op/f32/relu_bwd.json
 --reset --in-shapes=0:64x2048x7x7 --case=op/f32/relu.json
 --reset --in-shapes=0:16x1024 --case=op/f32/relu.json
 --reset --in-shapes=0:16x128 --case=op/f32/relu.json
@@ -374,34 +341,7 @@
 --reset --in-shapes=0:64x512x7x7 --case=op/f32/relu.json
 --reset --in-shapes=0:64x64x112x112 --case=op/f32/relu.json
 --reset --in-shapes=0:64x64x56x56 --case=op/f32/relu.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/abs.json
---reset --in-shapes=0:64x16x28x28 --case=op/f32/abs.json
---reset --in-shapes=0:64x512x28x28*acdb --case=op/f32/abs.json
---reset --in-shapes=0:64x512x28x28*acdb --case=op/f32/abs.json
---reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/abs_bwd.json
---reset --in-shapes=0:64x512x28x28*acdb+1:64x512x28x28*acdb --case=op/f32/abs_bwd.json
---reset --in-shapes=0:64x512x28x28*acdb+1:64x512x28x28*acdb --case=op/f32/mish_bwd.json
---reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/mish_bwd.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/mish.json
---reset --in-shapes=0:64x512x28x28*acdb --case=op/f32/mish.json
---reset --in-shapes=0:1x2048x28x28+1:1x2048x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/min.json
---reset --in-shapes=0:64x128x28x28+1:64x128x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/min.json
---reset --in-shapes=0:64x256x14x14+1:64x256x14x14 --op-attrs=0:auto_broadcast:none --case=op/f32/min.json
---reset --in-shapes=0:16x13+1:1x13 --op-attrs=0:auto_broadcast:numpy --case=op/f32/min.json
---reset --in-shapes=0:16x512+1:16x512 --op-attrs=0:auto_broadcast:none --case=op/f32/min.json
---reset --in-shapes=0:1x1x1x1+1:64x128x28x28 --op-attrs=0:auto_broadcast:numpy --case=op/f32/min.json
---reset --in-shapes=0:64x128x28x0+1:64x128x28x0 --op-attrs=0:auto_broadcast:none --case=op/f32/min.json
---reset --in-shapes=0:64x128x28x28+1:64x128x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/min.json
---reset --in-shapes=0:64x128x28x28*acdb+1:64x128x28x28*acdb --op-attrs=0:auto_broadcast:none --case=op/f32/min.json
---reset --in-shapes=0:64x128x28x28*acdb+1:64x128x28x28*acdb --op-attrs=0:auto_broadcast:none --case=op/f32/mul.json
---reset --in-shapes=0:1x1x1x1+1:64x128x28x28 --op-attrs=0:auto_broadcast:numpy --case=op/f32/mul.json
---reset --in-shapes=0:64x128x28x0+1:64x128x28x0 --op-attrs=0:auto_broadcast:none --case=op/f32/mul.json
---reset --in-shapes=0:64x128x28x28+1:64x128x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/mul.json
---reset --in-shapes=0:16x13+1:1x13 --op-attrs=0:auto_broadcast:numpy --case=op/f32/mul.json
---reset --in-shapes=0:16x512+1:16x512 --op-attrs=0:auto_broadcast:none --case=op/f32/mul.json
---reset --in-shapes=0:1x2048x28x28+1:1x2048x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/mul.json
---reset --in-shapes=0:64x128x28x28+1:64x128x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/mul.json
---reset --in-shapes=0:64x256x14x14+1:64x256x14x14 --op-attrs=0:auto_broadcast:none --case=op/f32/mul.json
+--reset --in-shapes=,0:64x512x28x28+1:64x512x28x28,0:64x16x28x28+1:64x16x28x28,0:64x16x28x28*acdb+1:64x16x28x28*acdb --op-kind=0:AbsBackward,0:GELUBackward,0:HardSwishBackward,0:MishBackward --case=op/f32/abs_bwd.json
 --reset --in-shapes=0:96x192x71x71+1:96x192x71x71+2:192+3:192+4:192 --op-attrs=0:epsilon:0.0625 --case=op/f32/bnorm_bwd.json
 --reset --in-shapes=0:64x128x28x28 --op-attrs=0:axis:0 --case=op/f32/softmax.json
 --reset --in-shapes=0:64x3x224x224 --op-attrs=0:axis:0 --case=op/f32/softmax.json
@@ -635,59 +575,11 @@
 --reset --in-shapes=0:64x64x112x112 --case=op/f32/lnorm.json
 --reset --in-shapes=0:8x16x384x384 --case=op/f32/lnorm.json
 --reset --in-shapes=0:8x384x1024 --case=op/f32/lnorm.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/exp.json
---reset --in-shapes=0:64x16x28x28 --case=op/f32/exp.json
---reset --in-shapes=0:64x16x28x28*acdb+1:64x16x28x28*acdb --case=op/f32/sqrt_bwd.json
---reset --in-shapes=0:64x512x28x28*acdb+1:64x512x28x28*acdb --case=op/f32/sqrt_bwd.json
---reset --in-shapes=0:64x16x28x28*acdb --case=op/f32/sqrt.json
---reset --in-shapes=0:64x512x28x28*acdb --case=op/f32/sqrt.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/square.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/tanh.json
---reset --in-shapes=0:64x512x28x28*abcd+1:64x512x28x28*abcd --case=op/f32/tanh_bwd.json
---reset --in-shapes=0:64x16x28x28*abcd+1:64x16x28x28*abcd --case=op/f32/tanh_bwd.json
 --reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/softplus_bwd.json
---reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/sigmoid_bwd.json
---reset --in-shapes=0:64x16x28x28+1:64x16x28x28 --case=op/f32/sigmoid_bwd.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/sigmoid.json
---reset --in-shapes=0:64x16x28x28*acdb --case=op/f32/round.json
---reset --in-shapes=0:64x512x28x28*acdb --case=op/f32/round.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/log.json
---reset --in-shapes=0:64x16x28x28 --case=op/f32/log.json
---reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/hardswish_bwd.json
---reset --in-shapes=0:64x16x28x28+1:64x16x28x28 --case=op/f32/hardswish_bwd.json
---reset --in-shapes=0:64x16x28x28*acdb --case=op/f32/hardswish.json
---reset --in-shapes=0:64x512x28x28*acdb --case=op/f32/hardswish.json
---reset --in-shapes=0:8x384x4096 --case=op/f32/gelu.json
---reset --in-shapes=0:64x16x28x28 --case=op/f32/gelu.json
---reset --in-shapes=0:64x512x28x28 --case=op/f32/gelu.json
---reset --in-shapes=0:64x512x28x28*acdb+1:64x512x28x28*acdb --case=op/f32/gelu_bwd.json
---reset --in-shapes=0:64x16x28x28*acdb+1:64x16x28x28*acdb --case=op/f32/gelu_bwd.json
 --reset --in-shapes=0:64x512x28x28+1:64x512x28x28 --case=op/f32/elu_bwd.json
 --reset --in-shapes=0:64x16x28x28+1:64x16x28x28 --case=op/f32/elu_bwd.json
 --reset --in-shapes=0:64x512x28x28 --case=op/f32/elu.json
 --reset --in-shapes=0:64x16x28x28 --case=op/f32/elu.json
---reset --in-shapes=0:1x1x1x1*abcd+1:64x128x28x28 --op-attrs=0:auto_broadcast:numpy --case=op/f32/sub.json
---reset --in-shapes=0:64x128x28x0*abcd+1:64x128x28x0*abcd --op-attrs=0:auto_broadcast:none --case=op/f32/sub.json
---reset --in-shapes=0:64x128x28x28*abcd+1:64x128x28x28*abcd --op-attrs=0:auto_broadcast:none --case=op/f32/sub.json
---reset --in-shapes=0:64x128x28x28*acdb+1:64x128x28x28*acdb --op-attrs=0:auto_broadcast:none --case=op/f32/sub.json
---reset --in-shapes=0:64x128x28x28*acdb+1:64x128x28x28*acdb --op-attrs=0:auto_broadcast:none --case=op/f32/max.json
---reset --in-shapes=0:16x13+1:1x13 --op-attrs=0:auto_broadcast:numpy --case=op/f32/max.json
---reset --in-shapes=0:16x512+1:16x512 --op-attrs=0:auto_broadcast:none --case=op/f32/max.json
---reset --in-shapes=0:1x1x1x1+1:64x128x28x28 --op-attrs=0:auto_broadcast:numpy --case=op/f32/max.json
---reset --in-shapes=0:64x128x28x0+1:64x128x28x0 --op-attrs=0:auto_broadcast:none --case=op/f32/max.json
---reset --in-shapes=0:64x128x28x28+1:64x128x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/max.json
---reset --in-shapes=0:1x2048x28x28+1:1x2048x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/max.json
---reset --in-shapes=0:64x128x28x28+1:64x128x28x28 --op-attrs=0:auto_broadcast:none --case=op/f32/max.json
---reset --in-shapes=0:64x256x14x14+1:64x256x14x14 --op-attrs=0:auto_broadcast:none --case=op/f32/max.json
---reset --in-shapes=0:1x1x1x1*abcd+1:64x128x28x28 --op-attrs=0:auto_broadcast:numpy --case=op/f32/div.json
---reset --in-shapes=0:64x128x28x0*abcd+1:64x128x28x0*abcd --op-attrs=0:auto_broadcast:none --case=op/f32/div.json
---reset --in-shapes=0:64x128x28x28*abcd+1:64x128x28x28*abcd --op-attrs=0:auto_broadcast:none --case=op/f32/div.json
---reset --in-shapes=0:1x2048x28x28*abcd+1:1x2048x28x28*abcd --op-attrs=0:auto_broadcast:none --case=op/f32/div.json
---reset --in-shapes=0:64x128x28x28*abcd+1:64x128x28x28*abcd --op-attrs=0:auto_broadcast:none --case=op/f32/div.json
---reset --in-shapes=0:64x256x14x14*abcd+1:64x256x14x14*abcd --op-attrs=0:auto_broadcast:none --case=op/f32/div.json
---reset --in-shapes=0:64x128x28x28*acdb+1:64x128x28x28*acdb --op-attrs=0:auto_broadcast:none --case=op/f32/div.json
---reset --in-shapes=0:16x13+1:1x13 --op-attrs=0:auto_broadcast:numpy --case=op/f32/div.json
---reset --in-shapes=0:16x512+1:16x512 --op-attrs=0:auto_broadcast:none --case=op/f32/div.json
 --reset --in-shapes=0:3+1:1+2:3 --case=op/f32/prelu_bwd.json
 --reset --in-shapes=0:3+1:3+2:3 --case=op/f32/prelu_bwd.json
 --reset --in-shapes=0:3x64*ab+1:1x1*ab+2:3x64*ab --case=op/f32/prelu_bwd.json
@@ -960,3 +852,4 @@
 --reset --case=op/f32/greaterequal.json
 --reset --in-shapes=1:1x1x1x1 --case=op/f32/greaterequal.json
 --reset --in-shapes=1:1 --case=op/f32/greaterequal.json
+--reset --op-attrs=0:mode:gelu_erf,0:mode:gelu_tanh --case=op/f32/gelu.json

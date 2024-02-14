@@ -36,6 +36,13 @@ TEST(test_binary_op_execute, BinaryOp) {
             graph::op_kind::Divide, graph::op_kind::Subtract,
             graph::op_kind::SquaredDifference};
 
+// SquaredDifference is not supported on NVIDIA GPU.
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (eng->kind() == graph::engine_kind::gpu)
+        op_kinds.erase(op_kinds.end() - 1);
+#endif
+
     std::vector<float> src0 {2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0};
     std::vector<float> src1 {3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0};
     std::vector<float> dst(src0.size(), 0.0);
@@ -317,6 +324,59 @@ TEST(test_binary_op_execute, MinEltwise) {
     }
 }
 
+TEST(test_binary_op_execute, BinarySqrt) {
+    graph::engine_t *eng = get_engine();
+
+    std::vector<float> src0 {2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0};
+    std::vector<float> src1 {-1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0};
+    std::vector<float> dst(src0.size(), 0.0);
+
+    graph::logical_tensor_t src0_lt
+            = utils::logical_tensor_init(0, {1, 3, 3}, graph::data_type::f32);
+    graph::logical_tensor_t src1_lt
+            = utils::logical_tensor_init(1, {1, 3, 3}, graph::data_type::f32);
+    graph::logical_tensor_t add_dst_lt
+            = utils::logical_tensor_init(2, {1, 3, 3}, graph::data_type::f32);
+    graph::logical_tensor_t dst_lt
+            = utils::logical_tensor_init(3, {1, 3, 3}, graph::data_type::f32);
+
+    graph::op_t add_op(0, graph::op_kind::Add, "add");
+    graph::op_t sqrt_op(1, graph::op_kind::Sqrt, "sqrt");
+
+    add_op.add_input(src0_lt);
+    add_op.add_input(src1_lt);
+    add_op.add_output(add_dst_lt);
+    sqrt_op.add_input(add_dst_lt);
+    sqrt_op.add_output(dst_lt);
+
+    graph::graph_t g(eng->kind());
+    g.add_op(&add_op);
+    g.add_op(&sqrt_op);
+    g.finalize();
+
+    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    ASSERT_NE(apass, nullptr);
+    apass->run(g);
+    ASSERT_EQ(g.get_num_partitions(), 1U);
+    auto part = g.get_partitions()[0];
+
+    graph::partition_t p;
+    p.init(part);
+
+    graph::compiled_partition_t cp(p);
+    std::vector<const graph::logical_tensor_t *> inputs {&src0_lt, &src1_lt};
+    std::vector<const graph::logical_tensor_t *> outputs {&dst_lt};
+    p.compile(&cp, inputs, outputs, eng);
+
+    test_tensor_t src0_ts(src0_lt, eng, src0);
+    test_tensor_t src1_ts(src1_lt, eng, src1);
+    test_tensor_t dst_ts(dst_lt, eng, dst);
+
+    graph::stream_t *strm = get_stream();
+    cp.execute(strm, {src0_ts.get(), src1_ts.get()}, {dst_ts.get()});
+    strm->wait();
+}
+
 TEST(test_binary_op_execute, MaxEltwise) {
     graph::engine_t *eng = get_engine();
 
@@ -558,6 +618,7 @@ TEST(test_binary_op_execute, Eltwise3BinaryPostops) {
 }
 
 TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -590,6 +651,7 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
             {graph::op_kind::Multiply, graph::op_kind::HardSwish}};
 
     std::vector<graph::logical_tensor_t> lt_vec;
+    lt_vec.reserve(9);
     for (size_t i = 0; i < 9; ++i)
         lt_vec.emplace_back(utils::logical_tensor_init(
                 i, binary_src_shape, graph::data_type::f32));
@@ -606,7 +668,8 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
         input_lts.push_back(lt_idx);
         binary_op.add_output(lt_vec[++lt_idx]);
 
-        std::vector<graph::op_t> post_ops {};
+        std::vector<graph::op_t> post_ops;
+        post_ops.reserve(pop_ts.size());
         for (size_t i = 0; i < pop_ts.size(); ++i) {
             auto pop_t = pop_ts[i];
             post_ops.emplace_back(i + 1, pop_t, "post op");
@@ -638,7 +701,8 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
 
         test_tensor_t binary_src0_ts(lt_vec[0], engine, src_datas[0]);
         test_tensor_t binary_src1_ts(lt_vec[1], engine, src_datas[1]);
-        std::vector<test_tensor_t> src_tss {};
+        std::vector<test_tensor_t> src_tss;
+        src_tss.reserve(input_lts.size());
         for (size_t i = 0; i < input_lts.size(); ++i)
             src_tss.emplace_back(lt_vec[input_lts[i]], engine, src_datas[i]);
 

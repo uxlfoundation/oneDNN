@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,6 +50,10 @@ struct ref_shuffle_t : public primitive_t {
             VDISPATCH_SHUFFLE(src_d.data_type() == dst_d.data_type(),
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_SHUFFLE(
+                    utils::one_of(types::data_type_size(src_d.data_type()),
+                            sizeof(float), sizeof(bfloat16_t), sizeof(int8_t)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SHUFFLE(
                     platform::has_data_type_support(src_d.data_type()),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SHUFFLE(
@@ -92,7 +96,7 @@ struct ref_shuffle_t : public primitive_t {
         return dnnl_success;
     }
 
-    ~ref_shuffle_t() { free(rev_transposed_); }
+    ~ref_shuffle_t() override { free(rev_transposed_); }
 
     status_t execute(const exec_ctx_t &ctx) const override {
         const memory_desc_wrapper src_d(

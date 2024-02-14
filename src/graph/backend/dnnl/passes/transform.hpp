@@ -48,6 +48,12 @@ status_t replace_quant_data_with_binary_post_op(
 
 status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg);
 
+// This pass is only used in the sdpa decompose kernel and handle matmul post
+// op. There is no any limit for matmul+post_binary about dims broadcast like
+// full tensor and per tensor broadcast. Because the implementation of sdpa
+// decompose kernel is actually 2d.
+status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg);
+
 status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg);
 
 status_t fuse_dst_zero_points(std::shared_ptr<subgraph_t> &sg);
@@ -118,14 +124,6 @@ status_t fuse_to_dnnl_sum(std::shared_ptr<subgraph_t> &sg);
 // This pass is used to insert unsqueeze op before dnnl_binary op's inputs to
 // make the input shape meet the requirement of oneDNN binary primitive
 status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg);
-
-// For now, we support two impl paths for select op: one is to use binary
-// primitive with select alorithm, the other is to use multiple binary ops(we
-// call it "legacy impl" here). However, during the lowering pass, we directly
-// lower the front-end select op to single binary select op, this pass is used
-// to decide which impl path to apply and then decompose the select binary op
-// back to multiple binary ops if it's the case to use legacy impl.
-status_t decompose_select_to_binary_ops(std::shared_ptr<subgraph_t> &sg);
 
 // This pass is used to swap two inputs to broadcast src1 which is optimized in
 // oneDNN binary primitive. Notice that this should be applied after
@@ -204,9 +202,10 @@ impl::status_t lift_up_weight_reshape_for_depthwiseconv(
 // This pass will compute matmul with the src layout of transpose before matmul
 impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg);
 
-// This pass will compute matmul with the dst layout of following transpose if
-// the operator after transpose need a dense layout
-impl::status_t fuse_dst_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg);
+// This pass will compute matmul/sdpa with the dst layout of following transpose
+// if the operator after transpose need a dense layout
+impl::status_t fuse_dst_transpose_to_predecessor(
+        std::shared_ptr<subgraph_t> &sg);
 
 // This pass will fuse all the reshape to its lead op for GQA.
 impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg);
@@ -267,12 +266,9 @@ impl::status_t fold_pre_mul_scale_into_bn(std::shared_ptr<subgraph_t> &sg);
 ///  ==> dst = (new_gamma * (src - mean) / sqrt(variance + epsilon)) + new_beta
 impl::status_t fold_post_mul_scale_into_bn(std::shared_ptr<subgraph_t> &sg);
 
-/// This pass replaces the output logical tensor to remove the consumer. It is
-/// mainly to use the "get_output_ops" function.
-impl::status_t replace_select_values(std::shared_ptr<subgraph_t> &sg);
-
 /// This pass will translate the subgraph containing subgraph of implicit causal
 /// mask into a dnnl_mask op
+/// for top-left implicit causal mask:
 ///           in0
 ///         /    |
 ///    GenIndex GenIndex             in0  in1
@@ -281,7 +277,25 @@ impl::status_t replace_select_values(std::shared_ptr<subgraph_t> &sg);
 ///               \  /   /               |
 ///                Select
 ///                   |
+///
+/// for bottom-right implicit causal mask:
+///           in0
+///         /     |
+///    GenIndex GenIndex
+///  in2   |      |                in0 in1 in2 in3
+///   \_  Add     |                    \ | |  /
+///   in3  |      |           -->        mask
+///     \_Sub     |                       |
+///        \     /
+///      GreaterEqual in0 in1
+///               \  /   /
+///                Select
+///                   |
+///
 status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg);
+
+/// This pass will transform the sdpa subgraph into a dnnl_sdpa op.
+status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg);
 
 } // namespace dnnl_impl
 } // namespace graph

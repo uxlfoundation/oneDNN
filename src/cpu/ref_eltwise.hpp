@@ -150,7 +150,8 @@ struct ref_eltwise_bwd_t : public primitive_t {
             if (diff_dst_d != memory_desc_wrapper(data_md()))
                 use_dense_ = false;
 
-            if (utils::one_of(data_type, bf16, f16)) init_scratchpad();
+            if (utils::one_of(data_type, bf16, f16, f8_e5m2, f8_e4m3))
+                init_scratchpad();
 
             return status::success;
         }

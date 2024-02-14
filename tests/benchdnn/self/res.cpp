@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,8 +28,10 @@ static int check_status_change() {
         res_t res {};
         res.state = EXECUTED;
         dnnl_dims_t dims {10};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         for (int i = 0; i < dims[0]; i++) {
             m0.set_elem(i, 0);
             m1.set_elem(i, 0);
@@ -50,8 +52,10 @@ static int check_status_change() {
         res_t res {};
         res.state = EXECUTED;
         dnnl_dims_t dims {10};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         compare::compare_t cmp;
         for (int i = 0; i < dims[0]; i++) {
             m0.set_elem(i, i);
@@ -80,8 +84,10 @@ static int check_status_change() {
         res_t res {};
         res.state = EXECUTED;
         dnnl_dims_t dims {10};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         for (int i = 0; i < dims[0]; i++) {
             m0.set_elem(i, i);
             m1.set_elem(i, i - 1);
@@ -94,8 +100,10 @@ static int check_status_change() {
         res_t res {};
         res.state = FAILED;
         dnnl_dims_t dims {10};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         for (int i = 0; i < dims[0]; i++) {
             m0.set_elem(i, 0);
             m1.set_elem(i, 0);
@@ -108,8 +116,10 @@ static int check_status_change() {
         res_t res {};
         res.state = FAILED;
         dnnl_dims_t dims {10};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         for (int i = 0; i < dims[0]; i++) {
             m0.set_elem(i, i);
             m1.set_elem(i, i);
@@ -122,8 +132,10 @@ static int check_status_change() {
         res_t res {};
         res.state = FAILED;
         dnnl_dims_t dims {10};
-        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
-        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine());
+        dnn_mem_t m0(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        dnn_mem_t m1(1, dims, dnnl_f32, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
         for (int i = 0; i < dims[0]; i++) {
             m0.set_elem(i, i);
             m1.set_elem(i, i - 1);
@@ -136,6 +148,7 @@ static int check_status_change() {
 }
 
 void res() {
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return;
     RUN(check_status_change());
 }
 

@@ -29,7 +29,7 @@ int reduce_index(int x[5]) {
 #if CALCULATE_STATS == 1
 
 NAMED_KERNEL_ATTR(CALC)
-__kernel void calculate_mean(__global DATA_T *src, __global float *mean) {
+__kernel void ref_calculate_mean(__global DATA_T *src, __global float *mean) {
     int x[5];
     x[0] = GWS_GET_STAT_MB();
     x[1] = GWS_GET_STAT_IC();
@@ -47,7 +47,7 @@ __kernel void calculate_mean(__global DATA_T *src, __global float *mean) {
 }
 
 NAMED_KERNEL_ATTR(CALC)
-__kernel void calculate_variance(
+__kernel void ref_calculate_variance(
         __global DATA_T *src, __global float *mean, __global float *variance) {
     int x[5];
     x[0] = GWS_GET_STAT_MB();
@@ -71,7 +71,8 @@ __kernel void calculate_variance(
 }
 
 NAMED_KERNEL_ATTR(REDUCE)
-__kernel void reduce_mean(__global float *reduce_temp, __global float *mean) {
+__kernel void ref_reduce_mean(
+        __global float *reduce_temp, __global float *mean) {
     const int c = GWS_GET_REDUCE_STAT_IC();
     reduce_temp += c;
     float sum = 0.0f;
@@ -83,7 +84,7 @@ __kernel void reduce_mean(__global float *reduce_temp, __global float *mean) {
 }
 
 NAMED_KERNEL_ATTR(REDUCE)
-__kernel void reduce_variance(
+__kernel void ref_reduce_variance(
         __global float *reduce_temp, __global float *variance) {
     const int c = GWS_GET_REDUCE_STAT_IC();
 #if SAVE_STATS == 0
@@ -160,7 +161,7 @@ __kernel void ref_bnorm_fwd(__global DATA_T *src, __global float *mean,
 #if IS_BWD == 1
 
 NAMED_KERNEL_ATTR(CALC)
-__kernel void calculate_stats(__global DATA_T *src, __global float *mean,
+__kernel void ref_calculate_stats(__global DATA_T *src, __global float *mean,
         __global DATA_T *diff_dst, __global char *ws,
         __global float *reduce_temp) {
     float diff_gamma = 0;
@@ -191,7 +192,7 @@ __kernel void calculate_stats(__global DATA_T *src, __global float *mean,
 }
 
 NAMED_KERNEL_ATTR(REDUCE)
-__kernel void reduce_stats(__global float *reduce_temp,
+__kernel void ref_reduce_stats(__global float *reduce_temp,
         __global float *diff_scale, __global float *diff_shift,
         __global float *variance, float eps) {
     const int c = GWS_GET_REDUCE_STAT_IC();

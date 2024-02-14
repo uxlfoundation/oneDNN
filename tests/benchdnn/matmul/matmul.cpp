@@ -51,7 +51,6 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         if (dt == dnnl_data_type_undef) dt = prb->src_dt();
         const auto &src_rt_dims = get_runtime_dims(
                 prb->src_dims(), prb->src_runtime_dim_mask());
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         auto src_sparsity = prb->sparse_options.get_sparsity(DNNL_ARG_SRC);
         if (src_encoding != dnnl_sparse_encoding_undef) {
@@ -69,7 +68,6 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                 default: assert(!"unsupported encoding"); return nullptr;
             }
         } else
-#endif
             return dnn_mem_t::init_md(prb->ndims, src_rt_dims.data(), dt,
                     prb->stag, prb->strides[STRIDES_SRC]);
     }
@@ -78,7 +76,6 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         if (dt == dnnl_data_type_undef) dt = prb->wei_dt();
         const auto &weights_rt_dims = get_runtime_dims(
                 prb->weights_dims(), prb->weights_runtime_dim_mask());
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         auto wei_encoding = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
         auto wei_sparsity = prb->sparse_options.get_sparsity(DNNL_ARG_WEIGHTS);
 
@@ -100,7 +97,6 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                 default: assert(!"unsupported encoding"); return nullptr;
             }
         } else
-#endif
             return dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(), dt,
                     prb->wtag, prb->strides[STRIDES_WEI]);
     }
@@ -180,18 +176,12 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
     if (is_cpu() && (prb->src_dt() == dnnl_f32 && prb->wei_dt() == dnnl_f32))
         return OK;
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     if (prb->sparse_options.get_encoding(DNNL_ARG_SRC)
                     != dnnl_sparse_encoding_undef
             || prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS)
                     != dnnl_sparse_encoding_undef)
         return OK;
-#endif
 
-    // Create a new copy of prb to avoid potentially corrupting the test by
-    // modifying prb in place.
-    auto cpu_attr = prb->attr;
-    update_cpu_ref_attrs(cpu_attr);
     std::vector<std::vector<dnnl_data_type_t>> prim_ref_dt {
             prb->dt, {dnnl_f32}};
     // If there's no bias, undef data type should be used for prim_ref as well.
@@ -205,13 +195,15 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
 
     for_(const auto &prim_ref_dt_i : prim_ref_dt)
     for (const auto &prim_ref_bia_dt_i : prim_ref_bia_dt) {
+        auto cpu_attr = prb->attr;
+        update_cpu_ref_attrs(cpu_attr, prim_ref_dt_i.back());
+
+        // Create a new copy of prb to avoid potentially corrupting the test by
+        // modifying prb in place.
         prb_t prb_cpu {*prb, prim_ref_dt_i, tag::any, tag::any, tag::any,
                 {vdims_t(STRIDES_SIZE)}, prim_ref_bia_dt_i, prb->bia_mask,
-                {0, 0, 0},
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-                sparse_options_t(),
-#endif
-                cpu_attr, prb->ctx_init, prb->ctx_exe, prb->impl_filter};
+                {0, 0, 0}, sparse_options_t(), cpu_attr, prb->ctx_init,
+                prb->ctx_exe, prb->impl_filter};
 
         auto st = init_prim_ref_common(prim_ref, &prb_cpu, res);
         if (st == OK) return OK;
@@ -221,7 +213,6 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
     return OK;
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 // The main idea is to generate values and metadata directly without generating
 // the dense matrix to avoid excessive memory consumption for large problem
 // sizes.
@@ -326,6 +317,9 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
         mem_dt.set_elem(i, index, indices_idx);
     });
 
+    // Don't fill data for `no_ref_memory` as it will be filled by benchdnn.
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
+
     // Generate values.
     cfg_t cfg(prb, {SRC, WEI, BIA, DST});
 
@@ -355,7 +349,6 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
 
     return OK;
 }
-#endif
 
 int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
         dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
@@ -366,7 +359,6 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
     bool is_sparse_packed = false;
     bool is_any_sparse = false;
     std::vector<bool> nnz_mask;
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     const auto sparse_encoding = prb->sparse_options.get_encoding(kind);
     const bool is_sparse_csr_coo
             = sparse_encoding == dnnl_csr || sparse_encoding == dnnl_coo;
@@ -387,7 +379,6 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
         std::default_random_engine rng(nnz);
         std::shuffle(nnz_mask.begin(), nnz_mask.end(), rng);
     }
-#endif
 
     // Refer to modes documentation for filling principles.
     // Note: sparse filling is more complex than a general one in a sense that
@@ -409,6 +400,20 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
     density_args.data_kind = kind;
     density_args.n_acc = prb->k;
     const auto density = cfg.get_density(density_args);
+
+    const auto &e_zp_src = prb->attr.zero_points.get(DNNL_ARG_SRC);
+    const bool has_src_zp = !e_zp_src.is_def();
+    const int src_zp_mask = attr_t::get_default_mask(e_zp_src.policy);
+    // Apply src_zp for source tensor only.
+    int src_zp = kind == SRC && has_src_zp && src_zp_mask == 0 ? e_zp_src.value
+                                                               : 0;
+
+    const auto &e_zp_wei = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS);
+    const bool has_wei_zp = !e_zp_wei.is_def();
+    const int wei_zp_mask = attr_t::get_default_mask(e_zp_wei.policy);
+    // Apply wei_zp for weights tensor only.
+    int wei_zp = kind == WEI && has_wei_zp && wei_zp_mask == 0 ? e_zp_wei.value
+                                                               : 0;
 
     /* Do fixed partitioning to have same filling for any number of threads */
     const int64_t chunk_size = 64;
@@ -435,24 +440,37 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             float val = 0;
             while (val <= 0)
                 val = gen(int_seed);
-            mem_fp.set_elem(
+            val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+            mem_fp.set_f32_elem(
                     0, round_to_nearest_representable(cfg.get_dt(kind), val));
             idx_start += 1;
         }
 
-        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            bool is_one = density == 1.f ? true : b_dist(b_seed);
-            float val = 0.0f;
-            if (is_sparse_packed) {
-                is_one = nnz_mask[idx];
-                while (val == 0.0f)
+        if (is_sparse_packed) {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                const bool is_one = nnz_mask[idx];
+                if (!is_one) {
+                    mem_fp.set_f32_elem(idx, 0.f);
+                    continue;
+                }
+                float val = 0.f;
+                while (val == 0.f)
                     val = gen(int_seed);
-                val *= is_one;
-            } else {
-                val = is_one * gen(int_seed);
+                mem_fp.set_f32_elem(idx,
+                        round_to_nearest_representable(cfg.get_dt(kind), val));
             }
-            mem_fp.set_elem(
-                    idx, round_to_nearest_representable(cfg.get_dt(kind), val));
+        } else {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                bool is_one = density == 1.f ? true : b_dist(b_seed);
+                if (!is_one) {
+                    mem_fp.set_f32_elem(idx, 0.f);
+                    continue;
+                }
+                float val = gen(int_seed);
+                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+                mem_fp.set_f32_elem(idx,
+                        round_to_nearest_representable(cfg.get_dt(kind), val));
+            }
         }
     });
 
@@ -467,9 +485,9 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             prb->dir, res);
     skip_unimplemented_sum_po(
             prb->attr, res, dnnl_matmul, prb->src_dt(), prb->dst_dt());
+    skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_matmul);
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     if ((is_nvidia_gpu() || is_amd_gpu()) && !prb->sparse_options.is_def()) {
         BENCHDNN_PRINT(2,
                 "[SKIP][%s:%d]: oneDNN doesn't support sparse matmul for "
@@ -516,7 +534,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         res->reason = skip_reason::case_not_supported;
         return;
     }
-#endif
 
     if (is_cpu()) {
         const bool is_x8s8f16
@@ -528,6 +545,30 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = skip_reason::case_not_supported;
             return;
         }
+
+        auto is_int = [](dnnl_data_type_t t) {
+            return dnnl::impl::utils::one_of(
+                    t, dnnl_s4, dnnl_u4, dnnl_s8, dnnl_u8, dnnl_s32);
+        };
+        if (is_int(prb->src_dt()) != is_int(prb->wei_dt())) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: CPU doesn't support mixed integer and "
+                    "floating point source and weights.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+        }
+
+        if (!is_int(prb->src_dt()) && !is_int(prb->wei_dt())
+                && is_int(prb->dst_dt())) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: CPU doesn't support integer destination "
+                    "with  floating point source and weights.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+        }
+
         if (!prb->attr.scales.is_def(DNNL_ARG_DST)
                 && prb->attr.scales.get(DNNL_ARG_DST).policy
                         != attr_t::COMMON) {
@@ -601,8 +642,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
 
-        if (((prb->src_dt() == dnnl_f8_e4m3 || prb->dst_dt() == dnnl_f8_e4m3)
+        if (((prb->src_dt() == dnnl_f8_e4m3 || prb->wei_dt() == dnnl_f8_e4m3
+                     || prb->dst_dt() == dnnl_f8_e4m3)
                     || (prb->src_dt() == dnnl_f8_e5m2
+                            || prb->wei_dt() == dnnl_f8_e5m2
                             || prb->dst_dt() == dnnl_f8_e5m2))
                 && (!po.is_def() || !prb->attr.scales.is_def())) {
             BENCHDNN_PRINT(2,
@@ -676,15 +719,41 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         }
     }
 
+    // Check int4 weights byte alignment if format is specified.
     if ((prb->wei_dt() == dnnl_s4 || prb->wei_dt() == dnnl_u4)
-            && (prb->n % 2)) {
-        BENCHDNN_PRINT(2,
-                "[INVALID][%s:%d]: Int4 Weights decompression requires OC "
-                "('%d') to be even.\n",
-                __FILE__, __LINE__, (int)prb->n);
-        res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
-        return;
+            && (!prb->strides[WEI].empty()
+                    || (prb->wtag != tag::any && prb->wtag != tag::undef))) {
+        const auto &weights_rt_dims = get_runtime_dims(
+                prb->weights_dims(), prb->weights_runtime_dim_mask());
+        const auto wei_md
+                = dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(),
+                        prb->wei_dt(), prb->wtag, prb->strides[STRIDES_WEI]);
+
+        const auto wei_strides = query_md_strides(wei_md);
+        int n_unit_strides = 0;
+        for (int d = 0; d < query_md_ndims(wei_md); d++) {
+            if (wei_strides[d] == 1) {
+                n_unit_strides++;
+                if (n_unit_strides > 1) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Int4 Weights decompression "
+                            "requires byte alignment for the tensor.\n",
+                            __FILE__, __LINE__);
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
+            }
+            if (wei_strides[d] > 1 && (wei_strides[d] % 2)) {
+                BENCHDNN_PRINT(2,
+                        "[INVALID][%s:%d]: Int4 Weights decompression requires "
+                        "byte alignment for the tensor.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::invalid_case;
+                return;
+            }
+        }
     }
 
     auto src_rt_mask = prb->src_runtime_dim_mask();
@@ -759,7 +828,18 @@ std::vector<int> supported_exec_args(dir_t dir) {
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,
         dnnl_primitive_t prim_ref) {
-    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
+    // Sparse functionality relies on indirect access to the data. While the
+    // data itself can be anything for `no_ref_memory` modifier, metadata values
+    // must be meaningful, otherwise a jump to a random memory location outside
+    // of allocated bytes will happen.
+    // If there's a sparse memory, non-sparse memory and non-metadata handles
+    // will not reach the filling, unless it's a `packed` encoding. In such case
+    // the reference f32 counterpart must be mapped and allowed to reach the
+    // reorder because metadata needed will be filled as a part of the reorder.
+    const bool map_has_sparse_mem = has_sparse_md(mem_map);
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+            && !map_has_sparse_mem)
+        return OK;
 
     const auto &ref_engine = get_cpu_engine();
 
@@ -775,39 +855,66 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         auto wei_encoding = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
         const bool is_sparse_src = exec_arg == DNNL_ARG_SRC
                 && src_encoding != dnnl_sparse_encoding_undef;
-
         const bool is_sparse_wei = exec_arg == DNNL_ARG_WEIGHTS
                 && wei_encoding != dnnl_sparse_encoding_undef;
+        const bool is_sparse = is_sparse_src || is_sparse_wei;
         const bool is_sparse_wei_packed
                 = is_sparse_wei && wei_encoding == dnnl_packed;
 
-        if ((is_sparse_src || is_sparse_wei) && !is_sparse_wei_packed) {
+        // See the comment at the beginning of the function.
+        if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+                && !is_sparse)
+            continue;
+
+        if (is_sparse && !is_sparse_wei_packed) {
             if (is_sparse_src) {
                 auto src_fp_d = create_md(prb, SRC);
-                ref_mem_map.emplace(exec_arg, dnn_mem_t(src_fp_d, ref_engine));
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(src_fp_d, ref_engine, /* prefill = */ false));
             }
 
             if (is_sparse_wei) {
                 auto wei_fp_d = create_md(prb, WEI);
-                ref_mem_map.emplace(exec_arg, dnn_mem_t(wei_fp_d, ref_engine));
-            }
-        } else
-#endif
-        {
-            // Scratchpad memory relates to a primitive. If reference needs it,
-            // use switch below to define a memory desc for it.
-            if (exec_arg != DNNL_ARG_SCRATCHPAD) {
                 ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                        dnn_mem_t(wei_fp_d, ref_engine, /* prefill = */ false));
+            }
+        } else {
+            if (exec_arg == DNNL_ARG_WEIGHTS) {
+                // Switch the format tag from "ab" to "ba" but to handle batched
+                // cases, use strides instead.
+                const auto ndims = mem.ndims();
+                const auto &dims = mem.dims();
+                dnnl_dims_t strides {};
+                dnnl_dim_t stride = 1;
+                for (int d = ndims - 2; d >= 0; d--) {
+                    strides[d] = stride * dims[d + 1];
+                    stride = strides[d];
+                }
+                strides[ndims - 2] = 1;
+                strides[ndims - 1] = dims[ndims - 2];
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
+                                /* prefill = */ false));
+            } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+                // Scratchpad memory relates to a primitive. If reference needs
+                // it, use switch below to define a memory desc for it.
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                                /* prefill = */ false));
             }
         }
         auto &ref_mem = ref_mem_map[exec_arg];
+
+        // See the comment at the beginning of the function.
+        if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+                && is_sparse_wei_packed) {
+            ref_mem.map();
+        }
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
@@ -831,6 +938,11 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     }
                 }
             } break;
+            case DNNL_ARG_ATTR_DROPOUT_SEED: {
+                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
+                        /* prefill = */ false);
+                // No break to fall back into `default` call with initialization.
+            }
             default:
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),
@@ -868,6 +980,9 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
             if (res_copy.state == SKIPPED) {
                 v_prim[1].reset(nullptr);
                 SAFE(check_total_size(res), WARN);
+            } else {
+                // Copy estimations back to original `res`.
+                *res = res_copy;
             }
         } else {
             SAFE(check_total_size(res), WARN);
@@ -890,6 +1005,8 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = v_prim[0];
     const auto &prim_ref = v_prim[1];
 
@@ -904,7 +1021,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     SAFE(execute_and_wait(prim, args, res), WARN);
 
     check_correctness(prb, get_kinds_to_check(prb), args, ref_args, setup_cmp,
-            res, prim_ref);
+            res, prb->dir, prim_ref);
     SAFE(check_bitwise(prim, get_kinds_to_check(prb), args, prb->attr,
                  prb->inplace, res),
             WARN);

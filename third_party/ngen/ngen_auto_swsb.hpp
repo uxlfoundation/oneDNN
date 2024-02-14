@@ -21,11 +21,6 @@
 #ifndef NGEN_AUTO_SWSB_HPP
 #define NGEN_AUTO_SWSB_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
-
 #if defined(NGEN_DEBUG) || defined(NGEN_DEBUG_PROPAGATE) || defined(NGEN_DEBUG_BB)
 #include <iomanip>
 #include <iostream>
@@ -34,6 +29,8 @@
 #include <limits>
 #include <list>
 #include <map>
+
+#include "ngen_core.hpp"
 
 namespace NGEN_NAMESPACE {
 namespace autoswsb {
@@ -1712,12 +1709,18 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
     }
 
     // Case 2: walk forward, looking for a new target send instruction.
+    auto eligibleSend = [&](uint32_t inum) {
+        auto &insn = program[inum];
+        if (inum != dep.inum && insn.predicated())
+            return false;
+        return (sendClass == getPipe(hw, insn).sendClassXeHPC());
+    };
+
     if (adjust > 0) {
         for (pww.inumSrc = dep.inum + 1; pww.inumSrc < inum; pww.inumSrc++) {
-            if (sendClass != getPipe(hw, program[pww.inumSrc]).sendClassXeHPC())
-                continue;
+            if (!eligibleSend(pww.inumSrc)) continue;
             for (int srcN = 0; srcN <= 1; srcN++) {
-                auto &sr = bb.opRegions[dep.inum - bb.istart][srcN + 1];
+                auto &sr = bb.opRegions[pww.inumSrc - bb.istart][srcN + 1];
                 if (!sr.unspecified)
                     adjust -= sr.size;
             }
@@ -1733,8 +1736,7 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
     // Case 3: collect 2 GRFs worth of payload from this send class, walking backward.
     int ngrf = 0;
     for (int32_t iother = dep.inum; iother >= int32_t(bb.istart) && ngrf < 2; iother--) {
-        if (sendClass != getPipe(hw, program[iother]).sendClassXeHPC())
-            continue;
+        if (!eligibleSend(iother)) continue;
         for (int srcN = 0; srcN <= 1; srcN++) {
             auto &sr = bb.opRegions[iother - bb.istart][srcN + 1];
             if (sr.unspecified) continue;
@@ -2680,9 +2682,5 @@ inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program)
 // Program interface:
 // 	Instruction operator[](int inum);
 // 	size_t size() const;
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif
 
 #endif /* NGEN_AUTOSWSB_HPP */

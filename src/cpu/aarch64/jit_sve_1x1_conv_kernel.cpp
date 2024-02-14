@@ -36,7 +36,7 @@
 #include "cpu/aarch64/jit_uni_1x1_conv_utils.hpp"
 
 #define GET_OFF(field) \
-    static_cast<int32_t>(offsetof(jit_1x1_conv_call_s, field))
+    static_cast<int32_t>(offsetof(jit_1x1_conv_args_t, field))
 
 namespace dnnl {
 namespace impl {

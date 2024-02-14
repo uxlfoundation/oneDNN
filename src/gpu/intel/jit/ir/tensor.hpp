@@ -152,8 +152,8 @@ public:
     grid_info_t(dim_idx_t ndims) : dims_(ndims), offs_(ndims), idxs_(ndims) {}
     grid_info_t(const std::vector<dim_t> &dims, const std::vector<expr_t> &idxs)
         : grid_info_t(dims, {}, idxs) {}
-    grid_info_t(const std::vector<dim_t> &dims, const std::string &prefix)
-        : grid_info_t(dims, make_idxs(prefix, into<dim_idx_t>(dims.size()))) {}
+    grid_info_t(const std::vector<dim_t> &dims, std::string (*genname)(int))
+        : grid_info_t(dims, make_idxs(genname, into<dim_idx_t>(dims.size()))) {}
     grid_info_t(const std::vector<dim_t> &dims, const std::vector<dim_t> &offs,
             const std::vector<expr_t> &idxs)
         : dims_(dims), offs_(offs), idxs_(idxs) {
@@ -269,12 +269,11 @@ public:
     IR_DEFINE_DUMP()
 
 private:
-    static std::vector<expr_t> make_idxs(const std::string &prefix, int n) {
+    static std::vector<expr_t> make_idxs(std::string (*genname)(int), int n) {
         std::vector<expr_t> ret;
         ret.reserve(n);
         for (int i = 0; i < n; i++)
-            ret.push_back(
-                    var_t::make(type_t::s32(), prefix + std::to_string(i)));
+            ret.push_back(var_t::make(type_t::s32(), genname(i)));
         return ret;
     }
 
@@ -395,8 +394,8 @@ public:
             max_block_size
                     = std::max(max_block_size, b.block * (dim_t)b.stride);
         }
-        dim_t max_off_bytes = (max_off + 1) * type().size();
-        return std::max(max_off_bytes, max_block_size * type().size());
+        dim_t max_elems = std::max(max_off + 1, max_block_size);
+        return max_elems * type().size() / type().packing();
     }
 
     // Offset in bytes following the last accessible element.
@@ -408,7 +407,7 @@ public:
         }
         dim_t after_last = max_off + 1;
         if (!ignore_offset) after_last += expr_cast<dim_t>(offset_);
-        return after_last * type().size();
+        return after_last * type().size() / type().packing();
     }
 
     template <typename T = expr_t>
@@ -496,8 +495,8 @@ public:
     bool operator!=(const layout_t &other) const { return !operator==(other); }
     bool operator<=(const layout_t &other) const {
         if (!type_.is_equal(other.type_)) return false;
-        const auto other_blocks = other.normalize().blocks();
-        const auto self_blocks = normalize().blocks();
+        auto other_blocks = other.normalize().blocks();
+        auto self_blocks = normalize().blocks();
         if (self_blocks.size() > other_blocks.size()) return false;
         if (self_blocks.empty()) return true;
 
@@ -527,7 +526,7 @@ public:
     template <typename T = expr_t>
     T offset_in_bytes(
             const std::vector<T> &args = {}, bool ignore_offset = false) const {
-        return offset(args, ignore_offset) * type().size();
+        return offset(args, ignore_offset) * type().size() / type().packing();
     }
 
     std::string desc_str(bool dnnl_style = false) const {
@@ -1543,7 +1542,7 @@ public:
 
     expr_t offset_in_bytes(const std::vector<expr_t> &vargs = {},
             bool ignore_offset = false) const {
-        return offset(vargs, ignore_offset) * type().size();
+        return offset(vargs, ignore_offset) * type().size() / type().packing();
     }
 
     int get_alignment(const constraint_set_t &cset) const {

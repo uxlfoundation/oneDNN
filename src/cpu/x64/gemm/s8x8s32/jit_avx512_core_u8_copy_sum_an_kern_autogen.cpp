@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,10 +23,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx512_core_u8_copy_sum_an_kern::jit_avx512_core_u8_copy_sum_an_kern()
-    : jit_generator(jit_name()) {}
+jit_avx512_core_u8_copy_sum_an_kern_t::jit_avx512_core_u8_copy_sum_an_kern_t()
+    : jit_generator_t(jit_name()) {}
 
-void jit_avx512_core_u8_copy_sum_an_kern::generate() {
+void jit_avx512_core_u8_copy_sum_an_kern_t::generate() {
 
 #ifndef _WIN32
 #define M rdi

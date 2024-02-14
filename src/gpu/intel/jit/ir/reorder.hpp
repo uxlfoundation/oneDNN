@@ -19,6 +19,7 @@
 
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/reorder/normalization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,8 +33,10 @@ class reorder_t : public func_impl_t {
 public:
     IR_DECL_DERIVED_TYPE_ID(reorder_t, func_impl_t)
 
-    static func_t make(const layout_t &src_layout, const layout_t &dst_layout) {
-        return func_t(new reorder_t(src_layout, dst_layout));
+    static func_t make(layout_t src_layout, layout_t dst_layout) {
+        reorder::normalize(src_layout, dst_layout);
+        return func_t(
+                new reorder_t(std::move(src_layout), std::move(dst_layout)));
     }
 
     std::string str() const override {
@@ -49,10 +52,10 @@ public:
     layout_t dst_layout;
 
 private:
-    reorder_t(const layout_t &src_layout, const layout_t &dst_layout)
+    reorder_t(layout_t src_layout, layout_t dst_layout)
         : func_impl_t(_type_info())
-        , src_layout(src_layout)
-        , dst_layout(dst_layout) {}
+        , src_layout(std::move(src_layout))
+        , dst_layout(std::move(dst_layout)) {}
 };
 
 inline stmt_t create_reorder_stmt(const layout_t &src, const layout_t &dst,

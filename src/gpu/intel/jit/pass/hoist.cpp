@@ -83,6 +83,7 @@ public:
         if (!obj.func.is<send_t>()) return ir_mutator_t::_mutate(obj);
 
         std::vector<expr_t> new_args;
+        new_args.reserve(obj.args.size());
         for (auto &e : obj.args) {
             new_args.push_back(hoist_expr(e));
         }
@@ -120,7 +121,7 @@ public:
         bool fully_hoisted = false;
         expr_t new_value;
         bool is_const_let = is_const(obj.value) || is_shuffle_const(obj.value);
-        if (is_const_let && loops_.size() > 0 && can_hoist(obj.var)) {
+        if (is_const_let && !loops_.empty() && can_hoist(obj.var)) {
             fully_hoisted = true;
             register_let(obj.var, obj.value);
             add_hoist_let(loops_[0], obj.var, obj.value);
@@ -232,7 +233,7 @@ private:
                 return inv_var;
             }
 
-            other_args.push_back(inv_var);
+            other_args.push_back(std::move(inv_var));
             cur_expr = sum_expr_t::make_add(other_args, type);
         }
         return cur_expr.expr();
@@ -379,7 +380,7 @@ private:
         return loop_deps_.count(v) != 0;
     }
 
-    bool can_hoist(const expr_t &expr) {
+    bool can_hoist(const expr_t &expr) const {
         return expr.type().size() <= max_hoist_size_ - current_hoist_size_;
     }
 

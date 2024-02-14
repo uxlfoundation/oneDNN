@@ -34,7 +34,7 @@
 #include "cpu/x64/jit_avx512_common_1x1_conv_kernel.hpp"
 #include "cpu/x64/jit_uni_1x1_conv_utils.hpp"
 
-#define GET_OFF(field) offsetof(jit_1x1_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_1x1_conv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -47,10 +47,10 @@ using namespace dnnl::impl::utils;
 
 using namespace Xbyak;
 
-jit_avx512_common_1x1_conv_kernel::jit_avx512_common_1x1_conv_kernel(
+jit_avx512_common_1x1_conv_kernel_t::jit_avx512_common_1x1_conv_kernel_t(
         const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
-    : jit_generator(jit_name()), jcp(ajcp), attr_(attr) {
+    : jit_generator_t(jit_name()), jcp(ajcp), attr_(attr) {
     if (jcp.with_eltwise || jcp.with_binary) {
         using namespace binary_injector;
         static constexpr bool preserve_gpr = true;
@@ -73,7 +73,7 @@ jit_avx512_common_1x1_conv_kernel::jit_avx512_common_1x1_conv_kernel(
     }
 }
 
-void jit_avx512_common_1x1_conv_kernel::bcast_loop(int load_loop_blk) {
+void jit_avx512_common_1x1_conv_kernel_t::bcast_loop(int load_loop_blk) {
     mov(aux1_reg_bcast_data, EVEX_compress_addr(rsp, reg_bcast_data_off));
     mov(aux_reg_bcast_data, EVEX_compress_addr(rsp, reg_bcast_data_off));
 
@@ -130,7 +130,7 @@ void jit_avx512_common_1x1_conv_kernel::bcast_loop(int load_loop_blk) {
     }
 }
 
-Address jit_avx512_common_1x1_conv_kernel::output_ptr(
+Address jit_avx512_common_1x1_conv_kernel_t::output_ptr(
         const bool is_out_layout_nxc, const int i_load, const int i_ur) {
     if (one_of(jcp.prop_kind, forward_training, forward_inference,
                 backward_data)) {
@@ -167,7 +167,7 @@ static void iterate(const int load_loop_blk, const int ur, const F &fun) {
     iterate(load_loop_blk, ur, false, fun);
 }
 
-void jit_avx512_common_1x1_conv_kernel::apply_postops(
+void jit_avx512_common_1x1_conv_kernel_t::apply_postops(
         const bool is_out_layout_nxc, const int load_loop_blk, const int ur) {
     injector_utils::vmm_index_set_t vmm_idxs;
     if (jcp.with_binary) {
@@ -209,7 +209,7 @@ void jit_avx512_common_1x1_conv_kernel::apply_postops(
     }
 }
 
-void jit_avx512_common_1x1_conv_kernel::reduce_loop(
+void jit_avx512_common_1x1_conv_kernel_t::reduce_loop(
         int load_loop_blk, int ur, int substep, bool wraparound) {
     const bool out_layout_nxc = is_out_layout_nxc(jcp);
     const bool load_layout_nxc = is_load_layout_nxc(jcp);
@@ -339,7 +339,7 @@ void jit_avx512_common_1x1_conv_kernel::reduce_loop(
         };
 
         Label unaligned_store, end_store;
-        test(aux_reg_output_data, cpu_isa_traits<avx512_core>::vlen - 1);
+        test(aux_reg_output_data, cpu_isa_traits_t<avx512_core>::vlen - 1);
         jnz(unaligned_store, T_NEAR);
         store_output(true);
         jmp(end_store, T_NEAR);
@@ -406,7 +406,7 @@ void jit_avx512_common_1x1_conv_kernel::reduce_loop(
     store();
 }
 
-void jit_avx512_common_1x1_conv_kernel::generate() {
+void jit_avx512_common_1x1_conv_kernel_t::generate() {
     preamble();
 
     sub(rsp, stack_space_needed);
@@ -556,20 +556,26 @@ void jit_avx512_common_1x1_conv_kernel::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 }
 
-status_t jit_avx512_common_1x1_conv_kernel::init_conf(jit_1x1_conv_conf_t &jcp,
-        const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
-        const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
-        const primitive_attr_t &attr, int nthreads, bool reduce_src) {
+status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
+        jit_1x1_conv_conf_t &jcp, const convolution_desc_t &cd,
+        const memory_desc_wrapper &src_d, const memory_desc_wrapper &weights_d,
+        const memory_desc_wrapper &dst_d, const primitive_attr_t &attr,
+        int nthreads, bool reduce_src) {
     if (!mayiuse(avx512_core)) return status::unimplemented;
 
     if (!everyone_is(data_type::f32, src_d.data_type(), weights_d.data_type(),
                 dst_d.data_type()))
         return status::unimplemented;
 
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
+
     jcp.nthr = nthreads;
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-    const int simd_w = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    const int simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     const int ndims = src_d.ndims();
 
     jcp.prop_kind = cd.prop_kind;
@@ -656,9 +662,16 @@ status_t jit_avx512_common_1x1_conv_kernel::init_conf(jit_1x1_conv_conf_t &jcp,
     static constexpr bool sum_at_pos_0_only = true;
     static constexpr bool sum_requires_scale_one = true;
     static constexpr bool sum_requires_zp_zero = true;
-    const bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
+    bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
             {eltwise, binary, sum}, jcp.post_ops, &dst_d, sum_at_pos_0_only,
             sum_requires_scale_one, sum_requires_zp_zero));
+    // temporary workaround that skips avx512 implementation for ternary
+    // post-ops with scalar broadcasting to avoid register collisions.
+    post_ops_ok_ = post_ops_ok_
+            && IMPLICATION(jcp.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    post_ops, dst_d));
     if (!post_ops_ok_) return status::unimplemented;
 
     bool args_ok = true && jcp.ngroups == 1 && jcp.src_tag == required_dat_tag
@@ -1134,7 +1147,7 @@ status_t jit_avx512_common_1x1_conv_kernel::init_conf(jit_1x1_conv_conf_t &jcp,
     return status::success;
 }
 
-void jit_avx512_common_1x1_conv_kernel::init_scratchpad(
+void jit_avx512_common_1x1_conv_kernel_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad,
         const jit_1x1_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;
@@ -1164,7 +1177,7 @@ void jit_avx512_common_1x1_conv_kernel::init_scratchpad(
     }
 }
 
-void jit_avx512_common_1x1_conv_kernel::balance(jit_1x1_conv_conf_t &jcp) {
+void jit_avx512_common_1x1_conv_kernel_t::balance(jit_1x1_conv_conf_t &jcp) {
     int nthreads = jcp.nthr;
     // initialize jcp reduction threading properties
     jcp.nthr = jcp.nthr_mb = jcp.nthr_g = jcp.nthr_oc_b = jcp.nthr_ic_b = 1;

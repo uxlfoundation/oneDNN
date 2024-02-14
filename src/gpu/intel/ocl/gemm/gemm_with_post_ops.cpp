@@ -27,12 +27,10 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
 
     const auto &d = desc();
-    const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales_runtime
-            | primitive_attr_t::skip_mask_t::scales_runtime_data_type
+    const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales_data_type
             | primitive_attr_t::skip_mask_t::post_ops
             | primitive_attr_t::skip_mask_t::fpmath_mode
-            | primitive_attr_t::skip_mask_t::zero_points_runtime
-            | primitive_attr_t::skip_mask_t::zero_points_runtime_data_type;
+            | primitive_attr_t::skip_mask_t::zero_points_data_type;
 
     bool wei_decomp = (utils::one_of(d->c_type(), f32, f16, bf16)
                               && utils::one_of(d->a_type(), u8, s8, u4, s4)
@@ -58,6 +56,11 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             VDISPATCH_GEMM((mask == 0), VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
     attr_info_ = attr_info_t::create(attributes_with_po);
+
+    const auto &po = attributes_with_po->post_ops_;
+    for (auto i = 0; i < po.len(); ++i)
+        VDISPATCH_GEMM(!po.entry_[i].is_binary_with_ternary_op(),
+                VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_GEMM(d->sum_ab == sum_ab::sum_none, VERBOSE_UNSUPPORTED_FEATURE,
             "bias reduction");
@@ -90,7 +93,7 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     auto skip_impl = is_xe_hp ? "ocl" : "ref";
     VDISPATCH_GEMM(
             !(gemm_pd_ && strstr(gemm_pd_->name(), skip_impl) == nullptr),
-            VERBOSE_PRIMITIVE_CREATION_FAIL, gemm_pd_->name());
+            VERBOSE_SKIP_PRIMITIVE_IMPL);
     auto gemm_desc = *desc();
     auto dst_type = gemm_desc.c_desc.data_type;
     gemm_desc.c_desc.data_type = engine->mayiuse_f16_accumulator_with_f16()

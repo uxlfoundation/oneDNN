@@ -111,7 +111,8 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
     } else {
         jcp.LDB = jcp.ic_block;
         const bool no_vnni_format = jcp.wei_dt == f32
-                || (jcp.wei_dt == f16 && jcp.isa == avx512_core_fp16);
+                || (jcp.wei_dt == f16 && jcp.isa == avx512_core_fp16)
+                || jcp.is_f32_bf16 || jcp.is_f32_f16;
         if (jcp.ic_block == 64) {
             if (is_3d) {
                 if (no_vnni_format)
@@ -588,18 +589,18 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     const float alpha = 1.0;
     const float beta = 0.0;
     brgemm_desc_t brg;
-    brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
+    CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
-            is_bf32);
+            is_bf32, is_tf32));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     ur = brg.bd_block * (is_amx(isa) ? brg.bd_block2 : 1);
     if (ur == 0) return status::invalid_arguments;
     ur_block = brg.bd_block;
     if (is_1x1 && is_amx(isa) && M > 0 && M_tail > 0) {
         brgemm_desc_t brg_sp_tail;
-        brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr, src_dt,
-                wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC, M_tail,
-                vN, vK, nullptr, is_bf32);
+        CHECK(brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr,
+                src_dt, wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC,
+                M_tail, vN, vK, nullptr, is_bf32, is_tf32));
         CHECK(brgemm_utils::brgemm_blocking(&brg_sp_tail));
         ur_block_tail = brg_sp_tail.bd_block;
     } else {
@@ -644,9 +645,10 @@ status_t brg_blocking_t::get_brgemm_ur(
                     const auto strides_ptr = (brg_type == brgemm_strd)
                             ? &brg_strides
                             : nullptr;
-                    brgemm_utils::init_brgemm_conf(&brg, isa, brg_type, src_dt,
-                            wei_dt, brgemm_row_major, alpha, vbeta, LDA, LDB,
-                            LDC, vM, vN, vK, strides_ptr, is_bf32);
+                    CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brg_type,
+                            src_dt, wei_dt, brgemm_row_major, alpha, vbeta, LDA,
+                            LDB, LDC, vM, vN, vK, strides_ptr, is_bf32,
+                            is_tf32));
                     CHECK(brgemm_utils::brgemm_blocking(&brg));
 
                     brgemm_attr_t brgattr;
@@ -1414,6 +1416,11 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const memory_desc_wrapper diff_src_d(&diff_src_md);
     const memory_desc_wrapper bias_d(&bias_md);
 
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, diff_src_d, weights_d, diff_dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
+
     const bool with_groups = weights_d.ndims() == diff_src_d.ndims() + 1;
     int ndims = diff_src_d.ndims();
 
@@ -1496,11 +1503,20 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.is_bf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
             && isa == avx512_core_amx;
+    jcp.is_f32_bf16
+            = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == bf16;
+    jcp.is_f32_f16
+            = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == f16;
+    jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
+            && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
+            && is_superset(isa, avx10_2_512_amx_2);
 
     VDISPATCH_CONV_IC(!jcp.is_bf32, VERBOSE_UNSUPPORTED_DT);
 
-    const data_type_t last_oc_block_dt = get_mac_emu_data_type(
-            jcp.wei_dt, isa, isa == avx512_core_fp16 && !jcp.is_fp8_convert);
+    const auto wei_dt
+            = jcp.is_f32_f16 || jcp.is_f32_bf16 ? jcp.src_dt : jcp.wei_dt;
+    const data_type_t last_oc_block_dt
+            = get_mac_emu_data_type(wei_dt, isa, isa == avx512_core_fp16);
     jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc
@@ -1591,17 +1607,26 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                             || one_of(jcp.isa, avx2_vnni, avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
 
-    VDISPATCH_CONV_IC(IMPLICATION(jcp.wei_dt == bf16,
+    VDISPATCH_CONV_IC(IMPLICATION(jcp.wei_dt == bf16 && !jcp.is_f32_bf16,
                               is_superset(jcp.isa, avx512_core_bf16)
                                       || is_superset(jcp.isa, avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
 
-    VDISPATCH_CONV_IC(IMPLICATION(jcp.wei_dt == f16,
+    VDISPATCH_CONV_IC(IMPLICATION(jcp.wei_dt == f16 && !jcp.is_f32_f16,
                               is_superset(jcp.isa, avx512_core_fp16)
                                       || is_superset(jcp.isa, avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
 
-    VDISPATCH_CONV_IC(IMPLICATION(is_f32, one_of(isa, avx512_core, avx2)),
+    VDISPATCH_CONV_IC(
+            IMPLICATION(is_f32, one_of(isa, avx512_core, avx2) || jcp.is_tf32),
+            VERBOSE_ISA_DT_MISMATCH);
+
+    VDISPATCH_CONV_IC(
+            IMPLICATION(jcp.is_f32_bf16, one_of(isa, avx512_core, avx2)),
+            VERBOSE_ISA_DT_MISMATCH);
+
+    VDISPATCH_CONV_IC(
+            IMPLICATION(jcp.is_f32_f16, one_of(isa, avx512_core, avx2)),
             VERBOSE_ISA_DT_MISMATCH);
 
     jcp.amx_h = 16;

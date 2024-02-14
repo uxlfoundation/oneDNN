@@ -60,6 +60,14 @@ component:api:
 - changed-files:
   - any-glob-to-any-file: 'include/**'
 
+component:common:
+- changed-files:
+  - any-glob-to-any-file:
+    - 'src/common/**'
+    - 'src/cpu/*'
+    - 'src/gpu/*'
+    - 'src/xpu/**'
+
 component:graph-api:
 - changed-files:
   - any-glob-to-any-file:
@@ -67,6 +75,11 @@ component:graph-api:
     - 'tests/benchdnn/graph/**'
     - 'tests/gtests/graph/**'
     - 'doc/graph/**'
+
+third_party:
+- changed-files:
+  - any-glob-to-any-file:
+    - 'third_party/**'
 
 # CPU Engine
 platform:cpu-aarch64:

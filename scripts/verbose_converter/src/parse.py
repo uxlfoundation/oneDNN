@@ -261,34 +261,34 @@ class ParserImpl:
         )
 
     def parse_attrs(self, attrs):
-        parsed = {}
+        exts = ir.Attributes()
         for attr in attrs.split():
             spec = ParseSpec(attr)
             name, args = spec.read_str(), ""
             if spec.read_literal(":"):
                 args = spec.buf
-            if name == "attr-acc-mode":
-                parsed[name] = self.parse_acc_mode(args)
+            if name in ("attr-acc-mode", "attr-acc"):
+                exts.acc_mode = self.parse_acc_mode(args)
             elif name == "attr-deterministic":
-                parsed[name] = self.parse_deterministic(args)
+                exts.deterministic = self.parse_deterministic(args)
             elif name == "attr-dropout":
-                parsed[name] = self.parse_dropout(args)
+                exts.dropout = self.parse_dropout(args)
             elif name == "attr-fpmath":
-                parsed[name] = self.parse_fpmath_mode(args)
+                exts.fpmath = self.parse_fpmath_mode(args)
             # Kept for compatibility with v2.7 and below.
             elif name == "attr-oscale":
-                parsed[name] = self.parse_oscale(args)
+                exts.oscale = self.parse_oscale(args)
             elif name == "attr-post-ops":
-                parsed[name] = self.parse_post_ops(args)
+                exts.post_ops = self.parse_post_ops(args)
             elif name == "attr-rounding-mode":
-                parsed[name] = self.parse_rounding_modes(args)
+                exts.rounding_mode = self.parse_rounding_modes(args)
             elif name == "attr-scales":
-                parsed[name] = self.parse_scales(args)
+                exts.scales = self.parse_scales(args)
             elif name == "attr-scratchpad":
-                parsed[name] = self.parse_scratchpad_mode(args)
+                exts.scratchpad = self.parse_scratchpad_mode(args)
             elif name == "attr-zero-points":
-                parsed[name] = self.parse_zero_points(args)
-        return ir.Attributes(parsed)
+                exts.zero_points = self.parse_zero_points(args)
+        return exts
 
     def parse_post_ops(self, post_ops: str):
         spec = ParseSpec(post_ops)
@@ -303,6 +303,8 @@ class ParserImpl:
                 parsed.append(self.parse_prelu_post_op(spec))
             elif alg.startswith("eltwise_"):
                 parsed.append(self.parse_eltwise_post_op(spec, alg))
+            elif alg == "binary_select":
+                parsed.append(self.parse_select_post_op(spec))
             elif alg.startswith("binary_"):
                 parsed.append(self.parse_binary_post_op(spec, alg))
             else:
@@ -355,6 +357,19 @@ class ParserImpl:
             post_op.beta = spec.read_float()
         if spec.read_literal(":"):
             post_op.scale = spec.read_float()
+        return post_op
+
+    @staticmethod
+    def parse_select_post_op(spec) -> ir.SelectPostOp:
+        if not spec.read_literal(":"):
+            raise ParseError("Expected src1 data type for select post-op")
+        dt = spec.read_str()
+        post_op = ir.SelectPostOp(dt=dt)
+        spec.read_literal(":")
+        post_op.mask = spec.read_uint()
+        if spec.read_literal(":"):
+            post_op.tag = spec.read_str()
+        # benchdnn can't do anything with src2 info yet.
         return post_op
 
     @staticmethod

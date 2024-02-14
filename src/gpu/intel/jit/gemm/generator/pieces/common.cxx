@@ -451,10 +451,8 @@ GRFRange BLASKernelGenerator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister p
 template <HW hw>
 void BLASKernelGenerator<hw>::zeroMatrix(const GRFMultirange &r, const CommonStrategy &strategy)
 {
-    int i = 0;
     map<uint32_t>(hw, r, r, strategy, [&](int esize, GRF reg, GRF _) {
-        (i++ & 1) ? mov(esize, reg.f(), 0.f)
-	          : mov(esize, reg, 0);
+        mov(esize, reg, uint16_t(0));
     });
 }
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -331,7 +331,7 @@ void jit_uni_cvt_xf16_to_ps_t<isa>::convert_xf16(
 
 template <typename Wmm>
 struct helper_avx2_cvt_xf16_t {
-    static void convert_xf16(jit_generator *host,
+    static void convert_xf16(jit_generator_t *host,
             const impl::data_type_t input_dt, const Xbyak::Address in_addr,
             const int even_src, const int odd_src, const int tmp_1,
             const int tmp_2) {

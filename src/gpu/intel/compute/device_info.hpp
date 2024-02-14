@@ -22,7 +22,7 @@
 #include <string.h>
 
 #include "common/c_types_map.hpp"
-#include "common/serialization_stream.hpp"
+#include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "common/z_magic.hpp"
 
@@ -49,9 +49,6 @@ enum class gpu_arch_t {
 #if XE3P
     xe3p,
 #endif
-#if XE4
-    xe4,
-#endif
 };
 
 static inline std::string to_string(gpu_arch_t arch) {
@@ -67,9 +64,6 @@ static inline std::string to_string(gpu_arch_t arch) {
     CASE(xe3);
 #if XE3P
     CASE(xe3p);
-#endif
-#if XE4
-    CASE(xe4);
 #endif
     return "unknown";
 #undef CASE
@@ -89,9 +83,6 @@ static inline gpu_arch_t str2gpu_arch(const char *str) {
     CASE(xe3);
 #if XE3P
     CASE(xe3p);
-#endif
-#if XE4
-    CASE(xe4);
 #endif
     return gpu_arch_t::unknown;
 #undef CASE

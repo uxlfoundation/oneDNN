@@ -202,7 +202,9 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_data_to_stack(
             = tail_proc == tail_mode::NextTail ? this->vlen_ : 0;
     static constexpr int tail_dst_stack_offset = zmm_size;
     this->load_tail(C_tail, this->src_, tail_src_mem_offset,
-            tail_dst_stack_offset, this->tmp_load_to_stack_idx_tail_);
+            tail_dst_stack_offset,
+            jit_avx512_common_lrn_kernel_fwd_nhwc_t<
+                    d_type>::tmp_load_to_stack_idx_tail_);
 }
 
 template <data_type_t d_type>

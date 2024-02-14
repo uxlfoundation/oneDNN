@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,10 +32,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_dw_conv_fwd_kernel_bf16 : public jit_generator {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_fwd_kernel_bf16)
+struct jit_avx512_dw_conv_fwd_kernel_bf16_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_fwd_kernel_bf16_t)
 
-    jit_avx512_dw_conv_fwd_kernel_bf16(
+    jit_avx512_dw_conv_fwd_kernel_bf16_t(
             const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md);
 
     jit_conv_conf_t jcp;
@@ -87,12 +87,12 @@ private:
 
     Xbyak::Zmm get_acc_reg(int idx);
 
-    int get_ow_start(int ki, int pad_l) {
+    int get_ow_start(int ki, int pad_l) const {
         return nstl::max(0,
                 utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
     }
 
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    int get_ow_end(int ur_w, int ki, int pad_r) const {
         return ur_w
                 - nstl::max(0,
                         utils::div_up(
@@ -100,12 +100,12 @@ private:
                                 jcp.stride_w));
     }
 
-    inline bool is_src_layout_nxc() {
+    inline bool is_src_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
 
-    inline bool is_dst_layout_nxc() {
+    inline bool is_dst_layout_nxc() const {
         return utils::one_of(jcp.dst_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
@@ -127,18 +127,19 @@ private:
     void generate() override;
 };
 
-struct jit_avx512_dw_conv_bwd_data_kernel_bf16 : public jit_generator {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_data_kernel_bf16)
+struct jit_avx512_dw_conv_bwd_data_kernel_bf16_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_data_kernel_bf16_t)
 
-    jit_avx512_dw_conv_bwd_data_kernel_bf16(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
+    jit_avx512_dw_conv_bwd_data_kernel_bf16_t(const jit_conv_conf_t &ajcp)
+        : jit_generator_t(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
 
         if (!isa_has_bf16(jcp.isa))
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
                     bf16_emu_reserv_1, bf16_emu_reserv_2, bf16_emu_reserv_3,
                     bf16_emu_reserv_4, bf16_emu_reserv_5, bf16_emu_reserv_6);
     }
-    ~jit_avx512_dw_conv_bwd_data_kernel_bf16() = default;
+
+    ~jit_avx512_dw_conv_bwd_data_kernel_bf16_t() override = default;
 
     jit_conv_conf_t jcp;
 
@@ -146,12 +147,12 @@ private:
     using reg64_t = const Xbyak::Reg64;
 
     const int acc_idx_start = 2;
-    inline int get_max_regs() { return isa_has_bf16(jcp.isa) ? 30 : 25; };
+    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; };
 
     Xbyak::Zmm zmm_ker_reg = Xbyak::Zmm(0);
     Xbyak::Zmm zmm_dst_reg = Xbyak::Zmm(1);
 
-    inline Xbyak::Zmm get_acc_reg(int idx) {
+    inline Xbyak::Zmm get_acc_reg(int idx) const {
         assert(idx + acc_idx_start <= get_max_regs());
         return Xbyak::Zmm(idx + acc_idx_start);
     }
@@ -192,31 +193,32 @@ private:
     inline void store_dsrc(int ur_ch_blocks, int ur_str_w, bool is_last_ch);
 
     void generate() override;
-    inline bool is_dsrc_layout_nxc() {
+    inline bool is_dsrc_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
-    inline bool is_ddst_layout_nxc() {
+    inline bool is_ddst_layout_nxc() const {
         return utils::one_of(jcp.dst_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_data_kernel_bf16);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_data_kernel_bf16_t);
 };
 
-struct jit_avx512_dw_conv_bwd_weights_kernel_bf16 : public jit_generator {
+struct jit_avx512_dw_conv_bwd_weights_kernel_bf16_t : public jit_generator_t {
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_weights_kernel_bf16)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_weights_kernel_bf16_t)
 
-    jit_avx512_dw_conv_bwd_weights_kernel_bf16(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
+    jit_avx512_dw_conv_bwd_weights_kernel_bf16_t(const jit_conv_conf_t &ajcp)
+        : jit_generator_t(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
 
         if (!isa_has_bf16(jcp.isa))
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
                     bf16_emu_reserv_1, bf16_emu_reserv_2, bf16_emu_reserv_3,
                     bf16_emu_reserv_4, bf16_emu_reserv_5, bf16_emu_reserv_6);
     }
-    ~jit_avx512_dw_conv_bwd_weights_kernel_bf16() = default;
+
+    ~jit_avx512_dw_conv_bwd_weights_kernel_bf16_t() override = default;
 
     jit_conv_conf_t jcp;
 
@@ -235,11 +237,11 @@ private:
     Xbyak::Zmm zmm_bias_reg = Xbyak::Zmm(0);
     Xbyak::Zmm zmm_out_reg = Xbyak::Zmm(1);
 
-    inline Xbyak::Zmm get_acc_reg(int idx) {
+    inline Xbyak::Zmm get_acc_reg(int idx) const {
         assert(idx + idx_start <= get_max_regs());
         return Xbyak::Zmm(idx + idx_start);
     }
-    inline Xbyak::Zmm get_input_reg(int idx) {
+    inline Xbyak::Zmm get_input_reg(int idx) const {
         const int i_idx = idx_start + jcp.kw + idx % jcp.kw;
         assert(i_idx <= get_max_regs());
         return Xbyak::Zmm(i_idx);
@@ -278,7 +280,7 @@ private:
 
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_weights_kernel_bf16)
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_weights_kernel_bf16_t)
 
     /* Micro-kernel JIT'ing, fusing 'kw' and 'ow_block' loops into unrolled FMAs
      */
@@ -315,15 +317,15 @@ private:
 
     void generate() override;
 
-    inline bool is_layout_nxc() {
+    inline bool is_layout_nxc() const {
         return utils::everyone_is(
                 true, is_src_layout_nxc(), is_ddst_layout_nxc());
     }
-    inline bool is_src_layout_nxc() {
+    inline bool is_src_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
-    inline bool is_ddst_layout_nxc() {
+    inline bool is_ddst_layout_nxc() const {
         return utils::one_of(jcp.dst_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
@@ -334,4 +336,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif /* JIT_UNI_DW_CONV_KERNEL_BF16_HPP */
+#endif // CPU_X64_JIT_AVX512_CORE_BF16_DW_CONV_KERNEL_HPP

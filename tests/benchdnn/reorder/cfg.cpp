@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,21 +31,22 @@ const float f16_max_exact = 1 << 11;
 const float f4_max_exact = 1 << 3;
 
 #define REG(dt, min, max) \
-    const dt_conf_s CONCAT2(_conf_, dt) = {CONCAT2(dnnl_, dt), min, max}; \
-    const dt_conf_t CONCAT2(conf_, dt) = &CONCAT2(_conf_, dt);
+    const dt_conf_t CONCAT2(_conf_, dt) = {CONCAT2(dnnl_, dt), min, max}; \
+    const dt_conf_t *CONCAT2(conf_, dt) = &CONCAT2(_conf_, dt);
 
 REG(f32, -int_max_exact, int_max_exact);
 REG(f64, -int_max_exact, int_max_exact);
 REG(f16, -f16_max_exact, f16_max_exact);
 REG(bf16, -int_max_exact, int_max_exact);
 REG(f8_e5m2, -f16_max_exact, f16_max_exact);
-REG(f8_e4m3, -f16_max_exact, f16_max_exact);
+REG(f8_e4m3, -127.f, 127.f);
 REG(f4_e2m1, -f16_max_exact, f16_max_exact);
 REG(f4_e3m0, -f4_max_exact, f4_max_exact);
-// Do not exceed max float value representable in integer. Otherwise, we get
-// a correctness issue caused by different computations in reference and the
-// library.
-REG(s32, INT_MIN, BENCHDNN_S32_TO_F32_SAT_CONST);
+// Do not exceed min/max float value representable in integer. Otherwise, we get
+// a correctness issue caused by different computations or roudings in the naive
+// reference and the library. One of those can be zero-point subtracting which
+// leads to underflow or overflow.
+REG(s32, -BENCHDNN_S32_TO_F32_SAT_CONST, BENCHDNN_S32_TO_F32_SAT_CONST);
 REG(s8, INT8_MIN, INT8_MAX);
 REG(u8, 0, UINT8_MAX);
 REG(s4, -7, 8);
@@ -53,7 +54,7 @@ REG(u4, 0, 15);
 
 #undef REG
 
-dt_conf_t dt2cfg(dnnl_data_type_t dt) {
+const dt_conf_t *dt2cfg(dnnl_data_type_t dt) {
 #define CASE(cfg) \
     if (CONCAT2(dnnl_, cfg) == dt) return CONCAT2(conf_, cfg)
     CASE(f32);
@@ -74,7 +75,7 @@ dt_conf_t dt2cfg(dnnl_data_type_t dt) {
     return conf_f32;
 }
 
-dnnl_data_type_t cfg2dt(dt_conf_t cfg) {
+dnnl_data_type_t cfg2dt(const dt_conf_t *cfg) {
 #define CASE(_cfg) \
     if (cfg == CONCAT2(conf_, _cfg)) return CONCAT2(dnnl_, _cfg)
     CASE(f32);

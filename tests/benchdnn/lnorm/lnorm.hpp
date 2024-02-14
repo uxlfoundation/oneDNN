@@ -41,16 +41,12 @@ const flags_t NONE = bnorm::NONE;
 const flags_t GLOB_STATS = bnorm::GLOB_STATS;
 const flags_t USE_SCALE = bnorm::USE_SCALE;
 const flags_t USE_SHIFT = bnorm::USE_SHIFT;
+const flags_t USE_RMS_NORM = bnorm::USE_RMS_NORM;
 const auto flags2str = bnorm::flags2str;
 flags_t str2flags(const char *str);
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_dims_t prb_dims;
 
@@ -104,19 +100,19 @@ struct prb_t : public prb_dims_t {
         , attr(attr)
         , ctx_init(ctx_init)
         , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
-        n = 1;
+        , impl_filter(impl_filter)
+        , n(1)
+        , c(dims[ndims - 1])
+        , eps(1.f / 16) {
         for (int d = 0; d < ndims - 1; d++)
             n *= dims[d];
-        c = dims[ndims - 1];
-        eps = 1.f / 16;
 
         // Broadcast data types if needed
         if (dt.size() == 1) {
             const auto val = dt[0]; // Need a copy here.
             this->dt.assign(2, val);
         }
-        if (tag.size() == 1) { this->tag.push_back(tag::any); }
+        if (tag.size() == 1) { this->tag.emplace_back(tag::any); }
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
 
@@ -137,6 +133,7 @@ struct prb_t : public prb_dims_t {
     bool use_stats() const { return flags & GLOB_STATS; }
     bool use_sc() const { return flags & USE_SCALE; }
     bool use_sh() const { return flags & USE_SHIFT; }
+    bool skip_mean() const { return flags & USE_RMS_NORM; }
 
     // Used to construct memory desc when dimensions are runtime since such mds
     // can't be used directly from query and memory objects can't be constructed.
@@ -260,7 +257,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);
-void compute_ref(const prb_t *prb, const args_t &args,
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,

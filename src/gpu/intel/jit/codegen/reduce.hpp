@@ -20,7 +20,7 @@
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/codegen/reorder.hpp"
 #include "gpu/intel/jit/ir/reduce.hpp"
-#include "ngen/ngen.hpp"
+#include "ngen.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -54,11 +54,16 @@ public:
         tensor_t tile = find_1d_tile(src_layout_, dst_layout_);
         int tile_elems = (int)tile.elems();
         auto src_tile_layout = src_layout_.map(tile);
-        auto src_tile_blocks = src_tile_layout.blocks();
+        auto dst_tile_layout = dst_layout_.map(tile);
+        const auto &src_tile_blocks = src_tile_layout.blocks();
+        const auto &dst_tile_blocks = dst_tile_layout.blocks();
         gpu_assert(src_tile_blocks.size() <= 1);
+        gpu_assert(dst_tile_blocks.size() <= 1);
         ngen_register_scope_t block_scope(scope.register_allocator());
         int src_stride
                 = src_tile_blocks.empty() ? 1 : (int)src_tile_blocks[0].stride;
+        int dst_stride
+                = dst_tile_blocks.empty() ? 1 : (int)dst_tile_blocks[0].stride;
         int grf_size = ngen::GRF::bytes(hw_);
         src_layout_.for_each_tile(
                 tile, [&](const std::vector<dim_t> &src_start) {
@@ -68,8 +73,8 @@ public:
                     for (dim_idx_t i = 0; i < dst_layout_.ndims(); i++) {
                         if (dst_layout_.dims()[i] == 1) dst_start[i] = 0;
                     }
-                    int src_off = int(src_layout_(src_start) * src_type.size());
-                    int dst_off = int(dst_layout_(dst_start) * dst_type.size());
+                    int src_off = src_layout_(src_start);
+                    int dst_off = dst_layout_(dst_start);
 
                     if (is_inplace) {
                         bool same_src_dst = (dst_off == src_off);
@@ -82,9 +87,9 @@ public:
                     }
 
                     auto d = dst_rd.format(
-                            dst_off, to_ngen(dst_type), tile_elems, 1);
+                            dst_off, tile_elems, 1, to_ngen(dst_type));
                     auto s = src_rd.format(
-                            src_off, to_ngen(src_type), tile_elems, src_stride);
+                            src_off, tile_elems, src_stride, to_ngen(src_type));
                     bool s_half_grf_aligned
                             = utils::one_of(s.byte_offset(), 0, grf_size / 2);
                     bool s_is_bf = src_type.is_bf16();
@@ -92,8 +97,11 @@ public:
                     bool s_is_fp8 = src_type.is_fp8();
                     bool d_is_f = dst_type.is_f32();
                     bool native_bf = host->exec_cfg().hw().systolic_support();
+                    bool sd_aligned = (tile_elems == 1
+                            || (dst_stride * ngen::getBytes(d.type())
+                                    == src_stride * ngen::getBytes(s.type())));
 
-                    if (src_stride != 1 || s_is_hf || s_is_fp8
+                    if (src_stride != 1 || !sd_aligned || s_is_hf || s_is_fp8
                             || (s_is_bf && !native_bf)
                             || (s_is_bf && !s_half_grf_aligned)) {
                         auto tmp_type = src_type;
@@ -107,7 +115,7 @@ public:
                                 tmp_type.with_elems(tile_elems));
                         emit_reorder_1d_tile(hw_, host, tile_scope, tile_elems,
                                 s, src_stride, tmp, 1);
-                        s = tmp.format(0, to_ngen(tmp_type), tile_elems, 1);
+                        s = tmp.format(0, tile_elems, 1, to_ngen(tmp_type));
                     }
                     align_src_dst_offset(host, tile_scope, tile_elems, d, s);
                     host->add(tile_elems, d.reg_data(), d.reg_data(),
@@ -133,7 +141,7 @@ private:
                 auto a_blocks = a.blocks();
                 a_blocks.erase(a_blocks.begin());
                 a = layout_t(a.type(), a.ndims(), 0, a_blocks);
-                return find_1d_tile(a, b);
+                return find_1d_tile(std::move(a), std::move(b));
             }
             return tensor_t(std::vector<dim_t>(b.ndims(), 1));
         }

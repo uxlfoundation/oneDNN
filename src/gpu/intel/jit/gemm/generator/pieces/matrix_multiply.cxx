@@ -807,16 +807,16 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
             std::array<int, 2> scaleStride = {0, 0};
             int nscale = 0;
             if (scaleA && !doBSum) {
-                int js = ((jr + h) / problem.aqGroupK) % state.kaqLate;
+                int hs = (h / problem.aqGroupK) % state.kaqLate;
                 scale[nscale] = findBlockReg(state.Ta_scaleInt, state.Ar_scaleLayout,
-                                             i, js, state.Ar_scaleRegs, nes[0], sblock);
+                                             i, hs, state.Ar_scaleRegs, nes[nscale], sblock);
                 scaleStride[nscale] = globalCM ? 1 : 0;
                 nscale++;
             }
             if (scaleB && !doASum) {
-                int is = ((ir + h) / problem.bqGroupK) % state.kbqLate;
+                int hs = (h / problem.bqGroupK) % state.kbqLate;
                 scale[nscale] = findBlockReg(state.Tb_scaleInt, state.Br_scaleLayout,
-                                             is, j, state.Br_scaleRegs, nes[1], sblock);
+                                             hs, j, state.Br_scaleRegs, nes[nscale], sblock);
                 scaleStride[nscale] = globalCM ? 0 : 1;
                 nscale++;
             }

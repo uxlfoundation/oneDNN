@@ -117,7 +117,7 @@ class idiv_fixup_mutator_t : public ir_mutator_t {
 public:
     idiv_fixup_mutator_t(var_manager_t &var_mgr) : var_mgr_(var_mgr) {}
 
-    object_t _mutate(const binary_op_t &_obj) {
+    object_t _mutate(const binary_op_t &_obj) override {
         auto new_obj = ir_mutator_t::_mutate(_obj);
         auto &obj = new_obj.as<binary_op_t>();
         bool is_var_idivmod
@@ -201,10 +201,16 @@ struct stream_k_params_t {
     expr_t iters_per_tg;
     // Iterations per one output tile, div_up(k, k_blk).
     expr_t iters_per_tile;
+    // Number of reduction batches.
+    expr_t k_batches;
 
     // The following values are thread-specific.
     // Index of this threadgroup.
     expr_t tg_idx;
+    // Index of the current k-batch. Reduction is done in batches (i.e. the 1st
+    // thread wave reduces all tiles for k in [0, x), the 2nd wave reduces all
+    // tiles for k in [x, 2 * x), etc);
+    expr_t k_batch_idx;
     // Index of the first threadgroup for the current output tile.
     expr_t tg_beg;
     // Index of the last threadgroup for the current output tile.
@@ -293,23 +299,31 @@ public:
                         = buf_mgr.get("bias_reduced", plan.bias_layout.size());
         }
 
+        arg_helper_t arg_helper(desc);
+        for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+            if (desc.scales.has_default_values(arg)) continue;
+            auto name = arg_helper.scales_name(arg);
+            auto &e = entries_[name];
+            e.mem_buf = var_mgr.get_arg(name);
+        }
+
         for (size_t i = 0; i < desc.post_ops.len(); i++) {
             auto &po = desc.post_ops[i];
             if (po.is_binary()) {
-                std::string name = "binary_" + std::to_string(i);
+                auto name = arg_helper.post_op_name(i);
                 auto &e = entries_[name];
                 e.mem_buf = var_mgr.get_arg(name);
             }
         }
     }
 
-    const expr_t mem_buf(const std::string &name) const {
+    expr_t mem_buf(const std::string &name) const {
         if (entries_.count(name) == 0) return expr_t();
         auto &e = entries_.at(name);
         return e.mem_buf;
     }
 
-    const expr_t reg_buf(const std::string &name) const {
+    expr_t reg_buf(const std::string &name) const {
         if (entries_.count(name) == 0) return expr_t();
         auto &e = entries_.at(name);
         return e.reg_buf;
@@ -340,7 +354,7 @@ public:
                 build_x2r(s.x2r);
                 if (s.x2r.tensor_kind == tensor_kind_t::b) {
                     uint32_t mask = (1 << 1) | (1 << 2);
-                    auto &b_buf = buf_info_.reg_buf("b");
+                    const auto &b_buf = buf_info_.reg_buf("b");
                     if (!s.x2r.bias_layout.is_empty()) {
                         reduce(s.x2r.layout, s.x2r.bias_layout, b_buf,
                                 buf_info_.reg_buf("bias"), mask);
@@ -352,8 +366,8 @@ public:
 
 private:
     void build_x2r(const x2r_plan_t &plan) {
-        auto &mem_buf = buf_info_.mem_buf(to_string(plan.tensor_kind));
-        auto &reg_buf = buf_info_.reg_buf(to_string(plan.tensor_kind));
+        const auto &mem_buf = buf_info_.mem_buf(to_string(plan.tensor_kind));
+        const auto &reg_buf = buf_info_.reg_buf(to_string(plan.tensor_kind));
         auto load_buf
                 = load(plan.load, mem_buf, (plan.reorder ? expr_t() : reg_buf));
         if (plan.reorder) reorder(plan.reorder, load_buf, reg_buf);
@@ -363,40 +377,33 @@ private:
         auto &a_layout = fma.a_layout;
         auto &b_layout = fma.b_layout;
         auto &c_layout = fma.c_layout;
-        auto &a_buf = buf_info_.reg_buf("a");
-        auto &b_buf = buf_info_.reg_buf("b");
-        auto &c_buf = buf_info_.reg_buf("c");
+        const auto &a_buf = buf_info_.reg_buf("a");
+        const auto &b_buf = buf_info_.reg_buf("b");
+        const auto &c_buf = buf_info_.reg_buf("c");
 
-        for (auto &d : a_layout.dims())
-            gpu_assert(fma.inst_tile.has(d)) << d;
-        for (auto &d : b_layout.dims())
-            gpu_assert(fma.inst_tile.has(d)) << d;
-
-        // BMNK order.
-        pvar_t dims[4];
-        dim_t blocks[4] = {1, 1, 1, 1};
-        int sizes[4] = {1, 1, 1, 1};
-        pvar_map_t<int> bmnk_map;
-        bmnk_map[pvars::b] = 0;
-        bmnk_map[pvars::m] = 1;
-        bmnk_map[pvars::n] = 2;
-        bmnk_map[pvars::k] = 3;
-        for (auto &d : fma.inst_tile) {
-            int idx = bmnk_map.at(to_gemm(d, desc_.prop));
-            dims[idx] = d;
-            blocks[idx] = fma.inst_tile[d];
-            sizes[idx] = (idx != 2 ? a_layout : b_layout).int_dim_size(d);
+        pvar_tile_t sizes = a_layout.int_dim_sizes();
+        auto b_sizes = b_layout.int_dim_sizes();
+        for (auto &d : b_sizes) {
+            if (sizes.has(d)) gpu_assert(sizes[d] == b_sizes[d]);
+            sizes[d] = b_sizes[d];
         }
 
-        // BKNM order.
-        int i0 = 0;
-        int i1 = 3;
-        int i2 = 2;
-        int i3 = 1;
-        stmt_t stmt;
-        pvar_coord_t<dim_t> off;
-        bool is_a_bcast = (blocks[0] * blocks[1] * blocks[3] == 1);
-        bool is_b_bcast = (blocks[0] * blocks[2] * blocks[3] == 1);
+        // BMNK order (outer -> inner).
+        std::vector<pvar_t> dim_order;
+        for (const auto &bmnk : {pvars::m, pvars::n, pvars::k, pvars::b}) {
+            for (auto &d : sizes) {
+                if (to_gemm(d, desc_.prop) != bmnk) continue;
+                dim_order.push_back(d);
+            }
+        }
+
+        auto bmnk_inst_tile = to_gemm(fma.inst_tile, desc_.prop);
+        dim_t B = bmnk_inst_tile.get(pvars::b, 1);
+        dim_t M = bmnk_inst_tile.get(pvars::m, 1);
+        dim_t N = bmnk_inst_tile.get(pvars::n, 1);
+        dim_t K = bmnk_inst_tile.get(pvars::k, 1);
+        bool is_a_bcast = (B * M * K == 1);
+        bool is_b_bcast = (B * K * N == 1);
         func_t fma_func;
         switch (fma.fma) {
             case fma_kind_t::mad: {
@@ -414,27 +421,19 @@ private:
             default: gpu_error_not_expected();
         }
         stmt_t call_stmt;
-        for (int b = 0; b < sizes[i0]; b += blocks[i0]) {
-            off[dims[i0]] = b;
-            for (int k = 0; k < sizes[i1]; k += blocks[i1]) {
-                off[dims[i1]] = k;
-                for (int n = 0; n < sizes[i2]; n += blocks[i2]) {
-                    off[dims[i2]] = n;
-                    for (int m = 0; m < sizes[i3]; m += blocks[i3]) {
-                        off[dims[i3]] = m;
-                        dim_t a_off = a_layout.offset_in_bytes(off);
-                        dim_t b_off = b_layout.offset_in_bytes(off);
-                        dim_t c_off = c_layout.offset_in_bytes(off);
-                        auto dst = c_buf[c_off];
-                        auto src1 = a_buf[a_off];
-                        auto src2 = b_buf[b_off];
-                        if (fma.fma == fma_kind_t::dpas) std::swap(src1, src2);
-                        call_stmt = call_stmt.append(fma_func.call(
-                                {dst, dst, std::move(src1), std::move(src2)}));
-                    }
-                }
-            }
-        }
+        for_each(sizes, fma.inst_tile, dim_order,
+                [&](const pvar_coord_t<dim_t> &coord) {
+                    dim_t a_off = a_layout.offset_in_bytes(coord);
+                    dim_t b_off = b_layout.offset_in_bytes(coord);
+                    dim_t c_off = c_layout.offset_in_bytes(coord);
+                    auto dst = c_buf[c_off];
+                    auto src1 = a_buf[a_off];
+                    auto src2 = b_buf[b_off];
+                    if (fma.fma == fma_kind_t::dpas) std::swap(src1, src2);
+                    call_stmt = call_stmt.append(fma_func.call(
+                            {dst, dst, std::move(src1), std::move(src2)}));
+                });
+
         if (fma.fma == fma_kind_t::dpas) {
             call_stmt
                     = inject_dpas_atomic(call_stmt, /*filter_by_label=*/false);
@@ -531,7 +530,7 @@ private:
         if (rhs.type() != type_t::f32()) {
             auto rhs_f32 = _rhs.retype(type_t::f32(), /*dense=*/true);
             rhs_buf = reorder(_rhs, rhs_f32, _rhs_buf);
-            rhs = rhs_f32;
+            rhs = std::move(rhs_f32);
         }
         if (zero_point != 0) {
             auto func = eltwise_t::make(
@@ -630,7 +629,8 @@ private:
     expr_t build_post_ops(const layout_t &layout,
             const pvar_coord_t<expr_t> &coord, const expr_t &_buf,
             layout_t &out_layout) {
-        if (desc_.post_ops.len() == 0 && !desc_.with_bias_fwd()) {
+        if (desc_.post_ops.len() == 0 && desc_.scales.has_default_values()
+                && !desc_.with_bias_fwd()) {
             out_layout = layout;
             return _buf;
         }
@@ -642,11 +642,41 @@ private:
         arg_helper_t arg_helper(desc_);
         auto &c_tag = pick_c(
                 desc_.prop, desc_.src_tag, desc_.wei_tag, desc_.dst_tag);
+        auto to_rhs_mask = [](int arg, int mask) {
+            if (mask == 0) return 0;
+            switch (arg) {
+                case DNNL_ARG_WEIGHTS:
+                    gpu_assert(mask == ((1 << 0) | (1 << 1)))
+                            << "Only per-output channels scales are supported, "
+                               "mask: "
+                            << mask;
+                    return (1 << 1);
+                case DNNL_ARG_DST: return mask;
+                default: gpu_error_not_expected();
+            }
+            return 0;
+        };
+        auto build_scale = [&](int arg) {
+            if (desc_.scales.has_default_values(arg)) return;
+            auto rhs_buf_name = arg_helper.scales_name(arg);
+            auto mask = desc_.scales.get_mask(arg);
+            auto data_type = desc_.scales.get_data_type(arg);
+            alg_kind_t alg = (arg == DNNL_ARG_DST ? alg_kind::binary_div
+                                                  : alg_kind::binary_mul);
+            build_post_op(coord, tile, alg, nullptr, f32_layout, buf,
+                    buf_info_.mem_buf(rhs_buf_name), type_t(data_type),
+                    into<uint16_t>(to_rhs_mask(arg, mask)));
+        };
+        // Apply non-dst scales.
+        build_scale(DNNL_ARG_SRC);
+        build_scale(DNNL_ARG_WEIGHTS);
+        // Apply bias.
         if (desc_.with_bias_fwd()) {
             build_post_op(coord, tile, alg_kind::binary_add, nullptr,
                     f32_layout, buf, buf_info_.mem_buf("bias"), desc_.bias_type,
                     /*rhs_mask=*/0x2);
         }
+        // Apply post-ops.
         for (size_t i = 0; i < desc_.post_ops.len(); i++) {
             auto &po = desc_.post_ops[i];
             if (po.is_eltwise()) {
@@ -670,7 +700,9 @@ private:
                 gpu_error_not_expected();
             }
         }
-        out_layout = f32_layout;
+        // Apply dst scales.
+        build_scale(DNNL_ARG_DST);
+        out_layout = std::move(f32_layout);
         return buf;
     }
 
@@ -696,7 +728,7 @@ private:
         auto &slm_reduce = plan_.slm_reduce;
         if (!slm_reduce) return;
 
-        auto &c_buf = buf_info_.reg_buf("c");
+        const auto &c_buf = buf_info_.reg_buf("c");
         auto c_tmp_buf = alloc("c_reduce", slm_reduce.load.reg_layout().size());
         auto c_slm_buf = alloc("slm", slm_reduce.slm_usage_bytes());
         store(slm_reduce.store, c_slm_buf, c_buf);
@@ -709,8 +741,8 @@ private:
     void build_c_store() {
         auto &store_plan = plan_.store;
         auto &c_layout = plan_.c_reg_layout;
-        auto &c_mem_buf = buf_info_.mem_buf("c");
-        auto &c_reg_buf = buf_info_.reg_buf("c");
+        const auto &c_mem_buf = buf_info_.mem_buf("c");
+        const auto &c_reg_buf = buf_info_.reg_buf("c");
         for_each(c_layout.int_dim_sizes(), store_plan.tile,
                 [&](const pvar_coord_t<dim_t> &coord) {
                     epilogue_tile_builder_t builder(*this, buf_info_, desc_,
@@ -724,8 +756,8 @@ private:
     void build_bias_reduce_store() {
         if (plan_.bias_layout.is_empty()) return;
         auto &store_plan = plan_.store;
-        auto &bias_red_mem_buf = buf_info_.mem_buf("bias");
-        auto &bias_red_reg_buf = buf_info_.reg_buf("bias");
+        const auto &bias_red_mem_buf = buf_info_.mem_buf("bias");
+        const auto &bias_red_reg_buf = buf_info_.reg_buf("bias");
         expr_t tmp_buf;
         if (store_plan.bias_reorder)
             tmp_buf = alloc("bias_tmp", store_plan.bias_reorder.dst.size());
@@ -757,33 +789,75 @@ public:
         stream_k_params_t sk_params(desc.use_stream_k, desc_.loop_desc);
         emit_thread_index_let();
         if (desc.use_stream_k) {
-            sk_params.total_iters
-                    = const_var_t::make(type_t::s32(), "sk_total_iters");
-            sk_params.iters_per_tg
-                    = const_var_t::make(type_t::s32(), "sk_iters_per_tg");
-            sk_params.iters_per_tile
-                    = const_var_t::make(type_t::s32(), "sk_iters_per_tile");
-            sk_params.tg_idx = jit::ir_builder_t::tg_idxs()[0];
+            sk_params.tg_idx = plan_.tg_grid.index_var(0);
+            sk_params.k_batch_idx = plan_.tg_grid.index_var(1);
 
+            auto total_iters_main
+                    = const_var_t::make(type_t::s32(), "sk_total_iters_main");
+            auto total_iters_tail
+                    = const_var_t::make(type_t::s32(), "sk_total_iters_tail");
+            auto iters_per_tg_main
+                    = const_var_t::make(type_t::s32(), "sk_iters_per_tg_main");
+            auto iters_per_tg_tail
+                    = const_var_t::make(type_t::s32(), "sk_iters_per_tg_tail");
+            auto iters_per_tg_main_magic = const_var_t::make(
+                    type_t::u64(), "sk_iters_per_tg_main_magic");
+            auto iters_per_tg_tail_magic = const_var_t::make(
+                    type_t::u64(), "sk_iters_per_tg_tail_magic");
+            auto iters_per_tile_main = const_var_t::make(
+                    type_t::s32(), "sk_iters_per_tile_main");
+            auto iters_per_tile_tail = const_var_t::make(
+                    type_t::s32(), "sk_iters_per_tile_tail");
+            auto iters_per_tile_main_magic = const_var_t::make(
+                    type_t::u64(), "sk_iters_per_tile_main_magic");
+            auto iters_per_tile_tail_magic = const_var_t::make(
+                    type_t::u64(), "sk_iters_per_tile_tail_magic");
+
+            sk_params.k_batches
+                    = const_var_t::make(type_t::s32(), "sk_k_batches");
+            auto cond = (sk_params.k_batch_idx == sk_params.k_batches - 1);
+            sk_params.total_iters = let("sk_total_iters",
+                    iif_t::make(cond, total_iters_tail, total_iters_main));
+            sk_params.iters_per_tg = let("sk_iters_per_tg",
+                    iif_t::make(cond, iters_per_tg_tail, iters_per_tg_main));
+            sk_params.iters_per_tile = let("sk_iters_per_tile",
+                    iif_t::make(
+                            cond, iters_per_tile_tail, iters_per_tile_main));
+            auto iters_per_tg_magic = let("sk_iters_per_tg_magic",
+                    iif_t::make(cond, iters_per_tg_tail_magic,
+                            iters_per_tg_main_magic));
+            auto iters_per_tile_magic = let("sk_iters_per_tile_magic",
+                    iif_t::make(cond, iters_per_tile_tail_magic,
+                            iters_per_tile_main_magic));
             auto iter = alloc_var(type_t::s32(), "sk_iter");
             iter = sk_params.tg_idx * sk_params.iters_per_tg;
             auto iter_end = let("sk_iter_end",
                     min(sk_params.total_iters, iter + sk_params.iters_per_tg));
 
             _while(iter < iter_end, [&]() {
-                sk_params.tile_idx
-                        = let("sk_tile_idx", iter / sk_params.iters_per_tile);
+                sk_params.tile_idx = let("sk_tile_idx",
+                        ternary_idiv(iter,
+                                cast(sk_params.iters_per_tile, type_t::u32()),
+                                iters_per_tile_magic));
                 auto global_beg = let("sk_global_beg",
                         sk_params.tile_idx * sk_params.iters_per_tile);
                 auto global_end = let(
                         "sk_global_end", global_beg + sk_params.iters_per_tile);
-                let(sk_params.local_beg, iter - global_beg);
+                let(sk_params.local_beg,
+                        iter - global_beg
+                                + sk_params.k_batch_idx * iters_per_tile_main);
                 let(sk_params.local_end,
-                        min(iter_end, global_end) - global_beg);
-                sk_params.tg_beg
-                        = let("sk_tg_beg", global_beg / sk_params.iters_per_tg);
+                        min(iter_end, global_end) - global_beg
+                                + sk_params.k_batch_idx * iters_per_tile_main);
+                sk_params.tg_beg = let("sk_tg_beg",
+                        ternary_idiv(global_beg,
+                                cast(sk_params.iters_per_tg, type_t::u32()),
+                                iters_per_tg_magic));
                 sk_params.tg_end = let("sk_tg_beg",
-                        (global_beg - 1) / sk_params.iters_per_tg + 1);
+                        ternary_idiv(global_beg - 1,
+                                cast(sk_params.iters_per_tg, type_t::u32()),
+                                iters_per_tg_magic)
+                                + 1);
                 emit_thread_group_index_let(sk_params.tile_idx);
                 pipeline(sk_params);
                 epilogue();
@@ -915,7 +989,8 @@ private:
 
     void emit_thread_index_let() {
         for (int i = 0; i < 3; i++) {
-            auto value = jit::ir_builder_t::local_ids()[i];
+            auto value = var_t::make(
+                    type_t::u16(), jit::ir_builder_t::local_id(i));
             if (i == 0) value /= plan_.desc.simd;
             auto thr_idx = plan_.thr_grid.index_var(i);
             let(thr_idx, cast(value, thr_idx.type()));

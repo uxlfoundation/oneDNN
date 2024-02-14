@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_OCL_TILE_OPS_H
-#define GPU_OCL_TILE_OPS_H
+#ifndef GPU_INTEL_OCL_TILE_OPS_H
+#define GPU_INTEL_OCL_TILE_OPS_H
 
 #include "gpu/intel/ocl/ocl_generic_vector_ops.h"
 #include "gpu/intel/ocl/ocl_types.h"
@@ -92,11 +92,47 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
                 as_##itype##8(v.s89abcdef)); \
     }
 
+#define DEF_BLOCK_LOAD_STORE32(type, itype, suffix) \
+    __attribute__((overloadable)) \
+            type##32 block_load(const global type *p, int vlen) __attribute__( \
+                    (enable_if(vlen == 32, "wrong vector length"))) { \
+        type##32 x; \
+        x = (type##32)(as_##type##8(intel_sub_group_block_read##suffix##8( \
+                               (global void *)p)), \
+                as_##type##8(intel_sub_group_block_read##suffix##8( \
+                        (global void *)(p + 8 * get_sub_group_size()))), \
+                as_##type##8(intel_sub_group_block_read##suffix##8( \
+                        (global void *)(p + 16 * get_sub_group_size()))), \
+                as_##type##8(intel_sub_group_block_read##suffix##8( \
+                        (global void *)(p + 24 * get_sub_group_size())))); \
+        return x; \
+    } \
+    __attribute__((overloadable)) void block_store( \
+            global type *p, type##32 v) { \
+        intel_sub_group_block_write##suffix##8((global itype *)p, \
+                (itype##8)(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7])); \
+        intel_sub_group_block_write##suffix##8( \
+                (global itype *)(p + 8 * get_sub_group_size()), \
+                (itype##8)(v[8], v[9], v[10], v[11], v[12], v[13], v[14], \
+                        v[15])); \
+        intel_sub_group_block_write##suffix##8( \
+                (global itype *)(p + 16 * get_sub_group_size()), \
+                (itype##8)(v[16], v[17], v[18], v[19], v[20], v[21], v[22], \
+                        v[23])); \
+        intel_sub_group_block_write##suffix##8( \
+                (global itype *)(p + 24 * get_sub_group_size()), \
+                (itype##8)(v[24], v[25], v[26], v[27], v[28], v[29], v[30], \
+                        v[31])); \
+    }
+
 DEF_BLOCK_LOAD_STORE1(half, ushort, _us)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 4)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 8)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 16)
+typedef ushort ushort32 __attribute__((ext_vector_type(32)));
+typedef half half32 __attribute__((ext_vector_type(32)));
+DEF_BLOCK_LOAD_STORE32(half, ushort, _us)
 
 typedef ushort ushort1 __attribute__((ext_vector_type(1)));
 DEF_BLOCK_LOAD_STORE1(ushort, ushort, _us)
@@ -104,12 +140,15 @@ DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 4)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 8)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 16)
+DEF_BLOCK_LOAD_STORE32(ushort, ushort, _us)
 
 DEF_BLOCK_LOAD_STORE1(uint, uint, )
 DEF_BLOCK_LOAD_STORE(uint, uint, , 2)
 DEF_BLOCK_LOAD_STORE(uint, uint, , 4)
 DEF_BLOCK_LOAD_STORE(uint, uint, , 8)
 DEF_BLOCK_LOAD_STORE16(uint, uint, )
+typedef uint uint32 __attribute__((ext_vector_type(32)));
+DEF_BLOCK_LOAD_STORE32(uint, uint, )
 
 #define DEF_BLOCK2D_LOAD_STORE(type, itype, vl, SG, suffix, BR, BC) \
     itype##vl __builtin_IB_subgroup_block_read_flat_##suffix( \
@@ -152,6 +191,7 @@ DEF_BLOCK2D_LOAD_STORE(half, ushort, 8, 16, u16_m8k16v1, 16, 8)
 DEF_BLOCK2D_LOAD_STORE(half, ushort, 8, 16, u16_m4k32v1, 32, 4)
 DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
 
+DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 8, 16, u16_m8k16v1, 16, 8)
 DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 8, 16, u16_m4k32v1, 32, 4)
 DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
 
@@ -503,6 +543,46 @@ DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
         } \
     }
 
+#define DECLARE_2D_TILE_PRINT(tile_type, element_type, sg, br, bc, nbr, nbc) \
+    __attribute__((overloadable)) void print_tile(tile_type t, \
+            const __constant char *format, int wg_x, int wg_y, int wg_z, \
+            int sg_per_wg_m, int sg_per_wg_n) { \
+        if (get_group_id(0) == wg_x && get_group_id(1) == wg_y \
+                && get_group_id(2) == wg_z) { \
+            uint sg_ij = sub_group_broadcast(get_local_id(1), 0); \
+            int sg_i = sg_ij % sg_per_wg_m; \
+            int sg_j = sg_ij / sg_per_wg_m; \
+            if (get_local_id(0) == 0 && get_local_id(1) == 0 \
+                    && get_local_id(2) == 0) \
+                printf(#tile_type "(%lu,%lu):\n", get_group_id(0), \
+                        get_group_id(1)); \
+            barrier(CLK_LOCAL_MEM_FENCE); \
+            for (int sgr = 0; sgr < sg_per_wg_n; sgr++) { \
+                for (int rr = 0; rr < nbr * br; rr++) { \
+                    barrier(CLK_LOCAL_MEM_FENCE); \
+                    if (get_local_id(0) == 0 && get_local_id(1) == 0) { \
+                        printf("%d: ", sgr *nbr *br + rr); \
+                    } \
+                    barrier(CLK_LOCAL_MEM_FENCE); \
+                    for (int sgc = 0; sgc < sg_per_wg_m; sgc++) { \
+                        if (sg_i == sgc && sg_j == sgr) { \
+                            for (int cc = 0; cc < nbc * bc; cc++) { \
+                                element_type value; \
+                                value = xlane_tile_access( \
+                                        t, rr, cc, sg, br, bc, nbr); \
+                                if (get_sub_group_local_id() == 0) \
+                                    printf(format, value); \
+                            } \
+                        } \
+                        barrier(CLK_LOCAL_MEM_FENCE); \
+                    } \
+                    if (get_local_id(0) == 0 && get_local_id(1) == 0) \
+                        printf("\n"); \
+                } \
+            } \
+        } \
+    }
+
 #define DECLARE_2D_TILE(tile_type, element_type, sg, br, bc, nbr, nbc) \
     typedef element_type __attribute__((ext_vector_type(br * bc / sg))) \
             _e_##tile_type; \
@@ -617,13 +697,13 @@ DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
     }
 
 #define cooperative_prefetch_2d(ptr, r, c, ld, sg_id, n_sg, sg_size, caching) \
-    cooperative_prefetch_2d_internal((const global char *)ptr, \
+    cooperative_prefetch_2d_internal((const global uchar *)ptr, \
             (r) * sizeof(*(ptr)), c, (ld) * sizeof(*(ptr)), sg_id, n_sg, \
             sg_size, caching)
 
 #define cooperative_prefetch_2d_rem( \
         ptr, r, c, rmax, cmax, ld, sg_id, n_sg, sg_size, caching) \
-    cooperative_prefetch_2d_internal((const global char *)ptr, \
+    cooperative_prefetch_2d_internal((const global uchar *)ptr, \
             (r) * sizeof(*(ptr)), c, (rmax) * sizeof(*(ptr)), cmax, \
             (ld) * sizeof(*(ptr)), sg_id, n_sg, sg_size, caching)
 
@@ -646,7 +726,7 @@ extern void __builtin_IB_lsc_prefetch_global_uint(
         const __global uint *base, int immElemOff, enum LSC_LDCC cacheOpt);
 
 __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
-        const global char *ptr, uint rbytes, uint c, uint ld_bytes, uint sg_id,
+        const global uchar *ptr, uint rbytes, uint c, uint ld_bytes, uint sg_id,
         uint n_sg, uint sg_size, enum LSC_LDCC caching) {
     const uint cl_per_col = (rbytes + 63) >> 6;
     const uint cl = cl_per_col * c;
@@ -657,22 +737,23 @@ __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
     for (uint ii_cl = 0; ii_cl < cl_iters; ii_cl++) {
         uint i_cl = (ii_cl * cl_per_sg + sg_id) * sg_size
                 + get_sub_group_local_id();
-        uint r_cl = i_cl % cl_per_col;
-        uint c_cl = i_cl / cl_per_col;
         if (i_cl < cl) {
-            __builtin_IB_lsc_prefetch_global_uint(
-                    (const global uint *)(ptr + r_cl * 64 + c_cl * ld_bytes), 0,
-                    caching);
+            uint r_cl = i_cl % cl_per_col;
+            uint c_cl = i_cl / cl_per_col;
+            uint pf_off = r_cl * 64 + c_cl * ld_bytes;
+            const global uint *p = (const global uint *)(ptr + pf_off);
+            __builtin_IB_lsc_prefetch_global_uint(p, 0, caching);
         }
     }
 }
 
 __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
-        const global char *ptr, uint rbytes, uint c, uint rbytes_max,
+        const global uchar *ptr, uint rbytes, uint c, uint rbytes_max,
         uint c_max, uint ld_bytes, uint sg_id, uint n_sg, uint sg_size,
         enum LSC_LDCC caching) {
     const uint cl_per_col = (rbytes_max + 63) >> 6;
     const uint cl = cl_per_col * c_max;
+
     const uint cl_per_sg = (cl + n_sg - 1) / n_sg;
     const uint cl_iters = (cl_per_sg + sg_size - 1) / sg_size;
     const uint max_off = rbytes - 1 + (c - 1) * ld_bytes;
@@ -680,12 +761,12 @@ __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
     for (uint ii_cl = 0; ii_cl < cl_iters; ii_cl++) {
         uint i_cl = (ii_cl * cl_per_sg + sg_id) * sg_size
                 + get_sub_group_local_id();
-        uint r_cl = i_cl % cl_per_col;
-        uint c_cl = i_cl / cl_per_col;
-        uint pf_off = min(r_cl * 64 + c_cl * ld_bytes, max_off);
         if (i_cl < cl) {
-            __builtin_IB_lsc_prefetch_global_uchar(
-                    (const global uchar *)(ptr + pf_off), 0, caching);
+            uint r_cl = i_cl % cl_per_col;
+            uint c_cl = i_cl / cl_per_col;
+            uint pf_off = min(r_cl * 64 + c_cl * ld_bytes, max_off);
+            const global uchar *pp = ptr + pf_off;
+            __builtin_IB_lsc_prefetch_global_uchar(pp, 0, caching);
         }
     }
 }

@@ -1,7 +1,23 @@
+/*******************************************************************************
+* Copyright 2025 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
 #ifndef NGEN_SYCL_HPP
 #define NGEN_SYCL_HPP
 
-#include "ngen_config.hpp"
+#include "ngen_config_internal.hpp"
 #include "ngen_opencl.hpp"
 #include "ngen_level_zero.hpp"
 #include "ngen_interface.hpp"
@@ -25,10 +41,15 @@ template <HW hw>
 class SYCLCodeGenerator : public ELFCodeGenerator<hw>
 {
 public:
-    explicit SYCLCodeGenerator(Product product_)  : ELFCodeGenerator<hw>(product_) {}
-    explicit SYCLCodeGenerator(int stepping_ = 0) : ELFCodeGenerator<hw>(stepping_) {}
+
+    using ELFCodeGenerator<hw>::getBinary;
+
+    explicit SYCLCodeGenerator(Product product_, DebugConfig debugConfig = {})  : ELFCodeGenerator<hw>(product_, debugConfig) {}
+    explicit SYCLCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(stepping_, debugConfig) {}
+    explicit SYCLCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator<hw>(0, debugConfig) {}
 
     inline sycl::kernel getKernel(const sycl::context &context, const sycl::device &device);
+    bool binaryIsZebin() { return true; }
 
     static inline HW detectHW(const sycl::context &context, const sycl::device &device);
     static inline Product detectHWInfo(const sycl::context &context, const sycl::device &device);
@@ -103,14 +124,14 @@ sycl::kernel SYCLCodeGenerator<hw>::getKernel(const sycl::context &context, cons
             };
 
             ze_module_handle_t moduleL0;
-            detail::handleL0(zeModuleCreate(contextL0, deviceL0, &moduleDesc, &moduleL0, nullptr));
+            detail::handleL0(call_zeModuleCreate(contextL0, deviceL0, &moduleDesc, &moduleL0, nullptr));
 
             ze_kernel_handle_t kernelL0;
             ze_kernel_desc_t kernelDesc{ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernelName};
-            detail::handleL0(zeKernelCreate(moduleL0, &kernelDesc, &kernelL0));
+            detail::handleL0(call_zeKernelCreate(moduleL0, &kernelDesc, &kernelL0));
 
             auto bundle = make_kernel_bundle<backend::ext_oneapi_level_zero, bundle_state::executable>({moduleL0}, context);
-            outKernel = make_kernel<backend::ext_oneapi_level_zero>({bundle, kernelL0}, context);
+            outKernel = make_kernel<backend::ext_oneapi_level_zero>({std::move(bundle), kernelL0}, context);
             break;
         }
         default: throw unsupported_sycl_device();

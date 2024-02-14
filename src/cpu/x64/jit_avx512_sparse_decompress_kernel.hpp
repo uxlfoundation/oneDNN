@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_sparse_decompress_kernel_t : public jit_generator {
+struct jit_avx512_sparse_decompress_kernel_t : public jit_generator_t {
     struct call_params_t {
         const void *src_ptr;
         const void *bitmask_ptr;
@@ -37,7 +37,7 @@ struct jit_avx512_sparse_decompress_kernel_t : public jit_generator {
 
     jit_avx512_sparse_decompress_kernel_t(
             const matmul::brgemm_matmul_conf_t &bgmmc)
-        : jit_generator("brgemm_decompress", avx512_core_amx) {
+        : jit_generator_t("brgemm_decompress", avx512_core_amx) {
         switch (bgmmc.wei_tag) {
             case format_tag::BA16a64b4a:
             case format_tag::aCB16b64c4b: b_blk_sz_ = 64; break;
@@ -64,7 +64,7 @@ struct jit_avx512_sparse_decompress_kernel_t : public jit_generator {
 
     status_t create_kernel() override {
         CHECK(ctor_status_);
-        return jit_generator::create_kernel();
+        return jit_generator_t::create_kernel();
     }
 
 private:

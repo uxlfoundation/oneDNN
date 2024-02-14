@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,12 +37,12 @@ struct jit_args_int8_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_int_kernel : public jit_generator {
-    jit_uni_eltwise_int_kernel(
+struct jit_uni_eltwise_int_kernel_t : public jit_generator_t {
+    jit_uni_eltwise_int_kernel_t(
             const eltwise_pd_t *pd, const cpu_isa_t isa, const char *name)
-        : jit_generator(name, isa), pd_(pd) {}
+        : jit_generator_t(name, isa), pd_(pd) {}
 
-    void operator()(jit_args_int8_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_args_int8_t *p) { jit_generator_t::operator()(p); }
 
 protected:
     data_type_t data_type() const { return pd_->src_md()->data_type; }
@@ -59,11 +59,11 @@ namespace {
 using namespace Xbyak;
 
 template <cpu_isa_t isa>
-struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel {
+struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_subkernel_int)
 
     jit_uni_subkernel_int_t(const eltwise_pd_t *pd)
-        : jit_uni_eltwise_int_kernel(pd, isa, jit_name()) {
+        : jit_uni_eltwise_int_kernel_t(pd, isa, jit_name()) {
         using namespace data_type;
 
         // Relu and linear for int types: s32, s8, u8; Only forward direction
@@ -76,7 +76,7 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel {
     void generate() override {
         Reg64 param = abi_param1;
 
-        const size_t vlen = cpu_isa_traits<isa>::vlen;
+        const size_t vlen = cpu_isa_traits_t<isa>::vlen;
         const size_t simd_w = vlen / sizeof(float);
         const size_t loop_dec[] = {simd_w, 1};
         const size_t uf[] = {1, 1};
@@ -128,7 +128,7 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel {
     }
 
 private:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     using opmask_t = const Xbyak::Opmask;
 
     Reg64 reg_from = rax;

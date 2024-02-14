@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,86 +16,86 @@
 
 #if defined(FP16) || defined(FP32) || defined(F16F16F32) || defined(BF16BF16F32)
 INST_TEST_CASE(TestGEMM,
-        test_params {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {}, true,
+        test_params_t {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {}, true,
+        test_params_t {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {}, true,
+        test_params_t {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {}, true,
+        test_params_t {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {}, true,
                 dnnl_invalid_arguments},
 
-        test_params {'N', 'N', 1, 1, 1, 1.0, 0.0, 4, 4, 4},
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'N', 'n', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
-        test_params {'n', 'T', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
-        test_params {'T', 'N', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
-        test_params {'t', 't', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
-        test_params {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100},
-        test_params {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100},
-        test_params {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100},
-        test_params {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100},
-        test_params {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2},
-        test_params {'t', 't', 2, 2, 10000, 1.0, 2.0, 2, 10000, 2},
+        test_params_t {'N', 'N', 1, 1, 1, 1.0, 0.0, 4, 4, 4},
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'N', 'n', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
+        test_params_t {'n', 'T', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
+        test_params_t {'T', 'N', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
+        test_params_t {'t', 't', 31, 21, 11, 2.0, 1.5, 61, 51, 81},
+        test_params_t {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2},
+        test_params_t {'t', 't', 2, 2, 10000, 1.0, 2.0, 2, 10000, 2},
 
         make_test_params_with_offset(
                 {1, 2, 3}, 'n', 'n', 100, 100, 2, 1.0f, 2.0f, 100, 100, 100),
         make_test_params_with_offset(
                 {30, 20, 10}, 'n', 't', 100, 2, 100, 1.0f, 2.0f, 100, 100, 100),
 
-        test_params {'n', 'n', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
-        test_params {'n', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000},
-        test_params {'t', 'n', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
-        test_params {'t', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000},
-        test_params {'n', 't', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
-        test_params {'n', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000},
-        test_params {'t', 't', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
-        test_params {'t', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000});
+        test_params_t {'n', 'n', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
+        test_params_t {'n', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000},
+        test_params_t {'t', 'n', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
+        test_params_t {'t', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000},
+        test_params_t {'n', 't', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
+        test_params_t {'n', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000},
+        test_params_t {'t', 't', 2000, 2000, 2000, 1.0, 0.0, 2000, 2000, 2000},
+        test_params_t {'t', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000});
 
 CPU_INST_TEST_CASE(TestGEMV,
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1, 1},
-        test_params {'n', 'n', 1, 3000, 2000, 1.0f, 0.0f, 2000, 3000, 3000},
-        test_params {'n', 'n', 1, 300, 8000, 1.0f, 0.0f, 8000, 300, 300},
-        test_params {'t', 'n', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1, 1},
-        test_params {'t', 'n', 200, 1, 8000, 1.0f, 0.0f, 200, 1, 1},
-        test_params {'t', 'n', 1, 3000, 2000, 1.0f, 0.0f, 1, 3000, 3000},
-        test_params {'t', 'n', 1, 300, 8000, 1.0f, 0.0f, 1, 300, 300},
-        test_params {'n', 't', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1000, 1},
-        test_params {'n', 't', 1, 3000, 2000, 1.0f, 0.0f, 2000, 2000, 3000},
-        test_params {'t', 't', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1000, 1},
-        test_params {'t', 't', 200, 1, 8000, 1.0f, 0.0f, 200, 8000, 1},
-        test_params {'t', 't', 1, 3000, 2000, 1.0f, 0.0f, 1, 2000, 3000},
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1, 1},
+        test_params_t {'n', 'n', 1, 3000, 2000, 1.0f, 0.0f, 2000, 3000, 3000},
+        test_params_t {'n', 'n', 1, 300, 8000, 1.0f, 0.0f, 8000, 300, 300},
+        test_params_t {'t', 'n', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1, 1},
+        test_params_t {'t', 'n', 200, 1, 8000, 1.0f, 0.0f, 200, 1, 1},
+        test_params_t {'t', 'n', 1, 3000, 2000, 1.0f, 0.0f, 1, 3000, 3000},
+        test_params_t {'t', 'n', 1, 300, 8000, 1.0f, 0.0f, 1, 300, 300},
+        test_params_t {'n', 't', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1000, 1},
+        test_params_t {'n', 't', 1, 3000, 2000, 1.0f, 0.0f, 2000, 2000, 3000},
+        test_params_t {'t', 't', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1000, 1},
+        test_params_t {'t', 't', 200, 1, 8000, 1.0f, 0.0f, 200, 8000, 1},
+        test_params_t {'t', 't', 1, 3000, 2000, 1.0f, 0.0f, 1, 2000, 3000},
 
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1010, 1, 30},
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1010, 20, 1},
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1010, 20, 30},
-        test_params {'n', 'n', 1, 3000, 2000, 1.0f, 0.0f, 2010, 3010, 3010},
-        test_params {'n', 'n', 1, 300, 8000, 1.0f, 0.0f, 8010, 310, 310},
-        test_params {'t', 'n', 2000, 1, 1000, 1.0f, 0.0f, 2010, 20, 30},
-        test_params {'t', 'n', 200, 1, 8000, 1.0f, 0.0f, 210, 20, 30},
-        test_params {'t', 'n', 1, 3000, 2000, 1.0f, 0.0f, 20, 3010, 3010},
-        test_params {'t', 'n', 1, 300, 8000, 1.0f, 0.0f, 20, 310, 310},
-        test_params {'n', 't', 2000, 1, 1000, 1.0f, 0.0f, 1010, 1010, 20},
-        test_params {'n', 't', 1, 3000, 2000, 1.0f, 0.0f, 2010, 2010, 3010},
-        test_params {'t', 't', 2000, 1, 1000, 1.0f, 0.0f, 2010, 1010, 20},
-        test_params {'t', 't', 200, 1, 8000, 1.0f, 0.0f, 210, 8010, 20},
-        test_params {'t', 't', 1, 3000, 2000, 1.0f, 0.0f, 20, 2010, 3010},
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1010, 1, 30},
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1010, 20, 1},
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1010, 20, 30},
+        test_params_t {'n', 'n', 1, 3000, 2000, 1.0f, 0.0f, 2010, 3010, 3010},
+        test_params_t {'n', 'n', 1, 300, 8000, 1.0f, 0.0f, 8010, 310, 310},
+        test_params_t {'t', 'n', 2000, 1, 1000, 1.0f, 0.0f, 2010, 20, 30},
+        test_params_t {'t', 'n', 200, 1, 8000, 1.0f, 0.0f, 210, 20, 30},
+        test_params_t {'t', 'n', 1, 3000, 2000, 1.0f, 0.0f, 20, 3010, 3010},
+        test_params_t {'t', 'n', 1, 300, 8000, 1.0f, 0.0f, 20, 310, 310},
+        test_params_t {'n', 't', 2000, 1, 1000, 1.0f, 0.0f, 1010, 1010, 20},
+        test_params_t {'n', 't', 1, 3000, 2000, 1.0f, 0.0f, 2010, 2010, 3010},
+        test_params_t {'t', 't', 2000, 1, 1000, 1.0f, 0.0f, 2010, 1010, 20},
+        test_params_t {'t', 't', 200, 1, 8000, 1.0f, 0.0f, 210, 8010, 20},
+        test_params_t {'t', 't', 1, 3000, 2000, 1.0f, 0.0f, 20, 2010, 3010},
 
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1, 1},
-        test_params {'n', 'n', 1, 3000, 2000, 1.0f, 1.0f, 2000, 3000, 3000},
-        test_params {'n', 'n', 1, 300, 8000, 1.0f, 1.0f, 8000, 300, 300},
-        test_params {'t', 'n', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1, 1},
-        test_params {'t', 'n', 200, 1, 8000, 1.0f, 1.0f, 200, 1, 1},
-        test_params {'t', 'n', 1, 3000, 2000, 1.0f, 1.0f, 1, 3000, 3000},
-        test_params {'t', 'n', 1, 300, 8000, 1.0f, 1.0f, 1, 300, 300},
-        test_params {'n', 't', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1000, 1},
-        test_params {'n', 't', 1, 3000, 2000, 1.0f, 1.0f, 2000, 2000, 3000},
-        test_params {'t', 't', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1000, 1},
-        test_params {'t', 't', 200, 1, 8000, 1.0f, 1.0f, 200, 8000, 1},
-        test_params {'t', 't', 1, 3000, 4000, 1.0f, 1.0f, 1, 4000, 3000});
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1, 1},
+        test_params_t {'n', 'n', 1, 3000, 2000, 1.0f, 1.0f, 2000, 3000, 3000},
+        test_params_t {'n', 'n', 1, 300, 8000, 1.0f, 1.0f, 8000, 300, 300},
+        test_params_t {'t', 'n', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1, 1},
+        test_params_t {'t', 'n', 200, 1, 8000, 1.0f, 1.0f, 200, 1, 1},
+        test_params_t {'t', 'n', 1, 3000, 2000, 1.0f, 1.0f, 1, 3000, 3000},
+        test_params_t {'t', 'n', 1, 300, 8000, 1.0f, 1.0f, 1, 300, 300},
+        test_params_t {'n', 't', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1000, 1},
+        test_params_t {'n', 't', 1, 3000, 2000, 1.0f, 1.0f, 2000, 2000, 3000},
+        test_params_t {'t', 't', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1000, 1},
+        test_params_t {'t', 't', 200, 1, 8000, 1.0f, 1.0f, 200, 8000, 1},
+        test_params_t {'t', 't', 1, 3000, 4000, 1.0f, 1.0f, 1, 4000, 3000});
 
 /**
  * These cases are used to test the small-N avx-512 sgemm TN kernels.
@@ -104,39 +104,39 @@ CPU_INST_TEST_CASE(TestGEMV,
  * are swapped.
  */
 CPU_INST_TEST_CASE(TestGEMM_smalln,
-        test_params {'n', 't', 5, 512, 512, 1.0f, 1.0f, 512, 512, 512},
-        test_params {'n', 't', 5, 512, 1536, 1.0f, 1.0f, 1536, 1536, 512},
-        test_params {'n', 't', 5, 512, 2048, 1.0f, 1.0f, 2048, 2048, 512},
-        test_params {'n', 't', 5, 2048, 512, 1.0f, 1.0f, 512, 512, 2048},
-        test_params {'n', 't', 7, 512, 512, 0.0f, 1.0f, 512, 512, 512},
-        test_params {'n', 't', 7, 512, 1536, 1.0f, 0.0f, 1536, 1536, 512},
-        test_params {'n', 't', 7, 512, 2048, 0.5f, 0.5f, 2048, 2048, 512},
-        test_params {'n', 't', 7, 2048, 512, 1.0f, 1.0f, 512, 512, 2048},
-        test_params {'n', 't', 4, 512, 512, 1.0f, 1.0f, 512, 512, 512},
-        test_params {'n', 't', 4, 512, 1536, 1.0f, 1.0f, 1536, 1536, 512},
-        test_params {'n', 't', 4, 512, 2048, 1.0f, 1.0f, 2048, 2048, 512},
-        test_params {'n', 't', 4, 2048, 512, 1.0f, 1.0f, 512, 512, 2048},
-        test_params {'n', 't', 8, 512, 512, 1.0f, 1.0f, 512, 512, 512},
-        test_params {'n', 't', 8, 512, 1536, 1.0f, 1.0f, 1536, 1536, 512},
-        test_params {'n', 't', 8, 512, 2048, 1.0f, 1.0f, 2048, 2048, 512},
-        test_params {'n', 't', 8, 2048, 512, 1.0f, 1.0f, 512, 512, 2048});
+        test_params_t {'n', 't', 5, 512, 512, 1.0f, 1.0f, 512, 512, 512},
+        test_params_t {'n', 't', 5, 512, 1536, 1.0f, 1.0f, 1536, 1536, 512},
+        test_params_t {'n', 't', 5, 512, 2048, 1.0f, 1.0f, 2048, 2048, 512},
+        test_params_t {'n', 't', 5, 2048, 512, 1.0f, 1.0f, 512, 512, 2048},
+        test_params_t {'n', 't', 7, 512, 512, 0.0f, 1.0f, 512, 512, 512},
+        test_params_t {'n', 't', 7, 512, 1536, 1.0f, 0.0f, 1536, 1536, 512},
+        test_params_t {'n', 't', 7, 512, 2048, 0.5f, 0.5f, 2048, 2048, 512},
+        test_params_t {'n', 't', 7, 2048, 512, 1.0f, 1.0f, 512, 512, 2048},
+        test_params_t {'n', 't', 4, 512, 512, 1.0f, 1.0f, 512, 512, 512},
+        test_params_t {'n', 't', 4, 512, 1536, 1.0f, 1.0f, 1536, 1536, 512},
+        test_params_t {'n', 't', 4, 512, 2048, 1.0f, 1.0f, 2048, 2048, 512},
+        test_params_t {'n', 't', 4, 2048, 512, 1.0f, 1.0f, 512, 512, 2048},
+        test_params_t {'n', 't', 8, 512, 512, 1.0f, 1.0f, 512, 512, 512},
+        test_params_t {'n', 't', 8, 512, 1536, 1.0f, 1.0f, 1536, 1536, 512},
+        test_params_t {'n', 't', 8, 512, 2048, 1.0f, 1.0f, 2048, 2048, 512},
+        test_params_t {'n', 't', 8, 2048, 512, 1.0f, 1.0f, 512, 512, 2048});
 
 CPU_INST_TEST_CASE(TestGEMM_stkmem,
-        test_params {'n', 'n', 2, 48, 83, 1.0f, 0.0f, 83, 48, 48},
-        test_params {'n', 'n', 2, 48, 200, 1.0f, 0.0f, 200, 48, 48},
-        test_params {'n', 'n', 2, 16, 251, 1.0f, 0.0f, 251, 16, 16},
-        test_params {'n', 'n', 2, 16, 256, 1.0f, 0.0f, 256, 16, 16});
+        test_params_t {'n', 'n', 2, 48, 83, 1.0f, 0.0f, 83, 48, 48},
+        test_params_t {'n', 'n', 2, 48, 200, 1.0f, 0.0f, 200, 48, 48},
+        test_params_t {'n', 'n', 2, 16, 251, 1.0f, 0.0f, 251, 16, 16},
+        test_params_t {'n', 'n', 2, 16, 256, 1.0f, 0.0f, 256, 16, 16});
 
 #if defined(FP32) || defined(BF16BF16F32)
 #if !BUILD_GEMM_KERNELS_NONE
 INST_TEST_CASE(TestGEMM_packed,
-        test_params {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {false, true},
+        test_params_t {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {false, true},
                 true, dnnl_invalid_arguments},
-        test_params {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {true, false},
+        test_params_t {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {true, false},
                 true, dnnl_invalid_arguments},
-        test_params {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {true, true},
+        test_params_t {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {true, true},
                 true, dnnl_invalid_arguments},
-        test_params {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {true, true},
+        test_params_t {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {true, true},
                 true, dnnl_invalid_arguments},
 
         make_test_params_pack(
@@ -204,537 +204,540 @@ INST_TEST_CASE(TestGEMM_packed,
 #elif defined(BF16BF16BF16)
 
 INST_TEST_CASE(TestGEMM,
-        test_params {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {}, true,
+        test_params_t {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {}, true,
+        test_params_t {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {}, true,
+        test_params_t {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {}, true,
+        test_params_t {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {}, true,
                 dnnl_invalid_arguments},
 
-        test_params {'N', 'N', 1, 1, 1, 1.0, 0.0, 4, 4, 4},
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
-        test_params {'N', 'n', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
-        test_params {'n', 'T', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
-        test_params {'T', 'N', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
-        test_params {'t', 't', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
-        test_params {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100},
-        test_params {'n', 't', 100, 2, 58, 1.0, 2.0, 100, 100, 100},
-        test_params {'t', 'n', 2, 100, 61, 1.0, 2.0, 100, 100, 100},
-        test_params {'t', 't', 2, 100, 60, 1.0, 2.0, 100, 100, 100},
-        test_params {'n', 'n', 2, 2, 11, 1.0, -1.0, 20, 2, 2},
-        test_params {'t', 't', 2, 2, 11, 1.0, -1.0, 2, 20, 2},
+        test_params_t {'N', 'N', 1, 1, 1, 1.0, 0.0, 4, 4, 4},
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80},
+        test_params_t {'N', 'n', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
+        test_params_t {'n', 'T', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
+        test_params_t {'T', 'N', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
+        test_params_t {'t', 't', 31, 21, 11, 2.5, 1.5, 61, 51, 81},
+        test_params_t {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'n', 't', 100, 2, 58, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'t', 'n', 2, 100, 61, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'t', 't', 2, 100, 60, 1.0, 2.0, 100, 100, 100},
+        test_params_t {'n', 'n', 2, 2, 11, 1.0, -1.0, 20, 2, 2},
+        test_params_t {'t', 't', 2, 2, 11, 1.0, -1.0, 2, 20, 2},
 
         make_test_params_with_offset(
                 {1, 2, 3}, 'n', 'n', 100, 100, 2, 1.0f, 2.0f, 100, 100, 100),
         make_test_params_with_offset(
                 {30, 20, 10}, 'n', 't', 100, 2, 100, 1.0f, 2.0f, 100, 100, 100),
 
-        test_params {'n', 'n', 2000, 2000, 20, 1.0, 0.0, 20, 2000, 2000},
-        test_params {'n', 'n', 3000, 3000, 30, 1.0, 0.0, 30, 3000, 3000},
-        test_params {'t', 'n', 2000, 2000, 20, 1.0, 0.0, 2000, 2000, 2000},
-        test_params {'t', 'n', 3000, 3000, 30, 1.0, 0.0, 3000, 3000, 3000},
-        test_params {'n', 't', 2000, 2000, 20, 1.0, 0.0, 20, 20, 2000},
-        test_params {'n', 't', 3000, 3000, 30, 1.0, 0.0, 30, 30, 3000},
-        test_params {'t', 't', 2000, 2000, 20, 1.0, 0.0, 2000, 20, 2000},
-        test_params {'t', 't', 3000, 3000, 30, 1.0, 0.0, 3000, 30, 3000});
+        test_params_t {'n', 'n', 2000, 2000, 20, 1.0, 0.0, 20, 2000, 2000},
+        test_params_t {'n', 'n', 3000, 3000, 30, 1.0, 0.0, 30, 3000, 3000},
+        test_params_t {'t', 'n', 2000, 2000, 20, 1.0, 0.0, 2000, 2000, 2000},
+        test_params_t {'t', 'n', 3000, 3000, 30, 1.0, 0.0, 3000, 3000, 3000},
+        test_params_t {'n', 't', 2000, 2000, 20, 1.0, 0.0, 20, 20, 2000},
+        test_params_t {'n', 't', 3000, 3000, 30, 1.0, 0.0, 30, 30, 3000},
+        test_params_t {'t', 't', 2000, 2000, 20, 1.0, 0.0, 2000, 20, 2000},
+        test_params_t {'t', 't', 3000, 3000, 30, 1.0, 0.0, 3000, 30, 3000});
 
 #else
-constexpr test_igemm_params fix_use_oc = {'F', false, false, true};
-constexpr test_igemm_params col_use_oc = {'C', false, false, true};
-constexpr test_igemm_params row_use_oc = {'R', false, false, true};
+constexpr test_igemm_params_t fix_use_oc = {'F', false, false, true};
+constexpr test_igemm_params_t col_use_oc = {'C', false, false, true};
+constexpr test_igemm_params_t row_use_oc = {'R', false, false, true};
 
-constexpr test_igemm_params fix_use_all_offsets = {'F', true, true, true};
-constexpr test_igemm_params col_use_all_offsets = {'C', true, true, true};
-constexpr test_igemm_params row_use_all_offsets = {'R', true, true, true};
+constexpr test_igemm_params_t fix_use_all_offsets = {'F', true, true, true};
+constexpr test_igemm_params_t col_use_all_offsets = {'C', true, true, true};
+constexpr test_igemm_params_t row_use_all_offsets = {'R', true, true, true};
 
-constexpr test_igemm_params fix_no_offsets = {'F', false, false, false};
-constexpr test_igemm_params col_no_offsets = {'C', false, false, false};
-constexpr test_igemm_params row_no_offsets = {'R', false, false, false};
+constexpr test_igemm_params_t fix_no_offsets = {'F', false, false, false};
+constexpr test_igemm_params_t col_no_offsets = {'C', false, false, false};
+constexpr test_igemm_params_t row_no_offsets = {'R', false, false, false};
 
 #if !BUILD_GEMM_KERNELS_NONE
 INST_TEST_CASE(TestGEMM_expected_failures,
-        test_params {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {}, true,
+        test_params_t {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {}, true,
+        test_params_t {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {}, true,
+        test_params_t {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {}, true,
                 dnnl_invalid_arguments},
-        test_params {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {}, true,
-                dnnl_invalid_arguments},
-
-        test_params {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, fix_use_oc, {}, true,
-                dnnl_invalid_arguments},
-        test_params {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, fix_use_oc, {}, true,
-                dnnl_invalid_arguments},
-        test_params {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, fix_use_oc, {}, true,
-                dnnl_invalid_arguments},
-        test_params {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, fix_use_oc, {}, true,
+        test_params_t {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {}, true,
                 dnnl_invalid_arguments},
 
-        test_params {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, fix_use_all_offsets,
-                {}, true, dnnl_invalid_arguments},
-        test_params {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, fix_use_all_offsets,
-                {}, true, dnnl_invalid_arguments},
-        test_params {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, fix_use_all_offsets,
-                {}, true, dnnl_invalid_arguments},
-        test_params {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, fix_use_all_offsets,
-                {}, true, dnnl_invalid_arguments},
+        test_params_t {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, fix_use_oc, {},
+                true, dnnl_invalid_arguments},
+        test_params_t {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, fix_use_oc, {},
+                true, dnnl_invalid_arguments},
+        test_params_t {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, fix_use_oc, {},
+                true, dnnl_invalid_arguments},
+        test_params_t {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, fix_use_oc, {},
+                true, dnnl_invalid_arguments},
 
-        test_params {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {true, true},
+        test_params_t {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8,
+                fix_use_all_offsets, {}, true, dnnl_invalid_arguments},
+        test_params_t {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8,
+                fix_use_all_offsets, {}, true, dnnl_invalid_arguments},
+        test_params_t {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8,
+                fix_use_all_offsets, {}, true, dnnl_invalid_arguments},
+        test_params_t {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3,
+                fix_use_all_offsets, {}, true, dnnl_invalid_arguments},
+
+        test_params_t {'t', 'n', 3, 2, 1, 1.0, 0.0, 2, 5, 8, {}, {true, true},
                 true, dnnl_invalid_arguments},
-        test_params {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {false, true},
+        test_params_t {'n', 'n', 3, 2, 2, 1.0, 0.0, 1, 5, 8, {}, {false, true},
                 true, dnnl_invalid_arguments},
-        test_params {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {true, false},
+        test_params_t {'n', 't', 3, 2, 2, 1.0, 0.0, 3, 1, 8, {}, {true, false},
                 true, dnnl_invalid_arguments},
-        test_params {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {false, true},
+        test_params_t {'n', 'd', 3, 2, 1, 1.0, 0.0, 3, 3, 3, {}, {false, true},
                 true, dnnl_invalid_arguments});
 #endif
 
 CPU_INST_TEST_CASE(TestGEMM_stkmem,
-        test_params {'n', 'n', 10, 4000, 2, 1.0, 0.0, 2, 4000, 4000,
+        test_params_t {'n', 'n', 10, 4000, 2, 1.0, 0.0, 2, 4000, 4000,
                 fix_use_all_offsets},
-        test_params {'n', 'n', 10, 5000, 2, 1.0, 0.0, 2, 5000, 5000,
+        test_params_t {'n', 'n', 10, 5000, 2, 1.0, 0.0, 2, 5000, 5000,
                 fix_use_all_offsets});
 
 INST_TEST_CASE(TestGEMM_general_cases_fix_offset,
-        test_params {'N', 'n', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
-        test_params {'n', 'T', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
-        test_params {'T', 'N', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
-        test_params {'t', 't', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
-        test_params {
+        test_params_t {'N', 'n', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
+        test_params_t {'n', 'T', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
+        test_params_t {'T', 'N', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
+        test_params_t {'t', 't', 30, 20, 10, 1.0, 0.0, 60, 50, 80, fix_use_oc},
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_use_oc},
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100, fix_use_oc},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100, fix_use_oc},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100, fix_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100, fix_use_oc},
-        test_params {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, fix_use_oc},
+        test_params_t {
+                'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, fix_use_oc},
 
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 fix_use_all_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 fix_use_all_offsets},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 fix_use_all_offsets},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 fix_use_all_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2,
                 fix_use_all_offsets},
 
-        test_params {
+        test_params_t {
                 'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_no_offsets},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, fix_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100, fix_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100, fix_no_offsets},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100, fix_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100, fix_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, fix_no_offsets});
 
 INST_TEST_CASE(TestGEMM_general_cases_col_offset,
-        test_params {'N', 'n', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
-        test_params {'n', 'T', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
-        test_params {'T', 'N', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
-        test_params {'t', 't', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
-        test_params {
+        test_params_t {'N', 'n', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
+        test_params_t {'n', 'T', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
+        test_params_t {'T', 'N', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
+        test_params_t {'t', 't', 30, 20, 10, 1.0, 0.0, 60, 50, 80, col_use_oc},
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_use_oc},
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100, col_use_oc},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100, col_use_oc},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100, col_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100, col_use_oc},
-        test_params {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, col_use_oc},
+        test_params_t {
+                'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, col_use_oc},
 
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 col_use_all_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 col_use_all_offsets},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 col_use_all_offsets},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 col_use_all_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2,
                 col_use_all_offsets},
 
-        test_params {
+        test_params_t {
                 'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_no_offsets},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, col_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100, col_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100, col_no_offsets},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100, col_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100, col_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, col_no_offsets});
 
 INST_TEST_CASE(TestGEMM_general_cases_row_offset,
-        test_params {'N', 'n', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
-        test_params {'n', 'T', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
-        test_params {'T', 'N', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
-        test_params {'t', 't', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
-        test_params {
+        test_params_t {'N', 'n', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
+        test_params_t {'n', 'T', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
+        test_params_t {'T', 'N', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
+        test_params_t {'t', 't', 30, 20, 10, 1.0, 0.0, 60, 50, 80, row_use_oc},
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_use_oc},
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100, row_use_oc},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100, row_use_oc},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100, row_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100, row_use_oc},
-        test_params {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, row_use_oc},
+        test_params_t {
+                'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, row_use_oc},
 
-        test_params {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 row_use_all_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 row_use_all_offsets},
-        test_params {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 row_use_all_offsets},
-        test_params {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
+        test_params_t {'t', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80,
                 row_use_all_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2,
                 row_use_all_offsets},
 
-        test_params {
+        test_params_t {
                 'N', 'n', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_no_offsets},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.0, 1.0, 60, 50, 80, row_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.0, 2.0, 100, 100, 100, row_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.0, 2.0, 100, 100, 100, row_no_offsets},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.0, 2.0, 100, 100, 100, row_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.0, 2.0, 100, 100, 100, row_no_offsets},
-        test_params {
+        test_params_t {
                 'n', 'n', 2, 2, 10000, 1.0, 2.0, 10000, 2, 2, row_no_offsets});
 
 CPU_INST_TEST_CASE(TestGEMM_fractional_scales_fix_offset,
         /* alpha and beta have non-zero fractional part */
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80, fix_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120, fix_use_oc},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80, fix_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80, fix_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100, fix_use_oc},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100, fix_use_oc},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100, fix_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100, fix_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2, fix_use_oc},
 
-        test_params {'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80,
+        test_params_t {'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80,
                 fix_use_all_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
+        test_params_t {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
                 fix_use_all_offsets},
-        test_params {'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80,
+        test_params_t {'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80,
                 fix_use_all_offsets},
-        test_params {'t', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80,
+        test_params_t {'t', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80,
                 fix_use_all_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
                 fix_use_all_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
                 fix_use_all_offsets},
 
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80, fix_no_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
+        test_params_t {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
                 fix_no_offsets},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80, fix_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80, fix_no_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
                 fix_no_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
                 fix_no_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
                 fix_no_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
                 fix_no_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
                 fix_no_offsets});
 
 CPU_INST_TEST_CASE(TestGEMM_fractional_scales_col_offset,
         /* alpha and beta have non-zero fractional part */
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80, col_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120, col_use_oc},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80, col_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80, col_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100, col_use_oc},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100, col_use_oc},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100, col_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100, col_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2, col_use_oc},
 
-        test_params {'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80,
+        test_params_t {'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80,
                 col_use_all_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
+        test_params_t {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
                 col_use_all_offsets},
-        test_params {'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80,
+        test_params_t {'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80,
                 col_use_all_offsets},
-        test_params {'t', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80,
+        test_params_t {'t', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80,
                 col_use_all_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
                 col_use_all_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
                 col_use_all_offsets},
 
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80, col_no_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
+        test_params_t {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
                 col_no_offsets},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80, col_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80, col_no_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
                 col_no_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
                 col_no_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
                 col_no_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
                 col_no_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
                 col_no_offsets});
 
 CPU_INST_TEST_CASE(TestGEMM_fractional_scales_row_offset,
         /* alpha and beta have non-zero fractional part */
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80, row_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120, row_use_oc},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80, row_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80, row_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100, row_use_oc},
-        test_params {
+        test_params_t {
                 'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100, row_use_oc},
-        test_params {
+        test_params_t {
                 't', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100, row_use_oc},
-        test_params {
+        test_params_t {
                 't', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100, row_use_oc},
-        test_params {
+        test_params_t {
                 'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2, row_use_oc},
 
-        test_params {'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80,
+        test_params_t {'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80,
                 row_use_all_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
+        test_params_t {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
                 row_use_all_offsets},
-        test_params {'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80,
+        test_params_t {'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80,
                 row_use_all_offsets},
-        test_params {'t', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80,
+        test_params_t {'t', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80,
                 row_use_all_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
                 row_use_all_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
                 row_use_all_offsets},
 
-        test_params {
+        test_params_t {
                 'n', 'T', 30, 20, 10, 2.33f, 1.66f, 60, 50, 80, row_no_offsets},
-        test_params {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
+        test_params_t {'n', 'T', 30, 20, 10, 2.19f, 1.99f, 120, 120, 120,
                 row_no_offsets},
-        test_params {
+        test_params_t {
                 'T', 'N', 30, 20, 10, 2.01f, 1.01f, 60, 50, 80, row_no_offsets},
-        test_params {
+        test_params_t {
                 't', 't', 30, 20, 10, 2.99f, 1.19f, 60, 50, 80, row_no_offsets},
-        test_params {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
+        test_params_t {'n', 'n', 100, 100, 2, 1.33f, 2.33f, 100, 100, 100,
                 row_no_offsets},
-        test_params {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
+        test_params_t {'n', 't', 100, 2, 100, 1.19f, 2.99f, 100, 100, 100,
                 row_no_offsets},
-        test_params {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
+        test_params_t {'t', 'n', 2, 100, 100, 1.01f, 2.01f, 100, 100, 100,
                 row_no_offsets},
-        test_params {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
+        test_params_t {'t', 't', 2, 100, 100, 1.99f, 2.19f, 100, 100, 100,
                 row_no_offsets},
-        test_params {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
+        test_params_t {'n', 'n', 2, 2, 10000, 1.66f, 2.33f, 10000, 2, 2,
                 row_no_offsets});
 
 #ifndef DNNL_ENABLE_MEM_DEBUG
 CPU_INST_TEST_CASE(TestGEMV,
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1, 1,
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1, 1,
                 fix_no_offsets},
-        test_params {'n', 'n', 1, 3000, 2000, 1.0f, 0.0f, 2000, 3000, 3000,
+        test_params_t {'n', 'n', 1, 3000, 2000, 1.0f, 0.0f, 2000, 3000, 3000,
                 fix_no_offsets},
-        test_params {'t', 'n', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1, 1,
+        test_params_t {'t', 'n', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1, 1,
                 fix_no_offsets},
-        test_params {'t', 'n', 1, 3000, 2000, 1.0f, 0.0f, 1, 3000, 3000,
+        test_params_t {'t', 'n', 1, 3000, 2000, 1.0f, 0.0f, 1, 3000, 3000,
                 fix_no_offsets},
-        test_params {'n', 't', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1000, 1,
+        test_params_t {'n', 't', 2000, 1, 1000, 1.0f, 0.0f, 1000, 1000, 1,
                 fix_no_offsets},
-        test_params {'n', 't', 1, 3000, 2000, 1.0f, 0.0f, 2000, 2000, 3000,
+        test_params_t {'n', 't', 1, 3000, 2000, 1.0f, 0.0f, 2000, 2000, 3000,
                 fix_no_offsets},
-        test_params {'t', 't', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1000, 1,
+        test_params_t {'t', 't', 2000, 1, 1000, 1.0f, 0.0f, 2000, 1000, 1,
                 fix_no_offsets},
-        test_params {'t', 't', 1, 3000, 2000, 1.0f, 0.0f, 1, 2000, 3000,
-                fix_no_offsets},
-
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1, 1,
-                fix_no_offsets},
-        test_params {'n', 'n', 1, 3000, 2000, 1.0f, 1.0f, 2000, 3000, 3000,
-                fix_no_offsets},
-        test_params {'t', 'n', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1, 1,
-                fix_no_offsets},
-        test_params {'t', 'n', 1, 3000, 2000, 1.0f, 1.0f, 1, 3000, 3000,
-                fix_no_offsets},
-        test_params {'n', 't', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1000, 1,
-                fix_no_offsets},
-        test_params {'n', 't', 1, 3000, 2000, 1.0f, 1.0f, 2000, 2000, 3000,
-                fix_no_offsets},
-        test_params {'t', 't', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1000, 1,
-                fix_no_offsets},
-        test_params {'t', 't', 1, 3000, 2000, 1.0f, 1.0f, 1, 2000, 3000,
+        test_params_t {'t', 't', 1, 3000, 2000, 1.0f, 0.0f, 1, 2000, 3000,
                 fix_no_offsets},
 
-        test_params {'n', 'n', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1, 1,
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1, 1,
+                fix_no_offsets},
+        test_params_t {'n', 'n', 1, 3000, 2000, 1.0f, 1.0f, 2000, 3000, 3000,
+                fix_no_offsets},
+        test_params_t {'t', 'n', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1, 1,
+                fix_no_offsets},
+        test_params_t {'t', 'n', 1, 3000, 2000, 1.0f, 1.0f, 1, 3000, 3000,
+                fix_no_offsets},
+        test_params_t {'n', 't', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1000, 1,
+                fix_no_offsets},
+        test_params_t {'n', 't', 1, 3000, 2000, 1.0f, 1.0f, 2000, 2000, 3000,
+                fix_no_offsets},
+        test_params_t {'t', 't', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1000, 1,
+                fix_no_offsets},
+        test_params_t {'t', 't', 1, 3000, 2000, 1.0f, 1.0f, 1, 2000, 3000,
+                fix_no_offsets},
+
+        test_params_t {'n', 'n', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1, 1,
                 {'F', true, false, false}},
-        test_params {'n', 'n', 1, 3000, 2000, 1.0f, 1.0f, 2000, 3000, 3000,
+        test_params_t {'n', 'n', 1, 3000, 2000, 1.0f, 1.0f, 2000, 3000, 3000,
                 {'F', true, true, false}},
-        test_params {'t', 'n', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1, 1,
+        test_params_t {'t', 'n', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1, 1,
                 {'F', false, true, false}},
-        test_params {'t', 'n', 1, 3000, 2000, 1.0f, 1.0f, 1, 3000, 3000,
+        test_params_t {'t', 'n', 1, 3000, 2000, 1.0f, 1.0f, 1, 3000, 3000,
                 {'F', true, false, true}},
-        test_params {'n', 't', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1000, 1,
+        test_params_t {'n', 't', 2000, 1, 1000, 1.0f, 1.0f, 1000, 1000, 1,
                 {'F', false, true, true}},
-        test_params {'n', 't', 1, 3000, 2000, 1.0f, 1.0f, 2000, 2000, 3000,
+        test_params_t {'n', 't', 1, 3000, 2000, 1.0f, 1.0f, 2000, 2000, 3000,
                 {'F', true, true, false}},
-        test_params {'t', 't', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1000, 1,
+        test_params_t {'t', 't', 2000, 1, 1000, 1.0f, 1.0f, 2000, 1000, 1,
                 {'F', true, false, false}},
-        test_params {'t', 't', 1, 3000, 2000, 1.0f, 1.0f, 1, 2000, 3000,
+        test_params_t {'t', 't', 1, 3000, 2000, 1.0f, 1.0f, 1, 2000, 3000,
                 {'F', false, true, false}});
 
 CPU_INST_TEST_CASE(TestGEMV_kblocking,
-        test_params {
+        test_params_t {
                 't', 'n', 20, 1, 7000, 1.0f, 0.0f, 20, 1, 500, fix_no_offsets},
-        test_params {'t', 't', 50, 1, 7000, 1.0f, 0.0f, 50, 7000, 500,
+        test_params_t {'t', 't', 50, 1, 7000, 1.0f, 0.0f, 50, 7000, 500,
                 fix_no_offsets},
-        test_params {'t', 'n', 400, 1, 7000, 1.0f, 0.0f, 400, 1, 500,
+        test_params_t {'t', 'n', 400, 1, 7000, 1.0f, 0.0f, 400, 1, 500,
                 fix_no_offsets},
-        test_params {'t', 't', 500, 1, 7000, 1.0f, 0.0f, 500, 7000, 500,
+        test_params_t {'t', 't', 500, 1, 7000, 1.0f, 0.0f, 500, 7000, 500,
                 fix_no_offsets},
-        test_params {
+        test_params_t {
                 't', 'n', 20, 1, 7000, 1.0f, 1.0f, 20, 1, 500, fix_no_offsets},
-        test_params {'t', 't', 50, 1, 7000, 1.0f, 1.0f, 50, 7000, 500,
+        test_params_t {'t', 't', 50, 1, 7000, 1.0f, 1.0f, 50, 7000, 500,
                 fix_no_offsets},
-        test_params {'t', 'n', 500, 1, 7000, 1.0f, 1.0f, 500, 1, 500,
+        test_params_t {'t', 'n', 500, 1, 7000, 1.0f, 1.0f, 500, 1, 500,
                 fix_no_offsets},
-        test_params {'t', 't', 500, 1, 7000, 1.0f, 1.0f, 500, 7000, 500,
+        test_params_t {'t', 't', 500, 1, 7000, 1.0f, 1.0f, 500, 7000, 500,
                 fix_no_offsets},
 
-        test_params {'n', 'n', 1, 40, 7000, 1.0f, 0.0f, 7000, 40, 500,
+        test_params_t {'n', 'n', 1, 40, 7000, 1.0f, 0.0f, 7000, 40, 500,
                 fix_no_offsets},
-        test_params {'t', 'n', 1, 10, 7000, 1.0f, 0.0f, 7000, 10, 10,
+        test_params_t {'t', 'n', 1, 10, 7000, 1.0f, 0.0f, 7000, 10, 10,
                 fix_no_offsets},
-        test_params {'n', 'n', 1, 400, 7000, 1.0f, 0.0f, 7000, 400, 500,
+        test_params_t {'n', 'n', 1, 400, 7000, 1.0f, 0.0f, 7000, 400, 500,
                 fix_no_offsets},
-        test_params {'t', 'n', 1, 100, 7000, 1.0f, 0.0f, 7000, 100, 500,
+        test_params_t {'t', 'n', 1, 100, 7000, 1.0f, 0.0f, 7000, 100, 500,
                 fix_no_offsets},
-        test_params {'n', 'n', 1, 40, 7000, 1.0f, 1.0f, 7000, 40, 500,
+        test_params_t {'n', 'n', 1, 40, 7000, 1.0f, 1.0f, 7000, 40, 500,
                 fix_no_offsets},
-        test_params {'t', 'n', 1, 10, 7000, 1.0f, 1.0f, 7000, 10, 500,
+        test_params_t {'t', 'n', 1, 10, 7000, 1.0f, 1.0f, 7000, 10, 500,
                 fix_no_offsets},
-        test_params {'n', 'n', 1, 400, 7000, 1.0f, 1.0f, 7000, 400, 500,
+        test_params_t {'n', 'n', 1, 400, 7000, 1.0f, 1.0f, 7000, 400, 500,
                 fix_no_offsets},
-        test_params {'t', 'n', 1, 550, 7000, 1.0f, 1.0f, 7000, 550, 550,
+        test_params_t {'t', 'n', 1, 550, 7000, 1.0f, 1.0f, 7000, 550, 550,
                 fix_no_offsets});
 
 #if !BUILD_GEMM_KERNELS_NONE
@@ -838,13 +841,13 @@ CPU_INST_TEST_CASE(TestGEMM_packed,
 #endif
 
 CPU_INST_TEST_CASE(TestGEMM_heavy,
-        test_params {'n', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
+        test_params_t {'n', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
                 fix_use_oc},
-        test_params {'t', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
+        test_params_t {'t', 'n', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
                 fix_use_oc},
-        test_params {'n', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
+        test_params_t {'n', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
                 fix_use_oc},
-        test_params {'t', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
+        test_params_t {'t', 't', 3000, 3000, 3000, 1.0, 0.0, 3000, 3000, 3000,
                 fix_use_oc});
 
 #if !BUILD_GEMM_KERNELS_NONE

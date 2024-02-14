@@ -22,6 +22,7 @@
 #include <string>
 
 #include "common/utils.hpp"
+#include "common/verbose.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -34,6 +35,7 @@ enum class log_level_t {
     warning = 100,
     suggestion = 120,
     info = 150,
+    debug = 160,
     perf = 170,
     trace = 200,
 };
@@ -54,6 +56,10 @@ public:
     logger_t(const char *file_name, int line, std::ostream &out = std::cout)
         : file_path_(file_name + std::string(":") + std::to_string(line))
         , out_(out) {}
+
+    logger_t(const logger_t &) = delete;
+    logger_t &operator=(const logger_t &) = delete;
+
     ~logger_t() {
         add_header(true);
         if (lines_.size() == 1) {
@@ -82,7 +88,7 @@ public:
         print_helper_t<T>::call(oss, obj);
         auto lines = gpu_utils::split(oss.str(), "\n");
         if (lines_.empty() || lines.empty()) {
-            lines_ = lines;
+            lines_ = std::move(lines);
             return *this;
         }
         lines_.back() += lines[0];
@@ -96,6 +102,7 @@ private:
             case log_level_t::warning: out_ << "[ WARN]"; break;
             case log_level_t::suggestion: out_ << "[SUGGESTION]"; break;
             case log_level_t::info: out_ << "[ INFO]"; break;
+            case log_level_t::debug: out_ << "[DEBUG]"; break;
             case log_level_t::perf: out_ << "[ PERF]"; break;
             case log_level_t::trace: out_ << "[TRACE]"; break;
             default: gpu_error_not_expected();
@@ -130,6 +137,13 @@ private:
             dnnl::impl::gpu::intel::log_level_t::info>::is_enabled() \
             && dnnl::impl::gpu::intel::logger_t< \
                     dnnl::impl::gpu::intel::log_level_t::info>( \
+                    __FILENAME__, __LINE__)
+
+#define gpu_debug() \
+    dnnl::impl::gpu::intel::logger_t< \
+            dnnl::impl::gpu::intel::log_level_t::debug>::is_enabled() \
+            && dnnl::impl::gpu::intel::logger_t< \
+                    dnnl::impl::gpu::intel::log_level_t::debug>( \
                     __FILENAME__, __LINE__)
 
 #define gpu_warning() \

@@ -24,11 +24,12 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-#define PARAM_OFF(x) offsetof(jit_binary_call_s, x)
+#define PARAM_OFF(x) offsetof(jit_uni_binary_args_t, x)
 
 static bcast_set_t get_supported_postops_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::no_broadcast};
 }
 
@@ -41,7 +42,7 @@ static bool is_ne_xf16_supported(cpu_isa_t isa, const data_type_t dtype) {
 
 binary_kernel_t::binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
         const jit_binary_conf_t conf, const char *name, bool tail_kernel)
-    : jit_generator(name, conf.isa)
+    : jit_generator_t(name, conf.isa)
     , vlen_(vlen)
     , simd_w_(vlen / sizeof(float))
     , pd_(pd)
@@ -90,25 +91,23 @@ size_t binary_kernel_t::get_tail_size() const {
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_binary_kernel_t<isa, Vmm>::jit_uni_binary_kernel_t(
         const binary_pd_t *pd, const jit_binary_conf_t conf, bool tail_kernel)
-    : binary_kernel_t(vreg_traits<Vmm>::vlen, pd, conf, jit_name(), tail_kernel)
+    : binary_kernel_t(
+            vreg_traits_t<Vmm>::vlen, pd, conf, jit_name(), tail_kernel)
     , offt_src0_(vlen_ / ((conf_.is_bf16 || conf_.is_f16) ? 2 : 1))
     , offt_src1_(conf_.use_stride_src1 ? offt_src0_ : 0)
-    , offt_src2_(offt_src0_)
-    , io_(this, isa,
-              conf_.is_ternary_op
-                      ? std::initializer_list<data_type_t> {conf_.src0_type,
-                              conf_.src1_type, conf_.src2_type, conf_.dst_type}
-                      : std::initializer_list<data_type_t> {conf_.src0_type,
-                              conf_.src1_type, conf_.dst_type},
-              {false},
-              io::io_tail_conf_t {simd_w_, tail_size_, tail_opmask_,
-                      vmm_tail_vmask_.getIdx(), reg_tmp_},
-              io::io_emu_bf16_conf_t {vreg_bf16_emu_1_, vreg_bf16_emu_2_,
-                      vreg_bf16_emu_3_, reg_tmp_, vreg_bf16_emu_4_},
-              create_saturation_vmm_map(),
-              io::io_gather_conf_t {simd_w_, full_mask_,
-                      vmm_full_mask_.getIdx(), reg_tmp_, reg_tmp1_,
-                      vmm_tmp_gather_.getIdx()}) {
+    , offt_src2_(offt_src0_) {
+    typename io::jit_io_multi_dt_helper_t<Vmm>::data_types_t dts
+            = {conf_.src0_type, conf_.src1_type, conf_.dst_type};
+    if (conf.is_ternary_op) dts.emplace(conf_.src2_type);
+
+    io_ = io::jit_io_multi_dt_helper_t<Vmm>(this, isa, dts, {false},
+            io::io_tail_conf_t {simd_w_, tail_size_, tail_opmask_,
+                    vmm_tail_vmask_.getIdx(), reg_tmp_},
+            io::io_emu_bf16_conf_t {vreg_bf16_emu_1_, vreg_bf16_emu_2_,
+                    vreg_bf16_emu_3_, reg_tmp_, vreg_bf16_emu_4_},
+            create_saturation_vmm_map(),
+            io::io_gather_conf_t {simd_w_, full_mask_, vmm_full_mask_.getIdx(),
+                    reg_tmp_, reg_tmp1_, vmm_tmp_gather_.getIdx()});
     init();
 }
 

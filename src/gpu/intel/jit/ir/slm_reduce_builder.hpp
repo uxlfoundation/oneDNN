@@ -20,7 +20,7 @@
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "ngen/ngen.hpp"
+#include "ngen.hpp"
 
 #include <vector>
 
@@ -69,7 +69,7 @@ private:
         uint32_t mask = 0xFFFFFFFF;
         for (dim_idx_t i = 0; i < tg_ndims_; i++) {
             int k_dim_idx = reg_layout_.ndims() + i;
-            mask &= ~(1 << k_dim_idx);
+            mask &= ~(1u << k_dim_idx);
         }
         return mask;
     }

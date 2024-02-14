@@ -900,7 +900,7 @@ void brgemm_diff_wei_peep_t<scratch_t>::kernel(
             types::data_type_size(rnn_.src_iter_c_dt),
             rnn_.ws_states_iter_c_nld, src_iter_c_ld_);
 
-    const rnn_utils::ws_gates_aoc<const scratch_t> scratch_gates(
+    const rnn_utils::ws_gates_aoc_t<const scratch_t> scratch_gates(
             rnn_, scratch_gates_);
     const rnn_utils::weights_peephole_aoc_t<float> diff_weights_peephole(
             rnn_, diff_weights_peephole_);

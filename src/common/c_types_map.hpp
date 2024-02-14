@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2016-2025 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -148,6 +148,10 @@ const alg_kind_t internal_only_start = (alg_kind_t)(1 << 12);
 // GPU only via jit_eltwise injector.
 const alg_kind_t eltwise_stochastic_round
         = (alg_kind_t)(internal_only_start + 1);
+// Internal algorithm for softmax to convert NaNs/-inf into 0.f in case when
+// all axis values are -inf.
+const alg_kind_t softmax_accurate_inf_as_zero
+        = (alg_kind_t)(internal_only_start + 2);
 } // namespace alg_kind
 
 using data_type_t = dnnl_data_type_t;
@@ -206,7 +210,6 @@ const rounding_mode_t environment = dnnl_rounding_mode_environment;
 const rounding_mode_t stochastic = dnnl_rounding_mode_stochastic;
 } // namespace rounding_mode
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 using sparse_encoding_t = dnnl_sparse_encoding_t;
 namespace sparse_encoding {
 const sparse_encoding_t undef = dnnl_sparse_encoding_undef;
@@ -214,16 +217,6 @@ const sparse_encoding_t csr = dnnl_csr;
 const sparse_encoding_t coo = dnnl_coo;
 const sparse_encoding_t packed = dnnl_packed;
 } // namespace sparse_encoding
-#else
-// Declare dummy values to avoid guarding internal implementation.
-using sparse_encoding_t = int;
-namespace sparse_encoding {
-const sparse_encoding_t undef = 0;
-const sparse_encoding_t csr = 1;
-const sparse_encoding_t packed = 2;
-const sparse_encoding_t coo = 3;
-} // namespace sparse_encoding
-#endif
 
 using format_kind_t = dnnl_format_kind_t;
 namespace format_kind {
@@ -231,11 +224,7 @@ const format_kind_t undef = dnnl_format_kind_undef;
 const format_kind_t any = dnnl_format_kind_any;
 const format_kind_t blocked = dnnl_blocked;
 const format_kind_t opaque = dnnl_format_kind_opaque;
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 const format_kind_t sparse = dnnl_format_kind_sparse;
-#else
-const format_kind_t sparse = static_cast<format_kind_t>(4);
-#endif
 
 // Internal only format kinds.
 const format_kind_t internal_only_start = (format_kind_t)(1 << 8);
@@ -372,6 +361,9 @@ const format_tag_t aCB16b16c = dnnl_aCB16b16c;
 const format_tag_t aCB16b32c = dnnl_aCB16b32c;
 const format_tag_t aCB16b48c = dnnl_aCB16b48c;
 const format_tag_t aCB16b64c = dnnl_aCB16b64c;
+const format_tag_t BA24b8a = dnnl_BA24b8a;
+const format_tag_t aCB24c8b = dnnl_aCB24c8b;
+const format_tag_t abDC24d8c = dnnl_abDC24d8c;
 const format_tag_t aCB16b16c2b = dnnl_aCB16b16c2b;
 const format_tag_t aCB16b32c2b = dnnl_aCB16b32c2b;
 const format_tag_t aCB16b48c2b = dnnl_aCB16b48c2b;
@@ -1916,6 +1908,7 @@ const normalization_flags_t use_scale = dnnl_use_scale;
 const normalization_flags_t use_shift = dnnl_use_shift;
 const normalization_flags_t fuse_norm_relu = dnnl_fuse_norm_relu;
 const normalization_flags_t fuse_norm_add_relu = dnnl_fuse_norm_add_relu;
+const normalization_flags_t rms_norm = dnnl_rms_norm;
 } // namespace normalization_flags
 
 using rnn_flags_t = dnnl_rnn_flags_t;
@@ -2051,15 +2044,9 @@ const query_t inner_nblks_s32 = dnnl_query_inner_nblks_s32;
 const query_t inner_blks = dnnl_query_inner_blks;
 const query_t inner_idxs = dnnl_query_inner_idxs;
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 const query_t sparse_encoding = dnnl_query_sparse_encoding;
 const query_t nnz_s64 = dnnl_query_nnz_s64;
 const query_t num_handles_s32 = dnnl_query_num_handles_s32;
-#else
-const query_t sparse_encoding = static_cast<query_t>(266);
-const query_t nnz_s64 = static_cast<query_t>(267);
-const query_t num_handles_s32 = static_cast<query_t>(268);
-#endif
 
 // Internal only query kinds.
 const query_t internal_only_start = (query_t)(1 << 12);

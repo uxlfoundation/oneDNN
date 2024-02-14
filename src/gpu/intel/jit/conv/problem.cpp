@@ -16,8 +16,10 @@
 
 #include "gpu/intel/jit/conv/problem.hpp"
 #include "common/convolution_pd.hpp"
+#include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -43,6 +45,18 @@ const std::vector<pvar_t> &conv_dims() {
         return ret;
     }();
     return _conv_dims;
+}
+
+pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind) {
+
+    auto dims = conv_layout_dims(tensor_kind, true);
+    for (auto &d : dims) {
+        if (d == dim) {
+            auto str = to_string(tensor_kind) + "_";
+            return pvar_t(str + dim.str() + "_stride");
+        }
+    }
+    return pvar_t();
 }
 
 const std::vector<pvar_t> &conv_index_dims(prop_kind_t prop) {
@@ -129,6 +143,9 @@ tensor_kind_t to_abc(prop_kind_t prop, tensor_kind_t tensor) {
         case tensor_kind_t::src: return kinds[0];
         case tensor_kind_t::wei: return kinds[1];
         case tensor_kind_t::dst: return kinds[2];
+        case tensor_kind_t::a:
+        case tensor_kind_t::b:
+        case tensor_kind_t::c: return tensor;
         default: gpu_error_not_expected();
     }
     return kinds[0];
@@ -283,6 +300,8 @@ status_t conv_problem_t::init_acc_data_type() {
     auto c = c_data_type;
     bool is_fp8 = (utils::one_of(data_type::f8_e5m2, a, b, c)
             || utils::one_of(data_type::f8_e4m3, a, b, c));
+    bool is_fp4 = (utils::one_of(data_type::f4_e2m1, a, b, c)
+            || utils::one_of(data_type::f4_e3m0, a, b, c));
     acc_data_type = data_type::undef;
     if (utils::one_of(a, data_type::s8, data_type::u8)
             && utils::one_of(b, data_type::s8, data_type::u8)) {
@@ -290,7 +309,7 @@ status_t conv_problem_t::init_acc_data_type() {
     } else if (utils::everyone_is(data_type::f16, a, b)
             || utils::everyone_is(data_type::bf16, a, b)
             || utils::everyone_is(data_type::tf32, a, b)
-            || utils::everyone_is(data_type::f32, a, b) || is_fp8) {
+            || utils::everyone_is(data_type::f32, a, b) || is_fp8 || is_fp4) {
         acc_data_type = data_type::f32;
     } else if (utils::everyone_is(data_type::f64, a, b)) {
         acc_data_type = data_type::f64;
@@ -306,31 +325,22 @@ bool conv_problem_t::with_sum_post_op() const {
 }
 
 void conv_problem_t::init_transpose(const hw_t &hw) {
-    using sm = primitive_attr_t::skip_mask_t;
-    auto attr_skip_mask = sm::post_ops | sm::sum_dt | sm::scales_runtime;
-    bool allow_ab_transpose = gpu_utils::dev_getenv("allow_ab_transpose", true);
-    bool any_zp = !attr->has_default_values(attr_skip_mask);
-    bool any_f64 = utils::one_of(data_type::f64, src_data_type, dst_data_type);
-    if (!allow_ab_transpose || any_zp || any_f64 || with_groups
-            || hw <= ngen::HW::Gen9) {
-        ab_swap_transpose = gpu_utils::dev_getenv("ab_swap_transpose", false);
-        return;
-    }
-    int max_sp = (hw >= ngen::HW::XeHPC) ? 1240 : 512;
-    bool do_ic_swap = ((is_fwd || is_bwd_w) && oc < 6);
-    bool do_oc_swap = ((is_bwd_d) && ic < 6);
-    bool allow_bwd_w = !is_bwd_w
-            || ((src_data_type != data_type::f32
-                        || fpmath_mode == dnnl_fpmath_mode_tf32)
-                    && osp % 8 == 0);
-    bool allow_bwd_d
-            = !is_bwd_d || (wei_data_type == data_type::f32 && osp == isp);
-    bool allow_fwd = !is_fwd
-            || (dst_data_type != data_type::f32
-                    && dst_data_type != data_type::f64 && mb <= 8 && ih != iw
-                    && iw <= max_sp);
-    ab_swap_transpose = allow_fwd && allow_bwd_d && allow_bwd_w
-            && (do_oc_swap || do_ic_swap);
+    bool is_dw = (g > 1) && (oc == 1) && (ic == 1);
+    bool wei_any
+            = (conv_pd->invariant_wei_md()->format_kind == format_kind::any);
+    bool has_zp = !attr->zero_points_.has_default_values();
+    bool allow_fwd = (mb <= 8 && oc <= 3 && ic <= 3 && kw <= 2)
+            || (oc <= 2 && ic <= 2);
+    bool allow_bwd_d = (mb <= 8 && oc <= 3 && ic <= 3);
+    bool allow_bwd_w = (mb <= 8 && oc <= 3 && ic >= 16);
+    ab_swap_transpose = wei_any && !is_dw && !has_zp;
+    if (is_fwd) ab_swap_transpose &= allow_fwd;
+    if (is_bwd_d) ab_swap_transpose &= allow_bwd_d;
+    if (is_bwd_w) ab_swap_transpose &= allow_bwd_w;
+    if (is_fwd && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::src))
+        ab_swap_transpose = true;
+    if (is_bwd_d && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::dst))
+        ab_swap_transpose = true;
     ab_swap_transpose
             = gpu_utils::dev_getenv("ab_swap_transpose", ab_swap_transpose);
 }
@@ -436,6 +446,61 @@ pvar_tile_t to_gemm(const pvar_tile_t &t, prop_kind_t prop, bool is_transpose) {
         ret[gemm_d] *= t[d];
     }
     return ret;
+}
+
+// Matches the user-provided descriptor against the list of supported plain tags.
+std::string get_plain_user_tag(
+        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei) {
+    memory_desc_wrapper mdw(md);
+    if (mdw.is_plain() && !mdw.is_dense()) return "user";
+    if (is_wei) {
+        std::vector<const char *> plain_non_group_wei_tags
+                = {"abx", "axb", "xba"};
+        std::vector<const char *> plain_group_wei_tags
+                = {"abcx", "abxc", "axcb"};
+        auto &plain_wei_tags = (prb.with_groups ? plain_group_wei_tags
+                                                : plain_non_group_wei_tags);
+        gpu_assert(
+                plain_non_group_wei_tags.size() == plain_group_wei_tags.size());
+        for (size_t i = 0; i < plain_wei_tags.size(); i++) {
+            if (matches_tag(md, plain_wei_tags[i])) {
+                return plain_non_group_wei_tags[i];
+            }
+        }
+    } else {
+        for (auto *t : {"axb", "abx"}) {
+            if (matches_tag(md, t)) return t;
+        }
+    }
+    return {};
+}
+
+bool is_nchw_ok(const conv_problem_t &prb, ngen::HW hw, tensor_kind_t kind,
+        bool nested) {
+    gpu_assert(utils::one_of(kind, tensor_kind_t::src, tensor_kind_t::dst));
+    bool is_src = (kind == tensor_kind_t::src);
+    bool is_input = (is_src && prb.is_fwd) || (!is_src && prb.is_bwd_d)
+            || prb.is_bwd_w;
+    auto &md = (is_src ? *prb.conv_pd->invariant_src_md()
+                       : *prb.conv_pd->invariant_dst_md());
+    if (get_plain_user_tag(prb, md, false) != "abx") return false;
+    // No block 2D message support before XeHPC.
+    if (hw < ngen::HW::XeHPC) return false;
+    // Strided access or element granularity for X offset are not generally
+    // supported by block 2D messages.
+    if (is_input) {
+        if (prb.kw != 1 || prb.sw != 1) return false;
+    }
+    dim_t c = prb.g * (is_src ? prb.ic : prb.oc);
+    dim_t d = (is_src ? prb.id : prb.od);
+    dim_t h = (is_src ? prb.ih : prb.oh);
+    dim_t w = (is_src ? prb.iw : prb.ow);
+    int type_size = into<int>(types::data_type_size(
+            is_src ? prb.src_data_type : prb.dst_data_type));
+    if (!block_2d_width_ok(w, type_size)) return false;
+    if (!block_2d_height_ok(c)) return false;
+    if (!block_2d_pitch_ok(hw, d * h * w, type_size)) return false;
+    return true;
 }
 
 } // namespace jit

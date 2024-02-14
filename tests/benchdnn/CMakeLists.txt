@@ -75,8 +75,13 @@ function(register_benchdnn_test engine driver test_file)
         set(test_mode "${test_mode};B")
     endif()
 
+    # Parallel creation introduces race conditions inside native libraries.
+    # Additionally, only needed for speeding up JIT compilation of OCL kernels.
     set(mode_modifier "")
-    if(${engine} MATCHES "gpu" AND NOT WIN32)
+    if(${engine} MATCHES "gpu"
+       AND NOT WIN32
+       AND NOT ${DNNL_GPU_VENDOR} MATCHES "NVIDIA"
+       AND NOT ${DNNL_GPU_VENDOR} MATCHES "AMD")
         set(mode_modifier "--mode-modifier=P")
     endif()
 
@@ -92,7 +97,7 @@ function(register_benchdnn_test engine driver test_file)
         set(benchdnn_target ${target_name}_${engine})
 
         if(DNNL_TEST_SET_HAS_GRAPH_EXE EQUAL 1)
-            string(PREPEND cmd "--execution-mode=graph")
+            string(PREPEND cmd "--execution-mode=graph ")
         endif()
 
         if(NOT WIN32 OR DNNL_BUILD_FOR_CI)
@@ -181,10 +186,6 @@ foreach(driver ${all_drivers})
             register_all_tests(cpu "${driver}" "${test_files_smoke}")
         endif()
     elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_CI)
-        if(NOT DNNL_EXPERIMENTAL_SPARSE)
-            list(REMOVE_ITEM test_files_ci "test_matmul_sparse_ci")
-        endif()
-
         # gpu_ci files may happen if cpu coverage can not be used on gpu
         # Filter out gpu_ci inputs from ci
         foreach(test_file ${test_files_gpu_ci} ${test_files_gpu_sim_ci})
@@ -226,11 +227,6 @@ foreach(driver ${all_drivers})
             register_all_tests(cpu "${driver}" "${test_files_ci}")
         endif()
     elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_NIGHTLY)
-        if(NOT DNNL_EXPERIMENTAL_SPARSE)
-            list(REMOVE_ITEM test_files_cpu "test_matmul_sparse")
-            list(REMOVE_ITEM test_files_gpu "test_matmul_sparse_gpu")
-        endif()
-
         ## Filter out gpu, large cpu and invalid inputs from cpu
         foreach(test_file ${test_files_large_cpu} ${test_files_gpu_ci}
             ${test_files_gpu} ${test_files_ci} ${test_files_smoke}

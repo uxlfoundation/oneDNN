@@ -35,7 +35,7 @@
 #include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/utils.hpp"
 
-#include "gpu/intel/sycl/sycl_interop_gpu_kernel.hpp"
+#include "gpu/intel/sycl/interop_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -80,10 +80,9 @@ public:
                 sycl_kernels, kernel_names, this, binary));
 
         for (size_t i = 0; i < kernel_names.size(); i++) {
-            std::shared_ptr<gpu::intel::compute::kernel_impl_t> kernel_impl
-                    = std::make_shared<sycl_interop_gpu_kernel_t>(
-                            std::move(sycl_kernels[i]), program_src);
-            kernels[i] = std::move(kernel_impl);
+            if (!sycl_kernels[i]) continue;
+            CHECK(interop_kernel_t::make(
+                    kernels[i], *sycl_kernels[i], program_src));
         }
         return status::success;
     }
@@ -114,11 +113,7 @@ public:
         VCHECK_KERNEL(gpu::intel::sycl::compat::make_kernel(
                               sycl_kernel, kernel_name, this, binary),
                 VERBOSE_KERNEL_CREATION_FAIL, kernel_name);
-
-        std::shared_ptr<gpu::intel::compute::kernel_impl_t> kernel_impl
-                = std::make_shared<sycl_interop_gpu_kernel_t>(
-                        std::move(sycl_kernel), src);
-        kernel = std::move(kernel_impl);
+        CHECK(interop_kernel_t::make(kernel, *sycl_kernel, {}));
         return status::success;
     }
 
@@ -149,15 +144,7 @@ public:
             assert(!"not expected");
             return status::invalid_arguments;
         }
-
-        std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t> ocl_engine;
-        CHECK(gpu::intel::sycl::create_ocl_engine(&ocl_engine, this));
-
-        auto kernel_name = jitter->kernel_name();
-
-        xpu::binary_t kernel_binary = jitter->get_binary(ocl_engine.get());
-        return create_kernel_from_binary(
-                *kernel, kernel_binary, kernel_name, {});
+        return jitter->get_kernel(*kernel, this);
     }
 
     status_t create_kernels(std::vector<gpu::intel::compute::kernel_t> *kernels,

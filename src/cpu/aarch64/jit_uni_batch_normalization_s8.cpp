@@ -419,7 +419,8 @@ status_t jit_uni_batch_normalization_s8_fwd_t<isa>::pd_t::init(
             && memory_desc_matches_tag(*src_md(), desired_fmt_tag)
             && (attr()->has_default_values() || this->with_relu_post_op(false))
             && set_default_formats_common()
-            && memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md());
+            && memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md())
+            && impl::is_dense_format_kind({src_md(), dst_md()});
     if (!ok) return status::unimplemented;
 
     // BN+Add+Relu fusion is not currently implemented

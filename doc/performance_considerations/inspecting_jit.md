@@ -41,14 +41,15 @@ Use any disassembler to view the code. For example:
 ## Example (GPU)
 
 ~~~sh
-    $ ONEDNN_JIT_DUMP=1 ./simple-net-cpp gpu
+    $ ONEDNN_JIT_DUMP=1 ./cnn-training-f32-cpp gpu
 ~~~
 
-This will produce the following output files if running on Intel Processor Graphics Gen9:
+This will produce the following output files if running on Intel Arc B-series graphics:
 
 ~~~sh
-    dnnl_dump_gpu_simple_reorder.0.bin
-    dnnl_dump_gpu_gen9_conv_fwd.1.bin
+    dnnl_dump_gpu_gen_reorder.0.bin
+    dnnl_dump_gpu_gen_reorder.1.bin
+    dnnl_dump_gpu_gen_conv.2.bin
     ...
 ~~~
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -67,6 +67,7 @@ struct jit_brgemm_primitive_conf_t {
     bool use_buffer_a;
     bool use_buffer_b;
     bool is_bf32;
+    bool is_tf32;
 
     int is_oc_scale;
 

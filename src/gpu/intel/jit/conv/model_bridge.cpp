@@ -32,6 +32,8 @@ namespace model {
 type_t to_type(data_type_t dt) {
     switch (static_cast<int>(dt)) {
         case data_type::s8:
+        case data_type::f4_e2m1:
+        case data_type::f4_e3m0:
         case data_type::f8_e5m2:
         case data_type::f8_e4m3:
         case data_type::u8: return type_t::d8;
@@ -196,7 +198,7 @@ gradient_boost_regressor_t &get_gbr(const conv_config_t &cfg) {
         for (auto &kv : kind2data) {
             auto kind = kv.first;
             auto &data = *kv.second;
-            auto s = serialized_t::from_data(unpack_data(data));
+            auto s = serialization_stream_t::from_data(unpack_data(data));
             deserializer_t d(s);
             gbr_map[kind] = gradient_boost_regressor_t::deserialize(d);
         }

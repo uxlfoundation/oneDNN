@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 namespace dnnl {
 
 template <typename a_dt, typename b_dt, typename c_dt>
-struct ref_gemm {
-    static void call(const test_params &p, int64_t M, int64_t N,
+struct ref_gemm_t {
+    static void call(const test_params_t &p, int64_t M, int64_t N,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &) {
         auto a = map_memory<a_dt>(a_mem);
@@ -59,8 +59,8 @@ struct ref_gemm {
 };
 
 template <typename a_dt, typename b_dt>
-struct ref_gemm<a_dt, b_dt, int32_t> {
-    static void call(const test_params &p, int64_t M, int64_t N,
+struct ref_gemm_t<a_dt, b_dt, int32_t> {
+    static void call(const test_params_t &p, int64_t M, int64_t N,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &oc_mem) {
         auto A = map_memory<a_dt>(a_mem);
@@ -106,7 +106,7 @@ struct ref_gemm<a_dt, b_dt, int32_t> {
 };
 
 template <typename a_dt, typename c_dt>
-void compare(const test_params &p, const test_memory &c_mem,
+void compare(const test_params_t &p, const test_memory &c_mem,
         const test_memory &c_ref_mem) {
     using data_type = memory::data_type;
     auto c = map_memory<c_dt>(c_mem);
@@ -118,15 +118,15 @@ void compare(const test_params &p, const test_memory &c_mem,
         c_dt got = c[p.off.c + i * p.ldc + j];
         c_dt diff = got - ref;
 
-        if (data_traits<a_dt>::data_type == data_type::f16) {
+        if (data_traits_t<a_dt>::data_type == data_type::f16) {
             const float eps = 1e-3 * p.K;
             float e = (std::abs(ref) > eps) ? diff / ref : float(diff);
             ASSERT_NEAR(e, 0.0, eps) << "Row: " << i << " Col: " << j;
-        } else if (data_traits<a_dt>::data_type == data_type::bf16) {
+        } else if (data_traits_t<a_dt>::data_type == data_type::bf16) {
             const float eps = 1e-2 * p.K;
             float e = (std::abs(ref) > eps) ? diff / ref : float(diff);
             ASSERT_NEAR(e, 0.0, eps) << "Row: " << i << " Col: " << j;
-        } else if (data_traits<a_dt>::data_type == data_type::f32) {
+        } else if (data_traits_t<a_dt>::data_type == data_type::f32) {
             c_dt e = (std::abs(ref) > 1e-4) ? c_dt(diff / ref) : diff;
             ASSERT_NEAR(e, 0.0, 1e-4) << "Row: " << i << " Col: " << j;
         } else {
@@ -134,9 +134,9 @@ void compare(const test_params &p, const test_memory &c_mem,
             c_dt eps = 0;
             if (p.alpha == 1.0f) {
                 eps = 1;
-            } else if (data_traits<a_dt>::data_type == data_type::u8) {
+            } else if (data_traits_t<a_dt>::data_type == data_type::u8) {
                 eps = p.K / 700 + 1;
-            } else if (data_traits<a_dt>::data_type == data_type::s8) {
+            } else if (data_traits_t<a_dt>::data_type == data_type::s8) {
                 eps = p.K / 350 + 1;
             }
             ASSERT_NEAR(diff, 0, eps) << "Row: " << i << " Col: " << j;
@@ -145,11 +145,11 @@ void compare(const test_params &p, const test_memory &c_mem,
 }
 
 template <typename a_dt, typename b_dt, typename c_dt>
-void validate(const test_params &p, test_gemm_data &gemm_data) {
+void validate(const test_params_t &p, test_gemm_data_t &gemm_data) {
     const int64_t M_test = gemm_data.mapper_m->dim_test();
     const int64_t N_test = gemm_data.mapper_n->dim_test();
 
-    ref_gemm<a_dt, b_dt, c_dt>::call(p, M_test, N_test, *gemm_data.a_mem,
+    ref_gemm_t<a_dt, b_dt, c_dt>::call(p, M_test, N_test, *gemm_data.a_mem,
             *gemm_data.b_mem, *gemm_data.c_ref_mem, *gemm_data.oc_mem);
     extend_matrix<c_dt>(*gemm_data.c_ref_mem, p.off.c, p.M, p.N, p.ldc,
             *gemm_data.mapper_m, *gemm_data.mapper_n);

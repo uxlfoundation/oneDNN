@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #define DST_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(DST, x0, x1, x2, x3, x4, x5)
 #define SRC0_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC0, x0, x1, x2, x3, x4, x5)
 #define SRC1_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC1, x0, x1, x2, x3, x4, x5)
+#define SRC2_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC2, x0, x1, x2, x3, x4, x5)
 
 #if SRC1_DT_BF16
 #define SRC1_TO_FLOAT cvt_bf16_to_f32
@@ -38,6 +39,15 @@
 #else
 #define SRC0_TO_FLOAT CONVERT_FLOAT_T
 #endif
+
+#define SRC2_BLOCK_READ(src) \
+    as_char(intel_sub_group_block_read_uc((const __global uchar *)(src)))
+#define SRC2_BLOCK_READ2(src) \
+    as_char2(intel_sub_group_block_read_uc2((const __global uchar *)(src)))
+#define SRC2_BLOCK_READ4(src) \
+    as_char4(intel_sub_group_block_read_uc4((const __global uchar *)(src)))
+#define SRC2_BLOCK_READ8(src) \
+    as_char8(intel_sub_group_block_read_uc8((const __global uchar *)(src)))
 
 #if SRC0_DT_BF8
 #define SRC0_BLOCK_READ(src) \
@@ -395,6 +405,42 @@ DEF_binary_op(float2, float);
 DEF_binary_op(float4, float);
 DEF_binary_op(float8, float);
 #undef DEF_binary_op
+
+#define DEF_ternary_op(dt, special_dt) \
+    dt __attribute__((overloadable)) \
+            ternary_op(int alg, dt src0, dt src1, char src2) { \
+        return (src2 != 0) ? src0 : src1; \
+    }
+
+DEF_ternary_op(float, float);
+DEF_ternary_op(float2, float);
+DEF_ternary_op(float4, float);
+DEF_ternary_op(float8, float);
+#undef DEF_ternary_op
+
+#define READ_CHAR_DATA(size, name, source_ptr, dest_ptr) \
+    { \
+        unsigned offset = 0; \
+        unroll_for(unsigned j8 = 0; j8 < size / 8; ++j8) { \
+            *((char8 *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ8)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+            offset += 8; \
+        } \
+        if ((size % 8) / 4) { \
+            *((char4 *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ4)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+            offset += 4; \
+        } \
+        if ((size % 4) / 2) { \
+            *((char2 *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ2)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+            offset += 2; \
+        } \
+        if ((size % 2)) { \
+            *((char *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+        } \
+    }
 
 #define READ_DATA(size, name, source_ptr, dest_ptr, scale) \
     { \

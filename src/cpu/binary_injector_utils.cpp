@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,15 +33,17 @@ std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
         if (post_op.is_binary()) {
             post_ops_binary_rhs_arg_vec.emplace_back(CTX_IN_MEM(const void *,
                     DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1));
-        }
-#if DNNL_X64
-        else if (post_op.is_prelu()) {
+            if (post_op.is_binary_with_ternary_op()) {
+                post_ops_binary_rhs_arg_vec.emplace_back(CTX_IN_MEM(
+                        const void *,
+                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2));
+            }
+        } else if (post_op.is_prelu()) {
             auto *arg = CTX_IN_MEM(const void *,
                     DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_WEIGHTS);
             assert(arg);
             post_ops_binary_rhs_arg_vec.emplace_back(arg);
         }
-#endif
         ++idx;
     }
 
@@ -79,6 +81,15 @@ memory_desc_t get_src1_desc(
     }
 }
 
+memory_desc_t get_src2_desc(
+        const post_ops_t::entry_t &post_op, const memory_desc_wrapper &dst_d) {
+    if (post_op.is_binary_with_ternary_op()) {
+        return post_op.binary.src2_desc;
+    } else {
+        return memory_desc_t();
+    }
+}
+
 std::vector<broadcasting_strategy_t> extract_bcast_strategies(
         const std::vector<dnnl_post_ops::entry_t> &post_ops,
         const memory_desc_wrapper &dst_md) {
@@ -88,11 +99,9 @@ std::vector<broadcasting_strategy_t> extract_bcast_strategies(
         if (post_op.is_binary())
             post_ops_bcasts.emplace_back(get_rhs_arg_broadcasting_strategy(
                     post_op.binary.src1_desc, dst_md));
-#if DNNL_X64
         else if (post_op.is_prelu())
             post_ops_bcasts.emplace_back(get_rhs_arg_broadcasting_strategy(
                     get_src1_desc(post_op, dst_md), dst_md));
-#endif
     return post_ops_bcasts;
 }
 

@@ -21,7 +21,8 @@ output is computed as:
 - N: the mini-batch size.
 - H: the number of multi-head.
 - S: the sequence length.
-- D: the size of each head.
+- D_qk: the head size of query and key.
+- D_v: the head size of value.
 
 ## SDPA patterns
 
@@ -68,11 +69,12 @@ optional.
 
    2. Implicit library-generated mask: You can use the operations in the library
    to generate a mask by constructing a subgraph. Currently, Graph API supports
-   generating an implicit causal mask (top-left aligned) using operations of
-   [GenIndex](@ref dev_guide_op_genindex), [GreaterEqual](@ref dev_guide_op_greaterequal)
+   generating an implicit causal mask (top-left or bottom-right aligned) using
+   operations of [GenIndex](@ref dev_guide_op_genindex), [Add](@ref dev_guide_op_add).
+   [Subtract](@ref dev_guide_op_subtract), [GreaterEqual](@ref dev_guide_op_greaterequal)
    and [Select](@ref dev_guide_op_select).
 
-   ![SDPA-mask-3](images/sdpa-mask-3.png)
+   ![SDPA-mask-3](images/sdpa-mask-3.png) ![SDPA-mask-4](images/sdpa-mask-4.png)
 
 4. The SoftMax operation takes the masked output and transforms it into
    probabilities between 0 and 1. See [SoftMax](@ref dev_guide_op_softmax)
@@ -81,8 +83,8 @@ optional.
    SoftMax and Value.
 6. The Reorder node is optional and used to reshape or transpose the attention
    output for cases where the attention output is transformed from shape (N, H,
-   S, D) to (N, S, H, D) or (N, S, H * D). The node can be constructed by the
-   combinations of [StaticTranspose](@ref dev_guide_op_statictranspose) and
+   S, D_v) to (N, S, H, D_v) or (N, S, H * D_v). The node can be constructed by
+   the combinations of [StaticTranspose](@ref dev_guide_op_statictranspose) and
    [StaticReshape](@ref dev_guide_op_staticreshape) operation in Graph API.
 
    ![SDPA-Reorder](images/sdpa-reorder.png)
@@ -92,8 +94,11 @@ optional.
 
 oneDNN supports the floating-point SDPA pattern with data types f32, bf16, and
 f16. You can specify the data type via the input and output logical tensors'
-data type fields for each operation. oneDNN does not support mixing different
-floating data types in a floating-point SDPA pattern.
+data type fields for each operation.
+
+oneDNN supports bf16 or f16 SDPA with f32 intermediate type, which means the
+Q/K/V tensors have bf16 or f16 data type while the output of the first MatMul,
+Scale, Mask, and the input of SoftMax are in f32 data type.
 
 oneDNN supports the quantized SDPA pattern with int8-f32 mixed precision,
 int8-bf16 mixed precision, and int8-f16 mixed precision data types.
@@ -111,36 +116,36 @@ platforms follow the general description in @ref dev_guide_data_types.
    softmax primitives. The reference implementation requires memory to store the
    intermediate results of the dot products between Query and Key which takes
    \f$O(S^2)\f$ memory. It may lead to out-of-memory error when computing long
-   sequence length input on platforms with limited memory. For an implicit
-   causal mask, the reference implementation is only available on CPU.
+   sequence length input on platforms with limited memory.
 2. The SDPA patterns functionally supports all input shapes meeting the shape
    requirements of each operation in the graph. For example, Add, Multiply,
    Divide, and Select operations require the input tensors to have the same
    shape or the shapes can be properly broadcasted based on the operation
    attribute.
 3. CPU
-   - Optimized implementation is available for 4D Q/K/V tensors with shape
-     defined as (N, H, S, D).
+   - Optimized implementation is available for 4D Q/K tensors with shape defined
+     as (N, H, S, D_qk) and V tensor with shape defined as (N, H, S, D_v).
    - Optimized implementation is available for OpenMP runtime and Threadpool
      runtime on Intel Architecture Processors.
    - Specifically for OpenMP runtime, the optimized implementation requires `N *
      H > 2 * thread number` to get enough parallelism.
 4. GPU
-   - Optimized implementation is available for 4D Q/K/V tensors with shape
-     defined as (N, H, S, D).
-   - Optimized implementation is available for floating-point SDPA with `f16`
-     data type and `D <= 256` on Intel Graphics Products with Intel(R) Xe Matrix
-     Extensions (Intel(R) XMX) support.
+   - Optimized implementation is available for 4D Q/K tensors with shape defined
+     as (N, H, S, D_qk) and V tensor with shape defined as (N, H, S, D_v) where
+     D_qk equals D_v.
+   - Optimized implementation is available for `f16` or `bf16` SDPA with `f32`
+     intermediate data type and `D <= 512` on Intel Graphics Products with
+     Intel(R) Xe Matrix Extensions (Intel(R) XMX) support.
 
 ## Example
 
 oneDNN provides an [SDPA
-example](https://github.com/oneapi-src/oneDNN/tree/main/examples/graph/sdpa.cpp)
+example](https://github.com/uxlfoundation/oneDNN/tree/main/examples/graph/sdpa.cpp)
 demonstrating how to construct a typical floating-point SDPA pattern with oneDNN
 Graph API on CPU and GPU with different runtimes.
 
 oneDNN also provides a [MQA (Multi-Query Attention)
-example](https://github.com/oneapi-src/oneDNN/tree/main/examples/graph/mqa.cpp) [3]
+example](https://github.com/uxlfoundation/oneDNN/tree/main/examples/graph/mqa.cpp) [3]
 demonstrating how to construct a floating-point MQA pattern with the same
 pattern structure as in the SDPA example but different head number in Key and
 Value tensors. In MQA, the head number of Key and Value is always one.
@@ -149,6 +154,6 @@ Value tensors. In MQA, the head number of Key and Value is always one.
 
 [1] Attention is all you need, https://arxiv.org/abs/1706.03762v7
 
-[2] oneDNN Graph API documentation, https://oneapi-src.github.io/oneDNN/graph_extension.html
+[2] oneDNN Graph API documentation, https://uxlfoundation.github.io/oneDNN/graph_extension.html
 
 [3] Fast Transformer Decoding: One Write-Head is All You Need, https://arxiv.org/abs/1911.02150

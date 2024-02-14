@@ -29,12 +29,12 @@
 #include <unordered_set>
 
 #include "common/math_utils.hpp"
+#include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/logging.hpp"
-#include "gpu/intel/serialization.hpp"
 #include "gpu/intel/utils.hpp"
-#include "ngen/ngen.hpp"
+#include "ngen.hpp"
 
 #ifdef DNNL_DEV_MODE
 #include "common/profiler.hpp"
@@ -638,8 +638,9 @@ inline uint64_t idiv_magicgu_packed(uint32_t d) {
 // Calculate how many unique filter padding states a conv dimension can produce
 // (see conv_post_op_view_mapper_t for more context)
 inline dim_t max_unique_pad_states(
-        dim_t O, dim_t I, dim_t KD, dim_t P, dim_t S, bool lim) {
-    dim_t retn = 1;
+        dim_t O, dim_t I, dim_t K, dim_t D, dim_t P, dim_t S, bool lim) {
+    if (K == 1) return 1;
+    dim_t KD = (K - 1) * (D + 1) + 1, retn = 1;
     if (I > KD) {
         retn += std::min((O - 1) * S - P, dim_t(0))
                 + std::max((O - 1) * S + (KD - P), I) + (P - I);
@@ -737,7 +738,6 @@ static auto hw_names = nstl::to_array({
         make_enum_name(ngen::Core::Xe2, "xe2"),
         make_enum_name(ngen::Core::Xe3, "xe3"),
         make_enum_name(ngen::Core::Xe3p, "xe3p"),
-        make_enum_name(ngen::Core::Xe4, "xe4"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::HW, hw_names)
 
@@ -757,7 +757,6 @@ static auto product_family_names = nstl::to_array({
         make_enum_name(ngen::ProductFamily::GenericXe2, "xe2"),
         make_enum_name(ngen::ProductFamily::GenericXe3, "xe3"),
         make_enum_name(ngen::ProductFamily::GenericXe3p, "xe3p"),
-        make_enum_name(ngen::ProductFamily::GenericXe4, "xe4"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::ProductFamily, product_family_names)
 
@@ -1066,7 +1065,7 @@ public:
     }
 
 private:
-    int find_entry_index(const std::string name) const {
+    int find_entry_index(const std::string &name) const {
         for (int i = 0; i < (int)entries_.size(); i++) {
             if (entries_[i].matches_relaxed(name)) return i;
         }
@@ -1220,17 +1219,36 @@ inline std::vector<uint8_t> hex_to_data(const std::string &s_hex) {
 
 template <typename T>
 std::string serialize_to_hex(const T &t) {
-    serialized_data_t s;
+    serialization_stream_t s;
     s.append(t);
     return data_to_hex(s.get_data());
 }
 
 template <typename T>
 void deserialize_from_hex(T &t, const std::string &s_hex) {
-    auto s = serialized_t::from_data(hex_to_data(s_hex));
+    auto s = serialization_stream_t::from_data(hex_to_data(s_hex));
     deserializer_t d(s);
     d.pop(t);
 }
+
+// NOLINTBEGIN(bugprone-macro-parentheses)
+#define GPU_DEFINE_BIT_MASK_ENUM_OPS(E) \
+    constexpr E operator&(E a, E b) { \
+        using backing_t = typename std::underlying_type<E>::type; \
+        return static_cast<E>( \
+                static_cast<backing_t>(a) & static_cast<backing_t>(b)); \
+    } \
+    constexpr E operator|(E a, E b) { \
+        using backing_t = typename std::underlying_type<E>::type; \
+        return static_cast<E>( \
+                static_cast<backing_t>(a) | static_cast<backing_t>(b)); \
+    } \
+    constexpr E operator~(E a) { \
+        using backing_t = typename std::underlying_type<E>::type; \
+        return static_cast<E>(~static_cast<backing_t>(a)); \
+    } \
+    constexpr bool any(E a) { return a != static_cast<E>(0); }
+// NOLINTEND(bugprone-macro-parentheses)
 
 } // namespace jit
 } // namespace intel

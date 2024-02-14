@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,8 +41,8 @@ using namespace dnnl::impl::cpu::x64;
 #endif
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_merged_layer_execution_sig((_ref_rnn_fwd_t<src_type, weights_type,
-        acc_type>::merged_layer_brgemm)) {
+rnn_merged_layer_execution_sig((
+        ref_rnn_fwd_t<src_type, weights_type, acc_type>::merged_layer_brgemm)) {
 #if DNNL_X64
     using brgemm_merged_layer_t = x64::brgemm_merged_layer_t<src_iter_t,
             weights_t, scratch_t, gemm_acc_t>;
@@ -65,7 +65,7 @@ template rnn_merged_layer_execution_sig(
         ref_rnn_fwd_s8s8_t::merged_layer_brgemm);
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((_ref_rnn_fwd_t<src_type, weights_type,
+rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         acc_type>::cell_execution_brgemm)) {
 #if DNNL_X64
 
@@ -273,7 +273,7 @@ template rnn_cell_execution_sig(ref_rnn_fwd_u8s8_t::cell_execution_brgemm);
 template rnn_cell_execution_sig(ref_rnn_fwd_s8s8_t::cell_execution_brgemm);
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((_ref_rnn_bwd_t<src_type, weights_type,
+rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
         acc_type>::cell_execution_brgemm)) {
 
 #if DNNL_X64

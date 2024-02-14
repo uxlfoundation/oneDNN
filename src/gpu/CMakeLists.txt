@@ -39,11 +39,16 @@ set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
 add_subdirectory(generic)
 
 if(DNNL_GPU_VENDOR STREQUAL "INTEL")
-    add_definitions_with_host_compiler(-DNGEN_CPP11)
-    add_definitions_with_host_compiler(-DNGEN_SAFE)
-    add_definitions_with_host_compiler(-DNGEN_NEO_INTERFACE)
-    add_definitions_with_host_compiler(-DNGEN_NO_OP_NAMES)
-    add_definitions_with_host_compiler(-DNGEN_WINDOWS_COMPAT)
+    include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/config/)
+
+    set(ONEDNN_NGEN_DIR "${PROJECT_SOURCE_DIR}/third_party/ngen" CACHE PATH "Path to nGEN source code")
+    add_definitions_with_host_compiler(-DNGEN_CONFIG)
+    include_directories_with_host_compiler(${ONEDNN_NGEN_DIR})
+
+    set(ONEDNN_GEMMSTONE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/gemm" CACHE PATH "Path to gemmstone source code")
+    add_definitions_with_host_compiler(-DGEMMSTONE_CONFIG)
+    include_directories_with_host_compiler(${ONEDNN_GEMMSTONE_DIR}/include)
+
     add_subdirectory(intel)
 endif()
 

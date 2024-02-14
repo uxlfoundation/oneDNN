@@ -108,7 +108,7 @@ if(UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "DEBUG" AND NOT APPLE)
         # When using Debug build mode CMake adds '-debug' or '-g' without
         # any optimization-level option that will turn off most compiler
         # optimizations similar to use of '-Od' or '-O0'.
-        # Here we disable the warning and remark aboiut this issue.
+        # Here we disable the warning and remark about this issue.
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-debug-disables-optimization -Rno-debug-disables-optimization")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-debug-disables-optimization -Rno-debug-disables-optimization")
         if(WIN32)

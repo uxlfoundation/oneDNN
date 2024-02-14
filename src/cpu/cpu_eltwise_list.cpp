@@ -1,7 +1,7 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
-* Copyright 2021-2022 Arm Ltd. and affiliates
+* Copyright 2021-2022, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_eltwise.hpp"
 #include "cpu/aarch64/jit_uni_eltwise_int.hpp"
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_eltwise.hpp"
 #endif // DNNL_AARCH64_USE_ACL
 using namespace dnnl::impl::cpu::aarch64;
@@ -47,6 +47,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
         {{forward}, {
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core_amx, f8_e4m3>)
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core_amx, f8_e5m2>)
+            CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx10_2_512, f8_e4m3>)
+            CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx10_2_512, f8_e5m2>)
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core_fp16, f16>)
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core, f32>)
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core, bf16>)
@@ -66,7 +68,11 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_X64(jit_uni_eltwise_int_fwd_t<sse41, u8>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_512, f32>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_256, f32>)
+            CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_256, bf16>)
+            CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_256, f16>) 
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_128, f32>)
+            CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_128, bf16>)
+            CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_128, f16>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t<sve_512, s32>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t<sve_512, s8>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t<sve_512, u8>)
@@ -84,6 +90,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
         {{backward}, REG_BWD_PK({
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core_amx, f8_e4m3>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core_amx, f8_e5m2>)
+            CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx10_2_512, f8_e4m3>)
+            CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx10_2_512, f8_e5m2>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core_fp16, f16>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core, f32>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core, bf16>)

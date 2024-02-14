@@ -61,7 +61,7 @@ bool GEMMStrategy::needsUnnamedBarrier(const GEMMProblem &problem) const
     if (needsKLoopBarrier() && (!namedBarriers[LoopM] || !namedBarriers[LoopN]))
         return true;
     if (slmBuffers > 0) {
-        if (persistent) return true;
+        if (persistentLoop()) return true;
         if (problem.needsASums() || problem.needsBSums()) return true;
     }
     if (kParallelLocal) return true;
@@ -432,10 +432,14 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (blocking[LoopM] <= 0) blocking[LoopM] = defaultMBlock;
     if (blocking[LoopN] <= 0) blocking[LoopN] = defaultNBlock;
     if (blocking[LoopK] <= 0) {
-        int points = 1;
-        if (slmA || (problem.A.layout != MatrixLayout::T)) points++;
-        if (slmB || (problem.B.layout != MatrixLayout::N)) points++;
-        blocking[LoopK] = std::min(2048, (2048 * points) / problem.Ta);
+        if (hw >= HW::XeHPG)
+            blocking[LoopK] = 16777216;
+        else {
+            int points = 1;
+            if (slmA || (problem.A.layout != MatrixLayout::T)) points++;
+            if (slmB || (problem.B.layout != MatrixLayout::N)) points++;
+            blocking[LoopK] = std::min(2048, (2048 * points) / problem.Ta);
+        }
     }
 
     auto defaultBlockAltK = blocking[LoopK];

@@ -81,7 +81,7 @@ offset_t offset_scope_t::get_offset(int version, const expr_t &base0,
         const expr_t &base, const std::vector<expr_t> &_shift_vec,
         const expr_t &_shift, const offset_params_t &_params,
         const loop_nest_t &loop_nest) {
-    auto params = _params;
+    const auto &params = _params;
     expr_t _base_init;
     std::vector<expr_t> _loop_incs;
     split_to_linear(base, loop_nest.indices(), loop_nest.init_exprs(),
@@ -110,7 +110,7 @@ offset_t offset_scope_t::get_offset(int version, const expr_t &base0,
     for (size_t i = 0; i < loop_nest.nloops(); i++) {
         auto inc_value = simplify(_loop_incs[i] - comp_value);
         auto inc = to_simple_expr(inc_value);
-        ret.loop_incs.push_back(inc);
+        ret.loop_incs.push_back(std::move(inc));
         if (i == loop_nest.nloops() - 1) break;
         comp_value = to_simple_expr(_loop_incs[i] * loop_nest[i].bound);
     }
@@ -169,7 +169,8 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
         int entry_idx = plan.reg_layout.to_linear_index(
                 plan.entry_tile, coord + sub_coord);
         auto &e = plan.entries[entry_idx];
-        gpu_assert(e.coord == coord + sub_coord);
+        gpu_assert(
+                e.coord.drop_defaults() == (coord + sub_coord).drop_defaults());
         auto header
                 = off_ctx.add_header(plan.desc, mem_buf, plan.addr, e.addr_inc);
         auto mask = off_ctx.add_mask(plan.mask, e.mask_incs);

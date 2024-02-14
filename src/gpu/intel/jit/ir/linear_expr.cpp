@@ -67,41 +67,38 @@ bool is_const_expr(const expr_t &e) {
 //     2 * (a * v1 + b * v2) -> (2 * a) * v1 + (2 * b) * v2
 // Example 2. Skip expansion to avoid multiple terms with v1:
 //    (a + b) * v1 -> (a + b) * v1
-class linear_normalize_expander_t : public ir_mutator_t {
-public:
-    object_t _mutate(const binary_op_t &_obj) override {
-        auto op_kind = _obj.as<binary_op_t>().op_kind;
-        if (op_kind == op_kind_t::_sub) {
-            auto &op = _obj.as<binary_op_t>();
-            auto a = mutate(op.a);
-            auto b = mutate(op.b * -1);
-            return simplify_rewrite(a + b);
-        }
-
-        auto obj = ir_mutator_t::_mutate(_obj);
-        auto &op = obj.as<binary_op_t>();
-        if (op.op_kind != op_kind_t::_mul) return obj;
-
-        auto a = op.a;
-        auto b = op.b;
-        if (!is_const_expr(b)) std::swap(a, b);
-        gpu_assert(is_const_expr(b));
-        auto a_args = op_split(op_kind_t::_add, a);
-        auto b_args = op_split(op_kind_t::_add, b);
-        expr_t ret = 0;
-        for (auto &a : a_args) {
-            if (!is_const_expr(a)) {
-                // Do not expand for non-const a.
-                ret += a * op_combine(op_kind_t::_add, b_args);
-                continue;
-            }
-            for (auto &b : b_args) {
-                ret += a * b;
-            }
-        }
-        return simplify_rewrite(ret);
+object_t linear_normalize_expander_t::_mutate(const binary_op_t &_obj) {
+    auto op_kind = _obj.as<binary_op_t>().op_kind;
+    if (op_kind == op_kind_t::_sub) {
+        auto &op = _obj.as<binary_op_t>();
+        auto a = mutate(op.a);
+        auto b = mutate(op.b * -1);
+        return simplify_rewrite(a + b);
     }
-};
+
+    auto obj = ir_mutator_t::_mutate(_obj);
+    auto &op = obj.as<binary_op_t>();
+    if (op.op_kind != op_kind_t::_mul) return obj;
+
+    auto a = op.a;
+    auto b = op.b;
+    if (!is_const_expr(b)) std::swap(a, b);
+    gpu_assert(is_const_expr(b));
+    auto a_args = op_split(op_kind_t::_add, a);
+    auto b_args = op_split(op_kind_t::_add, b);
+    expr_t ret = 0;
+    for (auto &a : a_args) {
+        if (!is_const_expr(a)) {
+            // Do not expand for non-const a.
+            ret += a * op_combine(op_kind_t::_add, b_args);
+            continue;
+        }
+        for (auto &b : b_args) {
+            ret += a * b;
+        }
+    }
+    return simplify_rewrite(ret);
+}
 
 expr_t linear_normalize_reduce(const expr_t &e,
         object_eq_map_t<expr_t, int64_t> factors, int64_t const_factor) {
@@ -244,7 +241,7 @@ public:
         for (auto &f : factors_) {
             if (f.is<const_var_t>()) new_factors.push_back(f);
         }
-        factors_ = new_factors;
+        factors_ = std::move(new_factors);
     }
 
     linear_coef_t &operator/=(int64_t factor) {
@@ -372,8 +369,7 @@ expr_t linear_div(const expr_t &e, int64_t factor) {
     auto &linear = _linear.as<linear_t>();
     auto c = linear_coef_t::div(linear.c, factor);
     auto u_vec = linear_coef_t::div(linear.u_vec, factor);
-    auto v_vec = linear.v_vec;
-    return linear_t::to_expr(c, u_vec, v_vec);
+    return linear_t::to_expr(c, u_vec, linear.v_vec);
 }
 
 expr_t simplify_linear_mod_reduce(const expr_t &e, int64_t factor) {

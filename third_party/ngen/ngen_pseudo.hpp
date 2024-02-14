@@ -530,7 +530,7 @@ void registerfence(const RegData &dst, SourceLocation loc = {}) {
 }
 
 // Global memory fence.
-void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0), SourceLocation loc = {}) {
+void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst, const RegData &header, SourceLocation loc = {}) {
     registerfence(dst, loc);
 
 #if XE3P
@@ -555,20 +555,52 @@ void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC 
     }
 }
 
-void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0), SourceLocation loc = {}) {
+void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst, SourceLocation loc = {}) {
+    memfence(mod, scope, flushing, dst, GRF(0), loc);
+}
+
+void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, SourceLocation loc = {}) {
+    memfence(mod, scope, flushing, NullRegister(), GRF(0), loc);
+}
+
+void memfence(const InstructionModifier &mod, const RegData &dst, const RegData &header, SourceLocation loc = {}) {
     memfence(mod, FenceScopeLSC::GPU, FlushTypeLSC::None, dst, header, loc);
 }
 
-void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0), SourceLocation loc = {}) {
+void memfence(const InstructionModifier &mod, const RegData &dst, SourceLocation loc = {}) {
+    memfence(mod, FenceScopeLSC::GPU, FlushTypeLSC::None, dst, GRF(0), loc);
+}
+
+void memfence(const InstructionModifier &mod, SourceLocation loc = {}) {
+    memfence(mod, FenceScopeLSC::GPU, FlushTypeLSC::None, NullRegister(), GRF(0), loc);
+}
+
+void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst, const RegData &header, SourceLocation loc = {}) {
     memfence(InstructionModifier(), scope, flushing, dst, header, loc);
 }
 
-void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0), SourceLocation loc = {}) {
+void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst, SourceLocation loc = {}) {
+    memfence(InstructionModifier(), scope, flushing, dst, GRF(0), loc);
+}
+
+void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, SourceLocation loc = {}) {
+    memfence(InstructionModifier(), scope, flushing, NullRegister(), GRF(0), loc);
+}
+
+void memfence(const RegData &dst, const RegData &header, SourceLocation loc = {}) {
     memfence(InstructionModifier(), dst, header, loc);
 }
 
+void memfence(const RegData &dst, SourceLocation loc = {}) {
+    memfence(InstructionModifier(), dst, GRF(0), loc);
+}
+
+void memfence(SourceLocation loc = {}) {
+    memfence(InstructionModifier(), NullRegister(), GRF(0), loc);
+}
+
 // SLM-only memory fence.
-void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0), SourceLocation loc = {}) {
+void slmfence(const InstructionModifier &mod, const RegData &dst, const RegData &header, SourceLocation loc = {}) {
     registerfence(dst, loc);
 
 #if XE3P
@@ -583,8 +615,11 @@ void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(
         send(8 | mod | NoMask, dst, header, exdesc, 0x219E0FE, loc);
     }
 }
-
-void slmfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0), SourceLocation loc = {}) { slmfence(InstructionModifier(), dst, header, loc); }
+void slmfence(const InstructionModifier &mod, const RegData &dst, SourceLocation loc = {}) { slmfence(mod, dst, GRF(0), loc); }
+void slmfence(const InstructionModifier &mod, SourceLocation loc = {}) { slmfence(mod, NullRegister(), GRF(0), loc); }
+void slmfence(const RegData &dst, const RegData &header, SourceLocation loc = {}) { slmfence(InstructionModifier(), dst, header, loc); }
+void slmfence(const RegData &dst, SourceLocation loc = {}) { slmfence(InstructionModifier(), dst, GRF(0), loc); }
+void slmfence(SourceLocation loc = {}) { slmfence(InstructionModifier(), NullRegister(), GRF(0), loc); }
 
 // Wait on the last global memory or SLM fence.
 void fencewait(SourceLocation loc = {}) {
@@ -595,7 +630,7 @@ void fencewait(SourceLocation loc = {}) {
 }
 
 // XeHP+ prologues.
-void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127), int paddedSize = 0, SourceLocation loc = {}) {
+void loadlid(int argBytes, int dims, int simd, const GRF &temp, int paddedSize, SourceLocation loc = {}) {
     if (hardware >= HW::XeHP) {
         if (paddedSize < 0)
             paddedSize = 12*16;
@@ -619,6 +654,7 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
                 mov<uint64_t>(1, base, r0.uq(7), loc);
                 mad<uint32_t>(1, acc0[0], uint16_t(argBytes), acc0[0], uint16_t(3 * stride), loc);
                 mov<uint32_t>(16, r4, r1, loc);
+                markIfUndefined(_interfaceLabels.crossThreadPatches[0]);
                 add<uint32_t>(1, temp[0], acc0[0], Immediate::ud(0), loc);   /* relocation */
                 load(1, r1, D32T(std::min(dims, 2) * stride / 4) | L1C_L3CC, A64_A32U, temp + base, loc);
                 insns = 6;
@@ -635,6 +671,8 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
                 and_<uint32_t>(1, temp[2], r0[0], uint32_t(~0x1F), loc);
                 and_<uint16_t>(1, temp[0], r0[4], uint16_t(0xFF), loc);
                 add<uint32_t>(1, temp[2], temp[2], uint16_t(argBytes), loc);
+                markIfUndefined(_interfaceLabels.crossThreadPatches[0]);
+                add<uint32_t>(1, temp[2], temp[2], Immediate::ud(0), loc);  /* relocation */
                 if (simd == 1) {
                     mad<uint32_t>(1, tempAddr, temp[2], temp.uw(0), uint16_t(grfSize), loc);
                     lsc ? load(1, r1, D32T(4) | L1C_L3C,      A32,   temp, loc)
@@ -665,8 +703,7 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
                 nop(loc);
         }
 
-        if (!_labelLocalIDsLoaded.defined(labelManager))
-            mark(_labelLocalIDsLoaded);
+        markIfUndefined(_interfaceLabels.localIDsLoaded);
 
 #if XE3P
         /* Workaround for incorrect NEO/XeSim handling of crossthread entrance */
@@ -676,8 +713,12 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
 #endif
     }
 }
+void loadlid(int argBytes, int dims, int simd, const GRF &temp, SourceLocation loc = {}) { loadlid(argBytes, dims, simd, temp, 0, loc); }
+void loadlid(int argBytes, int dims, int simd, SourceLocation loc = {}) { loadlid(argBytes, dims, simd, GRF(127), 0, loc); }
+void loadlid(int argBytes, int dims, SourceLocation loc = {}) { loadlid(argBytes, dims, 8, GRF(127), 0, loc); }
+void loadlid(int argBytes, SourceLocation loc = {}) { loadlid(argBytes, 3, 8, GRF(127), 0, loc); }
 
-void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inPrologue = true, SourceLocation loc = {}) {
+void loadargs(const GRF &base, int argGRFs, const GRF &temp, bool inPrologue, SourceLocation loc = {}) {
     if (hardware >= HW::XeHP) {
         if (argGRFs > 0) {
             const bool lsc = (hardware >= HW::XeHPG);
@@ -693,6 +734,7 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inP
                 auto addr = inPrologue ? r4 : temp;
                 if (!inPrologue)
                     mov<uint64_t>(1, addr, r0[7], loc);
+                markIfUndefined(_interfaceLabels.crossThreadPatches[1]);
                 mov(1, offsetRT, Immediate::uq(0), loc);     /* relocation */
                 while (argGRFs > 0) {
                     int nload = std::min(utils::rounddown_pow2(argGRFs), 8);
@@ -708,6 +750,8 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inP
                 if (!lsc)
                     mov<uint32_t>(8, temp, uint16_t(0), loc);
                 and_<uint32_t>(1, tempAddr, r0[0], uint32_t(~0x1F), loc);
+                markIfUndefined(_interfaceLabels.crossThreadPatches[1]);
+                add<uint32_t>(1, tempAddr, tempAddr, Immediate::ud(0), loc);  /* relocation */
                 while (argGRFs > 0) {
                     int nload = std::min(utils::rounddown_pow2(argGRFs), lsc ? 8 : 4);
                     int loadBytes = nload * GRF::bytes(hardware);
@@ -723,10 +767,12 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inP
             defaultModifier = dmSave;
         }
 
-        if (!_labelArgsLoaded.defined(labelManager))
-            mark(_labelArgsLoaded);
+        markIfUndefined(_interfaceLabels.argsLoaded);
     }
 }
+
+void loadargs(const GRF &base, int argGRFs, const GRF &temp, SourceLocation loc = {}) { loadargs(base, argGRFs, temp, true, loc); }
+void loadargs(const GRF &base, int argGRFs, SourceLocation loc = {}) { loadargs(base, argGRFs, GRF(127), true, loc); }
 
 void epilogue(int GRFCount, bool hasSLM, const RegData &r0_info, SourceLocation loc = {}) {
     GRF tmp0(GRFCount - 3);

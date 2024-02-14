@@ -17,8 +17,8 @@
 #include "common/experimental.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/bnorm/bnorm_model.hpp"
-#include "gpu/intel/ocl/bnorm/bnorm_utils.hpp"
+#include "gpu/intel/ocl/bnorm/model.hpp"
+#include "gpu/intel/ocl/bnorm/utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 
 using namespace dnnl::impl::memory_tracking::names;

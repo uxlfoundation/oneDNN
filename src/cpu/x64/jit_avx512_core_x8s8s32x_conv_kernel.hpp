@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,12 +32,12 @@ namespace cpu {
 namespace x64 {
 
 template <typename Vmm>
-struct _jit_avx512_core_x8s8s32x_fwd_kernel : public jit_generator {
+struct jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_avx512_core_x8s8s32x_conv_fwd_ker_t)
 
     enum { STATE_FIRST_DST_LOAD = 0x1U };
 
-    _jit_avx512_core_x8s8s32x_fwd_kernel(const jit_conv_conf_t &ajcp,
+    jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
     jit_conv_conf_t jcp;
@@ -45,7 +45,7 @@ struct _jit_avx512_core_x8s8s32x_fwd_kernel : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     using Vmm_down_t =
             typename utils::conditional<std::is_same<Vmm, Xbyak::Zmm>::value,
                     Xbyak::Ymm, Xbyak::Xmm>::type;
@@ -59,11 +59,11 @@ private:
         ker_dw_reg_base_idx = 30,
         ker_zp_reg_base_idx = 26,
     };
-    typedef enum {
+    enum class ic_block_t {
         no_last_block,
         last_ic_block,
         last_sp_block,
-    } ic_block_t;
+    };
 
     /* data regs */
     const Xbyak::Reg64 reg_ptr_scales = rax;
@@ -239,26 +239,26 @@ private:
     Vmm vmm_mask(const Vmm vmm_in, bool mask_flag, bool store = false);
 };
 
-struct jit_avx512_core_x8s8s32x_fwd_kernel {
+struct jit_avx512_core_x8s8s32x_fwd_kernel_t {
 
-    jit_avx512_core_x8s8s32x_fwd_kernel(const jit_conv_conf_t &ajcp,
+    jit_avx512_core_x8s8s32x_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
         int ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
         switch (ch_block) {
             case 16:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_x8s8s32x_fwd_kernel<Xbyak::Zmm>>(
+                        jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Xbyak::Zmm>>(
                         ajcp, attr, dst_md);
                 return;
             case 8:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_x8s8s32x_fwd_kernel<Xbyak::Ymm>>(
+                        jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Xbyak::Ymm>>(
                         ajcp, attr, dst_md);
                 return;
             case 4:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_x8s8s32x_fwd_kernel<Xbyak::Xmm>>(
+                        jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Xbyak::Xmm>>(
                         ajcp, attr, dst_md);
                 return;
             default: assert(!"invalid channel blocking");
@@ -270,7 +270,7 @@ struct jit_avx512_core_x8s8s32x_fwd_kernel {
         return status::out_of_memory;
     }
 
-    ~jit_avx512_core_x8s8s32x_fwd_kernel() = default;
+    ~jit_avx512_core_x8s8s32x_fwd_kernel_t() = default;
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &src_pd,
@@ -278,12 +278,12 @@ struct jit_avx512_core_x8s8s32x_fwd_kernel {
             memory_desc_t &bias_pd, primitive_attr_t &attr, int nthreads);
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
-    void operator()(const jit_conv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*kernel_)(p); }
     const Xbyak::uint8 *jit_ker() const { return kernel_->jit_ker(); }
 
 private:
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_x8s8s32x_fwd_kernel)
-    std::unique_ptr<jit_generator> kernel_;
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_x8s8s32x_fwd_kernel_t)
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

@@ -212,24 +212,36 @@ using bench_time_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_time_t;
 using pvar_tile_t = dnnl::impl::gpu::intel::jit::pvar_tile_t;
 namespace pvars = dnnl::impl::gpu::intel::jit::pvars;
 
+std::string c_pd_name(dnnl_primitive_desc_t pd) {
+    const char *res = nullptr;
+    dnnl_status_t status
+            = dnnl_primitive_desc_query(pd, dnnl_query_impl_info_str, 0, &res);
+    gpu_assert(status == dnnl_success);
+    return std::string(res);
+}
+
+dim_t opp_pad(dim_t i, dim_t o, dim_t k, dim_t s, dim_t p, dim_t d) {
+    return (o - 1) * s - i + ((k - 1) * (d + 1) + 1) - p;
+}
+
 class bench_task_t : public bench_task_base_t {
 public:
-    bench_task_t(const problem_t &prb) : prb_(prb) {
-        g = prb.shape()[pvars::g];
-        mb = prb.shape()[pvars::mb];
-        oc = prb.shape()[pvars::oc];
-        ic = prb.shape()[pvars::ic];
-        ih = prb.shape()[pvars::ih];
-        iw = prb.shape()[pvars::iw];
-        oh = prb.shape()[pvars::oh];
-        ow = prb.shape()[pvars::ow];
-        kh = prb.shape()[pvars::kh];
-        kw = prb.shape()[pvars::kw];
-        sh = prb.shape()[pvars::sh];
-        sw = prb.shape()[pvars::sw];
-        ph = prb.shape()[pvars::ph];
-        pw = prb.shape()[pvars::pw];
-    }
+    bench_task_t(const problem_t &prb)
+        : prb_(prb)
+        , g(prb.shape()[pvars::g])
+        , mb(prb.shape()[pvars::mb])
+        , oc(prb.shape()[pvars::oc])
+        , ic(prb.shape()[pvars::ic])
+        , ih(prb.shape()[pvars::ih])
+        , iw(prb.shape()[pvars::iw])
+        , oh(prb.shape()[pvars::oh])
+        , ow(prb.shape()[pvars::ow])
+        , kh(prb.shape()[pvars::kh])
+        , kw(prb.shape()[pvars::kw])
+        , sh(prb.shape()[pvars::sh])
+        , sw(prb.shape()[pvars::sw])
+        , ph(prb.shape()[pvars::ph])
+        , pw(prb.shape()[pvars::pw]) {}
 
     const problem_t &prb() const { return prb_; }
 
@@ -243,7 +255,10 @@ public:
 
             memory::dims strides = {1, sh, sw};
             memory::dims padding_l = {0, ph, pw};
-            memory::dims padding_r = {0, ph, pw};
+            memory::dims padding_r(3);
+            padding_r[0] = 0;
+            padding_r[1] = opp_pad(ih, oh, kh, sh, ph, 0);
+            padding_r[2] = opp_pad(iw, ow, kw, sw, pw, 0);
 
             switch (prb_.prop()) {
                 case prop_kind::forward_inference:
@@ -278,15 +293,21 @@ public:
                     // under the C++ API.
                     primitive_attr attr;
                     dnnl_primitive_desc_t c_pd = nullptr;
-                    CHECK(dnnl_convolution_backward_data_primitive_desc_create(
-                            &c_pd, eng.get(), alg_kind::convolution_direct,
-                            diff_src_md.get(), wei_md.get(), diff_dst_md.get(),
-                            &strides[0], nullptr, &padding_l[0], &padding_r[0],
-                            nullptr, attr.get()));
-                    auto pd = convolution_backward_data::primitive_desc(c_pd);
-                    while (pd.impl_info_str() != v2_impl_name) {
-                        if (!pd.next_impl()) break;
+                    auto status
+                            = dnnl_convolution_backward_data_primitive_desc_create(
+                                    &c_pd, eng.get(),
+                                    alg_kind::convolution_direct,
+                                    diff_src_md.get(), wei_md.get(),
+                                    diff_dst_md.get(), &strides[0], nullptr,
+                                    &padding_l[0], &padding_r[0], nullptr,
+                                    attr.get());
+                    if (status != status::success) return false;
+                    while (c_pd_name(c_pd) != v2_impl_name) {
+                        auto status = dnnl_primitive_desc_next_impl(c_pd);
+                        if (status == dnnl_last_impl_reached) break;
+                        gpu_assert(status == dnnl_success);
                     }
+                    auto pd = convolution_backward_data::primitive_desc(c_pd);
                     if (pd.impl_info_str() != v2_impl_name) {
                         std::cout << "Error: expected conv_v2." << std::endl;
                         exit(1);
@@ -310,16 +331,22 @@ public:
                     // under the C++ API.
                     primitive_attr attr;
                     dnnl_primitive_desc_t c_pd = nullptr;
-                    CHECK(dnnl_convolution_backward_weights_primitive_desc_create(
-                            &c_pd, eng.get(), alg_kind::convolution_direct,
-                            src_md.get(), diff_wei_md.get(), diff_bias_md.get(),
-                            diff_dst_md.get(), &strides[0], nullptr,
-                            &padding_l[0], &padding_r[0], nullptr, attr.get()));
+                    auto status
+                            = dnnl_convolution_backward_weights_primitive_desc_create(
+                                    &c_pd, eng.get(),
+                                    alg_kind::convolution_direct, src_md.get(),
+                                    diff_wei_md.get(), diff_bias_md.get(),
+                                    diff_dst_md.get(), &strides[0], nullptr,
+                                    &padding_l[0], &padding_r[0], nullptr,
+                                    attr.get());
+                    if (status != status::success) return false;
+                    while (c_pd_name(c_pd) != v2_impl_name) {
+                        auto status = dnnl_primitive_desc_next_impl(c_pd);
+                        if (status == dnnl_last_impl_reached) break;
+                        gpu_assert(status == dnnl_success);
+                    }
                     auto pd = convolution_backward_weights::primitive_desc(
                             c_pd);
-                    while (pd.impl_info_str() != v2_impl_name) {
-                        if (!pd.next_impl()) break;
-                    }
                     if (pd.impl_info_str() != v2_impl_name) {
                         std::cout << "Error: expected conv_v2." << std::endl;
                         exit(1);
@@ -393,7 +420,7 @@ private:
     }
 
     problem_t prb_;
-    memory::dim mb, g;
+    memory::dim g, mb;
     memory::dim oc, ic;
     memory::dim ih, iw;
     memory::dim oh, ow;
@@ -484,6 +511,10 @@ pvar_tile_t random_shape(
         s[pvars::oc] = oc();
         s[pvars::iw] = s[pvars::ow] = (ow.with_tile() ? ow() : iw());
     }
+    s[pvars::kw] = tile.get(pvars::kw, 1);
+    s[pvars::pw] = (s[pvars::kw] - 1) / 2;
+    s[pvars::kh] = tile.get(pvars::kh, 1);
+    s[pvars::ph] = (s[pvars::kh] - 1) / 2;
     for (auto &d : s) {
         dim_t value;
         if (params.reqs.get_value(d, value)) s[d] = value;
@@ -538,7 +569,7 @@ std::vector<problem_t> generate_problems(const bench_input_params_t &params) {
         auto prb = params.problem();
         prb.set_shape(shape);
         if (!params.reqs.fits(prb.shape())) continue;
-        ret.push_back(prb);
+        ret.push_back(std::move(prb));
         if ((int)ret.size() >= params.nprbs) break;
     }
     if ((int)ret.size() < params.nprbs) {
@@ -562,24 +593,24 @@ std::vector<problem_t> load_problems(const std::string &path) {
 }
 
 bench_data_t bench(const bench_manager_t &bench_mger,
-        const kernel_desc_t &kernel_desc, std::vector<bench_task_t> &tasks,
+        const kernel_desc_t &_kernel_desc, std::vector<bench_task_t> &tasks,
         memory_pool_t *mem_pool_ptr = nullptr) {
     int ntasks = (int)tasks.size();
 
     auto eng = bench_mger.get_engine();
     auto strm = bench_mger.get_stream();
-    std::cout << "Running benchmark for descriptor: " << kernel_desc.cmd_str()
+    std::cout << "Running benchmark for descriptor: " << _kernel_desc.cmd_str()
               << std::endl;
-    gpu_assert(!kernel_desc.spec.is_dynamic());
-    auto kernel_desc_min_dims = kernel_desc;
-    kernel_desc_min_dims.spec.mode = specialization_mode_t::min_dims;
+    gpu_assert(!_kernel_desc.spec.is_dynamic());
+    auto kernel_desc = _kernel_desc;
+    kernel_desc.spec.mode = specialization_mode_t::_default;
     {
-        auto guard = debug_t::make_kernel_desc_setter(kernel_desc_min_dims);
+        auto guard = debug_t::make_kernel_desc_setter(kernel_desc);
         if (!tasks[0].init_primitive(eng)) return {};
     }
 
     parallel_nd(ntasks, [&](dim_t i) {
-        auto guard = debug_t::make_kernel_desc_setter(kernel_desc_min_dims);
+        auto guard = debug_t::make_kernel_desc_setter(kernel_desc);
         bool ok = tasks[i].init_primitive(eng);
         if (!ok) throw std::runtime_error("Initialization failed");
     });
@@ -593,7 +624,7 @@ bench_data_t bench(const bench_manager_t &bench_mger,
         mem_pool.finalize(strm);
     }
 
-    bench_data_t bd(0, kernel_desc);
+    bench_data_t bd(0, _kernel_desc);
     dnnl_reset_profiling(strm.get());
     for (int i = 0; i < ntasks; i++) {
         tasks[i].bench_async(strm, mem_pool);
@@ -617,9 +648,8 @@ public:
         }
     }
 
-    bench_data_t bench(const kernel_desc_t &_kernel_desc) {
+    bench_data_t bench(const kernel_desc_t &kernel_desc) {
         if (tasks_.empty()) return bench_data_t();
-        auto kernel_desc = _kernel_desc;
         if (!create_conv_plan(kernel_desc, bench_mger_.hw())) return {};
         return planner::bench(bench_mger_, kernel_desc, tasks_, &mem_pool_);
     }
@@ -639,8 +669,7 @@ bench_data_t bench_runner_t::bench(const kernel_desc_t &kernel_desc) {
 }
 
 bench_data_t bench(const bench_manager_t &bench_mger,
-        const kernel_desc_t &_kernel_desc, int nprbs) {
-    auto kernel_desc = _kernel_desc;
+        const kernel_desc_t &kernel_desc, int nprbs) {
     if (!create_conv_plan(kernel_desc, bench_mger.hw())) return {};
     bench_runner_t runner(bench_mger,
             bench_input_params_t(kernel_desc, bench_mger.hw(), nprbs));
@@ -652,7 +681,7 @@ bool try_create(
     bench_input_params_t params(kernel_desc, bench_mger.hw(), /*nprbs=*/1);
     bench_task_t task(generate_problems(params)[0]);
     auto engine = bench_mger.get_engine();
-    auto guard = debug_t::instance().make_kernel_desc_setter(kernel_desc);
+    auto guard = debug_t::make_kernel_desc_setter(kernel_desc);
     return task.init_primitive(engine);
 }
 

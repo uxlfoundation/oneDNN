@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-void jit_generator::transpose(const Xbyak::Reg64 &reg_src,
+void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
         const Xbyak::Reg64 &reg_dst, dim_t src_stride, dim_t dst_stride,
         int nrows, int ncolumns, data_type_t dt, Xbyak::Ymm &ymm_tmp,
         Xbyak::Ymm &ymm_mask, Xbyak::Xmm &xmm_upper_mask) {
@@ -35,7 +35,7 @@ void jit_generator::transpose(const Xbyak::Reg64 &reg_src,
 
     // only avx2 version is supported for now. TODO for others
     const int transpose_size
-            = vreg_traits<Xbyak::Ymm>::vlen / types::data_type_size(dt);
+            = vreg_traits_t<Xbyak::Ymm>::vlen / types::data_type_size(dt);
     assert(is_valid_isa(avx2));
     assert(nrows <= transpose_size && ncolumns <= transpose_size);
 

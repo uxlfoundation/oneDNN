@@ -308,11 +308,12 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
             dnnl::impl::alg_kind_t alg;
             // This is an unmodifiable user copy of attributes which is used in
             // caching mechanism. Not to be used internally.
-            dnnl::impl::memory_desc_t user_src1_desc;
+            dnnl::impl::memory_desc_t user_src1_desc, user_src2_desc;
+
             // This is a modifiable copy of memory desc. It changes format kind
             // and tag of md in case user passed format_kind::any. To be used
             // everywhere internally.
-            dnnl::impl::memory_desc_t src1_desc;
+            dnnl::impl::memory_desc_t src1_desc, src2_desc;
         };
 
         struct prelu_t {
@@ -366,7 +367,13 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
 
         bool is_like_binary() const { return is_binary() || is_prelu(); }
 
-        dnnl::impl::status_t validate_binary_with_dst_consistency(
+        bool is_binary_with_ternary_op() const {
+            return is_binary()
+                    && (binary.alg == dnnl::impl::alg_kind::binary_select);
+        }
+
+        dnnl::impl::status_t validate_binary(
+                dnnl::impl::engine_kind_t engine_kind,
                 const dnnl::impl::memory_desc_t *dst_desc) const;
 
         bool operator==(const entry_t &rhs) const {
@@ -430,11 +437,13 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
             dnnl::impl::dim_t kernel_size, dnnl::impl::dim_t stride_size,
             dnnl::impl::dim_t padding_l_size);
     dnnl::impl::status_t append_binary(dnnl::impl::alg_kind_t alg,
-            const dnnl::impl::memory_desc_t *user_src1_desc);
+            const dnnl::impl::memory_desc_t *user_src1_desc,
+            const dnnl::impl::memory_desc_t *user_src2_desc = nullptr);
     dnnl::impl::status_t append_prelu(int mask);
 
     dnnl::impl::status_t prepend_binary(dnnl::impl::alg_kind_t alg,
-            const dnnl::impl::memory_desc_t *user_src1_desc);
+            const dnnl::impl::memory_desc_t *user_src1_desc,
+            const dnnl::impl::memory_desc_t *user_src2_desc = nullptr);
 
     int find(dnnl::impl::primitive_kind_t kind, int start = 0,
             int stop = -1) const {
@@ -487,7 +496,7 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
                 || entry_[sum_ind].sum.dt == dst_dt;
     }
 
-    dnnl::impl::status_t validate_binary_with_dst_consistency(
+    dnnl::impl::status_t validate_binary(dnnl::impl::engine_kind_t engine_kind,
             const dnnl::impl::memory_desc_t *dst_desc) const;
 
     bool contain(dnnl::impl::primitive_kind_t kind, int index) const {
@@ -511,7 +520,8 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
 
 private:
     dnnl::impl::status_t validate_binary(dnnl::impl::alg_kind_t alg,
-            const dnnl::impl::memory_desc_t *user_src1_desc) const;
+            const dnnl::impl::memory_desc_t *user_src1_desc,
+            const dnnl::impl::memory_desc_t *user_src2_desc) const;
 
     bool check_sum_consistent_dt(const dnnl::impl::data_type_t dst_dt,
             const bool diverse_sum_dt_allowed = false) const;
@@ -565,26 +575,23 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
 
     enum class skip_mask_t : unsigned {
         none = 0,
-        scales = 1u << 2,
-        scales_runtime = (unsigned)scales | (1u << 3),
+        scales = 1u << 1,
+        scales_groups = (unsigned)scales | (1u << 2),
+        scales_data_type = (unsigned)scales | (1u << 3),
         zero_points = 1u << 4,
-        zero_points_runtime = (unsigned)zero_points | (1u << 5),
-        post_ops = 1u << 6,
-        rnn_data_qparams = 1u << 7,
-        rnn_weights_qparams = 1u << 8,
-        rnn_tparams = 1u << 9,
-        sum_dt = 1u << 10,
-        rnn_weights_projection_qparams = 1u << 11,
-        gpu_attr = 1u << 12,
-        accumulation_mode = 1u << 13,
-        fpmath_mode = 1u << 14,
-        scales_runtime_groups = (unsigned)scales_runtime | (1u << 15),
-        scales_runtime_data_type = (unsigned)scales_runtime | (1u << 16),
-        zero_points_runtime_groups = (unsigned)zero_points_runtime | (1u << 17),
-        zero_points_runtime_data_type
-        = (unsigned)zero_points_runtime | (1u << 18),
-        dropout = 1u << 19,
-        rounding_mode = 1u << 20,
+        zero_points_groups = (unsigned)zero_points | (1u << 5),
+        zero_points_data_type = (unsigned)zero_points | (1u << 6),
+        post_ops = 1u << 7,
+        sum_dt = 1u << 8,
+        rnn_data_qparams = 1u << 9,
+        rnn_weights_qparams = 1u << 10,
+        rnn_tparams = 1u << 11,
+        rnn_weights_projection_qparams = 1u << 12,
+        gpu_attr = 1u << 13,
+        accumulation_mode = 1u << 14,
+        fpmath_mode = 1u << 15,
+        dropout = 1u << 16,
+        rounding_mode = 1u << 17,
     };
 
     /** Returns true if the attributes have default values.

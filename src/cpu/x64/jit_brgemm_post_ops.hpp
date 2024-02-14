@@ -50,7 +50,7 @@ struct brgemm_kernel_diff_bias_t {
 };
 
 template <typename Vmm>
-struct jit_brgemm_kernel_diff_bias_t : public jit_generator {
+struct jit_brgemm_kernel_diff_bias_t : public jit_generator_t {
     jit_brgemm_kernel_diff_bias_t(const jit_brgemm_primitive_conf_t &ajbgp,
             const brgemm_desc_t &abrg);
 
@@ -71,7 +71,7 @@ private:
     int acc_typesize_;
     int mult_;
 
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using reg64_t = const Xbyak::Reg64;
     // Register decomposition
     const reg64_t param1 = abi_param1;
@@ -113,7 +113,6 @@ private:
     void init_masks(int tail_length);
     void generate() override;
 
-private:
     void horizontal_sum(Xbyak::Xmm src);
     void horizontal_sum(Xbyak::Ymm src, Xbyak::Ymm workspace);
     void horizontal_sum(Xbyak::Zmm src, Xbyak::Zmm workspace);
@@ -159,7 +158,7 @@ struct jit_brgemm_kernel_post_ops_base_t {
 // Shouldn't be called directly on implementation side.
 template <typename Vmm>
 struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
-                                      public jit_generator {
+                                      public jit_generator_t {
 
     // TODO: the proper design should replace `brgemm_desc_t` argument and
     // introduce a dedicated struct with members properly initialized. This will
@@ -169,15 +168,15 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
             const brgemm_desc_t &abrg, const primitive_attr_t &aattr);
 
     // These two methods are required for a base class to work since it's not
-    // derived from the jit_generator.
+    // derived from the jit_generator_t.
     status_t generate_kernel() override {
-        return jit_generator::create_kernel();
+        return jit_generator_t::create_kernel();
     }
     void operator()(brgemm_kernel_post_ops_args_t *args) const override {
-        return jit_generator::operator()(args);
+        return jit_generator_t::operator()(args);
     }
 
-    ~jit_brgemm_kernel_post_ops_t() = default;
+    ~jit_brgemm_kernel_post_ops_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops_t)
 
@@ -197,13 +196,13 @@ private:
     data_type_t out_dt_;
     data_type_t bia_dt_;
 
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
-    using Vmm_lower2_t = typename vreg_traits<Vmm_lower_t>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
+    using Vmm_lower2_t = typename vreg_traits_t<Vmm_lower_t>::Vmm_lower_t;
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
     int max_vregs_;
     const bool with_binary_non_scalar_bcast_;
@@ -283,7 +282,7 @@ private:
     }
 
     template <typename T>
-    const T maybe_mask(const T vmm_in, bool mask_flag, bool store,
+    T maybe_mask(const T vmm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) {
         assert(IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)));
         return mask_flag

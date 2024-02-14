@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2017-2025 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,7 +60,6 @@ dnnl_data_type_t str2dt(const char *str) {
     return dnnl_data_type_undef;
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 dnnl_sparse_encoding_t str2sparse_encoding(const char *str) {
 #define CASE(_case) do { \
     if (!strcmp(STRINGIFY(_case), str) \
@@ -78,7 +77,6 @@ dnnl_sparse_encoding_t str2sparse_encoding(const char *str) {
     return dnnl_sparse_encoding_undef;
 }
 
-#endif
 dnnl_format_tag_t str2fmt_tag(const char *str) {
 #define CASE(_case) do { \
     if (!strcmp(STRINGIFY(_case), str) \
@@ -930,6 +928,9 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(aCBdef8b8c);
     CASE(abdEC16e4c);
     CASE(abDC16d4c);
+    CASE(BA24b8a);
+    CASE(aCB24c8b);
+    CASE(abDC24d8c);
     CASE(x);
     CASE(nc);
     CASE(cn);
@@ -1728,11 +1729,9 @@ const char *fmt_tag2str(dnnl_format_tag_t tag) {
     return dnnl_fmt_tag2str(tag);
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 const char *sparse_encoding2str(dnnl_sparse_encoding_t encoding) {
     return dnnl_sparse_encoding2str(encoding);
 }
-#endif
 
 const char *engine_kind2str(dnnl_engine_kind_t kind) {
     return dnnl_engine_kind2str(kind);

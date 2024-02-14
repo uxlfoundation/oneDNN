@@ -51,11 +51,13 @@ public:
 
     void set(const entry_t &entry) { entries_.emplace_back(entry); }
     int size() const { return (int)entries_.size(); }
-    kernel_desc_t find_best(const problem_t &prb) const;
+    kernel_desc_t find_best(const problem_t &prb,
+            specialization_mode_t spec_mode
+            = specialization_mode_t::none) const;
     void stringify(std::ostream &out) const;
     void parse(std::istream &out);
 
-public:
+private:
     std::vector<entry_t> entries_;
 };
 

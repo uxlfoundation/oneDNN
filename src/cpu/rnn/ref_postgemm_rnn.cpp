@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -68,8 +68,9 @@ void rnn_fwd_postgemm_template(T func1, const float *scales, float alpha,
         src_data_t *dst_iter_, const src_data_t *src_iter_, const void *bias_,
         int block_step) {
 
-    const ws_gates_aoc<src_data_t> ws_gates(rnn, ws_gates_);
-    const scratch_gates_aoc<scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
+            rnn, scratch_gates_);
     const auto bias_aoc = rnn_utils::make_raw_aoc(
             bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
     const auto bias = [&](int gate_id, int dhc_id) {
@@ -77,9 +78,10 @@ void rnn_fwd_postgemm_template(T func1, const float *scales, float alpha,
     };
     const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
     const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
-    const ws_states_layer_aoc<src_data_t> dst_layer(
+    const ws_states_layer_aoc_t<src_data_t> dst_layer(
             rnn, dst_layer_, dst_layer_ld);
-    const ws_states_iter_aoc<src_data_t> dst_iter(rnn, dst_iter_, dst_iter_ld);
+    const ws_states_iter_aoc_t<src_data_t> dst_iter(
+            rnn, dst_iter_, dst_iter_ld);
 
     if (scales != nullptr) alpha = scales[0];
 
@@ -144,11 +146,11 @@ void rnn_bwd_postgemm_template(T1 func1, T2 to_src, const float *scales,
         float alpha, const rnn_utils::rnn_conf_t &rnn, src_data_t *ws_gates_,
         scratch_data_t *scratch_gates_, acc_data_t *diff_dst_iter_,
         acc_data_t *diff_dst_layer_) {
-    const ws_gates_aoc<src_data_t> ws_gates(rnn, ws_gates_);
-    const ws_gates_aoc<scratch_data_t> scratch_gates(rnn, scratch_gates_);
-    const ws_diff_states_iter_aoc<acc_data_t> diff_dst_iter(
+    const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
+    const ws_gates_aoc_t<scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const ws_diff_states_iter_aoc_t<acc_data_t> diff_dst_iter(
             rnn, diff_dst_iter_);
-    const ws_diff_states_layer_aoc<acc_data_t> diff_dst_layer(
+    const ws_diff_states_layer_aoc_t<acc_data_t> diff_dst_layer(
             rnn, diff_dst_layer_);
     if (scales != nullptr) alpha = scales[0];
 

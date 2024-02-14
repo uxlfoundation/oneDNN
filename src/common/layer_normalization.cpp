@@ -51,7 +51,8 @@ status_t lnorm_desc_init(layer_normalization_desc_t *lnorm_desc,
     VCHECK_LNORM((flags
                          & ~(normalization_flags::use_global_stats
                                  | normalization_flags::use_scale
-                                 | normalization_flags::use_shift))
+                                 | normalization_flags::use_shift
+                                 | normalization_flags::rms_norm))
                     == 0,
             VERBOSE_BAD_FLAGS);
 
@@ -157,7 +158,7 @@ status_t layer_normalization_attr_check(const layer_normalization_desc_t &desc,
 
         const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8)
                 || utils::one_of(dst_dt, data_type::s8, data_type::u8);
-        if (is_int8) fwd_attr_mask |= smask_t::scales_runtime;
+        if (is_int8) fwd_attr_mask |= smask_t::scales;
 
         VCHECK_LNORM_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -186,7 +187,7 @@ status_t layer_normalization_attr_check(const layer_normalization_desc_t &desc,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         VCHECK_LNORM_UNIMPL(false, VERBOSE_UNSUPPORTED_ATTR);

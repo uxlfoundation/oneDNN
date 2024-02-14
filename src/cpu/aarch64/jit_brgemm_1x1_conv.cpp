@@ -54,8 +54,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
-            | skip_mask_t::zero_points_runtime;
-    if (one_of(src_type, u8, s8)) skip_mask |= skip_mask_t::scales_runtime;
+            | skip_mask_t::zero_points;
+    if (one_of(src_type, u8, s8)) skip_mask |= skip_mask_t::scales;
 
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && expect_data_types(src_type, wei_type, data_type::undef, dst_type,
@@ -67,8 +67,11 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                     one_of(bias_md_.data_type, data_type::undef, f32, src_type))
             && attr()->has_default_values(skip_mask, dst_type)
             && attr()->post_ops_.check_sum_consistency(dst_type, is_int8)
-            && !has_zero_dim_memory() && zero_points_ok() && arg_scales_ok();
+            && !has_zero_dim_memory() && zero_points_ok()
+            && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
     if (!ok) return status::unimplemented;
+
+    CHECK(attr_scales_ok());
 
     CHECK(brgemm_convolution_utils::init_1x1_conf(jcp_, isa, *desc(), src_md_,
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));
@@ -224,7 +227,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::maybe_rtus(int ithr,
         const auto inp_offset = n * src_d_sz + id * src_h_sz + ih * src_w_sz
                 + iw * jcp.ngroups * jcp.ic_without_padding + g_ic;
         auto p = jit_sve_core_brgemm_conv_trans_kernel::
-                jit_brgemm_conv_trans_kernel_call_s();
+                jit_brgemm_conv_trans_kernel_args_t();
         p.h_count = nh;
         p.owb = nw;
         p.src = src + src_dt_size * inp_offset;

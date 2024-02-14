@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,8 +32,11 @@ using FCreatePattern = graph::pass::FCreatePattern;
 
 bool check_scales_equal_to_1(op_t *op) {
     auto scales = op->get_attr<std::vector<float>>(op_attr::scales);
-    return std::all_of(scales.begin(), scales.end(),
+    bool result = std::all_of(scales.begin(), scales.end(),
             [](float val) { return val == 1.0f; });
+    VCHECK_PATTERN_UTILS(result, result,
+            "convtranspose primitive doesn't support output scales != 1");
+    return result;
 }
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(convtranspose_fusion)
@@ -47,9 +50,7 @@ DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(convtranspose_fusion)
                 |
               [bias]*
                 |
-        [ Abs/Clamp/Elu/GELU/Log/Sigmoid/SoftPlus/
-          ReLU/Round/Sqrt/Square/Tanh/Add/Multiply/
-          Maximum/Minimum/Divide/Subtract]*[0,3]
+[unary/binary]*[0,MAX_REPETITION)
                 |
             [quant_out]*  
                 |      
@@ -64,7 +65,7 @@ While CPU supports.
 */
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
-        dnnl, int8_convtranspose_post_ops_fusion_cpu)
+        dnnl, x8s8x8_convtranspose_post_ops_cpu)
         .set_priority(10.5f)
         .set_engine_kind(engine_kind::cpu)
         .set_kind(partition_kind_t::quantized_convtranspose_post_ops)
@@ -135,7 +136,7 @@ While CPU supports.
 */
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
-        dnnl, int8_convtranspose_post_ops_fusion_gpu)
+        dnnl, x8s8x8_convtranspose_post_ops_gpu)
         .set_priority(10.5f)
         .set_engine_kind(engine_kind::gpu)
         .set_kind(partition_kind_t::quantized_convtranspose_post_ops)
@@ -215,9 +216,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
                 |     /
                add
                 |
-        [ Abs/Clamp/Elu/GELU/Log/Sigmoid/SoftPlus/
-          ReLU/Round/Sqrt/Square/Tanh/Add/Multiply/
-          Maximum/Minimum/Divide/Subtract]*[0,3]
+[unary/binary]*[0,MAX_REPETITION)
                 |
             quant_out 
                 |      
@@ -233,7 +232,7 @@ While CPU supports.
 */
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
-        dnnl, int8_convtranspose_add_post_ops_fusion_cpu)
+        dnnl, x8s8x8_convtranspose_add_post_ops_cpu)
         .set_priority(10.6f)
         .set_engine_kind(engine_kind::cpu)
         .set_kind(partition_kind_t::quantized_convtranspose_post_ops)
@@ -293,7 +292,7 @@ While CPU supports.
 */
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
-        dnnl, int8_convtranspose_add_post_ops_fusion_gpu)
+        dnnl, x8s8x8_convtranspose_add_post_ops_gpu)
         .set_priority(10.6f)
         .set_engine_kind(engine_kind::gpu)
         .set_kind(partition_kind_t::quantized_convtranspose_post_ops)
@@ -351,8 +350,15 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
             return std::make_shared<quantized_convtranspose>();
         });
 #endif
-
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, convtranspose_post_ops_fusion)
+/*
+          convtranspose
+                |
+              [bias]*
+                |
+[unary/binary]*[0,MAX_REPETITION)
+                |
+*/
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_convtranspose_post_ops)
         .set_priority(10.4f)
         .set_kind(partition_kind_t::convtranspose_post_ops)
         .set_attr<FCreatePattern>("FCreatePattern",

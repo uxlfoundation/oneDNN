@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_GENERIC_SYCL_BATCH_NORMALIZATION_KERNELS_HPP
-#define GPU_GENERIC_SYCL_BATCH_NORMALIZATION_KERNELS_HPP
+#ifndef GPU_GENERIC_SYCL_BATCH_NORMALIZATIONS_KERNELS_HPP
+#define GPU_GENERIC_SYCL_BATCH_NORMALIZATIONS_KERNELS_HPP
 
 #include "common/dnnl_thread.hpp"
 #include "common/dnnl_traits.hpp"

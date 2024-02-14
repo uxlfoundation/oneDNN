@@ -167,7 +167,7 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
         crosspack = 1;
     int cpo = div_up(crosspack, cpoDiv);
 
-    auto makeQRepack = [&, tileR, tileC](Type Txq, Type Txq_int, vector<RegisterBlock> &repack, vector<RegisterBlock> &src, int m, int n, int cp) mutable {
+    auto makeQRepack = [&](Type Txq, Type Txq_int, vector<RegisterBlock> &repack, vector<RegisterBlock> &src, int m, int n, int cp) {
         if (cp > 1 || (cColMajor && (cp != src[0].crosspack)) || Txq != Txq_int) {
             bool allowPartialRegs = false;
 #if XE3P

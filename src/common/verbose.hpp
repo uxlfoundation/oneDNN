@@ -63,6 +63,18 @@ struct const_expr_value_t {
 
 } // namespace utility
 
+// This is a safeguard for verbose macros against mismatches between
+// format specifiers and passed arguments that could lead to runtime failures.
+// Any discrepancies will emit warnings during build time for GCC and
+// clang builds.
+#if defined(__GNUC__) || defined(__clang__)
+static inline int format_type_checker(const char *, ...)
+        __attribute__((format(printf, 1, 2)));
+#endif
+static inline int format_type_checker(const char *, ...) {
+    return 0;
+}
+
 #define UTILITY_CONST_EXPR_VALUE(exp) \
     utility::const_expr_value_t<decltype(exp), exp>::value
 
@@ -78,6 +90,10 @@ struct const_expr_value_t {
         std::string stamp_; \
         if (dnnl::impl::get_verbose_timestamp()) \
             stamp_ = std::to_string(stamp) + ","; \
+        dnnl::impl::format_type_checker( \
+                "%s" CONCAT2(VERBOSE_, apitype) "," CONCAT2( \
+                        VERBOSE_, logtype) "%s," msg "\n", \
+                stamp_.c_str(), logsubtype, ##__VA_ARGS__); \
         dnnl::impl::verbose_printf(flagkind, \
                 "%s" CONCAT2(VERBOSE_, apitype) "," CONCAT2( \
                         VERBOSE_, logtype) "%s," msg "\n", \
@@ -154,8 +170,12 @@ struct const_expr_value_t {
 // anyway to condition collecting stamp/duration)
 #define VPROF(stamp, apitype, logtype, logsubtype, info, duration) \
     { \
-        VFORMAT(stamp, dnnl::impl::verbose_t::exec_profile, apitype, logtype, \
-                logsubtype, "%s,%g", info, duration); \
+        auto flag = dnnl::impl::verbose_t::exec_profile; \
+        if (strcmp(#logtype, "create") == 0 \
+                || strcmp(#logtype, "create_nested") == 0) \
+            flag = dnnl::impl::verbose_t::create_profile; \
+        VFORMAT(stamp, flag, apitype, logtype, logsubtype, "%s,%g", info, \
+                duration); \
     }
 
 struct verbose_t {
@@ -233,6 +253,8 @@ struct filter_status_t {
 
 inline component_t::flag_kind prim_kind2_comp_kind(
         const primitive_kind_t prim_kind) {
+    if (prim_kind >= primitive_kind::internal_only_start)
+        return component_t::all;
     return static_cast<component_t::flag_kind>(1 << prim_kind | 1 << 0);
 }
 

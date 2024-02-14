@@ -16,7 +16,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Mapping, Optional, Set, cast
 
 from . import ir
 
@@ -140,8 +140,19 @@ class Converter(metaclass=ConverterMeta):
         args = self._get_nondefault_args(values, defaults=(0.0, 0.0, 1.0))
         return ":".join([po.alg] + args)
 
+    def _convert_select_post_op(self, po: ir.SelectPostOp):
+        src1_arg = f"{po.dt}.{po.mask}"
+        if po.tag != "any":
+            src1_arg = src1_arg + f".{po.tag}"
+        src2_arg = f"{po.src2_mask}"
+        if po.src2_tag != "any":
+            src2_arg = src2_arg + f".{po.tag}"
+        return ":".join([po.alg, src1_arg, src2_arg])
+
     def _convert_binary_post_op(self, po: ir.BinaryPostOp):
-        return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}"
+        if po.tag != "any":
+            return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}"
+        return f"{po.alg}:{po.dt}:{po.mask}"
 
     @property
     def post_ops(self):
@@ -151,20 +162,28 @@ class Converter(metaclass=ConverterMeta):
         results = []
         for post_op in post_ops:
             if post_op.alg == "dw":
-                results.append(self._convert_dw_post_op(post_op))
+                dw_po = cast(ir.DepthwisePostOp, post_op)
+                results.append(self._convert_dw_post_op(dw_po))
             elif post_op.alg == "sum":
-                results.append(self._convert_sum_post_op(post_op))
+                sum_po = cast(ir.SumPostOp, post_op)
+                results.append(self._convert_sum_post_op(sum_po))
             elif post_op.alg == "prelu":
-                results.append(self._convert_prelu_post_op(post_op))
-            elif post_op.alg.startswith("binary"):
-                results.append(self._convert_binary_post_op(post_op))
-            elif post_op.alg.startswith("eltwise"):
-                results.append(self._convert_eltwise_post_op(post_op))
+                prelu_po = cast(ir.PreLUPostOp, post_op)
+                results.append(self._convert_prelu_post_op(prelu_po))
+            elif post_op.alg == "binary_select":
+                select_po = cast(ir.SelectPostOp, post_op)
+                results.append(self._convert_select_post_op(select_po))
+            elif post_op.alg.startswith("binary_"):
+                binary_po = cast(ir.BinaryPostOp, post_op)
+                results.append(self._convert_binary_post_op(binary_po))
+            elif post_op.alg.startswith("eltwise_"):
+                eltwise_po = cast(ir.EltwisePostOp, post_op)
+                results.append(self._convert_eltwise_post_op(eltwise_po))
         return "--attr-post-ops=" + "+".join(results)
 
     def _get_quantization(
         self,
-        params: Optional[Dict[str, ir.QuantizationParam]],
+        params: Optional[Mapping[str, ir.QuantizationParam]],
         def_value: float,
         def_type: str,
     ):
@@ -410,7 +429,20 @@ class BinaryConverter(AlgorithmMixin, MultiSourceMixin, Converter):
 
     @property
     def shapes(self):
-        return self.entry.shapes.split(" ", 1)[0]
+        return ":".join(self.entry.shapes.split(":", 2)[:2])
+
+    @property
+    def dts(self):
+        src0, src1, *_, dst = self.entry.mds
+        return f"--sdt={src0.data_type}:{src1.data_type} --ddt={dst.data_type}"
+
+    @property
+    def tags(self):
+        src0, src1, *_, dst = self.entry.mds
+        src0_tag = maybe_make_any_tag(src0)
+        src1_tag = maybe_make_any_tag(src1)
+        dst_tag = maybe_make_any_tag(dst)
+        return f"--stag={src0_tag}:{src1_tag} --dtag={dst_tag}"
 
 
 class BRGEMMConverter(MultiDataTypeMixin, Converter):

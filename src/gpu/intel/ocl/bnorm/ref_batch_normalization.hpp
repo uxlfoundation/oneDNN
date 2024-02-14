@@ -106,10 +106,10 @@ struct ref_batch_normalization_fwd_t : public gpu_primitive_t {
         std::vector<const char *> kernel_names
                 = {"ref_bnorm_fwd", nullptr, nullptr, nullptr, nullptr};
         if (pd()->conf.calculate_stats) {
-            kernel_names[1] = "calculate_mean";
-            kernel_names[2] = "calculate_variance";
-            kernel_names[3] = "reduce_mean";
-            kernel_names[4] = "reduce_variance";
+            kernel_names[1] = "ref_calculate_mean";
+            kernel_names[2] = "ref_calculate_variance";
+            kernel_names[3] = "ref_reduce_mean";
+            kernel_names[4] = "ref_reduce_variance";
         }
 
         std::vector<compute::kernel_t> kernels;
@@ -204,7 +204,7 @@ struct ref_batch_normalization_bwd_t : public gpu_primitive_t {
         pd()->init_kernel_ctx(kernel_ctx);
 
         std::vector<const char *> kernel_names
-                = {"ref_bnorm_bwd", "calculate_stats", "reduce_stats"};
+                = {"ref_bnorm_bwd", "ref_calculate_stats", "ref_reduce_stats"};
 
         std::vector<compute::kernel_t> kernels;
         CHECK(create_kernels(engine, &kernels, kernel_names, kernel_ctx));

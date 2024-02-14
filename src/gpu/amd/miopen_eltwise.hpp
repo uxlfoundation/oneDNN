@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_AMD_SYCL_HIP_ELTWISE_HPP
-#define GPU_AMD_SYCL_HIP_ELTWISE_HPP
+#ifndef GPU_AMD_MIOPEN_ELTWISE_HPP
+#define GPU_AMD_MIOPEN_ELTWISE_HPP
 
 #include "common/eltwise_pd.hpp"
 #include "gpu/amd/engine.hpp"

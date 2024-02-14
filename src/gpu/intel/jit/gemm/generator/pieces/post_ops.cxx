@@ -20,6 +20,7 @@
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
+#include "problem.hpp"
 #include "state_utils.hpp"
 
 using namespace ngen;
@@ -131,12 +132,19 @@ void BLASKernelGenerator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst
 
 // Apply binary operation to C with a scalar operand.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmScalarBinaryOpC(BinaryOp op, const Subregister &offset,
-                                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void BLASKernelGenerator<hw>::gemmScalarBinaryOpC(BinaryOp op, const GRFMultirange &offsets,
+                                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Type Tco)
 {
-    auto offsetTc = offset.reinterpret(0, state.Tacc.ngen());
-    if (offset != offsetTc)
-        emov(1, offsetTc, offset, strategy, state);
+    auto subOff = offsets[0].sub(0, Tco.ngen());
+    auto Tacc = state.Tacc;
+    auto offsetTc = subOff.reinterpret(0, Tacc.ngen());
+    if (subOff != offsetTc && !one_of(Tco, Type::f8_e8m0, Type::hf8)){
+        emov(1, offsetTc, subOff, strategy, state);
+    } else {
+        vector<RegisterBlock> repackLayout;
+        makeUnbackedRegLayout(Tacc, repackLayout, 1, 1, false);
+        copyRegisters(Tco, Tacc, repackLayout, repackLayout, offsets, offsets, strategy, state);
+    }
     if (op == BinaryOp::Div && one_of(state.Tacc, Type::f32, Type::f16)) {
         inv(1, offsetTc, offsetTc);
         op = BinaryOp::Mul;
@@ -244,7 +252,7 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     auto globalCM = isLayoutColMajor(state.C_layout);
 
     bool recip = false;
-    if (op == BinaryOp::Div && one_of(Tco, Type::f32, Type::f16)) {
+    if (op == BinaryOp::Div && one_of(Tco, Type::f32)) {
         // Implement div as inv+mul for speed, especially when broadcasting.
         recip = true;
         op = BinaryOp::Mul;
@@ -273,8 +281,6 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     if (!getRegLayout(Tco, CO_layout, cor, coc, remR, remC, false, AvoidFragment, 0, 0, CO, CO_strategy))
         return false;
 
-    auto CO_regs = state.ra.alloc_range(getRegCount(CO_layout));
-
     allocAddrRegs(CO_addrs, CO_layout, CO, CO_strategy, state);
     setupAddr(Tco, CO_addrs, base, CO_layout, ld, CO, CO_strategy, strategy, state);
 
@@ -294,41 +300,91 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         if (checkRemY)
             cmp(simt | gt | state.flagAP, remY, 0);
 
-        for (int y = 0; y < unrollY; y++) {
-            if (checkRemY) {
-                simtCF ? goto12(16 | ~state.flagAP, lDone)
-                       :   jmpi(1  | ~state.flagAP, lDone);
-            }
-            loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
-            if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
-                inv(simd, r, r);
-            });
-            if (checkRemY && (y + 1 < unrollY))
-                cmp(simt | gt | state.flagAP, remY, y + 1);
-            if (coColMajor == globalCM)
-                incAddr(CO_addrs, ld, int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
-            else
-                incAddr(CO_addrs, Tco.size(), int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
-
-            gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout, y, y+1);
+        // Reserve some registers for use in gemmVectorBinaryOpC if needed
+        int nreserve = op == BinaryOp::Prelu ? 2 : 0; // temp regs used in the operation
+        bool needRepack = (state.Tacc != Tco);
+        if (needRepack) {
+            vector<RegisterBlock> repackLayout;
+            makeUnbackedRegLayout(state.Tacc, repackLayout, cor, coc, !column);
+            nreserve += getRegCount(repackLayout);
         }
+        ngen::GRFRange reserve;
+        reserve = state.ra.alloc_range(nreserve);
+
+        constexpr int max_grouped_ops = 16;
+        std::array<ngen::GRFRange, max_grouped_ops> allCORegs;
+
+        int grouped_ops = 0;
+        for (auto &r : allCORegs) {
+            r = state.ra.tryAllocRange(getRegCount(CO_layout));
+            if (!r.isValid()) break;
+            grouped_ops++;
+        }
+
+        state.ra.safeRelease(reserve);
+
+        for (int y0 = 0; y0 < unrollY; y0 += grouped_ops) {
+            Label lDoneLoading;
+            // Perform loads
+            for (int i = 0; i < grouped_ops; i++) {
+                const int y = y0 + i;
+                if (y >= unrollY) break;
+                auto &CO_regs = allCORegs[i];
+                if (checkRemY) {
+                    simtCF ? goto12(16 | ~state.flagAP, lDoneLoading)
+                           :   jmpi(1  | ~state.flagAP, lDoneLoading);
+                }
+                loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
+                if (checkRemY && (y + 1 < unrollY))
+                    cmp(simt | gt | state.flagAP, remY, y + 1);
+                if (coColMajor == globalCM)
+                    incAddr(CO_addrs, ld, int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
+                else
+                    incAddr(CO_addrs, Tco.size(), int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
+            }
+
+            mark(lDoneLoading);
+            if (checkRemY)
+                cmp(simt | gt | state.flagAP, remY, y0);
+
+            // Perform binary op
+            for (int i = 0; i < grouped_ops; i++) {
+                auto &CO_regs = allCORegs[i];
+                const int y = y0 + i;
+                if (y >= unrollY) break;
+                if (checkRemY) {
+                    simtCF ? goto12(16 | ~state.flagAP, lDone)
+                        :   jmpi(1  | ~state.flagAP, lDone);
+                }
+                if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
+                    inv(simd, r, r);
+                });
+                if (checkRemY && (y + 1 < unrollY))
+                    cmp(simt | gt | state.flagAP, remY, y + 1);
+
+                gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout, y, y+1);
+            }
+        }
+
+        for (auto &r: allCORegs) state.ra.safeRelease(r);
 
         mark(lDone);
         if (simtCF) join(16);
     } else {
+        auto CO_regs = state.ra.alloc_range(getRegCount(CO_layout));
         loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
         if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
             inv(simd, r, r);
         });
 
         if (!row && !column)
-            gemmScalarBinaryOpC(op, CO_regs[0].sub(0, Tco.ngen()), problem, strategy, state);
+            gemmScalarBinaryOpC(op, CO_regs, problem, strategy, state, Tco);
         else
             gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout);
+        state.ra.safeRelease(CO_regs);
     }
 
     safeReleaseMaskAssignments(masks, state);
-    state.ra.safeRelease(CO_regs);
     safeReleaseRanges(CO_addrs, state);
 
     return true;
@@ -391,26 +447,12 @@ bool BLASKernelGenerator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &proble
 
     mark(labelCODone);
 
-    if (!strategy.persistent) {
+    if (!strategy.persistentLoop()) {
         state.ra.safeRelease(ldco);
         state.ra.safeRelease(effCO);
     }
 
     return ok;
-}
-
-static inline BinaryOp dnnlToBinaryOp(alg_kind_t kind)
-{
-    switch (kind) {
-        case alg_kind::binary_add:   return BinaryOp::Add;
-        case alg_kind::binary_sub:   return BinaryOp::Sub;
-        case alg_kind::binary_mul:   return BinaryOp::Mul;
-        case alg_kind::binary_div:   return BinaryOp::Div;
-        case alg_kind::binary_min:   return BinaryOp::Min;
-        case alg_kind::binary_max:   return BinaryOp::Max;
-        case alg_kind::binary_prelu: return BinaryOp::Prelu;
-        default: stub();
-    }
 }
 
 template <HW hw>
@@ -463,7 +505,7 @@ void BLASKernelGenerator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, c
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    if (poMin >= poMax && !problem.cStochasticRound) return;
+    if (poMin >= poMax && !problem.postOps.cStochasticRound) return;
 
     Label lSkip;
     and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagNonfinalKBlock);
@@ -536,58 +578,28 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
 
     for (size_t i = poMin; i < poMax; i++) {
         auto &entry = problem.postOps[i];
-        switch (entry.kind()) {
-            case post_op::kind_t::eltwise: {
-                using Injector = eltwise_injector_f32_t<hw>;
-                if (state.Tacc != Type::f32) stub();
+        if(entry.is_binary()) {
+            auto &ld = state.inputs.binaryLDs[i];
+            auto &eff = state.effBinary[i];
+            auto op = PostOpsProblem::toBinaryOp(entry);
 
-                int euCount = 0; /* only used for a DG2 W/A for conv */
-                auto &ee = entry.as_eltwise();
-                Injector injector{this, ee.alg, ee.alpha, ee.beta, ee.scale,
-                                  euCount, GRFRange(), problem.postOpFwd};
+            bool ok = gemmBinaryOpC(op, problem.postOps.binaryRow[i], problem.postOps.binaryCol[i],
+                                    problem.Tbinary[i], problem.binary[i], strategy.binary[i],
+                                    eff, ld, problem, strategy, state);
+            if (!ok) stub();
 
-                auto scratch = state.ra.try_alloc_range(injector.preferred_scratch_regs());
-                if (scratch.isInvalid())
-                    scratch = state.ra.alloc_range(injector.min_scratch_regs());
+            state.ra.safeRelease(ld);
+            state.ra.safeRelease(eff);
+        } else {
 
-                injector.set_scratch(scratch);
-                injector.prepare();
-                injector.compute(C_grfs, C_ngrf);
-                break;
-            }
-            case post_op::kind_t::binary: {
-                auto &ld = state.inputs.binaryLDs[i];
-                auto &eff = state.effBinary[i];
-                auto op = dnnlToBinaryOp(entry.as_binary().alg);
+            if (state.Tacc != Type::f32) stub();
 
-                bool ok = gemmBinaryOpC(op, problem.binaryRow[i], problem.binaryCol[i],
-                                        problem.Tbinary[i], problem.binary[i], strategy.binary[i],
-                                        eff, ld, problem, strategy, state);
-                if (!ok) stub();
-
-                state.ra.safeRelease(ld);
-                state.ra.safeRelease(eff);
-                break;
-            }
-            default: stub();
+            problem.postOps.injectNonBinaryPostOps(entry, this, state.ra, C_grfs, C_ngrf);
         }
     }
-    if(problem.cStochasticRound){
-        using Injector = eltwise_injector_f32_t<hw>;
-        int euCount = 0; /* only used for a DG2 W/A for conv */
-        Injector injector{this, alg_kind::eltwise_stochastic_round, 0.0, 0.0, 1.0, 
-                          euCount, GRFRange(), problem.postOpFwd};
-        auto scratch = state.ra.try_alloc_range(injector.preferred_scratch_regs());
-        if (scratch.isInvalid())
-            scratch = state.ra.alloc_range(injector.min_scratch_regs());
-        if (scratch.isInvalid())
-            stub();
-        
-        injector.set_scratch(scratch);
-        injector.prepare();
-        injector.compute(C_grfs, C_ngrf, state.inputs.sroundSeed.getBase(), state.inputs.sroundSeed.getOffset(), problem.Tc_ext.ngen());
+    if(problem.postOps.cStochasticRound) {
+        problem.postOps.injectStochasticRound(this, state.ra, C_grfs, C_ngrf, state.inputs.sroundSeed, problem.Tc_ext.ngen());
     }
-        
 
     mark(lSkip);
 }
@@ -730,10 +742,10 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
         if (!(aOffset && bOffset)) return Subregister{};
 
         auto ret = state.ra.alloc_sub(problem.Tc.ngen());
-
-        if (!boVector) mul(1, ret, state.k, state.inputs.bo);
-        else if (Tc.isFP()) mov(1, ret, state.k);
-        else stub();
+        if (!boVector)
+            mul(1, ret, state.k, state.inputs.bo);
+        else
+            mov(1, ret, state.k);
 
         return ret;
     }();
@@ -781,7 +793,7 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
 
         if (aOffset && bOffset) for (int r = 0; r < state.Bs_regs.getLen(); r++) {
             auto ne = elementsPerGRF(hw, Tc);
-            auto Bs = state.Bs_regs[r];
+            auto Bs = state.Bs_regs[r].retype(Tc.ngen());
             boVector ? emad(ne, Bs, Bs, boData[r].retype(Tc.ngen()), temp, strategy, state)
                      : add(ne, Bs, Bs, temp);
         };
@@ -825,7 +837,7 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
     state.ra.safeRelease(boData);
     safeReleaseRanges(state.As_regs, state);
     safeReleaseRanges(state.Bs_regs, state);
-    if (!strategy.persistent) {
+    if (!strategy.persistentLoop()) {
         state.ra.safeRelease(state.inputs.ao);
         state.ra.safeRelease(state.inputs.bo);
     }

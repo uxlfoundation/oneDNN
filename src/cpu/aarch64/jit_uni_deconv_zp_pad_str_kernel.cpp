@@ -271,7 +271,7 @@ static dim_t wei_off(const memory_desc_wrapper &wei_d, const bool with_groups,
         case 5: return wht_blk_off(wei_d, ch_b, oc_b, 0, d, h, w);
         case 4: return wht_blk_off(wei_d, ch_b, oc_b, 0, h, w);
         case 3: return wht_blk_off(wei_d, ch_b, oc_b, 0, w);
-        default: assert("Unsupported ndims!");
+        default: assert(!"Unsupported ndims!");
     }
 
     return 0;

@@ -32,7 +32,7 @@ static void unparseTiling(std::ostream &s, const MatrixAddressingStrategy &astra
 
 bool native64Bit(HW hw)
 {
-    EmulationStrategy emulate(hw);
+    ngen::EmulationStrategy emulate(hw);
     return !emulate.emulate64;
 }
 
@@ -177,6 +177,7 @@ static void getTiling(std::stringstream &s, MatrixAddressingStrategy &astrategy)
 void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
 {
     std::stringstream s(str);
+    s.imbue(std::locale::classic());
     bool overrideFusedLoop = false;
     bool gotSR = false;
 
@@ -431,7 +432,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                 strategy.kParallelVariable = true;
                 strategy.fuseBeta = true;
                 strategy.fusePostOps = true;
-                strategy.persistent = true;
             }
             strategy.C.atomic = true;
             strategy.CO.atomic = problem.sumA || problem.sumB;
@@ -511,6 +511,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
             else if (mod.substr(0, 2) == "ks") {
                 char eat;
                 std::stringstream ms(mod);
+                ms.imbue(std::locale::classic());
                 ms >> eat >> eat >> strategy.unrollKSLM;
                 if (!ms.eof() && (ms.peek() == '/'))
                     ms >> eat >> strategy.unrollKSLMMasked;
@@ -564,6 +565,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                         strategy.slmB = true;
                     }
                     std::stringstream ms(mod);
+                    ms.imbue(std::locale::classic());
                     ms >> strategy.slmBuffers;
                     ms >> eat;
                     if (!ms.eof())
@@ -573,6 +575,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                 case 'k': {
                     char eat;
                     std::stringstream ms(mod);
+                    ms.imbue(std::locale::classic());
                     ms >> eat >> strategy.unroll[LoopK];
                     if (!ms.eof() && (ms.peek() == '/'))
                         ms >> eat >> strategy.unrollK_masked;
@@ -605,7 +608,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
 
     if (strategy.block2DCRemainder && !gotSR) strategy.altCRemainder = true;
 
-    if (strategy.persistent && !strategy.linearOrder()) strategy.cWalkOrder = WalkOrder::SimpleLinear;
+    if (strategy.persistentLoop() && !strategy.linearOrder()) strategy.cWalkOrder = WalkOrder::SimpleLinear;
 
     // Use new LSC messages on Xe2+
     if (hw >= ngen::HW::Xe2) {
@@ -767,6 +770,7 @@ const char *parsePrecisions(const char *s, Type &precision1, Type &precision2)
 std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     std::stringstream s;
+    s.imbue(std::locale::classic());
 
     bool anyOptAlignAB = strategy.optAlignAB || strategy.optAlignAB2D;
 

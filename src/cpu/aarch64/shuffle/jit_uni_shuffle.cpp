@@ -40,6 +40,10 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper src_d(is_fwd() ? src_md() : diff_src_md());
     const memory_desc_wrapper dst_d(is_fwd() ? dst_md() : diff_dst_md());
 
+    if (!impl::is_dense_format_kind({is_fwd() ? src_md() : diff_src_md(),
+                is_fwd() ? dst_md() : diff_dst_md()}))
+        return status::unimplemented;
+
     conf_.data_type = src_d.data_type();
 
     const bool ok = is_superset(get_max_cpu_isa(), isa)
@@ -192,7 +196,7 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
             const dim_t sp_curr = spb * sp_work;
             const dim_t off = mb * stride_mb + sp_curr * conf.blk_size;
 
-            jit_shuffle_call_s args;
+            jit_uni_shuffle_args_t args;
             args.src = input + off * data_type_size;
             args.dst = output + (off + SP * c_curr) * data_type_size;
 

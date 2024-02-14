@@ -19,7 +19,7 @@
 
 #include "gpu/intel/jit/binary_format.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "ngen/ngen_level_zero.hpp"
+#include "ngen_level_zero.hpp"
 
 #if defined(__linux__)
 #include <dlfcn.h>
@@ -323,17 +323,17 @@ status_t get_l0_device_enabled_systolic_intel(
 }
 
 status_t get_l0_device_enabled_native_float_atomics(
-        ze_device_handle_t device, uint64_t native_extensions) {
+        ze_device_handle_t device, uint64_t &native_extensions) {
     using namespace gpu::intel::compute;
 
     auto fltAtom = ze_float_atomic_ext_properties_t();
     fltAtom.stype = ZE_STRUCTURE_TYPE_FLOAT_ATOMIC_EXT_PROPERTIES;
 
-    auto deviceProps = ze_device_properties_t();
-    deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+    auto deviceProps = ze_device_module_properties_t();
+    deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
     deviceProps.pNext = &fltAtom;
 
-    CHECK(func_zeDeviceGetProperties(device, &deviceProps));
+    CHECK(func_zeDeviceGetModuleProperties(device, &deviceProps));
 
     ze_device_fp_atomic_ext_flags_t atomic_load_store
             = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_LOAD_STORE
@@ -349,21 +349,21 @@ status_t get_l0_device_enabled_native_float_atomics(
         native_extensions |= (uint64_t)native_ext_t::fp16_atomic_load_store;
     if ((fltAtom.fp16Flags & atomic_add) == atomic_add)
         native_extensions |= (uint64_t)native_ext_t::fp16_atomic_add;
-    if ((fltAtom.fp16Flags & atomic_add) == atomic_min_max)
+    if ((fltAtom.fp16Flags & atomic_min_max) == atomic_min_max)
         native_extensions |= (uint64_t)native_ext_t::fp16_atomic_min_max;
 
     if ((fltAtom.fp32Flags & atomic_load_store) == atomic_load_store)
         native_extensions |= (uint64_t)native_ext_t::fp32_atomic_load_store;
     if ((fltAtom.fp32Flags & atomic_add) == atomic_add)
         native_extensions |= (uint64_t)native_ext_t::fp32_atomic_add;
-    if ((fltAtom.fp32Flags & atomic_add) == atomic_min_max)
+    if ((fltAtom.fp32Flags & atomic_min_max) == atomic_min_max)
         native_extensions |= (uint64_t)native_ext_t::fp32_atomic_min_max;
 
     if ((fltAtom.fp64Flags & atomic_load_store) == atomic_load_store)
         native_extensions |= (uint64_t)native_ext_t::fp64_atomic_load_store;
     if ((fltAtom.fp64Flags & atomic_add) == atomic_add)
         native_extensions |= (uint64_t)native_ext_t::fp64_atomic_add;
-    if ((fltAtom.fp64Flags & atomic_add) == atomic_min_max)
+    if ((fltAtom.fp64Flags & atomic_min_max) == atomic_min_max)
         native_extensions |= (uint64_t)native_ext_t::fp64_atomic_min_max;
 
     return status::success;
@@ -392,26 +392,37 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     using namespace ngen;
     Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
             context, device);
-    HW hw = getCore(product.family);
 
-    gpu_arch = jit::convert_ngen_arch_to_dnnl(hw);
+    gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product.family));
     gpu_product_family = static_cast<int>(product.family);
     stepping_id = product.stepping;
 
     mayiuse_systolic = false;
-    CHECK(get_l0_device_enabled_systolic_intel(device, mayiuse_systolic));
+    if (get_l0_device_enabled_systolic_intel(device, mayiuse_systolic)
+            != status::success)
+        mayiuse_systolic = false;
+
+    /* Some old drivers do not report systolic availability. Manually override
+       systolic availability based on product family. */
+    switch (product.family) {
+        case ProductFamily::DG2:
+        case ProductFamily::ARL:
+        case ProductFamily::PVC: mayiuse_systolic = true;
+        default: break;
+    }
 
     CHECK(get_l0_device_enabled_native_float_atomics(
             device, native_extensions));
+#if XE3P
+    is_efficient_64bit
+            = LevelZeroCodeGenerator<HW::Unknown>::detectEfficient64Bit(
+                    context, device, getCore(product.family));
+#endif
 
     auto status
             = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
     if (status != status::success) mayiuse_ngen_kernels = false;
-#if XE3P
-    is_efficient_64bit
-            = LevelZeroCodeGenerator<HW::Unknown>::detectEfficient64Bit(
-                    context, device, hw);
-#endif
+
     ip_version = 0;
     return get_device_ip(device, ip_version);
 }

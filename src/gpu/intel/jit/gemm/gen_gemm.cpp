@@ -20,9 +20,13 @@
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
+#include "gemmstone/driver_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
-#include "gpu/intel/jit/gemm/include/driver_info.hpp"
+
+#ifdef DNNL_WITH_SYCL
+#include "gpu/intel/sycl/stream.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -52,9 +56,9 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
 
     auto problem = pd()->kernel_desc()->problem();
 
-    if (!last_k_block) flags |= FlagNonfinalKBlock;
-    if (cmask & 1) flags |= FlagCOColumn;
-    if (cmask & 2) flags |= FlagCORow;
+    if (!last_k_block) flags |= gemmstone::FlagNonfinalKBlock;
+    if (cmask & 1) flags |= gemmstone::FlagCOColumn;
+    if (cmask & 2) flags |= gemmstone::FlagCORow;
 
     compute::kernel_arg_list_t arg_list;
     int argn = 0;
@@ -107,7 +111,9 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         }
     }
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
-    if (problem->cStochasticRound) { arg_list.set(argn++, *sround_seed); }
+    if (problem->postOps.cStochasticRound) {
+        arg_list.set(argn++, *sround_seed);
+    }
     arg_list.set(argn++, flags);
     if (k_parallel_fixed) arg_list.set(argn++, k0);
 
@@ -116,7 +122,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         arg_list.set(argn++, *po_srcs[i]);
         arg_list.set(argn++, offset_po_src[i]);
 
-        if (problem->binaryRow[i] && problem->binaryCol[i])
+        if (problem->postOps.binaryRow[i] && problem->postOps.binaryCol[i])
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
     }
 
@@ -138,7 +144,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             arg_list.set(argn++, stride_c);
         }
         for (int i = 0; i < po_count; i++) {
-            if (problem->binaryBatch[i]) {
+            if (problem->postOps.binaryBatch[i]) {
                 for (int b = pd()->batch_dims() - 1; b >= 0; b--) {
                     arg_list.set(argn++, int32_t(pd()->stride_binary(i, b)));
                 }
@@ -156,13 +162,13 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
 
     compute::range_t gws = compute::range_t::empty();
 
-    gws[0] = utils::div_up(m, nocopy_info()->unroll[LoopM]);
-    gws[1] = utils::div_up(n, nocopy_info()->unroll[LoopN]);
+    gws[0] = utils::div_up(m, nocopy_info()->unroll[gemmstone::LoopM]);
+    gws[1] = utils::div_up(n, nocopy_info()->unroll[gemmstone::LoopN]);
     gws[2] = nocopy_info()->kParallel() ? nstl::max(1, utils::div_up(k, k0))
                                         : lws_k;
 
-    compute::range_t lws = {size_t(nocopy_info()->wg[LoopM]),
-            size_t(nocopy_info()->wg[LoopN]), size_t(lws_k)};
+    compute::range_t lws = {size_t(nocopy_info()->wg[gemmstone::LoopM]),
+            size_t(nocopy_info()->wg[gemmstone::LoopN]), size_t(lws_k)};
 
     if (nocopy_info()->isNMK()) {
         std::swap(lws[0], lws[1]);
@@ -231,11 +237,17 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     auto zero_pool = zero_pool_;
 
 #ifdef DNNL_WITH_SYCL
-    if (!zero_pool) {
+    bool release_zp = false;
+    const auto *sycl_stream
+            = utils::downcast<const gpu::intel::sycl::stream_t *>(
+                    compute_stream);
+
+    if (need_zero_pool() && sycl_stream->recording()) {
         auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
-                ctx.stream()->engine());
+                compute_stream->engine());
         CHECK(lookup_zero_pool(compute_engine, compute_stream,
                 zero_pool_chunk_size_, &zero_pool));
+        release_zp = true;
     }
 #endif
 
@@ -395,8 +407,8 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 
     if (k_parallel_fixed) block_k = pd()->kernel_desc()->aux_params()->k0;
 
-    block_m = utils::rnd_up(block_m, nocopy_info()->wgTile(LoopM));
-    block_n = utils::rnd_up(block_n, nocopy_info()->wgTile(LoopN));
+    block_m = utils::rnd_up(block_m, nocopy_info()->wgTile(gemmstone::LoopM));
+    block_n = utils::rnd_up(block_n, nocopy_info()->wgTile(gemmstone::LoopN));
 
     int32_t k0 = 1;
     if (k_parallel_fixed) {
@@ -454,7 +466,8 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 
                 for (int i = 0; i < po_count; i++) {
                     po_offsets[i] = po_offsets0[i];
-                    bool row = problem.binaryRow[i], col = problem.binaryCol[i];
+                    bool row = problem.postOps.binaryRow[i],
+                         col = problem.postOps.binaryCol[i];
                     if (row && col) {
                         auto ld = pd()->ld_binary(i);
                         po_offsets[i] += isColMajor(problem.binary[i].layout)
@@ -478,6 +491,10 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
             }
         }
     }
+
+#ifdef DNNL_WITH_SYCL
+    if (release_zp) release_zero_pool(zero_pool);
+#endif
 
     return status::success;
 }

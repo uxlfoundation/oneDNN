@@ -206,6 +206,13 @@ bool layout_raw_tag_t::is_blocked(char letter) const {
     return false;
 }
 
+bool layout_raw_tag_t::is_blocked() const {
+    for (auto &e : entries_) {
+        if (e.is_blocked) return true;
+    }
+    return false;
+}
+
 dim_idx_t layout_raw_tag_t::ndims() const {
     gpu_assert(!is_any() && !has_x());
     dim_idx_t max_index = 0;
@@ -237,6 +244,7 @@ std::string layout_raw_tag_t::str() const {
     std::string x;
     for (dim_idx_t i = ndims() - 1; i >= 2; i--) {
         if (is_blocked(dim_idx::as_tag(i))) break;
+        // NOLINTNEXTLINE(performance-inefficient-string-concatenation)
         x = dim_idx::as_tag(i) + x;
     }
     while (!x.empty()) {
@@ -357,10 +365,23 @@ std::vector<std::pair<char, int>> layout_raw_tag_t::parse_letter_blocks(
     return ret;
 }
 
-static void advance(pvar_coord_t<dim_t> &idx, const pvar_tile_t &bound,
+static void advance(pvar_coord_t<dim_t> &idx,
+        const std::vector<pvar_t> &_idx_order, const pvar_tile_t &bound,
         const pvar_tile_t &block) {
     dim_t inc = 1;
-    for (auto &d : idx) {
+    auto idx_order = _idx_order;
+    if (idx_order.empty()) {
+        for (auto &d : idx)
+            idx_order.push_back(d);
+    } else {
+        pvar_map_t<bool> seen;
+        for (auto &d : idx_order)
+            seen[d] = true;
+        gpu_assert(seen.size() == idx.size());
+        for (auto &d : idx)
+            gpu_assert(seen.has(d));
+    }
+    for (auto &d : idx_order) {
         dim_t inc_idx = (idx[d] / block[d] + inc) % bound[d];
         inc = (idx[d] / block[d] + inc) / bound[d];
         idx[d] = inc_idx * block[d];
@@ -402,7 +423,7 @@ bool layout_tag_t::matches(const layout_tag_t &other, const pvar_tile_t &sizes,
 std::string layout_tag_t::str() const {
     if (is_empty()) return "x";
     std::ostringstream oss;
-    oss << raw_tag_ << ":" << type_;
+    oss << raw_tag_ << ":" << type_ << ":" << is_strided_;
     return oss.str();
 }
 
@@ -655,7 +676,7 @@ layout_t layout_t::split_block(
 }
 
 template <typename T>
-struct try_div_mod {
+struct try_div_mod_t {
     static bool call(const T &a, int b, const var_range_info_t &range_info,
             T &div, T &mod) {
         if (a % b != 0) return false;
@@ -666,7 +687,7 @@ struct try_div_mod {
 };
 
 template <>
-struct try_div_mod<expr_t> {
+struct try_div_mod_t<expr_t> {
     static bool call(const expr_t &a, int b, const var_range_info_t &range_info,
             expr_t &div, expr_t &mod) {
         dim_t factor = linear_max_pow2_divisor(a);
@@ -693,8 +714,8 @@ struct try_div_mod<expr_t> {
             if (!a_mod.is_empty()) return false;
             a_mod = v;
         }
-        div = a_div;
-        mod = a_mod;
+        div = std::move(a_div);
+        mod = std::move(a_mod);
         return true;
     }
 };
@@ -748,10 +769,10 @@ layout_t layout_t::map(const dim_mapper_t &dim_mapper,
                 gpu_assert(!idx_final.has(dim));
                 T div = T();
                 T mod = T();
-                if (try_div_mod<T>::call(idxs[dim], b.int_size(),
+                if (try_div_mod_t<T>::call(idxs[dim], b.int_size(),
                             var_range_info, div, mod)) {
-                    idxs[dim] = div;
-                    off = mod;
+                    idxs[dim] = std::move(div);
+                    off = std::move(mod);
                     is_final = false;
                 }
             }
@@ -828,7 +849,7 @@ int layout_t::to_linear_index(
     std::vector<int> idx(nblocks());
     for (int i = 0; i < ntiles; i++) {
         auto i_coord = to_coord(idx);
-        if (i_coord == coord) return i;
+        if (i_coord.drop_defaults() == coord.drop_defaults()) return i;
         advance(idx, blocks_, tile_blocks);
     }
     gpu_error_not_expected();
@@ -854,7 +875,8 @@ std::string layout_t::blocks_str() const {
         if (b.has_const_stride() && b.int_stride() != to_int(stride)) {
             b_str.append(1, '*');
         }
-        ret = b_str + ret;
+        b_str += ret;
+        std::swap(b_str, ret);
         if (b.has_const_size() && b.has_const_stride())
             stride = b.stride * b.size;
         seen[b.dim] = true;
@@ -883,8 +905,15 @@ std::string layout_t::str_with_size(const hw_t &hw) const {
     return oss.str();
 }
 
-void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
         const std::function<void(const pvar_coord_t<dim_t> &)> &func) {
+    for_each(base_tile, tile, {}, func);
+}
+
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &_tile,
+        const std::vector<pvar_t> &idx_order,
+        const std::function<void(const pvar_coord_t<dim_t> &)> &func) {
+    auto tile = _tile;
     for (auto &d : tile) {
         gpu_assert(base_tile.has(d));
         gpu_assert(base_tile[d] % tile[d] == 0);
@@ -901,9 +930,10 @@ void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
     }
     for (int i = 0; i < ntiles; i++) {
         func(idx);
-        advance(idx, bound, tile);
+        advance(idx, idx_order, bound, tile);
     }
 }
+
 block_iterator_t::block_iterator_t(const layout_t &layout, bool set_to_end)
     : parent_(&layout), block_idx_(set_to_end ? parent_->nblocks() : 0) {
     gpu_assert(layout.has_const_sizes());
@@ -1181,8 +1211,8 @@ std::string mask_desc_t::str() const {
     return oss.str();
 }
 
-plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc) {
-    type = layout.type();
+plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc)
+    : type(layout.type()) {
     const block_t *w_block = nullptr;
     const block_t *h_block = nullptr;
     for (auto &b : layout.blocks()) {

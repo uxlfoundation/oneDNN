@@ -75,12 +75,12 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
             rtus_prepare(this, conv_d, src_d, dst_md(), weights_md());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx2_1x1_conv_kernel_f32::init_conf(
+            CHECK(jit_avx2_1x1_conv_kernel_f32_t::init_conf(
                     jcp_, *conv_d, *src_d, *weights_md(), *dst_md(), *attr()));
             if (jcp_.with_dw_conv) CHECK(depthwise_po_init(engine));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx2_1x1_conv_kernel_f32::init_scratchpad(scratchpad, jcp_);
+            jit_avx2_1x1_conv_kernel_f32_t::init_scratchpad(scratchpad, jcp_);
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
 
@@ -91,6 +91,7 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
             return cpu_convolution_fwd_pd_t::dst_md(index);
         }
 
+        // NOLINTBEGIN(google-default-arguments)
         const memory_desc_t *dst_md(
                 int index = 0, bool user_input = false) const override {
             return dw_conv_pd_ && jcp_.with_dw_conv
@@ -113,14 +114,15 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
             }
             return convolution_fwd_pd_t::arg_md(arg, user_input);
         }
+        // NOLINTEND(google-default-arguments)
 
         arg_usage_t arg_usage(int arg) const override {
             if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS))
                 return arg_usage_t::input;
 
-            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS)
-                    && attr_post_op_dw_inputs() > 1)
-                return arg_usage_t::input;
+            if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS))
+                return attr_post_op_dw_inputs() > 1 ? arg_usage_t::input
+                                                    : arg_usage_t::unused;
 
             return convolution_fwd_pd_t::arg_usage(arg);
         }
@@ -314,7 +316,7 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_avx2_1x1_conv_kernel_f32(
+                new jit_avx2_1x1_conv_kernel_f32_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_1x1_md(0))));
         CHECK(kernel_->create_kernel());
         CHECK(init_rtus_driver<avx2>(this));
@@ -354,11 +356,11 @@ private:
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_avx2_1x1_conv_kernel_f32> kernel_;
+    std::unique_ptr<jit_avx2_1x1_conv_kernel_f32_t> kernel_;
     std::unique_ptr<rtus_driver_t<avx2>> rtus_driver_;
 
     template <cpu_isa_t isa>
-    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel<isa, data_type::f32>;
+    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<isa, data_type::f32>;
 
     std::unique_ptr<dw_conv_kernel_t<avx2>> kernel_dw_avx2;
     std::unique_ptr<dw_conv_kernel_t<sse41>> kernel_dw_sse41;
@@ -393,11 +395,11 @@ struct jit_avx2_1x1_convolution_bwd_data_t : public primitive_t {
             rtus_prepare(this, conv_d, diff_src_d, diff_dst_md(), weights_md());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx2_1x1_conv_kernel_f32::init_conf(jcp_, *conv_d,
+            CHECK(jit_avx2_1x1_conv_kernel_f32_t::init_conf(jcp_, *conv_d,
                     *diff_src_d, *weights_md(), *diff_dst_md(), *attr()));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx2_1x1_conv_kernel_f32::init_scratchpad(scratchpad, jcp_);
+            jit_avx2_1x1_conv_kernel_f32_t::init_scratchpad(scratchpad, jcp_);
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
 
@@ -445,7 +447,7 @@ struct jit_avx2_1x1_convolution_bwd_data_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_avx2_1x1_conv_kernel_f32(
+                new jit_avx2_1x1_conv_kernel_f32_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         CHECK(kernel_->create_kernel());
         CHECK(init_rtus_driver<avx2>(this));
@@ -461,7 +463,7 @@ private:
     void execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_avx2_1x1_conv_kernel_f32> kernel_;
+    std::unique_ptr<jit_avx2_1x1_conv_kernel_f32_t> kernel_;
     std::unique_ptr<rtus_driver_t<avx2>> rtus_driver_;
 };
 
@@ -494,13 +496,13 @@ struct jit_avx2_1x1_convolution_bwd_weights_t : public primitive_t {
             rtus_prepare(this, conv_d, src_d, diff_dst_md(), diff_weights_md());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx2_1x1_conv_kernel_f32::init_conf(jcp_, *conv_d, *src_d,
-                    *diff_weights_md(), *diff_dst_md(), *attr()));
+            CHECK(jit_avx2_1x1_conv_kernel_f32_t::init_conf(jcp_, *conv_d,
+                    *src_d, *diff_weights_md(), *diff_dst_md(), *attr()));
 
             init_balancers();
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx2_1x1_conv_kernel_f32::init_scratchpad(scratchpad, jcp_);
+            jit_avx2_1x1_conv_kernel_f32_t::init_scratchpad(scratchpad, jcp_);
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
 
@@ -601,7 +603,7 @@ private:
     void execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_avx2_1x1_conv_kernel_f32> kernel_;
+    std::unique_ptr<jit_avx2_1x1_conv_kernel_f32_t> kernel_;
     std::unique_ptr<cpu_reducer_2d_t<data_type::f32>> reducer_weights_;
     std::unique_ptr<cpu_reducer_t<data_type::f32>> reducer_bias_;
     std::unique_ptr<rtus_driver_t<avx2>> rtus_driver_;

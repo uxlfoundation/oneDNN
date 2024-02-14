@@ -108,7 +108,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     //     const auto isa = sve_512;
 
     auto skip_mask = skip_mask_t::post_ops;
-    if (is_int8) skip_mask |= skip_mask_t::scales_runtime;
+    if (is_int8) skip_mask |= skip_mask_t::scales;
 
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && one_of(true, is_f32, is_int8) && (isa != isa_undef)
@@ -117,7 +117,8 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                     one_of(bia_type, data_type::undef, f32, s32, s8, u8))
             && IMPLICATION(!is_int8,
                     one_of(bia_type, data_type::undef, src_type, dst_type))
-            && attr()->has_default_values(skip_mask) && !has_zero_dim_memory();
+            && attr()->has_default_values(skip_mask) && !has_zero_dim_memory()
+            && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
     if (!ok) { return status::unimplemented; }
 
     auto &jcp = jcp_;
@@ -202,9 +203,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             || !wei_scales.has_default_values();
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
-    const bool scales_ok
-            = attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST});
-    if (!scales_ok) { return status::unimplemented; }
+    CHECK(attr_scales_ok());
 
     // strd is only feasible for 1D (i.e., height dim is one)
     // and if there are no tails (for calculating matrix_B strides).

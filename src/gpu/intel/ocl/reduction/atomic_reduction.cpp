@@ -28,8 +28,9 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive_attr.hpp"
 #include "gpu/intel/ocl/reduction/atomic_reduction.hpp"
-#include "gpu/intel/ocl/reduction/reduction_utils.hpp"
+#include "gpu/intel/ocl/reduction/utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -129,8 +130,15 @@ atomic_reduction_conf_t::atomic_reduction_conf_t(
     // 2. The atomic accumulation is still O(N) in the worst-case
     // 3. Need to have a finalization kernel afterward for some algs/dts
     // Therefore, only use atomic accumulation if we gain *enough* parallelism
-    const int sparsity_threshold = 16;
-    if (target_subgroups / max_num_sg > sparsity_threshold) {
+    const int sparsity_threshold = 2;
+    // #2 above is exacerbated by small reduction sizes - disable atomic
+    // reduction in these cases
+    const dim_t disable_atomic_threshold = 4096;
+    bool use_atomic = reduction_block.block >= disable_atomic_threshold
+            && target_subgroups / max_num_sg > sparsity_threshold;
+    use_atomic
+            = !gpu_utils::dev_getenv("disable_atomic_reduction", !use_atomic);
+    if (use_atomic) {
         const int target_per_phase
                 = into<int>(std::cbrt(reduction_block.block));
         conf.global_acc = target_per_phase;
@@ -212,7 +220,7 @@ atomic_reduction_conf_t::atomic_reduction_conf_t(
 status_t atomic_reduction_conf_t::init_dispatcher(
         const compute::compute_engine_t *engine,
         const gpu_primitive_attr_t *gpu_attr) {
-    const std::vector<dim_idx_t> dispatch_dims = {
+    std::vector<dim_idx_t> dispatch_dims = {
             reduction_dims::outer,
             reduction_dims::local,
             reduction_dims::global,
@@ -262,7 +270,8 @@ status_t atomic_reduction_conf_t::init_dispatcher(
             = inner_block.block / conf.vect_size;
 
     // Create the dispatcher
-    compute::reusable_dispatch_config_t config(engine, dispatch_dims);
+    compute::reusable_dispatch_config_t config(
+            engine, std::move(dispatch_dims));
     CHECK(config.register_buffer(src));
     CHECK(config.register_buffer(dst));
     CHECK(config.define_dim_index(

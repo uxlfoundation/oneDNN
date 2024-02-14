@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,11 +30,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx2_conv_fwd_kernel_f32 : public jit_generator {
-    jit_avx2_conv_fwd_kernel_f32(const jit_conv_conf_t &ajcp,
+struct jit_avx2_conv_fwd_kernel_f32_t : public jit_generator_t {
+    jit_avx2_conv_fwd_kernel_f32_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_fwd_kernel_f32)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_fwd_kernel_f32_t)
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
@@ -51,7 +51,7 @@ private:
             postops_injector_;
 
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx2>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx2>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     reg64_t reg_input = rax;
     reg64_t aux_reg_input = r8;
@@ -87,18 +87,18 @@ private:
     inline void width_blk_step(int ur_w, int pad_l, int pad_r, int oc_blocks);
     inline void solve_common(int oc_blocks);
 
-    inline dim_t filter_w_to_input(int ki, int oi = 0, int pad_l = 0) {
+    inline dim_t filter_w_to_input(int ki, int oi = 0, int pad_l = 0) const {
         return static_cast<dim_t>(ki) * (jcp.dilate_w + 1) + oi * jcp.stride_w
                 - pad_l;
     };
-    inline dim_t filter_h_to_input(int ki) {
+    inline dim_t filter_h_to_input(int ki) const {
         return static_cast<dim_t>(ki) * (jcp.dilate_h + 1) * jcp.iw;
     };
-    inline dim_t filter_d_to_input(int ki) {
+    inline dim_t filter_d_to_input(int ki) const {
         return static_cast<dim_t>(ki) * (jcp.dilate_d + 1) * jcp.iw * jcp.ih;
     };
 
-    inline dim_t get_input_offset(int i_ic, int i_iw) {
+    inline dim_t get_input_offset(int i_ic, int i_iw) const {
         dim_t offset;
         if (utils::one_of(jcp.src_tag, format_tag::ncw, format_tag::nchw,
                     format_tag::ncdhw)) {
@@ -112,7 +112,7 @@ private:
         return sizeof(float) * offset;
     }
 
-    inline dim_t get_output_offset(int i_oc_block, int i_ow) {
+    inline dim_t get_output_offset(int i_oc_block, int i_ow) const {
         dim_t offset;
         if (utils::one_of(jcp.dst_tag, format_tag::nwc, format_tag::nhwc,
                     format_tag::ndhwc)) {
@@ -126,18 +126,19 @@ private:
         return sizeof(float) * offset;
     }
 
-    inline dim_t get_kernel_offset(int i_oc_block, int ki, int i_ic) {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
+    inline dim_t get_kernel_offset(int i_oc_block, int ki, int i_ic) const {
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
         dim_t ic_block_step_size = static_cast<dim_t>(jcp.kd) * jcp.kh * jcp.kw
                 * block_step_size;
         dim_t oc_block_step_size
                 = static_cast<dim_t>(jcp.nb_ic) * ic_block_step_size;
         dim_t offset = static_cast<dim_t>(i_oc_block) * oc_block_step_size
-                + ki * block_step_size + i_ic * jcp.oc_block;
+                + static_cast<dim_t>(ki) * block_step_size
+                + static_cast<dim_t>(i_ic) * jcp.oc_block;
         return sizeof(float) * offset;
     }
 
-    inline bool is_src_layout_nxc() {
+    inline bool is_src_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
@@ -145,11 +146,11 @@ private:
     void generate() override;
 };
 
-struct jit_avx2_conv_bwd_data_kernel_f32 : public jit_generator {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_bwd_data_kernel_f32)
+struct jit_avx2_conv_bwd_data_kernel_f32_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_bwd_data_kernel_f32_t)
 
-    jit_avx2_conv_bwd_data_kernel_f32(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp) {}
+    jit_avx2_conv_bwd_data_kernel_f32_t(const jit_conv_conf_t &ajcp)
+        : jit_generator_t(jit_name()), jcp(ajcp) {}
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &diff_src_d,
@@ -189,7 +190,7 @@ private:
 
     void generate() override;
 
-    inline int get_iw_start(int ki, int l_overflow) {
+    inline int get_iw_start(int ki, int l_overflow) const {
         int res = (jcp.iw - 1 + jcp.r_pad) % jcp.stride_w
                 + l_overflow * jcp.stride_w
                 - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
@@ -199,7 +200,7 @@ private:
         return res;
     }
 
-    inline int get_iw_end(int ur_w, int ki, int r_overflow) {
+    inline int get_iw_end(int ur_w, int ki, int r_overflow) const {
         if (utils::one_of(ur_w, jcp.iw, jcp.ur_w_tail))
             ur_w += nstl::min(0, jcp.r_pad); // remove negative padding
         int res = (ur_w - 1 + jcp.l_pad) % jcp.stride_w
@@ -210,11 +211,11 @@ private:
         return ur_w - res;
     }
 
-    inline dim_t filter_w_to_ddst(int ki, int oi = 0, int pad_l = 0) {
+    inline dim_t filter_w_to_ddst(int ki, int oi = 0, int pad_l = 0) const {
         return (oi + pad_l - ki * (jcp.dilate_w + 1)) / jcp.stride_w;
     }
 
-    inline dim_t get_ddst_offset(int i_oc_block, int i_ow, int i_oc) {
+    inline dim_t get_ddst_offset(int i_oc_block, int i_ow, int i_oc) const {
         dim_t offset;
         if (utils::one_of(jcp.dst_tag, format_tag::nwc, format_tag::nhwc,
                     format_tag::ndhwc)) {
@@ -228,7 +229,7 @@ private:
         return sizeof(float) * offset;
     }
 
-    inline dim_t get_dsrc_offset(int i_ic_block, int i_iw) {
+    inline dim_t get_dsrc_offset(int i_ic_block, int i_iw) const {
         dim_t offset;
         if (utils::one_of(jcp.src_tag, format_tag::nwc, format_tag::nhwc,
                     format_tag::ndhwc)) {
@@ -243,8 +244,8 @@ private:
     }
 
     inline dim_t get_kernel_offset(
-            int i_oc_block, int i_ic_block, int ki, int i_oc) {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
+            int i_oc_block, int i_ic_block, int ki, int i_oc) const {
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
         dim_t ic_block_step_size = static_cast<dim_t>(jcp.kd) * jcp.kh * jcp.kw
                 * block_step_size;
         dim_t oc_block_step_size
@@ -256,11 +257,11 @@ private:
     }
 };
 
-struct jit_avx2_conv_bwd_weights_kernel_f32 : public jit_generator {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_bwd_weights_kernel_f32)
+struct jit_avx2_conv_bwd_weights_kernel_f32_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_bwd_weights_kernel_f32_t)
 
-    jit_avx2_conv_bwd_weights_kernel_f32(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp) {}
+    jit_avx2_conv_bwd_weights_kernel_f32_t(const jit_conv_conf_t &ajcp)
+        : jit_generator_t(jit_name()), jcp(ajcp) {}
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
@@ -300,7 +301,7 @@ private:
     inline void compute_oh_step_common(int ic_block_step, int max_ur_w);
     inline void compute_oh_loop_common();
 
-    inline dim_t get_input_offset(int i_ic, int i_iw) {
+    inline dim_t get_input_offset(int i_ic, int i_iw) const {
         dim_t offset;
         if (utils::one_of(jcp.src_tag, format_tag::ncw, format_tag::nchw,
                     format_tag::ncdhw)) {
@@ -314,7 +315,7 @@ private:
         return sizeof(float) * offset;
     }
 
-    inline dim_t get_output_offset(int i_oc_block, int i_ow) {
+    inline dim_t get_output_offset(int i_oc_block, int i_ow) const {
         dim_t offset;
         if (utils::one_of(jcp.dst_tag, format_tag::nwc, format_tag::nhwc,
                     format_tag::ndhwc)) {
@@ -328,8 +329,8 @@ private:
         return sizeof(float) * offset;
     }
 
-    inline dim_t get_kernel_offset(int ki, int i_ic) {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
+    inline dim_t get_kernel_offset(int ki, int i_ic) const {
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
         dim_t offset = static_cast<dim_t>(ki) * block_step_size
                 + i_ic * jcp.oc_block;
         return sizeof(float) * offset;

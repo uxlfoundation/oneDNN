@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2016-2025 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -517,9 +517,13 @@ inline dnnl_alg_kind_t convert_to_c(algorithm aalgorithm) {
 /// Flags for normalization primitives.
 enum class normalization_flags : unsigned {
     /// Use no normalization flags. If specified, the library computes mean and
-    /// variance on forward propagation for training and inference, outputs them
-    /// on forward propagation for training, and computes the respective
+    /// variance on forward propagation for training and inference, outputs
+    /// them on forward propagation for training, and computes the respective
     /// derivatives on backward propagation.
+    ///
+    /// @note
+    ///     Backward propagation of type #dnnl::prop_kind::backward_data has
+    ///     the same behavior as #dnnl::prop_kind::backward.
     none = dnnl_normalization_flags_none,
 
     /// Use global statistics. If specified, the library uses mean and
@@ -545,12 +549,35 @@ enum class normalization_flags : unsigned {
     /// the workspace to implement backward propagation. On inference, the
     /// workspace is not required and behavior is the same as when normalization
     /// is fused with ReLU using the post-ops API.
+    ///
+    /// @note
+    ///     The flag implies negative slope being 0. On training this is the only
+    ///     configuration supported. For inference, to use non-zero negative slope
+    ///     consider using @ref dev_guide_attributes_post_ops.
     fuse_norm_relu = dnnl_fuse_norm_relu,
 
-    /// Fuse normalization with elementwise binary Add and then fuse with ReLU.
-    /// On training, normalization will require the workspace to implement
-    /// backward propagation. On inference, the workspace is not required.
+    /// Fuse normalization with an elementwise binary Add operation
+    /// followed by ReLU.
+    /// During training, normalization will require a workspace to implement
+    /// backward propagation. For inference, the workspace is not needed.
+    /// On forward propagation, an elementwise binary Add operation is applied
+    /// to the normalization results with an additional input tensor, followed
+    /// by ReLU with a negative slope of 0.
+    /// On backward propagation, the result of the backward ReLU operation
+    /// with the input tensor and workspace from the forward pass is saved
+    /// to an extra output tensor, and backward normalization is performed.
     fuse_norm_add_relu = dnnl_fuse_norm_add_relu,
+
+    /// Use Root Mean Square (RMS) Normalization. In forward propagation,
+    /// the mean is considered zero, and RMS norm is used instead of variance
+    /// for scaling. Only the RMS norm is output during forward propagation for
+    /// training. In backward propagation, the library calculates the derivative
+    /// with respect to the RMS norm only, assuming the mean is zero.
+    ///
+    /// @note
+    ///     When used with #dnnl::normalization_flags::use_global_stats,
+    ///     only RMS norm is required to be provided as input.
+    rms_norm = dnnl_rms_norm,
 };
 
 /// Converts normalization flags enum value from C++ API to C API type.
@@ -738,14 +765,12 @@ enum class query {
     inner_blks = dnnl_query_inner_blks,
     /// vector of logical indices of the blocks
     inner_idxs = dnnl_query_inner_idxs,
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     /// Sparse encoding
     sparse_encoding = dnnl_query_sparse_encoding,
     /// Number of non-zero entries
     nnz_s64 = dnnl_query_nnz_s64,
     /// Number of buffers required for a memory descriptor
     num_handles_s32 = dnnl_query_num_handles_s32,
-#endif
 };
 
 /// Converts query enum value from C++ API to C API type.
@@ -905,31 +930,28 @@ struct memory : public handle<dnnl_memory_t> {
         /// A tensor in a generic format described by the stride and blocking
         /// values in each dimension.
         blocked = dnnl_blocked,
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         /// Format kind for sparse tensors.
         sparse = dnnl_format_kind_sparse,
-#endif
         /// A special format kind that indicates that tensor format is opaque.
         opaque = dnnl_format_kind_opaque,
     };
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     /// Sparse encodings.
+    /// @sa @ref dev_guide_sparsity
     enum class sparse_encoding {
-            /// Undefined sparse encoding kind, used for empty memory descriptors.
-            undef = dnnl_sparse_encoding_undef,
-            /// Compressed Sparse Row (CSR) encoding.
-            csr = dnnl_csr,
-            /// An encoding that is used for an opaque storage schema for
-            /// tensors with unstructured sparsity. A memory descriptor with the
-            /// packed encoding cannot be used to create a memory object. It can
-            /// only be used to create a primitive descriptor to query the
-            /// actual memory descriptor (similar to the format tag `any`).
-            packed = dnnl_packed,
-            /// Coordinate Sparse (COO) encoding.
-            coo = dnnl_coo,
+        /// Undefined sparse encoding kind, used for empty memory descriptors.
+        undef = dnnl_sparse_encoding_undef,
+        /// Compressed Sparse Row (CSR) encoding.
+        csr = dnnl_csr,
+        /// An encoding that is used for an opaque storage schema for
+        /// tensors with unstructured sparsity. A memory descriptor with the
+        /// packed encoding cannot be used to create a memory object. It can
+        /// only be used to create a primitive descriptor to query the
+        /// actual memory descriptor (similar to the format tag `any`).
+        packed = dnnl_packed,
+        /// Coordinate Sparse (COO) encoding.
+        coo = dnnl_coo,
     };
-#endif
 
     /// Memory format tag specification.
     ///
@@ -1615,6 +1637,9 @@ struct memory : public handle<dnnl_memory_t> {
         BA16a32b4a = dnnl_BA16a32b4a,
         BA16a48b4a = dnnl_BA16a48b4a,
         BA16a64b4a = dnnl_BA16a64b4a,
+        BA24b8a = dnnl_BA24b8a,
+        aCB24c8b = dnnl_aCB24c8b,
+        abDC24d8c = dnnl_abDC24d8c,
         decbA16a = dnnl_decbA16a,
         decbA8a = dnnl_decbA8a,
         defcbA16a = dnnl_defcbA16a,
@@ -2820,7 +2845,7 @@ struct memory : public handle<dnnl_memory_t> {
                         "strides");
             reset(md);
         }
-#ifdef DNNL_EXPERIMENTAL_SPARSE
+
         /// Function for creating a memory descriptor for CSR sparse encoding.
         ///
         /// The created memory descriptor will describe a memory object that
@@ -2839,6 +2864,7 @@ struct memory : public handle<dnnl_memory_t> {
         ///     allowed to fail without throwing an exception. In this case a
         ///     zero memory descriptor will be constructed. This flag is
         ///     optional and defaults to false.
+        /// @sa @ref dev_guide_sparsity
         static desc csr(const dims &adims, data_type adata_type, dim nnz,
                 data_type index_dt, data_type pointer_dt,
                 bool allow_empty = false) {
@@ -2873,6 +2899,7 @@ struct memory : public handle<dnnl_memory_t> {
         ///     allowed to fail without throwing an exception. In this case a
         ///     zero memory descriptor will be constructed. This flag is
         ///     optional and defaults to false.
+        /// @sa @ref dev_guide_sparsity
         static desc coo(const dims &adims, data_type adata_type, dim nnz,
                 data_type index_dt, bool allow_empty = false) {
             validate_dims(adims);
@@ -2907,6 +2934,7 @@ struct memory : public handle<dnnl_memory_t> {
         ///     allowed to fail without throwing an exception. In this case a
         ///     zero memory descriptor will be constructed. This flag is
         ///     optional and defaults to false.
+        /// @sa @ref dev_guide_sparsity
         static desc packed(const dims &adims, data_type adata_type, dim nnz,
                 bool allow_empty = false) {
             validate_dims(adims);
@@ -2920,7 +2948,7 @@ struct memory : public handle<dnnl_memory_t> {
                         "sparse encoding");
             return desc {md};
         }
-#endif
+
         /// Construct a memory descriptor from a C API ::dnnl_memory_desc_t
         /// handle. The resulting handle is not weak and the C handle will be
         /// destroyed during the destruction of the C++ object.
@@ -3143,7 +3171,6 @@ struct memory : public handle<dnnl_memory_t> {
             return query_dims(query::inner_idxs);
         }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         /// Returns number of handles.
         ///
         /// @returns A number of handles.
@@ -3167,6 +3194,7 @@ struct memory : public handle<dnnl_memory_t> {
         /// Returns the sparse encoding of the memory descriptor.
         ///
         /// @returns the sparse encoding kind.
+        /// @sa @ref dev_guide_sparsity
         memory::sparse_encoding get_sparse_encoding() const {
             dnnl_sparse_encoding_t sparse_encoding;
             dnnl_status_t status = dnnl_memory_desc_query_v2(
@@ -3183,14 +3211,6 @@ struct memory : public handle<dnnl_memory_t> {
         memory::data_type get_data_type(int index = 0) const {
             return query_data_type(query::data_type, index);
         }
-#else
-        /// Returns the data type of the memory descriptor.
-        ///
-        /// @returns The data type.
-        memory::data_type get_data_type() const {
-            return query_data_type(query::data_type);
-        }
-#endif
 
         /// Returns the format kind of the memory descriptor.
         ///
@@ -3210,7 +3230,6 @@ struct memory : public handle<dnnl_memory_t> {
         /// @returns A copy of the dimensions vector.
         memory::dims get_dims() const { return query_dims(query::dims); }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         /// Returns size of the memory descriptor in bytes.
         /// @param index Data index. Defaults to 0.
         /// @returns The number of bytes required to allocate a memory buffer
@@ -3219,13 +3238,6 @@ struct memory : public handle<dnnl_memory_t> {
         size_t get_size(int index = 0) const {
             return dnnl_memory_desc_get_size_v2(get(), index);
         }
-#else
-        /// Returns size of the memory descriptor in bytes.
-        /// @returns The number of bytes required to allocate a memory buffer
-        ///     for the memory object described by this memory descriptor
-        ///     including the padding area.
-        size_t get_size() const { return dnnl_memory_desc_get_size(get()); }
-#endif
 
         /// Returns a binary blob associated with the given memory descriptor
         /// @returns The memory descriptor blob associated with the memory descriptor
@@ -3262,7 +3274,6 @@ struct memory : public handle<dnnl_memory_t> {
         bool operator!=(const desc &other) const { return !operator==(other); }
 
     private:
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         memory::data_type query_data_type(query what, int index) const {
             dnnl_data_type_t data_type;
             dnnl_status_t status = dnnl_memory_desc_query_v2(
@@ -3271,16 +3282,6 @@ struct memory : public handle<dnnl_memory_t> {
                     ? static_cast<dnnl::memory::data_type>(data_type)
                     : dnnl::memory::data_type::undef;
         }
-#else
-        memory::data_type query_data_type(query what) const {
-            dnnl_data_type_t data_type;
-            dnnl_status_t status = dnnl_memory_desc_query(
-                    get(), dnnl::convert_to_c(what), &data_type);
-            return status == dnnl_success
-                    ? static_cast<dnnl::memory::data_type>(data_type)
-                    : dnnl::memory::data_type::undef;
-        }
-#endif
 
         int query_s32(query what) const {
             int res;
@@ -3311,7 +3312,6 @@ struct memory : public handle<dnnl_memory_t> {
     /// absence of a parameter.
     memory() = default;
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     /// Constructs a memory object.
     ///
     /// Unless @p handle is equal to #DNNL_MEMORY_NONE, the constructed memory
@@ -3380,43 +3380,6 @@ struct memory : public handle<dnnl_memory_t> {
         error::wrap_c_api(status, "could not create a memory object");
         reset(result);
     }
-#else
-    /// Constructs a memory object.
-    ///
-    /// Unless @p handle is equal to #DNNL_MEMORY_NONE, the constructed memory
-    /// object will have the underlying buffer set. In this case, the buffer
-    /// will be initialized as if #dnnl::memory::set_data_handle() had been
-    /// called.
-    ///
-    /// @sa memory::set_data_handle()
-    ///
-    /// @param md Memory descriptor.
-    /// @param aengine Engine to store the data on.
-    /// @param handle Handle of the memory buffer to use.
-    ///     - A pointer to the user-allocated buffer. In this case the library
-    ///       doesn't own the buffer.
-    ///     - The #DNNL_MEMORY_ALLOCATE special value. Instructs the library to
-    ///       allocate the buffer for the memory object. In this case the
-    ///       library owns the buffer.
-    ///     - #DNNL_MEMORY_NONE to create dnnl::memory without an underlying
-    ///       buffer.
-    memory(const desc &md, const engine &aengine, void *handle) {
-        dnnl_memory_t result;
-        error::wrap_c_api(
-                dnnl_memory_create(&result, md.get(), aengine.get(), handle),
-                "could not create a memory object");
-        reset(result);
-    }
-
-    /// Constructs a memory object.
-    ///
-    /// The underlying buffer for the memory will be allocated by the library.
-    ///
-    /// @param md Memory descriptor.
-    /// @param aengine Engine to store the data on.
-    memory(const desc &md, const engine &aengine)
-        : memory(md, aengine, DNNL_MEMORY_ALLOCATE) {}
-#endif
 
     /// Returns the associated memory descriptor.
     desc get_desc() const {
@@ -3437,7 +3400,6 @@ struct memory : public handle<dnnl_memory_t> {
         return engine(c_engine, true);
     }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     /// Returns an underlying memory buffer that corresponds to the given index.
     ///
     /// On the CPU engine, or when using USM, this is a pointer to the
@@ -3508,73 +3470,6 @@ struct memory : public handle<dnnl_memory_t> {
         error::wrap_c_api(dnnl_memory_unmap_data_v2(get(), mapped_ptr, index),
                 "could not unmap memory object data");
     }
-#else
-    /// Returns the underlying memory buffer.
-    ///
-    /// On the CPU engine, or when using USM, this is a pointer to the
-    /// allocated memory.
-    void *get_data_handle() const {
-        void *handle;
-        error::wrap_c_api(dnnl_memory_get_data_handle(get(), &handle),
-                "could not get a native handle from a memory object");
-        return handle;
-    }
-
-    /// Sets the underlying memory buffer.
-    ///
-    /// @param handle Memory buffer to use. On the CPU engine or when USM is
-    ///     used, the memory buffer is a pointer to the actual data. For OpenCL
-    ///     it is a cl_mem. It must have at least
-    ///     #dnnl::memory::desc::get_size() bytes allocated.
-    void set_data_handle(void *handle) const {
-        error::wrap_c_api(dnnl_memory_set_data_handle(get(), handle),
-                "could not set native handle of a memory object");
-    }
-
-    /// Maps a memory object and returns a host-side pointer to a memory
-    /// buffer with a copy of its contents.
-    ///
-    /// Mapping enables read/write directly from/to the memory contents for
-    /// engines that do not support direct memory access.
-    ///
-    /// Mapping is an exclusive operation - a memory object cannot be used in
-    /// other operations until it is unmapped via #dnnl::memory::unmap_data()
-    /// call.
-    ///
-    /// @note
-    ///     Any primitives working with the memory should be completed before
-    ///     the memory is mapped. Use #dnnl::stream::wait() to synchronize the
-    ///     corresponding execution stream.
-    ///
-    /// @note
-    ///     The map_data and unmap_data functions are provided mainly for
-    ///     debug and testing purposes and their performance may be suboptimal.
-    ///
-    /// @tparam T Data type to return a pointer to.
-    /// @returns Pointer to the mapped memory.
-    template <typename T = void>
-    T *map_data() const {
-        void *mapped_ptr;
-        error::wrap_c_api(dnnl_memory_map_data(get(), &mapped_ptr),
-                "could not map memory object data");
-        return static_cast<T *>(mapped_ptr);
-    }
-
-    /// Unmaps a memory object and writes back any changes made to the
-    /// previously mapped memory buffer.
-    ///
-    /// @note
-    ///     The map_data and unmap_data functions are provided mainly for
-    ///     debug and testing purposes and their performance may be
-    ///     suboptimal.
-    ///
-    /// @param mapped_ptr A pointer previously returned by
-    ///     #dnnl::memory::map_data().
-    void unmap_data(void *mapped_ptr) const {
-        error::wrap_c_api(dnnl_memory_unmap_data(get(), mapped_ptr),
-                "could not unmap memory object data");
-    }
-#endif
 
     static dnnl_data_type_t convert_to_c(data_type adata_type) {
         return static_cast<dnnl_data_type_t>(adata_type);
@@ -3846,10 +3741,10 @@ struct post_ops : public handle<dnnl_post_ops_t> {
 
     /// Appends a binary post-op.
     ///
-    /// The kind of this post operation is #dnnl_binary.
+    /// This post operation is categorized as #dnnl_binary.
     ///
     /// In the simplest case when the binary is the only post operation, the
-    /// computations would be:
+    /// computations will be:
     ///
     ///     dst[:] <- binary_op (dst[:], another_input[:])
     ///
@@ -3862,6 +3757,32 @@ struct post_ops : public handle<dnnl_post_ops_t> {
         error::wrap_c_api(dnnl_post_ops_append_binary(get(),
                                   convert_to_c(aalgorithm), src1_desc.get()),
                 "could not append a binary post-op");
+    }
+
+    /// Appends a binary post-op with ternary operators.
+    ///
+    /// This post operation is categorized as #dnnl_binary.
+    ///
+    /// In the simplest case when this is the only post operation, the
+    /// computations will be:
+    ///
+    ///     dst[:] <- binary_op (dst[:], another_input1[:], another_input2[:])
+    ///
+    /// where binary_op is configured with the given parameters. binary_op
+    /// supports broadcast semantics only for the second operand and not for the
+    /// third operand.
+    ///
+    /// @param aalgorithm Binary algorithm for the post-op.
+    /// @param src1_desc Memory descriptor of the second operand.
+    /// @param src2_desc Memory descriptor of the third operand. If the specified
+    /// algorithm is not one that requires a ternary input, src2_desc will be
+    /// ignored.
+    void append_binary(algorithm aalgorithm, const memory::desc &src1_desc,
+            const memory::desc &src2_desc) {
+        error::wrap_c_api(
+                dnnl_post_ops_append_binary_v2(get(), convert_to_c(aalgorithm),
+                        src1_desc.get(), src2_desc.get()),
+                "could not append a binary post-op with ternary operators");
     }
 
     /// Returns the parameters of a binary post-op.
@@ -3881,6 +3802,33 @@ struct post_ops : public handle<dnnl_post_ops_t> {
         error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md, cdesc),
                 "could not clone a memory descriptor");
         src1_desc = memory::desc(cloned_md);
+    }
+
+    /// Returns the parameters of a binary post-op with ternary operators.
+    ///
+    /// @param index Index of the binary post-op.
+    /// @param aalgorithm Output binary algorithm kind.
+    /// @param src1_desc Output memory descriptor of the second operand.
+    /// @param src2_desc Output memory descriptor of the third operand.
+    void get_params_binary(int index, algorithm &aalgorithm,
+            memory::desc &src1_desc, memory::desc &src2_desc) const {
+        dnnl_alg_kind_t c_alg;
+        const_dnnl_memory_desc_t cdesc1, cdesc2;
+        error::wrap_c_api(dnnl_post_ops_get_params_binary_v2(
+                                  get(), index, &c_alg, &cdesc1, &cdesc2),
+                "could not get parameters of a binary post-op with ternary "
+                "operators");
+        aalgorithm = static_cast<dnnl::algorithm>(c_alg);
+        dnnl_memory_desc_t cloned_md1 = nullptr;
+        dnnl_memory_desc_t cloned_md2 = nullptr;
+
+        error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md1, cdesc1),
+                "could not clone a memory descriptor");
+        src1_desc = memory::desc(cloned_md1);
+
+        error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md2, cdesc2),
+                "could not clone a memory descriptor");
+        src2_desc = memory::desc(cloned_md2);
     }
 
     /// Appends a prelu forward post-op.
@@ -4201,7 +4149,7 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     /// Returns post-ops previously set via set_post_ops().
     ///
     /// @returns Post-ops.
-    const post_ops get_post_ops() const {
+    post_ops get_post_ops() const {
         const_dnnl_post_ops_t const_c_post_ops;
         error::wrap_c_api(
                 dnnl_primitive_attr_get_post_ops(get(), &const_c_post_ops),
@@ -4220,7 +4168,7 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///     by the respective primitive descriptor constructor.
     ///
     /// @param ops Post-ops object to copy post-ops from.
-    void set_post_ops(const post_ops ops) {
+    void set_post_ops(const post_ops &ops) {
         error::wrap_c_api(dnnl_primitive_attr_set_post_ops(get(), ops.get()),
                 "could not set post-ops primitive attribute");
     }
@@ -13856,6 +13804,10 @@ enum class cpu_isa {
     avx10_1_512_amx_fp16 = dnnl_cpu_isa_avx10_1_512_amx_fp16,
     /// @copydoc dnnl_cpu_isa_avx512_core_amx_fp16
     avx512_core_amx_fp16 = dnnl_cpu_isa_avx512_core_amx_fp16,
+    /// @copydoc dnnl_cpu_isa_avx10_2_512
+    avx10_2_512 = dnnl_cpu_isa_avx10_2_512,
+    /// @copydoc dnnl_cpu_isa_avx10_2_512_amx_2
+    avx10_2_512_amx_2 = dnnl_cpu_isa_avx10_2_512_amx_2,
 };
 
 /// @copydoc dnnl_set_max_cpu_isa()

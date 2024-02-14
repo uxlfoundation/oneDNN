@@ -76,15 +76,12 @@ if(DNNL_EXPERIMENTAL)
     message(STATUS "Experimental features are enabled")
 endif()
 
-if(DNNL_EXPERIMENTAL_SPARSE)
-    message(STATUS "Experimental functionality for sparse domain is enabled")
-endif()
-
 if(DNNL_EXPERIMENTAL_UKERNEL)
-    if(DNNL_TARGET_ARCH STREQUAL "ARCH_GENERIC")
-        message(FATAL_ERROR "ukernel API does not support generic architecture.")
+    if(DNNL_TARGET_ARCH STREQUAL "X64" OR DNNL_TARGET_ARCH STREQUAL "AARCH64")
+        message(STATUS "Experimental functionality for ukernels is enabled")
+    else()
+        message(FATAL_ERROR "ukernel API isn't supported for ${DNNL_TARGET_ARCH}.")
     endif()
-    message(STATUS "Experimental functionality for ukernels is enabled")
 endif()
 
 if(DNNL_EXPERIMENTAL_PROFILING)
@@ -122,6 +119,12 @@ if(UNIX)
     if(DNNL_ENABLE_MEM_DEBUG)
         add_definitions_with_host_compiler(-DDNNL_ENABLE_MEM_DEBUG)
     endif()
+endif()
+
+if(DNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+add_definitions_with_host_compiler(-DXE3P)
 endif()
 
 add_subdirectory(common)
@@ -165,22 +168,12 @@ if(ONEDNN_BUILD_GRAPH)
             "primitive selection with ONEDNN_ENABLE_PRIMITIVE=ALL.")
     endif()
 
-    if(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_BACKEND)
-        add_definitions_with_host_compiler(-DDNNL_ENABLE_COMPILER_BACKEND)
-    endif()
     if(ONEDNN_ENABLE_GRAPH_DUMP)
         message(STATUS "Graph artifacts dump is enabled")
         add_definitions_with_host_compiler(-DDNNL_ENABLE_GRAPH_DUMP)
     endif()
 
     add_subdirectory(graph)
-    if(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_BACKEND AND TARGET dnnl_graphcompiler_llvm_lib_exclude_string)
-        get_property(GC_EXCLUDE_LIBS TARGET dnnl_graphcompiler_llvm_lib_exclude_string PROPERTY INTERFACE_LINK_LIBRARIES)
-        if(DEFINED GC_EXCLUDE_LIBS AND NOT MSVC AND NOT APPLE)
-            # set the LLVM symbols as hidden, or all LLVM symbols will be exported
-            append(CMAKE_SHARED_LINKER_FLAGS "-Wl,--exclude-libs=${GC_EXCLUDE_LIBS}")
-        endif()
-    endif()
 else()
     # If graph component is not built, remove the headers from build and installation.
     list(REMOVE_ITEM HEADERS_SUBDIR
@@ -214,6 +207,14 @@ target_link_libraries_install(${LIB_PACKAGE_NAME} "${EXTRA_SHARED_LIBS}")
 if(DNNL_LIBRARY_TYPE STREQUAL "STATIC")
     target_link_libraries_install(${LIB_PACKAGE_NAME} "${EXTRA_STATIC_LIBS}")
 endif()
+
+foreach(object_library IN LISTS LIB_DEPS)
+    string(REPLACE "$<TARGET_OBJECTS:" "" object_library "${object_library}")
+    string(REPLACE ">" "" object_library "${object_library}")
+
+    # explicitly set compile PDB name as with Ninja, all targets have the same pdb name like vc<vc_ver>.pdb
+    set_target_properties(${object_library} PROPERTIES COMPILE_PDB_NAME ${object_library})
+endforeach()
 
 set(LIB_EXPORT_NAME "${LIB_PACKAGE_NAME}-targets")
 install(TARGETS ${LIB_PACKAGE_NAME}
@@ -285,7 +286,7 @@ if(DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
     endif()
 endif()
 
-if(DNNL_GPU_RUNTIME STREQUAL "OCL")
+if(DNNL_GPU_RUNTIME STREQUAL "OCL" OR (DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL"))
     install(FILES
         "../cmake/FindOpenCL.cmake"
         DESTINATION ${LIB_CONFIG_INSTALL_DIR})
@@ -295,6 +296,14 @@ if(DNNL_BLAS_VENDOR STREQUAL "ACCELERATE")
     install(FILES
     "../cmake/FindBLAS.cmake"
     DESTINATION ${LIB_CONFIG_INSTALL_DIR})
+endif()
+
+if(DNNL_SYCL_CUDA)
+    install(FILES
+        "../cmake/FindcuBLAS.cmake"
+        "../cmake/FindcublasLt.cmake"
+        "../cmake/FindcuDNN.cmake"
+        DESTINATION ${LIB_CONFIG_INSTALL_DIR})
 endif()
 
 # On Windows we need to add dnnl.dll path to CTESTCONFIG_PATH which is later

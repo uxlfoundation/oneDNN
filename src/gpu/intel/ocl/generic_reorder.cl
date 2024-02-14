@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -211,14 +211,14 @@ __kernel void generic_reorder(__global SRC_DATA_T *restrict src,
                     d[2] + b[2], d[3] + b[3], d[4] + b[4], d[5] + b[5]);
             src_scale = src_scale_idx < SRC_NUM_SCALES
                     ? src_scales[src_scale_idx]
-                    : 0.0;
+                    : 0.0f;
 #endif
 #if WITH_DST_SCALE
             off_t dst_scale_idx = SCALE_OFF(DST, d[0] + b[0], d[1] + b[1],
                     d[2] + b[2], d[3] + b[3], d[4] + b[4], d[5] + b[5]);
             dst_scale = dst_scale_idx < DST_NUM_SCALES
                     ? dst_scales[dst_scale_idx]
-                    : 0.0;
+                    : 0.0f;
 #endif
             REORDER(DEFAULT_ROUND, dst_tmp, from_cache, src_scale, dst_scale,
                     sum_scale, src_zp, dst_zp, sum_zp);

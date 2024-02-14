@@ -317,7 +317,7 @@ struct rtus_driver_t : public jit_generator {
                     default: assert(!"Unsupported typesize");
                 }
             } else {
-                assert("!Unsupported isa");
+                assert(!"Unsupported isa");
             }
         };
 
@@ -347,7 +347,7 @@ struct rtus_driver_t : public jit_generator {
                     default: assert(!"Unsupported typesize");
                 }
             } else {
-                assert("!Unsupported isa");
+                assert(!"Unsupported isa");
             }
         };
 

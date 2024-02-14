@@ -76,6 +76,9 @@ typedef enum {
     /// optimizations for constant tensors or cache constant tensors inside the
     /// library. For example, constant weight tensors in inference scenarios.
     dnnl_graph_tensor_property_constant = 2,
+    /// Host scalar means the tensor will be a 0-D scalar tensor on host.
+    /// It should be used with a CPU engine when creating the tensor.
+    dnnl_graph_tensor_property_host_scalar = 3,
 } dnnl_graph_tensor_property_t;
 
 /// Logical tensor. It is based on an ID, a number of dimensions, dimensions
@@ -368,9 +371,10 @@ typedef enum {
     dnnl_graph_op_attr_coordinate_transformation_mode,
     /// Specifies a data_format of an op. The value can be "NCX" or "NXC".
     dnnl_graph_op_attr_data_format,
-    /// Specifies a mode attribute of an op. The value can be "nearest",
-    /// "linear", "bilinear", or "trilinear". The attribute is defined for
-    /// Interpolate operations.
+    /// Specifies a mode attribute of an op.
+    /// Interpolate: "nearest", "linear", "bilinear", or "trilinear".
+    /// SoftMax: "none", "inf_as_zero".
+    /// GELU/GELUBackward: "gelu_erf", "gelu_tanh".
     dnnl_graph_op_attr_mode,
     /// Specifies a qtype attribute to an op. The value can be "per_channel" or
     /// "per_tensor". The attribute is defined for quantization operations.

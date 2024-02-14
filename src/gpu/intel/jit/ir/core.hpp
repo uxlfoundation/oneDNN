@@ -196,6 +196,8 @@ enum class type_kind_t {
     _bool,
 
     // Integer types.
+    u4,
+    s4,
     u8,
     s8,
     u16,
@@ -206,6 +208,8 @@ enum class type_kind_t {
     s64,
 
     // Floating point types.
+    f4_e3m0,
+    f4_e2m1,
     bf8,
     f8_e5m2 = bf8,
     hf8,
@@ -226,6 +230,8 @@ enum class type_kind_t {
 
 static auto type_kind_names = nstl::to_array({
         make_enum_name(type_kind_t::undef, "undef"),
+        make_enum_name(type_kind_t::u4, "u4"),
+        make_enum_name(type_kind_t::s4, "s4"),
         make_enum_name(type_kind_t::u8, "u8"),
         make_enum_name(type_kind_t::s8, "s8"),
         make_enum_name(type_kind_t::u16, "u16"),
@@ -234,6 +240,8 @@ static auto type_kind_names = nstl::to_array({
         make_enum_name(type_kind_t::s32, "s32"),
         make_enum_name(type_kind_t::u64, "u64"),
         make_enum_name(type_kind_t::s64, "s64"),
+        make_enum_name(type_kind_t::f4_e3m0, "f4_e3m0"),
+        make_enum_name(type_kind_t::f4_e2m1, "f4_e2m1"),
         make_enum_name(type_kind_t::bf8, "bf8"),
         make_enum_name(type_kind_t::hf8, "hf8"),
         make_enum_name(type_kind_t::bf16, "bf16"),
@@ -257,6 +265,8 @@ public:
         return type_t(type_kind_t::_bool, elems);
     }
 
+    static type_t u4(int elems = 1) { return type_t(type_kind_t::u4, elems); }
+    static type_t s4(int elems = 1) { return type_t(type_kind_t::s4, elems); }
     static type_t u8(int elems = 1) { return type_t(type_kind_t::u8, elems); }
     static type_t s8(int elems = 1) { return type_t(type_kind_t::s8, elems); }
     static type_t u16(int elems = 1) { return type_t(type_kind_t::u16, elems); }
@@ -269,6 +279,7 @@ public:
     // Returns unsigned integer type.
     static type_t u(int bits, int elems = 1) {
         switch (bits) {
+            case 4: return u4(elems);
             case 8: return u8(elems);
             case 16: return u16(elems);
             case 32: return u32(elems);
@@ -281,6 +292,7 @@ public:
     // Returns signed integer type.
     static type_t s(int bits, int elems = 1) {
         switch (bits) {
+            case 4: return s4(elems);
             case 8: return s8(elems);
             case 16: return s16(elems);
             case 32: return s32(elems);
@@ -288,6 +300,13 @@ public:
             default: gpu_error_not_expected();
         }
         return type_t::undef();
+    }
+
+    static type_t f4_e3m0(int elems = 1) {
+        return type_t(type_kind_t::f4_e3m0, elems);
+    }
+    static type_t f4_e2m1(int elems = 1) {
+        return type_t(type_kind_t::f4_e2m1, elems);
     }
     static type_t bf8(int elems = 1) { return type_t(type_kind_t::bf8, elems); }
     static type_t hf8(int elems = 1) { return type_t(type_kind_t::hf8, elems); }
@@ -345,6 +364,8 @@ public:
     template <typename T>
     T max() const {
         switch (kind()) {
+            case type_kind_t::u4:
+            case type_kind_t::s4:
             case type_kind_t::u8:
             case type_kind_t::s8:
             case type_kind_t::u16:
@@ -353,7 +374,7 @@ public:
             case type_kind_t::s32:
             case type_kind_t::u64:
             case type_kind_t::s64: {
-                int bits = 8 * size();
+                int bits = scalar().bitsize();
                 if (is_signed()) bits--;
                 T ret = T(1) << (bits - 1);
                 return ret + (ret - 1);
@@ -366,6 +387,8 @@ public:
     template <typename T>
     T min() const {
         switch (kind()) {
+            case type_kind_t::u4:
+            case type_kind_t::s4:
             case type_kind_t::u8:
             case type_kind_t::s8:
             case type_kind_t::u16:
@@ -394,18 +417,24 @@ public:
         kind_ = type_kind_t::x; \
         return; \
     }
+        CASE(f4_e3m0);
+        CASE(f4_e2m1);
+        CASE(f8_e5m2);
+        CASE(f8_e4m3);
         CASE(bf16);
         CASE(f16);
         CASE(tf32);
         CASE(f32);
         CASE(f64);
-        CASE(s32);
-        CASE(s64);
+
+        CASE(s4);
         CASE(s8);
-        CASE(u8);
         CASE(s16);
         CASE(s32);
         CASE(s64);
+
+        CASE(u4);
+        CASE(u8);
         CASE(u16);
         CASE(u32);
         CASE(u64);
@@ -420,6 +449,8 @@ public:
         switch ((int)dt) {
 #define CASE(x) \
     case data_type::x: kind_ = type_kind_t::x; break;
+            CASE(f4_e3m0);
+            CASE(f4_e2m1);
             CASE(f8_e5m2);
             CASE(f8_e4m3);
             CASE(bf16);
@@ -430,6 +461,8 @@ public:
             CASE(s32);
             CASE(s8);
             CASE(u8);
+            CASE(s4);
+            CASE(u4);
 #undef CASE
             default: gpu_error_not_expected();
         }
@@ -469,15 +502,13 @@ public:
     bool is_bool() const { return kind() == type_kind_t::_bool; }
 
     bool is_fp() const {
-        return utils::one_of(kind(), type_kind_t::bf8, type_kind_t::hf8,
-                type_kind_t::bf16, type_kind_t::f16, type_kind_t::tf32,
-                type_kind_t::f32, type_kind_t::f64);
+        return is_fp4() || is_fp8()
+                || utils::one_of(kind(), type_kind_t::bf16, type_kind_t::f16,
+                        type_kind_t::tf32, type_kind_t::f32, type_kind_t::f64);
     }
 
-    bool is_fp8() const {
-        return utils::one_of(kind(), type_kind_t::bf8, type_kind_t::hf8);
-    }
-
+    bool is_f4_e3m0() const { return kind() == type_kind_t::f4_e3m0; }
+    bool is_f4_e2m1() const { return kind() == type_kind_t::f4_e2m1; }
     bool is_bf8() const { return kind() == type_kind_t::bf8; }
     bool is_hf8() const { return kind() == type_kind_t::hf8; }
     bool is_bf16() const { return kind() == type_kind_t::bf16; }
@@ -486,35 +517,32 @@ public:
     bool is_f32() const { return kind() == type_kind_t::f32; }
     bool is_f64() const { return kind() == type_kind_t::f64; }
 
+    bool is_fp4() const { return is_f4_e3m0() || is_f4_e2m1(); }
+    bool is_fp8() const { return is_bf8() || is_hf8(); }
+
     bool is_int() const {
-        return utils::one_of(kind(), type_kind_t::u8, type_kind_t::s8,
-                type_kind_t::u16, type_kind_t::s16, type_kind_t::u32,
-                type_kind_t::s32, type_kind_t::u64, type_kind_t::s64);
+        return is_x4() || is_x8() || is_x16() || is_x32() || is_x64();
     }
+
+    bool is_s4() const { return kind() == type_kind_t::s4; }
+    bool is_u4() const { return kind() == type_kind_t::u4; }
+    bool is_x4() const { return is_s4() || is_u4(); }
 
     bool is_s8() const { return kind() == type_kind_t::s8; }
     bool is_u8() const { return kind() == type_kind_t::u8; }
-    bool is_x8() const {
-        return utils::one_of(kind(), type_kind_t::s8, type_kind_t::u8);
-    }
+    bool is_x8() const { return is_s8() || is_u8(); }
 
     bool is_s16() const { return kind() == type_kind_t::s16; }
     bool is_u16() const { return kind() == type_kind_t::u16; }
-    bool is_x16() const {
-        return utils::one_of(kind(), type_kind_t::s16, type_kind_t::u16);
-    }
+    bool is_x16() const { return is_s16() || is_u16(); }
 
     bool is_s32() const { return kind() == type_kind_t::s32; }
     bool is_u32() const { return kind() == type_kind_t::u32; }
-    bool is_x32() const {
-        return utils::one_of(kind(), type_kind_t::s32, type_kind_t::u32);
-    }
+    bool is_x32() const { return is_s32() || is_u32(); }
 
     bool is_s64() const { return kind() == type_kind_t::s64; }
     bool is_u64() const { return kind() == type_kind_t::u64; }
-    bool is_x64() const {
-        return utils::one_of(kind(), type_kind_t::s64, type_kind_t::u64);
-    }
+    bool is_x64() const { return is_s64() || is_u64(); }
 
     bool is_byte() const { return kind() == type_kind_t::byte; }
     bool is_dword() const { return kind() == type_kind_t::dword; }
@@ -524,14 +552,14 @@ public:
 
     bool is_signed(int elems = -1) const {
         if (elems != -1 && elems_ != elems) return false;
-        return utils::one_of(kind(), type_kind_t::s8, type_kind_t::s16,
-                type_kind_t::s32, type_kind_t::s64);
+        return utils::one_of(kind(), type_kind_t::s4, type_kind_t::s8,
+                type_kind_t::s16, type_kind_t::s32, type_kind_t::s64);
     }
 
     bool is_unsigned(int elems = -1) const {
         if (elems != -1 && elems_ != elems) return false;
-        return utils::one_of(kind(), type_kind_t::u8, type_kind_t::u16,
-                type_kind_t::u32, type_kind_t::u64);
+        return utils::one_of(kind(), type_kind_t::u4, type_kind_t::u8,
+                type_kind_t::u16, type_kind_t::u32, type_kind_t::u64);
     }
 
     bool is_scalar() const { return elems() == 1; }
@@ -576,6 +604,22 @@ public:
     // Returns size in bytes.
     int size() const;
 
+    // Returns size in bits.
+    int bitsize() const {
+        // 8 elements occupy the same number of bytes that a single element
+        // occupies in bits.
+        constexpr int bits_per_byte = 8;
+        return with_elems(bits_per_byte * elems()).size();
+    }
+
+    // Returns number of elements that fit in `size()` bytes.
+    // The size in bytes of `n` packed elements is
+    //     `div_up(n * size(), packing())`.
+    int packing() const {
+        constexpr int bits_per_byte = 8;
+        return bits_per_byte * size() / bitsize();
+    }
+
     std::string str() const {
         std::ostringstream oss;
         oss << to_string(kind());
@@ -600,6 +644,8 @@ class ref_count_t {
 public:
     ref_count_t() : value_(0) {}
     ref_count_t(const ref_count_t &) = delete;
+    ref_count_t &operator=(const ref_count_t &) = delete;
+    ~ref_count_t() = default;
 
     uint32_t increment() { return ++value_; }
     uint32_t decrement() { return --value_; }
@@ -627,6 +673,7 @@ public:
     object_impl_t(type_info_t type_info) : type_info_(type_info) {};
 
     object_impl_t(const object_impl_t &) = delete;
+    object_impl_t &operator=(const object_impl_t &) = delete;
 
     virtual ~object_impl_t() = default;
 
@@ -866,6 +913,7 @@ public:
     template <typename T>
     std::vector<T> mutate(const std::vector<T> &v) {
         std::vector<T> new_v;
+        new_v.reserve(v.size());
         for (auto &e : v)
             new_v.push_back(mutate(e));
         return new_v;
@@ -1703,6 +1751,11 @@ inline expr_t ternary_add3(const expr_t &a, const expr_t &b, const expr_t &c) {
     return ternary_op_t::make(op_kind_t::_add3, a, b, c);
 }
 
+inline expr_t ternary_idiv(
+        const expr_t &a, const expr_t &b, const expr_t &magic) {
+    return ternary_op_t::make(op_kind_t::_idiv, a, b, magic);
+}
+
 // Unary operation: (op a).
 class unary_op_t : public expr_impl_t {
 public:
@@ -2075,6 +2128,12 @@ public:
                 : 0;
     }
 
+    std::string line_str() const {
+        std::ostringstream out;
+        out << "alloc " << buf.as<var_t>().name << "[" << size << "]";
+        return out.str();
+    }
+
     IR_DECLARE_TRAVERSERS()
 
     expr_t buf;
@@ -2148,6 +2207,17 @@ public:
 
     bool has_default_stride() const { return stride == default_stride; }
 
+    std::string line_str() const {
+        std::ostringstream out;
+        out << load_t::make(value.type(), buf, off, stride);
+        out << " = " << value;
+        if (!mask.is_empty()) {
+            out << ", mask = " << mask.str();
+            if (fill_mask0) out << " [FILL]";
+        }
+        return out.str();
+    }
+
     IR_DECLARE_TRAVERSERS()
 
     static const int default_stride = -1;
@@ -2207,6 +2277,14 @@ public:
         return ir_utils::get_hash(var, init, bound, body, step, unroll);
     }
 
+    std::string line_str() const {
+        std::ostringstream out;
+        out << "for (" << var << " = " << init << "; " << var << " < " << bound
+            << "; " << var << " += " << step << ") ";
+        if (unroll != 1) out << "[unroll: " << unroll << "] ";
+        return out.str();
+    }
+
     IR_DECLARE_TRAVERSERS()
 
     expr_t var;
@@ -2256,6 +2334,12 @@ public:
         return ir_utils::get_hash(cond, body, else_body);
     }
 
+    std::string line_str() const {
+        std::ostringstream oss;
+        oss << "if (" << cond << ")";
+        return oss.str();
+    }
+
     IR_DECLARE_TRAVERSERS()
 
     expr_t cond;
@@ -2303,6 +2387,12 @@ public:
         if (value.is_empty()) return 0;
         return utils::rnd_up(var.type().size(), reg_allocator_t::granularity);
     };
+
+    std::string line_str() const {
+        std::ostringstream out;
+        out << var << "." << var.type() << " = " << value;
+        return out.str();
+    }
 
     IR_DECLARE_TRAVERSERS()
 
@@ -2498,6 +2588,12 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(cond, body); }
 
+    std::string line_str() const {
+        std::ostringstream out;
+        out << "while (" << cond << ")";
+        return out.str();
+    }
+
     IR_DECLARE_TRAVERSERS()
 
     expr_t cond;
@@ -2662,6 +2758,13 @@ public:
     }
 
     size_t get_hash() const override { return ir_utils::get_hash(args, attr); }
+
+    std::string line_str() const {
+        std::ostringstream out;
+        out << func << "(" << ir_utils::make_seq_print_helper(args) << ")";
+        if (!attr.is_empty()) out << " " << attr;
+        return out.str();
+    }
 
     IR_DECLARE_TRAVERSERS()
 

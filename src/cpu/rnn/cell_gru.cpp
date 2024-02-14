@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,10 +33,10 @@ using namespace rnn_utils;
 
 #define AOC array_offset_calculator
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((
-        _ref_rnn_fwd_t<src_type, weights_type, acc_type>::cell_execution_gru)) {
-    const ws_gates_aoc<gates_t> ws_gates(rnn, ws_gates_);
-    const scratch_gates_aoc<scratch_t> scratch_gates(rnn, scratch_gates_);
+rnn_cell_execution_sig(
+        (ref_rnn_fwd_t<src_type, weights_type, acc_type>::cell_execution_gru)) {
+    const ws_gates_aoc_t<gates_t> ws_gates(rnn, ws_gates_);
+    const scratch_gates_aoc_t<scratch_t> scratch_gates(rnn, scratch_gates_);
     const auto weights_scales = this->pd_->attr()->rnn_weights_qparams_.scales_;
 
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
@@ -115,16 +115,17 @@ dnnl_status_t gru_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
         acc_data_t *diff_src_iter_, acc_data_t *diff_dst_iter_,
         acc_data_t *diff_dst_layer_, acc_data_t *diff_bias_,
         scratch_data_t *scratch_cell_, src_data_t *dst_iter_) {
-    const ws_gates_aoc<src_data_t> ws_gates(rnn, ws_gates_);
-    const scratch_gates_aoc<scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
+            rnn, scratch_gates_);
 
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
     const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
     const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
-    const ws_states_layer_aoc<src_data_t> dst_layer(rnn, dst_layer_,
+    const ws_states_layer_aoc_t<src_data_t> dst_layer(rnn, dst_layer_,
             (cell_position & last_layer) ? dst_layer_ld : dst_iter_ld);
-    const ws_states_iter_aoc<const src_data_t> src_iter(
+    const ws_states_iter_aoc_t<const src_data_t> src_iter(
             rnn, src_iter_, src_iter_ld);
     const ws_diff_w_iter_aoc_t diff_w_iter(rnn, diff_w_iter_);
 
@@ -186,8 +187,8 @@ dnnl_status_t gru_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
 }
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((
-        _ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_gru)) {
+rnn_cell_execution_sig(
+        (ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_gru)) {
     auto gemm_iter_f
             = [&](int m, int n, int k, const weights_t *A, const gemm_data_t *B,
                       float beta, gemm_acc_t *C) {

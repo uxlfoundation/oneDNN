@@ -88,6 +88,8 @@ status_t create_zp_precompute_conv_pd(std::shared_ptr<primitive_desc_t> &retn,
     primitive_desc_iterator_t it(eng, (op_desc_t *)&conv_desc, &attr, nullptr);
     if (!it.is_initialized()) return status::out_of_memory;
     retn = *(++it);
+    while (retn && !strcmp(retn->name(), "jit:ir_v2"))
+        retn = *(++it);
     return (retn) ? status::success : status::unimplemented;
 }
 

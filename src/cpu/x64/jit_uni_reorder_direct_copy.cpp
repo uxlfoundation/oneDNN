@@ -31,12 +31,12 @@ namespace x64 {
 template <typename Vmm>
 struct direct_copy_kernel_t
     : public jit_uni_reorder_direct_copy_t::kernel_base_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(direct_copy_kernel_t)
 
     direct_copy_kernel_t(const reorder_pd_t *pd, cpu_isa_t isa)
         : jit_uni_reorder_direct_copy_t::kernel_base_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , isa_(isa)
         , src_dt_(pd_->src_md()->data_type)
         , dst_dt_(pd_->dst_md()->data_type) {
@@ -62,7 +62,7 @@ struct direct_copy_kernel_t
                 {{dst_dt_, io_saturation_conf}}, utils::nullopt, io_fp8_conf);
     }
 
-    static constexpr int vlen_ = vreg_traits<Vmm>::vlen;
+    static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr int simd_w_ = vlen_ / sizeof(float);
     static constexpr int unroll_12_ = 12;
     static constexpr int unroll_4_ = 4;
@@ -75,10 +75,12 @@ struct direct_copy_kernel_t
         args.src = src;
         args.dst = dst;
         args.work_amount = work_amount;
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     Address src_ptr(size_t offt = 0) { return ptr[reg_src + offt]; }
 
@@ -281,6 +283,9 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(
     const bool is_s32 = utils::everyone_is(s32, src_dt, dst_dt);
     VDISPATCH_REORDER(!is_s32, VERBOSE_UNSUPPORTED_DT);
 
+    const bool is_f64 = utils::one_of(f64, src_dt, dst_dt);
+    VDISPATCH_REORDER(!is_f64, VERBOSE_UNSUPPORTED_DT);
+
     VDISPATCH_REORDER(IMPLICATION(utils::one_of(bf16, src_dt, dst_dt),
                               mayiuse(avx512_core) || mayiuse(avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
@@ -309,9 +314,20 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(
     VDISPATCH_REORDER(src_d.similar_to(dst_d, true, false, 0),
             VERBOSE_TENSOR_FORMAT_MISMATCH, "src", "dst");
 
-    VDISPATCH_REORDER(
-            utils::everyone_is(0UL, src_d.extra().flags, dst_d.extra().flags),
-            VERBOSE_UNSUPPORTED_MD_FLAG);
+    // Direct copy doesn't operate on plain non-dense cases, though it can
+    // simply extend nelems to contain wholes in strides but it would be
+    // inefficient.
+    // TODO: enable smart plain non-dense case support.
+    VDISPATCH_REORDER(IMPLICATION(src_d.is_plain(), src_d.is_dense()),
+            VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+
+    VDISPATCH_REORDER(src_d.extra().flags == dst_d.extra().flags,
+            VERBOSE_UNSUPPORTED_MD_FLAG, "src or dst");
+
+    VDISPATCH_REORDER(IMPLICATION(src_d.extra().flags > 0UL,
+                              src_d.additional_buffer_size()
+                                      == dst_d.additional_buffer_size()),
+            VERBOSE_UNSUPPORTED_MD_FLAG, "src or dst");
 
     VDISPATCH_REORDER(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
@@ -373,6 +389,17 @@ status_t jit_uni_reorder_direct_copy_t::execute(const exec_ctx_t &ctx) const {
         (*kernel_)(in + (start + src_d.offset0()) * src_dt_size,
                 out + (start + dst_d.offset0()) * dst_dt_size, end - start);
     });
+
+    if (src_d.is_additional_buffer()) {
+        // Verified in pd_t::init();
+        assert(src_d.extra().flags == dst_d.extra().flags);
+
+        const auto additional_size = src_d.additional_buffer_size();
+        const auto data_size = src_d.size(/* index = */ 0,
+                /* include_additional_size = */ false);
+        std::memcpy(out + data_size * dst_dt_size, in + data_size * src_dt_size,
+                additional_size);
+    }
 
     return status::success;
 }

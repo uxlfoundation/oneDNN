@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 
 namespace dnnl {
 
-using convolution_test = convolution_eltwise_test<float, float, float, float>;
+using convolution_test = convolution_eltwise_test_t<float, float, float, float>;
 
 TEST_P(convolution_test, TestConvolutionEltwise) {}
 

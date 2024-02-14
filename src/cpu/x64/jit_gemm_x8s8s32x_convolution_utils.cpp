@@ -31,13 +31,15 @@ namespace x64 {
 namespace gemm_x8s8s32x_convolution_utils {
 using namespace dnnl::impl::cpu::gemm_x8s8s32x_convolution_utils;
 
-struct jit_pp_ker_t : pp_ker_t, public jit_generator {
+struct jit_pp_ker_t : pp_ker_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             gemm_x8s8s32x_convolution_utils::jit_pp_ker_t);
 
     jit_pp_ker_t(const convolution_pd_t *pd, const conv_gemm_conf_t &jcp);
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
     void operator()(void *void_dst, const acc_data_t *acc, const char *bias,
             const float *scales, float dst_scale, float sum_scale,
             float signed_scale, int g, size_t start, size_t end,
@@ -134,13 +136,13 @@ private:
     const size_t sum_step_factor_;
     const size_t max_unroll_;
 
-    std::unique_ptr<jit_gemm_x8s8s32x_zp_pad_comp_helper> zp_pad_comp_helper_;
+    std::unique_ptr<jit_gemm_x8s8s32x_zp_pad_comp_helper_t> zp_pad_comp_helper_;
 };
 
 jit_pp_ker_t::jit_pp_ker_t(
         const convolution_pd_t *pd, const conv_gemm_conf_t &jcp)
     : pp_ker_t(pd, jcp)
-    , jit_generator(jit_name())
+    , jit_generator_t(jit_name())
     , number_of_reserved_zmm_regs_(0)
     , bias_data_type_size_(jcp.bias_data_type != data_type::undef
                       ? types::data_type_size(jcp.bias_data_type)
@@ -160,14 +162,14 @@ jit_pp_ker_t::jit_pp_ker_t(
     , zmm_step_(1u)
     , bias_step_factor_(jcp_.with_bias ? zmm_step_++ : 0u)
     , sum_step_factor_(jcp_.with_sum ? zmm_step_++ : 0)
-    , max_unroll_((cpu_isa_traits<avx512_core>::n_vregs
+    , max_unroll_((cpu_isa_traits_t<avx512_core>::n_vregs
                           - number_of_reserved_zmm_regs_)
               / zmm_step_)
     , zp_pad_comp_helper_(jit_gemm_convolution_utils::padding_exists(jcp)
                               && jcp.zp.src_exists
                       ? utils::make_unique<
-                              jit_gemm_x8s8s32x_zp_pad_comp_helper>(this, jcp_,
-                              reg_zp_pad_comp_, reg_zp_pad_comp_temp_,
+                              jit_gemm_x8s8s32x_zp_pad_comp_helper_t>(this,
+                              jcp_, reg_zp_pad_comp_, reg_zp_pad_comp_temp_,
                               reg_should_apply_src_pad_comp_,
                               pd->src_md()->ndims)
                       : nullptr)
@@ -249,15 +251,15 @@ void jit_pp_ker_t::operator()(void *void_dst, const acc_data_t *acc,
         args.w_size = chunk_desc.w_size_ + chunk_desc.w_off_;
         args.w_off = chunk_desc.w_off_;
         args.zp_src_pad_comp = zp.src_pad_comp;
-        const auto zp_src_pad_com_d
+        const auto zp_src_pad_comp_d_dim_t
                 = zp_pad_comp_helper_->calculate_zp_src_pad_com_d(
                         chunk_desc.d_off_);
-        args.zp_src_pad_com_d_offset = zp_src_pad_com_d.offset;
+        args.zp_src_pad_com_d_offset = zp_src_pad_comp_d_dim_t.offset;
         args.should_apply_zp_src_pad_comp_d
-                = zp_src_pad_com_d.should_apply_pad_comp_d;
+                = zp_src_pad_comp_d_dim_t.should_apply_pad_comp_d;
     }
 
-    jit_generator::operator()(&args);
+    jit_generator_t::operator()(&args);
 }
 
 Xbyak::Zmm jit_pp_ker_t::reserve_zmm() {
@@ -348,7 +350,7 @@ void jit_pp_ker_t::generate() {
     using namespace Xbyak;
     using namespace utils;
 
-    size_t vlen = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    size_t vlen = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     for (; vlen >= 1 && (jcp_.oc % vlen != 0); --vlen) {}
 
     preamble();

@@ -201,6 +201,7 @@ protected:
     }
 };
 
+// NOLINTBEGIN(google-default-arguments)
 struct deconvolution_fwd_pd_t : public deconvolution_pd_t {
     using base_class = deconvolution_fwd_pd_t;
     using hint_class = deconvolution_fwd_pd_t;
@@ -209,7 +210,8 @@ struct deconvolution_fwd_pd_t : public deconvolution_pd_t {
         if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS))
             return arg_usage_t::input;
 
-        if (arg == DNNL_ARG_BIAS && with_bias()) return arg_usage_t::input;
+        if (arg == DNNL_ARG_BIAS)
+            return with_bias() ? arg_usage_t::input : arg_usage_t::unused;
 
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
@@ -264,7 +266,9 @@ protected:
         , bias_md_(desc_.bias_desc)
         , dst_md_(desc_.dst_desc) {}
 };
+// NOLINTEND(google-default-arguments)
 
+// NOLINTBEGIN(google-default-arguments)
 struct deconvolution_bwd_data_pd_t : public deconvolution_pd_t {
     using base_class = deconvolution_bwd_data_pd_t;
     using hint_class = deconvolution_fwd_pd_t;
@@ -324,7 +328,9 @@ protected:
         , weights_md_(desc_.weights_desc)
         , diff_dst_md_(desc_.diff_dst_desc) {}
 };
+// NOLINTEND(google-default-arguments)
 
+// NOLINTBEGIN(google-default-arguments)
 struct deconvolution_bwd_weights_pd_t : public deconvolution_pd_t {
     using base_class = deconvolution_bwd_weights_pd_t;
     using hint_class = deconvolution_fwd_pd_t;
@@ -335,8 +341,8 @@ struct deconvolution_bwd_weights_pd_t : public deconvolution_pd_t {
 
         if (arg == DNNL_ARG_DIFF_WEIGHTS) return arg_usage_t::output;
 
-        if (arg == DNNL_ARG_DIFF_BIAS && with_bias())
-            return arg_usage_t::output;
+        if (arg == DNNL_ARG_DIFF_BIAS)
+            return with_bias() ? arg_usage_t::output : arg_usage_t::unused;
 
         return primitive_desc_t::arg_usage(arg);
     }
@@ -390,6 +396,7 @@ protected:
         , diff_bias_md_(desc_.diff_bias_desc)
         , diff_dst_md_(desc_.diff_dst_desc) {}
 };
+// NOLINTEND(google-default-arguments)
 
 } // namespace impl
 } // namespace dnnl

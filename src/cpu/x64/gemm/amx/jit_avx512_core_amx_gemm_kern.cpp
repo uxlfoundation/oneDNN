@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ namespace x64 {
 #define TILED(X) dword[rsp + ((X) + 0xc0)]
 #define TILEQ(X) qword[rsp + ((X) + 0xc0)]
 
-void jit_avx512_core_amx_gemm_kern::generate() {
+void jit_avx512_core_amx_gemm_kern_t::generate() {
 
     int kerneltype = ((typea << 1) | typeb);
 
@@ -455,9 +455,9 @@ void jit_avx512_core_amx_gemm_kern::generate() {
     ret();
 }
 
-jit_avx512_core_amx_gemm_kern::jit_avx512_core_amx_gemm_kern(
+jit_avx512_core_amx_gemm_kern_t::jit_avx512_core_amx_gemm_kern_t(
         int typea, int typeb, int typec, int betaZero)
-    : jit_generator(jit_name(), avx512_core_amx)
+    : jit_generator_t(jit_name(), avx512_core_amx)
     , typea(typea)
     , typeb(typeb)
     , typec(typec)

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,18 +26,18 @@ namespace cpu {
 namespace x64 {
 
 namespace jit_avx512_core_brgemm_conv_bwd_trans_kernel {
-struct jit_brgemm_conv_bwd_trans_kernel_call_s {
-    const void *src;
-    const void *dst;
-    size_t iwb;
-    size_t oc;
-    size_t t_pad;
-    size_t h_count;
-    size_t b_pad;
+struct jit_brgemm_conv_bwd_trans_kernel_args_t {
+    const void *src = nullptr;
+    const void *dst = nullptr;
+    size_t iwb = 0;
+    size_t oc = 0;
+    size_t t_pad = 0;
+    size_t h_count = 0;
+    size_t b_pad = 0;
 };
 
 template <typename Vmm>
-struct jit_avx512_core_brgemm_conv_bwd_trans_kernel_t : public jit_generator {
+struct jit_avx512_core_brgemm_conv_bwd_trans_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             jit_avx512_core_brgemm_conv_bwd_trans_kernel_t)
 

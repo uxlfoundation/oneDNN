@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "../config.hpp"
+#include "gemmstone/config.hpp"
 
-#   include "ngen/ngen_opencl.hpp"
-#   include "ngen/ngen_register_allocator.hpp"
-#   include "ngen/ngen_asm.hpp"
+#   include "ngen_opencl.hpp"
+#   include "ngen_register_allocator.hpp"
+#   include "ngen_asm.hpp"

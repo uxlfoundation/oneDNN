@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -54,6 +55,13 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using namespace utils;
+#if defined(DNNL_AARCH64_USE_ACL)
+            if (attr()->fpmath_.mode_ == fpmath_mode::bf16) {
+                // prefer ACL to jit for fpmath_mode::bf16 if available
+                // since it supports lower precision calculation
+                return status::unimplemented;
+            }
+#endif
 
             bool ok = true && is_fwd()
                     && set_default_alg_kind(alg_kind::convolution_direct)
@@ -303,7 +311,7 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
                     dw_conv_buffer_size_,
                     types::data_type_size(dw_conv_pd_->src_md()->data_type));
 
-            jit_uni_dw_conv_fwd_kernel<isa_, data_type::f32>::init_scratchpad(
+            jit_uni_dw_conv_fwd_kernel_t<isa_, data_type::f32>::init_scratchpad(
                     dw_scratchpad, jcp_dw);
 
             return status::success;
@@ -352,7 +360,7 @@ private:
 
     std::unique_ptr<jit_sve_1x1_conv_kernel<isa_>> kernel_;
     std::unique_ptr<rtus_driver_t<isa_>> rtus_driver_;
-    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_f32<isa_>;
+    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_f32_t<isa_>;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_SYCL_REF_DECONVOLUTION_HPP
-#define GPU_SYCL_REF_DECONVOLUTION_HPP
+#ifndef GPU_GENERIC_SYCL_REF_DECONVOLUTION_HPP
+#define GPU_GENERIC_SYCL_REF_DECONVOLUTION_HPP
 
 #include "gpu/generic/sycl/ref_convolution.hpp"
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
@@ -59,7 +59,7 @@ struct ref_deconvolution_bwd_weights_t
             VDISPATCH_DECONVOLUTION(md_dims_in_range(src_md()),
                     VERBOSE_OUT_OF_RANGE_DIMS, "src");
             VDISPATCH_DECONVOLUTION(
-                    set_default_formats(), VERBOSE_UNSUPPORTED_TAG_S);
+                    set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_DECONVOLUTION(check_convolution_data_types(
                                             data_d, diff_weights_d, diff_dst_d),
                     VERBOSE_UNSUPPORTED_DT_CFG);

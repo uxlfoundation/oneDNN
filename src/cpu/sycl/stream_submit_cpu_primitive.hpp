@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_SYCL_STREAM_SUBMIT_CPU_DISPATCH_HPP
-#define CPU_SYCL_STREAM_SUBMIT_CPU_DISPATCH_HPP
+#ifndef CPU_SYCL_STREAM_SUBMIT_CPU_PRIMITIVE_HPP
+#define CPU_SYCL_STREAM_SUBMIT_CPU_PRIMITIVE_HPP
 
 #include <vector>
 

@@ -19,6 +19,8 @@
 
 
 #include "ngen_core.hpp"
+#include "ngen_asm.hpp"
+
 #include <sstream>
 
 
@@ -143,6 +145,7 @@ public:
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
+    std::array<int32_t, 2> getCTPatchOffsets() const     { return offsetCTPatches; }
 #if XE3P
     void setEfficient64Bit(bool def = true)              { useEfficient64Bit = def; }
 #endif
@@ -154,6 +157,8 @@ public:
 
     template <typename CodeGenerator>
     inline void generatePrologue(CodeGenerator &generator, const GRF &temp = GRF(127)) const;
+
+    inline void setPrologueLabels(InterfaceLabels &labels, LabelManager &man);
 
     inline void generateDummyCL(std::ostream &stream) const;
     inline std::string generateZeInfo() const;
@@ -208,6 +213,7 @@ protected:
     bool needStatelessWrites = true;
     int32_t offsetSkipPerThread = 0;
     int32_t offsetSkipCrossThread = 0;
+    std::array<int32_t, 2> offsetCTPatches = {0, 0};
     size_t scratchSize = 0;
     int simd = 8;
     size_t slmSize = 0;
@@ -601,6 +607,22 @@ void InterfaceHandler::generatePrologue(CodeGenerator &generator, const GRF &tem
         generator.loadargs(getArgLoadBase(), getCrossthreadGRFs() - inlineGRFs(), temp);
 }
 
+void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &man)
+{
+    auto setOffset = [&](Label &label, int32_t &out, int32_t off = 0) {
+        auto id = label.getID(man);
+        if (man.hasTarget(id))
+            out = man.getTarget(id) + off;
+    };
+
+    int immOffset = 0xC;
+
+    setOffset(labels.localIDsLoaded, offsetSkipPerThread);
+    setOffset(labels.argsLoaded, offsetSkipCrossThread);
+    for (int i = 0; i < 2; i++)
+        setOffset(labels.crossThreadPatches[i], offsetCTPatches[i], immOffset);
+}
+
 std::string InterfaceHandler::generateZeInfo() const
 {
 #ifdef NGEN_SAFE
@@ -608,6 +630,7 @@ std::string InterfaceHandler::generateZeInfo() const
 #endif
 
     std::stringstream md;
+    md.imbue(std::locale::classic());
 
     const char *version = "1.8";
 #if XE3P

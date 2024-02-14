@@ -55,7 +55,7 @@ int fill_mem(
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
-    int min_val = MAX2(-8, static_cast<int>(lowest_dt(mem_dt.dt())));
+    int min_val = static_cast<int>(MAX2(-8.f, lowest_dt(mem_dt.dt())));
     // Tenrary op supports a third input which can't be negative so far.
     if (input_idx == 2) min_val = 0;
 
@@ -82,7 +82,7 @@ int fill_mem(
             // Remove zeroes in src1 to avoid division by zero.
             if (input_idx == 1 && val == 0.0f) val = 1.0f;
             val = round_to_nearest_representable(mem_dt.dt(), val);
-            mem_fp.set_elem(idx, val);
+            mem_fp.set_f32_elem(idx, val);
         }
     });
 
@@ -128,6 +128,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     std::vector<dnnl_data_type_t> dts = {prb->sdt[0], prb->sdt[1], prb->ddt};
     skip_unimplemented_data_type(dts, prb->dir, res);
     skip_unimplemented_arg_scale(prb->attr, res);
+    skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_binary);
 
     if (is_gpu()) {
@@ -140,20 +141,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = skip_reason::data_type_not_supported;
             return;
         }
-
-        if (prb->is_ternary_op()) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-
-        // gpu does not support s32
-        for (const auto &dt : dts)
-            if (dt == dnnl_s32) {
-                res->state = SKIPPED;
-                res->reason = skip_reason::data_type_not_supported;
-                return;
-            }
     }
 }
 
@@ -243,7 +230,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -308,6 +296,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
@@ -319,7 +309,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     SAFE(execute_and_wait(prim, args, res), WARN);
 
-    check_correctness(prb, {DST}, args, ref_args, setup_cmp, res);
+    check_correctness(prb, {DST}, args, ref_args, setup_cmp, res, prb->dir);
     SAFE(check_bitwise(prim, {DST}, args, prb->attr, prb->inplace, res), WARN);
 
     return measure_perf(prb->ctx_exe, res, prim, args);

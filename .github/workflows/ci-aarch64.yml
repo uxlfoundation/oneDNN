@@ -24,7 +24,7 @@ on:
     branches: [main, "rls-*"]
     paths:
       - ".github/automation/*"
-      - ".github/automation/aarch64"
+      - ".github/automation/aarch64/**"
       - ".github/workflows/aarch64-acl.yml"
       - ".github/workflows/ci-aarch64.yml"
       - "cmake/**"
@@ -39,7 +39,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - ".github/automation/*"
-      - ".github/automation/aarch64"
+      - ".github/automation/aarch64/**"
       - ".github/workflows/aarch64-acl.yml"
       - ".github/workflows/ci-aarch64.yml"
       - "cmake/**"
@@ -95,7 +95,7 @@ jobs:
 
       # Note: This will create a github actions cache
       - name: Get latest CMake and Ninja
-        uses: lukka/get-cmake@5f6e04f5267c8133f1273bf2103583fc72c46b17 # v3.31.5
+        uses: lukka/get-cmake@56d043d188c3612951d8755da8f4b709ec951ad6 # v3.31.6
         with:
           cmakeVersion: 3.31.0
           ninjaVersion: 1.12.0
@@ -114,18 +114,18 @@ jobs:
 
       - if: ${{ (contains(matrix.config.label,'ubuntu') && (matrix.config.toolset == 'clang')) }}
         name: Install clang
-        uses: KyleMayes/install-llvm-action@e0a8dc9cb8a22e8a7696e8a91a4e9581bec13181
+        uses: KyleMayes/install-llvm-action@a7a1a882e2d06ebe05d5bb97c3e1f8c984ae96fc
         with:
           version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.clang }}
 
       - name: setup python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.10'
 
       - name: Install scipy
         if: ${{ matrix.config.build == 'Release' }}
-        run: pip install scipy
+        run: pip install scipy statistics
 
       - name: Clone ACL
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
@@ -144,7 +144,7 @@ jobs:
 
       - name: Restore cached ACL
         id: cache-acl-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
           path: ${{ github.workspace }}/ComputeLibrary/build
@@ -180,14 +180,14 @@ jobs:
 
       ## Performance test steps ##
       - name: Checkout oneDNN base
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.base_ref }}
           path: oneDNN_base
 
       - name: Configure oneDNN base
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
         working-directory: ${{ github.workspace }}/oneDNN_base
         env:
@@ -201,7 +201,7 @@ jobs:
           ONEDNN_THREADING: ${{ matrix.config.threading }}
 
       - name: Build oneDNN base
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
         working-directory: ${{ github.workspace }}/oneDNN_base
         env:
@@ -209,21 +209,25 @@ jobs:
 
       - name: Run performance tests
         shell: bash
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         run: |
-          OMP_NUM_THREADS=4 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN/build/tests/benchdnn/benchdnn base.txt new.txt
-          OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN/build/tests/benchdnn/benchdnn base.txt new.txt
+          OMP_NUM_THREADS=4 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_pr_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN/build/tests/benchdnn/benchdnn base_4.txt new_4.txt
+          OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_pr_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN/build/tests/benchdnn/benchdnn base_16.txt new_16.txt
         env:
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
 
       - name: Compare performance test results
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         id: performance-test
         continue-on-error: true
-        run: python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
+        run: |
+          echo "4 threads:"
+          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_4.txt new_4.txt
+          echo "16 threads:"
+          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_16.txt new_16.txt
 
       - name: Check performance test failure
-        if: ${{ steps.performance-test.outputs.pass != 'True' && github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' }}
+        if: ${{ steps.performance-test.outputs.pass != 'True' && github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         run: echo "::warning file=.github/workflows/ci-aarch64.yml,line=1,col=1::${{ steps.performance-test.outputs.message }}"
 
   # This job adds a check named "CI AArch64" that represents overall

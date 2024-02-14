@@ -60,7 +60,7 @@ struct jit_avx512_core_amx_deconvolution_fwd_t : public primitive_t {
                     && IMPLICATION(with_bias(),
                             utils::one_of(bias_md_.data_type, f32, s32, s8, u8))
                     && attr()->has_default_values(
-                            smask_t::scales_runtime | smask_t::post_ops)
+                            smask_t::scales | smask_t::post_ops)
                     && attr_scales_ok();
 
             VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);

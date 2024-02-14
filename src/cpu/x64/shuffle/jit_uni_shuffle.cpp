@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -65,6 +65,10 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_SHUFFLE(axis() == 1, VERBOSE_BAD_AXIS);
     VDISPATCH_SHUFFLE(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_SHUFFLE(src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
+    VDISPATCH_SHUFFLE(
+            impl::is_dense_format_kind({is_fwd() ? src_md() : diff_src_md(),
+                    is_fwd() ? dst_md() : diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     conf_.isa = isa;
     if (isa == avx) conf_.isa = mayiuse(avx2) ? avx2 : avx;
@@ -79,7 +83,7 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
             blocked_format != format_tag::undef, VERBOSE_UNSUPPORTED_TAG);
 
     conf_.blk_size = src_d.blocking_desc().strides[ndims() - 1];
-    conf_.simd_w = cpu_isa_traits<isa>::vlen / sizeof(float);
+    conf_.simd_w = cpu_isa_traits_t<isa>::vlen / sizeof(float);
 
     const bool has_spatial = utils::one_of(ndims(), 3, 4, 5);
     const dim_t HW = H() * W();
@@ -208,7 +212,7 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
             const dim_t sp_curr = spb * sp_work;
             const dim_t off = mb * stride_mb + sp_curr * conf.blk_size;
 
-            jit_shuffle_call_s args;
+            jit_uni_shuffle_args_t args;
             args.src = input + off * data_type_size;
             args.dst = output + (off + SP * c_curr) * data_type_size;
 

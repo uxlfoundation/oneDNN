@@ -52,8 +52,8 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_LNORM(stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_FEATURE,
             "unsupported scale or shift data type");
-    VDISPATCH_LNORM(attr()->has_default_values(skip_mask_t::scales_runtime
-                            | skip_mask_t::post_ops),
+    VDISPATCH_LNORM(attr()->has_default_values(
+                            skip_mask_t::scales | skip_mask_t::post_ops),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_LNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
@@ -63,6 +63,8 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     // plain format, last logical dim is last physical
     VDISPATCH_LNORM(src_d.blocking_desc().strides[ndims() - 1] == 1,
             VERBOSE_BLOCKING_FAIL, "bad stride value");
+    VDISPATCH_LNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(fill_compatible_stats_md(*src_md(), reordered_stat_md_));
 
@@ -83,6 +85,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     const bool use_scale = pd()->use_scale();
     const bool use_shift = pd()->use_shift();
+    const bool skip_mean = pd()->skip_mean();
 
     auto scratchpad = ctx.get_scratchpad_grantor();
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
@@ -93,7 +96,8 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
 
     float *mean, *variance;
     if (pd()->use_tmp_stats()) {
-        mean = scratchpad.template get<float>(key_lnorm_tmp_mean);
+        mean = skip_mean ? nullptr
+                         : scratchpad.template get<float>(key_lnorm_tmp_mean);
         variance = scratchpad.template get<float>(key_lnorm_tmp_var);
     } else {
         mean = pd()->stats_are_src()
@@ -130,7 +134,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                 + N_start * C_padded * src_d.data_type_size();
         char *const __restrict dst_ptr = reinterpret_cast<char *>(dst)
                 + N_start * C_padded * dst_d.data_type_size();
-        float *const __restrict mean_ptr = &mean[N_start];
+        float *const __restrict mean_ptr = skip_mean ? nullptr : &mean[N_start];
         float *const __restrict var_ptr = &variance[N_start];
         const size_t block_size = N_end - N_start;
         // Note: manual unrolling for scale and shift due to clang issue.
@@ -138,13 +142,15 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
         for (size_t offset = 0; offset < block_size; offset++) {
             float v_mean = 0, v_variance = 0;
             if (calculate_stats) {
-                PRAGMA_OMP_SIMD(reduction(+ : v_mean))
-                for (dim_t c = 0; c < C; ++c) {
-                    float s = io::load_float_value(
-                            src_dt, src_ptr, c + C * offset);
-                    v_mean += s;
+                if (!skip_mean) {
+                    PRAGMA_OMP_SIMD(reduction(+ : v_mean))
+                    for (dim_t c = 0; c < C; ++c) {
+                        float s = io::load_float_value(
+                                src_dt, src_ptr, c + C * offset);
+                        v_mean += s;
+                    }
+                    v_mean /= C_f;
                 }
-                v_mean /= C_f;
 
                 PRAGMA_OMP_SIMD(reduction(+ : v_variance))
                 for (dim_t c = 0; c < C; ++c) {
@@ -155,7 +161,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                 }
                 v_variance /= C_f;
             } else {
-                v_mean = mean_ptr[offset];
+                if (!skip_mean) { v_mean = mean_ptr[offset]; }
                 v_variance = var_ptr[offset];
             }
 
@@ -228,7 +234,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                 }
             }
             if (calculate_stats && save_stats) {
-                mean_ptr[offset] = v_mean;
+                if (!skip_mean) { mean_ptr[offset] = v_mean; }
                 var_ptr[offset] = v_variance;
             }
         }
@@ -264,6 +270,9 @@ status_t simple_layer_normalization_bwd_t::pd_t::init(engine_t *engine) {
     // plain format, last logical dim is last physical
     VDISPATCH_LNORM(src_d.blocking_desc().strides[ndims() - 1] == 1,
             VERBOSE_BLOCKING_FAIL, "bad stride value");
+    VDISPATCH_LNORM(impl::is_dense_format_kind(
+                            {src_md(), diff_src_md(), dst_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(fill_compatible_stats_md(*src_md(), reordered_stat_md_));
 
@@ -294,9 +303,12 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
     auto diff_shift = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SHIFT, status);
     CHECK(status);
 
+    const bool skip_mean = pd()->skip_mean();
+
     const float *mean, *variance;
     if (pd()->use_tmp_stats()) {
-        mean = scratchpad.template get<float>(key_lnorm_tmp_mean);
+        mean = skip_mean ? nullptr
+                         : scratchpad.template get<float>(key_lnorm_tmp_mean);
         variance = scratchpad.template get<float>(key_lnorm_tmp_var);
     } else {
         mean = CTX_IN_MEM(const float *, DNNL_ARG_MEAN);
@@ -340,7 +352,7 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
         const char *const __restrict diff_dst_ptr
                 = reinterpret_cast<const char *>(diff_dst)
                 + N_start * C_padded * diff_dst_d.data_type_size();
-        const float *mean_ptr = &mean[N_start];
+        const float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
         const float *var_ptr = &variance[N_start];
         float *const inv_sqrtvar_ptr = &inv_sqrtvar[N_start];
 
@@ -355,14 +367,15 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
 
         for (size_t offset = 0; offset < block_size; offset++) {
             inv_sqrtvar_ptr[offset] = 1.f / sqrtf(var_ptr[offset] + eps);
+            float mean_val = skip_mean ? 0.f : mean_ptr[offset];
 
             PRAGMA_OMP_SIMD()
             for (dim_t c = 0; c < C; c++) {
                 const size_t off = c + C * offset;
                 float s = io::load_float_value(src_dt, src_ptr, off);
                 float dd = io::load_float_value(diff_dst_dt, diff_dst_ptr, off);
-                my_diff_gamma[c] += (s - mean_ptr[offset]) * dd
-                        * inv_sqrtvar_ptr[offset];
+                my_diff_gamma[c]
+                        += (s - mean_val) * dd * inv_sqrtvar_ptr[offset];
                 my_diff_beta[c] += dd;
             }
         }
@@ -390,15 +403,16 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
                 + N_start * C_padded * diff_dst_d.data_type_size();
         char *const __restrict diff_src_ptr = reinterpret_cast<char *>(diff_src)
                 + N_start * C_padded * diff_src_d.data_type_size();
-        const float *mean_ptr = &mean[N_start];
+        const float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
         float *const inv_sqrtvar_ptr = &inv_sqrtvar[N_start];
 
         // Note: manual unrolling for scale and shift due to clang issue.
         //       see: CLANG_WA_01_SAFE_TO_USE_OMP_SIMD
-        float dd_gamma, dd_gamma_x;
+        float dd_gamma, dd_gamma_x, mean_val;
         for (size_t offset = 0; offset < block_size; offset++) {
             // reduce gamma
             dd_gamma = dd_gamma_x = 0;
+            mean_val = skip_mean ? 0.f : mean_ptr[offset];
             if (calculate_diff_stats) {
                 if (use_scale) {
                     PRAGMA_OMP_SIMD(reduction(+ : dd_gamma, dd_gamma_x))
@@ -408,7 +422,7 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
                         float dd = io::load_float_value(
                                 diff_dst_dt, diff_dst_ptr, off);
                         dd_gamma += dd * scale[c];
-                        dd_gamma_x += dd * scale[c] * (s - mean_ptr[offset]);
+                        dd_gamma_x += dd * scale[c] * (s - mean_val);
                     }
                 } else {
                     PRAGMA_OMP_SIMD(reduction(+ : dd_gamma, dd_gamma_x))
@@ -418,7 +432,7 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
                         float dd = io::load_float_value(
                                 diff_dst_dt, diff_dst_ptr, off);
                         dd_gamma += dd;
-                        dd_gamma_x += dd * (s - mean_ptr[offset]);
+                        dd_gamma_x += dd * (s - mean_val);
                     }
                 }
                 dd_gamma_x *= inv_sqrtvar_ptr[offset];
@@ -435,7 +449,7 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
                     if (calculate_diff_stats) {
                         float s = io::load_float_value(src_dt, src_ptr, off);
                         ds -= dd_gamma / C_f;
-                        ds -= (s - mean_ptr[offset]) * dd_gamma_x
+                        ds -= (s - mean_val) * dd_gamma_x
                                 * inv_sqrtvar_ptr[offset] / C_f;
                     }
                     ds *= inv_sqrtvar_ptr[offset];
@@ -451,7 +465,7 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
                     if (calculate_diff_stats) {
                         float s = io::load_float_value(src_dt, src_ptr, off);
                         ds -= dd_gamma / C_f;
-                        ds -= (s - mean_ptr[offset]) * dd_gamma_x
+                        ds -= (s - mean_val) * dd_gamma_x
                                 * inv_sqrtvar_ptr[offset] / C_f;
                     }
                     ds *= inv_sqrtvar_ptr[offset];

@@ -90,7 +90,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, binary_pass)
                             graph::op_kind::Add, graph::op_kind::Multiply,
                             graph::op_kind::Maximum, graph::op_kind::Minimum,
                             graph::op_kind::Divide, graph::op_kind::Subtract,
-                            graph::op_kind::SquaredDifference});
+                            graph::op_kind::SquaredDifference,
+                            graph::op_kind::Select});
                 })
         .set_attr<FCreateKernel>("FCreateKernel",
                 []() -> kernel_ptr { return std::make_shared<binary_t>(); });
@@ -291,7 +292,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, convtranspose_weights_bwd_pass)
         });
 #endif
 
-DNNL_BACKEND_SINGLE_OP_TRANSFORM(greater_equal_pass, GreaterEqual, binary_t)
+DNNL_BACKEND_SINGLE_OP_TRANSFORM(gen_index_pass, GenIndex, genindex_t)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(matmul_pass, MatMul, float_matmul)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(max_pool_pass, MaxPool, float_pooling_fwd)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(prelu_pass, PReLU, float_prelu_fwd)
@@ -311,7 +312,6 @@ DNNL_BACKEND_SINGLE_OP_TRANSFORM(
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, Reorder, float_reorder)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, StaticTranspose, float_reorder)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, StaticReshape, float_reorder)
-DNNL_BACKEND_SINGLE_OP_TRANSFORM(select_pass, Select, select_t)
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gn_pass)
         .set_priority(DEFAULT_P)
         .set_kind(partition_kind_t::misc_post_ops)
@@ -425,17 +425,15 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, reduce_pass)
             return std::make_shared<float_reduction>();
         });
 
-// GenIndex currently is CPU only
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gen_index_pass)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, greater_equal_pass)
         .set_priority(DEFAULT_P)
-        .set_engine_kind(engine_kind::cpu)
         .set_kind(partition_kind_t::misc_post_ops)
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
-                    pgraph->append_op(graph::op_kind::GenIndex);
+                    pgraph->append_op(graph::op_kind::GreaterEqual);
                 })
         .set_attr<FCreateKernel>("FCreateKernel",
-                []() -> kernel_ptr { return std::make_shared<genindex_t>(); });
+                []() -> kernel_ptr { return std::make_shared<binary_t>(); });
 
 #undef DNNL_BACKEND_SINGLE_OP_TRANSFORM
 #undef DEFAULT_P

@@ -82,13 +82,13 @@ io_emu_fp8_conf_t::io_emu_fp8_conf_t(const Xbyak::Zmm &fp8_emu_reserv_1,
 io_emu_fp8_conf_t::io_emu_fp8_conf_t(int fp8_emu_reserv_1_idx,
         int fp8_emu_reserv_2_idx, int fp8_emu_reserv_3_idx,
         int fp8_emu_reserv_4_idx, int fp8_emu_reserv_5_idx,
-        int fp8_emu_kmask_aux_idx, const Xbyak::Reg64 &reg_tmp)
+        int fp8_cvt_kmask_aux_idx, const Xbyak::Reg64 &reg_tmp)
     : fp8_emu_reserv_1_(Xbyak::Zmm(fp8_emu_reserv_1_idx))
     , fp8_emu_reserv_2_(Xbyak::Zmm(fp8_emu_reserv_2_idx))
     , fp8_emu_reserv_3_(Xbyak::Zmm(fp8_emu_reserv_3_idx))
     , fp8_emu_reserv_4_(Xbyak::Zmm(fp8_emu_reserv_4_idx))
     , fp8_emu_reserv_5_(Xbyak::Zmm(fp8_emu_reserv_5_idx))
-    , kmask_aux_(Xbyak::Opmask(fp8_emu_kmask_aux_idx))
+    , kmask_aux_(Xbyak::Opmask(fp8_cvt_kmask_aux_idx))
     , reg_tmp_(reg_tmp) {}
 
 io_saturation_conf_t::io_saturation_conf_t(const int vreg_zero_saturation_idx,
@@ -109,8 +109,9 @@ io_gather_conf_t::io_gather_conf_t(const std::size_t simd_w,
     , vmm_tmp_idx_(vmm_tmp_idx) {}
 
 template <typename Vmm>
-jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator *host, const cpu_isa_t &isa,
-        const data_type_t &data_type, const io_conf_t &io_conf,
+jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
+        const cpu_isa_t &isa, const data_type_t &data_type,
+        const io_conf_t &io_conf,
         const utils::optional_t<io_tail_conf_t> &tail_conf,
         const utils::optional_t<io_emu_bf16_conf_t> &bf16_conf,
         const utils::optional_t<io_saturation_conf_t> &saturation_conf,
@@ -148,14 +149,14 @@ jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator *host, const cpu_isa_t &isa,
         assert(fp8_conf.has_value() && "Config for fp8 emulation is not set.");
         switch (data_type_) {
             case data_type::f8_e5m2:
-                fp8_emu_ = utils::make_unique<fp8_emulation_e5m2_t>(host_,
+                fp8_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(host_,
                         fp8_conf->fp8_emu_reserv_1_,
                         fp8_conf->fp8_emu_reserv_2_,
                         fp8_conf->fp8_emu_reserv_3_, fp8_conf->kmask_aux_,
                         fp8_conf->reg_tmp_);
                 break;
             case data_type::f8_e4m3:
-                fp8_emu_ = utils::make_unique<fp8_emulation_e4m3_t>(host_,
+                fp8_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(host_,
                         fp8_conf->fp8_emu_reserv_1_,
                         fp8_conf->fp8_emu_reserv_2_,
                         fp8_conf->fp8_emu_reserv_3_,
@@ -206,7 +207,7 @@ bool jit_io_helper_t<Vmm>::is_data_type_supported(const data_type_t dt) {
         case data_type::f16:
             return is_superset(isa_, avx512_core_fp16) || isa_ == avx2_vnni_2;
         case data_type::f8_e4m3:
-        case data_type::f8_e5m2: return is_superset(isa_, avx512_core_amx);
+        case data_type::f8_e5m2: return is_superset(isa_, avx512_core_fp16);
         default: assert(!"Unsupported data type");
     }
     return false;
@@ -244,7 +245,7 @@ void jit_io_helper_t<Vmm>::prepare_vmm_mask(
                 reinterpret_cast<size_t>(&mask_f32[7 - how_many_bits_to_set]));
         host_->uni_vmovups(mask, host_->ptr[reg_tmp]);
     } else if (how_many_bits_to_set == simd_w) {
-        host_->uni_vcmpps(mask, mask, mask, jit_generator::_cmp_eq_oq);
+        host_->uni_vcmpps(mask, mask, mask, jit_generator_t::_cmp_eq_oq);
     } else {
         assert(!"Can't set so many bits.");
     }
@@ -278,7 +279,7 @@ void jit_io_helper_t<Vmm>::prepare_i8_data_to_store(const Vmm &i8_vmm) {
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::prepare_xf16_data_to_store(const Vmm &vmm) {
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(vmm.getIdx());
 
     if (data_type_ == data_type::bf16)
         host_->vcvtneps2bf16(cvt_lower_vmm, vmm, host_->get_encoding());
@@ -554,7 +555,7 @@ void jit_io_helper_t<Vmm>::init_saturate_f32() const {
 
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::prepare_table_fp8() {
-    if (fp8_emu_) fp8_emu_->prepare_table();
+    if (fp8_cvt_) fp8_cvt_->prepare_table();
 }
 
 template <typename Vmm>
@@ -693,9 +694,9 @@ void jit_io_helper_t<Vmm>::load_f16(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::load_f8(
         const Xbyak::Address &src_addr, const Vmm &dst_vmm) {
-    assert(fp8_supported_ && fp8_emu_
+    assert(fp8_supported_ && fp8_cvt_
             && "Unsupported data type or emulation not available.");
-    if (fp8_emu_) fp8_emu_->vcvt_f8_to_f32(dst_vmm, src_addr);
+    if (fp8_cvt_) fp8_cvt_->vcvt_f8_to_f32(dst_vmm, src_addr);
 }
 
 template <typename Vmm>
@@ -778,7 +779,7 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
         // TODO: Consider adding opmask to store xf16 data from Xmm.
         // This could allow to use store_bf16/store_f16 functions for isa >= avx512_core.
         const size_t xmm_length
-                = vreg_traits<Xbyak::Xmm>::vlen / sizeof(int32_t);
+                = vreg_traits_t<Xbyak::Xmm>::vlen / sizeof(int32_t);
         const size_t store_size = (tail ? tail_conf_->tail_size_ : xmm_length)
                 * types::data_type_size(data_type_);
         store_byte_by_byte(src_vmm, dst_addr, store_size);
@@ -801,9 +802,9 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::saturate(const Vmm &vmm) {
     assert(saturation_conf_.has_value() && "Config for saturation is not set.");
 
-    host_->saturate_f32(vmm, Vmm(saturation_conf_->vreg_zero_saturation_idx_),
+    host_->saturate_cvt_f32(vmm,
+            Vmm(saturation_conf_->vreg_zero_saturation_idx_),
             Vmm(saturation_conf_->vreg_saturation_ubound_idx_), data_type_);
-    host_->uni_vcvtps2dq(vmm, vmm);
 }
 
 template <typename Vmm>
@@ -817,7 +818,7 @@ void jit_io_helper_t<Vmm>::store_byte_by_byte(const Vmm &src_vmm,
     const bool is_xf16
             = utils::one_of(data_type_, data_type::bf16, data_type::f16);
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(src_vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(src_vmm.getIdx());
 
     if (is_i8) prepare_i8_data_to_store(src_vmm);
     if (is_xf16) prepare_xf16_data_to_store(src_vmm);
@@ -845,7 +846,7 @@ void jit_io_helper_t<Vmm>::store_bf16(
             && "Store operation for bf16 is not supported for Xmms.");
 
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(src_vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(src_vmm.getIdx());
 
     if (bf16_emu_)
         bf16_emu_->vcvtneps2bf16(cvt_lower_vmm, src_vmm);
@@ -866,7 +867,7 @@ void jit_io_helper_t<Vmm>::store_f16(
             && "Store operation for f16 is not supported for Xmms.");
 
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(src_vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(src_vmm.getIdx());
 
     host_->uni_vcvtps2phx(cvt_lower_vmm, src_vmm);
 
@@ -879,13 +880,13 @@ void jit_io_helper_t<Vmm>::store_f16(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::store_f8(
         const Vmm &src_vmm, const Xbyak::Address &dst_addr) {
-    assert(fp8_supported_ && fp8_emu_
+    assert(fp8_supported_ && fp8_cvt_
             && "Unsupported data type or emulation not available.");
 
     const Xbyak::Xmm lower_xmm = Xbyak::Xmm(src_vmm.getIdx());
 
-    if (fp8_emu_)
-        fp8_emu_->vcvt_f32_to_f8(
+    if (fp8_cvt_)
+        fp8_cvt_->vcvt_f32_to_f8(
                 lower_xmm | Xbyak::Opmask(src_vmm.getOpmaskIdx()), src_vmm);
 
     if (io_conf_.nt_stores_enabled_)
@@ -897,7 +898,9 @@ void jit_io_helper_t<Vmm>::store_f8(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::store_i8(
         const Vmm &src_vmm, const Xbyak::Address &dst_addr) {
-    if (!is_superset(isa_, avx512_core)) {
+    if (isa_has_sat_cvt(isa_, data_type_)) {
+        host_->vpmovusdb(dst_addr, src_vmm);
+    } else if (!is_superset(isa_, avx512_core)) {
         static constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
 
         prepare_i8_data_to_store(src_vmm);
@@ -910,8 +913,8 @@ void jit_io_helper_t<Vmm>::store_i8(
         static constexpr bool is_zmm = std::is_same<Vmm, Xbyak::Zmm>::value;
 
         auto store_i8_fn = data_type_ == data_type::s8
-                ? std::bind(&jit_generator::vpmovsdb, host_, _1, _2)
-                : std::bind(&jit_generator::vpmovusdb, host_, _1, _2);
+                ? std::bind(&jit_generator_t::vpmovsdb, host_, _1, _2)
+                : std::bind(&jit_generator_t::vpmovusdb, host_, _1, _2);
 
         if (io_conf_.nt_stores_enabled_ && is_zmm) {
             Xbyak::Xmm src_xmm(src_vmm.getIdx());
@@ -942,9 +945,9 @@ void jit_io_helper_t<Vmm>::convert_to_f32(const Vmm &dst_vmm,
             break;
         case data_type::f8_e5m2:
         case data_type::f8_e4m3:
-            assert(fp8_supported_ && fp8_emu_
+            assert(fp8_supported_ && fp8_cvt_
                     && "Unsupported data type or emulation not available.");
-            if (fp8_emu_) fp8_emu_->vcvt_f8_to_f32(dst_vmm, src_vmm);
+            if (fp8_cvt_) fp8_cvt_->vcvt_f8_to_f32(dst_vmm, src_vmm);
             break;
         case data_type::s8: {
             host_->uni_vpmovsxbd(dst_vmm, src_vmm);
@@ -994,10 +997,10 @@ void jit_io_helper_t<Vmm>::broadcast(
         }
         case data_type::f8_e4m3:
         case data_type::f8_e5m2:
-            assert(fp8_supported_ && fp8_emu_
+            assert(fp8_supported_ && fp8_cvt_
                     && "Unsupported data type or emulation not available.");
-            if (fp8_emu_)
-                fp8_emu_->vcvt_f8_to_f32(
+            if (fp8_cvt_)
+                fp8_cvt_->vcvt_f8_to_f32(
                         dst_vmm, host_->ptr_b[src_addr.getRegExp()]);
             break;
         case data_type::s8:
@@ -1021,7 +1024,7 @@ template <typename Vmm>
 jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t() = default;
 
 template <typename Vmm>
-jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t(jit_generator *host,
+jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t(jit_generator_t *host,
         const cpu_isa_t &isa, const data_types_t &data_types,
         const io_conf_t &io_conf,
         const utils::optional_t<io_tail_conf_t> &tail_conf,

@@ -242,6 +242,7 @@ int measure_perf(timer::timer_t &t,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
         res_t *res) {
     std::vector<perf_function_t> perf_func_v;
+    perf_func_v.reserve(cp_v.size());
     for (size_t i = 0; i < cp_v.size(); i++) {
         perf_func_v.emplace_back(std::bind(&compiled_partition_executor,
                 cp_v[i], std::placeholders::_1, std::placeholders::_2,
@@ -1221,11 +1222,11 @@ cpp_stream_t::cpp_stream_t(
     stream_ = dnnl::stream {eng, flags};
 }
 
-cpp_engine_t::cpp_engine_t() {
+cpp_engine_t::cpp_engine_t(bool use_host) {
 
-    dnnl::graph::allocator &alloc = get_graph_allocator();
+    dnnl::graph::allocator &alloc = get_graph_allocator(use_host);
 
-    if (is_cpu()) {
+    if (use_host || is_cpu()) {
         engine_ = make_engine_with_allocator(dnnl::engine::kind::cpu,
                 static_cast<size_t>(engine_index), alloc);
     } else {
@@ -1241,14 +1242,6 @@ cpp_engine_t::cpp_engine_t() {
         assert(!"unsupported gpu runtime");
 #endif
     }
-}
-
-bool is_gc_backend() {
-#if defined(ENABLE_GRAPH_COMPILER_BACKEND)
-    return true;
-#else
-    return false;
-#endif
 }
 
 dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt) {

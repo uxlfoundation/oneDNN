@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -73,8 +73,8 @@ void finalize(float &dst, alg_t alg, float p, float eps, dnnl_dim_t n) {
     }
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 
@@ -114,7 +114,7 @@ void compute_ref(
             dims_t reduce_pos = off2dims_idx(reduce_dims, r);
             const int64_t src_reduce_off = md_off_v(src, reduce_pos.data());
             const int64_t src_off = src_idle_off + src_reduce_off;
-            accumulate(acc, src.get_elem(src_off), alg, p, eps);
+            accumulate(acc, src.get_f32_elem(src_off), alg, p, eps);
         }
         finalize(acc, alg, p, eps, reduce_size);
 

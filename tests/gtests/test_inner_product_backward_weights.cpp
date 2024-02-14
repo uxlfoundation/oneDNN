@@ -124,17 +124,20 @@ class inner_product_test_bwd_weights_t
 protected:
     void SetUp() override {
         auto p = ::testing::TestWithParam<inprod_test_params_t>::GetParam();
-        SKIP_IF_CUDA(
-                !cuda_check_format_tags(p.src_format, p.diff_weights_format,
-                        p.diff_bias_format, p.diff_dst_format),
+        SKIP_IF_CUDA(!cuda_generic_check_format_tags(p.src_format,
+                             p.diff_weights_format, p.diff_bias_format,
+                             p.diff_dst_format),
                 "Unsupported format tag");
         SKIP_IF_CUDA(p.ndims > 5, "Unsupported number of dimensions");
-        SKIP_IF_GENERIC(true, "Primitive not implemented");
+        SKIP_IF_GENERIC(!cuda_generic_check_format_tags(p.src_format,
+                                p.diff_weights_format, p.diff_bias_format,
+                                p.diff_dst_format),
+                "Unsupported format tag");
         catch_expected_failures(
                 [&]() { Test(); }, p.expect_to_fail, p.expected_status);
     }
 
-    bool cuda_check_format_tags(memory::format_tag src_format,
+    bool cuda_generic_check_format_tags(memory::format_tag src_format,
             memory::format_tag diff_wei_format,
             memory::format_tag diff_bia_format,
             memory::format_tag diff_dst_format) {
@@ -183,7 +186,7 @@ protected:
 
         auto eng = get_test_engine();
         auto strm = make_stream(eng);
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
         ASSERT_EQ(data_type, dnnl::memory::data_type::f32);
 
         memory::dims src_dims = {ipd.mb, ipd.ic},

@@ -19,14 +19,22 @@
 
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/ngen_proxy.hpp"
-#include "ngen/ngen.hpp"
-#include "ngen/ngen_register_allocator.hpp"
+#include "ngen.hpp"
+#include "ngen_register_allocator.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+constexpr ngen::DataType ngen_f4_e3m0() {
+    return static_cast<ngen::DataType>(0x5B);
+}
+
+constexpr ngen::DataType ngen_f4_e2m1() {
+    return static_cast<ngen::DataType>(0x5A);
+}
 
 template <typename T>
 T to_cpp(const ngen::Immediate &imm) {
@@ -56,6 +64,11 @@ inline ngen::DataType to_ngen(const type_t &type) {
 #define CASE(_kind, ngen_enum) \
     if (type.kind() == type_kind_t::_kind) return ngen::DataType::ngen_enum
 
+    // Until f4_e3m0 lands in ngen
+    if (type.kind() == type_kind_t::f4_e3m0) return ngen_f4_e3m0();
+    // Until f4_e2m1 lands in ngen
+    if (type.kind() == type_kind_t::f4_e2m1) return ngen_f4_e2m1();
+
     CASE(bf16, bf);
     CASE(f16, hf);
     CASE(bf8, bf8);
@@ -67,10 +80,12 @@ inline ngen::DataType to_ngen(const type_t &type) {
     CASE(s32, d);
     CASE(s64, q);
     CASE(s8, b);
+    CASE(s4, s4);
     CASE(u16, uw);
     CASE(u32, ud);
     CASE(u64, uq);
     CASE(u8, ub);
+    CASE(u4, u4);
 
     if (type == type_t::byte_ptr()) return ngen::DataType::uq;
 
@@ -94,10 +109,12 @@ inline type_t to_ir(ngen::DataType type) {
     CASE(s32, d);
     CASE(s64, q);
     CASE(s8, b);
+    CASE(s4, s4);
     CASE(u16, uw);
     CASE(u32, ud);
     CASE(u64, uq);
     CASE(u8, ub);
+    CASE(u4, u4);
 
 #undef CASE
     gpu_error_not_expected();
@@ -192,10 +209,10 @@ inline bool ngen_is_xf(ngen::DataType type) {
 
 inline ngen::Subregister get_subregister(
         ngen::HW hw, ngen::DataType type, const ngen::GRFRange &r, int idx) {
-    int grf_size = ngen::GRF::bytes(hw);
-    int type_size = ngen::getBytes(type);
-    int off = idx * type_size;
-    return r[off / grf_size].sub((off % grf_size) / type_size, type);
+    int grf_bits = ngen::GRF::bytes(hw) * 8;
+    int type_bits = ngen::getBits(type);
+    int off_bits = idx * type_bits;
+    return r[off_bits / grf_bits].sub((off_bits % grf_bits) / type_bits, type);
 }
 
 inline ngen::Subregister get_subregister(const ngen::RegData &rd) {

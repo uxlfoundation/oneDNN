@@ -97,12 +97,12 @@ void reduce_balancer_t::balance() {
 using namespace Xbyak;
 
 template <impl::data_type_t data_type>
-struct reducer_2d_driver_t : public jit_generator {
+struct reducer_2d_driver_t : public jit_generator_t {
     using data_t = typename prec_traits_t<data_type>::type;
 
     reducer_2d_driver_t(int n_src, size_t src_ld, size_t src_step,
             size_t dst_step, bool nullify_dst, const char *name)
-        : jit_generator(name)
+        : jit_generator_t(name)
         , n_src_(n_src)
         , src_ld_(src_ld)
         , src_step_(src_step)
@@ -126,7 +126,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
 
     void operator()(
             data_t *dst, const data_t *srcs, size_t ny, size_t nx) override {
-        jit_generator::operator()(dst, srcs, ny, nx);
+        jit_generator_t::operator()(dst, srcs, ny, nx);
     }
 
     /* cpu specific part */
@@ -145,7 +145,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
             this->paddd(x1, op);
     }
 
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
     const int typesize
             = sizeof(typename dnnl::impl::prec_traits_t<data_type>::type);
     Xbyak::Reg64 reg_dst = abi_param1;
@@ -195,17 +195,32 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
         for (int i = 0; i < nloads; ++i) {
             size_t off = base_off + i * load_len;
 
-            if (load_len == typesize)
-                this->uni_add(Xmm(i), this->ptr[reg_src + off]);
-            else if (load_len == vlen)
-                this->uni_vadd(Vmm(i), Vmm(i), vmmword[reg_src + off]);
+            if (load_len == typesize) {
+                assert(nloads == 1);
+                if (off > static_cast<size_t>(INT_MAX)) {
+                    this->mov(reg_long_offt, off);
+                    this->movd(Xmm(nloads + i),
+                            this->ptr[reg_src + reg_long_offt]);
+                    this->uni_add(Xmm(i), Xmm(nloads + i));
+                } else {
+                    this->movd(Xmm(nloads + i), this->ptr[reg_src + off]);
+                    this->uni_add(Xmm(i), Xmm(nloads + i));
+                }
+            } else if (load_len == vlen)
+                if (off > static_cast<size_t>(INT_MAX)) {
+                    this->mov(reg_long_offt, off);
+                    this->uni_vadd(
+                            Vmm(i), Vmm(i), vmmword[reg_src + reg_long_offt]);
+                } else {
+                    this->uni_vadd(Vmm(i), Vmm(i), vmmword[reg_src + off]);
+                }
             else
                 assert(!"unsupported");
         }
     }
 
     void loop_x() {
-        const int nloads[] = {cpu_isa_traits<isa>::n_vregs, 1, 1};
+        const int nloads[] = {cpu_isa_traits_t<isa>::n_vregs, 1, 1};
         const int nbranches = sizeof(nloads) / sizeof(nloads[0]);
 
         const int load_len[nbranches] = {vlen, vlen, typesize};

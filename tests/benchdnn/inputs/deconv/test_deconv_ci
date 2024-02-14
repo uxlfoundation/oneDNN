@@ -13,7 +13,7 @@
 --dt=f64
 --batch=shapes_ci
 
---dt=f32,bf16,f16
+--dt=f32,bf16,f16,f32:f16:f32,f32:bf16:f32
 --attr-post-ops=, \
                 sum:0.5, \
                 linear:2:1, \
@@ -49,4 +49,12 @@
 
 --attr-post-ops=
 --attr-zero-points=,src:common:31+dst:common:15
+--batch=shapes_ci
+# BF32 and TF32
+--reset
+--dir=FWD_D
+--dt=f32
+--stag=any,axb
+--dtag=any,axb
+--attr-fpmath=bf16,tf32
 --batch=shapes_ci

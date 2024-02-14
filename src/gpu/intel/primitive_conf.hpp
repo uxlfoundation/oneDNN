@@ -415,6 +415,7 @@ struct binary_conf_t {
     bool isXa16b;
     data_type_t src0_data_type;
     data_type_t src1_data_type;
+    data_type_t src2_data_type;
     data_type_t dst_data_type;
     alg_kind_t alg;
     // bool is_ne;
@@ -425,6 +426,7 @@ struct binary_conf_t {
     int dim0[MAX_NDIMS];
     int src0_bcast_dims[MAX_NDIMS];
     int src1_bcast_dims[MAX_NDIMS];
+    int src2_bcast_dims[MAX_NDIMS];
     bool is_dense;
     bool is_same_md;
     bool same_src_dt;
@@ -434,6 +436,7 @@ struct binary_conf_t {
 
     memory_desc_info_t src0_md_info;
     memory_desc_info_t src1_md_info;
+    memory_desc_info_t src2_md_info;
     memory_desc_info_t dst_md_info;
 
     attr_info_t attr_info;
@@ -688,8 +691,7 @@ void def_binary_alg_kinds(compute::kernel_ctx_t &kernel_ctx);
 void def_eltwise_alg_kinds(compute::kernel_ctx_t &kernel_ctx);
 
 bool post_ops_with_binary_ok(const primitive_attr_t *attr,
-        const data_type_t dst_dt, const int max_ndims_supported = 2,
-        const int prelu_mask_supported = 3);
+        const memory_desc_t &dst_md, const int max_ndims_supported = 2);
 
 constexpr int prelu_max_ndims = 5;
 status_t get_prelu_md(int prelu_mask, const dim_t *dst_dims,

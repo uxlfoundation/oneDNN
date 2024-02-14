@@ -53,12 +53,16 @@ static bool impl_supports_datatype(data_type_t data_type) {
         case data_type::f16:
             return x64::mayiuse(x64::avx512_core_fp16)
                     || x64::mayiuse(x64::avx2_vnni_2);
+        case data_type::f8_e5m2:
+            return x64::mayiuse(x64::avx10_2_512_amx_2)
+                    || x64::mayiuse(x64::avx512_core_amx_fp16);
+        case data_type::f8_e4m3:
+            return x64::mayiuse(x64::avx10_2_512)
+                    || x64::mayiuse(x64::avx512_core_amx_fp16);
         case data_type::f32:
         case data_type::s32:
         case data_type::s8:
-        case data_type::u8:
-        case data_type::f8_e5m2:
-        case data_type::f8_e4m3: return true;
+        case data_type::u8: return true;
         default: return false;
     }
 }
@@ -87,8 +91,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
     if (cd.use_inversion)
         skip_mask |= skip_mask_t::post_ops | skip_mask_t::sum_dt;
     if (is_int8 && cd.use_inversion)
-        skip_mask |= skip_mask_t::scales_runtime
-                | skip_mask_t::zero_points_runtime;
+        skip_mask |= skip_mask_t::scales | skip_mask_t::zero_points;
 
     const bool is_f32_supported
             = everyone_is(f32, diff_src_type, wei_type, diff_dst_type)
@@ -111,15 +114,27 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
             && one_of(diff_src_type, wei_type, f32, f8_e5m2, f8_e4m3)
             && IMPLICATION(
                     with_bias(), one_of(bias_md_.data_type, f32, wei_type));
+    const bool is_f32_xf16_supported = one_of(wei_type, bf16, f16)
+            && everyone_is(f32, diff_src_type, diff_dst_type)
+            && IMPLICATION(with_bias(), bias_md_.data_type == f32);
 
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(
             impl_supports_datatype(diff_src_type), VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_CONV(impl_supports_datatype(wei_type), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_CONV(impl_supports_datatype(
+                           is_f32_xf16_supported ? diff_dst_type : wei_type),
+            VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CONV(
             impl_supports_datatype(diff_dst_type), VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_CONV(one_of(true, is_f32_supported, is_xf16_supported,
-                           is_int8_supported, is_fp8_supported),
+    VDISPATCH_CONV(
+            one_of(true, is_f32_supported, is_xf16_supported, is_int8_supported,
+                    is_fp8_supported, is_f32_xf16_supported),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_CONV(!one_of(f64, diff_src_type, wei_type, diff_dst_type)
+                    && IMPLICATION(with_bias(), f64 != bias_md_.data_type),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
             VERBOSE_BAD_ALGORITHM);
@@ -145,7 +160,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto KD = ndims_pick(jcp_.kd, 1, 1);
     const auto KH = ndims_pick(jcp_.kh, jcp_.kh, 1);
-
     const auto KD_BLOCK = ndims_pick(jcp_.kd_block, 1, 1);
     const auto KH_BLOCK = ndims_pick(jcp_.kh_block, jcp_.kh_block, 1);
 
@@ -249,7 +263,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, jcp_.src_dt, jcp_.wei_dt,
             false, false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB,
-            jcp_.LDC, vM, vN, vK, strides_ptr));
+            jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_tf32));
 
     brgemm_attr_t brgattr;
     brgattr.use_uker = jcp_.use_uker;
@@ -889,7 +903,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                     const int ic_size
                             = is_ic_tail ? jcp.ic % jcp.ic_block : jcp.ic_block;
 
-                    auto cp = jit_brgemm_conv_bwd_copy_kernel_call_s();
+                    auto cp = jit_brgemm_conv_bwd_copy_kernel_args_t();
                     cp.src = btc.out_buffer;
                     cp.dst = diff_src
                             + data_blk_off(diff_src_d, n,
@@ -959,7 +973,7 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
             if (!everyone_is(0, kd_e, kd_b, kh_e, kh_b, kw_e, kw_b)) {
                 assert(kd_e > kd_b && kh_e > kh_b && kw_e > kw_b);
 
-                jit_brgemm_conv_comp_pad_call_s p;
+                jit_brgemm_conv_comp_pad_args_t p;
 
                 p.kd_l = div_up(kd_e - kd_b, SD);
                 p.kh_l = div_up(kh_e - kh_b, SH);
@@ -1139,7 +1153,7 @@ void brgemm_convolution_bwd_strided_t<isa>::maybe_trans_inp(int ithr,
             && last_ihb == ihb && last_iwb == iwb)
         return;
 
-    auto cp = jit_brgemm_conv_bwd_trans_kernel_call_s();
+    auto cp = jit_brgemm_conv_bwd_trans_kernel_args_t();
 
     const auto oc = ocb * jcp.oc_block;
     const auto g_oc = g * jcp.oc + oc;
@@ -1646,6 +1660,8 @@ template struct brgemm_convolution_bwd_strided_t<avx512_core>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_vnni>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_bf16>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_fp16>;
+template struct brgemm_convolution_bwd_strided_t<avx10_2_512>;
+template struct brgemm_convolution_bwd_strided_t<avx10_2_512_amx_2>;
 
 } // namespace x64
 

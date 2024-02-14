@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
 * Copyright 2022 Arm Ltd. and affiliates
 *
@@ -27,12 +27,10 @@
 #include "cpu/x64/jit_uni_batch_normalization_s8.hpp"
 #include "cpu/x64/jit_uni_tbb_batch_normalization.hpp"
 using namespace dnnl::impl::cpu::x64;
-#endif
-
-#if DNNL_AARCH64
+#elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_batch_normalization.hpp"
 #include "cpu/aarch64/jit_uni_batch_normalization_s8.hpp"
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_batch_normalization.hpp"
 #endif
 using namespace dnnl::impl::cpu::aarch64;

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_OCL_REF_SDPA_HPP
-#define GPU_OCL_REF_SDPA_HPP
+#ifndef GPU_INTEL_OCL_REF_SDPA_HPP
+#define GPU_INTEL_OCL_REF_SDPA_HPP
 
 #include <assert.h>
 
@@ -50,7 +50,7 @@ struct ref_sdpa_t : public gpu_primitive_t {
             bool enable_ref = gpu_utils::dev_getenv("enable_ref_sdpa", false);
             VDISPATCH_SDPA(enable_ref, VERBOSE_SKIP_PRIMITIVE_IMPL);
 
-            VDISPATCH_SDPA(attr()->has_default_values(smask_t::scales_runtime),
+            VDISPATCH_SDPA(attr()->has_default_values(smask_t::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SDPA(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,

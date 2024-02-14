@@ -370,6 +370,7 @@ struct reg_t {
         return block->masks[off].bank();
     }
 
+    // NOLINTNEXTLINE(readability-make-member-function-const)
     void exclude(const reg_mask_t &mask) {
         if (is_empty()) return;
         block->masks[off].subtract(mask);
@@ -456,7 +457,7 @@ struct search_context_t {
         saved_blocks.resize(nblocks() * nblocks());
     }
 
-    int nblocks() { return int(blocks.size()); }
+    int nblocks() const { return int(blocks.size()); }
 
     void set_check_bundles(bool value = true) { check_bundles = value; }
 
@@ -642,7 +643,8 @@ reg_mask_t create_available_reg_mask(
 } // namespace
 
 bank_conflict_allocation_t bank_conflict_allocation_t::create(
-        reg_allocator_t &ra, int regs, const bank_conflict_attr_t &attr) {
+        reg_allocator_t &ra, const bank_conflict_attr_t &attr) {
+    int regs = ra.getRegisterCount();
     hw_context_t hw_ctx(ra.hardware(), regs);
     gpu_assert(regs <= reg_mask_t::max_regs);
 
@@ -690,7 +692,7 @@ bank_conflict_allocation_t bank_conflict_allocation_t::create(
 
     auto create_reg = [&](const expr_t &e, int src_idx, int off_bytes) {
         if (is_zero(e)) return reg_t();
-        auto base = get_base(e);
+        const auto &base = get_base(e);
         int off = 0;
         if (!is_var(e)) off = to_cpp<int>(e.as<ptr_t>().off);
         off += off_bytes;

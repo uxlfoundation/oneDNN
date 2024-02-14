@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ static void *ocl_malloc_device(
 }
 
 static void ocl_free(
-        void *ptr, cl_device_id dev, const cl_context ctx, cl_event event) {
+        void *ptr, cl_device_id dev, cl_context ctx, cl_event event) {
     if (nullptr == ptr) return;
     using F = cl_int (*)(cl_context, void *);
     if (event) { OCL_CHECK(clWaitForEvents(1, &event)); }
@@ -119,17 +119,17 @@ public:
         if (need_alloc_new_mm) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
             auto sh_ptr = std::shared_ptr<void> {
-                    malloc_shared(size, *static_cast<const sycl::device *>(dev),
+                    malloc_device(size, *static_cast<const sycl::device *>(dev),
                             *static_cast<const sycl::context *>(ctx)),
-                    sycl_deletor {*static_cast<const sycl::context *>(ctx)}};
+                    sycl_deletor_t {*static_cast<const sycl::context *>(ctx)}};
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
             auto sh_ptr = std::shared_ptr<void> {
                     ocl_malloc_device(size, alignment, dev, ctx),
-                    ocl_deletor {dev, ctx}};
+                    ocl_deletor_t {dev, ctx}};
 #endif
             ptr = sh_ptr.get();
             // record the map of mm size and its ptr for reuse
-            map_size_ptr_.emplace(std::make_pair(size, sh_ptr));
+            map_size_ptr_.emplace(size, sh_ptr);
             is_free_ptr_[ptr] = false;
         }
         return ptr;
@@ -139,13 +139,11 @@ public:
     void deallocate(void *ptr) {
         std::lock_guard<std::mutex> pool_guard(pool_lock);
         is_free_ptr_[ptr] = true;
-        return;
     }
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     void deallocate(void *ptr) {
         std::lock_guard<std::mutex> pool_guard(pool_lock);
         is_free_ptr_[ptr] = true;
-        return;
     }
 #endif
 
@@ -160,9 +158,9 @@ private:
     std::unordered_map<void *, bool> is_free_ptr_;
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-    struct sycl_deletor {
-        sycl_deletor() = delete;
-        sycl_deletor(const ::sycl::context &ctx) : ctx_(ctx) {}
+    struct sycl_deletor_t {
+        sycl_deletor_t() = delete;
+        sycl_deletor_t(const ::sycl::context &ctx) : ctx_(ctx) {}
         void operator()(void *ptr) {
             if (ptr) ::sycl::free(ptr, ctx_);
         }
@@ -171,9 +169,9 @@ private:
         ::sycl::context ctx_;
     };
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    struct ocl_deletor {
-        ocl_deletor() = delete;
-        ocl_deletor(const cl_device_id dev, const cl_context ctx)
+    struct ocl_deletor_t {
+        ocl_deletor_t() = delete;
+        ocl_deletor_t(cl_device_id dev, cl_context ctx)
             : dev_(dev), ctx_(ctx) {}
         void operator()(void *ptr) {
             if (ptr) ocl_free(ptr, dev_, ctx_, {});

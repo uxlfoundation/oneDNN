@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_UNI_SHUFFLE_KERNEL_HPP
-#define CPU_X64_JIT_UNI_SHUFFLE_KERNEL_HPP
+#ifndef CPU_X64_SHUFFLE_JIT_UNI_SHUFFLE_KERNEL_HPP
+#define CPU_X64_SHUFFLE_JIT_UNI_SHUFFLE_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
@@ -36,15 +36,15 @@ namespace x64 {
 using namespace Xbyak;
 
 template <cpu_isa_t isa>
-struct jit_uni_shuffle_kernel_t : public jit_generator {
+struct jit_uni_shuffle_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_shuffle_kernel_t)
 
     jit_uni_shuffle_kernel_t(const jit_shuffle_conf_t &conf);
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     constexpr int vmm_idx(int idx) const {
-        return (cpu_isa_traits<isa>::n_vregs - 1) - idx;
+        return (cpu_isa_traits_t<isa>::n_vregs - 1) - idx;
     }
 
     /*

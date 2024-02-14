@@ -49,9 +49,6 @@ uint64_t get_future_extensions(
 #if XE3P
         case gpu_arch_t::xe3p:
 #endif
-#if XE4
-        case gpu_arch_t::xe4:
-#endif
             extensions |= (uint64_t)device_ext_t::intel_global_float_atomics;
             extensions
                     |= (uint64_t)device_ext_t::intel_variable_eu_thread_count;
@@ -145,9 +142,6 @@ int device_info_t::max_subgroup_size(gpu_arch_t gpu_arch) {
 #if XE3P
         case gpu_arch_t::xe3p:
 #endif
-#if XE4
-        case gpu_arch_t::xe4:
-#endif
         case gpu::intel::compute::gpu_arch_t::xe3: return 32;
         case gpu::intel::compute::gpu_arch_t::xe_lp:
         case gpu::intel::compute::gpu_arch_t::xe_hp:
@@ -175,9 +169,6 @@ int device_info_t::min_subgroup_size() const {
         case gpu_arch_t::xe3p:
 #endif
         case gpu_arch_t::xe3: return 16;
-#if XE4
-        case gpu_arch_t::xe4: return 32;
-#endif
         default: return 0;
     }
 }
@@ -188,9 +179,6 @@ int device_info_t::max_exec_size(gpu_arch_t gpu_arch) {
         case gpu::intel::compute::gpu_arch_t::xe2:
 #if XE3P
         case gpu::intel::compute::gpu_arch_t::xe3p:
-#endif
-#if XE4
-        case gpu::intel::compute::gpu_arch_t::xe4:
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3: return 128;
         default: return 64;
@@ -230,9 +218,6 @@ int device_info_t::threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode) {
 #if XE3P
         case gpu_arch_t::xe3p:
 #endif
-#if XE4
-        case gpu_arch_t::xe4:
-#endif
         case gpu::intel::compute::gpu_arch_t::xe3:
             return large_grf_mode ? 4 : 8;
         case gpu::intel::compute::gpu_arch_t::unknown: return 7;
@@ -255,11 +240,6 @@ int device_info_t::max_slm_size(gpu_arch_t gpu_arch) {
 #if XE3P
         case gpu::intel::compute::gpu_arch_t::xe3p:
             slm_size = 3 * (1 << 17);
-            break;
-#endif
-#if XE4
-        case gpu::intel::compute::gpu_arch_t::xe4:
-            slm_size = 1280 * 1024;
             break;
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3: slm_size = (1 << 17); break;
@@ -298,9 +278,6 @@ size_t device_info_t::icache_size() const {
 #if XE3P
         case gpu::intel::compute::gpu_arch_t::xe3p: return 80 * 1024;
 #endif
-#if XE4
-        case gpu::intel::compute::gpu_arch_t::xe4: return 96 * 1024;
-#endif
         case gpu::intel::compute::gpu_arch_t::unknown: assert(!"not expected");
     }
     return 0;
@@ -333,34 +310,35 @@ status_t device_info_t::init_attributes_common(impl::engine_t *engine) {
 status_t device_info_t::init_serialized_device_info(
         const std::vector<uint8_t> &cache_blob) {
     if (!cache_blob.empty()) {
-        serialized_device_info_.write(cache_blob.data(), cache_blob.size());
+        serialized_device_info_.append_array(
+                cache_blob.size(), cache_blob.data());
         return status::success;
     }
 
-    serialized_device_info_.write(&gpu_arch_);
-    serialized_device_info_.write(&gpu_product_family_);
-    serialized_device_info_.write(&stepping_id_);
-    serialized_device_info_.write(&ip_version_);
-    serialized_device_info_.write(&runtime_version_.major);
-    serialized_device_info_.write(&runtime_version_.minor);
-    serialized_device_info_.write(&runtime_version_.build);
-    serialized_device_info_.write(hw_threads_, 2);
-    serialized_device_info_.write(&eu_count_);
-    serialized_device_info_.write(&max_eus_per_wg_);
-    serialized_device_info_.write(&max_subgroup_size_);
-    serialized_device_info_.write(&max_exec_size_);
-    serialized_device_info_.write(&max_wg_size_);
-    serialized_device_info_.write(&l3_cache_size_);
-    serialized_device_info_.write(&extensions_);
-    serialized_device_info_.write(&native_extensions_);
-    serialized_device_info_.write(&mayiuse_systolic_);
-    serialized_device_info_.write(&mayiuse_ngen_kernels_);
-    serialized_device_info_.write(&mayiuse_system_memory_allocators_);
-    serialized_device_info_.write(&mayiuse_non_uniform_work_groups_);
+    serialized_device_info_.append(gpu_arch_);
+    serialized_device_info_.append(gpu_product_family_);
+    serialized_device_info_.append(stepping_id_);
+    serialized_device_info_.append(ip_version_);
+    serialized_device_info_.append(runtime_version_.major);
+    serialized_device_info_.append(runtime_version_.minor);
+    serialized_device_info_.append(runtime_version_.build);
+    serialized_device_info_.append_array(2, hw_threads_);
+    serialized_device_info_.append(eu_count_);
+    serialized_device_info_.append(max_eus_per_wg_);
+    serialized_device_info_.append(max_subgroup_size_);
+    serialized_device_info_.append(max_exec_size_);
+    serialized_device_info_.append(max_wg_size_);
+    serialized_device_info_.append(l3_cache_size_);
+    serialized_device_info_.append(extensions_);
+    serialized_device_info_.append(native_extensions_);
+    serialized_device_info_.append(mayiuse_systolic_);
+    serialized_device_info_.append(mayiuse_ngen_kernels_);
+    serialized_device_info_.append(mayiuse_system_memory_allocators_);
+    serialized_device_info_.append(mayiuse_non_uniform_work_groups_);
 
     const size_t name_size = name_.size();
-    serialized_device_info_.write(&name_size);
-    serialized_device_info_.write(name_.data(), name_size);
+    serialized_device_info_.append(name_size);
+    serialized_device_info_.append_array(name_size, name_.data());
 
     return status::success;
 }

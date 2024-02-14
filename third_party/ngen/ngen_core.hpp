@@ -17,17 +17,14 @@
 #ifndef NGEN_CORE_HPP
 #define NGEN_CORE_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
-
+#include <algorithm>
 
 #include <cstdint>
 #include <cstring>
-#include <vector>
-#include <algorithm>
 #include <type_traits>
+#include <vector>
+
+#include "ngen_config_internal.hpp"
 
 #include "ngen_utils.hpp"
 
@@ -257,9 +254,6 @@ enum class Core {
 #if XE3P
     Xe3p,
 #endif
-#if XE4
-    Xe4,
-#endif
 };
 
 typedef Core HW;
@@ -283,23 +277,23 @@ enum class ProductFamily : int {
     PVC,
     PVCVG,
     GenericXe2,
+    BMG,
+    LNL,
     GenericXe3,
 #if XE3P
     GenericXe3p,
 #endif
-#if XE4
-    GenericXe4,
-#endif
-};
-
-struct Product {
-    ProductFamily family;
-    int stepping;
 };
 
 enum class PlatformType {Unknown, Integrated, Discrete};
 
-static inline bool operator==(const Product &p1, const Product &p2) { return p1.family == p2.family && p1.stepping == p2.stepping; }
+struct Product {
+    ProductFamily family;
+    int stepping;
+    PlatformType type;
+};
+
+static inline bool operator==(const Product &p1, const Product &p2) { return p1.family == p2.family && p1.stepping == p2.stepping && p1.type == p2.type; }
 static inline bool operator!=(const Product &p1, const Product &p2) { return !(p1 == p2); }
 static inline bool operator<(const Product &p1, const Product &p2) { return (p1.family < p2.family) || (p1.family == p2.family && p1.stepping < p2.stepping); }
 static inline bool operator>(const Product &p1, const Product &p2) { return p2 < p1; }
@@ -314,6 +308,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericGen11:
         case ProductFamily::MTL:
         case ProductFamily::ARL:
+        case ProductFamily::LNL:
             return PlatformType::Integrated;
         // Could be integrated or discrete
         case ProductFamily::GenericXeLP:
@@ -323,9 +318,6 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
 #if XE3P
         case ProductFamily::GenericXe3p:
 #endif
-#if XE4
-        case ProductFamily::GenericXe4:
-#endif
             return PlatformType::Unknown;
         // Guaranteed discrete
         case ProductFamily::GenericXeHP:
@@ -333,6 +325,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::DG2:
         case ProductFamily::PVC:
         case ProductFamily::PVCVG:
+        case ProductFamily::BMG:
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
             return PlatformType::Unknown;
@@ -355,18 +348,12 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
 #if XE3P
         case HW::Xe3p:  return ProductFamily::GenericXe3p;
 #endif
-#if XE4
-        case HW::Xe4:   return ProductFamily::GenericXe4;
-#endif
         default:        return ProductFamily::Unknown;
     }
 }
 
 static inline constexpr14 Core getCore(ProductFamily family)
 {
-#if XE4
-    if (family >= ProductFamily::GenericXe4)   return Core::Xe4;
-#endif
 #if XE3P
     if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
 #endif
@@ -435,7 +422,7 @@ static inline std::ostream &operator<<(std::ostream &str, DataType type)
                                     "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "e2m1", "e3m0", "u4",  "s4", "u2", "s2"};
 #else
     static const char *names[32] = {"ud",   "d",   "uw", "w", "ub", "b", "df", "f", "uq", "q", "hf", "bf", "bf8", "uv", "v",  "vf",
-                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
+                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "e2m1",   "",   "u4",  "s4", "u2", "s2"};
 #endif
     str << names[static_cast<uint8_t>(type) & 0x1F];
     return str;
@@ -781,6 +768,13 @@ public:
 
 static inline bool operator==(const RegData &r1, const RegData &r2);
 static inline bool operator!=(const RegData &r1, const RegData &r2);
+
+// Special set of labels used for prologues.
+struct InterfaceLabels {
+    Label localIDsLoaded;
+    Label argsLoaded;
+    Label crossThreadPatches[2];
+};
 
 // Superclass for registers, subregisters, and register regions, possibly
 // with source modifiers.
@@ -1355,6 +1349,7 @@ public:
     constexpr bool isValid()        const { return !base.isInvalid(); }
     constexpr bool isScalar()       const { return base.isScalar(); }
     constexpr bool isARF()          const { return base.isARF(); }
+    constexpr bool isNull()          const { return base.isNull(); }
 
     constexpr14 RegData &getBase()        { return base; }
     constexpr RegData getBase()     const { return base; }
@@ -1760,14 +1755,6 @@ enum class PredCtrl {
     w = 5,
 };
 
-#ifdef NGEN_ASM
-static const char *toText(PredCtrl ctrl, bool align16) {
-    const char *names[2][16] = {{"", "", "anyv", "allv", "any2h", "all2h", "any4h", "all4h", "any8h", "all8h", "any16h", "all16h", "any32h", "all32h", "any", "all"},
-                                {"", "", "x",    "y",    "z",     "w",     "",      "",      "",      "",      "",       "",       "",       "",       "",    ""}};
-    return names[align16][static_cast<int>(ctrl) & 0xF];
-}
-#endif
-
 enum class ThreadCtrl {
     Normal = 0,
     Atomic = 1,
@@ -1953,59 +1940,6 @@ static inline bool isBranch(Opcode op)
 {
     return (static_cast<int>(op) >> 4) == 2;
 }
-
-#ifdef NGEN_ASM
-static const char *getMnemonic(Opcode op, HW hw)
-{
-    const char *names[0x80] = {
-        "illegal", "sync", "sel", "movi", "not", "and", "or", "xor",
-        "shr", "shl", "smov", "", "asr", "", "ror", "rol",
-        "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
-        "bfe", "bfi1", "bfi2", "", "", "", "", "",
-        "jmpi", "brd", "if", "brc", "else", "endif", "", "while",
-        "break", "cont", "halt", "calla", "call", "ret", "goto", "join",
-#if XE3P
-        "wait", "send", "sendc", "sendg", "sendgc", "sendgx", "sendgxc", "",
-        "math", "lfsr", "", "", "", "", "", "",
-#else
-        "wait", "send", "sendc", "sends", "sendsc", "", "", "",
-        "math", "", "", "", "", "", "", "",
-#endif
-        "add", "mul", "avg", "frc", "rndu", "rndd", "rnde", "rndz",
-        "mac", "mach", "lzd", "fbh", "fbl", "cbit", "addc", "subb",
-#if XE3P
-        "shfl", "sada2", "add3", "macl", "srnd", "dnscl", "dp3", "dp2",
-        "dp4a", "dpas", "dpasw", "mad", "bdpas", "madm", "", "mullh",
-#else
-        "sad2", "sada2", "add3", "macl", "srnd", "dph", "dp3", "dp2",
-        "dp4a", "dpas", "dpasw", "mad", "lrp", "madm", "", "",
-#endif
-        "nop", "mov", "sel", "movi", "not", "and", "or", "xor",
-        "shr", "shl", "smov", "bfn", "asr", "", "ror", "rol",
-        "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
-        "bfe", "bfi1", "bfi2", "", "", "", "nop", ""
-    };
-
-    const char *mnemonic = names[static_cast<int>(op) & 0x7F];
-
-    if (hw < HW::Gen12LP) switch (op) {
-#if XE3P
-        case Opcode::sends:  mnemonic = "sends";  break;
-        case Opcode::sendsc: mnemonic = "sendsc"; break;
-        case Opcode::sad2:   mnemonic = "sad2";   break;
-        case Opcode::dph:    mnemonic = "dph";    break;
-        case Opcode::lrp:    mnemonic = "lrp";    break;
-#endif
-        case Opcode::mov:    mnemonic = "mov";    break;
-        case Opcode::line:   mnemonic = "line";   break;
-        case Opcode::pln:    mnemonic = "pln";    break;
-        case Opcode::dp4:    mnemonic = "dp4";    break;
-        default: break;
-    }
-
-    return mnemonic;
-}
-#endif
 
 class AllPipes {};
 enum class Pipe : uint8_t {

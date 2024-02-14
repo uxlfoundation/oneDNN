@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2023 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_sse41_conv_fwd_kernel_f32 : public jit_generator {
-    jit_sse41_conv_fwd_kernel_f32(const jit_conv_conf_t &ajcp,
+struct jit_sse41_conv_fwd_kernel_f32_t : public jit_generator_t {
+    jit_sse41_conv_fwd_kernel_f32_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
     static status_t init_conf(jit_conv_conf_t &jcp,
@@ -39,12 +39,13 @@ struct jit_sse41_conv_fwd_kernel_f32 : public jit_generator {
             const memory_desc_wrapper &dst_d, const primitive_attr_t &attr,
             int nthreads);
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_conv_fwd_kernel_f32)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_conv_fwd_kernel_f32_t)
     jit_conv_conf_t jcp;
     const primitive_attr_t &attr_;
 
 private:
-    static constexpr auto simd_w_ = cpu_isa_traits<sse41>::vlen / sizeof(float);
+    static constexpr auto simd_w_
+            = cpu_isa_traits_t<sse41>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     reg64_t reg_input = rax;
     reg64_t aux_reg_input = r8;
@@ -72,15 +73,16 @@ private:
     inline void width_blk_step(int ur_w, int pad_l, int pad_r, int oc_blocks);
     inline void solve_common(int oc_blocks);
 
-    inline dim_t filter_w_to_input(int ki, int oi = 0, int pad_l = 0) {
-        return ki * (jcp.dilate_w + 1) + oi * jcp.stride_w - pad_l;
+    inline dim_t filter_w_to_input(int ki, int oi = 0, int pad_l = 0) const {
+        return static_cast<dim_t>(ki) * (jcp.dilate_w + 1)
+                + static_cast<dim_t>(oi) * jcp.stride_w - pad_l;
     }
 
-    inline dim_t filter_h_to_input(int ki) {
+    inline dim_t filter_h_to_input(int ki) const {
         return static_cast<dim_t>(ki) * (jcp.dilate_h + 1) * jcp.iw;
     }
 
-    inline dim_t get_input_offset(int i_ic, int i_iw) {
+    inline dim_t get_input_offset(int i_ic, int i_iw) const {
         dim_t offset;
         if (utils::one_of(jcp.src_tag, format_tag::ncw, format_tag::nchw,
                     format_tag::ncdhw)) {
@@ -94,7 +96,7 @@ private:
         return sizeof(float) * offset;
     }
 
-    inline dim_t get_output_offset(int i_oc_block, int i_ow) {
+    inline dim_t get_output_offset(int i_oc_block, int i_ow) const {
         dim_t offset;
         if (utils::one_of(jcp.dst_tag, format_tag::nwc, format_tag::nhwc,
                     format_tag::ndhwc)) {
@@ -107,12 +109,15 @@ private:
         return sizeof(float) * offset;
     }
 
-    inline dim_t get_kernel_offset(int i_oc_block, int ki, int i_ic) {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
-        dim_t ic_block_step_size = jcp.kh * jcp.kw * block_step_size;
-        dim_t oc_block_step_size = jcp.nb_ic * ic_block_step_size;
-        dim_t offset = i_oc_block * oc_block_step_size + ki * block_step_size
-                + i_ic * jcp.oc_block;
+    inline dim_t get_kernel_offset(int i_oc_block, int ki, int i_ic) const {
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
+        dim_t ic_block_step_size
+                = static_cast<dim_t>(jcp.kh) * jcp.kw * block_step_size;
+        dim_t oc_block_step_size
+                = static_cast<dim_t>(jcp.nb_ic) * ic_block_step_size;
+        dim_t offset = static_cast<dim_t>(i_oc_block) * oc_block_step_size
+                + static_cast<dim_t>(ki) * block_step_size
+                + static_cast<dim_t>(i_ic) * jcp.oc_block;
         return sizeof(float) * offset;
     }
 

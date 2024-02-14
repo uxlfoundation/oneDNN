@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ namespace impl {
 namespace xpu {
 namespace sycl {
 
-void print_verbose_header(engine_kind_t kind) {
+inline void print_verbose_header(engine_kind_t kind) {
     engine_factory_t factory(kind);
     auto s_engine_kind = (kind == engine_kind::cpu ? "cpu" : "gpu");
 
@@ -54,11 +54,13 @@ void print_verbose_header(engine_kind_t kind) {
                             eng->impl())
                     : nullptr;
 
-            auto s_backend = engine_impl ? to_string(engine_impl->backend())
-                                         : "unknown";
-            auto s_name = engine_impl ? engine_impl->name() : "unknown";
-            auto s_ver = engine_impl ? engine_impl->runtime_version().str()
-                                     : "unknown";
+            const auto &s_backend = engine_impl
+                    ? to_string(engine_impl->backend())
+                    : "unknown";
+            const auto &s_name = engine_impl ? engine_impl->name() : "unknown";
+            const auto &s_ver = engine_impl
+                    ? engine_impl->runtime_version().str()
+                    : "unknown";
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
             if (kind == engine_kind::gpu) {
                 auto *dev_info = eng
@@ -90,7 +92,7 @@ void print_verbose_header(engine_kind_t kind) {
     }
 }
 
-void print_verbose_header() {
+inline void print_verbose_header() {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
     print_verbose_header(engine_kind::cpu);
 #endif

@@ -30,68 +30,12 @@ namespace gpu {
 
 struct gpu_convolution_fwd_pd_t : public convolution_fwd_pd_t {
     using convolution_fwd_pd_t::convolution_fwd_pd_t;
-
-protected:
-    // TODO: consider either moving this method to primitive_conf.hpp or making
-    //       it static, or removing the 'attr' argument accessible via attr()
-    bool zero_points_ok(const primitive_attr_t *attr) const {
-        const auto &zp = attr->zero_points_;
-
-        using namespace data_type;
-        bool ok = IMPLICATION(
-                !utils::one_of(invariant_src_md()->data_type, s8, u8),
-                zp.has_default_values());
-        if (!ok) return false;
-
-        if (!zp.has_default_values(DNNL_ARG_SRC)) {
-            int mask_src = zp.get_mask(DNNL_ARG_SRC);
-            ok = utils::one_of(mask_src, 0, (1 << 1));
-            if (!ok) return false;
-        }
-        if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
-            int mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
-            ok = mask_wei == 0;
-            if (!ok) return false;
-        }
-        if (!zp.has_default_values(DNNL_ARG_DST)) {
-            int mask_dst = zp.get_mask(DNNL_ARG_DST);
-            ok = utils::one_of(mask_dst, 0, (1 << 1));
-            if (!ok) return false;
-        }
-
-        return true;
-    }
 };
 
 struct gpu_convolution_bwd_data_pd_t : public convolution_bwd_data_pd_t {
     using convolution_bwd_data_pd_t::convolution_bwd_data_pd_t;
 
 protected:
-    // TODO: consider either moving this method to primitive_conf.hpp or making
-    //       it static, or removing the 'attr' argument accessible via attr()
-    bool zero_points_ok(const primitive_attr_t *attr) const {
-        const auto &zp = attr->zero_points_;
-
-        using namespace data_type;
-        bool ok = IMPLICATION(
-                !utils::one_of(invariant_dst_md()->data_type, s8, u8),
-                zp.has_default_values());
-        if (!ok) return false;
-
-        if (!zp.has_default_values(DNNL_ARG_SRC)) {
-            int mask_src = zp.get_mask(DNNL_ARG_SRC);
-            ok = utils::one_of(mask_src, 0, (1 << 1));
-            if (!ok) return false;
-        }
-        if (!zp.has_default_values(DNNL_ARG_DST)) {
-            int mask_dst = zp.get_mask(DNNL_ARG_DST);
-            ok = utils::one_of(mask_dst, 0, (1 << 1));
-            if (!ok) return false;
-        }
-
-        return zp.has_default_values(DNNL_ARG_WEIGHTS);
-    }
-
     // TODO: consider either moving this method to primitive_conf.hpp or making
     //       it static, or removing the 'attr' argument accessible via attr()
     bool post_ops_ok(const primitive_attr_t *attr) const {

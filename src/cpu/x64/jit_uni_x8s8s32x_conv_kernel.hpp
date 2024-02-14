@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,10 +31,10 @@ namespace cpu {
 namespace x64 {
 
 template <cpu_isa_t isa, typename Vmm>
-struct _jit_uni_x8s8s32x_fwd_kernel : public jit_generator {
+struct jit_uni_x8s8s32x_fwd_kernel_vmm_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_uni_x8s8s32x_conv_fwd_ker_t_)
 
-    _jit_uni_x8s8s32x_fwd_kernel(const jit_conv_conf_t &ajcp,
+    jit_uni_x8s8s32x_fwd_kernel_vmm_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
     jit_conv_conf_t jcp;
@@ -42,7 +42,7 @@ struct _jit_uni_x8s8s32x_fwd_kernel : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<isa>::vlen / sizeof(float);
+            = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
     enum {
@@ -188,9 +188,9 @@ private:
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_x8s8s32x_fwd_kernel {
+struct jit_uni_x8s8s32x_fwd_kernel_t {
 
-    jit_uni_x8s8s32x_fwd_kernel(const jit_conv_conf_t &ajcp,
+    jit_uni_x8s8s32x_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
         int ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
@@ -198,14 +198,14 @@ struct jit_uni_x8s8s32x_fwd_kernel {
             case 8:
                 if (utils::one_of(isa, avx2)) {
                     kernel_ = utils::make_unique<
-                            _jit_uni_x8s8s32x_fwd_kernel<isa, Xbyak::Ymm>>(
+                            jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Xbyak::Ymm>>(
                             ajcp, attr, dst_md);
                 } else
                     assert(!"invalid channel blocking for current ISA");
                 return;
             case 4:
                 kernel_ = utils::make_unique<
-                        _jit_uni_x8s8s32x_fwd_kernel<isa, Xbyak::Xmm>>(
+                        jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Xbyak::Xmm>>(
                         ajcp, attr, dst_md);
                 return;
             default: assert(!"invalid channel blocking");
@@ -217,9 +217,9 @@ struct jit_uni_x8s8s32x_fwd_kernel {
         return status::out_of_memory;
     }
 
-    ~jit_uni_x8s8s32x_fwd_kernel() = default;
+    ~jit_uni_x8s8s32x_fwd_kernel_t() = default;
 
-    void operator()(const jit_conv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*kernel_)(p); }
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &src_pd,
@@ -228,11 +228,11 @@ struct jit_uni_x8s8s32x_fwd_kernel {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
 
-    void (*jit_ker)(jit_conv_call_s *);
+    void (*jit_ker)(jit_conv_args_t *);
 
 private:
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_fwd_kernel);
-    std::unique_ptr<jit_generator> kernel_;
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_fwd_kernel_t);
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

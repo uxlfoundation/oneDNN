@@ -38,7 +38,6 @@ static const int max_slot_size = 8;
 enum class send_op_t {
     undef,
     atomic_add,
-    atomic_bfadd,
     atomic_fadd,
     load,
     prefetch,
@@ -48,7 +47,6 @@ enum class send_op_t {
 static auto send_op_names = nstl::to_array({
         make_enum_name(send_op_t::undef, "undef"),
         make_enum_name(send_op_t::atomic_add, "atomic_add"),
-        make_enum_name(send_op_t::atomic_bfadd, "atomic_bfadd"),
         make_enum_name(send_op_t::atomic_fadd, "atomic_fadd"),
         make_enum_name(send_op_t::load, "load"),
         make_enum_name(send_op_t::prefetch, "prefetch"),
@@ -58,8 +56,7 @@ static auto send_op_names = nstl::to_array({
 GPU_DEFINE_PARSE_ENUM(send_op_t, send_op_names)
 
 inline bool is_atomic(send_op_t op) {
-    return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd,
-            send_op_t::atomic_bfadd);
+    return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd);
 }
 
 enum class send_address_t {
@@ -124,12 +121,12 @@ struct addr_t {
 struct dim_mask_t {
     dim_mask_t() = default;
 
-    dim_mask_t(const dim_mask_desc_t &dmd, int slots) : slot_incs(slots, 0) {
-        dim = dmd.dim;
-        base = dmd.base;
-        bound = dmd.bound;
-        has_underflow = dmd.has_underflow;
-    }
+    dim_mask_t(const dim_mask_desc_t &dmd, int slots)
+        : dim(dmd.dim)
+        , base(dmd.base)
+        , bound(dmd.bound)
+        , slot_incs(slots, 0)
+        , has_underflow(dmd.has_underflow) {}
 
     bool is_empty() const { return slot_incs.empty(); }
     int slots() const { return (int)slot_incs.size(); }
@@ -378,7 +375,10 @@ struct send_1d_desc_t {
 
     bool base_alignment_ok(const expr_t &off, const prover_t &prover) const {
         int align = (type_size >= 16 ? 8 : 1);
-        if (!prover.require(off % align == 0)) return false;
+        auto e = linear_normalize_expander_t().mutate(off);
+        auto args = op_split(op_kind_t::_add, e);
+        for (auto &a : args)
+            if (!prover.require(a % align == 0)) return false;
         return true;
     }
 
@@ -535,8 +535,16 @@ struct send_2d_desc_t {
         if (!prover.require(pitch_bytes <= block_2d_max_dim())) return false;
         if (!prover.require(pitch_bytes % block_2d_pitch_alignment(hw) == 0))
             return false;
-        if (!prover.require(base % base_align == 0)) return false;
-        if (!prover.require(x_base % x_align == 0)) return false;
+        auto e = linear_normalize_expander_t().mutate(base);
+        auto args = op_split(op_kind_t::_add, e);
+        for (auto &a : args) {
+            if (!prover.require(a % base_align == 0)) return false;
+        }
+        e = linear_normalize_expander_t().mutate(x_base);
+        args = op_split(op_kind_t::_add, e);
+        for (auto &a : args) {
+            if (!prover.require(a % x_align == 0)) return false;
+        }
         return true;
     }
 
@@ -548,7 +556,7 @@ struct send_2d_desc_t {
             stride_grf,
         };
         int cur_stride = 1;
-        auto add_block = [&](pvar_t dim, int size,
+        auto add_block = [&](const pvar_t &dim, int size,
                                  pad_kind_t pad = pad_kind_t::none) {
             ret.add_block(dim, size, cur_stride);
             int stride = cur_stride * size;
@@ -782,13 +790,13 @@ private:
         auto outer_begin = end(layout);
         if (is_scattered) {
             // Add blocks to fill up slots in the scattered message.
-            for (auto it = inner_end; it != end(layout); ++it) {
+            for (auto it = std::move(inner_end); it != end(layout); ++it) {
                 int it_slots = ir_utils::safe_div(it.elems(), elems_per_slot);
                 int entry_reg_size
                         = utils::rnd_up(it_slots * slot_stride, grf_size);
                 if (it_slots > max_slots
                         || entry_reg_size > params.max_entry_reg_size) {
-                    outer_begin = it;
+                    outer_begin = std::move(it);
                     break;
                 }
                 slots = it_slots;

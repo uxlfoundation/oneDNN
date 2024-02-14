@@ -151,26 +151,7 @@ enum class tile_flags_t : uint32_t {
     loop_iter_unroll = (1 << 4),
 };
 
-inline tile_flags_t operator&(tile_flags_t a, tile_flags_t b) {
-    auto _a = static_cast<uint32_t>(a);
-    auto _b = static_cast<uint32_t>(b);
-    return static_cast<tile_flags_t>(_a & _b);
-}
-
-inline tile_flags_t operator|(tile_flags_t a, tile_flags_t b) {
-    auto _a = static_cast<uint32_t>(a);
-    auto _b = static_cast<uint32_t>(b);
-    return static_cast<tile_flags_t>(_a | _b);
-}
-
-inline tile_flags_t operator~(tile_flags_t a) {
-    auto _a = static_cast<uint32_t>(a);
-    return static_cast<tile_flags_t>(~_a);
-}
-
-inline bool any(tile_flags_t a) {
-    return a != tile_flags_t::undef;
-}
+GPU_DEFINE_BIT_MASK_ENUM_OPS(tile_flags_t)
 
 // Divisibility restrictions for a prb dimension.
 struct div_info_t {
@@ -369,7 +350,7 @@ private:
     void set(const std::string &s_tile, const std::string &_s_dim) {
         gpu_assert(!_s_dim.empty());
         bool no_min_check = (_s_dim[0] == '#');
-        auto s_dim = no_min_check ? _s_dim.substr(1) : _s_dim;
+        const auto &s_dim = no_min_check ? _s_dim.substr(1) : _s_dim;
         auto d = pvar_t(s_dim);
         if (no_min_check) gpu_assert(s_tile == "i");
         if (s_tile == "i") {

@@ -842,6 +842,9 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                     || (post_op_kind == op_kind::dnnl_binary
                             && !post_binary_fusible(
                                     op, &post_op, sg->get_engine_kind()))
+                    || (post_op_kind == op_kind::dnnl_eltwise
+                            && !post_eltwise_fusible(
+                                    op, &post_op, sg->get_engine_kind()))
                     || (post_op_kind == op_kind::dnnl_convolution
                             && !post_depthwise_conv_fusible(op, &post_op));
             if (not_fusible) { return status::success; }
@@ -1010,6 +1013,166 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
+    // lambda function to fuse one post op into base primitive
+    auto fuse_post_ops_func = [&](bool &changed) -> status_t {
+        auto &mgr = sg->fusion_info_mgr_;
+        std::vector<std::pair<op_t *, op_t *>> fuse_groups;
+
+        std::set<op_t *> visited;
+        const std::unordered_map<op_kind_t, std::unordered_set<op_kind_t>>
+                pops_fusible_map = {{op_kind::dnnl_matmul,
+                        {op_kind::dnnl_eltwise, op_kind::dnnl_binary}}};
+        status_t ret = topo_order_visit(sg->get_output_ops(), [&](op_t *op) {
+            auto base_op_kind = op->get_kind();
+            // only fuse two ops each time, the priority we need to set
+            if (!pops_fusible_map.count(base_op_kind) || visited.count(op) != 0)
+                return status::success;
+
+            auto out_val = op->get_output_values()[0];
+            auto consumers = out_val->get_consumers();
+
+            // The base op should have and only have one consumer, it's
+            // the post op to be fused
+            if (consumers.size() != 1) return status::success;
+            auto &post_op = consumers[0].get_op();
+
+            // check if fusible
+            auto post_op_kind = post_op.get_kind();
+            bool not_fusible
+                    = (!pops_fusible_map.at(base_op_kind).count(post_op_kind)
+                            || (post_op_kind == op_kind::dnnl_binary
+                                    && static_cast<dnnl::algorithm>(
+                                               post_op.get_attr<int64_t>(
+                                                       op_attr::alg_kind))
+                                            == dnnl::algorithm::binary_select));
+            if (not_fusible) { return status::success; }
+
+            // push fusible pair to fuse group for later fusion
+            fuse_groups.emplace_back(op, &post_op);
+            visited.insert(op);
+            visited.insert(&post_op);
+            return status::success;
+        });
+        VCHECK_TRANSFORM(ret == status::success, ret,
+                "Error finding fusible post_op groups");
+
+        if (fuse_groups.empty()) {
+            changed = false;
+            return status::success;
+        }
+        subgraph_rewriter_t rewriter(sg);
+        for (auto &fuse_group : fuse_groups) {
+            auto base_op = fuse_group.first;
+            auto post_op = fuse_group.second;
+            // post op fuse to which predecessor
+            size_t fuse_op_predecessor_offset = base_op->get_output_value(0)
+                                                        ->get_consumers()[0]
+                                                        .get_offset();
+            int64_t key = -1;
+            if (base_op->has_attr(op_attr::fusion_info_key)
+                    && base_op->get_attr<int64_t>(op_attr::fusion_info_key)
+                            != -1) {
+                key = base_op->get_attr<int64_t>(op_attr::fusion_info_key);
+            } else {
+                key = mgr.init_info();
+                base_op->set_attr<int64_t>(op_attr::fusion_info_key, key);
+            }
+            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            if (post_op->get_kind() == op_kind::dnnl_eltwise) {
+                float scale = 1.f;
+                fusion_info.append_post_eltwise(
+                        post_op->shared_from_this(), scale);
+            } else if (post_op->get_kind() == op_kind::dnnl_binary
+                    && static_cast<dnnl::algorithm>(
+                               post_op->get_attr<int64_t>(op_attr::alg_kind))
+                            == dnnl::algorithm::binary_add) {
+                // If the other in value of Add has mul_scales producer,
+                // then this pattern is a int8 pattern
+                size_t mul_scale_op_offset = 2;
+                auto other_in_val0 = post_op->get_input_value(
+                        1 - fuse_op_predecessor_offset);
+                if (other_in_val0->has_producer()
+                        && (other_in_val0->get_producer().get_kind()
+                                        == op_kind::dnnl_mul_scales
+                                || other_in_val0->get_producer().get_kind()
+                                        == op_kind::dnnl_sub_zps)) {
+                    mul_scale_op_offset = 1 - fuse_op_predecessor_offset;
+                }
+                auto other_in_val1
+                        = post_op->get_input_value(fuse_op_predecessor_offset);
+                if (mul_scale_op_offset != 2
+                        && is_output_scales_supported(base_op->get_kind())
+                        && ltw(other_in_val0->get_logical_tensor()).vdims()
+                                == ltw(other_in_val1->get_logical_tensor())
+                                           .vdims()) {
+                    // for int8 cases (excluding OPs which don't support
+                    // output scales attribute and its inputs don't have
+                    // same dims)
+                    auto in_val = post_op->get_input_value(mul_scale_op_offset);
+                    auto &pre_op = in_val->get_producer();
+                    std::vector<float> scales {1.f};
+                    int32_t zp = 0;
+                    if (pre_op.get_kind() == op_kind::dnnl_mul_scales) {
+                        scales = pre_op.get_attr<std::vector<float>>(
+                                op_attr::scales);
+                        assert(scales.size() == 1); // per tensor
+                        auto tmp = pre_op.get_input_value(0);
+                        if (tmp->has_producer()
+                                && tmp->get_producer().get_kind()
+                                        == op_kind::dnnl_sub_zps) {
+                            auto &sub_op = tmp->get_producer();
+                            auto zps = sub_op.get_attr<std::vector<int64_t>>(
+                                    op_attr::zps);
+                            zp = static_cast<int32_t>(zps[0]);
+                            assert(scales.size() == zps.size());
+                            rewriter.fuse_op_to_successor(
+                                    sub_op.shared_from_this());
+                        }
+                    } else {
+                        auto zps = pre_op.get_attr<std::vector<int64_t>>(
+                                op_attr::zps);
+                        zp = static_cast<int32_t>(zps[0]);
+                        assert(scales.size() == zps.size());
+                    }
+                    rewriter.fuse_op_to_successor(pre_op.shared_from_this());
+                    fusion_info.append_post_binary(post_op->shared_from_this(),
+                            std::vector<size_t> {base_op->num_inputs()},
+                            scales[0], zp);
+                } else {
+                    fusion_info.append_post_binary(post_op->shared_from_this(),
+                            std::vector<size_t> {base_op->num_inputs()});
+                }
+            } else if (post_op->get_kind() == op_kind::dnnl_binary
+                    && static_cast<dnnl::algorithm>(
+                               post_op->get_attr<int64_t>(op_attr::alg_kind))
+                            != dnnl::algorithm::binary_add) {
+                fusion_info.append_post_binary(post_op->shared_from_this(),
+                        std::vector<size_t> {base_op->num_inputs()});
+            } else {
+                // unsupported post ops
+                continue;
+            }
+            // remove the fused post_ops op
+            rewriter.fuse_op_to_predecessor(
+                    post_op->shared_from_this(), fuse_op_predecessor_offset);
+        }
+        rewriter.run();
+        changed = true;
+        return status::success;
+    };
+    int cnt = 0;
+    const int max_num_limit = static_cast<int>(sg->num_ops());
+    bool changed = true;
+    do {
+        CHECK(fuse_post_ops_func(changed));
+        cnt++;
+    } while (changed && cnt <= max_num_limit);
+    VCHECK_TRANSFORM(cnt <= max_num_limit + 1, status::unimplemented,
+            "Failed to fuse all post ops since there has unsupported ones");
+    return status::success;
+}
+
 status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
     auto &mgr = sg->fusion_info_mgr_;
 
@@ -1065,7 +1228,6 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
                 value_ptr in1_val = zp_op->get_input_value(1);
                 in1_val->remove_consumer(*zp_op, 1);
                 value_ptr out_val = zp_op->get_output_value(0);
-                auto consumers = out_val->get_consumers();
                 in0_val->add_consumer(next_op, offset);
                 next_op.connect_input(offset, in0_val);
                 if (not_all_zero) {
@@ -1148,8 +1310,8 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                         status::unimplemented,
                         "Matmul only support applying per channel scale "
                         "along the last dimension for DNNL_ARG_WEIGHTS. "
-                        "trans_flag: %d, axis: %lld, ndims: %d",
-                        trans_flag, axis, ndims);
+                        "trans_flag: %d, axis: %ld, ndims: %d",
+                        trans_flag, static_cast<long int>(axis), ndims);
             }
             int64_t key = -1;
             if (next_op.has_attr(op_attr::fusion_info_key)) {
@@ -1166,7 +1328,6 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                 value_ptr in1_val = scale_op->get_input_value(1);
                 in1_val->remove_consumer(*scale_op, 1);
                 value_ptr out_val = scale_op->get_output_value(0);
-                auto consumers = out_val->get_consumers();
                 in0_val->add_consumer(next_op, offset);
                 next_op.connect_input(offset, in0_val);
                 next_op.add_input(in1_val);
@@ -1206,6 +1367,17 @@ status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
         if (consumers.size() != 1) continue;
         auto &next_op = consumers[0].get_op();
         if (next_op.get_kind() != op_kind::dnnl_mul_scales) continue;
+        // For these three ops, the dst zps are not supported
+        if (impl::utils::one_of(cur_op->get_kind(), op_kind::dnnl_softmax,
+                    op_kind::dnnl_layernorm, op_kind::dnnl_groupnorm)) {
+            out_val = next_op.get_output_value(0);
+            consumers = out_val->get_consumers();
+            if (consumers.size() == 1) {
+                auto &next2_op = consumers[0].get_op();
+                if (next2_op.get_kind() == op_kind::dnnl_add_zps) continue;
+            }
+        }
+
         fuse_groups.emplace_back(cur_op.get(), &next_op);
         visited.insert(cur_op.get());
         visited.insert(&next_op);
@@ -1247,6 +1419,17 @@ status_t convert_to_runtime_dst_scales(std::shared_ptr<subgraph_t> &sg) {
                         op_kind::dnnl_groupnorm)
                 || visited.count(cur_op.get()))
             continue;
+
+        if (impl::utils::one_of(cur_op->get_input_op(0)->get_kind(),
+                    op_kind::dnnl_softmax, op_kind::dnnl_layernorm,
+                    op_kind::dnnl_groupnorm)) {
+            auto out_val = cur_op->get_output_value(0);
+            auto consumers = out_val->get_consumers();
+            if (consumers.size() == 1) {
+                auto &next_op = consumers[0].get_op();
+                if (next_op.get_kind() == op_kind::dnnl_add_zps) continue;
+            }
+        }
 
         // This pass only handle static quantization
         bool dync_quantization = cur_op->has_attr(op_attr::with_runtime_scales)
@@ -1333,7 +1516,6 @@ status_t fuse_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
                 "zp_op should have only one output value, but got %zu",
                 zp_op->num_outputs());
         auto out_val = zp_op->get_output_values()[0];
-        auto consumers = out_val->get_consumers();
 
         auto in_val = zp_op->get_input_values()[0];
         if (!in_val->has_producer()) continue;
@@ -2312,147 +2494,6 @@ status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         cur_op->set_attr<bool>(op_attr::canonicalized, true);
     }
 
-    rewriter.run();
-    return infer_shape(sg);
-}
-
-status_t decompose_select_to_binary_ops(std::shared_ptr<subgraph_t> &sg) {
-    subgraph_rewriter_t rewriter(sg);
-    for (auto &op : sg->get_ops()) {
-        if (op->get_kind() != op_kind::dnnl_binary) continue;
-        const algorithm algo = static_cast<dnnl::algorithm>(
-                op->get_attr<int64_t>(op_attr::alg_kind));
-
-        if (algo != algorithm::binary_select) continue;
-
-        // For the binary select primitive, broadcast semantics are not
-        // supported for the third conditional input tensor. For this case, the
-        // shape of the conditional input tensor must match that of the source 0
-        // tensor.
-        // The binary select primitive is unsupported on GPU.
-        const bool require_broadcast = need_broadcast_for_inputs(op, 0, 2);
-        if (!require_broadcast && sg->get_engine_kind() != engine_kind::gpu)
-            continue;
-
-        auto in_vals = op->get_input_values();
-        auto out_vals = op->get_output_values();
-
-        auto src0 = in_vals[0];
-        auto src1 = in_vals[1];
-        auto cond = in_vals[2];
-        cond->set_data_type(dnnl::impl::data_type::u8);
-
-        //TODO: This reorder can be removed once eltwise_clip support int8 input
-        op_ptr type_cast = std::make_shared<op_t>(op_kind::dnnl_reorder);
-        type_cast->set_attr<bool>(op_attr::change_layout, false);
-
-        op_ptr clip = std::make_shared<op_t>(op_kind::dnnl_eltwise);
-        clip->set_attr<int64_t>(op_attr::alg_kind,
-                static_cast<int64_t>(dnnl::algorithm::eltwise_clip));
-        clip->set_attr<float>(op_attr::alpha, 0.f);
-        clip->set_attr<float>(op_attr::beta, 1.f);
-
-        // After reorder and clip. The cond value is 0 or 1.
-        // Then output = src0.*cond+src1.*(cond*-1 + 1)
-        op_ptr mul1 = std::make_shared<op_t>(op_kind::dnnl_binary);
-        mul1->merge_attributes(op->get_attributes());
-        mul1->set_attr<int64_t>(op_attr::alg_kind,
-                static_cast<int64_t>(dnnl::algorithm::binary_mul));
-
-        op_ptr mul2 = std::make_shared<op_t>(op_kind::dnnl_binary);
-        mul2->merge_attributes(op->get_attributes());
-        mul2->set_attr<int64_t>(op_attr::alg_kind,
-                static_cast<int64_t>(dnnl::algorithm::binary_mul));
-
-        op_ptr linear = std::make_shared<op_t>(op_kind::dnnl_eltwise);
-        linear->set_attr<int64_t>(op_attr::alg_kind,
-                static_cast<int64_t>(dnnl::algorithm::eltwise_linear));
-        const float alpha_value = -1.0f, beta_value = 1.0f;
-        linear->set_attr<float>(op_attr::alpha, alpha_value);
-        linear->set_attr<float>(op_attr::beta, beta_value);
-
-        op_ptr add = std::make_shared<op_t>(op_kind::dnnl_binary);
-        add->set_attr<int64_t>(op_attr::alg_kind,
-                static_cast<int64_t>(dnnl::algorithm::binary_add));
-
-        // reconnect
-        src0->remove_consumer(*op, 0);
-        src1->remove_consumer(*op, 1);
-        cond->remove_consumer(*op, 2);
-
-        // first reorder and clip
-        cond->add_consumer(*type_cast, 0);
-        type_cast->add_input(cond);
-        logical_tensor_t float_cond = empty_logical_tensor_with_default_id();
-        auto float_cond_val
-                = std::make_shared<value_t>(*type_cast, 0, float_cond, true);
-        float_cond_val->set_data_type(dnnl::impl::data_type::f32);
-        type_cast->add_output(float_cond_val);
-        insert_empty_scratchpad(type_cast);
-
-        float_cond_val->add_consumer(*clip, 0);
-        clip->add_input(float_cond_val);
-        logical_tensor_t clip_cond = empty_logical_tensor_with_default_id();
-        auto clip_cond_val
-                = std::make_shared<value_t>(*clip, 0, clip_cond, true);
-        clip_cond_val->set_data_type(
-                float_cond_val->get_logical_tensor().data_type);
-        clip->add_output(clip_cond_val);
-        insert_empty_scratchpad(clip);
-
-        // first multiply
-        src0->add_consumer(*mul1, 0);
-        clip_cond_val->add_consumer(*mul1, 1);
-        mul1->add_input(src0);
-        mul1->add_input(clip_cond_val);
-
-        logical_tensor_t src0_cond = empty_logical_tensor_with_default_id();
-        auto src0_val = std::make_shared<value_t>(*mul1, 0, src0_cond, true);
-        src0_val->set_data_type(src0->get_logical_tensor().data_type);
-        mul1->add_output(src0_val);
-        insert_empty_scratchpad(mul1);
-
-        //cond.*{-1} + 1
-        clip_cond_val->add_consumer(*linear, 0);
-        linear->add_input(clip_cond_val);
-
-        logical_tensor_t cond_inv = empty_logical_tensor_with_default_id();
-        auto cond_inv_val
-                = std::make_shared<value_t>(*linear, 0, cond_inv, true);
-        cond_inv_val->set_data_type(
-                clip_cond_val->get_logical_tensor().data_type);
-        linear->add_output(cond_inv_val);
-        insert_empty_scratchpad(linear);
-
-        //src1.*(cond_inv)
-
-        src1->add_consumer(*mul2, 0);
-        cond_inv_val->add_consumer(*mul2, 1);
-        mul2->add_input(src1);
-        mul2->add_input(cond_inv_val);
-
-        logical_tensor_t src1_cond = empty_logical_tensor_with_default_id();
-        auto src1_val = std::make_shared<value_t>(*mul2, 0, src1_cond, true);
-        src1_val->set_data_type(src1->get_logical_tensor().data_type);
-        mul2->add_output(src1_val);
-        insert_empty_scratchpad(mul2);
-
-        src0_val->add_consumer(*add, 0);
-        src1_val->add_consumer(*add, 1);
-        add->add_input(src0_val);
-        add->add_input(src1_val);
-        add->add_output(out_vals[0]);
-        insert_empty_scratchpad(add);
-
-        // add new ops and delete select op
-        rewriter.to_insert(type_cast);
-        rewriter.to_insert(clip);
-        rewriter.to_insert(mul1);
-        rewriter.to_insert(linear);
-        rewriter.to_insert(mul2);
-        rewriter.to_insert(add);
-        rewriter.to_remove(op);
-    }
     rewriter.run();
     return infer_shape(sg);
 }
@@ -3670,6 +3711,8 @@ impl::status_t lift_up_post_add_for_matmul(std::shared_ptr<subgraph_t> &sg) {
             new_val->set_data_type(add_out_val->get_logical_tensor().data_type);
             post_add.connect_output(0, new_val);
             post_reshape.connect_input(0, new_val);
+
+            add_in_val->remove_consumer(post_add, 0);
             post_op.connect_input(0, add_in_val);
             add_out_val->remove_consumer(post_op, 0);
 
@@ -3796,8 +3839,22 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
             break;
         }
 
-        std::vector<int> axes = dnnl_impl::utils::fmap(order,
-                [](int64_t index) { return static_cast<int32_t>(index); });
+        /// The order in spec op is used as:
+        /// for (i = 0; i < ndims(); i++)
+        ///     new_shape[i] = org_shape[order[i]];
+        ///
+        /// The axes for permute_axes function is used as:
+        /// for (i = 0; i < ndims(); i++)
+        ///     new_shape[axes[i]] = org_shape[i];
+        ///
+        /// So, we need to convert the order to axes
+        std::vector<int> axes(order.size(), -1);
+        for (size_t i = 0; i < order.size(); i++) {
+            size_t new_shape_idx = i;
+            size_t org_shape_idx = order[i];
+            axes[org_shape_idx] = static_cast<int>(new_shape_idx);
+        }
+
         // calculate the expected transposed layout by permuting the md
         auto expected_stride = get_dense_strides(ltw(in_lt).vdims());
         auto &consumer = transpose_op->get_output_value(0)
@@ -3821,13 +3878,16 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
     return impl::status::success;
 }
 
-impl::status_t fuse_dst_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
+impl::status_t fuse_dst_transpose_to_predecessor(
+        std::shared_ptr<subgraph_t> &sg) {
     std::vector<op_ptr> transpose_ops;
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() == op_kind::dnnl_transpose
                 && cur_op->get_input_value(0)->has_producer()
-                && cur_op->get_input_value(0)->get_producer().get_kind()
-                        == op_kind::dnnl_matmul
+                && (cur_op->get_input_value(0)->get_producer().get_kind()
+                                == op_kind::dnnl_matmul
+                        || cur_op->get_input_value(0)->get_producer().get_kind()
+                                == op_kind::dnnl_sdpa)
                 && !cur_op->get_output_value(0)->get_consumers().empty()
                 && (cur_op->get_output_value(0)
                                         ->get_consumers()[0]
@@ -3880,13 +3940,17 @@ impl::status_t fuse_dst_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
         dnnl::memory::desc expected_out_md = out_md.permute_axes(axes);
         // Special check to avoid low matmul performance with adbc layout.
         // TODO: remove this once the performance is improved.
-        if (get_format_tag(expected_out_md) == dnnl::memory::format_tag::adbc) {
+        if (in_val->get_producer().get_kind() == op_kind::dnnl_matmul
+                && get_format_tag(expected_out_md)
+                        == dnnl::memory::format_tag::adbc) {
             break;
         }
         const auto &strides = expected_out_md.get_strides();
         in_val->set_strides(strides);
-        auto &matmul = transpose_op->get_input_value(0)->get_producer();
-        matmul.set_attr(op_attr::keep_dst_layout, true);
+        if (in_val->get_producer().get_kind() == op_kind::dnnl_matmul) {
+            auto &matmul = in_val->get_producer();
+            matmul.set_attr(op_attr::keep_dst_layout, true);
+        }
     }
     rewriter.run();
     return impl::status::success;
@@ -3973,84 +4037,143 @@ impl::status_t swap_relu_mul_scales(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
-    std::vector<std::vector<op_ptr>> op_lists;
+    auto compare_op_kind_and_algorithm
+            = [](const op_t &op, op_kind_t kind, dnnl::algorithm alg) -> bool {
+        if (op.get_kind() != kind) return false;
+        if (!op.has_attr(op_attr::alg_kind)) return false;
+        return static_cast<dnnl::algorithm>(
+                       op.get_attr<int64_t>(op_attr::alg_kind))
+                == alg;
+    };
+    std::vector<op_ptr> op_list;
+    bool matched = false;
     for (auto &cur_op : sg->get_ops()) {
         // check if cur_op is GreaterEqual
-        if (cur_op->get_kind() != op_kind::dnnl_binary) continue;
-        if (static_cast<dnnl::algorithm>(
-                    cur_op->get_attr<int64_t>(op_attr::alg_kind))
-                != dnnl::algorithm::binary_ge)
+        if (!compare_op_kind_and_algorithm(
+                    *cur_op, op_kind::dnnl_binary, dnnl::algorithm::binary_ge))
             continue;
-
-        // check if in_ops are GenIndex
-        auto in_val0 = cur_op->get_input_value(0);
-        if (!in_val0->has_producer()) continue;
-        auto &in_op0 = in_val0->get_producer();
-        if (in_op0.get_kind() != op_kind::dnnl_gen_index) continue;
-        if (in_op0.get_attr<int64_t>(op_attr::axis) != 2) continue;
-
-        auto in_val1 = cur_op->get_input_value(1);
-        if (!in_val1->has_producer()) continue;
-        auto &in_op1 = in_val1->get_producer();
-        if (in_op1.get_kind() != op_kind::dnnl_gen_index) continue;
-        if (in_op1.get_attr<int64_t>(op_attr::axis) != 3) continue;
+        op_list.emplace_back(cur_op);
 
         // check if out_op is Select
         auto out_val = cur_op->get_output_value(0);
         if (out_val->get_consumers().size() != 1) continue;
         auto &out_op = out_val->get_consumers()[0].get_op();
-        if (out_op.get_kind() != op_kind::dnnl_binary) continue;
-        if (static_cast<dnnl::algorithm>(
-                    out_op.get_attr<int64_t>(op_attr::alg_kind))
-                != dnnl::algorithm::binary_select)
+        if (!compare_op_kind_and_algorithm(out_op, op_kind::dnnl_binary,
+                    dnnl::algorithm::binary_select))
             continue;
+        op_list.emplace_back(out_op.shared_from_this());
 
-        // check if GenIndex and Select share the same input
-        if (in_op0.get_input_value(0) != in_op1.get_input_value(0)) continue;
-        if (in_op0.get_input_value(0) != out_op.get_input_value(0)) continue;
+        // check if in_op1 is GenIndex
+        auto in_val1 = cur_op->get_input_value(1);
+        if (!in_val1->has_producer()) continue;
+        auto &in_op1 = in_val1->get_producer();
+        if (in_op1.get_kind() != op_kind::dnnl_gen_index) continue;
+        if (in_op1.get_attr<int64_t>(op_attr::axis) != 3) continue;
+        if (in_op1.get_input_value(0) != out_op.get_input_value(0)) continue;
+        op_list.emplace_back(in_op1.shared_from_this());
 
-        // ops in the list: GenIndex_row, GenIndex_col, GreaterEqual, Select
-        std::vector<op_ptr> list = {in_op0.shared_from_this(),
-                in_op1.shared_from_this(), cur_op, out_op.shared_from_this()};
-        op_lists.emplace_back(list);
-    }
-
-    if (op_lists.empty()) return status::success;
-
-    subgraph_rewriter_t rewriter(sg);
-    for (auto &list : op_lists) {
-        op_ptr mask_op = std::make_shared<op_t>(op_kind::dnnl_mask);
-
-        // connect inputs for mask_op
-        auto in_val0 = list[0]->get_input_value(0);
-        in_val0->remove_consumer(*list[0], 0);
-        in_val0->remove_consumer(*list[1], 0);
-        in_val0->remove_consumer(*list[3], 0);
-        mask_op->connect_input(0, in_val0);
-
-        auto in_val1 = list[3]->get_input_value(1);
-        in_val1->remove_consumer(*list[3], 1);
-        mask_op->connect_input(1, in_val1);
-
-        // connect output for mask op
-        auto out_val = list[3]->get_output_value(0);
-        out_val->set_producer(*mask_op);
-        mask_op->add_output(out_val);
-
-        // set attrs for mask_op
-        const auto axis_row = list[0]->get_attr<int64_t>(op_attr::axis);
-        const auto axis_col = list[1]->get_attr<int64_t>(op_attr::axis);
-        mask_op->set_attr(op_attr::axis_row, axis_row);
-        mask_op->set_attr(op_attr::axis_col, axis_col);
-
-        // remove original ops
-        for (const auto &op : list) {
-            rewriter.to_remove(op);
+        // check if in_op0 is GenIndex (for top-left) or Sub-Add-GenIndex (for bottom-right)
+        auto in_val0 = cur_op->get_input_value(0);
+        if (!in_val0->has_producer()) continue;
+        auto &in_op0 = in_val0->get_producer();
+        if (in_op0.get_kind() == op_kind::dnnl_gen_index) {
+            if (in_op0.get_attr<int64_t>(op_attr::axis) != 2) continue;
+            op_list.emplace_back(in_op0.shared_from_this());
+            matched = true;
+        } else if (compare_op_kind_and_algorithm(in_op0, op_kind::dnnl_binary,
+                           dnnl::algorithm::binary_sub)) {
+            op_list.emplace_back(in_op0.shared_from_this());
+            // traverse the inputs of in_op0 (Sub) to find Add
+            for (const auto &sub_in_val : in_op0.get_input_values()) {
+                if (!sub_in_val->has_producer()) continue;
+                auto &add_op = sub_in_val->get_producer();
+                // check if the Add op exists
+                if (!compare_op_kind_and_algorithm(add_op, op_kind::dnnl_binary,
+                            dnnl::algorithm::binary_add))
+                    continue;
+                op_list.emplace_back(add_op.shared_from_this());
+                // traverse the inputs of Add to find GenIndex
+                for (const auto &add_in_val : add_op.get_input_values()) {
+                    if (!add_in_val->has_producer()) continue;
+                    auto &gen_index_op = add_in_val->get_producer();
+                    // Check if the GenIndex op exists
+                    if (gen_index_op.get_kind() != op_kind::dnnl_gen_index)
+                        continue;
+                    if (gen_index_op.get_attr<int64_t>(op_attr::axis) != 2)
+                        continue;
+                    if (gen_index_op.get_input_value(0)
+                            != out_op.get_input_value(0))
+                        continue;
+                    op_list.emplace_back(gen_index_op.shared_from_this());
+                    matched = true;
+                }
+            }
+        } else {
+            continue;
         }
-
-        // add mask_op to subgraph
-        rewriter.to_insert(mask_op);
     }
+    if (!matched) return status::success;
+
+    // ops in the list: GreaterEqual, Select, GenIndex_col, *[Sub, Add], GenIndex_row
+    subgraph_rewriter_t rewriter(sg);
+    op_ptr mask_op = std::make_shared<op_t>(op_kind::dnnl_mask);
+
+    // connect inputs for mask_op
+    auto in_val0 = op_list[1]->get_input_value(0);
+    in_val0->remove_consumer(*op_list[1], 0);
+    in_val0->remove_consumer(*op_list[2], 0);
+    size_t gen_index_row_idx = op_list.size() - 1;
+    in_val0->remove_consumer(*op_list[gen_index_row_idx], 0);
+    mask_op->connect_input(0, in_val0);
+
+    auto in_val1 = op_list[1]->get_input_value(1);
+    in_val1->remove_consumer(*op_list[1], 1);
+    mask_op->connect_input(1, in_val1);
+
+    if (op_list.size() == 6) {
+        mask_op->set_attr(op_attr::mask_type,
+                static_cast<int64_t>(attn_mask_type::bottom_right));
+        size_t s_kv_idx = 0;
+        auto in_val2 = op_list[4]->get_input_value(s_kv_idx);
+        if (in_val2->has_producer()) {
+            s_kv_idx = 1;
+            in_val2 = op_list[4]->get_input_value(s_kv_idx);
+        }
+        in_val2->remove_consumer(*op_list[4], s_kv_idx);
+        mask_op->connect_input(2, in_val2);
+
+        size_t s_q_idx = 0;
+        auto in_val3 = op_list[3]->get_input_value(s_q_idx);
+        if (in_val3->has_producer()) {
+            s_q_idx = 1;
+            in_val3 = op_list[3]->get_input_value(s_q_idx);
+        }
+        in_val3->remove_consumer(*op_list[3], s_q_idx);
+        mask_op->connect_input(3, in_val3);
+    } else {
+        mask_op->set_attr(op_attr::mask_type,
+                static_cast<int64_t>(attn_mask_type::top_left));
+    }
+
+    // connect output for mask op
+    auto out_val = op_list[1]->get_output_value(0);
+    out_val->set_producer(*mask_op);
+    mask_op->add_output(out_val);
+
+    // set attrs for mask_op
+    const auto axis_row
+            = op_list[gen_index_row_idx]->get_attr<int64_t>(op_attr::axis);
+    const auto axis_col = op_list[2]->get_attr<int64_t>(op_attr::axis);
+    mask_op->set_attr(op_attr::axis_row, axis_row);
+    mask_op->set_attr(op_attr::axis_col, axis_col);
+
+    // remove original ops
+    for (const auto &op : op_list) {
+        rewriter.to_remove(op);
+    }
+
+    // add mask_op to subgraph
+    rewriter.to_insert(mask_op);
 
     rewriter.run();
     return status::success;
@@ -4127,31 +4250,134 @@ impl::status_t fold_post_mul_scale_into_bn(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
-impl::status_t replace_select_values(std::shared_ptr<subgraph_t> &sg) {
-    std::unordered_set<op_kind_t> select_kind
-            = {op_kind::dnnl_eltwise, op_kind::dnnl_binary};
-    std::vector<op_ptr> out_ops;
-    for (const auto &cur_op : sg->get_ops()) {
-        if (select_kind.count(cur_op->get_kind())) {
-            auto out_val = cur_op->get_output_value(0);
-            if (out_val->get_consumers().size() == 1) {
-                auto consumer = out_val->get_consumers()[0].get_op();
-                if (consumer.get_kind() == op_kind::dnnl_matmul) {
-                    out_ops.emplace_back(cur_op);
+status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
+    std::vector<op_ptr> candidates;
+    for (auto &cur_op : sg->get_ops()) {
+        std::vector<op_ptr> pattern_ops;
+        if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
+        op_ptr walker = cur_op;
+        bool valid_pattern = true;
+        bool has_scale = false, has_mask = false, has_softmax = false;
+        bool finished = false;
+        while (walker && !finished) {
+            pattern_ops.push_back(walker);
+            switch (walker->get_kind()) {
+                case op_kind::dnnl_matmul: {
+                    if (pattern_ops.size() == 1) {
+                    }
+                    // Finish pattern match process after second matmul
+                    else {
+                        valid_pattern = (pattern_ops.size() >= 3);
+                        finished = true;
+                    }
+                    break;
                 }
+                case op_kind::dnnl_binary: {
+                    auto alg = static_cast<dnnl::algorithm>(
+                            walker->get_attr<int64_t>(op_attr::alg_kind));
+                    if (alg == dnnl::algorithm::binary_mul
+                            || alg == dnnl::algorithm::binary_div) {
+                        if (has_scale) valid_pattern = false;
+                        has_scale = true;
+                    } else if (alg == dnnl::algorithm::binary_add) {
+                        if (has_mask) valid_pattern = false;
+                        has_mask = true;
+                    }
+                    break;
+                }
+                case op_kind::dnnl_mask: {
+                    if (has_mask) valid_pattern = false;
+                    has_mask = true;
+                    break;
+                }
+                case op_kind::dnnl_softmax: {
+                    if (has_softmax) valid_pattern = false;
+                    has_softmax = true;
+                    break;
+                }
+                default: valid_pattern = false;
             }
+
+            if (!valid_pattern) break;
+
+            auto out_val = walker->get_output_value(0);
+            if (out_val->get_consumers().size() != 1) break;
+            walker = out_val->get_consumers()[0].get_op().shared_from_this();
+        }
+
+        if (valid_pattern && finished) {
+            candidates = pattern_ops;
+            break;
         }
     }
-    int index = 1;
-    for (const auto &cur_op : out_ops) {
-        auto out_val = cur_op->get_output_value(0);
-        logical_tensor_t new_lt(out_val->get_logical_tensor());
-        new_lt.id -= index;
-        index++;
-        auto new_val = std::make_shared<value_t>(*cur_op, 0, new_lt);
-        cur_op->connect_output(0, new_val);
+
+    if (candidates.empty()) return status::success;
+
+    subgraph_rewriter_t rewriter(sg);
+    op_ptr sdpa_op = std::make_shared<op_t>(op_kind::dnnl_sdpa);
+    sdpa_op->set_attr<bool>(op_attr::with_scale, false);
+    sdpa_op->set_attr<int64_t>(
+            op_attr::mask_type, static_cast<int64_t>(attn_mask_type::undef));
+
+    auto query_val = candidates[0]->get_input_value(0);
+    query_val->remove_consumer(*candidates[0], 0);
+    sdpa_op->connect_input(0, query_val);
+
+    auto key_val = candidates[0]->get_input_value(1);
+    key_val->remove_consumer(*candidates[0], 1);
+    sdpa_op->connect_input(1, key_val);
+
+    auto value_val = candidates.back()->get_input_value(1);
+    value_val->remove_consumer(*candidates.back(), 1);
+    sdpa_op->connect_input(2, value_val);
+
+    size_t input_idx = 3;
+    for (size_t i = 1; i < candidates.size(); ++i) {
+        const auto &op = candidates[i];
+        if (op->get_kind() == op_kind::dnnl_binary) {
+            auto alg = static_cast<dnnl::algorithm>(
+                    op->get_attr<int64_t>(op_attr::alg_kind));
+            // handle scale
+            if (alg == dnnl::algorithm::binary_mul
+                    || alg == dnnl::algorithm::binary_div) {
+                auto scale_val = op->get_input_value(1);
+                scale_val->remove_consumer(*op, 1);
+                sdpa_op->connect_input(input_idx++, scale_val);
+                sdpa_op->set_attr<bool>(op_attr::with_scale, true);
+                sdpa_op->set_attr<bool>(op_attr::is_invert_scale,
+                        (alg == dnnl::algorithm::binary_div));
+            }
+            // handle explicit mask
+            else if (alg == dnnl::algorithm::binary_add) {
+                auto mask_val = op->get_input_value(1);
+                mask_val->remove_consumer(*op, 1);
+                sdpa_op->connect_input(input_idx++, mask_val);
+                sdpa_op->set_attr(op_attr::mask_type,
+                        static_cast<int64_t>(attn_mask_type::buffer));
+            }
+        }
+        // handle implicit dnnl_mask
+        else if (op->get_kind() == op_kind::dnnl_mask) {
+            sdpa_op->set_attr(op_attr::mask_type,
+                    op->get_attr<int64_t>(op_attr::mask_type));
+        } else if (op->get_kind() == op_kind::dnnl_softmax) {
+            sdpa_op->set_attr(
+                    op_attr::mode, op->get_attr<std::string>(op_attr::mode));
+        }
     }
-    return infer_shape(sg);
+
+    auto final_output = candidates.back()->get_output_value(0);
+    final_output->set_producer(*sdpa_op);
+    sdpa_op->add_output(final_output);
+
+    insert_empty_scratchpad(sdpa_op);
+
+    for (auto &op : candidates) {
+        rewriter.to_remove(op);
+    }
+    rewriter.to_insert(sdpa_op);
+    rewriter.run();
+    return status::success;
 }
 
 } // namespace dnnl_impl

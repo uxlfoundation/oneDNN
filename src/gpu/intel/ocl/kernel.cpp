@@ -51,18 +51,6 @@ public:
         return xpu::ocl::convert_to_dnnl(err);
     }
 
-    status_t set_svm_arg(int arg_index, const void *arg_value) {
-#ifdef CL_VERSION_2_0
-        cl_int err = clSetKernelArgSVMPointer(kernel_, arg_index, arg_value);
-        return xpu::ocl::convert_to_dnnl(err);
-#else
-        // SVM is not supported.
-        UNUSED(arg_index);
-        UNUSED(arg_value);
-        return status::runtime_error;
-#endif
-    }
-
     status_t set_usm_arg(
             impl::engine_t *engine, int arg_index, const void *arg_value) {
         return xpu::ocl::usm::set_kernel_arg(
@@ -111,16 +99,6 @@ private:
     utils::rw_mutex_t mutex_;
 };
 
-kernel_t::kernel_t(xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
-        const std::vector<gpu::intel::compute::scalar_type_t> &arg_types,
-        compute::program_src_t src)
-    : ocl_kernel_(std::move(ocl_kernel))
-    , arg_types_(arg_types)
-    , src_(std::move(src))
-    , save_events_(false) {
-    cache_ = std::make_shared<kernel_cache_t>(ocl_kernel_);
-}
-
 status_t kernel_t::get_binary(
         const impl::engine_t *engine, xpu::binary_t &binary) const {
     auto *ocl_engine = utils::downcast<const engine_t *>(engine);
@@ -145,6 +123,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     kernel_wrapper_t *kernel = nullptr;
     CHECK(cache_->get(&kernel));
     CHECK(check_scalar_arguments(arg_list));
+    CHECK(check_alignment(arg_list));
 
     auto stream_ocl_device_info
             = utils::downcast<engine_t *>(stream.engine())->device_info();
@@ -210,9 +189,6 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             // Assuming local memory arguments contribute to
             // the CL_DEVICE_MAX_PARAMETER_SIZE limit as a pointer type
             param_bytes += pointer_size;
-        } else if (arg.is_svm_pointer()) {
-            CHECK(kernel->set_svm_arg(i, arg.value()));
-            param_bytes += pointer_size;
         } else {
             CHECK(kernel->set_arg(i, arg.size(), arg.value()));
             param_bytes += arg.size();
@@ -268,6 +244,56 @@ status_t kernel_t::dump() const {
 
 std::string kernel_t::name() const {
     return xpu::ocl::get_kernel_name(ocl_kernel());
+}
+
+status_t kernel_t::check_alignment(
+        const compute::kernel_arg_list_t &arg_list) const {
+    for (int i = 0; i < arg_list.nargs(); ++i) {
+        auto &arg = arg_list.get(i);
+        if (!arg.is_global()) continue;
+        auto *mem_storage = static_cast<const memory_storage_t *>(arg.value());
+        if (mem_storage->is_null()) continue;
+        auto *ocl_mem_storage
+                = utils::downcast<const xpu::ocl::memory_storage_base_t *>(
+                        mem_storage);
+        if (ocl_mem_storage->memory_kind() != xpu::ocl::memory_kind::usm)
+            continue;
+        auto *m = utils::downcast<const xpu::ocl::usm_memory_storage_t *>(
+                ocl_mem_storage);
+        auto *usm_ptr = m->usm_ptr();
+        CHECK(compute::kernel_impl_t::check_alignment(usm_ptr));
+    }
+    return status::success;
+}
+
+// This class is to get around std::make_shared requirement to have a public
+// constructor. We keep the original constructor as private but expose it here
+// to use with std::make_shared.
+class kernel_compat_t : public kernel_t {
+public:
+    template <typename... Args>
+    kernel_compat_t(Args &&...args) : kernel_t(std::forward<Args>(args)...) {}
+};
+
+status_t kernel_t::make(compute::kernel_t &compute_kernel,
+        xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
+        const compute::program_src_t &src) {
+    std::vector<gpu::intel::compute::scalar_type_t> arg_types;
+    CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
+    compute_kernel = compute::kernel_t(std::make_shared<kernel_compat_t>(
+            std::forward<xpu::ocl::wrapper_t<cl_kernel>>(ocl_kernel), arg_types,
+            src));
+    return status::success;
+}
+
+kernel_t::kernel_t(xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
+        const std::vector<gpu::intel::compute::scalar_type_t> &arg_types,
+        const compute::program_src_t &src)
+    : ocl_kernel_(std::move(ocl_kernel))
+    , arg_types_(arg_types)
+    , src_(src)
+    , save_events_(false) {
+    cache_ = std::make_shared<kernel_cache_t>(ocl_kernel_);
 }
 
 } // namespace ocl

@@ -32,10 +32,11 @@ struct hw_config_t {
     int regs = 0;
 
     hw_config_t() = default;
-    hw_config_t(const hw_t &hw, fma_kind_t fma) : hw(hw), fma(fma) {
-        regs = (utils::one_of(fma, fma_kind_t::dpas, fma_kind_t::dpasw) ? 256
-                                                                        : 128);
-    }
+    hw_config_t(const hw_t &hw, fma_kind_t fma)
+        : hw(hw)
+        , fma(fma)
+        , regs(utils::one_of(fma, fma_kind_t::dpas, fma_kind_t::dpasw) ? 256
+                                                                       : 128) {}
 
     int max_tgs_per_gpu(dim_t tg_size) const {
         int tgs_per_ss
@@ -108,10 +109,11 @@ struct bmnk_helper_t {
         to_bmnk(prb.prop(), desc.iter_tile, bi, mi, ni, ki);
         bl = ml = nl = 1;
         kl = ir_utils::safe_div(k, kt * ki);
-        tiles = 1;
+        tiles = 1; // NOLINT(cppcoreguidelines-prefer-member-initializer)
         tiles *= ir_utils::safe_div(b, bl * bt * bi);
         tiles *= ir_utils::safe_div(m, ml * mt * mi);
         tiles *= ir_utils::safe_div(n, nl * nt * ni);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         iters = tiles * kl;
         gpu_assert(tmp_iters == iters);
     }
@@ -423,7 +425,7 @@ float model_set_t::time(model_kind_t kind, const problem_t &prb,
 }
 
 void model_set_t::stringify(std::ostream &out) const {
-    serialized_data_t s;
+    serialization_stream_t s;
     for (auto &m : models_) {
         s.append(m.kind());
         for (auto &c : m.coef()) {
@@ -435,7 +437,7 @@ void model_set_t::stringify(std::ostream &out) const {
 
 void model_set_t::parse(std::istream &in) {
     auto s_data = stream_parse<std::string>(in);
-    auto s = serialized_t::from_data(hex_to_data(s_data));
+    auto s = serialization_stream_t::from_data(hex_to_data(s_data));
     deserializer_t d(s);
     while (!d.empty()) {
         auto kind = d.pop<model_kind_t>();

@@ -154,7 +154,8 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         const int exec_arg = entry.first;
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
-        dnn_mem_t ref_mem(mem.md_, dnnl_f32, tag::abx, ref_engine);
+        dnn_mem_t ref_mem(
+                mem.md_, dnnl_f32, tag::abx, ref_engine, /* prefill = */ false);
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
@@ -254,7 +255,8 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         int wei_scale_arg = DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS;
         int dw_wei_scale_arg = DNNL_ARG_ATTR_POST_OP_DW | wei_scale_arg;
         const auto &wei_scale_md = mem_map1.at(wei_scale_arg).md_;
-        mem_map[dw_wei_scale_arg] = dnn_mem_t(wei_scale_md, get_test_engine());
+        mem_map[dw_wei_scale_arg] = dnn_mem_t(
+                wei_scale_md, get_test_engine(), /* prefill = */ true);
         SAFE(fill_scales(prb1->attr, DNNL_ARG_WEIGHTS,
                      mem_map.at(dw_wei_scale_arg), mem_map1.at(wei_scale_arg)),
                 WARN);
@@ -264,7 +266,8 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         int dst_scale_arg = DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST;
         int dw_dst_scale_arg = DNNL_ARG_ATTR_POST_OP_DW | dst_scale_arg;
         const auto &dst_scale_md = mem_map1.at(dst_scale_arg).md_;
-        mem_map[dw_dst_scale_arg] = dnn_mem_t(dst_scale_md, get_test_engine());
+        mem_map[dw_dst_scale_arg] = dnn_mem_t(
+                dst_scale_md, get_test_engine(), /* prefill = */ true);
         SAFE(fill_scales(prb1->attr, DNNL_ARG_DST, mem_map.at(dw_dst_scale_arg),
                      mem_map1.at(dst_scale_arg)),
                 WARN);

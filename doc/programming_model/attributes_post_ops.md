@@ -281,6 +281,29 @@ Currently the following scenarios are optimized:
   post-operation which format may be queried from attributes using
   `dnnl::post_ops::get_params_binary(...)` function call.
 
+For the binary select operation, an additional conditional tensor is required 
+to execute the operation which is implemented using:
+
+~~~cpp
+void dnnl::post_ops::append_binary(
+        algorithm alg, // binary algorithm to apply
+        const memory::desc &src1 // memory descriptor for a second memory operand
+        const memory::desc &src2 // memory descriptor for a third memory operand
+        );
+~~~
+
+The `alg`, `src1`, and `src2` parameters are the same as in 
+@ref dev_guide_binary for the select operation.
+
+The binary post-op thus becomes:
+
+\f[
+    \dst[:] = \operatorname{binary}(\operatorname{Op}(...), Source\_1[:], Source\_2[:])
+\f]
+
+There is no broadcasting support for the conditional tensor. The select op is only 
+supported for CPU implementations.
+
 @anchor dev_guide_attributes_post_ops_prelu
 ### Prelu Post-op
 

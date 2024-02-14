@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -104,7 +104,7 @@ private:
         return memory::desc();
     }
 
-    void testExecArgQueries(typename T::primitive_desc pd) {
+    void testExecArgQueries(const typename T::primitive_desc &pd) {
         ASSERT_TRUE(pd.query_md(query::exec_arg_md, DNNL_ARG_WEIGHTS_LAYER)
                 == pd.weights_layer_desc());
         ASSERT_TRUE(pd.query_md(query::exec_arg_md, DNNL_ARG_WEIGHTS_ITER)
@@ -131,7 +131,7 @@ private:
                 == queryDstIterC(pd));
     };
 
-    void test_primitive_param_queries(typename T::primitive_desc pd) {
+    void test_primitive_param_queries(const typename T::primitive_desc &pd) {
         auto p = ::testing::TestWithParam<test_rnn_params_t>::GetParam();
 
         dnnl::algorithm expected_cell_kind = algorithm::undef;
@@ -198,7 +198,7 @@ protected:
         //ASSERT_EQ(p.aalgorithm, algorithm::vanilla_lstm);
 
         // Initialize the data
-        memory::data_type prec = data_traits<data_t>::data_type;
+        memory::data_type prec = data_traits_t<data_t>::data_type;
         auto dims = p.sizes;
         auto t = dims.t, mb = dims.mb, l = dims.l, d = dims.d;
         auto slc = dims.slc, sic = dims.sic, dhc = dims.dhc, dic = dims.dic;

@@ -52,9 +52,6 @@ public:
         , size_(size)
         , eng_(&eng)
         , alloc_(&alloc)
-#ifdef DNNL_WITH_SYCL
-        , e_(::sycl::event())
-#endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         , ocl_e_(nullptr)
 #endif
@@ -94,7 +91,7 @@ public:
     size_t size() const override { return size_; }
 
 #ifdef DNNL_WITH_SYCL
-    void set_deps(::sycl::event event) { e_ = event; }
+    void set_deps(::sycl::event event) { e_ = std::move(event); }
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL

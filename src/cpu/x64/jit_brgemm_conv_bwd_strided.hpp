@@ -60,7 +60,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
 
         // need custom hasher to use array as key in unordered_map
         template <int asize>
-        struct ahasher {
+        struct hasher_t {
             size_t operator()(const std::array<int, asize> &a) const {
                 size_t seed = 0;
                 for (auto e : a)
@@ -70,7 +70,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
         };
         template <int asize>
         using Arrmap = std::unordered_map<std::array<int, asize>, int,
-                ahasher<asize>>;
+                hasher_t<asize>>;
 
         int brg_indices_c {0};
         Arrmap<4> brg_indices;
@@ -106,7 +106,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
     brgemm_convolution_bwd_strided_t(const pd_t *apd)
         : primitive_t(apd), bias_d(pd()->weights_md(1)) {}
 
-    ~brgemm_convolution_bwd_strided_t() = default;
+    ~brgemm_convolution_bwd_strided_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
@@ -233,7 +233,7 @@ private:
 
     std::vector<std::unique_ptr<jit_brgemm_kernel_post_ops_base_t>> kernels_po_;
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     std::unique_ptr<jit_avx512_core_brgemm_conv_bwd_trans_kernel::
                     jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>>
@@ -242,7 +242,7 @@ private:
     std::unique_ptr<jit_avx512_core_brgemm_conv_bwd_copy_kernel::
                     jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>>
             copy_to_output_buffer_;
-    std::unique_ptr<jit_generator> comp_vpad_pbuffer_;
+    std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
     std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 
     size_t acc_dsz, bia_dsz, src_dsz, wei_dsz, dst_dsz;

@@ -82,8 +82,16 @@ static bool parse_vector_str(T &vec, const T &def, F process_func,
                     "is not expected to be empty. Given input:", str.c_str());
             SAFE_V(FAIL);
         }
+        //NOLINTBEGIN(readability-redundant-string-cstr)
+        // parser.hpp: error: no viable conversion from 'string' to 'const char *'
+        // note: in instantiation of function template specialization
+        // 'parser::parse_vector_option<std::vector<unsigned int>, unsigned int (*)(const char *)>'
+        // parse_vector_option(s.flags, def.flags, str2flags, argv[0],
+        // ^
+        // TODO: move all functions to std::string input type.
         vec.push_back(
                 process_func(str.substr(pos_st, pos_en - pos_st).c_str()));
+        //NOLINTEND(readability-redundant-string-cstr)
         if (pos_en == eol) break;
         idx++;
     }
@@ -210,11 +218,8 @@ bool parse_tag(std::vector<std::string> &tag,
         const std::vector<std::string> &def_tag, const char *str,
         const std::string &option_name = "tag");
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
         const char *str, const std::string &option_name = "encoding");
-
-#endif
 
 bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
         const std::vector<std::vector<std::string>> &def_tag, const char *str,
@@ -297,8 +302,9 @@ bool parse_driver_shared_settings(S &s, const S &def, const char *str) {
             || parse_test_pattern_match(s.pattern, str)
             || parse_impl(s.impl_filter, def.impl_filter, str)
             || parse_skip_impl(s.impl_filter, def.impl_filter, str)
-            || parse_perf_template(s.perf_template, s.perf_template_def,
-                    s.perf_template_csv(), str)
+            || parse_perf_template(s.perf_template,
+                    base_settings_t::perf_template_def, s.perf_template_csv(),
+                    str)
             || parse_reset(s, str) || parse_help(str);
 }
 
@@ -309,13 +315,16 @@ int parse_last_argument();
 // Function returns a substring of a given string @p `s`, using @p `start_pos`
 // to start a search from this index in string and @p `delim` as a stop symbol
 // and sets a @p `start_pos` to the next symbol after `delim` or to `npos`.
+// `allow_dangling` skips a check for dangling symbol at the end of the string
+// as some inputs ending on a `delim` in rare cases are legit.
 // E.g. 1) s=apple:juice, start_pos=0, delim=':'
 //         get_substr -> apple && start_pos -> 6
 //      2) s=apple:juice, start_pos=6, delim=':'
 //         get_substr -> juice && start_pos -> npos
 //      3) s=apple:juice, start_pos=0, delim=';'
 //         get_substr -> apple:juice && start_pos -> npos
-std::string get_substr(const std::string &s, size_t &start_pos, char delim);
+std::string get_substr(const std::string &s, size_t &start_pos, char delim,
+        bool allow_dangling = false);
 
 } // namespace parser
 

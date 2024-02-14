@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ struct float16_t {
     float16_t &operator=(float f);
 
     operator float() const;
-    float f() { return (float)(*this); }
+    float f() const { return (float)(*this); }
 
     float16_t &operator+=(float16_t a) {
         (*this) = float(f() + a.f());
@@ -135,15 +135,6 @@ void cvt_float16_to_float(float *out, const float16_t *inp, size_t nelems);
 // out[:] = (float16_t)(inp0[:] + inp1[:])
 void add_floats_and_cvt_to_float16(
         float16_t *out, const float *inp0, const float *inp1, size_t nelems);
-
-#if DNNL_X64
-namespace cpu {
-namespace x64 {
-bool DNNL_API try_cvt_f16_to_f32(float *, const float16_t *);
-bool DNNL_API try_cvt_f32_to_f16(float16_t *, const float *);
-} // namespace x64
-} // namespace cpu
-#endif
 
 } // namespace impl
 } // namespace dnnl

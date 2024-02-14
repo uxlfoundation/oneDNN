@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -67,6 +67,12 @@ struct simple_resampling_fwd_t : public primitive_t {
             VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_RESAMPLING(utils::one_of(src_md()->data_type, f32, s32,
+                                         bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_RESAMPLING(utils::one_of(dst_md()->data_type, f32, s32,
+                                         bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -103,7 +109,8 @@ struct simple_resampling_fwd_t : public primitive_t {
 
     simple_resampling_fwd_t(const pd_t *apd);
     status_t init(engine_t *engine) override;
-    ~simple_resampling_fwd_t() = default;
+
+    ~simple_resampling_fwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
@@ -125,6 +132,12 @@ struct simple_resampling_bwd_t : public primitive_t {
             VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_RESAMPLING(utils::one_of(diff_dst_md()->data_type, f32,
+                                         s32, bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_RESAMPLING(utils::one_of(diff_src_md()->data_type, f32,
+                                         s32, bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -149,7 +162,8 @@ struct simple_resampling_bwd_t : public primitive_t {
 
     simple_resampling_bwd_t(const pd_t *apd);
     status_t init(engine_t *engine) override;
-    ~simple_resampling_bwd_t() = default;
+
+    ~simple_resampling_bwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

@@ -88,12 +88,6 @@ status_t dropout_t::set_default_formats(const memory_desc_t *dst_md) {
 bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
         dnnl::impl::data_type_t dst_dt) const {
     using smask_t = skip_mask_t;
-    // prepare mask for runtime-parameters check
-    smask_t defined_mask = smask_t::none;
-    if ((mask & smask_t::scales_runtime) == smask_t::scales_runtime)
-        defined_mask |= smask_t::scales;
-    if ((mask & smask_t::zero_points_runtime) == smask_t::zero_points_runtime)
-        defined_mask |= smask_t::zero_points;
     bool ok = true;
 
 #define CHECK_ARG(x) ok = ok && (x)
@@ -101,16 +95,15 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
     CHECK_ARG(IMPLICATION( \
             (bool)(~mask & (mask_name)), (mask_field).has_default_values()))
     CHECK_MASK(smask_t::scales, scales_);
-    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::scales_runtime_groups),
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::scales_groups),
             scales_.has_default_groups()));
-    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::scales_runtime_data_type),
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::scales_data_type),
             scales_.has_default_data_type()));
     CHECK_MASK(smask_t::zero_points, zero_points_);
-    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::zero_points_runtime_groups),
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::zero_points_groups),
             zero_points_.has_default_groups()));
-    CHECK_ARG(
-            IMPLICATION((bool)(~mask & smask_t::zero_points_runtime_data_type),
-                    zero_points_.has_default_data_type()));
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::zero_points_data_type),
+            zero_points_.has_default_data_type()));
     CHECK_MASK(smask_t::post_ops, post_ops_);
     CHECK_MASK(smask_t::rnn_data_qparams, rnn_data_qparams_);
     CHECK_MASK(smask_t::rnn_weights_qparams, rnn_weights_qparams_);
@@ -129,7 +122,7 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
             (bool)(~mask & smask_t::dropout), dropout_.has_default_values()));
     CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::rounding_mode),
             rounding_mode_.has_default_values()));
-    CHECK_ARG(this->defined(defined_mask));
+    CHECK_ARG(this->defined(smask_t::none));
     bool fpmath_mode_ok = IMPLICATION(
             (bool)(~mask & smask_t::fpmath_mode) && fpmath_.apply_to_int_,
             fpmath_.mode_ == fpmath_mode::strict);
@@ -213,51 +206,77 @@ status_t post_ops_t::append_dw(data_type_t wei_dt, data_type_t bias_dt,
     return success;
 }
 
-status_t post_ops_t::validate_binary(
-        alg_kind_t alg, const memory_desc_t *user_src1_desc) const {
+status_t post_ops_t::validate_binary(alg_kind_t alg,
+        const memory_desc_t *user_src1_desc,
+        const memory_desc_t *user_src2_desc) const {
 
     if (len() == post_ops_limit) return out_of_memory;
     using namespace alg_kind;
     bool alg_ok = one_of(alg, binary_add, binary_mul, binary_max, binary_min,
             binary_div, binary_sub, binary_ge, binary_gt, binary_le, binary_lt,
-            binary_eq, binary_ne);
-    if (!alg_ok) return invalid_arguments;
-    if (!memory_desc_sanity_check(*user_src1_desc)) return invalid_arguments;
+            binary_eq, binary_ne, binary_select);
+    bool is_ternary_op = (alg == binary_select);
+
+    VCHECK_ATTR(alg_ok, VERBOSE_BAD_ALGORITHM);
+    VCHECK_ATTR(memory_desc_sanity_check(*user_src1_desc),
+            VERBOSE_MEM_DESC_CHECK_FAIL);
 
     // Additional check to restrict run-time dimension usage until supported.
     for (int d = 0; d < user_src1_desc->ndims; ++d) {
-        if (user_src1_desc->dims[d] == DNNL_RUNTIME_DIM_VAL)
-            return invalid_arguments;
+        VCHECK_ATTR(user_src1_desc->dims[d] != DNNL_RUNTIME_DIM_VAL,
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    }
+
+    // Additional checks if the algorithm involves ternary inputs
+    if (is_ternary_op) {
+        VCHECK_ATTR(memory_desc_sanity_check(*user_src2_desc),
+                VERBOSE_MEM_DESC_CHECK_FAIL);
+        for (int d = 0; d < user_src2_desc->ndims; ++d) {
+            VCHECK_ATTR(user_src2_desc->dims[d] != DNNL_RUNTIME_DIM_VAL,
+                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        }
     }
 
     return success;
 }
 
-status_t post_ops_t::append_binary(
-        alg_kind_t alg, const memory_desc_t *user_src1_desc) {
-    auto status = validate_binary(alg, user_src1_desc);
-    if (status != success) return status;
+status_t post_ops_t::append_binary(alg_kind_t alg,
+        const memory_desc_t *user_src1_desc,
+        const memory_desc_t *user_src2_desc) {
+    CHECK(validate_binary(alg, user_src1_desc, user_src2_desc));
 
     entry_.emplace_back();
     auto &e = entry_.back();
     e.kind = primitive_kind::binary;
     e.binary.alg = alg;
+
     e.binary.user_src1_desc = *user_src1_desc;
     e.binary.src1_desc = *user_src1_desc;
+
+    if (alg == alg_kind::binary_select) {
+        e.binary.user_src2_desc = *user_src2_desc;
+        e.binary.src2_desc = *user_src2_desc;
+    }
     return success;
 }
 
-status_t post_ops_t::prepend_binary(
-        alg_kind_t alg, const memory_desc_t *user_src1_desc) {
-    auto status = validate_binary(alg, user_src1_desc);
-    if (status != success) return status;
+status_t post_ops_t::prepend_binary(alg_kind_t alg,
+        const memory_desc_t *user_src1_desc,
+        const memory_desc_t *user_src2_desc) {
+    CHECK(validate_binary(alg, user_src1_desc, user_src2_desc));
 
     entry_.emplace(entry_.begin());
     auto &e = entry_[0];
     e.kind = primitive_kind::binary;
     e.binary.alg = alg;
+
     e.binary.user_src1_desc = *user_src1_desc;
     e.binary.src1_desc = *user_src1_desc;
+
+    if (alg == alg_kind::binary_select) {
+        e.binary.user_src2_desc = *user_src2_desc;
+        e.binary.src2_desc = *user_src2_desc;
+    }
     return success;
 }
 
@@ -277,17 +296,32 @@ status_t post_ops_t::set_default_formats(const memory_desc_t *dst_md) {
 
         auto &src1_md = entry_[idx].binary.src1_desc;
         const memory_desc_wrapper src1_mdw(src1_md);
-        if (!src1_mdw.format_any()) continue;
 
         const memory_desc_wrapper dst_mdw(dst_md);
-        assert(!dst_mdw.format_any());
 
         // 1D tensors should be plain abx.
-        if (src1_mdw.count_non_unit_dims(1))
-            CHECK(memory_desc_init_by_strides(src1_md, nullptr));
-        else
-            CHECK(memory_desc_init_by_blocking_desc(
-                    src1_md, dst_mdw.blocking_desc()));
+        if (src1_mdw.format_any()) {
+            assert(!dst_mdw.format_any());
+
+            if (src1_mdw.count_non_unit_dims(1))
+                CHECK(memory_desc_init_by_strides(src1_md, nullptr));
+            else
+                CHECK(memory_desc_init_by_blocking_desc(
+                        src1_md, dst_mdw.blocking_desc()));
+        }
+
+        auto &src2_md = entry_[idx].binary.src2_desc;
+        const memory_desc_wrapper src2_mdw(src2_md);
+
+        if (entry_[idx].is_binary_with_ternary_op() && src2_mdw.format_any()) {
+            assert(!dst_mdw.format_any());
+
+            if (src1_mdw.count_non_unit_dims(1))
+                CHECK(memory_desc_init_by_strides(src2_md, nullptr));
+            else
+                CHECK(memory_desc_init_by_blocking_desc(
+                        src2_md, dst_mdw.blocking_desc()));
+        }
     }
 
     return status::success;
@@ -335,21 +369,35 @@ bool post_ops_t::check_sum_consistency(const data_type_t dst_dt,
             && check_sum_consistent_quantization(dst_dt, is_int8);
 }
 
-status_t post_ops_t::entry_t::validate_binary_with_dst_consistency(
-        const memory_desc_t *dst_md) const {
+status_t post_ops_t::entry_t::validate_binary(
+        engine_kind_t engine_kind, const memory_desc_t *dst_md) const {
     if (!is_binary()) return status::success;
 
     VCHECK_ATTR(dst_md->ndims == binary.user_src1_desc.ndims,
-            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst", "bin_po",
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst", "bin_po src1",
             dst_md->ndims, binary.user_src1_desc.ndims);
+
+    VCHECK_ATTR(IMPLICATION(engine_kind == dnnl_cpu,
+                        binary.user_src1_desc.data_type != data_type::f64),
+            VERBOSE_INVALID_DATATYPE, "bin_po src1");
+
+    if (is_binary_with_ternary_op()) {
+        VCHECK_ATTR(dst_md->ndims == binary.user_src2_desc.ndims,
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst", "bin_po src2",
+                dst_md->ndims, binary.user_src2_desc.ndims);
+
+        VCHECK_ATTR(IMPLICATION(engine_kind == dnnl_cpu,
+                            binary.user_src2_desc.data_type != data_type::f64),
+                VERBOSE_INVALID_DATATYPE, "bin_po src2");
+    }
 
     return status::success;
 }
 
-status_t post_ops_t::validate_binary_with_dst_consistency(
-        const memory_desc_t *dst_md) const {
+status_t post_ops_t::validate_binary(
+        engine_kind_t engine_kind, const memory_desc_t *dst_md) const {
     for (const auto &e : entry_) {
-        CHECK(e.validate_binary_with_dst_consistency(dst_md));
+        CHECK(e.validate_binary(engine_kind, dst_md));
     }
 
     return status::success;
@@ -714,6 +762,14 @@ status_t dnnl_post_ops_append_binary(post_ops_t *post_ops, alg_kind_t alg_kind,
     return post_ops->append_binary(alg_kind, user_src1_desc);
 }
 
+status_t dnnl_post_ops_append_binary_v2(post_ops_t *post_ops,
+        alg_kind_t alg_kind, const memory_desc_t *user_src1_desc,
+        const memory_desc_t *user_src2_desc) {
+    if (post_ops == nullptr) return invalid_arguments;
+
+    return post_ops->append_binary(alg_kind, user_src1_desc, user_src2_desc);
+}
+
 status_t dnnl_post_ops_get_params_binary(const post_ops_t *post_ops, int index,
         alg_kind_t *alg_kind, const memory_desc_t **user_src1_desc) {
     CHECK(simple_get_params_check(post_ops, index, primitive_kind::binary));
@@ -721,6 +777,19 @@ status_t dnnl_post_ops_get_params_binary(const post_ops_t *post_ops, int index,
     const auto &b = post_ops->entry_[index].binary;
     if (alg_kind) *alg_kind = b.alg;
     if (user_src1_desc) *user_src1_desc = &b.user_src1_desc;
+
+    return success;
+}
+
+status_t dnnl_post_ops_get_params_binary_v2(const post_ops_t *post_ops,
+        int index, alg_kind_t *alg_kind, const memory_desc_t **user_src1_desc,
+        const memory_desc_t **user_src2_desc) {
+    CHECK(simple_get_params_check(post_ops, index, primitive_kind::binary));
+
+    const auto &b = post_ops->entry_[index].binary;
+    if (alg_kind) *alg_kind = b.alg;
+    if (user_src1_desc) *user_src1_desc = &b.user_src1_desc;
+    if (user_src2_desc) *user_src2_desc = &b.user_src2_desc;
 
     return success;
 }

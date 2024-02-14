@@ -45,14 +45,14 @@ inline bool post_op_injector_is_supported(
     return is_supported;
 }
 
-template <gpu_gen_t hw>
+template <typename ngen_generator_t>
 struct post_op_injector_t {
-    post_op_injector_t(generator_t<hw> *host, data_type_t accumulator_type,
+    post_op_injector_t(ngen_generator_t *host, ngen::DataType accumulator_type,
             const post_ops_t &post_ops, int eu_count,
             const ngen::GRFRange &scratch = ngen::GRFRange(),
             bool is_fwd = true)
         : is_fwd_(is_fwd), scratch_(scratch) {
-        assert(accumulator_type == data_type_t::dnnl_f32);
+        assert(accumulator_type == ngen::DataType::f);
         workers_.reserve(post_ops.len());
         for (int idx = 0; idx < post_ops.len(); ++idx) {
             const auto &po = post_ops.entry_[idx];
@@ -63,12 +63,12 @@ struct post_op_injector_t {
         }
     }
 
-    post_op_injector_t(generator_t<hw> *host, data_type_t accumulator_type,
+    post_op_injector_t(ngen_generator_t *host, ngen::DataType accumulator_type,
             const gpu_post_ops_t &post_ops, int eu_count,
             const ngen::GRFRange &scratch = ngen::GRFRange(),
             bool is_fwd = true)
         : is_fwd_(is_fwd), scratch_(scratch) {
-        assert(accumulator_type == data_type_t::dnnl_f32);
+        assert(accumulator_type == ngen::DataType::f);
         workers_.reserve(post_ops.len());
         for (auto &po : post_ops) {
             if (po.is_eltwise()) {
@@ -83,11 +83,11 @@ struct post_op_injector_t {
     int preferred_scratch_regs();
     void set_scratch(const ngen::GRFRange &scratch);
 
-    void compute(const ngen::GRF &reg) { compute(reg - reg); }
+    void compute(const ngen::GRF &reg) { compute(ngen::GRFRange(reg, 1)); }
     void compute(const ngen::GRFRange &regs);
 
 private:
-    std::vector<eltwise_injector_f32_t<hw>> workers_;
+    std::vector<eltwise_injector_f32_t<ngen_generator_t>> workers_;
     bool is_fwd_;
     ngen::GRFRange scratch_;
 };

@@ -29,7 +29,7 @@
 #include "cpu/x64/injectors/jit_uni_eltwise_injector.hpp"
 #include "cpu/x64/jit_avx512_core_amx_conv_kernel.hpp"
 
-#define GET_OFF(field) offsetof(jit_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_conv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -84,11 +84,12 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::compute_ker(int ur_w, int pad_l,
 
     const bool ic_tail
             = (jcp.ic_without_padding % (jcp.ic_block / ic_inner_block)) > 0;
-    const bool masked_write = ic_tail && last_ic_block_flag == last_ic_block;
+    const bool masked_write
+            = ic_tail && last_ic_block_flag == ic_block_t::last_ic_block;
 
     /* Skip the last loads of input
             if (ic%16)/ic_sub_step < ic_block/ic_sub_step */
-    const int icb = (last_ic_block_flag == last_ic_block)
+    const int icb = (last_ic_block_flag == ic_block_t::last_ic_block)
             ? div_up(
                     (jcp.ic_without_padding % jcp.ic_block_int), ic_inner_block)
             : ic_block / ic_inner_block;
@@ -120,7 +121,8 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::compute_ker(int ur_w, int pad_l,
         }
     };
 
-    if (jcp.is_relo && last_ic_block_flag == last_ic_block && ic_tail) {
+    if (jcp.is_relo && last_ic_block_flag == ic_block_t::last_ic_block
+            && ic_tail) {
         const Reg64 reg_tmp = reg_scratch;
         mov(reg_tmp, ic_mask_label);
         kmovq(kmask_ic_block, qword[reg_tmp]);
@@ -290,17 +292,18 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::icb_loop(
             cmp(reg_icb, 1); // The last ic block
             jne(common_ker, T_NEAR);
         }
-        kd_loop(ur_w, pad_l, pad_r, last_ic_block, handle_h_pad);
+        kd_loop(ur_w, pad_l, pad_r, ic_block_t::last_ic_block, handle_h_pad);
         if (do_icb_loop) {
             jmp(end_ker, T_NEAR);
 
             L(common_ker);
-            kd_loop(ur_w, pad_l, pad_r, no_last_block, handle_h_pad);
+            kd_loop(ur_w, pad_l, pad_r, ic_block_t::no_last_block,
+                    handle_h_pad);
 
             L(end_ker);
         }
     } else {
-        kd_loop(ur_w, pad_l, pad_r, no_last_block, handle_h_pad);
+        kd_loop(ur_w, pad_l, pad_r, ic_block_t::no_last_block, handle_h_pad);
     }
     // End of IC Loop
     if (do_icb_loop) {
@@ -1063,7 +1066,7 @@ void jit_avx512_core_amx_copy_to_pbuffer_t::generate() {
 jit_avx512_core_amx_fwd_kernel_t::jit_avx512_core_amx_fwd_kernel_t(
         const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
-    : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp), attr_(attr) {
+    : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp), attr_(attr) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
         using namespace binary_injector;
         const auto &rhs_addr_reg = bin_injector_helper_reg_1;
@@ -1103,7 +1106,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::create_kernel() {
             && IMPLICATION(jcp.is_relo, copy_to_wbuffer_);
     if (!allocation_ok) return status::out_of_memory;
 
-    CHECK(jit_generator::create_kernel());
+    CHECK(jit_generator_t::create_kernel());
     CHECK(copy_to_pbuffer_->create_kernel());
     if (jcp.is_relo) CHECK(copy_to_wbuffer_->create_kernel());
     if (jcp.req_zero_point_buffer) {
@@ -2263,6 +2266,11 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     bool is_1d = ndims == 3;
     bool is_3d = ndims == 5;
 
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
+
     const bool is_bf16_convolution
             = everyone_is(true, src_d.data_type() == data_type::bf16,
                     weights_d.data_type() == data_type::bf16,
@@ -2366,6 +2374,12 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                     || !IMPLICATION(jcp.dst_zero_point || jcp.src_zero_point,
                             is_int8_convolution)),
             VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    // Dispatch the shapes to VNNI for better performance
+    const bool req_zp_large_buffer = jcp.src_zero_point
+            && jcp.oc * jcp.ow > 8192 && (jcp.r_pad > 0 || jcp.l_pad > 0);
+    VDISPATCH_CONV_IC(!req_zp_large_buffer, VERBOSE_IMPL_HEURISTIC_FAIL,
+            "no optimization for zero point on AMX");
 
     // Calculate zero-point padding values outside of the main JIT-kernel
     // and store the results in an auxiliary buffer.
@@ -2506,9 +2520,16 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const bool sum_at_pos_0_only = (jcp.src_dt == data_type::bf16);
     const bool sum_requires_scale_one = sum_at_pos_0_only;
     const bool sum_requires_zp_zero = sum_at_pos_0_only;
-    const bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
+    bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
             {eltwise, binary, sum}, jcp.post_ops, &dst_d, sum_at_pos_0_only,
             sum_requires_scale_one, sum_requires_zp_zero));
+    // temporary workaround that skips avx512 implementation for ternary
+    // post-ops with scalar broadcasting to avoid register collisions.
+    post_ops_ok_ = post_ops_ok_
+            && IMPLICATION(jcp.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    p, dst_d));
     VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     auto set_or_check_wei_format = [&]() {
@@ -3718,6 +3739,11 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const memory_desc_wrapper diff_dst_d(&diff_dst_md);
     const memory_desc_wrapper bias_d(bias_md);
 
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, diff_src_d, weights_d, diff_dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
+
     const bool with_groups = weights_d.ndims() == diff_src_d.ndims() + 1;
     int ndims = diff_src_d.ndims();
     bool is_1d = ndims == 3;
@@ -3911,18 +3937,6 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.typesize_bia
             = jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0;
     jcp.typesize_acc = sizeof(int32_t);
-
-    const dim_t src_size = (dim_t)jcp.mb * jcp.id * jcp.ih * jcp.iw
-            * (jcp.is_nspc ? jcp.ic : rnd_up(jcp.ic, jcp.ic_block))
-            * jcp.typesize_in;
-    VDISPATCH_CONV_IC(src_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-            "src size > INT_MAX is not supported");
-
-    const dim_t dst_size = (dim_t)jcp.mb * jcp.od * jcp.oh * jcp.ow
-            * (jcp.is_nspc ? jcp.oc : rnd_up(jcp.oc, jcp.oc_block))
-            * jcp.typesize_out;
-    VDISPATCH_CONV_IC(dst_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-            "dst size > INT_MAX is not supported");
 
     jcp.nb_ic = jcp.ic / jcp.ic_block;
     jcp.nb_oc = jcp.oc / jcp.oc_block;
@@ -5167,6 +5181,10 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
     const bool with_groups = diff_weights_d.ndims() == src_d.ndims() + 1;
     int ndims = src_d.ndims();
 
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, diff_weights_d, diff_dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
     VDISPATCH_CONV_IC(mayiuse(avx512_core_amx), VERBOSE_UNSUPPORTED_ISA);
     jcp.isa = avx512_core_amx;
 
@@ -5410,21 +5428,12 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
         // TODO: Optimize memory allocation when threaded on height and depth
         jcp.tr_src_buf_size = static_cast<size_t>(jcp.tr_iw) * jcp.ic_block
                 * jcp.ih * jcp.id;
-        const auto src_max_size = jcp.tr_src_buf_size * jcp.typesize_in;
-        VDISPATCH_CONV_IC(src_max_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-                "scr size > INT_MAX is not supported");
-
         jcp.tr_src_buf_count = jcp.global_transpose
                 ? jcp.nthr_mb * jcp.nb_ic * jcp.ngroups
                 : jcp.nthr;
 
         jcp.tr_diff_dst_buf_size = static_cast<size_t>(jcp.tr_ow) * jcp.oc_block
                 * jcp.oh * jcp.od;
-        const auto diff_dst_max_size
-                = jcp.tr_diff_dst_buf_size * jcp.typesize_in;
-        VDISPATCH_CONV_IC(diff_dst_max_size <= INT_MAX,
-                VERBOSE_UNSUPPORTED_FEATURE,
-                "diff_dst size > INT_MAX is not supported");
         jcp.tr_diff_dst_buf_count = jcp.global_transpose
                 ? jcp.nthr_mb * jcp.nb_oc * jcp.ngroups
                 : jcp.nthr;
@@ -5634,7 +5643,7 @@ dim_t jit_avx512_core_amx_bwd_bias_kernel_t::get_ddst_offset(
         dim_t w_idx, dim_t hd_idx) const {
     int ow_per_oc = data_type_vnni_granularity(jcp.ddst_dt);
     if (ow_per_oc == 0) {
-        assert("Invalid vnni granularity.");
+        assert(!"Invalid vnni granularity.");
         return 0;
     }
 
@@ -5682,7 +5691,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
 
             // process A,B,C,D,E,F,G,H channels
             // load and process for <A,B,C,D>
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst]);
             // copy upper bytes to second ymm
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
             // each yreg_bias_ddst contains 8 float values in vnni layout for <A, B> and for <C, D> correspondingly
@@ -5691,7 +5700,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
             vhaddps(yreg_bias_ddst00, yreg_bias_ddst0, yreg_bias_ddst1);
 
             // load and process for <E,F,G,H>
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 16]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 16]);
             // copy upper bytes to second ymm
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
             // each yreg_bias_ddst contains 8 float values in vnni layout for <E, F> and for <G, H> correspondingly
@@ -5705,12 +5714,11 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
             vaddps(yreg_bias_acc0, yreg_bias_acc0, yreg_bias_ddst00);
 
             // process I,J,K,L,M,N,O,P channels in same way as A,B,C,D,E,F,G,H
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 32]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 32]);
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
 
             vhaddps(yreg_bias_ddst00, yreg_bias_ddst0, yreg_bias_ddst1);
-
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 48]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 48]);
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
             vhaddps(yreg_bias_ddst01, yreg_bias_ddst0, yreg_bias_ddst1);
 
@@ -5722,7 +5730,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
     Label ow_loop;
     const dim_t sp_substep = data_type_vnni_granularity(jcp.ddst_dt);
     if (sp_substep == 0) {
-        assert("Invalid vnni granularity.");
+        assert(!"Invalid vnni granularity.");
         return;
     }
 
@@ -5771,7 +5779,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             // and [P, O, N, M, L, K, J, I] -> [P, O, L, K, N, M, J, I]
             vpermq(yreg_bias_acc0, ptr[reg_bias + offset], 0xd8);
             vpermq(yreg_bias_acc1,
-                    ptr[reg_bias + offset + vreg_traits<Ymm>::vlen], 0xd8);
+                    ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen], 0xd8);
         } else if (one_of(jcp.ddst_dt, f8_e5m2, f8_e4m3)) {
             // the data is in plain format, transform while loading to
             // pseudo-vnni layout to 2 ymm registers conforming to calculations
@@ -5782,7 +5790,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             vpermd(yreg_bias_acc0, yreg_permute_to_vnni,
                     ptr[reg_bias + offset]);
             vpermd(yreg_bias_acc1, yreg_permute_to_vnni,
-                    ptr[reg_bias + offset + vreg_traits<Ymm>::vlen]);
+                    ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen]);
         } else {
             assert(!"non-supported type");
         }
@@ -5806,7 +5814,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             vpermq(yreg_bias_acc0, yreg_bias_acc0, 0xd8);
             vpermq(yreg_bias_acc1, yreg_bias_acc1, 0xd8);
             vmovups(ptr[reg_bias + offset], yreg_bias_acc0);
-            vmovups(ptr[reg_bias + offset + vreg_traits<Ymm>::vlen],
+            vmovups(ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen],
                     yreg_bias_acc1);
         } else if (one_of(jcp.ddst_dt, f8_e5m2, f8_e4m3)) {
             // transform to plain before storing.
@@ -5815,7 +5823,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             vpermd(yreg_bias_acc0, yreg_permute_to_plain, yreg_bias_acc0);
             vpermd(yreg_bias_acc1, yreg_permute_to_plain, yreg_bias_acc1);
             vmovups(ptr[reg_bias + offset], yreg_bias_acc0);
-            vmovups(ptr[reg_bias + offset + vreg_traits<Ymm>::vlen],
+            vmovups(ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen],
                     yreg_bias_acc1);
         } else {
             assert(!"non-supported type");
@@ -5841,10 +5849,10 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::generate() {
         vpbroadcastw(vreg_bias_unit, reg_unit_val);
     }
     if (jcp.ddst_dt == f8_e5m2)
-        f8_emu = utils::make_unique<fp8_emulation_e5m2_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e5m2_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_mask, emu_scratch);
     else if (jcp.ddst_dt == f8_e4m3)
-        f8_emu = utils::make_unique<fp8_emulation_e4m3_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e4m3_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_reserv_4, emu_reserv_5,
                 emu_scratch);
 
@@ -5876,7 +5884,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::generate() {
 
     postamble();
 
-    if (f8_emu) f8_emu->prepare_table();
+    if (f8_cvt) f8_cvt->prepare_table();
 
     if (one_of(jcp.ddst_dt, f8_e5m2, f8_e4m3)) {
         align(64);

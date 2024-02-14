@@ -56,8 +56,8 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_BINARY(check_formats(src0_d, src1_d, dst_d),
                     VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_BINARY(attr()->has_default_values(
-                                     sm::scales_runtime | sm::post_ops),
+            VDISPATCH_BINARY(
+                    attr()->has_default_values(sm::scales | sm::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_BINARY(!is_ternary_op(), VERBOSE_BAD_ALGORITHM);
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
@@ -87,9 +87,12 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
             const auto &scales = attr()->scales_;
             bool dt_ok = true;
             for (auto arg : supported_args) {
+                if (scales.has_default_values(arg)) continue;
+
                 dt_ok = dt_ok && is_supported_type(scales.get_data_type(arg));
             }
-            return dt_ok && attr_scales_ok(supported_args);
+            return dt_ok && scales.has_default_values(supported_args)
+                    && attr_scales_ok(supported_args);
         }
 
         static bool check_data_types(const memory_desc_wrapper &src0,

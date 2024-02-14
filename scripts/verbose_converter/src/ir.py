@@ -16,7 +16,7 @@
 
 import enum
 import string
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections.abc import MutableMapping
 from dataclasses import MISSING, dataclass, fields
 from typing import Dict, List, Optional, Union
@@ -163,10 +163,9 @@ class Dropout(Mapping):
         return self.tag or ""
 
 
-class FormattedMapping(Mapping):
+class FormattedMapping(Mapping, ABC):
     @abstractmethod
-    def _format(self, _) -> str:
-        raise NotImplementedError
+    def _format(self, _) -> str: ...
 
     def __str__(self):
         return self._format(str)
@@ -175,7 +174,6 @@ class FormattedMapping(Mapping):
         return self._format(hash_str)
 
 
-@dataclass(eq=False)
 class PostOp(FormattedMapping):
     alg: str
 
@@ -197,10 +195,20 @@ class PostOp(FormattedMapping):
         args = [self.alg] + required_args[::-1] + optional_args[::-1]
         return ":".join(map(convert, args))
 
+    def __iter__(self):
+        yield "alg"
+        yield from super().__iter__()
+
+    def __len__(self):
+        return 1 + super().__len__()
+
 
 @dataclass(eq=False)
 class SumPostOp(PostOp):
-    alg: str = "sum"
+    @property
+    def alg(self):
+        return "sum"
+
     scale: float = 1.0
     zp: int = 0
     dt: str = ""
@@ -220,28 +228,23 @@ class DepthwiseScales(Mapping):
 
 
 @dataclass(eq=False)
-class KSPMixin:
+class DepthwisePostOp(PostOp):
+    @property
+    def alg(self):
+        return "dw"
+
     ksp: str
-
-
-@dataclass(eq=False)
-class DepthwisePostOp(PostOp, KSPMixin):
-    alg: str = "dw"
     dst_dt: str = "f32"
     wei_dt: str = "f32"
     scales: DepthwiseScales = DepthwiseScales()
 
-    def __len__(self):
-        return 1 + super().__len__()
-
-    def __iter__(self):
-        yield "alg"
-        yield from super().__iter__()
-
 
 @dataclass(eq=False)
 class PreLUPostOp(PostOp):
-    alg: str = "prelu"
+    @property
+    def alg(self):
+        return "prelu"
+
     mask: int = 0
     has_scaleshift: bool = False
 
@@ -257,17 +260,44 @@ class PreLUPostOp(PostOp):
 
 
 @dataclass(eq=False)
-class EltwisePostOp(PostOp):
+class AlgPostOp(PostOp):
+    alg: str
+
+    def __iter__(self):
+        yield from FormattedMapping.__iter__(self)
+
+    def __len__(self):
+        return FormattedMapping.__len__(self)
+
+
+@dataclass(eq=False)
+class EltwisePostOp(AlgPostOp):
+    alg: str
     alpha: float = 0.0
     beta: float = 0.0
     scale: float = 1.0
 
 
 @dataclass(eq=False)
-class BinaryPostOp(PostOp):
+class BinaryPostOp(AlgPostOp):
+    alg: str
     dt: str
     mask: int = 0
-    tag: str = "abx"
+    tag: str = "any"
+
+
+@dataclass(eq=False)
+class SelectPostOp(PostOp):
+    @property
+    def alg(self):
+        return "binary_select"
+
+    dt: str
+    mask: int = 0
+    tag: str = "any"
+    src2_dt: str = "s8"
+    src2_mask: int = 0
+    src2_tag: str = "any"
 
 
 @dataclass(eq=False)
@@ -278,7 +308,7 @@ class QuantizationParam(Mapping):
     groups: str = ""
 
     def __str__(self):
-        if self.groups is not None:
+        if self.groups:
             return f"{self.mask}:{self.data_type}:{self.groups}"
         return f"{self.mask}:{self.data_type}"
 
@@ -330,69 +360,64 @@ Attribute = Union[
 ]
 
 
-def attribute_accessor(name):
-    name = "attr-" + name
+@dataclass(eq=False)
+class Attributes(FormattedMapping):
+    acc_mode: Optional[str] = None
+    deterministic: Optional[str] = None
+    dropout: Optional[Dropout] = None
+    fpmath: Optional[FPMathMode] = None
+    oscale: Optional[Scale] = None
+    post_ops: Optional[List[PostOp]] = None
+    rounding_mode: Optional[Dict[str, RoundingMode]] = None
+    scales: Optional[Dict[str, Scale]] = None
+    scratchpad: Optional[str] = None
+    zero_points: Optional[Dict[str, ZeroPoint]] = None
 
-    def getter(self) -> Attribute:
-        return self._attributes.get(name)
+    acc = alias("acc_mode")
 
-    def setter(self, value):
-        self._attributes[name] = value
+    @staticmethod
+    def _field_name_to_attr_name(field_name: str):
+        return "attr-" + field_name.replace("_", "-")
 
-    def deleter(self):
-        if name in self._attributes:
-            del self._attributes[name]
-
-    return property(getter, setter, deleter)
-
-
-@dataclass(eq=False, repr=False)
-class Attributes(Mapping):
-    def __init__(self, attributes: Optional[Dict[str, Attribute]] = None):
-        if attributes is None:
-            attributes = {}
-        self._attributes: Dict[str, Attribute] = attributes
+    def _attr_name_to_field_name(self, item: str):
+        original_item = item
+        for field in fields(self):
+            if item == self._field_name_to_attr_name(field.name):
+                return field.name
+        raise KeyError(original_item)
 
     def __getitem__(self, item: str):
-        attribute = self._attributes[item]
-        if isinstance(attribute, CompositeAttribute):
-            return str(attribute)
-        return attribute
+        value = getattr(self, self._attr_name_to_field_name(item))
+        if value is None:
+            raise KeyError(item)
+        return value
 
     def __setitem__(self, item: str, value: Attribute):
-        self._attributes[item] = value
+        return setattr(self, self._attr_name_to_field_name(item), value)
 
     def __delitem__(self, item: str):
-        del self._attributes[item]
+        setattr(self, self._attr_name_to_field_name(item), None)
 
     def __iter__(self):
-        yield from self._attributes
+        for field in fields(self):
+            if getattr(self, field.name) is not None:
+                yield self._field_name_to_attr_name(field.name)
 
     def __len__(self):
-        return len(self._attributes)
+        return len(list(iter(self)))
 
-    acc_mode = attribute_accessor("acc-mode")
-    deterministic = attribute_accessor("deterministic")
-    dropout = attribute_accessor("dropout")
-    fpmath = attribute_accessor("fpmath")
-    oscale = attribute_accessor("oscale")
-    post_ops = attribute_accessor("post-ops")
-    rounding_mode = attribute_accessor("rounding-mode")
-    scales = attribute_accessor("scales")
-    scratchpad = attribute_accessor("scratchpad")
-    zero_points = attribute_accessor("zero-points")
-
-    def __str__(self):
+    def _format(self, convert):
         parts = []
-        for key, attr in self._attributes.items():
+        for key, attr in self.items():
             if isinstance(attr, list):
-                sub_parts = "+".join(map(str, attr))
+                sub_parts = "+".join(map(convert, attr))
                 parts.append(f"{key}:{sub_parts}")
             elif isinstance(attr, dict):
-                sub_parts = "+".join(f"{k}:{v!s}" for k, v in attr.items())
-                parts.append(f"{key}:{sub_parts}")
+                converted = (f"{k}:{convert(v)}" for k, v in attr.items())
+                combined = "+".join(converted)
+                parts.append(f"{key}:{combined}")
             else:
-                parts.append(f"{key}:{attr!s}")
+                parts.append(f"{key}:{convert(attr)}")
         return " ".join(parts)
 
 
@@ -409,19 +434,6 @@ class HashableEntry(FormattedMapping):
     exts: Attributes
 
     def _format(self, convert):
-        def stringify(ext):
-            if isinstance(ext, list):
-                return "+".join(map(convert, ext))
-            if isinstance(ext, dict):
-                return "+".join(kv_format(k, v) for k, v in ext.items())
-            return convert(ext)
-
-        def kv_format(key, value):
-            converted = stringify(value)
-            if not converted:
-                return key
-            return f"{key}:{converted}"
-
         parts = [
             self.operation,
             self.engine,
@@ -429,8 +441,8 @@ class HashableEntry(FormattedMapping):
             self.impl,
             self.prop_kind,
             " ".join(map(convert, self.mds)),
-            " ".join(kv_format(k, v) for k, v in self.exts.items()),
-            " ".join(kv_format(k, v) for k, v in self.aux.items()),
+            convert(self.exts),
+            " ".join(f"{k}:{convert(v)}" for k, v in self.aux.items()),
             self.shapes,
         ]
         return ",".join(parts)

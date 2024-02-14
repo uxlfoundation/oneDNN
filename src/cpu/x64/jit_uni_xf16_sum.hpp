@@ -52,14 +52,14 @@ struct jit_sum_call_t {
 };
 
 template <typename Vmm>
-struct jit_uni_xf16_sum_kernel_t : public jit_generator {
+struct jit_uni_xf16_sum_kernel_t : public jit_generator_t {
     jit_uni_xf16_sum_kernel_t(jit_sum_conf_t ajsp, unsigned int num_acc_iters)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , jsp(ajsp)
         , reg_src {r8, r9, r10, r11, r12, r13, r14, r15}
         , num_acc_iters(num_acc_iters) {}
 
-    ~jit_uni_xf16_sum_kernel_t() {}
+    ~jit_uni_xf16_sum_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_xf16_sum_kernel_t)
 
@@ -103,7 +103,7 @@ struct jit_avx512_core_bf16_sum_kernel_t
     jit_avx512_core_bf16_sum_kernel_t(jit_sum_conf_t ajsp)
         : jit_uni_xf16_sum_kernel_t<Xbyak::Zmm>(
                 ajsp, utils::div_up(ajsp.num_srcs, 2))
-        , max_vregs_available(cpu_isa_traits<avx512_core>::n_vregs
+        , max_vregs_available(cpu_isa_traits_t<avx512_core>::n_vregs
                   - (isa_has_bf16(jsp.isa) ? 1 : 6))
         , bf16_emu_(nullptr) {
         if (!mayiuse(avx512_core_bf16))
@@ -113,7 +113,7 @@ struct jit_avx512_core_bf16_sum_kernel_t
                     bf16_emu_reserved_5);
     }
 
-    ~jit_avx512_core_bf16_sum_kernel_t() = default;
+    ~jit_avx512_core_bf16_sum_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_bf16_sum_kernel_t)
 
@@ -204,7 +204,7 @@ struct jit_avx2_vnni_2_xf16_sum_kernel_t
     jit_avx2_vnni_2_xf16_sum_kernel_t(jit_sum_conf_t ajsp)
         : jit_uni_xf16_sum_kernel_t<Xbyak::Ymm>(ajsp, ajsp.num_srcs) {}
 
-    ~jit_avx2_vnni_2_xf16_sum_kernel_t() {}
+    ~jit_avx2_vnni_2_xf16_sum_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_vnni_2_xf16_sum_kernel_t)
 
@@ -328,7 +328,7 @@ struct jit_xf16_sum_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

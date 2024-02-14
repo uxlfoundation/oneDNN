@@ -68,7 +68,8 @@ argument index as specified by the following table.
 | workspace                   | DNNL_ARG_WORKSPACE                                                        |
 | \diffsrc                    | DNNL_ARG_DIFF_SRC                                                         |
 | \diffdst                    | DNNL_ARG_DIFF_DST                                                         |
-| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1 |
+| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1,|
+|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 |
 
 ## Implementation Details
 

@@ -46,10 +46,10 @@ template <impl::data_type_t type>
 using data_t = typename prec_traits_t<type>::type;
 
 template <impl::data_type_t type_i, impl::data_type_t type_o>
-using _qz_a1b0 = q10n::qz_a1b0<data_t<type_i>, data_t<type_o>>;
+using _qz_a1b0 = q10n::qz_a1b0_t<data_t<type_i>, data_t<type_o>>;
 
 template <impl::data_type_t type_i, impl::data_type_t type_o>
-using _qz = q10n::qz<data_t<type_i>, data_t<type_o>>;
+using _qz = q10n::qz_t<data_t<type_i>, data_t<type_o>>;
 
 namespace fmt_order {
 const bool keep = true;
@@ -57,12 +57,14 @@ const bool reverse = false;
 const bool any = keep;
 } // namespace fmt_order
 
+// NOLINTBEGIN(readability-identifier-naming)
 namespace spec {
 struct direct_copy {};
 struct direct_copy_except_dim_0 {};
 struct reference {};
 struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
 } // namespace spec
+// NOLINTEND(readability-identifier-naming)
 
 #define SIMPLE_REORDER_TEMPL_DECL \
     impl::data_type_t type_i, impl::format_tag_t tag_i, \
@@ -111,7 +113,7 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
 
 /* specific reorders: common template */
 template <SIMPLE_REORDER_TEMPL_DECL, typename spec = void>
-struct simple_reorder_impl {};
+struct simple_reorder_impl_t {};
 
 namespace {
 inline bool simple_fmt_check(bool order_keep, impl::format_tag_t tag_i,
@@ -148,7 +150,7 @@ inline status_t get_scales_mask(
 inline bool simple_attr_check(const primitive_attr_t *attr,
         bool many_scales_support, bool sum_support) {
     using smask_t = primitive_attr_t::skip_mask_t;
-    smask_t skip_mask = smask_t::scales_runtime;
+    smask_t skip_mask = smask_t::scales;
     if (sum_support) skip_mask = skip_mask | smask_t::post_ops;
     if (!attr->has_default_values(skip_mask)) return false;
     for (int arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
@@ -214,7 +216,7 @@ inline dim_t get_quant_off(const dims_t &input_idx, const int ndims,
 
 /* specific reorders: implementation */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && utils::one_of(tag_o, format_tag::wio,
                                 format_tag::wigo, format_tag::hwio,
@@ -343,7 +345,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 const float s = src_scales[src_scales_mask == 0 ? 0 : os_off];
                 const float d = dst_scales[dst_scales_mask == 0 ? 0 : os_off];
 
-                o = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
+                o = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                         i, s * adj_scale * d);
                 if (req_comp) cp[g * OC + oc] -= (int32_t)o;
                 if (has_asymmetric_comp) zp[g * OC + oc] -= (int32_t)o;
@@ -355,7 +357,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<
                 (utils::one_of(tag_i, format_tag::iwo, format_tag::oiw,
                          format_tag::wio)
@@ -547,7 +549,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 const float src_scale = s[src_scales_mask == 0 ? 0 : os_off];
                 const float dst_scale = d[dst_scales_mask == 0 ? 0 : os_off];
                 out[index(oc, ic)]
-                        = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
+                        = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                                 inp[plain_off],
                                 src_scale * adj_scale * dst_scale);
                 if (req_comp) c[oc] -= (128 * (int32_t)(out[index(oc, ic)]));
@@ -614,7 +616,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
 /* Asymmetric Blocking */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(utils::one_of(tag_i, format_tag::iwo,
                                            format_tag::oiw, format_tag::wio)
                                           && utils::one_of(
@@ -710,7 +712,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
             for (dim_t oc = 0; oc < oc_block; ++oc) {
                 const auto plain_off
                         = oc * plain_d.blocking_desc().strides[w_groups + 0];
-                out[oc] = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
+                out[oc] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                         inp[plain_off], s[oc] * adj_scale * d[oc]);
                 if (has_asymmetric_comp) zp[oc] -= (int32_t)(out[oc]);
             }
@@ -764,7 +766,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
 /* Asymmetric Blocking */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(utils::one_of(tag_i, format_tag::iwo,
                                            format_tag::oiw, format_tag::wio)
                                           && utils::one_of(tag_o,
@@ -904,7 +906,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                         + ic * plain_d.blocking_desc().strides[w_groups + 1];
                 auto index = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                         oc, ic);
-                out[index] = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
+                out[index] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                         inp[plain_off], s[oc] * adj_scale * d[oc]);
 
                 if (has_asymmetric_comp) zp[oc] -= (int32_t)(out[index]);
@@ -957,7 +959,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<
                 (utils::one_of(tag_i, format_tag::ab, format_tag::ba,
                          format_tag::abc, format_tag::acb)
@@ -1077,8 +1079,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                     auto index
                             = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                                     d0, d1);
-                    out[index] = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
-                            inp[plain_off], s[0] * adj_scale * d[0]);
+                    out[index]
+                            = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
+                                    inp[plain_off], s[0] * adj_scale * d[0]);
 
                     auto o = static_cast<int32_t>(out[index]);
                     if (req_comp) cp[d1] -= (128 * o);
@@ -1088,8 +1091,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                     auto index
                             = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                                     d0, d1);
-                    out[index] = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
-                            0, s[0] * adj_scale * d[0]);
+                    out[index]
+                            = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
+                                    0, s[0] * adj_scale * d[0]);
                 }
             }
 
@@ -1097,7 +1101,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
             for (int d1 = 0; d1 < D1_blksize; ++d1) {
                 auto index = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                         d0, d1);
-                out[index] = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
+                out[index] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                         0, s[0] * adj_scale * d[0]);
             }
         };
@@ -1153,7 +1157,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<
                 (utils::one_of(tag_i, format_tag::goiw, format_tag::wigo)
                         && utils::one_of(tag_o, format_tag::Goiw16g,
@@ -1265,7 +1269,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                         = src_scales[src_scales_mask == 0 ? 0 : g * OC];
                 const float dst_scale
                         = dst_scales[dst_scales_mask == 0 ? 0 : g * OC];
-                out[g] = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
+                out[g] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                         inp[i_off], src_scale * adj_scale * dst_scale);
             }
         };
@@ -1344,7 +1348,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
 /* bf16 reorders */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(
                 (tag_i == format_tag::goihw || tag_i == format_tag::oihw)
                 && (tag_o == format_tag::gOIhw16i16o
@@ -1469,7 +1473,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(tag_i == format_tag::nchw
                                           && tag_o == format_tag::nChw16c)
                 && type_i == data_type::f32
@@ -1557,7 +1561,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 /* reorders with tail support */
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<false
                 || (utils::one_of(
                             tag_i, format_tag::nCdhw4c, format_tag::nCdhw8c)
@@ -1704,7 +1708,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     }
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                 && (tag_traits_t<tag_o>::block_dims == bd::_A
                         || tag_traits_t<tag_o>::block_dims == bd::_B)
@@ -1855,7 +1859,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                 && (tag_traits_t<tag_o>::block_dims == bd::_AB
                         || tag_traits_t<tag_o>::block_dims == bd::_BC)
@@ -2049,7 +2053,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 /* generic and direct-copy reorders */
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any,
@@ -2094,25 +2098,26 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
             if (alpha == 1.0 && beta == 0.0) {
                 PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
-                    output[e] = q10n::qz_a1b0<data_t<type_i>, data_t<type_o>>()(
-                            input[e]);
+                    output[e]
+                            = q10n::qz_a1b0_t<data_t<type_i>, data_t<type_o>>()(
+                                    input[e]);
                 }
             } else if (alpha == 1.0) {
                 PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
-                    output[e] = q10n::qz_a1<data_t<type_i>, data_t<type_o>>()(
+                    output[e] = q10n::qz_a1_t<data_t<type_i>, data_t<type_o>>()(
                             input[e], output[e], beta);
                 }
             } else if (beta == 0.0) {
                 PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
-                    output[e] = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
+                    output[e] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                             input[e], alpha);
                 }
             } else {
                 PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
-                    output[e] = q10n::qz<data_t<type_i>, data_t<type_o>>()(
+                    output[e] = q10n::qz_t<data_t<type_i>, data_t<type_o>>()(
                             input[e], output[e], alpha, beta);
                 }
             }
@@ -2121,28 +2126,27 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 if (alpha == 1.0 && beta == 0.0) {
                     PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
-                        output[e] = q10n::qz_a1b0<data_t<type_i>,
+                        output[e] = q10n::qz_a1b0_t<data_t<type_i>,
                                 data_t<type_o>>()(input[e]);
                     }
                 } else if (alpha == 1.0) {
                     PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
-                        output[e]
-                                = q10n::qz_a1<data_t<type_i>, data_t<type_o>>()(
-                                        input[e], output[e], beta);
+                        output[e] = q10n::qz_a1_t<data_t<type_i>,
+                                data_t<type_o>>()(input[e], output[e], beta);
                     }
                 } else if (beta == 0.0) {
                     PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
-                        output[e]
-                                = q10n::qz_b0<data_t<type_i>, data_t<type_o>>()(
-                                        input[e], alpha);
+                        output[e] = q10n::qz_b0_t<data_t<type_i>,
+                                data_t<type_o>>()(input[e], alpha);
                     }
                 } else {
                     PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
-                        output[e] = q10n::qz<data_t<type_i>, data_t<type_o>>()(
-                                input[e], output[e], alpha, beta);
+                        output[e]
+                                = q10n::qz_t<data_t<type_i>, data_t<type_o>>()(
+                                        input[e], output[e], alpha, beta);
                     }
                 }
             }
@@ -2152,7 +2156,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any && type_i == data_type::f32
                         && utils::one_of(type_o, data_type::s4, data_type::u4,
@@ -2168,14 +2172,19 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
         VDISPATCH_REORDER_IC(
-                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+                IMPLICATION(!output_d.is_dense(), output_d.is_plain()),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         return status::success;
     }
 
     static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d) {
-        return input_d.size();
+        // Note: output can be strided for cases when dim is odd, e.g.
+        // dims=[7, 4], strides=[1, 8]. In this case, output will be bigger
+        // than input.
+        return output_d.size() * input_d.data_type_size()
+                * output_d.sub_byte_data_type_multiplier();
     }
 
     static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
@@ -2185,17 +2194,36 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         input += input_d.blk_off(0);
         output += output_d.blk_off(0);
 
-        data_t<type_i> *wspace = scratchpad.template get<data_t<type_i>>(
-                memory_tracking::names::key_reorder_space);
+        data_t<type_i> *wspace = const_cast<data_t<type_i> *>(input);
 
         // When formats of the input and the output are not identical, the idea
         // is to reorder the data from the input format to the output format
         // but within the same data type, and after the format reorder apply
         // the compression into int4 as on `abx` format.
-        const bool need_transform
-                = output_d.strides()[output_d.ndims() - 1] != 1;
-        wspace = need_transform ? wspace : const_cast<data_t<type_i> *>(input);
+        const bool need_transform = !output_d.is_dense()
+                || output_d.strides()[output_d.ndims() - 1] != 1;
         if (need_transform) {
+            wspace = scratchpad.template get<data_t<type_i>>(
+                    memory_tracking::names::key_reorder_space);
+            // The second part of data conversion relies on the fact that the
+            // scratchpad is dense as it reads the whole buffer. It means the
+            // padded area must be zeroed, otherwise, the conversion logic will
+            // convert garbage data into requested data type and spoil zeropad
+            // requirement.
+            if (!output_d.is_dense()) {
+                const dim_t work_amount_zero
+                        = get_scratchpad_size(input_d, output_d)
+                        / sizeof(float);
+                parallel(0, [&](const int ithr, const int nthr) {
+                    dim_t start {0}, end {0};
+                    balance211(work_amount_zero, nthr, ithr, start, end);
+                    PRAGMA_OMP_SIMD()
+                    for (dim_t idx = start; idx < end; idx++) {
+                        wspace[idx] = 0;
+                    }
+                });
+            }
+
             const dim_t work_amount = input_d.nelems();
             parallel(0, [&](const int ithr, const int nthr) {
                 dim_t start {0}, end {0};
@@ -2210,8 +2238,13 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         }
 
         // To avoid clashes between threads each byte (or 2 elements)
-        // is handled by a single thread
-        const dim_t work_amount = input_d.nelems() / 2;
+        // is handled by a single thread.
+        // Note: output can be strided for cases when dim is odd, e.g.
+        // dims=[7, 4], strides=[1, 8]. To make a trick with transform, padded
+        // point gets counted in `work_amount` but its value shouldn't affect
+        // anything.
+        const dim_t work_amount
+                = get_scratchpad_size(input_d, output_d) / (2 * sizeof(float));
 
         parallel(0, [&](const int ithr, const int nthr) {
             dim_t start {0}, end {0};
@@ -2238,7 +2271,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && utils::one_of(type_i, data_type::s4, data_type::u4,
@@ -2259,10 +2292,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         using smask_t = primitive_attr_t::skip_mask_t;
-        smask_t skip_mask = smask_t::scales_runtime_data_type
-                | smask_t::scales_runtime_groups
-                | smask_t::zero_points_runtime_data_type
-                | smask_t::zero_points_runtime_groups;
+        smask_t skip_mask = smask_t::scales_data_type | smask_t::scales_groups
+                | smask_t::zero_points_data_type | smask_t::zero_points_groups;
         VDISPATCH_REORDER_IC(
                 attr->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(attr->scales_.has_default_values(DNNL_ARG_DST),
@@ -2393,7 +2424,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any,
@@ -2497,7 +2528,7 @@ private:
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any
@@ -2524,10 +2555,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         }
 
         using smask_t = primitive_attr_t::skip_mask_t;
-        smask_t skip_mask = smask_t::scales_runtime_data_type
-                | smask_t::scales_runtime_groups
-                | smask_t::zero_points_runtime_data_type
-                | smask_t::zero_points_runtime_groups | smask_t::post_ops;
+        smask_t skip_mask = smask_t::scales_data_type | smask_t::scales_groups
+                | smask_t::zero_points_data_type | smask_t::zero_points_groups
+                | smask_t::post_ops;
         VDISPATCH_REORDER_IC(
                 attr->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(simple_po_check(attr), VERBOSE_UNSUPPORTED_POSTOP);
@@ -2664,15 +2694,14 @@ struct simple_reorder_t : public primitive_t {
 
             using skip_mask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_REORDER_IC(
-                    attr->has_default_values(
-                            skip_mask_t::scales_runtime_data_type
-                            | skip_mask_t::scales_runtime_groups
-                            | skip_mask_t::zero_points_runtime_data_type
-                            | skip_mask_t::zero_points_runtime_groups
+                    attr->has_default_values(skip_mask_t::scales_data_type
+                            | skip_mask_t::scales_groups
+                            | skip_mask_t::zero_points_data_type
+                            | skip_mask_t::zero_points_groups
                             | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            auto status = simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+            auto status = simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     spec>::is_applicable(src_md, dst_md, attr);
             if (status != status::success) return status;
 
@@ -2691,7 +2720,7 @@ struct simple_reorder_t : public primitive_t {
             CHECK(_pd->init(engine, src_engine, dst_engine));
 
             const size_t scratchpad_sz_
-                    = simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+                    = simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                             spec>::get_scratchpad_size(src_md, dst_md);
             auto scratchpad = _pd->scratchpad_registry().registrar();
             scratchpad.book(memory_tracking::names::key_reorder_space,
@@ -2715,7 +2744,7 @@ struct simple_reorder_t : public primitive_t {
     simple_reorder_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL, spec>::execute(
+        return simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL, spec>::execute(
                 pd(), ctx);
     }
 

@@ -42,29 +42,11 @@ namespace intel {
 namespace jit {
 
 // Helper functions.
-bool matches_tag(const layout_t &layout, const std::string &tag,
-        const std::vector<dim_t> &dims) {
-    if (layout.is_empty()) return false;
-    auto tag_layout = make_layout(layout.type(), dims, tag);
-    if (layout != tag_layout) return false;
-    return true;
-}
-
-bool matches_tag(const layout_t &layout, const std::string &tag) {
-    return matches_tag(layout, tag, layout.dims());
-}
-
 bool matches_tag_strict(const layout_t &layout, const std::string &tag) {
     if (layout.is_empty()) return false;
     auto tag_layout = make_layout(layout.type(), layout.dims(), tag);
     if (!layout.is_strictly_equal(tag_layout)) return false;
     return true;
-}
-
-bool matches_tag(const memory_desc_t &md, const std::string &tag) {
-    if (md.format_kind == format_kind::any) return false;
-    std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
-    return matches_tag(make_layout(md), tag, dims);
 }
 
 bool matches_tag_strict(const memory_desc_t &md, const std::string &tag) {
@@ -114,7 +96,8 @@ std::string prepend_groups_to_tag(const std::string &tag) {
 
 int get_default_mad_block(const type_t &type) {
     switch (type.size()) {
-        case 1: return 32;
+        // fp4 gets upconverted to f16 for mad.
+        case 1: return (type.is_fp4() ? 16 : 32);
         case 2:
         case 4: return 16;
         case 8: return 8;
@@ -322,6 +305,7 @@ std::string build_tag(const std::vector<int> &inner_blocks,
             char c = letters[i];
             if (c == ' ') continue;
             if (seen[i]) c = static_cast<char>(std::toupper(c));
+            // NOLINTNEXTLINE(performance-inefficient-string-concatenation)
             tag = c + tag;
         }
     }
@@ -355,7 +339,7 @@ int pick_block(dim_t dim, int b0, int b1 = 0, int b2 = 0) {
 int get_default_block(fma_kind_t fma, const type_t &type, dim_t elems) {
     if (is_dp_fma(fma)) {
         if (is_small(type, elems)) {
-            int packed_dword_elems = 4 / type.size();
+            int packed_dword_elems = 32 / type.bitsize();
             return std::max(
                     utils::rnd_up_pow2(into<int>(elems)), packed_dword_elems);
         }
@@ -407,13 +391,17 @@ struct nc_block_t {
             auto default_gc_blk
                     = get_default_block(get_default_fma(hw, type), type, g * c);
             if (c_block != default_gc_blk) {
-                if (default_gc_blk % c == 0 && g % (default_gc_blk / c) == 0) {
+                if ((default_gc_blk % c == 0
+                            && g % (default_gc_blk / c) == 0)) {
                     c_block = default_gc_blk;
                 }
             }
         }
         auto default_n_blk = (type.size() <= 2) ? 32 : 16;
-        int n_block = (c_block == 1) ? 1 : pick_block(n, 16, default_n_blk);
+        int n_block = (c_block == 1)
+                ? 1
+                : (c_block < 8 ? pick_block(n, default_n_blk)
+                               : pick_block(n, 16, default_n_blk));
         return nc_block_t(n_block, c_block);
     }
 
@@ -449,8 +437,8 @@ struct goi_block_t {
     }
 
     static goi_block_t get_default_blocking(type_t type, int vec_size,
-            fma_kind_t fma_kind, bool is_bwd_d, dim_t g, dim_t o, dim_t i,
-            bool ab_transpose) {
+            fma_kind_t fma_kind, bool is_fwd, bool is_bwd_d, dim_t g, dim_t o,
+            dim_t i, bool ab_transpose) {
         dim_t x = o;
         dim_t y = i;
         int g_block = 1;
@@ -468,25 +456,23 @@ struct goi_block_t {
             std::swap(x_block, y_block);
             std::swap(x_block_outer, y_block_outer);
         }
-        get_default_blocking(type, vec_size, fma_kind, is_bwd_d, g, x, y,
-                g_block, *x_block, *y_block, *y_block_outer, ab_transpose);
+        get_default_blocking(type, vec_size, fma_kind, is_fwd, is_bwd_d, g, x,
+                y, g_block, *x_block, *y_block, *y_block_outer, ab_transpose);
         return goi_block_t(fma_kind, is_dw(g, o, i), is_bwd_d, g_block, o_block,
                 i_block, o_block_outer, i_block_outer);
     }
 
     static void get_default_blocking(type_t type, int vec_size,
-            fma_kind_t fma_kind, bool is_bwd_d, dim_t g, dim_t x, dim_t y,
-            int &g_block, int &x_block, int &y_block, int &y_block_outer,
-            bool ab_transpose = false) {
+            fma_kind_t fma_kind, bool is_fwd, bool is_bwd_d, dim_t g, dim_t x,
+            dim_t y, int &g_block, int &x_block, int &y_block,
+            int &y_block_outer, bool ab_transpose = false) {
         if (is_dw(g, x, y)) {
             g_block = vec_size;
         } else if (fma_kind == fma_kind_t::mad) {
-            x_block = (ab_transpose && is_bwd_d)
-                    ? into<int>(utils::rnd_up_pow2(x))
-                    : vec_size;
-            y_block = get_default_block(fma_kind, type, y);
+            x_block = (ab_transpose && (is_fwd || is_bwd_d)) ? 1 : vec_size;
+            y_block = (x_block == 1 ? 1 : get_default_block(fma_kind, type, y));
         } else {
-            int packed_dword_elems = 4 / type.size();
+            int packed_dword_elems = 32 / type.bitsize();
             x_block = ab_transpose ? into<int>(utils::rnd_up_pow2(x))
                                    : vec_size;
             y_block = packed_dword_elems;
@@ -518,33 +504,6 @@ private:
     int o_block_outer_;
     int i_block_outer_;
 };
-
-// Matches the user-provided descriptor against the list of supported plain tags.
-std::string get_plain_user_tag(
-        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei) {
-    memory_desc_wrapper mdw(md);
-    if (mdw.is_plain() && !mdw.is_dense()) return "user";
-    if (is_wei) {
-        std::vector<const char *> plain_non_group_wei_tags
-                = {"abx", "axb", "xba"};
-        std::vector<const char *> plain_group_wei_tags
-                = {"abcx", "abxc", "axcb"};
-        auto &plain_wei_tags = (prb.with_groups ? plain_group_wei_tags
-                                                : plain_non_group_wei_tags);
-        gpu_assert(
-                plain_non_group_wei_tags.size() == plain_group_wei_tags.size());
-        for (size_t i = 0; i < plain_wei_tags.size(); i++) {
-            if (matches_tag(md, plain_wei_tags[i])) {
-                return plain_non_group_wei_tags[i];
-            }
-        }
-    } else {
-        for (auto *t : {"axb", "abx"}) {
-            if (matches_tag(md, t)) return t;
-        }
-    }
-    return {};
-}
 
 std::string maybe_fixup_1st_conv_wei_tag(
         const conv_config_t &cfg, const std::string &tag) {
@@ -586,12 +545,14 @@ void maybe_set_plain_weights(const conv_config_t &cfg, bool src_dst_axb,
     if (user_wei_tag.empty()) user_wei_tag = user_wei_req;
 }
 
-bool is_plain_tag_optimal_for_output(
-        const std::string &tag, const std::string &user_tag) {
+bool is_plain_tag_optimal_for_output(const std::string &tag,
+        const std::string &user_tag, const std::string &other_tag) {
     // NHWC is OK with output as C is used for blocking and C is dense.
     if (user_tag == "axb") return true;
-    // NCHW is OK only when blocked by W (not N).
     if (user_tag == "abx") {
+        // Other activations tag is NCHW, so expecting blocking by W - OK.
+        if (other_tag == "abx") return true;
+        // NCHW is OK only when blocked by W (not N).
         bool is_n_blocked = (tag.find("A") != std::string::npos);
         return !is_n_blocked;
     }
@@ -617,8 +578,8 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
             dst_compute_type, prb.is_dw, prb.mb, prb.oc, prb.g,
             /*is_output=*/prb.is_fwd);
     auto wei_blk = goi_block_t::get_default_blocking(wei_compute_type,
-            cfg.vec_size(), cfg.fma_kind(), prb.is_bwd_d, prb.g, prb.oc, prb.ic,
-            prb.ab_swap_transpose);
+            cfg.vec_size(), cfg.fma_kind(), prb.is_fwd, prb.is_bwd_d, prb.g,
+            prb.oc, prb.ic, prb.ab_swap_transpose);
 
     src_tag = src_blk.tag();
     wei_tag = wei_blk.tag();
@@ -645,11 +606,19 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     if (!src_matches && !is_small_ic_g1 && src_axb) src_tag = "axb";
     if (!dst_matches && !is_small_oc_g1 && dst_axb) dst_tag = "axb";
 
+    // Use nchw for input activations when optimal load can be used to avoid reorders.
+    if (!src_matches && !src_output
+            && is_nchw_ok(prb, cfg.hw(), tensor_kind_t::src))
+        src_tag = "abx";
+    if (!dst_matches && !dst_output
+            && is_nchw_ok(prb, cfg.hw(), tensor_kind_t::dst))
+        dst_tag = "abx";
+
     // Use plain tags for user-facing activations for small-channel tensors.
     if (!matches_tag(src_md, src_tag) && is_small_ic_g1)
-        user_src_tag = (user_src_req.empty() ? "axb" : std::move(user_src_req));
+        user_src_tag = (user_src_req.empty() ? "axb" : user_src_req);
     if (!matches_tag(dst_md, dst_tag) && is_small_oc_g1)
-        user_dst_tag = (user_dst_req.empty() ? "axb" : std::move(user_dst_req));
+        user_dst_tag = (user_dst_req.empty() ? "axb" : user_dst_req);
 
     // Avoid reorder for small shapes
     if (!user_src_tag.empty() && !user_dst_tag.empty() && prb.g == 1
@@ -667,9 +636,11 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     if (dst_abx && !dst_matches) user_dst_tag = "abx";
 
     // Use plain tag for output to avoid extra reorders when beneficial.
-    if (src_output && is_plain_tag_optimal_for_output(src_tag, user_src_tag))
+    if (src_output
+            && is_plain_tag_optimal_for_output(src_tag, user_src_tag, dst_tag))
         src_tag = user_src_tag;
-    if (dst_output && is_plain_tag_optimal_for_output(dst_tag, user_dst_tag))
+    if (dst_output
+            && is_plain_tag_optimal_for_output(dst_tag, user_dst_tag, src_tag))
         dst_tag = user_dst_tag;
 
     if (user_src_req == "user") src_tag = user_src_tag = "user";
@@ -680,7 +651,7 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
 void prepare_zp_precompute_conv(const conv_problem_t &prb, dim_t *idhw,
         dim_t *odhw, dim_t *pdhw, dim_t *ddhw) {
     const bool is_bwd_d = (prb.prop_kind() == prop_kind::backward_data);
-    using memory_dims = std::vector<dim_t>;
+    using memory_dims = std::array<dim_t, 3>;
     memory_dims I {prb.id, prb.ih, prb.iw};
     memory_dims O {prb.od, prb.oh, prb.ow};
     memory_dims K {prb.kd, prb.kh, prb.kw};
@@ -699,31 +670,53 @@ void prepare_zp_precompute_conv(const conv_problem_t &prb, dim_t *idhw,
         return (s->dims[2 + i] > 1) || (d->dims[2 + i] > 1)
                 || (w->dims[2 + i + prb.with_groups] > 1);
     };
-    auto move_back = [&](int i, int off) {
-        if (off == 0) return;
-        I[i - off] = O[i - off] = K[i - off] = S[i - off] = 1;
-        D[i - off] = P[i - off] = 0;
-        std::swap(I[i - off], I[i]);
-        std::swap(O[i - off], O[i]);
-        std::swap(K[i - off], K[i]);
-        std::swap(S[i - off], S[i]);
-        std::swap(D[i - off], D[i]);
-        std::swap(P[i - off], P[i]);
+    std::array<bool, 3> C = {
+            // original conv spatials
+            (off <= 0) && has_dim(0 - off),
+            (off <= 1) && has_dim(1 - off),
+            (off <= 2) && has_dim(2 - off),
     };
-    bool has_d = (off <= 0) && has_dim(0 - off);
-    bool has_h = (off <= 1) && has_dim(1 - off);
-    bool has_w = (off <= 2) && has_dim(2 - off);
-    if (!has_d && !has_h && !has_w) has_w = true;
-    move_back(1, has_d * (!has_h == has_w));
-    move_back(2, !has_w * (!has_h + 1));
-
+    std::array<bool, 3> V = {
+            // converted 'visible' spatials
+            (I[0] > 1) || (O[0] > 1) || (K[0] > 1),
+            (I[1] > 1) || (O[1] > 1) || (K[1] > 1),
+            (I[2] > 1) || (O[2] > 1) || (K[2] > 1),
+    };
+    std::array<bool, 3> H = {
+            // converted 'hidden' spatials
+            !V[0] && ((S[0] > 1) || (D[0] > 0) || (P[0] > 0)),
+            !V[1] && ((S[1] > 1) || (D[1] > 0) || (P[1] > 0)),
+            !V[2] && ((S[2] > 1) || (D[2] > 0) || (P[2] > 0)),
+    };
+    // go here if there are gaps in spatials and 'visible' spatials are present
+    if (!(V[0] || H[0]) && (V[1] || V[2])) { // 4 cases: 11V, 1VV, 1HV, 1VH
+        auto move_back = [&](int i, int off) {
+            if (off == 0) return;
+            I[i - off] = O[i - off] = K[i - off] = S[i - off] = 1;
+            D[i - off] = P[i - off] = 0;
+            std::swap(I[i - off], I[i]);
+            std::swap(O[i - off], O[i]);
+            std::swap(K[i - off], K[i]);
+            std::swap(S[i - off], S[i]);
+            std::swap(D[i - off], D[i]);
+            std::swap(P[i - off], P[i]);
+        };
+        if (!H[0] && !H[1] && !H[2]) { // 11V or 1VV
+            move_back(1, C[0] * (!C[1] == C[2]));
+            move_back(2, !C[2] * (!C[1] + 1));
+        } else { // 1HV or 1VH
+            move_back(1, (C[1] && H[1] && V[2]) || (C[0] && V[1] && H[2]));
+            move_back(2, C[1] && H[1] && V[2]);
+        }
+    }
+    // compute the required dimensions
     for (int i = off; i < int(K.size()); i++) {
-        const auto KD = (K[i] - 1) * (D[i] + 1) + 1;
         gpu_assert(w->dims[2 + i + prb.with_groups - off] == K[i]);
         O[i] = ir_utils::max_unique_pad_states(
-                O[i], I[i], KD, P[i], S[i], true);
-        I[i] = std::min(KD, I[i]);
+                O[i], I[i], K[i], D[i], P[i], S[i], true);
+        I[i] = std::min((K[i] - 1) * (D[i] + 1) + 1, I[i]);
     }
+    // return the dimensions to the user
     for (int i = 0; i < 3; i++) {
         idhw[i] = (i < off) ? 0 : I[i];
         odhw[i] = (i < off) ? 0 : O[i];
@@ -842,6 +835,23 @@ status_t init_tensor_layouts(
             prb.dhw_map,
             /*add_groups=*/true);
 
+    // Disable cases that cannot generate valid fp4 tiling.
+    if (src_layout.type().is_fp4())
+        for (auto &b : src_layout.blocks()) {
+            if (b.stride == stride_t(1) && b.block % 8)
+                return status::unimplemented;
+        }
+    if (wei_layout.type().is_fp4())
+        for (auto &b : wei_layout.blocks()) {
+            if (b.stride == stride_t(1) && b.block % 8)
+                return status::unimplemented;
+        }
+    if (dst_layout.type().is_fp4())
+        for (auto &b : dst_layout.blocks()) {
+            if (b.stride == stride_t(1) && b.block % 8)
+                return status::unimplemented;
+        }
+
     src.set_compute(src_layout);
     src.set_user(user_src_layout);
     wei.set_compute(wei_layout);
@@ -896,6 +906,8 @@ bool data_types_ok(
     auto bia = prb.bia_data_type;
     bool is_fp8 = utils::one_of(data_type::f8_e5m2, src, wei, dst, bia)
             || utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
+    bool is_fp4 = utils::one_of(data_type::f4_e2m1, src, wei, dst, bia)
+            || utils::one_of(data_type::f4_e3m0, src, wei, dst, bia);
     if (!prb.is_f64_accumulator()
             && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
@@ -904,13 +916,7 @@ bool data_types_ok(
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
-    if (is_fp8
-#if XE3P
-            && !(utils::one_of(hw, ngen::HW::XeHPC, ngen::HW::Xe3p)
-                    && hw.systolic_support()))
-#else
-            && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
-#endif
+    if ((is_fp8 || is_fp4) && !(hw >= ngen::HW::XeHPC && hw.systolic_support()))
         return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;
@@ -919,13 +925,15 @@ bool data_types_ok(
         data_type_t default_acc_type
                 = src == data_type::f64 ? data_type::f64 : data_type::f32;
         ok &= utils::one_of(src, data_type::f8_e5m2, data_type::f8_e4m3,
-                data_type::bf16, data_type::f16, data_type::f32,
-                data_type::f64);
+                data_type::f4_e3m0, data_type::f4_e2m1, data_type::bf16,
+                data_type::f16, data_type::f32, data_type::f64);
         ok &= (dst == src);
         ok &= (utils::one_of(wei, src, default_acc_type)
-                || (utils::one_of(src, data_type::f8_e4m3, data_type::f8_e5m2)
+                || (utils::one_of(src, data_type::f8_e4m3, data_type::f8_e5m2,
+                            data_type::f4_e2m1, data_type::f4_e2m1)
                         && utils::one_of(wei, data_type::f8_e4m3,
-                                data_type::f8_e5m2, data_type::f32,
+                                data_type::f8_e5m2, data_type::f4_e2m1,
+                                data_type::f4_e2m1, data_type::f32,
                                 data_type::bf16, data_type::f16)));
 
         if (prb.with_bias) { ok &= utils::one_of(bia, src, data_type::f32); }
@@ -981,10 +989,8 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
     using sm = primitive_attr_t::skip_mask_t;
     auto attr_skip_mask = sm::fpmath_mode | sm::accumulation_mode;
     if (prb.is_fwd || prb.is_bwd_d) {
-        attr_skip_mask |= sm::post_ops | sm::sum_dt | sm::zero_points_runtime
-                | sm::zero_points_runtime_data_type | sm::scales_runtime
-                | sm::rounding_mode | sm::scales_runtime_groups
-                | sm::scales_runtime_data_type;
+        attr_skip_mask |= sm::post_ops | sm::sum_dt | sm::zero_points_data_type
+                | sm::rounding_mode | sm::scales_data_type;
         if (!attr->has_default_values(attr_skip_mask)) return false;
     } else {
         if (!attr->has_default_values(attr_skip_mask)) return false;
@@ -1003,6 +1009,9 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
     std::vector<int> scales(scale_args.size());
     for (int i = 0; i < (int)scale_args.size(); i++)
         scales[i] = scale_args[i].second;
+
+    // The following check could be re-used from the convolution_pd.hpp but
+    // prb doesn't inherits pd and can't use protected method.
     if (!attr->scales_.has_default_values(scales)) return false;
     for (int arg : scales) {
         if (attr->scales_.has_default_values(arg)) continue;
@@ -1035,14 +1044,20 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
                 // kernel always works correctly in benchdnn.
                 return false;
         }
+        if (po.is_binary_with_ternary_op()) return false;
     }
     return true;
 }
 
 bool should_use_mad(const conv_problem_t &prb) {
-    bool small_ic_oc = prb.ic < 3 && prb.oc < 3 && prb.mb < 8;
-    bool grouped_small_ic_oc = prb.ic < 4 && prb.oc < 4 && prb.g > 1;
-    return prb.is_dw || small_ic_oc || grouped_small_ic_oc;
+    if (prb.is_dw) return true;
+    if (prb.is_bwd_w) return false;
+    dim_t kw_xc = prb.kw * (prb.is_fwd ? prb.ic : prb.oc);
+    bool small_ic_oc = (prb.oc <= 3 && prb.ic <= 3 && kw_xc <= 10)
+            || (prb.oc <= 2 && prb.ic <= 2);
+    bool small_mb_ic_oc = prb.mb < 8 && small_ic_oc;
+    bool grouped_small_ic_oc = prb.g > 1 && small_ic_oc;
+    return small_mb_ic_oc || grouped_small_ic_oc;
 }
 
 status_t init_fma_kind(
@@ -1124,7 +1139,7 @@ bool post_op_layouts_ok(const conv_problem_t &prb) {
                             po.binary.src1_desc.dims, prb.ndims, true);
             // These cases don't have message-related limitations.
             if ((mask & (1 << 1)) == 0 || mask == (1 << 1)) continue;
-            auto rhs_layout = po.is_prelu()
+            const auto &rhs_layout = po.is_prelu()
                     ? layout_t(type_t::f32(), 0,
                             get_prelu_weights_dims(po.prelu.mask, output_md))
                     : layout_t(po.binary.src1_desc);
@@ -1189,6 +1204,7 @@ status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
     cfg.set_exec_cfg(exec_config_t(hw));
     cfg.maybe_override_from_env();
 
+    cfg.set_require_signal_header(true);
     CHECK(init_fma_kind(cfg, pd, engine));
     CHECK(init_simd(cfg));
     CHECK(init_vec_size(cfg));
@@ -1574,12 +1590,13 @@ public:
         : prb_(prb) {
         for (auto &d : tile) {
             auto bmnk = to_gemm(d, prb);
-            entry_t e;
+            if (!utils::one_of(bmnk, pvars::m, pvars::n)) continue;
+
+            entries_.emplace_back();
+            entry_t &e = entries_.back();
             e.dim = d;
             e.tile_size = tile[d];
-            if (!utils::one_of(bmnk, pvars::m, pvars::n)) continue;
             e.mn_kind = (bmnk == pvars::m ? 'm' : 'n');
-            entries_.push_back(e);
         }
         // Put through spatial dimensions first and order spatial accordingly
         // (WHD, width is first).
@@ -1674,7 +1691,7 @@ walk_order_t compute_walk_order(const conv_config_t &cfg) {
 
     // Add M/N blocks until the full footprint fits L3 cache.
     pvar_tile_t grid_inner;
-    pvar_tile_t rem_tile = grid_tile;
+    const pvar_tile_t &rem_tile = grid_tile;
     ab_bytes = inner_bytes;
     mn_walker_t mn_walker(rem_tile, cfg.prb());
     while (mn_walker.has_next()) {
@@ -2005,7 +2022,7 @@ std::string conv_config_t::str() const {
     oss << "  Estimated GRF usage:        " << estimated_peak_regs << std::endl;
     oss << "  AB Swap Transpose:          " << to_string(prb().ab_swap_transpose) << std::endl;
     oss << "  Kernel grid walk order:     " << walk_order() << std::endl;
-    oss << "  Configuration line:         " << get_config_line() << std::endl;
+    oss << "  Configuration line:         " << get_config_line();
     // clang-format on
     return oss.str();
 }

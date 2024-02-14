@@ -30,12 +30,7 @@
 namespace concat {
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_vdims_t prb_vdims;
 
@@ -85,11 +80,7 @@ struct prb_t : public prb_vdims_t {
         // If dst is omitted by `dtag = tag::undef`, omit `ddt` as well.
         if (dtag == tag::undef) this->ddt = dnnl_data_type_undef;
 
-        // Broadcast tag if needed
-        if (stag.size() == 1) {
-            const auto val = stag[0]; // Need a copy here.
-            this->stag.assign(prb_vdims.n_inputs(), val);
-        }
+        broadcast_vector(this->stag, prb_vdims.n_inputs());
 
         dst_dims[axis] = axis_size();
         repro = set_repro_line(); // must be last in ctor to collect right info
@@ -171,7 +162,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);
-void compute_ref(const prb_t *prb, const args_t &args,
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,

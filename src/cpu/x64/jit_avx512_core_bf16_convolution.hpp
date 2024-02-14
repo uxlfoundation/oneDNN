@@ -67,12 +67,13 @@ struct jit_avx512_core_bf16_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx512_core_bf16_fwd_kernel::init_conf(jcp_, *desc(),
+            CHECK(jit_avx512_core_bf16_fwd_kernel_t::init_conf(jcp_, *desc(),
                     src_md_, weights_md_, dst_md_, bias_md_, attr_,
                     dnnl_get_max_threads()));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx512_core_bf16_fwd_kernel::init_scratchpad(scratchpad, jcp_);
+            jit_avx512_core_bf16_fwd_kernel_t::init_scratchpad(
+                    scratchpad, jcp_);
 
             return status::success;
         }
@@ -88,7 +89,7 @@ struct jit_avx512_core_bf16_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_avx512_core_bf16_fwd_kernel(
+                new jit_avx512_core_bf16_fwd_kernel_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         return kernel_->create_kernel();
     }
@@ -115,7 +116,7 @@ private:
     void execute_forward_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_avx512_core_bf16_fwd_kernel> kernel_;
+    std::unique_ptr<jit_avx512_core_bf16_fwd_kernel_t> kernel_;
 };
 
 struct jit_avx512_core_bf16_convolution_bwd_data_t : public primitive_t {
@@ -145,8 +146,8 @@ struct jit_avx512_core_bf16_convolution_bwd_data_t : public primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx512_core_bf16_bwd_data_kernel::init_conf(jcp_, *desc(),
-                    diff_src_md_, weights_md_, diff_dst_md_,
+            CHECK(jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jcp_,
+                    *desc(), diff_src_md_, weights_md_, diff_dst_md_,
                     dnnl_get_max_threads()));
             return status::success;
         }
@@ -161,8 +162,8 @@ struct jit_avx512_core_bf16_convolution_bwd_data_t : public primitive_t {
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
 
     status_t init(engine_t *engine) override {
-        CHECK(safe_ptr_assign(
-                kernel_, new jit_avx512_core_bf16_bwd_data_kernel(pd()->jcp_)));
+        CHECK(safe_ptr_assign(kernel_,
+                new jit_avx512_core_bf16_bwd_data_kernel_t(pd()->jcp_)));
         return kernel_->create_kernel();
     }
 
@@ -181,7 +182,7 @@ private:
     void execute_backward_data(const exec_ctx_t &ctx) const;
     void execute_backward_data_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_avx512_core_bf16_bwd_data_kernel> kernel_;
+    std::unique_ptr<jit_avx512_core_bf16_bwd_data_kernel_t> kernel_;
 };
 
 struct jit_avx512_core_bf16_convolution_bwd_weights_t : public primitive_t {
@@ -215,12 +216,12 @@ struct jit_avx512_core_bf16_convolution_bwd_weights_t : public primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_conf(
+            CHECK(jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf(
                     jcp_, *desc(), src_md_, diff_weights_md_, diff_bias_md_,
                     diff_dst_md_, dnnl_get_max_threads()));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_scratchpad(
+            jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_scratchpad(
                     scratchpad, jcp_);
 
             return status::success;
@@ -269,7 +270,7 @@ private:
 
     int nthr_ = 0, nthr_mb_ = 0, nthr_g_ = 0, nthr_oc_b_ = 0, nthr_ic_b_ = 0;
 
-    std::unique_ptr<jit_avx512_core_bf16_conv_bwd_weights_kernel_f32> kernel_;
+    std::unique_ptr<jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t> kernel_;
 
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;
 

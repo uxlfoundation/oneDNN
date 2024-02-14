@@ -1,0 +1,41 @@
+# *******************************************************************************
+# Copyright 2025 Arm Limited and affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+--reset
+--batch=eltwise
+
+--reset
+
+--dt=f32
+--tag=abx,axb
+--dir=FWD_D
+--attr-post-ops=,
+
+## algs which do not support alpha and beta + relu with alpha=0
+--alpha=0 --beta=0
+--alg=exp,exp_dst,gelu_erf,gelu_tanh,relu_dst,tanh,tanh_dst
+384x384
+
+## algs which support negative alpha
+--alpha=-2 --beta=0
+--alg=elu,relu,swish
+384x384
+
+## algs which support alpha and beta
+--alpha=-2 --beta=3
+--alg=linear
+384x384

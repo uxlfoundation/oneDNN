@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -162,8 +162,7 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const bool is_int8 = utils::one_of(src_type, s8, u8);
 
     auto skip_mask = smask_t::post_ops | smask_t::sum_dt;
-    if (is_int8)
-        skip_mask |= smask_t::scales_runtime | smask_t::zero_points_runtime;
+    if (is_int8) skip_mask |= smask_t::scales | smask_t::zero_points;
 
     VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_DECONVOLUTION((desc()->alg_kind & alg_kind::deconvolution_direct),
@@ -177,6 +176,10 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_DECONVOLUTION(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_DECONVOLUTION(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_DECONVOLUTION(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_DECONVOLUTION(
+            impl::is_dense_format_kind({src_md(0), diff_weights_md(0),
+                    diff_weights_md(1), diff_dst_md(0), dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     convolution_desc_t conv_d = convolution_desc_t();
 
@@ -302,8 +305,10 @@ template struct brgemm_deconvolution_fwd_t<avx512_core>;
 template struct brgemm_deconvolution_fwd_t<avx512_core_vnni>;
 template struct brgemm_deconvolution_fwd_t<avx512_core_bf16>;
 template struct brgemm_deconvolution_fwd_t<avx512_core_fp16>;
+template struct brgemm_deconvolution_fwd_t<avx10_2_512>;
 template struct brgemm_deconvolution_fwd_t<avx512_core_amx>;
 template struct brgemm_deconvolution_fwd_t<avx512_core_amx_fp16>;
+template struct brgemm_deconvolution_fwd_t<avx10_2_512_amx_2>;
 
 } // namespace x64
 } // namespace cpu

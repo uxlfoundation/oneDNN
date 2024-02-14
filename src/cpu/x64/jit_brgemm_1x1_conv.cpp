@@ -52,10 +52,14 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const auto dst_type = dst_md(0)->data_type;
     const bool is_int8 = one_of(src_type, u8, s8);
 
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
-            | skip_mask_t::zero_points_runtime | skip_mask_t::fpmath_mode;
-    if (one_of(src_type, u8, s8)) skip_mask |= skip_mask_t::scales_runtime;
+            | skip_mask_t::zero_points | skip_mask_t::fpmath_mode;
+    if (one_of(src_type, u8, s8)) skip_mask |= skip_mask_t::scales;
 
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(expect_data_types(src_type, wei_type, data_type::undef,
@@ -76,8 +80,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(dst_type, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-    VDISPATCH_CONV(arg_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(attr_scales_ok());
+    CHECK(attr_zero_points_ok());
 
     CHECK(brgemm_convolution_utils::init_1x1_conf(jcp_, isa, *desc(), src_md_,
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));
@@ -185,7 +189,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
                 = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
         CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type,
                 false, false, brgemm_row_major, alpha, vbeta, LDA, jcp_.LDB,
-                jcp_.LDC, vM, vN, vK, strides_ptr));
+                jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_tf32));
 
         brgemm_attr_t brgattr;
         brgattr.max_bs = jcp_.gemm_batch_size;
@@ -353,7 +357,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::maybe_rtus(int ithr,
                 + ih * src_w_sz + iw * jcp.ngroups * jcp.ic_without_padding
                 + g_ic;
         auto p = jit_avx512_core_brgemm_conv_trans_kernel::
-                jit_brgemm_conv_trans_kernel_call_s();
+                jit_brgemm_conv_trans_kernel_args_t();
         p.h_count = nh;
         p.owb = nw;
         p.src = src + src_dt_size * inp_offset;
@@ -783,6 +787,8 @@ template struct brgemm_1x1_convolution_fwd_t<avx512_core_bf16>;
 template struct brgemm_1x1_convolution_fwd_t<avx512_core_fp16>;
 template struct brgemm_1x1_convolution_fwd_t<avx512_core_amx>;
 template struct brgemm_1x1_convolution_fwd_t<avx512_core_amx_fp16>;
+template struct brgemm_1x1_convolution_fwd_t<avx10_2_512>;
+template struct brgemm_1x1_convolution_fwd_t<avx10_2_512_amx_2>;
 
 } // namespace x64
 } // namespace cpu

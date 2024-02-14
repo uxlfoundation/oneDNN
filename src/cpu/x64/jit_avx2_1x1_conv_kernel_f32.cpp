@@ -32,7 +32,7 @@
 #include "cpu/x64/jit_avx2_1x1_conv_kernel_f32.hpp"
 #include "cpu/x64/jit_uni_1x1_conv_utils.hpp"
 
-#define GET_OFF(field) offsetof(jit_1x1_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_1x1_conv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -45,10 +45,10 @@ using namespace dnnl::impl::utils;
 
 using namespace Xbyak;
 
-jit_avx2_1x1_conv_kernel_f32::jit_avx2_1x1_conv_kernel_f32(
+jit_avx2_1x1_conv_kernel_f32_t::jit_avx2_1x1_conv_kernel_f32_t(
         const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
-    : jit_generator(jit_name(), avx2), jcp(ajcp), attr_(attr) {
+    : jit_generator_t(jit_name(), avx2), jcp(ajcp), attr_(attr) {
     if (jcp.with_eltwise || jcp.with_binary) {
         using namespace binary_injector;
         static constexpr bool preserve_gpr = true;
@@ -70,7 +70,7 @@ jit_avx2_1x1_conv_kernel_f32::jit_avx2_1x1_conv_kernel_f32(
     }
 }
 
-void jit_avx2_1x1_conv_kernel_f32::generate_bcast_loop(int load_loop_blk) {
+void jit_avx2_1x1_conv_kernel_f32_t::generate_bcast_loop(int load_loop_blk) {
     mov(aux1_reg_bcast_data, ptr[rsp + reg_bcast_data_off]);
     mov(aux_reg_output_data, reg_output_data);
     mov(bcast_loop_iter, reg_bcast_loop_work);
@@ -145,7 +145,7 @@ void iterate(const int load_loop_blk, const int ur, const F &f) {
     iterate(load_loop_blk, ur, 0, f);
 }
 
-void jit_avx2_1x1_conv_kernel_f32::apply_postops(
+void jit_avx2_1x1_conv_kernel_f32_t::apply_postops(
         const int load_loop_blk, const int ur, const int load_dim_tail) {
     if (jcp.with_eltwise || jcp.with_binary) {
         assert(ur * load_loop_blk < 14);
@@ -216,7 +216,7 @@ void jit_avx2_1x1_conv_kernel_f32::apply_postops(
     }
 };
 
-void jit_avx2_1x1_conv_kernel_f32::generate_reduce_loop(
+void jit_avx2_1x1_conv_kernel_f32_t::generate_reduce_loop(
         int load_loop_blk, int ur) {
     const int load_dim_tail
             = ((jcp.with_binary
@@ -262,8 +262,9 @@ void jit_avx2_1x1_conv_kernel_f32::generate_reduce_loop(
             default:
                 offt = (i * rnd_up(jcp.ic, jcp.ic_block) + u0) * jcp.oc_block;
         }
-        return ptr[aux_reg_load_data + u1 * jcp.reduce_loop_load_step
-                + sizeof(float) * offt];
+        return make_safe_addr(aux_reg_load_data,
+                u1 * jcp.reduce_loop_load_step + sizeof(float) * offt,
+                reg_long_offt);
     };
 
     auto get_output_offset = [this](int i, int j) {
@@ -506,7 +507,8 @@ void jit_avx2_1x1_conv_kernel_f32::generate_reduce_loop(
     store();
 }
 
-void jit_avx2_1x1_conv_kernel_f32::generate_diff_bias_loop(int load_loop_blk) {
+void jit_avx2_1x1_conv_kernel_f32_t::generate_diff_bias_loop(
+        int load_loop_blk) {
     if (!jcp.with_bias || jcp.prop_kind != backward_weights) return;
 
     Label diff_bias_loop, diff_bias_loop_out, diff_bias_init_out;
@@ -562,7 +564,7 @@ void jit_avx2_1x1_conv_kernel_f32::generate_diff_bias_loop(int load_loop_blk) {
     L(diff_bias_loop_out);
 }
 
-void jit_avx2_1x1_conv_kernel_f32::generate() {
+void jit_avx2_1x1_conv_kernel_f32_t::generate() {
     preamble();
 
     sub(rsp, stack_space_needed);
@@ -682,13 +684,18 @@ void jit_avx2_1x1_conv_kernel_f32::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 }
 
-status_t jit_avx2_1x1_conv_kernel_f32::init_conf(jit_1x1_conv_conf_t &jcp,
+status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
         const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
         const primitive_attr_t &attr) {
     // disabling verbose dispatch messages for unsupported isa for better readability
     if (!mayiuse(avx)) return status::unimplemented;
     jcp.isa = mayiuse(avx2) ? avx2 : avx;
+
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
 
     // TODO (Roma): this code is duplicated from the generic kernel; maybe the
     // configuration struct could do some stuff below
@@ -792,9 +799,16 @@ status_t jit_avx2_1x1_conv_kernel_f32::init_conf(jit_1x1_conv_conf_t &jcp,
     static constexpr bool sum_at_pos_0_only = true;
     static constexpr bool sum_requires_scale_one = true;
     static constexpr bool sum_requires_zp_zero = true;
-    const bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(jcp.isa,
+    bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(jcp.isa,
             {eltwise, binary, sum}, jcp.post_ops, &dst_d, sum_at_pos_0_only,
             sum_requires_scale_one, sum_requires_zp_zero));
+    // temporary workaround that skips avx2 implementation for ternary
+    // post-ops with scalar broadcasting to avoid register collisions.
+    post_ops_ok_ = post_ops_ok_
+            && IMPLICATION(jcp.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    post_ops, dst_d));
     VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     bool args_ok = true && jcp.ngroups == 1 && jcp.src_tag == dat_tag
@@ -1008,7 +1022,7 @@ status_t jit_avx2_1x1_conv_kernel_f32::init_conf(jit_1x1_conv_conf_t &jcp,
     return status::success;
 }
 
-void jit_avx2_1x1_conv_kernel_f32::init_scratchpad(
+void jit_avx2_1x1_conv_kernel_f32_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad,
         const jit_1x1_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;

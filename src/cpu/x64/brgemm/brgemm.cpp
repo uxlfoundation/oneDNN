@@ -223,7 +223,8 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, bool transA, bool transB,
         brgemm_layout_t layout, float alpha, float beta, dim_t LDA, dim_t LDB,
-        dim_t LDC, dim_t M, dim_t N, dim_t K, const brgemm_strides_t *strides) {
+        dim_t LDC, dim_t M, dim_t N, dim_t K, const brgemm_strides_t *strides,
+        bool is_tf32) {
     /*
     m - number of rows of the matrix op(A) and number of rows of the matrix C
     n - number of columns of the matrix op(B) and number of columns of the matrix C
@@ -244,16 +245,28 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     if (type == brgemm_batch_kind_t::brgemm_batch_kind_undef)
         return status::invalid_arguments;
 
-    brgemm_utils::init_brgemm_conf(brg, isa, type, dt_a, dt_b, layout, alpha,
-            beta, LDA, LDB, LDC, M, N, K, strides);
+    CHECK(brgemm_utils::init_brgemm_conf(brg, isa, type, dt_a, dt_b, layout,
+            alpha, beta, LDA, LDB, LDC, M, N, K, strides, false /* is_bf32 */,
+            is_tf32));
 
     if (utils::one_of(true, brg->is_runtime_lda, brg->is_runtime_ldb))
         return status::unimplemented;
 
     if (M <= 0 || N <= 0 || K <= 0) return status::invalid_arguments;
 
-    if (utils::everyone_is(false, brg->is_int8, brg->is_bf16, brg->is_f32,
-                brg->is_f16, brg->is_fp8))
+    // Upper bound, this can likely be improved by accounting for blocking
+    dim_t max_a_stride = brg->LDA * types::data_type_size(brg->dt_a)
+            * (brg->layout == brgemm_col_major ? K : M);
+    dim_t max_b_stride = brg->LDB * types::data_type_size(brg->dt_b)
+            * (brg->layout == brgemm_col_major ? N : K);
+    dim_t max_c_stride = brg->LDC * types::data_type_size(brg->dt_c)
+            * (brg->layout == brgemm_col_major ? N : M);
+
+    // Required for EVEX encoding for offsets
+    const dim_t max_stride = std::numeric_limits<int32_t>::max();
+    if ((max_a_stride > max_stride && !brg->is_runtime_lda)
+            || (max_b_stride > max_stride && !brg->is_runtime_ldb)
+            || (max_c_stride >= max_stride && !brg->is_runtime_ldc))
         return status::unimplemented;
 
     // Only amx_int8 kernel supports u8 weights.
@@ -316,7 +329,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::unimplemented;
     if (!IMPLICATION(one_of(data_type::f8_e5m2, dt_bias, dt_d)
                         || one_of(data_type::f8_e4m3, dt_bias, dt_d),
-                mayiuse(avx512_core_amx_fp16)))
+                utils::one_of(true, mayiuse(avx512_core_amx_fp16),
+                        mayiuse(avx10_2_512))))
         return status::unimplemented;
     // check that combination of data types is allowed
     if ((brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8)
@@ -523,8 +537,11 @@ status_t brgemm_desc_set_attr(
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
 
-    // TODO: update conditions once other implementations are enabled
-    if (brg->is_fp8 && !brg->is_fp8_via_convert()) return status::unimplemented;
+    if (brg->is_fp8
+            && !utils::one_of(true,
+                    is_superset(brg->isa_impl, avx512_core_amx_fp16),
+                    is_superset(brg->isa_impl, avx10_2_512)))
+        return status::unimplemented;
 
     return status::success;
 }
@@ -555,6 +572,10 @@ status_t brgemm_kernel_create(
         brgemm_kernel_t **brg_kernel, const brgemm_desc_t &brg) {
     if (!brg_kernel) return status::invalid_arguments;
     *brg_kernel = nullptr;
+
+    if (utils::one_of(data_type::f64, brg.dt_a, brg.dt_b, brg.dt_c, brg.dt_d,
+                brg.dt_bias, brg.sum_dt))
+        return status::unimplemented;
 
     if (brg.is_dgmm) {
         if (brg.type == brgemm_static_offs) return status::unimplemented;

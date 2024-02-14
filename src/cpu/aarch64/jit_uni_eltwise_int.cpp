@@ -38,8 +38,8 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_int_kernel : public jit_generator {
-    jit_uni_eltwise_int_kernel(const eltwise_desc_t &desc) : desc_(desc) {}
+struct jit_uni_eltwise_int_kernel_t : public jit_generator {
+    jit_uni_eltwise_int_kernel_t(const eltwise_desc_t &desc) : desc_(desc) {}
 
     void operator()(jit_args_t *p) { jit_generator::operator()(p); }
 
@@ -58,11 +58,11 @@ namespace {
 using namespace Xbyak_aarch64;
 
 template <cpu_isa_t isa>
-struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel {
+struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_subkernel_int)
 
     jit_uni_subkernel_int_t(const eltwise_desc_t &desc)
-        : jit_uni_eltwise_int_kernel(desc) {
+        : jit_uni_eltwise_int_kernel_t(desc) {
         using namespace data_type;
 
         // Relu and linear for int types: s32, s8, u8; Only forward direction
@@ -354,6 +354,7 @@ status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
             && utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
                     alg_kind::eltwise_linear)
             && !has_zero_dim_memory()
+            && impl::is_dense_format_kind({src_md(), dst_md()})
             && memory_desc_wrapper(src_md()).is_dense(true)
             && attr()->has_default_values() && set_default_formats_common()
             && memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md());

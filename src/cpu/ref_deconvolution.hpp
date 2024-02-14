@@ -102,8 +102,6 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             , dst_tag_(other.dst_tag_)
             , name_(other.name_) {}
 
-        ~pd_t() = default;
-
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_fwd_t);
 
         status_t init_convolution(engine_t *engine) {
@@ -142,7 +140,8 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             }
 
             // Intermediate f32 buffer is supported only for given condition.
-            if (!attr()->has_default_values() || with_bias()) {
+            if ((!attr()->has_default_values() || with_bias())
+                    && dst_md()->data_type != f64) {
                 // Enforce f32 dt for diff src and work with f32 output for bias
                 // update or post ops after conv execution.
                 CHECK(conv_descr_create(desc(), &cd, nullptr, data_type::f32));
@@ -165,8 +164,7 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             using smask_t = primitive_attr_t::skip_mask_t;
             auto skip_mask = smask_t::post_ops | smask_t::sum_dt;
             if (utils::one_of(desc()->src_desc.data_type, s8, u8))
-                skip_mask |= smask_t::scales_runtime
-                        | smask_t::zero_points_runtime;
+                skip_mask |= smask_t::scales | smask_t::zero_points;
 
             VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_DECONVOLUTION(utils::one_of(desc()->alg_kind,
@@ -336,8 +334,6 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
             , conv_pd_(other.conv_pd_->clone())
             , name_(other.name_) {}
 
-        ~pd_t() = default;
-
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_data_t);
 
         status_t init_convolution(engine_t *engine) {
@@ -372,7 +368,9 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_DECONVOLUTION(utils::one_of(wei_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_DECONVOLUTION(ddst_type == wei_type,
+            VDISPATCH_DECONVOLUTION(IMPLICATION(ddst_type != wei_type,
+                                            utils::one_of(wei_type, bf16, f16)
+                                                    && ddst_type == f32),
                     VERBOSE_INCONSISTENT_DT, "diff_dst", "weights");
             VDISPATCH_DECONVOLUTION(utils::one_of(dsrc_type, wei_type, f32),
                     VERBOSE_UNSUPPORTED_DT);
@@ -419,7 +417,7 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
         return pd()->conv_pd_->create_primitive(conv_p_, engine);
     }
 
-#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#if DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
     status_t create_resource(
             engine_t *engine, resource_mapper_t &mapper) const override {
         CHECK(conv_p_->create_resource(engine, mapper));
@@ -444,8 +442,6 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
             , conv_pd_(other.conv_pd_->clone())
             , dst_tag_(other.dst_tag_)
             , name_(other.name_) {}
-
-        ~pd_t() = default;
 
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_weights_t);
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ namespace x64 {
 namespace simple_barrier {
 
 void generate(
-        jit_generator &code, Xbyak::Reg64 reg_ctx, Xbyak::Reg64 reg_nthr) {
+        jit_generator_t &code, Xbyak::Reg64 reg_ctx, Xbyak::Reg64 reg_nthr) {
 #define BAR_CTR_OFF offsetof(ctx_t, ctr)
 #define BAR_SENSE_OFF offsetof(ctx_t, sense)
     using namespace Xbyak;
@@ -81,7 +81,7 @@ void generate(
 }
 
 /** jit barrier generator */
-struct jit_t : public jit_generator {
+struct jit_t : public jit_generator_t {
 
     void generate() override {
         simple_barrier::generate(*this, abi_param1, abi_param2);
@@ -89,7 +89,7 @@ struct jit_t : public jit_generator {
     }
 
     // TODO: Need to check status
-    jit_t() : jit_generator(jit_name()) { create_kernel(); }
+    jit_t() : jit_generator_t(jit_name()) { create_kernel(); }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_t)
 };

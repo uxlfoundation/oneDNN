@@ -116,6 +116,18 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
             VERBOSE_INCONSISTENT_DIM, "src", 1, "weights", with_groups + 1);
     VCHECK_CONV(dst_desc->dims[1] == g * weights_desc->dims[with_groups + 0],
             VERBOSE_INCONSISTENT_DIM, "dst", 1, "weights", with_groups + 0);
+    // s4/u4/f4 weights requires channels to be multiple of 2 to be byte aligned
+    VCHECK_CONV(IMPLICATION(utils::one_of(weights_desc->data_type,
+                                    data_type::s4, data_type::u4,
+                                    data_type::f4_e2m1, data_type::f4_e3m0),
+                        weights_desc->dims[with_groups + 1] % 2 == 0),
+            VERBOSE_BAD_DIM, "weights", with_groups + 1);
+    // s4/u4/f4 src requires channels to be multiple of 2 to be byte aligned
+    VCHECK_CONV(IMPLICATION(utils::one_of(src_desc->data_type, data_type::s4,
+                                    data_type::u4, data_type::f4_e2m1,
+                                    data_type::f4_e3m0),
+                        src_desc->dims[1] % 2 == 0),
+            VERBOSE_BAD_DIM, "src", 1);
 
     int sp_dims = src_desc->ndims - 2;
     utils::array_copy(cd.strides, strides, sp_dims);
@@ -174,11 +186,8 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                                 data_type::f8_e4m3));
         const bool enable_quantization = is_int8 || is_fp8;
         if (enable_quantization)
-            fwd_attr_mask |= smask_t::scales_runtime
-                    | smask_t::zero_points_runtime
-                    | smask_t::zero_points_runtime_data_type
-                    | smask_t::scales_runtime_groups
-                    | smask_t::scales_runtime_data_type;
+            fwd_attr_mask |= smask_t::zero_points_data_type
+                    | smask_t::scales_data_type;
 
         VCHECK_CONV_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -233,7 +242,7 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         auto bwd_attr_mask = smask_t::fpmath_mode | smask_t::accumulation_mode;

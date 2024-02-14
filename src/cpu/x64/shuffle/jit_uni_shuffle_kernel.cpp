@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ namespace x64 {
 
 using namespace Xbyak;
 
-#define GET_OFF(field) offsetof(jit_shuffle_call_s, field)
+#define GET_OFF(field) offsetof(jit_uni_shuffle_args_t, field)
 
 static size_t get_padding_size(const jit_shuffle_conf_t &conf) {
     const auto padding_tail_size = conf.c % conf.blk_size;
@@ -39,7 +39,7 @@ static size_t get_padding_size(const jit_shuffle_conf_t &conf) {
 template <cpu_isa_t isa>
 jit_uni_shuffle_kernel_t<isa>::jit_uni_shuffle_kernel_t(
         const jit_shuffle_conf_t &conf)
-    : jit_generator(jit_name(), isa)
+    : jit_generator_t(jit_name(), isa)
     , conf_(conf)
     , padding_size_(get_padding_size(conf)) {}
 

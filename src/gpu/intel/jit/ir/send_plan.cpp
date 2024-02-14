@@ -47,9 +47,18 @@ public:
     virtual bool can_split(int factor) const = 0;
     virtual void set_split(int factor) = 0;
     virtual int split_factor() const = 0;
-    virtual int estimate_regs(bool with_buffer = true, bool with_headers = true,
-            bool reuse_headers = false) const = 0;
+    virtual int estimate_regs(
+            bool with_buffer, bool with_headers, bool reuse_headers) const = 0;
     virtual std::string str(const std::string &tag) const = 0;
+
+    int estimate_regs(bool with_buffer, bool with_headers) const {
+        return estimate_regs(
+                with_buffer, with_headers, /*reuse_headers=*/false);
+    }
+    int estimate_regs(bool with_buffer) const {
+        return estimate_regs(with_buffer, /*with_headers=*/true);
+    }
+    int estimate_regs() const { return estimate_regs(/*with_buffer=*/true); }
 };
 
 send_op_t to_2d(send_op_t op) {
@@ -339,9 +348,11 @@ public:
     tdim_info_t() = default;
     tdim_info_t(
             int tidx, const tdim_t &tdim, const view_t &view, int64_t block = 1)
-        : tidx_(tidx), block_(block), dim_(&tdim) {
-        base_mod_ = to_base(tdim, view.vvars());
-        size_ = view.tlayout().dim(tidx);
+        : tidx_(tidx)
+        , size_(view.tlayout().dim(tidx))
+        , base_mod_(to_base(tdim, view.vvars()))
+        , block_(block)
+        , dim_(&tdim) {
         for (dim_idx_t i = 0; i < tdim.nvargs(); i++) {
             vidxs_[i] = tdim.vidx(i);
             vstrides_[i] = tdim.vstride(i);
@@ -705,7 +716,7 @@ struct send_2d_params_t {
             }
             ret += (int64_t)b.stride * vblock_off[i];
         }
-        return ret * vlayout.type().size();
+        return ret * vlayout.type().size() / vlayout.type().packing();
     }
 
     int64_t to_x_inc(
@@ -1103,7 +1114,7 @@ struct send_group_t {
             if (bounds.contains(subtile_idx, b.reg_off)) {
                 auto bb = b;
                 bb.reg_off = bounds.normalize_reg_off(subtile_idx, b.reg_off);
-                new_blocks.push_back(bb);
+                new_blocks.push_back(std::move(bb));
             }
         }
 
@@ -1238,6 +1249,7 @@ public:
     int inner_idx() const { return inner_idx_; }
     int outer_idx() const { return outer_idx_; }
     int reg_bytes_per_elem() const { return reg_bytes_per_elem_; }
+    int reg_bits_per_elem() const { return reg_bits_per_elem_; }
     send_kind_t send_kind() const { return send_kind_; }
     const send_2d_params_t &send_2d_params() const { return send_2d_params_; }
     const expr_t &addr_base() const { return addr_base_; }
@@ -1271,8 +1283,9 @@ public:
 
     int init_scattered_params(const send_params_t &send_params, int inner_bytes,
             int total_bytes) const {
-        // atomic  messages imply direct type match
-        if (is_atomic(send_params.send_op)) return send_params.mem_type.size();
+        // atomic_fadd messages imply direct type match
+        if (send_params.send_op == send_op_t::atomic_fadd)
+            return send_params.mem_type.size();
 
         const bool is_hw_xelp_or_below = (hw() <= ngen::HW::XeLP);
         const bool is_slm = (send_params.send_address == send_address_t::slm);
@@ -1290,7 +1303,14 @@ public:
         // GRF layout will be strided in the middle and may trigger unsupported
         // reorders. Once reorder is robust enough, this check is to be removed
         const int type_size = send_params.mem_type.size();
-        if (type_size < slot_size && slot_size < 4) slot_size = type_size;
+        const int type_packing = send_params.mem_type.packing();
+        if (type_size < slot_size * type_packing && slot_size < 4)
+            slot_size = type_size;
+
+        // Require sub-byte types to fill a dword to avoid striding. This
+        // restriction can be reduced to byte-alignment when the restriction
+        // above is lifted.
+        if (slot_size < 4 && type_packing > 1) gpu_error_not_expected();
 
         // GPUs <= XeLP requires qword alignment for qword scattered messages,
         // downgrade to byte scattered (x1, x2 or x4) when alignment is
@@ -1308,11 +1328,12 @@ private:
         if (inner_idx < 0) return 1;
         // Get base address.
         const auto &tlayout = view().tlayout();
+        const auto &type = vlayout().type();
         dim_t align = mod_info().get_modulus(tlayout, mod_info().vmods()).n();
         // Get outer strides.
         for (int i = inner_idx; i < vlayout().nblocks(); i++) {
             auto &b = vlayout().blocks()[i];
-            dim_t stride_bytes = dim_t(b.stride) * vlayout().type().size();
+            dim_t stride_bytes = dim_t(b.stride) * type.size() / type.packing();
             align = math::gcd(align, stride_bytes);
         }
         return align;
@@ -1363,7 +1384,7 @@ private:
 
     bool can_use_block(int inner_idx, int inner_bytes, int total_bytes,
             const send_params_t &send_params) const {
-        if (is_atomic(send_params.send_op)) return false;
+        if (send_params.send_op == send_op_t::atomic_fadd) return false;
 
         const auto align = (hw_ < ngen::HW::XeHPC)
                 ? std::min(32, ir_utils::max_pow2_divisor(inner_bytes))
@@ -1389,25 +1410,28 @@ private:
         send_2d_params_ = try_init_2d();
         if (!send_2d_params_.is_empty()) {
             reg_bytes_per_elem_ = vlayout_.type().size();
+            reg_bits_per_elem_ = vlayout_.type().bitsize();
             send_kind_ = send_kind_t::_2d;
             outer_idx_ = inner_idx_ = 2;
             return;
         }
         vlayout_ = split_layout_inner(vlayout_, inner_idx_);
-        int type_size = vlayout_.type().size();
-        int inner_bytes = type_size;
-        int total_bytes = type_size * into<int>(vlayout_.elems());
+        const type_t &type = vlayout_.type();
+        int inner_elems = 1;
+        int total_elems = into<int>(vlayout_.elems());
         auto &blocks = vlayout_.blocks();
         for (int i = 0; i < inner_idx_; i++) {
-            inner_bytes *= into<int>(blocks[i].block);
+            inner_elems *= into<int>(blocks[i].block);
         }
+        int inner_bytes = type.size() * inner_elems / type.packing();
+        int total_bytes = type.size() * total_elems / type.packing();
         if (can_use_block(inner_idx_, inner_bytes, total_bytes, send_params_)) {
             send_kind_ = send_kind_t::block;
         } else {
             send_kind_ = send_kind_t::scattered;
         }
-        vlayout_
-                = split_layout_outer(vlayout_, outer_idx_, reg_bytes_per_elem_);
+        vlayout_ = split_layout_outer(vlayout_, outer_idx_, reg_bits_per_elem_);
+        reg_bytes_per_elem_ = utils::div_up(reg_bits_per_elem_, 8);
     }
 
     layout_t split_layout_inner(const layout_t &layout, int &inner_idx) const {
@@ -1452,27 +1476,31 @@ private:
     }
 
     layout_t split_layout_outer(const layout_t &layout, int &outer_idx,
-            int &reg_bytes_per_elem) const {
+            int &reg_bits_per_elem) const {
         outer_idx = inner_idx_;
         if (send_kind_ == send_kind_t::block) {
-            reg_bytes_per_elem = layout.type().size();
+            reg_bits_per_elem = layout.type().bitsize();
             return layout;
         }
         gpu_assert(send_kind_ == send_kind_t::scattered);
 
-        int type_size = layout.type().size();
-        int inner_bytes = type_size;
+        const type_t &type = layout.type();
+        int inner_elems = 1;
+        int total_elems = into<int>(vlayout_.elems());
 
         auto &blocks = layout.blocks();
         int nblocks = (int)blocks.size();
         for (int i = 0; i < inner_idx_; i++) {
-            inner_bytes *= (int)blocks[i].block;
+            inner_elems *= (int)blocks[i].block;
         }
+        gpu_assert(total_elems * type.size() % type.packing() == 0);
+        gpu_assert(inner_elems * type.size() % type.packing() == 0);
 
-        int total_bytes = into<int>(vlayout_.elems() * type_size);
+        int inner_bytes = inner_elems * type.size() / type.packing();
+        int total_bytes = total_elems * type.size() / type.packing();
         int slot_size
                 = init_scattered_params(send_params_, inner_bytes, total_bytes);
-        reg_bytes_per_elem = std::max(1, 4 / slot_size) * type_size;
+        reg_bits_per_elem = std::max(1, 4 / slot_size) * type.bitsize();
 
         int max_slots = get_max_slots(hw_, send_params_);
         int inner_slots = ir_utils::safe_divide(inner_bytes, slot_size);
@@ -1585,6 +1613,7 @@ private:
     layout_t vlayout_; // Virtual layout.
     int inner_idx_ = 0;
     int outer_idx_ = 0;
+    int reg_bits_per_elem_ = 0;
     int reg_bytes_per_elem_ = 0;
     send_kind_t send_kind_ = send_kind_t::undef;
     send_2d_params_t send_2d_params_;
@@ -1804,10 +1833,10 @@ class view_iterator_t {
 public:
     view_iterator_t(const view_info_t &info)
         : info_(info)
+        , inner_elems_(1)
         , block_off_(nblocks())
         , block_dims_(nblocks())
         , off_(info.vlayout().ndims()) {
-        inner_elems_ = 1;
         for (int i = 0; i < info_.inner_idx(); i++) {
             inner_elems_ *= (int)blocks()[i].block;
         }
@@ -1820,8 +1849,11 @@ public:
     }
 
     int type_size() const { return info_.vlayout().type().size(); }
+    int type_packing() const { return info_.vlayout().type().packing(); }
     int inner_elems() const { return inner_elems_; }
-    int inner_bytes() const { return inner_elems_ * type_size(); }
+    int inner_bytes() const {
+        return inner_elems_ * type_size() / type_packing();
+    }
     int reg_off() const { return reg_off_; }
 
     int middle_blocks() const {
@@ -1831,7 +1863,9 @@ public:
         return ret;
     }
 
-    dim_t total_bytes() const { return info_.vlayout().elems() * type_size(); }
+    dim_t total_bytes() const {
+        return info_.vlayout().elems() * type_size() / type_packing();
+    }
 
     int nblocks() const { return (int)blocks().size(); }
 
@@ -1849,7 +1883,7 @@ public:
         gpu_assert(has_next(elems));
         advance(block_off_, info_.vlayout(), elems);
         linear_off_ += elems;
-        reg_off_ += elems * info_.reg_bytes_per_elem();
+        reg_off_ += utils::div_up(elems * info_.reg_bits_per_elem(), 8);
         off_.assign(info_.vlayout().ndims(), 0);
         for (int i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
@@ -1888,6 +1922,7 @@ public:
             ret += (int64_t)b.stride * block_off_[i];
         }
         ret *= type_size();
+        ret /= type_packing();
         vec_off_t vec(slots, ret);
         for (int i = 0; i < slots; i++)
             vec[i] += i * slot_size;
@@ -1968,7 +2003,7 @@ public:
         if (!is_2d()) send_params_.hint_2d.enable = false;
     }
 
-    std::string str(const std::string &tag = "send_plan") const override {
+    std::string str(const std::string &tag) const override {
         std::ostringstream oss;
         oss << tag << ":" << std::endl;
         oss << "  base = " << addr_base_ << std::endl;
@@ -1987,6 +2022,7 @@ public:
         }
         return oss.str();
     }
+    std::string str() const { return str("send_plan"); }
 
     stmt_t create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
             int subtile_idx, const expr_t &pattern) const override {
@@ -2080,8 +2116,8 @@ public:
 
     int split_factor() const override { return split_factor_; }
 
-    int estimate_regs(bool with_buffer = true, bool with_headers = true,
-            bool reuse_headers = false) const override {
+    int estimate_regs(bool with_buffer, bool with_headers,
+            bool reuse_headers) const override {
         int header_size = 0;
         for (auto &g : send_groups_) {
             int g_header_size = 0;
@@ -2271,6 +2307,8 @@ public:
     }
 
     ir_send_plan_t(const ir_send_plan_t &) = delete;
+    ir_send_plan_t &operator=(const ir_send_plan_t &) = delete;
+    ~ir_send_plan_t() override = default;
 
     const send_params_t &send_params() const override { return send_params_; }
 
@@ -2316,8 +2354,8 @@ public:
 
     int split_factor() const override { return split_factor_; }
 
-    int estimate_regs(bool with_buffer = true, bool with_headers = true,
-            bool reuse_headers = false) const override {
+    int estimate_regs(bool with_buffer, bool with_headers,
+            bool reuse_headers) const override {
         auto calls = find_objects<func_call_t>(access_.stmt());
         int header_size = 0;
         for (auto &c : calls) {
@@ -2490,8 +2528,9 @@ send_group_t init_scattered(const view_info_t &info,
     auto &vlayout = info.vlayout();
     auto &blocks = vlayout.blocks();
     int type_size = vlayout.type().size();
+    int type_packing = vlayout.type().packing();
     int slot_size = info.init_scattered_params(send_params, it.inner_bytes(),
-            into<int>(vlayout.elems() * type_size));
+            into<int>(vlayout.elems() * type_size / type_packing));
     int slot_stride = std::max(4, slot_size);
     int inner_slots = ir_utils::safe_divide(it.inner_bytes(), slot_size);
 
@@ -2523,10 +2562,11 @@ send_group_t init_scattered(const view_info_t &info,
         } else {
             gpu_assert(reg_layout.nblocks() > 0);
             auto &b0 = reg_layout.blocks()[0];
-            int inner = slot_size / type_size;
+            int inner = slot_size * type_packing / type_size;
             reg_layout
                     = reg_layout.split_block({0, b0}, inner, b0.block / inner);
-            int stride1 = ir_utils::safe_divide(slot_stride, type_size);
+            int stride1 = ir_utils::safe_divide(
+                    slot_stride * type_packing, type_size);
             reg_layout = reg_layout.make_strided(stride1, 1);
         }
     }
@@ -2672,8 +2712,9 @@ send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
         auto &last = reg_layout.blocks().back();
         stride = (dim_t)last.stride * last.block;
     }
+    const type_t &type = reg_layout.type();
     stride = utils::rnd_up(
-            stride, base_group.pad_bytes / reg_layout.type().size());
+            stride, base_group.pad_bytes * type.packing() / type.size());
     for (int i = outer_idx; i < (int)blocks.size(); i++) {
         auto &b = blocks[i];
         reg_layout = reg_layout.add_outer_block(b.dim_idx, b.block, stride);

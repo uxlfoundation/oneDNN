@@ -50,7 +50,7 @@ public:
 
     void add_loop(const pvar_t &dim, const expr_t &idx, const expr_t &init,
             const expr_t &bound) {
-        loops_.push_back(loop_t(loops_.size(), dim, idx, init, bound));
+        loops_.emplace_back(loops_.size(), dim, idx, init, bound);
     }
 
     void set_linear_bound(const expr_t &linear_bound) {
@@ -493,13 +493,13 @@ public:
     const offset_scope_t &off_scope() const { return *off_scope_; }
     const offset_ctx_t &off_ctx() const { return off_ctx_; }
     expr_t alloc(const std::string &_name, int size) {
-        auto name = (buf_mgr_->has(_name)
+        const auto &name = (buf_mgr_->has(_name)
                         ? buf_mgr_->ir_ctx().create_tmp_name(_name)
                         : _name);
         return buf_mgr_->get(name, size);
     }
     var_ref_t alloc_var(const type_t &type, const std::string &_name) {
-        auto name = (buf_mgr_->has(_name)
+        const auto &name = (buf_mgr_->has(_name)
                         ? buf_mgr_->ir_ctx().create_tmp_name(_name)
                         : _name);
         auto buf = alloc(name, type.size());

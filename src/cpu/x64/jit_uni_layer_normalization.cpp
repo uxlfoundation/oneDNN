@@ -78,7 +78,7 @@ static bcast_set_t get_supported_bcast_strategies(int ndims) {
 
 template <cpu_isa_t isa>
 struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_lnorm_stat_and_data_kernel_t);
 
     void operator()(const void *src, void *dst, const float *scale,
@@ -99,14 +99,16 @@ struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
         args.eps = eps_;
         args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec;
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_stat_and_data_base_kernel_t(const layer_normalization_pd_t *pd)
         : stat_and_data_kernel_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , src_d_(pd_->src_md())
         , dst_d_(pd_->dst_md())
         , simd_w_(vlen / sizeof(float))
@@ -119,8 +121,9 @@ struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
         , calculate_stats_(!pd_->stats_are_src())
         , eps_(pd_->desc()->layer_norm_epsilon)
         , has_ne_convert_src_xf16_(isa == avx2 && mayiuse(avx2_vnni_2)
-                  && utils::one_of(src_d_.data_type(), data_type::f16,
-                          data_type::bf16)) {
+                  && utils::one_of(
+                          src_d_.data_type(), data_type::f16, data_type::bf16))
+        , skip_mean_(pd_->skip_mean()) {
 
         const auto &post_ops = pd_->attr()->post_ops_;
         with_postops_ = post_ops.len() != 0;
@@ -150,11 +153,11 @@ struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
 
 protected:
     static constexpr int unroll_factor_ = 4;
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
                                                  : zword;
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
         const void *src;
@@ -182,6 +185,7 @@ protected:
     const bool calculate_stats_;
     const float eps_;
     const bool has_ne_convert_src_xf16_;
+    const bool skip_mean_;
     bool with_postops_ = false;
     bool with_binary_ = false;
     bool with_eltwise_ = false;
@@ -410,18 +414,19 @@ protected:
     }
 
     void compute_var() {
+        auto compute_var_lambda
+                = [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
+                      if (!skip_mean_) {
+                          uni_vsubps_maybe_tail(vmm_src, vmm_mean, need_tail);
+                      }
+                      uni_vfmadd231ps(vmm_dst, vmm_src, vmm_src);
+                  };
+
         if (has_ne_convert_src_xf16_)
-            compute_ne_convert_xf16(vmm_inv_sqrtvar,
-                    [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
-                        uni_vsubps_maybe_tail(vmm_src, vmm_mean, need_tail);
-                        uni_vfmadd231ps(vmm_dst, vmm_src, vmm_src);
-                    });
+            compute_ne_convert_xf16(vmm_inv_sqrtvar, compute_var_lambda);
         else
-            compute(vmm_inv_sqrtvar,
-                    [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
-                        uni_vsubps_maybe_tail(vmm_src, vmm_mean, need_tail);
-                        uni_vfmadd231ps(vmm_dst, vmm_src, vmm_src);
-                    });
+            compute(vmm_inv_sqrtvar, compute_var_lambda);
+
         if (save_stats_)
             uni_vmovss(ptr[reg_var], Xmm(vmm_inv_sqrtvar.getIdx()));
     }
@@ -440,7 +445,7 @@ protected:
             if (use_shift_)
                 io_[f32]->load(
                         shift_ptr(offt_elems + j * simd_w_), vmm_shift, tail);
-            uni_vsubps(vmm_dst, vmm_dst, vmm_mean);
+            if (!skip_mean_) uni_vsubps(vmm_dst, vmm_dst, vmm_mean);
             uni_vmulps(vmm_dst, vmm_dst, vmm_inv_sqrtvar);
             if (use_scale_ && use_shift_)
                 uni_vfmadd213ps(vmm_dst, vmm_scale, vmm_shift);
@@ -484,7 +489,7 @@ protected:
             io_[f32]->load(shift_ptr(offt_elems), vmm_shift, tail);
         }
         io_[src_d_.data_type()]->load(src_ptr(offt_elems), vmm_dst, tail);
-        uni_vsubps(vmm_dst, vmm_dst, vmm_mean);
+        if (!skip_mean_) uni_vsubps(vmm_dst, vmm_dst, vmm_mean);
         uni_vmulps(vmm_dst, vmm_dst, vmm_inv_sqrtvar);
         if (use_scale_ && use_shift_)
             uni_vfmadd213ps(vmm_dst, vmm_scale, vmm_shift);
@@ -605,12 +610,14 @@ protected:
 
             if (calculate_stats_) {
                 // compute stats
-                compute_mean();
+                if (!skip_mean_) { compute_mean(); }
                 compute_var();
             } else {
                 // read mean and var from input
-                uni_vmovss(xmm_tmp, dword[reg_mean]);
-                uni_vbroadcastss(vmm_mean, xmm_tmp);
+                if (!skip_mean_) {
+                    uni_vmovss(xmm_tmp, dword[reg_mean]);
+                    uni_vbroadcastss(vmm_mean, xmm_tmp);
+                }
                 uni_vmovss(xmm_tmp, dword[reg_var]);
                 uni_vbroadcastss(vmm_inv_sqrtvar, xmm_tmp);
             }
@@ -708,7 +715,7 @@ stat_and_data_kernel_t *stat_and_data_kernel_t::create(
 }
 
 template <cpu_isa_t isa>
-struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator {
+struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_lnorm_diff_ss_kernel_t);
 
     void operator()(const void *src, const void *diff_dst, float *diff_scale,
@@ -733,21 +740,24 @@ struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator {
         args.inv_sqrtvar = inv_sqrtvar;
         args.block_size
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_diff_ss_kernel_t(const layer_normalization_pd_t *pd)
         : diff_ss_kernel_t(pd)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_d_(pd_->src_md())
         , d_dst_d_(pd_->diff_dst_md())
         , simd_w_(vlen / sizeof(float))
         , C_(pd_->norm_axis())
         , axis_simd_full_(C_ / simd_w_)
         , axis_simd_tail_(C_ % simd_w_)
-        , eps_(pd_->desc()->layer_norm_epsilon) {
+        , eps_(pd_->desc()->layer_norm_epsilon)
+        , skip_mean_(pd_->skip_mean()) {
 
         io::io_conf_t io_conf;
         io::io_tail_conf_t io_tail_conf(simd_w_, axis_simd_tail_,
@@ -764,11 +774,11 @@ struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator {
     }
 
 protected:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
                                                  : zword;
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
         const void *src;
@@ -787,6 +797,7 @@ protected:
     const dim_t axis_simd_full_;
     const dim_t axis_simd_tail_;
     const float eps_;
+    const bool skip_mean_;
 
     const Reg64 reg_param = abi_param1;
     const Reg64 reg_src = rdx;
@@ -836,7 +847,7 @@ protected:
         io_[src_d_.data_type()]->load(src_ptr(offt_elems), vmm_src, tail);
 
         uni_vaddps(vmm_dshift, vmm_dshift, vmm_ddst);
-        uni_vsubps(vmm_src, vmm_src, vmm_mean);
+        if (!skip_mean_) uni_vsubps(vmm_src, vmm_src, vmm_mean);
         uni_vmulps(vmm_src, vmm_src, vmm_inv_sqrtvar);
         uni_vfmadd231ps(vmm_dscale, vmm_src, vmm_ddst);
 
@@ -875,8 +886,10 @@ protected:
             cmp(reg_block_end, reg_src);
             jle(end, T_NEAR);
 
-            uni_vmovss(xmm_tmp, dword[reg_mean]);
-            uni_vbroadcastss(vmm_mean, xmm_tmp);
+            if (!skip_mean_) {
+                uni_vmovss(xmm_tmp, dword[reg_mean]);
+                uni_vbroadcastss(vmm_mean, xmm_tmp);
+            }
             uni_vmovss(xmm_tmp, dword[reg_inv_sqrtvar]);
             uni_vbroadcastss(vmm_inv_sqrtvar, xmm_tmp);
 
@@ -909,7 +922,8 @@ diff_ss_kernel_t *diff_ss_kernel_t::create(const layer_normalization_pd_t *pd) {
 }
 
 template <cpu_isa_t isa>
-struct jit_diff_data_base_kernel_t : diff_data_kernel_t, public jit_generator {
+struct jit_diff_data_base_kernel_t : diff_data_kernel_t,
+                                     public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_lnorm_diff_data_kernel_t);
 
     void operator()(const void *src, const void *diff_dst, void *diff_src,
@@ -924,14 +938,16 @@ struct jit_diff_data_base_kernel_t : diff_data_kernel_t, public jit_generator {
         args.inv_sqrtvar = inv_sqrtvar;
         args.block_size
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_diff_data_base_kernel_t(const layer_normalization_pd_t *pd)
         : diff_data_kernel_t(pd)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_d_(pd_->src_md())
         , d_dst_d_(pd_->diff_dst_md())
         , d_src_d_(pd_->diff_src_md())
@@ -941,7 +957,8 @@ struct jit_diff_data_base_kernel_t : diff_data_kernel_t, public jit_generator {
         , axis_simd_tail_(C_ % simd_w_)
         , use_scale_(pd_->use_scale())
         , use_shift_(pd_->use_shift())
-        , calculate_diff_stats_(!pd_->stats_are_src()) {
+        , calculate_diff_stats_(!pd_->stats_are_src())
+        , skip_mean_(pd_->skip_mean()) {
 
         io::io_conf_t io_conf;
         io::io_tail_conf_t io_tail_conf(simd_w_, axis_simd_tail_,
@@ -962,11 +979,11 @@ struct jit_diff_data_base_kernel_t : diff_data_kernel_t, public jit_generator {
 
 protected:
     static constexpr int unroll_factor_ = 4;
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
                                                  : zword;
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
         const void *src;
@@ -987,6 +1004,7 @@ protected:
     const bool use_scale_;
     const bool use_shift_;
     const bool calculate_diff_stats_;
+    const bool skip_mean_;
 
     const Reg64 reg_param = abi_param1;
     const Reg64 reg_src = rdx;
@@ -1046,7 +1064,7 @@ protected:
         io_[src_d_.data_type()]->load(src_ptr(offt_elems), vmm_src, tail);
 
         uni_vaddps(vmm_dd_scale, vmm_dd_scale, vmm_ddst);
-        uni_vsubps(vmm_src, vmm_src, vmm_mean);
+        if (!skip_mean_) { uni_vsubps(vmm_src, vmm_src, vmm_mean); }
         uni_vfmadd231ps(vmm_dd_scale_x, vmm_ddst, vmm_src);
     };
 
@@ -1059,7 +1077,7 @@ protected:
         }
         if (calculate_diff_stats_) {
             io_[src_d_.data_type()]->load(src_ptr(offt_elems), vmm_src, tail);
-            uni_vsubps(vmm_src, vmm_src, vmm_mean);
+            if (!skip_mean_) { uni_vsubps(vmm_src, vmm_src, vmm_mean); }
             uni_vmulps(vmm_src, vmm_src, vmm_inv_sqrtvar);
             uni_vfmadd213ps(vmm_src, vmm_dd_scale_x, vmm_dd_scale);
             uni_vdivps(vmm_src, vmm_src, vmm_C);
@@ -1089,8 +1107,9 @@ protected:
         mov(reg_diff_src, ptr[reg_param + PARAM_OFF(diff_src)]);
         mov(reg_scale, ptr[reg_param + PARAM_OFF(ss)]);
 
-        if (calculate_diff_stats_)
+        if (calculate_diff_stats_ && !skip_mean_) {
             mov(reg_mean, ptr[reg_param + PARAM_OFF(mean)]);
+        }
         mov(reg_inv_sqrtvar, ptr[reg_param + PARAM_OFF(inv_sqrtvar)]);
         mov(reg_block_end, ptr[reg_param + PARAM_OFF(block_size)]);
 #undef PARAM_OFF
@@ -1112,8 +1131,10 @@ protected:
             uni_vbroadcastss(vmm_inv_sqrtvar, xmm_tmp);
 
             if (calculate_diff_stats_) {
-                uni_vmovss(xmm_tmp, dword[reg_mean]);
-                uni_vbroadcastss(vmm_mean, xmm_tmp);
+                if (!skip_mean_) {
+                    uni_vmovss(xmm_tmp, dword[reg_mean]);
+                    uni_vbroadcastss(vmm_mean, xmm_tmp);
+                }
 
                 uni_vpxor(vmm_dd_scale, vmm_dd_scale, vmm_dd_scale);
                 uni_vpxor(vmm_dd_scale_x, vmm_dd_scale_x, vmm_dd_scale_x);
@@ -1136,7 +1157,7 @@ protected:
             add(reg_src, c_src_size);
             add(reg_diff_dst, c_ddst_size);
             add(reg_diff_src, c_dsrc_size);
-            if (calculate_diff_stats_) add(reg_mean, float_size);
+            if (calculate_diff_stats_ && !skip_mean_) add(reg_mean, float_size);
             add(reg_inv_sqrtvar, float_size);
             jmp(unroll_loop);
         }
@@ -1215,8 +1236,8 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_LNORM(stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_FEATURE,
             "unsupported scale or shift data type");
-    VDISPATCH_LNORM(attr()->has_default_values(skip_mask_t::scales_runtime
-                            | skip_mask_t::post_ops),
+    VDISPATCH_LNORM(attr()->has_default_values(
+                            skip_mask_t::scales | skip_mask_t::post_ops),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_LNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
@@ -1225,6 +1246,8 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     // plain format, last logical dim is last physical
     VDISPATCH_LNORM(src_d.blocking_desc().strides[ndims() - 1] == 1,
             VERBOSE_BLOCKING_FAIL, "bad stride value");
+    VDISPATCH_LNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto post_ops_ok = [&]() -> bool {
         const std::vector<injector::post_op_type> accepted_post_ops
@@ -1234,7 +1257,10 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
                 accepted_post_ops, attr()->post_ops_, &dst_d, true, true, true,
                 true, get_supported_bcast_strategies(dst_d.ndims()));
 
-        return injector::post_ops_ok(post_ops_args);
+        return injector::post_ops_ok(post_ops_args)
+                && !binary_injector::
+                           any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                   attr()->post_ops_, dst_d);
     };
     VDISPATCH_LNORM(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
@@ -1263,9 +1289,12 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
     auto scale = CTX_IN_MEM(const float *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const float *, DNNL_ARG_SHIFT);
 
+    bool skip_mean = pd()->skip_mean();
+
     float *mean, *variance;
     if (pd()->use_tmp_stats()) {
-        mean = scratchpad.template get<float>(key_lnorm_tmp_mean);
+        mean = skip_mean ? nullptr
+                         : scratchpad.template get<float>(key_lnorm_tmp_mean);
         variance = scratchpad.template get<float>(key_lnorm_tmp_var);
     } else {
         mean = pd()->stats_are_src()
@@ -1299,7 +1328,8 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
         char *const __restrict dst_ptr = reinterpret_cast<char *>(dst)
                 + N_start * C_padded * dst_d.data_type_size();
         const int block_size = N_end - N_start;
-        (*stat_and_data_kernel_)(src_ptr, dst_ptr, scale, shift, &mean[N_start],
+        float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
+        (*stat_and_data_kernel_)(src_ptr, dst_ptr, scale, shift, mean_ptr,
                 &variance[N_start], src_scales, dst_scales,
                 post_ops_binary_rhs_arg_vec.data(), block_size);
     });
@@ -1321,9 +1351,12 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
     auto diff_shift = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SHIFT, status);
     CHECK(status);
 
+    bool skip_mean = pd()->skip_mean();
+
     const float *mean, *variance;
     if (pd()->use_tmp_stats()) {
-        mean = scratchpad.template get<float>(key_lnorm_tmp_mean);
+        mean = skip_mean ? nullptr
+                         : scratchpad.template get<float>(key_lnorm_tmp_mean);
         variance = scratchpad.template get<float>(key_lnorm_tmp_var);
     } else {
         mean = CTX_IN_MEM(const float *, DNNL_ARG_MEAN);
@@ -1367,8 +1400,9 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
             my_diff_gamma[c] = 0.;
             my_diff_beta[c] = 0.;
         }
+        const float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
         (*diff_ss_kernel_)(src_ptr, diff_dst_ptr, my_diff_gamma, my_diff_beta,
-                &mean[N_start], &variance[N_start], &inv_sqrtvar[N_start],
+                mean_ptr, &variance[N_start], &inv_sqrtvar[N_start],
                 block_size);
     });
 
@@ -1395,8 +1429,9 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
         char *const __restrict diff_src_ptr = reinterpret_cast<char *>(diff_src)
                 + N_start * C_padded * diff_src_d.data_type_size();
 
+        const float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
         (*diff_data_kernel_)(src_ptr, diff_dst_ptr, diff_src_ptr, scale,
-                &mean[N_start], &inv_sqrtvar[N_start], block_size);
+                mean_ptr, &inv_sqrtvar[N_start], block_size);
     });
     return status::success;
 }

@@ -361,6 +361,9 @@ struct cudnn_matmul_impl_t {
             void *b, void *c, void *bias, void *reorder_scratch,
             void *src_scale, void *wei_scale, void *dst_scale) {
 
+        cudaStream_t cuda_stream;
+        CUBLAS_EXECUTE_FUNC(cublasGetStream, cublas_handle, &cuda_stream);
+
         // use cached params unless using runtime dimensions
         std::shared_ptr<cublas_params> params
                 = matmul_params->has_runtime_params_ ? matmul_params
@@ -384,19 +387,19 @@ struct cudnn_matmul_impl_t {
         float host_dst_scale = 1.0f;
         if (src_scale) {
             float host_src_scale = 1.0f;
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_src_scale,
-                    (CUdeviceptr)src_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_src_scale,
+                    (CUdeviceptr)src_scale, sizeof(float), cuda_stream);
             scale *= host_src_scale;
         }
         if (wei_scale) {
             float host_wei_scale = 1.0f;
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_wei_scale,
-                    (CUdeviceptr)wei_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_wei_scale,
+                    (CUdeviceptr)wei_scale, sizeof(float), cuda_stream);
             scale *= host_wei_scale;
         }
         if (dst_scale) {
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_dst_scale,
-                    (CUdeviceptr)dst_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_dst_scale,
+                    (CUdeviceptr)dst_scale, sizeof(float), cuda_stream);
             // For eltwise post-ops, apply the dst scale afterward
             if (!params->with_separate_eltwise_) scale /= host_dst_scale;
         }

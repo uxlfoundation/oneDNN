@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,11 +29,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_core_bf16_1x1_conv_kernel : public jit_generator {
-    jit_avx512_core_bf16_1x1_conv_kernel(const jit_1x1_conv_conf_t &ajcp,
+struct jit_avx512_core_bf16_1x1_conv_kernel_t : public jit_generator_t {
+    jit_avx512_core_bf16_1x1_conv_kernel_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_bf16_1x1_conv_kernel)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_bf16_1x1_conv_kernel_t)
 
     static status_t init_conf(jit_1x1_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
@@ -49,7 +49,7 @@ struct jit_avx512_core_bf16_1x1_conv_kernel : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
             postops_injector_;
 
@@ -126,7 +126,7 @@ private:
     void apply_postops(const int load_loop_blk, const int ur);
     void generate() override;
     static void balance(jit_1x1_conv_conf_t &jcp, int nthreads);
-    inline bool is_bcast_layout_nxc() {
+    inline bool is_bcast_layout_nxc() const {
         switch (jcp.prop_kind) {
             case prop_kind::forward_training:
             case prop_kind::forward_inference:
@@ -142,13 +142,13 @@ private:
             default: assert(!"invalid prop_kind"); return false;
         }
     }
-    inline bool is_load_layout_nxc() {
+    inline bool is_load_layout_nxc() const {
         return jcp.prop_kind == prop_kind::backward_weights
                 && jcp.uses_permw_transposition
                 && utils::one_of(jcp.dst_tag, format_tag::ndhwc,
                         format_tag::nhwc, format_tag::nwc);
     }
-    inline bool is_out_layout_nxc() {
+    inline bool is_out_layout_nxc() const {
         switch (jcp.prop_kind) {
             case prop_kind::forward_training:
             case prop_kind::forward_inference:

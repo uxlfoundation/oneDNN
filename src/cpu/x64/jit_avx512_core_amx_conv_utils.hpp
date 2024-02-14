@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+#ifndef CPU_X64_JIT_AVX512_CORE_AMX_CONV_UTILS_HPP
+#define CPU_X64_JIT_AVX512_CORE_AMX_CONV_UTILS_HPP
 
 #include "common/dnnl_thread.hpp"
 #include "common/utils.hpp"
@@ -31,9 +34,9 @@ using namespace dnnl::impl::utils;
 #define wht_blk_off(d, g, ...) \
     (with_groups ? (d).blk_off((g), __VA_ARGS__) : (d).blk_off(__VA_ARGS__))
 
-struct spatial_features_3d {
+struct spatial_features_3d_t {
 
-    spatial_features_3d(const jit_conv_conf_t &jcp)
+    spatial_features_3d_t(const jit_conv_conf_t &jcp)
         : input_size_(jcp.id)
         , filter_size_(jcp.kd)
         , dilate_(jcp.dilate_d + 1)
@@ -48,7 +51,7 @@ struct spatial_features_3d {
         , init_overflow_(0)
         , end_overflow_(0) {}
 
-    inline int get_init_overflow(const int in) {
+    inline int get_init_overflow(const int in) const {
         if (is_fast_path_)
             return nstl::max(0, filter_size_ - 1 - in - init_pad_);
         if (dilate_ != 1)
@@ -58,7 +61,7 @@ struct spatial_features_3d {
         return nstl::max(0, (filter_size_ - 1 - in - init_pad_) / stride_);
     }
 
-    inline int get_end_overflow(const int in) {
+    inline int get_end_overflow(const int in) const {
         if (is_fast_path_)
             return nstl::max(0, filter_size_ - input_size_ + in - end_pad_);
         if (dilate_ != 1)
@@ -97,13 +100,13 @@ struct spatial_features_3d {
                 : in + init_pad_ - end_overflow_ * dilate_;
     }
 
-    inline int get_filter_padding() {
+    inline int get_filter_padding() const {
         return filter_ - init_overflow_ - end_overflow_;
     }
 
-    inline int get_lower_offset() { return lower_offset_; }
+    inline int get_lower_offset() const { return lower_offset_; }
 
-    inline int get_output_offset() { return output_offset_; }
+    inline int get_output_offset() const { return output_offset_; }
 
 private:
     const int input_size_;
@@ -170,9 +173,9 @@ inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
         amx_tile_configure(tcfg);
-        spatial_features_3d sfd(jcp);
+        spatial_features_3d_t sfd(jcp);
 
         int mb {0}, g {0}, id_s {0}, ihc {0}, iwb {0}, icc {0};
         nd_iterator_init(start, mb, jcp.mb, g, jcp.ngroups, id_s, jcp.id, ihc,
@@ -308,5 +311,7 @@ inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
+
+#endif
 
 // vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

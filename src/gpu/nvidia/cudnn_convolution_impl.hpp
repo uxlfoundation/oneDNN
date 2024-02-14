@@ -563,6 +563,8 @@ public:
             transform_filter(handle, weights, w_scratch);
             weights = w_scratch;
         }
+        cudaStream_t cuda_stream;
+        CUDNN_EXECUTE_FUNC(cudnnGetStream, handle, &cuda_stream);
 
         float *y_fp32_data = nullptr;
         if (y_f32_is_required()) { y_fp32_data = (float *)args[10]; }
@@ -573,14 +575,14 @@ public:
         if (src_scale || wei_scale) {
             if (src_scale) {
                 float host_src_scale = 1.0f;
-                CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_src_scale,
-                        (CUdeviceptr)src_scale, sizeof(float));
+                CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_src_scale,
+                        (CUdeviceptr)src_scale, sizeof(float), cuda_stream);
                 scale *= host_src_scale;
             }
             if (wei_scale) {
                 float host_wei_scale = 1.0f;
-                CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_wei_scale,
-                        (CUdeviceptr)wei_scale, sizeof(float));
+                CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_wei_scale,
+                        (CUdeviceptr)wei_scale, sizeof(float), cuda_stream);
                 scale *= host_wei_scale;
             }
         }
@@ -665,8 +667,8 @@ public:
         if (dst_scale || src_scale || wei_scale) {
             float host_dst_scale = 1.0f;
             if (dst_scale)
-                CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_dst_scale,
-                        (CUdeviceptr)dst_scale, sizeof(float));
+                CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_dst_scale,
+                        (CUdeviceptr)dst_scale, sizeof(float), cuda_stream);
             float inv_scale = 1.0f / host_dst_scale;
             if (data_types[io::y] == CUDNN_DATA_INT8) {
                 float alpha_beta = 0.0f;

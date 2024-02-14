@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef SYCL_USM_MEMORY_STORAGE_HPP
-#define SYCL_USM_MEMORY_STORAGE_HPP
+#ifndef XPU_SYCL_USM_MEMORY_STORAGE_HPP
+#define XPU_SYCL_USM_MEMORY_STORAGE_HPP
 
 #include "oneapi/dnnl/dnnl_config.h"
 
@@ -39,6 +39,7 @@ public:
 
     usm_memory_storage_t(engine_t *engine, ::sycl::usm::alloc usm_kind)
         : memory_storage_base_t(engine), usm_kind_(usm_kind) {}
+    ~usm_memory_storage_t() override = default;
 
     uint8_t *usm_ptr() const { return static_cast<uint8_t *>(usm_ptr_.get()); }
 
@@ -90,9 +91,9 @@ public:
                 ::sycl::usm::alloc::unknown);
     }
 
-    virtual std::unique_ptr<memory_storage_t> get_sub_storage(
+    std::unique_ptr<memory_storage_t> get_sub_storage(
             size_t offset, size_t size) const override {
-        void *sub_ptr = usm_ptr_.get()
+        void *sub_ptr = usm_ptr_
                 ? reinterpret_cast<uint8_t *>(usm_ptr_.get()) + offset
                 : nullptr;
         auto storage = utils::make_unique<usm_memory_storage_t>(engine());
@@ -170,4 +171,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // SYCL_USM_MEMORY_STORAGE_HPP
+#endif // XPU_SYCL_USM_MEMORY_STORAGE_HPP

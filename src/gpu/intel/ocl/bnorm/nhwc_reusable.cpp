@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/bnorm/nhwc_reusable.hpp"
-#include "gpu/intel/ocl/bnorm/bnorm_model.hpp"
+#include "gpu/intel/ocl/bnorm/model.hpp"
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"

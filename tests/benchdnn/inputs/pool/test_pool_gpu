@@ -85,6 +85,10 @@
 --reset
 --batch=test_pool_ci
 
+# Test ref smoke
+--reset
+--batch=harness_pool_smoke_ref
+
 # Test layers of some key and ext GPU DL Frameworks
 --reset
 --batch=option_set_fwks_key_gpu
@@ -98,3 +102,6 @@
 --tag=axb,abx,aBx16b,aBx32b
 --alg=max,avg_np,avg_p
 --batch=shapes_global_pooling
+
+# Regression testing
+--batch=harness_pool_regression

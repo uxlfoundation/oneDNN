@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_X64_JIT_UNI_POSTOPS_INJECTOR_HPP
-#define CPU_X64_JIT_UNI_POSTOPS_INJECTOR_HPP
+#ifndef CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
+#define CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
 
 #include <functional>
 #include <map>
@@ -65,12 +65,12 @@ public:
     // cases it's aligned with the former kernel ISA if such enum value is
     // instantiated for injectors. If not, uses the next available isa enum
     // value in compliance with same vector length.
-    static jit_uni_postops_injector_base_t *create(jit_generator *host,
+    static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
             cpu_isa_t isa, const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params);
 
-    static jit_uni_postops_injector_base_t *create(jit_generator *host,
+    static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
             cpu_isa_t isa, const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params);
 
@@ -112,7 +112,7 @@ public:
 
 // A parent isa-specific post-ops injector class. A specific instance is
 // assigned based on `cpu_isa_t isa` argument in the base class.
-template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits<isa>::Vmm>
+template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits_t<isa>::Vmm>
 class jit_uni_postops_injector_t : public jit_uni_postops_injector_base_t<Vmm> {
 public:
     /*
@@ -126,20 +126,24 @@ public:
      * @param lambda_jit_injectors <optional> - allows user specify custom injector
      * function for given post-op type
      */
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const lambda_jit_injectors_t &lambda_jit_injectors);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params,
             const lambda_jit_injectors_t &lambda_jit_injectors);
 
-    virtual ~jit_uni_postops_injector_t() = default;
+    ~jit_uni_postops_injector_t() override = default;
 
     // See `jit_uni_postops_injector_base_t::compute_vector_range(...)`
     void compute_vector_range(const injector_utils::vmm_index_set_t &vmm_idxs,
@@ -171,9 +175,10 @@ public:
 
 private:
     post_ops_t post_ops_;
-    jit_generator *host_;
+    jit_generator_t *host_;
     // Key is a numerical order of a post-op in attributes.
-    std::map<int, jit_uni_eltwise_injector<isa, Vmm>> alg_to_eltwise_injector_;
+    std::map<int, jit_uni_eltwise_injector_t<isa, Vmm>>
+            alg_to_eltwise_injector_;
     std::unique_ptr<binary_injector::jit_uni_binary_injector_t<isa, Vmm>>
             binary_injector_;
     lambda_jit_injectors_t lambda_jit_injectors_;

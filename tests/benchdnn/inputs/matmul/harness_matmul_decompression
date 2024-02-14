@@ -112,9 +112,9 @@
 --attr-zero-points=wei:common:1:u8,wei:per_oc:u4,wei:per_ocic:s4,wei:per_ocic:s4:32x1
 --attr-fpmath=bf16:true
 7x24x32:7x32x64
-7x25x32:1x32x65
+7x25x32:1x32x66
 3x96x96:3x96x64
-3x14x96:1x96x77
+3x14x96:1x96x78
 
 --reset
 --skip-impl=ref
@@ -124,7 +124,7 @@
 --attr-zero-points=wei:common:1:u8,wei:per_oc:u4,wei:per_ocic:u4,wei:per_ocic:u4:128x1
 --attr-fpmath=f16:true
 2x40x256:2x256x64
-7x41x256:1x256x63
+7x41x256:1x256x64
 3x96x512:3x512x64
 3x6x512:1x512x62
 
@@ -171,6 +171,32 @@
 --attr-zero-points=wei:per_tensor:u4:128x1,wei:per_tensor:u4:1x128
 --attr-fpmath=f16:true
 2x3x5x512:2x3x512x1024
+
+--reset
+--skip-impl=ref
+--dt=f16:s4:f16,f16:u4:f16
+--strides=:1x128: # Need strides over tag to overcome the API limitation
+--attr-scales=wei:per_tensor:f16:127x1
+--attr-fpmath=f16:true
+32x127:127x63_n"odd_k_single_group"
+
+# fp8 weights decompression
+--reset
+--skip-impl=ref
+--dt=f16:f8_e5m2:f16,f16:f8_e4m3:f16
+--wtag=any,abc,acb
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+2x40x256:2x256x64
+7x41x256:1x256x64
+3x96x512:3x512x64
+3x6x512:1x512x62
+
+--reset
+--skip-impl=ref
+--dt=f16:f8_e5m2:f16,f16:f8_e4m3:f16
+--wtag=any,ab,ba
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+1x4096:4096x4096
 
 # Dynamic quantization (int8 src, int4/int8 weights)
 --reset

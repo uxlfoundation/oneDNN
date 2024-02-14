@@ -34,14 +34,14 @@ static std::mutex zero_pool_cache_mutex;
 #ifdef DNNL_WITH_SYCL
 // Unfortunately, weak_ptrs cannot be hashed, so unordered_map not possible here.
 // SYCL is currently missing owner_less for command graphs, so define it ourselves.
-struct weak_graph_owner_less {
+struct weak_graph_owner_less_t {
     bool operator()(const sycl::stream_t::weak_graph_t &lhs,
             const sycl::stream_t::weak_graph_t &rhs) const noexcept {
         return lhs.owner_before(rhs);
     }
 };
 static std::map<sycl::stream_t::weak_graph_t, zero_pool_t *,
-        weak_graph_owner_less>
+        weak_graph_owner_less_t>
         recorded_zero_pool_cache;
 #endif
 
@@ -75,7 +75,7 @@ status_t lookup_zero_pool(compute::compute_engine_t *engine,
     // If recording, get a per-graph zero pool.
     const auto *sycl_stream
             = utils::downcast<const gpu::intel::sycl::stream_t *>(stream);
-    if (sycl_stream->recording()) {
+    if (sycl_stream && sycl_stream->recording()) {
         {
             std::lock_guard<std::mutex> lock(zero_pool_cache_mutex);
             auto &pool = recorded_zero_pool_cache

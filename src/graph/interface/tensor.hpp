@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,7 +46,16 @@ public:
     }
 
     void set_data_handle(void *handle) {
-        handle_.reset(handle, dummy_destructor);
+        if (lt_.property == dnnl::impl::graph::property_type::host_scalar) {
+            if (lt_.data_type == dnnl::impl::graph::data_type::s32) {
+                scalar_.s32_value = *static_cast<int32_t *>(handle);
+                handle_.reset(&scalar_.s32_value, dummy_destructor);
+            } else {
+                assertm(false, "Unsupported data type for host scalar");
+            }
+        } else {
+            handle_.reset(handle, dummy_destructor);
+        }
     }
 
     const dnnl::impl::graph::logical_tensor_t &get_logical_tensor() const {
@@ -79,6 +88,13 @@ private:
     const dnnl::impl::graph::engine_t *eng_ {nullptr};
 
     std::shared_ptr<void> handle_ {nullptr};
+
+    union {
+        // this field is valid when logical tensor's
+        // property is host_scalar
+        int32_t s32_value = 0;
+        // TODO: add more dtype support
+    } scalar_;
 };
 
 #endif

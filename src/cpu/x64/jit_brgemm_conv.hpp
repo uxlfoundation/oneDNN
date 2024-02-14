@@ -78,7 +78,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
         int bs_c;
         // need custom hasher to use array as key in unordered_map
         template <int asize>
-        struct ahasher {
+        struct hasher_t {
             size_t operator()(const std::array<int, asize> &a) const {
                 size_t seed = 0;
                 for (auto e : a)
@@ -88,7 +88,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
         };
         template <int asize>
         using Arrmap = std::unordered_map<std::array<int, asize>, int,
-                ahasher<asize>>;
+                hasher_t<asize>>;
 
         Arrmap<4> batchsizes;
         int brg_indices_c {0};
@@ -129,29 +129,6 @@ struct brgemm_convolution_fwd_t : public primitive_t {
                 bool do_init, int kd_b, int kd_e, int kh_b, int kh_e);
 
     protected:
-        bool arg_scales_ok() const {
-            std::vector<int> supported_args
-                    = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-            return attr_scales_ok(supported_args);
-        }
-
-        bool zero_points_ok() const {
-            const auto &zp = attr()->zero_points_;
-
-            if (!zp.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = zp.get_mask(DNNL_ARG_SRC);
-                const bool ok = mask_src == 0;
-                if (!ok) return false;
-            }
-            if (!zp.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                const bool ok = mask_dst == 0;
-                if (!ok) return false;
-            }
-
-            return zp.has_default_values(DNNL_ARG_WEIGHTS);
-        }
-
         int KD, KH, KW, EXT_KD, EXT_KH, EXT_KW, KS, KD_BLOCK, KH_BLOCK,
                 KW_BLOCK, KD_BLOCK_PAD, KH_BLOCK_PAD, ID, IH, IW, IDP, IHP, IWP,
                 OD, OH, OW, SD, SH, SW, FP, TP, LP, DD, DH, DW;
@@ -163,7 +140,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
     brgemm_convolution_fwd_t(const pd_t *apd);
 
-    ~brgemm_convolution_fwd_t() = default;
+    ~brgemm_convolution_fwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
@@ -256,7 +233,7 @@ private:
             copy_to_relo_pbuffer_;
     std::unique_ptr<jit_brgemm_relo_copy_to_wbuffer_t> copy_to_relo_wbuffer_;
 
-    std::unique_ptr<jit_generator> comp_vpad_pbuffer_;
+    std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
 
     std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 

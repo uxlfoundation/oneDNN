@@ -51,22 +51,22 @@ using namespace data_type;
 
 template <cpu_isa_t isa>
 struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
-                                    public jit_generator {
+                                    public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_dense_kernel_t)
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = is_superset(isa, avx512_core) ? zword
             : is_superset(isa, avx)                             ? yword
                                                                 : xword;
-    static constexpr auto vlen = cpu_isa_traits<isa>::vlen;
-    static constexpr auto n_vregs = cpu_isa_traits<isa>::n_vregs;
+    static constexpr auto vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr auto n_vregs = cpu_isa_traits_t<isa>::n_vregs;
     static constexpr auto simd_w_ = vlen / sizeof(float); // bf16 works on ymms
 
     const memory_desc_wrapper src_d_, dst_d_, diff_dst_d_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 
-    std::unique_ptr<jit_uni_eltwise_injector<isa>> exp_injector_;
-    std::unique_ptr<jit_uni_eltwise_injector<isa>> log_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> exp_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> log_injector_;
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
 
@@ -84,6 +84,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     Reg64 reg_tmp = r13;
     Reg64 reg_dst_spat_offt = r15;
     Reg64 reg_diff_dst_spat_offt = reg_log_injector_table;
+    Reg64 reg_tmp2 = reg_log_injector_table;
     Reg64 reg_interim = reg_diff_dst;
     Reg64 reg_interim_spat_offt = abi_not_param1;
     Reg64 reg_src_scales = rsi;
@@ -139,10 +140,12 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
     void operator()(const call_params_t *p) const override {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     bool is_data_type_xf16(data_type_t dt) {
         return utils::one_of(dt, bf16, f16);
@@ -562,8 +565,24 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         axis_loop(pre_body, body, post_body);
 
         get_horizontal_op(vsum, vtmp = vmax, op_t::sum);
-        if (is_softmax_) uni_vdivps(vsum, vone, vsum, vtmp = vmax);
-        if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
+
+        if (pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero) {
+            Xbyak::Label skip_div;
+            // `vptest` sets the `ZF` flag if all bits in the result are 0 of
+            // the bitwise AND of source operands.
+            // Note: using Vmm(1) is an ugly workaround EVEX versus VEX encoding
+            // as `vsum` uses index `30` on avx512_core. `Vmm(1)` is a tmp vreg
+            // used to read data just above. Should be safe.
+            uni_vmovups(Vmm(1), vsum);
+            uni_vptest(Xmm(1), Xmm(1));
+            jz(skip_div, T_NEAR); // Check if ZF is set.
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+            L(skip_div);
+        } else if (is_softmax_) {
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+        } else if (is_logsoftmax_) {
+            log_injector_->compute_vector(vsum.getIdx());
+        }
     }
 
     void accumulate_vsum() {
@@ -609,7 +628,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     // Prepare indices for exp aux vmms.
                     injector_utils::vmm_index_set_t exp_aux_indices;
                     const auto exp_vmm_aux_count
-                            = jit_uni_eltwise_injector<isa>::aux_vecs_count(
+                            = jit_uni_eltwise_injector_t<isa>::aux_vecs_count(
                                     alg_kind::eltwise_exp, pd_->is_fwd(), 0.f);
                     for (size_t j = 0; j < exp_vmm_aux_count; j++) {
                         // Insert the next idx starting after `vreg_tmp_sum`.
@@ -673,8 +692,23 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
         get_horizontal_op(vsum, vtmp = vmax, op_t::sum);
 
-        if (is_softmax_) uni_vdivps(vsum, vone, vsum, vtmp = vmax);
-        if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
+        if (pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero) {
+            Xbyak::Label skip_div;
+            // `vptest` sets the `ZF` flag if all bits in the result are 0 of
+            // the bitwise AND of source operands.
+            // Note: using Vmm(1) is an ugly workaround EVEX versus VEX encoding
+            // as `vsum` uses index `30` on avx512_core. `Vmm(1)` is a tmp vreg
+            // used to read data just above. Should be safe.
+            uni_vmovups(Vmm(1), vsum);
+            uni_vptest(Xmm(1), Xmm(1));
+            jz(skip_div, T_NEAR); // Check if ZF is set.
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+            L(skip_div);
+        } else if (is_softmax_) {
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+        } else if (is_logsoftmax_) {
+            log_injector_->compute_vector(vsum.getIdx());
+        }
     }
 
     // Use ne_convert instruction to load xf16 even/odd elements from memory
@@ -899,11 +933,11 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     // initialization.
     void generate() override {
         if (pd_->is_fwd() || is_logsoftmax_)
-            exp_injector_.reset(new jit_uni_eltwise_injector<isa>(this,
+            exp_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, data_type::f32,
                     !use_ext_aux_vmms_, reg_exp_injector_table, injector_mask));
         if (pd_->is_fwd() && is_logsoftmax_) {
-            log_injector_.reset(new jit_uni_eltwise_injector<isa>(this,
+            log_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
                     alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, data_type::f32,
                     true, reg_log_injector_table, injector_mask));
         }
@@ -949,7 +983,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
     jit_softmax_dense_kernel_t(const softmax_pd_t *pd)
         : jit_softmax_kernel_base_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , src_d_(pd_->invariant_src_md())
         , dst_d_(pd_->dst_md())
         , diff_dst_d_(pd_->diff_dst_md())
@@ -997,21 +1031,21 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
 template <cpu_isa_t isa>
 struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
-                                      public jit_generator {
+                                      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_strided_kernel_t)
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = is_superset(isa, avx512_core) ? zword
             : is_superset(isa, avx)                             ? yword
                                                                 : xword;
-    static constexpr auto vlen = cpu_isa_traits<isa>::vlen;
+    static constexpr auto vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr auto simd_w_ = vlen / sizeof(float); // bf16 works on ymms
 
     const memory_desc_wrapper src_d_, dst_d_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 
-    std::unique_ptr<jit_uni_eltwise_injector<isa>> exp_injector_;
-    std::unique_ptr<jit_uni_eltwise_injector<isa>> log_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> exp_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> log_injector_;
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
 
@@ -1027,6 +1061,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     Reg64 reg_interim_spat_offt = rsi;
     Reg64 reg_reverse_n_elems = r12;
     Reg64 reg_tmp = r13;
+    Reg64 reg_tmp2 = reg_log_injector_table;
     Reg64 reg_interim = r14;
     Reg64 reg_reverse_axis_elems = r11;
 
@@ -1076,10 +1111,12 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
     void operator()(const call_params_t *p) const override {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     void compute_predefined_variables() {
         // `axis_simd_full_` is actually `inner_simd_full_`.
@@ -1363,8 +1400,24 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
             Vmm vreg_tmp_src = Vmm(i + 1);
             Vmm vtmp = get_vmax(vreg_tmp_src, unroll_inner);
             Vmm vsum = get_vsum(vreg_tmp_src, unroll_inner);
-            if (is_softmax_) uni_vdivps(vsum, vone, vsum, vtmp);
-            if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
+
+            if (pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero) {
+                Xbyak::Label skip_div;
+                // `vptest` sets the `ZF` flag if all bits in the result are 0
+                // of the bitwise AND of source operands.
+                // Note: using Vmm(1) is an ugly workaround EVEX versus VEX
+                // encoding as `vsum` uses index `30` on avx512_core. `Vmm(1)`
+                // is a tmp vreg used to read data just above. Should be safe.
+                uni_vmovups(Vmm(1), vsum);
+                uni_vptest(Xmm(1), Xmm(1));
+                jz(skip_div, T_NEAR); // Check if ZF is set.
+                uni_vdivps(vsum, vone, vsum, vtmp);
+                L(skip_div);
+            } else if (is_softmax_) {
+                uni_vdivps(vsum, vone, vsum, vtmp);
+            } else if (is_logsoftmax_) {
+                log_injector_->compute_vector(vsum.getIdx());
+            }
         }
 
         axis_size_loop_unroll(store_body, unroll_inner, tail);
@@ -1453,11 +1506,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
 
     void generate() override {
         if (pd_->is_fwd() || is_logsoftmax_)
-            exp_injector_.reset(new jit_uni_eltwise_injector<isa>(this,
+            exp_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, data_type::f32,
                     true, reg_exp_injector_table, injector_mask));
         if (pd_->is_fwd() && is_logsoftmax_) {
-            log_injector_.reset(new jit_uni_eltwise_injector<isa>(this,
+            log_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
                     alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, data_type::f32,
                     true, reg_log_injector_table, injector_mask));
         }
@@ -1504,7 +1557,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
 
     jit_softmax_strided_kernel_t(const softmax_pd_t *pd)
         : jit_softmax_kernel_base_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , src_d_(pd_->invariant_src_md())
         , dst_d_(pd_->dst_md())
         // Note: must be aligned with pd_t::init()->init_scratchpad();

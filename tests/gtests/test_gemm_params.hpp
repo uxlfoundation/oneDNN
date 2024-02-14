@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ namespace dnnl {
 
 enum class layout_t { ROW_MAJOR, COL_MAJOR };
 
-struct test_igemm_params {
+struct test_igemm_params_t {
     char offsetc;
     bool nonzero_oa;
     bool nonzero_ob;
@@ -37,19 +37,19 @@ struct test_igemm_params {
     int8_t ob() const { return (int8_t)(nonzero_ob ? 3 : 0); }
 };
 
-struct test_pack_params {
+struct test_pack_params_t {
     bool pack_a;
     bool pack_b;
 };
 
-struct gemm_offset {
+struct gemm_offset_t {
     int64_t a;
     int64_t b;
     int64_t c;
     int64_t co;
 };
 
-struct test_params {
+struct test_params_t {
     char transA;
     char transB;
     int64_t M;
@@ -61,12 +61,12 @@ struct test_params {
     int64_t ldb;
     int64_t ldc;
 
-    test_igemm_params igemm_params;
-    test_pack_params pack_params;
+    test_igemm_params_t igemm_params;
+    test_pack_params_t pack_params;
     bool expect_to_fail;
     dnnl_status_t expected_status;
 
-    gemm_offset off;
+    gemm_offset_t off;
 
     bool tr_a() const { return transA == 'T' || transA == 't'; }
     bool tr_b() const { return transB == 'T' || transB == 't'; }
@@ -84,17 +84,17 @@ struct test_params {
 };
 
 template <typename... TArgs>
-inline test_params make_test_params_with_offset(
-        const gemm_offset &off, TArgs &&...args) {
-    test_params params {std::forward<TArgs>(args)...};
+inline test_params_t make_test_params_with_offset(
+        const gemm_offset_t &off, TArgs &&...args) {
+    test_params_t params {std::forward<TArgs>(args)...};
     params.off = off;
     return params;
 }
 
 template <typename... TArgs>
-inline test_params make_test_params_pack(
-        const test_pack_params &pack_params, TArgs &&...args) {
-    test_params params {std::forward<TArgs>(args)...};
+inline test_params_t make_test_params_pack(
+        const test_pack_params_t &pack_params, TArgs &&...args) {
+    test_params_t params {std::forward<TArgs>(args)...};
     params.pack_params = pack_params;
     return params;
 }

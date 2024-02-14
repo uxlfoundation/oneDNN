@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ protected:
         ASSERT_EQ(p.aprop_kind, prop_kind::forward);
         ASSERT_EQ(p.aalgorithm, algorithm::convolution_direct);
         auto eng = get_test_engine();
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
         SKIP_IF_CUDA((p.expected_src_fmt == BLK || p.expected_dst_fmt == BLK),
                 "unsupported format");
         SKIP_IF_HIP((p.expected_src_fmt == BLK || p.expected_dst_fmt == BLK),

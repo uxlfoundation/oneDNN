@@ -89,17 +89,17 @@ bool post_ops_ok(jit_brdgmm_conv_conf_t &jcp, const primitive_attr_t &attr,
                     broadcasting_strategy_t::no_broadcast}));
 }
 
-cpu_isa_t get_supported_isa(
-        bool is_f32, bool is_int8, bool is_bf16, bool is_f16) {
+cpu_isa_t get_supported_isa(bool is_f32, bool is_int8, bool is_bf16,
+        bool is_f16, bool is_f32_bf16, bool is_f32_f16) {
     std::vector<cpu_isa_t> isa_list;
-    if (is_f32) {
+    if (one_of(true, is_f32, is_f32_bf16, is_f32_f16)) {
         isa_list = {avx512_core, avx2};
     } else if (is_int8) {
-        isa_list = {avx512_core_vnni, avx2_vnni_2, avx2_vnni};
+        isa_list = {avx10_2_512, avx512_core_vnni, avx2_vnni_2, avx2_vnni};
     } else if (is_bf16) {
         isa_list = {avx512_core_bf16, avx2_vnni_2};
     } else if (is_f16) {
-        isa_list = {avx512_core_fp16, avx2_vnni_2};
+        isa_list = {avx10_2_512, avx512_core_fp16, avx2_vnni_2};
     }
 
     for (auto isa : isa_list) {
@@ -125,15 +125,19 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
             && one_of(dst_type, bf16, f32);
     const bool is_f16 = everyone_is(f16, src_type, wei_type)
             && one_of(dst_type, f16, f32);
-    const cpu_isa_t isa = get_supported_isa(is_f32, is_int8, is_bf16, is_f16);
+    const bool is_f32_bf16
+            = everyone_is(f32, src_type, dst_type) && wei_type == bf16;
+    const bool is_f32_f16
+            = everyone_is(f32, src_type, dst_type) && wei_type == f16;
+    const cpu_isa_t isa = get_supported_isa(
+            is_f32, is_int8, is_bf16, is_f16, is_f32_bf16, is_f32_f16);
 
-    auto skip_mask = skip_mask_t::post_ops;
-    if (is_int8)
-        skip_mask |= (skip_mask_t::scales_runtime
-                | skip_mask_t::zero_points_runtime);
+    auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt;
+    if (is_int8) skip_mask |= (skip_mask_t::scales | skip_mask_t::zero_points);
 
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_CONV(one_of(true, is_f32, is_int8, is_bf16, is_f16),
+    VDISPATCH_CONV(one_of(true, is_f32, is_int8, is_bf16, is_f16, is_f32_f16,
+                           is_f32_bf16),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CONV(
             IMPLICATION(is_int8,
@@ -148,8 +152,10 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_CONV(
             (isa != isa_undef) && mayiuse(isa), "undefined or unsupported isa");
-    VDISPATCH_CONV(
-            attr()->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_CONV(attr()->has_default_values(skip_mask, dst_type),
+            VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(dst_type, is_int8),
+            VERBOSE_UNSUPPORTED_POSTOP);
 
     auto &jcp = jcp_;
 
@@ -157,6 +163,15 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper weights_d(&weights_md_);
     const memory_desc_wrapper dst_d(&dst_md_);
     const memory_desc_wrapper bias_d(&bias_md_);
+
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
 
     const int ndims = src_d.ndims();
     const bool is_3d = ndims == 5;
@@ -242,26 +257,12 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
             || !wei_scales.has_default_values();
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
-    const bool scales_ok
-            = attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST});
-    VDISPATCH_CONV(scales_ok, VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(attr_scales_ok());
+    CHECK(attr_zero_points_ok({{DNNL_ARG_SRC, {0, 2}}, {DNNL_ARG_DST, {0}}}));
 
     const auto &zp = attr()->zero_points_;
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
-
-    VDISPATCH_CONV(IMPLICATION(jcp.src_zero_point || jcp.dst_zero_point,
-                           utils::one_of(jcp.src_dt, s8, u8)),
-            VERBOSE_UNSUPPORTED_ZP_CFG);
-
-    VDISPATCH_CONV(
-            IMPLICATION(jcp.src_zero_point,
-                    utils::one_of(zp.get_mask(DNNL_ARG_SRC), 0, (1 << 1))),
-            VERBOSE_UNSUPPORTED_ZP_CFG);
-
-    VDISPATCH_CONV(
-            IMPLICATION(jcp.dst_zero_point, zp.get_mask(DNNL_ARG_DST) == 0),
-            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     // Source zero_point requires compensation, thus, must initialize weights
     // descriptor and can't take predefined one.

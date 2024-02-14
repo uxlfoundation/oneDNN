@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2020 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 
 namespace dnnl {
 
-using gemm_test = gemm_test_common<bfloat16_t, bfloat16_t, float>;
+using gemm_test = gemm_test_common_t<bfloat16_t, bfloat16_t, float>;
 
 TEST_P(gemm_test, TestGEMM) {}
 

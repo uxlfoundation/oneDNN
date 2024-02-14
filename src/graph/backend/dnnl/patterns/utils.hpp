@@ -31,6 +31,10 @@ namespace graph {
 namespace dnnl_impl {
 namespace pattern {
 
+#define VCHECK_PATTERN_UTILS(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, pattern, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 template <int64_t N>
 bool check_zps_values(op_t *op) {
     if (op->has_attr(op_attr::zps) == false) return true;
@@ -425,6 +429,20 @@ inline graph::utils::pm::repetition_t *optional_explicit_mask(
     return optional_mask;
 }
 
+inline graph::utils::pm::repetition_t *optional_soft_capping(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *input) {
+    auto graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto tanh = graph->append_op(graph::op_kind::Tanh);
+    auto multiply = graph->append_op(graph::op_kind::Multiply,
+            graph::utils::pm::in_edges_t {in_edge(0, tanh, 0)});
+    graph->create_input_port(0, tanh, 0);
+    graph->create_output_port(0, multiply, 0);
+    auto optional_soft_capping
+            = pgraph->append_optional(graph, {in_edge(0, input, 0)});
+    return optional_soft_capping;
+}
+
 inline bool check_inputs_xf16(op_t *op) {
     for (size_t i = 0; i < op->num_inputs(); ++i) {
         const logical_tensor_t &iport
@@ -451,12 +469,23 @@ inline graph::utils::pm::repetition_t *optional_causal_mask(
         // so filter them out
         gen_index_row->append_decision_function(check_inputs_xf16);
     }
+
+    // Optional Add and Sub operations for bottom-right causal mask
+    auto add_sub_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto add_op = add_sub_graph->append_op(graph::op_kind::Add);
+    auto sub_op = add_sub_graph->append_op(
+            graph::op_kind::Subtract, {in_edge(0, add_op, 0)});
+    add_sub_graph->create_input_port(0, add_op, 0);
+    add_sub_graph->create_output_port(0, sub_op, 0);
+    auto add_sub_optional = popt_graph->append_optional(
+            add_sub_graph, {in_edge(0, gen_index_row, 0)});
+
     graph::utils::pm::pb_op_t *gen_index_col
             = popt_graph->append_op(graph::op_kind::GenIndex);
-    graph::utils::pm::pb_op_t *greater_equal
-            = popt_graph->append_op(graph::op_kind::GreaterEqual,
-                    graph::utils::pm::in_edges_t {in_edge(0, gen_index_row, 0),
-                            {in_edge(1, gen_index_col, 0)}});
+    graph::utils::pm::pb_op_t *greater_equal = popt_graph->append_op(
+            graph::op_kind::GreaterEqual,
+            graph::utils::pm::in_edges_t {in_edge(0, add_sub_optional, 0),
+                    {in_edge(1, gen_index_col, 0)}});
     graph::utils::pm::pb_op_t *select = popt_graph->append_op(
             graph::op_kind::Select,
             graph::utils::pm::in_edges_t {in_edge(0, greater_equal, 0)});

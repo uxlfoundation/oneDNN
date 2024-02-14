@@ -97,6 +97,7 @@ protected:
         , src_md_(desc_.src_desc) {}
 };
 
+// NOLINTBEGIN(google-default-arguments)
 struct lrn_fwd_pd_t : public lrn_pd_t {
     using base_class = lrn_fwd_pd_t;
     using hint_class = lrn_fwd_pd_t;
@@ -106,8 +107,9 @@ struct lrn_fwd_pd_t : public lrn_pd_t {
 
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
-        if (arg == DNNL_ARG_WORKSPACE && (!types::is_zero_md(workspace_md())))
-            return arg_usage_t::output;
+        if (arg == DNNL_ARG_WORKSPACE)
+            return !types::is_zero_md(workspace_md()) ? arg_usage_t::output
+                                                      : arg_usage_t::unused;
 
         return primitive_desc_t::arg_usage(arg);
     }
@@ -155,7 +157,9 @@ protected:
                         == status::success);
     }
 };
+// NOLINTEND(google-default-arguments)
 
+// NOLINTBEGIN(google-default-arguments)
 struct lrn_bwd_pd_t : public lrn_pd_t {
     using base_class = lrn_bwd_pd_t;
     using hint_class = lrn_fwd_pd_t;
@@ -166,8 +170,9 @@ struct lrn_bwd_pd_t : public lrn_pd_t {
 
         if (arg == DNNL_ARG_DIFF_SRC) return arg_usage_t::output;
 
-        if (arg == DNNL_ARG_WORKSPACE && (!types::is_zero_md(workspace_md())))
-            return arg_usage_t::input;
+        if (arg == DNNL_ARG_WORKSPACE)
+            return !types::is_zero_md(workspace_md()) ? arg_usage_t::input
+                                                      : arg_usage_t::unused;
 
         return primitive_desc_t::arg_usage(arg);
     }
@@ -230,6 +235,7 @@ protected:
                                 == status::success);
     }
 };
+// NOLINTEND(google-default-arguments)
 
 } // namespace impl
 } // namespace dnnl

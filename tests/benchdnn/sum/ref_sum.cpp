@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 
 namespace sum {
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 
     const auto nelems = dst.nelems();
@@ -30,9 +30,9 @@ void compute_ref(
         float res = 0;
         for (int i_input = 0; i_input < prb->n_inputs(); ++i_input) {
             const dnn_mem_t &src_i = args.find(DNNL_ARG_MULTIPLE_SRC + i_input);
-            res += (src_i.get_elem(k) * prb->input_scales[i_input]);
+            res += (src_i.get_f32_elem(k) * prb->input_scales[i_input]);
         }
-        dst.set_elem(k, res);
+        dst.set_f32_elem(k, res);
     });
 }
 

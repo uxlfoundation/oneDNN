@@ -59,13 +59,13 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
             if (!ok) return status::unimplemented;
 
             status_t status
-                    = jit_uni_dw_conv_fwd_kernel<isa, src_type>::init_conf(jcp_,
-                            *desc(), src_md_, weights_md_, bias_md_, dst_md_,
-                            *attr());
+                    = jit_uni_dw_conv_fwd_kernel_t<isa, src_type>::init_conf(
+                            jcp_, *desc(), src_md_, weights_md_, bias_md_,
+                            dst_md_, *attr());
             if (status != status::success) return status;
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_dw_conv_fwd_kernel<isa, src_type>::init_scratchpad(
+            jit_uni_dw_conv_fwd_kernel_t<isa, src_type>::init_scratchpad(
                     scratchpad, jcp_);
 
             return status::success;
@@ -83,7 +83,7 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_dw_conv_fwd_kernel<isa, src_type>(pd()->jcp_)));
+                new jit_uni_dw_conv_fwd_kernel_t<isa, src_type>(pd()->jcp_)));
         return kernel_->create_kernel();
     }
 
@@ -96,7 +96,7 @@ private:
     void execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_uni_dw_conv_fwd_kernel<isa, src_type>> kernel_;
+    std::unique_ptr<jit_uni_dw_conv_fwd_kernel_t<isa, src_type>> kernel_;
 };
 using jit_sve_512_dw_convolution_fwd_t
         = jit_uni_dw_convolution_fwd_t<sve_512, data_type::f32>;
@@ -122,13 +122,13 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
 
             if (!ok) return status::unimplemented;
 
-            status_t status = jit_uni_dw_conv_bwd_data_kernel<isa,
+            status_t status = jit_uni_dw_conv_bwd_data_kernel_t<isa,
                     diff_dst_type>::init_conf(jcp_, *desc(), *diff_src_md(),
                     *weights_md(), *diff_dst_md());
             if (status != status::success) return status;
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_dw_conv_bwd_data_kernel<isa,
+            jit_uni_dw_conv_bwd_data_kernel_t<isa,
                     diff_dst_type>::init_scratchpad(scratchpad, jcp_);
 
             return status::success;
@@ -164,7 +164,7 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_dw_conv_bwd_data_kernel<isa, diff_dst_type>(
+                new jit_uni_dw_conv_bwd_data_kernel_t<isa, diff_dst_type>(
                         pd()->jcp_)));
         return kernel_->create_kernel();
     }
@@ -178,7 +178,7 @@ private:
     void execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_uni_dw_conv_bwd_data_kernel<isa, diff_dst_type>>
+    std::unique_ptr<jit_uni_dw_conv_bwd_data_kernel_t<isa, diff_dst_type>>
             kernel_;
 };
 
@@ -216,14 +216,14 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
             const int max_threads
                     = dnnl_in_parallel() ? 1 : dnnl_get_max_threads();
 
-            status_t status = jit_uni_dw_conv_bwd_weights_kernel<isa,
+            status_t status = jit_uni_dw_conv_bwd_weights_kernel_t<isa,
                     src_type>::init_conf(jcp_, *desc(), *src_md(),
                     *diff_weights_md(), *diff_dst_md(), max_threads);
             if (status != status::success) return status;
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_dw_conv_bwd_weights_kernel<isa, src_type>::init_scratchpad(
-                    scratchpad, jcp_);
+            jit_uni_dw_conv_bwd_weights_kernel_t<isa,
+                    src_type>::init_scratchpad(scratchpad, jcp_);
 
             return status::success;
         }
@@ -260,7 +260,7 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_dw_conv_bwd_weights_kernel<isa, src_type>(
+                new jit_uni_dw_conv_bwd_weights_kernel_t<isa, src_type>(
                         pd()->jcp_)));
         CHECK(kernel_->create_kernel());
 
@@ -284,7 +284,8 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32, isa>> acc_ker_;
-    std::unique_ptr<jit_uni_dw_conv_bwd_weights_kernel<isa, src_type>> kernel_;
+    std::unique_ptr<jit_uni_dw_conv_bwd_weights_kernel_t<isa, src_type>>
+            kernel_;
 };
 
 using jit_sve_512_dw_convolution_bwd_weights_t

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Arm Ltd. and affiliates
+* Copyright 2022, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,8 @@
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 
 #include "arm_compute/runtime/IScheduler.h"
-#include "support/Mutex.h"
+
+#include <mutex>
 
 namespace dnnl {
 namespace impl {
@@ -32,7 +33,7 @@ namespace aarch64 {
 class ThreadpoolScheduler final : public arm_compute::IScheduler {
 public:
     ThreadpoolScheduler();
-    ~ThreadpoolScheduler();
+    ~ThreadpoolScheduler() override;
 
     /// Sets the number of threads the scheduler will use to run the kernels.
     void set_num_threads(unsigned int num_threads) override;
@@ -54,8 +55,8 @@ protected:
     void run_workloads(std::vector<Workload> &workloads) override;
 
 private:
-    uint _num_threads {};
-    arm_compute::Mutex _run_workloads_mutex {};
+    unsigned int _num_threads {};
+    std::mutex _mtx;
 };
 
 } // namespace aarch64
@@ -63,6 +64,6 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_AARCH64_ACL_THREADPOOL_SCHEDULER_HPP
-
 #endif // DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+
+#endif // CPU_AARCH64_ACL_THREADPOOL_SCHEDULER_HPP

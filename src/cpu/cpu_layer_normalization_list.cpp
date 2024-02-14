@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 * Copyright 2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,10 +23,11 @@
 #if DNNL_X64
 #include "cpu/x64/jit_uni_layer_normalization.hpp"
 using namespace dnnl::impl::cpu::x64;
-#endif
-
-#if DNNL_AARCH64_USE_ACL
+#elif DNNL_AARCH64
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_layer_normalization.hpp"
+using namespace dnnl::impl::cpu::aarch64;
+#endif
 #endif
 
 namespace dnnl {
@@ -36,10 +37,6 @@ namespace cpu {
 namespace {
 using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::prop_kind;
-
-#if DNNL_AARCH64_USE_ACL
-using namespace dnnl::impl::cpu::aarch64;
-#endif
 
 // clang-format off
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {

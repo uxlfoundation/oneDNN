@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2023 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ void jit_sse41_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
     // TODO (Roma): remove this restriction
     assert(jcp.stride_w == 1 && jcp.stride_h == 1);
 
-    auto par_conv = jit_1x1_conv_call_s();
+    auto par_conv = jit_1x1_conv_args_t();
 
     const int nb_oc = jcp.nb_load;
     const int nb_ic = jcp.nb_reduce;
@@ -227,7 +227,7 @@ void jit_sse41_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
 
             const int ow = 0;
             const int kw = 0;
-            jit_conv_call_s par_conv_dw;
+            jit_conv_args_t par_conv_dw;
 
             par_conv_dw.src = addrs.data();
 

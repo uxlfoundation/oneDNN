@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,23 +26,23 @@ namespace cpu {
 namespace x64 {
 
 namespace jit_uni_brgemm_conv_comp_pad_kernel {
-struct jit_brgemm_conv_comp_pad_call_s {
-    const void *ptr_in;
-    void *ptr_zp_out;
-    void *ptr_cp_out;
-    size_t use_inversion;
-    size_t kw_l;
-    size_t kh_l;
-    size_t kd_l;
-    size_t ker_l {1};
-    size_t last_ocb {1};
+struct jit_brgemm_conv_comp_pad_args_t {
+    const void *ptr_in = nullptr;
+    void *ptr_zp_out = nullptr;
+    void *ptr_cp_out = nullptr;
+    size_t use_inversion = 0;
+    size_t kw_l = 0;
+    size_t kh_l = 0;
+    size_t kd_l = 0;
+    size_t ker_l = 1;
+    size_t last_ocb = 1;
 };
 
 // Kernel is unified to work with fwd and bwd_d conv
 // Variables with "ic" and "oc" are named from perspective of fwd
 // For bwd_d "ic" and "oc" are swapped
 template <typename Vmm>
-struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator {
+struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_brgemm_conv_comp_pad_kernel_t)
 
@@ -50,7 +50,7 @@ struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator {
 
     jit_uni_brgemm_conv_comp_pad_kernel_t(const jit_brgemm_conv_conf_t &ajcp);
 
-    ~jit_uni_brgemm_conv_comp_pad_kernel_t() = default;
+    ~jit_uni_brgemm_conv_comp_pad_kernel_t() override = default;
 
 protected:
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
@@ -96,7 +96,7 @@ protected:
     Xbyak::Zmm zmm_int8_temp = Xbyak::Zmm(26);
 
     const int last_ic_block_ = 4;
-    const int m_block2_ = vreg_traits<Vmm>::vlen / sizeof(int32_t);
+    const int m_block2_ = vreg_traits_t<Vmm>::vlen / sizeof(int32_t);
     static constexpr int max_oc_block_ = 64;
     const int n_max_regs_ = max_oc_block_ / m_block2_;
 
@@ -137,13 +137,13 @@ protected:
 };
 
 template <typename Vmm>
-struct jit_uni_brgemm_conv_relo_comp_pad_kernel_t : public jit_generator {
+struct jit_uni_brgemm_conv_relo_comp_pad_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_brgemm_conv_relo_comp_pad_kernel_t)
     using reg64_t = const Xbyak::Reg64;
 
     jit_uni_brgemm_conv_relo_comp_pad_kernel_t(
             const jit_brgemm_conv_conf_t &ajcp);
-    ~jit_uni_brgemm_conv_relo_comp_pad_kernel_t() = default;
+    ~jit_uni_brgemm_conv_relo_comp_pad_kernel_t() override = default;
 
 protected:
     jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();

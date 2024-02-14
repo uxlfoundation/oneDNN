@@ -113,7 +113,7 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
         return remaining < tail_step ? remaining : default_step;
     };
 
-    auto p = jit_1x1_conv_call_s();
+    auto p = jit_1x1_conv_args_t();
     auto rp = typename rtus_driver_t<isa_>::call_params_t();
     const int nb_oc = jcp.nb_load;
     const int nb_ic = jcp.nb_reduce;
@@ -343,7 +343,7 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
             const int kh_padding = jcp_dw.kh - div_up(i_t_overflow, dil_h)
                     - div_up(i_b_overflow, dil_h);
 
-            jit_conv_call_s par_conv_dw;
+            jit_conv_args_t par_conv_dw;
 
             par_conv_dw.src = addrs.data();
 
@@ -484,7 +484,7 @@ void jit_sve_1x1_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
     };
 
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
-        auto p = jit_1x1_conv_call_s();
+        auto p = jit_1x1_conv_args_t();
         auto rp = typename rtus_driver_t<isa_>::call_params_t();
 
         int bcast_start {0}, bcast_end {0}, icb_start {0}, icb_end {0};
@@ -796,7 +796,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
                                 img, oc_off_idx)];
                         const data_t *local_src = diff_src;
 
-                        auto p = jit_1x1_conv_call_s();
+                        auto p = jit_1x1_conv_args_t();
                         auto rp = typename rtus_driver_t<isa_>::call_params_t();
                         p.output_stride = utils::rnd_up(jcp.ic, jcp.ic_block)
                                 * jcp.oc_block * jcp.typesize_out;

@@ -32,7 +32,7 @@ namespace cpu {
 namespace x64 {
 
 struct bf16_emulation_t;
-struct fp8_emulation_base_t;
+struct fp8_conversion_base_t;
 
 namespace io {
 
@@ -61,9 +61,9 @@ public:
 
     std::size_t simd_w_ = 0;
     std::size_t tail_size_ = 0;
-    Xbyak::Opmask tail_opmask_ = Xbyak::Opmask();
+    Xbyak::Opmask tail_opmask_;
     int tail_vmm_mask_idx_ = 0;
-    Xbyak::Reg64 reg_tmp_ = Xbyak::Reg64();
+    Xbyak::Reg64 reg_tmp_;
 };
 
 class io_emu_bf16_conf_t {
@@ -104,6 +104,7 @@ public:
 
     io_emu_fp8_conf_t &operator=(const io_emu_fp8_conf_t &other) = default;
 
+    // For fp8 via emulation only.
     Xbyak::Zmm fp8_emu_reserv_1_ = Xbyak::Zmm(27);
     Xbyak::Zmm fp8_emu_reserv_2_ = Xbyak::Zmm(28);
     Xbyak::Zmm fp8_emu_reserv_3_ = Xbyak::Zmm(29);
@@ -124,7 +125,7 @@ public:
 
     int vreg_zero_saturation_idx_ = 0;
     int vreg_saturation_ubound_idx_ = 0;
-    Xbyak::Reg64 reg_tmp_ = Xbyak::Reg64();
+    Xbyak::Reg64 reg_tmp_;
 };
 
 class io_gather_conf_t {
@@ -138,10 +139,10 @@ public:
     io_gather_conf_t &operator=(const io_gather_conf_t &other) = default;
 
     std::size_t simd_w_ = 0;
-    Xbyak::Opmask full_opmask_ = Xbyak::Opmask();
+    Xbyak::Opmask full_opmask_;
     int full_vmm_mask_idx_ = 0;
-    Xbyak::Reg64 reg_tmp_ = Xbyak::Reg64();
-    Xbyak::Reg64 reg_tmp1_ = Xbyak::Reg64();
+    Xbyak::Reg64 reg_tmp_;
+    Xbyak::Reg64 reg_tmp1_;
     // It is needed, when io_helper use emulation for gather
     // and it is not needed for sse.
     utils::optional_t<int> vmm_tmp_idx_ = utils::nullopt;
@@ -156,7 +157,7 @@ public:
     friend class jit_io_multi_dt_helper_t<Vmm>;
 
     jit_io_helper_t() = default;
-    jit_io_helper_t(jit_generator *host, const cpu_isa_t &isa,
+    jit_io_helper_t(jit_generator_t *host, const cpu_isa_t &isa,
             const data_type_t &data_type, const io_conf_t &io_conf,
             const utils::optional_t<io_tail_conf_t> &tail_conf = utils::nullopt,
             const utils::optional_t<io_emu_bf16_conf_t> &bf16_conf
@@ -235,14 +236,14 @@ private:
     void convert_to_f32(const Vmm &dst_vmm, const Xbyak::Xmm &src_vmm,
             const data_type_t src_data_type);
 
-    jit_generator *host_;
+    jit_generator_t *host_;
     const cpu_isa_t isa_;
     const data_type_t data_type_;
     const bool bf16_supported_;
     const bool f16_supported_;
     const bool fp8_supported_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_base_t> fp8_emu_;
+    std::unique_ptr<fp8_conversion_base_t> fp8_cvt_;
     const io_conf_t io_conf_;
     const utils::optional_t<io_tail_conf_t> tail_conf_;
     const utils::optional_t<io_emu_bf16_conf_t> bf16_conf_;
@@ -258,7 +259,7 @@ public:
     using saturation_map_t = std::map<data_type_t, io_saturation_conf_t>;
 
     jit_io_multi_dt_helper_t();
-    jit_io_multi_dt_helper_t(jit_generator *host, const cpu_isa_t &isa,
+    jit_io_multi_dt_helper_t(jit_generator_t *host, const cpu_isa_t &isa,
             const data_types_t &data_types, const io_conf_t &io_conf,
             const utils::optional_t<io_tail_conf_t> &tail_conf = utils::nullopt,
             const utils::optional_t<io_emu_bf16_conf_t> &bf16_conf

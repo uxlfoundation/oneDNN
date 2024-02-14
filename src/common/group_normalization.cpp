@@ -147,7 +147,7 @@ status_t group_normalization_attr_check(const group_normalization_desc_t &desc,
 
         const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8)
                 || utils::one_of(dst_dt, data_type::s8, data_type::u8);
-        if (is_int8) fwd_attr_mask |= smask_t::scales_runtime;
+        if (is_int8) fwd_attr_mask |= smask_t::scales;
 
         VCHECK_GNORM_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -176,7 +176,7 @@ status_t group_normalization_attr_check(const group_normalization_desc_t &desc,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         VCHECK_GNORM_UNIMPL(false, VERBOSE_UNSUPPORTED_ATTR);

@@ -33,24 +33,17 @@
 
 namespace matmul {
 
-typedef std::bitset<DNNL_MAX_NDIMS> dims_mask_t;
+using dims_mask_t = std::bitset<DNNL_MAX_NDIMS>;
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_vdims_t prb_vdims;
 
     std::vector<std::vector<dnnl_data_type_t>> dt {{dnnl_f32}};
     std::vector<std::string> stag {tag::any}, wtag {tag::any}, dtag {tag::any};
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     std::vector<sparse_options_t> sparse_options {{DNNL_ARG_SRC,
             sparse_options_t::def_encoding, sparse_options_t::def_sparsity}};
-#endif
     std::vector<vdims_t> strides {vdims_t(STRIDES_SIZE)};
     std::vector<dnnl_data_type_t> bia_dt {dnnl_data_type_undef};
     std::vector<int> bia_mask {2};
@@ -76,11 +69,8 @@ struct prb_t : public prb_vdims_t {
     prb_t(const settings_t &s)
         : prb_t(s.prb_vdims, s.dt[0], s.stag[0], s.wtag[0], s.dtag[0],
                 s.strides[0], s.bia_dt[0], s.bia_mask[0], s.rt_dims_masks[0],
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-                s.sparse_options[0],
-#endif
-                s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
-                s.impl_filter) {
+                s.sparse_options[0], s.attributes.front(), s.ctx_init[0],
+                s.ctx_exe[0], s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
@@ -89,11 +79,9 @@ struct prb_t : public prb_vdims_t {
             const std::string &dtag, const vdims_t &strides,
             dnnl_data_type_t bia_dt, int bia_mask,
             const std::vector<dims_mask_t> &rt_dims_masks,
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-            sparse_options_t sparse_options,
-#endif
-            const attr_t &attr, const thr_ctx_t &ctx_init,
-            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
+            const sparse_options_t &sparse_options, const attr_t &attr,
+            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
+            const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
         , dt(dt)
         , stag(stag)
@@ -103,9 +91,7 @@ struct prb_t : public prb_vdims_t {
         , bia_dt(bia_dt)
         , bia_mask(bia_mask)
         , rt_dims_masks(rt_dims_masks)
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         , sparse_options(sparse_options)
-#endif
         , attr(attr)
         , ctx_init(ctx_init)
         , ctx_exe(ctx_exe)
@@ -144,9 +130,7 @@ struct prb_t : public prb_vdims_t {
     dnnl_data_type_t bia_dt;
     int bia_mask;
     std::vector<dims_mask_t> rt_dims_masks;
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     sparse_options_t sparse_options;
-#endif
 
     bool inplace = false; // Lacks placement, always considered `false`.
     attr_t attr;
@@ -280,10 +264,6 @@ inline int64_t src_off_f(const prb_t *prb, int64_t mb, int64_t m, int64_t k) {
     return (mb * prb->m + m) * prb->k + k;
 }
 
-inline int64_t wei_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
-    return (mb * prb->k + k) * prb->n + n;
-}
-
 inline int64_t dst_off_f(const prb_t *prb, int64_t mb, int64_t m, int64_t n) {
     return (mb * prb->m + m) * prb->n + n;
 }
@@ -298,7 +278,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);
-void compute_ref(const prb_t *prb, const args_t &args,
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,

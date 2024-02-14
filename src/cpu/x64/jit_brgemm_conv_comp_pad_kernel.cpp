@@ -29,13 +29,13 @@ using namespace prop_kind;
 
 namespace jit_uni_brgemm_conv_comp_pad_kernel {
 
-#define GET_OFF(field) offsetof(jit_brgemm_conv_comp_pad_call_s, field)
+#define GET_OFF(field) offsetof(jit_brgemm_conv_comp_pad_args_t, field)
 
 template <typename Vmm>
 jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::
         jit_uni_brgemm_conv_comp_pad_kernel_t(
                 const jit_brgemm_conv_conf_t &ajcp)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp_(ajcp)
     , inp_dsz_(jcp_.wei_dsz)
     , out_dsz_(jcp_.acc_dsz)
@@ -695,7 +695,7 @@ template <typename Vmm>
 jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::
         jit_uni_brgemm_conv_relo_comp_pad_kernel_t(
                 const jit_brgemm_conv_conf_t &ajcp)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp_(ajcp)
     , inp_dsz_(jcp_.wei_dsz)
     , out_dsz_(jcp_.acc_dsz)

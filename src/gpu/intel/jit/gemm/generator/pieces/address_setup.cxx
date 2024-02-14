@@ -216,7 +216,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
                 }
 
                 if (a64) {
-                    int udStride = (hw >= HW::XeHP) ? 2 : 1;
+                    const int udStride = (hw >= HW::XeHP) ? 2 : 1;
                     int simd1 = std::min(2 * ne, simdSize);
                     int simd2 = simdSize - simd1;
                     if (udStride == 2 && simd2) {
@@ -386,8 +386,10 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
                 auto pitch = bw * bcount * block.ebytes;
                 if (pitch < 64 || pitch & 0xF) hw_unsupported();
                 mov(1, addr[0].ud(4), pitch - 1);
-            } else
+            } else {
                 add(1, addr[0].ud(4), bld, -1);
+	        max_<uint32_t>(1, addr[0].ud(4), addr[0].ud(4), addr[0].ud(2)); 
+	    }
 
             mov(1, addr[0].ud(7), (bw - 1) | ((bh - 1) << 8) | ((bcount - 1) << 16));
 

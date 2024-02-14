@@ -16,6 +16,7 @@
 
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "common/impl_registration.hpp"
+#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/ngen_helpers.hpp"
 
 #include <limits>
@@ -28,8 +29,8 @@ namespace jit {
 
 using namespace ngen;
 
-template <gpu_gen_t hw>
-int eltwise_injector_f32_t<hw>::min_scratch_regs() {
+template <typename ngen_generator_t>
+int eltwise_injector_f32_t<ngen_generator_t>::min_scratch_regs() {
     using namespace alg_kind;
     if (is_fwd_) {
         switch ((int)alg_) {
@@ -54,7 +55,7 @@ int eltwise_injector_f32_t<hw>::min_scratch_regs() {
             case eltwise_tanh:
             case eltwise_tanh_use_dst_for_bwd:
 #if XE3P
-                return (hw != gpu_xe3p) ? 2 : 1;
+                return (hw() != gpu_xe3p) ? 2 : 1;
 #else
                 return 2;
 #endif
@@ -78,7 +79,7 @@ int eltwise_injector_f32_t<hw>::min_scratch_regs() {
             case eltwise_clip: return 1;
             case eltwise_gelu_tanh:
 #if XE3P
-                return (hw != gpu_xe3p) ? 2 : 1;
+                return (hw() != gpu_xe3p) ? 2 : 1;
 #else
                 return 2;
 #endif
@@ -88,8 +89,8 @@ int eltwise_injector_f32_t<hw>::min_scratch_regs() {
     return 0;
 }
 
-template <gpu_gen_t hw>
-int eltwise_injector_f32_t<hw>::preferred_scratch_regs() {
+template <typename ngen_generator_t>
+int eltwise_injector_f32_t<ngen_generator_t>::preferred_scratch_regs() {
     using namespace alg_kind;
     if (is_fwd_) {
         switch (alg_) {
@@ -115,8 +116,8 @@ int eltwise_injector_f32_t<hw>::preferred_scratch_regs() {
     return min_scratch_regs();
 }
 
-template <gpu_gen_t hw>
-int eltwise_injector_f32_t<hw>::max_batch_size() {
+template <typename ngen_generator_t>
+int eltwise_injector_f32_t<ngen_generator_t>::max_batch_size() {
     using namespace alg_kind;
     auto ss = scratch_.getLen();
 
@@ -150,8 +151,8 @@ int eltwise_injector_f32_t<hw>::max_batch_size() {
     return 128;
 }
 
-template <gpu_gen_t hw>
-int eltwise_injector_f32_t<hw>::phase_count(alg_kind_t alg) {
+template <typename ngen_generator_t>
+int eltwise_injector_f32_t<ngen_generator_t>::phase_count(alg_kind_t alg) {
     using namespace alg_kind;
 
     if (is_fwd_) {
@@ -173,14 +174,14 @@ int eltwise_injector_f32_t<hw>::phase_count(alg_kind_t alg) {
             case eltwise_soft_relu: return 10;
             case eltwise_swish:
 #if XE3P
-                return (hw != gpu_xe3p) ? 5 : 3;
+                return (hw() != gpu_xe3p) ? 5 : 3;
 #else
                 return 5;
 #endif
             case eltwise_tanh:
             case eltwise_tanh_use_dst_for_bwd:
 #if XE3P
-                return (hw != gpu_xe3p) ? 6 : 1;
+                return (hw() != gpu_xe3p) ? 6 : 1;
 #else
                 return (use_tanh_compat()) ? 9 : 6;
 #endif
@@ -192,7 +193,7 @@ int eltwise_injector_f32_t<hw>::phase_count(alg_kind_t alg) {
             case eltwise_logistic:
             case eltwise_logistic_use_dst_for_bwd:
 #if XE3P
-                return (hw != gpu_xe3p) ? 4 : 1;
+                return (hw() != gpu_xe3p) ? 4 : 1;
 #else
                 return 4;
 #endif
@@ -204,7 +205,7 @@ int eltwise_injector_f32_t<hw>::phase_count(alg_kind_t alg) {
             case eltwise_clip: return 4;
             case eltwise_gelu_tanh:
 #if XE3P
-                return (hw != gpu_xe3p) ? 14 : 8;
+                return (hw() != gpu_xe3p) ? 14 : 8;
 #else
                 return 14;
 #endif
@@ -215,20 +216,20 @@ int eltwise_injector_f32_t<hw>::phase_count(alg_kind_t alg) {
     return 1;
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::relu_zero_ns_prepare_fwd() {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::relu_zero_ns_prepare_fwd() {
     h->mov(1, scratch_[0].f(0), 0.f);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::relu_zero_ns_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::relu_zero_ns_compute_fwd(
         int simd, const ngen::GRF &r) {
     /* use csel instead of max to propagate NaNs*/
     h->csel(simd | le | f0[0], r, scratch_[0].f(0), r, r);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::relu_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::relu_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     auto temp = scratch_[off].f();
     switch (phase) {
@@ -238,15 +239,16 @@ void eltwise_injector_f32_t<hw>::relu_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::abs_compute_fwd(int simd, const ngen::GRF &r) {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::abs_compute_fwd(
+        int simd, const ngen::GRF &r) {
     h->mov(simd, r, abs(r));
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::soft_relu_compute_fwd_inner(int simd,
-        const ngen::GRF &input, const ngen::GRF &temp, const ngen::GRF &dest,
-        int phase, int off, float alpha) {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::soft_relu_compute_fwd_inner(
+        int simd, const ngen::GRF &input, const ngen::GRF &temp,
+        const ngen::GRF &dest, int phase, int off, float alpha) {
     const float exp_overflow_bound = 88.72283172607421875f;
     const float log2e = 1.44269502162933349609375f;
     const float reciproc_log2e = 1.f / log2e; // 1 / log_2(e)
@@ -265,30 +267,30 @@ void eltwise_injector_f32_t<hw>::soft_relu_compute_fwd_inner(int simd,
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::soft_relu_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::soft_relu_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     auto temp = scratch_[off].f();
     soft_relu_compute_fwd_inner(simd, r, temp, r, phase, off, alpha_);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::sqrt_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::sqrt_compute_fwd(
         int simd, const ngen::GRF &r) {
     h->sqt(simd, r, r);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::square_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::square_compute_fwd(
         int simd, const ngen::GRF &r) {
     h->mul(simd, r, r, r);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::tanh_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::tanh_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off, int batch) {
 #if XE3P
-    if (hw != gpu_xe3p) {
+    if (hw() != gpu_xe3p) {
 #endif
         const float log2e = 1.44269502162933349609375f; // log_2(e)
         auto one_half = scratch_[0].f(7);
@@ -312,8 +314,8 @@ void eltwise_injector_f32_t<hw>::tanh_compute_fwd(
 #endif
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::tanh_compute_fwd_compat(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::tanh_compute_fwd_compat(
         int simd, const ngen::GRF &r, int phase, int off, int batch) {
     // This approximation of tanh(x) does not use the math.exp instruction
     // that seems to be faulty on DG2-128; the exact formula is as follows:
@@ -338,14 +340,14 @@ void eltwise_injector_f32_t<hw>::tanh_compute_fwd_compat(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::round_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::round_compute_fwd(
         int simd, const ngen::GRF &r) {
     h->rnde(simd, r, r);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::sround_compute_fwd(int simd,
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::sround_compute_fwd(int simd,
         const ngen::GRF &r, int phase, const ngen::Subregister &seed,
         const ngen::DataType dst_dt, int off) {
     // 2 regs for bias.
@@ -358,7 +360,7 @@ void eltwise_injector_f32_t<hw>::sround_compute_fwd(int simd,
     h->template mov<uint16_t>(8, bias.uw(0)(1), Immediate::uv(0x76543210));
     h->template mov<uint16_t>(8, bias.uw(8)(1), Immediate::uv(0xfedcba98));
     auto imm = Immediate::ud(base_idx);
-    if (hw >= gpu_xe_hpc)
+    if (hw() >= gpu_xe_hpc)
         h->add(16, bias.ud(), bias.uw(), imm);
     else {
         auto extra = scratch_[1].ud();
@@ -403,8 +405,8 @@ void eltwise_injector_f32_t<hw>::sround_compute_fwd(int simd,
     h->mov(simd | f0[0], u_r, 0);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::philox_4x32(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::philox_4x32(
         int simd, const ngen::Subregister &seed, const ngen::GRF &bias) {
     auto sround_seed = seed;
     auto ctr = bias.ud(0);
@@ -416,7 +418,7 @@ void eltwise_injector_f32_t<hw>::philox_4x32(
     auto addr = h->indirect[h->a0].ud(0)(0, 1, 0);
 
     // Compute key.
-    if (hw >= gpu_xe_hpc)
+    if (hw() >= gpu_xe_hpc)
         h->mov(4, key.uq(0)(4, 4, 1), uint64_t(0xBB67AE859E3779B9uLL));
     else {
         h->mov(4, key.ud(0)(4, 4, 2), uint32_t(0x9E3779B9u));
@@ -439,7 +441,8 @@ void eltwise_injector_f32_t<hw>::philox_4x32(
     h->mov(4, ctr_mul.ud(2)(4), 0xCD9E8D57);
     h->mov(4, ctr_mul.ud(0)(4), 0xD2511F53);
     auto ctr_base_sub = offs.uw(8)(8, 8, 1);
-    h->mov(8, ctr_base_sub, (ctr.getBase() * GRF::bytes(hw)) + ctr.getOffset());
+    h->mov(8, ctr_base_sub,
+            (ctr.getBase() * GRF::bytes(hw())) + ctr.getOffset());
 
     // Prepare first iter idx swizzle
     h->template mov<uint16_t>(8, off_inc.uw(0)(1), Immediate::uv(0x56741230));
@@ -471,7 +474,7 @@ void eltwise_injector_f32_t<hw>::philox_4x32(
         auto ctrLo = ctr.ud(0)(8, 4, 2);
         auto ctrHi = ctr.ud(1)(8, 4, 2);
 
-        const auto grf_size = ngen::GRF::bytes(hw);
+        const auto grf_size = ngen::GRF::bytes(hw());
         const int esize = grf_size / 8; // 8 = 2 * dword bytes
         const int steps = utils::div_up(8, esize);
 
@@ -507,12 +510,12 @@ void eltwise_injector_f32_t<hw>::philox_4x32(
     philox_round(ctr, ctr_mul, offs, 10);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::swish_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::swish_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     auto temp = scratch_[off].f();
 #if XE3P
-    if (hw != gpu_xe3p) {
+    if (hw() != gpu_xe3p) {
 #endif
         const float log2e = 1.442695f; // log_2(e)
         switch (phase) {
@@ -535,8 +538,8 @@ void eltwise_injector_f32_t<hw>::swish_compute_fwd(
 #endif
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::linear_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::linear_compute_fwd(
         int simd, const ngen::GRF &r, int phase) {
     switch (phase) {
         case 0: h->mul(simd, r, r, alpha_); break;
@@ -545,8 +548,8 @@ void eltwise_injector_f32_t<hw>::linear_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::clip_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::clip_compute_fwd(
         int simd, const ngen::GRF &r, int phase, float alpha, float beta) {
     switch (phase) {
         case 0: h->max_(simd, r, r, alpha); break;
@@ -555,8 +558,8 @@ void eltwise_injector_f32_t<hw>::clip_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::gelu_tanh_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::gelu_tanh_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
 
     const float k = 0.044715f;
@@ -564,7 +567,7 @@ void eltwise_injector_f32_t<hw>::gelu_tanh_compute_fwd(
     const float log2e = 1.442695f; // log_2(e)
 
     int msimd = simd;
-    if (hw == gpu_xe_hp)
+    if (hw() == gpu_xe_hp)
         msimd = 16; // workaround for intermittent hang with DPAS+EM
 
     auto a = scratch_[off].f();
@@ -581,11 +584,11 @@ void eltwise_injector_f32_t<hw>::gelu_tanh_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::logistic_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::logistic_compute_fwd(
         int simd, const ngen::GRF &r, int phase) {
 #if XE3P
-    if (hw != gpu_xe3p) {
+    if (hw() != gpu_xe3p) {
 #endif
         const float log2e = 1.442695f; // log_2(e)
         switch (phase) {
@@ -605,32 +608,32 @@ void eltwise_injector_f32_t<hw>::logistic_compute_fwd(
 #endif
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::relu_prepare_bwd() {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::relu_prepare_bwd() {
     auto neg_slope = scratch_[0].f(0);
     auto pos_slope = scratch_[0].f(4);
     h->mov(1, neg_slope, alpha_);
     h->mov(1, pos_slope, 1.f);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::relu_compute_bwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::relu_compute_bwd(
         int simd, const ngen::GRF &r) {
     auto neg_slope = scratch_[0].f(0);
     auto pos_slope = scratch_[0].f(4);
     h->csel(simd | le | f0[0], r, neg_slope, pos_slope, r);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::abs_prepare_bwd() {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::abs_prepare_bwd() {
     auto neg_one = scratch_[0].f(0);
     auto pos_one = scratch_[0].f(4);
     h->mov(1, neg_one, -1.f);
     h->mov(1, pos_one, 1.f);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::clip_prepare_bwd() {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::clip_prepare_bwd() {
     auto pos_inf_imm = Immediate(std::numeric_limits<float>::infinity());
     auto zero = scratch_[0].f(0);
     auto one = scratch_[0].f(1);
@@ -640,10 +643,10 @@ void eltwise_injector_f32_t<hw>::clip_prepare_bwd() {
     h->mov(1, pos_inf, pos_inf_imm);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::tanh_prepare_fwd() {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::tanh_prepare_fwd() {
 #if XE3P
-    if (hw != gpu_xe3p) {
+    if (hw() != gpu_xe3p) {
 #endif
         auto one_half = scratch_[0].f(7);
         h->mov(1, one_half, 0.5f);
@@ -652,8 +655,8 @@ void eltwise_injector_f32_t<hw>::tanh_prepare_fwd() {
 #endif
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::tanh_prepare_fwd_compat() {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::tanh_prepare_fwd_compat() {
     auto k = scratch_[0].f(4);
     auto l = scratch_[0].f(5);
     auto m = scratch_[0].f(6);
@@ -664,8 +667,8 @@ void eltwise_injector_f32_t<hw>::tanh_prepare_fwd_compat() {
     h->mov(1, n, -212.7724f); // -212.772646402036f
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::abs_compute_bwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::abs_compute_bwd(
         int simd, const ngen::GRF &r, int phase) {
     auto neg_one = scratch_[0].f(0);
     auto pos_one = scratch_[0].f(4);
@@ -676,20 +679,20 @@ void eltwise_injector_f32_t<hw>::abs_compute_bwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::square_compute_bwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::square_compute_bwd(
         int simd, const ngen::GRF &r) {
     h->add(simd, r, r, r);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::linear_compute_bwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::linear_compute_bwd(
         int simd, const ngen::GRF &r) {
     h->mov(simd, r, alpha_);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::clip_compute_bwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::clip_compute_bwd(
         int simd, const ngen::GRF &r, int phase, float alpha, float beta) {
     auto zero = scratch_[0].f(0);
     auto one = scratch_[0].f(1);
@@ -707,8 +710,8 @@ void eltwise_injector_f32_t<hw>::clip_compute_bwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::gelu_tanh_compute_bwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::gelu_tanh_compute_bwd(
         int simd, const ngen::GRF &r, int phase, int off, int batch) {
 
     const float k = 0.044715f;
@@ -716,11 +719,11 @@ void eltwise_injector_f32_t<hw>::gelu_tanh_compute_bwd(
     const float log2e = 1.442695f; // log_2(e)
 
     int msimd = simd;
-    if (hw == gpu_xe_hp) msimd = 16;
+    if (hw() == gpu_xe_hp) msimd = 16;
 
     auto a = scratch_[off].f();
 #if XE3P
-    if (hw != gpu_xe3p) {
+    if (hw() != gpu_xe3p) {
 #endif
         auto b = scratch_[off + batch].f();
         switch (phase) {
@@ -757,8 +760,8 @@ void eltwise_injector_f32_t<hw>::gelu_tanh_compute_bwd(
 #endif
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::elu_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::elu_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     auto temp = scratch_[off].f();
     const float log2e = 1.442695f; // log_2(e)
@@ -772,8 +775,8 @@ void eltwise_injector_f32_t<hw>::elu_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::exp_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::exp_compute_fwd(
         int simd, const ngen::GRF &r, int phase) {
     const float log2e = 1.442695f; // log_2(e)
     switch (phase) {
@@ -783,8 +786,8 @@ void eltwise_injector_f32_t<hw>::exp_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::gelu_erf_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::gelu_erf_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off, int batch) {
     auto temp = scratch_[off].f();
     auto at_accum = scratch_[off + batch].f();
@@ -828,8 +831,8 @@ void eltwise_injector_f32_t<hw>::gelu_erf_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::hardsigmoid_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::hardsigmoid_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     switch (phase) {
         case 0: h->mul(simd, r, r, alpha_); break;
@@ -840,8 +843,8 @@ void eltwise_injector_f32_t<hw>::hardsigmoid_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::hardswish_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::hardswish_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     auto temp = scratch_[off].f();
     switch (phase) {
@@ -854,8 +857,8 @@ void eltwise_injector_f32_t<hw>::hardswish_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::log_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::log_compute_fwd(
         int simd, const ngen::GRF &r, int phase) {
     const float reciproc_log2e = 1.f / 1.442695f; // 1 / log_2(e)
     switch (phase) {
@@ -865,8 +868,8 @@ void eltwise_injector_f32_t<hw>::log_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::mish_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::mish_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off, int batch) {
     auto temp = scratch_[off + batch].f();
     auto temp2 = scratch_[off + 2 * batch].f();
@@ -886,8 +889,8 @@ void eltwise_injector_f32_t<hw>::mish_compute_fwd(
     if (phase > srelu_phases + tanh_phases) assert(!"invalid phase");
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::pow_compute_fwd(
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::pow_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     auto temp = scratch_[off].f();
     switch (phase) {
@@ -910,9 +913,9 @@ void eltwise_injector_f32_t<hw>::pow_compute_fwd(
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::compute(const int *grfs, int ngrf,
-        const int seed, const int off, const ngen::DataType dt) {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
+        int ngrf, const int seed, const int off, const ngen::DataType dt) {
     using namespace alg_kind;
 
     auto bmax = max_batch_size();
@@ -930,7 +933,7 @@ void eltwise_injector_f32_t<hw>::compute(const int *grfs, int ngrf,
                 if (ii + 1 < batch)
                     if (grf0 + 1 == grfs[idx0 + ii + 1]) nreg = 2;
 
-                int simd = nreg * GRF::bytes(hw) / sizeof(float);
+                int simd = nreg * GRF::bytes(hw()) / sizeof(float);
 
                 if (is_fwd_) {
                     switch ((int)alg_) {
@@ -1043,9 +1046,10 @@ void eltwise_injector_f32_t<hw>::compute(const int *grfs, int ngrf,
     }
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::compute(const ngen::GRFRange &regs,
-        const int seed, const int off, const ngen::DataType dt) {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::compute(
+        const ngen::GRFRange &regs, const int seed, const int off,
+        const ngen::DataType dt) {
     int grfs[ngen::GRF::maxRegs()];
 
     for (int i = 0; i < regs.getLen(); i++)
@@ -1054,8 +1058,8 @@ void eltwise_injector_f32_t<hw>::compute(const ngen::GRFRange &regs,
     compute(grfs, regs.getLen(), seed, off, dt);
 }
 
-template <gpu_gen_t hw>
-void eltwise_injector_f32_t<hw>::prepare() {
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::prepare() {
     using namespace alg_kind;
 
     assert(scratch_.getLen() >= min_scratch_regs());
@@ -1085,19 +1089,32 @@ void eltwise_injector_f32_t<hw>::prepare() {
     }
 }
 
-REG_GEN9_ISA(template struct eltwise_injector_f32_t<gpu_gen9>);
-REG_GEN11_ISA(template struct eltwise_injector_f32_t<gpu_gen11>);
-REG_XELP_ISA(template struct eltwise_injector_f32_t<gpu_xe_lp>);
-REG_XEHP_ISA(template struct eltwise_injector_f32_t<gpu_xe_hp>);
-REG_XEHPG_ISA(template struct eltwise_injector_f32_t<gpu_xe_hpg>);
-REG_XEHPC_ISA(template struct eltwise_injector_f32_t<gpu_xe_hpc>);
-REG_XE2_ISA(template struct eltwise_injector_f32_t<gpu_xe2>);
-REG_XE3_ISA(template struct eltwise_injector_f32_t<gpu_xe3>);
+REG_GEN9_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_gen9>>);
+REG_GEN11_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_gen11>>);
+REG_XELP_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_lp>>);
+REG_XEHP_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_hp>>);
+REG_XEHPG_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_hpg>>);
+REG_XEHPC_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_hpc>>);
+REG_XE2_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe2>>);
+REG_XE3_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe3>>);
 #if XE3P
-REG_XE3P_ISA(template struct eltwise_injector_f32_t<gpu_xe3p>);
+REG_XE3P_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe3p>>);
 #endif
-#if XE4
-REG_XE4_ISA(template struct eltwise_injector_f32_t<gpu_xe4>);
+
+REG_GEN9_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_gen9>>);
+REG_GEN11_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_gen11>>);
+REG_XELP_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe_lp>>);
+REG_XEHP_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe_hp>>);
+REG_XEHPG_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe_hpg>>);
+REG_XEHPC_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe_hpc>>);
+REG_XE2_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe2>>);
+REG_XE3_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe3>>);
+#if XE3P
+REG_XE3P_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe3p>>);
+#endif
+
+#ifdef NGEN_ASM
+template struct eltwise_injector_f32_t<ir_asm_kernel_t>;
 #endif
 
 } // namespace jit

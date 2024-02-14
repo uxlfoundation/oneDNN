@@ -49,7 +49,7 @@
 
 namespace graph {
 
-struct deserialized_lt;
+struct deserialized_lt_t;
 
 struct bdnn_state_t {
     res_state_t state;
@@ -85,29 +85,28 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
 #define DNN_GRAPH_SAFE(f, s, ss) \
     do { \
         try { \
-            f; \
+            (f); \
         } catch (const dnnl::error &e) { \
-            if ((s & CRIT) || (s & WARN)) { \
+            if (((s)&CRIT) || ((s)&WARN)) { \
                 bdnn_state_t bs = convert_state(e.status); \
-                ss->state = bs.state; \
-                if (ss->state == res_state_t::SKIPPED) { \
-                    ss->reason = bs.reason; \
+                (ss)->state = bs.state; \
+                if ((ss)->state == res_state_t::SKIPPED) { \
+                    (ss)->reason = bs.reason; \
                 } else { \
                     BENCHDNN_PRINT(0, \
                             "Error: Function '%s' at (%s:%d) returned '%s'\n", \
                             __FUNCTION__, __FILE__, __LINE__, e.what()); \
                 } \
                 fflush(0); \
-                if (s & CRIT) exit(2); \
+                if ((s)&CRIT) exit(2); \
             } \
-            if (!(s & NEED_CLEANUP)) return FAIL; \
+            if (!((s)&NEED_CLEANUP)) return FAIL; \
         } \
     } while (0)
 
-typedef std::function<void(dnnl::stream &,
+using perf_function_t = std::function<void(dnnl::stream &,
         const std::vector<dnnl::graph::tensor> &inputs,
-        const std::vector<dnnl::graph::tensor> &outputs)>
-        perf_function_t;
+        const std::vector<dnnl::graph::tensor> &outputs)>;
 
 void compiled_partition_executor(dnnl::graph::compiled_partition &cp,
         dnnl::stream &stream, const std::vector<dnnl::graph::tensor> &inputs,
@@ -195,7 +194,7 @@ private:
 // engine used for graph lib, graph lib engine needs allocator to allocate
 // memory for constant cache, scratchpad.
 struct cpp_engine_t {
-    cpp_engine_t();
+    cpp_engine_t(bool use_host);
     dnnl::engine::kind get_kind() const { return engine_.get_kind(); }
     operator dnnl::engine &() { return engine_; }
     operator const dnnl::engine &() const { return engine_; }
@@ -208,11 +207,19 @@ private:
 // engine used for graph lib, graph lib engine needs allocator to allocate
 // memory for constant cache, scratchpad.
 inline const cpp_engine_t &get_graph_engine() {
-    static const cpp_engine_t instance;
+    static const cpp_engine_t instance(/*use_host*/ false);
     return instance;
 }
 
-bool is_gc_backend();
+inline const cpp_engine_t &get_graph_host_engine() {
+    // return `get_graph_engine` for `is_cpu` to avoid different engine instances.
+    const dnnl::engine &g_eng
+            = get_graph_engine().operator const dnnl::engine &();
+    if (is_cpu(g_eng.get())) { return get_graph_engine(); }
+
+    static const cpp_engine_t instance(/*use_host*/ true);
+    return instance;
+}
 
 dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt);
 

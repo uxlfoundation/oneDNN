@@ -16,7 +16,6 @@
 
 #include "kernel_selector.hpp"
 #include "kernel_evaluator.hpp"
-#include "common/verbose.hpp"
 
 #include <cassert>
 #include <cctype>
@@ -170,7 +169,7 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
     bool bestIsFallback = false;
     int bestAlignA = 0, bestAlignB = 0;
 
-    bool verbose = (get_verbose(verbose_t::debuginfo) >= 5);
+    bool verbose = getVerbose(GEMMVerbose::DebugInfo) >= 5;
 
     // TODO: omit evaluation if only one match, if aux output not needed.
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
@@ -200,7 +199,7 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
             }
             if (verbose) {
                 const auto &info = it->driverInfo;
-                verbose_printf("info,gpu,gemm,consider:%dx%d,%dx%dx%d,score:%f\n",
+                verbosePrintf("info,gpu,gemm,consider:%dx%d,%dx%dx%d,score:%f\n",
                         info.unroll[LoopM], info.unroll[LoopN], info.wg[LoopM],
                         info.wg[LoopN], info.wg[LoopK], score);
             }
@@ -219,11 +218,11 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
         override_patterns.reserve(npatterns);
         auto tag = kcatalog::HWTagXeHPC;
 	    switch (patterns[0].selector.hw){
-	        default: break;
 	        case kcatalog::HWTagXe3: tag = kcatalog::HWTagXe2; break;
 #if XE3P
 	        case kcatalog::HWTagXe3p: tag = kcatalog::HWTagXe3; break;
 #endif
+	        default: tag = kcatalog::HWTagXeHPC;
 		}
         for (int i = 0; i < npatterns; i++) {
             override_patterns.emplace_back(patterns[i]);
@@ -350,6 +349,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         if (problem.batchDims > 1)
             *tagPtr++ = ReqBatchMultiDim;
     }
+
+    if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None)
+        *tagPtr++ = ReqABOffset;
 
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0)
         *tagPtr++ = ReqOffsetMultiDim;

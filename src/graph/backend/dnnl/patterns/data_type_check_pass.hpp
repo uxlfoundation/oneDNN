@@ -22,6 +22,7 @@
 #include "graph/backend/dnnl/platform.hpp"
 #include "graph/backend/fake/pattern_utils.hpp"
 
+#include "graph/backend/dnnl/patterns/utils.hpp"
 #include "graph/utils/pm/nested_matcher.hpp"
 #include "graph/utils/pm/pass_base.hpp"
 
@@ -135,11 +136,11 @@ inline bool is_reorder_type(op_kind_t op_kind) {
  * \brief dtype_check_pass_t generates a pass for checking unimplemented data 
  *        type.
  */
-class dtype_check_pass_t : public graph::pass::pass_base {
+class dtype_check_pass_t : public graph::pass::pass_base_t {
 public:
     explicit dtype_check_pass_t(std::string pbackend, std::string pname,
             std::vector<data_type_t> dtypes)
-        : graph::pass::pass_base(std::move(pbackend), std::move(pname))
+        : graph::pass::pass_base_t(std::move(pbackend), std::move(pname))
         , dt_to_check_(std::move(dtypes)) {
         // data type check passes should be executed first, hence should
         // have the highest priority.
@@ -186,9 +187,9 @@ public:
             dir_t dir = get_op_dir(aop);
             const auto &op_kind = aop->get_kind();
 
-            if (unsupported_dt.find(dir) == unsupported_dt.end()) {
-                return impl::status::unimplemented;
-            }
+            VCHECK_PATTERN_UTILS(
+                    unsupported_dt.find(dir) != unsupported_dt.end(),
+                    impl::status::unimplemented, "unsupported dir %d ", dir);
             const auto &dt_with_dir = unsupported_dt.at(dir);
 
             for (size_t i = 0; i < aop->num_inputs(); ++i) {

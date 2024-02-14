@@ -17,6 +17,13 @@
 /*
  * Do not #include this file directly; ngen uses it internally.
  */
+#ifndef NGEN_GEN12_HPP
+#define NGEN_GEN12_HPP
+
+#include "ngen_auto_swsb.hpp"
+#include "ngen_gen8.hpp"
+
+namespace NGEN_NAMESPACE {
 
 // Gen12 binary encoding.
 
@@ -701,7 +708,7 @@ static inline constexpr14 BinaryOperand12 encodeBinaryOperand12(const RegData &r
         op.indirect.addrReg = rd.getIndirectOff();
         op.indirect.addrMode = 1;
         if (srcN >= 0)
-            op.indirect.vs = (rd.isVxIndirect()) ? 0xFFFF : pow2Encode(rd.getVS());
+            op.indirect.vs = (rd.isVxIndirect()) ? 0xF : pow2Encode(rd.getVS());
     } else {
         op.direct.regFile = getRegFile(rd);
         op.direct.subRegNum = rd.getByteOffset();
@@ -733,7 +740,7 @@ static inline constexpr14 BinaryOperand12 encodeBinaryOperand12(const RegData &r
         op.indirect.addrReg = rd.getIndirectOff();
         op.indirect.addrMode = 1;
         if (srcN >= 0) {
-            op.indirect.vs = (rd.isVxIndirect()) ? 0xFFFF : pow2Encode(rd.getVS());
+            op.indirect.vs = (rd.isVxIndirect()) ? 0xF : pow2Encode(rd.getVS());
             op.indirectXeHPC.addrOff0 = (rd.getOffset() & 1);
         }
     } else {
@@ -1739,3 +1746,6 @@ autoswsb::DestinationMask Instruction12::destinations(int &jip, int &uip) const
 
     return mask;
 }
+
+}
+#endif

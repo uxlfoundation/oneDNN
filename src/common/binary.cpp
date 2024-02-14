@@ -48,7 +48,7 @@ status_t binary_attr_check(const binary_desc_t &desc, const engine_t *engine,
     // Check attributes
     const data_type_t dst_dt = desc.dst_desc.data_type;
 
-    auto attr_mask = smask_t::post_ops | smask_t::scales_runtime;
+    auto attr_mask = smask_t::post_ops | smask_t::scales;
 
     VCHECK_BINARY_UNIMPL(attr->has_default_values(attr_mask, dst_dt),
             VERBOSE_UNSUPPORTED_ATTR);
@@ -80,7 +80,7 @@ status_t binary_attr_check(const binary_desc_t &desc, const engine_t *engine,
                 VERBOSE_UNSUPPORTED_POSTOP);
 
         // Note: verbose support is inside the call.
-        CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+        CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
     }
     return status::success;
 }
@@ -133,11 +133,11 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
         VCHECK_BINARY(IMPLICATION(src0_md->dims[d] != dims[d],
                               src1_md->dims[d] == dims[d]),
                 VERBOSE_INCONSISTENT_DIM, "src1", d, "dst", d);
-        // For inputs supporting ternary operators, the dimensions must match the
-        // src0 tensor as there is no broadcasting support for the tensor
-        if (src2_md != nullptr)
-            VCHECK_BINARY(src2_md->dims[d] == src0_md->dims[d], VERBOSE_BAD_DIM,
-                    "src2", d);
+
+        if (src2_md != nullptr) {
+            VCHECK_BINARY(utils::one_of(src2_md->dims[d], 1, dims[d]),
+                    VERBOSE_BAD_DIM, "src2", d);
+        }
     }
     return status::success;
 }

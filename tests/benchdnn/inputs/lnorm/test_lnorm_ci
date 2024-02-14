@@ -7,18 +7,18 @@
 --dt=f32,bf16,f16
 --dir=FWD_D
 --attr-post-ops=,sum,sum+add:f32:per_oc,mul:f32:common+linear:0.5:-1
---flags=,G,C,H,CH,GCH
+--flags=,G,C,H,M,CH,GCH,GCHM
 --batch=shapes_ci
 
 
 --dir=BWD_D
 --attr-post-ops=
---flags=,G
+--flags=,G,GM
 --batch=shapes_ci
 
 --dir=BWD_DW
 --attr-post-ops=
---flags=CH,GCH,C,H
+--flags=CH,GCH,C,H,M,GCHM
 --batch=shapes_ci
 
 # Different scale and shift data types

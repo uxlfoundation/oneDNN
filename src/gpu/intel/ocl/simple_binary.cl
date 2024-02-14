@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,12 +19,18 @@
 #if IS_TENSOR_OP && IS_DENSE && IS_SAME_MD && !WITH_BINARY_POST_OP
 KERNEL_ATTR
 __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
+#if IS_TERNARY
+        __global char *src2,
+#endif
         __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
         __global float *src1_scale) {
     int off = GWS_GET_IDX();
 
     float tmp_src0 = SRC0_TO_FLOAT(src0[off]);
     float tmp_src1 = SRC1_TO_FLOAT(src1[off]);
+#if IS_TERNARY
+    char tmp_src2 = src2[off];
+#endif
     float d = 0;
 
 #if WITH_SRC0_SCALE
@@ -33,8 +39,11 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
 #if WITH_SRC1_SCALE
     tmp_src1 = tmp_src1 * (*src1_scale);
 #endif
-
+#if IS_TERNARY
+    d = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
+#else
     d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
+#endif
 
     float dst_data;
 #if WITH_SUM
@@ -48,8 +57,12 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
 #else
 KERNEL_ATTR
 __kernel void simple_binary(__global SRC0_DATA_T *src0,
-        __global SRC1_DATA_T *src1, __global DST_DATA_T *dst POST_OP_ARGS,
-        __global float *src0_scale, __global float *src1_scale) {
+        __global SRC1_DATA_T *src1,
+#if IS_TERNARY
+        __global char *src2,
+#endif
+        __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
+        __global float *src1_scale) {
 
     // since gws = no. of total elems in A, id will be the logical offset
     int dims0[6] = {0};
@@ -71,6 +84,12 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     int src1_off = SRC1_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
+
+#if IS_TERNARY
+    int src2_off = SRC2_OFF(
+            dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
+#endif
+
 #else
     int src0_off
             = SRC0_OFF(dims0[0] * !SRC0_BCAST_DIM0, dims0[1] * !SRC0_BCAST_DIM1,
@@ -80,6 +99,13 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
             = SRC1_OFF(dims0[0] * !SRC1_BCAST_DIM0, dims0[1] * !SRC1_BCAST_DIM1,
                     dims0[2] * !SRC1_BCAST_DIM2, dims0[3] * !SRC1_BCAST_DIM3,
                     dims0[4] * !SRC1_BCAST_DIM4, dims0[5] * !SRC1_BCAST_DIM5);
+#if IS_TERNARY
+    int src2_off
+            = SRC2_OFF(dims0[0] * !SRC2_BCAST_DIM0, dims0[1] * !SRC2_BCAST_DIM1,
+                    dims0[2] * !SRC2_BCAST_DIM2, dims0[3] * !SRC2_BCAST_DIM3,
+                    dims0[4] * !SRC2_BCAST_DIM4, dims0[5] * !SRC2_BCAST_DIM5);
+#endif
+
 #endif
 
     // SRC1_D1 = IC for SRC1, using the dispatch ap
@@ -98,6 +124,9 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
         for (int ic = 0; ic < block_size; ++ic) {
             float tmp_src0 = SRC0_TO_FLOAT(src0[src0_off]);
             float tmp_src1 = SRC1_TO_FLOAT(src1[src1_off]);
+#if IS_TERNARY
+            char tmp_src2 = src2[src2_off];
+#endif
             float d = 0;
 
 #if WITH_SRC0_SCALE
@@ -106,7 +135,12 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 #if WITH_SRC1_SCALE
             tmp_src1 = tmp_src1 * (*src1_scale);
 #endif
+
+#if IS_TERNARY
+            d = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
+#else
             d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
+#endif
 
             float dst_data;
 #if WITH_SUM
@@ -133,6 +167,9 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
         for (int ic = 0; ic < DST_D1 - d1_init; ic++) {
             float tmp_src0 = SRC0_TO_FLOAT(src0[src0_off]);
             float tmp_src1 = SRC1_TO_FLOAT(src1[src1_off]);
+#if IS_TERNARY
+            char tmp_src2 = src2[src2_off];
+#endif
             float d = 0;
 
 #if WITH_SRC0_SCALE
@@ -141,7 +178,12 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 #if WITH_SRC1_SCALE
             tmp_src1 = tmp_src1 * (*src1_scale);
 #endif
+
+#if IS_TERNARY
+            d = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
+#else
             d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
+#endif
 
             float dst_data;
 #if WITH_SUM

@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_SVE_X8S8S32X_CONVOLUTION_HPP
-#define CPU_AARCH64_JIT_SVE_X8S8S32X_CONVOLUTION_HPP
+#ifndef CPU_AARCH64_JIT_SVE_512_X8S8S32X_CONVOLUTION_HPP
+#define CPU_AARCH64_JIT_SVE_512_X8S8S32X_CONVOLUTION_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"

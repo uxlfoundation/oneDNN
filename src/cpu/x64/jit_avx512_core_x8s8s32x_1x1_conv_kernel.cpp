@@ -17,6 +17,7 @@
 #include <assert.h>
 
 #include "common/c_types_map.hpp"
+#include "common/convolution_pd.hpp"
 #include "common/memory.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/nstl.hpp"
@@ -31,7 +32,7 @@
 #include "cpu/x64/jit_avx512_core_x8s8s32x_1x1_conv_kernel.hpp"
 #include "cpu/x64/jit_uni_1x1_conv_utils.hpp"
 
-#define GET_OFF(field) offsetof(jit_1x1_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_1x1_conv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -44,11 +45,11 @@ using namespace dnnl::impl::prop_kind;
 using namespace Xbyak;
 
 template <typename Vmm>
-_jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::
-        _jit_avx512_core_x8s8s32x_1x1_conv_kernel(
+jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::
+        jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t(
                 const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
                 const memory_desc_t &dst_md)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp(ajcp)
     , attr_(attr)
     , postops_injector_(nullptr) {
@@ -82,7 +83,7 @@ _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::
 }
 
 template <typename Vmm>
-void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::bcast_loop(
+void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::bcast_loop(
         int load_loop_blk) {
     mov(aux1_reg_bcast_data, reg_bcast_data);
     mov(aux_reg_bcast_data, reg_bcast_data);
@@ -133,8 +134,9 @@ void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::bcast_loop(
 }
 
 template <typename Vmm>
-void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::cvt2ps(data_type_t type_in,
-        const Vmm vmm_in, const Xbyak::Operand &op, bool mask_flag) {
+void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::cvt2ps(
+        data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
+        bool mask_flag) {
     using namespace data_type;
     const Vmm vmm = mask_flag ? vmm_in | k_load_dim_mask | T_z : vmm_in;
     switch (type_in) {
@@ -172,7 +174,7 @@ static void iterate(const int load_loop_blk, const int ur, const F &f) {
 }
 
 template <typename Vmm>
-Address _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::output_ptr(
+Address jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::output_ptr(
         const int i_load, const int i_ur) {
     const size_t ur_stride = jcp.with_dw_conv
             ? jcp.nb_load_blocking * jcp.oc_block * i_ur
@@ -183,19 +185,19 @@ Address _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::output_ptr(
 };
 
 template <typename Vmm>
-int _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::vreg_accum_idx(
+int jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::vreg_accum_idx(
         const int load_loop_blk, int i_load, int i_ur) const {
     return (i_ur * load_loop_blk + i_load);
 };
 
 template <typename Vmm>
-Vmm _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::vreg_accum(
+Vmm jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::vreg_accum(
         const int load_loop_blk, int i_load, int i_ur) const {
     return Vmm(vreg_accum_idx(load_loop_blk, i_load, i_ur));
 };
 
 template <typename Vmm>
-void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::apply_sum(
+void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_sum(
         const int load_loop_blk, const int ur, const bool mask_flag_in,
         const float *p_sum_scale, const int32_t *p_sum_zp) {
     if (jcp.with_sum) {
@@ -227,7 +229,7 @@ void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::apply_sum(
 }
 
 template <typename Vmm>
-void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::apply_postops(
+void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_postops(
         const int load_loop_blk, const int ur, const bool mask_flag_in,
         const float *p_sum_scale, const int32_t *p_sum_zp) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
@@ -293,7 +295,7 @@ void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::apply_postops(
 }
 
 template <typename Vmm>
-void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::reduce_loop(
+void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
         int load_loop_blk, int ur, bool wraparound) {
     auto vreg_load = [ur, load_loop_blk](int i_load) {
         return Vmm(ur * load_loop_blk + i_load);
@@ -625,7 +627,7 @@ void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::reduce_loop(
 }
 
 template <typename Vmm>
-void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::generate() {
+void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
 
     preamble();
 
@@ -821,7 +823,7 @@ void _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 }
 
-status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_conf(
+status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
         jit_1x1_conv_conf_t &jcp, const convolution_desc_t &cd,
         const memory_desc_t *&src_md, memory_desc_t &weights_md,
         memory_desc_t &dst_md, memory_desc_t &bias_md,
@@ -837,6 +839,11 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_conf(
     const memory_desc_wrapper weights_d(&weights_md);
     const memory_desc_wrapper dst_d(&dst_md);
     const memory_desc_wrapper bias_d(&bias_md);
+
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
+            VERBOSE_BAD_PARAM, "Large size is not supported");
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
     if (!one_of(src_d.data_type(), data_type::u8, data_type::s8)
@@ -943,9 +950,16 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_conf(
     static constexpr bool sum_at_pos_0_only = false;
     static constexpr bool sum_requires_scale_one = false;
     static constexpr bool sum_requires_zp_zero = false;
-    const bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
+    bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
             {eltwise, binary, sum}, jcp.post_ops, &dst_d, sum_at_pos_0_only,
             sum_requires_scale_one, sum_requires_zp_zero));
+    // temporary workaround that skips avx512 implementation for ternary
+    // post-ops with scalar broadcasting to avoid register collisions.
+    post_ops_ok_ = post_ops_ok_
+            && IMPLICATION(jcp.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    post_ops, dst_d));
     if (!post_ops_ok_) return status::unimplemented;
 
     const int simd_w = (jcp.ic % 16 == 0 && jcp.oc % 16 == 0) ? 16
@@ -1182,8 +1196,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_conf(
     jcp.nb_load_chunk = 1;
     // peformance improvements for googlenet_v3, mb=1;
     // TODO: generalize this condition and rewrite it in appropriate manner
-    int ncores_per_socket = (int)cpu().getNumCores(
-            Xbyak::util::IntelCpuTopologyLevel::CoreLevel);
+    int ncores_per_socket
+            = (int)cpu().getNumCores(Xbyak::util::CpuTopologyLevel::CoreLevel);
     if (jcp.mb == 1 && jcp.nb_load % 4 == 0 && jcp.ic / jcp.oc >= 4
             && jcp.ic * jcp.oc <= L2_size && jcp.nthr <= ncores_per_socket) {
         jcp.nb_load_chunk = 4;
@@ -1217,21 +1231,25 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_conf(
     return status::success;
 }
 
-void jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_scratchpad(
+void jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad,
         const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr) {
     using namespace dnnl::impl::memory_tracking::names;
 
     const int wei_mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
+
+    // The implementation always uses scales, regardless of whether they have
+    // been set or not.
     const dim_t scales_count
-            = wei_mask == 0 ? 1 : static_cast<dim_t>(jcp.oc) * jcp.ngroups;
+            = wei_mask <= 0 ? 1 : static_cast<dim_t>(jcp.oc) * jcp.ngroups;
+
     const dim_t count = nstl::max<dim_t>(scales_count, (dim_t)jcp.ic_block);
     scratchpad.book<float>(key_conv_adjusted_scales, count);
 }
 
-template struct _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Xbyak::Zmm>;
-template struct _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Xbyak::Ymm>;
-template struct _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Xbyak::Xmm>;
+template struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Xbyak::Zmm>;
+template struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Xbyak::Ymm>;
+template struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Xbyak::Xmm>;
 
 } // namespace x64
 } // namespace cpu

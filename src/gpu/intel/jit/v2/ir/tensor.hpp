@@ -43,7 +43,7 @@ public:
                 return;
             }
         }
-        entries_.emplace_back(entry_t {var, bound});
+        entries_.emplace_back(var, bound);
     }
 
     int bound(const expr_t &var) const {
@@ -64,7 +64,6 @@ private:
         entry_t(const expr_t &var, int bound) : var(var), bound(bound) {}
     };
 
-private:
     std::vector<entry_t> entries_;
 };
 
@@ -241,6 +240,7 @@ public:
     void add_dim(char letter, int pos);
     void remove_dim(char letter);
     bool is_blocked(char letter) const;
+    bool is_blocked() const;
     dim_idx_t ndims() const;
     dim_idx_t non_x_ndims() const;
     std::string str() const;
@@ -285,16 +285,23 @@ public:
     layout_tag_t() = default;
 
     layout_tag_t(const layout_desc_t &desc, const type_t &type,
-            const layout_raw_tag_t &raw_tag)
-        : desc_(desc), type_(type), raw_tag_(raw_tag) {}
-    layout_tag_t(const type_t &type, const std::string &str_tag)
-        : layout_tag_t({}, type, layout_raw_tag_t(str_tag)) {}
+            const layout_raw_tag_t &raw_tag, bool is_strided = false)
+        : desc_(desc)
+        , type_(type)
+        , raw_tag_(raw_tag)
+        , is_strided_(is_strided) {}
+    layout_tag_t(const type_t &type, const std::string &str_tag,
+            bool is_strided = false)
+        : layout_tag_t({}, type, layout_raw_tag_t(str_tag), is_strided) {}
     layout_tag_t(const layout_desc_t &desc, const type_t &type,
-            const std::string &str_tag)
-        : layout_tag_t(desc, type, layout_raw_tag_t(str_tag)) {}
+            const std::string &str_tag, bool is_strided = false)
+        : layout_tag_t(desc, type, layout_raw_tag_t(str_tag), is_strided) {}
 
     bool is_empty() const { return raw_tag_.is_empty(); }
     bool is_any() const { return raw_tag_.is_any(); }
+    bool is_blocked() const { return raw_tag_.is_blocked(); }
+    bool is_strided() const { return is_strided_; }
+    void set_strided(bool strided) { is_strided_ = strided; }
     const layout_desc_t &desc() const { return desc_; }
     const type_t &type() const { return type_; }
     const layout_raw_tag_t &raw_tag() const { return raw_tag_; }
@@ -319,21 +326,27 @@ public:
         jit::stringify(out, raw_tag_);
         out << ":";
         jit::stringify(out, type_);
+        if (is_strided_) {
+            out << ":";
+            jit::stringify(out, is_strided_);
+        }
     }
 
     void parse(std::istream &in) {
         desc_ = layout_desc_t();
         auto s = stream_parse<std::string>(in);
         auto parts = gpu_utils::split(s, ":");
-        gpu_assert(parts.size() == 2);
+        gpu_assert(parts.size() <= 3);
         jit::parse(parts[0], raw_tag_);
         jit::parse(parts[1], type_);
+        if (parts.size() == 3) jit::parse(parts[2], is_strided_);
     }
 
 private:
     layout_desc_t desc_;
     type_t type_;
     layout_raw_tag_t raw_tag_;
+    bool is_strided_ = false;
 };
 
 class layout_t {
@@ -435,7 +448,10 @@ private:
     int stride_pad_ = 1;
 };
 
-void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
+        const std::function<void(const pvar_coord_t<dim_t> &)> &func);
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
+        const std::vector<pvar_t> &idx_order,
         const std::function<void(const pvar_coord_t<dim_t> &)> &func);
 
 class block_iterator_t {

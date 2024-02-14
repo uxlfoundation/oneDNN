@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 * Copyright 2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,42 +32,42 @@ using f32_f32 = std::pair<float, float>;
 using s32_s32 = std::pair<int32_t, int32_t>;
 using s8_s8 = std::pair<int8_t, int8_t>;
 
-using cfg_bf16 = test_simple_params<f32_bf16>;
-using cfg_f32 = test_simple_params<f32_f32>;
-using cfg_s32 = test_simple_params<s32_s32>;
-using cfg_s8 = test_simple_params<s8_s8>;
+using cfg_bf16 = test_simple_params_t<f32_bf16>;
+using cfg_f32 = test_simple_params_t<f32_f32>;
+using cfg_s32 = test_simple_params_t<s32_s32>;
+using cfg_s8 = test_simple_params_t<s8_s8>;
 
-using reorder_simple_test_f32_bf16 = reorder_simple_test<f32_bf16>;
-using reorder_simple_test_f32_f32 = reorder_simple_test<f32_f32>;
-using reorder_simple_test_s32_s32 = reorder_simple_test<s32_s32>;
-using reorder_simple_test_s8_s8 = reorder_simple_test<s8_s8>;
+using reorder_simple_test_t_f32_bf16 = reorder_simple_test_t<f32_bf16>;
+using reorder_simple_test_t_f32_f32 = reorder_simple_test_t<f32_f32>;
+using reorder_simple_test_t_s32_s32 = reorder_simple_test_t<s32_s32>;
+using reorder_simple_test_t_s8_s8 = reorder_simple_test_t<s8_s8>;
 
 using fmt = memory::format_tag;
 
-TEST_P(reorder_simple_test_f32_bf16, TestsReorder) {
+TEST_P(reorder_simple_test_t_f32_bf16, TestsReorder) {
     Test();
 }
-TEST_P(reorder_simple_test_s32_s32, TestsReorder) {
+TEST_P(reorder_simple_test_t_s32_s32, TestsReorder) {
     Test();
 }
-TEST_P(reorder_simple_test_f32_f32, TestsReorder) {
+TEST_P(reorder_simple_test_t_f32_f32, TestsReorder) {
     Test();
 }
-TEST_P(reorder_simple_test_s8_s8, TestsReorder) {
+TEST_P(reorder_simple_test_t_s8_s8, TestsReorder) {
     Test();
 }
 
-INSTANTIATE_TEST_SUITE_P(ACLCases, reorder_simple_test_f32_bf16,
+INSTANTIATE_TEST_SUITE_P(ACLCases, reorder_simple_test_t_f32_bf16,
         ::testing::Values(cfg_bf16 {fmt::ab, fmt::BA4b4a, {128, 128}},
                 cfg_bf16 {fmt::ab, fmt::BA8b4a, {128, 128}}));
 
-INSTANTIATE_TEST_SUITE_P(ACLCases, reorder_simple_test_f32_f32,
+INSTANTIATE_TEST_SUITE_P(ACLCases, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::cdba, fmt::Acdb8a, {16, 16, 1, 1}},
                 cfg_f32 {fmt::cdba, fmt::Acdb8a, {1, 16, 1, 1}},
                 cfg_f32 {fmt::ba, fmt::Ab4a, {128, 128}},
                 cfg_f32 {fmt::ba, fmt::Ab8a, {128, 128}}));
 
-INSTANTIATE_TEST_SUITE_P(CornerCases, reorder_simple_test_f32_f32,
+INSTANTIATE_TEST_SUITE_P(CornerCases, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::nchw, fmt::nc, {2, 16, 8, 8}, true,
                                   dnnl_invalid_arguments},
                 cfg_f32 {fmt::any, fmt::nchw, {2, 28, 3, 4}, true,
@@ -82,7 +82,7 @@ INSTANTIATE_TEST_SUITE_P(CornerCases, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::OIhw16o16i, fmt::oihw, {16, 31, 0, 3}},
                 cfg_f32 {fmt::OIhw16i16o, fmt::OIhw16o16i, {32, 16, 3, 0}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(PaddedData, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(PaddedData, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::nchw, fmt::nChw8c, {2, 28, 3, 4}},
                 cfg_f32 {fmt::nChw8c, fmt::nchw, {2, 28, 3, 4}},
                 cfg_f32 {fmt::chwn, fmt::nChw8c, {2, 28, 3, 4}},
@@ -104,7 +104,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(PaddedData, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::ndhwc, fmt::nCdhw16c, {3, 28, 2, 3, 4}},
                 cfg_f32 {fmt::nCdhw16c, fmt::ndhwc, {3, 28, 2, 3, 4}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Data_3d, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(Data_3d, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::ncdhw, fmt::nCdhw16c, {2, 32, 2, 3, 4}},
                 cfg_f32 {fmt::nCdhw16c, fmt::ncdhw, {2, 32, 2, 3, 4}},
                 cfg_f32 {fmt::nCdhw8c, fmt::ncdhw, {2, 32, 2, 3, 4}},
@@ -113,7 +113,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(Data_3d, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::ndhwc, fmt::nCdhw8c, {3, 32, 2, 3, 4}},
                 cfg_f32 {fmt::nCdhw8c, fmt::ndhwc, {3, 32, 2, 3, 4}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(PaddedWeights, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(PaddedWeights, reorder_simple_test_t_f32_f32,
         ::testing::Values(
                 // Oi(d)hw16o
                 cfg_f32 {fmt::oihw, fmt::Oihw16o, {17, 23, 2, 3}},
@@ -171,7 +171,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(PaddedWeights, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::hwio, fmt::OhwI8i8o, {17, 23, 2, 3}},
                 cfg_f32 {fmt::OhwI8i8o, fmt::hwio, {17, 23, 2, 3}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Weights_3d, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(Weights_3d, reorder_simple_test_t_f32_f32,
         ::testing::Values(
                 cfg_f32 {fmt::oidhw, fmt::OIdhw8i8o, {16, 24, 2, 3, 3}},
                 cfg_f32 {fmt::OIdhw8i8o, fmt::oidhw, {16, 24, 2, 3, 3}},
@@ -222,7 +222,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(Weights_3d, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::gIOdhw16o16i, fmt::gOIdhw16i16o,
                         {2, 64, 96, 2, 3, 4}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::nchw, fmt::nchw, {10, 10, 13, 13}},
                 cfg_f32 {fmt::nchw, fmt::nhwc, {10, 10, 10, 10}},
                 cfg_f32 {fmt::nhwc, fmt::nchw, {10, 10, 10, 10}},
@@ -245,7 +245,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::nChw16c, fmt::nhwc, {2, 64, 4, 4}},
                 cfg_f32 {fmt::abcd, fmt::abdc, {10, 10, 10, 10}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Weights_0, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(Weights_0, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::hwio, fmt::oihw, {32, 32, 3, 3}},
                 cfg_f32 {fmt::oihw, fmt::hwio, {32, 32, 3, 3}},
                 cfg_f32 {fmt::hwio, fmt::Ohwi8o, {32, 32, 3, 3}},
@@ -313,7 +313,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(Weights_0, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::goihw, fmt::Goihw8g, {16, 16, 16, 3, 3}},
                 cfg_f32 {fmt::Goihw8g, fmt::goihw, {16, 16, 16, 3, 3}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Weights_1, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(Weights_1, reorder_simple_test_t_f32_f32,
         ::testing::Values(
                 cfg_f32 {fmt::goihw, fmt::Goihw16g, {32, 32, 32, 3, 3}},
                 cfg_f32 {fmt::Goihw16g, fmt::goihw, {32, 32, 32, 3, 3}},
@@ -326,7 +326,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(Weights_1, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::goihw, fmt::giohw, {2, 32, 32, 3, 3}},
                 cfg_f32 {fmt::giohw, fmt::goihw, {2, 32, 32, 3, 3}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Weights_IOhw16o16i, reorder_simple_test_f32_f32,
+CPU_INSTANTIATE_TEST_SUITE_P(Weights_IOhw16o16i, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::oihw, fmt::IOhw16o16i, {64, 64, 3, 3}},
                 cfg_f32 {fmt::IOhw16o16i, fmt::oihw, {64, 64, 3, 3}},
                 cfg_f32 {fmt::OIhw16i16o, fmt::IOhw16o16i, {64, 64, 3, 3}},
@@ -339,11 +339,11 @@ CPU_INSTANTIATE_TEST_SUITE_P(Weights_IOhw16o16i, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::gIOhw16o16i, fmt::gOIhw16i16o,
                         {2, 64, 64, 3, 3}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Simple, reorder_simple_test_s32_s32,
+CPU_INSTANTIATE_TEST_SUITE_P(Simple, reorder_simple_test_t_s32_s32,
         ::testing::Values(cfg_s32 {fmt::nchw, fmt::nChw16c, {2, 64, 4, 4}},
                 cfg_s32 {fmt::nChw16c, fmt::nchw, {2, 64, 4, 4}}));
 
-CPU_INSTANTIATE_TEST_SUITE_P(Simple, reorder_simple_test_s8_s8,
+CPU_INSTANTIATE_TEST_SUITE_P(Simple, reorder_simple_test_t_s8_s8,
         ::testing::Values(cfg_s8 {fmt::oihw, fmt::OIhw4i16o4i, {64, 64, 3, 3}},
                 cfg_s8 {fmt::OIhw4i16o4i, fmt::oihw, {64, 64, 3, 3}},
                 cfg_s8 {fmt::oihw, fmt::OhwI4i16o4i, {64, 64, 3, 3}},
@@ -351,7 +351,7 @@ CPU_INSTANTIATE_TEST_SUITE_P(Simple, reorder_simple_test_s8_s8,
                 cfg_s8 {fmt::goihw, fmt::gOIhw4i16o4i, {2, 64, 64, 3, 3}},
                 cfg_s8 {fmt::gOIhw4i16o4i, fmt::goihw, {2, 64, 64, 3, 3}}));
 
-GPU_INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_f32_f32,
+GPU_INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::nchw, fmt::nhwc, {2, 48, 5, 4}},
                 cfg_f32 {fmt::nchw, fmt::NChw16n16c, {64, 32, 5, 6}},
                 cfg_f32 {fmt::nChw16c, fmt::NChw16n16c, {32, 48, 6, 9}},
@@ -359,7 +359,7 @@ GPU_INSTANTIATE_TEST_SUITE_P(Data, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::ncdhw, fmt::NCdhw16n16c, {32, 32, 2, 5, 6}},
                 cfg_f32 {fmt::nCdhw16c, fmt::NCdhw16n16c, {32, 48, 2, 6, 9}}));
 
-GPU_INSTANTIATE_TEST_SUITE_P(Data_1D, reorder_simple_test_f32_f32,
+GPU_INSTANTIATE_TEST_SUITE_P(Data_1D, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::ncw, fmt::nCw16c, {2, 48, 7}},
                 cfg_f32 {fmt::nCw16c, fmt::ncw, {2, 48, 7}},
                 cfg_f32 {fmt::ncw, fmt::NCw16n16c, {32, 48, 7}},
@@ -367,13 +367,13 @@ GPU_INSTANTIATE_TEST_SUITE_P(Data_1D, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::nCw16c, fmt::NCw16n16c, {32, 48, 7}},
                 cfg_f32 {fmt::NCw16n16c, fmt::nCw16c, {32, 48, 7}}));
 
-GPU_INSTANTIATE_TEST_SUITE_P(PaddedData, reorder_simple_test_f32_f32,
+GPU_INSTANTIATE_TEST_SUITE_P(PaddedData, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::nchw, fmt::nChw8c, {2, 28, 5, 4}},
                 cfg_f32 {fmt::nChw8c, fmt::nchw, {2, 28, 5, 4}},
                 cfg_f32 {fmt::nchw, fmt::nChw16c, {2, 28, 5, 4}},
                 cfg_f32 {fmt::nChw16c, fmt::nchw, {2, 28, 5, 4}}));
 
-GPU_INSTANTIATE_TEST_SUITE_P(Weights, reorder_simple_test_f32_f32,
+GPU_INSTANTIATE_TEST_SUITE_P(Weights, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::oihw, fmt::IOhw16i16o, {32, 48, 2, 3}},
                 cfg_f32 {fmt::oihw, fmt::OIhw16o16i, {32, 32, 2, 2}},
                 cfg_f32 {fmt::hwigo, fmt::gIOhw16i16o, {2, 64, 32, 2, 3}},
@@ -385,7 +385,7 @@ GPU_INSTANTIATE_TEST_SUITE_P(Weights, reorder_simple_test_f32_f32,
                 cfg_f32 {
                         fmt::goidhw, fmt::gOIdhw16i16o, {2, 32, 64, 2, 2, 7}}));
 
-GPU_INSTANTIATE_TEST_SUITE_P(weights_1D, reorder_simple_test_f32_f32,
+GPU_INSTANTIATE_TEST_SUITE_P(weights_1D, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::oiw, fmt::OIw8i16o2i, {32, 48, 7}},
                 cfg_f32 {fmt::OIw8i16o2i, fmt::oiw, {32, 48, 7}},
                 cfg_f32 {fmt::oiw, fmt::OwI8i16o2i, {32, 48, 7}},
@@ -411,7 +411,7 @@ GPU_INSTANTIATE_TEST_SUITE_P(weights_1D, reorder_simple_test_f32_f32,
                 cfg_f32 {fmt::goiw, fmt::gIOw16i16o, {8, 32, 48, 7}},
                 cfg_f32 {fmt::gIOw16i16o, fmt::goiw, {8, 32, 48, 7}}));
 
-GPU_INSTANTIATE_TEST_SUITE_P(PaddedWeights, reorder_simple_test_f32_f32,
+GPU_INSTANTIATE_TEST_SUITE_P(PaddedWeights, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::oihw, fmt::IOhw16i16o, {17, 23, 2, 1}},
                 cfg_f32 {fmt::goihw, fmt::gOIhw16o16i, {2, 17, 23, 1, 2}}));
 

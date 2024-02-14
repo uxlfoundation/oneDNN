@@ -144,16 +144,17 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
             "%s," VERBOSE_IMPL_HEURISTIC_FAIL, pd->info(engine),
             "ocl ref_kernel is faster");
 
+    conf.dispatch.define_dim("C", 0, c_padded, conf.chunks_per_c_block);
+
     if (conf.num_batches > 1) {
-        conf.dispatch.define_dim("MB", 0,
+        conf.dispatch.define_dim("MB", 1,
                 nstl::min(
                         static_cast<dim_t>(conf.mb_block_size), conf.mb_padded),
                 conf.chunks_per_mb_block);
     } else {
-        conf.dispatch.define_dim("MB", 0, conf.mb_padded / conf.unroll_mb_count,
+        conf.dispatch.define_dim("MB", 1, conf.mb_padded / conf.unroll_mb_count,
                 conf.chunks_per_mb_block);
     }
-    conf.dispatch.define_dim("C", 1, c_padded, conf.chunks_per_c_block);
 
     int ndims = conf.ndims;
     if (!conf.is_backward) {
@@ -188,6 +189,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     } else {
         kernel_ctx.define_int("MB", conf.mb);
     }
+    kernel_ctx.define_int("MB_WO_PADDING", conf.mb);
     kernel_ctx.define_int("MB_BLOCK_SIZE", conf.mb_block_size);
     kernel_ctx.define_int("C_W_PADDING", conf.c_padded);
     kernel_ctx.define_int("C_WO_PADDING", conf.c);
@@ -230,8 +232,8 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     def_offsets(off.src_off, kernel_ctx, "SRC", conf.ndims);
     def_offsets(off.dst_off, kernel_ctx, "DST", conf.ndims);
 
-    kernel_ctx.register_buffer_size(conf.src_md_info.size);
-    kernel_ctx.register_buffer_size(conf.dst_md_info.size);
+    kernel_ctx.register_buffer_size(conf.src_md_info);
+    kernel_ctx.register_buffer_size(conf.dst_md_info);
 
     CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
 

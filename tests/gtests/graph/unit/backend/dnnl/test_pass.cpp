@@ -3259,7 +3259,7 @@ TEST(test_pass, FuseConvtransposeBiasadd) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 2U);
 
-    pass::pass_base_ptr apass = get_pass("convtranspose_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_convtranspose_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -3304,7 +3304,7 @@ TEST(test_pass, FuseConvtransposeAdd) {
         agraph.finalize();
         ASSERT_EQ(agraph.num_ops(), 2U);
 
-        pass::pass_base_ptr apass = get_pass("convtranspose_post_ops_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_convtranspose_post_ops");
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -3357,7 +3357,7 @@ TEST(test_pass, FuseConvtransposeAddTwoInputs) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 3U);
 
-    pass::pass_base_ptr apass = get_pass("convtranspose_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_convtranspose_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -3402,7 +3402,7 @@ TEST(test_pass, FuseConvtransposeRelu) {
         agraph.finalize();
         ASSERT_EQ(agraph.num_ops(), 2U);
 
-        pass::pass_base_ptr apass = get_pass("convtranspose_post_ops_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_convtranspose_post_ops");
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -3450,7 +3450,7 @@ TEST(test_pass, FuseConvtransposeReLUTwoInputs) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 3U);
 
-    pass::pass_base_ptr apass = get_pass("convtranspose_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_convtranspose_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -13372,7 +13372,7 @@ TEST(test_pass, FuseToInt8ConvTransposeAdd_CPU) {
         agraph.finalize();
 
         pass::pass_base_ptr apass
-                = get_pass("int8_convtranspose_add_post_ops_fusion_cpu");
+                = get_pass("x8s8x8_convtranspose_add_post_ops_cpu");
         ASSERT_NE(apass, nullptr);
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -13614,7 +13614,7 @@ TEST(test_pass, FuseToInt8ConvtransposeEltwise_CPU) {
             agraph.finalize();
 
             pass::pass_base_ptr apass
-                    = get_pass("int8_convtranspose_post_ops_fusion_cpu");
+                    = get_pass("x8s8x8_convtranspose_post_ops_cpu");
             ASSERT_TRUE(apass != nullptr);
             apass->run(agraph);
             ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -13848,7 +13848,7 @@ TEST(test_pass, FuseToInt8ConvtransposeBinary_CPU) {
             agraph.finalize();
 
             pass::pass_base_ptr apass
-                    = get_pass("int8_convtranspose_post_ops_fusion_cpu");
+                    = get_pass("x8s8x8_convtranspose_post_ops_cpu");
             ASSERT_TRUE(apass != nullptr);
             apass->run(agraph);
             ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -14438,7 +14438,7 @@ TEST(test_pass, ConvtransposePostops) {
                     agraph.finalize();
 
                     pass::pass_base_ptr apass
-                            = get_pass("convtranspose_post_ops_fusion");
+                            = get_pass("fp_convtranspose_post_ops");
                     apass->run(agraph);
                     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -14587,7 +14587,7 @@ TEST(test_pass, Convtranspose3Postops) {
 
         agraph.finalize();
 
-        pass::pass_base_ptr apass = get_pass("convtranspose_post_ops_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_convtranspose_post_ops");
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 

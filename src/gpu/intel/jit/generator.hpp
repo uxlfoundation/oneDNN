@@ -19,30 +19,34 @@
 
 #include <memory>
 
-// Must be included before emulation.hpp
-#include "ngen/ngen.hpp"
+#include "ngen.hpp"
+#include "ngen_emulation.hpp"
 
 #include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/ocl/engine.hpp"
 #include "xpu/utils.hpp"
 
-#include "ngen/ngen_opencl.hpp"
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#include "gpu/intel/sycl/engine.hpp"
+#include "gpu/intel/sycl/interop_kernel.hpp"
+#include "ngen_sycl.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "gpu/intel/ocl/engine.hpp"
+#include "gpu/intel/ocl/kernel.hpp"
+#include "ngen_opencl.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-
-namespace ocl {
-class engine_t;
-}
-
 namespace jit {
 
 using gpu_gen_t = ngen::HW;
@@ -57,70 +61,14 @@ constexpr gpu_gen_t gpu_xe3 = ngen::HW::Xe3;
 #if XE3P
 constexpr gpu_gen_t gpu_xe3p = ngen::HW::Xe3p;
 #endif
-#if XE4
-constexpr gpu_gen_t gpu_xe4 = ngen::HW::Xe4;
-#endif
 
-// nGEN jit generator
-//
-// The main purpose of this header file is to provide extra features for nGEN
-// kernel generator, e.g. additional macros and debugging capabilities.
-//
-// Jit generator provides additional memory to simplify kernel debugging. This
-// memory is allocated using Shared Virtual Memory (SVM) feature in OpenCL 2.0.
-// SVM enables the host and device portions of an OpenCL application to
-// seamlessly share pointers and complex pointer-containing data-structures.
-// This memory can be used to dump state of GPU registers or view GPU memory on
-// the host in debugger.
-//
-// In order to use debug memory:
-// 1.  Allocate it using 'void generator_t::dbg_alloc(cl_context context)'
-// 2.  Get memory pointer using 'void* generator_t::dbg_memory()'
-// 3.  Pass it as extra OpenCL kernel argument and define it as new argument in
-//     kernel interface at corresponding order.
-// 4.  Set a breakpoint after 'dnnl_stream_wait()', memory will be available on
-//     the host side after kernel execution.
-//
-// A short example below demonstrates how to use debug memory:
-//
-//  ``` c++
-//  status_t primitive_impl_t::execute(const exec_ctx_t &ctx) {
-//      ...
-//      auto gpu_engine = utils::downcast<ocl::engine_t*>(engine);
-//      jit_generator->dbg_alloc(gpu_engine->context());
-//      void* dbg_mem = jit_generator->dbg_memory();
-//      ...
-//      compute::kernel_arg_list_t arg_list;
-//      arg_list.set(0, src);
-//      arg_list.set(1, dst);
-//      arg_list.set(2, dbg_mem, kernel_arg_t::kind_t::svm);
-//      ...
-//      parallel_for(ctx, nd_range, kernel_, arg_list);
-//  }
-//
-//  ngen_kernel_t() : generator_t<...>() {
-//      externalName("ngen_kernel");
-//      newArgument("src", GlobalPtr);
-//      newArgument("dst", GlobalPtr);
-//      newArgument("dbg_mem", GlobalPtr);
-//      finalizeInterface();
-//      ...
-//      auto header = r32;
-//      auto data = r64;
-//      mov<uint64_t>(1, r64, getArgument("dbg_mem"));
-//      store(1, scattered_dword(), A64, header, data);
-//      ...
-//  }
-//  ```
-//
-
-template <gpu_gen_t hw>
+template <typename ngen_generator_t>
 struct eltwise_injector_f32_t;
 
-template <gpu_gen_t hw>
+template <typename ngen_generator_t>
 struct reduction_injector_f32_t;
 
-template <gpu_gen_t hw>
+template <typename ngen_generator_t>
 struct post_op_injector_t;
 
 #if (!defined(NDEBUG) || defined(DNNL_DEV_MODE))
@@ -136,25 +84,24 @@ struct debug_config_t {
     uint32_t line;
 };
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 template <gpu_gen_t hw>
-class generator_t : public ngen::OpenCLCodeGenerator<hw>,
-                    public generator_base_t {
-    friend struct eltwise_injector_f32_t<hw>;
-    friend struct reduction_injector_f32_t<hw>;
-    friend struct post_op_injector_t<hw>;
-    friend struct EmulationImplementation;
+using ngen_code_generator_t = ngen::SYCLCodeGenerator<hw>;
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+template <gpu_gen_t hw>
+using ngen_code_generator_t = ngen::OpenCLCodeGenerator<hw>;
+#endif
+
+template <gpu_gen_t hw>
+class generator_t : public ngen_code_generator_t<hw>, public generator_base_t {
+    friend struct eltwise_injector_f32_t<generator_t>;
+    friend struct reduction_injector_f32_t<generator_t>;
+    friend struct post_op_injector_t<generator_t>;
+    friend struct ngen::EmulationImplementation;
 
 private:
-#ifdef CL_VERSION_2_0
-    struct svm_deleter_t {
-        cl_context context_;
-
-        void operator()(void *ptr) noexcept {
-            if (ptr) clSVMFree(context_, ptr);
-        }
-    };
-    std::unique_ptr<void, svm_deleter_t> dbg_memory_;
-#endif
 #ifdef DNNL_DEV_MODE
     static constexpr bool enable_debug_lines = true;
 #else
@@ -162,34 +109,29 @@ private:
 #endif
 public:
     generator_t(const debug_config_t &debug_config)
-        : ngen::OpenCLCodeGenerator<hw>(0,
+        : ngen_code_generator_t<hw>(0,
                 {debug_config.name, debug_config.line, enable_debug_lines}) {};
 
     const char *kernel_name() const override {
-        return ngen::OpenCLCodeGenerator<hw>::getExternalName().c_str();
+        return ngen_code_generator_t<hw>::getExternalName().c_str();
     }
 
-    xpu::binary_t get_binary(const ocl::engine_t *engine) override {
-        return ngen::OpenCLCodeGenerator<hw>::getBinary(
-                engine->context(), engine->device());
-    }
-
-#ifdef CL_VERSION_2_0
-    void dbg_alloc(cl_context context);
-    void *dbg_memory() const { return dbg_memory_.get(); }
+    status_t get_kernel(compute::kernel_t &kernel,
+            const compute::compute_engine_t *engine) override {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
+        auto sycl_kernel = ngen_code_generator_t<hw>::getKernel(
+                sycl_engine->context(), sycl_engine->device());
+        return sycl::interop_kernel_t::make(kernel, sycl_kernel, {});
 #endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+        auto *ocl_engine = utils::downcast<const ocl::engine_t *>(engine);
+        auto ocl_kernel = ngen_code_generator_t<hw>::getKernel(
+                ocl_engine->context(), ocl_engine->device());
+        return ocl::kernel_t::make(kernel, ocl_kernel, {});
+#endif
+    }
 };
-
-#ifdef CL_VERSION_2_0
-template <gpu_gen_t hw>
-void generator_t<hw>::dbg_alloc(cl_context context) {
-    constexpr size_t size = 1048576;
-    void *mem = clSVMAlloc(
-            context, CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER, size, 0);
-    dbg_memory_ = decltype(dbg_memory_)(mem, svm_deleter_t {context});
-    memset(mem, 0xcd, size);
-}
-#endif
 
 void check_kernel_size(
         const std::string &kernel_name, size_t kernel_size, size_t icache_size);
@@ -238,9 +180,6 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         REG_XE3_ISA(CASE(gpu_xe3));
 #if XE3P
         REG_XE3P_ISA(CASE(gpu_xe3p));
-#endif
-#if XE4
-        REG_XE4_ISA(CASE(gpu_xe4));
 #endif
         default: break;
     }

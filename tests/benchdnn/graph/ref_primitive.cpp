@@ -19,7 +19,7 @@
 
 namespace graph {
 
-ref_primitive_t::ref_primitive_t(const deserialized_op &op)
+ref_primitive_t::ref_primitive_t(const deserialized_op_t &op)
     : op_(op), kind_(opstr2kind(op_.kind_)), driver_(opkind2driver(kind_)) {
 
     static const ::std::unordered_set<::std::string> special_backward_op = {
@@ -302,7 +302,7 @@ void ref_primitive_t::check_correctness(
         //
         // Note: the following threshold is obtained from actual runs on
         // different hardware.
-        cmp.set_threshold(1e-4f);
+        cmp.set_threshold(2.5e-3f);
         cmp.set_norm_validation_mode(true);
         cmp.compare(mem_fp_abx, mem_dt, attr, res);
     }

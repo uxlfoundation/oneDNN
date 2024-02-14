@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #include "graph/backend/dnnl/kernels/quantize.hpp"
 #include "graph/backend/dnnl/patterns/fusions.hpp"
 #include "graph/backend/dnnl/patterns/pattern_matcher_pass.hpp"
+#include "graph/backend/dnnl/patterns/utils.hpp"
 #include "graph/utils/pm/pbuilder.hpp"
 
 namespace dnnl {
@@ -34,7 +35,8 @@ namespace {
 bool check_inputs_all_bf16(op_t *op) {
     for (size_t i = 0; i < op->num_inputs(); ++i) {
         logical_tensor_t iport = op->get_input_value(i)->get_logical_tensor();
-        if (iport.data_type != graph::data_type::bf16) return false;
+        VCHECK_PATTERN_UTILS(iport.data_type == graph::data_type::bf16, false,
+                "input data type for typecast-quantize fusion is not bf16");
     }
     return true;
 }

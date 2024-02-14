@@ -174,7 +174,6 @@ size_t get_md_hash(const memory_desc_t &md) {
                     seed, md.format_desc.rnn_packed_desc.offset_compensation);
             seed = hash_combine(seed, md.format_desc.rnn_packed_desc.size);
             break;
-#ifdef DNNL_EXPERIMENTAL_SPARSE
         case format_kind::sparse:
             seed = hash_combine(seed,
                     static_cast<size_t>(md.format_desc.sparse_desc.encoding));
@@ -185,7 +184,6 @@ size_t get_md_hash(const memory_desc_t &md) {
             // User cannot initialize `packed_desc` therefore `packed_desc`
             // is always zero initialized.
             break;
-#endif
         default: assert(!"unknown format_kind");
     }
 
@@ -746,7 +744,8 @@ size_t get_desc_hash(const sdpa_desc_t &desc) {
     seed = hash_combine(seed, static_cast<size_t>(desc.scale_dt));
     seed = hash_combine(seed, desc.invert_scale);
     seed = hash_combine(seed, desc.kv_head_number);
-    seed = hash_combine(seed, desc.causal_mask);
+    seed = hash_combine(seed, static_cast<size_t>(desc.mask_type));
+    seed = hash_combine(seed, static_cast<size_t>(desc.softmax_alg));
     // Combined hash for sdpa desc
     return seed;
 }

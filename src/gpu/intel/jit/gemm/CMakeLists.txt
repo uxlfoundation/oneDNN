@@ -27,8 +27,8 @@ file(GLOB SOURCES
     )
 foreach(d ${DIRS})
     file(GLOB_RECURSE d_sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/${d}/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/${d}/*.cpp
+        ${ONEDNN_GEMMSTONE_DIR}/${d}/*.hpp
+        ${ONEDNN_GEMMSTONE_DIR}/${d}/*.cpp
         )
     list(APPEND SOURCES "${d_sources}")
 endforeach()
@@ -37,10 +37,10 @@ endforeach()
 # host compiler arguments. As such, we cannot split compilation of the generator
 # templates by using defines.
 if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
-   list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/generator/generator.cpp)
+   list(REMOVE_ITEM SOURCES ${ONEDNN_GEMMSTONE_DIR}/generator/generator.cpp)
 
     file (GLOB GENERATOR_SOURCES
-        generator/generator.cpp
+        ${ONEDNN_GEMMSTONE_DIR}/generator/generator.cpp
      )
 
     if (DNNL_ENABLE_PRIMITIVE_GPU_ISA STREQUAL "ALL")
@@ -66,7 +66,7 @@ add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
 
-include_directories_with_host_compiler_before(${OBJ_LIB} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../ngen)
+include_directories_with_host_compiler_before(${OBJ_LIB} ${ONEDNN_GEMMSTONE_DIR} ${ONEDNN_GEMMSTONE_DIR}/include/gemmstone)
 
 if(CMAKE_COMPILER_IS_GNUCC)
     # Workaround for LTO bug in GCC 10, 11, 12 (possibly other versions)
@@ -76,9 +76,4 @@ if(CMAKE_COMPILER_IS_GNUCC)
 
     # Workaround for excessively long compile time in GCC 11, 12 (possibly other versions)
     set_source_files_properties(gen_gemm_kernel_db.cpp PROPERTIES COMPILE_FLAGS -fno-var-tracking)
-endif()
-
-# Enable dumping copy_plan code during generation.
-if(DNNL_DEV_MODE)
-    add_definitions_with_host_compiler(-DNGEN_ASM)
 endif()

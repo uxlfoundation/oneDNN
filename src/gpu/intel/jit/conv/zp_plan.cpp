@@ -766,7 +766,7 @@ private:
                 buf_mgr, zp_type, real_zp, (zp_stride) ? simd_ : 1);
         auto mad = mad_t::make(
                 hw, comp_type, simd_, zp_type, zp_stride, wei_type, wei_stride);
-        return ret.append(mad.call({comp, comp, real_zp, wei}));
+        return ret.append(mad.call({comp, comp, std::move(real_zp), wei}));
     }
 
     stmt_t maybe_typecast_zp_src(buffer_manager_t &buf_mgr, type_t &type,
@@ -814,7 +814,7 @@ struct texpr_t {
     }
 
     expr_t to_expr(const std::vector<expr_t> &vstart,
-            const std::vector<dim_t> vstart_inc,
+            const std::vector<dim_t> &vstart_inc,
             const std::vector<expr_t> &vvars, int simd_vidx) const {
         int ndims = (int)vstart.size();
         gpu_assert((int)vstart_inc.size() == ndims);
@@ -935,8 +935,9 @@ struct texpr_t {
         if (!is_zero(base)) parts.push_back(base.str());
         for (int i = 0; i < nvargs(); i++) {
             auto s = "_" + std::to_string(vidxs[i]);
+            // NOLINTNEXTLINE(performance-inefficient-string-concatenation)
             if (vstrides[i] != 1) s = std::to_string(vstrides[i]) + " x " + s;
-            parts.push_back(s);
+            parts.push_back(std::move(s));
         }
         for (int i = 0; i < (int)parts.size(); i++) {
             if (i > 0) oss << " + ";
@@ -998,8 +999,9 @@ public:
         }
         dim_t stride = lhs_.vstride(simd_vidx);
         std::vector<expr_t> off;
+        off.reserve(simd);
         for (int i = 0; i < simd; i++) {
-            off.push_back(-stride * i);
+            off.emplace_back(-stride * i);
         }
         return binary_op_t::make(op_, e_lhs, e_rhs + shuffle_t::make(off));
     }
@@ -1121,7 +1123,7 @@ public:
                     for (auto &m : mask_descs_) {
                         auto e_m = m.normalize(
                                 vvars_, vstart_, start, simd_, simd_dim_idx_);
-                        e_masks.push_back(e_m);
+                        e_masks.push_back(std::move(e_m));
                     }
                     auto cond = e_masks[0];
                     for (int i = 1; i < (int)e_masks.size(); i++)
@@ -1519,6 +1521,7 @@ zp_plan_t::zp_plan_t(const hw_t &hw)
 
 zp_plan_t::~zp_plan_t() = default;
 
+// NOLINTNEXTLINE(readability-make-member-function-const)
 void zp_plan_t::init(const conv_config_t &cfg, bool src_2d_loads,
         const gemm_schedule_t &gemm_schedule, const view_t &zp_view,
         const view_t &zp_src_view, const layout_t &src_layout,
@@ -1645,6 +1648,7 @@ bool zp_plan_t::can_split(abc_kind_t abc, int factor) const {
     return impl->can_split(abc, factor);
 }
 
+// NOLINTNEXTLINE(readability-make-member-function-const)
 void zp_plan_t::set_split(abc_kind_t abc, int factor) {
     impl->set_split(abc, factor);
 }

@@ -43,27 +43,36 @@ plan_registry_t::plan_registry_t(const char **entries) {
             }
         }
 #endif
-        entries_.push_back(e);
+        entries_.push_back(std::move(e));
         entries++;
     }
 }
 
-kernel_desc_t plan_registry_t::find_best(const problem_t &prb) const {
+kernel_desc_t plan_registry_t::find_best(
+        const problem_t &prb, specialization_mode_t spec_mode) const {
     kernel_desc_t best;
     float min_time = std::numeric_limits<float>::max();
     for (auto &e : entries_) {
-        if (!e.desc.can_fit(prb)) continue;
-        float time = e.model_set.time(prb, e.desc);
+        auto desc = e.desc;
+        desc.spec.mode = spec_mode;
+        desc.spec.specialize(prb);
+        gpu_trace() << "Trying kernel desc: " << desc.cmd_str();
+        if (!desc.can_fit(prb)) continue;
+        float time = e.model_set.time(prb, desc);
         if (time < min_time) {
             min_time = time;
-            best = e.desc;
+            best = std::move(desc);
         }
-        auto desc = to_stream_k(e.desc);
-        if (desc.is_empty() || !desc.can_fit(prb)) continue;
-        time = e.model_set.time(prb, desc);
+        auto sk_desc = to_stream_k(e.desc);
+        sk_desc.spec.mode = spec_mode;
+        sk_desc.spec.specialize(prb);
+        if (sk_desc.is_empty()) continue;
+        gpu_trace() << "Trying kernel desc: " << sk_desc.cmd_str();
+        if (!sk_desc.can_fit(prb)) continue;
+        time = e.model_set.time(prb, sk_desc);
         if (time < min_time) {
             min_time = time;
-            best = desc;
+            best = std::move(sk_desc);
         }
     }
     return best;

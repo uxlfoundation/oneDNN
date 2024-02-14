@@ -30,7 +30,7 @@ namespace graph {
 using namespace dnnl::graph;
 using namespace dnnl::impl::graph;
 
-void deserialized_attr::load(utils::json::json_reader_t *reader) {
+void deserialized_attr_t::load(utils::json::json_reader_t *reader) {
     reader->begin_object();
     std::string key_entry;
     std::string value_entry;
@@ -64,7 +64,7 @@ void deserialized_attr::load(utils::json::json_reader_t *reader) {
     reader->next_object_item(&value_entry);
 }
 
-logical_tensor::data_type deserialized_lt::get_data_type() const {
+logical_tensor::data_type deserialized_lt_t::get_data_type() const {
     if (data_type_ == "f32") {
         return logical_tensor::data_type::f32;
     } else if (data_type_ == "f16") {
@@ -92,17 +92,19 @@ logical_tensor::data_type deserialized_lt::get_data_type() const {
     }
 }
 
-logical_tensor::property_type deserialized_lt::get_property_type() const {
+logical_tensor::property_type deserialized_lt_t::get_property_type() const {
     if (property_type_ == "constant") {
         return logical_tensor::property_type::constant;
     } else if (property_type_ == "variable") {
         return logical_tensor::property_type::variable;
+    } else if (property_type_ == "host_scalar") {
+        return logical_tensor::property_type::host_scalar;
     } else {
         return logical_tensor::property_type::undef;
     }
 }
 
-logical_tensor deserialized_lt::create() const {
+logical_tensor deserialized_lt_t::create() const {
     if (layout_type_ == "any") {
         return logical_tensor(id_, get_data_type(), shape_,
                 logical_tensor::layout_type::any, get_property_type());
@@ -112,7 +114,7 @@ logical_tensor deserialized_lt::create() const {
     }
 }
 
-void deserialized_lt::load(utils::json::json_reader_t *reader) {
+void deserialized_lt_t::load(utils::json::json_reader_t *reader) {
     utils::json::read_helper_t helper;
 
     helper.declare_field("id", &id_);
@@ -124,7 +126,11 @@ void deserialized_lt::load(utils::json::json_reader_t *reader) {
     helper.read_fields(reader);
 }
 
-void deserialized_op::load(utils::json::json_reader_t *reader) {
+bool deserialized_lt_t::is_host_scalar() const {
+    return property_type_ == "host_scalar";
+}
+
+void deserialized_op_t::load(utils::json::json_reader_t *reader) {
     utils::json::read_helper_t helper;
 
     helper.declare_field("id", &id_);
@@ -136,14 +142,14 @@ void deserialized_op::load(utils::json::json_reader_t *reader) {
     helper.read_fields(reader);
 }
 
-op deserialized_op::create() const {
+op deserialized_op_t::create() const {
     op aop(id_, opstr2kind(kind_), name_);
     for (auto it = attrs_.begin(); it != attrs_.end(); ++it) {
         const auto &attr = attrstr2kind(it->first);
         const auto &attr_value = it->second;
         const auto &type = attr_value.type_;
         if (type == "string") {
-            const auto value = attr_value.str_value_;
+            const auto &value = attr_value.str_value_;
             aop.set_attr(attr, value);
         } else if (type == "bool") {
             const auto value = attr_value.bool_value_;
@@ -152,13 +158,13 @@ op deserialized_op::create() const {
             const auto value = attr_value.s64_value_;
             aop.set_attr(attr, value);
         } else if (type == "s64[]") {
-            const auto value = attr_value.s64_vector_;
+            const auto &value = attr_value.s64_vector_;
             aop.set_attr(attr, value);
         } else if (type == "f32") {
             const auto value = attr_value.f32_value_;
             aop.set_attr(attr, value);
         } else if (type == "f32[]") {
-            const auto value = attr_value.f32_vector_;
+            const auto &value = attr_value.f32_vector_;
             aop.set_attr(attr, value);
         }
     }
@@ -173,49 +179,49 @@ op deserialized_op::create() const {
     return aop;
 }
 
-bool deserialized_op::get_attr_string(
+bool deserialized_op_t::get_attr_string(
         std::string &attr, const std::string &attr_name) const {
     auto it = attrs_.find(attr_name);
     if (it == attrs_.end()) return false;
     return attr = it->second.str_value_, true;
 }
 
-bool deserialized_op::get_attr_bool(
+bool deserialized_op_t::get_attr_bool(
         bool &attr, const std::string &attr_name) const {
     auto it = attrs_.find(attr_name);
     if (it == attrs_.end()) return false;
     return attr = it->second.bool_value_, true;
 }
 
-bool deserialized_op::get_attr_f32(
+bool deserialized_op_t::get_attr_f32(
         float &attr, const std::string &attr_name) const {
     auto it = attrs_.find(attr_name);
     if (it == attrs_.end()) return false;
     return attr = it->second.f32_value_, true;
 }
 
-bool deserialized_op::get_attr_s64(
+bool deserialized_op_t::get_attr_s64(
         int64_t &attr, const std::string &attr_name) const {
     auto it = attrs_.find(attr_name);
     if (it == attrs_.end()) return false;
     return attr = it->second.s64_value_, true;
 }
 
-bool deserialized_op::get_attr_f32_vector(
+bool deserialized_op_t::get_attr_f32_vector(
         std::vector<float> &attr, const std::string &attr_name) const {
     auto it = attrs_.find(attr_name);
     if (it == attrs_.end()) return false;
     return attr = it->second.f32_vector_, true;
 }
 
-bool deserialized_op::get_attr_s64_vector(
+bool deserialized_op_t::get_attr_s64_vector(
         std::vector<int64_t> &attr, const std::string &attr_name) const {
     auto it = attrs_.find(attr_name);
     if (it == attrs_.end()) return false;
     return attr = it->second.s64_vector_, true;
 }
 
-bool deserialized_op::has_NXC_format() const {
+bool deserialized_op_t::has_NXC_format() const {
     std::string data_format;
     if (get_attr_string(data_format, "data_format")) {
         return data_format == "NXC";
@@ -234,14 +240,14 @@ bool deserialized_op::has_NXC_format() const {
     }
 }
 
-logical_tensor::dims deserialized_op::get_NCX_shape(
+logical_tensor::dims deserialized_op_t::get_NCX_shape(
         size_t idx, bool input) const {
     auto src_dims = input ? in_lts_.at(idx).shape_ : out_lts_.at(idx).shape_;
     if (has_NXC_format()) { change_format_to_ncx(src_dims); }
     return src_dims;
 }
 
-void deserialized_graph::load(const std::string &pass_config_json) {
+void deserialized_graph_t::load(const std::string &pass_config_json) {
     std::ifstream fs(pass_config_json.c_str());
     utils::json::json_reader_t read(&fs);
     utils::json::read_helper_t helper;
@@ -284,7 +290,7 @@ void deserialized_graph::load(const std::string &pass_config_json) {
     }
 
     std::map<size_t, size_t> deg; // record indegree for each op
-    std::map<size_t, deserialized_op> ops_map; // op_id -> op
+    std::map<size_t, deserialized_op_t> ops_map; // op_id -> op
     for (const auto &aop : ops_) {
         ops_map[aop.id_] = aop;
         deg[aop.id_] = 0;
@@ -294,9 +300,8 @@ void deserialized_graph::load(const std::string &pass_config_json) {
         for (const auto &lt : aop.out_lts_) {
             out_lt_2_op_[lt.id_] = aop;
             // collect graph internal and output tensors memory layout
-            std::string mtag
+            lt_2_mtag_[lt.id_]
                     = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
-            lt_2_mtag_[lt.id_] = mtag;
         }
     }
 
@@ -365,13 +370,13 @@ void deserialized_graph::load(const std::string &pass_config_json) {
 }
 
 // Prints the lt in the plain string format: `(id):dt:shape`.
-std::ostream &operator<<(std::ostream &s, const deserialized_lt &dlt) {
+std::ostream &operator<<(std::ostream &s, const deserialized_lt_t &dlt) {
     s << "(" << dlt.id_ << "):" << dlt.data_type_ << ":"
       << lt_dims2str(dlt.shape_);
     return s;
 }
 
-std::string deserialized_lt::get_string() const {
+std::string deserialized_lt_t::get_string() const {
     std::stringstream ss;
     ss << *this;
     return ss.str();
@@ -382,7 +387,7 @@ std::string deserialized_lt::get_string() const {
 //     In: { lt0, lt1, ... }
 //     Out: { lt0, lt1, ... }
 //     Attrs: { Scales: { val0, ... } }  // <-- if any available.
-std::ostream &operator<<(std::ostream &s, const deserialized_op &dop) {
+std::ostream &operator<<(std::ostream &s, const deserialized_op_t &dop) {
     s << "{(" << dop.id_ << ") " << dop.kind_ << "}\n";
 
     s << "    In: { ";
@@ -441,26 +446,26 @@ std::ostream &operator<<(std::ostream &s, const deserialized_op &dop) {
     return s;
 }
 
-std::string deserialized_op::get_string() const {
+std::string deserialized_op_t::get_string() const {
     std::stringstream ss;
     ss << *this;
     return ss.str();
 }
 
-std::ostream &operator<<(std::ostream &s, const deserialized_graph &dg) {
+std::ostream &operator<<(std::ostream &s, const deserialized_graph_t &dg) {
     for (const auto &op : dg.ops_) {
         s << op;
     }
     return s;
 }
 
-std::string deserialized_graph::get_string() const {
+std::string deserialized_graph_t::get_string() const {
     std::stringstream ss;
     ss << *this;
     return ss.str();
 }
 
-dnnl::graph::graph deserialized_graph::to_graph(
+dnnl::graph::graph deserialized_graph_t::to_graph(
         const graph_fpmath_mode_t &fpmath_mode) const {
     const auto &engine = get_graph_engine();
     dnnl::graph::graph g(engine.get_kind());
@@ -480,38 +485,38 @@ dnnl::graph::graph deserialized_graph::to_graph(
     return g;
 }
 
-const deserialized_op &deserialized_graph::get_op(size_t id) const {
+const deserialized_op_t &deserialized_graph_t::get_op(size_t id) const {
     for (const auto &op : ops_) {
         if (op.id_ == id) return op;
     }
     assert(!"Given id was not found in the deserialized graph.");
-    static deserialized_op dummy;
+    static deserialized_op_t dummy;
     return dummy;
 }
 
-const deserialized_op &deserialized_graph::get_op_by_out_lt(
+const deserialized_op_t &deserialized_graph_t::get_op_by_out_lt(
         size_t out_lt_id) const {
     for_(const auto &op : ops_)
     for (const auto &out_lt : op.out_lts_) {
         if (out_lt.id_ == out_lt_id) return op;
     }
 
-    static deserialized_op dummy;
+    static deserialized_op_t dummy;
     return dummy;
 }
 
-const deserialized_op &deserialized_graph::get_op_by_in_lt(
+const deserialized_op_t &deserialized_graph_t::get_op_by_in_lt(
         size_t in_lt_id) const {
     for_(const auto &op : ops_)
     for (const auto &in_lt : op.in_lts_) {
         if (in_lt.id_ == in_lt_id) return op;
     }
 
-    static deserialized_op dummy;
+    static deserialized_op_t dummy;
     return dummy;
 }
 
-bool deserialized_graph::check_tensor_with_mb(size_t tensor_id,
+bool deserialized_graph_t::check_tensor_with_mb(size_t tensor_id,
         std::unordered_map<size_t, bool> &mb_rewrite_ret) const {
     if (in_lt_2_ops_.find(tensor_id) == in_lt_2_ops_.end()) return true;
     if (mb_rewrite_ret.find(tensor_id) != mb_rewrite_ret.end())

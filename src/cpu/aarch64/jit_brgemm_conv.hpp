@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-template <cpu_isa_t isa, bool use_inversion = false>
+template <cpu_isa_t isa>
 struct brgemm_convolution_fwd_t : public primitive_t {
 
     struct brgemm_thread_ctx_t;
@@ -117,7 +117,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
         }
 
         inline int maybe_invert(int k, int K) const {
-            return use_inversion ? K - 1 - k : k;
+            return desc()->use_inversion ? K - 1 - k : k;
         };
 
         void init_batch(int icc, const char *src_base, const char *wei_base,
@@ -137,12 +137,6 @@ struct brgemm_convolution_fwd_t : public primitive_t {
         int ndims = 0;
 
     protected:
-        bool arg_scales_ok() const {
-            std::vector<int> supported_args
-                    = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-            return attr_scales_ok(supported_args);
-        }
-
         bool zero_points_ok() const {
             const auto &zp = attr()->zero_points_;
 
@@ -210,7 +204,7 @@ private:
     }
 
     inline int maybe_invert_range(int k, int k_inv, int K) const {
-        return use_inversion ? K - k_inv : k;
+        return pd()->desc()->use_inversion ? K - k_inv : k;
     };
 
     void get_kw_range(

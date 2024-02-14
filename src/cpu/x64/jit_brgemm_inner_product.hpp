@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_BRGEMM_INNER_PRODUCT_HPP
-#define CPU_X64_BRGEMM_INNER_PRODUCT_HPP
+#ifndef CPU_X64_JIT_BRGEMM_INNER_PRODUCT_HPP
+#define CPU_X64_JIT_BRGEMM_INNER_PRODUCT_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -62,7 +62,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
             using skip_mask_t = primitive_attr_t::skip_mask_t;
             auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
                     | skip_mask_t::fpmath_mode;
-            if (is_int8) skip_mask |= skip_mask_t::scales_runtime;
+            if (is_int8) skip_mask |= skip_mask_t::scales;
             // disabling verbose dispatch messages for unsupported isa for
             // better readability
             if (!mayiuse(isa)) return status::unimplemented;
@@ -603,12 +603,13 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
 
         if (jbgp.use_buffer_b)
             CHECK(create_brgemm_trans_to_vnni(trans_B_kernel_, &pd()->jbgp_,
-                    jit_brgemm_trans_to_vnni_t::matrix_to_transform::matrix_B));
+                    jit_brgemm_trans_to_vnni_t::matrix_to_transform_t::
+                            matrix_B));
 
         if (!jbgp.is_amx) {
             if (jbgp.wei_dt != jbgp.acc_dt)
                 CHECK(create_brgemm_trans_to_vnni(trans_C_kernel_, &pd()->jbgp_,
-                        jit_brgemm_trans_to_vnni_t::matrix_to_transform::
+                        jit_brgemm_trans_to_vnni_t::matrix_to_transform_t::
                                 matrix_C));
         } else if (utils::one_of(jbgp.wei_dt, data_type::bf16, data_type::f16,
                            data_type::f8_e5m2, data_type::f8_e4m3)) {
@@ -631,8 +632,8 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
 
 private:
     struct thread_info_t;
-    using ker_diff_bias_t
-            = jit_brgemm_kernel_diff_bias_t<typename cpu_isa_traits<isa>::Vmm>;
+    using ker_diff_bias_t = jit_brgemm_kernel_diff_bias_t<
+            typename cpu_isa_traits_t<isa>::Vmm>;
     std::unique_ptr<ker_diff_bias_t> kernels_db_[2][2];
     std::unique_ptr<brgemm_kernel_t>
             brg_kernels_[brgemm_inner_product_utils::max_num_brg_kernels_ip];
@@ -640,7 +641,7 @@ private:
     std::unique_ptr<jit_brgemm_trans_to_vnni_t> trans_B_kernel_;
     std::unique_ptr<jit_brgemm_trans_to_vnni_t> trans_C_kernel_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;
-    std::unique_ptr<jit_amx_ip_trans_diff_wei> diff_wei_trans_kernel_;
+    std::unique_ptr<jit_amx_ip_trans_diff_wei_t> diff_wei_trans_kernel_;
 
     void execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

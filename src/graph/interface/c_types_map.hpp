@@ -296,6 +296,7 @@ namespace property_type {
 const property_type_t undef = dnnl_graph_tensor_property_undef;
 const property_type_t variable = dnnl_graph_tensor_property_variable;
 const property_type_t constant = dnnl_graph_tensor_property_constant;
+const property_type_t host_scalar = dnnl_graph_tensor_property_host_scalar;
 } // namespace property_type
 
 using attribute_kind_t = size_t;

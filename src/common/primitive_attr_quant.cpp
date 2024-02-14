@@ -38,10 +38,19 @@ size_t quant_entry_t::get_hash() const {
 }
 
 void quant_entry_t::serialize(serialization_stream_t &sstream) const {
-    sstream.write(&mask_);
-    sstream.write(&data_type_);
-    sstream.write(&group_ndims_);
-    if (group_ndims_ > 0) sstream.write(group_dims_, group_ndims_);
+    sstream.append(mask_);
+    sstream.append(data_type_);
+    sstream.append_array(group_ndims_, group_dims_);
+}
+
+quant_entry_t quant_entry_t::deserialize(deserializer_t &d) {
+    quant_entry_t e;
+    d.pop(e.mask_);
+    d.pop(e.data_type_);
+    size_t group_ndims;
+    d.pop_array(group_ndims, e.group_dims_);
+    e.group_ndims_ = static_cast<int>(group_ndims);
+    return e;
 }
 
 std::string quant_entry_t::get_verbose() const {
@@ -62,28 +71,40 @@ std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e) {
     return ss;
 }
 
-size_t scales_t::get_hash() const {
+size_t quant_entries_t::get_hash() const {
     size_t seed = 0;
     // Go through scales for all arguments.
-    for (const auto &e : scales_) {
+    for (const auto &e : entries_) {
         seed = hash_combine(seed, e.first);
         seed = hash_combine(seed, e.second.get_hash());
     }
     return seed;
 }
 
-void scales_t::serialize(serialization_stream_t &sstream) const {
-    for (const auto &e : scales_) {
-        sstream.write(&e.first);
-        e.second.serialize(sstream);
+void quant_entries_t::serialize(serialization_stream_t &sstream) const {
+    sstream.append(entries_.size());
+    for (const auto &e : entries_) {
+        sstream.append(e.first);
+        sstream.append(e.second);
     }
 }
 
-std::string scales_t::get_verbose() const {
+template <typename T>
+T deserialize_entries(deserializer_t &d) {
+    T entries;
+    size_t size = d.pop<size_t>();
+    for (size_t i = 0; i < size; i++) {
+        int arg = d.pop<int>();
+        entries.set(arg, d.pop<quant_entry_t>());
+    }
+    return entries;
+}
+
+std::string quant_entries_t::get_verbose() const {
     std::string s;
     std::string empty_delim, attr_delim = "+";
     std::string delim = empty_delim;
-    for (const auto &scale : scales_) {
+    for (const auto &scale : entries_) {
         const auto &q = scale.second;
         if (q.has_default_values()) continue;
 
@@ -97,39 +118,12 @@ std::string scales_t::get_verbose() const {
     return s;
 }
 
-size_t zero_points_t::get_hash() const {
-    size_t seed = 0;
-    // Go through zero_points for all arguments.
-    for (const auto &e : zero_points_) {
-        seed = hash_combine(seed, e.first);
-        seed = hash_combine(seed, e.second.get_hash());
-    }
-    return seed;
+scales_t scales_t::deserialize(deserializer_t &d) {
+    return deserialize_entries<scales_t>(d);
 }
 
-void zero_points_t::serialize(serialization_stream_t &sstream) const {
-    for (const auto &e : zero_points_) {
-        sstream.write(&e.first);
-        e.second.serialize(sstream);
-    }
-}
-
-std::string zero_points_t::get_verbose() const {
-    std::string s;
-    std::string empty_delim, attr_delim = "+";
-    std::string delim = empty_delim;
-    for (const auto &zero_point : zero_points_) {
-        const auto &q = zero_point.second;
-        if (q.has_default_values()) continue;
-
-        int arg = zero_point.first;
-        s.append(delim)
-                .append(arg2str(arg))
-                .append(":")
-                .append(q.get_verbose());
-        delim = attr_delim;
-    }
-    return s;
+zero_points_t zero_points_t::deserialize(deserializer_t &d) {
+    return deserialize_entries<zero_points_t>(d);
 }
 
 } // namespace impl

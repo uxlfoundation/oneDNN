@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 * Copyright 2020-2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@
 
 #include "cpu/platform.hpp"
 
-#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#if DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_thread.hpp"
 #endif
 
@@ -156,7 +156,7 @@ public:
         *engine = new cpu_engine_t(new impl::engine_impl_t(
                 engine_kind::cpu, get_cpu_native_runtime(), 0));
 
-#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#if DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
         dnnl::impl::cpu::aarch64::acl_thread_utils::set_acl_threading();
 #endif
         return status::success;

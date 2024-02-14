@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -95,6 +95,8 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_RESAMPLING(memory_desc_matches_tag(*dst_md(), conf_.src_tag),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VDISPATCH_RESAMPLING(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     conf_.alg = desc()->alg_kind;
     conf_.c = C();
@@ -163,6 +165,13 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
     }
     conf_.with_postops
             = conf_.with_eltwise || conf_.with_binary || conf_.with_sum;
+
+    VDISPATCH_RESAMPLING(
+            IMPLICATION(conf_.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    conf_.post_ops, dst_d)),
+            VERBOSE_UNSUPPORTED_POSTOP);
 
     return status::success;
 }
@@ -456,7 +465,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
             const dim_t dst_off = ((mb * C + c) * OD * OH * OW + od * OH * OW)
                     * dst_dt_size;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.src = src + src_off;
             args.dst = dst + dst_off;
             args.dst_orig = dst;
@@ -477,7 +486,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
 
             const size_t cb = std::div(nsp, CB).rem;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.batch_of_sp_points_to_process = OW;
             args.src = src + src_off;
             args.dst = dst + dst_off;
@@ -518,7 +527,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
             const dim_t src_off = (mb * C + c) * ID * IH * IW * src_dt_size;
             const dim_t dst_off = (mb * C + c) * OD * OH * OW * dst_dt_size;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.batch_of_sp_points_to_process = OW * OH * OD;
             args.src = src + src_off;
             args.dst = dst + dst_off;
@@ -549,7 +558,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
 
             const size_t cb = std::div(nsp, CB).rem;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.batch_of_sp_points_to_process = OW;
             args.src = src + src_off;
             args.dst = dst + dst_off;

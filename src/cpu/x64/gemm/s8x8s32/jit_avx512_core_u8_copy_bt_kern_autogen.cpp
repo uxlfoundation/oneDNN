@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,10 +23,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx512_core_u8_copy_bt_kern::jit_avx512_core_u8_copy_bt_kern(bool s8_case)
-    : jit_generator(jit_name()), s8_case(s8_case) {}
+jit_avx512_core_u8_copy_bt_kern_t::jit_avx512_core_u8_copy_bt_kern_t(
+        bool s8_case)
+    : jit_generator_t(jit_name()), s8_case(s8_case) {}
 
-void jit_avx512_core_u8_copy_bt_kern::generate() {
+void jit_avx512_core_u8_copy_bt_kern_t::generate() {
 
 #ifndef _WIN32
 #define M rdi

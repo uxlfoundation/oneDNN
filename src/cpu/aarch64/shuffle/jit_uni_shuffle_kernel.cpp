@@ -30,7 +30,7 @@ namespace aarch64 {
 
 using namespace Xbyak_aarch64;
 
-#define GET_OFF(field) offsetof(jit_shuffle_call_s, field)
+#define GET_OFF(field) offsetof(jit_uni_shuffle_args_t, field)
 
 static size_t get_padding_size(const jit_shuffle_conf_t &conf) {
     const auto padding_tail_size = conf.c % conf.blk_size;

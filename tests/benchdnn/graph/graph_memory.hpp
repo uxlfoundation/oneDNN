@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -112,7 +112,7 @@ private:
     graph_memory_req_args_t() {
         req_ = std::vector<std::vector<size_t>>(2, std::vector<size_t>(3, 0));
     }
-    ~graph_memory_req_args_t() {};
+    ~graph_memory_req_args_t() = default;
     BENCHDNN_DISALLOW_COPY_AND_ASSIGN(graph_memory_req_args_t);
 
     // The detailed memory size requrest for specific path and devices.
@@ -156,14 +156,15 @@ public:
     //
     // The constructor accepts three boolean parameters:
     // 1. is_op_input: whether the logical tensor is an input of an op
-    // 2. is_fake_output: for fake outputs, the driver cannot create memory
-    // objects based on primitive memory for them, but construct memory
-    // from graph shape. The default value is false.
+    // 2. use_graph_layout: for fake outputs and mode without reference
+    // memories, the driver cannot create memory objects based on primitive
+    // memory for them, but construct memory from graph shape. The default
+    // value is false.
     //
-    dnn_graph_mem_t(const dnn_mem_t &mem, const deserialized_lt &lt,
-            const bool is_op_input, const bool is_fake_output = false);
+    dnn_graph_mem_t(const dnn_mem_t &mem, const deserialized_lt_t &lt,
+            const bool is_op_input, const bool use_graph_layout = false);
 
-    dnnl::graph::tensor make_graph_tensor(const deserialized_lt &lt) const;
+    dnnl::graph::tensor make_graph_tensor(const deserialized_lt_t &lt) const;
 
     const dnn_mem_t &get_mem() const { return mem_; }
 
@@ -171,6 +172,8 @@ public:
     void unmap_mem() { mem_.unmap(); }
 
 private:
+    int fill_mem_with_data(const dnn_mem_t &mem, const dnnl::engine &eng);
+
     dnn_mem_t mem_;
     std::shared_ptr<void> buffer_;
     dnnl::memory::dims graph_dims_;

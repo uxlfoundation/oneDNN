@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,9 +48,9 @@ bool is_s8u8(const std::set<data_type_t> &tensor_data_types) noexcept;
 int get_simd_w(const std::set<data_type_t> &tensor_data_types) noexcept;
 size_t c_blk_nelems(const memory_desc_t *mem, bool padding) noexcept;
 size_t get_block_tail_size(const memory_desc_t *mem) noexcept;
-void apply_zero_padding(jit_generator *host, const size_t tail_size,
+void apply_zero_padding(jit_generator_t *host, const size_t tail_size,
         const data_type_t dt, const size_t block_tail_size,
-        const Xbyak::Reg64 &reg_dst, const Xbyak::Reg64 *reg_offset) noexcept;
+        const Xbyak::Reg64 &reg_dst, const Xbyak::Reg64 *reg_offset);
 
 } // namespace prelu
 } // namespace x64

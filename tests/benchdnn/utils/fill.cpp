@@ -112,7 +112,7 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
 
     if (e.policy == policy_t::COMMON) {
         assert(nelems == 1);
-        mem_fp.set_elem(0, e.scale);
+        mem_fp.set_f32_elem(0, e.scale);
         if (mem_dt) mem_dt.set_elem(0, e.scale);
     } else {
         /* Do fixed partitioning to have same filling for any number of threads */
@@ -136,7 +136,7 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
                 const float gen_val
                         = pow2 < 0 ? (1.f / pow2_shift) : pow2_shift;
                 const float val = gen_val;
-                mem_fp.set_elem(idx, val);
+                mem_fp.set_f32_elem(idx, val);
                 if (mem_dt) mem_dt.set_elem(idx, val);
             }
         });
@@ -155,7 +155,7 @@ int fill_zero_points(
     const auto &e = attr.zero_points.get(arg);
     if (e.policy == policy_t::COMMON) {
         assert(nelems == 1);
-        mem_fp.set_elem(0, e.value);
+        mem_fp.set_f32_elem(0, e.value);
         if (mem_dt) mem_dt.set_elem(0, e.value);
     } else {
         /* Do fixed partitioning to have same filling for any number of threads */
@@ -176,7 +176,7 @@ int fill_zero_points(
 
             for (int64_t idx = idx_start; idx < idx_end; ++idx) {
                 const float zp_val = gen(int_seed);
-                mem_fp.set_elem(idx, zp_val);
+                mem_fp.set_f32_elem(idx, zp_val);
                 if (mem_dt) mem_dt.set_elem(idx, zp_val);
             }
         });
@@ -195,14 +195,12 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
     // This function doesn't handle the predefined set yet.
     assert(fill_cfg.predefined_set_.empty());
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     // The `nelems()` function returns a product of dims/pdims regardless of
     // whether the tensor is dense or sparse (this is by design). Because of
     // that we need to adjust the `nelems` value for the sparse tensor as the
     // number of elements to fill is equal to `nnz`.
     if (mem_ref.format_kind() == dnnl_format_kind_sparse)
         nelems = query_md_nnz(mem_ref.md_);
-#endif
 
     // Note: fill_cfg_t drives value distribution, but the final rounding is
     // in compliance with the memory object the values are inserted. Depending
@@ -235,10 +233,19 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
                     : gen_real(int_seed);
         };
 
-        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            float val = get_val();
-            mem_ref.set_elem(
-                    idx, round_to_nearest_representable(round_dt, val));
+        if (mem_ref.dt() == dnnl_f32) {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                float val = get_val();
+                mem_ref.set_f32_elem(
+                        idx, round_to_nearest_representable(round_dt, val));
+            }
+        } else {
+            // There are some rare scenarios when mem_ref is not f32.
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                float val = get_val();
+                mem_ref.set_elem(
+                        idx, round_to_nearest_representable(round_dt, val));
+            }
         }
     });
 
@@ -273,6 +280,8 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
             return orig_val;
         };
 
+        // There are some rare scenarios when mem_ref is not f32. Since it's a
+        // single element per tensor, can call a regular interface.
         const float elem_first_val = adjust_val(mem_ref.get_elem(0));
         mem_ref.set_elem(
                 0, round_to_nearest_representable(round_dt, elem_first_val));
@@ -290,7 +299,6 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
     return OK;
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
 // Since a sparsity pattern affects performance, it's crucial to keep the
 // pattern intact and only randomize tensor values. Thus, the function relies on
 // an assumption that every sparse format contains three handles, where the
@@ -313,17 +321,14 @@ int fill_random_real_sparse(const_dnnl_memory_t dnnl_memory, dnn_mem_t &mem,
 
     return fill_random_real_dense(mem, mem_ref, res, fill_cfg);
 }
-#endif
 
 int fill_random_real(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
         const fill_cfg_t &fill_cfg, const_dnnl_memory_t dnnl_memory) {
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     if (mem_ref.format_kind() == dnnl_format_kind_sparse) {
         assert(dnnl_memory != nullptr);
         return fill_random_real_sparse(
                 dnnl_memory, mem, mem_ref, res, fill_cfg);
     }
-#endif
     return fill_random_real_dense(mem, mem_ref, res, fill_cfg);
 }
 

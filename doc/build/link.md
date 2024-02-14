@@ -57,7 +57,7 @@ clang++ -I${DNNLROOT}/include -L${DNNLROOT}/lib getting_started.cpp -ldnnl
 icpx -I${DNNLROOT}/include -L${DNNLROOT}/lib getting_started.cpp -ldnnl
 ~~~
 
-@note
+@warning
 Applications linked dynamically will resolve the dependencies at runtime. Make
 sure that the dependencies are available in the standard locations defined by
 the operating system, in the locations listed in the `LD_LIBRARY_PATH` (Linux)
@@ -106,7 +106,7 @@ Refer to the
 [Microsoft Visual Studio documentation](https://docs.microsoft.com/en-us/cpp/build/walkthrough-creating-and-using-a-dynamic-link-library-cpp?view=vs-2017)
 on linking the application using MSVS solutions.
 
-@note
+@warning
 Applications linked dynamically will resolve the dependencies at runtime.
 Make sure that the dependencies are available in the standard locations
 defined by the operating system or in the locations listed in the `PATH`

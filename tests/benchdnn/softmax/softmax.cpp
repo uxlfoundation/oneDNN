@@ -240,21 +240,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const float trh_coeff_bwd = (prb->dir & FLAG_FWD) ? 1.f : 4.f;
     const float trh_f32 = trh_coeff_log * trh_coeff_bwd * trh_coeff_f32
             * epsilon_dt(trh_dt);
-#if DNNL_AARCH64 || defined(DNNL_SYCL_HIP) || defined(DNNL_SYCL_CUDA)
-    // MIOpen and ACL softmax accumulate in F16, but oneDNN now expects accumulation in
-    // F32, this partially reverts 6727bbe8. For more information on ACL softmax, see
-    // https://github.com/oneapi-src/oneDNN/issues/1819
-    // Similarly, for bf16 on AArch64, the relaxed threshold is necessary due to
-    // minor accuracy drops observed compared to f32
-    const float trh = trh_f32;
-#else
-    const bool is_strict_acc
-            = prb->attr.acc_mode == dnnl_accumulation_mode_strict;
-    // Relaxed fp16 computation can get an ulp difference with f32 ref values.
-    const float trh = is_flt_or_dbl || (trh_dt == dnnl_f16 && !is_strict_acc)
-            ? trh_f32
-            : 0.f;
-#endif
+    const float trh = is_flt_or_dbl ? trh_f32 : 0.f;
     cmp.set_threshold(trh);
 
     // LogSoftMax is unstable enough when there are attributes on top.
@@ -287,7 +273,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                   // Additionally, OpenCL expf implementation may return 1e-38f
                   // values for big negative numbers. This is the guard from
                   // such values.
-                  return args.diff < diff_trh;
+                  return args.diff < epsilon_dt(dnnl_f32);
               };
     cmp.set_driver_check_function(softmax_add_check);
 }

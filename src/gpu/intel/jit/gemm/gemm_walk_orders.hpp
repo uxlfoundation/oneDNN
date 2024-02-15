@@ -18,8 +18,8 @@
 #define GPU_INTEL_JIT_GEMM_GEMM_WALK_ORDERS_HPP
 
 #include "common/utils.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/gemm/gen_gemm_kernel.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/jit/gemm/gen_gemm_kernel.hpp"
 
 namespace dnnl {
 namespace impl {

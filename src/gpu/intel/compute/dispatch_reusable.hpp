@@ -642,6 +642,7 @@ public:
 
 private:
     void add_(const block_bin_t &bin, size_t gws_dim) {
+        gpu_assert(gws_dim < gws_.ndims());
         map[gws_dim].emplace_back(bin);
         gws_[gws_dim] *= bin.size();
     }
@@ -651,7 +652,7 @@ private:
     }
     subgroup_data_t sg;
     std::array<std::vector<block_bin_t>, range_t::max_ndims> map;
-    range_t gws_ = range_t::one();
+    range_t gws_;
 };
 
 class reusable_dispatch_config_t {

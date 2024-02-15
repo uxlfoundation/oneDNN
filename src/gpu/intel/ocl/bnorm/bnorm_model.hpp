@@ -16,8 +16,8 @@
 #ifndef GPU_INTEL_OCL_BNORM_BNORM_MODEL_HPP
 #define GPU_INTEL_OCL_BNORM_BNORM_MODEL_HPP
 
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/bnorm/nhwc_batch_normalization.hpp"
 
 namespace dnnl {
 namespace impl {

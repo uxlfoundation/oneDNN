@@ -17,8 +17,8 @@
 #include <algorithm>
 
 #include "common/c_types_map.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/custom_reorder.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/custom_reorder.hpp"
 
 #include "common/utils.hpp"
 #include "gpu/intel/ocl/ocl_stream.hpp"
@@ -864,16 +864,16 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
 
     if (conf.implementation == plain_to_ABcd84a42b) {
         kernel_ctx.define_int("PLAIN_TO_ABCD84A42B", 1);
-        compute::nd_range_t nd_range = conf.dispatch.nd_range();
-        const auto &lws = nd_range.local_range();
-        if (!lws) return status::runtime_error;
+        auto r = conf.dispatch.nd_range();
+        if (!r.local_range().has_value()) return status::runtime_error;
+        auto lws = r.local_range().value();
         kernel_ctx.define_int("SG_PER_WG", lws.nelems() / conf.sub_group_size);
     }
     if (conf.implementation == xb_to_xab_xba) {
         kernel_ctx.define_int("XAB_XBA", 1);
-        compute::nd_range_t nd_range = conf.dispatch.nd_range();
-        const auto &lws = nd_range.local_range();
-        if (!lws) return status::runtime_error;
+        auto r = conf.dispatch.nd_range();
+        if (!r.local_range().has_value()) return status::runtime_error;
+        auto lws = r.local_range().value();
         kernel_ctx.define_int("SG_PER_WG", lws.nelems() / conf.sub_group_size);
         kernel_ctx.define_int("BLOCK_SIZE", conf.aux_data.ab.blk_size);
         kernel_ctx.define_int("SRC_BLK_DIM", conf.aux_data.ab.src_blk_dim);
@@ -894,9 +894,9 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
         kernel_ctx.define_int("SRC_LOOP_DIM", conf.aux_data.vg.src_loop_dim);
         kernel_ctx.define_int("DST_LOOP_DIM", conf.aux_data.vg.dst_loop_dim);
         kernel_ctx.define_int("GROUP", conf.aux_data.vg.group_size);
-        compute::nd_range_t nd_range = conf.dispatch.nd_range();
-        const auto &lws = nd_range.local_range();
-        if (!lws) return status::runtime_error;
+        auto r = conf.dispatch.nd_range();
+        if (!r.local_range().has_value()) return status::runtime_error;
+        auto lws = r.local_range().value();
         kernel_ctx.define_int("SG_PER_WG", lws.nelems() / conf.sub_group_size);
         kernel_ctx.define_int(
                 "INNERMOST_SIZE", conf.aux_data.vg.innermost_size);
@@ -937,9 +937,9 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
 
     if (conf.implementation == local8x8 || conf.implementation == local16x16) {
         kernel_ctx.define_int("LOCAL_NXN", 1);
-        compute::nd_range_t nd_range = conf.dispatch.nd_range();
-        const auto &lws = nd_range.local_range();
-        if (!lws) return status::runtime_error;
+        auto r = conf.dispatch.nd_range();
+        if (!r.local_range().has_value()) return status::runtime_error;
+        auto lws = r.local_range().value();
         kernel_ctx.define_int("SG_PER_WG", lws.nelems());
         kernel_ctx.define_int(
                 "DST_BLOCK_DIM", get_Nth_last_dim_or_block(src_mdw).idx);

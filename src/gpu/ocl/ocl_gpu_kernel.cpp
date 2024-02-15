@@ -214,7 +214,9 @@ status_t ocl_gpu_kernel_t::parallel_for(stream_t &stream,
         const cl_event *events_data = num_events ? events.data() : nullptr;
         cl_int err = clEnqueueNDRangeKernel(queue, *kernel, ndims, nullptr,
                 range.global_range().data(),
-                range.local_range() ? range.local_range().data() : nullptr,
+                range.local_range().has_value()
+                        ? range.local_range().value().data()
+                        : nullptr,
                 num_events, events_data, &event.unwrap());
         OCL_CHECK(err);
         ocl_event_t::from(out_dep).events = {event};
@@ -222,8 +224,10 @@ status_t ocl_gpu_kernel_t::parallel_for(stream_t &stream,
         bool save_event = save_events_ || stream.is_profiling_enabled();
         cl_int err = clEnqueueNDRangeKernel(queue, *kernel, ndims, nullptr,
                 range.global_range().data(),
-                range.local_range() ? range.local_range().data() : nullptr, 0,
-                nullptr, save_event ? &event.unwrap() : nullptr);
+                range.local_range().has_value()
+                        ? range.local_range().value().data()
+                        : nullptr,
+                0, nullptr, save_event ? &event.unwrap() : nullptr);
         OCL_CHECK(err);
     }
 
@@ -233,6 +237,16 @@ status_t ocl_gpu_kernel_t::parallel_for(stream_t &stream,
     }
 
     return status::success;
+}
+
+bool ocl_gpu_kernel_t::is_on(
+        const gpu::compute::compute_engine_t &engine) const {
+    if (engine.runtime_kind() != runtime_kind::ocl) return false;
+    auto &ocl_engine = *utils::downcast<const ocl_gpu_engine_t *>(&engine);
+    cl_context ctx = {};
+    UNUSED_OCL_RESULT(clGetKernelInfo(
+            ocl_kernel(), CL_KERNEL_CONTEXT, sizeof(ctx), &ctx, nullptr));
+    return ctx == ocl_engine.context();
 }
 
 status_t ocl_gpu_kernel_t::dump() const {

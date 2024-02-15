@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
-
+#include "common/optional.hpp"
 #include "common/utils.hpp"
 #include "gpu/compute/compute_engine.hpp"
 #include "gpu/compute/dispatch.hpp"
@@ -38,7 +38,7 @@ compute::range_t get_optimal_lws(const compute::range_t &gws,
     size_t total_lws = 1;
 
     compute::range_t gws_copy = gws;
-    auto lws = compute::range_t::one(gws_copy.ndims());
+    auto lws = compute::range_t::empty_like(gws_copy);
 
     // Iterate through global work size and calculate max divisor from
     // the array optimal_lws_values.
@@ -208,11 +208,20 @@ void dispatch_t::def_kernel_macros(kernel_ctx_t &kernel_ctx) const {
                 dims_[vec_dim_idx].vector_size);
 
     auto r = nd_range();
+<<<<<<< HEAD
     if (r.local_range()) {
         for (size_t i = 0; i < r.global_range().ndims(); i++) {
             kernel_ctx.define_int(
                     utils::format("GWS_LWS%zu_%s", i, attr_suffix_),
                     gpu_utils::into<int64_t>(r.local_range()[i]));
+=======
+    if (r.local_range().has_value()) {
+        const auto &lws = r.local_range().value();
+        for (size_t i = 0; i < r.global_range().ndims(); i++) {
+            kernel_ctx.define_int(
+                    utils::format("GWS_LWS%zu_%s", i, attr_suffix_),
+                    gpu_utils::into<int64_t>(lws[i]));
+>>>>>>> d9e1e90707... gpu: upgrade work sizes from size_t[3] to a range_t
         }
     }
 }
@@ -250,7 +259,11 @@ void dispatch_t::generate(bool generate_lws) {
         }
     }
 
+<<<<<<< HEAD
     compute::range_t gws = compute::range_t::one();
+=======
+    compute::range_t gws;
+>>>>>>> d9e1e90707... gpu: upgrade work sizes from size_t[3] to a range_t
     for (int i = ndims_ - 1; i >= 0; --i) {
         dim_t block = std::max(dims_[i].block, (dim_t)1);
         int gws_index = dims_[i].gws_index;
@@ -276,22 +289,38 @@ void dispatch_t::generate(bool generate_lws) {
     }
 
     // Handle a vectorized dimension (if presented).
+<<<<<<< HEAD
     compute::range_t lws;
     if (generate_lws) {
 
         if (vec_dim_idx != dim_not_found) {
             lws = compute::range_t::one(gws.ndims());
+=======
+    utils::optional_t<compute::range_t> lws;
+    if (generate_lws) {
+
+        if (vec_dim_idx != dim_not_found) {
+            lws = compute::range_t();
+>>>>>>> d9e1e90707... gpu: upgrade work sizes from size_t[3] to a range_t
             int gws_index = dims_[vec_dim_idx].gws_index;
             size_t vec_size
                     = gpu_utils::into<size_t>(dims_[vec_dim_idx].vector_size);
             size_t nblocks = gpu_utils::into<size_t>(
                     dims_[vec_dim_idx].size / dims_[vec_dim_idx].block);
             // XXX: max 256 work items per group
+<<<<<<< HEAD
             lws[gws_index]
                     = utils::max_div(gws[gws_index] / vec_size, 256 / vec_size)
                     * vec_size;
             lws[gws_index] = utils::max_div(nblocks / vec_size,
                                      lws[gws_index] / vec_size)
+=======
+            lws.value()[gws_index]
+                    = utils::max_div(gws[gws_index] / vec_size, 256 / vec_size)
+                    * vec_size;
+            lws.value()[gws_index] = utils::max_div(nblocks / vec_size,
+                                             lws.value()[gws_index] / vec_size)
+>>>>>>> d9e1e90707... gpu: upgrade work sizes from size_t[3] to a range_t
                     * vec_size;
 
             // Move the vectorized dimension to the first place in the group.
@@ -314,17 +343,29 @@ void dispatch_t::generate(bool generate_lws) {
         }
 
         // Use a work-group size = 1 if the number of work items < HW threads.
+<<<<<<< HEAD
         if (!lws && gws_size < hw_threads) {
             lws = compute::range_t::one(gws.ndims());
         }
 
         if (!lws) {
+=======
+        if (!lws.has_value() && gws_size < hw_threads) {
+            lws = compute::range_t();
+        }
+
+        if (!lws.has_value()) {
+>>>>>>> d9e1e90707... gpu: upgrade work sizes from size_t[3] to a range_t
             // Compute the best lws.
             lws = get_optimal_lws(gws,
                     vec_dim_idx != -1 ? dims_[vec_dim_idx].gws_index : -1,
                     dev_info->gpu_arch());
         }
+<<<<<<< HEAD
         gpu_assert(lws) << "Unexpected missing lws";
+=======
+        assert(lws.has_value());
+>>>>>>> d9e1e90707... gpu: upgrade work sizes from size_t[3] to a range_t
     }
 
     nd_range_ = nd_range_t(gws, lws);
@@ -333,7 +374,11 @@ void dispatch_t::generate(bool generate_lws) {
 
 // Allows manual setting of global and local work sizes.
 void dispatch_t::generate_override(
+<<<<<<< HEAD
         const range_t &grange, const range_t &lrange) {
+=======
+        const range_t &grange, const utils::optional_t<range_t> &lrange) {
+>>>>>>> d9e1e90707... gpu: upgrade work sizes from size_t[3] to a range_t
     dims_[1].gws_index = 2;
     dims_[2].gws_index = 1;
     dims_[3].gws_index = 0;

@@ -329,11 +329,11 @@ struct gws_mapped_block_t : public gpu::block_t {
     stride_t gws_stride;
 };
 
-std::vector<gws_indexing_term_t> gws_bin_mapping_t::condense_terms(
-        size_t buf_idx) const {
-    std::vector<gws_indexing_term_t> ret;
+void reusable_dispatch_config_t::compute_terms(
+        size_t buffer_idx, const gws_bin_mapping_t &mapper) {
+
     for (size_t gws_idx = 0; gws_idx < range_t::max_ndims; gws_idx++) {
-        const std::vector<block_bin_t> &bins = map[gws_idx];
+        const std::vector<block_bin_t> &bins = mapper.get_bins(gws_idx);
 
         std::vector<gws_mapped_block_t> gws_blocks;
         stride_t gws_stride = 1;

@@ -18,10 +18,15 @@
 #define GPU_OCL_GEN9_SOFTMAX_HPP
 
 #include "common/c_types_map.hpp"
+#include "common/nstl.hpp"
 #include "common/primitive.hpp"
+#include "gpu/compute/compute.hpp"
 #include "gpu/compute/utils.hpp"
 #include "gpu/gpu_primitive.hpp"
+#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_softmax_pd.hpp"
+#include "gpu/ocl/ocl_stream.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
 #include "gpu/primitive_conf.hpp"
 
 namespace dnnl {
@@ -153,8 +158,10 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
             }
 
             lws[0] = group_size;
+            lws[1] = lws[2] = 1;
             gws[0] = utils::array_product(&src_md()->dims[0], ndims() - 1)
                     * group_size;
+            gws[1] = gws[2] = 1;
 
             //subgroup block read requires the tensor to be 4-byte aligned, and
             //subgroup block write requires the tensor to be 16-byte aligned
@@ -173,8 +180,8 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
         bool is_blocked = false;
         bool is_write_aligned = false;
         bool is_read_aligned = false;
-        compute::range_t gws = compute::range_t::empty(1);
-        compute::range_t lws = compute::range_t::empty(1);
+        compute::range_t gws;
+        compute::range_t lws;
         size_t group_size = 0;
         const int subgroup_size = 16;
         const int byte_alignment_read = 4;
@@ -305,16 +312,18 @@ struct gen9_softmax_bwd_t : public gpu_primitive_t {
                 group_size = subgroup_size;
             }
             lws[0] = group_size;
+            lws[1] = lws[2] = 1;
             gws[0] = utils::array_product(
                              &diff_src_md(0)->padded_dims[0], ndims() - 1)
                     * group_size;
+            gws[1] = gws[2] = 1;
             batches = diff_src_md(0)->padded_dims[0]
                     * diff_src_md(0)->padded_dims[2];
             return status::success;
         }
 
-        compute::range_t gws = compute::range_t::empty(1);
-        compute::range_t lws = compute::range_t::empty(1);
+        compute::range_t gws;
+        compute::range_t lws;
         size_t group_size = 0;
         size_t batches = 0;
         bool is_nhwc = false;

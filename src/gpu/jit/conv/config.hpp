@@ -19,16 +19,26 @@
 
 #include <iostream>
 #include <sstream>
+#include <unordered_map>
 
 #include "common/c_types_map.hpp"
 #include "common/convolution_pd.hpp"
+#include "common/math_utils.hpp"
+#include "common/memory_desc_wrapper.hpp"
+#include "common/type_helpers.hpp"
+#include "gpu/compute/compute.hpp"
+#include "gpu/compute/compute_engine.hpp"
 #include "gpu/compute/utils.hpp"
 #include "gpu/jit/conv/key.hpp"
 #include "gpu/jit/conv/problem.hpp"
 #include "gpu/jit/ir/config.hpp"
 #include "gpu/jit/ir/fma.hpp"
 #include "gpu/jit/ir/hw.hpp"
+#include "gpu/jit/ir/message_patterns.hpp"
+#include "gpu/jit/ir/post_ops.hpp"
+#include "gpu/jit/ir/tensor.hpp"
 #include "gpu/jit/ir/tensor_config.hpp"
+#include "gpu/jit/jit_eltwise_injector.hpp"
 #include "gpu/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -530,10 +540,9 @@ public:
     }
 
     compute::nd_range_t nd_range() const {
-        compute::range_t gws = compute::range_t::empty();
-        compute::range_t lws = compute::range_t::empty();
-        for (int i = 0; i < gpu_utils::into<int>(compute::range_t::max_ndims);
-                i++) {
+        compute::range_t gws;
+        compute::range_t lws;
+        for (int i = 0; i < 3; i++) {
             lws[i] = thread_group_grid().dim(i) * (i == 0 ? simd() : 1);
             gws[i] = kernel_grid().dim(i) * lws[i];
         }
@@ -622,15 +631,11 @@ private:
 status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
         const engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr);
 status_t init_cfg(conv_config_t &cfg, const primitive_t *prim);
-status_t init_regs(conv_config_t &cfg);
 int slm_bufs_hint(const conv_problem_t &prb, int m_tg, int n_tg,
         bool do_src_zp_compensation, bool enable_a, bool enable_b,
         bool do_unroll);
 tensor_config_t get_tensor_config(const conv_config_t &cfg);
 int estimate_register_count(const conv_config_t &cfg);
-int default_regs(const conv_config_t &cfg);
-void init_kernel_grid(conv_config_t &cfg);
-void init_thread_group_grid(conv_config_t &cfg);
 const std::array<prb_tile_t, 3> &get_kernel_grid_conv_dims(
         const conv_problem_t &prb);
 const std::array<prb_tile_t, 3> &get_thread_group_grid_conv_dims(

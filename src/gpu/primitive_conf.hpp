@@ -164,15 +164,15 @@ struct attr_info_t {
 
         const auto &src0_scales = attr->scales_.get(DNNL_ARG_SRC_0);
         attr_info.with_src0_scale = !src0_scales.has_default_values();
-        gpu_assert(src0_scales.mask_ == 0);
+        assert(src0_scales.mask_ == 0);
 
         const auto &src1_scales = attr->scales_.get(DNNL_ARG_SRC_1);
         attr_info.with_src1_scale = !src1_scales.has_default_values();
-        gpu_assert(src1_scales.mask_ == 0);
+        assert(src1_scales.mask_ == 0);
 
         const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
         attr_info.with_src_scales = !src_scales.has_default_values();
-        gpu_assert(src_scales.mask_ == 0);
+        assert(src_scales.mask_ == 0);
 
         const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
         attr_info.with_wei_scales = !wei_scales.has_default_values();
@@ -180,7 +180,7 @@ struct attr_info_t {
 
         const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
         attr_info.with_dst_scales = !dst_scales.has_default_values();
-        gpu_assert(dst_scales.mask_ == 0);
+        assert(dst_scales.mask_ == 0);
 
         // zero points
         const auto &zp = attr->zero_points_;
@@ -233,28 +233,7 @@ struct attr_info_t {
     bool with_per_oc_dst_zpoints;
 };
 
-template <size_t ndims>
-using strides_t = std::array<dim_t, ndims>;
-template <>
-struct compute::scalar_type_traits<strides_t<2>> {
-    static const auto type = scalar_type_t::_int64x3_t;
-};
-template <>
-struct compute::scalar_type_traits<strides_t<3>> {
-    static const auto type = scalar_type_t::_int64x3_t;
-};
-template <>
-struct compute::scalar_type_traits<strides_t<4>> {
-    static const auto type = scalar_type_t::_int64x4_t;
-};
-template <>
-struct compute::scalar_type_traits<strides_t<5>> {
-    static const auto type = scalar_type_t::_int64x5_t;
-};
-template <>
-struct compute::scalar_type_traits<strides_t<6>> {
-    static const auto type = scalar_type_t::_int64x5_t;
-};
+using strides_t = std::array<dim_t, MAX_NDIMS>;
 
 struct offsets_t {
     dim_t src_off[4][MAX_NDIMS];
@@ -263,26 +242,27 @@ struct offsets_t {
 };
 
 struct rnn_offsets_t {
-    strides_t<3> src_layer;
-    strides_t<4> src_iter;
-    strides_t<4> src_iter_c;
-    strides_t<5> weights_layer;
-    strides_t<5> weights_iter;
+    strides_t src_layer;
+    strides_t src_iter;
+    strides_t src_iter_c;
+    strides_t weights_layer;
+    strides_t weights_iter;
     dim_t weights_layer_comp_off;
     dim_t weights_iter_comp_off;
-    strides_t<4> bias;
-    strides_t<3> dst_layer;
-    strides_t<4> dst_iter;
-    strides_t<4> dst_iter_c;
-    strides_t<3> diff_src_layer;
-    strides_t<4> diff_src_iter;
-    strides_t<4> diff_src_iter_c;
-    strides_t<5> diff_weights_layer;
-    strides_t<5> diff_weights_iter;
-    strides_t<4> diff_bias;
-    strides_t<3> diff_dst_layer;
-    strides_t<4> diff_dst_iter;
-    strides_t<4> diff_dst_iter_c;
+    strides_t bias;
+    strides_t dst_layer;
+    strides_t dst_iter;
+    strides_t dst_iter_c;
+    strides_t diff_src_layer;
+    strides_t diff_src_iter;
+    strides_t diff_src_iter_c;
+    strides_t diff_weights_layer;
+    strides_t diff_weights_iter;
+    strides_t diff_bias;
+    strides_t diff_dst_layer;
+    strides_t diff_dst_iter;
+    strides_t diff_dst_iter_c;
+    strides_t ws;
 };
 
 // Convolution
@@ -331,8 +311,10 @@ struct conv_conf_t {
     size_t wei_slm_size, src_slm_size, dst_slm_size;
     int sub_group_size;
 
-    compute::range_t gws_d = compute::range_t::empty();
-    compute::range_t lws_d = compute::range_t::empty();
+    compute::range_t gws_d, lws_d;
+    // Original global work sizes, before applying rounding in case when
+    // non-uniform work-groups are not supported.
+    compute::range_t gws_orig_d;
     compute::dispatch_t dispatch;
 
     bool with_bias, with_groups;
@@ -359,12 +341,9 @@ struct conv_conf_t {
     int wino_ic_block;
     int wino_oc_block;
     int vect_size;
-    compute::range_t U_gws_d = compute::range_t::empty();
-    compute::range_t U_lws_d = compute::range_t::empty();
-    compute::range_t V_gws_d = compute::range_t::empty();
-    compute::range_t V_lws_d = compute::range_t::empty();
-    compute::range_t M_gws_d = compute::range_t::empty();
-    compute::range_t M_lws_d = compute::range_t::empty();
+    compute::range_t U_gws_d, U_lws_d;
+    compute::range_t V_gws_d, V_lws_d;
+    compute::range_t M_gws_d, M_lws_d;
     bool is_fused;
 
     data_type_t src_data_type;
@@ -541,8 +520,18 @@ struct binary_conf_t {
     data_type_t src0_data_type;
     data_type_t src1_data_type;
     data_type_t dst_data_type;
-    alg_kind_t alg;
-    // bool is_ne;
+    bool is_mul;
+    bool is_add;
+    bool is_max;
+    bool is_min;
+    bool is_div;
+    bool is_sub;
+    bool is_ge;
+    bool is_gt;
+    bool is_le;
+    bool is_lt;
+    bool is_eq;
+    bool is_ne;
     bool is_tensor_op;
     compute::dispatch_t dispatch;
     int mb_block;
@@ -613,8 +602,7 @@ struct resampling_conf_t {
     float FD, FH, FW;
     dim_t vect_size;
     dims_t padded_strides;
-    compute::range_t gws = compute::range_t::empty();
-    compute::range_t lws = compute::range_t::empty();
+    compute::range_t lws, gws;
     int sub_group_size;
     dim_t padded_c;
     attr_info_t attr_info;
@@ -830,7 +818,7 @@ struct concat_conf_t {
     int n;
     int simd;
     int data_type_size;
-    compute::range_t gws_d = compute::range_t::one();
+    compute::range_t gws_d;
     compute::range_t lws_d;
 
     data_type_t src_type, dst_type;
@@ -1019,33 +1007,23 @@ inline void set_offsets(
     }
 }
 
-struct outer_strides_getter_t {
-    template <size_t ndims>
-    operator strides_t<ndims>() const {
-        strides_t<ndims> ret;
-        gpu_assert(gpu_utils::into<dim_t>(ndims) >= md.ndims());
-        for (int d = ndims - 1; d >= 0; d--) {
-            // Assumes size 1 dimensions are dense with respect to the neighboring
-            // dimension so they can be used for size calculations in some layouts
-            ret[d] = [&]() {
-                if (d >= md.ndims())
-                    return static_cast<dim_t>(0);
-                else if (md.padded_dims()[d] > 1)
-                    return md.strides()[d];
-                else if (d == md.ndims() - 1)
-                    return static_cast<dim_t>(1);
-                else
-                    return ret[d + 1] * md.padded_dims()[d + 1];
-            }();
-        }
-        return ret;
+inline strides_t get_outer_strides(const memory_desc_wrapper &md) {
+    strides_t ret;
+    for (int d = MAX_NDIMS - 1; d >= 0; d--) {
+        // Assumes size 1 dimensions are dense with respect to the neighboring
+        // dimension so they can be used for size calculations in some layouts
+        ret[d] = [&]() {
+            if (d >= md.ndims())
+                return static_cast<dim_t>(0);
+            else if (md.padded_dims()[d] > 1)
+                return md.strides()[d];
+            else if (d == md.ndims() - 1)
+                return static_cast<dim_t>(1);
+            else
+                return ret[d + 1] * md.padded_dims()[d + 1];
+        }();
     }
-
-    const memory_desc_wrapper &md;
-};
-
-inline outer_strides_getter_t get_outer_strides(const memory_desc_wrapper &md) {
-    return {md};
+    return ret;
 }
 
 inline block_layout_t get_inner_layout(const memory_desc_wrapper &md) {
@@ -1125,23 +1103,11 @@ inline void def_data_type(
             kernel_ctx.add_option(
                     utils::format("-D%s_DATA_T=uchar -D%s_DT_BF8", str, str));
             break;
-        case data_type::s4:
-            kernel_ctx.add_option(
-                    utils::format("-D%s_DATA_T=char -D%s_DT_S4", str, str));
-            break;
-        case data_type::u4:
-            kernel_ctx.add_option(
-                    utils::format("-D%s_DATA_T=uchar -D%s_DT_U4", str, str));
-            break;
         case data_type::s32:
             kernel_ctx.add_option(
                     utils::format("-D%s_DATA_T=int -D%s_DT_S32", str, str));
             break;
-        case data_type::undef: break;
-        default:
-            gpu_error_not_expected()
-                    << "Unexpected data type " << dnnl_dt2str(dt);
-            break;
+        default: assert(!"unsupported data type"); break;
     }
 }
 
@@ -1426,7 +1392,7 @@ inline int append_post_ops_to_arg_list_base(const exec_args_t &args,
         if (e.is_binary()) {
             auto arg = args.at(
                     DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx) | DNNL_ARG_SRC_1);
-            gpu_assert(arg.is_const);
+            assert(arg.is_const);
 
             auto &binary_arg = arg.mem
                     ? *(arg.mem->memory_storage())
@@ -1435,7 +1401,7 @@ inline int append_post_ops_to_arg_list_base(const exec_args_t &args,
         } else if (e.is_prelu()) {
             auto arg = args.at(
                     DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx) | DNNL_ARG_WEIGHTS);
-            gpu_assert(arg.is_const);
+            assert(arg.is_const);
             auto &prelu_wei_arg = arg.mem
                     ? *(arg.mem->memory_storage())
                     : dnnl::impl::memory_storage_t::empty_storage();
@@ -1486,7 +1452,7 @@ inline bool post_ops_preserves_zeroes(
 inline status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
         const memory_desc_t &dst_md) {
-    gpu_assert(attr_info.initialized);
+    assert(attr_info.initialized);
 
     kernel_ctx.define_int("WITH_POST_OP", post_ops.len() > 0);
 
@@ -1536,6 +1502,15 @@ inline status_t def_attr_info(compute::kernel_ctx_t &kernel_ctx,
 inline void def_dispatch(compute::kernel_ctx_t &kernel_ctx,
         const compute::dispatch_t &dispatch) {
     dispatch.def_kernel_macros(kernel_ctx);
+}
+
+inline void maybe_fix_non_uniform_work_sizes(
+        bool has_non_uniform_wg, conv_conf_t &conf) {
+    for (int i = 0; i < 3; i++) {
+        conf.gws_orig_d[i] = conf.gws_d[i];
+        if (!has_non_uniform_wg)
+            conf.gws_d[i] = utils::rnd_up(conf.gws_d[i], conf.lws_d[i]);
+    }
 }
 
 } // namespace gpu

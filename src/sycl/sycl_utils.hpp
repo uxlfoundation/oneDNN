@@ -68,9 +68,10 @@ inline ::sycl::nd_range<3> to_sycl_nd_range(
                 sycl_global_range, ::sycl::range<3>(1, 1, 1));
     }
 
-    auto sycl_local_range = ::sycl::range<3>(
-            local_range.ndims() >= 3 ? local_range[2] : 1,
-            local_range.ndims() >= 2 ? local_range[1] : 1, local_range[0]);
+    assert(local_range.has_value());
+    const auto &lws = local_range.value();
+    assert(lws.ndims() == 3);
+    auto sycl_local_range = ::sycl::range<3>(lws[2], lws[1], lws[0]);
     return ::sycl::nd_range<3>(sycl_global_range, sycl_local_range);
 }
 

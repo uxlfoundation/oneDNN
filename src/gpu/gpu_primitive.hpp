@@ -17,6 +17,15 @@
 #ifndef GPU_GPU_PRIMITIVE_HPP
 #define GPU_GPU_PRIMITIVE_HPP
 
+#include <cassert>
+#include "gpu/compute/utils.hpp"
+
+#ifndef DISABLE_VERBOSE
+#include <iostream>
+#include <sstream>
+#include "common/verbose.hpp"
+#endif
+
 #include "common/cache_blob.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_exec_types.hpp"
@@ -105,19 +114,137 @@ struct primitive_t : public impl::primitive_t {
         return status::success;
     }
 
-    status_t create_resource(
-            impl::engine_t *engine, resource_mapper_t &mapper) const override {
-        if (mapper.has_resource(this)) return status::success;
-        auto r = utils::make_unique<gpu_resource_t>();
-        if (!r) return status::out_of_memory;
-        CHECK(init_res_storage(engine, r.get()));
-        mapper.add(this, std::move(r));
+    status_t create_kernel(engine_t *engine, compute::kernel_t *kernel,
+            jit::jit_generator_base *jitter) {
+        auto *compute_engine
+                = utils::downcast<compute::compute_engine_t *>(engine);
+        CHECK(compute_engine->create_kernel(kernel, jitter, cache_blob()));
+        CHECK(register_kernels({*kernel}));
+        return status::success;
+    }
 
-        for (const auto &cb : compute_blocks()) {
-            if (cb->empty()) continue;
-            // Check that the compute block is a "primitive".
-            if (cb->primitive())
-                CHECK(cb->primitive()->create_resource(engine, mapper));
+    status_t create_kernels(engine_t *engine,
+            std::vector<compute::kernel_t> *kernels,
+            const std::vector<const char *> &kernel_names,
+            const compute::kernel_ctx_t &kernel_ctx) {
+        auto *compute_engine
+                = utils::downcast<compute::compute_engine_t *>(engine);
+        CHECK(compute_engine->create_kernels(
+                kernels, kernel_names, kernel_ctx, cache_blob()));
+        CHECK(register_kernels(*kernels));
+        return status::success;
+    }
+
+    status_t create_kernel(engine_t *engine, compute::kernel_t *kernel,
+            const char *kernel_name, const compute::kernel_ctx_t &kernel_ctx) {
+
+        std::vector<compute::kernel_t> kernels(1);
+        auto status
+                = create_kernels(engine, &kernels, {kernel_name}, kernel_ctx);
+        if (status == status::success) *kernel = kernels[0];
+        return status;
+    }
+
+    template <typename T>
+    status_t create_kernels(engine_t *engine,
+            std::vector<compute::kernel_t> &kernels,
+            const std::vector<const char *> &kernel_names, const T &params) {
+        auto *compute_engine
+                = utils::downcast<compute::compute_engine_t *>(engine);
+        if (cache_blob())
+            return compute_engine->create_kernels_from_cache_blob(
+                    cache_blob(), kernels, kernel_names);
+
+        auto key = std::make_shared<trivial_key_container_t<T>>(
+                params, compute_engine->engine_id());
+        gpu_assert(key->key.is_valid());
+
+        CHECK(get_cached_kernels<typename trivial_key_t<T>::value_type>(
+                std::move(key), engine, kernels, kernel_names));
+
+        CHECK(register_kernels(kernels));
+
+        return status::success;
+    }
+
+    template <typename T>
+    status_t create_kernel(engine_t *engine, compute::kernel_t &kernel,
+            const char *kernel_name, const T &params) {
+        std::vector<compute::kernel_t> kernels(1);
+        CHECK(create_kernels(engine, kernels, {kernel_name}, params));
+        kernel = kernels[0];
+        return status::success;
+    }
+
+    status_t create_nested_primitive(std::shared_ptr<primitive_t> &primitive,
+            const std::shared_ptr<primitive_desc_t> &pd, engine_t *engine) {
+        CHECK(pd->create_primitive(primitive, engine, cache_blob()));
+        register_primitive(primitive.get());
+        return status::success;
+    }
+
+    // TODO: use inheritance for exec_ctx_t to get rid of such places...
+    static status_t parallel_for(const gemm_exec_ctx_t &ctx,
+            const compute::nd_range_t &range, const compute::kernel_t &kernel,
+            const compute::kernel_arg_list_t &arg_list) {
+        auto compute_stream
+                = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+        return parallel_for(*compute_stream, range, kernel, arg_list,
+                compute_stream->ctx().get_deps(),
+                compute_stream->ctx().get_deps());
+    }
+
+    static status_t parallel_for(const exec_ctx_t &ctx,
+            const compute::nd_range_t &range, const compute::kernel_t &kernel,
+            const compute::kernel_arg_list_t &arg_list) {
+        auto compute_stream
+                = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+        return parallel_for(*compute_stream, range, kernel, arg_list,
+                compute_stream->ctx().get_deps(),
+                compute_stream->ctx().get_deps());
+    }
+
+    // Intel GPU hardware has a limitation on the size of work group dimensions to
+    // be at most uint32_t. This function works around that by passing an offset
+    // argument. The OpenCL native offset cannot be used due to lack of SYCL
+    // interop support.
+    static status_t large_parallel_for(const exec_ctx_t &ctx,
+            const compute::nd_range_t &nd_range,
+            const compute::kernel_t &kernel,
+            compute::kernel_arg_list_t &arg_list, int offset_idx) {
+
+        auto global_range = nd_range.global_range();
+        auto local_range = nd_range.local_range();
+
+        // Since the number of dimensions is hard-coded here,
+        // we need an additional sanity check
+        static_assert(compute::range_t::max_ndims == 3,
+                "Incorrect number of dims for nd_range_t");
+
+        compute::range_t off_inc(UINT32_MAX, UINT32_MAX, UINT32_MAX);
+        if (local_range.has_value()) {
+            const auto &lws = local_range.value();
+            for (size_t i = 0; i < lws.ndims(); i++) {
+                off_inc[i] *= lws[i];
+            }
+        }
+
+        int64x3_t offset_arg = {};
+        auto &offset = offset_arg.array;
+        for_(offset[2] = 0; static_cast<size_t>(offset[2]) < global_range[2];
+                offset[2] += off_inc[2])
+        for_(offset[1] = 0; static_cast<size_t>(offset[1]) < global_range[1];
+                offset[1] += off_inc[1])
+        for_(offset[0] = 0; static_cast<size_t>(offset[0]) < global_range[0];
+                offset[0] += off_inc[0])
+        {
+            arg_list.set(offset_idx, offset_arg);
+            compute::range_t range;
+            for (size_t i = 0; i < global_range.ndims(); i++)
+                range[i] = std::min(off_inc[i], global_range[i] - offset[i]);
+
+            CHECK(parallel_for(ctx, compute::nd_range_t(range, local_range),
+                    kernel, arg_list));
         }
         return status::success;
     }

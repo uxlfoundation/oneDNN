@@ -38,8 +38,11 @@
 #/tests/benchdnn/inputs/graph/ @oneapi-src/onednn-graph @oneapi-src/onednn-arch @intel-innersource/dnn-graph @intel-innersource/dnn-arch
 #/tests/gtests/graph/ @oneapi-src/onednn-graph @intel-innersource/dnn-graph
 
-# Graph API
-#/src/graph/ @oneapi-src/onednn-graph @intel-innersource/dnn-graph
+# Graph
+/src/graph/ @intel-innersource/dnn-graph
+/tests/benchdnn/graph/ @intel-innersource/dnn-arch @intel-innersource/dnn-graph
+/tests/benchdnn/inputs/graph/ @intel-innersource/dnn-arch @intel-innersource/dnn-graph
+/tests/gtests/graph/ @intel-innersource/dnn-graph
 
 # Documentation
 #*.md  @oneapi-src/onednn-doc @oneapi-src/onednn-arch @intel-innersource/dnn-doc @intel-innersource/dnn-arch

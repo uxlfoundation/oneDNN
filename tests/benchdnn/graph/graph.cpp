@@ -393,17 +393,9 @@ std::string case_to_str(const std::string &json_file,
 
 void skip_unimplemented_ops(const dnnl::graph::partition &partition,
         const deserialized_graph &dg, res_t *res) {
-    // Unconditionally skip all unimplemented cases for Graph Compiler. They got
-    // triggered when `_DNNL_DISABLE_DNNL_BACKEND=1` is utilized.
-    // TODO: extend with `getenv` call if limits too much.
-    if (is_gc_backend()) {
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-
     // A list of ops that don't have DNNL backend support so far.
-    static const std::vector<std::string> unimplemented_ops {"Pow"};
+    static const std::vector<std::string> unimplemented_ops {
+            "Pow", "Select", "StaticReshape", "StaticTranspose"};
 
     // For an unsupported partition, retrieve all operation IDs, find a
     // correspondent operation kind in a deserialized_graph and match it against
@@ -417,24 +409,8 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
                     return dg_op_kind == kind;
                 });
         if (has_unimplemented_op) {
-            BENCHDNN_PRINT(
-                    2, "[INFO]: Unimplemented op: %s.\n", dg_op_kind.c_str());
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-    }
-}
-
-void skip_unimplemented_graph_attribute(
-        const graph_fpmath_mode_t &fpmath_mode, res_t *res) {
-    // Compiler backend only supports strict and bf16 for floating-point math
-    // mode
-    if (is_gc_backend()) {
-        const auto &mode = fpmath_mode.mode_;
-        if (mode != "strict" && mode != "bf16") {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = CASE_NOT_SUPPORTED;
             return;
         }
     }
@@ -493,8 +469,20 @@ int doit(const prb_t *prb, res_t *res) {
         return res->state = FAILED, FAIL;
     }
 
-    BENCHDNN_PRINT(3, "[INFO]: n_partitions:%zd; ops_in_partitions:%s\n",
-            partitions.size(), verbose_partitions_n_ops(partitions).c_str());
+    for (size_t i = 0; i < partitions.size(); ++i) {
+        if (partitions[i].is_supported()) continue;
+
+        // End operation is not supported in the library, and it's fine to
+        // continue validation as it's a knob without functional meaning.
+        if (is_single_end_op_partition(partitions[i], end_opid_v)) continue;
+
+        skip_unimplemented_ops(partitions[i], dg, res);
+        if (res->state == SKIPPED) return OK;
+
+        BENCHDNN_PRINT(3, "[INFO]: partition #%zd is unsupported!\n", i);
+        res->state = UNIMPLEMENTED;
+        return FAIL;
+    }
 
     for (size_t i = 0; i < partitions.size(); ++i) {
         if (partitions[i].is_supported()) continue;

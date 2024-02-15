@@ -38,10 +38,10 @@
 #/tests/benchdnn/inputs/ @intel-innersource/dnn-arch @intel-innersource/dnn-cpu @intel-innersource/dnn-gpu
 
 # Graph
-#/src/graph/ @intel-innersource/dnn-graph
-#/tests/benchdnn/graph/ @intel-innersource/dnn-arch @intel-innersource/dnn-graph
-#/tests/benchdnn/inputs/graph/ @intel-innersource/dnn-arch @intel-innersource/dnn-graph
-#/tests/gtests/graph/ @intel-innersource/dnn-graph
+/src/graph/ @intel-innersource/dnn-graph
+/tests/benchdnn/graph/ @intel-innersource/dnn-arch @intel-innersource/dnn-graph
+/tests/benchdnn/inputs/graph/ @intel-innersource/dnn-arch @intel-innersource/dnn-graph
+/tests/gtests/graph/ @intel-innersource/dnn-graph
 
 # Graph compiler
 #/src/graph/backend/graph_compiler/ @intel-innersource/dnn-compiler

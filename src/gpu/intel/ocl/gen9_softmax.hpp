@@ -19,6 +19,10 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
+#include "gpu/compute/compute.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/gpu_primitive.hpp"
+#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_softmax_pd.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
@@ -174,8 +178,8 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
         bool is_blocked = false;
         bool is_write_aligned = false;
         bool is_read_aligned = false;
-        compute::range_t gws = compute::range_t::empty(1);
-        compute::range_t lws = compute::range_t::empty(1);
+        compute::range_t gws;
+        compute::range_t lws;
         size_t group_size = 0;
         const int subgroup_size = 16;
         const int byte_alignment_read = 4;
@@ -314,8 +318,8 @@ struct gen9_softmax_bwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws = compute::range_t::empty(1);
-        compute::range_t lws = compute::range_t::empty(1);
+        compute::range_t gws;
+        compute::range_t lws;
         size_t group_size = 0;
         size_t batches = 0;
         bool is_nhwc = false;

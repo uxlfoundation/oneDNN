@@ -20,9 +20,9 @@
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
-#include "gpu/intel/jit/gemm/gen_gemm_kernel_common.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/jit/gemm/gemm_walk_orders.hpp"
+#include "gpu/jit/gemm/gen_gemm_kernel_common.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -148,7 +148,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
 
     auto lws_k = pd()->kernel_desc()->aux_params()->wgK;
 
-    compute::range_t gws = compute::range_t::empty();
+    compute::range_t gws;
 
     gws[0] = utils::div_up(m, nocopy_info()->unroll[LoopM]);
     gws[1] = utils::div_up(n, nocopy_info()->unroll[LoopN]);

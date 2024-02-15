@@ -18,13 +18,12 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/codegen/kernel.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/jit/v2/conv/kernel.hpp"
-#include "gpu/intel/jit/v2/conv/plan.hpp"
-#include "gpu/intel/jit/v2/conv/problem.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/jit/codegen/kernel.hpp"
+#include "gpu/jit/ir/kernel_info.hpp"
+#include "gpu/jit/v2/conv/kernel.hpp"
+#include "gpu/jit/v2/conv/plan.hpp"
+#include "gpu/jit/v2/conv/problem.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -594,8 +593,8 @@ status_t kernel_params_t::init_dispatch_kernel_info(
         tg_dims[d] = utils::div_up(dims.at(d), tg_size * iter_size);
     }
     init_dispatch_kernel_info_div_magic(kernel_info, tg_dims);
-    compute::range_t gws = compute::range_t::empty();
-    compute::range_t lws = compute::range_t::empty();
+    compute::range_t gws;
+    compute::range_t lws;
     for (size_t i = 0; i < compute::range_t::max_ndims; i++) {
         size_t tg_dim = thr_grid.size(i, desc.thread_group_tile);
         lws[i] = tg_dim * (i == 0 ? gpu_utils::into<size_t>(desc.simd) : 1);

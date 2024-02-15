@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/gemm/ref_gemm.hpp"
-#include "gpu/intel/compute/utils.hpp"
+#include "gpu/ocl/gemm/ref_gemm.hpp"
+#include "gpu/compute/utils.hpp"
 
 namespace dnnl {
 namespace impl {

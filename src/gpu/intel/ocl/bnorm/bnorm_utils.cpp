@@ -13,10 +13,10 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#include "gpu/intel/ocl/bnorm/bnorm_utils.hpp"
+#include "gpu/ocl/bnorm/bnorm_utils.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/bnorm/bnorm_lookup_table.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/bnorm/bnorm_lookup_table.hpp"
 
 namespace dnnl {
 namespace impl {

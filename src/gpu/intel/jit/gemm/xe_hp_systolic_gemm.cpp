@@ -21,10 +21,10 @@
 #include "common/float16.hpp"
 #include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
-#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/ocl/gemm/xe_systolic_gemm_copy_kernel.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/jit/gemm/gemm_walk_orders.hpp"
+#include "gpu/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/ocl/gemm/xe_systolic_gemm_copy_kernel.hpp"
 
 namespace dnnl {
 namespace impl {

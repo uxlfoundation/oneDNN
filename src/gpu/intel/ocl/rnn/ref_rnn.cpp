@@ -1293,7 +1293,7 @@ status_t _ref_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
             compute::nd_range_t({gpu_utils::into<size_t>(dhc),
                     gpu_utils::into<size_t>(n_bias),
                     gpu_utils::into<size_t>(n_layer * n_dir)}),
-            kernels_[kernel_id::bias_prepare], arg_list);
+            bias_prepare_kernel_, arg_list);
 }
 
 template <prop_kind_t aprop>
@@ -1399,7 +1399,7 @@ status_t _ref_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(max_d),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                kernels_[kernel_id::copy_init_iter], arg_list);
+                copy_init_iter_kernel_, arg_list);
     } else {
         compute::kernel_arg_list_t arg_list;
         arg_list.append(memory_storage_t::empty_storage());
@@ -1425,7 +1425,7 @@ status_t _ref_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(dhc),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                kernels_[kernel_id::copy_init_iter], arg_list);
+                copy_init_iter_kernel_, arg_list);
     }
 }
 
@@ -1534,7 +1534,7 @@ status_t _ref_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(dhc),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                kernels_[kernel_id::copy_res_iter], arg_list);
+                copy_res_iter_kernel_, arg_list);
     } else {
         dim_t max_d = std::max(dhc, sic);
         compute::kernel_arg_list_t arg_list;
@@ -1562,7 +1562,73 @@ status_t _ref_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({gpu_utils::into<size_t>(max_d),
                         gpu_utils::into<size_t>(batch),
                         gpu_utils::into<size_t>(n_layer * n_dir)}),
-                kernels_[kernel_id::copy_res_iter], arg_list);
+                copy_res_iter_kernel_, arg_list);
+    }
+}
+
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::ws_set(const exec_ctx_t &ctx,
+        compute::compute_stream_t *compute_stream,
+        const memory_storage_t &workspace_, const dim_t ws_offset,
+        const int ws_part, const float val, const dim_t size) const {
+    compute::kernel_arg_list_t arg_list;
+    arg_list.set(0, workspace_);
+    arg_list.set(1, ws_offset);
+    arg_list.set(2, val);
+    arg_list.set(3, ws_part);
+
+    compute::range_t gws(gpu_utils::into<size_t>(size));
+    auto nd_range = compute::nd_range_t(gws);
+
+    return parallel_for(ctx, nd_range, ws_set_kernel_, arg_list);
+}
+
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::ws_print(const exec_ctx_t &ctx,
+        compute::compute_stream_t *compute_stream,
+        const rnn_utils::workspace_t &workspace_) const {
+    // This is only for use in DNNL_DEV_MODE
+    assert(is_dev_mode());
+    if (!is_dev_mode()) return status::runtime_error;
+
+    compute::kernel_arg_list_t arg_list;
+    arg_list.append(workspace_.gates());
+    arg_list.append(workspace_.states());
+    arg_list.append(workspace_.c_states());
+    arg_list.append(workspace_.bias());
+    arg_list.append(workspace_.grid_comp());
+
+    arg_list.append(into<int32_t>(pd()->rnn_conf.mb));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.n_layer));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.n_dir));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.n_iter));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.n_bias));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.dhc));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.n_gates));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.states_ws_ld));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.gates_ws_ld));
+    arg_list.append(into<int32_t>(pd()->rnn_conf.wic));
+
+    compute::nd_range_t nd_range; // Defaults to 1 work item
+    return parallel_for(ctx, nd_range, ws_print_kernel_, arg_list);
+}
+
+template <prop_kind_t aprop>
+weights_assign_sig((_ref_rnn_common_t<aprop>::assign_weight_offsets)) {
+    assert(md->format_kind == format_kind::blocked);
+    AOC<dim_t, 3> weights(weights_.data(), rnn.n_layer, rnn.n_dir, n_parts);
+    const auto &blk = md->format_desc.blocking;
+
+    for (dim_t i = 0; i < rnn.n_layer; i++) {
+        for (dim_t d = 0; d < rnn.n_dir; d++) {
+            dim_t offset_weights = 0;
+            for (dim_t p = 0; p < n_parts; p++) {
+                weights(i, d, p) = OFF3(i, rnn.n_layer, d, rnn.n_dir,
+                                           offset_weights, ld * nld)
+                        * types::data_type_size(wei_t);
+                offset_weights += gates_per_part[p] * blk.strides[3];
+            }
+        }
     }
 }
 

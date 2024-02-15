@@ -19,6 +19,10 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
+#include "gpu/compute/compute.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/gpu_primitive.hpp"
+#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_softmax_pd.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
@@ -118,9 +122,9 @@ struct ref_softmax_fwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws = compute::range_t::one();
-        compute::range_t lws = compute::range_t::one();
-        compute::range_t block = compute::range_t::one();
+        compute::range_t gws;
+        compute::range_t lws;
+        compute::range_t block;
         size_t group_size = 0;
         int subgroup_size = 16;
     };
@@ -270,9 +274,9 @@ struct ref_softmax_bwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws = compute::range_t::one();
-        compute::range_t lws = compute::range_t::one();
-        compute::range_t block = compute::range_t::one();
+        compute::range_t gws;
+        compute::range_t lws;
+        compute::range_t block;
         size_t group_size = 0;
     };
 

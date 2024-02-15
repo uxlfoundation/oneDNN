@@ -58,7 +58,7 @@ private:
     using compute::lws_strategy_t::lws_strategy_t;
     compute::range_t create_lws(const compute::range_t &gws,
             const compute::gws_bin_mapping_t &mapper) const override {
-        auto lws = compute::range_t::one(gws.ndims());
+        compute::range_t lws;
 
         for (size_t i = 0; i < gws.ndims(); i++) {
             const auto &bins = mapper.get_bins(i);

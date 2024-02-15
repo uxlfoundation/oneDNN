@@ -19,8 +19,8 @@
 
 #include "common/primitive_exec_types.hpp"
 #include "common/scratchpad.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

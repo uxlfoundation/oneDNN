@@ -13,12 +13,12 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#include "gpu/intel/ocl/bnorm/bnorm_model.hpp"
+#include "gpu/ocl/bnorm/bnorm_model.hpp"
 #include <climits>
 #include "common/utils.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/bnorm/bnorm_utils.hpp"
-#include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/bnorm/bnorm_utils.hpp"
+#include "gpu/ocl/bnorm/nhwc_batch_normalization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -596,8 +596,8 @@ status_t get_estimated_hw_utilization(model_params_t &p,
 
     auto nd_range = dry_run_dispatch.nd_range();
     const compute::range_t gws = nd_range.global_range();
-    const compute::range_t lws = nd_range.local_range();
-    if (lws.nelems() == 0) return status::runtime_error;
+    if (!nd_range.local_range().has_value()) return status::runtime_error;
+    const compute::range_t lws = nd_range.local_range().value();
     desc.num_wgs = gws.nelems() / lws.nelems();
     desc.used_ss_thr_util = get_used_ss_thr_utilization(
             hw_params, conf.sub_group_size, gws, lws);

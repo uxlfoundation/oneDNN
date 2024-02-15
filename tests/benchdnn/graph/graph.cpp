@@ -431,12 +431,10 @@ int doit(const prb_t *prb, res_t *res) {
     }
 
     if (partitions.empty()) {
-        BENCHDNN_PRINT(0, "%s\n", "Error: partitions are empty");
+        BENCHDNN_PRINT(0, "FAIL: partition empty %d.\n", 0);
         return res->state = FAILED, FAIL;
     }
-
-    BENCHDNN_PRINT(3, "[INFO]: n_partitions:%zd; ops_in_partitions:%s\n",
-            partitions.size(), verbose_partitions_n_ops(partitions).c_str());
+    BENCHDNN_PRINT(1, "Partition size %zd.\n", partitions.size());
 
     for (size_t i = 0; i < partitions.size(); ++i) {
         if (partitions[i].is_supported()) continue;
@@ -448,6 +446,13 @@ int doit(const prb_t *prb, res_t *res) {
         skip_unimplemented_ops(partitions[i], dg, res);
         if (res->state == SKIPPED) return OK;
 
+        BENCHDNN_PRINT(3, "[INFO]: partition #%zd is unsupported!\n", i);
+        res->state = UNIMPLEMENTED;
+        return FAIL;
+    }
+
+    for (size_t i = 0; i < partitions.size(); ++i) {
+        if (is_single_end_op_partition(partitions[i], end_opid_v)) { continue; }
         auto in_out_lts = partitions[i].get_input_ports();
         const auto &outputs = partitions[i].get_output_ports();
         in_out_lts.insert(in_out_lts.end(), outputs.begin(), outputs.end());
@@ -487,11 +492,6 @@ int doit(const prb_t *prb, res_t *res) {
             }
         }
         skip_unimplemented_data_type(in_out_dt, dir, res);
-        if (res->state == SKIPPED) return OK;
-
-        BENCHDNN_PRINT(3, "[INFO]: partition #%zd is unsupported!\n", i);
-        res->state = UNIMPLEMENTED;
-        return FAIL;
     }
 
     if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
@@ -521,8 +521,13 @@ int doit(const prb_t *prb, res_t *res) {
         set_any_layout(dg, partitions, id_to_set_any_layout);
     }
 
+    // the index offset for current partition compared with the previous partition index
+    size_t idx_offset = 0;
     for (size_t i = 0; i < partitions.size(); ++i) {
-        if (is_single_end_op_partition(partitions[i], end_opid_v)) { continue; }
+        if (is_single_end_op_partition(partitions[i], end_opid_v)) {
+            idx_offset += 1;
+            continue;
+        }
 
         auto inputs = partitions[i].get_input_ports();
         auto outputs = partitions[i].get_output_ports();
@@ -541,14 +546,12 @@ int doit(const prb_t *prb, res_t *res) {
                                partitions[i].compile(inputs, outputs, eng)),
                 WARN, res);
 
-        record_queried_logical_tensors(
-                outputs, c_partitions.back(), id_to_queried_logical_tensors);
+        record_queried_logical_tensors(outputs, c_partitions[i - idx_offset],
+                id_to_queried_logical_tensors);
     }
     if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
 
-    // `idx_offset` points to the correspondent `compiled_partition`, if any
-    // of `partitions` were skipped expectedly and not compiled.
-    size_t idx_offset = 0;
+    idx_offset = 0;
     for (size_t i = 0; i < partitions.size(); ++i) {
         if (is_single_end_op_partition(partitions[i], end_opid_v)) {
             idx_offset += 1;
@@ -566,9 +569,8 @@ int doit(const prb_t *prb, res_t *res) {
 
         ref_partition_t ref_partition(dg, partitions[i], inputs, outputs);
         // Construct memory for both perf & corr modes
-        SAFE(ref_partition.init_ref(
-                     graph_in_ports, partition_mem_map_v[i], res),
-                WARN);
+        ref_partition.init_ref(
+                bench_mode, graph_in_ports, partition_mem_map_v[i], res);
 
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             // correctness mode, run ref partition
@@ -639,9 +641,8 @@ int doit(const prb_t *prb, res_t *res) {
 
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             // args for correctness check of the last op
-            SAFE(ref_partition.check_partition_correctness(
-                         partition_mem_map_v[i], res),
-                    WARN);
+            ref_partition.check_partition_correctness(
+                    partition_mem_map_v[i], res);
         }
     }
 

@@ -393,7 +393,7 @@ int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
         dnnl_engine_t engine, const func_t &init_pd_func, const prb_t *prb,
         res_t *res, dir_t dir, const_dnnl_primitive_desc_t hint,
         bool is_service_prim, const_dnnl_memory_desc_t src_md,
-        bool force_f32_dt, bool is_graph_ref = false) {
+        bool force_f32_dt) {
     dnnl_status_t status = dnnl_success;
     dnnl_primitive_t prim {};
 

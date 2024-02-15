@@ -217,16 +217,16 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
     auto src_d = dnn_mem_t::init_md(prb->ndims, prb->src_dims().data(),
-            force_f32_dt ? dnnl_f32 : prb->get_dt(SRC), prb->stag,
-            prb->strides[STRIDES_SRC]);
+            force_f32_dt ? dnnl_f32 : prb->get_dt(SRC),
+            normalize_tag(prb->stag, prb->ndims));
     auto wei_d = dnn_mem_t::init_md(prb->ndims + prb->has_groups,
             prb->wei_dims().data(), force_f32_dt ? dnnl_f32 : prb->get_dt(WEI),
-            prb->wtag, prb->strides[STRIDES_WEI]);
+            normalize_tag(prb->wtag, prb->ndims + prb->has_groups));
     auto bia_d = dnn_mem_t::init_md(1, prb->bia_dims().data(),
             force_f32_dt ? dnnl_f32 : prb->get_dt(BIA), tag::any);
     auto dst_d = dnn_mem_t::init_md(prb->ndims, prb->dst_dims().data(),
-            force_f32_dt ? dnnl_f32 : prb->get_dt(DST), prb->dtag,
-            prb->strides[STRIDES_DST]);
+            force_f32_dt ? dnnl_f32 : prb->get_dt(DST),
+            normalize_tag(prb->dtag, prb->ndims));
 
     dnnl_alg_kind_t alg = dnnl_convolution_direct;
     if (prb->alg == WINO) alg = dnnl_convolution_winograd;

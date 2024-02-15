@@ -20,8 +20,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <unordered_map>
-
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "gpu/block_structure.hpp"
@@ -32,6 +30,7 @@
 #include "gpu/compute/utils.hpp"
 #include "gpu/ocl/types_interop.h"
 #include "gpu/serialization.hpp"
+#include <unordered_map>
 
 namespace dnnl {
 namespace impl {
@@ -61,9 +60,9 @@ enum class gws_op_t : uint32_t {
 };
 
 inline std::string to_string(gws_op_t op) {
-    switch (op) {
 #define CASE(x) \
     case gws_op_t::x: return #x;
+    switch (op) {
         CASE(ZERO);
         CASE(SOLO);
         CASE(FIRST);
@@ -72,10 +71,8 @@ inline std::string to_string(gws_op_t op) {
         CASE(FIRST_BLOCK);
         CASE(MOD_BLOCK);
         CASE(UNDEF);
-#undef CASE
     }
     return "invalid";
-#undef CASE
 }
 
 // Encodes the information needed for one term like (idx / stride % max) * block
@@ -146,10 +143,11 @@ struct gws_indexing_term_t {
 };
 
 struct gws_term_list_t {
-    size_t append(const gws_indexing_term_t &term) {
-        size_t idx = add_term(term);
+    void add_buffer_term(size_t buf_idx, gws_op_t op, size_t gws_idx,
+            dim_t size, stride_t stride, dim_t block) {
+        size_t idx = add_term(op, gws_idx, size, stride, block);
         gpu_assert(idx <= MAX_INDEXING_TERMS);
-        return idx;
+        buf_idxs[buf_idx].emplace_back(idx);
     }
 
     const gws_indexing_term_t &operator[](size_t idx) const {
@@ -158,6 +156,9 @@ struct gws_term_list_t {
     size_t size() const { return terms.size(); }
 
     std::vector<gws_indexing_term_t> terms;
+
+    std::unordered_map<size_t, std::vector<size_t>> buf_idxs;
+    std::unordered_map<size_t, std::vector<size_t>> dim_idxs;
 
     std::string str() const {
         std::ostringstream ss;
@@ -168,16 +169,19 @@ struct gws_term_list_t {
     }
 
 private:
-    size_t add_term(const gws_indexing_term_t &term) {
+    size_t add_term(gws_op_t op, size_t gws_idx, dim_t size, stride_t stride,
+            dim_t block) {
+        gws_indexing_term_t new_term(op, gws_idx, size, stride, block);
+
         // Use an existing term if an exact match is found
         for (size_t i = 0; i < terms.size(); i++) {
-            const gws_indexing_term_t &existing = terms[i];
-            if (term == existing) return i;
+            const gws_indexing_term_t &term = terms[i];
+            if (term == new_term) return i;
         }
 
         // Create a new term
         size_t ret = terms.size();
-        terms.emplace_back(term);
+        terms.emplace_back(new_term);
         return ret;
     }
 };
@@ -257,7 +261,6 @@ struct dispatch_compile_params_t {
     uint64_t buffer_term_index[MAX_REGISTERED_BUFFERS][MAX_INDEXING_TERMS]
             = {{0}};
     uint64_t buffer_num_terms[MAX_REGISTERED_BUFFERS] = {0};
-    data_type_t buffer_types[MAX_REGISTERED_BUFFERS] = {data_type::undef};
 };
 assert_trivially_serializable(dispatch_compile_params_t);
 
@@ -371,8 +374,8 @@ constexpr size_t dim_not_found = std::numeric_limits<size_t>::max();
 
 struct named_buffer_t : public memory_desc_t {
     named_buffer_t(const char *name, const memory_desc_t &md,
-            const std::vector<dim_id_t> &dims)
-        : memory_desc_t(md), name(name), dim_ids(dims) {
+            std::vector<dim_id_t> dims)
+        : memory_desc_t(md), name(name), dim_ids(std::move(dims)) {
         gpu_assert(this->name.size() <= MAX_BUFFER_NAME_LENGTH);
         gpu_assert(format_kind == format_kind::blocked);
         gpu_assert(static_cast<size_t>(md.ndims) <= dim_ids.size());
@@ -526,42 +529,40 @@ public:
     reusable_dispatch_t() = default;
     reusable_dispatch_t(const std::vector<named_buffer_t> &buffers,
             const gws_term_list_t &term_list,
-            const compute::nd_range_t &nd_range, subgroup_data_t subgroup,
-            const std::vector<std::vector<size_t>> &buffer_term_map) {
-        assert(buffers.size() == buffer_term_map.size());
-
+            const compute::nd_range_t &nd_range, subgroup_data_t subgroup) {
         compile_params.num_terms = gpu_utils::into<int>(term_list.terms.size());
         for (size_t i = 0; i < term_list.terms.size(); i++) {
             compile_params.terms[i] = term_list.terms[i].compile_params();
         }
 
         // Save buffer information
-        dim_t max_buffer_size = 0;
-        compile_params.num_buffers = buffers.size();
-        for (size_t buf_idx = 0; buf_idx < buffers.size(); buf_idx++) {
-            const named_buffer_t &buffer = buffers[buf_idx];
+        compile_params.num_buffers = term_list.buf_idxs.size();
+        for (const auto &kv : term_list.buf_idxs) {
+            const size_t buf_idx = kv.first;
+            const auto &buf_term_idx = kv.second;
+
             // Copy buffer name into params
-            const auto &buf_name = buffer.get_name();
+            const auto &buf_name = buffers[buf_idx].get_name();
             for (size_t i = 0; i < buf_name.size(); i++) {
                 compile_params.buffer_names[buf_idx][i] = buf_name[i];
             }
 
             // Copy buffer terms into params
-            std::vector<size_t> buf_terms = buffer_term_map[buf_idx];
-            compile_params.buffer_num_terms[buf_idx] = buf_terms.size();
-            for (size_t j = 0; j < buf_terms.size(); j++) {
-                compile_params.buffer_term_index[buf_idx][j] = buf_terms[j];
+            compile_params.buffer_num_terms[buf_idx] = buf_term_idx.size();
+            for (size_t j = 0; j < buf_term_idx.size(); j++) {
+                compile_params.buffer_term_index[buf_idx][j] = buf_term_idx[j];
             }
+        }
+        compile_params.subgroup = subgroup;
 
-            // Save the data type
-            compile_params.buffer_types[buf_idx] = buffer.data_type;
-
-            // Check buffer sizes to see if we can use int32_t offsets
-            max_buffer_size = std::max(max_buffer_size, buffer.nelems(true));
+        dim_t max_buffer_size = 0;
+        for (const named_buffer_t &buffer : buffers) {
+            dim_t buffer_size = utils::array_product(
+                    buffer.padded_dims, gpu_utils::into<size_t>(buffer.ndims));
+            max_buffer_size = std::max(max_buffer_size, buffer_size);
         }
 
         compile_params.use_int32_offset = max_buffer_size <= INT32_MAX;
-        compile_params.subgroup = subgroup;
 
         // Set runtime params
         runtime_params = dispatch_runtime_params_t(nd_range, term_list);
@@ -637,10 +638,9 @@ public:
         return map[idx];
     }
 
-    std::vector<gws_indexing_term_t> condense_terms(size_t buffer_idx) const;
-
 private:
     void add_(const block_bin_t &bin, size_t gws_dim) {
+        gpu_assert(gws_dim < gws_.ndims());
         map[gws_dim].emplace_back(bin);
         gws_[gws_dim] *= bin.size();
     }
@@ -650,7 +650,7 @@ private:
     }
     subgroup_data_t sg;
     std::array<std::vector<block_bin_t>, range_t::max_ndims> map;
-    range_t gws_ = range_t::one();
+    range_t gws_;
 };
 
 class reusable_dispatch_config_t {
@@ -666,11 +666,15 @@ public:
     status_t use_subgroup(const std::string &buf_name, size_t size);
 
 private:
+    void compute_terms(size_t buffer_idx, const gws_bin_mapping_t &gws_bins);
+
     std::vector<named_buffer_t> buffers;
+
     std::vector<dim_id_t> dispatched_dims;
     std::unordered_map<dim_id_t, dim_t, dim_id_hash_t> dim_sizes;
 
     subgroup_data_t subgroup;
+    gws_term_list_t term_list;
     const compute_engine_t *engine;
 };
 

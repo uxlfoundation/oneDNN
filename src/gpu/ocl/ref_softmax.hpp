@@ -18,10 +18,15 @@
 #define GPU_OCL_REF_SOFTMAX_HPP
 
 #include "common/c_types_map.hpp"
+#include "common/nstl.hpp"
 #include "common/primitive.hpp"
+#include "gpu/compute/compute.hpp"
 #include "gpu/compute/utils.hpp"
 #include "gpu/gpu_primitive.hpp"
+#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_softmax_pd.hpp"
+#include "gpu/ocl/ocl_stream.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
 #include "gpu/primitive_conf.hpp"
 
 namespace dnnl {
@@ -84,6 +89,18 @@ struct ref_softmax_fwd_t : public gpu_primitive_t {
             VDISPATCH_SOFTMAX_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
+            gws[0] = 1;
+            gws[1] = 1;
+            gws[2] = 1;
+
+            lws[0] = 1;
+            lws[1] = 1;
+            lws[2] = 1;
+
+            block[0] = 1;
+            block[1] = 1;
+            block[2] = 1;
+
             int nelems = axis_size(true);
 
             if (nelems < subgroup_size) {
@@ -117,9 +134,9 @@ struct ref_softmax_fwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws = compute::range_t::one();
-        compute::range_t lws = compute::range_t::one();
-        compute::range_t block = compute::range_t::one();
+        compute::range_t gws;
+        compute::range_t lws;
+        compute::range_t block;
         size_t group_size = 0;
         int subgroup_size = 16;
     };
@@ -241,6 +258,18 @@ struct ref_softmax_bwd_t : public gpu_primitive_t {
             VDISPATCH_SOFTMAX(diff_dst_d.data_type() == dst_d.data_type(),
                     VERBOSE_INCONSISTENT_DT, "diff_dst_d", "dst_d");
 
+            gws[0] = 1;
+            gws[1] = 1;
+            gws[2] = 1;
+
+            lws[0] = 1;
+            lws[1] = 1;
+            lws[2] = 1;
+
+            block[0] = 1;
+            block[1] = 1;
+            block[2] = 1;
+
             for (int i = 0, j = 0; i < dst_d.ndims(); ++i) {
                 if (i != axis()) {
                     auto dim = dst_d.padded_dims()[i];
@@ -269,9 +298,9 @@ struct ref_softmax_bwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws = compute::range_t::one();
-        compute::range_t lws = compute::range_t::one();
-        compute::range_t block = compute::range_t::one();
+        compute::range_t gws;
+        compute::range_t lws;
+        compute::range_t block;
         size_t group_size = 0;
     };
 

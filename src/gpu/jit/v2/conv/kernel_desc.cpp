@@ -16,12 +16,10 @@
 
 #include "gpu/jit/v2/conv/kernel_desc.hpp"
 
-#include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "gpu/compute/utils.hpp"
 #include "gpu/jit/codegen/kernel.hpp"
 #include "gpu/jit/ir/kernel_info.hpp"
-#include "gpu/jit/utils/utils.hpp"
 #include "gpu/jit/v2/conv/kernel.hpp"
 #include "gpu/jit/v2/conv/plan.hpp"
 #include "gpu/jit/v2/conv/problem.hpp"
@@ -32,62 +30,6 @@ namespace gpu {
 namespace jit {
 namespace v2 {
 namespace conv {
-
-load_desc_t str_to_load_desc(const std::string &s) {
-    auto parts = gpu_utils::split(s, ",");
-    load_desc_t ret;
-    for (auto &p : parts) {
-        auto p_parts = gpu_utils::split(p, ":");
-        ir_assert(p_parts.size() == 2);
-        auto tensor = p_parts[0];
-        auto kind = p_parts[1];
-        if (tensor == "a") {
-            ret.a = str_to_send_kind(kind);
-        } else if (tensor == "b") {
-            ret.b = str_to_send_kind(kind);
-        } else {
-            ir_error_not_expected() << p;
-        }
-    }
-    return ret;
-}
-
-store_desc_t str_to_store_desc(const std::string &s) {
-    auto parts = gpu_utils::split(s, ",");
-    store_desc_t ret;
-    for (auto &p : parts) {
-        auto p_parts = gpu_utils::split(p, ":");
-        ir_assert(p_parts.size() == 2);
-        auto tensor = p_parts[0];
-        auto kind = p_parts[1];
-        if (tensor == "c") {
-            ret.c = str_to_send_kind(kind);
-        } else {
-            ir_error_not_expected() << p;
-        }
-    }
-    return ret;
-}
-
-prefetch_desc_t str_to_prefetch_desc(const std::string &s) {
-    auto parts = gpu_utils::split(s, ".");
-    ir_assert(utils::one_of((int)parts.size(), 1, 2));
-    ir_assert(parts[0].size() >= 2);
-    int dist = std::stoi(parts[0].substr(1));
-    ir_assert(dist >= 0);
-    bool a = (dist > 0);
-    bool b = (dist > 0);
-    if (parts.size() == 2 && dist > 0) {
-        ir_assert(utils::one_of(parts[1], "a", "b", "ab"));
-        a = (parts[1].find("a") != std::string::npos);
-        b = (parts[1].find("b") != std::string::npos);
-    }
-    prefetch_desc_t ret;
-    ret.dist = dist;
-    ret.a = a;
-    ret.b = b;
-    return ret;
-}
 
 layout_desc_t make_conv_layout_desc(
         tensor_kind_t tensor_kind, bool src_dst_with_group) {
@@ -101,59 +43,17 @@ layout_desc_t make_conv_layout_desc(
             case prb_dim_kind_t::ic: c = is_wei ? 'i' : 'c'; break;
             case prb_dim_kind_t::oc: c = is_wei ? 'o' : 'c'; break;
             case prb_dim_kind_t::id:
-            case prb_dim_kind_t::od: c = 'd'; break;
-            case prb_dim_kind_t::kd: c = is_wei ? 'd' : 'z'; break;
+            case prb_dim_kind_t::od:
+            case prb_dim_kind_t::kd: c = 'd'; break;
             case prb_dim_kind_t::ih:
-            case prb_dim_kind_t::oh: c = 'h'; break;
-            case prb_dim_kind_t::kh: c = is_wei ? 'h' : 'y'; break;
+            case prb_dim_kind_t::oh:
+            case prb_dim_kind_t::kh: c = 'h'; break;
             case prb_dim_kind_t::iw:
-            case prb_dim_kind_t::ow: c = 'w'; break;
-            case prb_dim_kind_t::kw: c = is_wei ? 'w' : 'x'; break;
+            case prb_dim_kind_t::ow:
+            case prb_dim_kind_t::kw: c = 'w'; break;
             default: ir_error_not_expected();
         }
         letter_map[d] = c;
-    }
-    return layout_desc_t(letter_map);
-}
-
-layout_desc_t make_conv_algo_layout_desc(
-        prop_kind_t prop, tensor_kind_t tensor_kind) {
-    auto desc = make_conv_layout_desc(tensor_kind, /*src_dst_with_group=*/true);
-    switch (tensor_kind) {
-        case tensor_kind_t::wei: return desc;
-        case tensor_kind_t::src:
-            if (prop == prop_kind::backward_data) return desc;
-            break;
-        case tensor_kind_t::dst:
-            if (prop != prop_kind::backward_data) return desc;
-            break;
-        default: ir_error_not_expected();
-    }
-    dim_map_t<prb_dim_t, char> letter_map;
-    bool is_src = (tensor_kind == tensor_kind_t::src);
-    prb_dim_t xd = (is_src ? prb_dims::od : prb_dims::id);
-    prb_dim_t xh = (is_src ? prb_dims::oh : prb_dims::ih);
-    prb_dim_t xw = (is_src ? prb_dims::ow : prb_dims::iw);
-    for (int i = 0; i < desc.ndims(); i++) {
-        auto d = desc.prb_dim(i);
-        switch (d.kind()) {
-            case prb_dim_kind_t::id:
-            case prb_dim_kind_t::od:
-                letter_map[xd] = 'd';
-                letter_map[prb_dims::kd] = 'z';
-                break;
-            case prb_dim_kind_t::ih:
-            case prb_dim_kind_t::oh:
-                letter_map[xh] = 'h';
-                letter_map[prb_dims::kh] = 'y';
-                break;
-            case prb_dim_kind_t::iw:
-            case prb_dim_kind_t::ow:
-                letter_map[xw] = 'w';
-                letter_map[prb_dims::kw] = 'x';
-                break;
-            default: letter_map[d] = desc.layout_letter(d); break;
-        }
     }
     return layout_desc_t(letter_map);
 }
@@ -307,28 +207,15 @@ void kernel_desc_t::set(const std::string &s) {
 }
 
 void kernel_desc_t::set_defaults() {
-    if (loop_desc.is_empty()) {
+    if (loop_nest.is_empty()) {
         switch (prop) {
-            case prop_kind::forward_training:
-            case prop_kind::forward_inference:
-                loop_desc.add(prb_dims::kw);
-                loop_desc.add(prb_dims::kh);
-                loop_desc.add(prb_dims::kd);
-                loop_desc.add(prb_dims::ic);
+            case prop_kind::forward:
+                loop_nest.add(prb_dims::kw);
+                loop_nest.add(prb_dims::kh);
+                loop_nest.add(prb_dims::kd);
+                loop_nest.add(prb_dims::ic);
                 break;
-            case prop_kind::backward_data:
-                loop_desc.add(prb_dims::kw);
-                loop_desc.add(prb_dims::kh);
-                loop_desc.add(prb_dims::kd);
-                loop_desc.add(prb_dims::oc);
-                break;
-            case prop_kind::backward_weights:
-                loop_desc.add(prb_dims::mb);
-                loop_desc.add(prb_dims::ow);
-                loop_desc.add(prb_dims::oh);
-                loop_desc.add(prb_dims::od);
-                break;
-            default: ir_error_not_expected(); break;
+            default: break;
         }
     }
 }
@@ -336,6 +223,7 @@ void kernel_desc_t::set_defaults() {
 void kernel_desc_t::finalize(const plan_t &plan) {
     is_finalized = true;
     reqs = plan.reqs();
+    reqs.simplify();
 }
 
 std::string kernel_desc_t::cmd_str() const {
@@ -345,21 +233,19 @@ std::string kernel_desc_t::cmd_str() const {
 std::string kernel_desc_t::str() const {
     std::ostringstream oss;
     oss << "Propagation:        " << ir_utils::to_string(prop) << std::endl;
-    oss << "Depthwise:          " << ir_utils::to_string(is_dw) << std::endl;
     oss << "Source tag:         " << src_tag << std::endl;
     oss << "Weights tag:        " << wei_tag << std::endl;
     oss << "Destination tag:    " << dst_tag << std::endl;
-    oss << "Specialization:     " << spec_reqs << std::endl;
     oss << "HW:                 " << ir_utils::to_lower(hw.str()) << std::endl;
     oss << "FMA kind:           " << to_string(fma) << std::endl;
     oss << "SIMD:               " << simd << std::endl;
     oss << "Registers:          " << regs << std::endl;
     oss << "Iteration tile:     " << iter_tile << std::endl;
     oss << "Thread group tile:  " << thread_group_tile << std::endl;
-    oss << "Loop desc:          " << loop_desc << std::endl;
-    oss << "Load:               " << load.str() << std::endl;
-    oss << "Prefetch:           " << prefetch.str() << std::endl;
-    oss << "Store:              " << store.str() << std::endl;
+    oss << "Loop nest:          " << loop_nest << std::endl;
+    oss << "A access kind:      " << to_string(a_access_kind) << std::endl;
+    oss << "B access kind:      " << to_string(b_access_kind) << std::endl;
+    oss << "C access kind:      " << to_string(c_access_kind) << std::endl;
     if (reqs) oss << ir_utils::add_tag("Reqs", reqs.str()) << std::endl;
     oss << "Command:            " << cmd_str();
     return ir_utils::add_tag("Desc", oss.str());
@@ -448,7 +334,7 @@ ir_utils::cli_iface_t<kernel_desc_t> kernel_desc_t::cli_iface() {
             "Whether the problem is a depthwise convolution (0 or 1).",
             MAKE_GETTER(std::string(desc->is_dw ? "1" : "0")),
             MAKE_SETTER(is_dw, ir_utils::str_to_bool(value)));
-    iface.add_arg("--src", "Source layout tag. Examples: axb:f32, aBx16b:f16).",
+    iface.add_arg("--src", "Source layout tag (e.g. axb:f32).",
             MAKE_GETTER(desc->src_tag.str()),
             MAKE_SETTER(
                     src_tag, make_conv_layout_tag(tensor_kind_t::src, value)));
@@ -460,11 +346,6 @@ ir_utils::cli_iface_t<kernel_desc_t> kernel_desc_t::cli_iface() {
             MAKE_GETTER(desc->dst_tag.str()),
             MAKE_SETTER(
                     dst_tag, make_conv_layout_tag(tensor_kind_t::dst, value)));
-    iface.add_arg("--spec-reqs",
-            "Specialization requirements for problem dimensions (e.g. "
-            "kd1kw1kh1 for convolution without filter).",
-            MAKE_GETTER(desc->spec_reqs.str()),
-            MAKE_SETTER(spec_reqs, str_to_spec_reqs(value)));
     iface.add_arg("--hw", "Hardware (xehpc).",
             MAKE_GETTER(ir_utils::to_lower(jit::to_string(desc->hw.to_ngen()))),
             MAKE_SETTER(hw, str_to_hw(value)));
@@ -482,27 +363,20 @@ ir_utils::cli_iface_t<kernel_desc_t> kernel_desc_t::cli_iface() {
     iface.add_arg("--tg", "Threadgroup tile (e.g. ow4oc4).",
             MAKE_GETTER(desc->thread_group_tile.str()),
             MAKE_SETTER(thread_group_tile, str_to_prb_tile(value)));
-    iface.add_arg("--loop-desc",
-            "Loop description, variables ordered from innermost to outermost "
-            "(e.g. kw,kh,kd,ic).",
-            MAKE_GETTER(desc->loop_desc.str()),
-            MAKE_SETTER(loop_desc, str_to_loop_desc(value)));
-    iface.add_arg("--load",
-            "Load type (block, scattered [default], 2d) for A and B, e.g. "
-            "a:2d,b:block.",
-            MAKE_GETTER(desc->load.str()),
-            MAKE_SETTER(load, str_to_load_desc(value)));
-    iface.add_arg("--store",
-            "Store type (block, scattered [default], 2d) for C,  e.g. c:2d.",
-            MAKE_GETTER(desc->store.str()),
-            MAKE_SETTER(store, str_to_store_desc(value)));
-    iface.add_arg("--prefetch",
-            "Prefetch description specifying distance and whether A/B are "
-            "prefetched. Examples: x3 (distance is 3, both A/B are "
-            "prefetched), x2.a (distance is 2, only A is prefetched), x0 (no "
-            "prefetch, default).",
-            MAKE_GETTER(desc->prefetch.str()),
-            MAKE_SETTER(prefetch, str_to_prefetch_desc(value)));
+    iface.add_arg("--loop-nest",
+            "Loop nest, ordered from innermost to outermost (e.g. "
+            "kw,kh,kd,ic).",
+            MAKE_GETTER(desc->loop_nest.str()),
+            MAKE_SETTER(loop_nest, str_to_loop_nest(value)));
+    iface.add_arg("--a-access", "Access type for A (block, scattered, 2d).",
+            MAKE_GETTER(to_string(desc->a_access_kind)),
+            MAKE_SETTER(a_access_kind, str_to_send_kind(value)));
+    iface.add_arg("--b-access", "Access type for B (block, scattered, 2d).",
+            MAKE_GETTER(to_string(desc->b_access_kind)),
+            MAKE_SETTER(b_access_kind, str_to_send_kind(value)));
+    iface.add_arg("--c-access", "Access type for C (block, scattered, 2d).",
+            MAKE_GETTER(to_string(desc->c_access_kind)),
+            MAKE_SETTER(c_access_kind, str_to_send_kind(value)));
     return iface;
 #undef MAKE_SETTER
 #undef MAKE_GETTER
@@ -593,8 +467,8 @@ status_t kernel_params_t::init_dispatch_kernel_info(
         tg_dims[d] = utils::div_up(dims.at(d), tg_size * iter_size);
     }
     init_dispatch_kernel_info_div_magic(kernel_info, tg_dims);
-    compute::range_t gws = compute::range_t::empty();
-    compute::range_t lws = compute::range_t::empty();
+    compute::range_t gws;
+    compute::range_t lws;
     for (size_t i = 0; i < compute::range_t::max_ndims; i++) {
         size_t tg_dim = thr_grid.size(i, desc.thread_group_tile);
         lws[i] = tg_dim * (i == 0 ? gpu_utils::into<size_t>(desc.simd) : 1);

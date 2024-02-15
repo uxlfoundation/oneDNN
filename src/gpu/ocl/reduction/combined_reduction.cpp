@@ -14,12 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/ocl/reduction/combined_reduction.hpp"
+#include "gpu/ocl/combined_reduction.hpp"
 #include "common/c_types_map.hpp"
+#include "common/scratchpad.hpp"
 #include "gpu/block_structure.hpp"
 #include "gpu/compute/utils.hpp"
 #include "gpu/ocl/ocl_utils.hpp"
-#include "gpu/ocl/reduction/reduction_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -366,14 +366,6 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const reduction_conf_t &conf, const reduction_phase_conf_t &phase) {
     using namespace alg_kind;
 
-    def_reduction_alg_kinds(kernel_ctx);
-    reduction_alg_kind_t alg
-            = from_alg(conf.alg, phase.is_first, phase.is_final);
-    reduction_alg_kind_t secondary_alg
-            = from_alg(conf.alg, false, phase.is_final);
-    kernel_ctx.define_int("REDUCTION_ALG", to_int(alg));
-    kernel_ctx.define_int("SECONDARY_REDUCTION_ALG", to_int(secondary_alg));
-
     kernel_ctx.set_data_type(phase.src_type);
 
     // Used for packing small inner vectors into a subgroup
@@ -384,9 +376,9 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
             = phase.reduction_block.block / inner_dim_per_sg;
 
     kernel_ctx.define_int("SUBGROUP_SIZE", phase.subgroup_size);
-    const auto &lws = phase.nd_range.local_range();
-    if (!lws) return status::runtime_error;
-    kernel_ctx.define_int("LWS_SIZE", static_cast<int64_t>(lws[0]));
+    if (!phase.nd_range.local_range().has_value()) return status::runtime_error;
+    kernel_ctx.define_int("LWS_SIZE",
+            static_cast<int64_t>(phase.nd_range.local_range().value()[0]));
 
     kernel_ctx.define_int("DIV", conf.div);
     kernel_ctx.define_float("POWER", conf.power);

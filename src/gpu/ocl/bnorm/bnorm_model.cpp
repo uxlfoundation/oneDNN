@@ -29,56 +29,6 @@ using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::gpu_utils;
 using namespace dnnl::impl::gpu::ocl::bn_utils;
 
-int get_nhwc_vect_size(int ic, int max_vect_size, int simd) {
-    int vect_size = max_vect_size;
-    while (true) {
-        if (ic / (vect_size * simd)) return vect_size;
-        vect_size /= 2;
-    }
-    return 1;
-}
-int get_nhwc_sp_block_size(
-        int sp, int ic_dim, int eu_count, int threads_per_eu, int simd) {
-
-    float efficiency_thr = 0.0f;
-    float efficiency_peak_eu_thr = 0.0f;
-    int block_size_thr = 1;
-    int block_size_peak_eu_thr = 1;
-    int curr_block_size = sp;
-    int nthr_mul = 1;
-    const int ic_nsg = ic_dim / simd; // number of subgroups by ic dim
-
-    // The search is based on threads wave efficiency.
-    // Higher priority for cases with peak EUs utilization.
-    while (nthr_mul <= 32) {
-        const int nthr = nthr_mul * eu_count;
-        curr_block_size = div_up(sp * ic_nsg, nthr);
-        const int nblock = div_up(sp, curr_block_size);
-        const int nthr_gen = nblock * ic_nsg;
-
-        const float curr_efficiency_eus
-                = (float)nthr_gen / rnd_up(nthr_gen, eu_count);
-        const float curr_efficiency_thr
-                = (float)nthr_gen / rnd_up(nthr_gen, eu_count * threads_per_eu);
-
-        if (curr_efficiency_thr > efficiency_thr) {
-            efficiency_thr = curr_efficiency_thr;
-            block_size_thr = curr_block_size;
-        }
-        if (curr_efficiency_eus == 1
-                && curr_efficiency_thr > efficiency_peak_eu_thr) {
-            efficiency_peak_eu_thr = curr_efficiency_thr;
-            block_size_peak_eu_thr = curr_block_size;
-        }
-        nthr_mul++;
-    }
-    if (efficiency_peak_eu_thr > 0.0f) return block_size_peak_eu_thr;
-    return block_size_thr;
-}
-int get_nhwc_calc_stat_ic(int ic, int ic_block, int sg_size) {
-    return div_up(ic, ic_block) * sg_size;
-}
-
 void init_hw_params(hw_params_t &hw_params, engine_t *engine) {
     const bool large_grf_mode = false;
     auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
@@ -137,8 +87,6 @@ std::string to_string(const kernel_kind_t &kernel) {
         kernel_name = "calc_stat";
     } else if (kernel == reduce_stats_fwd_ker) {
         kernel_name = "reduce_stats_fwd";
-    } else if (kernel == reusable_reduce_stats_fwd_ker) {
-        kernel_name = "reusable_reduce_stats_fwd";
     } else if (kernel == reduce_mean_var_ker) {
         kernel_name = "reduce_mean_var";
     } else if (kernel == reduce_stats_bwd_ker) {
@@ -173,9 +121,8 @@ std::string to_string(const data_location_t &loc) {
 
 // Useful for experimentation and debug purposes
 void dump_kernel_descriptor(kernel_desc_t &desc) {
-    DPRINT_MODEL(
-            "%s:%s:%d kernel desc:  %s : ncalls = %d : nbytes = %lld %lld : "
-            "location = %s %s\n",
+    DPRINT("%s:%s:%d kernel desc:  %s : ncalls = %d : nbytes = %lld %lld : "
+           "location = %s %s\n",
             PRINTHEAD, to_string(desc.kernel).c_str(), desc.ncalls,
             into<long long>(desc.input_nbytes),
             into<long long>(desc.output_nbytes),
@@ -231,7 +178,6 @@ int get_ncalls(model_params_t &p, const nhwc_bnorm_params_t &conf,
             case calc_mean_ker:
             case calc_var_ker:
             case calc_mean_var_ker: return conf.calculate_stats ? 1 : 0;
-            case reusable_reduce_stats_fwd_ker:
             case reduce_stats_fwd_ker:
                 return conf.calculate_stats && !p.use_fused_atomics_reduction
                         ? 2
@@ -269,7 +215,6 @@ size_t get_kernel_input_size(const model_params_t &p,
         case calc_var_ker:
             nbytes = tensor_sz + stat_vect_sz * num_sp_blocks;
             break;
-        case reusable_reduce_stats_fwd_ker:
         case reduce_stats_fwd_ker:
             nbytes = num_sp_blocks * rnd_up(conf.ic, conf.sub_group_size)
                     * sizeof(float);
@@ -331,7 +276,6 @@ size_t get_kernel_output_size(const model_params_t &p,
                             * sizeof(float);
             break;
         case reduce_aux_init_ker: nbytes = 2 * stat_vect_sz; break;
-        case reusable_reduce_stats_fwd_ker:
         case reduce_stats_fwd_ker: nbytes = stat_vect_sz; break;
         case reduce_mean_var_ker: nbytes = 2 * stat_vect_sz; break;
         case reduce_aux_finalize_ker:
@@ -450,8 +394,6 @@ void get_estimated_kernel_time(model_params_t &p, nhwc_bnorm_params_t &conf,
     // only for debug print
     float r_ns_base = read_ns;
     float w_ns_base = write_ns;
-    MAYBE_UNUSED(r_ns_base);
-    MAYBE_UNUSED(w_ns_base);
 
     // consider HW utilization
 
@@ -476,8 +418,6 @@ void get_estimated_kernel_time(model_params_t &p, nhwc_bnorm_params_t &conf,
     // only for debug print
     float r_ns_location = read_ns;
     float w_ns_location = write_ns;
-    MAYBE_UNUSED(r_ns_location);
-    MAYBE_UNUSED(w_ns_location);
 
     // consider vectorization
     const float v_coeff = get_vectorization_factor(p.vect_size, conf.data_type);
@@ -488,13 +428,12 @@ void get_estimated_kernel_time(model_params_t &p, nhwc_bnorm_params_t &conf,
 
     // For debuging and analysis purposes
     std::string kernel_type_name = to_string(desc.kernel);
-    DPRINT_MODEL(
-            "%s:%s:%d estimation - %s : p = %d %d %d : thr_util = %g ss_util = "
-            "%g "
-            ": base %.1f %.1f "
-            ": location %.1f %.1f "
-            ": v_coeff %.1f "
-            ": final %.1f %.1f : kernel_total %.1f\n",
+    DPRINT("%s:%s:%d estimation - %s : p = %d %d %d : thr_util = %g ss_util = "
+           "%g "
+           ": base %.1f %.1f "
+           ": location %.1f %.1f "
+           ": v_coeff %.1f "
+           ": final %.1f %.1f : kernel_total %.1f\n",
             PRINTHEAD, kernel_type_name.c_str(), p.use_fused_atomics_reduction,
             p.ic_block, p.stat_sp_block, desc.used_ss_thr_util, desc.ss_util,
             r_ns_base, w_ns_base, r_ns_location, w_ns_location, v_coeff,
@@ -509,7 +448,7 @@ void init_ker_desc(model_params_t &p, nhwc_bnorm_params_t &conf,
 }
 
 void init_kernel_descriptors(model_params_t &p, nhwc_bnorm_params_t &conf,
-        const hw_params_t &hw_params, bool reusable_version) {
+        const hw_params_t &hw_params) {
     kernel_desc_t desc;
 
     // logic about which kernels will be running and how many times
@@ -540,9 +479,8 @@ void init_kernel_descriptors(model_params_t &p, nhwc_bnorm_params_t &conf,
                             p, conf, hw_params, desc, reduce_mean_var_ker);
                     p.kernel_descs.push_back(desc);
                 } else {
-                    init_ker_desc(p, conf, hw_params, desc,
-                            reusable_version ? reusable_reduce_stats_fwd_ker
-                                             : reduce_stats_fwd_ker);
+                    init_ker_desc(
+                            p, conf, hw_params, desc, reduce_stats_fwd_ker);
                     p.kernel_descs.push_back(desc);
                 }
             }
@@ -565,12 +503,10 @@ void init_kernel_descriptors(model_params_t &p, nhwc_bnorm_params_t &conf,
 }
 
 void dump_params(std::vector<model_params_t> &params) {
-    DPRINT_MODEL("%s:%s:%d params\n", PRINTHEAD);
+    DPRINT("%s:%s:%d params\n", PRINTHEAD);
     for (auto &p : params) {
-        DPRINT_MODEL(
-                "use_fused_atomics_reduction = %d ic_block = %d stat_sp_block "
-                "= "
-                "%d vect_size = %d\n",
+        DPRINT("use_fused_atomics_reduction = %d ic_block = %d stat_sp_block = "
+               "%d vect_size = %d\n",
                 p.use_fused_atomics_reduction, p.ic_block, p.stat_sp_block,
                 p.vect_size);
     }
@@ -595,8 +531,8 @@ status_t get_estimated_hw_utilization(model_params_t &p,
 
     auto nd_range = dry_run_dispatch.nd_range();
     const compute::range_t gws = nd_range.global_range();
-    const compute::range_t lws = nd_range.local_range();
-    if (lws.nelems() == 0) return status::runtime_error;
+    if (!nd_range.local_range().has_value()) return status::runtime_error;
+    const compute::range_t lws = nd_range.local_range().value();
     desc.num_wgs = gws.nelems() / lws.nelems();
     desc.used_ss_thr_util = get_used_ss_thr_utilization(
             hw_params, conf.sub_group_size, gws, lws);
@@ -625,106 +561,6 @@ status_t make_perf_estimations(
         model_params_t &p, nhwc_bnorm_params_t &conf, hw_params_t &hw_params) {
     for (auto &desc : p.kernel_descs) {
         CHECK(make_kernel_perf_estimation(p, conf, desc, hw_params));
-    }
-    return status::success;
-}
-
-// Get the best set of bnorm parameters based on performance model
-// common for nhwc-optimized and nhwc-reusable implementations
-status_t get_params_by_model(nhwc_bnorm_params_t &conf,
-        const batch_normalization_pd_t *pd, hw_params_t &hw_params,
-        bool reusable_version) {
-
-    // Create set of possible parameters
-    std::vector<model_params_t> params;
-    model_params_t p;
-    p.ic_block = conf.sub_group_size;
-    assert(conf.ic % conf.sub_group_size == 0);
-    while (p.ic_block <= conf.ic) {
-        if (conf.ic % p.ic_block == 0) {
-            const int calc_stat_ic = get_nhwc_calc_stat_ic(
-                    conf.ic, p.ic_block, conf.sub_group_size);
-            p.stat_sp_block = get_nhwc_sp_block_size(conf.sp, calc_stat_ic,
-                    hw_params.eu_count, hw_params.threads_per_eu,
-                    conf.sub_group_size);
-            p.vect_size = get_nhwc_vect_size(p.ic_block, conf.max_vect_size());
-            p.use_fused_atomics_reduction = 0;
-            params.push_back(p);
-            if (hw_params.gpu_arch >= compute::gpu_arch_t::xe_hpc
-                    && !pd->attr()->deterministic_) {
-                // atomics-based reduction on PVC+ only, perforformance reasons
-                p.use_fused_atomics_reduction = 1;
-                params.push_back(p);
-            }
-        }
-        p.ic_block += conf.sub_group_size;
-    }
-
-    dump_params(params);
-
-    // find the best set
-    float best_expected_time = FLT_MAX;
-    model_params_t best_params;
-    for (auto &p : params) {
-
-        // initialize kernel descriptors
-        init_kernel_descriptors(p, conf, hw_params, reusable_version);
-        // make estimations on execution time
-        CHECK(make_perf_estimations(p, conf, hw_params));
-
-        float exp_time = 0.0f;
-        for (auto &desc : p.kernel_descs) {
-            exp_time += desc.ncalls * desc.time_ns;
-            exp_time += hw_params.host_overheads_per_kernel * desc.ncalls;
-            DPRINT_MODEL("%s:%s:%d desc loop: p: %d %d %d : %s: %.1f(%.1f) \n",
-                    PRINTHEAD, p.use_fused_atomics_reduction, p.ic_block,
-                    p.stat_sp_block, to_string(desc.kernel).c_str(),
-                    desc.time_ns, desc.time_ns * desc.ncalls);
-        }
-        DPRINT_MODEL(
-                "%s:%s:%d p: %d %d %d : total expected ns = %.1f ( %.4f ms)\n",
-                PRINTHEAD, p.use_fused_atomics_reduction, p.ic_block,
-                p.stat_sp_block, exp_time, exp_time * 1e-6);
-
-        if (exp_time < best_expected_time) {
-            best_params = p;
-            best_expected_time = exp_time;
-        }
-    }
-
-#define SAVE_PARAM(name, val) \
-    if (!conf.name##_param().is_overridden()) conf.set_##name(val);
-
-    // save best params to conf
-    conf.expected_time_ms = best_expected_time * 1e-6;
-    // Some parameters can be set by tuning procedure or taken from table.
-    // Other parametes to be set by model.
-    SAVE_PARAM(use_fused_atomics_reduction,
-            best_params.use_fused_atomics_reduction);
-    if (!conf.ic_block_param().is_overridden()
-            // guard for tuning, to use default value if overrrided one is wrong
-            || (conf.ic_block_param().is_overridden()
-                    && conf.ic_block() > conf.ic))
-        conf.set_ic_block(best_params.ic_block);
-    conf.calc_stat_ic = get_nhwc_calc_stat_ic(
-            conf.ic, conf.ic_block(), conf.sub_group_size);
-    SAVE_PARAM(stat_sp_block, best_params.stat_sp_block);
-    SAVE_PARAM(update_sp_block, conf.stat_sp_block());
-    SAVE_PARAM(update_sp_unroll, 1);
-
-#undef SAVE_PARAM
-
-    conf.vect_size = get_nhwc_vect_size(
-            conf.ic_block(), conf.max_vect_size(), conf.sub_group_size);
-    // Guard for tuning and lookup table -
-    // to use the default value if overrrided one is wrong
-    const bool bad_update_sp_unroll
-            = conf.update_sp_block() % conf.update_sp_unroll()
-            || (conf.sp % conf.update_sp_block()) % conf.update_sp_unroll();
-    if (conf.update_sp_unroll_param().is_overridden() && bad_update_sp_unroll) {
-        conf.set_update_sp_unroll(1);
-    } else {
-        assert(!bad_update_sp_unroll);
     }
     return status::success;
 }

@@ -20,17 +20,19 @@
 #include <cassert>
 #include "gpu/compute/utils.hpp"
 
+#ifndef DISABLE_VERBOSE
+#include <iostream>
+#include <sstream>
+#include "common/verbose.hpp"
+#endif
+
 #include "common/cache_blob.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/compute/compute_engine.hpp"
-#include "gpu/compute/compute_stream.hpp"
-#include "gpu/compute/kernel.hpp"
+#include "gpu/compute/compute.hpp"
 #include "gpu/gemm/gpu_gemm_exec_types.hpp"
 #include "gpu/gpu_resource.hpp"
-#include "gpu/jit/jit_generator_base.hpp"
 #include "gpu/kernel_cache.hpp"
-#include "gpu/ocl/types_interop.hpp"
 
 #define CTX_GPU_RES_STORAGE(arg) \
     (*(ctx.get_resource_mapper() \
@@ -133,11 +135,11 @@ struct gpu_primitive_t : public primitive_t {
     }
 
     status_t create_kernel(engine_t *engine, compute::kernel_t *kernel,
-            jit::jit_generator_base *jitter, bool register_kernel = true) {
+            jit::jit_generator_base *jitter) {
         auto *compute_engine
                 = utils::downcast<compute::compute_engine_t *>(engine);
         CHECK(compute_engine->create_kernel(kernel, jitter, cache_blob()));
-        if (register_kernel) CHECK(register_kernels({*kernel}));
+        CHECK(register_kernels({*kernel}));
         return status::success;
     }
 
@@ -234,36 +236,32 @@ struct gpu_primitive_t : public primitive_t {
         auto global_range = nd_range.global_range();
         auto local_range = nd_range.local_range();
 
-        // Convert global_range to an equivalent 3D nd_range_t
-        constexpr size_t range_ndims = 3;
-        assert(global_range.ndims() <= range_ndims);
-        auto gws = compute::range_t::one(range_ndims);
-        for (size_t i = 0; i < global_range.ndims(); i++) {
-            gws[i] = global_range[i];
-        }
+        // Since the number of dimensions is hard-coded here,
+        // we need an additional sanity check
+        static_assert(compute::range_t::max_ndims == 3,
+                "Incorrect number of dims for nd_range_t");
 
         compute::range_t off_inc(UINT32_MAX, UINT32_MAX, UINT32_MAX);
-        if (local_range) {
-            for (size_t i = 0; i < local_range.ndims(); i++) {
-                off_inc[i] *= local_range[i];
+        if (local_range.has_value()) {
+            const auto &lws = local_range.value();
+            for (size_t i = 0; i < lws.ndims(); i++) {
+                off_inc[i] *= lws[i];
             }
         }
 
         int64x3_t offset_arg = {};
         auto &offset = offset_arg.array;
-        static_assert(range_ndims == 3,
-                "Large parallel for loop doesn't match ndims.");
-        for_(offset[2] = 0; static_cast<size_t>(offset[2]) < gws[2];
+        for_(offset[2] = 0; static_cast<size_t>(offset[2]) < global_range[2];
                 offset[2] += off_inc[2])
-        for_(offset[1] = 0; static_cast<size_t>(offset[1]) < gws[1];
+        for_(offset[1] = 0; static_cast<size_t>(offset[1]) < global_range[1];
                 offset[1] += off_inc[1])
-        for_(offset[0] = 0; static_cast<size_t>(offset[0]) < gws[0];
+        for_(offset[0] = 0; static_cast<size_t>(offset[0]) < global_range[0];
                 offset[0] += off_inc[0])
         {
             arg_list.set(offset_idx, offset_arg);
-            auto range = compute::range_t::empty(range_ndims);
-            for (size_t i = 0; i < range_ndims; i++)
-                range[i] = std::min(off_inc[i], gws[i] - offset[i]);
+            compute::range_t range;
+            for (size_t i = 0; i < global_range.ndims(); i++)
+                range[i] = std::min(off_inc[i], global_range[i] - offset[i]);
 
             CHECK(parallel_for(ctx, compute::nd_range_t(range, local_range),
                     kernel, arg_list));

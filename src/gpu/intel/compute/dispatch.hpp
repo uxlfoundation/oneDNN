@@ -21,7 +21,6 @@
 #include <string>
 
 #include "common/c_types_map.hpp"
-#include "common/optional.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"

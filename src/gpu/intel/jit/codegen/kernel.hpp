@@ -1141,9 +1141,9 @@ protected:
     int thread_group_size() const {
         ir_assert(with_nd_range_);
         int local_size = 1;
-        ir_assert(nd_range_.local_range().has_value());
+        ir_assert(nd_range_.local_range());
         for (int i = 0; i < (int)nd_range_.ndims(); i++) {
-            local_size *= (int)nd_range_.local_range().value()[i];
+            local_size *= (int)nd_range_.local_range()[i];
         }
         return ir_utils::safe_divide(local_size, exec_cfg_.simd());
     }

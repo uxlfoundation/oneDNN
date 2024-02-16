@@ -332,9 +332,6 @@ struct conv_conf_t {
 
     compute::range_t gws_d = compute::range_t::empty();
     compute::range_t lws_d = compute::range_t::empty();
-    // Original global work sizes, before applying rounding in case when
-    // non-uniform work-groups are not supported.
-    compute::range_t gws_orig_d = compute::range_t::empty();
     compute::dispatch_t dispatch;
 
     bool with_bias, with_groups;
@@ -1468,7 +1465,6 @@ inline void def_dispatch(compute::kernel_ctx_t &kernel_ctx,
     dispatch.def_kernel_macros(kernel_ctx);
 }
 
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

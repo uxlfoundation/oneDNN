@@ -19,7 +19,6 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-#include "gpu/compute/compute.hpp"
 #include "gpu/compute/utils.hpp"
 #include "gpu/ocl/ocl_gpu_engine.hpp"
 

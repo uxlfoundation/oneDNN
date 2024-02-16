@@ -17,7 +17,8 @@
 #ifndef GPU_GENERIC_SYCL_SYCL_GPU_KERNEL_HPP
 #define GPU_GENERIC_SYCL_SYCL_GPU_KERNEL_HPP
 
-#include "xpu/sycl/utils.hpp"
+#include "common/utils.hpp"
+#include "sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

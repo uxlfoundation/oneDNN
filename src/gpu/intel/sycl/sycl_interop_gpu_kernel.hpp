@@ -19,7 +19,7 @@
 
 #include <string>
 
-#include "gpu/intel/sycl/utils.hpp"
+#include "sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

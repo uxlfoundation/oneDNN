@@ -20,8 +20,8 @@
 #include <vector>
 #include <unordered_map>
 
-#include "gpu/intel/compute/kernel_list.hpp"
-#include "gpu/intel/ocl/ocl_gpu_engine.hpp"
+#include "gpu/compute/kernel_list.hpp"
+#include "gpu/ocl/ocl_gpu_engine.hpp"
 
 namespace dnnl {
 namespace impl {

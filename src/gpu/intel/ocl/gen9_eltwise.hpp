@@ -20,8 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_eltwise_pd.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/serialization.hpp"
+#include "gpu/gpu_primitive.hpp"
+#include "gpu/serialization.hpp"
 
 namespace dnnl {
 namespace impl {

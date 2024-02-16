@@ -14,14 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_BNORM_SIMPLE_BNORM_HPP
-#define GPU_INTEL_OCL_BNORM_SIMPLE_BNORM_HPP
+#ifndef GPU_OCL_SIMPLE_BNORM_HPP
+#define GPU_OCL_SIMPLE_BNORM_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_batch_normalization_pd.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/gpu_primitive.hpp"
+#include "gpu/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

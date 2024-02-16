@@ -21,12 +21,10 @@
 #include <memory>
 #include <utility>
 
-#include "common/verbose.hpp"
-#include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/utils.hpp"
-#include "xpu/context.hpp"
-#include "xpu/utils.hpp"
+#include "gpu/compute/context.hpp"
+#include "gpu/compute/kernel_arg_list.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {

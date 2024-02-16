@@ -23,12 +23,12 @@
 #include "common/primitive.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "common/utils.hpp"
+#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_rnn_pd.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
-#include "gpu/intel/ocl/rnn/rnn_utils.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
+#include "gpu/ocl/rnn/rnn_utils.hpp"
+#include "gpu/primitive_conf.hpp"
 
 // TODO just to debug
 #define WS_NAN_FILLING 0

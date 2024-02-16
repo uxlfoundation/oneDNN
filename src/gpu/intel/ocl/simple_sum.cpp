@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/simple_sum.hpp"
+#include "gpu/ocl/simple_sum.hpp"
 #include "common/c_types_map.hpp"
 
 namespace dnnl {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,8 +19,6 @@
 
 // This file contains a common SYCL compatibility layer. All vendor specific
 // SYCL code that requires compatbility must reside in the vendor directories.
-
-#include "xpu/sycl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

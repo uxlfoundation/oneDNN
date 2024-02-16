@@ -18,18 +18,13 @@
 #define GPU_INTEL_JIT_GEMM_GEN_GEMM_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
-#include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/jit/gemm/include/driver_info.hpp"
-#include "gpu/intel/jit/gemm/include/kernel_catalog.hpp"
-#include "gpu/intel/jit/gemm/include/kernel_evaluator.hpp"
-#include "gpu/intel/jit/gemm/include/kernel_selector.hpp"
-#include "gpu/intel/jit/gemm/include/problem.hpp"
-#include "gpu/intel/jit/gemm/include/strategy.hpp"
-#include "gpu/intel/jit/gemm/include/type.hpp"
-#include "gpu/intel/jit/jit_generator_base.hpp"
-#include "gpu/intel/kernel_cache.hpp"
-#include "xpu/utils.hpp"
+#include "gpu/compute/device_info.hpp"
+#include "gpu/compute/kernel_arg_list.hpp"
+#include "gpu/jit/gemm/gen_gemm_kernel_generator.hpp"
+#include "gpu/jit/gemm/kernel_catalog.hpp"
+#include "gpu/jit/gemm/kernel_evaluator.hpp"
+#include "gpu/jit/jit_generator_base.hpp"
+#include "gpu/kernel_cache.hpp"
 
 namespace dnnl {
 namespace impl {

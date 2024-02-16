@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 #ifndef GPU_GENERIC_SYCL_SYCL_GPU_KERNEL_HPP
 #define GPU_GENERIC_SYCL_SYCL_GPU_KERNEL_HPP
 
-#include "xpu/sycl/utils.hpp"
+#include "common/utils.hpp"
+#include "sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

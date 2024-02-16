@@ -23,7 +23,6 @@
 #include <initializer_list>
 
 #include "common/c_types_map.hpp"
-#include "common/engine_impl.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "common/resource.hpp"

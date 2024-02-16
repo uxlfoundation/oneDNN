@@ -20,12 +20,11 @@
 #include <memory>
 #include <type_traits>
 
-#include "common/cache_hit_types.hpp"
 #include "common/engine_id.hpp"
 #include "common/kernel_cache.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/serialization.hpp"
+#include "gpu/compute/compute_engine.hpp"
+#include "gpu/serialization.hpp"
 
 namespace dnnl {
 namespace impl {

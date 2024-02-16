@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,15 +22,14 @@
 
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/ocl/memory_storage.hpp"
-
-#include "gpu/intel/microkernels/fuser.hpp"
-#include "gpu/intel/ocl/ocl_gpu_device_info.hpp"
-#include "gpu/intel/ocl/ocl_gpu_engine.hpp"
-#include "gpu/intel/ocl/ocl_gpu_kernel.hpp"
-#include "gpu/intel/ocl/ocl_stream.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/compute/kernel_list.hpp"
+#include "gpu/ocl/kernel_utils.hpp"
+#include "gpu/ocl/ocl_gpu_device_info.hpp"
+#include "gpu/ocl/ocl_gpu_engine.hpp"
+#include "gpu/ocl/ocl_gpu_kernel.hpp"
+#include "gpu/ocl/ocl_memory_storage.hpp"
+#include "gpu/ocl/ocl_stream.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

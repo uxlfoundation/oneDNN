@@ -18,9 +18,9 @@
 #define GPU_INTEL_OCL_GEMM_XE_SYSTOLIC_GEMM_COPY_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/compute/kernel.hpp"
+#include "gpu/compute/compute_engine.hpp"
+#include "gpu/compute/device_info.hpp"
+#include "gpu/compute/kernel.hpp"
 
 namespace dnnl {
 namespace impl {

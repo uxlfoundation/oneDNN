@@ -73,6 +73,11 @@ public:
 
     virtual void save_output_events() {}
 
+    virtual bool is_on(const engine_t *engine) const {
+        gpu_assert(false) << "unimplemented function is_on() called";
+        return false;
+    }
+
     virtual status_t dump() const {
         gpu_assert(false) << "unimplemented function dump() called";
         return status::runtime_error;
@@ -129,24 +134,24 @@ public:
 
     kernel_impl_t *impl() const { return impl_.get(); }
 
-    status_t parallel_for(impl::stream_t &stream, const nd_range_t &range,
-            const kernel_arg_list_t &arg_list, const xpu::event_t &deps,
-            xpu::event_t &out_dep) const {
+    status_t parallel_for(stream_t &stream, const nd_range_t &range,
+            const kernel_arg_list_t &arg_list, const event_t &deps,
+            event_t &out_dep) const {
         return impl_->parallel_for(stream, range, arg_list, deps, out_dep);
     }
 
-    status_t parallel_for(impl::stream_t &stream,
-            const std::function<void(void *)> &cgf) const {
+    status_t parallel_for(
+            stream_t &stream, const std::function<void(void *)> &cgf) const {
         return impl_->parallel_for(stream, cgf);
     }
 
     status_t get_binary_size(
-            const impl::engine_t *engine, size_t *binary_size) const {
+            const engine_t *engine, size_t *binary_size) const {
         return impl_->get_binary_size(engine, binary_size);
     }
 
     status_t get_binary(
-            const impl::engine_t *engine, xpu::binary_t &binary) const {
+            const engine_t *engine, compute::binary_t &binary) const {
         return impl_->get_binary(engine, binary);
     }
 
@@ -155,6 +160,8 @@ public:
     }
 
     void save_output_events() { return impl_->save_output_events(); }
+
+    bool is_on(const engine_t *engine) const { return impl_->is_on(engine); }
 
     status_t dump() const {
         if (!gpu_utils::is_jit_dump_enabled()) return status::success;
@@ -192,6 +199,17 @@ public:
             kernels[i] = kernel_entry->second;
         }
         return status::success;
+    }
+
+    status_t get_kernels(const engine_t *engine, std::vector<kernel_t> &kernels,
+            const std::vector<const char *> &kernel_names) const {
+        if (!is_on(engine)) return status::runtime_error;
+        return get_kernels(kernels, kernel_names);
+    }
+
+    bool is_on(const engine_t *engine) const {
+        // All kernels are required to be located in the same context.
+        return !bundle.empty() && bundle.begin()->second.is_on(engine);
     }
 
     std::unordered_map<std::string, kernel_t> bundle;

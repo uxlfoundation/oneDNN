@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ public:
 
     void save_output_events() override { save_events_ = true; }
 
+    bool is_on(const engine_t *engine) const override;
     status_t dump() const override;
     std::string name() const override;
 

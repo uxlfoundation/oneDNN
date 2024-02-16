@@ -17,15 +17,15 @@
 #include "gpu/intel/sycl/sycl_interop_gpu_kernel.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
-#include "gpu/intel/ocl/types_interop.hpp"
-#include "gpu/intel/sycl/l0/utils.hpp"
-#include "gpu/intel/sycl/stream.hpp"
-#include "gpu/intel/sycl/utils.hpp"
-#include "gpu/intel/utils.hpp"
-#include "xpu/sycl/c_types_map.hpp"
-#include "xpu/utils.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
+#include "gpu/ocl/stream_profiler.hpp"
+#include "gpu/ocl/types_interop.h"
+#include "gpu/utils.hpp"
+#include "sycl/level_zero_utils.hpp"
+#include "sycl/sycl_c_types_map.hpp"
+#include "sycl/sycl_stream.hpp"
+#include "sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -107,7 +107,7 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
             && range.local_range()) {
         for (size_t i = 0; i < range.ndims(); i++) {
             size_t gws = range.global_range()[i];
-            size_t lws = range.local_range().value()[i];
+            size_t lws = range.local_range()[i];
             if (lws > 0 && gws % lws != 0) {
                 VERROR(common, level_zero,
                         "only uniform work-groups are supported");

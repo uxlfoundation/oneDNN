@@ -19,21 +19,19 @@
 
 #include "common/cpp_compat.hpp"
 
-#include "common/impl_registration.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/codegen/operand.hpp"
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
-#include "gpu/intel/jit/emulation.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/kernel_desc.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/ir/walk_order.hpp"
-#include "gpu/intel/jit/jit_generator.hpp"
-#include "gpu/intel/jit/ngen/ngen.hpp"
-#include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"
-#include "xpu/utils.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/jit/codegen/operand.hpp"
+#include "gpu/jit/codegen/register_allocator.hpp"
+#include "gpu/jit/ir/ir.hpp"
+#include "gpu/jit/ir/kernel_desc.hpp"
+#include "gpu/jit/ir/kernel_info.hpp"
+#include "gpu/jit/ir/message.hpp"
+#include "gpu/jit/ir/tensor.hpp"
+#include "gpu/jit/jit_generator.hpp"
+#include "gpu/jit/ngen/ngen.hpp"
+#include "gpu/jit/ngen/ngen_register_allocator.hpp"
+
+#include "gpu/jit/gemm/emulation.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -1154,9 +1152,9 @@ protected:
     int thread_group_size() const {
         ir_assert(with_nd_range_);
         int local_size = 1;
-        ir_assert(nd_range_.local_range().has_value());
+        ir_assert(nd_range_.local_range());
         for (int i = 0; i < (int)nd_range_.ndims(); i++) {
-            local_size *= (int)nd_range_.local_range().value()[i];
+            local_size *= (int)nd_range_.local_range()[i];
         }
         return ir_utils::safe_divide(local_size, exec_cfg_.simd());
     }

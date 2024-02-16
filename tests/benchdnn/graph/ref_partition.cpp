@@ -341,6 +341,8 @@ int ref_partition_t::check_partition_correctness(
     } else {
         res->state = PASSED;
     }
+
+    return OK;
 }
 
 bool ref_partition_t::check_valid_bf16_in() const {

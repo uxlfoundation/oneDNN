@@ -19,6 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
+#include "gpu/compute/compute.hpp"
 #include "gpu/compute/utils.hpp"
 #include "gpu/ocl/ocl_gpu_engine.hpp"
 
@@ -68,10 +69,9 @@ inline ::sycl::nd_range<3> to_sycl_nd_range(
                 sycl_global_range, ::sycl::range<3>(1, 1, 1));
     }
 
-    assert(local_range.has_value());
-    const auto &lws = local_range.value();
-    assert(lws.ndims() == 3);
-    auto sycl_local_range = ::sycl::range<3>(lws[2], lws[1], lws[0]);
+    auto sycl_local_range = ::sycl::range<3>(
+            local_range.ndims() >= 3 ? local_range[2] : 1,
+            local_range.ndims() >= 2 ? local_range[1] : 1, local_range[0]);
     return ::sycl::nd_range<3>(sycl_global_range, sycl_local_range);
 }
 

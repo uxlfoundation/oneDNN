@@ -97,6 +97,9 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
                             "Error: Function '%s' at (%s:%d) returned '%s'\n", \
                             __FUNCTION__, __FILE__, __LINE__, e.what()); \
                 } \
+                BENCHDNN_PRINT(0, \
+                        "Error: Function '%s' at (%s:%d) returned '%s'\n", \
+                        __FUNCTION__, __FILE__, __LINE__, e.what()); \
                 fflush(0); \
                 if (s & CRIT) exit(2); \
             } \

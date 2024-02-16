@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -63,12 +63,8 @@ public:
     ref_primitive_t() = default;
     ref_primitive_t(const deserialized_op &op);
 
-    int init_prb(res_t *res);
-    // By default, the reference primitives are created with f32 data type.
-    // However, there's a displacer that relies on the logic that would fill
-    // memories with int8 data. `force_override` flag restricts forcing f32
-    // data type primarily for this use case.
-    int init_prim(const engine_t &eng, res_t *res, bool force_override = false);
+    int init_prb(::std::unordered_set<size_t> &bf16_rewrite, res_t *res);
+    int init_prim(const engine_t &eng, res_t *res);
     void init_memory_args(const engine_t &eng);
     int init_ref_memory_args(const engine_t &eng, res_t *res);
     int execute_prim(res_t *res) const;
@@ -78,14 +74,7 @@ public:
     void replace_arg(const int arg, const dnn_mem_t &mem) {
         // Only compatible memory objects can be replaced.
         const auto &orig_mem = args_.find(arg);
-        if (orig_mem.size() != mem.size()) {
-            BENCHDNN_PRINT(0,
-                    "Error: can't replace mem_%s (%zu) with mem_%s (%zu) for "
-                    "%s op.\n",
-                    dt2str(orig_mem.dt()), orig_mem.size(), dt2str(mem.dt()),
-                    mem.size(), op_.kind_.c_str());
-            SAFE_V(FAIL);
-        }
+        if (orig_mem.size() != mem.size()) SAFE_V(FAIL);
 
         args_.replace(arg, &mem);
     }

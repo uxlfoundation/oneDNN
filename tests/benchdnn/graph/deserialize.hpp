@@ -137,6 +137,9 @@ struct deserialized_graph {
         fpmath_mode_ = fpmath_mode;
     }
 
+    // Outputs the information about graph from operator<< into a string.
+    std::string get_string() const;
+
 private:
     std::string engine_kind_;
     std::string version_;

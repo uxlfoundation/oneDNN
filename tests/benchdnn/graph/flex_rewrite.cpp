@@ -126,13 +126,7 @@ void flex_rewrite::broadcast(const dims_t &x, const dims_t &y, dims_t &z,
         if (i >= by) r = y[i - by];
         if (l != r) {
             if (l != 1 && r != 1) {
-                BENCHDNN_PRINT(0,
-                        "Error: batched dimensions \'%lld\' from \'%s\' and "
-                        "\'%lld\' from \'%s\' are not consistent. They should "
-                        "be equal to each other or one of them should be equal "
-                        "to 1.\n",
-                        (long long)l, x_str.c_str(), (long long)r,
-                        y_str.c_str());
+                fprintf(stderr, "graph: failed to broadcast in infer shape!\n");
                 SAFE_V(FAIL);
             }
             z[i] = (l == 1 ? r : l);

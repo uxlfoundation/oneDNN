@@ -622,7 +622,6 @@ int doit(const prb_t *prb, res_t *res) {
         SAFE(ref_partition.init_ref(
                      graph_in_ports, partition_mem_map_v[i], res),
                 WARN);
-        if (res->state == SKIPPED) return OK;
 
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             // correctness mode, run ref partition

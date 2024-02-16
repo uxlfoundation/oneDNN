@@ -66,23 +66,10 @@ void parse_key_value(std::vector<std::map<size_t, std::string>> &res_v,
 
             std::string val_str
                     = single_key_val.substr(key_pos, val_pos - key_pos);
-            if (val_str.empty()) {
-                BENCHDNN_PRINT(0,
-                        "Error: a value after colon was not parsed. Parsed "
-                        "input for option \'%s\': \'%s\'. Please check the "
-                        "option documentation.\n",
-                        option_name.c_str(), single_key_val.c_str());
-                SAFE_V(FAIL);
-            }
-
-            const auto key_num = size_t(stoll(key_str));
-            if (key_val_case.count(key_num)) {
-                BENCHDNN_PRINT(0,
-                        "Error: a tensor with \'%zu\' ID was already updated. "
-                        "Previous value for the option \'%s\' with this ID is "
-                        "\'%s\', new value is \'%s\'.\n",
-                        key_num, option_name.c_str(),
-                        key_val_case.at(key_num).c_str(), val_str.c_str());
+            auto key_num = size_t(stoll(key_str));
+            if (key_val_case.count(key_num) || single_key_val.empty()) {
+                fprintf(stderr, "graph: Parser: repeat id `%zd`, exiting...\n",
+                        key_num);
                 SAFE_V(FAIL);
             }
             key_val_case.emplace(key_num, val_str);

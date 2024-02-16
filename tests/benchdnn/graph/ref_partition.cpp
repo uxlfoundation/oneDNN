@@ -34,9 +34,38 @@ void check_memory_fit(
         res->state = SKIPPED;
         res->reason = skip_reason::not_enough_ram;
     }
+};
+
+// ops support bf16 in f32 out.
+const std::unordered_set<dnnl_driver_t, driver_hash_t> &
+valid_driver_in_bf16_mixed_dt() {
+    static const std::unordered_set<dnnl_driver_t, driver_hash_t> set = {
+            dnnl_driver_t::reorder,
+            dnnl_driver_t::binary,
+            dnnl_driver_t::conv,
+            dnnl_driver_t::deconv,
+            dnnl_driver_t::matmul,
+            dnnl_driver_t::resampling,
+            dnnl_driver_t::reduction,
+    };
+    return set;
 }
 
-} // namespace
+// ops support f32 in bf16 out rewrite.
+const std::unordered_set<dnnl_driver_t, driver_hash_t> &
+valid_driver_out_bf16_mixed_dt() {
+    static const std::unordered_set<dnnl_driver_t, driver_hash_t> set {
+            dnnl_driver_t::reorder,
+            dnnl_driver_t::binary,
+            dnnl_driver_t::resampling,
+            dnnl_driver_t::reduction,
+            dnnl_driver_t::softmax,
+            dnnl_driver_t::bnorm,
+            dnnl_driver_t::eltwise,
+            dnnl_driver_t::lnorm,
+    };
+    return set;
+}
 
 ref_partition_t::ref_partition_t(const deserialized_graph &dg,
         const dnnl::graph::partition &par,
@@ -80,7 +109,7 @@ int ref_partition_t::init_ref(const std::vector<size_t> &graph_in_ports,
         auto ref_prim = ::std::make_shared<ref_primitive_t>(par_op_ref.get());
 
         ref_prims_.emplace(par_op_ref.get().id_, ref_prim);
-        SAFE(ref_prim->init_prb(res), WARN);
+        SAFE(ref_prim->init_prb(bf16_to_f32_rewrite_lt_id_, res), WARN);
 
         SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
 
@@ -366,18 +395,33 @@ int ref_partition_t::check_partition_correctness(
     return OK;
 }
 
-bool ref_partition_t::has_parent_op(
-        const deserialized_op &op, bool check_all_in_lts) const {
-    if (partition_ops_ref_.size() < 2) return false;
+bool ref_partition_t::check_valid_bf16_in() const {
+    std::unordered_set<size_t> rewritable_in_ops, input_ops;
+    for (const auto &lt_id : partition_in_ids_) {
+        const auto iter = in_lt_2_ops_.find(lt_id);
+        const auto &consumer_ops = iter->second;
+        for (const auto &op : consumer_ops) {
+            // if the op already meets the requirement, skip the check
+            if (rewritable_in_ops.find(op.get().id_) != rewritable_in_ops.end())
+                continue;
+            // record all input ops for comparison
+            if (input_ops.find(op.get().id_) == input_ops.end())
+                input_ops.emplace(op.get().id_);
 
-    for (const auto &in_lt : op.in_lts_) {
-        const auto *parent_op = get_parent_op(in_lt.id_);
-        if (!parent_op) {
-            if (check_all_in_lts) return false;
-            continue;
-        } else {
-            if (check_all_in_lts) continue;
-            return true;
+            const dnnl_driver_t driver_kind
+                    = opkind2driver(opstr2kind(op.get().kind_));
+            // exclude ops which doesn't support bf16 in f32 out
+            // if one input op is not supported, this feature will not be enabled
+            if (valid_driver_in_bf16_mixed_dt().find(driver_kind)
+                    == valid_driver_in_bf16_mixed_dt().end())
+                return false;
+            for (const auto &lt : op.get().in_lts_) {
+                if (lt.id_ == lt_id && lt.data_type_ == "bf16") {
+                    // if current op has a bf16 input and support bf16 to f32,
+                    // add it to rewritable ops
+                    rewritable_in_ops.emplace(op.get().id_);
+                }
+            }
         }
     }
 
@@ -388,23 +432,19 @@ bool ref_partition_t::has_parent_op(
     return check_all_in_lts;
 }
 
-// TODO: add get_child and remove the second arg.
-bool ref_partition_t::has_child_op(
-        const deserialized_op &op, const deserialized_op **child_op_ptr) const {
-    if (partition_ops_ref_.size() < 2) return false;
-
-    for (const auto &out_lt : op.out_lts_) {
-        // Check if child op exist for an `op`.
-        const auto &child_op = dg_->get_op_by_in_lt(out_lt.id_);
-        if (child_op.empty()) continue;
-
-        // If it does, check its ID presents in a partition.
-        for (const auto &op_ref : partition_ops_ref_) {
-            const auto &cur_op = op_ref.get();
-            if (child_op.id_ == cur_op.id_) {
-                if (child_op_ptr) *child_op_ptr = &child_op;
-                return true;
-            }
+bool ref_partition_t::check_valid_bf16_out() const {
+    for (const auto &lt_id : partition_out_ids_) {
+        const auto iter = out_lt_2_op_.find(lt_id);
+        const auto &producer_op = iter->second;
+        // check if the op which produces the partition output supports f32 in bf16 out.
+        const dnnl_driver_t driver_kind
+                = opkind2driver(opstr2kind(producer_op.get().kind_));
+        if (valid_driver_out_bf16_mixed_dt().find(driver_kind)
+                == valid_driver_out_bf16_mixed_dt().end())
+            return false;
+        for (const auto &lt : producer_op.get().out_lts_) {
+            // all output lts should be bf16
+            if (lt.id_ == lt_id && lt.data_type_ != "bf16") { return false; }
         }
     }
 

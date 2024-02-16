@@ -17,10 +17,12 @@
 #ifndef GPU_OCL_OCL_GPU_KERNEL_HPP
 #define GPU_OCL_OCL_GPU_KERNEL_HPP
 
+#include <assert.h>
 #include <string>
 #include <CL/cl.h>
 
-#include "gpu/compute/kernel.hpp"
+#include "gpu/compute/compute.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -52,6 +54,7 @@ public:
 
     void save_output_events() override { save_events_ = true; }
 
+    bool is_on(const engine_t *engine) const override;
     status_t dump() const override;
     std::string name() const override;
 

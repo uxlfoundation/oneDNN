@@ -17,11 +17,10 @@
 #ifndef GPU_COMPUTE_KERNEL_HPP
 #define GPU_COMPUTE_KERNEL_HPP
 
-#include <functional>
 #include <memory>
 #include <utility>
 
-#include "common/verbose.hpp"
+#include "common/stream.hpp"
 #include "gpu/compute/context.hpp"
 #include "gpu/compute/kernel_arg_list.hpp"
 #include "gpu/compute/utils.hpp"
@@ -70,6 +69,11 @@ public:
     }
 
     virtual void save_output_events() {}
+
+    virtual bool is_on(const engine_t *engine) const {
+        gpu_assert(false) << "unimplemented function is_on() called";
+        return false;
+    }
 
     virtual status_t dump() const {
         gpu_assert(false) << "unimplemented function dump() called";
@@ -154,6 +158,8 @@ public:
 
     void save_output_events() { return impl_->save_output_events(); }
 
+    bool is_on(const engine_t *engine) const { return impl_->is_on(engine); }
+
     status_t dump() const {
         if (!gpu_utils::is_jit_dump_enabled()) return status::success;
         return impl_->dump();
@@ -190,6 +196,17 @@ public:
             kernels[i] = kernel_entry->second;
         }
         return status::success;
+    }
+
+    status_t get_kernels(const engine_t *engine, std::vector<kernel_t> &kernels,
+            const std::vector<const char *> &kernel_names) const {
+        if (!is_on(engine)) return status::runtime_error;
+        return get_kernels(kernels, kernel_names);
+    }
+
+    bool is_on(const engine_t *engine) const {
+        // All kernels are required to be located in the same context.
+        return !bundle.empty() && bundle.begin()->second.is_on(engine);
     }
 
     std::unordered_map<std::string, kernel_t> bundle;

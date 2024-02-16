@@ -19,9 +19,9 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
+#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_shuffle_pd.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

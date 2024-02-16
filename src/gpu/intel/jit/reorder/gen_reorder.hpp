@@ -20,6 +20,7 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
+#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 

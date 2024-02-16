@@ -24,10 +24,8 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_storage.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
-#include "gpu/intel/jit/gemm/include/driver_info.hpp"
-#include "gpu/intel/jit/gemm/include/problem.hpp"
-#include "gpu/intel/jit/gemm/jit_gemm_pd.hpp"
+#include "gpu/gemm/gpu_gemm.hpp"
+#include "gpu/jit/gemm/jit_gemm_pd.hpp"
 
 namespace dnnl {
 namespace impl {

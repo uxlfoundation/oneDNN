@@ -183,6 +183,12 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
     return status::success;
 }
 
+bool sycl_interop_gpu_kernel_t::is_on(const engine_t *engine) const {
+    if (engine->runtime_kind() != runtime_kind::sycl) return false;
+    auto &sycl_engine = *utils::downcast<const sycl_gpu_engine_t *>(engine);
+    return sycl_kernel().get_context() == sycl_engine.context();
+}
+
 status_t sycl_interop_gpu_kernel_t::dump() const {
     xpu::binary_t binary;
     CHECK(gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary));

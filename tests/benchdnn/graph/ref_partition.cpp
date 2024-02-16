@@ -21,6 +21,44 @@
 
 namespace graph {
 
+class driver_hash_t {
+public:
+    std::size_t operator()(const dnnl_driver_t dnnl_driver) const {
+        return std::hash<int>()(static_cast<int>(dnnl_driver));
+    }
+};
+
+// ops support bf16 in f32 out.
+const std::unordered_set<dnnl_driver_t, driver_hash_t> &
+valid_driver_in_bf16_mixed_dt() {
+    static const std::unordered_set<dnnl_driver_t, driver_hash_t> set = {
+            dnnl_driver_t::reorder,
+            dnnl_driver_t::binary,
+            dnnl_driver_t::conv,
+            dnnl_driver_t::deconv,
+            dnnl_driver_t::matmul,
+            dnnl_driver_t::resampling,
+            dnnl_driver_t::reduction,
+    };
+    return set;
+}
+
+// ops support f32 in bf16 out rewrite.
+const std::unordered_set<dnnl_driver_t, driver_hash_t> &
+valid_driver_out_bf16_mixed_dt() {
+    static const std::unordered_set<dnnl_driver_t, driver_hash_t> set {
+            dnnl_driver_t::reorder,
+            dnnl_driver_t::binary,
+            dnnl_driver_t::resampling,
+            dnnl_driver_t::reduction,
+            dnnl_driver_t::softmax,
+            dnnl_driver_t::bnorm,
+            dnnl_driver_t::eltwise,
+            dnnl_driver_t::lnorm,
+    };
+    return set;
+}
+
 ref_partition_t::ref_partition_t(const deserialized_graph &dg,
         const dnnl::graph::partition &par,
         const std::vector<dnnl::graph::logical_tensor> &ins,
@@ -62,7 +100,7 @@ int ref_partition_t::init_ref(const std::vector<size_t> &graph_in_ports,
         auto ref_prim = ::std::make_shared<ref_primitive_t>(par_op_ref.get());
 
         ref_prims_.emplace(par_op_ref.get().id_, ref_prim);
-        SAFE(ref_prim->init_prb(res), WARN);
+        SAFE(ref_prim->init_prb(bf16_to_f32_rewrite_lt_id_, res), WARN);
 
         SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
         ref_prim->init_memory_args(::get_test_engine());
@@ -303,8 +341,57 @@ int ref_partition_t::check_partition_correctness(
     } else {
         res->state = PASSED;
     }
+}
 
-    return OK;
+bool ref_partition_t::check_valid_bf16_in() const {
+    std::unordered_set<size_t> rewritable_in_ops, input_ops;
+    for (const auto &lt_id : partition_in_ids_) {
+        const auto iter = in_lt_2_ops_.find(lt_id);
+        const auto &consumer_ops = iter->second;
+        for (const auto &op : consumer_ops) {
+            // if the op already meets the requirement, skip the check
+            if (rewritable_in_ops.find(op.get().id_) != rewritable_in_ops.end())
+                continue;
+            // record all input ops for comparison
+            if (input_ops.find(op.get().id_) == input_ops.end())
+                input_ops.emplace(op.get().id_);
+
+            const dnnl_driver_t driver_kind
+                    = opkind2driver(opstr2kind(op.get().kind_));
+            // exclude ops which doesn't support bf16 in f32 out
+            // if one input op is not supported, this feature will not be enabled
+            if (valid_driver_in_bf16_mixed_dt().find(driver_kind)
+                    == valid_driver_in_bf16_mixed_dt().end())
+                return false;
+            for (const auto &lt : op.get().in_lts_) {
+                if (lt.id_ == lt_id && lt.data_type_ == "bf16") {
+                    // if current op has a bf16 input and support bf16 to f32,
+                    // add it to rewritable ops
+                    rewritable_in_ops.emplace(op.get().id_);
+                }
+            }
+        }
+    }
+    // at least one input op support bf16 to f32 transformation
+    return !rewritable_in_ops.empty();
+}
+
+bool ref_partition_t::check_valid_bf16_out() const {
+    for (const auto &lt_id : partition_out_ids_) {
+        const auto iter = out_lt_2_op_.find(lt_id);
+        const auto &producer_op = iter->second;
+        // check if the op which produces the partition output supports f32 in bf16 out.
+        const dnnl_driver_t driver_kind
+                = opkind2driver(opstr2kind(producer_op.get().kind_));
+        if (valid_driver_out_bf16_mixed_dt().find(driver_kind)
+                == valid_driver_out_bf16_mixed_dt().end())
+            return false;
+        for (const auto &lt : producer_op.get().out_lts_) {
+            // all output lts should be bf16
+            if (lt.id_ == lt_id && lt.data_type_ != "bf16") { return false; }
+        }
+    }
+    return true;
 }
 
 bool ref_partition_t::has_parent_op(const deserialized_op &op) const {

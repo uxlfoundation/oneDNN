@@ -124,6 +124,9 @@ struct deserialized_graph {
     // Returns a correspondent element from `ops_` based on a given ID.
     const deserialized_op &get_op(size_t id) const;
 
+    // Outputs the information about graph from operator<< into a string.
+    std::string get_string() const;
+
 private:
     std::string engine_kind_;
     std::string version_;

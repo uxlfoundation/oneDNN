@@ -19,7 +19,6 @@
 #include "gpu/compute/compute_engine.hpp"
 #include "gpu/compute/compute_stream.hpp"
 #include "gpu/compute/stream_profiler.hpp"
-#include "gpu/ocl/types_interop.hpp"
 
 namespace dnnl {
 namespace impl {

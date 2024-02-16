@@ -24,14 +24,14 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
-#include "gpu/intel/block_structure.hpp"
-#include "gpu/intel/compute/block_manipulation.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/dispatch.hpp"
-#include "gpu/intel/compute/kernel_ctx.hpp"
-#include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/types_interop.h"
-#include "gpu/intel/serialization.hpp"
+#include "gpu/block_structure.hpp"
+#include "gpu/compute/block_manipulation.hpp"
+#include "gpu/compute/compute_engine.hpp"
+#include "gpu/compute/dispatch.hpp"
+#include "gpu/compute/kernel_ctx.hpp"
+#include "gpu/compute/utils.hpp"
+#include "gpu/ocl/types_interop.h"
+#include "gpu/serialization.hpp"
 
 namespace dnnl {
 namespace impl {

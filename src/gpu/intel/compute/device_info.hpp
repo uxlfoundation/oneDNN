@@ -26,8 +26,6 @@
 #include "common/utils.hpp"
 #include "common/z_magic.hpp"
 
-#include "xpu/utils.hpp"
-
 #include "oneapi/dnnl/dnnl_config.h"
 
 namespace dnnl {

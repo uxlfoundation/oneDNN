@@ -14,14 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <cstdint>
 #include <thread>
 #include <type_traits>
 
 #include "common/type_helpers.hpp"
-#include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/utils.hpp"
+#include "gpu/compute/device_info.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/engine.hpp"

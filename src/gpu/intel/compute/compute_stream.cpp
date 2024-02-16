@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2024 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,9 @@
 
 #include "common/compiler_workarounds.hpp"
 
-#include "xpu/stream_profiler.hpp"
-
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/compute_stream.hpp"
-#include "gpu/intel/ocl/types_interop.hpp"
+#include "gpu/compute/compute_engine.hpp"
+#include "gpu/compute/compute_stream.hpp"
+#include "gpu/compute/stream_profiler.hpp"
 
 namespace dnnl {
 namespace impl {

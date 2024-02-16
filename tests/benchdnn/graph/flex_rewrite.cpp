@@ -24,6 +24,18 @@
 #include "flex_rewrite.hpp"
 #include "parser.hpp"
 
+namespace {
+std::string shape_to_string(const dnnl::graph::logical_tensor::dims &shape) {
+    if (shape.empty()) return std::string();
+
+    std::stringstream ss;
+    std::copy(shape.begin(), shape.end(),
+            std::ostream_iterator<int64_t>(ss, "x"));
+    auto res = ss.str();
+    return res.substr(0, res.length() - 1);
+}
+} // namespace
+
 namespace graph {
 
 void flex_rewrite::rewrite(deserialized_graph &dgraph) {
@@ -35,7 +47,6 @@ void flex_rewrite::rewrite(deserialized_graph &dgraph) {
     }
     infer_output_shape(dgraph, change_stride);
     quantized_graph_rewrite(dgraph);
-    graph_attrs_rewrite(dgraph);
 }
 
 void flex_rewrite::split_ncx(const std::string &data_format, dims_t &in,
@@ -877,6 +888,15 @@ void flex_rewrite::inports_shape_rewrite(
     for (auto &lt : aop.out_lts_) {
         set_default_deserialized_lt(lt);
     }
+
+    std::string shapes_str;
+    for (const auto &graph_input : dgraph.graph_tensors_) {
+        std::string shape_str = std::to_string(graph_input.first) + ":"
+                + shape_to_string(graph_input.second) + " ";
+        shapes_str += shape_str;
+    }
+    BENCHDNN_PRINT(7, "[INFO] Graph input tensor ids and shapes: %s\n",
+            shapes_str.c_str());
 }
 
 void flex_rewrite::op_attrs_rewrite(deserialized_graph &dgraph) {
@@ -983,17 +1003,6 @@ void flex_rewrite::quantized_graph_rewrite(deserialized_graph &dgraph) {
             }
             aop.attrs_["zps"].s64_vector_ = zps;
         }
-    }
-}
-
-void flex_rewrite::graph_attrs_rewrite(deserialized_graph &dgraph) {
-
-    // if the fpmath mode is specified by users through cml
-    if (fpmath_mode_ != "default") dgraph.set_fpmath_mode(fpmath_mode_);
-
-    for (auto &aop : dgraph.ops_) {
-        // save the graph-level config for ops
-        aop.fpmath_mode_ = dgraph.get_fpmath_mode();
     }
 }
 

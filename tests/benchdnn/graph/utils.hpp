@@ -191,8 +191,6 @@ void change_format_to_ncx(dims_t &dims);
 // every partition in format: `{N} {M} ...`.
 std::string verbose_partitions_n_ops(
         const std::vector<dnnl::graph::partition> &partitions);
-// Returns logical dims as a string object in dims_t format
-std::string lt_dims2str(const dnnl::graph::logical_tensor::dims &dims);
 
 template <typename First, typename... Rest>
 void change_format_to_ncx(First &first, Rest &...rest) {
@@ -231,8 +229,6 @@ inline const cpp_engine_t &get_graph_engine() {
     static const cpp_engine_t instance;
     return instance;
 }
-
-bool is_gc_backend();
 
 } // namespace graph
 #endif

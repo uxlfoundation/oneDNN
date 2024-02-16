@@ -709,15 +709,6 @@ int doit(const prb_t *prb, res_t *res) {
                          partition_mem_map_v[i], res),
                     WARN);
         }
-
-        auto &graph_mem_req = graph_memory_req_args_t::get_instance();
-        // release the memory assigned for the reference path of the partition,
-        // while the memory for the graph path needs to be kept for the
-        // performance mode if needed.
-        graph_mem_req.reset_path(REF);
-        if (!has_bench_mode_bit(mode_bit_t::perf)) {
-            graph_mem_req.reset_path(GRAPH_USER);
-        }
     }
 
     if (has_bench_mode_bit(mode_bit_t::perf)) {

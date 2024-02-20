@@ -812,6 +812,10 @@ bool data_types_ok(
             && (utils::one_of(hw.to_ngen(), ngen::HW::XeLP, ngen::HW::XeHPG)
                     && !is_xelpg))
         return false;
+    if (is_bf8
+            && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
+        return false;
+    if (is_hf8) return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;
     if (prb.is_bwd_w) {

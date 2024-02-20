@@ -849,6 +849,9 @@ bool data_types_ok(const conv_problem_t &prb, const hw_t &hw) {
     if (is_bf8
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
         return false;
+    if (is_bf8
+            && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
+        return false;
     if (is_hf8) return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;

@@ -104,16 +104,17 @@ void print_header(const filter_status_t &filter_status) noexcept {
         // these fail (not printing a header is reasonable in this case)
         try {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-            xpu::ocl::print_verbose_header();
+            gpu::ocl::print_verbose_header();
 #endif
 #ifdef DNNL_WITH_SYCL
-            xpu::sycl::print_verbose_header();
+            sycl::print_verbose_header();
 #endif
 #ifdef ONEDNN_BUILD_GRAPH
             graph::utils::print_verbose_header();
 #endif
         } catch (...) {
-            verbose_printf("info,exception while printing verbose header\n");
+            printf("onednn_verbose,info,exception while printing verbose "
+                   "header\n");
         }
 #ifdef DNNL_EXPERIMENTAL
         verbose_printf("info,experimental features are enabled\n");

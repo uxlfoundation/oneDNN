@@ -71,6 +71,11 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
                         || utils::one_of(src_dt, bf16, f16, f32)
                         || utils::one_of(dst_dt, bf16, f16, f32));
     };
+    bool any_hf8 = utils::one_of(data_type::f8_e4m3, dst_dt, src_dt);
+    auto skip_mask = dnnl_primitive_attr::skip_mask_t::post_ops
+            | dnnl_primitive_attr::skip_mask_t::zero_points_runtime
+            | dnnl_primitive_attr::skip_mask_t::scales_runtime;
+    using namespace data_type;
     VDISPATCH_REORDER(
             src_engine == dst_engine && src_engine->kind() == engine_kind::gpu,
             VERBOSE_BAD_ENGINE_KIND);
@@ -83,9 +88,11 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     VDISPATCH_REORDER(IMPLICATION(src_dt == f16 || dst_dt == f16,
                               device_info->has_native(f16)),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(IMPLICATION(src_dt == bf16, is_bf16_or_f32_or_f8(dst_dt)),
+    VDISPATCH_REORDER(IMPLICATION(src_dt == data_type::bf16,
+                              is_bf16_or_f32_or_bf8(dst_dt)),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(IMPLICATION(dst_dt == bf16, is_bf16_or_f32_or_f8(src_dt)),
+    VDISPATCH_REORDER(IMPLICATION(dst_dt == data_type::bf16,
+                              is_bf16_or_f32_or_bf8(src_dt)),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_REORDER(IMPLICATION(utils::one_of(f8_e5m2, src_dt, dst_dt),
                               device_info->has_native(f8_e5m2)),

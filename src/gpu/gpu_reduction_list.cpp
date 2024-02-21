@@ -19,6 +19,7 @@
 #include "gpu/ocl/reduction/atomic_reduction.hpp"
 #include "gpu/ocl/reduction/combined_reduction.hpp"
 #include "gpu/ocl/reduction/ref_reduction.hpp"
+#include "gpu/ocl/reduction/reusable_ref_reduction.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -28,13 +29,10 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
-        GPU_INSTANCE_INTEL_DEVMODE(intel::jit::jit_reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::atomic_reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::combined_reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::ref_reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::reusable_ref_reduction_t)
-        GPU_INSTANCE_NVIDIA(nvidia::cudnn_reduction_t)
-        GPU_INSTANCE_AMD(amd::miopen_reduction_t)
+        INSTANCE(ocl::atomic_reduction_t)
+        INSTANCE(ocl::combined_reduction_t)
+        INSTANCE(ocl::ref_reduction_t)
+        INSTANCE(ocl::reusable_ref_reduction_t)
         nullptr,
 });
 // clang-format on

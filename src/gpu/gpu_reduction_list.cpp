@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,29 +16,9 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/reduction/atomic_reduction.hpp"
-#include "gpu/intel/ocl/reduction/combined_reduction.hpp"
-#include "gpu/intel/ocl/reduction/ref_reduction.hpp"
-#include "gpu/intel/ocl/reduction/reusable_ref_reduction.hpp"
-
-#ifdef DNNL_DEV_MODE
-#include "gpu/intel/jit/jit_reduction.hpp"
-#endif
-
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_reduction.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_reduction.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/simple_reduction.hpp"
-#endif
+#include "gpu/ocl/reduction/atomic_reduction.hpp"
+#include "gpu/ocl/reduction/combined_reduction.hpp"
+#include "gpu/ocl/reduction/ref_reduction.hpp"
 
 namespace dnnl {
 namespace impl {

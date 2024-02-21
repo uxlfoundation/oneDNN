@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,10 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_REDUCTION_COMBINED_REDUCTION_HPP
-#define GPU_INTEL_OCL_REDUCTION_COMBINED_REDUCTION_HPP
+#ifndef GPU_combined_REDUCTION_HPP
+#define GPU_combined_REDUCTION_HPP
 
 #include "common/primitive.hpp"
+#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_reduction_pd.hpp"
 #include "gpu/ocl/reduction/reduction_utils.hpp"
 #include "gpu/primitive_conf.hpp"
@@ -25,7 +26,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 struct reduction_phase_conf_t : public reduction_subproblem_t {
@@ -37,7 +37,8 @@ struct reduction_phase_conf_t : public reduction_subproblem_t {
     data_type_t src_type, dst_type;
     compute::nd_range_t nd_range;
 
-    int outer_tile_size, slm_reductions;
+    int vect_size;
+    bool reduce_vector;
     bool is_final, is_first;
     int subgroup_size;
     bool with_block_reads;
@@ -50,7 +51,7 @@ struct combined_reduction_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:combined", combined_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = smask_t::post_ops | smask_t::gpu_attr;
             VDISPATCH_REDUCTION_SC(
@@ -71,7 +72,7 @@ struct combined_reduction_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx,
                 const reduction_phase_conf_t &phase) const;
         void init_scratchpad();
@@ -80,7 +81,7 @@ struct combined_reduction_t : public gpu_primitive_t {
         std::vector<reduction_phase_conf_t> phases;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         auto &phases = pd()->phases;
 
         status_t status;
@@ -112,7 +113,6 @@ private:
 };
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

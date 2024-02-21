@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,11 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_REDUCTION_ATOMIC_REDUCTION_HPP
-#define GPU_INTEL_OCL_REDUCTION_ATOMIC_REDUCTION_HPP
+#ifndef GPU_atomic_REDUCTION_HPP
+#define GPU_atomic_REDUCTION_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
+#include "gpu/compute/dispatch_reusable.hpp"
+#include "gpu/gpu_primitive.hpp"
+#include "gpu/gpu_primitive_attr.hpp"
 #include "gpu/gpu_reduction_pd.hpp"
 #include "gpu/ocl/reduction/reduction_utils.hpp"
 #include "gpu/primitive_conf.hpp"
@@ -27,11 +30,9 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
-struct atomic_reduction_key_params_t
-    : trivially_serializable_t<atomic_reduction_key_params_t> {
+struct atomic_reduction_key_params_t {
     status_t create_generator(const compute::compute_engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t kernel_ctx;
@@ -46,13 +47,30 @@ struct atomic_reduction_key_params_t
         return kernel_names;
     }
 
+#if __cplusplus >= 202002L
+    bool operator==(const atomic_reduction_key_params_t &) const = default;
+#endif
+    serialized_t serialize() const {
+        assert_trivially_serializable(atomic_reduction_key_params_t);
+        return {*this};
+    }
+
+    static atomic_reduction_key_params_t deserialize(const serialized_t &s) {
+        atomic_reduction_key_params_t t {};
+        deserializer_t d(s);
+        d.pop(t);
+        return t;
+    }
+
     status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
 
     // Basic reduction parameters
-    reduction_alg_kind_t alg, secondary_alg;
+    alg_kind_t alg;
     data_type_t src_type, dst_type;
 
     // Implementation-specific parameters
+    bool is_first, is_final;
+    bool padding[2] = {0};
     int32_t threads_per_eu;
     int32_t subgroup_size;
     int32_t vect_size;
@@ -67,9 +85,8 @@ assert_trivially_serializable(atomic_reduction_key_params_t);
 
 struct atomic_reduction_conf_t : public reduction_subproblem_t {
     atomic_reduction_conf_t(const reduction_subproblem_t &subprb,
-            reduction_alg_kind_t alg, reduction_alg_kind_t secondary_alg,
-            data_type_t src_type, data_type_t dst_type,
-            const compute::device_info_t &device_info,
+            data_type_t src_type, data_type_t dst_type, bool is_first,
+            bool is_final, const compute::device_info_t &device_info,
             gpu_primitive_attr_t *gpu_attr);
     status_t init_dispatcher(const compute::compute_engine_t *engine,
             const gpu_primitive_attr_t *gpu_attr);
@@ -85,7 +102,7 @@ struct atomic_reduction_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:atomic", atomic_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = smask_t::gpu_attr;
             VDISPATCH_REDUCTION_SC(
@@ -105,8 +122,8 @@ struct atomic_reduction_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
-        status_t init_finalization_pd(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
+        status_t init_finalization_pd(engine_t *engine);
         void init_scratchpad();
 
         int div = 0;
@@ -116,7 +133,7 @@ struct atomic_reduction_t : public gpu_primitive_t {
         std::shared_ptr<primitive_desc_t> eltwise_pd_;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         auto &phases = pd()->phases;
 
         for (auto &phase : phases) {
@@ -144,11 +161,10 @@ private:
     }
 
     std::vector<compute::kernel_t> kernels_;
-    std::shared_ptr<impl::primitive_t> eltwise_p_;
+    std::shared_ptr<primitive_t> eltwise_p_;
 };
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

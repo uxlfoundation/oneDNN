@@ -16,25 +16,9 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/reduction/atomic_reduction.hpp"
-#include "gpu/intel/ocl/reduction/combined_reduction.hpp"
-#include "gpu/intel/ocl/reduction/ref_reduction.hpp"
-#include "gpu/intel/ocl/reduction/reusable_ref_reduction.hpp"
-
-#ifdef DNNL_DEV_MODE
-#include "gpu/intel/jit/jit_reduction.hpp"
-#endif
-
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_reduction.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_reduction.hpp"
-#endif
+#include "gpu/ocl/reduction/atomic_reduction.hpp"
+#include "gpu/ocl/reduction/combined_reduction.hpp"
+#include "gpu/ocl/reduction/ref_reduction.hpp"
 
 namespace dnnl {
 namespace impl {

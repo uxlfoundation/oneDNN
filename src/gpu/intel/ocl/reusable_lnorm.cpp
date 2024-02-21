@@ -54,9 +54,9 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
 
     // We require that the lnorm axis is a single dense block, so that it can
     // be represented by a stride + size alone.
-    size_t ndims = into<size_t>(src_buf.ndims);
-    std::vector<dim_idx_t> dims = get_dims(ndims);
-    block_layout_t layout = src_buf.layout();
+    size_t ndims = gpu_utils::into<size_t>(input_buf.ndims);
+    std::vector<compute::dim_id_t> dims = get_dims(ndims);
+    block_layout_t layout = input_buf.layout();
     const block_t *norm_block = [&layout, &dims]() -> const block_t * {
         const block_t *ret = nullptr;
         for (const block_t &block : layout) {

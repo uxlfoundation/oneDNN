@@ -133,10 +133,8 @@ struct gen_gemm_t : public gpu_gemm_t {
                 ok = ok && d->b_type() == bf16
                         && utils::one_of(d->c_type(), bf16, f32)
                         && utils::one_of(d->acc_type, bf16, f32);
-            } else if (!wei_decomp_) {
-                ok = ok
-                        && utils::one_of(
-                                d->a_type(), f32, f16, f8_e5m2, f8_e4m3)
+            } else if (!wei_decomp) {
+                ok = ok && utils::one_of(d->a_type(), f32, f16, f8_e5m2)
                         && d->b_type() == d->a_type()
                         && utils::one_of(d->acc_type, d->a_type(), f32)
                         && IMPLICATION(

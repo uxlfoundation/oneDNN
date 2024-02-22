@@ -299,11 +299,6 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
     // process data type
     const auto dt_str = parser::get_substr(s, start_pos, ':');
     this->dt = str2dt(dt_str.c_str());
-    if (this->dt == dnnl_data_type_undef) {
-        BENCHDNN_PRINT(0, "Error: data type \'%s\' was not recognized.\n",
-                dt_str.c_str());
-        SAFE_V(FAIL);
-    }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
     // process groups
@@ -369,21 +364,11 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     // process data type
     const auto dt_str = parser::get_substr(s, start_pos, ':');
     this->dt = str2dt(dt_str.c_str());
-    if (this->dt == dnnl_data_type_undef) {
-        BENCHDNN_PRINT(0, "Error: data type \'%s\' was not recognized.\n",
-                dt_str.c_str());
-        SAFE_V(FAIL);
-    }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
     // process groups
-    const auto g_str = parser::get_substr(s, start_pos, ':');
-    parser::parse_vector_str(this->groups, dims_t(),
-            parser::parser_utils::stoll_safe, g_str, 'x');
     if (!groups.empty()) {
         switch (this->policy) {
-            case PER_TENSOR:
-            case PER_OC:
             case PER_OCIC:
                 if (this->groups.size() != 2) {
                     BENCHDNN_PRINT(0, "%s\n",
@@ -403,90 +388,7 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     return OK;
 }
 
-int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
-    *this = zero_points_t::entry_t();
-    if (s.empty()) return OK;
-
-    size_t start_pos = 0;
-
-    // process policy
-    const auto policy_str = parser::get_substr(s, start_pos, ':');
-    this->policy = str2policy(policy_str);
-    if (this->policy == POLICY_TOTAL) {
-        BENCHDNN_PRINT(0, "Error: policy \'%s\' was not recognized.\n",
-                policy_str.c_str());
-        SAFE_V(FAIL);
-    }
-    if (start_pos == std::string::npos) return OK;
-
-    if (start_pos >= s.size()) {
-        BENCHDNN_PRINT(0, "%s \'%s\'\n",
-                "Error: dangling symbol at the end of input", s.c_str());
-        SAFE_V(FAIL);
-    }
-
-    if (this->policy == COMMON) {
-        float value = 0.0f;
-        SAFE(parse_value_and_runtime(
-                     value, parser::get_substr(s, start_pos, ':')),
-                WARN);
-        int zp_val = static_cast<int>(value);
-        if (static_cast<float>(zp_val) != value) {
-            BENCHDNN_PRINT(0, "%s \'%d\'\n",
-                    "Error: the zero point is not exact:", zp_val);
-            SAFE_V(FAIL);
-        }
-        this->value = zp_val;
-    }
-
-    if (start_pos == std::string::npos) return OK;
-
-    if (start_pos >= s.size()) {
-        BENCHDNN_PRINT(0, "%s \'%s\'\n",
-                "Error: dangling symbol at the end of input", s.c_str());
-        SAFE_V(FAIL);
-    }
-
-    // process data type
-    const auto dt_str = parser::get_substr(s, start_pos, ':');
-    this->dt = str2dt(dt_str.c_str());
-
-    if (start_pos == std::string::npos) return OK;
-
-    if (start_pos >= s.size()) {
-        BENCHDNN_PRINT(0, "%s \'%s\'\n",
-                "Error: dangling symbol at the end of input", s.c_str());
-        SAFE_V(FAIL);
-    }
-
-    // process groups
-    if (!groups.empty()) {
-        switch (this->policy) {
-            case PER_OCIC:
-                if (this->groups.size() != 2) {
-                    BENCHDNN_PRINT(0, "%s\n",
-                            "Error: number of groups should be equal to number "
-                            "of dimension bits set in the mask.");
-                    SAFE_V(FAIL);
-                }
-                break;
-            default:
-                BENCHDNN_PRINT(0, "%s\n",
-                        "Error: groups are supported only for policy PER_OCIC");
-                SAFE_V(FAIL);
-        }
-    }
-
-    if (start_pos == std::string::npos) return OK;
-
-    if (start_pos >= s.size()) {
-        BENCHDNN_PRINT(0, "%s \'%s\'\n",
-                "Error: dangling symbol at the end of input", s.c_str());
-        SAFE_V(FAIL);
-    }
-
-    return OK;
-}
+#undef HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING
 
 int attr_t::zero_points_t::from_str(const std::string &s) {
     *this = zero_points_t();

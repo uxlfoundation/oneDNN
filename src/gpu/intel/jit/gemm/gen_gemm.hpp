@@ -239,18 +239,21 @@ struct gen_gemm_t : public gpu_gemm_t {
                 }
             }
 
-            auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
-            auto &src_scales = attr()->scales_.get(DNNL_ARG_SRC);
-
-            if (quant_enabled && wei_scales.ndims_ > 1) wei_scales_2d_ = true;
-            if (quant_enabled && src_scales.ndims_ > 1) src_scales_2d_ = true;
-
-            for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
-                auto mask = attr()->scales_.get(s).mask_;
-                VDISPATCH_GEMM(utils::one_of(mask, 0, 1 << 0, 1 << 1, 1 << 2)
-                                || (s == DNNL_ARG_WEIGHTS && wei_scales_2d_)
-                                || (s == DNNL_ARG_SRC && src_scales_2d_),
-                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                ok = ok
+                        && IMPLICATION(
+                                utils::one_of(d->c_type(), f32, s8, u8, f16),
+                                arch_ >= arch_t::xe_hp);
+            } else if (d->a_type() == bf16) {
+                ok = ok && d->b_type() == bf16
+                        && utils::one_of(d->c_type(), bf16, f32)
+                        && utils::one_of(d->acc_type, bf16, f32);
+            } else if (!wei_decomp) {
+                ok = ok && utils::one_of(d->a_type(), f32, f16, f8_e5m2)
+                        && d->b_type() == d->a_type()
+                        && utils::one_of(d->acc_type, d->a_type(), f32)
+                        && IMPLICATION(utils::one_of(f8_e5m2, d->a_type(),
+                                               d->b_type(), d->c_type()),
+                                arch_ >= arch_t::xe_hpc);
             }
 
             if (wei_scales_2d_) {

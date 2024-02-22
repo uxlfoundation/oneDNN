@@ -1105,6 +1105,14 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
     switch (op) {
         case Opcode::nop_gen12:
         case Opcode::illegal:
+        case Opcode::goto_:
+        case Opcode::if_:
+        case Opcode::else_:
+        case Opcode::endif:
+        case Opcode::join:
+        case Opcode::cont:
+        case Opcode::break_:
+        case Opcode::while_:
             return false;
         case Opcode::directive:
             switch (opNum) {

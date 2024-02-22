@@ -493,23 +493,15 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                         == policy_t::PER_OCIC
                 || prb->attr.scales.get(DNNL_ARG_WEIGHTS).policy
                         == policy_t::PER_OCIC) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
             return;
         }
 
-        const auto &po = prb->attr.post_ops;
-        // F64 post-ops unsupported.
-        if (prb->dst_dt() == dnnl_f64 && !po.is_def()) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
         // GPU supports only default sum_dt argument.
+        const auto &po = prb->attr.post_ops;
         const int sum_idx = po.find(attr_t::post_ops_t::kind_t::SUM);
         if (sum_idx != -1 && po.entry[sum_idx].sum.dt != dnnl_data_type_undef) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
             return;
         }
 
@@ -553,14 +545,13 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
 
-        // GPU supports fp8 through ref only for f8_e4m3 on all platformas and
-        // for f8_e5m2 pre-XeHPC with limited post-op support.
+        // GPU supports f8_e4m3 on all platformas and f8_e5m2 pre XeHPC through
+        // ref only, with limited post-op support.
         if (((prb->src_dt() == dnnl_f8_e4m3 || prb->dst_dt() == dnnl_f8_e4m3)
                     || (prb->src_dt() == dnnl_f8_e5m2
                             || prb->dst_dt() == dnnl_f8_e5m2))
                 && (!po.is_def() || !prb->attr.scales.is_def())) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
             return;
         }
     }

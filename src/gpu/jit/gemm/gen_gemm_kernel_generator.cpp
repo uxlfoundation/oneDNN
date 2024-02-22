@@ -27175,47 +27175,13 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                     if (!one_of(Ts_real, Type::f16, Type::f32))
                                         stub();
                                     auto tmp1 = copyTemp[1].sub(
-                                            0, ngen::DataType::uw);
-                                    if (Ts_real == Type::f32) {
-                                        mov(nelems_real | modMov, tmp1.ud()(1),
-                                                sreg.ud()(scrosspack));
-                                        mov(nelems_real | modMov, tmp1.hf()(2),
-                                                tmp1.f()(1));
-                                        mov(nelems_real | modMov, tmp1(1),
-                                                tmp1(2));
-                                    } else {
-                                        mov(nelems_real | modMov, tmp1(1),
-                                                sreg(scrosspack));
-                                    }
-                                    // get sign bits
-                                    and_(nelems_real | nz | f2[0], null.uw(),
-                                            tmp1(1), Immediate(0x8000));
-                                    // multiply by hf 128 to force overflow of exponent
-                                    mul(nelems_real, tmp1.hf()(1), tmp1.hf()(1),
-                                            Immediate::hf(0x5800));
-                                    // multiply by 2^(-15) to undo mul, preserving overflows,
-                                    // shift and underflow for hf8
-                                    mul(nelems_real, tmp1.hf()(1), tmp1.hf()(1),
-                                            Immediate::hf(0x0200));
-                                    // check for NaN, inf.
-                                    and_(nelems_real | ze | f0[0], null.uw(),
-                                            ~tmp1(1), 0x7C00);
-                                    // round.
-                                    add(nelems_real, tmp1(1), tmp1(1),
-                                            Immediate(-0x40));
-                                    // check for zero mantissa.
-                                    and_(nelems_real | nz | f1[0], null.uw(),
-                                            tmp1(1), 0x3FF);
-                                    eshr(nelems_real, tmp1(1), tmp1(1), 7,
-                                            strategy, state);
-                                    add(nelems_real | f1[0], tmp1(1), tmp1(1),
-                                            Immediate(1));
-                                    mov(nelems_real | modMov | f0[0], tmp1(1),
-                                            Immediate(0x7F));
-                                    or_(nelems_real | f2[0], tmp1(1), tmp1(1),
-                                            Immediate(0x80));
-                                    mov(nelems_real | modMov, tmp0(2), tmp1(1));
-                                    mov(nelems_real | modMov, tmp0(1), tmp0(2));
+                                            0, ngen::DataType::hf);
+                                    movePipes(tmp0);
+                                    movePipes(sreg);
+                                    mov(nelems_real | modMov, tmp1(1), tmp0(1));
+                                    mov(nelems_real | modMov, tmp0.bf8()(1),
+                                            tmp1(1));
+
                                     mov(nelems_real | modMov,
                                             dreg.ub()(dcrosspack),
                                             tmp0.ub()(1));

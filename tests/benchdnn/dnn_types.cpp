@@ -180,14 +180,14 @@ int attr_t::get_default_mask(policy_t policy) {
 }
 
 int attr_t::policy2mask(int arg, policy_t policy,
-        dnnl_primitive_kind_t prim_kind, int ndims, bool has_groups) {
+        dnnl_primitive_kind_t prim_kind, const_dnnl_memory_desc_t wei_md,
+        bool has_groups) {
+    if (arg != DNNL_ARG_WEIGHTS || policy == policy_t::COMMON)
+        return attr_t::get_default_mask(policy);
 
     // Handle of weights mask for various primitives.
     if (prim_kind == dnnl_convolution || prim_kind == dnnl_deconvolution
             || prim_kind == dnnl_inner_product) {
-        if (arg != DNNL_ARG_WEIGHTS || policy == policy_t::COMMON)
-            return attr_t::get_default_mask(policy);
-
         switch (policy) {
             case PER_OC:
                 if (has_groups)
@@ -197,26 +197,21 @@ int attr_t::policy2mask(int arg, policy_t policy,
             default: SAFE(FAIL, CRIT); return -1;
         }
     } else if (prim_kind == dnnl_matmul) {
-        if (arg != DNNL_ARG_WEIGHTS || policy == policy_t::COMMON)
-            return attr_t::get_default_mask(policy);
-
-        if (ndims <= 0) SAFE_V(FAIL);
+        if (query_md_ndims(wei_md) <= 0) SAFE_V(FAIL);
         switch (policy) {
-            case PER_OC: return (1 << (ndims - 1));
-            case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));
+            case PER_OC: return (1 << (query_md_ndims(wei_md) - 1));
+            case PER_OCIC:
+                return (1 << (query_md_ndims(wei_md) - 1))
+                        + (1 << (query_md_ndims(wei_md) - 2));
             default: SAFE_V(FAIL); return -1;
         }
-    } else if (prim_kind == dnnl_layer_normalization) {
-        if (arg != DNNL_ARG_SRC_1 || policy != policy_t::PER_OC)
-            return attr_t::get_default_mask(policy);
-
-        // PER_OC
-        assert(policy == policy_t::PER_OC);
-        if (ndims <= 0) SAFE_V(FAIL);
-        return 1 << (ndims - 1);
     } else {
-        // Default case
-        return attr_t::get_default_mask(policy);
+        assert(prim_kind == dnnl_undefined_primitive);
+        assert(!"Weights may have specific mask for a given primitive. "
+                "Please re-direct new primitive to one of two branches "
+                "above");
+        SAFE(FAIL, CRIT);
+        return -1;
     }
 }
 
@@ -243,14 +238,6 @@ int parse_value_and_runtime(float &value, const std::string &s) {
     return OK;
 }
 
-#define HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING() \
-    if (start_pos == std::string::npos) return OK; \
-    if (start_pos >= s.size()) { \
-        BENCHDNN_PRINT(0, "%s \'%s\'\n", \
-                "Error: dangling symbol at the end of input", s.c_str()); \
-        SAFE_V(FAIL); \
-    }
-
 int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
     *this = arg_scales_t::entry_t();
     if (s.empty()) return OK;
@@ -264,7 +251,13 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
                 policy_str.c_str(), "is not recognized.");
         SAFE_V(FAIL);
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
+        SAFE_V(FAIL);
+    }
 
     // process scale value for COMMON policy
     if (this->policy == COMMON) {
@@ -277,17 +270,26 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
             SAFE_V(FAIL);
         }
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
+        SAFE_V(FAIL);
+    }
 
     // process data type
     const auto dt_str = parser::get_substr(s, start_pos, ':');
     this->dt = str2dt(dt_str.c_str());
-    if (this->dt == dnnl_data_type_undef) {
-        BENCHDNN_PRINT(0, "Error: data type \'%s\' was not recognized.\n",
-                dt_str.c_str());
+
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
         SAFE_V(FAIL);
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
     // process groups
     const auto g_str = parser::get_substr(s, start_pos, ':');
@@ -310,7 +312,14 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
                 SAFE_V(FAIL);
         }
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
+        SAFE_V(FAIL);
+    }
 
     return OK;
 }
@@ -329,7 +338,13 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
                 policy_str.c_str());
         SAFE_V(FAIL);
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
+        SAFE_V(FAIL);
+    }
 
     if (this->policy == COMMON) {
         float value = 0.0f;
@@ -344,22 +359,28 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
         }
         this->value = zp_val;
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
+        SAFE_V(FAIL);
+    }
 
     // process data type
     const auto dt_str = parser::get_substr(s, start_pos, ':');
     this->dt = str2dt(dt_str.c_str());
-    if (this->dt == dnnl_data_type_undef) {
-        BENCHDNN_PRINT(0, "Error: data type \'%s\' was not recognized.\n",
-                dt_str.c_str());
+
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
         SAFE_V(FAIL);
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
     // process groups
-    const auto g_str = parser::get_substr(s, start_pos, ':');
-    parser::parse_vector_str(this->groups, dims_t(),
-            parser::parser_utils::stoll_safe, g_str, 'x');
     if (!groups.empty()) {
         switch (this->policy) {
             case PER_OCIC:
@@ -376,12 +397,17 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
                 SAFE_V(FAIL);
         }
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    if (start_pos == std::string::npos) return OK;
+
+    if (start_pos >= s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
+        SAFE_V(FAIL);
+    }
 
     return OK;
 }
-
-#undef HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING
 
 int attr_t::zero_points_t::from_str(const std::string &s) {
     *this = zero_points_t();
@@ -552,8 +578,7 @@ dnnl_alg_kind_t attr_t::post_ops_t::kind2dnnl_kind(pk_t kind) {
     return kind_table[table_size - 1].dnnl_kind;
 }
 
-std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
-        int ndims, dnnl_primitive_kind_t prim_kind) const {
+std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks() const {
     std::vector<std::pair<int, int>> v_masks;
     for (int idx = 0; idx < len(); ++idx) {
         const auto &e = this->entry[idx];
@@ -564,8 +589,7 @@ std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
             auto mask_input = e.binary.mask_input;
             mask = mask_input == mask_input_t::mask
                     ? e.binary.mask
-                    : policy2mask(
-                            DNNL_ARG_SRC_1, e.binary.policy, prim_kind, ndims);
+                    : attr_t::get_default_mask(e.binary.policy);
             arg = DNNL_ARG_SRC_1;
         } else if (e.is_prelu_kind()) {
             mask = attr_t::get_default_mask(e.prelu.policy);
@@ -584,7 +608,6 @@ bool attr_t::is_def(bool skip_fpmath) const {
     return scales.is_def() && zero_points.is_def() && post_ops.is_def()
             && scratchpad_mode == get_default_scratchpad_mode()
             && IMPLICATION(!skip_fpmath, fpmath_mode.is_def())
-            && acc_mode == dnnl_accumulation_mode_strict
             && deterministic.is_def();
 }
 
@@ -953,8 +976,7 @@ struct post_ops_rhs_tensor_entry_t {
 namespace {
 
 post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
-        const attr_t::post_ops_t::entry_t &entry, int ndims,
-        dnnl_primitive_kind_t prim_kind) {
+        const attr_t::post_ops_t::entry_t &entry) {
     if (entry.is_prelu_kind()) {
         const auto &prelu = entry.prelu;
         const int mask = attr_t::get_default_mask(prelu.policy);
@@ -969,8 +991,7 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
             case mask_input_t::none: mask = 0; break;
             case mask_input_t::mask: mask = binary.mask; break;
             case mask_input_t::policy:
-                mask = attr_t::policy2mask(
-                        DNNL_ARG_SRC_1, binary.policy, prim_kind, ndims);
+                mask = attr_t::get_default_mask(binary.policy);
                 break;
             default: assert(!"unknown mask_input value"); break;
         }
@@ -982,8 +1003,8 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
 
 } // namespace
 
-int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
-        const dnnl_dims_t prb_dims, dnnl_primitive_kind_t prim_kind) {
+int attr_args_t::prepare_post_ops_mds(
+        const attr_t &attr, int ndims, const dnnl_dims_t prb_dims) {
     const auto &po = attr.post_ops;
     dnnl_dims_t dims;
     for (int d = 0; d < ndims; ++d)
@@ -993,8 +1014,7 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
         const auto &e = po.entry[idx];
         if (e.is_binary_kind() || e.is_prelu_kind()) {
 
-            const auto po_rhs_tensor_entry
-                    = get_po_rhs_tensor_entry(e, ndims, prim_kind);
+            const auto po_rhs_tensor_entry = get_po_rhs_tensor_entry(e);
             const int mask = po_rhs_tensor_entry.mask;
 
             // deduce binary, prelu dims based on input policy

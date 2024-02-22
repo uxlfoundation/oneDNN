@@ -19064,9 +19064,9 @@ void gemm_kernel_generator_t<hw>::gemmHilbertlikeOrder(
         xor_(2, temp(1), nbu(1), np1);
         avg(2, uo(1), uo(1), np1.d());
         xor_(1 | bv, np1, np1, ~nbu);
-        and_(2, uo(1), uo(1), temp(1));
+        and_(2, uo(1), temp(1), uo(1));
         emad(1, uv1, -1, u.uw(), v.uw(), strategy, state);
-        add(2, a(1), a(1), uo(1));
+        add(2, a(1), uo(1), a(1));
 
         cmp(2 | le | f0[0], u(1), hilbertBail);
         swapXY(8 | ~bu | any8);

@@ -38,6 +38,17 @@ public:
     buffer_memory_storage_t(
             engine_t *engine, const memory_storage_t *root_storage);
 
+    ~buffer_memory_storage_t() override {
+        if (base_offset_ == 0 && buffer_.use_count() == 1) {
+            auto size = mem_reg().allocations[buffer_.get()];
+            mem_reg().remove(buffer_.get());
+            printf("Buffer free ptr=%p with size %lu, total allocation=%f "
+                   "GiB\n",
+                    buffer_.get(), size,
+                    1.0 * mem_reg().size() / (1024 * 1024 * 1024));
+        }
+    };
+
     xpu::sycl::buffer_u8_t &buffer() const { return *buffer_; }
 
     memory_kind_t memory_kind() const override { return memory_kind::buffer; }

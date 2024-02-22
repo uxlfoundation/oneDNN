@@ -60,8 +60,14 @@ status_t usm_memory_storage_t::map_data(
             = *utils::downcast<xpu::sycl::stream_impl_t *>(stream->impl())
                        ->queue();
 
+    printf("USM malloc host with size %lu, total allocation "
+           "size: %f GiB\n",
+            size, 1.0 * (mem_reg().size() + size) / (1024 * 1024 * 1024));
+
     void *host_ptr = ::sycl::malloc_host(size, sycl_queue.get_context());
     if (!host_ptr) return status::out_of_memory;
+    mem_reg().add(host_ptr, size);
+    printf("USM malloc host ptr=%p\n", host_ptr);
 
     sycl_queue.wait_and_throw();
     sycl_queue.memcpy(host_ptr, usm_ptr, size).wait();
@@ -73,6 +79,14 @@ status_t usm_memory_storage_t::map_data(
                            ->queue();
         sycl_queue.wait_and_throw();
         sycl_queue.memcpy(usm_ptr, mapped_ptr, size).wait();
+
+        auto size = mem_reg().allocations[mapped_ptr];
+        mem_reg().remove(mapped_ptr);
+
+        printf("USM free ptr=%p with size %lu, total allocation=%f GiB\n",
+                mapped_ptr, size,
+                1.0 * mem_reg().size() / (1024 * 1024 * 1024));
+
         ::sycl::free(mapped_ptr, sycl_queue.get_context());
         return status::success;
     };
@@ -104,6 +118,7 @@ inout_memory_arg_t usm_memory_storage_t::get_inout_memory_arg(
         stream_t *stream, ::sycl::handler &cgh) const {
     return get_memory_arg<::sycl::access::mode::read_write>(this, stream, cgh);
 }
+
 } // namespace sycl
 } // namespace xpu
 } // namespace impl

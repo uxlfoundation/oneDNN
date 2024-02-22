@@ -19,6 +19,7 @@
 
 #include <tuple>
 #include <vector>
+#include <unordered_map>
 
 #include "common/utils.hpp"
 
@@ -99,6 +100,29 @@ struct runtime_version_t {
         return utils::format("%d.%d.%d", major, minor, build);
     }
 };
+
+struct memory_registry_t {
+    void add(void *ptr, size_t size) {
+        std::lock_guard<std::mutex> g(m);
+        allocations.emplace(std::pair<void *, size_t>(ptr, size));
+    }
+    void remove(void *ptr) {
+        std::lock_guard<std::mutex> g(m);
+        allocations.erase(ptr);
+    }
+    size_t size() {
+        std::lock_guard<std::mutex> g(m);
+        size_t size = 0;
+        for (auto &kv : allocations) {
+            size += kv.second;
+        }
+        return size;
+    }
+    std::unordered_map<void *, size_t> allocations;
+    std::mutex m;
+};
+
+memory_registry_t &mem_reg();
 
 } // namespace xpu
 } // namespace impl

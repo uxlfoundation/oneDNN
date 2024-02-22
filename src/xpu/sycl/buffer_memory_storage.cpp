@@ -65,10 +65,23 @@ status_t buffer_memory_storage_t::map_data(
 
     auto &map_manager = memory_map_manager_t<map_buffer_tag>::instance();
 
+    auto size = buffer_->size();
+    printf("buffer host_access with size %lu, total allocation "
+           "size: %f GiB\n",
+            size, 1.0 * (mem_reg().size() + size) / (1024 * 1024 * 1024));
     auto acc = buffer_->get_host_access();
     auto *acc_ptr = new decltype(acc)(acc);
     *mapped_ptr = static_cast<void *>(acc_ptr->get_pointer());
-    auto unmap_callback = [acc_ptr](stream_t *, void *) {
+
+    mem_reg().add(*mapped_ptr, size);
+    printf("buffer host_access ptr=%p\n", *mapped_ptr);
+    auto unmap_callback = [size, mapped_ptr, acc_ptr](stream_t *, void *) {
+        mem_reg().remove(*mapped_ptr);
+        printf("buffer host_access release ptr=%p with size %lu, total "
+               "allocation=%f GiB\n",
+                *mapped_ptr, size,
+                1.0 * mem_reg().size() / (1024 * 1024 * 1024));
+
         delete acc_ptr;
         return status::success;
     };
@@ -148,8 +161,15 @@ status_t buffer_memory_storage_t::init_allocate(size_t size) {
         return status::out_of_memory;
     }
 
+    printf("Buffer malloc with size %lu, total allocation "
+           "size: %f GiB\n",
+            size, 1.0 * (mem_reg().size() + size) / (1024 * 1024 * 1024));
+
     buffer_ = std::make_shared<xpu::sycl::buffer_u8_t>(::sycl::range<1>(size));
     if (!buffer_) return status::out_of_memory;
+    mem_reg().add(buffer_.get(), size);
+    printf("Buffer malloc ptr=%p\n", buffer_.get());
+
     return status::success;
 }
 

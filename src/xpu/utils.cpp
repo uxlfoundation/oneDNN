@@ -30,6 +30,11 @@ size_t device_uuid_hasher_t::operator()(const device_uuid_t &uuid) const {
 }
 #endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
+memory_registry_t &mem_reg() {
+    static memory_registry_t mem = {};
+    return mem;
+}
+
 } // namespace xpu
 } // namespace impl
 } // namespace dnnl

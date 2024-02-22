@@ -141,23 +141,49 @@ protected:
         if (usm_kind_ == alloc::unknown) usm_kind_ = alloc::device;
 
         void *usm_ptr_alloc = nullptr;
+        const char *malloc_kind = nullptr;
 
         switch (usm_kind_) {
             case alloc::host:
+                malloc_kind = "host";
+                printf("USM malloc host with size %lu, total allocation "
+                       "size: %f GiB\n",
+                        size,
+                        1.0 * (mem_reg().size() + size) / (1024 * 1024 * 1024));
                 usm_ptr_alloc = ::sycl::malloc_host(size, sycl_ctx);
                 break;
             case alloc::device:
+                malloc_kind = "device";
+                printf("USM malloc device with size %lu, total allocation "
+                       "size: %f GiB\n",
+                        size,
+                        1.0 * (mem_reg().size() + size) / (1024 * 1024 * 1024));
                 usm_ptr_alloc = ::sycl::malloc_device(size, sycl_dev, sycl_ctx);
                 break;
             case alloc::shared:
+                malloc_kind = "shared";
+                printf("USM malloc shared with size %lu, total allocation "
+                       "size: %f GiB\n",
+                        size,
+                        1.0 * (mem_reg().size() + size) / (1024 * 1024 * 1024));
                 usm_ptr_alloc = ::sycl::malloc_shared(size, sycl_dev, sycl_ctx);
                 break;
             default: break;
         }
         if (!usm_ptr_alloc) return status::out_of_memory;
 
-        usm_ptr_ = decltype(usm_ptr_)(
-                usm_ptr_alloc, [&](void *ptr) { ::sycl::free(ptr, sycl_ctx); });
+        mem_reg().add(usm_ptr_alloc, size);
+        printf("USM malloc %s ptr=%p\n", malloc_kind, usm_ptr_alloc);
+
+        usm_ptr_ = decltype(usm_ptr_)(usm_ptr_alloc, [&](void *ptr) {
+            auto size = mem_reg().allocations[ptr];
+            mem_reg().remove(ptr);
+
+            printf("USM free ptr=%p with size %lu, total allocation=%f GiB\n",
+                    ptr, size, 1.0 * mem_reg().size() / (1024 * 1024 * 1024));
+            ::sycl::free(ptr, sycl_ctx);
+        });
+
         return status::success;
     }
 

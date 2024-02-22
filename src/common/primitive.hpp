@@ -24,7 +24,7 @@
 
 #include "c_types_map.hpp"
 #include "cache_blob.hpp"
-#include "cache_hit_types.hpp"
+#include "cache_stats_types.hpp"
 #include "memory_storage.hpp"
 #include "memory_tracking.hpp"
 #include "primitive_desc.hpp"
@@ -80,14 +80,14 @@ struct primitive_t : public c_compatible {
 
     bool use_global_scratchpad() const { return use_global_scratchpad_; }
     cache_blob_t cache_blob() const { return cache_blob_; }
-    cache_state_t creation_cache_state() const {
-        return creation_cached_state_;
+    bool created_with_cached_kernel() const {
+        return created_with_cached_kernel_;
     }
 
 protected:
     template <typename impl_type, typename pd_t>
     static status_t create_primitive_common(
-            std::pair<std::shared_ptr<primitive_t>, cache_state_t> &primitive,
+            std::pair<std::shared_ptr<primitive_t>, cache_hit_t> &primitive,
             const pd_t *pd, engine_t *engine, bool use_global_scratchpad,
             const cache_blob_t &cache_blob) {
 
@@ -99,20 +99,22 @@ protected:
             const pd_t *pd;
             const cache_blob_t &cache_blob;
             bool use_global_scratchpad;
-            cache_state_t cache_status;
+            cache_hit_t cache_status;
         };
 
         create_context_t context {
-                // default to primitive_cache_hit, create() will flag partial/complete cache miss
+                // default to cache_hit, create() will flag partial/complete cache miss
                 engine, pd, cache_blob, use_global_scratchpad,
-                cache_state_t::primitive_hit};
+                cache_hit_t::cache_hit};
 
         primitive_cache_iface_t::create_func_ptr_t create = [](void *context) {
             auto &c = *static_cast<create_context_t *>(context);
             std::shared_ptr<primitive_t> p = std::make_shared<impl_type>(c.pd);
             status_t status
                     = p->init(c.engine, c.use_global_scratchpad, c.cache_blob);
-            c.cache_status = p->creation_cache_state();
+            c.cache_status = (p->created_with_cached_kernel())
+                    ? cache_hit_t::kernel_cache_hit
+                    : cache_hit_t::cache_miss;
             return primitive_cache_iface_t::result_t {std::move(p), status};
         };
         auto result
@@ -124,7 +126,7 @@ protected:
     std::shared_ptr<primitive_desc_t> pd_;
     bool use_global_scratchpad_ = false;
     cache_blob_t cache_blob_;
-    cache_state_t creation_cached_state_ = cache_state_t::miss;
+    bool created_with_cached_kernel_ = false;
 
 private:
     primitive_t() = delete;

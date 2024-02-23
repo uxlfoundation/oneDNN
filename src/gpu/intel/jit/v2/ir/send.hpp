@@ -385,7 +385,6 @@ struct send_params_t {
         std::ostringstream oss;
         oss << "send_params:" << std::endl;
         oss << "  hw:                 " << hw << std::endl;
-        oss << "  address:            " << to_string(address) << std::endl;
         oss << "  kind:               " << to_string(kind) << std::endl;
         if (hint_2d) oss << "  hint_2d:            " << hint_2d << std::endl;
         oss << "  max_entry_reg_size: " << max_entry_reg_size;

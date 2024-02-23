@@ -1100,13 +1100,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 SAFE(fill_src_iter_c(prb, mem, ref_mem, rnn_attr), WARN);
                 break;
             case DNNL_ARG_WEIGHTS_LAYER:
-                if (is_fwd_prim)
+                if (is_fwd_prim) {
                     SAFE(fill_weights(
                                  prb, WEIGHTS_LAYER, mem, ref_mem, rnn_attr),
                             WARN);
                 break;
             case DNNL_ARG_WEIGHTS_ITER:
-                if (is_fwd_prim)
+                if (is_fwd_prim) {
                     SAFE(fill_weights(
                                  prb, WEIGHTS_ITER, mem, ref_mem, rnn_attr),
                             WARN);
@@ -1117,7 +1117,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                             WARN);
                 break;
             case DNNL_ARG_WEIGHTS_PROJECTION:
-                if (is_fwd_prim)
+                if (is_fwd_prim) {
                     SAFE(fill_weights(prb, WEIGHTS_PROJECTION, mem, ref_mem,
                                  rnn_attr),
                             WARN);

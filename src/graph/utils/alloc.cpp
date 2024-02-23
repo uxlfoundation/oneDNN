@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #include "graph/utils/alloc.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "graph/utils/ocl_usm_utils.hpp"
+#include "gpu/ocl/ocl_usm_utils.hpp"
 #endif
 
 namespace dnnl {
@@ -26,16 +26,14 @@ namespace graph {
 namespace utils {
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-void *ocl_allocator_t::malloc(
-        size_t size, size_t alignment, cl_device_id dev, cl_context ctx) {
-    return ocl::malloc_shared(dev, ctx, size, alignment);
+void *ocl_allocator_t::malloc(size_t size, engine_t *engine) {
+    void *p = impl::gpu::ocl::usm::malloc_shared(engine, size);
+    assert(p);
+    return p;
 }
 
-void ocl_allocator_t::free(
-        void *ptr, cl_device_id dev, cl_context ctx, cl_event event) {
-    if (nullptr == ptr) return;
-    if (event) { OCL_CHECK_V(clWaitForEvents(1, &event)); }
-    ocl::free(ptr, dev, ctx);
+void ocl_allocator_t::free(void *ptr, engine_t *engine) {
+    impl::gpu::ocl::usm::free(engine, ptr);
 }
 #endif
 

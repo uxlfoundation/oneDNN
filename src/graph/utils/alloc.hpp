@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -55,10 +55,8 @@ public:
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 class ocl_allocator_t {
 public:
-    static void *malloc(
-            size_t size, size_t alignment, cl_device_id dev, cl_context ctx);
-    static void free(
-            void *ptr, cl_device_id dev, cl_context ctx, cl_event event);
+    static void *malloc(size_t size, engine_t *engine);
+    static void free(void *ptr, engine_t *engine);
 };
 #endif
 

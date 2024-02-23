@@ -215,16 +215,12 @@ struct gen_gemm_t : public gpu_gemm_t {
                 bool b_zp = !attr_zps.has_default_values(DNNL_ARG_B);
 
                 int cmask_a = 0, cmask_b = 0, cmask_c = 0;
-                CHECK(attr_zps.get(DNNL_ARG_A, &cmask_a));
-                CHECK(attr_zps.get(DNNL_ARG_B, &cmask_b));
-                CHECK(attr_zps.get(DNNL_ARG_C, &cmask_c));
-
-                wei_zp_2d = attr_zps.get_groups_ndims(DNNL_ARG_A) > 1;
-                VDISPATCH_GEMM(
-                        (utils::one_of(cmask_a, 0, 1 << 1, 1 << 2) || wei_zp_2d)
-                                && utils::one_of(cmask_b, 0, 1 << 0)
-                                && utils::one_of(cmask_c, 0, 1 << 0, 1 << 1),
-                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                CHECK(attr()->zero_points_.get(DNNL_ARG_A, &cmask_a));
+                CHECK(attr()->zero_points_.get(DNNL_ARG_B, &cmask_b));
+                CHECK(attr()->zero_points_.get(DNNL_ARG_C, &cmask_c));
+                ok &= utils::one_of(cmask_a, 0, 1 << 1, 1 << 2)
+                        && utils::one_of(cmask_b, 0, 1 << 0)
+                        && utils::one_of(cmask_c, 0, 1 << 0, 1 << 1);
 
                 ao_dims_ = a_zp ? (cmask_a != 0 ? 1 : 0) : -1;
                 bo_dims_ = b_zp ? (cmask_b != 0 ? 1 : 0) : -1;
@@ -256,30 +252,27 @@ struct gen_gemm_t : public gpu_gemm_t {
                                 arch_ >= arch_t::xe_hpc);
             }
 
-            if (wei_scales_2d_) {
-                auto scales_group_k
-                        = wei_scales.ndims_ > 0 ? wei_scales.group_dims_[0] : 1;
-                if (scales_group_k >= d->k()) {
-                    wei_scales_2d_ = false;
-                } else {
-                    wei_scales_type = wei_scales.data_type_;
-                    if (!wei_zp_2d)
-                        wei_q2d_group_k = scales_group_k;
-                    else {
-                        VDISPATCH_GEMM((wei_q2d_group_k == scales_group_k),
-                                VERBOSE_UNSUPPORTED_SCALES_CFG);
-                    }
-                }
-            }
-            if (src_scales_2d_) {
-                src_scales_type = src_scales.data_type_;
-                src_po_sc_ = src_scales.mask_ == 2;
-                auto scales_group_k
-                        = src_scales.ndims_ > 0 ? src_scales.group_dims_[1] : 1;
-                if (scales_group_k >= d->k())
-                    src_scales_2d_ = false;
-                else
-                    src_q2d_group_k = scales_group_k;
+            ok = ok && !has_blocks() && batch_dims() <= 2
+                    && !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(),
+                            d->k(), d->lda(), d->ldb(), d->ldc(), d->batch())
+                    && IMPLICATION(with_bias(),
+                            utils::one_of(
+                                    d->bias_type(), f32, bf16, f16, f8_e5m2)
+                                    && (d->bias_desc.ndims <= 3)
+                                    && utils::one_of(bias_cmask(), 0, 1, 2, 3))
+                    && compute_engine->mayiuse_ngen_kernels()
+                    && attr()->has_default_values(attr_skip_mask)
+                    && attr()->output_scales_.mask_ == 0
+                    && IMPLICATION(with_sum_ab(),
+                            !with_bias()
+                                    && (attr()->zero_points_.has_default_values(
+                                            DNNL_ARG_DST)))
+                    && attr()->post_ops_.check_sum_consistency(
+                            d->c_type(), utils::one_of(d->a_type(), s8, u8));
+            for (const auto &s :
+                    {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+                ok &= utils::one_of(attr()->scales_.get(s).mask_, 0, 1 << 0,
+                        1 << 1, 1 << 2);
             }
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);

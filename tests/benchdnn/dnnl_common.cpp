@@ -1233,6 +1233,8 @@ int check_mem_size(
     if (res->mem_check_dir == dir) return OK;
     res->mem_check_dir = dir;
 
+    // Add reference memory estimation for correctness only.
+    bool add_ref_size = has_bench_mode_bit(mode_bit_t::corr);
     // Get input sizes.
     check_mem_size_args_t check_mem_size_args(const_pd, /* input = */ true);
     get_memory_bytes(check_mem_size_args);

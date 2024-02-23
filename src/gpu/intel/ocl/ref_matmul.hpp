@@ -88,8 +88,28 @@ struct ref_matmul_t : public gpu_primitive_t {
                     && utils::one_of(wei_dt_, u8, s8, u4, s4)
                     && utils::one_of(dst_dt_, f32, s8, u8, s32, f16);
             VDISPATCH_MATMUL(
-                    (is_int8
-                            || ((is_f32 || is_f64 || is_f16 || is_f8 || is_bf16)
+                    ((utils::one_of(src_dt_, u8, s8)
+                             && utils::one_of(wei_dt_, u8, s8)
+                             && utils::one_of(dst_dt_, f32, s8, u8, s32, f16)
+                             && IMPLICATION(with_bias(),
+                                     utils::one_of(bia_dt_, f32, u8, s8, s32)))
+                            || ((utils::everyone_is(
+                                         f32, src_dt_, wei_dt_, dst_dt_)
+                                        || (utils::everyone_is(
+                                                    f16, src_dt_, wei_dt_)
+                                                && utils::one_of(
+                                                        dst_dt_, u8, s8, f16))
+                                        || ((utils::everyone_is(
+                                                     f8_e5m2, src_dt_, wei_dt_)
+                                                    || utils::everyone_is(
+                                                            f8_e4m3, src_dt_,
+                                                            wei_dt_))
+                                                && utils::one_of(dst_dt_, f32,
+                                                        bf16, f16, src_dt_))
+                                        || (utils::everyone_is(
+                                                    bf16, src_dt_, wei_dt_)
+                                                && utils::one_of(
+                                                        dst_dt_, bf16, f32)))
                                     && IMPLICATION(with_bias(),
                                             utils::one_of(
                                                     bia_dt_, f32, dst_dt_)))),

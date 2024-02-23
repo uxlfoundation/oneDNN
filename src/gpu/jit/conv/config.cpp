@@ -150,6 +150,7 @@ status_t conv_problem_t::init(
     bia_data_type = conv_pd->invariant_bia_md()->data_type;
     dst_data_type = conv_pd->invariant_dst_md()->data_type;
     fpmath_mode = attr->fpmath_.mode_;
+    deterministic = attr->deterministic_;
 
     ndims = conv_pd->ndims();
 
@@ -1109,7 +1110,7 @@ bool pipeline_unroll_hint(const conv_problem_t &prb, fma_kind_t fma_kind,
     } else if (prb.is_bwd_w) {
         // Deterministic mode requires to have full reduction in one thread which may result in multiple nested loops
         // with large bounds so disable unrolling to avoid code size blow-up.
-        if (prb.attr->deterministic_) do_unroll = false;
+        if (prb.deterministic) do_unroll = false;
     }
     // Unrolling with mad or dp4a results in too large kernels.
     if (utils::one_of(fma_kind, fma_kind_t::mad, fma_kind_t::dp4a)
@@ -1140,14 +1141,6 @@ send_pattern_t<prb_dim_t> validate_blocking(const conv_config_t &cfg,
             }
         }
         return true;
-    };
-
-    struct pattern_match_t {
-        pattern_match_t(
-                send_pattern pattern, std::vector<send_hint_t<prb_dim_t>> hints)
-            : pattern(pattern), hints(std::move(hints)) {};
-        send_pattern pattern;
-        std::vector<send_hint_t<prb_dim_t>> hints;
     };
 
     auto layout = conv_stride_layout_t(cfg.prb(), tensor);

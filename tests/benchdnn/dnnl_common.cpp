@@ -544,7 +544,7 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
             int arg = args.arg(i);
             const auto &m = args.dnn_mem(i);
             mem_map[j].emplace(arg, dnn_mem_t(m.md_, engine));
-            mem_map[j].at(arg).reorder(m);
+            SAFE(mem_map[j].at(arg).reorder(m), WARN);
         }
         v_args[j] = args_t(mem_map[j]);
         execute_unmap_args(v_args[j], dnnl_args[j]);
@@ -1388,11 +1388,15 @@ float reorder_rescale_factor() {
     return factor;
 }
 
-dims_t md2dims(const_dnnl_memory_desc_t md) {
+dims_t md2dims(const_dnnl_memory_desc_t md, int mask, bool extend_by_ones) {
     auto ndims = query_md_ndims(md);
-    dims_t dims(ndims, 0);
-    for (int d = 0; d < ndims; ++d)
-        dims[d] = query_md_dims(md)[d];
+    dims_t dims;
+    for (int d = 0; d < ndims; ++d) {
+        if (mask & (1 << d))
+            dims.push_back(query_md_dims(md)[d]);
+        else if (extend_by_ones)
+            dims.push_back(1);
+    }
     return dims;
 }
 
@@ -1466,6 +1470,19 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         if (is_zero_point_arg) {
             prim_ref_mem = dnn_mem_t(
                     library_mem.md_, dnnl_s32, tag::abx, ref_engine);
+            break;
+        }
+
+        const int post_ops_range = DNNL_ARG_ATTR_MULTIPLE_POST_OP(31)
+                - DNNL_ARG_ATTR_MULTIPLE_POST_OP(0);
+        const bool is_post_ops_arg = (exec_arg & post_ops_range);
+        const bool is_prelu_arg
+                = is_post_ops_arg && (exec_arg & DNNL_ARG_WEIGHTS);
+        // The library doesn't return a memory desc for prelu post-op. Prelu
+        // requires `tag::axb` format, thus, need to put a desc into ref prim.
+        if (is_prelu_arg) {
+            prim_ref_mem = dnn_mem_t(
+                    library_mem.md_, dnnl_f32, tag::axb, ref_engine);
             break;
         }
 
@@ -1559,7 +1576,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
 // * `res` object to save the state of the validation result.
 //
 int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
-        const args_t &args, bool inplace, res_t *res) {
+        const args_t &args, const attr_t &attr, bool inplace, res_t *res) {
     // Fast exit for any modes but bitwise.
     if (!has_bench_mode_bit(mode_bit_t::bitwise)) return OK;
 
@@ -1618,7 +1635,7 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         auto &mem = args.find(arg);
         auto &run1_mem = run1_args.find(arg);
 
-        TIME_COMPARE(cmp.compare(run1_mem, mem, attr_t(), res));
+        TIME_COMPARE(cmp.compare(run1_mem, mem, attr, res));
     }
 
     return OK;

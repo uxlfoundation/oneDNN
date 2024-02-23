@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2025 Intel Corporation
+* Copyright 2017-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -75,6 +75,21 @@ std::string not_enough_ram("Not enough RAM");
 std::string skip_impl_hit("Skip-impl option hit");
 std::string skip_start("Skip-start option hit");
 } // namespace skip_reason
+
+dir_t str2dir(const char *str) {
+#define CASE(x) \
+    if (!strcasecmp(STRINGIFY(x), str)) return x
+    CASE(FWD_D);
+    CASE(FWD_I);
+    CASE(FWD_B);
+    CASE(BWD_D);
+    CASE(BWD_W);
+    CASE(BWD_WB);
+    CASE(BWD_DW);
+#undef CASE
+    assert(!"unknown dir");
+    return DIR_UNDEF;
+}
 
 dir_t str2dir(const char *str) {
 #define CASE(x) \

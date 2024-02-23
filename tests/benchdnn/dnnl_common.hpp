@@ -653,10 +653,8 @@ float reorder_rescale_factor();
 //     for a not matched dimension. Thus, `ndims` of a new object will remain
 //     the same as for original md. When set to `false`, a dim is skipped and
 //     the final object could end up with smaller `ndims` (or `size()`) value.
-// `groups` specify a vector of group values which decrease the final dimension
-//     values by dividing on the group size.
-dims_t md2dims(const_dnnl_memory_desc_t md, int mask = -1,
-        bool extend_by_ones = true, const std::vector<int64_t> &groups = {});
+dims_t md2dims(
+        const_dnnl_memory_desc_t md, int mask = -1, bool extend_by_ones = true);
 
 // Function adjusts data type if fpmath mode is present or sum_dt is different
 // from destination_dt. It is used in `cfg` objects that regulate filling.

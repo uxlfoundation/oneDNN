@@ -186,13 +186,16 @@ void serialize_attr(
     // acc_mode
     sstream.write(&attr.acc_mode_);
 
-    if (!attr.scales_.has_default_values()) {
+    if (!attr.output_scales_.has_default_values()) {
+        // output_scales: mask
+        sstream.write(&attr.output_scales_.mask_);
+    } else if (!attr.scales_.has_default_values()) {
         sstream.write("scale:");
         // go through scales for all arguments
         for (const auto &p : attr.scales_.scales_) {
             // scales: arg
             sstream.write(&p.first);
-            // scales: mask
+            sstream.write(&p.second.data_type_);
             sstream.write(&p.second.mask_);
             // scales: groups
             const int ndims = p.second.ndims_;
@@ -211,7 +214,9 @@ void serialize_attr(
             sstream.write(&arg);
             int mask = 0;
             data_type_t dt = data_type::s32;
-            zps.get(arg, &mask, &dt);
+            attr.zero_points_.get(arg, &mask, &dt);
+            // zero_points: data type
+            sstream.write(&dt);
             // zero_points: mask
             sstream.write(&mask);
             // zero points: groups

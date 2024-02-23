@@ -22,6 +22,8 @@
 #include "graph/interface/c_types_map.hpp"
 
 #include "graph/utils/alloc.hpp"
+#include "graph/utils/id.hpp"
+#include "graph/utils/utils.hpp"
 #include "graph/utils/verbose.hpp"
 
 #ifdef DNNL_WITH_SYCL

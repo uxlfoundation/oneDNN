@@ -28,18 +28,15 @@ enum class cache_state_t {
     primitive_hit, //< primitive cache hit, complete primitive was available
     kernel_hit, //< kernel cache hit, primitive cache miss, but kernel was in cache
     persistent_hit, //< cache_blob() persistent cache hit from disk/long term storage
-    nested_primitive_hit, //< signifies nested kernel required creation but hit cache
     compiled_partition_hit //< graph partition cache hit, already compiled
 };
 
-inline const char *cache_state2str(const cache_state_t cache_hit) {
+inline const char *cache_hit_string(const cache_state_t cache_hit) {
     switch (cache_hit) {
         case cache_state_t::miss: return ":cache_miss";
         case cache_state_t::primitive_hit: return ":cache_hit";
         case cache_state_t::kernel_hit: return ":kernel_cache_hit";
         case cache_state_t::persistent_hit: return ":persistent_cache_hit";
-        case cache_state_t::nested_primitive_hit:
-            return ":nested_primitive_cache_hit";
         case cache_state_t::compiled_partition_hit:
             return ":compiled_partition_cache_hit";
     }

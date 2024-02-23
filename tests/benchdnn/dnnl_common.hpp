@@ -241,8 +241,7 @@ int check_same_pd(const dnnl_primitive_desc_t &pd_no_attr, res_t *res);
 int test_persistent_cache_api(
         benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim, res_t *res);
 int check_mem_size(const_dnnl_memory_desc_t md, res_t *res);
-int check_mem_size(const_dnnl_primitive_desc_t const_pd, res_t *res, dir_t dir,
-        bool need_skip = true);
+int check_mem_size(const_dnnl_primitive_desc_t const_pd, res_t *res, dir_t dir);
 
 inline bool should_stop(const timer::timer_t &t) {
     const bool stop = false
@@ -413,10 +412,7 @@ int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
     if (res->state == SKIPPED) return OK;
 
     // Check memory requirements if only execution happens.
-    // Note: As a graph may contains moare than one operations with identical
-    // `dir`. Since the mem size check for all the operations are necessary,
-    // the check should not be skipped.
-    SAFE(check_mem_size(pdw, res, dir, /*need_skip=*/!is_graph_ref), WARN);
+    SAFE(check_mem_size(pdw, res, dir), WARN);
     if (res->state == SKIPPED) return OK;
 
     TIME_C_PRIM(DNN_SAFE(dnnl_primitive_create(&prim, pdw), WARN));

@@ -172,31 +172,12 @@ lru_cache_t &get_test_cache() {
 
 int test_persistent_cache_api(
         benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim, res_t *res) {
-
-    auto pd = query_pd(prim);
-
-    // 0. check memory descriptor serialization API
-    // Limiting to weights md should have good md kind coverage and
-    // limit overhead
-    {
-        dnnl_memory_desc_t new_md;
-        size_t sz = 0;
-        auto wei_md = query_md(pd, dnnl_query_weights_md);
-        dnnl_memory_desc_get_blob(nullptr, &sz, wei_md);
-
-        std::vector<uint8_t> md_blob(sz);
-        dnnl_memory_desc_get_blob(md_blob.data(), &sz, wei_md);
-        dnnl_memory_desc_create_with_blob(&new_md, md_blob.data());
-
-        if (dnnl_memory_desc_equal(wei_md, new_md) == 0)
-            return res->state = FAILED, FAIL;
-    }
-
-    // Start testing persistent cache API.
     if (!is_gpu() || (is_gpu() && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL)) {
         return OK;
     }
 
+    auto pd = query_pd(prim);
+    // Start testing persistent cache API.
     // 1. Disable primitive cache to make sure that the next primitive will
     // be created from the cache blob and not fetched from the primitive cache.
     const auto old_capacity = set_primitive_cache_capacity_without_clearing(0);
@@ -631,7 +612,7 @@ void skip_unimplemented_data_type(
             || (is_cpu() && has_data_type_support(dnnl_bf16)
                     && IMPLICATION(!(dir & FLAG_INF),
                             has_training_support(dnnl_bf16)));
-    const bool has_f16_support = is_gpu()
+    const bool has_f16_support = (is_gpu() && (dir & FLAG_FWD))
             || (is_cpu() && has_data_type_support(dnnl_f16)
                     && IMPLICATION(
                             !(dir & FLAG_INF), has_training_support(dnnl_f16)));
@@ -858,7 +839,7 @@ bool is_f64_supported(const dnnl_engine_t &engine) {
     return false;
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(__GNUC__)
 #include "windows.h"
 
 static size_t get_cpu_ram_size() {
@@ -978,9 +959,11 @@ int get_gpu_cache_size(size_t &cache_size) {
 }
 
 struct check_mem_size_args_t {
-    check_mem_size_args_t(const_dnnl_primitive_desc_t pd, bool want_input)
+    check_mem_size_args_t(const_dnnl_primitive_desc_t pd, bool want_input,
+            bool add_ref_size = false)
         : pd(pd)
         , want_input(want_input)
+        , add_ref_size(add_ref_size)
         , is_scratchpad(false)
         , total_size_device(0)
         , total_size_cpu(0)
@@ -989,6 +972,7 @@ struct check_mem_size_args_t {
     // Input args.
     const_dnnl_primitive_desc_t pd;
     bool want_input;
+    bool add_ref_size;
     bool is_scratchpad;
 
     // Output args:
@@ -1024,17 +1008,13 @@ static int check_total_size(
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 
     auto GB = [](double bytes) { return bytes / powf(2, 30); };
-    auto dir_c_str = [&res]() {
-        return (res->mem_check_dir & FLAG_FWD) ? "FWD" : "BWD";
-    };
 
     if (is_gpu()) {
         const bool fits_device_ram = check_mem_size_args.total_size_device
                 <= benchdnn_device_limit;
         if (!fits_device_ram) {
-            BENCHDNN_PRINT(2,
-                    "[CHECK_MEM][%s]: Not enough device RAM for a problem.\n",
-                    dir_c_str());
+            BENCHDNN_PRINT(2, "%s\n",
+                    "benchdnn: not enough device RAM for a problem.");
             res->state = SKIPPED;
             res->reason = NOT_ENOUGH_RAM;
         }
@@ -1045,9 +1025,9 @@ static int check_total_size(
                     const bool fit = s < gpu_max_alloc_capacity;
                     if (!fit) {
                         BENCHDNN_PRINT(2,
-                                "[CHECK_MEM][%s]: Allocation of size %g GB "
-                                "doesn't fit allocation limit of %g GB.\n",
-                                dir_c_str(), GB(s), GB(gpu_max_alloc_capacity));
+                                "benchdnn: allocation of size %g GB doesn't "
+                                "fit allocation limit of %g GB.\n",
+                                GB(s), GB(gpu_max_alloc_capacity));
                     }
                     return fit;
                 });
@@ -1057,9 +1037,9 @@ static int check_total_size(
         }
 
         BENCHDNN_PRINT((!fits_device_ram ? 2 : 6),
-                "[CHECK_MEM][%s]: Requested: %g GB; benchdnn_device_limit: %g "
-                "GB; device_RAM_capacity: %g GB; gpu_max_alloc: %g GB;\n",
-                dir_c_str(), GB(check_mem_size_args.total_size_device),
+                "Requested: %g GB, benchdnn device limit: %g GB, device RAM "
+                "capacity: %g GB, gpu_max_alloc: %g GB\n",
+                GB(check_mem_size_args.total_size_device),
                 GB(benchdnn_device_limit), GB(gpu_device_capacity),
                 GB(gpu_max_alloc_capacity));
     }
@@ -1069,9 +1049,8 @@ static int check_total_size(
     bool fits_cpu_ram = total_size_cpu <= benchdnn_cpu_limit;
 
     if (!fits_cpu_ram) {
-        BENCHDNN_PRINT(2,
-                "[CHECK_MEM][%s]: Not enough CPU RAM for a problem.\n",
-                dir_c_str());
+        BENCHDNN_PRINT(
+                2, "%s\n", "benchdnn: not enough CPU RAM for a problem.");
         // Try to catch a huge scratchpad size requested by the library.
         // Use following logic:
         //     scratch_size
@@ -1082,11 +1061,11 @@ static int check_total_size(
         static constexpr float scratch_trh = 0.75f;
         if (check_mem_size_args.scratchpad_size
                 > scratch_trh * total_size_cpu) {
-            BENCHDNN_PRINT(2,
-                    "[CHECK_MEM][%s]: CPU scratchpad size `%zu` exceeded a "
-                    "given threshold `%zu`.\n",
-                    dir_c_str(), check_mem_size_args.scratchpad_size,
-                    (size_t)(scratch_trh * total_size_cpu));
+            BENCHDNN_PRINT(2, "%s `%ld` %s `%ld`.\n",
+                    "benchdnn: CPU scratchpad size",
+                    (long)check_mem_size_args.scratchpad_size,
+                    "exceeded a given threshold",
+                    (long)(scratch_trh * total_size_cpu));
             res->state = FAILED;
         } else {
             res->state = SKIPPED;
@@ -1095,9 +1074,9 @@ static int check_total_size(
     }
 
     BENCHDNN_PRINT((!fits_cpu_ram ? 2 : 6),
-            "[CHECK_MEM][%s]: Requested: %g GB; benchdnn_CPU_limit: %g GB; "
-            "CPU_RAM_capacity: %g GB;\n",
-            dir_c_str(), GB(total_size_cpu), GB(benchdnn_cpu_limit),
+            "Requested: %g GB, benchdnn CPU limit: %g GB, CPU RAM capacity: %g "
+            "GB\n",
+            GB(total_size_cpu), GB(benchdnn_cpu_limit),
             GB(cpu_device_capacity));
 
     return res->state == FAILED ? FAIL : OK;
@@ -1131,28 +1110,19 @@ void add_md_size(const_dnnl_memory_desc_t md,
     if (check_mem_size_args.is_scratchpad) {
         check_mem_size_args.scratchpad_size += mem_size;
     } else {
-        const bool is_corr = has_bench_mode_bit(mode_bit_t::corr);
-        const bool is_bitwise = has_bench_mode_bit(mode_bit_t::bitwise);
+        if (!check_mem_size_args.add_ref_size) return;
+
         // Reference memories are always tag::abx fp32, hence need re-creating
         // memory descriptor and take its size.
         auto ref_md = dnn_mem_t::init_md(
                 query_md_ndims(md), query_md_dims(md), dnnl_f32, tag::abx);
         const auto ref_md_size = dnnl_memory_desc_get_size(ref_md);
-        // A memory copy for ref_compute, happens only in correctness.
-        check_mem_size_args.total_size_cpu += is_corr * ref_md_size;
+        check_mem_size_args.total_size_cpu += ref_md_size; // Reference memory.
 
-        // Comparison function allocates an additional tag::abx f32 memory.
-        // This allocation holds for correctness and bitwise modes.
-        const bool compare_mem_factor
-                = !check_mem_size_args.want_input && (is_corr || is_bitwise);
+        // Correctness pass allocates additional tag::abx f32 memory.
+        const bool compare_mem_factor = !check_mem_size_args.want_input
+                && check_mem_size_args.add_ref_size;
         check_mem_size_args.total_size_cpu += compare_mem_factor * ref_md_size;
-
-        // Bitwise comparison allocates an additional tag::abx f32 memory from
-        // the first run to compare results against it.
-        const bool bitwise_compare_mem_factor
-                = !check_mem_size_args.want_input && is_bitwise;
-        check_mem_size_args.total_size_cpu
-                += bitwise_compare_mem_factor * ref_md_size;
     }
 }
 
@@ -1210,7 +1180,7 @@ static void get_memory_bytes(check_mem_size_args_t &check_mem_size_args) {
 int check_mem_size(const_dnnl_memory_desc_t md, res_t *res) {
     if (!mem_check) return OK;
 
-    check_mem_size_args_t check_mem_size_args(nullptr, false);
+    check_mem_size_args_t check_mem_size_args(nullptr, false, false);
     const auto md_size = dnnl_memory_desc_get_size(md);
     check_mem_size_args.total_size_device = md_size;
     check_mem_size_args.sizes.push_back(md_size);
@@ -1233,8 +1203,11 @@ int check_mem_size(
     if (res->mem_check_dir == dir) return OK;
     res->mem_check_dir = dir;
 
+    // Add reference memory estimation for correctness only.
+    bool add_ref_size = has_bench_mode_bit(mode_bit_t::corr);
     // Get input sizes.
-    check_mem_size_args_t check_mem_size_args(const_pd, /* input = */ true);
+    check_mem_size_args_t check_mem_size_args(
+            const_pd, /* want_input = */ true, add_ref_size);
     get_memory_bytes(check_mem_size_args);
 
     // Get scratchpad size.
@@ -1254,6 +1227,7 @@ int check_mem_size(
     }
 
     // Get output sizes.
+    // TODO: double the output sizes for bitwise mode?
     check_mem_size_args.want_input = false;
     get_memory_bytes(check_mem_size_args);
 
@@ -1629,10 +1603,8 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
 
         auto &mem = args.find(arg);
         SAFE_V(bool(mem) ? OK : FAIL);
-        // A memory used as reference for comparison, must be allocated on the
-        // CPU engine.
         run1_mem_map.emplace(
-                arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, get_cpu_engine()));
+                arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, get_test_engine()));
         SAFE(run1_mem_map.at(arg).reorder(mem), WARN);
     }
 

@@ -662,10 +662,8 @@ float reorder_rescale_factor();
 //     for a not matched dimension. Thus, `ndims` of a new object will remain
 //     the same as for original md. When set to `false`, a dim is skipped and
 //     the final object could end up with smaller `ndims` (or `size()`) value.
-// `groups` specify a vector of group values which decrease the final dimension
-//     values by dividing on the group size.
-dims_t md2dims(const_dnnl_memory_desc_t md, int mask = -1,
-        bool extend_by_ones = true, const std::vector<int64_t> &groups = {});
+dims_t md2dims(
+        const_dnnl_memory_desc_t md, int mask = -1, bool extend_by_ones = true);
 
 // Function adjusts data type if fpmath mode is present or sum_dt is different
 // from destination_dt. It is used in `cfg` objects that regulate filling.
@@ -997,15 +995,6 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             }
         }
     }
-
-    // rounding mode
-    if (!prb->attr.rounding_mode.is_def()) {
-        int64_t count = 1;
-        auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s32, tag::abx);
-        mem_map.emplace(
-                DNNL_ARG_ATTR_ROUNDING_SEED, dnn_mem_t(seed_md, test_engine));
-    }
-}
 
 int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         const dnn_mem_t &library_mem, dnn_mem_map_t &ref_mem_map, int exec_arg,

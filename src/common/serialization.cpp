@@ -218,25 +218,32 @@ void serialize_attr(
     // acc_mode
     sstream.write(&attr.acc_mode_);
 
-    if (!attr.scales_.has_default_values()) {
+    if (!attr.output_scales_.has_default_values()) {
+        // output_scales: mask
+        sstream.write(&attr.output_scales_.mask_);
+    } else if (!attr.scales_.has_default_values()) {
         sstream.write("scale:");
         // go through scales for all arguments
         for (const auto &p : attr.scales_.scales_) {
             // scales: arg
             sstream.write(&p.first);
-            serialize_runtime_scales(sstream, p.second);
+            sstream.write(&p.second.data_type_);
+            sstream.write(&p.second.mask_);
         }
     }
     // zero_points
     if (!attr.zero_points_.has_default_values()) sstream.write("zp:");
-    serialize_zero_points(sstream, attr.zero_points_);
-
-    // Rounding modes
-    if (!attr.rounding_mode_.has_default_values()) sstream.write("rm:");
-    for (const auto &e : attr.rounding_mode_.rounding_modes_map_) {
-        if (!attr.rounding_mode_.has_default_values(e.first)) {
-            sstream.write(&e.first);
-            sstream.write(&e.second);
+    for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
+        if (!attr.zero_points_.has_default_values(arg)) {
+            // zero_points: arg
+            sstream.write(&arg);
+            int mask = 0;
+            data_type_t dt = data_type::s32;
+            attr.zero_points_.get(arg, &mask, &dt);
+            // zero_points: data type
+            sstream.write(&dt);
+            // zero_points: mask
+            sstream.write(&mask);
         }
     }
 

@@ -222,7 +222,70 @@ struct rnd_mode_t : public c_compatible {
         return true;
     }
 
-    std::unordered_map<int, rounding_mode_t> rounding_modes_map_;
+struct zero_points_t : public c_compatible {
+    bool operator==(const zero_points_t &rhs) const {
+        return mask_src == rhs.mask_src && mask_wei == rhs.mask_wei
+                && mask_dst == rhs.mask_dst && is_set_src == rhs.is_set_src
+                && is_set_wei == rhs.is_set_wei && is_set_dst == rhs.is_set_dst
+                && data_type_wei == rhs.data_type_wei
+                && group_ndims_wei == rhs.group_ndims_wei
+                && IMPLICATION(group_ndims_wei > 0,
+                        utils::array_cmp(group_dims_wei, rhs.group_dims_wei,
+                                group_ndims_wei));
+    }
+
+    // arg-specific checks
+    bool common(int arg) const { return get_mask(arg) == 0; }
+    bool defined(int arg) const { return has_default_values(arg); }
+    bool has_default_values(int arg) const {
+        return is_set(arg) == false && has_default_data_type(arg);
+    }
+    bool has_default_groups(int arg) const {
+        return IMPLICATION(arg == DNNL_ARG_WEIGHTS, group_ndims_wei == 0);
+    }
+    bool has_default_data_type(int arg) const {
+        return get_data_type(arg) == data_type::s32;
+    }
+    // same checks but for all supported arguments at once
+    bool common() const { return check_all(&zero_points_t::common); }
+    bool defined() const { return has_default_values(); }
+    bool has_default_values() const {
+        return check_all(&zero_points_t::has_default_values);
+    }
+    bool has_default_groups() const {
+        return check_all(&zero_points_t::has_default_groups);
+    }
+    bool has_default_data_type() const {
+        return check_all(&zero_points_t::has_default_data_type);
+    }
+
+    status_t get(int arg, int *mask, data_type_t *dt = nullptr) const;
+
+    int get(int arg) const; // Returns 0 if dimension is unset
+
+    data_type_t get_data_type(int arg) const {
+        if (arg == DNNL_ARG_WEIGHTS) return data_type_wei;
+        return data_type::s32;
+    }
+
+    const dim_t *get_groups(int arg) const {
+        if (arg == DNNL_ARG_WEIGHTS) return group_dims_wei;
+        return nullptr;
+    }
+
+    int get_groups_ndims(int arg) const {
+        if (arg == DNNL_ARG_WEIGHTS) return group_ndims_wei;
+        return 0;
+    }
+
+    status_t set(int arg, int mask, int ndims, const dims_t group_dims,
+            data_type_t data_type);
+
+    status_t set(int arg, int mask) {
+        return set(arg, mask, 0, nullptr, data_type::s32);
+    }
+
+    status_t set(int arg) { return set(arg, 0); }
 
 private:
     const static rounding_mode_t default_mode = rounding_mode::environment;

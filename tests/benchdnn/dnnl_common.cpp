@@ -1035,6 +1035,35 @@ int get_gpu_cache_size(size_t &cache_size) {
     return OK;
 }
 
+struct check_mem_size_args_t {
+    check_mem_size_args_t(const_dnnl_primitive_desc_t pd, bool want_input)
+        : pd(pd)
+        , want_input(want_input)
+        , is_scratchpad(false)
+        , total_size_device(0)
+        , total_size_cpu(0)
+        , scratchpad_size(0) {}
+
+    // Input args.
+    const_dnnl_primitive_desc_t pd;
+    bool want_input;
+    bool is_scratchpad;
+
+    // Output args:
+    // `sizes` used to validate OpenCL memory requirements.
+    std::vector<size_t> sizes;
+    // `total_size_device` specifies memory allocated on device for a test obj.
+    size_t total_size_device;
+    // `total_size_cpu` specifies:
+    // * Memory allocated for reference ocmputations (`C` mode only).
+    // * Memory allocated for comparison results (`C` mode only).
+    // * Memory allocated for mapping device memory (GPU backend only).
+    // * Memory allocated on CPU for a test obj (CPU backend only).
+    size_t total_size_cpu;
+    // `scratchpad_size` specifies a scratchpad size for specific checks.
+    size_t scratchpad_size;
+};
+
 static int check_total_size(
         const check_mem_size_args_t &check_mem_size_args, res_t *res) {
     static size_t cpu_device_capacity = get_cpu_ram_size();
@@ -1167,10 +1196,6 @@ void add_md_size(const_dnnl_memory_desc_t md,
         auto ref_md = dnn_mem_t::init_md(
                 query_md_ndims(md), query_md_dims(md), dnnl_f32, tag::abx);
         const auto ref_md_size = dnnl_memory_desc_get_size(ref_md);
-
-        const size_t ref_mem_idx = check_mem_size_args.want_input ? 0 : 1;
-        check_mem_size_args.total_ref_md_size[ref_mem_idx] = ref_md_size;
-
         // A memory copy for ref_compute, happens only in correctness.
         check_mem_size_args.total_size_cpu += is_corr * ref_md_size;
 
@@ -1271,8 +1296,6 @@ int check_mem_size(
     if (res->mem_check_dir == dir) return OK;
     res->mem_check_dir = dir;
 
-    // Add reference memory estimation for correctness only.
-    bool add_ref_size = has_bench_mode_bit(mode_bit_t::corr);
     // Get input sizes.
     check_mem_size_args_t check_mem_size_args(const_pd, /* input = */ true);
     get_memory_bytes(check_mem_size_args);
@@ -1719,12 +1742,7 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         assert(arg > 0);
 
         auto &mem = args.find(arg);
-        if (!mem) {
-            BENCHDNN_PRINT(0, "%s\n",
-                    "Error: output memory was not found among arguments.");
-            res->state = FAILED;
-            return FAIL;
-        }
+        SAFE_V(bool(mem) ? OK : FAIL);
         // A memory used as reference for comparison, must be allocated on the
         // CPU engine.
         run1_mem_map.emplace(

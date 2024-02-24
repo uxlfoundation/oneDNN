@@ -559,7 +559,7 @@ public:
     std::string str() const;
     IR_DEFINE_DUMP()
 
-    pvar_t dim;
+    prb_dim_t dim;
     expr_t bound;
     dim_t block = 0;
     bool has_underflow = false;
@@ -580,7 +580,7 @@ public:
     int nmasks() const { return static_cast<int>(dim_masks_.size()); }
     const dim_mask_desc_t &operator[](int idx) const;
     dim_mask_desc_t &operator[](int idx);
-    mask_desc_t map(const pvar_coord_t<expr_t> &coord) const;
+    mask_desc_t map(const prb_coord_t<expr_t> &coord) const;
     bool is_uniform(const block_iterator_t &it,
             const prover_t &prover = prover_t::instance()) const;
     std::string str() const;
@@ -647,8 +647,7 @@ class view_t {
 public:
     view_t() = default;
     view_t(const dim_mapper_t &dim_mapper, const layout_t &base_layout,
-            const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
-            const var_range_info_t &var_range_info = {});
+            const prb_coord_t<expr_t> &coord, const prb_tile_t &tile);
     bool is_empty() const { return base_layout_.is_empty(); }
     const dim_mapper_t &dim_mapper() const { return dim_mapper_; }
     const layout_t &base_layout() const { return base_layout_; }
@@ -658,7 +657,7 @@ public:
     const mask_desc_t &mask_desc() const { return mask_desc_; }
     const plane_t &plane() const { return plane_; }
     const type_t &type() const { return layout_.type(); }
-    // Transforms the view to a scattered version where elements are strided
+    // Transforms the view to a scattered viersion where elements are strided
     // by stride_bytes value. This is used to generate scattered messages
     // prefetch.
     view_t scatterize(int stride_bytes, const prover_t &prover) const;

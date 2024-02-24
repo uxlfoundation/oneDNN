@@ -142,6 +142,8 @@ public:
         return gpu_attr->threads_per_eu() * 2 == threads_per_eu();
     }
 
+    int cache_line_size() const;
+
     std::string str() const {
         std::ostringstream oss;
         oss << to_string(hw_);

@@ -16,7 +16,6 @@
 
 #include "graph/backend/dnnl/platform.hpp"
 
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
 #if DNNL_X64
 #include "cpu/x64/cpu_isa_traits.hpp"
 #elif DNNL_AARCH64
@@ -27,7 +26,6 @@
 #include "src/common/cpuinfo/CpuInfo.h"
 #endif
 #endif
-#endif
 
 namespace dnnl {
 namespace impl {
@@ -35,66 +33,26 @@ namespace graph {
 namespace dnnl_impl {
 namespace platform {
 
-bool get_dtype_support_status(engine_kind_t eng, data_type_t dtype, dir_t dir) {
+bool get_dtype_support_status(engine_kind_t eng, data_type_t dtype) {
 
-    bool is_supported = false;
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    switch (dtype) {
-        case dnnl_bf16: {
-            // bf16 is supported on AVX512-CORE+
-            is_supported = is_gpu(eng)
-                    || (is_cpu(eng) && has_cpu_data_type_support(dnnl_bf16)
-                            && IMPLICATION(!(dir & dir_t::FLAG_INF),
-                                    has_cpu_training_support(dnnl_bf16)));
-            break;
-        }
-        case dnnl_f16: {
-            is_supported = is_gpu(eng)
-                    || (is_cpu(eng) && has_cpu_data_type_support(dnnl_f16)
-                            && IMPLICATION(!(dir & dir_t::FLAG_INF),
-                                    has_cpu_training_support(dnnl_f16)));
-            break;
-        }
-        case dnnl_f8_e5m2: {
-            is_supported = is_gpu(eng)
-                    || (is_cpu(eng) && has_cpu_data_type_support(dnnl_f8_e5m2)
-                            && IMPLICATION(!(dir & dir_t::FLAG_INF),
-                                    has_cpu_training_support(dnnl_f8_e5m2)));
-            break;
-        }
-        case dnnl_f8_e4m3: {
-            is_supported = is_gpu(eng)
-                    || (is_cpu(eng) && has_cpu_data_type_support(dnnl_f8_e4m3)
-                            && IMPLICATION(!(dir & dir_t::FLAG_FWD),
-                                    has_cpu_training_support(dnnl_f8_e4m3)));
-            break;
-        }
-        default: break;
-    }
+    const bool has_bf16_support = is_gpu(eng)
+            || (is_cpu(eng) && has_cpu_data_type_support(dnnl_bf16));
+    const bool has_f16_support = is_gpu(eng)
+            || (is_cpu(eng) && has_cpu_data_type_support(dnnl_f16));
 #else
-    switch (dtype) {
-        case dnnl_bf16: {
-            is_supported = is_gpu(eng);
-            break;
-        }
-        case dnnl_f16: {
-            // f16 is supported on GPU for inference only.
-            is_supported = is_gpu(eng) && (dir & dir_t::FLAG_FWD);
-            break;
-        }
-        case dnnl_f8_e5m2: {
-            is_supported = is_gpu(eng);
-            break;
-        }
-        case dnnl_f8_e4m3: {
-            is_supported = is_gpu(eng);
-            break;
-        }
-        default: break;
-    }
+    const bool has_bf16_support = is_gpu(eng);
+    const bool has_f16_support = is_gpu(eng);
 #endif
 
-    return is_supported;
+    bool is_unsupported = false;
+    switch (dtype) {
+        case dnnl_bf16: is_unsupported = !has_bf16_support; break;
+        case dnnl_f16: is_unsupported = !has_f16_support; break;
+        default: break;
+    }
+    if (is_unsupported) return false;
+    return true;
 }
 
 bool has_cpu_data_type_support(data_type_t data_type) {
@@ -103,7 +61,8 @@ bool has_cpu_data_type_support(data_type_t data_type) {
         case data_type::bf16:
 #if DNNL_X64
             using namespace dnnl::impl::cpu::x64;
-            return mayiuse(avx512_core) || mayiuse(avx2_vnni_2);
+            return mayiuse(avx512_core, /*soft=*/true)
+                    || mayiuse(avx2_vnni_2, /*soft=*/true);
 #elif DNNL_PPC64
 #if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
             return true;
@@ -115,45 +74,8 @@ bool has_cpu_data_type_support(data_type_t data_type) {
 #endif
         case data_type::f16:
 #if DNNL_X64
-            return mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2);
-#elif DNNL_AARCH64_USE_ACL
-            return arm_compute::CPUInfo::get().has_fp16();
-#else
-            return false;
-#endif
-        case data_type::f8_e5m2:
-        case data_type::f8_e4m3:
-#if DNNL_X64
-            return mayiuse(avx512_core_fp16);
-#else
-            return false;
-#endif
-        default: return true;
-    }
-#else
-    return false;
-#endif
-}
-
-bool has_cpu_training_support(data_type_t data_type) {
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    switch (data_type) {
-        case data_type::bf16:
-#if DNNL_X64
-            using namespace dnnl::impl::cpu::x64;
-            return mayiuse(avx512_core);
-#elif DNNL_PPC64
-#if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
-            return true;
-#endif
-#elif DNNL_AARCH64_USE_ACL
-            return arm_compute::CPUInfo::get().has_bf16();
-#else
-            return false;
-#endif
-        case data_type::f16:
-#if DNNL_X64
-            return mayiuse(avx512_core_fp16);
+            return mayiuse(avx512_core_fp16, /*soft=*/true)
+                    || mayiuse(avx2_vnni_2, /*soft=*/true);
 #elif DNNL_AARCH64_USE_ACL
             return arm_compute::CPUInfo::get().has_fp16();
 #else

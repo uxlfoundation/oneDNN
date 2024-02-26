@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2025 Intel Corporation
+* Copyright 2017-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -173,7 +173,7 @@ struct gemm_x8s8s32x_convolution_bwd_data_t : public primitive_t {
 
         bool support_bias() const override { return true; }
 
-        conv_gemm_conf_t jcp_ = utils::zero<decltype(jcp_)>();
+        conv_gemm_conf_t jcp_;
     };
 
     gemm_x8s8s32x_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}

@@ -149,11 +149,6 @@ int device_info_t::max_subgroup_size(gpu_arch_t gpu_arch) {
     return 16;
 }
 
-int device_info_t::grf_size(gpu_arch_t gpu_arch) {
-    ngen::HW hw = jit::convert_dnnl_arch_to_ngen(gpu_arch);
-    return ngen::GRF::bytes(hw);
-}
-
 int device_info_t::min_subgroup_size() const {
     switch (gpu_arch()) {
         case gpu_arch_t::gen9:
@@ -162,12 +157,6 @@ int device_info_t::min_subgroup_size() const {
         case gpu_arch_t::xe_hp:
         case gpu_arch_t::xe_hpg: return 8;
         case gpu_arch_t::xe_hpc:
-#if XE3
-        case gpu_arch_t::xe3:
-#endif
-#if XE3P
-        case gpu_arch_t::xe3p:
-#endif
         case gpu_arch_t::xe2: return 16;
         default: return 0;
     }

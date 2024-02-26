@@ -96,10 +96,12 @@ partition_data_displacer_t::partition_data_displacer_t(
                         break;
                     }
                 }
-                // Continue only on allowed ops.
-                if (go_through_op_kind.find(parent_op->kind_)
-                        == go_through_op_kind.end()) {
-                    break;
+
+                // the partition input found
+                if (dq_found
+                        && out_lt_2_op_.find(lt.id_) == out_lt_2_op_.end()) {
+                    quantize_displace_.emplace(
+                            lt.id_, ::std::make_tuple(aop, i, dq_lt));
                 }
             }
         }

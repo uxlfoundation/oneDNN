@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,13 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_BINARY_COMMON_H
-#define GPU_INTEL_OCL_BINARY_COMMON_H
-
-#include "gpu/intel/ocl/dispatch.h"
-#include "gpu/intel/ocl/ocl_post_ops.h"
-#include "gpu/intel/ocl/ocl_types.h"
-#include "gpu/intel/ocl/ocl_utils.h"
+#ifndef GPU_OCL_BINARY_TYPES_H
+#define GPU_OCL_BINARY_TYPES_H
+#include "gpu/ocl/ocl_post_ops.h"
+#include "gpu/ocl/ocl_types.h"
+#include "gpu/ocl/ocl_utils.h"
 
 #undef DST_OFF
 #define DST_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(DST, x0, x1, x2, x3, x4, x5)

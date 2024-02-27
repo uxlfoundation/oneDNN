@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -815,30 +815,25 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     const int max_n_block2 = max_n_block2_vmms / n_block1_num_steps;
     n_block2 = nstl::min(max_n_block2, nb_n_block1);
 
-    const int aux_vregs
-            = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_aux_vmm_count(*brg);
-    const int compute_vregs
-            = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
+    // Note: using avx512_core template, but calculation uses 'brg->isa_impl'
+    // which is dynamic i.e. uses values AVX2, AVX2_VNNI, etc. depending on the
+    // configuration.
+    const int aux_vregs = jit_brdgmm_kernel_base_t<avx512_core_vnni,
+            Xbyak::Zmm>::get_aux_vmm_count(*brg);
+    const int compute_vregs = jit_brdgmm_kernel_base_t<avx512_core_vnni,
+            Xbyak::Zmm>::get_compute_vmm_count(*brg);
     const int bf16_emu_vregs = brg->is_bf16_emu * 4;
-    const int postops_regs = brg->attr()
-            ? injector::aux_vec_count(
-                    brg->attr()->post_ops_, brg->isa_impl, true)
-            : 0;
+    const int max_acc_vmms
+            = max_vregs - nstl::max(compute_vregs + aux_vregs, bf16_emu_vregs);
 
-    const int max_acc_vmms = max_vregs
-            - nstl::max(postops_regs,
-                    nstl::max(compute_vregs + aux_vregs, bf16_emu_vregs));
+    const auto min_possible_m_block2 = brg->brgattr.bs_group > 1
+            ? (max_acc_vmms / (2 * n_block1_num_steps) - brg->brgattr.bs_group
+                      + 1)
+                    / 2
+            : 1;
+    if (min_possible_m_block2 < 1) brg->brgattr.bs_group = 1;
 
-    if (brg->brgattr.hint_bs_group > 1) {
-        // Check if we can actually apply bs grouping
-        const auto min_possible_m_block2
-                = (max_acc_vmms / (2 * n_block1_num_steps)
-                          - brg->brgattr.hint_bs_group + 1)
-                / 2;
-        if (min_possible_m_block2 < 1) brg->bs_group = 1;
-    }
-
-    if (brg->bs_group > 1) n_block2 = n_block2 % 2 == 0 ? 2 : 1;
+    if (brg->brgattr.bs_group > 1) n_block2 = n_block2 % 2 == 0 ? 2 : 1;
 
     nb_n_block2 = div_up(nb_n_block1, n_block2);
     n_block2_tail = nb_n_block1 % n_block2;

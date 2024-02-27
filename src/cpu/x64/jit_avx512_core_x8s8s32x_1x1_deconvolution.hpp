@@ -44,6 +44,8 @@ struct jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t : public primitive_t {
             : cpu_deconvolution_fwd_pd_t(other)
             , conv_pd_(other.conv_pd_->clone()) {}
 
+        ~pd_t() = default;
+
         DECLARE_COMMON_PD_T(name_.c_str(),
                 jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t);
 
@@ -131,11 +133,10 @@ struct jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
 
     private:
-        std::string name_;
+        std::string name_
+                = JIT_IMPL_NAME_HELPER("jit_deconvolution:", avx512_core, "");
 
         void init_name() {
-            name_ = JIT_IMPL_NAME_HELPER(
-                    "jit_1x1_deconvolution:", jcp_.isa, "");
             name_.append("+");
             name_.append(conv_pd_->name());
         }

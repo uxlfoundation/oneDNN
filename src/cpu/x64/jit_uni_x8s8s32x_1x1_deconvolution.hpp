@@ -130,10 +130,9 @@ struct jit_uni_x8s8s32x_1x1_deconvolution_fwd_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
 
     private:
-        std::string name_;
+        std::string name_ = JIT_IMPL_NAME_HELPER("jit_deconvolution:", isa, "");
 
         void init_name() {
-            name_ = JIT_IMPL_NAME_HELPER("jit_deconvolution:", isa, "");
             name_.append("+");
             name_.append(conv_pd_->name());
         }

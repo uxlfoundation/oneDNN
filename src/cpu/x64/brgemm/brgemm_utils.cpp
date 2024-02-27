@@ -39,29 +39,25 @@ enum {
     undefined,
 };
 
-impl::data_type_t get_accum_datatype(brgemm_desc_t *brg) {
+impl::data_type_t get_accum_datatype(brgemm_t *brg) {
     // this assert should check if 'init_kernel_datatype()' was previously
     // called.
-    assert(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16
-            || brg->is_fp8);
+    assert(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16);
     return brg->is_int8 ? data_type::s32 : data_type::f32;
 }
 
 void init_kernel_datatype(
-        brgemm_desc_t *brg, impl::data_type_t dt_a, impl::data_type_t dt_b) {
+        brgemm_t *brg, impl::data_type_t dt_a, impl::data_type_t dt_b) {
     assert(dt_a != data_type::undef && dt_b != data_type::undef);
     brg->is_int8 = utils::one_of(dt_a, data_type::u8, data_type::s8)
             && utils::one_of(dt_b, data_type::u8, data_type::s8);
     brg->is_bf16 = (dt_a == data_type::bf16) && (dt_b == data_type::bf16);
     brg->is_f32 = (dt_a == data_type::f32) && (dt_b == data_type::f32);
     brg->is_f16 = utils::one_of(data_type::f16, dt_a, dt_b);
-    brg->is_fp8 = one_of(dt_a, data_type::f8_e5m2, data_type::f8_e4m3)
-            && one_of(dt_b, data_type::f8_e5m2, data_type::f8_e4m3);
-    assert(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16
-            || brg->is_fp8);
+    assert(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16);
 }
 
-void init_common_conf(brgemm_desc_t *brg, brgemm_batch_kind_t type, float alpha,
+void init_common_conf(brgemm_t *brg, brgemm_batch_kind_t type, float alpha,
         float beta, const brgemm_strides_t *strides) {
     brg->beta = beta;
     brg->alpha = alpha;
@@ -84,7 +80,7 @@ void init_common_conf(brgemm_desc_t *brg, brgemm_batch_kind_t type, float alpha,
 
 namespace brgemm_utils {
 
-bool can_dispatch_uker(const brgemm_desc_t *brg) {
+bool can_dispatch_uker(const brgemm_t *brg) {
     return brg->is_tmm
             && one_of(brg->type, brgemm_addr, brgemm_offs, brgemm_static_offs)
             && brg->brgattr.use_uker
@@ -92,7 +88,7 @@ bool can_dispatch_uker(const brgemm_desc_t *brg) {
                     brg->is_runtime_ldc, brg->is_runtime_ldd);
 }
 
-void maybe_try_bf32(brgemm_desc_t *brg) {
+void maybe_try_bf32(brgemm_t *brg) {
     const bool try_bf32 = brg->is_f32
             && one_of(brg->brgattr.fpmath_mode, fpmath_mode::bf16,
                     fpmath_mode::any)
@@ -111,7 +107,7 @@ void maybe_try_bf32(brgemm_desc_t *brg) {
     }
 }
 
-void set_isa_impl(brgemm_desc_t *brg) {
+void set_isa_impl(brgemm_t *brg) {
     auto is_isa_ok = [&](cpu_isa_t isa) {
         return mayiuse(isa) &&
                 // maybe IMPLICATION(brg->isa_user != isa_undef,
@@ -149,22 +145,19 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 avx512_core_amx, is_isa_ok(avx512_core_vnni), avx512_core_vnni,
                 is_isa_ok(avx512_core), avx512_core, is_isa_ok(avx2_vnni_2),
                 avx2_vnni_2, is_isa_ok(avx2_vnni), avx2_vnni);
-    } else if (brg->is_fp8) {
-        brg->isa_impl = utils::map(true, isa_undef,
-                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16);
     }
 }
 
-void set_brg_vmm(brgemm_desc_t *brg) {
+void set_brg_vmm(brgemm_t *brg) {
     brg->is_tmm = brg->is_int8_tmm || brg->is_bf16_tmm || brg->is_f16_tmm
-            || brg->is_bf32 || brg->is_fp8_tmm;
+            || brg->is_bf32;
     brg->is_zmm = !brg->is_tmm && mayiuse(avx512_core)
             && is_superset(brg->isa_impl, avx512_core);
     brg->is_ymm
             = !brg->is_zmm && mayiuse(avx2) && is_superset(brg->isa_impl, avx2);
 }
 
-int calculate_ldb_params(brgemm_desc_t *brg, const int try_ld_block2) {
+int calculate_ldb_params(brgemm_t *brg, const int try_ld_block2) {
     brg->ld_block2 = try_ld_block2;
     brg->ldb2 = brg->ldb / brg->ld_block2;
     brg->ldb2_tail = brg->ldb % brg->ld_block2;
@@ -180,7 +173,7 @@ int calculate_ldb_params(brgemm_desc_t *brg, const int try_ld_block2) {
     return nstl::max(1, adj_ld_block2);
 }
 
-int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
+int calculate_max_bcast_block(brgemm_t *brg, const int adj_ld_block2) {
 
     constexpr int max_bcst_regs = 1;
     const bool req_compensation = brg->req_s8s8_compensation
@@ -218,7 +211,7 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     return max_bcast_block;
 }
 
-status_t brgemm_blocking(brgemm_desc_t *brg) {
+status_t brgemm_blocking(brgemm_t *brg) {
 
     set_isa_impl(brg);
     if (brg->isa_impl == isa_undef) return status::unimplemented;
@@ -270,9 +263,10 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
         brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
         const int rd_unroll = 4;
-        const data_type_t rd_block_dt = get_mac_emu_data_type(
-                brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
-        const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
+        const int vnni_granularity
+                = (brg->is_f16 && brg->isa_impl == avx512_core_fp16)
+                ? 1
+                : data_type_vnni_granularity(brg->dt_a);
         brg->rd_block = rd_unroll * vnni_granularity;
         brg->rdb = brg->reduce_dim / brg->rd_block;
         brg->rdb_tail = brg->reduce_dim % brg->rd_block;
@@ -657,7 +651,7 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
 
         if (brg->get_num_A_tiles() + brg->get_num_B_tiles()
                         + brg->get_num_C_tiles()
-                > brgemm_desc_t::AMX_TILES_NUM) {
+                > brgemm_t::AMX_TILES_NUM) {
             assert(!"brgemm internal error: invalid blocking");
             return status::runtime_error;
         }
@@ -679,10 +673,11 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
             brg->load_nt_B
                     = (brg->brgattr.hint_load_nt_B == brgemm_hint_nt_true);
 
-        const bool reduce_by_words = brg->is_bf16_tmm || brg->is_f16_tmm
-                || brg->is_input_convert();
-        const auto max_rd_block = reduce_by_words ? 32 : 64;
-        const auto rd_block_step = (reduce_by_words && !brg->is_fp8) ? 2 : 4;
+        const auto max_rd_block
+                = (brg->is_bf16_tmm || brg->is_f16_tmm || brg->is_bf32) ? 32
+                                                                        : 64;
+        const auto rd_block_step
+                = (brg->is_bf16_tmm || brg->is_f16_tmm || brg->is_bf32) ? 2 : 4;
         // TODO: if rd_block calculated is very small then maybe it makes
         // sense to use 1x2 or 2x1 blocking with supporting rd_block
         // and rdb_tail
@@ -698,18 +693,14 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
 
         // Remove these guards in the future (add tail processing by reduction
         // dimension)
-        // TODO: these checks do not work for fp8-f16 and f16-fp8 cfgs
-        if (!IMPLICATION(
-                    brg->rdb > 0 && brg->rdb_tail, brg->is_input_convert())) {
+        if (!IMPLICATION(brg->rdb > 0 && brg->rdb_tail, brg->is_bf32))
             return status::unimplemented;
-        }
         if (!IMPLICATION(
                     (brg->rdb_tail
                             % ((brg->is_bf16_tmm || brg->is_f16_tmm) ? 2 : 4))
                             != 0,
-                    brg->is_input_convert())) {
+                    brg->is_bf32))
             return status::unimplemented;
-        }
 
         //TODO: check this condition
         brg->interleave_tilestores_ = brg->beta == 0
@@ -723,11 +714,10 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
     return status::success;
 }
 
-status_t brdgmm_blocking(brgemm_desc_t *brg) {
+status_t brdgmm_blocking(brgemm_t *brg) {
 
     if (brg->isa_impl == isa_undef) return status::unimplemented;
 
-    set_brg_vmm(brg); // Needed to dispatch into the right kernel later.
     const int max_vregs = isa_num_vregs(brg->isa_impl);
 
     const int simd_w = isa_max_vlen(brg->isa_impl) / brg->typesize_C;
@@ -764,24 +754,25 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     const int max_n_block2 = max_n_block2_vmms / n_block1_num_steps;
     n_block2 = nstl::min(max_n_block2, nb_n_block1);
 
-    const int aux_vregs
-            = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_aux_vmm_count(*brg);
-    const int compute_vregs
-            = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
+    // Note: using avx512_core template, but calculation uses 'brg->isa_impl'
+    // which is dynamic i.e. uses values AVX2, AVX2_VNNI, etc. depending on the
+    // configuration.
+    const int aux_vregs = jit_brdgmm_kernel_base_t<avx512_core_vnni,
+            Xbyak::Zmm>::get_aux_vmm_count(*brg);
+    const int compute_vregs = jit_brdgmm_kernel_base_t<avx512_core_vnni,
+            Xbyak::Zmm>::get_compute_vmm_count(*brg);
     const int bf16_emu_vregs = brg->is_bf16_emu * 4;
     const int max_acc_vmms
             = max_vregs - nstl::max(compute_vregs + aux_vregs, bf16_emu_vregs);
 
-    if (brg->brgattr.hint_bs_group > 1) {
-        // Check if we can actually apply bs grouping
-        const auto min_possible_m_block2
-                = (max_acc_vmms / (2 * n_block1_num_steps)
-                          - brg->brgattr.hint_bs_group + 1)
-                / 2;
-        if (min_possible_m_block2 < 1) brg->bs_group = 1;
-    }
+    const auto min_possible_m_block2 = brg->brgattr.bs_group > 1
+            ? (max_acc_vmms / (2 * n_block1_num_steps) - brg->brgattr.bs_group
+                      + 1)
+                    / 2
+            : 1;
+    if (min_possible_m_block2 < 1) brg->brgattr.bs_group = 1;
 
-    if (brg->bs_group > 1) n_block2 = n_block2 % 2 == 0 ? 2 : 1;
+    if (brg->brgattr.bs_group > 1) n_block2 = n_block2 % 2 == 0 ? 2 : 1;
 
     nb_n_block2 = div_up(nb_n_block1, n_block2);
     n_block2_tail = nb_n_block1 % n_block2;
@@ -791,22 +782,21 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     m_block1_tail = M % m_block1;
 
     m_block2 = nstl::min(nb_m_block1,
-            brg->bs_group > 1 ? (max_acc_vmms / (n_block2 * n_block1_num_steps)
-                                        - brg->bs_group + 1)
+            brg->brgattr.bs_group > 1
+                    ? (max_acc_vmms / (n_block2 * n_block1_num_steps)
+                              - brg->brgattr.bs_group + 1)
                             / 2
-                              : max_acc_vmms / (n_block2 * n_block1_num_steps));
-    assert(m_block2 > 0);
+                    : max_acc_vmms / (n_block2 * n_block1_num_steps));
     nb_m_block2 = div_up(nb_m_block1, m_block2);
     m_block2_tail = nb_m_block1 % m_block2;
 
     return status::success;
 }
 
-void init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
-        brgemm_batch_kind_t type, impl::data_type_t dt_a,
-        impl::data_type_t dt_b, brgemm_layout_t layout, float alpha, float beta,
-        dim_t LDA, dim_t LDB, dim_t LDC, dim_t M, dim_t N, dim_t K,
-        const brgemm_strides_t *strides, bool is_bf32) {
+void init_brgemm_conf(brgemm_t *brg, cpu_isa_t isa, brgemm_batch_kind_t type,
+        impl::data_type_t dt_a, impl::data_type_t dt_b, brgemm_layout_t layout,
+        float alpha, float beta, dim_t LDA, dim_t LDB, dim_t LDC, dim_t M,
+        dim_t N, dim_t K, const brgemm_strides_t *strides, bool is_bf32) {
 
     init_common_conf(brg, type, alpha, beta, strides);
 
@@ -833,14 +823,12 @@ void init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->is_bf32 = is_bf32
             && utils::one_of(brg->isa_user, isa_undef, avx512_core_amx)
             && mayiuse(avx512_core_amx);
-    brg->is_fp8_tmm
-            = brg->is_fp8 && one_of(brg->isa_impl, avx512_core_amx_fp16);
 
     brg->has_int8_vnni = isa_has_int8_vnni(brg->isa_impl);
 
     set_brg_vmm(brg); // TODO: Investigate if it is really needed here.
-    brg->req_s8s8_compensation = brg->is_int8 && brg->dt_a == data_type::s8
-            && !isa_has_s8s8(brg->isa_impl);
+    brg->req_s8s8_compensation = brg->is_int8 && !brg->is_int8_tmm
+            && (brg->isa_impl != avx2_vnni_2) && brg->dt_a == data_type::s8;
 
     brg->LDA = (brg->is_row_major()) ? static_cast<int>(LDA)
                                      : static_cast<int>(LDB);
@@ -864,20 +852,23 @@ void init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->bdb2 = 0;
     brg->bdb2_tail = 0;
 
-    const data_type_t ld_step_compute_dt
-            = get_mac_emu_data_type(brg->dt_b, brg->isa_impl,
-                    brg->isa_impl != avx2_vnni_2 && !brg->is_fp8_via_convert());
-    brg->ld_step = data_type_vnni_granularity(ld_step_compute_dt);
+    const bool is_b_in_vnni_format = !(
+            brg->dt_b == data_type::f16 && brg->isa_impl == avx512_core_fp16);
+    brg->ld_step
+            = is_b_in_vnni_format ? data_type_vnni_granularity(brg->dt_b) : 1;
 
-    const data_type_t rd_step_compute_dt = get_mac_emu_data_type(
-            brg->dt_b, brg->isa_impl, !brg->is_fp8_via_convert());
-    brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
+    const bool has_no_vnni_compute_instruction
+            = (brg->is_f16
+                      && one_of(brg->isa_impl, avx2_vnni_2, avx512_core_fp16))
+            || (brg->is_bf16 && brg->isa_impl == avx2_vnni_2);
+    brg->rd_step = has_no_vnni_compute_instruction
+            ? 1
+            : data_type_vnni_granularity(brg->dt_b);
 }
 
-void init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
-        brgemm_batch_kind_t type, impl::data_type_t dt_a,
-        impl::data_type_t dt_b, brgemm_layout_t layout, float alpha, float beta,
-        dim_t LDA, dim_t LDC, dim_t M, dim_t N,
+void init_brdgmm_conf(brgemm_t *brg, cpu_isa_t isa, brgemm_batch_kind_t type,
+        impl::data_type_t dt_a, impl::data_type_t dt_b, brgemm_layout_t layout,
+        float alpha, float beta, dim_t LDA, dim_t LDC, dim_t M, dim_t N,
         const brgemm_strides_t *strides) {
 
     init_common_conf(brg, type, alpha, beta, strides);
@@ -920,6 +911,7 @@ void init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->req_s8s8_compensation = brg->is_int8 && brg->dt_a == data_type::s8
             && !isa_has_s8s8(brg->isa_impl);
 
+    brg->is_bf16_tmm = brg->is_bf16 && mayiuse(avx512_core_amx);
     brg->is_dgmm = true;
 
     brg->LDA = static_cast<int>(LDA);

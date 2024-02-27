@@ -2084,6 +2084,7 @@ public:
             data_type_t idt, data_type_t odt, bool force_lbound = false) {
         using namespace data_type;
         if (!((idt == f32) && utils::one_of(odt, u8, s8, s32))) return;
+        if (!force_lbound && isa_has_sat_cvt(max_cpu_isa_, odt)) return;
 
         assert(IMPLICATION(idt == u8 || force_lbound,
                 vmm_lbound.getIdx() != vmm_ubound.getIdx()));
@@ -2140,8 +2141,16 @@ public:
     template <typename Vmm>
     void saturate_cvt_f32(const Vmm &vmm, const Vmm &vmm_lbound,
             const Vmm &vmm_ubound, data_type_t odt, bool force_lbound = false) {
-        saturate_f32(vmm, vmm_lbound, vmm_ubound, odt, force_lbound);
-        uni_vcvtps2dq(vmm, vmm);
+        if (isa_has_sat_cvt(max_cpu_isa_, odt)) {
+            switch (odt) {
+                case data_type::s8: vcvtps2ibs(vmm, vmm); break;
+                case data_type::u8: vcvtps2iubs(vmm, vmm); break;
+                default: assert(!"unsupported data type");
+            }
+        } else {
+            saturate_f32(vmm, vmm_lbound, vmm_ubound, odt);
+            uni_vcvtps2dq(vmm, vmm);
+        }
     }
 
     /**

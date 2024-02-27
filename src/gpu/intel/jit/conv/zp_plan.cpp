@@ -1265,18 +1265,17 @@ public:
     }
 
     stmt_t create_stmt(const expr_t &comp_buf, const expr_t &mask_buf,
-            const expr_t &c_buf, const split_dispatcher_t &sd,
-            int subtile_idx) const {
+            const expr_t &c_buf, int subtile_idx) const {
         const auto comp_type = comp_layout_.type();
         const auto mask_type = mask_layout_.type();
-        const dim_t kw_dim = comp_layout_.dim(comp_kw_idx_);
+        const int kw_dim = comp_layout_.dim(comp_kw_idx_);
         std::vector<int> comp_off;
         std::vector<int> mask_off;
         c_layout_.for_each_tile(
                 sd.get_simd_tile(), [&](const std::vector<dim_t> &start) {
                     if (!sd.in_subtile(start, subtile_idx)) return;
                     for (int kw = 0; kw < kw_dim; kw++) {
-                        comp_off.emplace_back(get_comp_off(start, kw, sd));
+                        comp_off.emplace_back(get_comp_off(start, kw));
                         mask_off.emplace_back((mask_buf.is_empty())
                                         ? -1
                                         : get_mask_off(start, kw));
@@ -1286,8 +1285,7 @@ public:
         std::vector<std::pair<int, stmt_t>> precomp;
         for (int i = 0; i < int(comp_off.size()) / kw_dim; i++) {
             bool is_same = i > 0;
-            for (dim_t kw = i * kw_dim; is_same && (kw < (i + 1) * kw_dim);
-                    kw++)
+            for (int kw = i * kw_dim; is_same && (kw < (i + 1) * kw_dim); kw++)
                 is_same &= (comp_off[kw - kw_dim] == comp_off[kw])
                         && (mask_off[kw - kw_dim] == mask_off[kw]);
             if (is_same) continue;
@@ -1296,29 +1294,29 @@ public:
             auto &stmt = precomp.back().second;
             auto comp0 = comp_buf[comp_off[i * kw_dim]];
             auto comp0_load
-                    = load_t::make(comp_type.with_elems(sd.simd()), comp0, 0);
+                    = load_t::make(comp_type.with_elems(simd_), comp0, 0);
             if (mask_buf.is_empty()) {
-                for (dim_t kw = i * kw_dim + 1; kw < (i + 1) * kw_dim; kw++) {
+                for (int kw = i * kw_dim + 1; kw < (i + 1) * kw_dim; kw++) {
                     auto comp = comp_buf[comp_off[kw]];
                     auto comp_load = load_t::make(
-                            comp_type.with_elems(sd.simd()), comp, 0);
+                            comp_type.with_elems(simd_), comp, 0);
                     stmt = stmt.append(
                             store_t::make(comp0, 0, comp0_load + comp_load));
                 }
             } else {
                 auto mask0 = mask_buf[mask_off[i * kw_dim]];
-                auto m0_ld = load_t::make(mask_type.with_elems(1), mask0, 0);
-                auto mask0_load = shuffle_t::make_broadcast(m0_ld, sd.simd());
+                auto mask0_load = shuffle_t::make_broadcast(
+                        load_t::make(mask_type.with_elems(1), mask0, 0), simd_);
                 stmt = stmt.append(
                         store_t::make(comp0, 0, comp0_load * mask0_load));
-                for (dim_t kw = i * kw_dim + 1; kw < (i + 1) * kw_dim; kw++) {
+                for (int kw = i * kw_dim + 1; kw < (i + 1) * kw_dim; kw++) {
                     auto comp = comp_buf[comp_off[kw]];
                     auto mask = mask_buf[mask_off[kw]];
                     auto comp_load = load_t::make(
-                            comp_type.with_elems(sd.simd()), comp, 0);
+                            comp_type.with_elems(simd_), comp, 0);
                     auto mask_load = shuffle_t::make_broadcast(
                             load_t::make(mask_type.with_elems(1), mask, 0),
-                            sd.simd());
+                            simd_);
                     stmt = stmt.append(store_t::make(comp0, 0,
                             ternary_op_t::make(op_kind_t::_mad, comp0_load,
                                     comp_load, mask_load)));
@@ -1331,38 +1329,38 @@ public:
         // N.B.: if irreducible, kw_dim * precomp.size() > comp_off.size()
         if (kw_dim * precomp.size() < comp_off.size()) {
             const bool do_precomp = (subtile_idx == 0)
-                    || ((sd.abc() == abc_kind_t::b) && (sd.factor() > 1));
+                    || ((split_.abc() == abc_kind_t::b)
+                            && (split_.factor() > 1));
             int p_iter = -1, t_iter = 0;
             c_layout_.for_each_tile(
-                    sd.get_simd_tile(), [&](const std::vector<dim_t> &start) {
-                        if (!sd.in_subtile(start, subtile_idx)) return;
+                    get_simd_tile(), [&](const std::vector<dim_t> &start) {
+                        if (!split_.in_subtile(start, subtile_idx)) return;
                         if (precomp[p_iter + 1].first == t_iter++) {
                             p_iter++;
                             if (do_precomp)
                                 stmt = stmt.append(precomp[p_iter].second);
                         }
                         auto off = comp_off[precomp[p_iter].first * kw_dim];
-                        auto csty = comp_type.with_elems(sd.simd());
-                        auto comp_load = load_t::make(csty, comp_buf[off], 0);
+                        auto comp_load = load_t::make(
+                                comp_type.with_elems(simd_), comp_buf[off], 0);
                         auto c = c_buf[get_c_off(start, 0)];
                         auto c_load = load_t::make(
-                                c_layout_.type().with_elems(sd.simd()), c, 0);
+                                c_layout_.type().with_elems(simd_), c, 0);
                         stmt = stmt.append(store_t::make(c, 0,
                                 (mask_buf.is_empty()) ? (c_load - comp_load)
                                                       : (c_load + comp_load)));
                     });
         } else {
             c_layout_.for_each_tile(
-                    sd.get_simd_tile(), [&](const std::vector<dim_t> &start) {
-                        if (!sd.in_subtile(start, subtile_idx)) return;
+                    get_simd_tile(), [&](const std::vector<dim_t> &start) {
+                        if (!split_.in_subtile(start, subtile_idx)) return;
                         for (int kw = 0; kw < kw_dim; kw++) {
-                            auto comp = comp_buf[get_comp_off(start, kw, sd)];
+                            auto comp = comp_buf[get_comp_off(start, kw)];
                             auto mask = mask_buf.is_empty()
                                     ? expr_t()
                                     : mask_buf[get_mask_off(start, kw)];
                             auto c = c_buf[get_c_off(start, kw)];
-                            stmt = stmt.append(
-                                    create_tile_stmt(comp, mask, c, sd));
+                            stmt = stmt.append(create_tile_stmt(comp, mask, c));
                         }
                     });
         }

@@ -186,7 +186,7 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     for (int i = 0; i < int(padded_dims.size()); i++)
         padded_dims[i] = dims_grid[i];
     ir_assert(padded_dims.size() == 5);
-    std::vector<int> dims {padded_dims[0], int(src_layout.dim(1)),
+    std::vector<int> dims {int(src_layout.dim(0)), int(src_layout.dim(1)),
             padded_dims[2], padded_dims[3], padded_dims[4]};
 
     // Source.

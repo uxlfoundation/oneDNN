@@ -802,9 +802,9 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::saturate(const Vmm &vmm) {
     assert(saturation_conf_.has_value() && "Config for saturation is not set.");
 
-    host_->saturate_f32(vmm, Vmm(saturation_conf_->vreg_zero_saturation_idx_),
+    host_->saturate_cvt_f32(vmm,
+            Vmm(saturation_conf_->vreg_zero_saturation_idx_),
             Vmm(saturation_conf_->vreg_saturation_ubound_idx_), data_type_);
-    host_->uni_vcvtps2dq(vmm, vmm);
 }
 
 template <typename Vmm>
@@ -898,7 +898,9 @@ void jit_io_helper_t<Vmm>::store_f8(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::store_i8(
         const Vmm &src_vmm, const Xbyak::Address &dst_addr) {
-    if (!is_superset(isa_, avx512_core)) {
+    if (isa_has_sat_cvt(isa_, data_type_)) {
+        host_->vpmovusdb(dst_addr, src_vmm);
+    } else if (!is_superset(isa_, avx512_core)) {
         static constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
 
         prepare_i8_data_to_store(src_vmm);

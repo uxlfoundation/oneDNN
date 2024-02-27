@@ -80,6 +80,16 @@ public:
         return ret;
     }
 
+#if XE3P
+    InstructionModifier with_fwd() const {
+        auto ret = *this;
+        // Fwd modifier can be used with Atomic only.
+        ret.is_atomic = true;
+        ret.is_fwd = true;
+        return ret;
+    }
+#endif
+
     InstructionModifier with_sbid(const SBID &sbid) const {
         auto ret = *this;
         ret.sbid = sbid;
@@ -87,6 +97,9 @@ public:
     }
 
     bool is_atomic = false;
+#if XE3P
+    bool is_fwd = false;
+#endif
     SBID sbid;
 };
 

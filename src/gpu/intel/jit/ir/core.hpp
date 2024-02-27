@@ -2511,6 +2511,9 @@ public:
             is_first = false;
         };
         if (mod.is_atomic) append("Atomic");
+#if XE3P
+        if (mod.is_fwd) append("Fwd");
+#endif
         if (!mod.sbid.is_empty()) {
             append(std::string("$") + std::to_string(mod.sbid.token));
         }

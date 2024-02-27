@@ -148,6 +148,9 @@ inline ngen::InstructionModifier to_ngen(
         const ngen_proxy::InstructionModifier &mod_proxy) {
     ngen::InstructionModifier mod;
     if (mod_proxy.is_atomic) mod |= ngen::ThreadCtrl::Atomic;
+#if XE3P
+    if (mod_proxy.is_fwd) mod |= ngen::InstructionModifier::createFwd();
+#endif
     if (!mod_proxy.sbid.is_empty()) mod |= ngen::SBID(mod_proxy.sbid.token).set;
     return mod;
 }

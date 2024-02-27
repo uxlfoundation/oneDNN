@@ -28,6 +28,11 @@ namespace jit {
 // Adds {Atomic} modifier to dpas/dpasw instructions when applicable.
 stmt_t inject_dpas_atomic(const stmt_t &stmt);
 
+#if XE3P
+// Adds {Fwd} modifier to dpas/dpasw instructions when applicable.
+stmt_t inject_dpas_fwd(const stmt_t &stmt);
+#endif
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

@@ -334,8 +334,18 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         };
 
         const auto cvt2odt = [this, cvt2ps](const Ymm ymm, data_type_t odt,
-                                     data_type_t idt) {
+                                     data_type_t idt, bool need_saturation) {
             const Xmm xmm = Xmm(ymm.getIdx());
+            if (need_saturation && isa_has_sat_cvt(isa_, odt)) {
+                switch (odt) {
+                    case s8:
+                    case u8: vpmovusdb(xmm, ymm); break;
+                    case s32: break; // nothing to do
+                    default: assert("unsupported data type");
+                }
+                return;
+            }
+
             switch (odt) {
                 case bf16:
                     if (utils::one_of(
@@ -537,7 +547,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 cvt2odt(Ymm(i), prb_.otype,
                         need_saturation       ? s32
                                 : interim_f32 ? f32
-                                              : prb_.itype);
+                                              : prb_.itype,
+                        need_saturation);
             store(o_addr(o_off + i * node_1_output_stride), Ymm(i),
                     unroll * otype_sz_);
         }
@@ -628,7 +639,17 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         };
 
         const auto cvt2odt = [this, cvt2ps](const Xmm xmm, data_type_t odt,
-                                     data_type_t idt) {
+                                     data_type_t idt, bool need_saturation) {
+            if (need_saturation && !compensation_needed_
+                    && isa_has_sat_cvt(isa_, prb_.otype)) {
+                switch (prb_.otype) {
+                    case s8:
+                    case u8: vpmovusdb(xmm, xmm); break;
+                    case s32: break; // nothing to do
+                    default: assert("unsupported data type");
+                }
+                return;
+            }
             switch (odt) {
                 case bf16:
                     if (!mayiuse(avx)) assert(!"unreachable");
@@ -876,7 +897,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         cvt2odt(Xmm(ur), prb_.otype,
                                 need_saturation       ? s32
                                         : interim_f32 ? f32
-                                                      : prb_.itype);
+                                                      : prb_.itype,
+                                need_saturation);
                     }
                 }
                 for (int ur = 0; ur < reg_unroll; ur += load_step) {
@@ -1201,7 +1223,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 cvt2odt(Xmm(ur), prb_.otype,
                         need_saturation && !compensation_needed_ ? s32
                                 : interim_f32                    ? f32
-                                                                 : prb_.itype);
+                                                                 : prb_.itype,
+                        need_saturation);
 
             store(o_addr(o_off[ur]), Xmm(ur), ur_step * otype_sz_);
         }

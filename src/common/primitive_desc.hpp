@@ -395,8 +395,8 @@ struct primitive_desc_t : public c_compatible {
             double start_ms = get_msec();
             CHECK(create_primitive(primitive, engine, cache_blob));
             double duration_ms = get_msec() - start_ms;
-            if (cache_blob) p.second = cache_state_t::persistent_hit;
-            const char *str = cache_hit_string(p.second);
+            if (cache_blob) primitive.second = cache_state_t::persistent_hit;
+            const char *str = cache_state2str(primitive.second);
 
             VPROF(start_ms, primitive, create_nested, str, info(engine),
                     duration_ms);

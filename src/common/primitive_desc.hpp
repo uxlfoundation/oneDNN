@@ -391,6 +391,17 @@ struct primitive_desc_t : public c_compatible {
             engine_t *engine,
             const cache_blob_t &cache_blob = cache_blob_t()) const {
         std::pair<std::shared_ptr<primitive_t>, cache_state_t> p;
+        status_t status = create_primitive_nested(p, engine, cache_blob);
+        primitive = p.first;
+        return status;
+    }
+
+    // This is a proxy interface that is used for explicitly creating nested primitives,
+    // This version is used when cache_state_t is required for further analysis
+    status_t create_primitive_nested(
+            std::pair<std::shared_ptr<primitive_t>, cache_state_t> &primitive,
+            engine_t *engine,
+            const cache_blob_t &cache_blob = cache_blob_t()) const {
         if (get_verbose(verbose_t::debuginfo) >= 1) {
             double start_ms = get_msec();
             CHECK(create_primitive(primitive, engine, cache_blob));

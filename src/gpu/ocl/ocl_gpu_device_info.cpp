@@ -43,11 +43,11 @@ status_t ocl_gpu_device_info_t::init_arch(engine_t *engine) {
 
 #if XE3P
     init_gpu_hw_info(engine, device, context, gpu_arch_, stepping_id_,
-            native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_,
+            mayiuse_systolic_, mayiuse_ngen_kernels_, is_xelpg_,
             is_efficient_64bit_);
 #else
     init_gpu_hw_info(engine, device, context, gpu_arch_, stepping_id_,
-            native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_);
+            mayiuse_systolic_, mayiuse_ngen_kernels_, is_xelpg_);
 #endif
 
     err = clReleaseContext(context);

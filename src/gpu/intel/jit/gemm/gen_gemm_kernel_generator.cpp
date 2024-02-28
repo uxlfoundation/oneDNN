@@ -5941,6 +5941,11 @@ static inline int block2DBaseAlignment(HW hw, int stepping) {
     return 64;
 }
 
+static inline int block2DBaseAlignment(HW hw, int stepping) {
+    if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
+    return 64;
+}
+
 // Output code for setting up address/header GRFs for a single block, given
 //  the base pointer (a Subregister, MultishiftSubregister or integer) and leading dimension.
 template <HW hw>
@@ -14889,6 +14894,15 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto unrollKSLM = strategy.unrollKSLM;
     bool calcASums = problem.needsASums();
     bool calcBSums = problem.needsBSums();
+    bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
+    bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D;
+    bool dequantize2DA = ao2D || as2D;
+    bool dequantize2DB = bo2D || bs2D;
+    bool slmDequantize2DA = dequantize2DA && slmA;
+    bool slmDequantize2DB = dequantize2DB && slmB;
+    dequantize2DA &= !slmDequantize2DA;
+    dequantize2DB &= !slmDequantize2DB;
+    int aqGroupK = problem.aqGroupK, bqGroupK = problem.bqGroupK;
     bool readA = true, readB = true;
 
     bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
@@ -19341,6 +19355,10 @@ void gemm_kernel_generator_t<hw>::gemmInitInterface(GEMMProblem &problem,
         state.inputs.surfaceBScale
                 = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
+    if (problem.aScale2D)
+        state.inputs.aScalePtr = interface.getArgument("a_scale_ptr");
+    if (problem.bScale2D)
+        state.inputs.bScalePtr = interface.getArgument("b_scale_ptr");
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
     state.inputs.offsetB = interface.getArgumentIfExists("offset_B");
     state.inputs.offsetC[0] = interface.getArgumentIfExists("offset_C");
@@ -21163,6 +21181,9 @@ void gemm_kernel_generator_t<hw>::gemmAutoTypeConversions(
     if (Tb.isF8()) Tb = Type::f16;
 #endif
 
+    if (Ta == Type::bf8) Ta = Type::f16;
+    if (Tb == Type::bf8) Tb = Type::f16;
+
     if (hw > HW::Gen9 && !strategy.systolic && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;
         if (Tb == Type::f16) Tb = Type::f32;
@@ -22950,6 +22971,9 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
     auto Ta_real = Ta.real();
     auto Tb_real = Tb.real();
     auto Tc_real = Tc.real();
+
+    bool dequantize2DA = (problem.aoPtrDims == 2 || problem.aScale2D);
+    bool dequantize2DB = (problem.boPtrDims == 2 || problem.bScale2D);
 
     // Safety checks for alignment.
     if (!legalAAlignment(problem, problem.A.alignment))

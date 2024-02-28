@@ -84,12 +84,10 @@
 //     - header sets TO_SRC(), TO_DST() conversions
 //     - TO_DST() is very often utilized for final output to global memory
 
-#ifndef GPU_INTEL_OCL_OCL_TYPES_H
-#define GPU_INTEL_OCL_OCL_TYPES_H
+#ifndef GPU_OCL_OCL_TYPES_H
+#define GPU_OCL_OCL_TYPES_H
 
-#include "gpu/intel/ocl/ocl_custom_types.h"
-#include "gpu/intel/ocl/ocl_math_utils.h"
-#include "gpu/intel/ocl/ocl_utils.h"
+#include "gpu/ocl/ocl_math_utils.h"
 
 #define auto __auto_type
 #define typeof(x) __typeof__(x)

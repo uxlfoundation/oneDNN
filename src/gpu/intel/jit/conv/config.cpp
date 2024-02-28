@@ -800,10 +800,9 @@ bool data_types_ok(
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
-    bool is_xelpg = hw == ngen::HW::XeHPG && !hw.systolic_support();
     if (prb.is_f64_conv()
             && (utils::one_of(hw.to_ngen(), ngen::HW::XeLP, ngen::HW::XeHPG)
-                    && !is_xelpg))
+                    && !hw.is_xelpg()))
         return false;
     if (is_bf8
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))

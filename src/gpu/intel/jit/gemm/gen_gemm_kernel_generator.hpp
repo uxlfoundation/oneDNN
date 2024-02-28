@@ -1003,12 +1003,11 @@ struct GEMMProblem : public CommonProblem {
     bool backward() const { return false; }
 
     bool needsASums() const {
-        return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB());
+        return (bOffset == ABOffset::Calc && boPtrDims < 2) || sumA;
     }
     bool needsBSums() const {
-        return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA());
+        return (aOffset == ABOffset::Calc && aoPtrDims < 2) || sumB;
     }
-
     bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
     bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
 
@@ -1368,25 +1367,8 @@ struct GEMMStrategy : public GEMMStrategyPOD {
 
     bool checkAdd32Rem() const { return checkAdd32 && emulate.emulate64; }
 
-    bool allowDoubleMasking(LoopType loop) const {
-        return doubleMasking || unroll[loop] == 1;
-    }
-
-    bool registerOutput() const {
-        return C.base.getModel() == ngen::ModelInvalid;
-    }
-
-    int aqGroupKGranularity() const {
-        return groupKReduce(slmA ? unrollKSLM : ka_load);
-    }
-    int bqGroupKGranularity() const {
-        return groupKReduce(slmB ? unrollKSLM : kb_load);
-    }
-    int groupKReduce(int x) const {
-        while (x > 32 && (x & 1) == 0)
-            x >>= 1;
-        return x;
-    }
+    int aqGroupKGranularity() const { return slmA ? unrollKSLM : ka_load; }
+    int bqGroupKGranularity() const { return slmB ? unrollKSLM : kb_load; }
 
     void serialize(serialized_data_t &s) const {
         const GEMMStrategyPOD &pod = *this;
@@ -1551,8 +1533,7 @@ struct GEMMState : public CommonState {
     CoopSplit effCoopB = CoopSplit::K;
     ngen::Subregister kSLMA, kSLMB, kSLMStorage; // w/w/ud
     bool kSLMCountUp = false;
-    int kaq, kbq, kaqStride, kbqStride, kaqLate, kbqLate;
-    bool lateScale2DA = false, lateScale2DB = false;
+    int kaq, kbq;
     std::vector<RegisterBlock> A_layout, B_layout, C_layout;
     std::vector<RegisterBlock> A_layoutRem, B_layoutRem;
     std::vector<RegisterBlock> A_layoutAlt, B_layoutAlt;
@@ -1569,7 +1550,6 @@ struct GEMMState : public CommonState {
     std::vector<RegisterBlock> A_scaleLayout, B_scaleLayout;
     std::vector<RegisterBlock> Ar_offsetLayout, Br_offsetLayout;
     std::vector<RegisterBlock> Ar_scaleLayout, Br_scaleLayout;
-    std::vector<RegisterBlock> Cr_layout;
     std::vector<RegisterBlock> C_layoutExt, C_layoutExtUnmasked,
             C_layoutExtNonatomicUnmasked;
     Address2DParams A_params, B_params;
@@ -1581,7 +1561,6 @@ struct GEMMState : public CommonState {
     bool aoReuseA = false, boReuseB = false;
     Type Tao_int, Ta_scaleInt;
     Type Tbo_int, Tb_scaleInt;
-    Type Ta_scaleOp, Tb_scaleOp;
     MatrixAddressing Ai, Bi, Ao, Bo, tempC;
     MatrixAddressingStrategy Ai_strategy, Bi_strategy;
     MatrixAddressingStrategy Ao_strategy, Bo_strategy;
@@ -2738,34 +2717,17 @@ protected:
             const GRFMultirange &src, const GRFMultirange &dst,
             const GEMMProblem &problem, const GEMMStrategy &strategy,
             GEMMState &state);
-    void gemmRepack2DOffsetData(Type Text, Type Ts, Type Td,
-            const std::vector<RegisterBlock> &layoutSrc,
-            const std::vector<RegisterBlock> &layoutDst,
-            const GRFMultirange &src, const GRFMultirange &dst,
-            const GEMMProblem &problem, const GEMMStrategy &strategy,
-            GEMMState &state);
-    void dequantizeInt4Shift(
-            Type Tsrc, GRFMultirange src, const CommonStrategy &strategy);
-    void dequantizeInt4(bool doA, Type Tsrc, Type Tdst,
-            const std::vector<RegisterBlock> &layoutSrc,
-            const std::vector<RegisterBlock> &layoutDst,
-            const std::vector<RegisterBlock> &layoutOffset,
-            const std::vector<RegisterBlock> &layoutScale, GRFMultirange src,
-            GRFMultirange dst, GRFMultirange offset, GRFMultirange scale,
-            Type Tscale, int offR, int offC, const GEMMProblem *problem,
-            const CommonStrategy &strategy, CommonState &state,
-            bool do_shift = true);
-    void gemmDequantizeOperation(bool doA, Type T, Type To, BinaryOp op,
+    void gemm2DDequantizeOperation(bool doA, Type T, BinaryOp op,
             const std::vector<RegisterBlock> &layout,
-            const std::vector<RegisterBlock> &qlayout,
-            const GRFMultirange &regs, const GRFMultirange &qregs, int hq,
+            const std::vector<RegisterBlock> &olayout,
+            const GRFMultirange &regs, const GRFMultirange &oregs, int hab,
             const GEMMProblem &problem);
-    void gemmDequantizeAB(bool doA, Type Tsrc, Type Tdst,
+    void gemm2DDequantizeAB(bool doA, Type Tsrc, Type Tdst,
             const std::vector<RegisterBlock> &layoutSrc,
             const std::vector<RegisterBlock> &layoutDst,
             const GRFMultirange &src, const GRFMultirange &dst, int hab,
             const GEMMProblem &problem, const GEMMStrategy &strategy,
-            GEMMState &state, bool do_shift = true);
+            GEMMState &state);
 
     void gemmCalcKLoopBarrierCount(ngen::Subregister &count,
             const ngen::Subregister &k, int cooldown,

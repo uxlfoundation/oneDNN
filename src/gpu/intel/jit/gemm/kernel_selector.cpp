@@ -370,14 +370,8 @@ MatchParamsBase::MatchParamsBase(
         if (problem.batchDims > 1) *tagPtr++ = ReqBatchMultiDim;
     }
 
-    problem.autoTypeConversions(hw, systolicAvailable);
-    if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;
-    if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
-
-    if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
-#if XE3
-    if (hw == ngen::HW::Xe3) *tagPtr++ = ReqXe2Block2D;
-#endif
+    if (problem.aOffset != ABOffset::None) *tagPtr++ = ReqSumB;
+    if (problem.bOffset != ABOffset::None) *tagPtr++ = ReqSumA;
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

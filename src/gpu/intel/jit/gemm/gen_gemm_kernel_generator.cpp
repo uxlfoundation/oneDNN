@@ -225,9 +225,6 @@ static inline int eusPerSubslice(HW hw) {
 }
 
 static inline int r0DWords(HW hw) {
-#if XE3P
-    if (hw >= HW::Xe3p) return 16;
-#endif
     return 8;
 }
 
@@ -2299,20 +2296,6 @@ static inline int minScatteredSIMD(
     return maxScatteredSIMD(hw, astrategy) >> 1;
 }
 
-// Get minimum alignment for block 2D message.
-static inline int block2DMinAlignment(HW hw, const MatrixAddressing &atype,
-        const MatrixAddressingStrategy &astrategy, bool asIfBlock2D = false) {
-    if (!isBlock2D(astrategy.accessType) && !asIfBlock2D) return 0;
-    if (hw == HW::Xe2) return 16;
-#if XE3
-    if (hw == HW::Xe3) return 16;
-#endif
-#if XE3P
-    if (hw >= HW::Xe3p) return 4;
-#endif
-    return (isTransposing(astrategy.accessType) || astrategy.prefetch) ? 4 : 8;
-}
-
 // Get width/height/array size parameters for underlying 2D block load message.
 static void getBlock2DWH(int &w, int &h, int &count,
         const MatrixAddressing &atype, const RegisterBlock &block,
@@ -2957,6 +2940,9 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
             auto maxYBlock = memCM ? maxCBlock : maxRBlock;
 
             if (hw < HW::XeHPC || !astrategy.newDP) hw_unsupported();
+
+            int minAlign = (astrategy.prefetch ? 4 : 8);
+            if (hw >= HW::Xe2) minAlign = 16;
 
             // Choose underlying type.
             auto Tblock = T;
@@ -5940,6 +5926,11 @@ static inline int block2DBaseAlignment(HW hw, int stepping) {
     return 64;
 }
 
+static inline int block2DBaseAlignment(HW hw, int stepping) {
+    if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
+    return 64;
+}
+
 // Output code for setting up address/header GRFs for a single block, given
 //  the base pointer (a Subregister, MultishiftSubregister or integer) and leading dimension.
 template <HW hw>
@@ -6182,8 +6173,7 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
 
                 if (nx.isValid()) {
                     if (T.isInt4()) {
-                        addScaled(1, addr[0].ud(2), addr[0].ud(2), nx, -1, 2,
-                                state, true);
+                        addScaled(1, addr[0].ud(2), -1, nx, 1, 2, state, true);
                     } else {
                         mad(1, addr[0].ud(2), -1, nx, T.size());
                     }
@@ -6218,13 +6208,13 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
                 if (remW.isValid() && multiX > 1) stub();
                 if (remW.isValid()) {
                     if (T.isInt4()) {
-                        addScaled(1, addr[0].ud(2), addr[0].ud(2), remW.uw(),
-                                -1, 2, state, true);
+                        addScaled(1, addr[0].ud(2), -1, remW.uw(), 1, 2, state,
+                                true);
                     } else {
                         mad(1, addr[0].ud(2), -1, remW.uw(), T.size());
                     }
                 } else {
-                    mov(1, addr[0].ud(2), bw * block.count * block.ebytes - 1);
+                    mov(1, addr[0].ud(2), bw * bcount * block.ebytes - 1);
                 }
                 remH.isValid() ? mad(1, addr[0].ud(3), -1, remH.uw(), multiX)
                                : mov(1, addr[0].ud(3), bh - 1);
@@ -7118,7 +7108,8 @@ void gemm_kernel_generator_t<hw>::outerProductFMA(int h, int ha, int hb,
 
     bool mixedMode = ((Tc.real() == Type::f32)
             && (Ta.real() != Type::f32 || Tb.real() != Type::f32));
-    bool useDP4A = (hw >= HW::Gen12LP && isIGEMM(Ta, Tb, Tc));
+    bool useDP4A = (Ta.size() == 1 && Tb.size() == 1 && Tc.size() == 4
+            && hw >= HW::Gen12LP);
     bool atomicFMA = strategy.atomicFMA;
     bool noAccSBSet = strategy.extendedAtomicFMA && (hw >= HW::XeHPC);
 
@@ -9625,7 +9616,8 @@ static bool keepIJ0(const GEMMProblem &problem, const GEMMStrategy &strategy) {
 }
 
 static bool keepH0(const GEMMProblem &problem, const GEMMStrategy &strategy) {
-    if (problem.quantized2DA() || problem.quantized2DB()) return true;
+    if (problem.aoPtrDims > 0 || problem.boPtrDims > 0) return true;
+    if (problem.aScale2D || problem.bScale2D) return true;
     return strategy.kParallelVariable && strategy.fuseBeta;
 }
 
@@ -10876,18 +10868,6 @@ void gemm_kernel_generator_t<hw>::convert(const GRFMultirange &range, Type Told,
             mov(ne, range[i].ub(0)(4), range[i].ub());
         return;
     }
-#if XE3P
-    if (hw >= HW::Xe3p && Told == Type::f32 && Tnew == Type::hf8) {
-        int ne = elementsPerGRF<uint32_t>(hw);
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].hf(), range[i].f());
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].hf8(), range[i].hf());
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].ub(0)(4), range[i].ub());
-        return;
-    }
-#endif
 
     // Special path: s16->f16.
     if (Told == Type::s16 && Tnew == Type::f16) {
@@ -10901,39 +10881,6 @@ void gemm_kernel_generator_t<hw>::convert(const GRFMultirange &range, Type Told,
             mov(ne, range[i].hf(0)(2), range[i].w(0)(2));
         for (int i = 0; i < range.getLen(); i++)
             rol(ne, range[i].ud(), range[i].ud(), 16);
-        return;
-    }
-
-    // Special path: s16->bf16.
-    if (Told == Type::s16 && Tnew == Type::bf16) {
-        auto temp = state.ra.alloc_range(range.getLen());
-        if (hw < HW::Gen11) stub();
-        int ne = elementsPerGRF<uint32_t>(hw);
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, temp[i].f(0)(1), range[i].w(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            if (strategy.systolicAvailable) {
-                shr(ne, temp[i].uw(0)(2), temp[i].ud(), 16);
-            } else {
-                mov(ne, temp[i].bf(0)(2), temp[i].f());
-            }
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].uw(0)(2), temp[i].uw(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            rol(ne, range[i].ud(), range[i].ud(), 16);
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, temp[i].f(0)(1), range[i].w(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            if (strategy.systolicAvailable) {
-                shr(ne, temp[i].uw(0)(2), temp[i].ud(), 16);
-            } else {
-                mov(ne, temp[i].bf(0)(2), temp[i].f());
-            }
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].uw(0)(2), temp[i].uw(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            rol(ne, range[i].ud(), range[i].ud(), 16);
-        state.ra.release(temp);
         return;
     }
 
@@ -11072,7 +11019,6 @@ void gemm_kernel_generator_t<hw>::binaryOp(BinaryOp op, int simd,
             state.ra.release(tempRng);
             break;
         }
-        default: stub();
     }
 }
 
@@ -11751,10 +11697,10 @@ void gemm_kernel_generator_t<hw>::gemmRank1UpdateC(const GRFMultirange &r,
 template <HW hw>
 void gemm_kernel_generator_t<hw>::gemmApplyABOffset(const GEMMProblem &problem,
         const GEMMStrategy &strategy, GEMMState &state) {
-    bool aOffset = (problem.aOffset != ABOffset::None)
-            && !problem.earlyDequantizeA();
-    bool bOffset = (problem.bOffset != ABOffset::None)
-            && !problem.earlyDequantizeB();
+    bool aOffset
+            = (problem.aOffset != ABOffset::None) && (problem.aoPtrDims < 2);
+    bool bOffset
+            = (problem.bOffset != ABOffset::None) && (problem.boPtrDims < 2);
     if (!aOffset && !bOffset) return;
 
     auto Tao = problem.Tao, Tbo = problem.Tbo, Tc = problem.Tc;
@@ -11776,8 +11722,7 @@ void gemm_kernel_generator_t<hw>::gemmApplyABOffset(const GEMMProblem &problem,
         else
             stub();
 
-        return ret;
-    }();
+    if (aOffset && bOffset && !boVector) mul(1, temp, k, state.inputs.bo);
 
     // Two steps: (O = all-1s matrix)
     //   1) C += A * O * bo
@@ -11843,12 +11788,10 @@ void gemm_kernel_generator_t<hw>::gemmApplyABOffset(const GEMMProblem &problem,
             for (int r = 0; r < state.Bs_regs.getLen(); r++) {
                 auto ne = elementsPerGRF(hw, Tc);
                 auto Bs = state.Bs_regs[r];
-                boVector ? emad(ne, Bs, Bs, boData[r].retype(Tc.ngen()), temp,
+                boVector ? emad(ne, Bs, Bs, boData[r].retype(Tc.ngen()), k,
                         strategy, state)
                          : add(ne, Bs, Bs, temp);
             };
-
-        state.ra.safeRelease(temp);
 
         if (aOffset) {
             aoVector ? gemmRank1UpdateC(
@@ -13730,19 +13673,12 @@ template <HW hw>
 bool gemm_kernel_generator_t<hw>::gemmMake2DQuantizationLayouts(bool isA,
         const GEMMProblem &problem, const GEMMStrategy &strategy,
         GEMMState &state) {
-    int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
-    bool xo2D = (xoPtrDims == 2);
+    bool xo2D = (isA ? problem.aoPtrDims : problem.boPtrDims) == 2;
     bool xs2D = isA ? problem.aScale2D : problem.bScale2D;
-    bool xoTo2D = !xo2D
-            && (isA ? problem.aOffset == ABOffset::Calc
-                                    && problem.earlyDequantizeA()
-                    : problem.bOffset == ABOffset::Calc
-                                    && problem.earlyDequantizeB());
     bool cColMajor = isRegisterColMajor(problem.Tc_ext, problem.C, strategy.C);
 
-    if (!xo2D && !xoTo2D && !xs2D) return true;
+    if (!xo2D && !xs2D) return true;
 
-    auto &X_strategy = isA ? strategy.A : strategy.B;
     auto &X_offsetStrategy
             = isA ? state.A_offsetStrategy : state.B_offsetStrategy;
     auto &X_scaleStrategy = isA ? state.A_scaleStrategy : state.B_scaleStrategy;
@@ -13753,135 +13689,62 @@ bool gemm_kernel_generator_t<hw>::gemmMake2DQuantizationLayouts(bool isA,
 
     auto &XO = isA ? problem.AO : problem.BO;
     auto &XS = isA ? problem.A_scale : problem.B_scale;
-    auto Tx_ext = isA ? problem.Ta_ext : problem.Tb_ext;
     auto Tx = isA ? problem.Ta : problem.Tb;
     auto Txo = isA ? problem.Tao : problem.Tbo;
     auto Txs = isA ? problem.Ta_scale : problem.Tb_scale;
     auto &Txo_int = isA ? state.Tao_int : state.Tbo_int;
     auto &Txs_int = isA ? state.Ta_scaleInt : state.Tb_scaleInt;
-    auto &Tx_scaleOp = isA ? state.Ta_scaleOp : state.Tb_scaleOp;
-    auto &lateScale = isA ? state.lateScale2DA : state.lateScale2DB;
 
-    bool Tx_bf = Tx == Type::bf16;
-    Tx_scaleOp = (Tx_bf ? Type(Tx_ext.isInt4() ? Type::f16 : Type::f32) : Txs);
-    Txo_int = Tx.isInteger() ? sintType(Tx) : Tx;
+    Txo_int = Txo.isInteger() ? sintType(Tx) : Tx;
     Txs_int = Tx;
 
-    int cpoDiv = 1;
-    if (Txo_int.isInt8()) Txo_int = Type::s16, cpoDiv = 2;
-
-    if (Txs.paddedSize() > Tx.paddedSize()) {
-        lateScale = xs2D;
-        Txs_int = problem.Tc;
-        Tx_scaleOp = problem.Tc;
-    }
-
-    bool int4SpecialPath
-            = Tx_ext.isInt4() && one_of(Tx, Type::f16, Type::bf16, Type::f32);
-    if (int4SpecialPath) Txo_int = Txs_int = Type::f16;
-
-    // Get tile sizes, depending on whether A/B are copied to SLM.
-    // For late scaling (after compute), scales are always applied to the whole tile.
-    int r, c, k, rNoSLM, cNoSLM;
-    int tileR = 0, tileC = 0;
+    int r, c;
     bool remR = false, remC = false;
     if (isA) {
-        bool slmA = strategy.slmA;
-        rNoSLM = strategy.unroll[LoopM];
-        cNoSLM = strategy.ka_load;
-        r = slmA ? state.ma_slm : rNoSLM;
-        c = slmA ? state.ka_slm : cNoSLM;
-        k = slmA ? strategy.unrollKSLM : cNoSLM;
-        c = state.kaq = std::max(1, c / problem.aqGroupK);
-        state.kaqStride = std::max(1, k / problem.aqGroupK);
-        cNoSLM = state.kaqLate = std::max(1, cNoSLM / problem.aqGroupK);
+        r = strategy.slmA ? state.ma_slm : strategy.unroll[LoopM];
+        c = state.kaq = std::max(1, strategy.ka_load / problem.aqGroupK);
         remR = (strategy.remHandling[LoopM] != RemainderHandling::Ignore);
-        tileC = 1;
     } else {
-        bool slmB = strategy.slmB;
-        cNoSLM = strategy.unroll[LoopN];
-        rNoSLM = strategy.kb_load;
-        c = slmB ? state.nb_slm : cNoSLM;
-        r = slmB ? state.kb_slm : rNoSLM;
-        k = slmB ? strategy.unrollKSLM : rNoSLM;
-        r = state.kbq = std::max(1, r / problem.bqGroupK);
-        state.kbqStride = std::max(1, k / problem.bqGroupK);
-        rNoSLM = state.kbqLate = std::max(1, rNoSLM / problem.bqGroupK);
+        c = strategy.slmB ? state.nb_slm : strategy.unroll[LoopN];
+        r = state.kbq = std::max(1, strategy.kb_load / problem.bqGroupK);
         remC = (strategy.remHandling[LoopN] != RemainderHandling::Ignore);
-        tileR = 1;
     }
 
-    int rs = lateScale ? rNoSLM : r;
-    int cs = lateScale ? cNoSLM : c;
-
-    if (X_strategy.padded) {
-        X_offsetStrategy.padded = true;
-        remR = remC = false;
-    }
-
+    X_offsetStrategy.base = A64;
     X_offsetStrategy.newDP = (hw >= HW::XeHPG);
     X_scaleStrategy = X_offsetStrategy;
 
-    X_offsetStrategy.accessType = (isA == isColMajor(XO.layout))
-            ? AccessType::Block
-            : AccessType::Scattered;
-    X_scaleStrategy.accessType = (isA == isColMajor(XS.layout))
-            ? AccessType::Block
-            : AccessType::Scattered;
-
-    if (!X_offsetStrategy.base.isStateless()) {
-        X_offsetStrategy.base.setIndex(
-                isA ? state.inputs.surfaceAO : state.inputs.surfaceBO);
-        X_scaleStrategy.base.setIndex(
-                isA ? state.inputs.surfaceAScale : state.inputs.surfaceBScale);
-    }
+    X_offsetStrategy.accessType
+            = isColMajor(XO.layout) ? AccessType::Block : AccessType::Scattered;
+    X_scaleStrategy.accessType
+            = isColMajor(XS.layout) ? AccessType::Block : AccessType::Scattered;
 
     if (xo2D
             && !getRegLayout(Txo, X_offsetLayout, r, c, remR, remC, false,
-                    AvoidFragment, tileR, tileC, XO, X_offsetStrategy))
+                    AvoidFragment, 0, 0, XO, X_offsetStrategy))
         return false;
     if (xs2D
-            && !getRegLayout(Txs, X_scaleLayout, rs, cs, remR, remC, false,
-                    AvoidFragment, tileR, tileC, XS, X_scaleStrategy))
+            && !getRegLayout(Txs, X_scaleLayout, r, c, remR, remC, false,
+                    AvoidFragment, 0, 0, XS, X_scaleStrategy))
         return false;
 
-    // Quantization parameters will be upconverted to the size of A/B and duplicated to match crosspack.
-    auto &lsrc = isA
-            ? (strategy.slmA ? state.Ao_layout
-                             : (state.Ar_layout.empty() ? state.A_layout
-                                                        : state.Ar_layout))
-            : (strategy.slmB ? state.Bo_layout
-                             : (state.Br_layout.empty() ? state.B_layout
-                                                        : state.Br_layout));
+    // Quantization parameters will be upconverted to the size of A and duplicated to match crosspack.
+    auto &lsrc = isA ? (strategy.slmA ? state.Ao_layout : state.Ar_layout)
+                     : (strategy.slmB ? state.Bo_layout : state.Br_layout);
     if (lsrc.empty()) stub();
     int crosspack = lsrc[0].crosspack;
-    if (int4SpecialPath && Tx == Type::bf16) crosspack = 1;
-    int cpo = div_up(crosspack, cpoDiv);
 
-    auto makeQRepack
-            = [&](Type Txq, Type Txq_int, vector<RegisterBlock> &repack,
-                      vector<RegisterBlock> &src, int m, int n, int cp) {
-                  if (cp > 1 || (cColMajor && (cp != src[0].crosspack))
-                          || Txq.bits() != Txq_int.bits())
-                      makeUnbackedRegLayout(Txq_int, repack, m, n, isA, cp,
-                              tileR, tileC, false);
-              };
+    auto makeQRepack = [&](Type Txq, Type Txq_int,
+                               vector<RegisterBlock> &repack,
+                               vector<RegisterBlock> &src) {
+        if (crosspack > 1 || (cColMajor && (crosspack != src[0].crosspack))
+                || Txq.size() != Txq_int.size())
+            makeUnbackedRegLayout(Txq_int, repack, r, c, isA, crosspack,
+                    isA ? 0 : 1, isA ? 1 : 0, false);
+    };
 
-    if (xo2D)
-        makeQRepack(Txo, Txo_int, Xr_offsetLayout, X_offsetLayout, r, c, cpo);
-    if (xs2D)
-        makeQRepack(Txs, Tx_scaleOp, Xr_scaleLayout, X_scaleLayout, rs, cs,
-                lateScale ? 1 : crosspack);
-
-    if (xoTo2D) {
-        if (xoPtrDims == 0)
-            makeUnbackedRegLayout(Txo_int, Xr_offsetLayout, 1, 1, isA);
-        else if (xoPtrDims == 1)
-            makeUnbackedRegLayout(Txo_int, Xr_offsetLayout, r, c, isA, cpo,
-                    tileR, tileC, false);
-        else
-            stub();
-    }
+    if (xo2D) makeQRepack(Txo, Txo_int, Xr_offsetLayout, X_offsetLayout);
+    if (xs2D) makeQRepack(Txs, Txs_int, Xr_scaleLayout, X_scaleLayout);
 
     return true;
 }
@@ -13895,15 +13758,8 @@ void gemm_kernel_generator_t<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td,
         const GEMMStrategy &strategy, GEMMState &state) {
     if (dst.empty()) return;
 
-    int ms, ns, md, nd;
-    getLayoutDims(layoutSrc, ms, ns);
-    getLayoutDims(layoutSrc, md, nd);
-
-    // Copy, broadcasting 1D to 2D data as needed.
-    for (int doffR = 0; doffR < md; doffR += ms)
-        for (int doffC = 0; doffC < nd; doffC += ns)
-            copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, doffR, doffC,
-                    false, strategy, state);
+    copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, 0, 0, false, strategy,
+            state);
 
     // Duplicate data in crosspack dimension. TODO: do this as part of the copy.
     int cp = layoutDst[0].crosspack;
@@ -13920,77 +13776,13 @@ void gemm_kernel_generator_t<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td,
         });
 }
 
-template <HW hw>
-void gemm_kernel_generator_t<hw>::gemmRepack2DOffsetData(Type Text, Type Ts,
-        Type Td, const vector<RegisterBlock> &layoutSrc,
-        const vector<RegisterBlock> &layoutDst, const GRFMultirange &src,
-        const GRFMultirange &dst, const GEMMProblem &problem,
-        const GEMMStrategy &strategy, GEMMState &state) {
-    bool s4 = (Text == Type::s4);
-    bool s8 = (Ts == Type::s8);
-    bool u8 = (Ts == Type::u8);
-
-    bool int4SpecialPath = Text.isInt4() && Td == Type::f16;
-    auto tmpType = Td;
-
-    if (int4SpecialPath) {
-        if (u8) tmpType = Type::u16;
-        if (s8) tmpType = Type::s16;
-    }
-
-    gemmRepack2DQuantizationData(Ts, tmpType, layoutSrc, layoutDst, src, dst,
-            problem, strategy, state);
-
-    if (int4SpecialPath) {
-        if (s8 || u8) {
-            int off = s4 ? 8 : 0;
-
-            // Shift s8 -> u8 data.
-            if (s8) {
-                map(hw, Type::s16, dst, dst, strategy,
-                        [&](int esize, RegData r, RegData _) {
-                            add(esize, r, r, 0x80);
-                        });
-                off -= 0x80;
-            }
-
-            // Reinterpret as f16 and undo offsets.
-            if (off != 0)
-                map(hw, Type::f16, dst, dst, strategy,
-                        [&](int esize, RegData r, RegData _) {
-                            uint16_t offF16 = std::abs(off);
-                            if (off < 0) offF16 |= 0x8000;
-                            add(esize, r, r, Immediate::hf(offF16));
-                        });
-
-            // Rescale into normal range. End result is 2^(-9) * intended offset.
-            map(hw, Type::f16, dst, dst, strategy,
-                    [&](int esize, RegData r, RegData _) {
-                        mul(esize, r, r, Immediate::hf(0x7800));
-                    });
-        } else {
-            map(hw, Type::f16, dst, dst, strategy,
-                    [&](int esize, RegData r, RegData _) {
-                        s4 ? mad(esize, r, Immediate::hf(0x2400), r,
-                                Immediate::hf(0x1800)) // 0x2400 = 8 * 2^(-9)
-                           : mul(esize, r, r,
-                                   Immediate::hf(0x1800)); // 0x1800 = 2^(-9)
-                    });
-        }
-    }
-}
-
 // Apply a single 2D group dequantize operation (scale/multiply).
 template <HW hw>
-void gemm_kernel_generator_t<hw>::gemmDequantizeOperation(bool doA, Type T,
-        Type To, BinaryOp op, const std::vector<RegisterBlock> &layout,
-        const std::vector<RegisterBlock> &qlayout, const GRFMultirange &regs,
-        const GRFMultirange &qregs, int hq, const GEMMProblem &problem) {
+void gemm_kernel_generator_t<hw>::gemm2DDequantizeOperation(bool doA, Type T,
+        BinaryOp op, const std::vector<RegisterBlock> &layout,
+        const std::vector<RegisterBlock> &olayout, const GRFMultirange &regs,
+        const GRFMultirange &oregs, int hab, const GEMMProblem &problem) {
     int xqGroupK = doA ? problem.aqGroupK : problem.bqGroupK;
-
-    int mq, nq;
-    getLayoutDims(qlayout, mq, nq);
-    bool broadcast = (mq * nq) == 1;
 
     for (auto &block : layout) {
         auto crosspack = block.crosspack;
@@ -14005,49 +13797,31 @@ void gemm_kernel_generator_t<hw>::gemmDequantizeOperation(bool doA, Type T,
                 auto io0 = ii0 + block.offsetR;
                 auto jo0 = jj0 + block.offsetC;
                 auto &ho0 = doA ? jo0 : io0;
-                ho0 += hq;
+                ho0 += hab;
                 ho0 /= xqGroupK;
-                if (broadcast) io0 = jo0 = 0;
 
-                int ne, neq;
-                const RegisterBlock *qblock;
+                int ne, neo;
+                const RegisterBlock *oblock;
                 auto data = findBlockReg(T, block, ii0, jj0, regs, ne);
-                auto qdata = findBlockReg(
-                        To, qlayout, io0, jo0, qregs, neq, qblock);
+                auto off = findBlockReg(
+                        T, olayout, io0, jo0, oregs, neo, oblock);
 
-                int strideq = 1;
-                if (broadcast)
-                    strideq = 0;
-                else if (colMajor == doA) {
-                    ne = std::min(ne, neq);
-                    if (qblock->crosspack * To != crosspack * T) stub();
+                int strideo = 1;
+                if (colMajor == doA) {
+                    ne = std::min(ne, neo);
+                    if (oblock->crosspack != crosspack) stub();
                 } else {
                     ne = std::min(ne, xqGroupK);
-                    strideq = 0;
+                    strideo = 0;
                 }
 
-                int maxSIMD = (op == BinaryOp::Sub && T.isInt8()) ? 64 : 32;
-                int simd = std::min(
-                        {ne * crosspack, 2 * elementsPerGRF(hw, T), maxSIMD});
+                int simd = std::min(ne * crosspack, 2 * elementsPerGRF(hw, T));
                 switch (op) {
                     case BinaryOp::Sub:
-                        if (T.isInt8()) {
-                            add(simd / 2, data(2), data(2),
-                                    -qdata(strideq * 2 / To));
-                            data.setOffset(data.getOffset() + 1);
-                            qdata.setOffset(qdata.getOffset() + strideq / To);
-                            add(simd / 2, data(2), data(2),
-                                    -qdata(strideq * 2 / To));
-                        } else
-                            add(simd, data(1), data(1), -qdata(strideq));
+                        add(simd, data(1), data(1), -off(strideo));
                         break;
                     case BinaryOp::Mul:
-                        mul(simd, data(1), data(1), qdata(strideq));
-                        break;
-                    case BinaryOp::ScaleSub:
-                        if (T != Type::f16) stub();
-                        mad(simd, data(1), -qdata(strideq), data(1),
-                                Immediate::hf(0x7800)); /* 0x7800 = 2^15 */
+                        mul(simd, data(1), data(1), off(strideo));
                         break;
                     default: stub();
                 }
@@ -14057,131 +13831,15 @@ void gemm_kernel_generator_t<hw>::gemmDequantizeOperation(bool doA, Type T,
     }
 }
 
-template <HW hw>
-void gemm_kernel_generator_t<hw>::dequantizeInt4Shift(
-        Type Tsrc, GRFMultirange src, const CommonStrategy &strategy) {
-    if (Tsrc.isSigned())
-        map(hw, Type::u16, src, src, strategy,
-                [&](int esize, RegData r, RegData _) {
-                    xor_(esize, r, r, 0x8888);
-                });
-}
-
-bool canDequantizeInt4(Type Tsrc, Type Tdst,
-        const vector<RegisterBlock> &layoutSrc,
-        const vector<RegisterBlock> &layoutDst,
-        const vector<RegisterBlock> layoutOffset,
-        const vector<RegisterBlock> layoutScale) {
-    if (!Tsrc.isInt4()
-            || !one_of(Tdst, Type::f16, Type::bf16, Type::f32, Type::bf8,
-                    Type::hf8))
-        return false;
-
-    if (layoutOffset.empty() || layoutScale.empty()) {
-        int m, n, md, nd;
-        getLayoutDims(layoutSrc, m, n);
-        getLayoutDims(layoutDst, md, nd);
-
-        if (m < md || n < nd) return false;
-    }
-
-    return true;
-}
-
-// Optimized int4 -> f16/bf16/f32 dequantization sequence.
-template <HW hw>
-void gemm_kernel_generator_t<hw>::dequantizeInt4(bool doA, Type Tsrc, Type Tdst,
-        const vector<RegisterBlock> &layoutSrc,
-        const vector<RegisterBlock> &layoutDst,
-        const vector<RegisterBlock> &layoutOffset,
-        const vector<RegisterBlock> &layoutScale, GRFMultirange src,
-        GRFMultirange dst, GRFMultirange offset, GRFMultirange scale,
-        Type Tscale, int offR, int offC, const GEMMProblem *problem,
-        const CommonStrategy &strategy, CommonState &state, bool do_shift) {
-    if (!canDequantizeInt4(
-                Tsrc, Tdst, layoutSrc, layoutDst, layoutOffset, layoutScale))
-        stub("Cannot perform dequantizeInt4");
-
-    int m, n, md, nd;
-    getLayoutDims(layoutSrc, m, n);
-    getLayoutDims(layoutDst, md, nd);
-
-    bool s4 = Tsrc.isSigned();
-    bool f8 = Tdst.isF8();
-    bool f32 = (Tdst == Type::f32);
-    bool bf16 = (Tdst == Type::bf16);
-
-    int offR0 = offR, offC0 = offC;
-
-    vector<RegisterBlock> layoutDstF16;
-    const vector<RegisterBlock> *effLayoutDst = &layoutDst;
-    GRFMultirange dstF16;
-    const GRFMultirange *effDst = &dst;
-    if (f32 || bf16 || f8) {
-        makeUnbackedRegLayout(
-                Type::f16, layoutDstF16, m, n, isLayoutColMajor(layoutDst), 1);
-        dstF16 = chunkAlloc(getRegCount(layoutDstF16), 2, state);
-        effLayoutDst = &layoutDstF16;
-        effDst = &dstF16;
-        offR = offC = 0;
-    }
-
-    // 1) Shift s4 data to u4 data by adding 8.
-    if (s4 && do_shift) dequantizeInt4Shift(Tsrc, src, strategy);
-
-    // 2) Copy u4 -> u16 data.
-    copyRegisters(Type::u4, Type::u16, layoutSrc, *effLayoutDst, src, *effDst,
-            offR, offC, false, strategy, state);
-
-    // 3) Reinterpret u16 data as denormal f16, scale into normal range and subtract (rescaled) offsets if available.
-    //     The required rescaling factor (2^24) is necessarily outside f16 range,
-    //     so two multiplications are needed.
-    int hab = doA ? offC : offR;
-    if (!layoutOffset.empty()) {
-        if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub,
-                *effLayoutDst, layoutOffset, *effDst, offset, hab, *problem);
-    } else {
-        map(hw, Type::f16, *effDst, *effLayoutDst, strategy,
-                [&](int esize, RegData r) {
-                    s4 ? mad(esize, r, Immediate::hf(0xA400), r,
-                            Immediate::hf(0x7800))
-                       : mul(esize, r, r, Immediate::hf(0x7800));
-                });
-    }
-
-    // 4) Finish rescaling -- remaining factor is 2^9.
-    map(hw, Type::f16, *effDst, *effLayoutDst, strategy,
-            [&](int esize, RegData r) {
-                mul(esize, r, r, Immediate::hf(0x6000)); /* 0x6000 = 2^9 */
-            });
-
-    // 5) Apply scales if present. If the scales are not too large (absolute value < 128),
-    //      this could be scaled into the previous multiplication.
-    if (!layoutScale.empty()) {
-        if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Tscale, BinaryOp::Mul,
-                *effLayoutDst, layoutScale, *effDst, scale, hab, *problem);
-    }
-
-    // 6) Convert to Dst type if needed.
-    if (f32 || bf16 || f8) {
-        copyRegisters(Type::f16, Tdst, layoutDstF16, layoutDst, dstF16, dst,
-                offR0, offC0, false, strategy, state);
-        safeReleaseRanges(dstF16, state);
-    }
-}
-
 // Dequantize A/B, given 2D grouped quantization data.
 template <HW hw>
-void gemm_kernel_generator_t<hw>::gemmDequantizeAB(bool doA, Type Tsrc,
+void gemm_kernel_generator_t<hw>::gemm2DDequantizeAB(bool doA, Type Tsrc,
         Type Tdst, const vector<RegisterBlock> &layoutSrc,
-        const vector<RegisterBlock> &layoutDst0, const GRFMultirange &src,
-        const GRFMultirange &dst0, int hab, const GEMMProblem &problem,
-        const GEMMStrategy &strategy, GEMMState &state, bool do_shift) {
+        const vector<RegisterBlock> &layoutDst_, const GRFMultirange &src,
+        const GRFMultirange &dst_, int hab, const GEMMProblem &problem,
+        const GEMMStrategy &strategy, GEMMState &state) {
     auto Txo_int = doA ? state.Tao_int : state.Tbo_int;
     auto Tx_scaleInt = doA ? state.Ta_scaleInt : state.Tb_scaleInt;
-    auto Tx_scaleOp = doA ? state.Ta_scaleOp : state.Tb_scaleOp;
     auto &oiLayout = doA ? state.A_offsetLayout : state.B_offsetLayout;
     auto &orLayout = doA ? state.Ar_offsetLayout : state.Br_offsetLayout;
     auto &oiRegs = doA ? state.A_offsetRegs : state.B_offsetRegs;
@@ -14190,69 +13848,39 @@ void gemm_kernel_generator_t<hw>::gemmDequantizeAB(bool doA, Type Tsrc,
     auto &srLayout = doA ? state.Ar_scaleLayout : state.Br_scaleLayout;
     auto &siRegs = doA ? state.A_scaleRegs : state.B_scaleRegs;
     auto &srRegs = doA ? state.Ar_scaleRegs : state.Br_scaleRegs;
-    bool lateScale = doA ? state.lateScale2DA : state.lateScale2DB;
+    bool xs2D = doA ? problem.aScale2D : problem.bScale2D;
+    bool xo2D = (doA ? problem.aoPtrDims : problem.boPtrDims) == 2;
 
     auto &oLayout = orRegs.empty() ? oiLayout : orLayout;
     auto &oRegs = orRegs.empty() ? oiRegs : orRegs;
     auto &sLayout = srRegs.empty() ? siLayout : srLayout;
     auto &sRegs = srRegs.empty() ? siRegs : srRegs;
 
-    bool xo2D = !oLayout.empty();
-    bool xs2D = !sLayout.empty() && !lateScale;
-
-    bool copy = !layoutDst0.empty();
-    auto layoutDst = copy ? layoutDst0 : layoutSrc;
-    auto dst = copy ? dst0 : src;
+    bool copy = !layoutDst_.empty();
+    auto layoutDst = copy ? layoutDst_ : layoutSrc;
+    auto dst = copy ? dst_ : src;
 
     auto Tx1_int = xo2D ? Txo_int : Tx_scaleInt;
     auto Tx2_int = xs2D ? Tx_scaleInt : Tdst;
 
-    if (xo2D && !xs2D && (Txo_int.bits() > Tdst.bits())) Tx1_int = Tdst;
+    if (copy) {
+        int offR = doA ? 0 : hab;
+        int offC = doA ? hab : 0;
+        copyRegisters(Tsrc, Tx1_int, layoutSrc, layoutDst, src, dst, offR, offC,
+                false, strategy, state);
+    } else
+        convert(src, Tsrc, Tx1_int, strategy, state);
 
-    int offR = doA ? 0 : hab;
-    int offC = doA ? hab : 0;
-    int offR0 = offR, offC0 = offC;
-
-    int ms, md, ns, nd;
-    getLayoutDims(layoutSrc, ms, ns);
-    getLayoutDims(layoutDst, md, nd);
-
-    if (ms < md || ns < nd) {
-        if (!copy) stub();
-        makeUnbackedRegLayout(Tdst, layoutDst, ms, ns,
-                isLayoutColMajor(layoutDst0), layoutDst[0].crosspack);
-        dst = chunkAlloc(getRegCount(layoutDst), 2, state);
-        offR = offC = 0;
+    if (xo2D) {
+        gemm2DDequantizeOperation(doA, Txo_int, BinaryOp::Sub, layoutDst,
+                oLayout, dst, oRegs, hab, problem);
+        convert(dst, Txo_int, Tx2_int, strategy, state);
     }
 
-    if (canDequantizeInt4(Tsrc, Tdst, layoutSrc, layoutDst, oLayout, sLayout)) {
-        dequantizeInt4(doA, Tsrc, Tdst, layoutSrc, layoutDst, oLayout, sLayout,
-                src, dst, oRegs, sRegs, Tx_scaleOp, offR, offC, &problem,
-                strategy, state, do_shift);
-    } else {
-        if (copy)
-            copyRegisters(Tsrc, Tx1_int, layoutSrc, layoutDst, src, dst, offR,
-                    offC, false, strategy, state);
-        else if (Tsrc.asSigned() != Tx1_int.asSigned())
-            convert(src, Tsrc, Tx1_int, strategy, state);
-
-        if (xo2D) {
-            gemmDequantizeOperation(doA, Tx1_int, Txo_int, BinaryOp::Sub,
-                    layoutDst, oLayout, dst, oRegs, hab, problem);
-            convert(dst, Tx1_int, Tx2_int, strategy, state);
-        }
-
-        if (xs2D) {
-            gemmDequantizeOperation(doA, Tx_scaleInt, Tx_scaleOp, BinaryOp::Mul,
-                    layoutDst, sLayout, dst, sRegs, hab, problem);
-            convert(dst, Tx_scaleInt, Tdst, strategy, state);
-        }
-    }
-
-    if (ms < md || ns < nd) {
-        copyRegisters(Tdst, Tdst, layoutDst, layoutDst0, dst, dst0, offR0,
-                offC0, false, strategy, state);
-        safeReleaseRanges(dst, state);
+    if (xs2D) {
+        gemm2DDequantizeOperation(doA, Tx_scaleInt, BinaryOp::Mul, layoutDst,
+                sLayout, dst, sRegs, hab, problem);
+        convert(dst, Tx_scaleInt, Tdst, strategy, state);
     }
 }
 
@@ -14990,6 +14618,15 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto unrollKSLM = strategy.unrollKSLM;
     bool calcASums = problem.needsASums();
     bool calcBSums = problem.needsBSums();
+    bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
+    bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D;
+    bool dequantize2DA = ao2D || as2D;
+    bool dequantize2DB = bo2D || bs2D;
+    bool slmDequantize2DA = dequantize2DA && slmA;
+    bool slmDequantize2DB = dequantize2DB && slmB;
+    dequantize2DA &= !slmDequantize2DA;
+    dequantize2DB &= !slmDequantize2DB;
+    int aqGroupK = problem.aqGroupK, bqGroupK = problem.bqGroupK;
     bool readA = true, readB = true;
 
     bool dequantizeA = problem.earlyDequantizeA();
@@ -15374,13 +15011,14 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         });
     }
 
-    if (slmDequantize2DA && slmDequantize2DB && kaq_load != kbq_load) stub();
-    int slmKQLoad = slmDequantize2DA ? kaq_load : kbq_load;
-    slmKQLoad = std::max(slmKQLoad, unrollKSLM);
+    if (slmDequantize2DA && slmDequantize2DB && aqGroupK != bqGroupK) stub();
+    int slmQGroupK = slmDequantize2DA ? aqGroupK : bqGroupK;
     bool slmDequantize2D = (slmDequantize2DA || slmDequantize2DB);
 
+    if (slmDequantize2D && slmQGroupK % unrollKSLM) stub();
+
     // SLM quantization parameter loads.
-    auto reqSLMLoadQ = every(slmKQLoad)
+    auto reqSLMLoadQ = every(slmQGroupK)
             | lookahead(
                     lookaheadSLMStore + lookaheadSLMReload + unrollKSLM - 1);
     if (slmDequantize2D)
@@ -15637,25 +15275,13 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         int last = unrollK;
         if (hasFlags(state.A_layout)) last = std::min(last, ka_loadMain);
         if (hasFlags(state.B_layout)) last = std::min(last, kb_loadMain);
-        if (hasFlags(state.Ap_layout))
-            last = std::min(last, 1 + (strategy.prefetchA - 1) % ka_pfStride);
-        if (hasFlags(state.Bp_layout))
-            last = std::min(last, 1 + (strategy.prefetchB - 1) % kb_pfStride);
+        if (hasFlags(state.Ap_layout)) last = std::min(last, ka_pfStride);
+        if (hasFlags(state.Bp_layout)) last = std::min(last, kb_pfStride);
         if (hasFlags(state.Ai_layout) || hasFlags(state.Bi_layout)) {
             last = std::min(last, unrollKSLM);
             if (lookaheadSLMReload % unrollKSLM != 0)
                 last = std::min(last, lookaheadSLMReload % unrollKSLM);
         }
-        if (hasFlags(state.A_offsetLayout))
-            last = std::min(last, lcm(kaq_load, ka_loadMain) - 1);
-        if (hasFlags(state.A_scaleLayout))
-            last = std::min(last,
-                    lcm(as2DLate ? kaq_loadLate : kaq_load, ka_loadMain) - 1);
-        if (hasFlags(state.B_offsetLayout))
-            last = std::min(last, lcm(kbq_load, kb_loadMain) - 1);
-        if (hasFlags(state.B_scaleLayout))
-            last = std::min(last,
-                    lcm(bs2DLate ? kbq_loadLate : kbq_load, kb_loadMain) - 1);
         reqLoopCheck = reqLoopCheck.delay(unrollK - last);
     }
 
@@ -15690,50 +15316,29 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     bool delayABInc = strategy.delayABInc && !needXPReset;
     int delaySLMInc = delayABInc ? (unrollKSLM >> 1) : 0;
 
-    // Quantization parameter address increment helpers.
-    auto doIncAq = [&](Iteration h) {
-        auto kaInc = kInc(h, state.kaqStride, problem.aqGroupK);
-        if (ao2D)
-            incAddr2D(problem.Tao, state.A_offsetAddrs, true, kaInc, state.ldao,
-                    state.ldaoIncrements, state.A_offsetLayout, problem.AO,
-                    state.A_offsetStrategy, strategy, state);
-        if (as2D)
-            incAddr2D(problem.Ta_scale, state.A_scaleAddrs, true, kaInc,
-                    state.ldaScale, state.ldasIncrements, state.A_scaleLayout,
-                    problem.A_scale, state.A_scaleStrategy, strategy, state);
-    };
-
-    auto doIncBq = [&](Iteration h) {
-        auto kbInc = kInc(h, state.kbqStride, problem.bqGroupK);
-        if (bo2D)
-            incAddr2D(problem.Tbo, state.B_offsetAddrs, false, kbInc,
-                    state.ldbo, state.ldboIncrements, state.B_offsetLayout,
-                    problem.BO, state.B_offsetStrategy, strategy, state);
-        if (bs2D)
-            incAddr2D(problem.Tb_scale, state.B_scaleAddrs, false, kbInc,
-                    state.ldbScale, state.ldbsIncrements, state.B_scaleLayout,
-                    problem.B_scale, state.B_scaleStrategy, strategy, state);
-    };
-
-    auto doIncAqLate = [&](Iteration h) {
-        auto kaInc = kInc(h, state.kaqLate, problem.aqGroupK);
-        incAddr2D(problem.Ta_scale, state.A_scaleAddrs, true, kaInc,
-                state.ldaScale, state.ldasIncrements, state.A_scaleLayout,
-                problem.A_scale, state.A_scaleStrategy, strategy, state);
-    };
-
-    auto doIncBqLate = [&](Iteration h) {
-        auto kbInc = kInc(h, state.kbqLate, problem.bqGroupK);
-        incAddr2D(problem.Tb_scale, state.B_scaleAddrs, false, kbInc,
-                state.ldbScale, state.ldbsIncrements, state.B_scaleLayout,
-                problem.B_scale, state.B_scaleStrategy, strategy, state);
-    };
-
     // SLM quantization parameter address increment.
     if (slmDequantize2D)
         ls.schedule(reqSLMLoadQ.delay(delaySLMInc), [&](Iteration h) {
-            if (slmDequantize2DA) doIncAq(h);
-            if (slmDequantize2DB) doIncBq(h);
+            if (slmDequantize2DA) {
+                if (ao2D)
+                    incAddr(state.A_offsetAddrs, state.inputs.ldao, 0, 1,
+                            state.A_offsetLayout, problem.AO,
+                            state.A_offsetStrategy, strategy, state);
+                if (as2D)
+                    incAddr(state.A_scaleAddrs, state.inputs.ldaScale, 0, 1,
+                            state.A_scaleLayout, problem.A_scale,
+                            state.A_scaleStrategy, strategy, state);
+            }
+            if (slmDequantize2DB) {
+                if (bo2D)
+                    incAddr(state.B_offsetAddrs, state.inputs.ldbo, 0, 1,
+                            state.B_offsetLayout, problem.BO,
+                            state.B_offsetStrategy, strategy, state);
+                if (bs2D)
+                    incAddr(state.B_scaleAddrs, state.inputs.ldbScale, 0, 1,
+                            state.B_scaleLayout, problem.B_scale,
+                            state.B_scaleStrategy, strategy, state);
+            }
         });
 
     // SLM load address increments.
@@ -15788,15 +15393,31 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     if (strategy.prefetchA && strategy.prefetchB && loadBFirst) ls.swapLast2();
 
     // A/B quantization parameter address increment.
-    auto reqIncAq = every(kaq_load);
-    auto reqIncBq = every(kbq_load);
-    if (readA && dequantize2DA) ls.schedule(reqIncAq, doIncAq);
-    if (readB && dequantize2DB) ls.schedule(reqIncBq, doIncBq);
+    auto reqIncAq = every(aqGroupK);
+    auto reqIncBq = every(bqGroupK);
+    if (readA && dequantize2DA)
+        ls.schedule(reqIncAq, [&](Iteration h) {
+            if (ao2D)
+                incAddr(state.A_offsetAddrs, state.inputs.ldao, 0, 1,
+                        state.A_offsetLayout, problem.AO,
+                        state.A_offsetStrategy, strategy, state);
+            if (as2D)
+                incAddr(state.A_scaleAddrs, state.inputs.ldaScale, 0, 1,
+                        state.A_scaleLayout, problem.A_scale,
+                        state.A_scaleStrategy, strategy, state);
+        });
 
-    auto reqIncAqLate = every(kaq_loadLate);
-    auto reqIncBqLate = every(kbq_loadLate);
-    if (readA && as2DLate) ls.schedule(reqIncAqLate, doIncAqLate);
-    if (readB && bs2DLate) ls.schedule(reqIncBqLate, doIncBqLate);
+    if (readB && dequantize2DB)
+        ls.schedule(reqIncBq, [&](Iteration h) {
+            if (bo2D)
+                incAddr(state.B_offsetAddrs, state.inputs.ldbo, 0, 1,
+                        state.B_offsetLayout, problem.BO,
+                        state.B_offsetStrategy, strategy, state);
+            if (bs2D)
+                incAddr(state.B_scaleAddrs, state.inputs.ldbScale, 0, 1,
+                        state.B_scaleLayout, problem.B_scale,
+                        state.B_scaleStrategy, strategy, state);
+        });
 
     // A address increment.
     int delayAInc = (delayABInc && A_copies > 1) ? (ka_loadMain >> 1) : 0;
@@ -15881,10 +15502,6 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
             && Ta_remask.size() == Tb_remask.size())
         iremaskB = iremaskA; /* A, B can share remasking masks */
 
-    if (remaskA && remaskB && (Ta_load.bits() != Tb_load.bits())
-            && !(utils::one_of(Type::f16, Ta_load, Tb_load)
-                    || utils::one_of(Type::bf16, Ta_load, Tb_load)))
-        stub();
     if ((remaskA || remaskB) && problem.backward()) stub();
 
     int remaskPeriod = lcm(remaskA ? ka_loadRem : 1, remaskB ? kb_loadRem : 1);
@@ -15937,77 +15554,84 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     if (remaskA && remaskB && loadBFirst) ls.swapLast2();
 
     // A/B quantization parameter repacking.
-    auto reqRepackAq = every(kaq_load);
-    auto reqRepackBq = every(kbq_load);
-    auto reqRepackAqLate = every(kaq_loadLate);
-    auto reqRepackBqLate = every(kbq_loadLate);
+    auto reqRepackAq = every(aqGroupK);
+    auto reqRepackBq = every(bqGroupK);
 
     if (dequantize2DA)
         ls.schedule(reqRepackAq, [&](Iteration h) {
             if (ao2D)
-                gemmRepack2DOffsetData(Ta_ext, problem.Tao, state.Tao_int,
+                gemmRepack2DQuantizationData(problem.Tao, state.Tao_int,
                         state.A_offsetLayout, state.Ar_offsetLayout,
                         state.A_offsetRegs, state.Ar_offsetRegs, problem,
                         strategy, state);
             if (as2D)
-                gemmRepack2DQuantizationData(problem.Ta_scale, state.Ta_scaleOp,
-                        state.A_scaleLayout, state.Ar_scaleLayout,
-                        state.A_scaleRegs, state.Ar_scaleRegs, problem,
-                        strategy, state);
+                gemmRepack2DQuantizationData(problem.Ta_scale,
+                        state.Ta_scaleInt, state.A_scaleLayout,
+                        state.Ar_scaleLayout, state.A_scaleRegs,
+                        state.Ar_scaleRegs, problem, strategy, state);
         });
 
     if (dequantize2DB)
         ls.schedule(reqRepackBq, [&](Iteration h) {
             if (bo2D)
-                gemmRepack2DOffsetData(Tb_ext, problem.Tbo, state.Tbo_int,
+                gemmRepack2DQuantizationData(problem.Tbo, state.Tbo_int,
                         state.B_offsetLayout, state.Br_offsetLayout,
                         state.B_offsetRegs, state.Br_offsetRegs, problem,
                         strategy, state);
             if (bs2D)
-                gemmRepack2DQuantizationData(problem.Tb_scale, state.Tb_scaleOp,
-                        state.B_scaleLayout, state.Br_scaleLayout,
-                        state.B_scaleRegs, state.Br_scaleRegs, problem,
-                        strategy, state);
-        });
-
-    if (as2DLate)
-        ls.schedule(reqRepackAqLate, [&](Iteration h) {
-            gemmRepack2DQuantizationData(problem.Ta_scale, state.Ta_scaleOp,
-                    state.A_scaleLayout, state.Ar_scaleLayout,
-                    state.A_scaleRegs, state.Ar_scaleRegs, problem, strategy,
-                    state);
-        });
-
-    if (bs2DLate)
-        ls.schedule(reqRepackBqLate, [&](Iteration h) {
-            gemmRepack2DQuantizationData(problem.Tb_scale, state.Tb_scaleOp,
-                    state.B_scaleLayout, state.Br_scaleLayout,
-                    state.B_scaleRegs, state.Br_scaleRegs, problem, strategy,
-                    state);
+                gemmRepack2DQuantizationData(problem.Tb_scale,
+                        state.Tb_scaleInt, state.B_scaleLayout,
+                        state.Br_scaleLayout, state.B_scaleRegs,
+                        state.Br_scaleRegs, problem, strategy, state);
         });
 
     // A/B repacking.
     auto reqRepackA = every(ka_loadMain) | variants(A_copies);
     auto reqRepackARem = every(ka_loadRem) | variants(A_copies);
     bool convertA = (Ta != Ta_load) && (Ta.bits() == Ta_load.bits());
-    bool scheduleRepackA = state.repackA || state.repackARem || convertA;
+    bool scheduleRepackA
+            = state.repackA || state.repackARem || convertA || dequantize2DA;
+
+    auto doRepackA = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
+                             bool repackA, int ha) {
+        if (dequantize2DA)
+            gemm2DDequantizeAB(true, Ta_load, Ta, layout, state.Ar_layout, regs,
+                    state.Ar_regs, ha, problem, strategy, state);
+        else if (repackA)
+            copyRegisters(Ta_load, Ta, layout, state.Ar_layout, regs,
+                    state.Ar_regs, 0, ha, false, strategy, state);
+        else if (convertA)
+            convert(regs, Ta_load, Ta, strategy, state);
+    };
 
     if (scheduleRepackA && readA)
         ls.schedule({{reqRepackA,
                              [&](Iteration h) {
                                  doRepackA(state.A_layout, A_regs(h),
-                                         state.repackA, h, ka_loadMain,
-                                         ka_repackMain);
+                                         state.repackA, 0);
                              }},
                 {reqRepackARem, [&](Iteration h) {
                      doRepackA(state.A_layoutRem, A_regs(h), state.repackARem,
-                             h, ka_loadRem, ka_repackRem);
+                             h % state.ka_repackRem);
                  }}});
 
     auto reqRepackB = every(kb_loadMain) | variants(B_copies);
     auto reqRepackBRem = every(kb_loadRem) | variants(B_copies);
     bool convertB = (Tb != Tb_load) && (Tb.bits() == Tb_load.bits());
-    bool scheduleRepackB = state.repackB || state.repackBRem || convertB;
+    bool scheduleRepackB
+            = state.repackB || state.repackBRem || convertB || dequantize2DB;
+
+    auto doRepackB = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
+                             bool repackB, int hb) {
+        if (dequantize2DB)
+            gemm2DDequantizeAB(false, Tb_load, Tb, layout, state.Br_layout,
+                    regs, state.Br_regs, hb, problem, strategy, state);
+        else if (repackB)
+            copyRegisters(Tb_load, Tb, layout, state.Br_layout, regs,
+                    state.Br_regs, hb, 0, false, strategy, state);
+        else if (convertB)
+            convert(regs, Tb_load, Tb, strategy, state);
+    };
 
     if (scheduleRepackB && readB)
         ls.schedule({{reqRepackB,
@@ -16017,16 +15641,17 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
                              }},
                 {reqRepackBRem, [&](Iteration h) {
                      doRepackB(state.B_layoutRem, B_regs(h), state.repackBRem,
-                             h % std::max(state.kb_repackRem, 1));
+                             h % state.kb_repackRem);
                  }}});
 
     if (scheduleRepackA && scheduleRepackB && loadBFirst) ls.swapLast2();
 
     // A/B 2D quantization parameter loads.
-    auto reqLoadAq = every(kaq_load) | lookahead(ka_loadMain);
-    auto reqLoadBq = every(kbq_load) | lookahead(kb_loadMain);
-    auto reqLoadAqLate = every(kaq_loadLate) | lookahead(ka_loadMain);
-    auto reqLoadBqLate = every(kbq_loadLate) | lookahead(kb_loadMain);
+    auto reqLoadAq = every(aqGroupK) | lookahead(ka_loadMain);
+    auto reqLoadBq = every(bqGroupK) | lookahead(kb_loadMain);
+
+    if (dequantize2DA && aqGroupK % ka_loadMain) stub();
+    if (dequantize2DB && bqGroupK % kb_loadMain) stub();
 
     if (readA && dequantize2DA)
         ls.schedule(reqLoadAq, [&](Iteration h) {
@@ -16050,20 +15675,6 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
                 gemmBLoad(state.B_scaleRegs, state.B_scaleLayout,
                         state.B_scaleAddrs, problem.B_scale,
                         state.B_scaleStrategy, problem, strategy, state);
-        });
-
-    if (readA && as2DLate)
-        ls.schedule(reqLoadAqLate, [&](Iteration h) {
-            gemmALoad(state.A_scaleRegs, state.A_scaleLayout,
-                    state.A_scaleAddrs, problem.A_scale, state.A_scaleStrategy,
-                    problem, strategy, state);
-        });
-
-    if (readB && bs2DLate)
-        ls.schedule(reqLoadBqLate, [&](Iteration h) {
-            gemmBLoad(state.B_scaleRegs, state.B_scaleLayout,
-                    state.B_scaleAddrs, problem.B_scale, state.B_scaleStrategy,
-                    problem, strategy, state);
         });
 
     // Outer product(s).
@@ -16117,7 +15728,7 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     });
 
     // SLM quantization parameter repacking.
-    auto reqSLMRepackQ = every(slmKQLoad)
+    auto reqSLMRepackQ = every(slmQGroupK)
             | lookahead(lookaheadSLMStore + lookaheadSLMReload
                     + strategy.slmRepackAhead);
 
@@ -16125,25 +15736,25 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         ls.schedule(reqSLMRepackQ, [&](Iteration h) {
             if (slmDequantize2DA) {
                 if (ao2D)
-                    gemmRepack2DOffsetData(Ta_ext, problem.Tao, state.Tao_int,
+                    gemmRepack2DQuantizationData(problem.Tao, state.Tao_int,
                             state.A_offsetLayout, state.Ar_offsetLayout,
                             state.A_offsetRegs, state.Ar_offsetRegs, problem,
                             strategy, state);
                 if (as2D)
                     gemmRepack2DQuantizationData(problem.Ta_scale,
-                            state.Ta_scaleOp, state.A_scaleLayout,
+                            state.Ta_scaleInt, state.A_scaleLayout,
                             state.Ar_scaleLayout, state.A_scaleRegs,
                             state.Ar_scaleRegs, problem, strategy, state);
             }
             if (slmDequantize2DB) {
                 if (bo2D)
-                    gemmRepack2DOffsetData(Tb_ext, problem.Tbo, state.Tbo_int,
+                    gemmRepack2DQuantizationData(problem.Tbo, state.Tbo_int,
                             state.B_offsetLayout, state.Br_offsetLayout,
                             state.B_offsetRegs, state.Br_offsetRegs, problem,
                             strategy, state);
                 if (bs2D)
                     gemmRepack2DQuantizationData(problem.Tb_scale,
-                            state.Tb_scaleOp, state.B_scaleLayout,
+                            state.Tb_scaleInt, state.B_scaleLayout,
                             state.Br_scaleLayout, state.B_scaleRegs,
                             state.Br_scaleRegs, problem, strategy, state);
             }
@@ -16168,8 +15779,8 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     };
 
     auto doSLMRepack = [&](Iteration h) {
-        if (slmDequantizeA)
-            gemmDequantizeAB(true, Ta_ext, Ta, Ai_layout(h), state.Ao_layout,
+        if (slmDequantize2DA)
+            gemm2DDequantizeAB(true, Ta_ext, Ta, Ai_layout(h), state.Ao_layout,
                     Ai_regs(h), Ao_regs(h), 0, problem, strategy, state);
         else if (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy))
             copyRegisters(Ta_ext, Ta, Ai_layout(h), state.Ao_layout, Ai_regs(h),
@@ -16177,8 +15788,8 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         else if (slmConvertA(h))
             convert(Ai_regs(h), Ta_ext, Ta, strategy, state);
 
-        if (slmDequantizeB)
-            gemmDequantizeAB(false, Tb_ext, Tb, Bi_layout(h), state.Bo_layout,
+        if (slmDequantize2DB)
+            gemm2DDequantizeAB(false, Tb_ext, Tb, Bi_layout(h), state.Bo_layout,
                     Bi_regs(h), Bo_regs(h), 0, problem, strategy, state);
         else if (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy))
             copyRegisters(Tb_ext, Tb, Bi_layout(h), state.Bo_layout, Bi_regs(h),
@@ -16798,12 +16409,8 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
     for (LoopType loop : {LoopM, LoopN, LoopK})
         state.remaindersCoop[loop] = state.remainders[loop];
 
-    auto calcMNRemCoop = [&](CoopSplit split, bool isM) {
-        auto loopX = isM ? LoopM : LoopN;
-        auto loopY = isM ? LoopN : LoopM;
-        switch (split) {
-            default: return state.remainders[loopX];
-            case CoopSplit::FullK: return state.remaindersWG[loopX];
+    if ((slmA || (strategy.prefetchA && strategy.cooperativePF)) && remM_A)
+        switch (state.effCoopA) {
             case CoopSplit::MN: {
                 auto rem = state.ra.alloc_sub<uint16_t>();
                 int32_t chunk = strategy.unroll[loopX] / strategy.wg[loopY];
@@ -16815,13 +16422,21 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
         }
     };
 
-    if ((slmA || (strategy.prefetchA && strategy.cooperativePF)) && remM_A) {
-        state.remaindersCoop[LoopM] = calcMNRemCoop(state.effCoopA, true);
-    }
-
-    if ((slmB || (strategy.prefetchB && strategy.cooperativePF)) && remN_B) {
-        state.remaindersCoop[LoopN] = calcMNRemCoop(state.effCoopB, false);
-    }
+    if ((slmB || (strategy.prefetchB && strategy.cooperativePF)) && remN_B)
+        switch (state.effCoopB) {
+            case CoopSplit::MN: {
+                state.remaindersCoop[LoopN] = state.ra.alloc_sub<uint16_t>();
+                int32_t chunkN = unrollN / strategy.wg[LoopM];
+                emad(1 | sat, state.remaindersCoop[LoopN],
+                        state.remainders[LoopN], -state.lidM.w(), chunkN,
+                        strategy, state);
+                break;
+            }
+            case CoopSplit::FullK:
+                state.remaindersCoop[LoopN] = state.remaindersWG[LoopN];
+                break;
+            default: break;
+        }
 
     // Prepare layouts for prefetch.
     bool remM_Cp = remM_C && strategy.C.base.isStateless();
@@ -17406,8 +17021,8 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
 
     state.repackA |= ((Ta.bits() != Ta_ext.bits())
                              || Ta.components() != Ta_ext.components())
-            && !strategy.slmA;
-    state.repackB |= ((Tb.bits() != Tb_ext.bits())
+            && !slmA;
+    state.repackB |= (Tb.bits() != Tb_ext.bits()
                              || Tb.components() != Tb_ext.components())
             && !slmB;
 
@@ -17483,14 +17098,10 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
     }
 
     // Prepare strategies and layouts for 2D A/B grouped quantization parameters (offsets and scales).
-    bool as2D = problem.aScale2D;
-    bool bs2D = problem.bScale2D;
     bool ao2D = (problem.aoPtrDims == 2);
     bool bo2D = (problem.boPtrDims == 2);
-    bool aoTo2D = problem.aOffset == ABOffset::Calc && !ao2D
-            && problem.earlyDequantizeA();
-    bool boTo2D = problem.bOffset == ABOffset::Calc && !bo2D
-            && problem.earlyDequantizeB();
+    bool as2D = problem.aScale2D;
+    bool bs2D = problem.bScale2D;
 
     for (bool isA : {true, false})
         gemmMake2DQuantizationLayouts(isA, problem, strategy, state);
@@ -17511,7 +17122,13 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
 
     auto assignAllMasks = [&]() {
         return assignMasks(state.A_layout, LoopM, LoopK, masks, strategy, state)
+                && assignMasks(
+                        state.A_layoutAlt, LoopM, LoopK, masks, strategy, state)
                 && assignMasks(state.A_offsetLayout, LoopM, LoopK, masks,
+                        strategy, state)
+                && assignMasks(state.A_scaleLayout, LoopM, LoopK, masks,
+                        strategy, state)
+                && assignMasks(state.Ap_layout, LoopM, LoopK, A_cmasks,
                         strategy, state)
                 && assignMasks(state.A_scaleLayout, LoopM, LoopK, masks,
                         strategy, state)
@@ -17521,9 +17138,13 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
                         strategy, state)
                 && assignMasks(
                         state.B_layout, LoopK, LoopN, masks, strategy, state)
+                && assignMasks(
+                        state.B_layoutAlt, LoopK, LoopN, masks, strategy, state)
                 && assignMasks(state.B_offsetLayout, LoopK, LoopN, masks,
                         strategy, state)
                 && assignMasks(state.B_scaleLayout, LoopK, LoopN, masks,
+                        strategy, state)
+                && assignMasks(state.Bp_layout, LoopK, LoopN, B_cmasks,
                         strategy, state)
                 && assignMasks(state.Bp_layout, LoopK, LoopN, B_cmasks,
                         strategy, state)
@@ -17643,146 +17264,62 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
         }
     }
 
-    auto i0s = i0q, j0s = j0q;
-    auto A_h0s = A_h0q, B_h0s = B_h0q;
-
-    if (slmA && (ao2D || (as2D && !state.lateScale2DA))) {
-        if (state.ma_slm < unrollM) {
-            if (state.ma_slm * strategy.wg[LoopN] != unrollM) stub();
-            i0q = state.ra.alloc_sub<uint32_t>();
-            emad(1, i0q, state.i0, state.lidN, state.ma_slm, strategy, state);
-        }
-        if (state.ka_slm < strategy.unrollKSLM
-                && problem.aqGroupK < strategy.unrollKSLM) {
-            if (state.lateScale2DA) A_h0s = copySubregister(A_h0q, state);
-            if (A_h0q.isInvalid()) {
-                A_h0q = state.ra.alloc_sub<uint32_t>();
-                mov(1, A_h0q, 0);
-            }
-            addScaled(1, A_h0q, A_h0q, state.lidN, state.ka_slm,
-                    problem.aqGroupK, state, true);
-        }
+    if (slmA && (ao2D || as2D) && state.ma_slm < unrollM) {
+        if (state.ma_slm * strategy.wg[LoopN] != unrollM) stub();
+        i0q = state.ra.alloc_sub<int32_t>();
+        emad(1, i0q, i0q, state.lidN, state.ma_slm, strategy, state);
     }
-    if (slmB && (bo2D || (bs2D && !state.lateScale2DB))) {
-        if (state.nb_slm < unrollN) {
-            if (state.nb_slm * strategy.wg[LoopM] != unrollN) stub();
-            j0q = state.ra.alloc_sub<uint32_t>();
-            emad(1, j0q, state.j0, state.lidM, state.nb_slm, strategy, state);
-        }
-        if (state.kb_slm < strategy.unrollKSLM
-                && problem.bqGroupK < strategy.unrollKSLM) {
-            if (state.lateScale2DB) B_h0s = copySubregister(B_h0q, state);
-            if (B_h0q.isInvalid()) {
-                B_h0q = state.ra.alloc_sub<uint32_t>();
-                mov(1, B_h0q, 0);
-            }
-            addScaled(1, B_h0q, B_h0q, state.lidM, state.kb_slm,
-                    problem.bqGroupK, state, true);
-        }
+    if (slmB && (bo2D || bs2D) && state.nb_slm < unrollN) {
+        if (state.nb_slm * strategy.wg[LoopM] != unrollN) stub();
+        j0q = state.ra.alloc_sub<int32_t>();
+        emad(1, j0q, j0q, state.lidM, state.nb_slm, strategy, state);
     }
-
-    auto setupQAddr = [&](Type T, vector<GRFRange> &addrs,
-                              const vector<RegisterBlock> &layout,
-                              Subregister ptr, Subregister r0, Subregister c0,
-                              Subregister ld, const MatrixAddressing &atype,
-                              const MatrixAddressingStrategy &astrategy) {
-        auto base = state.ra.alloc_sub(ptr.getType());
-        if (!isColMajor(atype.layout)) std::swap(r0, c0);
-        if (r0.isValid()) eaddScaled(1, base, ptr, r0, T, strategy, state);
-        if (c0.isValid())
-            emad(1, base, r0.isValid() ? base : ptr, c0, ld, strategy, state);
-        if (r0.isInvalid() && c0.isInvalid())
-            emov(1, base, ptr, strategy, state);
-        setupAddr(
-                T, addrs, base, layout, ld, atype, astrategy, strategy, state);
-        state.ra.safeRelease(base);
-    };
 
     if (ao2D) {
-        setupQAddr(Tao, state.A_offsetAddrs, state.A_offsetLayout,
-                state.inputs.aoPtr, i0q, A_h0q, state.inputs.ldao, problem.AO,
-                state.A_offsetStrategy);
+        auto aoBase = state.ra.alloc_sub<uint64_t>();
+        emad(1, aoBase, state.inputs.aoPtr, i0q, Tao.size(), strategy, state);
+        if (A_h0q.isValid())
+            emad(1, aoBase, aoBase, A_h0q, state.inputs.ldao, strategy, state);
+        setupAddr(Tao, state.A_offsetAddrs, aoBase, state.A_offsetLayout,
+                state.inputs.ldao, problem.AO, state.A_offsetStrategy, strategy,
+                state);
     }
     if (as2D) {
-        if (!state.lateScale2DA) i0s = i0q, A_h0s = A_h0q;
-        setupQAddr(Ta_scale, state.A_scaleAddrs, state.A_scaleLayout,
-                state.inputs.aScalePtr, i0s, A_h0s, state.inputs.ldaScale,
-                problem.A_scale, state.A_scaleStrategy);
+        auto asBase = state.ra.alloc_sub<uint64_t>();
+        emad(1, asBase, state.inputs.aScalePtr, i0q, Ta_scale.size(), strategy,
+                state);
+        if (A_h0q.isValid())
+            emad(1, asBase, asBase, A_h0q, state.inputs.ldaScale, strategy,
+                    state);
+        setupAddr(Ta_scale, state.A_scaleAddrs, asBase, state.A_scaleLayout,
+                state.inputs.ldaScale, problem.A_scale, state.A_scaleStrategy,
+                strategy, state);
     }
     if (bo2D) {
-        setupQAddr(Tbo, state.B_offsetAddrs, state.B_offsetLayout,
-                state.inputs.boPtr, B_h0q, j0q, state.inputs.ldbo, problem.BO,
-                state.B_offsetStrategy);
+        auto boBase = state.ra.alloc_sub<uint64_t>();
+        emad(1, boBase, state.inputs.boPtr, j0q, Tbo.size(), strategy, state);
+        if (B_h0q.isValid())
+            emad(1, boBase, boBase, B_h0q, state.inputs.ldbo, strategy, state);
+        setupAddr(Tbo, state.B_offsetAddrs, boBase, state.B_offsetLayout,
+                state.inputs.ldbo, problem.BO, state.B_offsetStrategy, strategy,
+                state);
     }
     if (bs2D) {
-        if (!state.lateScale2DB) j0s = j0q, B_h0s = B_h0q;
-        setupQAddr(Tb_scale, state.B_scaleAddrs, state.B_scaleLayout,
-                state.inputs.bScalePtr, B_h0s, j0s, state.inputs.ldbScale,
-                problem.B_scale, state.B_scaleStrategy);
+        auto bsBase = state.ra.alloc_sub<uint64_t>();
+        emad(1, bsBase, state.inputs.bScalePtr, j0q, Tb_scale.size(), strategy,
+                state);
+        if (B_h0q.isValid())
+            emad(1, bsBase, bsBase, B_h0q, state.inputs.ldbScale, strategy,
+                    state);
+        setupAddr(Tb_scale, state.B_scaleAddrs, bsBase, state.B_scaleLayout,
+                state.inputs.ldbScale, problem.B_scale, state.B_scaleStrategy,
+                strategy, state);
     }
 
     if (i0q != state.i0) state.ra.safeRelease(i0q);
     if (j0q != state.j0) state.ra.safeRelease(j0q);
     state.ra.safeRelease(A_h0q);
     state.ra.safeRelease(B_h0q);
-    state.ra.safeRelease(A_h0s);
-    state.ra.safeRelease(B_h0s);
-
-    // Load and convert 0D/1D offsets for 2D dequantization.
-    if (aoTo2D) {
-        std::vector<RegisterBlock> A_offsetLayout;
-        GRFRange aoLoad;
-        if (problem.aoPtrDims == 1) {
-            reclaimRanges(state.C_regs, state);
-            auto aoBase = state.ra.alloc_sub<uint64_t>();
-            eaddScaled(1, aoBase, state.inputs.aoPtr, state.i0, problem.Tao,
-                    strategy, state);
-            auto rem = slmA ? state.remaindersCoop[LoopM]
-                            : state.remainders[LoopM];
-            auto r = slmA ? state.ma_slm : strategy.unroll[LoopM];
-            aoLoad = loadVector(
-                    problem.Tao, problem.Tao, aoBase, r, rem, strategy, state);
-            makeUnbackedRegLayout(problem.Tao, A_offsetLayout, r, 1, true);
-            state.ra.safeRelease(aoBase);
-        } else {
-            auto grf = loadScalars(
-                    problem.Tao, {state.inputs.aoPtr}, strategy, state);
-            aoLoad = grf - grf;
-            A_offsetLayout = state.Ar_offsetLayout;
-        }
-        gemmRepack2DOffsetData(problem.Ta_ext, problem.Tao, state.Tao_int,
-                A_offsetLayout, state.Ar_offsetLayout, aoLoad,
-                state.Ar_offsetRegs, problem, strategy, state);
-        state.ra.safeRelease(aoLoad);
-        state.ra.safeRelease(state.inputs.aoPtr);
-    }
-    if (boTo2D) {
-        std::vector<RegisterBlock> B_offsetLayout;
-        GRFRange boLoad;
-        if (problem.boPtrDims == 1) {
-            reclaimRanges(state.C_regs, state);
-            auto boBase = state.ra.alloc_sub<uint64_t>();
-            auto rem = slmB ? state.remaindersCoop[LoopN]
-                            : state.remainders[LoopN];
-            auto c = slmB ? state.nb_slm : strategy.unroll[LoopN];
-            eaddScaled(1, boBase, state.inputs.boPtr, state.j0, Tbo, strategy,
-                    state);
-            boLoad = loadVector(
-                    problem.Tbo, problem.Tbo, boBase, c, rem, strategy, state);
-            makeUnbackedRegLayout(problem.Tbo, B_offsetLayout, 1, c, false);
-            state.ra.safeRelease(boBase);
-        } else {
-            auto grf = loadScalars(
-                    problem.Tbo, {state.inputs.boPtr}, strategy, state);
-            boLoad = grf - grf;
-            B_offsetLayout = state.Br_offsetLayout;
-        }
-        gemmRepack2DOffsetData(problem.Tb_ext, problem.Tbo, state.Tbo_int,
-                B_offsetLayout, state.Br_offsetLayout, boLoad,
-                state.Br_offsetRegs, problem, strategy, state);
-        state.ra.safeRelease(boLoad);
-        state.ra.safeRelease(state.inputs.boPtr);
-    }
 
     // Free unneeded registers after address setup.
     if (!state.isNested) {
@@ -18967,8 +18504,7 @@ bool gemm_kernel_generator_t<hw>::gemmBodyInternal(
 
     // Late exit.
     Label labelLateExit;
-    if (state.doLateExit && !strategy.fusePostOps
-            && !(strategy.registerOutput() && outputCRange.empty()))
+    if (state.doLateExit && !strategy.fusePostOps)
         gemmOOBExit(labelLateExit, strategy, state);
 
     // Handle fused post-ops for atomic update kernels.
@@ -18977,19 +18513,8 @@ bool gemm_kernel_generator_t<hw>::gemmBodyInternal(
             return false;
     }
 
-    if (strategy.registerOutput()) {
-        // Marshal C into output registers. The main path defines the output registers.
-        if (outputCRange.empty()) {
-            outputCRange = state.C_regs[0];
-            outputCLayout = state.C_layout;
-        } else {
-            // FIXME: check that layouts are compatible, and rearrange if not.
-            overlappedCopy(state.C_regs[0], outputCRange, state);
-        }
-    } else {
-        // Regular C update into memory.
-        if (!gemmUpdateCDispatch(problem, strategy, state)) return false;
-    }
+    // C update.
+    if (!gemmUpdateCDispatch(problem, strategy, state)) return false;
 
     // Cleanup.
     if (remaskC_M)
@@ -19474,6 +18999,10 @@ void gemm_kernel_generator_t<hw>::gemmInitInterface(GEMMProblem &problem,
         state.inputs.surfaceBScale
                 = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
+    if (problem.aScale2D)
+        state.inputs.aScalePtr = interface.getArgument("a_scale_ptr");
+    if (problem.bScale2D)
+        state.inputs.bScalePtr = interface.getArgument("b_scale_ptr");
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
     state.inputs.offsetB = interface.getArgumentIfExists("offset_B");
     state.inputs.offsetC[0] = interface.getArgumentIfExists("offset_C");
@@ -21148,39 +20677,34 @@ void gemm_kernel_generator_t<hw>::gemmScaleInputs(const GEMMProblem &problem,
         const GEMMStrategy &strategy, GEMMState &state) {
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext,
          Tc_ext = problem.Tc_ext, Tco = problem.Tco;
-    if (Ta_ext.isInt4()) {
-        eshr(1, state.inputs.lda, state.inputs.lda, 1, strategy, state);
-    } else {
-        emulConstant(1, state.inputs.lda, state.inputs.lda, Ta_ext.size(),
-                strategy, state);
-    }
-    if (state.inputs.ldb != state.inputs.lda) {
-        if (Tb_ext.isInt4()) {
-            eshr(1, state.inputs.ldb, state.inputs.ldb, 1, strategy, state);
-        } else {
-            emulConstant(1, state.inputs.ldb, state.inputs.ldb, Tb_ext.size(),
-                    strategy, state);
+    auto &inputs = state.inputs;
+
+    auto scale = [&](Type T, Subregister s,
+                         Subregister defaultSrc = Subregister()) {
+        if (s.isValid()) {
+            if (T.isInt4())
+                eshr(1, s, s, 1, strategy, state);
+            else
+                emulConstant(1, s, s, T.size(), strategy, state);
+        } else if (defaultSrc.isValid()) {
+            s = state.ra.alloc_sub(defaultSrc.getType(),
+                    getHint(HintType::LongTerm, strategy));
+            if (T.isInt4())
+                eshr(1, s, defaultSrc, 1, strategy, state);
+            else
+                emulConstant(1, s, defaultSrc, T.size(), strategy, state);
         }
-    }
+    };
+
+    scale(Ta_ext, inputs.lda);
+    if (state.inputs.ldb != state.inputs.lda) scale(Tb_ext, inputs.ldb);
     for (int q = 0; q < state.C_count; q++)
         scale(Tc_ext, inputs.ldc[q]);
     scale(Tco, inputs.ldco);
 
     {
-        if (Ta_ext.isInt4()) {
-            eshr(1, state.inputs.offsetA, state.inputs.offsetA, 1, strategy,
-                    state);
-        } else {
-            emulConstant(1, state.inputs.offsetA, state.inputs.offsetA,
-                    Ta_ext.size(), strategy, state);
-        }
-        if (Tb_ext.isInt4()) {
-            eshr(1, state.inputs.offsetB, state.inputs.offsetB, 1, strategy,
-                    state);
-        } else {
-            emulConstant(1, state.inputs.offsetB, state.inputs.offsetB,
-                    Tb_ext.size(), strategy, state);
-        }
+        scale(Ta_ext, inputs.offsetA);
+        scale(Tb_ext, inputs.offsetB);
         for (int q = 0; q < state.C_count; q++)
             scale(Tc_ext, inputs.offsetC[q]);
         if (problem.usesCO()) scale(Tco, inputs.offsetCO);
@@ -21188,36 +20712,23 @@ void gemm_kernel_generator_t<hw>::gemmScaleInputs(const GEMMProblem &problem,
 
     if (problem.batch == BatchMode::Strided)
         for (int b = 0; b < problem.batchDims; b++) {
-            if (Ta_ext.isInt4()) {
-                eshr(1, state.inputs.strideA[b], state.inputs.strideA[b], 1,
-                        strategy, state);
-            } else {
-                emulConstant(1, state.inputs.strideA[b],
-                        state.inputs.strideA[b], Ta_ext.size(), strategy,
-                        state);
-            }
-            if (Tb_ext.isInt4()) {
-                eshr(1, state.inputs.strideB[b], state.inputs.strideB[b], 1,
-                        strategy, state);
-            } else {
-                emulConstant(1, state.inputs.strideB[b],
-                        state.inputs.strideB[b], Tb_ext.size(), strategy,
-                        state);
-            }
-            emulConstant(1, state.inputs.strideC[b], state.inputs.strideC[b],
-                    Tc_ext.size(), strategy, state);
+            scale(Ta_ext, inputs.strideA[b]);
+            scale(Tb_ext, inputs.strideB[b]);
+            scale(Tc_ext, inputs.strideC[b]);
         }
 
     auto ldaq = inputs.ldaq, ldbq = inputs.ldbq;
     if (ldaq.isInvalid()) ldaq = inputs.m;
     if (ldbq.isInvalid()) ldbq = inputs.n;
 
-    if (problem.aoPtrDims == 2) scale(problem.Tao, inputs.ldao, ldaq);
-    if (problem.aoPtrDims >= 0)
+    if (problem.aoPtrDims == 2) {
+        scale(problem.Tao, inputs.ldao, ldaq);
         scale(problem.Tao, inputs.offsetAO, inputs.offsetAq);
-    if (problem.boPtrDims == 2) scale(problem.Tbo, inputs.ldbo, ldbq);
-    if (problem.boPtrDims >= 0)
+    }
+    if (problem.boPtrDims == 2) {
+        scale(problem.Tbo, inputs.ldbo, ldbq);
         scale(problem.Tbo, inputs.offsetBO, inputs.offsetBq);
+    }
     if (problem.aScale2D) {
         scale(problem.Ta_scale, inputs.ldaScale, ldaq);
         scale(problem.Ta_scale, inputs.offsetAScale, inputs.offsetAq);
@@ -21227,32 +20738,10 @@ void gemm_kernel_generator_t<hw>::gemmScaleInputs(const GEMMProblem &problem,
         scale(problem.Tb_scale, inputs.offsetBScale, inputs.offsetBq);
     }
 
-    state.ldao = inputs.ldao;
-    state.ldbo = inputs.ldbo;
-    state.ldaScale = inputs.ldaScale;
-    state.ldbScale = inputs.ldbScale;
-
     state.ra.safeRelease(inputs.ldaq);
     state.ra.safeRelease(inputs.ldbq);
     state.ra.safeRelease(inputs.offsetAq);
     state.ra.safeRelease(inputs.offsetBq);
-}
-
-// Calculate workgroup m/n remainders.
-template <HW hw>
-void gemm_kernel_generator_t<hw>::gemmCalcWGRemainders(
-        const GEMMProblem &problem, const GEMMStrategy &strategy,
-        GEMMState &state) {
-    if (wgRemCheck(problem, strategy)) {
-        state.remaindersWG[LoopM] = state.ra.alloc_sub<uint32_t>(
-                getHint(HintType::TempComp1, strategy));
-        state.remaindersWG[LoopN] = state.ra.alloc_sub<uint32_t>(
-                getHint(HintType::TempComp0, strategy));
-        add(1 | sat, state.remaindersWG[LoopM], -state.wgI0, state.inputs.m);
-        add(1 | sat, state.remaindersWG[LoopN], -state.wgJ0, state.inputs.n);
-    }
-    if (strategy.coopA != CoopSplit::FullK) state.ra.safeRelease(state.wgI0);
-    if (strategy.coopB != CoopSplit::FullK) state.ra.safeRelease(state.wgJ0);
 }
 
 // Cache multiples of lda/ldb for later address calculations.
@@ -21344,13 +20833,12 @@ void gemm_kernel_generator_t<hw>::gemmAutoTypeConversions(
         GEMMProblem &problem, const GEMMStrategy &strategy) {
     auto &Ta = problem.Ta, &Tb = problem.Tb, &Tc = problem.Tc;
 
-    if (Ta == Type::bf8) Ta = Type::f16;
-    if (Tb == Type::bf8) Tb = Type::f16;
-    if (Tc == Type::bf8) Tc = Type::f16;
-
     // Weights decompression
     if ((Ta.isInt8() || Ta.isInt4()) && Tb.isFP() && Tc.isFP()) { Ta = Tb; }
     if ((Tb.isInt8() || Tb.isInt4()) && Ta.isFP() && Tc.isFP()) { Tb = Ta; }
+
+    if (Ta == Type::bf8) Ta = Type::f16;
+    if (Tb == Type::bf8) Tb = Type::f16;
 
     if (hw > HW::Gen9 && !strategy.systolic && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;
@@ -21480,84 +20968,44 @@ void gemm_kernel_generator_t<hw>::gemm(
         state.k0Rem = copySubregister(
                 state.inputs.k0, state, getHint(HintType::LongTerm, strategy));
 
-    // Surface handling for quantization parameters.
-    auto replace0 = [&](Subregister &s) {
-        if (s.isValid()) {
-            state.ra.release(s);
-            s = state.ra.alloc_sub<uint32_t>();
-            mov(1, s, 0);
-        }
-    };
-
-    state.A_offsetStrategy.base = A64;
-    state.B_offsetStrategy.base = A64;
-    state.A_scaleStrategy.base = A64;
-    state.B_scaleStrategy.base = A64;
-
-    if (problem.quantized2DA() && !strategy.A.base.isStateless()) {
-        if (problem.aoPtrDims == 2) replace0(state.inputs.aoPtr);
-        replace0(state.inputs.aScalePtr);
-        state.A_offsetStrategy.base = state.A_scaleStrategy.base
-                = AddressBase::createBTS(0);
-    }
-    if (problem.quantized2DB() && !strategy.B.base.isStateless()) {
-        if (problem.boPtrDims == 2) replace0(state.inputs.boPtr);
-        replace0(state.inputs.bScalePtr);
-        state.B_offsetStrategy.base = state.B_scaleStrategy.base
-                = AddressBase::createBTS(0);
-    }
-
-    // A/B offset pointer handling.
+    // Load scalar ao/bo from memory if needed.
     bool aOffset = (problem.aOffset != ABOffset::None);
     bool bOffset = (problem.bOffset != ABOffset::None);
-    if (aOffset && state.inputs.offsetAO.isValid())
-        eadd(1, state.inputs.aoPtr, state.inputs.aoPtr, state.inputs.offsetAO,
-                strategy, state);
-    if (bOffset && state.inputs.offsetBO.isValid())
-        eadd(1, state.inputs.boPtr, state.inputs.boPtr, state.inputs.offsetBO,
-                strategy, state);
+    if ((aOffset || bOffset) && state.inputs.abo.isInvalid()) {
+        auto Tc = problem.Tc;
 
-    state.ra.safeRelease(state.inputs.offsetAO);
-    state.ra.safeRelease(state.inputs.offsetBO);
-
-    // Load scalar ao/bo from memory as needed.
-    bool aoScalarLoad
-            = aOffset && problem.aoPtrDims == 0 && !problem.earlyDequantizeA();
-    bool boScalarLoad
-            = bOffset && problem.boPtrDims == 0 && !problem.earlyDequantizeB();
-    auto Tc = problem.Tc;
-
-    if (Tc.isInteger() && (aoScalarLoad || boScalarLoad)) {
-        state.inputs.abo = state.ra.alloc_sub<uint32_t>(
-                getHint(HintType::LongTerm, strategy));
-        if (aoScalarLoad) state.inputs.ao = state.inputs.abo.w(0);
-        if (boScalarLoad) state.inputs.bo = state.inputs.abo.w(1);
-    } else {
-        if (aoScalarLoad)
-            state.inputs.ao = state.ra.alloc_sub(
-                    Tc.ngen(), getHint(HintType::LongTerm, strategy));
-        if (boScalarLoad)
-            state.inputs.bo = state.ra.alloc_sub(
-                    Tc.ngen(), getHint(HintType::LongTerm, strategy));
-    }
-
-    auto loadABO = [&](Type T, const ngen::Subregister &xo,
-                           ngen::Subregister &xoPtr) {
-        if (xoPtr.isInvalid())
-            mov(1, xo, cast(Tc, 0));
-        else {
-            vector<Subregister> srcs;
-            srcs.push_back(xoPtr);
-            auto xoLoad = loadScalars(T, srcs, strategy, state);
-            if (T.isInteger() && T.paddedSize() > 2) xoLoad = xoLoad.w();
-            mov(1, xo, -xoLoad);
-            state.ra.safeRelease(xoPtr);
-            state.ra.safeRelease(xoLoad);
+        if (Tc.isInteger()) {
+            state.inputs.abo = state.ra.alloc_sub<uint32_t>(
+                    getHint(HintType::LongTerm, strategy));
+            state.inputs.ao = state.inputs.abo.w(0);
+            state.inputs.bo = state.inputs.abo.w(1);
+        } else {
+            if (aOffset)
+                state.inputs.ao = state.ra.alloc_sub(
+                        Tc.ngen(), getHint(HintType::LongTerm, strategy));
+            if (bOffset)
+                state.inputs.bo = state.ra.alloc_sub(
+                        Tc.ngen(), getHint(HintType::LongTerm, strategy));
         }
-    };
+
+        if (aOffset && state.inputs.offsetAO.isValid())
+            eadd(1, state.inputs.aoPtr, state.inputs.aoPtr,
+                    state.inputs.offsetAO, strategy, state);
+        if (bOffset && state.inputs.offsetBO.isValid())
+            eadd(1, state.inputs.boPtr, state.inputs.boPtr,
+                    state.inputs.offsetBO, strategy, state);
+
+        state.ra.safeRelease(state.inputs.offsetAO);
+        state.ra.safeRelease(state.inputs.offsetBO);
 
     if (aoScalarLoad) loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
     if (boScalarLoad) loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
+
+        if (aOffset && problem.aoPtrDims <= 0)
+            loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
+        if (bOffset && problem.boPtrDims <= 0)
+            loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
+    }
 
     // 2D scale address handling.
     if (problem.aScale2D && state.inputs.offsetAScale.isValid())
@@ -21569,9 +21017,6 @@ void gemm_kernel_generator_t<hw>::gemm(
 
     state.ra.safeRelease(state.inputs.offsetAScale);
     state.ra.safeRelease(state.inputs.offsetBScale);
-
-    if (problem.aqGroupK == 0) problem.aqGroupK = strategy.ka_load;
-    if (problem.bqGroupK == 0) problem.bqGroupK = strategy.kb_load;
 
     // Persistent thread preparation and re-entry.
     if (strategy.persistent) {
@@ -23145,6 +22590,9 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
     auto Tb_real = Tb.real();
     auto Tc_real = Tc.real();
 
+    bool dequantize2DA = (problem.aoPtrDims == 2 || problem.aScale2D);
+    bool dequantize2DB = (problem.boPtrDims == 2 || problem.bScale2D);
+
     // Safety checks for alignment.
     if (!legalAAlignment(problem, problem.A.alignment))
         stub("A alignment will be lost during m-parallelization");
@@ -23298,8 +22746,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
     spf &= !doubleMasking;
 
     checkAdd32 &= !emulate.emulate64_add32;
-    checkAdd32 &= (A.base.isStateless() || B.base.isStateless()
-            || problem.quantized2DA() || problem.quantized2DB());
+    checkAdd32 &= (A.base.isStateless() || B.base.isStateless() || dequantize2DA
+            || dequantize2DB);
     checkAdd32 &= !(A.address2D && B.address2D
             && (!prefetchA || A_prefetch.address2D)
             && (!prefetchB || B_prefetch.address2D));
@@ -23404,8 +22852,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
 
     ukAlign = align_up(ukAlign, minUnrollKSLM * slmVersions);
 
-    if (problem.quantized2DA()) ukAlign = lcm(ukAlign, problem.aqGroupK);
-    if (problem.quantized2DB()) ukAlign = lcm(ukAlign, problem.bqGroupK);
+    if (dequantize2DA) ukAlign = lcm(ukAlign, problem.aqGroupK);
+    if (dequantize2DB) ukAlign = lcm(ukAlign, problem.bqGroupK);
 
     unroll[LoopK] = align_up(unroll[LoopK], ukAlign);
 
@@ -27976,50 +27424,43 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                 nelems_real = std::min(nelems_real,
                                         nes_real); // Special case: mixed mode packed downconversion limited to 1 GRF.
 
-                            bool src_f8 = Ts.isF8();
-                            bool dst_f8 = Td.isF8();
-                            bool f8_align = src_f8 ^ dst_f8
-                                    && !(Ts.isInt4() || Td.isInt4());
-                            if (f8_align) allocTemp();
+                            bool src_bf8 = (Ts_real == Type::bf8);
+                            bool dst_bf8 = (Td_real == Type::bf8);
+                            bool bf8_align = src_bf8 ^ dst_bf8;
+                            if (bf8_align) allocTemp();
 
                             // Check if separate conversions are needed due to size changes.
-                            bool b_to_bf
-                                    = utils::one_of(Ts_real, Type::u8, Type::s8)
+                            bool b_to_bf = one_of(Ts_real, Type::u8, Type::s8)
                                     && Td_real == Type::bf16;
-                            auto sconvertCP = Ts_real.isInt4()
+                            auto sconvertCP = Ts_int4
                                     ? 1
                                     : (Ts_real.size() / Td_real.size())
                                             * scrosspack;
-                            bool allInt4
-                                    = (Td_real.isInt4() && Ts_real.isInt4());
-                            bool sconvert = !allInt4
-                                    && (Ts_real.isInt4()
-                                            || (Td_real.size() == 1
-                                                    && Ts_real.size() > 1
-                                                    && dcrosspack != sconvertCP)
-                                            || (Td_real.size() == 2
-                                                    && Ts_real.size() > 2
-                                                    && dcrosspack != sconvertCP
-                                                    && scrosspack > 1)
-                                            || (Td_real.size() == 1
-                                                    && Td_real.isInteger()
-                                                    && Ts_real.size() == 4
-                                                    && (dreg.getOffset() & 2))
-                                            || (Td_real.size() == 2
-                                                    && Td_real.isFP()
-                                                    && !Ts_real.isFP()
-                                                    && dcrosspack != sconvertCP
-                                                    && hw > HW::Gen9))
-                                    && !bf8_align;
+                            bool allInt4 = (Td_int4 && Ts_int4);
+                            bool sconvert = (Ts_int4
+                                    || (Td_real.size() == 1
+                                            && Ts_real.size() > 1
+                                            && dcrosspack != sconvertCP)
+                                    || (Td_real.size() == 2
+                                            && Ts_real.size() > 2
+                                            && dcrosspack != sconvertCP
+                                            && scrosspack > 1)
+                                    || (Td_real.size() == 1
+                                            && Td_real.isInteger()
+                                            && Ts_real.size() == 4
+                                            && (dreg.getOffset() & 2))
+                                    || (Td_real.size() == 2 && Td_real.isFP()
+                                            && !Ts_real.isFP()
+                                            && dcrosspack != sconvertCP
+                                            && hw > HW::Gen9));
+                            sconvert &= !bf8_align && !allInt4;
                             if (sconvert && preserveSrc) stub();
                             bool byteAlign = sconvert
-                                    && ((Ts_real.isInt4() || Td_real.isInt4())
+                                    && ((Ts_int4 || Td_int4)
                                             || (Ts_real.size() < Td_real.size()
                                                     && utils::one_of(Td_real,
                                                             Type::f16,
-                                                            Type::bf16)))
-                                    && utils::one_of(Td_real, Type::f16,
-                                            Type::bf16, Type::f32);
+                                                            Type::bf16)));
                             byteAlign |= allInt4;
                             if (Ts_int4 && (!byteAlign && Td_real != Ts_real))
                                 stub();
@@ -28035,19 +27476,19 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                             auto dconvertCP = Td_real.isInt4()
                                     ? 1
                                     : (Td_real.size() / Ts_real) * dcrosspack;
-                            bool dconvert
-                                    = ((!Ts_real.isInt4() && !Td_real.isInt4()
-                                               && Ts_real.size() == 1
-                                               && Td_real.size() > 1
-                                               && scrosspack != dconvertCP
-                                               && !byteAlign && !b_to_bf)
-                                              || (!Ts_real.isInt4()
-                                                      && !Td_real.isInt4()
-                                                      && Ts_real == Type::f16
-                                                      && Td_real.size() > 2
-                                                      && (sreg.getOffset() & 1)
-                                                      && hw >= HW::XeHP))
-                                    && !bf8_align;
+                            bool dconvert = (!Ts_int4 && !Td_int4)
+                                    && ((Ts_real.size() == 1
+                                                && Td_real.size() > 1
+                                                && (scrosspack != dconvertCP
+                                                        || ((sreg.getOffset()
+                                                                    & 3)
+                                                                && hw >= HW::XeHP))
+                                                && !byteAlign && !b_to_bf)
+                                            || (Ts_real == Type::f16
+                                                    && Td_real.size() > 2
+                                                    && (sreg.getOffset() & 1)
+                                                    && hw >= HW::XeHP));
+                            dconvert &= !bf8_align;
                             auto dregConverted = dconvert
                                     ? dreg.reinterpret(0, Ts_real.ngen())(
                                             dconvertCP)
@@ -28184,77 +27625,19 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                 }
                             };
 
-                            auto cvt_x_to_f8 = [&]() {
-                                if (Td_real == Type::bf8) {
-                                    auto tmp0 = copyTemp[0].sub(
-                                            0, Ts_real.ngen());
-                                    moveToIntPipe(tmp0);
-                                    moveToIntPipe(sreg);
-                                    mov(nelems_real | modMov, tmp0(1),
-                                            sreg(scrosspack));
-                                    if (Ts_real.ngen() == ngen::DataType::hf) {
-                                        auto tmp1 = copyTemp[1].sub(
-                                                0, ngen::DataType::bf8);
-                                        mov(nelems_real | modMov, tmp1(2),
-                                                tmp0.hf()(1));
-                                        mov(nelems_real | modMov,
-                                                dreg.ub()(dcrosspack),
-                                                tmp1.ub()(2));
-                                    } else if (Ts_real.ngen()
-                                            == ngen::DataType::f) {
-                                        auto tmp1 = copyTemp[1].sub(
-                                                0, ngen::DataType::hf);
-                                        movePipes(tmp0);
-                                        movePipes(sreg);
-                                        mov(nelems_real | modMov, tmp1(1),
-                                                tmp0(1));
-                                        mov(nelems_real | modMov, tmp0.bf8()(1),
-                                                tmp1(1));
-                                        mov(nelems_real | modMov,
-                                                dreg.ub()(dcrosspack),
-                                                tmp0.ub()(1));
-                                    } else
-                                        stub();
-#if XE3P
-                                } else if (Td_real == Type::hf8
-                                        && hw >= HW::Xe3p) {
-                                    auto tmp0 = copyTemp[0].sub(
-                                            0, Ts_real.ngen());
-                                    moveToIntPipe(tmp0);
-                                    moveToIntPipe(sreg);
-                                    mov(nelems_real | modMov, tmp0(1),
-                                            sreg(scrosspack));
-                                    if (Ts_real.ngen() == ngen::DataType::hf) {
-                                        auto tmp1 = copyTemp[1].sub(
-                                                0, ngen::DataType::hf8);
-                                        mov(nelems_real | modMov, tmp1(2),
-                                                tmp0.hf()(1));
-                                        mov(nelems_real | modMov,
-                                                dreg.ub()(dcrosspack),
-                                                tmp1.ub()(2));
-                                    } else if (Ts_real.ngen()
-                                            == ngen::DataType::f) {
-                                        auto tmp1 = copyTemp[1].sub(
-                                                0, ngen::DataType::hf);
-                                        movePipes(tmp0);
-                                        movePipes(sreg);
-                                        mov(nelems_real | modMov, tmp1(1),
-                                                tmp0(1));
-                                        mov(nelems_real | modMov, tmp0.hf8()(1),
-                                                tmp1(1));
-                                        mov(nelems_real | modMov,
-                                                dreg.ub()(dcrosspack),
-                                                tmp0.ub()(1));
-                                    } else
-                                        stub();
-#endif
-                                } else if (Td_real == Type::hf8) {
-                                    auto tmp0 = copyTemp[0].sub(
-                                            0, ngen::DataType::ub);
-                                    moveToIntPipe(tmp0);
-                                    moveToIntPipe(sreg);
-                                    if (!one_of(Ts_real, Type::f16, Type::f32))
-                                        stub();
+                            auto cvt_x_to_bf8 = [&]() {
+                                auto tmp0 = copyTemp[0].sub(0, Ts_real.ngen());
+                                moveToIntPipe(tmp0);
+                                moveToIntPipe(sreg);
+                                mov(nelems_real | modMov, tmp0(1),
+                                        sreg(scrosspack));
+                                if (Ts_real.ngen() == ngen::DataType::hf) {
+                                    auto tmp1 = copyTemp[1].bf8();
+                                    mov(nelems_real | modMov, tmp1, tmp0.hf());
+                                    mov(nelems_real | modMov,
+                                            dreg.ub()(dcrosspack), tmp1.ub());
+                                } else if (Ts_real.ngen()
+                                        == ngen::DataType::f) {
                                     auto tmp1 = copyTemp[1].sub(
                                             0, ngen::DataType::hf);
                                     movePipes(tmp0);
@@ -28262,7 +27645,6 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                     mov(nelems_real | modMov, tmp1(1), tmp0(1));
                                     mov(nelems_real | modMov, tmp0.bf8()(1),
                                             tmp1(1));
-
                                     mov(nelems_real | modMov,
                                             dreg.ub()(dcrosspack),
                                             tmp0.ub()(1));
@@ -28621,11 +28003,11 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                             rnde(nelems_real, sreg(scrosspack),
                                                     sreg(scrosspack));
                                         }
-                                        if (f8_align) {
-                                            if (src_f8)
-                                                cvt_f8_to_x();
-                                            else if (dst_f8)
-                                                cvt_x_to_f8();
+                                        if (bf8_align) {
+                                            if (src_bf8)
+                                                cvt_bf8_to_x();
+                                            else if (dst_bf8)
+                                                cvt_x_to_bf8();
                                         } else if (sconvert) {
                                             if (byteAlign) {
                                                 doByteAlign();
@@ -28989,11 +28371,10 @@ void gemm_kernel_generator_t<hw>::epilogue(
         const CommonStrategy &strategy, CommonState &state) {
     auto r0_info = state.r0_info;
 
-    if (!getEfficient64Bit())
-        if (r0_info.getBase() < 112) {
-            mov<uint32_t>(r0DWords(hw), r127, r0_info);
-            r0_info = r127;
-        }
+    if (r0_info.getBase() < 112) {
+        mov<uint32_t>(r0DWords(hw), r127, r0_info);
+        r0_info = r127;
+    }
 
     if (strategy.finalFence) {
         memfence(r124, r0_info);

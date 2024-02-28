@@ -57,7 +57,7 @@ status_t sycl_device_info_t::init_arch(engine_t *engine) {
 #else
         gpu::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper, ocl_ctx_wrapper,
                 gpu_arch_, stepping_id_, mayiuse_systolic_,
-                mayiuse_ngen_kernels_);
+                mayiuse_ngen_kernels_, is_xelpg_);
 #endif
     } else if (be == backend_t::level0) {
         // TODO: add support for L0 binary ngen check
@@ -77,6 +77,7 @@ status_t sycl_device_info_t::init_arch(engine_t *engine) {
         stepping_id_ = dev_info->stepping_id();
         mayiuse_systolic_ = dev_info->mayiuse_systolic();
         mayiuse_ngen_kernels_ = dev_info->mayiuse_ngen_kernels();
+        is_xelpg_ = dev_info->is_xelpg();
     } else {
         assert(!"not_expected");
     }

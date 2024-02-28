@@ -160,7 +160,7 @@ struct DNNL_API brgemm_attr_t {
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
     bool postops_only {false};
-    // Hint for bs_group value in brgemm_desc_t
+    // Hint for bs_group value in brgemm_t
     int hint_bs_group {0};
 
     int hint_bd_block {0};
@@ -186,10 +186,10 @@ struct DNNL_API brgemm_attr_t {
     const brgemm_batch_element_t *static_offsets;
 };
 
-struct brgemm_desc_t {
-    brgemm_desc_t() {}
-    brgemm_desc_t(const brgemm_desc_t &other);
-    DNNL_API ~brgemm_desc_t();
+struct brgemm_t {
+    brgemm_t() {}
+    brgemm_t(const brgemm_t &other);
+    DNNL_API ~brgemm_t();
 
     // Note: new added parameters must be taken into account in the brgemm
     // comparison function
@@ -265,7 +265,6 @@ struct brgemm_desc_t {
     bool is_tmm = false;
     bool is_int8 = false, is_int8_tmm = false;
     bool is_bf16 = false, is_bf16_tmm = false, is_bf16_emu = false;
-    bool is_fp8 = false, is_fp8_tmm = false;
     bool is_f16 = false, is_f16_tmm = false;
     bool is_f32 = false;
     bool is_bf32 = false;
@@ -295,13 +294,6 @@ struct brgemm_desc_t {
     void set_dst_md(const memory_desc_t *pdst_md);
     const primitive_attr_t *attr() const { return attr_; };
     const memory_desc_t *dst_md() const { return dst_md_; };
-
-    // return 'true' when FP8 MAC is not natively supported by the CPU ISA
-    bool is_fp8_via_convert() const {
-        return is_fp8 && utils::one_of(isa_impl, avx10_1_512_amx_fp16);
-    }
-
-    bool is_input_convert() const { return is_bf32 || is_fp8_via_convert(); }
 
     bool is_row_major() const {
         assert(layout != brgemm_layout_undef);
@@ -363,7 +355,7 @@ struct brgemm_desc_t {
         if (is_tmm) {
             constexpr int tilesize = 1024;
             sz = get_num_C_tiles() * tilesize; // postops buffer
-            if (is_input_convert()) {
+            if (is_bf32) {
                 const int n_bdb = bd_block2;
                 const int n_rdb = rdb + (rdb_tail != 0);
                 const int n_ldb = ldb + (ldb_tail != 0);
@@ -384,8 +376,8 @@ struct brgemm_desc_t {
     }
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }
 
-    bool operator==(const brgemm_desc_t &rhs) const;
-    bool operator<(const brgemm_desc_t &rhs) const;
+    bool operator==(const brgemm_t &rhs) const;
+    bool operator<(const brgemm_t &rhs) const;
 
 private:
     primitive_attr_t *attr_ {nullptr};
@@ -398,7 +390,7 @@ private:
 
     // The default assignment operator is intended to be used in custom copy
     // constructor only to avoid copying field-by-field
-    brgemm_desc_t &operator=(const brgemm_desc_t &) = default;
+    brgemm_t &operator=(const brgemm_t &) = default;
 };
 
 struct brgemm_dynamic_values_t {
@@ -457,10 +449,10 @@ struct brgemm_kernel_params_t {
     dim_t dynamic_LDD = 0;
 };
 
-template <typename Vmm>
+template <cpu_isa_t isa, typename Vmm>
 struct jit_brgemm_kernel_t;
 struct jit_brgemm_amx_uker_base_t;
-template <typename Vmm>
+template <cpu_isa_t isa, typename Vmm>
 struct jit_brdgmm_kernel_base_t;
 class jit_generator;
 
@@ -472,9 +464,9 @@ struct brgemm_kernel_t {
     virtual const jit_generator *get_jit_generator() const = 0;
 };
 
-template <typename Vmm>
+template <cpu_isa_t isa, typename Vmm>
 struct brgemm_kernel_common_t : public brgemm_kernel_t {
-    brgemm_kernel_common_t(const brgemm_desc_t &abrd);
+    brgemm_kernel_common_t(const brgemm_t &abrd);
     ~brgemm_kernel_common_t();
 
     status_t create_kernel();
@@ -482,13 +474,13 @@ struct brgemm_kernel_common_t : public brgemm_kernel_t {
     virtual const jit_generator *get_jit_generator() const;
 
 private:
-    jit_brgemm_kernel_t<Vmm> *brgemm_kernel_ = nullptr;
+    jit_brgemm_kernel_t<isa, Vmm> *brgemm_kernel_ = nullptr;
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(brgemm_kernel_common_t);
 };
 
 struct brgemm_amx_uker_t : public brgemm_kernel_t {
-    brgemm_amx_uker_t(const brgemm_desc_t &abrd);
+    brgemm_amx_uker_t(const brgemm_t &abrd);
     ~brgemm_amx_uker_t();
 
     status_t create_kernel();
@@ -501,9 +493,9 @@ private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(brgemm_amx_uker_t);
 };
 
-template <typename Vmm>
+template <cpu_isa_t isa, typename Vmm>
 struct brdgmm_kernel_t : public brgemm_kernel_t {
-    brdgmm_kernel_t(const brgemm_desc_t &abrd);
+    brdgmm_kernel_t(const brgemm_t &abrd);
     ~brdgmm_kernel_t();
 
     status_t create_kernel();
@@ -511,14 +503,14 @@ struct brdgmm_kernel_t : public brgemm_kernel_t {
     virtual const jit_generator *get_jit_generator() const;
 
 private:
-    jit_brdgmm_kernel_base_t<Vmm> *brgemm_kernel_ = nullptr;
+    jit_brdgmm_kernel_base_t<isa, Vmm> *brgemm_kernel_ = nullptr;
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(brdgmm_kernel_t);
 };
 
 /// @param bias Vector of bias (vector length is N)
 /// @param scales - Vector of scale factor values which represents combination
-///     scale factors for matrixes A and B. If brgemm_desc_t::is_oc_scale = true
+///     scale factors for matrixes A and B. If brgemm_t::is_oc_scale = true
 ///     vector length is N otherwise it must be broadcasted to vector of simd
 ///     width length
 /// @param binary_post_ops_rhs - Ptr to table of pointers to tensors used as rhs

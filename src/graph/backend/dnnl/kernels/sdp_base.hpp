@@ -64,26 +64,18 @@ public:
         const engine_kind_t ekind = g_engine->kind();
         const bool enable_decomp
                 = ekind == engine_kind::cpu && enable_decomp_kernel();
-        const bool enable_prim = (ekind == engine_kind::gpu) && !quantized;
-        status_t subkernel_status = status::unimplemented;
-
-        if (enable_prim) {
-            kernel = std::make_shared<sdp_primitive_kernel_t>();
-            subkernel_status
-                    = kernel->compile_impl(part, g_engine, inputs, outputs);
-        }
-
-        if (subkernel_status != status::success && enable_decomp) {
+        status_t sdp_decomp_status = status::success;
+        if (enable_decomp) {
             kernel = std::make_shared<sdp_decomp_kernel_t<quantized, dt>>();
             subkernel_status
                     = kernel->compile_impl(part, g_engine, inputs, outputs);
         }
 
-        if (subkernel_status != status::success) {
+        if (!enable_decomp || sdp_decomp_status != status::success) {
             kernel = std::make_shared<larger_partition_kernel_t>();
             return kernel->compile_impl(part, g_engine, inputs, outputs);
         }
-        return subkernel_status;
+        return sdp_decomp_status;
     }
 
     // The fuction is used to check if enable the decompostion kernel based on

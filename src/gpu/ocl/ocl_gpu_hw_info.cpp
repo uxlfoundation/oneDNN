@@ -14,29 +14,43 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
-#define GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
+#include "gpu/ocl/ocl_gpu_hw_info.hpp"
+#include "gpu/ocl/ocl_utils.hpp"
 
-#include <CL/cl.h>
-
-#include "common/c_types_map.hpp"
-#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/jit/binary_format.hpp"
+#include "gpu/jit/jit_generator.hpp"
+#include "gpu/jit/utils/ngen_type_bridge.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
-#if XE3P
 void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
         compute::gpu_arch_t &gpu_arch, int &stepping_id, bool &mayiuse_systolic,
-        bool &mayiuse_ngen_kernels, bool &is_xelpg);
+        bool &mayiuse_ngen_kernels, bool &is_xelpg) {
+    using namespace ngen;
+    HW hw = HW::Unknown;
+    Product product = {ProductFamily::Unknown, 0};
+    jit::jit_generator<HW::Unknown>::detectHWInfo(context, device, hw, product);
+    is_xelpg = (product.family == ngen::ProductFamily::ARL
+            || product.family == ngen::ProductFamily::MTL);
+
+    gpu_arch = jit::convert_ngen_arch_to_dnnl(hw);
+    stepping_id = product.stepping;
+
+    mayiuse_systolic = false;
+    status_t ret
+            = get_ocl_device_enabled_systolic_intel(device, mayiuse_systolic);
+    assert(ret == CL_SUCCESS);
+    MAYBE_UNUSED(ret);
+
+    auto status
+            = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
+    if (status != status::success) mayiuse_ngen_kernels = false;
+}
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
-
-#endif // GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP

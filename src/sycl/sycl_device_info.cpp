@@ -50,17 +50,10 @@ status_t sycl_device_info_t::init_arch(engine_t *engine) {
                 clCreateContext(nullptr, 1, &ocl_dev, nullptr, nullptr, &err));
         OCL_CHECK(err);
 
-#if XE3P
-        gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper,
-                ocl_ctx_wrapper, ip_version_, gpu_arch_, stepping_id_,
-                native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_,
-                is_efficient_64bit_);
-#else
-        gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper,
-                ocl_ctx_wrapper, ip_version_, gpu_arch_, stepping_id_,
-                native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_);
-#endif
-    } else if (be == xpu::sycl::backend_t::level0) {
+        gpu::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper, ocl_ctx_wrapper,
+                gpu_arch_, stepping_id_, mayiuse_systolic_,
+                mayiuse_ngen_kernels_, is_xelpg_);
+    } else if (be == backend_t::level0) {
         // TODO: add support for L0 binary ngen check
         // XXX: query from ocl_engine for now
         std::unique_ptr<gpu::intel::ocl::ocl_gpu_engine_t, engine_deleter_t>
@@ -73,7 +66,7 @@ status_t sycl_device_info_t::init_arch(engine_t *engine) {
         stepping_id_ = dev_info->stepping_id();
         mayiuse_systolic_ = dev_info->mayiuse_systolic();
         mayiuse_ngen_kernels_ = dev_info->mayiuse_ngen_kernels();
-        is_efficient_64bit_ = dev_info->is_efficient_64bit();
+        is_xelpg_ = dev_info->is_xelpg();
     } else {
         assert(!"not_expected");
     }

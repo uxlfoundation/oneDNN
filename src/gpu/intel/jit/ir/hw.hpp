@@ -93,11 +93,7 @@ public:
         l3_cache_size_ = device_info->l3_cache_size();
         large_grf_support_ = compute_engine->mayiuse_large_grf_mode();
         systolic_support_ = device_info->mayiuse_systolic();
-#if XE3P
-        is_efficient_64bit_ = device_info->is_efficient_64bit();
-#endif
-        with_atomic_fp64_
-                = device_info->mayiuse_float_atomic_add(data_type::f64);
+        is_xelpg_ = device_info->is_xelpg();
 
 #ifdef DNNL_DEV_MODE
         gpu_arch_t old_arch = gpu_arch;
@@ -111,7 +107,7 @@ public:
     }
 
     bool is_undef() const { return hw_ == ngen::HW::Unknown; }
-    bool has_fp64_atomic_support() const { return with_atomic_fp64_; }
+    bool is_xelpg() const { return is_xelpg_; }
     ngen::HW to_ngen() const { return hw_; }
     int stepping_id() const { return stepping_id_; }
     int eu_count() const { return eu_count_; }
@@ -233,10 +229,7 @@ private:
     size_t l3_cache_size_ = 0;
     bool large_grf_support_ = false;
     bool systolic_support_ = false;
-#if XE3P
-    bool is_efficient_64bit_ = false;
-#endif
-    bool with_atomic_fp64_ = false;
+    bool is_xelpg_ = false;
 };
 
 inline hw_t str_to_hw(const std::string &s) {

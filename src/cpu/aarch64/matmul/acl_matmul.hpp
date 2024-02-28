@@ -80,6 +80,13 @@ private:
 
 struct acl_matmul_t : public primitive_t {
     struct pd_t : public dnnl::impl::cpu::matmul::cpu_matmul_pd_t {
+
+        pd_t(const matmul_desc_t *adesc, const primitive_attr_t *attr,
+                const cpu_matmul_pd_t *hint_fwd_pd)
+            : cpu_matmul_pd_t(adesc, attr, hint_fwd_pd)
+            , amp_()
+            , acl_post_ops() {}
+
         using cpu_matmul_pd_t::cpu_matmul_pd_t;
 
         DECLARE_COMMON_PD_T("gemm:acl", acl_matmul_t, USE_GLOBAL_SCRATCHPAD);
@@ -131,21 +138,36 @@ struct acl_matmul_t : public primitive_t {
                         amp_, src_md_, weights_md_, dst_md_, *desc(), *attr()));
             }
 
+            // We can only fuse sum if it is the first post op and we aren't
+            // transposing dst after
+            if (attr_.post_ops_.contain(primitive_kind::sum, 0)
+                    && !amp_.do_transC) {
+                // Check there isn't another sum after the first
+                VDISPATCH_MATMUL(
+                        attr_.post_ops_.find(primitive_kind::sum, 1, -1) < 0,
+                        "cannot contain multiple sum post-ops");
+                VDISPATCH_MATMUL(attr_.post_ops_.entry_[0].sum.scale == 1.0f,
+                        "sum post op scale must be 1 (no scale)");
+                VDISPATCH_MATMUL(attr_.post_ops_.entry_[0].sum.zero_point == 0,
+                        "sum post op zero point must be 0 (no shift)");
+                amp_.gemm_info.set_accumulate(true);
+            }
+
             arm_compute::ActivationLayerInfo act_info;
-            CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_, act_info));
+            CHECK(acl_post_ops.init(engine, attr_.post_ops_, dst_md_, act_info,
+                    amp_.gemm_info.accumulate() ? 1 : 0));
             amp_.gemm_info.set_activation_info(act_info);
-            amp_.use_dst_acc = post_ops.has_sum();
+            amp_.use_dst_acc_for_sum = acl_post_ops.has_sum();
 
             // Validate ACL GEMM
             if (amp_.do_transC) {
                 ACL_CHECK_VALID(arm_compute::NEGEMM::validate(
                         &amp_.wei_tensor_info, &amp_.src_tensor_info, nullptr,
-                        &amp_.dst_acc_info, amp_.alpha, 0.0f, amp_.gemm_info));
+                        &amp_.dst_acc_info, 1.0f, 0.0f, amp_.gemm_info));
             } else {
                 ACL_CHECK_VALID(arm_compute::NEGEMM::validate(
                         &amp_.src_tensor_info, &amp_.wei_tensor_info, nullptr,
-                        &amp_.dst_tensor_info, amp_.alpha, 0.0f,
-                        amp_.gemm_info));
+                        &amp_.dst_tensor_info, 1.0f, 0.0f, amp_.gemm_info));
             }
 
             auto scratchpad = scratchpad_registry().registrar();
@@ -155,14 +177,19 @@ struct acl_matmul_t : public primitive_t {
         }
 
         acl_matmul_conf_t amp_;
-        acl_post_ops_t post_ops;
+        acl_post_ops_t acl_post_ops;
         dnnl::impl::format_kind_t weights_format_kind_;
     };
 
     acl_matmul_t(const pd_t *apd)
         : primitive_t(apd), acl_obj_(std::make_unique<acl_matmul_obj_t>()) {}
 
-    status_t init(engine_t *engine) override;
+        CHECK(pd()->acl_post_ops.create_resource(engine, mapper));
+
+        return status::success;
+    }
+
+    typedef typename prec_traits<data_type::f32>::type data_t;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         if (pd()->weights_format_kind_ == format_kind::any) {

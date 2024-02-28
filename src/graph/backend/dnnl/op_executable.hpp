@@ -279,6 +279,17 @@ struct memory_reparser_t : public dummy_impl_t {
         }
     }
 #endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    cl_event execute_ocl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<cl_event> &deps = {}) const override {
+        assertm(args.find(DNNL_ARG_FROM)->second.get_data_handle()
+                        == args.find(DNNL_ARG_TO)->second.get_data_handle(),
+                "memory reparser must be inplaced");
+        return dummy_impl_t::execute_ocl(stream, args, deps);
+    }
+#endif
 };
 
 template <op_attr_t attr_name, typename attr_dt, typename target_dt>

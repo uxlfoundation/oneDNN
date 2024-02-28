@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -111,6 +111,48 @@ status_t DNNL_API dnnl_graph_ocl_interop_allocator_create(
         ocl_deallocate_f ocl_free) {
     if (utils::any_null(ocl_malloc, ocl_free)) {
         *allocator = new dnnl_graph_allocator();
+    } else {
+        *allocator = new dnnl_graph_allocator(ocl_malloc, ocl_free);
+    }
+    return status::success;
+}
+
+status_t DNNL_API dnnl_graph_ocl_interop_make_engine_with_allocator(
+        engine_t **engine, cl_device_id device, cl_context context,
+        const allocator_t *alloc) {
+    auto ret = dnnl_ocl_interop_engine_create(engine, device, context);
+    if (ret != status::success) return ret;
+
+    (*engine)->set_allocator(const_cast<allocator_t *>(alloc));
+    return status::success;
+}
+#endif
+
+void dnnl_graph_allocator::monitor_t::record_allocate(
+        const void *buf, size_t size, dnnl_graph_allocator::mem_type_t type) {
+    const auto persistent = dnnl_graph_allocator::mem_type_t::persistent;
+    const auto temp = dnnl_graph_allocator::mem_type_t::temp;
+    if (type == persistent) {
+        persist_mem_ += size;
+        persist_mem_infos_.emplace(buf, mem_info_t {size, persistent});
+    } else if (type == temp) {
+        auto tid = std::this_thread::get_id();
+        temp_mem_[tid] += size;
+        if (peak_temp_mem_[tid] < temp_mem_[tid])
+            peak_temp_mem_[tid] = temp_mem_[tid];
+        temp_mem_infos_[tid].emplace(buf, mem_info_t {size, temp});
+    } else {
+        // we didn't use output type buffer now.
+        assertm(0, "we didn't use output type buffer now");
+    }
+}
+
+void dnnl_graph_allocator::monitor_t::record_deallocate(const void *buf) {
+    bool is_persist = persist_mem_infos_.find(buf) != persist_mem_infos_.end();
+    if (is_persist) {
+        auto persist_pos = persist_mem_infos_.find(buf);
+        persist_mem_ -= persist_pos->second.size_;
+        persist_mem_infos_.erase(persist_pos);
     } else {
         *allocator = new dnnl_graph_allocator(ocl_malloc, ocl_free);
     }

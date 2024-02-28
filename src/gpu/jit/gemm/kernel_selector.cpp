@@ -299,7 +299,8 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, const GEMMProblem &problem) {
         if (problem.batchDims > 1) *tagPtr++ = ReqBatchMultiDim;
     }
 
-    if (problem.abOffset != ABOffset::None) *tagPtr++ = ReqABOffset;
+    if (problem.aOffset != ABOffset::None) *tagPtr++ = ReqSumB;
+    if (problem.bOffset != ABOffset::None) *tagPtr++ = ReqSumA;
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

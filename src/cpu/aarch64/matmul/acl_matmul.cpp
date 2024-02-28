@@ -60,7 +60,7 @@ status_t acl_matmul_t::init(engine_t *engine) {
     bool is_transA = pd()->amp_.is_transA;
     bool is_transB = pd()->amp_.is_transB;
     bool do_transC = pd()->amp_.do_transC;
-    bool use_dst_acc = pd()->amp_.use_dst_acc;
+    bool use_dst_acc_for_sum = pd()->amp_.use_dst_acc_for_sum;
 
     std::lock_guard<std::mutex> _lock {this->mtx};
     auto *acl_resource = ctx.get_resource_mapper()->get<acl_resource_t>(this);
@@ -100,11 +100,11 @@ status_t acl_matmul_t::init(engine_t *engine) {
         if (do_transC) { acl_obj.dst_acc_tensor.allocator()->allocate(); }
     }
 
-    // Put the result in a new tensor, if we have a sum post op.
-    // Result will be accumulated to the dst during the post ops.
-    auto dst_base = use_dst_acc ? scratchpad.get<void>(
+    // If we have an unfused sum post op, put the result in a scratchpad tensor.
+    // Result will be summed to the dst during acl_post_ops.execute
+    auto dst_base = use_dst_acc_for_sum ? scratchpad.get<void>(
                             memory_tracking::names::key_matmul_dst_in_acc_dt)
-                                : CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+                                        : CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     acl_obj.dst_tensor.allocator()->import_memory(dst_base);
 
     amp_.do_act = false;
@@ -130,23 +130,10 @@ status_t acl_matmul_t::init(engine_t *engine) {
     if (is_transA) acl_obj.src_acc_tensor.allocator()->free();
     if (is_transB) acl_obj.wei_acc_tensor.allocator()->free();
 
-    auto scratchpad = scratchpad_registry().registrar();
-    arm_compute::experimental::MemoryRequirements aux_mem_req;
+    void *dst = acl_obj.dst_tensor.buffer();
+    pd()->acl_post_ops.execute(ctx, dst);
 
-    // Query buffer memory requirement, if not using fixed-format kernel
-    if (weights_format_kind_ != format_kind::any) {
-        arm_compute::experimental::op::ll::CpuGemmAssemblyDispatch asm_gemm;
-        if (amp_.do_transC) {
-            asm_gemm.configure(&amp_.wei_tensor_info, &amp_.src_tensor_info,
-                    nullptr, &amp_.dst_acc_info, amp_.gemm_info);
-        } else {
-            asm_gemm.configure(&amp_.src_tensor_info, &amp_.wei_tensor_info,
-                    nullptr, &amp_.dst_tensor_info, amp_.gemm_info);
-        }
-        aux_mem_req = asm_gemm.workspace();
-    }
-    CHECK(acl_matmul_utils::init_scratchpad(
-            scratchpad, amp_, src_md_, weights_md_, dst_md_, aux_mem_req));
+    acl_obj.dst_tensor.allocator()->free();
 
     return status::success;
 }

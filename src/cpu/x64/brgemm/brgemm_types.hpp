@@ -163,7 +163,7 @@ struct DNNL_API brgemm_attr_t {
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
     bool postops_only {false};
-    // Hint for bs_group value in brgemm_desc_t
+    // Hint for bs_group value in brgemm_t
     int hint_bs_group {0};
 
     int hint_bd_block {0};

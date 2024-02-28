@@ -527,7 +527,7 @@ status_t brgemm_desc_set_attr(
                     || brgattr.hint_ld_block != 0 || brgattr.hint_ld_block2 != 0
                     || brgattr.hint_load_nt_A != brgemm_hint_nt_undef
                     || brgattr.hint_load_nt_B != brgemm_hint_nt_undef
-                    || brgattr.hint_bs_group > 1 || brgattr.b_is_vnni);
+                    || brgattr.hint_bs_group > 1);
     if (brgattr.use_uker || brg->is_bf16_tmm || hint_blocking_set
             || brgattr.bd_mask_level
             || brgattr.fpmath_mode != fpmath_mode::strict || max_vpad > 0) {

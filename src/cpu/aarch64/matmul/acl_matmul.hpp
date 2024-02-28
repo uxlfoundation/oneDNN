@@ -162,12 +162,11 @@ struct acl_matmul_t : public primitive_t {
             if (amp_.do_transC) {
                 ACL_CHECK_VALID(arm_compute::NEGEMM::validate(
                         &amp_.wei_tensor_info, &amp_.src_tensor_info, nullptr,
-                        &amp_.dst_acc_info, amp_.alpha, 0.0f, amp_.gemm_info));
+                        &amp_.dst_acc_info, 1.0f, 0.0f, amp_.gemm_info));
             } else {
                 ACL_CHECK_VALID(arm_compute::NEGEMM::validate(
                         &amp_.src_tensor_info, &amp_.wei_tensor_info, nullptr,
-                        &amp_.dst_tensor_info, amp_.alpha, 0.0f,
-                        amp_.gemm_info));
+                        &amp_.dst_tensor_info, 1.0f, 0.0f, amp_.gemm_info));
             }
 
             auto scratchpad = scratchpad_registry().registrar();

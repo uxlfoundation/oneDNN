@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -79,8 +79,6 @@ public:
                 g_stream, inputs, outputs, ocl_deps, ocl_event);
     }
 #endif
-
-    std::string str() const override { return kernel_->str(); }
 
 private:
     kernel_ptr kernel_;

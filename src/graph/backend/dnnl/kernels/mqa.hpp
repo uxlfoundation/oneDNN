@@ -48,18 +48,18 @@ public:
         const engine_kind_t ekind = g_engine->kind();
         const bool enable_decomp
                 = ekind == engine_kind::cpu && enable_decomp_kernel();
-        status_t mqa_decomp_status = status::success;
+        status_t sdp_decomp_status = status::success;
         if (enable_decomp) {
             kernel = std::make_shared<mqa_decomp_kernel_t<quantized, dt>>();
             mqa_decomp_status
                     = kernel->compile_impl(part, g_engine, inputs, outputs);
         }
 
-        if (!enable_decomp || mqa_decomp_status != status::success) {
+        if (!enable_decomp || sdp_decomp_status != status::success) {
             kernel = std::make_shared<larger_partition_kernel_t>();
             return kernel->compile_impl(part, g_engine, inputs, outputs);
         }
-        return mqa_decomp_status;
+        return sdp_decomp_status;
     }
 
     // The fuction is used to check if enable the decompostion kernel based on
@@ -102,8 +102,6 @@ public:
         return kernel->ocl_execute_impl(g_stream, inputs, outputs, deps, event);
     }
 #endif
-
-    std::string str() const override { return kernel->str(); }
 };
 } // namespace dnnl_impl
 } // namespace graph

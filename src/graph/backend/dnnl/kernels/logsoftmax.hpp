@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,27 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GRAPH_BACKEND_DNNL_KERNELS_LAYERNORM_HPP
-#define GRAPH_BACKEND_DNNL_KERNELS_LAYERNORM_HPP
+#ifndef GRAPH_BACKEND_DNNL_KERNELS_LOGSOFTMAX_HPP
+#define GRAPH_BACKEND_DNNL_KERNELS_LOGSOFTMAX_HPP
 
-#include <algorithm>
 #include <memory>
-#include <set>
-#include <string>
-#include <utility>
 #include <vector>
 
-#include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_constant_tensor_cache.hpp"
 #include "graph/backend/dnnl/dnnl_partition_impl.hpp"
-#include "graph/backend/dnnl/op_executable.hpp"
 #include "graph/backend/dnnl/scratchpad.hpp"
 #include "graph/backend/dnnl/thread_local_cache.hpp"
-#include "graph/backend/dnnl/utils.hpp"
 
 #include "graph/backend/dnnl/passes/compile_ops.hpp"
-#include "graph/backend/dnnl/passes/constant_propagation.hpp"
-#include "graph/backend/dnnl/passes/insert_ops.hpp"
 #include "graph/backend/dnnl/passes/layout_propagation.hpp"
 #include "graph/backend/dnnl/passes/lower.hpp"
 #include "graph/backend/dnnl/passes/memory_planning.hpp"
@@ -46,27 +37,29 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-struct layernorm_fwd_t : public kernel_base_t {
+struct logsoftmax_fwd_t : public kernel_base_t {
 private:
+    dnnl::engine p_engine_;
     allocator_t *g_alloc_ = nullptr;
-
     std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;
-
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;
 
-    constant_cache_t::key_t constant_key_ = 0;
-
 public:
-    layernorm_fwd_t() {
+    logsoftmax_fwd_t() {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.retain();
     }
 
-    ~layernorm_fwd_t() override {
+    ~logsoftmax_fwd_t() override {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
         res_cache.release();
+    }
+
+    status_t prepare_inplace_pairs_impl() override {
+        inplace_pairs_ = memory_planner_.get_subgraph_inplace_pairs();
+        return status::success;
     }
 
     status_t compile_impl(const dnnl_partition_impl_t *part,
@@ -88,24 +81,8 @@ public:
         pass_pipeline_t pipeline(vis);
 
         BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
-        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
-        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
-        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
-        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
-        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
-        BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
-
         pipeline.reset_visualize_arg(true, false);
-
-        if (enabled_constant_cache()) {
-            BACKEND_DNNL_ADD_PASS(pipeline, constant_propagation);
-        }
-
         BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
-
-        if (enabled_constant_cache()) {
-            BACKEND_DNNL_ADD_PASS(pipeline, constant_propagation);
-        }
 
         auto memory_plan = [&](std::shared_ptr<subgraph_t> &sg) {
             return memory_planner_.run(sg);
@@ -127,10 +104,6 @@ public:
             return this->memory_planner_.get_exec_args_set().clone();
         };
 
-        constant_key_ = generate_constant_cache_key(part->id(),
-                memory_planner_.get_exec_args_set()
-                        .get_persistent_mem_desc_list());
-
         return status::success;
     }
 
@@ -175,49 +148,7 @@ public:
                 "no enough scratchpad memory");
         prepare_args_set(res, inputs, outputs, scratchpad);
 
-        constant_cache_t::cached_t c_buffer;
-        if (enabled_constant_cache()) {
-            std::promise<constant_cache_t::cached_t> c_promise;
-            constant_cache_t::value_t cached_value
-                    = dnnl_constant_cache_get_or_add(p_engine_, constant_key_,
-                            memory_planner_.total_internal_persistent_size(),
-                            c_promise.get_future());
-            bool is_from_cache = cached_value.valid();
-            if (is_from_cache) {
-                c_buffer = cached_value.get();
-                grantor_t c_grantor
-                        = memory_planner_.internal_persistent_grantor(
-                                c_buffer->data<char>());
-                for (auto &mem_offkey :
-                        res->get_mems_use_internal_persistent()) {
-                    mem_offkey.first.set_data_handle(
-                            c_grantor.get(mem_offkey.second));
-                }
-            } else {
-                c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                        memory_planner_.total_internal_persistent_size(),
-                        p_engine_, g_alloc_);
-                grantor_t c_grantor
-                        = memory_planner_.internal_persistent_grantor(
-                                c_buffer->data<char>());
-                for (auto &mem_offkey :
-                        res->get_mems_use_internal_persistent()) {
-                    mem_offkey.first.set_data_handle(
-                            c_grantor.get(mem_offkey.second));
-                }
-
-                for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
-                    if (!subgraph_->is_constant_[i]) continue;
-                    subgraph_->execs_[i]->execute(
-                            p_stream, res->get_exec_args()[i]);
-                }
-
-                c_promise.set_value(c_buffer);
-            }
-        }
-
         for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
-            if (subgraph_->is_constant_[i]) continue;
             subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
         }
 
@@ -248,50 +179,7 @@ public:
                 "no enough scratchpad memory");
         prepare_args_set(res, inputs, outputs, scratchpad);
 
-        constant_cache_t::cached_t c_buffer;
-        if (enabled_constant_cache()) {
-            std::promise<constant_cache_t::cached_t> c_promise;
-            constant_cache_t::value_t cached_value
-                    = dnnl_constant_cache_get_or_add(p_engine_, constant_key_,
-                            memory_planner_.total_internal_persistent_size(),
-                            c_promise.get_future());
-            bool is_from_cache = cached_value.valid();
-            if (is_from_cache) {
-                c_buffer = cached_value.get();
-                grantor_t c_grantor
-                        = memory_planner_.internal_persistent_grantor(
-                                c_buffer->data<char>());
-                for (auto &mem_offkey :
-                        res->get_mems_use_internal_persistent()) {
-                    mem_offkey.first.set_data_handle(
-                            c_grantor.get(mem_offkey.second));
-                }
-            } else {
-                c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                        memory_planner_.total_internal_persistent_size(),
-                        p_engine_, g_alloc_);
-                grantor_t c_grantor
-                        = memory_planner_.internal_persistent_grantor(
-                                c_buffer->data<char>());
-                for (auto &mem_offkey :
-                        res->get_mems_use_internal_persistent()) {
-                    mem_offkey.first.set_data_handle(
-                            c_grantor.get(mem_offkey.second));
-                }
-
-                for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
-                    if (!subgraph_->is_constant_[i]) continue;
-                    returned_event = subgraph_->execs_[i]->execute_sycl(
-                            p_stream, res->get_exec_args()[i], deps);
-                    deps = {returned_event};
-                }
-
-                c_promise.set_value(c_buffer);
-            }
-        }
-
         for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
-            if (subgraph_->is_constant_[i]) continue;
             returned_event = subgraph_->execs_[i]->execute_sycl(
                     p_stream, res->get_exec_args()[i], deps);
             deps = {returned_event};
@@ -328,50 +216,7 @@ public:
                 "no enough scratchpad memory");
         prepare_args_set(res, inputs, outputs, scratchpad);
 
-        constant_cache_t::cached_t c_buffer;
-        if (enabled_constant_cache()) {
-            std::promise<constant_cache_t::cached_t> c_promise;
-            constant_cache_t::value_t cached_value
-                    = dnnl_constant_cache_get_or_add(p_engine_, constant_key_,
-                            memory_planner_.total_internal_persistent_size(),
-                            c_promise.get_future());
-            bool is_from_cache = cached_value.valid();
-            if (is_from_cache) {
-                c_buffer = cached_value.get();
-                grantor_t c_grantor
-                        = memory_planner_.internal_persistent_grantor(
-                                c_buffer->data<char>());
-                for (auto &mem_offkey :
-                        res->get_mems_use_internal_persistent()) {
-                    mem_offkey.first.set_data_handle(
-                            c_grantor.get(mem_offkey.second));
-                }
-            } else {
-                c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                        memory_planner_.total_internal_persistent_size(),
-                        p_engine_, g_alloc_);
-                grantor_t c_grantor
-                        = memory_planner_.internal_persistent_grantor(
-                                c_buffer->data<char>());
-                for (auto &mem_offkey :
-                        res->get_mems_use_internal_persistent()) {
-                    mem_offkey.first.set_data_handle(
-                            c_grantor.get(mem_offkey.second));
-                }
-
-                for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
-                    if (!subgraph_->is_constant_[i]) continue;
-                    returned_event = subgraph_->execs_[i]->execute_ocl(
-                            p_stream, res->get_exec_args()[i], deps);
-                    deps = {returned_event};
-                }
-
-                c_promise.set_value(c_buffer);
-            }
-        }
-
         for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
-            if (subgraph_->is_constant_[i]) continue;
             returned_event = subgraph_->execs_[i]->execute_ocl(
                     p_stream, res->get_exec_args()[i], deps);
             deps = {returned_event};
@@ -385,7 +230,7 @@ public:
 #endif
 };
 
-struct layernorm_bwd_t : public kernel_base_t {
+struct logsoftmax_bwd_t : public kernel_base_t {
 private:
     dnnl::engine p_engine_;
     allocator_t *g_alloc_ = nullptr;
@@ -396,12 +241,12 @@ private:
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;
 
 public:
-    layernorm_bwd_t() {
+    logsoftmax_bwd_t() {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.retain();
     }
 
-    ~layernorm_bwd_t() override {
+    ~logsoftmax_bwd_t() override {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
         res_cache.release();
@@ -428,6 +273,7 @@ public:
         BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
 
         pipeline.reset_visualize_arg(true, false);
+
         BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
 
         auto memory_plan = [&](std::shared_ptr<subgraph_t> &sg) {
@@ -437,8 +283,10 @@ public:
         BACKEND_DNNL_ADD_PASS(pipeline, memory_plan);
         BACKEND_DNNL_ADD_PASS(pipeline, compile_ops);
 
+        // Run the added passes
         BACKEND_DNNL_CHECK(pipeline.run(subgraph_));
 
+        // fill information for outputs logical tensors
         for (size_t i = 0; i < outputs.size(); i++) {
             auto &out = const_cast<logical_tensor_t &>(outputs[i]);
             out = subgraph_->outs_[i];
@@ -479,6 +327,7 @@ public:
             const std::vector<tensor_t> &outputs) override {
         dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
+        // each thread's own local resource
         thread_local_cache_t<execution_args_set_t> res_cache;
         execution_args_set_t *res = res_cache.get_or_add(
                 reinterpret_cast<size_t>(this), resource_ctor_);
@@ -494,7 +343,6 @@ public:
         for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
             subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
         }
-
         return status::success;
     }
 
@@ -509,6 +357,7 @@ public:
         ::sycl::event returned_event;
         dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
+        // each thread's own local resource
         thread_local_cache_t<execution_args_set_t> res_cache;
         execution_args_set_t *res = res_cache.get_or_add(
                 reinterpret_cast<size_t>(this), resource_ctor_);
@@ -545,6 +394,7 @@ public:
         cl_event returned_event;
         dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
+        // each thread's own local resource
         thread_local_cache_t<execution_args_set_t> res_cache;
         execution_args_set_t *res = res_cache.get_or_add(
                 reinterpret_cast<size_t>(this), resource_ctor_);

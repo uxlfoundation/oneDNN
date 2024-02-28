@@ -88,29 +88,9 @@ if(NOT ONEDNN_BUILD_GRAPH)
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/sycl_getting_started.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/cpu_inference_int8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/cpu_single_op_partition.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/graph/sycl_single_op_partition.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/graph/gpu_single_op_partition.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/gpu_opencl_getting_started.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/graph/sdpa.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/graph/mqa.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/graph/sdpa_stacked_qkv.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/graph/gqa.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/graph/gated_mlp.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/graph/gated_mlp_wei_combined.cpp
-        )
-endif()
-
-if(DNNL_SYCL_GENERIC)
-    list(REMOVE_ITEM sources
-        # XXX: Enable when InnerProduct is implemented
-        ${CMAKE_CURRENT_SOURCE_DIR}/cnn_inference_f32.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/inner_product.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/rnn_training_f32.cpp
-        # XXX: Enable when Reduction is implemented
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/reduction.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/group_normalization.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/lbr_gru.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/lstm.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/vanilla_rnn.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/graph/gpu_opencl_sdpa.cpp)
 endif()
 
 if(DNNL_SYCL_HIP)

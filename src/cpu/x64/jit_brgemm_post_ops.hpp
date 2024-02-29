@@ -117,13 +117,21 @@ struct brgemm_kernel_post_ops_args_t {
     void *ptr_dst_scales;
 };
 
-// This is a shim user interface that allows to create a template-free object
-// of post-ops class.
-struct jit_brgemm_kernel_post_ops_base_t {
-    // `isa` argument specifies the `Vmm` type the kernel to be generated for.
-    // Rest arguments are propagated as is to the underlying class.
-    static jit_brgemm_kernel_post_ops_base_t *create(cpu_isa_t isa,
-            const brgemm_desc_t &abrg, const primitive_attr_t &aattr);
+template <cpu_isa_t isa>
+struct jit_brgemm_kernel_post_ops : public jit_generator {
+
+    jit_brgemm_kernel_post_ops(const jit_brgemm_conv_conf_t &ajcp,
+            const brgemm_t &abrg, const primitive_attr_t &aattr)
+        : jit_generator(jit_name(), nullptr, MAX_CODE_SIZE, true, abrg.isa_impl)
+        , brg(abrg)
+        , jcp(ajcp)
+        , attr(aattr)
+        , postops_injector_(nullptr)
+        , with_binary_non_scalar_bcast_(brg.with_binary
+                  && binary_injector::
+                          any_binary_postop_rhs_non_scalar_broadcast(
+                                  brg.attr()->post_ops_,
+                                  memory_desc_wrapper(brg.dst_md()))) {
 
     virtual ~jit_brgemm_kernel_post_ops_base_t() = default;
 

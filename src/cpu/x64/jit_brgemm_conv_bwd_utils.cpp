@@ -455,6 +455,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     static constexpr int bench_iterations = 1;
 
     int sp, sp_block, nb_sp;
+    static int last_oc_block_size;
 
     void get_from_jcp(const jit_brgemm_conv_conf_t &jcp) { *this = jcp; }
     void save_to_jcp(jit_brgemm_conv_conf_t &jcp) const { jcp = *this; }
@@ -530,6 +531,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
 
 unsigned brg_blocking_t::L1;
 unsigned brg_blocking_t::L2;
+int brg_blocking_t::last_oc_block_size;
 
 float brg_blocking_t::io_k(dim_t src, dim_t wei, dim_t dst, float n, float pk,
         bool is_broadcast, bool is_shared) const {
@@ -554,7 +556,7 @@ float brg_blocking_t::io_k(const loop_t loop, const array_in_loop_t arr,
 }
 
 void brg_blocking_t::select_oc_block() {
-    const auto padded_oc = vnni_block * (is_oc_padded ? acc_simd_w : 1);
+    const auto padded_oc = last_oc_block_size * (is_oc_padded ? acc_simd_w : 1);
     oc_block = (exec_type == exec_trans ? rnd_up(oc, padded_oc) : oc);
     nb_oc = utils::div_up(oc, oc_block);
 }
@@ -568,7 +570,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
 
     // Configure matrix sizes
     // for amx if oc_block != oc then we use exec_trans so K is oc_block
-    const auto padded_oc = vnni_block * (is_oc_padded ? acc_simd_w : 1);
+    const auto padded_oc = last_oc_block_size * (is_oc_padded ? acc_simd_w : 1);
 
     ocp = rnd_up(oc, padded_oc);
 
@@ -579,7 +581,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     N = ic >= ic_block ? ic_block : 0;
     N_tail = ic % ic_block;
     K = oc >= oc_block ? oc_block : 0;
-    K_tail = oc % oc_block;
+    K_tail = oc_block;
 
     const auto vK = K > 0 ? K : K_tail;
     const auto vM = M > 0 ? M : M_tail;
@@ -587,7 +589,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
 
     const float alpha = 1.0;
     const float beta = 0.0;
-    brgemm_desc_t brg;
+    brgemm_t brg;
     brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
             is_bf32);
@@ -596,7 +598,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     if (ur == 0) return status::invalid_arguments;
     ur_block = brg.bd_block;
     if (is_1x1 && is_amx(isa) && M > 0 && M_tail > 0) {
-        brgemm_desc_t brg_sp_tail;
+        brgemm_t brg_sp_tail;
         brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr, src_dt,
                 wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC, M_tail,
                 vN, vK, nullptr, is_bf32);
@@ -634,12 +636,12 @@ status_t brg_blocking_t::get_brgemm_ur(
                     auto vN = (i_N) ? N_tail : N;
                     auto vK = (i_K) ? K_tail : K;
                     if (vN == 0 || vK == 0) continue;
-                    brgemm_desc_t brg;
+                    brgemm_t brg;
                     brgemm_strides_t brg_strides;
                     brg_strides.stride_a = ngroups * oc_without_padding
                             * (dilate_w + 1) * src_dsz;
                     //weights are padded by ic_block and last_oc_block
-                    brg_strides.stride_b = rnd_up(oc, vnni_block)
+                    brg_strides.stride_b = rnd_up(oc, last_oc_block_size)
                             * rnd_up(ic, ic_block) * wei_dsz;
                     const auto strides_ptr = (brg_type == brgemm_strd)
                             ? &brg_strides
@@ -1076,14 +1078,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
         update_blocks();
 
         eff = est_eff();
-        // Minimum allowed blocking efficiency. Value was picked empirically.
-        // Currently threshold is enabled for f32 only, due to its perf being
-        // highly sensitive for inefficient blockings.
-        constexpr float min_eff = 0.00001f;
-        const bool is_f32 = utils::everyone_is(f32, src_dt, wei_dt, dst_dt);
-        if ((eff > best_brgb.eff || best_brgb.eff == 0)
-                && IMPLICATION(is_f32, eff >= min_eff))
-            best_brgb = *this;
+        if (eff > best_brgb.eff || best_brgb.eff == 0) best_brgb = *this;
     }
 }
 
@@ -1123,8 +1118,7 @@ status_t brg_blocking_t::calc_blocks() {
         }
     }
     *this = best_brgb;
-    VDISPATCH_CONV_IC(
-            sp_block > 0, VERBOSE_BLOCKING_FAIL, "bad blocking parameters");
+    VDISPATCH_CONV_IC(sp_block > 0, VERBOSE_BLOCKING_FAIL);
 
     iw_block = is_block = sp_block;
     iw_tail = iw % iw_block;
@@ -1445,7 +1439,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.stride_w = cd.strides[ndims - 3];
 
     VDISPATCH_CONV_IC(!everyone_is(1, jcp.stride_d, jcp.stride_h, jcp.stride_w),
-            VERBOSE_UNSUPPORTED_FEATURE, "unit strides are not supported");
+            "skipping implementation as it does not support unit strides");
 
     jcp.has_uneven_iw = jcp.iw % jcp.stride_w != 0;
     const bool has_uneven_spatial = jcp.id % jcp.stride_d != 0
@@ -1458,7 +1452,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.dilate_w = cd.dilates[ndims - 3];
 
     VDISPATCH_CONV_IC(everyone_is(0, jcp.dilate_d, jcp.dilate_h, jcp.dilate_w),
-            VERBOSE_UNSUPPORTED_FEATURE, "non-zero dilations are detected");
+            "skipping implementation since non-zero dilations are detected");
 
     jcp.is = jcp.id * jcp.ih * jcp.iw;
 
@@ -1502,7 +1496,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const data_type_t last_oc_block_dt
             = get_mac_emu_data_type(jcp.wei_dt, isa, isa == avx512_core_fp16);
-    jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
+    brg_blocking_t::last_oc_block_size
+            = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc
     const bool is_grouped_small_oc
@@ -1515,8 +1510,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                             && !jcp.is_1x1)
             // Enable the shapes not supported in direct convs
             && IMPLICATION(with_groups, is_groups_ok(jcp));
-    VDISPATCH_CONV_IC(!is_grouped_small_oc, VERBOSE_UNSUPPORTED_FEATURE,
-            "grouped convolutions with small oc");
+    VDISPATCH_CONV_IC(!is_grouped_small_oc,
+            "skipping implementation as it does not support grouped "
+            "convolutions with small oc");
 
     // Dispatch the shapes to VNNI for better performance
     // TODO: optimize the perf of 3d shape with small oc and large spatial
@@ -1529,27 +1525,24 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && jcp.oc * jcp.ic <= 32 && jcp.id >= 128 && jcp.ih >= 128
             && jcp.iw >= 128;
     VDISPATCH_CONV_IC(!(is_small_shape || is_3d_small_oc),
-            VERBOSE_UNSUPPORTED_FEATURE, "small 3d shapes with small oc");
+            "skipping implementation as it does not support small 3d shapes "
+            "with small oc");
 
+    // TODO: optimize 2d/3d shapes with small iw for f32
+    const auto is_small_iw = jcp.iw < 64;
+    const auto is_2d_or_3d = jcp.ih > 1 || jcp.id > 1;
     const bool is_f32
             = utils::everyone_is(f32, jcp.src_dt, jcp.wei_dt, jcp.dst_dt);
+    VDISPATCH_CONV_IC(!(is_f32 && is_small_iw && is_2d_or_3d),
+            "skipping implementation due to performance reason for 2d/3d "
+            "shapes with small iw");
 
-    // Disable 4 shapes that cause performance regression
+    // Disable 2 shapes that cause performance regression
     const auto is_regression_shape = jcp.id == 1 && jcp.od == 1
             && ((jcp.ic == 128 && jcp.oc == 256 && jcp.ih == 101 && jcp.oh == 49
                         && jcp.iw == 85 && jcp.ow == 41)
                     || (jcp.ic == 3 && jcp.oc == 128 && jcp.ih == 207
-                            && jcp.oh == 101 && jcp.iw == 175 && jcp.ow == 85)
-                    || (jcp.ic == 512 && jcp.oc == 1024
-                            && everyone_is(8, jcp.ih, jcp.iw)
-                            && everyone_is(4, jcp.oh, jcp.ow)
-                            && everyone_is(4, jcp.kh, jcp.kw)
-                            && everyone_is(2, jcp.stride_h, jcp.stride_w))
-                    || (jcp.ic == 1024 && jcp.oc == 2048
-                            && everyone_is(4, jcp.ih, jcp.iw)
-                            && everyone_is(2, jcp.oh, jcp.ow)
-                            && everyone_is(4, jcp.kh, jcp.kw)
-                            && everyone_is(2, jcp.stride_h, jcp.stride_w)));
+                            && jcp.oh == 101 && jcp.iw == 175 && jcp.ow == 85));
     VDISPATCH_CONV_IC(!(is_f32 && is_regression_shape),
             "implementation skipped due to low performance");
 
@@ -1561,20 +1554,20 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             IMPLICATION(jcp.wei_dt == s8,
                     is_superset(jcp.isa, avx512_core)
                             || one_of(jcp.isa, avx2_vnni, avx2_vnni_2)),
-            VERBOSE_ISA_DT_MISMATCH);
+            "unsupported isa for current datatype combination");
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.wei_dt == bf16,
                               is_superset(jcp.isa, avx512_core_bf16)
                                       || is_superset(jcp.isa, avx2_vnni_2)),
-            VERBOSE_ISA_DT_MISMATCH);
+            "unsupported isa for current datatype combination");
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.wei_dt == f16,
                               is_superset(jcp.isa, avx512_core_fp16)
                                       || is_superset(jcp.isa, avx2_vnni_2)),
-            VERBOSE_ISA_DT_MISMATCH);
+            "unsupported isa for current datatype combination");
 
     VDISPATCH_CONV_IC(IMPLICATION(is_f32, one_of(isa, avx512_core, avx2)),
-            VERBOSE_ISA_DT_MISMATCH);
+            "unsupported isa for current datatype combination");
 
     VDISPATCH_CONV_IC(post_ops_ok(jcp, attr, diff_src_d, is_deconv),
             VERBOSE_UNSUPPORTED_POSTOP);
@@ -1917,7 +1910,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.copy_block_only = true;
 
-    const auto oc_padded_block = jcp.acc_simd_w * jcp.vnni_block;
+    const auto oc_padded_block
+            = jcp.acc_simd_w * brg_blocking_t::last_oc_block_size;
     jcp.is_oc_padded = one_of(jcp.wei_dt, bf16, f16, s8)
             && jcp.oc > oc_padded_block && is_amx(isa);
 
@@ -1974,7 +1968,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     VDISPATCH_CONV_IC(
             !(jcp.iw_block == 0 || jcp.oc_block == 0 || jcp.ic_block == 0),
-            VERBOSE_BLOCKING_FAIL, "bad blocking dimensions");
+            VERBOSE_BLOCKING_FAIL);
 
     jcp.gemm_batch_size = jcp.nb_oc_blocking
             * nstl::max(jcp.kd_block * jcp.kh_block * jcp.kw_block,
@@ -2027,16 +2021,9 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             !(jcp.req_cal_comp_pad && jcp.src_zero_point && is_amx(jcp.isa)
                     && jcp.ngroups * jcp.ic * jcp.id * jcp.ih * jcp.iw < 4096
                     && jcp.ic <= 4 && jcp.oc <= 64 && jcp.mb <= 64),
-            VERBOSE_IMPL_HEURISTIC_FAIL,
-            "skipping amx implementation for given data dimensions");
+            "heuristic to skip amx implementation for given data dimensions");
 
     if (jcp.req_cal_comp_pad) {
-        VDISPATCH_CONV_IC(!(is_amx(jcp.isa)
-                                  && static_cast<dim_t>(jcp.ngroups) * jcp.nb_ic
-                                                  * jcp.ic_block * jcp.iw
-                                          > 4096),
-                VERBOSE_IMPL_HEURISTIC_FAIL,
-                "skipping amx implementation because of buffer size");
         const auto comp_buffer_iw = jcp.exec_type == exec_trans ? jcp.iw : 1;
         jcp.ker_ranges_size = precalculate_comp_pad_kernels(jcp);
         jcp.comp_a_buffer_size = static_cast<dim_t>(jcp.ngroups) * jcp.nb_ic

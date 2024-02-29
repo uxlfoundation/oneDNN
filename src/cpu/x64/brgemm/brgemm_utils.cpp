@@ -322,7 +322,6 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
         const int rd_unroll = 4;
         const data_type_t rd_block_dt = get_mac_emu_data_type(
                 brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
-        if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
         const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
         brg->rd_block = rd_unroll * vnni_granularity;
         brg->rdb = brg->reduce_dim / brg->rd_block;
@@ -915,6 +914,14 @@ void init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->bd_block2 = 0;
     brg->bdb2 = 0;
     brg->bdb2_tail = 0;
+
+    const data_type_t ld_step_compute_dt = get_mac_emu_data_type(
+            brg->dt_b, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
+    brg->ld_step = data_type_vnni_granularity(ld_step_compute_dt);
+
+    const data_type_t rd_step_compute_dt
+            = get_mac_emu_data_type(brg->dt_b, brg->isa_impl);
+    brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
 }
 
 void init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,

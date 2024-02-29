@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,9 +35,69 @@ struct jit_uni_group_normalization_fwd_t : public primitive_t {
         using cpu_group_normalization_fwd_pd_t::
                 cpu_group_normalization_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("jit_group:uni", jit_uni_group_normalization_fwd_t);
+        DECLARE_COMMON_PD_T("jit:uni", jit_uni_group_normalization_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(engine_t *engine) {
+            using namespace data_type;
+            using namespace format_tag;
+            using skip_mask_t = primitive_attr_t::skip_mask_t;
+
+            const memory_desc_wrapper src_d(src_md());
+
+            VDISPATCH_GNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_GNORM(mayiuse(avx2), VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_GNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_GNORM(
+                    utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8)
+                            && IMPLICATION(utils::one_of(src_md()->data_type,
+                                                   bf16, f16),
+                                    mayiuse(avx512_core)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_GNORM(
+                    utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8)
+                            && IMPLICATION(utils::one_of(dst_md()->data_type,
+                                                   bf16, f16),
+                                    mayiuse(avx512_core)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_GNORM(
+                    attr()->has_default_values(skip_mask_t::scales_runtime)
+                            && attr_scales_ok(),
+                    VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_GNORM(memory_desc_matches_one_of_tag(
+                                    *src_md(), ndhwc, nhwc, nwc, nc),
+                    VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_GNORM(memory_desc_matches_one_of_tag(
+                                    *dst_md(), ndhwc, nhwc, nwc, nc),
+                    VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_GNORM(
+                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+
+            const size_t C_PER_G = C() / G();
+            const size_t vlen = isa_max_vlen(get_max_cpu_isa());
+            const size_t simd_w
+                    = vlen / types::data_type_size(stat_md()->data_type);
+            VDISPATCH_GNORM(IMPLICATION(C_PER_G != 1, C_PER_G % simd_w == 0),
+                    VERBOSE_INCONSISTENT_DIM, "C", (int)C(), "groups",
+                    (int)desc()->groups);
+
+            nthr_ = dnnl_get_max_threads();
+            auto scratchpad = scratchpad_registry().registrar();
+            if (!stats_is_src()) {
+                using namespace memory_tracking::names;
+                const size_t stats_size = MB() * C();
+                const size_t stats_reduction_buf_sz = stats_size * nthr_;
+                scratchpad.template book<float>(
+                        key_gnorm_reduction, stats_reduction_buf_sz);
+                if (!is_training()) {
+                    scratchpad.template book<float>(
+                            key_gnorm_tmp_mean, stats_size);
+                    scratchpad.template book<float>(
+                            key_gnorm_tmp_var, stats_size);
+                }
+            }
+
+            return status::success;
+        }
 
         int nthr_; // To not exceed the limit in execute used for set up.
     };

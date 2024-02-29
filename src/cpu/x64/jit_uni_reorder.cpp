@@ -192,22 +192,12 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         using namespace data_type;
 
         bool ok = p.ndims > 0
-                && utils::one_of(
-                        p.itype, f32, bf16, f16, s32, f8_e5m2, f8_e4m3, s8, u8)
-                && utils::one_of(
-                        p.otype, f32, bf16, f16, s32, f8_e5m2, f8_e4m3, s8, u8)
-                && IMPLICATION(
-                        utils::one_of(p.itype, bf16, f16, f8_e5m2, f8_e4m3),
-                        utils::one_of(p.otype, s8, u8, f32, bf16, f16, f8_e5m2,
-                                f8_e4m3))
-                && IMPLICATION(
-                        utils::one_of(p.otype, bf16, f16, f8_e5m2, f8_e4m3),
-                        utils::one_of(p.itype, s8, u8, f32, bf16, f16, f8_e5m2,
-                                f8_e4m3))
-                && IMPLICATION(utils::one_of(p.itype, f8_e5m2, f8_e4m3)
-                                || utils::one_of(p.otype, f8_e5m2, f8_e4m3),
-                        !utils::one_of(p.itype, u8, s8)
-                                && !utils::one_of(p.otype, u8, s8))
+                && utils::one_of(p.itype, f32, bf16, f16, s32, s8, u8)
+                && utils::one_of(p.otype, f32, bf16, f16, s32, s8, u8)
+                && IMPLICATION(utils::one_of(p.itype, bf16, f16),
+                        utils::one_of(p.otype, s8, u8, f32, bf16, f16))
+                && IMPLICATION(utils::one_of(p.otype, bf16, f16),
+                        utils::one_of(p.itype, s8, u8, f32, bf16, f16))
                 && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
                 && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
                 && simple_impl_desc_init(p, nullptr) && mayiuse(sse41)
@@ -215,9 +205,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                         mayiuse(avx512_core) || mayiuse(avx2_vnni_2))
                 && IMPLICATION(utils::one_of(f16, p.itype, p.otype),
                         mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2))
-                && IMPLICATION(utils::one_of(f8_e5m2, p.itype, p.otype)
-                                || utils::one_of(f8_e4m3, p.itype, p.otype),
-                        mayiuse(avx512_core_amx))
                 && IMPLICATION(!is_direct_copy(p), prb_has_small_strides(p))
                 && !prb_has_huge_prime_number(p);
         return ok;

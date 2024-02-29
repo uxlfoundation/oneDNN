@@ -270,7 +270,7 @@ jit_pp_kernel_t<isa>::jit_pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
         const memory_desc_t *dst_md, bool skip_sum)
     : pp_kernel_t(
             OC, MB, dst_mb_stride, attr, bias_dt, acc_dt, dst_md, skip_sum)
-    , jit_generator(jit_name(), isa) {
+    , jit_generator(jit_name(), nullptr, MAX_CODE_SIZE, true, isa) {
     assert(IMPLICATION(this->dst_data_type_ == bf16, mayiuse(avx512_core)));
 
     if (this->do_scale_) vreg_scale = Vmm(idx_compute_vreg_start_++);
@@ -1192,8 +1192,7 @@ void jit_pp_kernel_t<isa>::generate() {
     if (this->do_binary_ || this->do_prelu_) add(rsp, stack_space_needed_);
     postamble();
 
-    if (this->do_eltwise_)
-        postops_injector_->prepare_table(/* generate = */ true);
+    if (this->do_eltwise_) postops_injector_->prepare_table();
 }
 
 template <cpu_isa_t isa>

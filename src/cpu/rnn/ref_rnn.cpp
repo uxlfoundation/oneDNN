@@ -30,9 +30,7 @@
  */
 
 #include "common/dnnl_thread.hpp"
-#include "common/matmul_pd.hpp"
 #include "common/primitive.hpp"
-#include "common/primitive_desc_iterator.hpp"
 #include "common/stream.hpp"
 
 #include "cpu/simple_q10n.hpp"
@@ -89,23 +87,19 @@ status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
 
     rnn_ = zero<decltype(rnn_)>();
     rnn_.is_brgemm = false;
-    VDISPATCH_RNN(init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
-                          this->src_md(0), this->src_md(1), this->src_md(2),
-                          this->weights_md(0), this->weights_md(1),
-                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
-                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
-                          this->arg_md(DNNL_ARG_BIAS)),
-            VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
+    const bool ok = init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
+            this->src_md(0), this->src_md(1), this->src_md(2),
+            this->weights_md(0), this->weights_md(1),
+            this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
+            this->dst_md(1), this->dst_md(2), this->arg_md(DNNL_ARG_BIAS));
+    if (!ok) return status::unimplemented;
 
-    VDISPATCH_RNN(IMPLICATION(rnn_.is_f16_conf(), !rnn_.is_training),
-            VERBOSE_UNSUPPORTED_FEATURE, "f16 training not supported");
-
-    if (rnn_.is_xf16_conf()) {
+    if (rnn_.is_bf16_conf()) {
         VDISPATCH_RNN(
-                !(!utils::one_of(rnn_.bias_dt, src_type, data_type::f32)
+                !(!utils::one_of(rnn_.bias_dt, data_type::bf16, data_type::f32)
                         || rnn_.src_iter_c_dt != rnn_.dst_iter_c_dt
                         || !utils::one_of(rnn_.src_iter_c_dt, data_type::undef,
-                                src_type, data_type::f32)),
+                                data_type::bf16, data_type::f32)),
                 VERBOSE_UNSUPPORTED_DT_CFG);
     } else {
         VDISPATCH_RNN(!(rnn_.bias_dt != data_type::f32
@@ -118,8 +112,7 @@ status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
     /* check that no data shift have been passed to s8s8 lstm */
     VDISPATCH_RNN(IMPLICATION(rnn_.is_signed_int8_conf(),
                           this->attr()->rnn_data_qparams_.shift_ == 0.f),
-            VERBOSE_UNSUPPORTED_FEATURE,
-            "s8s8 lstm does not support data shift");
+            "s8s8 lstm implementation does not support data shift");
 
     /* INT8 cases with non-trivial strides are not supported */
     VDISPATCH_RNN(!(rnn_.is_int8_conf()
@@ -175,121 +168,13 @@ status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
         }
     }
 
-    VDISPATCH_RNN(this->check_layout_consistency(false /*is_brgemm*/)
-                    == status::success,
-            "layout consistency check failed");
+    CHECK(this->check_layout_consistency(false /*is_brgemm*/));
 
     set_conf<class_name>(rnn_, *this->desc(), this->weights_md(0),
             this->weights_md(1), this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
             this->diff_weights_md(0), this->diff_weights_md(1),
             this->arg_md(DNNL_ARG_DIFF_WEIGHTS_PROJECTION));
     set_workspace_sizes<class_name>(rnn_, *this->desc());
-
-    // INIT MATMULS
-    auto init_matmul_pd = [&](std::shared_ptr<primitive_desc_t> &mpd, dim_t M,
-                                  dim_t N, dim_t K, dim_t LDA, dim_t LDB,
-                                  dim_t LDC, bool sum_po) {
-        memory_desc_t src_desc;
-        const dims_t src_dims = {M, K};
-        const dims_t src_strides = {1, LDA};
-        CHECK(memory_desc_init_by_strides(
-                src_desc, 2, src_dims, src_type, src_strides));
-
-        memory_desc_t wei_desc;
-        const dims_t wei_dims = {K, N};
-        const dims_t wei_strides = {1, LDB};
-        CHECK(memory_desc_init_by_strides(
-                wei_desc, 2, wei_dims, weights_type, wei_strides));
-
-        memory_desc_t dst_desc;
-        const dims_t dst_dims = {M, N};
-        const dims_t dst_strides = {1, LDC};
-        CHECK(memory_desc_init_by_strides(
-                dst_desc, 2, dst_dims, scratch_type, dst_strides));
-
-        matmul_desc_t matmul_desc;
-        CHECK(matmul_desc_init(
-                &matmul_desc, &src_desc, &wei_desc, nullptr, &dst_desc));
-        post_ops_t po;
-        CHECK(po.append_sum(1.0f));
-        primitive_attr_t attr;
-        CHECK(attr.set_post_ops(po));
-        primitive_desc_iterator_t it(engine, (op_desc_t *)(&matmul_desc),
-                sum_po ? &attr : nullptr, nullptr);
-        if (!it.is_initialized()) return status::out_of_memory;
-
-        while (++it != it.end()) {
-            mpd = *it;
-            const bool ok = mpd->weights_md()->extra.flags == 0;
-            if (ok) return status::success;
-        }
-        return status::unimplemented;
-    };
-
-    if (rnn_.use_matmul) {
-        { // init layer matmuls
-            const dim_t M = rnn_.n_gates * rnn_.dhc;
-            const dim_t N = rnn_.mb;
-            const dim_t K = rnn_.slc;
-            const dim_t LDA = rnn_.weights_layer_ld;
-            const dim_t LDB1 = rnn_.src_layer_ld_;
-            const dim_t LDB2 = rnn_.ws_states_layer_ld;
-            const dim_t LDB3 = rnn_.dst_iter_ld_;
-            const dim_t LDC = rnn_.scratch_gates_ld;
-            const bool do_sum = false;
-            if (LDB1 >= K)
-                CHECK(init_matmul_pd(
-                        matmul_layer_1_pd_, M, N, K, LDA, LDB1, LDC, do_sum));
-            if (LDB2 >= K && LDB2 != LDB1)
-                CHECK(init_matmul_pd(
-                        matmul_layer_2_pd_, M, N, K, LDA, LDB2, LDC, do_sum));
-            if (LDB3 >= K && !utils::one_of(LDB3, LDB1, LDB2))
-                CHECK(init_matmul_pd(
-                        matmul_layer_3_pd_, M, N, K, LDA, LDB3, LDC, do_sum));
-        }
-
-        { // init iter matmuls
-            const dim_t M = (rnn_.n_gates - rnn_.is_orig_gru) * rnn_.dhc;
-            const dim_t N = rnn_.mb;
-            const dim_t K = rnn_.sic;
-            const dim_t LDA = rnn_.weights_iter_ld;
-            const dim_t LDB1 = rnn_.src_iter_ld_;
-            const dim_t LDB2 = rnn_.ws_states_iter_ld;
-            const dim_t LDB3 = rnn_.dst_layer_ld_;
-            const dim_t LDC
-                    = rnn_.is_lbr ? rnn_.ws_gates_ld : rnn_.scratch_gates_ld;
-            const bool do_sum = !rnn_.is_lbr;
-            if (LDB1 >= K)
-                CHECK(init_matmul_pd(
-                        matmul_iter_1_pd_, M, N, K, LDA, LDB1, LDC, do_sum));
-            if (LDB2 >= K && LDB2 != LDB1)
-                CHECK(init_matmul_pd(
-                        matmul_iter_2_pd_, M, N, K, LDA, LDB2, LDC, do_sum));
-            if (LDB3 >= K && !utils::one_of(LDB3, LDB1, LDB2))
-                CHECK(init_matmul_pd(
-                        matmul_iter_3_pd_, M, N, K, LDA, LDB3, LDC, do_sum));
-
-            if (rnn_.is_orig_gru) {
-                const dim_t M_part2 = rnn_.dhc;
-                const dim_t LDB1 = rnn_.ws_states_layer_ld;
-                const dim_t LDB2 = rnn_.ws_states_iter_ld;
-                const dim_t LDB3 = rnn_.dst_layer_ld_;
-                const dim_t LDB4 = rnn_.dst_iter_ld_;
-                if (LDB1 >= K)
-                    CHECK(init_matmul_pd(matmul_part2_1_pd_, M_part2, N, K, LDA,
-                            LDB1, LDC, do_sum));
-                if (LDB2 >= K && LDB2 != LDB1)
-                    CHECK(init_matmul_pd(matmul_part2_2_pd_, M_part2, N, K, LDA,
-                            LDB2, LDC, do_sum));
-                if (LDB3 >= K && !utils::one_of(LDB3, LDB1, LDB2))
-                    CHECK(init_matmul_pd(matmul_part2_3_pd_, M_part2, N, K, LDA,
-                            LDB3, LDC, do_sum));
-                if (LDB4 >= K && !utils::one_of(LDB4, LDB1, LDB2, LDB3))
-                    CHECK(init_matmul_pd(matmul_part2_4_pd_, M_part2, N, K, LDA,
-                            LDB4, LDC, do_sum));
-            }
-        }
-    }
     return status::success;
 }
 
@@ -354,18 +239,18 @@ _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
 
     rnn_ = zero<decltype(rnn_)>();
     rnn_.is_brgemm = true;
-    VDISPATCH_RNN(init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
-                          this->src_md(0), this->src_md(1), this->src_md(2),
-                          this->weights_md(0), this->weights_md(1),
-                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
-                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
-                          this->arg_md(DNNL_ARG_BIAS)),
-            VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
+    const bool ok = init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
+            this->src_md(0), this->src_md(1), this->src_md(2),
+            this->weights_md(0), this->weights_md(1),
+            this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
+            this->dst_md(1), this->dst_md(2), this->arg_md(DNNL_ARG_BIAS));
+
+    if (!ok) return status::unimplemented;
 
     VDISPATCH_RNN(IMPLICATION(one_of(this->desc()->prop_kind, forward_training,
                                       backward),
                           (rnn_.is_xf16_conf() || rnn_.is_f32_conf())),
-            VERBOSE_PROPKIND_DT_MISMATCH);
+            "data type and propagation kind mismatch");
 
     // Support for GRU / AUGRU cell in BRGEMM-based implementation is
     // limited by forward_inference pass for now, all_f32 is disabled
@@ -375,7 +260,8 @@ _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
                           this->desc()->prop_kind == forward_inference
                                   && !rnn_.is_cell_dt_f32()),
             VERBOSE_UNSUPPORTED_FEATURE,
-            "gru/augru cell in brgemm-based forward inference");
+            "gru/augru cell in brgemm-based implementation for forward "
+            "inference");
 
     VDISPATCH_RNN(!(rnn_.is_cell_dt_f32()
                           && utils::one_of(this->desc()->prop_kind, backward,
@@ -422,7 +308,7 @@ _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     VDISPATCH_RNN(IMPLICATION(rnn_.is_signed_int8_conf(),
                           this->attr()->rnn_data_qparams_.shift_ == 0),
             VERBOSE_UNSUPPORTED_FEATURE,
-            "s8s8 amx lstm does not support shift");
+            "no support for shift in s8s8 amx lstm implementation");
 
     /* INT8 cases with non-trivial strides are not supported */
     VDISPATCH_RNN(!(rnn_.is_int8_conf()
@@ -509,9 +395,7 @@ _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
             rnn_.weights_projection_comp_offset = 0;
         }
     }
-    VDISPATCH_RNN(this->check_layout_consistency(true /*is_brgemm*/)
-                    == status::success,
-            "layout consistency check failed");
+    CHECK(this->check_layout_consistency(true /*is_brgemm*/));
 
     if (rnn_.is_bf32()) {
         const memory_desc_wrapper weights_layer_d(this->weights_layer_md_);
@@ -601,41 +485,17 @@ void _ref_rnn_common_t<aprop, src_type, weights_type,
     scratchpad.template book<scratch_t>(key_rnn_cell, rnn_.scratch_cell_size);
 
 #if DNNL_X64
-    if (rnn_.is_brgemm)
+    if (rnn_.is_brgemm) {
         ref_rnn_brgemm_t::init_scratchpad(
                 rnn_, scratchpad, sizeof(gemm_acc_t), alignof(gemm_acc_t));
-#endif
-
-    // Below primitives may be run as part of execution.Fortunately, none of
-    // them run simulataneously. So, we can re-use the same scratchpad across
-    // all primitives. Iterate through them to find the largest scratchpad
-    // required.
-    const auto nested_pds
-            = { matmul_layer_1_pd_,
-                  matmul_layer_2_pd_,
-                  matmul_layer_3_pd_,
-                  matmul_iter_1_pd_,
-                  matmul_iter_2_pd_,
-                  matmul_iter_3_pd_,
-                  matmul_part2_1_pd_,
-                  matmul_part2_2_pd_,
-                  matmul_part2_3_pd_,
-                  matmul_part2_4_pd_,
-#if DNNL_X64
-                  bf32_wei_layer_reorder_pd_,
-                  bf32_wei_iter_reorder_pd_
-#endif
-              };
-
-    size_t max_nested_scratchpad_size = 0;
-    for (const auto &n_pd : nested_pds) {
-        if (n_pd)
-            max_nested_scratchpad_size = nstl::max(max_nested_scratchpad_size,
-                    n_pd->scratchpad_registry().size());
+        if (rnn_.is_bf32()) {
+            scratchpad.book(key_nested_multiple + 0,
+                    bf32_wei_layer_reorder_pd_->scratchpad_registry());
+            scratchpad.book(key_nested_multiple + 1,
+                    bf32_wei_iter_reorder_pd_->scratchpad_registry());
+        }
     }
-
-    scratchpad.template book<void *>(
-            key_nested_multiple + 0, max_nested_scratchpad_size);
+#endif
 }
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
@@ -708,22 +568,6 @@ status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
             ws_grid_comp_offset_, ws_bias_offset_, scratch_gates_offset_,
             scratch_ht_offset_, scratch_diff_ht_offset_, scratch_cell_offset_,
             scratchpad_size, workspace_size);
-
-#define CREATE_MATMUL(m) \
-    if (pd()->m##pd_) { CHECK(pd()->m##pd_->create_primitive(m, engine)); }
-
-    CREATE_MATMUL(matmul_layer_1_);
-    CREATE_MATMUL(matmul_layer_2_);
-    CREATE_MATMUL(matmul_layer_3_);
-    CREATE_MATMUL(matmul_iter_1_);
-    CREATE_MATMUL(matmul_iter_2_);
-    CREATE_MATMUL(matmul_iter_3_);
-    CREATE_MATMUL(matmul_part2_1_);
-    CREATE_MATMUL(matmul_part2_2_);
-    CREATE_MATMUL(matmul_part2_3_);
-    CREATE_MATMUL(matmul_part2_4_);
-#undef CREATE_MATMUL
-
 #if DNNL_X64
     const auto rnn = pd()->rnn_;
     if (rnn.is_brgemm) {
@@ -757,98 +601,6 @@ rnn_gemm_sig((_ref_rnn_bwd_t<src_type, weights_type, acc_type>::gemm)) {
 
 template rnn_gemm_sig(ref_rnn_fwd_f16_t::gemm);
 template rnn_gemm_sig(ref_rnn_bwd_f16_t::gemm);
-
-template <prop_kind_t aprop, impl::data_type_t src_type,
-        impl::data_type_t weights_type, impl::data_type_t acc_type>
-const std::shared_ptr<primitive_t> &
-dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::get_matmul_layer(cell_position_t cell_position) const {
-    const auto &rnn = pd()->rnn_;
-    const auto src_ld = rnn.src_layer_ld(cell_position);
-    const auto LDB1 = rnn.src_layer_ld_;
-    const auto LDB2 = rnn.ws_states_layer_ld;
-    const auto LDB3 = rnn.dst_iter_ld_;
-    MAYBE_UNUSED(LDB3);
-    if (src_ld == LDB1)
-        return matmul_layer_1_;
-    else if (src_ld == LDB2)
-        return matmul_layer_2_;
-    else {
-        assert(src_ld == LDB3);
-        return matmul_layer_3_;
-    }
-}
-
-template <prop_kind_t aprop, impl::data_type_t src_type,
-        impl::data_type_t weights_type, impl::data_type_t acc_type>
-const std::shared_ptr<primitive_t> &
-dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::get_matmul_iter(cell_position_t cell_position) const {
-    const auto &rnn = pd()->rnn_;
-    const auto src_ld = rnn.src_iter_ld(cell_position);
-    const auto LDB1 = rnn.src_iter_ld_;
-    const auto LDB2 = rnn.ws_states_iter_ld;
-    const auto LDB3 = rnn.dst_layer_ld_;
-    MAYBE_UNUSED(LDB3);
-    if (src_ld == LDB1)
-        return matmul_iter_1_;
-    else if (src_ld == LDB2)
-        return matmul_iter_2_;
-    else {
-        assert(src_ld == LDB3);
-        return matmul_iter_3_;
-    }
-}
-
-template <prop_kind_t aprop, impl::data_type_t src_type,
-        impl::data_type_t weights_type, impl::data_type_t acc_type>
-const std::shared_ptr<primitive_t> &
-dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::get_matmul_part2(cell_position_t cell_position) const {
-    const auto &rnn = pd()->rnn_;
-    const auto ldb = rnn.dst_iter_part2_ld(cell_position);
-    const auto LDB1 = rnn.ws_states_layer_ld;
-    const auto LDB2 = rnn.ws_states_iter_ld;
-    const auto LDB3 = rnn.dst_layer_ld_;
-    const auto LDB4 = rnn.dst_iter_ld_;
-    MAYBE_UNUSED(LDB4);
-    if (ldb == LDB1)
-        return matmul_part2_1_;
-    else if (ldb == LDB2)
-        return matmul_part2_2_;
-    else if (ldb == LDB3)
-        return matmul_part2_3_;
-    else {
-        assert(ldb == LDB4);
-        return matmul_part2_4_;
-    }
-}
-
-template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
-        data_type_t acc_type>
-rnn_matmul_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::execute_matmul)) {
-
-    engine_t *engine = ctx.stream()->engine();
-    constexpr auto mem_flag = memory_flags_t::use_runtime_ptr;
-    memory_t src_mem(
-            engine, matmul_prim->pd()->src_md(), mem_flag, (void *)(a_));
-    memory_t wei_mem(
-            engine, matmul_prim->pd()->weights_md(), mem_flag, (void *)(b_));
-    memory_t dst_mem(
-            engine, matmul_prim->pd()->dst_md(), mem_flag, (void *)(c_));
-
-    exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = {&src_mem, true};
-    matmul_args[DNNL_ARG_WEIGHTS] = {&wei_mem, true};
-    matmul_args[DNNL_ARG_DST] = {&dst_mem, false};
-
-    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
-    nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
-
-    return matmul_prim->execute(matmul_ctx);
-}
 
 template <>
 rnn_gemm_sig((ref_rnn_fwd_f32_t::gemm)) {
@@ -1167,7 +919,7 @@ rnn_grid_execution_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
                     scratch_src_iter_, cell_dst_iter, amx_scratchpad,
                     addr_batch_global));
 #else
-            CHECK((this->*cell_func)(ctx, rnn, cell_position, cell_dst_layer,
+            CHECK((this->*cell_func)(rnn, cell_position, cell_dst_layer,
                     cell_dst_iter_c,
                     SAFE_PTR(ws_diff_states_layer, lay, dir, iter, 0),
                     SAFE_PTR(diff_augru_attention, iter, 0, 0),
@@ -2138,7 +1890,7 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             reorder_args[DNNL_ARG_DST] = {&reorder_dst, false};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
             nested_scratchpad_t ns(
-                    ctx, key_nested_multiple, bf32_wei_layer_reorder_);
+                    ctx, key_nested_multiple + 0, bf32_wei_layer_reorder_);
             reorder_ctx.set_scratchpad_grantor(ns.grantor());
             CHECK(bf32_wei_layer_reorder_->execute(reorder_ctx));
             w_layer = scratchpad.template get<weights_t>(
@@ -2154,7 +1906,7 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             reorder_args[DNNL_ARG_DST] = {&reorder_dst, false};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
             nested_scratchpad_t ns(
-                    ctx, key_nested_multiple, bf32_wei_iter_reorder_);
+                    ctx, key_nested_multiple + 1, bf32_wei_iter_reorder_);
             reorder_ctx.set_scratchpad_grantor(ns.grantor());
             CHECK(bf32_wei_iter_reorder_->execute(reorder_ctx));
             w_iter = scratchpad.template get<weights_t>(
@@ -2218,7 +1970,7 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             diff_weights_peephole, diff_bias, amx_scratchpad,
             addr_batch_global));
 #else
-    CHECK((this->*grid_computation)(ctx, rnn, ptr_wei_layer, ptr_wei_iter,
+    CHECK((this->*grid_computation)(rnn, ptr_wei_layer, ptr_wei_iter,
             ptr_wei_projection, weights_peephole, w_projection_comp, ptr_bias,
             src_layer, augru_attention, (const src_iter_t *)src_iter,
             src_iter_c, (dst_layer_t *)dst_layer, (dst_iter_t *)dst_iter,

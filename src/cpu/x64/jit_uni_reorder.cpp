@@ -176,22 +176,12 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         using namespace data_type;
 
         bool ok = p.ndims > 0
-                && utils::one_of(
-                        p.itype, f32, bf16, f16, s32, f8_e5m2, f8_e4m3, s8, u8)
-                && utils::one_of(
-                        p.otype, f32, bf16, f16, s32, f8_e5m2, f8_e4m3, s8, u8)
-                && IMPLICATION(
-                        utils::one_of(p.itype, bf16, f16, f8_e5m2, f8_e4m3),
-                        utils::one_of(p.otype, s8, u8, f32, bf16, f16, f8_e5m2,
-                                f8_e4m3))
-                && IMPLICATION(
-                        utils::one_of(p.otype, bf16, f16, f8_e5m2, f8_e4m3),
-                        utils::one_of(p.itype, s8, u8, f32, bf16, f16, f8_e5m2,
-                                f8_e4m3))
-                && IMPLICATION(utils::one_of(p.itype, f8_e5m2, f8_e4m3)
-                                || utils::one_of(p.otype, f8_e5m2, f8_e4m3),
-                        !utils::one_of(p.itype, u8, s8)
-                                && !utils::one_of(p.otype, u8, s8))
+                && utils::one_of(p.itype, f32, bf16, f16, s32, s8, u8)
+                && utils::one_of(p.otype, f32, bf16, f16, s32, s8, u8)
+                && IMPLICATION(utils::one_of(p.itype, bf16, f16),
+                        utils::one_of(p.otype, s8, u8, f32, bf16, f16))
+                && IMPLICATION(utils::one_of(p.otype, bf16, f16),
+                        utils::one_of(p.itype, s8, u8, f32, bf16, f16))
                 && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
                 && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
                 && simple_impl_desc_init(p, nullptr) && mayiuse(sse41)
@@ -199,10 +189,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                         mayiuse(avx512_core) || mayiuse(avx2_vnni_2))
                 && IMPLICATION(utils::one_of(f16, p.itype, p.otype),
                         mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2))
-                && IMPLICATION(utils::one_of(f8_e5m2, p.itype, p.otype)
-                                || utils::one_of(f8_e4m3, p.itype, p.otype),
-                        mayiuse(avx512_core_amx))
-                && prb_has_small_strides(p) && !prb_has_huge_prime_number(p);
+                && IMPLICATION(!is_direct_copy(p), prb_has_small_strides(p))
+                && !prb_has_huge_prime_number(p);
         return ok;
     }
 
@@ -572,6 +560,79 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         for (int off = 0; off < len; off += step_size) {
             step(off, i_off, o_off, i_off, o_off, step_size);
             tr8x8_avx2(i_off, o_off);
+        }
+
+        return true;
+    }
+
+    template <typename Vmm>
+    bool process_direct_copy(const int ndims, const int len_unroll) {
+        using namespace data_type;
+
+        static constexpr bool is_zmm = std::is_same<Vmm, Xbyak::Zmm>::value;
+        static constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
+        static constexpr int vlen = vreg_traits<Vmm>::vlen;
+        const int simd_w = vlen / sizeof(float);
+        const int len_tail = len_unroll % simd_w;
+        const bool is_i8 = utils::one_of(s8, prb_.itype, prb_.otype)
+                || utils::one_of(u8, prb_.itype, prb_.otype);
+
+        // TODO: make a standalone jit:direct_copy implementation.
+        const bool can_do = is_direct_copy(prb_)
+                // s8u8 with AVX should be used with XMM vreg.
+                && IMPLICATION(is_i8 && isa_ == avx, !is_ymm)
+                // Prime numbers greater than INT_MAX cause input address
+                // overflow and crash.
+                && !prb_has_huge_prime_number(prb_);
+        if (!can_do) return false;
+
+        const int tail_opmask_idx = 2;
+        const int tail_vmm_idx = 0;
+        // Unroll might be max of 16 for zmm or 8 otherwise so keep auxiliary
+        // registers indices higher than this number. Follow existing bf16_emu
+        // register numeration for that.
+        const int zero_idx
+                = is_zmm ? bf16_emu_zmm_4_idx_ + 1 : xmm_zero_.getIdx();
+        const int saturation_ubound_idx
+                = is_zmm ? zero_idx + 1 : xmm_saturation_ubound_.getIdx();
+        const int max_unroll = is_zmm ? 16 : 8;
+        assert(zero_idx >= max_unroll);
+        assert(saturation_ubound_idx >= max_unroll);
+
+        io::io_conf_t io_conf;
+        io::io_tail_conf_t io_tail_conf(
+                simd_w, len_tail, tail_opmask_idx, tail_vmm_idx, reg_tmp_);
+        io::io_emu_bf16_conf_t io_bf16_conf(bf16_emu_zmm_1_idx_,
+                bf16_emu_zmm_2_idx_, bf16_emu_zmm_3_idx_, reg_tmp_,
+                bf16_emu_zmm_4_idx_);
+        io::io_saturation_conf_t io_saturation_conf(
+                zero_idx, saturation_ubound_idx, reg_tmp_);
+        io::jit_io_multi_dt_helper_t<Vmm> io(this, isa_,
+                {prb_.itype, prb_.otype}, io_conf, io_tail_conf, io_bf16_conf,
+                {{prb_.otype, io_saturation_conf}});
+
+        io.init_saturate_f32({prb_.otype});
+
+        int off = 0;
+        for (; off + len_tail < len_unroll;) {
+            int n_vregs_to_process_len_unroll = (len_unroll - off) / simd_w;
+            int unroll = nstl::min(max_unroll, n_vregs_to_process_len_unroll);
+
+            for (int ur = 0; ur < unroll; ++ur) {
+                const auto vmm = Vmm(ur);
+                io[prb_.itype]->load(i_addr(off + ur * simd_w), vmm, false);
+                io[prb_.otype]->store(vmm, o_addr(off + ur * simd_w), false);
+            }
+
+            off += unroll * simd_w;
+            assert(off <= len_unroll);
+        }
+
+        if (len_tail) {
+            io.prepare_tail_mask();
+            const auto vmm = Vmm(tail_vmm_idx + 1);
+            io[prb_.itype]->load(i_addr(off), vmm, true);
+            io[prb_.otype]->store(vmm, o_addr(off), true);
         }
 
         return true;

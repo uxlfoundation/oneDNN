@@ -2739,11 +2739,14 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
             dd(scale_int);
     }
 
+<<<<<<< HEAD
     if (brg.is_fp8_via_convert()) {
         if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
         if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
     }
 
+=======
+>>>>>>> 23a8494e6a... cpu: x64: remove a default argument value in postops_injector
     if (brg.with_eltwise)
         postops_injector_->prepare_table(/* generate = */ true);
 }

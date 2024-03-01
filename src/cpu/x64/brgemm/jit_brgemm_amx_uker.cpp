@@ -2642,11 +2642,6 @@ void jit_brgemm_amx_uker_base_t::generate() {
     if (brg.with_eltwise)
         postops_injector_->prepare_table(/* generate = */ true);
 
-    if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
-    }
-
     if (brg.is_bf32) {
         align(64);
         L(permute_index_table);

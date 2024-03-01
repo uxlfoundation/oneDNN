@@ -165,7 +165,7 @@ public:
     /*
      * Thin wrapper for eltwise injector specific function
      */
-    void prepare_table(bool gen_table) override;
+    void prepare_table(bool gen_table);
     void set_lambda_injector(lambda_jit_injectors_t::key_type,
             const lambda_jit_injectors_t::mapped_type &jit_injector) override;
 

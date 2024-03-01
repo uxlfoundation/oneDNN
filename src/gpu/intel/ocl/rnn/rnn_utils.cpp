@@ -116,6 +116,9 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
     rnn.acc_data_type = acc_data_t;
     rnn.acc_data_type_elsz = types::data_type_size(acc_data_t);
 
+    rnn.wei_layer_type = weights_layer_d.data_type();
+    rnn.wei_iter_type = weights_iter_d.data_type();
+
     rnn.n_layer = weights_layer_d.dims()[0];
     rnn.n_iter = src_layer_d.dims()[0];
     rnn.n_dir = weights_layer_d.dims()[1];
@@ -259,8 +262,11 @@ void rnn_utils::set_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
     const bool is_fwd = rnn.is_fwd;
     const bool is_bwd = !rnn.is_fwd;
 
-    dim_t aux_elsz = into<dim_t>(types::data_type_size(rnn.aux_data_type));
-    rnn.ws_states_elsz = types::data_type_size(rnn.src_data_type);
+    int sizeof_states_dt
+            = rnn.dt_conf == all_f32 ? sizeof(cl_float) : sizeof(cl_half);
+    int aux_elsz = rnn.aux_data_type == data_type::f16 ? sizeof(cl_half)
+                                                       : sizeof(float);
+    rnn.ws_states_elsz = types::data_type_size(rd.src_layer_desc.data_type);
 
     rnn.scratch_gates_elsz = types::data_type_size(rnn.acc_data_type);
     rnn.scratch_diff_gates_elsz

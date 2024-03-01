@@ -2823,32 +2823,8 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
             dd(scale_int);
     }
 
-    if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
-    }
-
     if (brg.with_eltwise)
         postops_injector_->prepare_table(/* generate = */ true);
-
-    if (brg.is_f16_b_non_amx_vnni()) {
-        // convert interleaved vnni data with holes to packed.
-        align(64);
-        L(f16_perm_even_table_);
-        for (int i = 0; i < 32; ++i) {
-            if (i < 16)
-                dw(uint16_t(2 * i));
-            else
-                dw(uint16_t(0));
-        }
-        align(64);
-        L(f16_perm_odd_table_);
-        for (int i = 0; i < 32; ++i)
-            if (i < 16)
-                dw(uint16_t(2 * i + 1));
-            else
-                dw(uint16_t(0));
-    }
 }
 
 brgemm_attr_t::brgemm_attr_t()

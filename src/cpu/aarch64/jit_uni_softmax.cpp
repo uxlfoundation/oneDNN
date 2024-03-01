@@ -297,6 +297,104 @@ struct jit_softmax_base_t : public jit_generator {
         }
     }
 
+    virtual void prepare_tail_mask() = 0;
+    virtual void get_horizontal_op(const TReg &v, const TReg &vtmp, op_t op)
+            = 0;
+    virtual void accumulate_vmax() = 0;
+    virtual void accumulate_vsum() = 0;
+    virtual void compute_dst() = 0;
+    virtual void initialization_hook() {}
+    virtual void accumulate_vsbr() {}
+    virtual void compute_diff_src() {}
+
+    void forward() {
+        accumulate_vmax();
+        accumulate_vsum();
+        compute_dst();
+    }
+
+    void backward() {
+        accumulate_vsbr();
+        compute_diff_src();
+    }
+
+    void prepare_mask() {
+        if (isa == sve_512 || isa == sve_256) {
+            sub_imm(X_TRANSLATOR_STACK, X_TRANSLATOR_STACK, 64 * 2, X_TMP_0);
+            str(p_shuff0, ptr(X_TRANSLATOR_STACK, 0, MUL_VL));
+            str(p_shuff1, ptr(X_TRANSLATOR_STACK, 1, MUL_VL));
+            not_(P_TMP_1.b, P_ALL_ONE, P_ALL_ONE.b);
+            trn1(p_shuff0.d, P_ALL_ONE.d, P_TMP_1.d);
+            trn1(p_shuff0.d, p_shuff0.d, p_shuff0.d);
+            trn1(p_shuff1.s, P_ALL_ONE.s, P_TMP_1.s);
+        }
+
+        if (simd_w_ != cpu_sveLen / sizeof(float))
+            set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+    }
+
+    void restore_mask() {
+        assert(isa == sve_512 || isa == sve_256);
+
+        ldr(p_shuff0, ptr(X_TRANSLATOR_STACK, 0, MUL_VL));
+        ldr(p_shuff1, ptr(X_TRANSLATOR_STACK, 1, MUL_VL));
+        add_imm(X_TRANSLATOR_STACK, X_TRANSLATOR_STACK, 64 * 2, X_TMP_0);
+    }
+
+    // either this stub or duplication at each jit_binary_t ctor due to methods
+    // that are participated are not defined at the moment of base ctor
+    // initialization.
+    void generate() override {
+        if (pd_->is_fwd() || is_logsoftmax_)
+            exp_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
+                    alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, true,
+                    reg_exp_injector_table, injector_mask, injector_tmp));
+        if (pd_->is_fwd() && is_logsoftmax_) {
+            log_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
+                    alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, true,
+                    reg_log_injector_table, injector_mask, injector_tmp));
+        }
+
+        compute_predefined_variables();
+        preamble();
+        initialization_hook();
+
+        prepare_mask();
+
+        if (exp_injector_) exp_injector_->load_table_addr();
+        if (log_injector_) log_injector_->load_table_addr();
+        if (axis_simd_tail_) prepare_tail_mask();
+        load_common_params();
+        if (pd_->is_fwd())
+            forward();
+        else
+            backward();
+
+        restore_mask();
+        postamble();
+        if (exp_injector_) exp_injector_->prepare_table();
+        if (log_injector_) log_injector_->prepare_table();
+    }
+
+    jit_softmax_base_t(const softmax_pd_t *pd)
+        : jit_generator(nullptr, MAX_CODE_SIZE, true)
+        , pd_(pd)
+        , src_d_(pd_->is_fwd() ? pd_->src_md() : pd_->diff_src_md())
+        , dst_d_(pd_->dst_md())
+        , diff_dst_d_(pd_->diff_dst_md()) {
+        simd_w_ = vlen / sizeof(float); // bf16 works on ymms
+        need_scratchpad_ = utils::one_of(
+                dst_d_.data_type(), data_type::u8, data_type::s8);
+    }
+};
+
+template <cpu_isa_t isa>
+struct jit_softmax_t;
+
+template <>
+struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
+    PReg tail_opmask = p2;
+
     void store(const XReg &addr, const ZReg &vmm, data_type_t dt,
             bool tail = false) {
         ZReg bf16_cvt_ymm = ZReg(22);
@@ -391,7 +489,7 @@ struct jit_softmax_base_t : public jit_generator {
         set_preg(tail_opmask.s, axis_simd_tail_, X_TMP_0, X_TMP_1);
     }
 
-    void get_horizontal_op(const TReg &v, const TReg &vtmp, op_t op) {
+    void get_horizontal_op(const ZReg &v, const ZReg &vtmp, op_t op) override {
         if (op == op_t::max)
             fmaxv(SReg(v.getIdx()), P_ALL_ONE, v.s);
         else
@@ -599,7 +697,14 @@ struct jit_softmax_base_t : public jit_generator {
         preamble();
         initialization_hook();
 
-        prepare_mask();
+    void get_horizontal_op(const ZReg &v, const ZReg &vtmp, op_t op) override {
+        if (op == op_t::max)
+            fmaxv(SReg(v.getIdx()), P_ALL_ONE, v.s);
+        else
+            faddv(SReg(v.getIdx()), P_ALL_ONE, v.s);
+
+        dup(v.s, v.s[0]);
+    }
 
         if (exp_injector_) exp_injector_->load_table_addr();
         if (log_injector_) log_injector_->load_table_addr();

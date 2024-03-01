@@ -820,7 +820,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     float gemm_iter_fwd_beta = this->is_lbr() ? 0.0f : 1.0f;
     float gemm_iter_bwd_beta = this->is_lbr() ? 1.0f : 0.0f;
     if (aprop == prop_kind::forward || rnn_conf.recompute_gates) {
-        if (!rnn_conf.cell_fusion.gemm_layer) {
+        {
             VDISPATCH_RNN_SC(
                     create_gemm_pd(gemm_layer_fwd_pd_, n_gates * dhc,
                             layer_merged_size, slc, {rnn_conf.states_ws_ld, 1},
@@ -872,8 +872,11 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                                 gemm_iter_fwd_beta),
                         "create_gemm_pd(gemm_iter_fwd_pd_)");
             }
-            break;
-        case prop_kind::backward:
+        }
+    }
+
+    if (aprop == prop_kind::backward) {
+        {
             if (rnn_conf.is_vanilla_gru) {
                 VDISPATCH_RNN_SC(
                         create_gemm_pd(gemm_iter_bwd_pd_, sic, batch,
@@ -910,42 +913,6 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                                 1.0f),
                         "create_gemm_pd(gemm_diff_wei_iter_2_pd_)");
             } else {
-                if (rnn_conf.recompute_gates) {
-                    VDISPATCH_RNN_SC(create_gemm_pd(gemm_layer_fwd_pd_,
-                                             n_gates * dhc, layer_merged_size,
-                                             slc, {rnn_conf.states_ws_ld, 1},
-                                             {off.weights_layer[2],
-                                                     off.weights_layer[4]},
-                                             {rnn_conf.scratch_gates_ld, 1},
-                                             weights_type, src_type,
-                                             rnn_conf.acc_data_type, 0.0),
-                            "create_gemm_pd(gemm_layer_fwd_pd_)");
-                    if (!rnn_conf.copy_src_layer) {
-                        if (off.src_layer[1] != rnn_conf.states_ws_ld)
-                            VDISPATCH_RNN_SC(
-                                    create_gemm_pd(gemm_layer_fwd_src_pd_,
-                                            n_gates * dhc, layer_merged_size,
-                                            slc,
-                                            {off.src_layer[1],
-                                                    off.src_layer[2]},
-                                            {off.weights_layer[2],
-                                                    off.weights_layer[4]},
-                                            {rnn_conf.scratch_gates_ld, 1},
-                                            weights_type, src_type,
-                                            rnn_conf.acc_data_type, 0.0),
-                                    "create_gemm_pd(gemm_layer_fwd_src_pd_)");
-                        else
-                            gemm_layer_fwd_src_pd_ = gemm_layer_fwd_pd_;
-                    }
-                    VDISPATCH_RNN_SC(
-                            create_gemm_pd(gemm_iter_fwd_pd_, n_gates * dhc,
-                                    batch, sic, {rnn_conf.states_ws_ld, 1},
-                                    {off.weights_iter[2], off.weights_iter[4]},
-                                    {rnn_conf.gates_ws_ld, 1}, weights_type,
-                                    src_type, rnn_conf.acc_data_type,
-                                    gemm_iter_fwd_beta),
-                            "create_gemm_pd(gemm_iter_fwd_pd_)");
-                }
                 VDISPATCH_RNN_SC(
                         create_gemm_pd(gemm_iter_bwd_pd_, sic, batch,
                                 n_gates * dhc,
@@ -992,8 +959,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                 else
                     gemm_diff_wei_layer_src_pd_ = gemm_diff_wei_layer_pd_;
             }
-            break;
-        default: assert(!"unknown prop_kind"); return status::invalid_arguments;
+        }
     }
 
     init_scratchpad(rnn_conf.use_workspace ? 0 : workspace_size);

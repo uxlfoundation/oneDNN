@@ -2762,11 +2762,6 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
             dd(scale_int);
     }
 
-    if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
-    }
-
     if (brg.with_eltwise)
         postops_injector_->prepare_table(/* generate = */ true);
 }

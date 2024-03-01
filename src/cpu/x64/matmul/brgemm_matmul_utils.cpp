@@ -977,7 +977,7 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         compute_blocking_heuristic_amx(bgmmc, bm_conf_utils, best_blocking);
 
         VCONDCHECK_BG(best_blocking.get_blocking_scores() != 0.0f,
-                VERBOSE_BLOCKING_FAIL, "");
+                VERBOSE_BLOCKING_FAIL);
 
         best_blocking.update_configuration(bgmmc);
 
@@ -1195,7 +1195,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // required granularity for k dimension
     bgmmc.required_k_granularity
             = bgmmc.is_amx ? data_type_vnni_granularity(bgmmc.wei_dt) : 1;
-    VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
+    VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL);
     bgmmc.wei_k_blk = data_type_vnni_simd_elems<avx512_core>(bgmmc.wei_dt);
 
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md),
@@ -1291,17 +1291,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_MEM_STRIDE);
     }
 
-    bool prefer_copy_a
+    const bool lda_is_big_2pow
             = (bm_conf_utils.is_bf16() || bm_conf_utils.is_bf16_with_int_wei()
-                      || bgmmc.is_amx)
+                      || (bgmmc.is_amx && bm_conf_utils.is_f16()))
             && (bgmmc.isa != avx2_vnni_2) // no perf study yet.
             && bgmmc.lda_big_pow2() && bgmmc.M >= 1024;
-
-    // Avoid copying A for small N gives better performance.
-    // TODO: Expand for other precisions and cases.
-    if (bgmmc.is_amx && bm_conf_utils.is_int8())
-        prefer_copy_a &= bgmmc.N >= 256;
-
     const bool is_copy_a_required
             = (bgmmc.is_amx
                       && ((bgmmc.K % bgmmc.required_k_granularity != 0)
@@ -1309,7 +1303,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || (bm_conf_utils.is_f16() && isa == avx512_core_fp16)
             || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
                     && !bm_conf_utils.with_weights_decompression())
-            || bgmmc.transposed_A || prefer_copy_a;
+            || bgmmc.transposed_A || lda_is_big_2pow;
     bgmmc.use_buffer_a = is_copy_a_required;
 
     // Supported computation with copy only part of A related to K_tail if
@@ -1354,7 +1348,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // - K_blk, batch_size
     // - nthr_K
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
-            VERBOSE_BLOCKING_FAIL, "");
+            VERBOSE_BLOCKING_FAIL);
 
     if (bgmmc.wei_n_blk > bgmmc.N_blk
             && IMPLICATION(
@@ -1370,7 +1364,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 = bm_conf_utils.wei_down_convert_to_vnni();
     }
 
-    VCHECK_BG(bm_conf_utils.set_B_flags(weights_md), VERBOSE_BLOCKING_FAIL, "");
+    VCHECK_BG(bm_conf_utils.set_B_flags(weights_md), VERBOSE_BLOCKING_FAIL);
 
     bgmmc.M_tail = bgmmc.is_runtime_M ? 0 : bgmmc.M % bgmmc.M_blk;
     bgmmc.N_tail = bgmmc.is_runtime_N ? 0 : bgmmc.N % bgmmc.N_blk;

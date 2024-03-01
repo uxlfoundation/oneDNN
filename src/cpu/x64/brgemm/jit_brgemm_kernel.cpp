@@ -26,7 +26,6 @@
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_bf16cvt.hpp"
-#include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
 #define GET_OFF(field) offsetof(brgemm_kernel_params_t, field)
@@ -39,16 +38,14 @@ namespace x64 {
 
 using namespace dnnl::impl::utils;
 using namespace Xbyak;
-template <typename Wmm>
+template <cpu_isa_t isa, typename Wmm>
 struct jit_brgemm_kernel_t : public jit_generator {
-    jit_brgemm_kernel_t(const brgemm_desc_t &abrg)
-        : jit_generator(jit_name(), abrg.isa_impl)
+    jit_brgemm_kernel_t(const brgemm_t &abrg)
+        : jit_generator(jit_name(), nullptr, MAX_CODE_SIZE, true, abrg.isa_impl)
         , brg(abrg)
         , postops_injector_(nullptr)
-        , max_effective_vregs(isa_num_vregs(brg.isa_impl)
-                  - (brg.is_int8 && !brg.has_int8_vnni
-                                  ? 2
-                                  : (brg.is_fp8_via_convert() ? 5 : 0))) {
+        , max_effective_vregs(
+                  max_vregs - (brg.is_int8 && !brg.has_int8_vnni ? 2 : 0)) {
 
         // The implementation uses is_superset(), is_subset() utilities.
         // So avoid isa_all, isa_undef in these comparisions.
@@ -83,12 +80,8 @@ struct jit_brgemm_kernel_t : public jit_generator {
             const binary_injector::static_params_t bsp {
                     this->param1, enabled_bcast_strategy, rhs_sp};
 
-            auto st = safe_ptr_assign(postops_injector_,
-                    po_injector_t::create(
-                            this, brg.isa_impl, brg.attr()->post_ops_, bsp));
-            if (st != status::success) {
-                assert(!"postops_injector creation failed");
-            }
+            postops_injector_ = utils::make_unique<po_injector_t>(
+                    this, brg.attr()->post_ops_, bsp);
 
             with_binary_non_scalar_bcast_ = binary_injector::
                     any_binary_postop_rhs_non_scalar_broadcast(
@@ -99,41 +92,24 @@ struct jit_brgemm_kernel_t : public jit_generator {
                     bf16_emu_reserv_1(), bf16_emu_reserv_2(),
                     bf16_emu_reserv_3(), bf16_emu_scratch, bf16_emu_reserv_4(),
                     bf16_emu_reserv_4());
-
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d))
-            // Note: avoid using 'vmm0' since it is used as
-            // 'fp8_to_f16_upconvert()' param and would collision with these
-            // emulation vmms
-            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
-                    xmm_fp8_emu_aux2, xmm_fp8_emu_aux3, xmm_fp8_emu_aux4,
-                    kmask_fp8_aux, reg64_fp8_aux);
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d))
-            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
-                    xmm_fp8_emu_aux1, xmm_fp8_emu_aux2, xmm_fp8_emu_aux3,
-                    xmm_fp8_emu_aux4, xmm_fp8_emu_aux5, reg64_fp8_aux);
     }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_t)
 
-    brgemm_desc_t brg;
+    brgemm_t brg;
 
 private:
-    enum matrix_kind_t { matrix_A, matrix_B };
-    static constexpr int zmm_width_in_bytes_
-            = cpu_isa_traits<avx512_core>::vlen;
     using Vmm =
             typename utils::conditional<std::is_same<Wmm, Xbyak::Tmm>::value,
                     Xbyak::Zmm, Wmm>::type;
     using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
-    using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
+    static constexpr cpu_isa_t po_isa_t = utils::map(isa, avx512_core,
+            avx512_core_amx_fp16, avx512_core_fp16, avx512_core_amx,
+            avx512_core_fp16, avx512_core_fp16, avx512_core_fp16, avx2_vnni_2,
+            avx2_vnni_2, avx2_vnni, avx2, avx2, avx2);
+    using po_injector_t = injector::jit_uni_postops_injector_t<po_isa_t, Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_base_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_base_t> f8_e4m3_emulator_;
 
     Xbyak::Label avx_tail_mask_;
     Xbyak::Label sum_zp_scale_data_;
@@ -199,19 +175,14 @@ private:
     const reg64_t reg_zp_a_val = reg_rdb_loop;
 
     const reg64_t reg_buf = reg_rdb_loop;
-    const reg64_t reg_buf_aux = abi_param1;
-    const reg64_t reg_compensation = reg_rdb_loop;
-    const reg64_t reg_aux_compensation = reg_rdb_loop;
+    const reg64_t reg_compensation = reg_bias;
+    const reg64_t reg_aux_compensation = reg_aux_bias;
 
     const reg64_t reg_D = reg_aux_A;
     const reg64_t reg_aux_D = reg_BS_loop;
 
     /* bf16 emulation */
     const reg64_t bf16_emu_scratch = reg_rdb_loop;
-
-    // FP8 Convert
-    const reg64_t reg_converted_stride = reg_rdb_loop;
-    const reg64_t reg64_fp8_aux = reg_A;
 
     constexpr static int origin_offs_batch_offs_ = 0;
     constexpr static int origin_strd_batch_offs_ = 0;
@@ -247,19 +218,15 @@ private:
     constexpr static int reg_aux_D_backup_offs_ = 232;
     constexpr static int reg_aux_D_bdb_loop_backup_offs_ = 240;
     constexpr static int reg_aux_D_bdb_loop_shift_offs_ = 248;
-    // these are used for FP8 as temporary push/pop spaces
-    constexpr static int reg_val_tmp_1_ = 256;
-    constexpr static int reg_val_tmp_2_ = 264;
-    constexpr static int stack_space_needed_ = 272;
+    constexpr static int stack_space_needed_ = 256;
 
     bool is_ldb_loop_ = false;
     bool with_binary_non_scalar_bcast_ = false;
+    constexpr static int max_vregs = cpu_isa_traits<po_isa_t>::n_vregs;
     const int max_effective_vregs;
 
     Xbyak::Opmask ld_full_mask = Xbyak::Opmask(2);
     Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(3);
-    Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
-    Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
 
     Vmm accm(int ld_block, int bd, int ld) {
         return Vmm(max_effective_vregs - 1 - (bd * ld_block + ld));
@@ -306,20 +273,9 @@ private:
     Zmm bf16_emu_reserv_4() const noexcept { return Zmm(3); }
     // note: zmm reserv_5 is not necessary since it's only used for 'vdpbf16ps'
 
-    // fp8 emulation convert
-    Vmm xmm_fp8_emu_aux1 = Vmm(0);
-    Vmm xmm_fp8_emu_aux2 = Vmm(1);
-    Vmm xmm_fp8_emu_aux3 = Vmm(2);
-    Vmm xmm_fp8_emu_aux4 = Vmm(3);
-    Vmm xmm_fp8_emu_aux5 = Vmm(4);
-
     // Required in every dot product for INT8 non-VNNI computation.
-    Vmm int8_ones_words() const noexcept {
-        return Vmm(isa_num_vregs(brg.isa_impl) - 1);
-    }
-    Vmm int8_dot_product_temp() const noexcept {
-        return Vmm(isa_num_vregs(brg.isa_impl) - 2);
-    }
+    Vmm int8_ones_words() const noexcept { return Vmm(max_vregs - 1); }
+    Vmm int8_dot_product_temp() const noexcept { return Vmm(max_vregs - 2); }
 
     Vmm vmm_mask(const Vmm vmm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) const;
@@ -343,12 +299,6 @@ private:
     void zero_accumulators(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_ld_tail, bool skip_accumulation);
 
-    void fp8_to_f16_upconvert(int num_rows, int tile_num_col_bytes,
-            reg64_t reg_base, int offset, reg64_t reg_data_stride,
-            data_type_t dt, bool is_rd_tail);
-    void fp8_to_f16_upconvert_to_vnni(int num_rows, int tile_num_col_bytes,
-            reg64_t reg_base, int offset, reg64_t reg_data_stride,
-            data_type_t dt, bool is_rd_tail);
     void store_accumulators(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_ld_tail, bool skip_accumulation);
     void store_accumulators_without_post_ops(
@@ -364,11 +314,7 @@ private:
 
     void compute_int8_compensation(int rd_loop, int bd_b, int bd_e,
             int bd_block, int ld_block2, bool is_ld_tail, int vpad);
-    void maybe_pre_process_data(matrix_kind_t matrix_kind, const Tmm &t1,
-            reg64_t reg_base, size_t offset, reg64_t reg_stride, int num_rows,
-            int num_col_bytes, bool is_rd_tail);
-    void maybe_tileloadd_nt(matrix_kind_t matrix_kind, int idx, int offset,
-            bool is_rd_tail, bool is_tail);
+
     void dot_product(Vmm v1, Vmm v2, Vmm v3);
     void gemm_microkernel(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_rd_tail, bool is_ld_tail, int vpad, int rows_for_rd_tail);
@@ -420,15 +366,15 @@ private:
     bool need_comp_pads = false;
 };
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::A_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::A_offset(
         int bd, int rd, bool is_amx) const noexcept {
     return (is_amx) ? brg.typesize_A * (bd * brg.bd_block * brg.LDA)
                     : brg.typesize_A * (bd * brg.LDA + rd);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::B_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::B_offset(
         int ld, int rd, bool is_amx) const noexcept {
     if (is_amx) {
         return brg.typesize_B * (brg.rd_step * ld * brg.ld_block);
@@ -444,147 +390,148 @@ int jit_brgemm_kernel_t<Wmm>::B_offset(
     }
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::C_offset(int bd, int ld) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::C_offset(int bd, int ld) const noexcept {
     const auto bd_shift = brg.is_runtime_ldc ? 0 : bd * brg.LDC;
     return brg.typesize_C * (bd_shift + ld * brg.ld_block);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::D_offset(int bd, int ld) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::D_offset(int bd, int ld) const noexcept {
     const auto bd_shift = brg.is_runtime_ldd ? 0 : bd * brg.LDD;
     return brg.typesize_D * (bd_shift + ld * brg.ld_block);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::rdb_A_offset() const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::rdb_A_offset() const noexcept {
     return brg.typesize_A * brg.rd_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::rdb_B_offset() const noexcept {
     return brg.typesize_B * brg.rd_block * brg.LDB;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::ldb_B_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::ldb_B_offset(
         int ld_block2, bool is_tail) const noexcept {
     return (is_tail) ? brg.typesize_B * brg.ldb_tail * brg.ld_step
                      : brg.typesize_B * ld_block2 * brg.ld_block * brg.ld_step;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::ldb_C_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::ldb_C_offset(
         int ld_block2, bool is_tail) const noexcept {
     return (is_tail) ? brg.typesize_C * brg.ldb_tail
                      : brg.typesize_C * ld_block2 * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::ldb_D_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::ldb_D_offset(
         int ld_block2, bool is_tail) const noexcept {
     return (is_tail) ? brg.typesize_D * brg.ldb_tail
                      : brg.typesize_D * ld_block2 * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::ldb_po_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::ldb_po_offset(
         int ld_block2, bool is_tail) const noexcept {
     return (is_tail) ? brg.ldb_tail : ld_block2 * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bdb_A_offset(int bd_block2) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bdb_A_offset(int bd_block2) const noexcept {
     return brg.typesize_A * bd_block2 * brg.bd_block * brg.LDA;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bdb_C_offset(int bd_block2) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bdb_C_offset(int bd_block2) const noexcept {
     return bd_block2 * brg.bd_block
             * (brg.is_runtime_ldc ? 1 : brg.typesize_C * brg.LDC);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bdb_D_offset(int bd_block2) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bdb_D_offset(int bd_block2) const noexcept {
     return bd_block2 * brg.bd_block
             * (brg.is_runtime_ldd ? 1 : brg.typesize_D * brg.LDD);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bdb_po_offset(int bd_block2) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bdb_po_offset(int bd_block2) const noexcept {
     return bd_block2 * brg.bd_block * brg.LDD;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bias_offset(int ld, bool is_tail) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bias_offset(
+        int ld, bool is_tail) const noexcept {
     return (is_tail) ? brg.typesize_bias * brg.ldb_tail
                      : brg.typesize_bias * ld * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::oc_logical_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::oc_logical_offset(
         int ld, bool is_tail) const noexcept {
     return (is_tail) ? brg.ldb_tail : ld * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::compensations_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::compensations_offset(
         int ld, bool is_tail) const noexcept {
     return (is_tail) ? sizeof(int32_t) * brg.ldb_tail
                      : sizeof(int32_t) * ld * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bdb_compensation_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bdb_compensation_offset(
         int bd_block2) const noexcept {
     return sizeof(int32_t) * bd_block2 * brg.bd_block * brg.LDB;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bd_compensation_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bd_compensation_offset(
         int ld, int bd) const noexcept {
     return sizeof(int32_t) * (ld * brg.ld_block + bd * brg.LDB);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::scales_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::scales_offset(
         int ld, bool is_tail) const noexcept {
     return (is_tail) ? brg.is_oc_scale * sizeof(float) * brg.ldb_tail
                      : brg.is_oc_scale * sizeof(float) * ld * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::zp_comp_a_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::zp_comp_a_offset(
         int ld, bool is_tail) const noexcept {
     return (is_tail) ? sizeof(int32_t) * brg.ldb_tail
                      : sizeof(int32_t) * ld * brg.ld_block;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bdb_zp_comp_a_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bdb_zp_comp_a_offset(
         int bd_block2) const noexcept {
     return sizeof(int32_t) * bd_block2 * brg.bd_block * brg.LDB;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bd_zp_comp_a_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bd_zp_comp_a_offset(
         int ld, int bd) const noexcept {
     return sizeof(int32_t) * (ld * brg.ld_block + bd * brg.LDB);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::zp_comp_b_offset(int bd) const noexcept {
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::zp_comp_b_offset(int bd) const noexcept {
     return sizeof(int32_t) * bd;
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::bdb_zp_comp_b_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::bdb_zp_comp_b_offset(
         int bd_block2) const noexcept {
     return zp_comp_b_offset(bd_block2 * brg.bd_block);
 }
 
-template <typename Wmm>
-int jit_brgemm_kernel_t<Wmm>::zp_c_values_offset(
+template <cpu_isa_t isa, typename Wmm>
+int jit_brgemm_kernel_t<isa, Wmm>::zp_c_values_offset(
         int ld, bool is_tail) const noexcept {
     if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
         return (is_tail) ? sizeof(int32_t) * brg.ldb_tail
@@ -593,18 +540,18 @@ int jit_brgemm_kernel_t<Wmm>::zp_c_values_offset(
 
     return 0;
 }
-template <typename Wmm>
-typename jit_brgemm_kernel_t<Wmm>::Vmm jit_brgemm_kernel_t<Wmm>::vmm_mask(
-        const Vmm vmm_in, bool mask_flag, bool store,
-        Xbyak::Opmask ktail_mask) const {
+template <cpu_isa_t isa, typename Wmm>
+typename jit_brgemm_kernel_t<isa, Wmm>::Vmm
+jit_brgemm_kernel_t<isa, Wmm>::vmm_mask(const Vmm vmm_in, bool mask_flag,
+        bool store, Xbyak::Opmask ktail_mask) const {
     return mask_flag && is_superset(brg.isa_impl, avx512_core)
             ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
             : vmm_in;
 }
 
-template <typename Wmm>
-typename jit_brgemm_kernel_t<Wmm>::Vmm_lower_t
-jit_brgemm_kernel_t<Wmm>::vmm_lower_mask(const Vmm_lower_t vmm_lower_in,
+template <cpu_isa_t isa, typename Wmm>
+typename jit_brgemm_kernel_t<isa, Wmm>::Vmm_lower_t
+jit_brgemm_kernel_t<isa, Wmm>::vmm_lower_mask(const Vmm_lower_t vmm_lower_in,
         bool mask_flag, bool store, Xbyak::Opmask ktail_mask) const {
     return mask_flag && is_superset(brg.isa_impl, avx512_core)
             ? (store ? vmm_lower_in | ktail_mask
@@ -612,15 +559,15 @@ jit_brgemm_kernel_t<Wmm>::vmm_lower_mask(const Vmm_lower_t vmm_lower_in,
             : vmm_lower_in;
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::maybe_set_avx_mask(bool is_ld_tail) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::maybe_set_avx_mask(bool is_ld_tail) {
     if (IMPLICATION(is_ld_tail, isa_has_masks(brg.isa_impl))) return;
     vmovups(vmm_tail_mask(), ptr[rip + avx_tail_mask_]);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
-        const Xbyak::Operand &op, bool mask_flag, bool store,
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::cvt2ps(data_type_t type_in,
+        const Vmm vmm_in, const Xbyak::Operand &op, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask, int tail_size) {
     Vmm vmm = vmm_in;
     const bool has_tail
@@ -642,32 +589,13 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         case data_type::f16: vcvtph2ps(vmm, op); break;
         case data_type::s8: uni_vpmovsxbd(vmm, op); break;
         case data_type::u8: uni_vpmovzxbd(vmm, op); break;
-        case data_type::f8_e5m2:
-            if (brg.is_fp8_via_convert()) {
-                // note: unoptimized, probably move stack use outside loop
-                mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
-                f8_e5m2_emulator_->vcvt_f8_to_f32(vmm, op);
-                mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
-            } else
-                assert(!"Error, native conversion unsupported");
-            break;
-        case data_type::f8_e4m3:
-            if (brg.is_fp8_via_convert()) {
-                // note: unoptimized, probably move stack use outside loop
-                mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
-                f8_e4m3_emulator_->vcvt_f8_to_f32(vmm, op);
-                mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
-            } else
-                assert(!"Error, native conversion unsupported");
-            break;
-
         default: assert(!"unsupported data type");
     }
     if (types::is_integral_dt(type_in)) uni_vcvtdq2ps(vmm_in, vmm_in);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::advance_ldb_post_op_regs() {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::advance_ldb_post_op_regs() {
     if (brg.with_bias) {
         mov(reg_aux_bias, ptr[rsp + reg_aux_bias_offs_]);
         add(reg_aux_bias, bias_offset(1));
@@ -690,8 +618,8 @@ void jit_brgemm_kernel_t<Wmm>::advance_ldb_post_op_regs() {
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::restore_ldb_post_op_regs(int ld_block2) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::restore_ldb_post_op_regs(int ld_block2) {
     if (brg.with_bias) {
         mov(reg_aux_bias, ptr[rsp + reg_aux_bias_offs_]);
         sub(reg_aux_bias, bias_offset(ld_block2 - 1));
@@ -714,8 +642,8 @@ void jit_brgemm_kernel_t<Wmm>::restore_ldb_post_op_regs(int ld_block2) {
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::advance_bdb_post_op_regs(int adj_bd_block) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::advance_bdb_post_op_regs(int adj_bd_block) {
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
         mov(reg_aux_zp_comp_b, ptr[rsp + reg_aux_zp_comp_b_offs_]);
         add(reg_aux_zp_comp_b, bdb_zp_comp_b_offset(1));
@@ -729,8 +657,8 @@ void jit_brgemm_kernel_t<Wmm>::advance_bdb_post_op_regs(int adj_bd_block) {
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::restore_bdb_post_op_regs(int bd_block2) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::restore_bdb_post_op_regs(int bd_block2) {
     bool post_processed = false;
     if (bd_block2 > 1) {
         if (brg.zp_type_b != brgemm_broadcast_t::none) {
@@ -749,8 +677,9 @@ void jit_brgemm_kernel_t<Wmm>::restore_bdb_post_op_regs(int bd_block2) {
     if (post_processed) mov(reg_buf, ptr[rsp + reg_buf_offs_]);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(int ld_block2, bool is_tail) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::ldb_regs_shift(
+        int ld_block2, bool is_tail) {
     int C_offset = (is_tail) ? ldb_C_offset(1, true) : ldb_C_offset(ld_block2);
     int D_offset = (is_tail) ? ldb_D_offset(1, true) : ldb_D_offset(ld_block2);
     add(reg_aux_C, C_offset);
@@ -794,8 +723,9 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(int ld_block2, bool is_tail) {
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::advance_bd_block2_post_op_regs(int bd_block2) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::advance_bd_block2_post_op_regs(
+        int bd_block2) {
     if (brg.req_comp_pads_with_bcast && brg.req_s8s8_compensation) {
         mov(reg_compensation, ptr[rsp + reg_comp_offs_]);
         add(reg_compensation, bdb_compensation_offset(bd_block2));
@@ -816,8 +746,8 @@ void jit_brgemm_kernel_t<Wmm>::advance_bd_block2_post_op_regs(int bd_block2) {
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::copy_post_ops_stack_values_to_aux(
         bool is_reg_tail) {
     if (!is_reg_tail) {
         mov(reg_aux_C, reg_C);
@@ -852,8 +782,8 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::read_params() {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::read_params() {
     Label label_done;
 
     if (brg.with_binary) mov(ptr[rsp + abi_param1_offs_], param1);
@@ -943,8 +873,8 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     mov(ptr[rsp + reg_do_comp_offs_], reg_do_comp);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::zero_accumulators(int bd_block2,
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::zero_accumulators(int bd_block2,
         bool is_bdb_tail, int ld_block2, bool is_ld_tail,
         bool skip_accumulation) {
     if (brg.is_tmm) {
@@ -965,85 +895,8 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(int bd_block2,
     }
 }
 
-// This method up-converts the data from bf8 to f16 and saves at reg_buf.
-// Generally used by matrix_A, where no vnni transformation of data is needed.
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert(int num_rows,
-        int tile_num_col_bytes, reg64_t reg_base, int offset,
-        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
-
-    int rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
-
-    const int max_num_cols = rd_block; //tile_num_col_bytes / sizeof(float16_t);
-    const int col_tail = max_num_cols % 32;
-    auto zmm_1 = vmm_tmp(0);
-    auto zmm_1_masked = col_tail ? zmm_1 | fp8_col_mask | T_z : zmm_1;
-
-    assert(max_num_cols > 0);
-
-    if (col_tail) {
-        const int tail_mask = (1 << col_tail) - 1;
-        auto reg_tmp_32 = reg_tmp_gpr.cvt32();
-        mov(reg_tmp_32, tail_mask);
-        kmovd(fp8_col_mask, reg_tmp_32);
-    }
-    // Note: using the same register used in col_tail, so order is important
-    const auto reg_data_aux = reg_tmp_gpr;
-    lea(reg_data_aux, ptr[reg_base + offset]);
-
-    for (int r = 0; r < num_rows; ++r) {
-        if (dt == data_type::f8_e5m2)
-            f8_e5m2_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-        else if (dt == data_type::f8_e4m3)
-            f8_e4m3_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-        else
-            assert(!"unsupported data type");
-
-        vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_1);
-        add(reg_data_aux, reg_data_stride);
-    }
-}
-
-// This method up-converts and transforms the data from fp8_vnni to f16_vnni
-// format. Generally used by matrix_B.
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(int num_rows,
-        int tile_num_col_bytes, reg64_t reg_base, int offset,
-        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
-    const int num_cols_ele = tile_num_col_bytes / 2; // 32 for full tile
-    const int num_N = num_cols_ele / 2; // 16 for full tile
-    const auto zmm_2 = vmm_tmp(2);
-
-    assert(num_N > 0 && "bad tile parameters");
-    MAYBE_UNUSED(num_N);
-
-    const auto reg_data_aux = reg_tmp_gpr;
-    lea(reg_data_aux, ptr[reg_base + offset]);
-
-    int rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
-    const int vnni_granularity = data_type_vnni_granularity(data_type::f16);
-    const int r_end = utils::div_up(rd_block, vnni_granularity);
-    assert(r_end <= num_rows && "bad tile parameters");
-
-    if (dt == data_type::f8_e5m2)
-        f8_e5m2_emulator_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-    else if (dt == data_type::f8_e4m3)
-        f8_e4m3_emulator_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-    else
-        assert(!"unsupported data type");
-
-    // zero rest of the tile data
-    if (r_end < num_rows) {
-        vpxord(zmm_2, zmm_2, zmm_2);
-        for (int r = r_end; r < num_rows; ++r)
-            vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_2);
-    }
-}
-
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::apply_alpha_beta(
         int bd_block, int ld_block2, bool is_ld_tail) {
     const bool apply_alpha = brg.alpha != 1.f;
     const bool dq2ps_required = brg.is_int8 && (apply_alpha || brg.beta != 1.f);
@@ -1114,8 +967,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
     if (need_init_beta_vmm) maybe_set_avx_mask(is_ld_tail);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::apply_post_ops(
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::apply_post_ops(
         int bd_block, int ld_block2, int ldb_and_bdb_offset, bool is_ld_tail) {
 
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
@@ -1233,8 +1086,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(
         mov(reg_aux_D, ptr[rsp + reg_aux_D_backup_offs_]);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::store_accumulators_apply_post_ops(
         int bd_block, int ld_block2, int ldb_and_bdb_offset, bool is_ld_tail) {
     auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
 
@@ -1357,7 +1210,6 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(
     if (brg.is_runtime_ldd && bd_block > 1)
         mov(ptr[rsp + reg_aux_D_backup_offs_], reg_aux_D);
 
-    if (brg.is_fp8_via_convert()) mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
     for_(int bd = 0; bd < bd_block; bd++)
     for (int ld = 0; ld < ld_block2; ld++) {
         auto addr = ptr[reg_aux_D + D_offset(bd, ld)];
@@ -1368,8 +1220,6 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(
             const Vmm r_vmm = vmm_mask(vmm, is_tail, true, k_mask);
             const Vmm_lower_t r_ymm
                     = vmm_lower_mask(vmm_lower, is_tail, true, k_mask);
-            const Xmm xmm = Xmm(vmm.getIdx());
-            const Xmm r_xmm = is_tail ? xmm | k_mask : xmm;
             switch (brg.dt_d) {
                 case data_type::f32:
                 case data_type::s32: uni_vmovups(addr, r_vmm); break;
@@ -1384,20 +1234,6 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(
                 case data_type::f16:
                     vcvtps2ph(vmm_lower, vmm, _op_mxcsr);
                     vmovdqu16(addr, r_ymm);
-                    break;
-                case data_type::f8_e5m2:
-                    if (brg.is_fp8_via_convert()) {
-                        f8_e5m2_emulator_->vcvt_f32_to_f8(xmm, vmm);
-                        vmovdqu8(addr, r_xmm);
-                    } else
-                        assert(!"Error, native conversion unsupported");
-                    break;
-                case data_type::f8_e4m3:
-                    if (brg.is_fp8_via_convert()) {
-                        f8_e4m3_emulator_->vcvt_f32_to_f8(xmm, vmm);
-                        vmovdqu8(addr, r_xmm);
-                    } else
-                        assert(!"Error, native conversion unsupported");
                     break;
                 case data_type::s8: vpmovsdb(addr, r_vmm); break;
                 case data_type::u8: vpmovusdb(addr, r_vmm); break;
@@ -1414,14 +1250,13 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(
         if (brg.is_runtime_ldd && bd_block > 1 && ld == ld_block2 - 1)
             add(reg_aux_D, ptr[rsp + reg_D_shift_bytes_offs_]);
     }
-    if (brg.is_fp8_via_convert()) mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
 
     if (brg.is_runtime_ldd && bd_block > 1)
         mov(reg_aux_D, ptr[rsp + reg_aux_D_backup_offs_]);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::apply_compensation(
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::apply_compensation(
         int bd_block, int ld_block2, bool is_ld_tail) {
     // apply compensation to accumulated values
     // to avoid the loss of accuracy when converting s32 to f32
@@ -1503,8 +1338,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_compensation(
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::store_accumulators_without_post_ops(
         int bd_block, int ld_block2, bool is_ld_tail) {
 
     // if (brg.is_int8 && alpha_or_beta_applicable && !beta_uses_vadd) ->
@@ -1553,8 +1388,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
         mov(reg_aux_C, ptr[rsp + reg_aux_C_backup_offs_]);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::store_accumulators(int bd_block2,
         bool is_bdb_tail, int ld_block2, bool is_ld_tail,
         bool skip_accumulation) {
     const bool has_zero_points = !everyone_is(brgemm_broadcast_t::none,
@@ -1770,8 +1605,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::restore_A_B_matrices() {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::restore_A_B_matrices() {
     auto restore_reg_batch = brg.brgattr.max_bs > 1 || vpad_exist;
     if (brg.type == brgemm_addr) {
         if (restore_reg_batch) mov(reg_aux1_batch, reg_addr_batch);
@@ -1788,8 +1623,8 @@ void jit_brgemm_kernel_t<Wmm>::restore_A_B_matrices() {
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::set_A_B_matrices() {
     if (brg.type == brgemm_addr) {
         if (brg.brgattr.max_bs > 1) {
             if (brg.layout == brgemm_row_major) {
@@ -1843,102 +1678,11 @@ void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
     add(reg_aux_B, reg_b_offset);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
-        const Tmm &t1, reg64_t reg_base, size_t offset, reg64_t reg_stride,
-        int num_rows, int num_col_bytes, bool is_rd_tail) {
-    constexpr int tile_size = 1024;
-    const auto transform_offset = brg.brgattr.use_interleave_stores
-            ? brg.get_num_C_tiles() * tile_size
-            : 0;
-    add(reg_buf_aux, transform_offset);
-
-    switch (matrix_kind) {
-        case matrix_A:
-            fp8_to_f16_upconvert(num_rows, num_col_bytes, reg_base, offset,
-                    reg_stride, brg.dt_a, is_rd_tail);
-            break;
-        case matrix_B:
-            fp8_to_f16_upconvert_to_vnni(num_rows, num_col_bytes, reg_base,
-                    offset, reg_stride, brg.dt_b, is_rd_tail);
-            break;
-        default: assert(!"Wrong Matrix");
-    }
-
-    // load into tmm from the transformed data.
-    mov(reg_converted_stride, zmm_width_in_bytes_);
-    tileloadd(t1, ptr[reg_buf_aux + reg_converted_stride]);
-}
-
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
-        int idx, int offset, bool is_rd_tail, bool is_tail) {
-
-    const bool is_A = matrix_kind == matrix_kind_t::matrix_A;
-
-    const int tmm_idx = is_A ? brg.get_A_tensor(idx, is_tail)
-                             : brg.get_B_tensor(idx, is_tail);
-    auto t1 = Tmm(tmm_idx);
-
-    auto reg_base = is_A ? reg_aux_A : reg_aux_B;
-
-    auto reg_stride = is_A ? reg_stride_lda : reg_stride_ldb;
-    bool try_load_nt = brg.innermost_loop
-            == (is_A ? brgemm_bd_loop_innermost : brgemm_ld_loop_innermost);
-
-    if (brg.is_fp8_via_convert()) {
-        const int typesize_A
-                = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
-        const int typesize_B
-                = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
-        int rd_step = 4 / typesize_A;
-        int rd_block = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
-        if (brg.is_input_convert()) {
-            const int vnni_granularity
-                    = data_type_vnni_granularity(data_type::f16);
-            rd_block = utils::rnd_up(rd_block, vnni_granularity);
-        }
-
-        int A_col = typesize_A * rd_block;
-        int A_row = is_tail ? brg.bdb_tail : brg.bd_block;
-
-        int B_col = (is_tail ? brg.ldb_tail : brg.ld_block) * typesize_B
-                * rd_step;
-        int B_row = brg.typesize_C != 0 ? A_col / brg.typesize_C : 0;
-        mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
-        mov(ptr[rsp + reg_val_tmp_2_], reg_buf_aux);
-
-        mov(reg_buf_aux, ptr[rsp + reg_buf_offs_]);
-        maybe_pre_process_data(matrix_kind, t1, reg_base, offset, reg_stride,
-                is_A ? A_row : B_row, is_A ? A_col : B_col, is_rd_tail);
-
-        mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
-        mov(reg_buf_aux, ptr[rsp + reg_val_tmp_2_]);
-    } else {
-        const size_t cache_footprint = static_cast<size_t>(brg.typesize_A)
-                        * brg.brgattr.hint_expected_A_size
-                + static_cast<size_t>(brg.typesize_B)
-                        * brg.brgattr.hint_expected_B_size
-                + static_cast<size_t>(brg.typesize_C)
-                        * brg.brgattr.hint_expected_C_size;
-        if (try_load_nt
-                && cache_footprint >= platform::get_per_core_cache_size(1))
-            tileloaddt1(t1, ptr[reg_base + offset + reg_stride]);
-        else
-            tileloadd(t1, ptr[reg_base + offset + reg_stride]);
-    }
-}
-
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(int bd_block2,
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::gemm_microkernel_amx(int bd_block2,
         bool is_bdb_tail, int ld_block2, bool is_rd_tail, bool is_ld_tail) {
     auto tdpbxxd = [this](const Tmm &x1, const Tmm &x2, const Tmm &x3) {
-        if (brg.is_fp8) {
-            if (brg.is_fp8_via_convert())
-                tdpfp16ps(x1, x2, x3);
-            else
-                assert(!"Not supported!");
-        } else if (brg.dt_a == data_type::bf16 && brg.dt_b == data_type::bf16) {
+        if (brg.dt_a == data_type::bf16 && brg.dt_b == data_type::bf16) {
             tdpbf16ps(x1, x2, x3);
         } else if (brg.dt_a == data_type::f16 && brg.dt_b == data_type::f16) {
             tdpfp16ps(x1, x2, x3);
@@ -1954,19 +1698,34 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(int bd_block2,
             assert(!"unsupported combination");
         }
     };
+
+    auto maybe_tileloadd_nt = [this](const Tmm &t1, reg64_t base, int offset,
+                                      reg64_t stride, bool try_load_nt) {
+        if (try_load_nt
+                && static_cast<size_t>(
+                           brg.typesize_A * brg.brgattr.hint_expected_A_size
+                           + brg.typesize_B * brg.brgattr.hint_expected_B_size
+                           + brg.typesize_C * brg.brgattr.hint_expected_C_size)
+                        >= platform::get_per_core_cache_size(1))
+            tileloaddt1(t1, ptr[base + offset + stride]);
+        else
+            tileloadd(t1, ptr[base + offset + stride]);
+    };
+
     int rbd_block = (is_rd_tail) ? 1 : brg.rdb;
     for (int rdb = 0; rdb < rbd_block; rdb++) {
         for (int bdb = 0; bdb < bd_block2; bdb++) {
-            maybe_tileloadd_nt(matrix_kind_t::matrix_A, bdb,
-                    rdb * rdb_A_offset() + A_offset(bdb, 0, true), is_rd_tail,
-                    is_bdb_tail);
+            maybe_tileloadd_nt(Tmm(brg.get_A_tensor(bdb, is_bdb_tail)),
+                    reg_aux_A, rdb * rdb_A_offset() + A_offset(bdb, 0, true),
+                    reg_stride_lda,
+                    brg.innermost_loop == brgemm_bd_loop_innermost);
         }
         for (int ldb = 0; ldb < ld_block2; ldb++) {
-
             const int idx = (is_ld_tail) ? brg.ld_block2 : ldb;
-            maybe_tileloadd_nt(matrix_kind_t::matrix_B, idx,
-                    rdb * rdb_B_offset() + B_offset(ldb, 0, true), is_rd_tail,
-                    is_ld_tail);
+            maybe_tileloadd_nt(Tmm(brg.get_B_tensor(idx, is_ld_tail)),
+                    reg_aux_B, rdb * rdb_B_offset() + B_offset(ldb, 0, true),
+                    reg_stride_ldb,
+                    brg.innermost_loop == brgemm_ld_loop_innermost);
             for (int bdb = 0; bdb < bd_block2; bdb++) {
                 tdpbxxd(Tmm(brg.get_C_tensor(
                                 bdb, idx, is_bdb_tail, is_ld_tail)),
@@ -1981,8 +1740,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(int bd_block2,
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     if (brg.is_f32 || brg.is_f16
             || (brg.is_bf16 && brg.isa_impl == avx2_vnni_2))
         uni_vfmadd231ps(v1, v2, v3);
@@ -1993,8 +1752,7 @@ void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
             vpdpbssd(v1, v3, v2);
         else if (brg.has_int8_vnni)
             vpdpbusd(v1, v3, v2,
-                    is_superset(brg.isa_impl, avx512_core) ? EvexEncoding
-                                                           : VexEncoding);
+                    is_superset(isa, avx512_core) ? EvexEncoding : VexEncoding);
         else {
             vpmaddubsw(int8_dot_product_temp(), v3, v2);
             vpmaddwd(int8_dot_product_temp(), int8_dot_product_temp(),
@@ -2004,9 +1762,10 @@ void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::compute_int8_compensation(int rd_loop, int bd_b,
-        int bd_e, int bd_block, int ld_block2, bool is_ld_tail, int vpad) {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::compute_int8_compensation(int rd_loop,
+        int bd_b, int bd_e, int bd_block, int ld_block2, bool is_ld_tail,
+        int vpad) {
     assert(brg.is_int8);
 
     auto compensation_padding = [this, ld_block2](Vmm vmm_load, Vmm vmm_tmp,
@@ -2079,12 +1838,10 @@ void jit_brgemm_kernel_t<Wmm>::compute_int8_compensation(int rd_loop, int bd_b,
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
-        int ld_block2, bool is_rd_tail, bool is_ld_tail, int vpad,
-        int rows_for_rd_tail) {
-    assert(!brg.is_fp8_via_convert() && "No non-AMX path for fp8");
-
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::gemm_microkernel(int bd_block2,
+        bool is_bdb_tail, int ld_block2, bool is_rd_tail, bool is_ld_tail,
+        int vpad, int rows_for_rd_tail) {
     MAYBE_UNUSED(bd_block2);
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     const auto bd_b = nstl::max(0, vpad);
@@ -2263,8 +2020,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::ldb_loop(int bd_block2, bool is_bdb_tail,
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::ldb_loop(int bd_block2, bool is_bdb_tail,
         int ld_block2, int ldb_loop_length, bool is_reg_tail, bool is_ld_tail,
         bool check_top_vpad, bool check_bottom_vpad, int rows_for_rd_tail,
         bool skip_accumulation) {
@@ -2366,7 +2123,7 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(int bd_block2, bool is_bdb_tail,
                     const auto vpad_first = -brg.brgattr.max_bottom_vpad;
                     const auto vpad_last = brg.brgattr.max_top_vpad;
                     const auto n_vpads = vpad_last - vpad_first + 2;
-                    constexpr auto MAX_N_VPADS = 2 * brgemm_desc_t::MAX_VPAD;
+                    constexpr auto MAX_N_VPADS = 2 * brgemm_t::MAX_VPAD;
                     assert(n_vpads < MAX_N_VPADS);
 
                     Label Vpad_loop_end_label;
@@ -2456,8 +2213,8 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(int bd_block2, bool is_bdb_tail,
     }
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::bdb_loop() {
     auto do_ldb_loop = [this](int bd_block2, bool is_bdb_tail,
                                bool check_top_vpad, bool check_bottom_vpad,
                                int rows_for_rd_tail, bool skip_accumulation) {
@@ -2684,8 +2441,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         bdb_loop_general(false);
 }
 
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::generate() {
+template <cpu_isa_t isa, typename Wmm>
+void jit_brgemm_kernel_t<isa, Wmm>::generate() {
     preamble();
 
     sub(rsp, stack_space_needed_);
@@ -2739,11 +2496,6 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
             dd(scale_int);
     }
 
-    if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
-    }
-
     if (brg.with_eltwise)
         postops_injector_->prepare_table(/* generate = */ true);
 }
@@ -2772,35 +2524,44 @@ brgemm_attr_t::brgemm_attr_t()
     , bd_mask(nullptr)
     , static_offsets(nullptr) {}
 
-template <typename Wmm>
-brgemm_kernel_common_t<Wmm>::brgemm_kernel_common_t(const brgemm_desc_t &abrd)
-    : brgemm_kernel_(new jit_brgemm_kernel_t<Wmm>(abrd)) {}
+template <cpu_isa_t isa, typename Wmm>
+brgemm_kernel_common_t<isa, Wmm>::brgemm_kernel_common_t(const brgemm_t &abrd)
+    : brgemm_kernel_(new jit_brgemm_kernel_t<isa, Wmm>(abrd)) {}
 
-template <typename Wmm>
-status_t brgemm_kernel_common_t<Wmm>::create_kernel() {
+template <cpu_isa_t isa, typename Wmm>
+status_t brgemm_kernel_common_t<isa, Wmm>::create_kernel() {
     if (brgemm_kernel_) return brgemm_kernel_->create_kernel();
     return status::out_of_memory;
 }
 
-template <typename Wmm>
-void brgemm_kernel_common_t<Wmm>::operator()(
+template <cpu_isa_t isa, typename Wmm>
+void brgemm_kernel_common_t<isa, Wmm>::operator()(
         brgemm_kernel_params_t *params) const {
     (*brgemm_kernel_)(params);
 }
 
-template <typename Wmm>
-const jit_generator *brgemm_kernel_common_t<Wmm>::get_jit_generator() const {
+template <cpu_isa_t isa, typename Wmm>
+const jit_generator *
+brgemm_kernel_common_t<isa, Wmm>::get_jit_generator() const {
     return brgemm_kernel_;
 }
 
-template <typename Wmm>
-brgemm_kernel_common_t<Wmm>::~brgemm_kernel_common_t() {
+template <cpu_isa_t isa, typename Wmm>
+brgemm_kernel_common_t<isa, Wmm>::~brgemm_kernel_common_t() {
     delete brgemm_kernel_;
 }
 
-template struct brgemm_kernel_common_t<Xbyak::Tmm>;
-template struct brgemm_kernel_common_t<Xbyak::Zmm>;
-template struct brgemm_kernel_common_t<Xbyak::Ymm>;
+// isa specific instantiations are required because
+// post-ops require template isa param.
+template struct brgemm_kernel_common_t<avx512_core_amx_fp16, Xbyak::Tmm>;
+template struct brgemm_kernel_common_t<avx512_core_amx, Xbyak::Tmm>;
+template struct brgemm_kernel_common_t<avx512_core_fp16, Xbyak::Zmm>;
+template struct brgemm_kernel_common_t<avx512_core_bf16, Xbyak::Zmm>;
+template struct brgemm_kernel_common_t<avx512_core_vnni, Xbyak::Zmm>;
+template struct brgemm_kernel_common_t<avx512_core, Xbyak::Zmm>;
+template struct brgemm_kernel_common_t<avx2_vnni, Xbyak::Ymm>;
+template struct brgemm_kernel_common_t<avx2_vnni_2, Xbyak::Ymm>;
+template struct brgemm_kernel_common_t<avx2, Xbyak::Ymm>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

@@ -46,8 +46,6 @@ namespace injector {
 using lambda_jit_injectors_t
         = std::map<dnnl_primitive_kind_t, std::function<void()>>;
 
-size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd);
-
 // A base isa-agnostic post-ops injector abstract class.
 //
 // The main mechanism of handling various post-ops types. It utilizes internally
@@ -65,11 +63,6 @@ public:
     // cases it's aligned with the former kernel ISA if such enum value is
     // instantiated for injectors. If not, uses the next available isa enum
     // value in compliance with same vector length.
-    static jit_uni_postops_injector_base_t *create(jit_generator *host,
-            cpu_isa_t isa, const post_ops_t &post_ops,
-            const binary_injector::static_params_t &binary_static_params,
-            const eltwise_injector::static_params_t &eltwise_static_params);
-
     static jit_uni_postops_injector_base_t *create(jit_generator *host,
             cpu_isa_t isa, const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params);
@@ -165,7 +158,7 @@ public:
     /*
      * Thin wrapper for eltwise injector specific function
      */
-    void prepare_table(bool gen_table);
+    void prepare_table(bool gen_table) override;
     void set_lambda_injector(lambda_jit_injectors_t::key_type,
             const lambda_jit_injectors_t::mapped_type &jit_injector) override;
 

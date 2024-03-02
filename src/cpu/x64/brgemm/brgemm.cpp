@@ -249,8 +249,8 @@ status_t brgemm_desc_init(brgemm_t *brg, cpu_isa_t isa,
 
     if (M <= 0 || N <= 0 || K <= 0) return status::invalid_arguments;
 
-    if (utils::everyone_is(false, brg->is_int8, brg->is_bf16, brg->is_f32,
-                brg->is_f16, brg->is_fp8))
+    if (utils::everyone_is(
+                false, brg->is_int8, brg->is_bf16, brg->is_f32, brg->is_f16))
         return status::unimplemented;
 
     // Only amx_int8 kernel supports u8 weights.
@@ -319,10 +319,6 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
                 is_superset(brg->isa_impl, avx512_core_fp16)
                         || is_superset(brg->isa_impl, avx2_vnni_2)))
         return status::unimplemented;
-    if (!IMPLICATION(one_of(data_type::f8_e5m2, dt_bias, dt_d)
-                        || one_of(data_type::f8_e4m3, dt_bias, dt_d),
-                mayiuse(avx512_core_amx_fp16)))
-        return status::unimplemented;
     // check that combination of data types is allowed
     if ((brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8)
             && (!one_of(dt_d, data_type::u8, data_type::s8, data_type::s32,
@@ -343,17 +339,6 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
                 one_of(dt_d, data_type::f32, data_type::f16)
                         && one_of(dt_bias, data_type::undef, data_type::f32,
                                 data_type::f16)))
-        return status::unimplemented;
-    const auto bias_f8_e5m2_compatible
-            = one_of(dt_d, data_type::f32, data_type::f8_e5m2)
-            && one_of(dt_bias, data_type::undef, data_type::f32,
-                    data_type::f8_e5m2);
-    const auto bias_f8_e4m3_compatible
-            = one_of(dt_d, data_type::f32, data_type::f8_e4m3)
-            && one_of(dt_bias, data_type::undef, data_type::f32,
-                    data_type::f8_e4m3);
-    if (!IMPLICATION(brg->is_fp8,
-                bias_f8_e5m2_compatible || bias_f8_e4m3_compatible))
         return status::unimplemented;
 
     brg->dt_d = dt_d;
@@ -556,9 +541,6 @@ status_t brgemm_desc_set_attr(brgemm_t *brg, const brgemm_attr_t &brgattr) {
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
 
-    // TODO: update conditions once other implementations are enabled
-    if (brg->is_fp8 && !brg->is_fp8_via_convert()) return status::unimplemented;
-
     return status::success;
 }
 
@@ -569,7 +551,7 @@ status_t brgemm_kernel_create(
 
     if (brg.is_dgmm) {
         if (brg.type == brgemm_static_offs) return status::unimplemented;
-        if (brg.is_zmm) {
+        if (brg.is_tmm || brg.is_zmm) {
             CHECK(safe_ptr_assign<brgemm_kernel_t>(
                     *brg_kernel, new brdgmm_kernel_t<Xbyak::Zmm>(brg)));
         } else if (brg.is_ymm) {
@@ -615,8 +597,7 @@ status_t brgemm_init_tiles(const brgemm_t &brg, char palette[64]) {
 
     //TODO: Add support of tail processing by reduction dimension
     auto rd_block = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
-    if (brg.is_input_convert())
-        rd_block = utils::rnd_up(rd_block, 2 /*vnni_granularity*/);
+    if (brg.is_bf32) rd_block = utils::rnd_up(rd_block, 2 /*vnni_granularity*/);
 
     palette_config_t *buff = (palette_config_t *)(palette);
 
@@ -624,10 +605,8 @@ status_t brgemm_init_tiles(const brgemm_t &brg, char palette[64]) {
     for (int i = 0; i < max_palette_size_in_bytes; i++)
         _tc[i] = 0;
 
-    const int typesize_A
-            = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
-    const int typesize_B
-            = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
+    const int typesize_A = brg.is_bf32 ? sizeof(bfloat16_t) : brg.typesize_A;
+    const int typesize_B = brg.is_bf32 ? sizeof(bfloat16_t) : brg.typesize_B;
 
     const int rd_step = 4 / typesize_A;
 

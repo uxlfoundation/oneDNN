@@ -37,9 +37,8 @@ using namespace dnnl::impl::utils;
 using namespace Xbyak;
 
 template <typename Wmm>
-jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
-        const brgemm_desc_t &abrd)
-    : jit_generator(jit_name(), abrd.isa_impl)
+jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(const brgemm_t &abrd)
+    : jit_generator(jit_name(), nullptr, MAX_CODE_SIZE, true, abrd.isa_impl)
     , brg(abrd)
     , simd_w_(vreg_traits<Vmm>::vlen / brg.typesize_C)
     , max_vmms_(isa_num_vregs(brg.isa_impl))
@@ -611,17 +610,6 @@ void jit_brdgmm_kernel_base_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::load_src_zp() {
-    mov(reg_src_zero_point, ptr[rsp + src_zp_value_]);
-    lea(reg_src_zero_point,
-            is_src_zp_bcast_
-                    ? ptr_b[reg_src_zero_point]
-                    : ptr[reg_src_zero_point + reg_aux_N * sizeof(int32_t)]);
-    if (!is_superset(brg.isa_impl, avx512_core) && is_src_zp_bcast_)
-        uni_vpbroadcastd(vmm_bcast(), ptr[reg_src_zero_point]);
-}
-
-template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
@@ -824,8 +812,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_b(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
-        compute_pad_kernel_t kernel_type, Vmm vmm_acc, Vmm vmmb, int n,
-        bool is_tail_block) {
+        compute_pad_kernel_t kernel_type, Vmm vmm_acc, Vmm vmmb) {
     switch (kernel_type) {
         case compute_pad_kernel_t::s8s8_kernel:
             vpdpbusd(vmm_acc, vmm_shift(), vmmb,
@@ -1435,7 +1422,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::generate() {
 }
 
 template <typename Wmm>
-brdgmm_kernel_t<Wmm>::brdgmm_kernel_t(const brgemm_desc_t &abrd)
+brdgmm_kernel_t<Wmm>::brdgmm_kernel_t(const brgemm_t &abrd)
     : brgemm_kernel_(new jit_brdgmm_kernel_base_t<Wmm>(abrd)) {}
 
 template <typename Wmm>

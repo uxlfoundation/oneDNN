@@ -37,9 +37,8 @@ using namespace dnnl::impl::utils;
 using namespace Xbyak;
 
 template <typename Wmm>
-jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
-        const brgemm_desc_t &abrd)
-    : jit_generator(jit_name(), abrd.isa_impl)
+jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(const brgemm_t &abrd)
+    : jit_generator(jit_name(), nullptr, MAX_CODE_SIZE, true, abrd.isa_impl)
     , brg(abrd)
     , simd_w_(vreg_traits<Vmm>::vlen / brg.typesize_C)
     , max_vmms_(isa_num_vregs(brg.isa_impl))
@@ -709,7 +708,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_a(
                     vcvtneobf162ps(vmma, addr);
             } else {
                 vpmovzxwd(vmma, addr);
-                if (is_slow_bf16_vnni()) vpslld(vmma, vmma, 16);
+                if (brg.is_bf16_tmm) vpslld(vmma, vmma, 16);
             }
         } else if (brg.is_f16) {
             if (brg.isa_impl == avx2_vnni_2) {
@@ -783,7 +782,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_b(
                 vcvtneobf162ps(vmmb, addr);
         } else {
             vpmovzxwd(vmmb, addr);
-            if (is_slow_bf16_vnni()) vpslld(vmmb, vmmb, 16);
+            if (brg.is_bf16_tmm) vpslld(vmmb, vmmb, 16);
         }
     }
 }
@@ -928,7 +927,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
                 vfmadd231ps(vmm_acc, vmma, vmmb);
             }
         } else if (brg.is_bf16) {
-            if (is_slow_bf16_vnni() || brg.isa_impl == avx2_vnni_2)
+            if (brg.is_bf16_tmm /* dont use vdpbf16ps on cpus supporting amx due
+                                 to poor perf.*/
+                    || brg.isa_impl == avx2_vnni_2)
                 vfmadd231ps(vmm_acc, vmma, vmmb);
             else
                 vdpbf16ps(vmm_acc, vmma, vmmb);
@@ -1370,7 +1371,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::generate() {
 }
 
 template <typename Wmm>
-brdgmm_kernel_t<Wmm>::brdgmm_kernel_t(const brgemm_desc_t &abrd)
+brdgmm_kernel_t<Wmm>::brdgmm_kernel_t(const brgemm_t &abrd)
     : brgemm_kernel_(new jit_brdgmm_kernel_base_t<Wmm>(abrd)) {}
 
 template <typename Wmm>

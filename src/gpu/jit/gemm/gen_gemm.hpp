@@ -108,9 +108,11 @@ struct gen_gemm_t : public gpu_gemm_t {
             }
 
             if (wei_decomp_) {
-                attr_skip_mask |= smask_t::fpmath_mode;
-                attr_skip_mask |= smask_t::scales_runtime_data_type;
-                attr_skip_mask |= smask_t::zero_points_runtime_data_type;
+                attr_skip_mask |= smask_t::fpmath_mode
+                        | smask_t::scales_runtime_data_type
+                        | smask_t::scales_runtime_groups
+                        | smask_t::zero_points_runtime_data_type
+                        | smask_t::zero_points_runtime_groups;
             }
 
             bool wei_zp = false, wei_zp_2d = false;
@@ -121,7 +123,6 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (utils::one_of(d->c_type(), s32, f16, f32, u8, s8)
                     && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
                 ok &= (utils::one_of(d->b_type(), u8, s8) || wei_decomp_);
-
                 attr_skip_mask |= smask_t::zero_points_runtime;
 
                 ok = ok
@@ -161,27 +162,54 @@ struct gen_gemm_t : public gpu_gemm_t {
                             d->c_type(), utils::one_of(d->a_type(), s8, u8));
 
             if (!attr()->zero_points_.has_default_values()) {
+                bool a_zp = !attr_zps.has_default_values(DNNL_ARG_A);
+                bool b_zp = !attr_zps.has_default_values(DNNL_ARG_B);
+
                 int cmask_a = 0, cmask_b = 0, cmask_c = 0;
-                CHECK(attr()->zero_points_.get(DNNL_ARG_A, &cmask_a));
-                CHECK(attr()->zero_points_.get(DNNL_ARG_B, &cmask_b));
-                CHECK(attr()->zero_points_.get(DNNL_ARG_C, &cmask_c));
-                ok &= utils::one_of(cmask_a, 0, 1 << 1, 1 << 2)
+                CHECK(attr_zps.get(DNNL_ARG_A, &cmask_a));
+                CHECK(attr_zps.get(DNNL_ARG_B, &cmask_b));
+                CHECK(attr_zps.get(DNNL_ARG_C, &cmask_c));
+
+                wei_zp = a_zp;
+                wei_zp_2d = wei_decomp_ && (cmask_a == ((1 << 0) | (1 << 1)));
+                ok &= (utils::one_of(cmask_a, 0, 1 << 1, 1 << 2) || wei_zp_2d)
                         && utils::one_of(cmask_b, 0, 1 << 0)
                         && utils::one_of(cmask_c, 0, 1 << 0, 1 << 1);
-                bool a_zp
-                        = !attr()->zero_points_.has_default_values(DNNL_ARG_A);
-                bool b_zp
-                        = !attr()->zero_points_.has_default_values(DNNL_ARG_B);
 
                 ao_dims_ = a_zp ? (cmask_a != 0 ? 1 : 0) : -1;
                 bo_dims_ = b_zp ? (cmask_b != 0 ? 1 : 0) : -1;
+                if (wei_zp_2d) ao_dims_ = 2;
                 if (swap_ab_) std::swap(ao_dims_, bo_dims_);
+
+                if (wei_zp_2d) {
+                    wei_q2d_group_k
+                            = attr_zps.get_groups_ndims(DNNL_ARG_WEIGHTS) > 0
+                            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[0]
+                            : 1;
+                }
             }
 
-            for (const auto &s :
-                    {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
-                ok &= utils::one_of(attr()->scales_.get(s).mask_, 0, 1 << 0,
-                        1 << 1, 1 << 2);
+            if (wei_decomp_
+                    && attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_
+                            == ((1 << 0) | (1 << 1)))
+                wei_scales_2d_ = true;
+
+            for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+                auto mask = attr()->scales_.get(s).mask_;
+                ok &= utils::one_of(mask, 0, 1 << 0, 1 << 1, 1 << 2)
+                        || (s == DNNL_ARG_WEIGHTS && wei_scales_2d_);
+            }
+
+            if (wei_scales_2d_) {
+                if (wei_zp && !wei_zp_2d) return status::unimplemented;
+                auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
+                wei_scales_type = wei_scales.data_type_;
+                auto scales_group_k
+                        = wei_scales.ndims_ > 0 ? wei_scales.group_dims_[0] : 1;
+                if (!wei_zp_2d)
+                    wei_q2d_group_k = scales_group_k;
+                else if (wei_q2d_group_k != scales_group_k)
+                    return status::unimplemented;
             }
 
             CHECK(init_post_ops());

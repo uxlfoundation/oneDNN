@@ -119,10 +119,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
 
         if (!wei_scales->has_default_values()) {
             const auto &mask = wei_scales->mask_;
-            bool convert = (mask == 0 || math::is_pow2(mask));
-            if (wei_scales->ndims_ > 1)
-                convert |= (wei_scales->group_dims_[0] >= d->k());
-            if (convert) {
+            if (mask == 0 || math::is_pow2(mask)) {
                 ok = ok && (mask == 0 || mask == (1 << (d->c_desc.ndims - 1)));
 
                 dim_t dims = {(mask > 0) ? d->m() : 1};

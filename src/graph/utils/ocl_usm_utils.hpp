@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,8 +19,7 @@
 
 #include "oneapi/dnnl/dnnl_config.h"
 
-#include "common/c_types_map.hpp"
-#include "gpu/intel/compute/device_info.hpp"
+#include "graph/utils/ocl_check.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -28,13 +27,11 @@ namespace graph {
 namespace utils {
 namespace ocl {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-void *malloc_shared(
-        cl_device_id dev, cl_context ctx, size_t size, size_t alignment = 0);
+void *malloc_shared(const cl_device_id dev, const cl_context ctx, size_t size,
+        size_t alignment = 0);
 
-void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
-        compute::gpu_arch_t &gpu_arch, int &stepping_id,
-        uint64_t &native_extensions, bool &mayiuse_systolic,
-        bool &mayiuse_ngen_kernels);
+void free(void *ptr, const cl_device_id dev, const cl_context ctx);
+#endif
 
 } // namespace ocl
 } // namespace utils

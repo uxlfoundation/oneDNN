@@ -33,7 +33,7 @@
 #define CL_DEVICE_IP_VERSION_INTEL 0x4250
 #endif
 
-namespace ngen {
+namespace NGEN_NAMESPACE {
 
 
 // Exceptions.
@@ -313,6 +313,6 @@ bool OpenCLCodeGenerator<hw>::detectEfficient64Bit(cl_context context, cl_device
 }
 #endif
 
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 #endif

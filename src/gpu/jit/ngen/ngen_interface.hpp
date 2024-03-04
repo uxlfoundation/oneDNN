@@ -22,7 +22,7 @@
 #include <sstream>
 
 
-namespace ngen {
+namespace NGEN_NAMESPACE {
 
 template <HW hw> class OpenCLCodeGenerator;
 template <HW hw> class L0CodeGenerator;
@@ -47,6 +47,11 @@ public:
 class use_simd1_local_id_exception : public std::runtime_error {
 public:
     use_simd1_local_id_exception() : std::runtime_error("Use getSIMD1LocalID for SIMD1 kernels") {}
+};
+
+class unsupported_argument_location_override : public std::runtime_error {
+public:
+    unsupported_argument_location_override() : std::runtime_error("Argument register location is invalid") {}
 };
 #endif
 
@@ -78,6 +83,7 @@ public:
     template <typename DT>
     inline void newArgument(const std::string &name)    { newArgument(name, getDataType<DT>()); }
     inline void newArgument(const std::string &name, DataType type, ExternalArgumentType exttype = ExternalArgumentType::Scalar, GlobalAccessType access = GlobalAccessType::Default);
+    inline void newArgument(const std::string &name, Subregister reg, ExternalArgumentType exttype = ExternalArgumentType::Scalar, GlobalAccessType access = GlobalAccessType::Default);
     inline void newArgument(const std::string &name, ExternalArgumentType exttype, GlobalAccessType access = GlobalAccessType::Default);
 
     inline Subregister getArgument(const std::string &name) const;
@@ -90,6 +96,7 @@ public:
 
     const std::string &getExternalName() const           { return kernelName; }
     int getSIMD() const                                  { return simd; }
+    int getBarrierCount() const                          { return barrierCount; }
     int getGRFCount() const                              { return needGRF; }
     size_t getSLMSize() const                            { return slmSize; }
 #if XE3P
@@ -163,8 +170,9 @@ protected:
 
     int nextArgIndex = 0;
     bool finalized = false;
+    bool hasArgLocOverride = false;
 
-    bool allow64BitBuffers = 0;
+    bool allow64BitBuffers = false;
     ThreadArbitrationMode arbitrationMode = ThreadArbitrationMode::Default;
     int barrierCount = 0;
     bool needDPAS = false;
@@ -201,15 +209,25 @@ protected:
 
 };
 
-using NEOInterfaceHandler = InterfaceHandler;
+using NEOInterfaceHandler = InterfaceHandler;   /* Deprecated -- do not use in new code. */
 
-void InterfaceHandler::newArgument(const std::string &name, DataType type, ExternalArgumentType exttype, GlobalAccessType access)
+void InterfaceHandler::newArgument(const std::string &name, Subregister reg, ExternalArgumentType exttype, GlobalAccessType access)
 {
+    auto type = reg.getType();
+    if (reg.isNull())
+        reg.invalidate();
+    else
+        hasArgLocOverride = true;
     if (exttype != ExternalArgumentType::GlobalPtr)
         access = GlobalAccessType::None;
     if (access == GlobalAccessType::Default)
         access = defaultGlobalAccess(hw);
-    assignments.push_back({name, type, exttype, access, Subregister{}, noSurface, nextArgIndex++});
+    assignments.push_back({name, type, exttype, access, reg, noSurface, nextArgIndex++});
+}
+
+void InterfaceHandler::newArgument(const std::string &name, DataType type, ExternalArgumentType exttype, GlobalAccessType access)
+{
+    newArgument(name, NullRegister().sub(0, type), exttype, access);
 }
 
 void InterfaceHandler::newArgument(const std::string &name, ExternalArgumentType exttype, GlobalAccessType access)
@@ -312,6 +330,7 @@ void InterfaceHandler::generateDummyCL(std::ostream &stream) const
 {
 #ifdef NGEN_SAFE
     if (!finalized) throw interface_not_finalized();
+    if (hasArgLocOverride) throw unsupported_argument_location_override();
 #endif
     const char *dpasDummy = "    int __builtin_IB_sub_group_idpas_s8_s8_8_1(int, int, int8) __attribute__((const));\n"
                             "    int z = __builtin_IB_sub_group_idpas_s8_s8_8_1(0, ____[0], 1);\n"
@@ -420,21 +439,33 @@ void InterfaceHandler::finalize()
             auto bytes = getBytes(assignment.type);
             auto size = getDwords(assignment.type) << 2;
 
-            if (assignment.name == localSizeArgs[0]) {
-                // Move to next GRF if local size arguments won't fit in this one.
-                if (offset > grfSize - (3 * 4)) {
+            if (assignment.reg.isInvalid()) {
+                if (assignment.name == localSizeArgs[0]) {
+                    // Move to next GRF if local size arguments won't fit in this one.
+                    if (offset > grfSize - (3 * 4)) {
+                        offset = 0;
+                        base++;
+                    }
+                }
+
+                offset = (offset + size - 1) & -size;
+                if (offset >= grfSize) {
                     offset = 0;
                     base++;
                 }
+
+                assignment.reg = base.sub(offset / bytes, assignment.type);
+            } else {
+                int obase = assignment.reg.getBase();
+                int ooffset = assignment.reg.getByteOffset();
+                if (base.getBase() < obase) {
+                    base = GRF(obase);
+                    offset = ooffset;
+                } else if (base.getBase() == obase)
+                    offset = std::max(offset, ooffset);
             }
 
-            offset = (offset + size - 1) & -size;
-            if (offset >= grfSize) {
-                offset = 0;
-                base++;
-            }
-
-            assignment.reg = base.sub(offset / bytes, assignment.type);
+            offset += size;
 
             if (assignment.exttype == ExternalArgumentType::GlobalPtr) {
                 if (!assignment.globalStatelessAccess())
@@ -442,11 +473,8 @@ void InterfaceHandler::finalize()
                 if (assignment.globalSurfaceAccess())
                     assignment.surface = nextSurface;
                 nextSurface++;
-            }
-            else if (assignment.exttype == ExternalArgumentType::Scalar)
+            } else if (assignment.exttype == ExternalArgumentType::Scalar)
                 requireType(assignment.type);
-
-            offset += size;
         }
     };
 
@@ -660,6 +688,11 @@ std::string InterfaceHandler::generateZeInfo() const
             continue;
 
         auto offset = (assignment.reg.getBase() - getCrossthreadBase().getBase()) * GRF::bytes(hw) + assignment.reg.getByteOffset();
+
+#ifdef NGEN_SAFE
+        if (offset < 0) throw unsupported_argument_location_override();
+#endif
+
         if (explicitArg)
             md << "        arg_index: " << assignment.index << "\n";
         md << "        offset: " << offset << "\n"
@@ -738,6 +771,6 @@ void InterfaceHandler::dumpAssignments(std::ostream &stream) const
 }
 #endif
 
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 #endif /* header guard */

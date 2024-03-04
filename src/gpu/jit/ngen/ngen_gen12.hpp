@@ -581,6 +581,7 @@ struct Instruction12 {
 #if XE3P
     inline SendgMessageDescriptor getSendgDesc() const;
 #endif
+    inline int getFencedepJIP() const;
 
     bool isMathMacro() const {
         if (opcode() != Opcode::math) return false;
@@ -937,7 +938,7 @@ static inline void encodeTernaryTypes(Instruction12 &i, D dst, S0 src0, S1 src1,
 
 #ifdef NGEN_SAFE
     if (((dtype & s0type & s1type & s2type) ^ (dtype | s0type | s1type | s2type)) & 8)
-        throw ngen::invalid_type_exception();
+        throw NGEN_NAMESPACE::invalid_type_exception();
 #endif
 }
 
@@ -1576,6 +1577,12 @@ SendgMessageDescriptor Instruction12::getSendgDesc() const
     return desc;
 }
 #endif
+int Instruction12::getFencedepJIP() const
+{
+    uint32_t imm = 0;
+    (void) getImm32(imm);
+    return int32_t(imm) / sizeof(Instruction12);
+}
 
 bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const
 {

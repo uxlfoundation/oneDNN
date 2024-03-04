@@ -25,7 +25,7 @@
 #include "hash.hpp"
 #include "../ngen_utils.hpp"
 
-namespace ngen {
+namespace NGEN_NAMESPACE {
 namespace npack {
 
 class bad_elf : public std::runtime_error {
@@ -206,31 +206,31 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
     }
 }
 
-inline ngen::ProductFamily decodeProductFamily(ProductFamily family)
+inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
 {
-    if (family >= ProductFamily::SKL && family < ProductFamily::CNL) return ngen::ProductFamily::GenericGen9;
-    if (family >= ProductFamily::CNL && family < ProductFamily::ICL) return ngen::ProductFamily::GenericGen10;
-    if (family >= ProductFamily::ICL && family < ProductFamily::TGLLP) return ngen::ProductFamily::GenericGen11;
-    if (family >= ProductFamily::TGLLP && family <= ProductFamily::DG1) return ngen::ProductFamily::GenericGen12LP;
-    if (family == ProductFamily::XE_HP_SDV) return ngen::ProductFamily::GenericXeHP;
-    if (family == ProductFamily::DG2) return ngen::ProductFamily::DG2;
-    if (family == ProductFamily::MTL) return ngen::ProductFamily::MTL;
-    if (family == ProductFamily::PVC) return ngen::ProductFamily::PVC;
-    if (family == ProductFamily::ARL) return ngen::ProductFamily::ARL;
+    if (family >= ProductFamily::SKL && family < ProductFamily::CNL) return NGEN_NAMESPACE::ProductFamily::GenericGen9;
+    if (family >= ProductFamily::CNL && family < ProductFamily::ICL) return NGEN_NAMESPACE::ProductFamily::GenericGen10;
+    if (family >= ProductFamily::ICL && family < ProductFamily::TGLLP) return NGEN_NAMESPACE::ProductFamily::GenericGen11;
+    if (family >= ProductFamily::TGLLP && family <= ProductFamily::DG1) return NGEN_NAMESPACE::ProductFamily::GenericGen12LP;
+    if (family == ProductFamily::XE_HP_SDV) return NGEN_NAMESPACE::ProductFamily::GenericXeHP;
+    if (family == ProductFamily::DG2) return NGEN_NAMESPACE::ProductFamily::DG2;
+    if (family == ProductFamily::MTL) return NGEN_NAMESPACE::ProductFamily::MTL;
+    if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
+    if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
 #ifdef PRERELEASE_HW
-    if (family == ProductFamily::RLT) return ngen::ProductFamily::RLT;
+    if (family == ProductFamily::RLT) return NGEN_NAMESPACE::ProductFamily::RLT;
 #endif
-    if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return ngen::ProductFamily::GenericXe2;
+    if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
 #ifdef PRERELEASE_HW
-    if (family == ProductFamily::ELG) return ngen::ProductFamily::GenericXe2;
+    if (family == ProductFamily::ELG) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
 #endif
 #if XE3
-    if (family == ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
+    if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
 #endif
 #if XE3P
-    if (family == ProductFamily::FCS) return ngen::ProductFamily::GenericXe3p;
+    if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
 #endif
-    return ngen::ProductFamily::Unknown;
+    return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
 
 inline bool hasGatewayEOTSend(const std::vector<uint8_t> &binary)
@@ -258,7 +258,7 @@ inline void getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Produ
 
     findDeviceBinary(binary, nullptr, &pheader, nullptr);
     outHW = decodeGfxCoreFamily(pheader->Device);
-    outProduct.family = ngen::ProductFamily::Unknown;
+    outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown;
     outProduct.stepping = pheader->SteppingId;
 
     // XeHPG identifies with older runtimes as XeHP. Check whether EOT goes to TS (XeHP) or gateway (XeHPG).
@@ -266,7 +266,7 @@ inline void getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Produ
         outHW = HW::XeHPG;
 }
 
-inline ngen::Product decodeHWIPVersion(uint32_t rawVersion)
+inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
 {
     struct HWIPVersion {
         union {

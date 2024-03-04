@@ -28,7 +28,7 @@
 #include "ngen.hpp"
 
 
-namespace ngen {
+namespace NGEN_NAMESPACE {
 
 
 inline void RegData::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const
@@ -255,6 +255,13 @@ struct AsmInstruction {
             return false;
     }
     bool getSendDesc(MessageDescriptor &desc) const { return getImm32(desc.all, 3); }
+    int getFencedepJIP() const {
+        if (src[0].type == AsmOperand::Type::label) {
+            auto label = src[0].label;
+            return labelManager->getTarget(label.getID(*labelManager)) - inum + 1;
+        } else
+            return 0;
+    }
 
 protected:
     static inline unsigned getTypecode(const AsmOperand &op);
@@ -505,6 +512,8 @@ protected:
 
     Label _labelLocalIDsLoaded;
     Label _labelArgsLoaded;
+    Label _lastFenceLabel;
+    RegData _lastFenceDst;
 
 private:
     InstructionModifier defaultModifier;
@@ -1715,6 +1724,9 @@ public:
     void wrdep(const GRF &r) {
         wrdep(r-r);
     }
+    void fencedep(Label &fenceLocation) {
+        opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::fencedep)), fenceLocation);
+    }
 
     inline void mark(Label &label)          { streamStack.back()->mark(label, labelManager); }
 
@@ -2006,6 +2018,6 @@ void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod,
     }
 }
 
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 #endif

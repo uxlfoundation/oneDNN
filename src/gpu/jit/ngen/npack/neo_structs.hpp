@@ -26,7 +26,7 @@
 /*********************************************************************/
 
 
-namespace ngen {
+namespace NGEN_NAMESPACE {
 namespace npack {
 
 static constexpr uint32_t MAGIC_CL = 0x494E5443;
@@ -103,6 +103,6 @@ typedef struct
 } SKernelBinaryHeader;
 
 } /* namespace npack */
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 #endif /* header guard */

@@ -81,7 +81,7 @@
     add(8 | ~any2h | f1, ...)
  */
 
-namespace ngen {
+namespace NGEN_NAMESPACE {
 
 #ifdef NGEN_SAFE
 static constexpr bool _safe_ = 1;
@@ -728,8 +728,8 @@ public:
     constexpr bool getNeg()          const { return mods & 2; }
     constexpr bool getAbs()          const { return mods & 1; }
     constexpr int getMods()          const { return mods; }
-    constexpr int getBytes()         const { return ngen::getBytes(getType()); }
-    constexpr14 int getDwords()      const { return ngen::getDwords(getType()); }
+    constexpr int getBytes()         const { return NGEN_NAMESPACE::getBytes(getType()); }
+    constexpr14 int getDwords()      const { return NGEN_NAMESPACE::getDwords(getType()); }
     constexpr bool isScalar()        const { return hs == 0 && vs == 0 && width == 1; }
 
     inline constexpr14 RegData getIndirectReg() const;
@@ -1797,6 +1797,7 @@ enum class Directive {
     ignoredep_src1 = 2,
     ignoredep_src2 = 3,
     wrdep = 0x10,
+    fencedep = 0x11,
 };
 
 static inline bool isSend(Opcode op)
@@ -3695,7 +3696,7 @@ static inline void encodeAtomicDescriptor(HW hw, SendgMessageDescriptor &desc, S
 }
 #endif
 
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 
 #endif /* header guard */

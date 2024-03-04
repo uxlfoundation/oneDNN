@@ -778,6 +778,65 @@ def convert_zp_policy(value, prim_kind):
             if "diff" in md.arg:
                 has_diff_tensors = True
                 break
+    return benchdnn_postops
+
+
+def convert_quantization(q_param, prim_kind, def_value, def_type):
+    res = []
+    for arg in q_param.keys():
+        p = q_param[arg]
+        policy = convert_scale_policy(p["mask"], prim_kind)
+        benchdnn_p = arg + ":" + policy
+        if policy == "common":
+            benchdnn_p += ":" + def_value
+        dt = p["data_type"]
+        groups = p["groups"]
+        if dt != def_type or groups != "":
+            benchdnn_p += ":" + dt
+        if groups != "":
+            benchdnn_p += ":" + groups
+        res.append(benchdnn_p)
+    return "+".join(res)
+
+
+def convert_scales(scales, prim_kind):
+    return convert_quantization(
+        q_param=scales, prim_kind=prim_kind, def_value="0.5", def_type="f32"
+    )
+
+
+def convert_zero_points(zero_points, prim_kind):
+    return convert_quantization(
+        q_param=zero_points, prim_kind=prim_kind, def_value="1", def_type="s32"
+    )
+
+
+def convert_scratchpad_mode(scratchpad_mode, prim_kind):
+    return scratchpad_mode
+
+
+def convert_fpmath_mode(fpmath_mode, prim_kind):
+    return fpmath_mode
+
+
+def convert_acc_mode(acc_mode, prim_kind):
+    return acc_mode
+
+
+def convert_deterministic(deterministic, prim_kind):
+    return deterministic
+
+
+def convert_attrs(exts, prim_kind):
+    converters = {
+        "attr-post-ops": convert_post_ops,
+        "attr-scales": convert_scales,
+        "attr-zero-points": convert_zero_points,
+        "attr-scratchpad": convert_scratchpad_mode,
+        "attr-fpmath": convert_fpmath_mode,
+        "attr-acc": convert_acc_mode,
+        "attr-deterministic": convert_deterministic,
+    }
 
         layer_names = ["src_layer", "wei_layer", "dst_layer"]
         if has_diff_tensors:

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -88,8 +88,8 @@ private:
 };
 } // namespace
 
-void *malloc_shared(
-        cl_device_id dev, cl_context ctx, size_t size, size_t alignment) {
+void *malloc_shared(const cl_device_id dev, const cl_context ctx, size_t size,
+        size_t alignment) {
     using clSharedMemAllocINTEL_func_t = void *(*)(cl_context, cl_device_id,
             cl_ulong *, size_t, cl_uint, cl_int *);
     if (size == 0) return nullptr;
@@ -108,7 +108,7 @@ void *malloc_shared(
     return p;
 }
 
-void free(void *ptr, cl_device_id dev, cl_context ctx) {
+void free(void *ptr, const cl_device_id dev, const cl_context ctx) {
     if (nullptr == ptr) return;
     using F = cl_int (*)(cl_context, void *);
     static ext_func_t<F> ext_func("clMemBlockingFreeINTEL");

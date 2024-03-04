@@ -38,7 +38,12 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "graph/utils/ocl_check.hpp"
-#include "oneapi/dnnl/dnnl_graph_ocl.h"
+
+// Will move these signatures to dnnl_graph_ocl.h once the API header is added.
+typedef void *(*dnnl_graph_ocl_allocate_f)(
+        size_t size, size_t alignment, cl_device_id device, cl_context context);
+typedef void (*dnnl_graph_ocl_deallocate_f)(
+        void *buf, cl_device_id device, cl_context context, cl_event *event);
 #endif
 
 struct dnnl_graph_allocator final : public dnnl::impl::graph::utils::id_t {
@@ -195,7 +200,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void *allocate(size_t size, cl_device_id dev, cl_context ctx,
+    void *allocate(size_t size, const cl_device_id dev, const cl_context ctx,
             mem_attr_t attr = {}) const {
 #ifndef NDEBUG
         monitor_.lock_write();
@@ -228,7 +233,7 @@ public:
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     template <typename T>
-    T *allocate(size_t nelem, cl_device_id dev, cl_context ctx,
+    T *allocate(size_t nelem, const cl_device_id dev, const cl_context ctx,
             mem_attr_t attr = {}) {
         const size_t size = nelem * sizeof(T);
         void *buffer = allocate(size, dev, ctx, attr);
@@ -270,7 +275,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void deallocate(void *buffer, cl_device_id dev, cl_context ctx,
+    void deallocate(void *buffer, const cl_device_id dev, const cl_context ctx,
             cl_event deps) const {
         if (buffer) {
 #ifndef NDEBUG

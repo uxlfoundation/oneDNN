@@ -488,8 +488,7 @@ void barrier(const Targs &...barrierArgs)
     barrierwait();
 }
 
-// Global memory fence.
-void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
+void registerfence(const RegData &dst)
 {
     _lastFenceDst = dst;
     if (isGen12) {
@@ -498,16 +497,11 @@ void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(
     }
 }
 
+// Global memory fence.
 void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
-#if XE3P
-    if (useEfficient64Bit) {
-        uint32_t desc = 0x1F;
-        desc |= static_cast<uint32_t>(flushing) << 8;
-        desc |= static_cast<uint32_t>(scope) << 11;
-        sendgx(1 | mod | NoMask, SharedFunction::ugm, null, desc);
-    } else
-#endif
+    registerfence(dst);
+
     if (hardware >= HW::XeHPG) {
         if (flushing == FlushTypeLSC::None && hardware == HW::XeHPG && scope > FenceScopeLSC::Subslice)
             flushing = static_cast<FlushTypeLSC>(6);    /* workaround for DG2 bug */
@@ -522,7 +516,7 @@ void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC 
     }
 }
 
-void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0))
+void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     memfence(mod, FenceScopeLSC::GPU, FlushTypeLSC::None, dst, header);
 }
@@ -540,11 +534,8 @@ void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0
 // SLM-only memory fence.
 void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
-#if XE3P
-    if (useEfficient64Bit)
-        sendgx(1 | mod | NoMask, SharedFunction::slm, null, 0x1F);
-    else
-#endif
+    registerfence(dst);
+
     if (hardware >= HW::XeHPG)
         send(1 | mod | NoMask, SharedFunction::slm, dst, header, null, 0, 0x210011F);
     else {
@@ -554,6 +545,15 @@ void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(
 }
 
 void slmfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0)) { slmfence(InstructionModifier(), dst, header); }
+
+// Wait on the last global memory or SLM fence.
+void fencewait()
+{
+    if (isGen12)
+        fencedep(_lastFenceLabel);
+    else
+        mov<uint32_t>(8 | NoMask, null, _lastFenceDst);
+}
 
 // XeHP+ prologues.
 void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127), int paddedSize = 0)
@@ -630,12 +630,6 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
         if (!_labelLocalIDsLoaded.defined(labelManager))
             mark(_labelLocalIDsLoaded);
 
-#if XE3P
-        /* Workaround for incorrect NEO/XeSim handling of crossthread entrance */
-        if (useEfficient64Bit)
-            for (int i = 0; i < 4; i++)
-                nop();
-#endif
     }
 }
 

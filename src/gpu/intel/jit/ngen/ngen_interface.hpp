@@ -72,9 +72,6 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
-#ifdef XE3P
-                             , useEfficient64Bit(hw_ >= HW::Xe3p)
-#endif
                              , requestedInlineGRFs(defaultInlineGRFs(hw))
     {}
 
@@ -173,7 +170,6 @@ protected:
     int nextArgIndex = 0;
     bool finalized = false;
     bool hasArgLocOverride = false;
-    bool rearrangeArgs = true;
 
     bool allow64BitBuffers = false;
     ThreadArbitrationMode arbitrationMode = ThreadArbitrationMode::Default;
@@ -334,7 +330,7 @@ void InterfaceHandler::generateDummyCL(std::ostream &stream) const
 {
 #ifdef NGEN_SAFE
     if (!finalized) throw interface_not_finalized();
-    if (hasArgLocOverride || !rearrangeArgs) throw unsupported_argument_location_override();
+    if (hasArgLocOverride) throw unsupported_argument_location_override();
 #endif
     const char *dpasDummy = "    int __builtin_IB_sub_group_idpas_s8_s8_8_1(int, int, int8) __attribute__((const));\n"
                             "    int z = __builtin_IB_sub_group_idpas_s8_s8_8_1(0, ____[0], 1);\n"
@@ -523,9 +519,6 @@ void InterfaceHandler::finalize()
 
 int InterfaceHandler::inlineGRFs() const
 {
-#if XE3P
-    if (useEfficient64Bit) return 1;
-#endif
     return requestedInlineGRFs;
 }
 
@@ -591,9 +584,6 @@ std::string InterfaceHandler::generateZeInfo() const
     std::stringstream md;
 
     const char *version = "1.8";
-#if XE3P
-    if (useEfficient64Bit) version = "1.35";
-#endif
 
     md << "version: " << version << "\n"
           "kernels: \n"

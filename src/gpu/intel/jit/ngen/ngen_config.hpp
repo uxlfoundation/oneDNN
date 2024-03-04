@@ -21,7 +21,9 @@
 #include "common/bfloat16.hpp"
 #include "common/float16.hpp"
 
-namespace ngen {
+#define NGEN_NAMESPACE ngen
+
+namespace NGEN_NAMESPACE {
 using bfloat16 = dnnl::impl::bfloat16_t;
 using half = dnnl::impl::float16_t;
 } // namespace NGEN_NAMESPACE

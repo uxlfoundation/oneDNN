@@ -587,22 +587,6 @@ private:
                 i.src[2].imm = uint32_t(exdesc | static_cast<uint8_t>(sf));
         }
     }
-#if XE3P
-    template <typename T>
-    static inline T uniformizeInd(T r)              { return r; }
-    static inline RegData uniformizeInd(RegData r)  { r.setOffset(r.getByteOffset()); r.setType(DataType::ub); return r; }
-    template <typename S0, typename S1, typename I0, typename I1>
-    void opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sf, RegData dst, const S0 &src0, const S1 &src1, const I0 &ind0, const I1 &ind1, uint64_t desc) {
-        (void) streamStack.back()->append(op, static_cast<uint8_t>(sf), mod | defaultModifier, &labelManager, dst, src0, src1, uniformizeInd(ind0), uniformizeInd(ind1), desc);
-    }
-    template <typename I0, typename I1>
-    void opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sf, RegData dst, const RegData &src0, int src0Len, const I0 &ind0, const I1 &ind1, uint64_t desc) {
-        if (src0.isIndirect())
-            (void) streamStack.back()->append(op, static_cast<uint8_t>(sf) | 0x80 | (src0Len << 8), mod | defaultModifier, &labelManager, dst, src0, NoOperand(), ind0, ind1, desc);
-        else
-            opSendg(op, mod, sf, dst, GRFRange(src0.getBase(), src0Len), NullRegister(), uniformizeInd(ind0), uniformizeInd(ind1), desc);
-    }
-#endif
     void opDpas(Opcode op, DataType defaultType, const InstructionModifier &mod, int sdepth, int rcount, RegData dst, RegData src0, RegData src1, RegData src2) {
         dst.fixup(hardware, 1, 0, defaultType, -1, 3);
         src0.fixup(hardware, 1, 0, defaultType, 0, 3);

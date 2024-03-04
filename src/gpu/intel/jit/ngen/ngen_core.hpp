@@ -1424,19 +1424,6 @@ public:
 
     void clearDisp()                   { disp = 0; }
 
-#if XE3P
-    constexpr int     getScale() const { return scale; }
-
-    RegData getInd0() const {
-        if (ind0SubReg >= 0)
-            return ScalarRegister(0)[ind0SubReg];
-        else
-            return NullRegister();
-    }
-
-    GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset, scale, ind0SubReg); }
-    GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset, scale, ind0SubReg); }
-#else
     GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset); }
     GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset); }
 #endif

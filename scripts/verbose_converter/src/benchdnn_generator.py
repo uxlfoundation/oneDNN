@@ -692,11 +692,25 @@ class RNNConverter(AlgorithmMixin, Converter):
             "lbr_gru": "LBR_GRU",
             "lbr_augru": "LBR_AUGRU",
         }
-        dirs = {
-            "unidirectional_left2right": "left2right",
-            "unidirectional_right2left": "right2left",
-            "bidirectional_sum": "sum",
-            "bidirectional_concat": "concat",
+    else:
+        masks = {0: "common", 1: "per_oc", 2: "per_oc", 3: "per_oc"}
+
+    mask = masks.get(int(value))
+    if mask:
+        return mask
+    # this is a workaround for tensors with mask more than 4
+    return "per_tensor"
+
+
+def convert_zp_policy(value, prim_kind):
+    if prim_kind == "matmul":
+        masks = {
+            0: "common",
+            2: "per_oc",
+            3: "per_ocic",
+            4: "per_oc",
+            6: "per_ocic",
+            12: "per_ocic",
         }
         acts = {
             "eltwise_relu": "RELU",

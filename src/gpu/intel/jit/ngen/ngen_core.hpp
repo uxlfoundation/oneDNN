@@ -644,6 +644,10 @@ public:
     constexpr DataType getType() const { return DataType::invalid; }
     constexpr bool isScalar() const { return false; }
 
+#ifdef NGEN_ASM
+    static const bool emptyOp = false;
+    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man);
+
 };
 
 static inline bool operator==(const RegData &r1, const RegData &r2);
@@ -673,30 +677,29 @@ public:
     constexpr RegData()
         : base(0), arf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
 
-    constexpr int getBase()            const { return base; }
-    constexpr bool isARF()             const { return arf; }
-    constexpr int getARFBase()         const { return base & 0xF; }
-    constexpr ARFType getARFType()     const { return static_cast<ARFType>(base >> 4); }
-    constexpr bool isIndirect()        const { return indirect; }
-    constexpr bool isVxIndirect()      const { return indirect && (vs == 0x7F); }
-    constexpr int getIndirectOff()     const { return base & 0xFF; }
-    constexpr bool isNull()            const { return isARF() && (getARFType() == ARFType::null); }
-    constexpr bool isInvalid()         const { return invalid; }
-    constexpr bool isValid()           const { return !invalid; }
-    constexpr int getOffset()          const { return off; }
-    constexpr14 int getByteOffset()    const { return (off * getBits()) >> 3; }
-    constexpr14 int getLogicalOffset() const { return off; }                /* Deprecated; use getOffset */
-    constexpr DataType getType()       const { return static_cast<DataType>(type); }
-    constexpr int getVS()              const { return vs; }
-    constexpr int getWidth()           const { return width; }
-    constexpr int getHS()              const { return hs; }
-    constexpr bool getNeg()            const { return mods & 2; }
-    constexpr bool getAbs()            const { return mods & 1; }
-    constexpr int getMods()            const { return mods; }
-    constexpr14 int getBits()          const { return NGEN_NAMESPACE::getBits(getType()); }
-    constexpr14 int getBytes()         const { return NGEN_NAMESPACE::getBytes(getType()); }
-    constexpr14 int getDwords()        const { return NGEN_NAMESPACE::getDwords(getType()); }
-    constexpr bool isScalar()          const { return hs == 0 && vs == 0 && width == 1; }
+    constexpr int getBase()          const { return base; }
+    constexpr bool isARF()           const { return arf; }
+    constexpr int getARFBase()       const { return base & 0xF; }
+    constexpr ARFType getARFType()   const { return static_cast<ARFType>(base >> 4); }
+    constexpr bool isIndirect()      const { return indirect; }
+    constexpr bool isVxIndirect()    const { return indirect && (vs == 0x7F); }
+    constexpr int getIndirectOff()   const { return base & 0xFF; }
+    constexpr bool isNull()          const { return isARF() && (getARFType() == ARFType::null); }
+    constexpr bool isInvalid()       const { return invalid; }
+    constexpr bool isValid()         const { return !invalid; }
+    constexpr int getOffset()        const { return off; }
+    constexpr int getByteOffset()    const { return off * getBytes(); }
+    constexpr int getLogicalOffset() const { return off * elementsPerByte(getType()); }
+    constexpr DataType getType()     const { return static_cast<DataType>(type); }
+    constexpr int getVS()            const { return vs; }
+    constexpr int getWidth()         const { return width; }
+    constexpr int getHS()            const { return hs; }
+    constexpr bool getNeg()          const { return mods & 2; }
+    constexpr bool getAbs()          const { return mods & 1; }
+    constexpr int getMods()          const { return mods; }
+    constexpr int getBytes()         const { return NGEN_NAMESPACE::getBytes(getType()); }
+    constexpr14 int getDwords()      const { return NGEN_NAMESPACE::getDwords(getType()); }
+    constexpr bool isScalar()        const { return hs == 0 && vs == 0 && width == 1; }
 
     inline constexpr14 RegData getIndirectReg() const;
 
@@ -1343,19 +1346,6 @@ public:
 
     void clearDisp()                   { disp = 0; }
 
-#if XE3P
-    constexpr int     getScale() const { return scale; }
-
-    RegData getInd0() const {
-        if (ind0SubReg >= 0)
-            return ScalarRegister(0)[ind0SubReg];
-        else
-            return NullRegister();
-    }
-
-    GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset, scale, ind0SubReg); }
-    GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset, scale, ind0SubReg); }
-#else
     GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset); }
     GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset); }
 #endif
@@ -3260,7 +3250,7 @@ enum GatewayOpcode {
     sip_bar = 12,
 };
 
-typedef Core HW;
+} /* namespace NGEN_NAMESPACE */
 
 union SendgMessageDescriptor {
     uint64_t all;

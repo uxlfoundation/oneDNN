@@ -229,10 +229,6 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
-    if (family >= ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
-#if XE3P
-    if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
-#endif
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
 

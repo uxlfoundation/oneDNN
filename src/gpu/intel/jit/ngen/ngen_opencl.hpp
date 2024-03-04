@@ -299,20 +299,6 @@ void OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id devi
     ELFCodeGenerator<hw>::getBinaryHWInfo(binary, outHW, outProduct);
 }
 
-#if XE3P
-template <HW hw>
-bool OpenCLCodeGenerator<hw>::detectEfficient64Bit(cl_context context, cl_device_id device, HW inHW)
-{
-    const char *dummyCL = "kernel void _ngen_eff64b_detect(){}";
-
-    if (inHW == HW::Unknown) inHW = hw;
-    if (inHW < HW::Xe3p) return false;
-
-    auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, "");
-    return npack::isBinaryEfficient64Bit(binary, inHW);
-}
-#endif
-
 } /* namespace NGEN_NAMESPACE */
 
 #endif

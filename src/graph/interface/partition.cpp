@@ -48,8 +48,6 @@
 #include "graph/utils/ocl_check.hpp"
 #endif
 
-using dnnl::impl::cache_state2str;
-using dnnl::impl::cache_state_t;
 using namespace dnnl::impl::graph;
 
 /// This allows to create a partition directly with an op and an engine kind. In

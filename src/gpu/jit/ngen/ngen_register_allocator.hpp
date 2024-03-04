@@ -92,8 +92,8 @@ struct BundleGroup {
 
     friend BundleGroup operator|(BundleGroup lhs, Bundle rhs) { lhs |= rhs; return lhs; }
     BundleGroup &operator|=(Bundle rhs) {
-        for (size_t rchunk = 0; rchunk < reg_masks.size(); rchunk++)
-            reg_masks[rchunk] |= rhs.reg_mask(hw, rchunk);
+        for (int rchunk = 0; rchunk < int(reg_masks.size()); rchunk++)
+            reg_masks[rchunk] |= rhs.regMask(hw, rchunk);
         return *this;
     }
 
@@ -230,12 +230,6 @@ int Bundle::firstReg(HW hw) const
     case HW::Gen12LP:
     case HW::XeHPC:
     case HW::Xe2:
-#if XE3
-    case HW::Xe3:
-#endif
-#if XE3P
-    case HW::Xe3p:
-#endif
         return (bundle0 << 1) | bank0;
     case HW::XeHP:
     case HW::XeHPG:
@@ -271,12 +265,6 @@ int Bundle::stride(HW hw) const
         return 4;
     case HW::Gen12LP:
     case HW::Xe2:
-#if XE3
-    case HW::Xe3:
-#endif
-#if XE3P
-    case HW::Xe3p:
-#endif
         return 16;
     case HW::XeHP:
     case HW::XeHPG:
@@ -306,12 +294,6 @@ int64_t Bundle::regMask(HW hw, int offset) const
         return bundle_mask & bank_mask;
     case HW::Gen12LP:
     case HW::Xe2:
-#if XE3
-    case HW::Xe3:
-#endif
-#if XE3P
-    case HW::Xe3p:
-#endif
         if (bundle_id != any)                           base_mask  = 0x0003000300030003;
         if (bank_id != any)                             base_mask &= 0x5555555555555555;
         return base_mask << (bank0 + (bundle0 << 1));
@@ -341,12 +323,6 @@ Bundle Bundle::locate(HW hw, RegData reg)
             return Bundle((base >> 1) & 1, base >> 6);
         case HW::Gen12LP:
         case HW::Xe2:
-#if XE3
-        case HW::Xe3:
-#endif
-#if XE3P
-        case HW::Xe3p:
-#endif
             return Bundle(base & 1, (base >> 1) & 7);
         case HW::XeHP:
         case HW::XeHPG:
@@ -377,10 +353,6 @@ void RegisterAllocator::init()
 
     if (hw < HW::XeHP)
         setRegisterCount(128);
-#if XE3P
-    else if (hw < HW::Xe3p)
-        setRegisterCount(256);
-#endif
 }
 
 void RegisterAllocator::claim(GRF reg)
@@ -585,18 +557,9 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
         int64_t freeWhole64[sizeof(freeWhole) / sizeof(int64_t)];
         std::memcpy(freeWhole64, freeWhole, sizeof(freeWhole));
 
-#if XE3P
-        /* Preferentially use r511 for small allocations as it can't be used in sendgx. */
-        if (search_full_grf && freeSub[511]) {
-            r_alloc = 511;
-            o_alloc = 0;
-            return true;
-        }
-#endif
-
         for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
             int64_t free = search_full_grf ? freeWhole64[rchunk] : -1;
-            free &= bundle.reg_mask(hw, rchunk);
+            free &= bundle.regMask(hw, rchunk);
 
             while (free) {
                 int rr = utils::bsf(free);

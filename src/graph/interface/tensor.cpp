@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ static const size_t DNNL_SYCL_MEMALIGNMENT = 64;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "xpu/ocl/engine_factory.hpp"
+#include "gpu/ocl/ocl_engine.hpp"
 static const size_t DNNL_OCL_MEMALIGNMENT = 0;
 using namespace dnnl::impl::gpu::intel::ocl;
 #endif

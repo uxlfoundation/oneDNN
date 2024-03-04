@@ -35,7 +35,17 @@
 #include "oneapi/dnnl/dnnl_graph_ocl.h"
 #endif
 
-struct dnnl_graph_allocator {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "graph/utils/ocl_check.hpp"
+
+// Will move these signatures to dnnl_graph_ocl.h once the API header is added.
+typedef void *(*dnnl_graph_ocl_allocate_f)(
+        size_t size, size_t alignment, cl_device_id device, cl_context context);
+typedef void (*dnnl_graph_ocl_deallocate_f)(
+        void *buf, cl_device_id device, cl_context context, cl_event *event);
+#endif
+
+struct dnnl_graph_allocator final : public dnnl::impl::graph::utils::id_t {
 public:
     dnnl_graph_allocator() = default;
 
@@ -54,6 +64,41 @@ public:
             dnnl_graph_ocl_deallocate_f ocl_free)
         : ocl_malloc_(ocl_malloc), ocl_free_(ocl_free) {}
 #endif
+
+    dnnl_graph_allocator(const dnnl_graph_allocator &alloc) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+        ocl_malloc_ = alloc.ocl_malloc_;
+        ocl_free_ = alloc.ocl_free_;
+#endif
+
+#ifdef DNNL_WITH_SYCL
+        sycl_malloc_ = alloc.sycl_malloc_;
+        sycl_free_ = alloc.sycl_free_;
+#endif
+
+        host_malloc_ = alloc.host_malloc_;
+        host_free_ = alloc.host_free_;
+    }
+
+    ~dnnl_graph_allocator() = default;
+
+    dnnl_graph_allocator &operator=(const dnnl_graph_allocator &alloc) {
+        // check self-assignment
+        if (this == &alloc) return *this;
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+        ocl_malloc_ = alloc.ocl_malloc_;
+        ocl_free_ = alloc.ocl_free_;
+#endif
+
+#ifdef DNNL_WITH_SYCL
+        sycl_malloc_ = alloc.sycl_malloc_;
+        sycl_free_ = alloc.sycl_free_;
+#endif
+        host_malloc_ = alloc.host_malloc_;
+        host_free_ = alloc.host_free_;
+        return *this;
+    }
 
     enum class mem_type_t {
         persistent = 0,
@@ -101,6 +146,21 @@ public:
     }
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    void *allocate(size_t size, const cl_device_id dev, const cl_context ctx,
+            mem_attr_t attr = {}) const {
+#ifndef NDEBUG
+        monitor_.lock_write();
+        void *buffer = ocl_malloc_(size, attr.alignment_, dev, ctx);
+        monitor_.record_allocate(buffer, size, attr.type_);
+        monitor_.unlock_write();
+#else
+        void *buffer = ocl_malloc_(size, attr.alignment_, dev, ctx);
+#endif
+        return buffer;
+    }
+#endif
+
     template <typename T>
     T *allocate(size_t nelem, mem_attr_t attr = {}) {
         const size_t size = nelem * sizeof(T);
@@ -120,12 +180,23 @@ public:
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     template <typename T>
-    T *allocate(size_t nelem, cl_device_id dev, cl_context ctx,
+    T *allocate(size_t nelem, const cl_device_id dev, const cl_context ctx,
             mem_attr_t attr = {}) {
         const size_t size = nelem * sizeof(T);
         void *buffer = allocate(size, dev, ctx, attr);
         return reinterpret_cast<T *>(buffer);
     }
+#endif
+
+    void deallocate(void *buffer) const {
+        if (buffer) {
+#ifndef NDEBUG
+            monitor_.lock_write();
+            monitor_.record_deallocate(buffer);
+            host_free_(buffer);
+            monitor_.unlock_write();
+#else
+            host_free_(buffer);
 #endif
 
     void deallocate(void *buffer) const {
@@ -153,6 +224,25 @@ public:
     }
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    void deallocate(void *buffer, const cl_device_id dev, const cl_context ctx,
+            cl_event deps) const {
+        if (buffer) {
+#ifndef NDEBUG
+            monitor_.lock_write();
+            monitor_.record_deallocate(buffer);
+            ocl_free_(buffer, dev, ctx, deps);
+            monitor_.unlock_write();
+#else
+            ocl_free_(buffer, dev, ctx, deps);
+#endif
+            buffer = nullptr;
+        }
+    }
+#endif
+
+    monitor_t &get_monitor() { return monitor_; }
+
 private:
     dnnl_graph_host_allocate_f host_malloc_ {
             dnnl::impl::graph::utils::cpu_allocator_t::malloc};
@@ -173,6 +263,8 @@ private:
     dnnl_graph_ocl_deallocate_f ocl_free_ {
             dnnl::impl::graph::utils::ocl_allocator_t::free};
 #endif
+
+    mutable monitor_t monitor_;
 };
 
 #endif

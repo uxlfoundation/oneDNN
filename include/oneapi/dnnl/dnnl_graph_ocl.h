@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,9 +32,6 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
-/// @{
-
 /// @addtogroup dnnl_graph_api
 /// @{
 
@@ -47,24 +44,12 @@ extern "C" {
 /// Allocation call-back function interface for OpenCL. OpenCL allocator should
 /// be used for OpenCL GPU runtime. The call-back should return a USM device
 /// memory pointer.
-///
-/// @param size Memory size in bytes for requested allocation
-/// @param alignment The minimum alignment in bytes for the requested allocation
-/// @param device A valid OpenCL device used to allocate
-/// @param context A valid OpenCL context used to allocate
-/// @returns The memory address of the requested USM allocation.
 typedef void *(*dnnl_graph_ocl_allocate_f)(
         size_t size, size_t alignment, cl_device_id device, cl_context context);
 
 /// Deallocation call-back function interface for OpenCL. OpenCL allocator
 /// should be used for OpenCL runtime. The call-back should deallocate a USM
-/// device memory returned by #dnnl_graph_ocl_allocate_f. The event should be
-/// completed before deallocate the USM.
-///
-/// @param buf The USM allocation to be released
-/// @param device A valid OpenCL device the USM associated with
-/// @param context A valid OpenCL context used to free the USM allocation
-/// @param event A event which the USM deallocation depends on
+/// device memory returned by #dnnl_graph_ocl_allocate_f.
 typedef void (*dnnl_graph_ocl_deallocate_f)(
         void *buf, cl_device_id device, cl_context context, cl_event event);
 
@@ -80,39 +65,10 @@ dnnl_status_t DNNL_API dnnl_graph_ocl_interop_allocator_create(
         dnnl_graph_allocator_t *allocator, dnnl_graph_ocl_allocate_f ocl_malloc,
         dnnl_graph_ocl_deallocate_f ocl_free);
 
-/// This API is a supplement for existing oneDNN engine API:
-/// dnnl_status_t DNNL_API dnnl_ocl_interop_engine_create(
-///     dnnl_engine_t *engine, cl_device_id device, cl_context context);
-///
-/// @param engine Output engine.
-/// @param device Underlying OpenCL device to use for the engine.
-/// @param context Underlying OpenCL context to use for the engine.
-/// @param alloc Underlying allocator to use for the engine.
-/// @returns #dnnl_success on success and a status describing the error
-///     otherwise.
+/// This API is a supplement for existing onednn engine API.
 dnnl_status_t DNNL_API dnnl_graph_ocl_interop_make_engine_with_allocator(
         dnnl_engine_t *engine, cl_device_id device, cl_context context,
         const_dnnl_graph_allocator_t alloc);
-
-/// This API is a supplement for existing oneDNN engine API:
-/// dnnl_status_t DNNL_API dnnl_ocl_interop_engine_create_from_cache_blob(
-///     dnnl_engine_t *engine, cl_device_id device, cl_context context,
-///     size_t size, const uint8_t *cache_blob);
-///
-/// @param engine Output engine.
-/// @param device The OpenCL device that this engine will encapsulate.
-/// @param context The OpenCL context (containing the device) that this
-///     engine will use for all operations.
-/// @param alloc Underlying allocator to use for the engine.
-/// @param size Size of the cache blob in bytes.
-/// @param cache_blob Cache blob of size @p size.
-/// @returns #dnnl_success on success and a status describing the error
-///     otherwise.
-dnnl_status_t DNNL_API
-dnnl_graph_ocl_interop_make_engine_from_cache_blob_with_allocator(
-        dnnl_engine_t *engine, cl_device_id device, cl_context context,
-        const_dnnl_graph_allocator_t alloc, size_t size,
-        const uint8_t *cache_blob);
 
 /// Execute a compiled partition with OpenCL runtime.
 ///
@@ -139,8 +95,6 @@ dnnl_status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute(
 /// @} dnnl_graph_api_interop
 
 /// @} dnnl_graph_api
-
-/// @} dnnl_api
 
 #ifdef __cplusplus
 }

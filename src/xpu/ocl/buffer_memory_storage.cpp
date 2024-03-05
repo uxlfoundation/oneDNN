@@ -109,10 +109,7 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
     cl_int err;
     err = clGetMemObjectInfo(
             mem_object(), CL_MEM_FLAGS, sizeof(mem_flags), &mem_flags, nullptr);
-
-    // TODO: Generalize gpu_assert to make it available for use in the xpu
-    // space.
-    assert(err == CL_SUCCESS);
+    gpu_assert(err == CL_SUCCESS);
     if (err != CL_SUCCESS) return nullptr;
 
     const auto *ocl_engine_impl
@@ -124,10 +121,9 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
     assert(offset % ocl_engine_impl->get_buffer_alignment() == 0);
 
     cl_buffer_region buffer_region = {base_offset_ + offset, size};
-    xpu::ocl::wrapper_t<cl_mem> sub_buffer
-            = clCreateSubBuffer(parent_mem_object(), mem_flags,
-                    CL_BUFFER_CREATE_TYPE_REGION, &buffer_region, &err);
-    assert(err == CL_SUCCESS);
+    ocl_wrapper_t<cl_mem> sub_buffer = clCreateSubBuffer(parent_mem_object(),
+            mem_flags, CL_BUFFER_CREATE_TYPE_REGION, &buffer_region, &err);
+    gpu_assert(err == CL_SUCCESS);
     if (err != CL_SUCCESS) return nullptr;
 
     auto sub_storage

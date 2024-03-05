@@ -164,10 +164,9 @@ static int check_attr() {
     }
 
     {
-        base_settings_t s;
-        std::vector<attr_t::zero_points_t> &zp = s.zero_points;
-        SELF_CHECK_EQ(parse_attributes(
-                              s, def, "--attr-zero-points=wei:per_ocic:s8:2x1"),
+        std::vector<attr_t::zero_points_t> zp;
+        SELF_CHECK_EQ(parse_attr_zero_points(
+                              zp, "--attr-zero-points=wei:per_ocic:s8:2x1"),
                 true);
         SELF_CHECK_EQ(zp.size(), 1);
         std::vector<dnnl_dim_t> groups = {2, 1};
@@ -176,10 +175,9 @@ static int check_attr() {
     }
 
     {
-        base_settings_t s;
-        std::vector<attr_t::arg_scales_t> &sc = s.scales;
-        SELF_CHECK_EQ(parse_attributes(s, def,
-                              "--attr-scales=attr_post_op_dw_wei:common:2"),
+        std::vector<attr_t::arg_scales_t> sc;
+        SELF_CHECK_EQ(parse_attr_scales(
+                              sc, "--attr-scales=attr_post_op_dw_wei:common:2"),
                 true);
         SELF_CHECK_EQ(sc.size(), 1);
         const auto arg = DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS;

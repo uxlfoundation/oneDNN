@@ -14,9 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-/// @file
-/// Graph OpenCL interop API
-
 #ifndef ONEAPI_DNNL_DNNL_GRAPH_OCL_HPP
 #define ONEAPI_DNNL_DNNL_GRAPH_OCL_HPP
 
@@ -30,22 +27,19 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 /// @endcond
 
-/// @addtogroup dnnl_api
-/// @{
-
-namespace dnnl {
-
 /// @addtogroup dnnl_graph_api
 /// @{
 
+namespace dnnl {
 namespace graph {
 
 /// @addtogroup dnnl_graph_api_interop Runtime interoperability API
 /// API extensions to interact with the underlying run-time.
 /// @{
 
-/// @addtogroup dnnl_graph_api_ocl_interop OpenCL interoperability API
-/// API extensions to interact with the underlying OpenCL run-time.
+/// @addtogroup dnnl_graph_api_ocl_interop OpenCL interoperability API API
+/// extensions to interact with the underlying OpenCL run-time.
+///
 /// @{
 
 /// OpenCL interoperability namespace
@@ -63,44 +57,16 @@ inline allocator make_allocator(dnnl_graph_ocl_allocate_f ocl_malloc,
     dnnl_graph_allocator_t c_allocator = nullptr;
     error::wrap_c_api(dnnl_graph_ocl_interop_allocator_create(
                               &c_allocator, ocl_malloc, ocl_free),
-            err_message_list::init_error("allocator for opencl device"));
+            "could not create allocator for opencl device");
     return allocator(c_allocator);
 }
 
-/// Constructs an engine from an OpenCL device, an OpenCL context, and an
-/// allocator.
-///
-/// @param device A valid OpenCL device to construct the engine
-/// @param context A valid OpenCL context to construct the engine
-/// @param alloc An allocator to associate with the engine
-/// @returns Created engine
-inline engine make_engine_with_allocator(
-        cl_device_id device, cl_context context, const allocator &alloc) {
+inline engine make_engine_with_allocator(const cl_device_id &adevice,
+        const cl_context &acontext, const allocator &alloc) {
     dnnl_engine_t c_engine;
     error::wrap_c_api(dnnl_graph_ocl_interop_make_engine_with_allocator(
-                              &c_engine, device, context, alloc.get()),
-            err_message_list::init_error("engine with allocator"));
-    return engine(c_engine);
-}
-
-/// Constructs an engine from an OpenCL device, an OpenCL context, an
-/// allocator, and a serialized engine cache blob.
-///
-/// @param device A valid OpenCL device to construct the engine
-/// @param context A valid OpenCL context to construct the engine
-/// @param alloc An allocator to associate with the engine
-/// @param cache_blob Cache blob serialized beforehand
-/// @returns Created engine
-inline engine make_engine_with_allocator(cl_device_id device,
-        cl_context context, const allocator &alloc,
-        const std::vector<uint8_t> &cache_blob) {
-    dnnl_engine_t c_engine;
-    error::wrap_c_api(
-            dnnl_graph_ocl_interop_make_engine_from_cache_blob_with_allocator(
-                    &c_engine, device, context, alloc.get(), cache_blob.size(),
-                    cache_blob.data()),
-            err_message_list::init_error(
-                    "engine with allocator from cache blob"));
+                              &c_engine, adevice, acontext, alloc.get()),
+            "could not make an engine with allocator");
     return engine(c_engine);
 }
 
@@ -135,9 +101,8 @@ inline cl_event execute(compiled_partition &c_partition, stream &astream,
                     astream.get(), c_inputs.size(), c_inputs.data(),
                     c_outputs.size(), c_outputs.data(), c_deps,
                     (int)deps.size(), &ocl_event),
-            err_message_list::execute_error(
-                    "compiled_partition on a specified opencl "
-                    "stream"));
+            "could not execute the compiled_partition on a specified opencl "
+            "stream");
     return ocl_event;
 }
 
@@ -148,11 +113,8 @@ inline cl_event execute(compiled_partition &c_partition, stream &astream,
 /// @} dnnl_graph_api_interop
 
 } // namespace graph
-
-/// @} dnnl_graph_api
-
 } // namespace dnnl
 
-/// @} dnnl_api
+/// @} dnnl_graph_api
 
 #endif

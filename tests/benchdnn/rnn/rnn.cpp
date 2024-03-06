@@ -786,14 +786,15 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
             return;
         }
 
-        // f16 training is not yet fully supported.
-        const bool is_f16_not_ok
-                = prb.cfg[SRC_LAYER].dt == dnnl_f16 && !(dir & FLAG_INF);
-        if (is_f16_not_ok) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+    // f16 training is not yet fully supported.
+    const bool is_f16_not_ok
+            = prb.cfg[SRC_LAYER].dt == dnnl_f16 && !(dir & FLAG_INF);
+    if (is_f16_not_ok) {
+        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+        return;
+    }
+#endif
 
 #ifdef DNNL_AARCH64_USE_ACL
         const bool is_acl_f16_not_ok = prb.cfg[SRC_LAYER].dt == dnnl_f16
@@ -842,8 +843,7 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
     if (prb.is_lstm_projection()
             && (prb.cfg[SRC_LAYER].dt == dnnl_bf16
                     || prb.cfg[SRC_LAYER].dt == dnnl_f16)) {
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
         return;
     }
 

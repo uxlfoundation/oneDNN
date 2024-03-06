@@ -702,7 +702,7 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
         const bool reduce_by_words = brg->is_bf16_tmm || brg->is_f16_tmm
                 || brg->is_input_convert();
         const auto max_rd_block = reduce_by_words ? 32 : 64;
-        const auto rd_block_step = (reduce_by_words && !brg->is_fp8) ? 2 : 4;
+        const auto rd_block_step = reduce_by_words ? 2 : 4;
         // TODO: if rd_block calculated is very small then maybe it makes
         // sense to use 1x2 or 2x1 blocking with supporting rd_block
         // and rdb_tail

@@ -77,6 +77,8 @@ struct gen_gemm_t : public gpu_gemm_t {
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             eff_lda_ = d->lda();
             eff_ldb_ = d->ldb();
+            eff_transa_ = d->transa() == dnnl_trans;
+            eff_transb_ = d->transb() == dnnl_trans;
 
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
                     || (d->transa() == dnnl_trans));
@@ -84,7 +86,15 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
-                if (d->transa() == dnnl_notrans) eff_ldb_ = d->k();
+                std::swap(eff_transa_, eff_transb_);
+                eff_transa_ = !eff_transa_;
+                eff_transb_ = !eff_transb_;
+
+                // Do not use transposed B when it is unnecessary
+                if (eff_transb_ && eff_n() == 1) {
+                    eff_transb_ = false;
+                    eff_ldb_ = d->k();
+                }
             }
 
             // Pad leading dimensions in case of a single row/column.

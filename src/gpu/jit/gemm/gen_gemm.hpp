@@ -70,9 +70,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                                   && utils::one_of(d->a_type(), u8, s8, s4, u4)
                                   && utils::one_of(d->b_type(), f16, f32, bf16))
                     && attr()->mayiconvert(d->a_type(), f32);
-            auto status = set_default_formats();
-
-            if (status != status::success) return status;
+            CHECK(set_default_formats(false));
 
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             eff_lda_ = d->lda();
@@ -82,7 +80,8 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
                     || (d->transa() == dnnl_trans));
-            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda);
+            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
+                    || d->transc() == dnnl_trans;
 
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
@@ -183,30 +182,6 @@ struct gen_gemm_t : public gpu_gemm_t {
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
                 ok &= utils::one_of(attr()->scales_.get(s).mask_, 0, 1 << 0,
                         1 << 1, 1 << 2);
-            }
-
-            if (wei_decomp_
-                    && attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_
-                            == ((1 << 0) | (1 << 1)))
-                wei_scales_2d_ = true;
-
-            for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
-                auto mask = attr()->scales_.get(s).mask_;
-                ok &= utils::one_of(mask, 0, 1 << 0, 1 << 1, 1 << 2)
-                        || (s == DNNL_ARG_WEIGHTS && wei_scales_2d_);
-            }
-
-            if (wei_scales_2d_) {
-                if (wei_zp && (ao_dims_ == 1 || bo_dims_ == 1))
-                    return status::unimplemented;
-                auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
-                wei_scales_type = wei_scales.data_type_;
-                auto scales_group_k
-                        = wei_scales.ndims_ > 0 ? wei_scales.group_dims_[0] : 1;
-                if (!wei_zp_2d)
-                    wei_q2d_group_k = scales_group_k;
-                else if (wei_q2d_group_k != scales_group_k)
-                    return status::unimplemented;
             }
 
             CHECK(init_post_ops());

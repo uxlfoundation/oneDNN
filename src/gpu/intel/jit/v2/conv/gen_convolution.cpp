@@ -22,15 +22,15 @@
 #include "common/impl_registration.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
-#include "gpu/intel/jit/codegen/kernel.hpp"
-#include "gpu/intel/jit/conv/gen_convolution.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/jit/v2/conv/bridge.hpp"
-#include "gpu/intel/jit/v2/conv/builder.hpp"
-#include "gpu/intel/jit/v2/conv/kernel.hpp"
-#include "gpu/intel/jit/v2/conv/plan_preset.hpp"
-#include "gpu/intel/jit/v2/conv/plan_registry.hpp"
+#include "gpu/jit/codegen/kernel.hpp"
+#include "gpu/jit/conv/gen_convolution.hpp"
+#include "gpu/jit/ir/kernel_info.hpp"
+#include "gpu/jit/utils/utils.hpp"
+#include "gpu/jit/v2/conv/bridge.hpp"
+#include "gpu/jit/v2/conv/ir_builder.hpp"
+#include "gpu/jit/v2/conv/kernel.hpp"
+#include "gpu/jit/v2/conv/plan_preset.hpp"
+#include "gpu/jit/v2/conv/plan_registry.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -73,16 +73,14 @@ class gen_convolution_t {
 public:
     template <typename T>
     static bool is_supported(T *pd, prop_kind_t prop) {
+        bool enable_conv_v2 = gpu_utils::dev_getenv("enable_conv_v2", false);
+        if (!enable_conv_v2) return false;
+
         // Non-trivial strides produces non-linear offset arithmetic which is
         // not yet supported.
         if (pd->is_bwd_d()
                 && !(pd->KSW() == 1 && pd->KSH() == 1 && pd->KSD() == 1))
             return false;
-        // Mixed types are not supported for backward by data.
-        if (pd->is_bwd_d()
-                && pd->dst_md()->data_type != pd->diff_src_md()->data_type) {
-            return false;
-        }
 
         using sm = primitive_attr_t::skip_mask_t;
         auto skip_mask = sm::post_ops | sm::sum_dt;
@@ -193,11 +191,11 @@ status_t gen_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
     return gen_convolution_t::init_pd(this, engine, prop_kind::backward_data);
 }
 
-status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_data_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }
@@ -206,12 +204,12 @@ status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
     return gen_convolution_t::init_pd(
             this, engine, prop_kind::backward_weights);
 }
 
-status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_weights_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }

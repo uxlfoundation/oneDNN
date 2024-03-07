@@ -98,7 +98,7 @@ static dim_tile_t create_tile(gemm_schedule_t &gemm_schedule,
     for (int i = ndims - 1; i >= 1; i--) {
         expr_t outer;
         expr_t inner;
-        auto outer_name = (i == 1) ? dim_name + suffixes[i - 1] : std::string();
+        auto outer_name = (i == 1) ? dim_name + suffixes[i] : std::string();
         auto inner_name = dim_name + suffixes[i];
         gemm_schedule.split(idx, dims[i], outer, inner, outer_name, inner_name);
         if (has_block(i)) idxs[i] = inner;
@@ -112,32 +112,6 @@ static dim_tile_t create_tile(gemm_schedule_t &gemm_schedule,
     tile.set_iter_idx(idxs[3]);
 
     return tile;
-}
-
-// Checks if groups should be iterated first to ensure better access locality
-// for a higher cache hit rate.
-bool set_g_grid_idx_innermost(const hw_t &hw, const layout_t &layout) {
-    const int g_dim_idx = 1;
-    const int c_dim_idx = 2;
-    if (layout.nblocks() <= 1) return false;
-    auto &b0 = layout.blocks()[0];
-    auto &b1 = layout.blocks()[1];
-    // Check that layout has groups followed by channels, i.e. *gc form.
-    if (b0.dim_idx != c_dim_idx || b1.dim_idx != g_dim_idx) return false;
-    // If the full channel dimension exceeds the cache line size, cache reuse
-    // should be already good enough.
-    if (layout.type().size() * b0.block >= hw.cache_line_size()) return false;
-    return true;
-}
-
-bool set_g_grid_idx_innermost(const conv_config_t &cfg) {
-    auto &prb = cfg.prb();
-    if (prb.g == 1) return false;
-
-    if (prb.is_fwd || prb.is_bwd_w) {
-        return set_g_grid_idx_innermost(cfg.hw(), cfg.src_layout().compute());
-    }
-    return set_g_grid_idx_innermost(cfg.hw(), cfg.dst_layout().compute());
 }
 
 void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
@@ -273,14 +247,8 @@ void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
     auto ic_tile = create_tile(gemm_schedule, cfg_, ic);
     auto kw_tile = create_tile(gemm_schedule, cfg_, kw);
 
-    expr_t g_ow_grid_idx;
-    if (set_g_grid_idx_innermost(cfg_)) {
-        g_ow_grid_idx = gemm_schedule.fuse(
-                {od, oh, ow_tile.grid_idx(), g_tile.grid_idx()});
-    } else {
-        g_ow_grid_idx = gemm_schedule.fuse(
-                {g_tile.grid_idx(), od, oh, ow_tile.grid_idx()});
-    }
+    auto g_ow_grid_idx = gemm_schedule.fuse(
+            {g_tile.grid_idx(), od, oh, ow_tile.grid_idx()});
     auto mb_ow_tg_idx = gemm_schedule.fuse(mb_tile.tg_idx(), ow_tile.tg_idx());
 
     if (prb_.ab_swap_transpose) {
@@ -466,14 +434,8 @@ void init_bwd_d(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
     auto iw_tile = create_tile(gemm_schedule, cfg_, iw);
     auto oc_tile = create_tile(gemm_schedule, cfg_, oc);
 
-    expr_t g_isp_grid_idx;
-    if (set_g_grid_idx_innermost(cfg_)) {
-        g_isp_grid_idx = gemm_schedule.fuse(
-                {id, ih, iw_tile.grid_idx(), g_tile.grid_idx()});
-    } else {
-        g_isp_grid_idx = gemm_schedule.fuse(
-                {g_tile.grid_idx(), id, ih, iw_tile.grid_idx()});
-    }
+    auto g_isp_grid_idx = gemm_schedule.fuse(
+            {g_tile.grid_idx(), id, ih, iw_tile.grid_idx()});
     auto mb_iw_tg_idx = gemm_schedule.fuse(mb_tile.tg_idx(), iw_tile.tg_idx());
     if (prb_.ab_swap_transpose /*.ic < 8 && prb_.mb >= 8*/) {
         gemm_schedule.bind(mb_tile.grid_idx(), cfg_.kernel_grid().idx(0));
@@ -674,14 +636,8 @@ void init_bwd_w(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
             {od_tile.grid_idx(), oh_tile.grid_idx(), ow_tile.grid_idx(), kd, kh,
                     kw_tile.grid_idx(), ic_tile.grid_idx()});
 
-    expr_t g_mb_grid_idx;
-    if (set_g_grid_idx_innermost(cfg_)) {
-        g_mb_grid_idx
-                = gemm_schedule.fuse({mb_tile.grid_idx(), g_tile.grid_idx()});
-    } else {
-        g_mb_grid_idx
-                = gemm_schedule.fuse({g_tile.grid_idx(), mb_tile.grid_idx()});
-    }
+    auto g_mb_grid_idx
+            = gemm_schedule.fuse({g_tile.grid_idx(), mb_tile.grid_idx()});
 
     if (prb_.ab_swap_transpose) {
         gemm_schedule.bind(osp_ksp_ic_grid_idx, cfg_.kernel_grid().idx(0));
@@ -1383,24 +1339,6 @@ struct fma_context_t {
     fma_layout_hint_t a_layout_hint;
     fma_layout_hint_t b_layout_hint;
 };
-
-int slm_memory_bank_count(ngen::HW hw) {
-    switch (hw) {
-        case ngen::HW::XeHP: return 65;
-        case ngen::HW::XeHPG: return 32;
-        default: ir_error_not_expected();
-    }
-    return 0;
-}
-
-int slm_memory_bank_granularity(ngen::HW hw) {
-    switch (hw) {
-        case ngen::HW::XeHP: return 4;
-        case ngen::HW::XeHPG: return 8;
-        default: ir_error_not_expected();
-    }
-    return 0;
-}
 
 dim_t find_min_stride_without_conflicts(
         const hw_t &hw, dim_t inner_bytes, dim_t dense_stride_bytes) {
@@ -2357,8 +2295,8 @@ private:
         // XeLPG. F64 fadd emulation is only reliable with vec_size 8 on XeLPG.
         bool requires_fadd
                 = prb_.is_bwd_w && gemm_schedule_.with_kernel_grid_k_slicing();
-        if (!cfg_.hw().has_fp64_atomic_support() && requires_fadd
-                && c_layout.elems() % 8 != 0 && c_type == type_t::f64()) {
+        if (cfg_.hw().is_xelpg() && requires_fadd && c_layout.elems() % 8 != 0
+                && c_type == type_t::f64()) {
             return plan_status_t::invalid_c_layout;
         }
 

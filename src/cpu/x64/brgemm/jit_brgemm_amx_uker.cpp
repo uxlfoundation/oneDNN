@@ -126,6 +126,17 @@ struct jit_brgemm_amx_uker_base_t : public jit_generator {
                     || with_binary_per_w_bcast_ || with_binary_batch_bcast_
                     || with_binary_spatial_bcast_ || with_binary_no_bcast_;
         }
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                    fp8_tmp_mask, fp8_tmp_reg);
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                    fp8_emu_xmm_4(), fp8_emu_xmm_5(), fp8_tmp_reg);
+
         use_ils_ = brg.brgattr.use_interleave_stores;
     }
 

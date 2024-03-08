@@ -576,8 +576,8 @@ status_t brgemm_desc_set_attr(
         brg->prfC.dist2 = 0;
 
     // TODO: update conditions once other brgemm implementations are enabled
-    // Currently, fp8 via AMX f16 convert only supported in non-unrolled kernel
-    if (brg->is_fp8 && brg->brgattr.use_uker) return status::unimplemented;
+    if (brg->is_fp8 && brg->brgattr.use_uker && !brg->is_fp8_via_convert())
+        return status::unimplemented;
 
     return status::success;
 }

@@ -170,6 +170,68 @@ enum class native_ext_t : uint64_t {
     last
 };
 
+struct runtime_version_t {
+    int major;
+    int minor;
+    int build;
+
+    runtime_version_t(int major = 0, int minor = 0, int build = 0)
+        : major {major}, minor {minor}, build {build} {}
+
+    bool operator==(const runtime_version_t &other) const {
+        return (major == other.major) && (minor == other.minor)
+                && (build == other.build);
+    }
+
+    bool operator!=(const runtime_version_t &other) const {
+        return !(*this == other);
+    }
+
+    bool operator<(const runtime_version_t &other) const {
+        if (major < other.major) return true;
+        if (major > other.major) return false;
+        if (minor < other.minor) return true;
+        if (minor > other.minor) return false;
+        return (build < other.build);
+    }
+
+    bool operator>(const runtime_version_t &other) const {
+        return (other < *this);
+    }
+
+    bool operator<=(const runtime_version_t &other) const {
+        return !(*this > other);
+    }
+
+    bool operator>=(const runtime_version_t &other) const {
+        return !(*this < other);
+    }
+
+    status_t set_from_string(const char *s) {
+        int i_major = 0, i = 0;
+
+        for (; s[i] != '.'; i++)
+            if (!s[i]) return status::invalid_arguments;
+
+        auto i_minor = ++i;
+
+        for (; s[i] != '.'; i++)
+            if (!s[i]) return status::invalid_arguments;
+
+        auto i_build = ++i;
+
+        major = atoi(&s[i_major]);
+        minor = atoi(&s[i_minor]);
+        build = atoi(&s[i_build]);
+
+        return status::success;
+    }
+
+    std::string str() const {
+        return utils::format("%d.%d.%d", major, minor, build);
+    }
+};
+
 // Needed workaround for future HW extensions
 uint64_t get_future_extensions(
         compute::gpu_arch_t gpu_arch, bool mayiuse_systolic);
@@ -243,8 +305,6 @@ public:
 
     bool mayiuse_systolic() const { return mayiuse_systolic_; }
 
-    bool is_xelpg() const { return is_xelpg_; }
-
     bool mayiuse_non_uniform_work_groups() const {
         return mayiuse_non_uniform_work_groups_;
     }
@@ -292,7 +352,6 @@ protected:
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;
     bool mayiuse_system_memory_allocators_ = false;
-    bool is_xelpg_ = false;
 
     std::string name_;
     xpu::runtime_version_t runtime_version_;

@@ -128,6 +128,17 @@ struct jit_brgemm_amx_uker_base_t : public jit_generator {
                     || with_binary_per_w_bcast_ || with_binary_batch_bcast_
                     || with_binary_spatial_bcast_ || with_binary_no_bcast_;
         }
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                    fp8_tmp_mask, fp8_tmp_reg);
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                    fp8_emu_xmm_4(), fp8_emu_xmm_5(), fp8_tmp_reg);
+
         use_ils_ = brg.brgattr.use_interleave_stores;
     }
 
@@ -139,8 +150,8 @@ private:
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Zmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
 
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
+    std::unique_ptr<fp8_emulation_base_t> f8_e5m2_emulator_;
+    std::unique_ptr<fp8_emulation_base_t> f8_e4m3_emulator_;
 
     using reg64_t = const Xbyak::Reg64;
     enum {
@@ -1787,9 +1798,11 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
 
     for (int r = 0; r < num_rows; ++r) {
         if (dt == data_type::f8_e5m2)
-            f8_e5m2_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e5m2_emulator_->vcvt_f8_to_f16(
+                    zmm_1_masked, ptr[reg_data_aux], false);
         else if (dt == data_type::f8_e4m3)
-            f8_e4m3_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e4m3_emulator_->vcvt_f8_to_f16(
+                    zmm_1_masked, ptr[reg_data_aux], false);
         else
             assert(!"unsupported data type");
 
@@ -2567,8 +2580,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
     // if beta == 1 and C datatype is f32 it is better to perform addition by
     // reading tiles directly from C instead of by reading/writing by vectors
     may_load_accumulators_ = one_of(brg.alpha, 0, 1) && brg.beta == 1.f
-            && brg.dt_c == brg.dt_d
-            && IMPLICATION(brg.is_input_convert(), brg.is_fp8_via_convert())
+            && brg.dt_c == brg.dt_d && !brg.is_input_convert()
             && IMPLICATION(
                     brg.is_f32 || brg.is_bf16, brg.dt_c == data_type::f32)
             && IMPLICATION(brg.is_int8, brg.dt_c == data_type::s32)
@@ -2581,8 +2593,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
     assert(IMPLICATION(are_post_ops_applicable_ || need_to_apply_alpha_beta_
                     || brg.brgattr.bd_mask_level,
             !brg.is_blocked && !brg.brgattr.var_bs));
-    assert(IMPLICATION(brg.brgattr.var_bs,
-            IMPLICATION(brg.is_input_convert(), brg.is_fp8_via_convert())));
+    assert(IMPLICATION(brg.brgattr.var_bs, !brg.is_input_convert()));
     read_params();
     prepare_bd_mask();
 
@@ -2641,6 +2652,11 @@ void jit_brgemm_amx_uker_base_t::generate() {
 
     if (brg.with_eltwise)
         postops_injector_->prepare_table(/* generate = */ true);
+
+    if (brg.is_fp8_via_convert()) {
+        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
+        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
+    }
 
     if (brg.is_bf32) {
         align(64);

@@ -285,8 +285,6 @@ public:
 
     bool mayiuse_systolic() const { return mayiuse_systolic_; }
 
-    bool is_xelpg() const { return is_xelpg_; }
-
     bool mayiuse_non_uniform_work_groups() const {
         return mayiuse_non_uniform_work_groups_;
     }
@@ -337,7 +335,6 @@ protected:
 #if XE3 || XE3P
     bool is_efficient_64bit_ = false;
 #endif
-    bool is_xelpg_ = false;
 
     std::string name_;
     runtime_version_t runtime_version_;

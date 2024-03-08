@@ -169,7 +169,24 @@ public:
         seq_len_q = src1_user_dims[2];
         size_per_head = src1_user_dims[3];
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+// RATIO is an empirical value used to determine the numerical relationship
+// between batch_size, num_head and thread number to determine whether to use
+// decompose kernel. The key to the decompose kernel is that we do parallel in
+// the batch_size and num_head dimensions. Therefore, if the batch_size or
+// num_head is too small, it will cause many idle threads and affect efficiency
+// which may even worse than the original sequential kernel. Here we set this
+// ratio based on the experimental value to ensure that users do not have any
+// regression when using the decompose kernel.
+// TODO: Refine the inequation based on the relationship of cache size and sdp
+// memory footprint requirements.
+#define RATIO 2
+        // Initialize nthr with current threads num
+        nthr = dnnl_get_current_num_threads();
+        return batch_size * num_head > RATIO * nthr;
+#else
         return true;
+#endif
     }
 
     // Used to construct all params that SDP need
@@ -969,24 +986,6 @@ public:
                 + size_offset);
     }
 
-    void prepare_args_set(const execution_args_set_t *res,
-            const std::vector<tensor_t> &inputs,
-            const scratchpad_t &scratchpad) {
-        // update the data of partition in/outputs args
-        for (const auto &mem_idx : res->get_mems_use_external_inputs()) {
-            mem_idx.first.set_data_handle(
-                    inputs[mem_idx.second].get_data_handle());
-        }
-
-        grantor_t var_grantor = memory_planner_.internal_temporary_grantor(
-                scratchpad.get_buffer());
-
-        for (auto &mem_offkey : res->get_mems_use_internal_temporary()) {
-            mem_offkey.first.set_data_handle(
-                    var_grantor.get(mem_offkey.second));
-        }
-    }
-
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs) override {
@@ -1023,19 +1022,7 @@ public:
         char *dst2_user_pointer
                 = static_cast<char *>(outputs[0].get_data_handle());
 
-        // allocate the select internal memory
-        temporary_scratchpad_t select_scratchpad(
-                memory_planner_.total_internal_temporary_size(), p_engine_,
-                *g_alloc_);
-        assertm(select_scratchpad.size()
-                        >= memory_planner_.total_internal_temporary_size(),
-                "no enough scratchpad memory");
-        if (sdp_cfg_.has_select) {
-            const std::vector<tensor_t> select_inputs
-                    = {inputs[sdp_cfg_.graph_inport[5]],
-                            inputs[sdp_cfg_.graph_inport[6]]};
-            prepare_args_set(select_res, select_inputs, select_scratchpad);
-        }
+        // allocate the internal memory
         size_t block_size = sdp_registry_.size();
         temporary_scratchpad_t scratchpad(
                 block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
@@ -1123,12 +1110,11 @@ public:
             sdp_cfg_.sub_mm2_prim.execute(strm, res->sub_mm2_args[tid]);
             sdp_cfg_.sub_reorder3.execute(strm, res->sub_reorder3_args[tid]);
         };
-        if (sdp_cfg_.has_select) {
-            for (size_t i = 0; i < select_subgraph_->execs_.size(); i++) {
-                select_subgraph_->execs_[i]->execute(
-                        strm, select_res->get_exec_args()[i]);
-            }
-        }
+        // TODO: remove this when primitive new API ready
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+        omp_set_num_threads(sdp_cfg_.nthr);
+#endif
+
         parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

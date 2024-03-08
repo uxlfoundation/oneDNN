@@ -1134,7 +1134,39 @@ int doit(const prb_t *prb, res_t *res) {
 
     // "Library" args are needed to get dst for comparison.
     // "Reference" are used as usual.
-    args_t args(mem_map), ref_args(ref_mem_map);
+    args_t args, ref_args;
+    args.set(DNNL_ARG_DST, dst_dt);
+
+    std::vector<brgemm_batch_element_t> v_batch_element(prb->batch_size);
+    const char *src_ptr = (const char *)src_dt;
+    const char *wei_ptr = (const char *)wei_dt;
+    // Note: batch_size is incorporated into K dimension.
+    // That's why each source batch has an offset of `k`.
+    // Weights have more complicated case. Weights are in double-blocked format,
+    // which becomes triple-blocked for bf16 and int8 to become VNNI-friendly.
+    // Because of this and batch_size incorporation, offsets below DO NOT work
+    // with K not divisible by K block size and batch_size > 1.
+    // The problem is it can't be handled properly when batch size is fused,
+    // but this allows enable s8s8 and zero-points compensation cases easier.
+    int block_size = 0;
+    switch (prb->wei_dt()) {
+        case dnnl_f32: block_size = 16; break;
+        case dnnl_f16: block_size = 16; break;
+        case dnnl_bf16: block_size = 32; break;
+        case dnnl_u8:
+        case dnnl_f8_e5m2:
+        case dnnl_f8_e4m3:
+        case dnnl_s8: block_size = 64; break;
+        default: break;
+    }
+    (void)block_size;
+    assert(block_size > 1);
+    assert(IMPLICATION(prb->batch_size > 1, prb->k % block_size == 0));
+
+    const int64_t src_batch_offset = prb->k;
+    const int64_t wei_batch_offset = prb->get_ldb() * prb->k;
+    BENCHDNN_PRINT(6, "src_batch_offset=%ld wei_batch_offset=%ld\n",
+            (long)src_batch_offset, (long)wei_batch_offset);
 
     // The implementation memory must be mapped to setup point arguments for
     // brgemm implementation call. This assumes that mapping is effectively a

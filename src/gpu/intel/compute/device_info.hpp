@@ -243,8 +243,6 @@ public:
 
     bool mayiuse_systolic() const { return mayiuse_systolic_; }
 
-    bool is_xelpg() const { return is_xelpg_; }
-
     bool mayiuse_non_uniform_work_groups() const {
         return mayiuse_non_uniform_work_groups_;
     }

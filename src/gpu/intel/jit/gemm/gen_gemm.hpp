@@ -239,6 +239,9 @@ struct gen_gemm_t : public gpu_gemm_t {
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
 
+            ok &= IMPLICATION((wei_zp_2d || wei_scales_2d_),
+                    !utils::one_of(bf16, d->b_type(), d->a_type()));
+
             if (wei_scales_2d_) {
                 auto scales_group_k
                         = wei_scales.ndims_ > 0 ? wei_scales.group_dims_[0] : 1;

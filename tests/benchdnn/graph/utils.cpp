@@ -20,7 +20,14 @@
 #include <vector>
 
 #include "cpu/platform.hpp"
-#include "memory_pool.hpp"
+#ifdef DNNL_WITH_SYCL
+#include "dnnl_sycl.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "oneapi/dnnl/dnnl_graph_ocl.hpp"
+#endif
+
 #include "utils.hpp"
 #include "utils/timer.hpp"
 

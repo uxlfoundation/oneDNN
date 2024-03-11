@@ -300,28 +300,9 @@ private:
 
 std::vector<tile_scheme_t> get_tile_schemes(prop_kind_t prop, bool is_dw) {
     std::vector<tile_scheme_t> schemes;
-    if (prop == prop_kind::forward) {
-        schemes.emplace_back("tg=[ow], iter=[mb,g,oc,ic]");
-        schemes.emplace_back("tg=[oc,mb], iter=[mb,g,oc,ic]");
-        schemes.emplace_back("tg=[ic,ow], iter=[ow,g,oc,ic]");
-    } else if (prop == prop_kind::backward_data) {
-        schemes.emplace_back("tg=[ic,iw], iter=[mb,g,oc,ic]");
-        schemes.emplace_back("tg=[ic,mb], iter=[mb,g,oc,ic]");
-        schemes.emplace_back("tg=[ic,iw], iter=[iw,g,oc,ic]");
-    } else if (prop == prop_kind::backward_weights) {
-        schemes.emplace_back("tg=[oc,ic], iter=[mb,g,oc,ic]");
-        schemes.emplace_back("tg=[oc,ic], iter=[ow,g,oc,ic]");
-    } else {
-        ir_error_not_expected();
-    }
-    for (auto &s : schemes) {
-        if (is_dw) {
-            s.unset(prb_dims::ic);
-            s.unset(prb_dims::oc);
-        } else {
-            s.unset(prb_dims::g);
-        }
-    }
+    schemes.emplace_back("tg=[oc,ow], iter=[mb,oc,ic]");
+    schemes.emplace_back("tg=[oc,mb], iter=[mb,oc,ic]");
+    schemes.emplace_back("tg=[oc,ow], iter=[ow,oc,ic]");
     return schemes;
 }
 

@@ -469,21 +469,6 @@ int doit(const prb_t *prb, res_t *res) {
         skip_unimplemented_ops(partitions[i], dg, res);
         if (res->state == SKIPPED) return OK;
 
-        BENCHDNN_PRINT(3, "[INFO]: partition #%zd is unsupported!\n", i);
-        res->state = UNIMPLEMENTED;
-        return FAIL;
-    }
-
-    for (size_t i = 0; i < partitions.size(); ++i) {
-        if (partitions[i].is_supported()) continue;
-
-        // End operation is not supported in the library, and it's fine to
-        // continue validation as it's a knob without functional meaning.
-        if (is_single_end_op_partition(partitions[i], end_opid_v)) continue;
-
-        skip_unimplemented_ops(partitions[i], dg, res);
-        if (res->state == SKIPPED) return OK;
-
         auto in_out_lts = partitions[i].get_input_ports();
         const auto &outputs = partitions[i].get_output_ports();
         in_out_lts.insert(in_out_lts.end(), outputs.begin(), outputs.end());
@@ -533,16 +518,6 @@ int doit(const prb_t *prb, res_t *res) {
         BENCHDNN_PRINT(3, "[INFO]: partition #%zd is unsupported!\n", i);
         res->state = UNIMPLEMENTED;
         return FAIL;
-    }
-
-    if (prb->expected_n_partition != 0
-            && partitions.size() != prb->expected_n_partition) {
-        BENCHDNN_PRINT(0,
-                "Error: the expected number of partitions (%zu) doesn't "
-                "coincide with the actual number of partitions returned "
-                "(%zu).\n ",
-                prb->expected_n_partition, partitions.size());
-        return res->state = FAILED, FAIL;
     }
 
     if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;

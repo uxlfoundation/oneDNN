@@ -199,6 +199,17 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8x8x_matmul_post_ops)
                     // Optional select
                     auto p_select = optional_select(pgraph, prep, 2);
 
+                    // Optional select
+                    auto popt_select_graph = std::make_shared<pb_graph_t>();
+                    pm::pb_op_t *select_op = popt_select_graph->append_op(
+                            graph::op_kind::Select);
+                    popt_select_graph->create_input_port(0, select_op, 0);
+                    popt_select_graph->create_input_port(1, select_op, 1);
+                    popt_select_graph->create_input_port(2, select_op, 2);
+                    popt_select_graph->create_output_port(0, select_op, 0);
+                    auto p_select = pgraph->append_optional(popt_select_graph,
+                            in_edges_t {in_edge(2, prep, 0)});
+
                     // Optional quant_out
                     auto popt_qout_graph = std::make_shared<pb_graph_t>();
                     pm::pb_op_t *pquant_out = popt_qout_graph->append_op(

@@ -112,21 +112,12 @@ void init_params(
         exit(1);
     }
 
-    switch (params.mode) {
-        case planner_mode_t::auto_search: return;
-        case planner_mode_t::search:
-            for (auto *arg : {"--iter", "--tg"}) {
-                if (cmd_args.find(arg) == std::string::npos) {
-                    cmd_args += " " + std::string(arg) + " x";
-                }
-            }
-            break;
-        default: break;
+    if (params.mode != planner_mode_t::auto_search) {
+        auto iface = params.desc.cli_iface();
+        iface.parse(cmd_args, &params.desc);
+        params.desc.set_defaults();
+        params.desc.hw = hw_t(bench_mger.get_engine().get());
     }
-    auto iface = params.desc.parse_iface();
-    iface.parse(cmd_args, params.desc);
-    params.desc.set_defaults();
-    params.desc.hw = hw_t(bench_mger.get_engine().get());
 }
 
 void planner_main(int argc, const char **argv) {

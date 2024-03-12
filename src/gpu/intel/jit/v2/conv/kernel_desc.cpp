@@ -21,6 +21,7 @@
 #include "gpu/compute/utils.hpp"
 #include "gpu/jit/codegen/kernel.hpp"
 #include "gpu/jit/ir/kernel_info.hpp"
+#include "gpu/jit/utils/utils.hpp"
 #include "gpu/jit/v2/conv/kernel.hpp"
 #include "gpu/jit/v2/conv/plan.hpp"
 #include "gpu/jit/v2/conv/problem.hpp"
@@ -311,22 +312,22 @@ void kernel_desc_t::set_defaults() {
         switch (prop) {
             case prop_kind::forward_training:
             case prop_kind::forward_inference:
-                loop_desc.add(prb_dims::kw);
-                loop_desc.add(prb_dims::kh);
-                loop_desc.add(prb_dims::kd);
-                loop_desc.add(prb_dims::ic);
+                loop_nest.add(prb_dims::kw);
+                loop_nest.add(prb_dims::kh);
+                loop_nest.add(prb_dims::kd);
+                loop_nest.add(prb_dims::ic);
                 break;
             case prop_kind::backward_data:
-                loop_desc.add(prb_dims::kw);
-                loop_desc.add(prb_dims::kh);
-                loop_desc.add(prb_dims::kd);
-                loop_desc.add(prb_dims::oc);
+                loop_nest.add(prb_dims::kw);
+                loop_nest.add(prb_dims::kh);
+                loop_nest.add(prb_dims::kd);
+                loop_nest.add(prb_dims::oc);
                 break;
             case prop_kind::backward_weights:
-                loop_desc.add(prb_dims::mb);
-                loop_desc.add(prb_dims::ow);
-                loop_desc.add(prb_dims::oh);
-                loop_desc.add(prb_dims::od);
+                loop_nest.add(prb_dims::mb);
+                loop_nest.add(prb_dims::ow);
+                loop_nest.add(prb_dims::oh);
+                loop_nest.add(prb_dims::od);
                 break;
             default: ir_error_not_expected(); break;
         }

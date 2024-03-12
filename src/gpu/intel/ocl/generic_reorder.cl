@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,12 +16,9 @@
 
 #define USE_CUSTOM_GWS_GET_ID
 
-// Temporary W/A for bf16 problems in HW and compiler
-#undef cl_future_bf16_cvt
-
-#include "gpu/intel/ocl/dispatch.h"
-#include "gpu/intel/ocl/reorder_common.h"
-#include "gpu/intel/ocl/types_interop.h"
+#include "gpu/ocl/dispatch.h"
+#include "gpu/ocl/reorder_common.h"
+#include "gpu/ocl/types_interop.h"
 
 #define GWS_GET_THREAD_ID(index) (get_global_id(index) + offset.array[index])
 

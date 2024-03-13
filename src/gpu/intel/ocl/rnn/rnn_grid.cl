@@ -430,9 +430,9 @@ __kernel void ref_rnn_copy_res_iter(
 
 __kernel void ref_rnn_bias_prepare(__global float *ws_bias,
         __global float *scales, __global char *wei_layer,
-        __global char *wei_iter, __global float *bias, int dhc, int n_layer,
-        int n_dir, float data_shift, float data_scale, int wei_l_comp_off,
-        int wei_i_comp_off, int64x4_t bias_strides) {
+        __global char *wei_iter, __global BIAS_DATA_T *bias, int dhc,
+        int n_layer, int n_dir, float data_shift, float data_scale,
+        int wei_l_comp_off, int wei_i_comp_off, int64x4_t bias_strides) {
 #if COPY_BIAS
 
     const int dhc_ = get_global_id(0);
@@ -532,9 +532,9 @@ typedef struct lbr_gru_gates_t {
 } lbr_gru_gates_t;
 
 lbr_gru_gates_t compute_gates_lbr_gru(
-        const __global AUX_DATA_T *restrict scratch_gates,
+        const __global ACC_DATA_T *restrict scratch_gates,
         const __global AUX_DATA_T *restrict scratch_cell,
-        const __global AUX_DATA_T *restrict bias,
+        const __global BIAS_DATA_T *restrict bias,
         const __global float *restrict tm_scales, int scratch_gates_ld, int dhc,
         int mb, int c) {
     float G[n_gates];
@@ -632,7 +632,7 @@ simple_rnn_elemwise_fwd(int dir, int lay, int iter,
 #else
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-simple_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
+ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
         dim_t scratch_gates_off, __global BIAS_DATA_T *bias_, dim_t bias_off,
         float alpha, __global float *tm_scales,
         __global WS_STATE_DATA_T *h_states_t_l_, dim_t h_states_t_l_off,

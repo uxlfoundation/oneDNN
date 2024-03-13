@@ -304,8 +304,9 @@ void rnn_utils::set_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
     rnn.ws_states_elsz = types::data_type_size(rd.src_layer_desc.data_type);
 
     rnn.scratch_gates_elsz = types::data_type_size(rnn.acc_data_type);
-    rnn.scratch_diff_gates_elsz
-            = is_bwd ? types::data_type_size(rnn.src_data_type) : 0;
+    rnn.scratch_diff_gates_elsz = is_bwd
+            ? (rnn.dt_conf == all_bf16 ? sizeof(bfloat16_t) : aux_elsz)
+            : 0;
 
     // Set workspace sizes to store:
     // states to copmute a pass

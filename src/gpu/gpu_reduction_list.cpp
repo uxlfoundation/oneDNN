@@ -42,6 +42,12 @@ namespace gpu {
 
 namespace {
 
+#ifdef DNNL_DEV_MODE
+#define JIT_REDUCTION_INSTANCE INSTANCE(jit::jit_reduction_t)
+#else
+#define JIT_REDUCTION_INSTANCE
+#endif
+
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
         GPU_INSTANCE_INTEL_DEVMODE(intel::jit::jit_reduction_t)

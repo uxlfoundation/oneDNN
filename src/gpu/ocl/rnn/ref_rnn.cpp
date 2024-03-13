@@ -637,7 +637,7 @@ status_t _ref_rnn_common_t<aprop>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_RNN_SC(this->set_default_params(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
-    VDISPATCH_RNN(IMPLICATION(src_layer_dt == data_type::u8,
+    VDISPATCH_RNN(IMPLICATION(src_type == data_type::u8,
                           this->desc()->prop_kind == forward_inference),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_RNN(

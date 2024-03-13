@@ -116,6 +116,7 @@ template <gpu_gen_t hw>
 class jit_generator : public ngen::OpenCLCodeGenerator<hw>,
                       public jit_generator_base {
     friend struct jit_eltwise_injector_f32<hw>;
+    friend struct jit_reduction_injector_f32<hw>;
     friend struct jit_post_op_injector<hw>;
     friend struct EmulationImplementation;
 

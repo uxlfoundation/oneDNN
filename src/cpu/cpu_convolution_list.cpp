@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 * Copyright 2020-2023 Arm Ltd. and affiliates
 * Copyright 2020-2024 FUJITSU LIMITED
 *
@@ -84,6 +84,8 @@ using namespace dnnl::impl::prop_kind;
             CPU_INSTANCE_AMX( \
                     brgemm_1x1_convolution_fwd_t<avx10_1_512_amx_fp16>) \
             CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_1_512_amx_fp16>) \
+            CPU_INSTANCE_AMX( \
+                    brgemm_convolution_fwd_t<avx10_1_512_amx_fp16, true>) \
             CPU_INSTANCE(ref_convolution_fwd_t) nullptr, \
         } \
     }
@@ -97,18 +99,12 @@ using namespace dnnl::impl::prop_kind;
                                 CPU_INSTANCE_AMX( \
                                         brgemm_convolution_bwd_strided_t< \
                                                 avx10_1_512_amx_fp16>) \
-                                        CPU_INSTANCE( \
-                                                ref_convolution_bwd_data_t) nullptr, \
-                }) \
-    }
-
-#define BRGEMM_FP8_BWD_W_CONVS(dtsrc, dtwei, dtdst) \
-    { \
-        {backward_weights, dtsrc, dtwei, dtdst}, \
-                REG_BWD_PK({ \
-                        CPU_INSTANCE_AMX(brgemm_convolution_bwd_weights_t) \
-                                CPU_INSTANCE( \
-                                        ref_convolution_bwd_weights_t) nullptr, \
+                                        CPU_INSTANCE_AMX( \
+                                                brgemm_convolution_bwd_strided_t< \
+                                                        avx10_1_512_amx_fp16, \
+                                                        true>) \
+                                                CPU_INSTANCE( \
+                                                        ref_convolution_bwd_data_t) nullptr, \
                 }) \
     }
 
@@ -316,18 +312,10 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         BRGEMM_FP8_BWD_D_CONVS(f8_e5m2, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f8_e5m2, f8_e4m3, f8_e5m2),
         BRGEMM_FP8_BWD_D_CONVS(f8_e5m2, f8_e4m3, f8_e4m3),
-        BRGEMM_FP8_BWD_D_CONVS(f32, f8_e5m2, f8_e5m2),
-        BRGEMM_FP8_BWD_D_CONVS(f32, f8_e5m2, f8_e4m3),
-        BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e5m2),
-        BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f8_e4m3, f8_e5m2, f8_e5m2),
         BRGEMM_FP8_BWD_D_CONVS(f8_e4m3, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f8_e4m3, f8_e4m3, f8_e5m2),
         BRGEMM_FP8_BWD_D_CONVS(f8_e4m3, f8_e4m3, f8_e4m3),
-        BRGEMM_FP8_BWD_D_CONVS(f32, f8_e5m2, f8_e5m2),
-        BRGEMM_FP8_BWD_D_CONVS(f32, f8_e5m2, f8_e4m3),
-        BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e5m2),
-        BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e4m3),
         // BWD_W fp
         {{backward_weights, f32, f32, f32}, REG_BWD_PK({
             CPU_INSTANCE_X64(ip_convolution_bwd_weights_t)

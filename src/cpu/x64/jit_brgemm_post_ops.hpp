@@ -147,36 +147,61 @@ struct jit_brgemm_kernel_post_ops : public jit_generator {
                                   brg.attr()->post_ops_,
                                   memory_desc_wrapper(brg.dst_md()))) {
 
-    virtual ~jit_brgemm_kernel_post_ops_base_t() = default;
+        if (brg.beta != 0) {
+            static constexpr bool preserve_gpr = true;
+            static constexpr bool preserve_vmm = true;
+            static constexpr bool use_exact_tail_scalar_bcast = false;
 
-    virtual status_t generate_kernel() = 0;
+            const binary_injector::rhs_arg_static_params_t rhs_sp {
+                    static_cast<size_t>(vmm_tmp(4).getIdx()), this->r14,
+                    this->r15, this->r13, preserve_gpr, preserve_vmm,
+                    GET_OFF(ptr_binary_post_ops_rhs), GET_OFF(dst_orig),
+                    memory_desc_wrapper(brg.dst_md()),
+                    static_cast<size_t>(brg.load_dim % brg.ld_block),
+                    k_tail_mask, use_exact_tail_scalar_bcast};
+            const binary_injector::static_params_t bsp {this->param1, rhs_sp};
 
-    virtual void operator()(brgemm_kernel_post_ops_args_t *args) const = 0;
+            const bool save_state = jcp.with_eltwise;
+            const auto &reserved_eltwise_gpr = reg_reserved_eltwise;
+            const auto reserved_eltwise_maskr = Xbyak::Opmask(1);
 
-    virtual int get_bcast_dim() const = 0;
-};
+            const eltwise_injector::static_params_t esp {
+                    save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
-// An implementation class for post-ops based on `Vmm` template argument.
-// `Vmm` is propagated further to uni_postops injector class.
-// Shouldn't be called directly on implementation side.
-template <typename Vmm>
-struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
-                                      public jit_generator {
+            postops_injector_ = utils::make_unique<
+                    injector::jit_uni_postops_injector_t<po_isa_t>>(
+                    this, attr.post_ops_, bsp, esp);
+        }
+        if (brg.is_bf16_emu)
+            bf16_emu_ = utils::make_unique<bf16_emulation_t>(this, emu_reserv_1,
+                    emu_reserv_2, emu_reserv_3, emu_scratch, emu_reserv_4,
+                    emu_reserv_4);
+        if (brg.is_fp8_via_convert()
+                && utils::one_of(
+                        data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+                    emu_reserv_1, emu_reserv_2, emu_reserv_3, emu_mask,
+                    emu_scratch);
+        if (brg.is_fp8_via_convert()
+                && utils::one_of(
+                        data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+                    emu_reserv_1, emu_reserv_2, emu_reserv_3, emu_reserv_4,
+                    emu_reserv_5, emu_scratch);
 
-    // TODO: the proper design should replace `brgemm_desc_t` argument and
-    // introduce a dedicated struct with members properly initialized. This will
-    // let avoiding a `brgemm_desc_t` object copy which is unsafe due to `attr`
-    // member.
-    jit_brgemm_kernel_post_ops_t(
-            const brgemm_desc_t &abrg, const primitive_attr_t &aattr);
+        const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
+        // per_oc: conv: 1 << 0, (1 << 1) + (1 << 0) (with groups)
+        // per_oc: ip: 1 << 0
+        is_oc_scale_
+                = utils::one_of(wei_scales.mask_, 1 << 0, (1 << 1) + (1 << 0));
 
-    // These two methods are required for a base class to work since it's not
-    // derived from the jit_generator.
-    status_t generate_kernel() override {
-        return jit_generator::create_kernel();
-    }
-    void operator()(brgemm_kernel_post_ops_args_t *args) const override {
-        return jit_generator::operator()(args);
+        LDD_ = brg.LDD;
+        inp_dt_ = brg.dt_c;
+        out_dt_ = brg.dt_d;
+        bia_dt_ = jcp.bia_dt;
+        inp_typesize_ = types::data_type_size(inp_dt_);
+        out_typesize_ = types::data_type_size(out_dt_);
+        bia_typesize_ = (jcp.with_bias) ? types::data_type_size(bia_dt_) : 0;
     }
 
     ~jit_brgemm_kernel_post_ops_t() = default;
@@ -205,8 +230,8 @@ private:
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
+    std::unique_ptr<fp8_emulation_base_t> f8_e5m2_emulator_;
+    std::unique_ptr<fp8_emulation_base_t> f8_e4m3_emulator_;
 
     int max_vregs_;
     const bool with_binary_non_scalar_bcast_;
@@ -218,6 +243,11 @@ private:
     int is_oc_scale_;
 
     using reg64_t = const Xbyak::Reg64;
+    using Vmm = typename utils::conditional<utils::one_of(isa, avx2, avx2_vnni,
+                                                    avx2_vnni_2),
+            Xbyak::Ymm, Xbyak::Zmm>::type;
+    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower2_t = typename vreg_traits<Vmm_lower_t>::Vmm_lower_t;
 
     // Register decomposition
     const reg64_t reg_reserved_eltwise = rax;
@@ -296,7 +326,45 @@ private:
 
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
             int tail_size, bool store, Xbyak::Opmask ktail_mask,
-            bool skip_cvt2ps = false);
+            bool skip_cvt2ps = false) {
+        const bool is_tail = op.isMEM()
+                && tail_size != vreg_traits<Vmm>::vlen / sizeof(float)
+                // The current kernel is written such that tail_size = 0 implies
+                // no tail and full vmm must be processed.
+                && tail_size > 0;
+
+        if (IMPLICATION(is_tail, isa_has_masks(isa))) {
+            const Vmm vmm = maybe_mask(vmm_in, is_tail, store, ktail_mask);
+            switch (type_in) {
+                case data_type::f32:
+                case data_type::s32: vmovups(vmm, op); break;
+                case data_type::s8: vpmovsxbd(vmm, op); break;
+                case data_type::u8: vpmovzxbd(vmm, op); break;
+                case data_type::bf16:
+                    vpmovzxwd(vmm, op);
+                    vpslld(vmm, vmm, 16);
+                    break;
+                case data_type::f16: vcvtph2ps(vmm, op); break;
+                case data_type::f8_e5m2:
+                    if (brg.is_fp8_via_convert())
+                        f8_e5m2_emulator_->vcvt_f8_to_f32(vmm, op);
+                    else
+                        assert(!"Not supported yet");
+                    break;
+                case data_type::f8_e4m3:
+                    if (brg.is_fp8_via_convert())
+                        f8_e4m3_emulator_->vcvt_f8_to_f32(vmm, op);
+                    else
+                        assert(!"Not supported yet");
+                    break;
+                default: assert(!"unsupported data type");
+            }
+        } else {
+            load_data(type_in, vmm_in, op.getAddress(), tail_size);
+        }
+        if (!skip_cvt2ps && types::is_integral_dt(type_in))
+            uni_vcvtdq2ps(vmm_in, vmm_in);
+    }
 
     Vmm vector(int m, int n, int n_block) { return Vmm(m * n_block + n); };
 
@@ -454,10 +522,11 @@ private:
         // compensation to avoid the loss of accuracy when converting s32 to f32
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
-            if (brg.alpha == 0 && brg.beta != 0) {
-                // if postwork then have to init vmm each time
+            if (brg.alpha == 0) {
+                // have to init vmm each time because vectors may have been
+                // changed in the previous iterations
                 uni_vpxor(vector(m, n), vector(m, n), vector(m, n));
-            } else if (brg.alpha != 0) {
+            } else {
                 auto inp_addr = ptr[aux_reg_in
                         + inp_typesize_ * (m * brg.LDC + n * brg.ld_block)];
                 cvt2ps(inp_dt_, vector(m, n), inp_addr, tail, false, k_mask,
@@ -572,8 +641,11 @@ private:
             if (is_superset(isa, avx512_core)) {
                 auto vmm_masked = maybe_mask(vmm, tail > 0, true, k_mask);
                 Vmm_lower_t vmm_low = Vmm_lower_t(vmm.getIdx());
+                Vmm_lower2_t vmm_low2 = Vmm_lower2_t(vmm_low.getIdx());
                 auto vmm_low_masked
                         = maybe_mask(vmm_low, tail > 0, true, k_mask);
+                auto vmm_low2_masked
+                        = maybe_mask(vmm_low2, tail > 0, true, k_mask);
                 switch (out_dt_) {
                     case data_type::f32:
                     case data_type::s32: uni_vmovups(addr, vmm_masked); break;
@@ -589,6 +661,20 @@ private:
                     case data_type::f16:
                         vcvtps2ph(vmm_low, vmm, _op_mxcsr);
                         vmovdqu16(addr, vmm_low_masked);
+                        break;
+                    case data_type::f8_e5m2:
+                        if (brg.is_fp8_via_convert()) {
+                            f8_e5m2_emulator_->vcvt_f32_to_f8(vmm_low2, vmm);
+                            vmovdqu8(addr, vmm_low2_masked);
+                        } else
+                            assert(!"Not supported yet");
+                        break;
+                    case data_type::f8_e4m3:
+                        if (brg.is_fp8_via_convert()) {
+                            f8_e4m3_emulator_->vcvt_f32_to_f8(vmm_low2, vmm);
+                            vmovdqu8(addr, vmm_low2_masked);
+                        } else
+                            assert(!"Not supported yet");
                         break;
                     case data_type::s8: vpmovsdb(addr, vmm_masked); break;
                     case data_type::u8: vpmovusdb(addr, vmm_masked); break;
@@ -729,7 +815,11 @@ private:
         int nb2_tail = nb % n_block2_;
         int n_block = (nb2 == 0) ? nstl::max(1, nb2_tail) : n_block2_;
 
-        int m_max_regs = (brg.is_bf16_emu ? 24 : max_vregs_ - 4) / n_block;
+        int m_max_regs = (brg.is_bf16_emu
+                        ? 24
+                        : (brg.is_fp8_via_convert() ? 23 : max_vregs_ - 4));
+        m_max_regs /= n_block;
+
         int m_block = nstl::min(brg.bcast_dim, m_max_regs);
 
         int mb = brg.bcast_dim / m_block;
@@ -775,16 +865,6 @@ private:
         }
         mov(reg_out, ptr[param1 + GET_OFF(ptr_out)]);
 
-        // brg.alpha == 0 means initialize registers, 1 means read from input
-        // brg.beta == 0 means skip postwork, 1 means do postwork
-        if (brg.alpha == 0 && brg.beta == 0) {
-            for_(int m = 0; m < m_block; m++)
-            for (int n = 0; n < n_block; n++) {
-                auto vmm = Vmm(m * n_block + n);
-                uni_vpxor(vmm, vmm, vmm);
-            }
-        }
-
         for (int mb_ = 0; mb_ < mb; mb_++) {
             loop_by_N(m_block, nb2, nb2_tail, nb_tail);
 
@@ -812,6 +892,10 @@ private:
 
         if (postops_injector_)
             postops_injector_->prepare_table(/* generate = */ true);
+        if (brg.is_fp8_via_convert()) {
+            if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
+            if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
+        }
     }
 };
 

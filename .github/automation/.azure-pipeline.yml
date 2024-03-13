@@ -18,46 +18,8 @@
 # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema
 
 trigger:
-  batch: true
-  branches:
-    include: [ main, 'rls-*' ]
-  paths:
-    include:
-      - .github
-      - cmake
-      - examples
-      - include
-      - src
-      - tests
-      - CMakeLists.txt
-    exclude:
-      - src/gpu
-      - src/cpu/aarch64
-      - src/cpu/ppc64
-      - src/cpu/rv64
-      - src/cpu/s390x
-      - src/xpu
-
-pr:
-  autoCancel: true
-  branches:
-    include: [ main, 'rls-*' ]
-  paths:
-    include:
-      - .github
-      - cmake
-      - examples
-      - include
-      - src
-      - tests
-      - CMakeLists.txt
-    exclude:
-      - src/gpu
-      - src/cpu/aarch64
-      - src/cpu/ppc64
-      - src/cpu/rv64
-      - src/cpu/s390x
-      - src/xpu
+- main
+- rls-*
 
 jobs:
   - job: 'Ubuntu20'

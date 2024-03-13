@@ -1691,8 +1691,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
-    const data_type_t vnni_block_dt
-            = get_mac_emu_data_type(jcp.wei_dt, isa, isa == avx10_1_512);
+    const data_type_t vnni_block_dt = get_mac_emu_data_type(
+            jcp.wei_dt, isa, isa == avx10_1_512 && !jcp.is_fp8_convert);
     jcp.vnni_block = data_type_vnni_granularity(vnni_block_dt);
 
     if (one_of(jcp.prop_kind, prop_kind::forward_training,

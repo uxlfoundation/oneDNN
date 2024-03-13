@@ -774,8 +774,7 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
         // FIXME: this will disable int8 RNN testing if the library is built with
         //        Intel MKL that does have packed IGEMM
         if (prb.is_int8()) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
             return;
         }
 #endif
@@ -786,22 +785,19 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
             return;
         }
 
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    // f16 training is not yet fully supported.
-    const bool is_f16_not_ok
-            = prb.cfg[SRC_LAYER].dt == dnnl_f16 && !(dir & FLAG_INF);
-    if (is_f16_not_ok) {
-        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
-        return;
-    }
-#endif
+        // f16 training is not yet fully supported.
+        const bool is_f16_not_ok
+                = prb.cfg[SRC_LAYER].dt == dnnl_f16 && !(dir & FLAG_INF);
+        if (is_f16_not_ok) {
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            return;
+        }
 
 #ifdef DNNL_AARCH64_USE_ACL
         const bool is_acl_f16_not_ok = prb.cfg[SRC_LAYER].dt == dnnl_f16
                 && dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16);
         if (is_acl_f16_not_ok) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
             return;
         }
 #endif

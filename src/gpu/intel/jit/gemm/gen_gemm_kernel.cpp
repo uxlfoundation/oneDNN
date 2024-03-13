@@ -14,13 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/gemm/gen_gemm_kernel.hpp"
+#include "gpu/jit/gemm/gen_gemm_kernel.hpp"
 #include "common/impl_registration.hpp"
-#include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/jit/gemm/kernel_catalog.hpp"
-#include "gpu/intel/jit/gemm/kernel_selector.hpp"
-#include "gpu/intel/jit/gemm/strategy_parser.hpp"
-#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/compute/device_info.hpp"
+#include "gpu/jit/gemm/kernel_catalog.hpp"
+#include "gpu/jit/gemm/kernel_selector.hpp"
+#include "gpu/jit/gemm/strategy_parser.hpp"
+#include "gpu/jit/utils/ngen_type_bridge.hpp"
 
 namespace dnnl {
 namespace impl {

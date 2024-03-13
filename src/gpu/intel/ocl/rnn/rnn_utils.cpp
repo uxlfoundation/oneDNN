@@ -105,13 +105,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
 
     rnn.aux_data_type
             = acc_data_t == data_type::f16 ? data_type::f16 : data_type::f32;
-    rnn.diff_data_type = diff_dst_layer_d.data_type();
-
-    rnn.acc_data_type = acc_data_t;
-    rnn.acc_data_type_elsz = types::data_type_size(acc_data_t);
-
-    rnn.wei_layer_type = weights_layer_d.data_type();
-    rnn.wei_iter_type = weights_iter_d.data_type();
+    rnn.diff_data_type = data_type::f32;
 
     rnn.acc_data_type = acc_data_t;
     rnn.acc_data_type_elsz = types::data_type_size(acc_data_t);

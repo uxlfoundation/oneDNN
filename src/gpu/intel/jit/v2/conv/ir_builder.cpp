@@ -35,107 +35,6 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-class loop_nest_t {
-public:
-    loop_nest_t() = default;
-
-    let_ctx_t(const kernel_info_t &kernel_info, const grid_context_t &grid_ctx,
-            const grid_t &tg_grid, const grid_t &thr_grid,
-            const virt_grid_t &virt_grid, int simd, ir_context_t &ir_ctx)
-        : kernel_info_(kernel_info), ir_ctx_(ir_ctx) {
-        // Handle thread indices.
-        for (int i = 0; i < grid_ctx.ndims(); i++) {
-            auto value = grid_ctx.local_id(i);
-            if (i == 0) value /= simd;
-            auto thr_idx = thr_grid.index_var(i);
-            let_stmts_.push_back(
-                    let_t::make(thr_idx, cast(value, thr_idx.type())));
-        }
-        // Handle thread group indices.
-        for (int i = 0; i < grid_ctx.ndims(); i++) {
-            auto tg_idx = tg_grid.index_var(i);
-            expr_map_.emplace(tg_idx, grid_ctx.tg_idx(i));
-        }
-        // Handle virtual grid indices.
-        for (auto &kv : virt_grid.idxs()) {
-            expr_map_.emplace(kv.first, get(kv.second));
-        }
-    }
-
-    int nloops() const { return (int)loops_.size(); }
-    const expr_t &index(int level) const { return loops_[level].index; }
-    const expr_t &size(int level) const { return loops_[level].size; }
-    std::vector<expr_t> indices() const {
-        std::vector<expr_t> ret;
-        for (auto &e : exprs)
-            ret.push_back(get(e));
-        return ret;
-    }
-
-    expr_t get_shuffle(const std::vector<expr_t> &exprs) {
-        std::vector<expr_t> vec = get(exprs);
-        return shuffle_t::make(vec);
-    }
-
-private:
-    const expr_t *find(const expr_t &expr) const {
-        auto it = expr_map_.find(expr);
-        if (it != expr_map_.end()) return &it->second;
-        return nullptr;
-    }
-
-    expr_t register_expr(const expr_t &key, const expr_t &value) {
-        if (is_const(key) || key.is<const_var_t>() || key.is<var_t>())
-            return value;
-        if (auto *cached = find(key)) {
-            ir_assert(value.is_same(*cached));
-            return value;
-        }
-        auto tmp_var = ir_ctx_.create_tmp_var(type_t::s32());
-        let_stmts_.push_back(let_t::make(tmp_var, value));
-        expr_map_.emplace(key, tmp_var);
-        return tmp_var;
-    }
-
-    expr_t get_var(const var_t &var) {
-        if (auto *cached = find(var)) return *cached;
-        return var;
-    }
-
-    expr_t get_const_var(const const_var_t &var) {
-        if (auto *cached = find(var)) return *cached;
-
-        auto value = kernel_info_.find_arg(var.name);
-        return register_expr(var, value);
-    }
-
-    std::string str() const {
-        std::ostringstream oss;
-        oss << "nloops: " << nloops();
-        for (int i = 0; i < nloops(); i++) {
-            oss << std::endl;
-            oss << "  idx: " << index(i) << " size: " << size(i);
-        }
-        return oss.str();
-    }
-
-    IR_DEFINE_DUMP()
-
-    object_t _mutate(const var_t &obj) override { return ctx_.get_var(obj); }
-
-private:
-    struct loop_t {
-        expr_t index;
-        expr_t size;
-    };
-
-expr_t let_ctx_t::get(const expr_t &expr) {
-    if (auto *cached = find(expr)) return *cached;
-    let_ctx_mutator_t mutator(*this);
-    auto ret = mutator.mutate(expr);
-    return register_expr(expr, ret);
-}
-
 struct offset_params_t {
     // Type of the offset.
     type_t type;
@@ -333,9 +232,12 @@ private:
 
 class offset_scope_t {
 public:
-    offset_scope_t(buffer_manager_t &buf_mgr, ir_context_t &ir_ctx,
-            const loop_nest_t &loop_nest)
-        : buf_mgr_(buf_mgr), ir_ctx_(ir_ctx), loop_nest_(loop_nest) {}
+    offset_ctx_t(buffer_manager_t &buf_mgr, ir_context_t &ir_ctx,
+            const loop_nest_t &loop_nest, const coord_info_t &coord_info)
+        : buf_mgr_(buf_mgr)
+        , ir_ctx_(ir_ctx)
+        , loop_nest_(loop_nest)
+        , coord_info_(coord_info) {}
 
     send_header_t add_header(int version, const send_1d_desc_t &desc,
             const expr_t &mem_buf, const addr_t &addr, const expr_t &addr_inc) {
@@ -366,12 +268,12 @@ public:
         auto W_enc = to_simple_expr(desc.W) * type_size - 1;
         auto H_enc = to_simple_expr(desc.H) - 1;
         auto P_enc = to_simple_expr(desc.P) * type_size - 1;
-        (void)get_offset(version, W_enc,
-                off.buf + send_t::header_2d_off_surface_width());
-        (void)get_offset(version, H_enc,
-                off.buf + send_t::header_2d_off_surface_height());
-        (void)get_offset(version, P_enc,
-                off.buf + send_t::header_2d_off_surface_pitch());
+        (void)get_offset(
+                W_enc, off.buf + send_t::header_2d_off_surface_width());
+        (void)get_offset(
+                H_enc, off.buf + send_t::header_2d_off_surface_height());
+        (void)get_offset(
+                P_enc, off.buf + send_t::header_2d_off_surface_pitch());
 
         uint32_t w_enc = desc.w - 1;
         uint32_t h_enc = desc.h - 1;
@@ -395,7 +297,7 @@ public:
             params.allow_reuse = true;
             auto off = get_offset(
                     expr_t(0), dm.base, dm.slot_incs, shift, params);
-            ret.add_mask(off, let_ctx_.get(dm.bound), dm.has_underflow);
+            ret.add_mask(off, to_simple_expr(dm.bound), dm.has_underflow);
         }
         return ret;
     }
@@ -454,12 +356,12 @@ private:
         ret.esize = params.esize;
 
         expr_t comp_value = 0;
-        for (int i = 0; i < loop_nest_.nloops(); i++) {
-            auto loop_size = loop_nest_.size(i);
-            auto inc_value = simplify(_loop_incs[i] - comp_value);
+        for (auto &e : loop_nest_) {
+            auto loop_size = coord_info_.loop_size(e.dim);
+            auto inc_value = simplify(_loop_incs[e.idx] - comp_value);
             auto inc = to_simple_expr(inc_value);
             ret.loop_incs.push_back(inc);
-            comp_value = to_simple_expr(_loop_incs[i] * loop_size);
+            comp_value = to_simple_expr(_loop_incs[e.idx] * loop_size);
         }
 
         if (params.allow_reuse) {
@@ -656,9 +558,26 @@ private:
         return ret;
     }
 
+    expr_t to_simple_expr(const expr_t &e) {
+        if (is_const(e) || e.is<const_var_t>() || e.is<var_t>()) return e;
+        auto it = expr2var_.find(e);
+        if (it != expr2var_.end()) return it->second;
+        auto tmp_var = ir_ctx_.create_tmp_var(type_t::s32());
+        let_stmts_.push_back(let_t::make(tmp_var, e));
+        expr2var_.emplace(e, tmp_var);
+        return tmp_var;
+    }
+
+    buffer_manager_t &buf_mgr_;
+    ir_context_t &ir_ctx_;
     loop_nest_t loop_nest_;
-    std::vector<loop_index_t> loop_idxs_;
-    loop_index_t linear_idx_;
+    coord_info_t coord_info_;
+
+    object_eq_map_t<expr_t, expr_t> expr2var_;
+    std::vector<stmt_t> let_stmts_;
+
+    int offset_id_ = 0;
+    std::vector<offset_t> offsets_;
 };
 
 class iterator_t {
@@ -898,17 +817,6 @@ stmt_t finalize_vars(const stmt_t &stmt, const kernel_info_t &kernel_info,
     return ret;
 }
 
-loop_nest_t make_loop_nest(
-        const loop_desc_t &loop_desc, const coord_info_t &coord_info) {
-    loop_nest_t ret;
-    for (auto &e : loop_desc) {
-        auto index = coord_info.loop_index(e.dim);
-        auto size = coord_info.loop_size(e.dim);
-        ret.add_loop(index, size);
-    }
-    return ret;
-}
-
 class ir_builder_t {
 public:
     ir_builder_t(const kernel_desc_t &desc, const kernel_info_t &kernel_info,
@@ -920,11 +828,9 @@ public:
         , cset_(desc.spec_reqs.as_constraint_set(kernel_info))
         , ir_ctx_(desc.exec_cfg(), cset_)
         , buf_mgr_(ir_ctx_)
-        , let_ctx_(kernel_info, grid_ctx, plan.tg_grid, plan.thr_grid,
-                  plan.virt_grid, desc.simd, ir_ctx_)
-        , off_ctx_(let_ctx_, buf_mgr_, desc_.loop_nest, plan_.coord_info)
+        , off_ctx_(buf_mgr_, ir_ctx_, desc_.loop_nest, plan_.coord_info)
         , prefetch_off_ctx_(
-                  let_ctx_, buf_mgr_, desc_.loop_nest, plan_.coord_info) {}
+                  buf_mgr_, ir_ctx_, desc_.loop_nest, plan_.coord_info) {}
 
     stmt_t build() {
         build_prefetch();
@@ -948,6 +854,9 @@ public:
         stmt = zero_out_stmt().append(stmt);
         stmt = stmt.append(c_store_stmt_);
         stmt = inject_alloc_and_let(stmt);
+        stmt = finalize_vars(
+                stmt, kernel_info_, grid_ctx_, plan_.tg_grid, ir_ctx_);
+
         stmt = simplify(stmt, ir_ctx_);
         stmt = optimize_alloc_let(stmt, ir_ctx_);
         stmt = split_wide_stores(stmt, ir_ctx_);
@@ -967,7 +876,7 @@ private:
         if (prefetch_dist > 0) {
             prefetch_it = iterator_t(buf_mgr_);
             for (auto &e : loop_nest) {
-                auto bound = let_ctx_.get(coord_info.loop_size(e.dim));
+                auto bound = coord_info.loop_size(e.dim);
                 prefetch_it.add_loop(e, bound);
             }
             init_stmt = init_stmt.append(prefetch_it.init_stmt());
@@ -990,8 +899,8 @@ private:
             ret = ret.append(prefetch_it.inc_stmt(prefetch_off_ctx_));
         }
         for (auto &e : loop_nest) {
-            auto var = let_ctx_.get(coord_info.loop_index(e.dim));
-            auto bound = let_ctx_.get(coord_info.loop_size(e.dim));
+            auto var = coord_info.loop_index(e.dim);
+            auto bound = coord_info.loop_size(e.dim);
             ret = ret.append(off_ctx_.inc_loop_stmt(e));
             ret = for_t::make(var, 0, bound, ret);
         }
@@ -1017,10 +926,10 @@ private:
         stmt_t ret = stmt;
         ret = inject_out_alloc(ret);
         ret = inject_header_alloc(ret);
-        ret = inject_let_stmts(ret, let_ctx_.let_stmts());
+        ret = off_ctx_.inject_let_stmts(ret);
+        ret = prefetch_off_ctx_.inject_let_stmts(ret);
         ret = inject_global_alloc(ret);
         ret = inject_index_let(ret);
-        ret = inject_external_var_let(ret, ir_ctx_);
         return ret;
     }
 
@@ -1290,7 +1199,6 @@ private:
     mutable constraint_set_t cset_;
     mutable ir_context_t ir_ctx_;
     mutable buffer_manager_t buf_mgr_;
-    loop_nest_t loop_nest_;
     mutable offset_ctx_t off_ctx_;
     mutable offset_ctx_t prefetch_off_ctx_;
 

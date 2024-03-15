@@ -455,7 +455,7 @@ void split_to_linear(const expr_t &expr, const std::vector<expr_t> &idxs,
         if (is_zero(start[i])) continue;
         start_shift += start[i] * incs[i];
     }
-    init = init.as<linear_t>().to_expr() + start_shift;
+    init = init.as<linear_t>().to_expr();
 }
 
 } // namespace jit

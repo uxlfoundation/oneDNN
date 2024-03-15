@@ -931,7 +931,10 @@ TEST(test_matmul_compile, MatmulInt8WeightScaleSupport) {
         g.add_op(&qout_op);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+        graph::pass::pass_base_ptr apass
+                = get_pass(engine->kind() == graph::engine_kind::gpu
+                                ? "x8s8x_matmul_post_ops_gpu"
+                                : "x8x8x_matmul_post_ops_cpu");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];

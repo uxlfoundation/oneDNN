@@ -2572,7 +2572,7 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
 
             *yblock = logicalSlots * uncrosspack / consecutive;
 
-            if (prefetch) {
+            if (prefetch)
                 block.count = 1;
             else if (byte)
                 block.count *= T;
@@ -4362,8 +4362,9 @@ static Subregister findBlockReg(Type T, const RegisterBlock &block, int rr,
         stub("Requested out-of-bounds element.");
 
     int crosspack = block.crosspack;
-    // Effective byte crosspack
-    if (Te.isInt4()) crosspack = div_up(crosspack, 2);
+    if (Te.isInt4())
+        crosspack = div_up(crosspack, 2); // Effective byte crosspack
+
     int elFixed, elLD;
     if (block.colMajor) {
         int ccx = cc % crosspack;
@@ -4381,10 +4382,10 @@ static Subregister findBlockReg(Type T, const RegisterBlock &block, int rr,
     el += block.offsetBytes / Te;
     int reg = el / ne;
     int subreg = el % ne;
-    // Effective byte subreg
+
     if (Te.isInt4()) {
         if (subreg % 2) throw std::runtime_error("Invalid int4 offset.");
-        subreg = div_up(subreg, 2);
+        subreg = div_up(subreg, 2); // Effective byte subreg
     }
 
     if (Te.isInt4()) {
@@ -5029,10 +5030,9 @@ void gemm_kernel_generator_t<hw>::loadMatrixBlock(const Register &dest,
                             spec, astrategy.base, null);
                     send(mod, static_cast<SharedFunction>(block.sfid), dest,
                             addr, null, exdesc.all, a0[0]);
-                } else {
+                } else
                     load(mod, dest, spec, astrategy.base,
                             getAddress(addr, block, astrategy));
-                }
                 break;
             }
             case AccessType::Block2D:
@@ -6885,6 +6885,7 @@ void gemm_kernel_generator_t<hw>::remaskLayout(Type T, int index, bool column,
         auto Tr = T;
 
         const int qCX = -1;
+
         for (int y0 = 0; y0 < ny; y0 += crosspack) {
             for (int x0 = 0; x0 < nx;) {
                 auto ii0 = colMajor ? x0 : y0;
@@ -11746,7 +11747,6 @@ void gemm_kernel_generator_t<hw>::gemmApplyABOffset(const GEMMProblem &problem,
 
         Subregister aoBase, boBase;
         if (aoVector) {
-
             aoBase = state.ra.alloc_sub<uint64_t>();
             eaddScaled(1, aoBase, state.inputs.aoPtr, state.i0, Tao, strategy,
                     state);
@@ -13977,6 +13977,11 @@ void gemm_kernel_generator_t<hw>::gemm2DDequantizeOperation(bool doA, Type T,
                     case BinaryOp::ScaleSub:
                         if (T != Type::f16) stub();
                         mad(simd, data(1), -qdata(strideq), data(1),
+                                Immediate::hf(0x7800)); /* 0x7800 = 2^15 */
+                        break;
+                    case BinaryOp::ScaleSub:
+                        if (T != Type::f16) stub();
+                        mad(simd, data(1), -off(strideo), data(1),
                                 Immediate::hf(0x7800)); /* 0x7800 = 2^15 */
                         break;
                     default: stub();
@@ -22972,9 +22977,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
     auto Tb_real = Tb.real();
     auto Tc_real = Tc.real();
 
-    bool dequantize2DA = (problem.aoPtrDims == 2 || problem.aScale2D);
-    bool dequantize2DB = (problem.boPtrDims == 2 || problem.bScale2D);
-
     // Safety checks for alignment.
     if (!legalAAlignment(problem, problem.A.alignment))
         stub("A alignment will be lost during m-parallelization");
@@ -27646,8 +27648,6 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
         bool conjugate, const CommonStrategy &strategy, CommonState &state,
         bool preserveSrc) {
     auto Ts_real = Ts.real(), Td_real = Td.real();
-    bool Ts_int4 = Ts_real.isInt4();
-    bool Td_int4 = Td_real.isInt4();
     auto nes_real = elementsPerGRF(hw, Ts_real);
     auto ned_real = elementsPerGRF(hw, Td_real);
 

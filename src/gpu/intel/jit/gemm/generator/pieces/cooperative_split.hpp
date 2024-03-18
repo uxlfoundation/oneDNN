@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 
 #include "internal/namespace_start.hxx"
 
-// Split A/B matrix between threads.
-void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, CoopSplit stype, const MatrixAddressing &atype, const GEMMStrategy &strategy);
+void adjustStrategy(ngen::HW hw, const GEMMProblem &problem,
+        GEMMStrategy &strategy, const char *tags = nullptr);
 
 #include "internal/namespace_end.hxx"
 

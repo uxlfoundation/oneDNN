@@ -95,27 +95,6 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
         if (block_2d_b && strategy_.legalBAlignment(problem_, 16))
             problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
     }
-
-#if XE3P
-    if (hw_ == ngen::HW::Xe3p) {
-        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
-
-        // Disable block 2D C remainders for small C to avoid simulator errors.
-        strategy_.block2DCRemainder &= (m_ * problem_.Tc >= 64);
-        strategy_.block2DCRemainder &= !(utils::one_of(
-                Type::bf8, problem_.Ta, problem_.Tb, problem_.Tc));
-    }
-#endif
-
-#if XE3P
-    if (hw_ == ngen::HW::Xe3p) {
-        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
-
-        // Disable block 2D C remainders for small C to avoid simulator errors.
-        strategy_.block2DCRemainder &= (m_ * problem_.Tc >= 64);
-    }
 #endif
 
     // Disable global k parallelization if it wouldn't be used.

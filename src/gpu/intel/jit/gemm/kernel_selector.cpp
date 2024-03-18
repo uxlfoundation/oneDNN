@@ -362,6 +362,8 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, const GEMMProblem &problem) {
 
     if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
 
+    if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
+
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }
 

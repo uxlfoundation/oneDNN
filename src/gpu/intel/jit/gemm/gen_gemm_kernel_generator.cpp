@@ -21897,12 +21897,12 @@ void gemm_kernel_generator_t<hw>::gemmSubkernel(
     int optAlignB = strategy.optAlignAB;
 
     // Handle block 2D alignment checks.
-    if (strategy.optAlignAB2D) {
-        optAlignA = std::max({optAlignA,
-                block2DMinAlignment(hw, problem.A, strategy.A),
+    if (optAlignA == GEMMStrategy::AlignBlock2D) {
+        optAlignA = std::max({block2DMinAlignment(hw, problem.A, strategy.A),
                 block2DMinAlignment(hw, problem.A, strategy.A_prefetch)});
-        optAlignB = std::max({optAlignB,
-                block2DMinAlignment(hw, problem.B, strategy.B),
+    }
+    if (optAlignB == GEMMStrategy::AlignBlock2D) {
+        optAlignB = std::max({block2DMinAlignment(hw, problem.B, strategy.B),
                 block2DMinAlignment(hw, problem.B, strategy.B_prefetch)});
     }
 
@@ -21950,7 +21950,7 @@ void gemm_kernel_generator_t<hw>::gemmSubkernel(
             InstructionModifier bmod = checkLDB ? 1 | f0[1] | anyv : 1 | f0[1];
             ejmpi(bmod, labelUnaligned);
         }
-        if (strategy.optAlignAB2D) {
+        if (strategy.optAlignAB == GEMMStrategy::AlignBlock2D) {
             if (doA)
                 and_(1 | nz | f0[0], null.ud(), state.inputs.lda, 0xFF000000);
             if (doB)
@@ -22694,9 +22694,11 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
 
     // Safety checks for alignment.
     if (!legalAAlignment(problem, problem.A.alignment))
-        stub("A alignment will be lost during m-parallelization");
+        throw std::runtime_error(
+                "A alignment will be lost during m-parallelization");
     if (!legalBAlignment(problem, problem.B.alignment))
-        stub("B alignment will be lost during n-parallelization");
+        throw std::runtime_error(
+                "B alignment will be lost during n-parallelization");
 
     // Addressing preflight.
 

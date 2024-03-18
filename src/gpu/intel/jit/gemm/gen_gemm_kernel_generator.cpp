@@ -16073,15 +16073,16 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
             }
             if (slmDequantize2DB) {
                 if (bo2D)
-                    gemmRepack2DOffsetData(Tb_ext, problem.Tbo, state.Tbo_int,
+                    gemmRepack2DOffsetData(Tb_ext, problem.Tbo, state.Tao_int,
                             state.B_offsetLayout, state.Br_offsetLayout,
                             state.B_offsetRegs, state.Br_offsetRegs, problem,
                             strategy, state);
-                if (bs2D)
+                if (bs2D) {
                     gemmRepack2DQuantizationData(problem.Tb_scale,
                             state.Tb_scaleOp, state.B_scaleLayout,
                             state.Br_scaleLayout, state.B_scaleRegs,
                             state.Br_scaleRegs, problem, strategy, state);
+                }
             }
         });
 

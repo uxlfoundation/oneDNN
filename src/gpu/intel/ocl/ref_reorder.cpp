@@ -109,16 +109,12 @@ status_t ref_reorder_t::pd_t::init_kernel_ctx(
         auto &dst_blk = dst_md()->format_desc.blocking;
 
         int dst_contig_dim = -1;
-        if (dst_blk.inner_nblks > 0) {
-            for (int i = dst_md()->ndims; i >= 0; i--)
-                if (dst_blk.inner_idxs[i] != 0) {
-                    dst_contig_dim = dst_blk.inner_idxs[i];
-                    break;
-                }
-        } else {
+        if (dst_blk.inner_nblks > 0)
+            dst_contig_dim = dst_blk.inner_blks[0];
+        else
             for (int i = 0; i < dst_md()->ndims; i++)
                 if (dst_blk.strides[i] == 1) dst_contig_dim = i;
-        }
+
         // TODO: also check that innermost block or dimension has even size
         if (dst_contig_dim < 0) return status::unimplemented;
 

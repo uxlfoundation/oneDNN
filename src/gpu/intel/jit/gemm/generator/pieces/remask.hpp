@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,10 +24,8 @@
 
 #include "internal/namespace_start.hxx"
 
-// Check if a register block needs to be remasked to ensure out-of-bounds
-//  entries are zero.
-bool needsRemask(Type T, bool column, const std::vector<RegisterBlock> &layout,
-                 const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, bool ignoreMasks = false);
+void adjustStrategy(ngen::HW hw, const GEMMProblem &problem,
+        GEMMStrategy &strategy, const char *tags = nullptr);
 
 #include "internal/namespace_end.hxx"
 

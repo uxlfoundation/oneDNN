@@ -166,9 +166,9 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
                     ? (vM == jcp_.M ? jcp_.brgM : jcp_.brgM_tail)
                     : vM;
             auto brg_idx = get_brg_idx(jcp_.max_batch, i, i_init, i_N, i_K);
-            // if brgemm_desc_t already created then skip this iteration
+            // if brgemm_t already created then skip this iteration
             if ((*brgs_)[brg_idx] != nullptr) continue;
-            brgemm_desc_t brg;
+            brgemm_t brg;
             if (vN == 0 || vK == 0) continue;
             brgemm_strides_t brg_strides;
             brg_strides.stride_a = jcp_.brg_stride_a;

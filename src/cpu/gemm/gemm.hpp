@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2025 Intel Corporation
+* Copyright 2018-2024 Intel Corporation
 * Copyright 2022 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,13 +57,13 @@ dnnl_status_t extended_sgemm(const char *transa, const char *transb,
         const float *beta, float *C, const dim_t *ldc,
         const float *bias = nullptr, bool force_jit_gemm = false);
 
-dnnl_status_t gemm_s8u8s32(const char *transa, const char *transb,
+dnnl_status_t gemm_s8x8s32(const char *transa, const char *transb,
         const char *offsetc, const dim_t *m, const dim_t *n, const dim_t *k,
         const float *alpha, const int8_t *a, const dim_t *lda, const int8_t *ao,
         const uint8_t *b, const dim_t *ldb, const uint8_t *bo,
         const float *beta, int32_t *c, const dim_t *ldc, const int32_t *co);
 
-dnnl_status_t gemm_s8s8s32(const char *transa, const char *transb,
+dnnl_status_t gemm_s8x8s32(const char *transa, const char *transb,
         const char *offsetc, const dim_t *m, const dim_t *n, const dim_t *k,
         const float *alpha, const int8_t *a, const dim_t *lda, const int8_t *ao,
         const int8_t *b, const dim_t *ldb, const int8_t *bo, const float *beta,

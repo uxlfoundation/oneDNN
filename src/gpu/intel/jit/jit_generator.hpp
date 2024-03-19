@@ -20,17 +20,12 @@
 #include <memory>
 
 // Must be included before emulation.hpp
-#include "gpu/intel/jit/ngen/ngen.hpp"
+#include "gpu/jit/ngen/ngen.hpp"
 
-#include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
-#include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/jit/emulation.hpp"
-#include "gpu/intel/jit/jit_generator_base.hpp"
-#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/ocl/ocl_gpu_engine.hpp"
-#include "xpu/utils.hpp"
+#include "gpu/jit/emulation.hpp"
+#include "gpu/jit/jit_generator_base.hpp"
+#include "oneapi/dnnl/dnnl_config.h"
 
 #include "gpu/intel/jit/ngen/ngen_opencl.hpp"
 
@@ -137,7 +132,6 @@ template <gpu_gen_t hw>
 class jit_generator : public ngen::OpenCLCodeGenerator<hw>,
                       public jit_generator_base {
     friend struct jit_eltwise_injector_f32<hw>;
-    friend struct jit_reduction_injector_f32<hw>;
     friend struct jit_post_op_injector<hw>;
     friend struct EmulationImplementation;
 

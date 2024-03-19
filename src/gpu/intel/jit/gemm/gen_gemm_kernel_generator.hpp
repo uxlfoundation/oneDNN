@@ -40,10 +40,7 @@
 #endif
 #include "../ngen/ngen_register_allocator.hpp"
 
-#include "gpu/intel/jit/emulation.hpp"
-
-#include "gpu/intel/microkernels/entrance_agent.hpp"
-#include "gpu/intel/microkernels/package.hpp"
+#include "gpu/jit/emulation.hpp"
 
 #include <array>
 #include <complex>

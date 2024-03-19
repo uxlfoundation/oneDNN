@@ -139,6 +139,251 @@ performance:
     - Transforming dpas to dpasw to reduce SLM traffic and SLM consumption
     - Offset/address arithmetic optimizations
 
+## Kernel Generation High-Level Flow
+
+The generation flow consists of three main stages:
+
+- Creating a kernel skeleton using intermediate representation (IR). The
+  resulting kernel includes the high-level optimizations: loop nest,
+  loads/stores, multiplications, SLM buffering.
+    - After this stage the kernel is functionally correct but it needs further
+      passes/optimizations to apply more low-level optimizations and to convert
+      it to the form that can be lowered to assembly
+- Fine-grained optimizations. This is mostly about applying low-level/local
+  optimizations:
+  - Transforming single SLM buffering to double/triple buffering
+  - Expression simplification
+  - Loop hoisting
+  - Common subexpression elimination
+  - Strength reduction
+- Binary code generation. At this stage the kernel is fully optimized and needs
+  to be translated to nGEN which is responsible for binary code generation.
+
+# Generator Design
+
+The main modules of the generator are:
+- Intermediate representation (IR)
+    - Used to describe the convolution kernel
+    - The initial IR form contains all high-level optimizations (blocking,
+      multiplication decomposition into instructions, etc)
+    - Middle-level and low-level optimizations are implemented as IR passes
+        - IR pass takes a kernel (or an IR statement) and returns a transformed
+          kernel with some optimizations (e.g. with applied double SLM
+          buffering)
+- Expression simplification
+    - Various algorithms and rules to simplify IR expressions
+    - Used for offset simplification
+- Binary code generator
+    - Performs lowering from IR to nGEN
+    - nGEN is used to generate assembly binary code
+- Tensor, layout and view abstractions
+    - Layout describes how logical tensor indices are stored in memory
+        - Semantically it's the same as the oneDNN blocked memory descriptor
+    - View describes a "virtual" tensor
+        - Virtual tensor in general doesn't exist in memory, instead a view
+          contains information about how to access elements of such a tensor
+        - View helps to express out-of-bound/stride conditions and generalize
+          forward/backward convolution algorithms
+        - See the detailed description below
+
+## IR
+
+IR of the generator adopted many ideas from the IR used by the
+[Halide](https://halide-lang.org/) project.
+
+All IR objects are immutable by design and use reference counting. The base
+class is `object_t` which implements intrusive reference-counting for
+`object_impl_t` objects. `object_t` is a wrapper over the real implementation
+in `object_impl_t`. All IR objects must have `object_impl_t` in their
+inheritance hierarchy as the top-most class.
+
+IR objects support equality comparison: `a.is_equal(b)`. `operator==()` is
+reserved and overloaded for boolean comparisons. Additionally IR objects
+provide `get_hash()` method to allow using them as keys for
+`std::unordered_set` and `std::unordered_map` containers, see corresponding aliases:
+
+- `object_map_t` - an unordered map with `object_t` as the key
+- `object_set_t` - an unordered set with `object_t` as the key
+
+Main IR objects are:
+
+- Expressions: class `expr_t` (inherited from `object_t`). Examples:
+    - Variables: `var_t`
+    - Immediate values (constants): `bool_imm_t`, `int_imm_t` and `float_imm_t`
+    - Unary/binary/ternary operations: `unary_op_t`, `binary_op_t`,
+      `ternary_op_t`
+- Statements: class `stmt_t` (inherited from `object_t`). Examples:
+    - Let statement: `let_t`. Binds a value to a variable for the scope defined
+      by the let statement.
+    - Loop statement: `for_t`
+    - If statement: `if_t`
+    - Function call: `func_call_t`
+- Functions: class `func_t` (inherited from `object_t`). A function and its
+  arguments-expressions are used to construct a function call - statement
+  with some side effects. Many GPU assembly constructs are represented with
+  functions, for example:
+    - Synchronization instructions: barrier-wait, barrier-signal, memory fences
+    - FMA instructions: fma, dp4a, dpas(w)
+    - Send instruction
+
+IR expressions support operator overloading for convenience of use:
+
+```c++
+expr_t a = var_t::make(type_t::s32(), "a");
+expr_t b = var_t::make(type_t::s32(), "b");
+expr_t c = 2 * (a + b) - a;
+expr_t c_simplified = simplify(c);
+// (gdb) call c.dump()
+// ((2 * (a + b)) - a)
+// (gdb) call c_simplified.dump()
+// (a + (b * 2))
+```
+
+### IR Printing and Debugging
+
+All IR objects provide:
+
+- Overloaded `operator<<` to use with `std::ostream`
+- `str()` method returning a textual representation of the object
+- `dump()` method to call it under gdb to print a textual representation of
+  the object:
+    - `call obj.dump()` (under gdb)
+
+All the main IR passes trace the after-pass IR statement when tracing is
+enabled (controlled by `ONEDNN_VERBOSE=debuginfo`).
+
+`ir_printer_t` class is mainly responsible for the IR printing-related logic.
+
+### Functionality to Traverse and Modify IR
+
+A convolution kernel is an IR statement. Most IR objects contain other IR
+objects. In general an IR object can be considered as a tree. Some rules apply:
+
+- Statements can include other statements, expressions and functions
+- Expressions can include other expressions but can't contain statements or
+  functions
+
+`ir_visitor_t` implements generic functionality to traverse an
+arbitrary IR object. Example:
+
+```c++
+// Custom visitor to count the total number of loops in the given IR object.
+class loop_visitor_t : public ir_visitor_t {
+public:
+    void _visit(const for_t *obj) override {
+        refs++;
+        // To count nested loops.
+        ir_visitor_t::_visit(obj);
+    }
+    int refs = 0;
+};
+
+// root_stmt is an IR statement
+loop_visitor_t visitor;
+visitor.visit(root_stmt);
+```
+
+`ir_mutator_t` is similar to the IR visitor but is used to update IR trees.
+
+## Expression Simplification
+
+To be added.
+
+## Binary Code Generator
+
+The main logic for code generation is implemented as an IR visitor, in
+`ir_to_ngen_t` class. The final IR is very close to assembly so the generation
+process is straightforward. Some examples of how different IR objects are
+handled:
+
+- Let statement (to introduce variables and bind them to a value)
+    - The register allocator is used to allocate a subregister for the variable
+    - The variable is initialized either with a `mov` instruction or the value
+      is evaluated in the subregister directly
+    - Expression binding (`expr_binding_t`) is updated to bind the IR variable
+      object to the subregister (to be able to access it in nested
+      statements/expressions later)
+    - The nested statement of the let statement is visited
+    - The subregister is released after traversing the nested statement
+- Expressions
+    - Expression evaluation is handled by `expr_evaluator_t` class
+    - Expression is evaluated recursively. For each expression:
+        - Its operands are evaluated (and bound to subregisters if needed)
+        - The expression itself is evaluated
+    - Sometimes we want to compute an expression in a pre-allocated subregister
+      (for example when lowering a let statement). This case is also supported
+      by `expr_evaluator_t`.
+
+Additionally, the generator implements extra logic for functionality such as:
+
+- Instruction emulation. Some platforms don't have support for some instructions. Examples:
+    - 64-bit arithmetic emulation. This is not handled by the generator and
+      implemented in `gpu/jit/emulation.hpp`.
+    - `add3` instruction. Emulated as two `add` instructions on older architectures.
+- GRF region restrictions. Example:
+    - `d` <-> `q` or `d` <-> `b` conversions require to align the smaller data
+      type GRF region to match the other data type
+- Direct implementation of IR functions. Examples:
+    - Reorder between GRF layouts. For simplicity reorders are emitted in
+      place. In the kernel IR they are represented as function calls.
+    - Reduction of a GRF buffer. Similar to the GRF reorder.
+
+## Tensor, Layout and View
+
+Tensor, layout and view are the core abstractions of the generator.
+
+**Tensor** - describes a tensor with offsets (stored as IR expressions). Example:
+`32x32x1x1` tensor with `[mb_idx, ic_idx, 0, 0]` offsets (activations for 2D
+convolution: `N x C x H x W`).
+
+**Layout** - describes a memory layout, contains a physical representation of a
+tensor. Layout properties:
+
+- Data type
+- Number of dimensions
+- Offset to the start of the tensor (in elements of the data type)
+    - Same as `offset0` in `dnnl_memory_desc_t`
+- Layout blocks
+    - Blocks are stored with their dimension index, block size and stride
+        - Outer blocks and non-blocked dimensions are also fully specified with
+          dedicated blocks
+    - Example: `4n2c7h7w32n32c` (6 blocks) (`NChw32n32c` in oneDNN convention)
+
+**View** - describes a "virtual" tensor (view) with its underlying tensor/layout:
+
+- View tensor `V` has `m` dimensions: `V(v0, v1, ..., v(m-1))`
+- Underlying tensor `T` has `n` dimensions: `T(t0, t1, ..., t(n-1))`
+- Mapping from view dimensions to tensor dimensions is defined by special
+  functions:
+    - `t_j = F_j(v0, v1, ..., v(m-1))`
+- M/N/K dimension kinds (GEMM behavior) for `V` dimensions
+- Each `t_j` dimension may have an associated access mask
+    - When the mask is evaluated to false, the element is assumed to be `0`
+
+View example: 2D convolution, 3x3 filter:
+
+- View `V` has 6 dimensions: `mb`, `ic`, `oh`, `ow`, `kh` and `kw`
+- Tensor `T` has 4 dimensions: `mb`, `ic`, `ih`, `iw`
+- Mapping from view to tensor:
+    - `mb` is directly mapped (`t_0 = v_0`)
+    - `ic` is directly mapped (`t_1 = v_1`)
+    - `ih = oh * SH + kh * (DH + 1) - PH`
+    - `iw = ow * SW + kw * (DW + 1) - PW`
+- M/N/K dimension kinds:
+    - M dimensions: `mb`, `oh`, `ow`
+    - K dimensions: `ic`, `kh`, `kw`
+- Access masks:
+    - `mb` mask: empty
+    - `ic` mask: empty
+    - `ih` mask: `ih >= 0 and ih < IH`
+    - `iw` mask: `iw >= 0 and iw < IW`
+
+The view abstraction encapsulates computation semantics including
+convolution-specific stride and out-of-bound conditions and M/N/K dimension
+kinds. Having an outer loop nest and defined A/B/C views for the inner blocked
+multiplication is enough to fully describe the convolution computation in
+terms of the algorithm.
+
 ## Kernel Generation Flow
 
 ### Configuring Kernel Parameters

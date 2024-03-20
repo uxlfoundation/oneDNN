@@ -868,13 +868,11 @@
 #define SRC_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
 #define SRC_TO_REF8(x) convert_float8(cvt_f8_e4m3_to_hf(x))
 #define REF_TO_SRC(x) cvt_hf_to_f8_e4m3(convert_half(x))
-#elif SRC_DT_F4_E2M1
-#define SRC_TO_REF(x) cvt_f4_e2m1_to_f32(x)
-#define SRC_TO_REF8(x) cvt_f4_e2m1_to_f32(x)
-#define REF_TO_SRC(x) cvt_f32_to_f4_e2m1(x)
 #elif SRC_DT_U4
+#define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 #define SRC_TO_REF(x) convert_float(x)
 #elif SRC_DT_S4
+#define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 #define SRC_TO_REF(x) convert_float(cvt_s4_to_f32(x))
 #else
 #define SRC_TO_REF(x) (x)
@@ -1342,12 +1340,14 @@
 #define TO_DST8(x) cvt_hf_to_f8_e4m3(convert_half8(x))
 #define TO_DST16(x) cvt_hf_to_f8_e4m3(convert_half16(x))
 #elif DST_DT_U4
+#define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) cvt_f32_to_u4(convert_float(x))
 #define TO_DST2(x) cvt_f32_to_u4(convert_float2(x))
 #define TO_DST4(x) cvt_f32_to_u4(convert_float4(x))
 #define TO_DST8(x) cvt_f32_to_u4(convert_float8(x))
 #define TO_DST16(x) cvt_f32_to_u4(convert_float16(x))
 #elif DST_DT_S4
+#define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) cvt_f32_to_s4(convert_float(x))
 #define TO_DST2(x) cvt_f32_to_s4(convert_float2(x))
 #define TO_DST4(x) cvt_f32_to_s4(convert_float4(x))

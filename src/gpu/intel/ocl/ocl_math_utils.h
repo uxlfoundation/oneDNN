@@ -49,20 +49,13 @@ int rnd_down(int a, unsigned int b) {
 #define MATH_UTILS_DECLARE_HF8 1
 #endif
 
-#if DT_F4_E2M1 || SRC_DT_F4_E2M1 || WEI_DT_F4_E2M1 || DST_DT_F4_E2M1 \
-        || BIA_DT_F4_E2M1 || A_DT_F4_E2M1 || A_DT_F4_E2M1 || B_DT_F4_E2M1 \
-        || C_DT_F4_E2M1 || DATA_DT_F4_E2M1 || POST_OP_USING_F4_E2M1
-#define MATH_UTILS_DECLARE_F4_E2M1 1
-#endif
-
 #if DT_S4 || SRC_DT_S4 || WEI_DT_S4 || DST_DT_S4 || BIA_DT_S4 || A_DT_S4 \
-        || B_DT_S4 || C_DT_S4 || DATA_DT_S4 || WEI_ZP_DT_S4 || SRC_ZP_DT_S4
+        || B_DT_S4 || C_DT_S4
 #define MATH_UTILS_DECLARE_S4 1
 #endif
 
 #if DT_U4 || SRC_DT_U4 || WEI_DT_U4 || DST_DT_U4 || BIA_DT_U4 || A_DT_U4 \
-        || A_DT_U4 || B_DT_U4 || C_DT_U4 || DATA_DT_U4 || WEI_ZP_DT_U4 \
-        || SRC_ZP_DT_U4
+        || A_DT_U4 || B_DT_U4 || C_DT_U4
 #define MATH_UTILS_DECLARE_U4 1
 #endif
 
@@ -633,89 +626,46 @@ inline float atomic_add_global(
 #endif
 #endif
 
+#if MATH_UTILS_DECLARE_S4 || MATH_UTILS_DECLARE_U4
+
 uchar __attribute__((overloadable)) cvt_f32_to_u4(float a) {
     uchar i = convert_uchar_sat_rte(a);
     return (i & 0xf0) ? 0x0f : i & 0x0f;
 }
 
-uchar2 __attribute__((overloadable)) cvt_f32_to_u4(float2 a) {
-    uchar2 f;
-    for (int i = 0; i < 2; i++) {
-        uchar val = convert_uchar_sat_rte(a[i]);
-        f[i] = (val & 0xf0) ? 0x0f : val & 0x0f;
-    }
-    return f;
-}
-
-uchar4 __attribute__((overloadable)) cvt_f32_to_u4(float4 a) {
-    uchar4 f;
-    for (int i = 0; i < 4; i++) {
-        uchar val = convert_uchar_sat_rte(a[i]);
-        f[i] = (val & 0xf0) ? 0x0f : val & 0x0f;
-    }
-    return f;
-}
-uchar8 __attribute__((overloadable)) cvt_f32_to_u4(float8 a) {
-    uchar8 f;
-    for (int i = 0; i < 8; i++) {
-        uchar val = convert_uchar_sat_rte(a[i]);
-        f[i] = (val & 0xf0) ? 0x0f : val & 0x0f;
-    }
-    return f;
-}
-uchar16 __attribute__((overloadable)) cvt_f32_to_u4(float16 a) {
-    uchar16 f;
-    uchar val = 0;
-    for (int i = 0; i < 16; i++) {
-        uchar val = convert_uchar_sat_rte(a[i]);
-        f[i] = (val & 0xf0) ? 0x0f : val & 0x0f;
-    }
-    return f;
-}
 char __attribute__((overloadable)) cvt_f32_to_s4(float a) {
-    char i = convert_char_sat_rte(a);
-    char sign = (i & 0x80);
-    return (i & 0x70) ? (0x0f | sign) : ((i & 0x0e) | sign);
-}
-char2 __attribute__((overloadable)) cvt_f32_to_s4(float2 a) {
-    char2 f;
-    char sign = 0;
-    for (int i = 0; i < 2; i++) {
-        char val = convert_char_sat_rte(a[i]);
-        sign = (val & 0x80);
-        f[i] = (val & 0x70) ? 0x07 | sign : ((val & 0x0e) | sign);
-    }
-    return f;
-}
-char4 __attribute__((overloadable)) cvt_f32_to_s4(float4 a) {
-    char4 f;
-    char sign = 0;
-    for (int i = 0; i < 4; i++) {
-        char val = convert_char_sat_rte(a[i]);
-        sign = (val & 0x80);
-        f[i] = (val & 0x70) ? 0x07 | sign : ((val & 0x0e) | sign);
-    }
-    return f;
-}
-char8 __attribute__((overloadable)) cvt_f32_to_s4(float8 a) {
-    char8 f;
-    char sign = 0;
-    for (int i = 0; i < 8; i++) {
-        char val = convert_char_sat_rte(a[i]);
-        sign = (val & 0x80);
-        f[i] = (val & 0x70) ? 0x07 | sign : ((val & 0x0e) | sign);
-    }
-    return f;
-}
-char16 __attribute__((overloadable)) cvt_f32_to_s4(float16 a) {
-    char16 f;
-    char sign = 0;
-    for (int i = 0; i < 16; i++) {
-        char val = convert_char_sat_rte(a[i]);
-        sign = (val & 0x80);
-        f[i] = (val & 0x70) ? 0x07 | sign : ((val & 0x0e) | sign);
-    }
-    return f;
+    return convert_char_sat_rte(min(max(a, -8.0f), 7.0f)) & 0x0F;
 }
 
+float __attribute__((overloadable)) cvt_s4_to_f32(char a) {
+    char sign = (a & 0x08) ? 0xf0 : 0x0;
+    char val = a | sign;
+    return convert_float(val);
+}
+
+uchar __attribute__((overloadable)) get_half_byte(__global uchar *x, off_t y) {
+    uchar ret = 0;
+    if (y % 2) {
+        ret = (uchar)((uchar)(x[y / 2] & 0xf0) >> 4);
+    } else {
+        ret = (uchar)(x[y / 2] & 0x0f);
+    }
+    return ret;
+}
+char __attribute__((overloadable)) get_half_byte(__global char *x, off_t y) {
+    if (y % 2) {
+        return (x[y / 2] & 0xf0) >> 4;
+    } else {
+        return x[y / 2] & 0x0f;
+    }
+}
+void __attribute__((overloadable))
+set_double_half_byte(__global uchar *x, off_t y, uchar z) {
+    x[y / 2] = z;
+}
+void __attribute__((overloadable))
+set_double_half_byte(__global char *x, off_t y, uchar z) {
+    x[y / 2] = z;
+}
+#endif
 #endif

@@ -1643,7 +1643,7 @@ public:
         auto cset_old = cset_;
         cset_.add_constraint(obj.var == value);
         auto body = mutate(obj.body);
-        cset_ = std::move(cset_old);
+        cset_ = cset_old;
 
         return let_t::make(obj.var, value, body);
     }

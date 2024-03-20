@@ -20,19 +20,14 @@
 #include "gpu/intel/ocl/ocl_custom_types.h"
 #include "gpu/intel/ocl/ocl_utils.h"
 
+#include "gpu/ocl/ocl_utils.h"
+
 // Due to JIT compilation and a lack of bitwise operations in implementations,
 // this warning has a high false-positive rate.
 #pragma clang diagnostic ignored "-Wconstant-logical-operand"
 
-// Due to JIT compilation this feature is generally desired.
-#pragma clang diagnostic ignored "-Wtautological-compare"
-
-int __attribute__((overloadable)) div_up(int a, unsigned int b) {
-    return (a / b) + (a % b != 0);
-}
-
-long __attribute__((overloadable)) div_up(long a, unsigned int b) {
-    return (a / b) + (a % b != 0);
+int div_up(int a, unsigned int b) {
+    return (a + b - 1) / b;
 }
 
 int rnd_up(int a, unsigned int b) {

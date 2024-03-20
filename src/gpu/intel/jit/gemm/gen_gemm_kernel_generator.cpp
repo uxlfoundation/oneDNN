@@ -13779,6 +13779,13 @@ bool gemm_kernel_generator_t<hw>::gemmMake2DQuantizationLayouts(bool isA,
                 isA ? state.inputs.surfaceAScale : state.inputs.surfaceBScale);
     }
 
+    if (!X_offsetStrategy.base.isStateless()) {
+        X_offsetStrategy.base.setIndex(
+                isA ? state.inputs.surfaceAO : state.inputs.surfaceBO);
+        X_scaleStrategy.base.setIndex(
+                isA ? state.inputs.surfaceAScale : state.inputs.surfaceBScale);
+    }
+
     if (xo2D
             && !getRegLayout(Txo, X_offsetLayout, r, c, remR, remC, false,
                     AvoidFragment, tileR, tileC, XO, X_offsetStrategy))
@@ -13981,7 +13988,7 @@ void gemm_kernel_generator_t<hw>::gemm2DDequantizeOperation(bool doA, Type T,
                         break;
                     case BinaryOp::ScaleSub:
                         if (T != Type::f16) stub();
-                        mad(simd, data(1), -off(strideo), data(1),
+                        mad(simd, data(1), -qdata(strideq), data(1),
                                 Immediate::hf(0x7800)); /* 0x7800 = 2^15 */
                         break;
                     default: stub();
@@ -14907,7 +14914,10 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     bool slmDequantize2DB = dequantize2DB && slmB;
     dequantize2DA &= !slmDequantize2DA;
     dequantize2DB &= !slmDequantize2DB;
-    int aqGroupK = problem.aqGroupK, bqGroupK = problem.bqGroupK;
+    int aqGroupK = problem.aqGroupK;
+    int bqGroupK = problem.bqGroupK;
+    int kaq_load = aqGroupK * state.kaq;
+    int kbq_load = bqGroupK * state.kbq;
     bool readA = true, readB = true;
 
     bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
@@ -17409,6 +17419,23 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
     for (bool isA : {true, false})
         gemmMake2DQuantizationLayouts(isA, problem, strategy, state);
 
+    auto calcQInc
+            = [&](int stride, const Subregister &ld, Subregister &ld_kxq) {
+                  if (stride == 1)
+                      ld_kxq = ld;
+                  else {
+                      ld_kxq = state.ra.alloc_sub<uint32_t>();
+                      mulConstant(1, ld_kxq, ld, stride);
+                  }
+              };
+
+    if (ao2D) calcQInc(state.kaqStride, state.inputs.ldao, state.ldao_kaq);
+    if (as2D)
+        calcQInc(state.kaqStride, state.inputs.ldaScale, state.ldaScale_kaq);
+    if (bo2D) calcQInc(state.kbqStride, state.inputs.ldbo, state.ldbo_kbq);
+    if (bs2D)
+        calcQInc(state.kbqStride, state.inputs.ldbScale, state.ldbScale_kbq);
+
     // Grab flag registers now for named barriers. TODO: unlock these.
     if (strategy.needsNamedBarriersM(problem))
         state.barrierM = state.raVFlag.allocSubreg0();
@@ -17831,6 +17858,11 @@ void gemm_kernel_generator_t<hw>::gemmAccumulateCTeardown(
 
     deduplicateScalar(state.lda, state);
     deduplicateScalar(state.ldb, state);
+
+    state.ra.safeRelease(state.ldao_kaq);
+    state.ra.safeRelease(state.ldbo_kbq);
+    state.ra.safeRelease(state.ldaScale_kaq);
+    state.ra.safeRelease(state.ldbScale_kbq);
 
     state.raVFlag.safeRelease(state.barrierM);
     state.raVFlag.safeRelease(state.barrierN);
@@ -19360,10 +19392,16 @@ void gemm_kernel_generator_t<hw>::gemmInitInterface(GEMMProblem &problem,
         state.inputs.surfaceBScale
                 = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
-    if (problem.aScale2D)
+    if (problem.aScale2D) {
         state.inputs.aScalePtr = interface.getArgument("a_scale_ptr");
-    if (problem.bScale2D)
+        state.inputs.surfaceAScale
+                = interface.getArgumentSurfaceIfExists("a_scale_ptr");
+    }
+    if (problem.bScale2D) {
         state.inputs.bScalePtr = interface.getArgument("b_scale_ptr");
+        state.inputs.surfaceBScale
+                = interface.getArgumentSurfaceIfExists("b_scale_ptr");
+    }
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
     state.inputs.offsetB = interface.getArgumentIfExists("offset_B");
     state.inputs.offsetC[0] = interface.getArgumentIfExists("offset_C");

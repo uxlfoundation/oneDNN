@@ -195,7 +195,7 @@ void serialize_attr(
         for (const auto &p : attr.scales_.scales_) {
             // scales: arg
             sstream.write(&p.first);
-            sstream.write(&p.second.data_type_);
+            // scales: mask
             sstream.write(&p.second.mask_);
             // scales: groups
             const int ndims = p.second.ndims_;
@@ -214,9 +214,7 @@ void serialize_attr(
             sstream.write(&arg);
             int mask = 0;
             data_type_t dt = data_type::s32;
-            attr.zero_points_.get(arg, &mask, &dt);
-            // zero_points: data type
-            sstream.write(&dt);
+            zps.get(arg, &mask, &dt);
             // zero_points: mask
             sstream.write(&mask);
             // zero points: groups

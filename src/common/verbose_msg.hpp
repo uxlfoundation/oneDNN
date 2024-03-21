@@ -92,7 +92,6 @@
 
 #define VERBOSE_UNSUPPORTED_TAG "unsupported format tag"
 #define VERBOSE_UNSUPPORTED_TAG_S "unsupported format tag for %s"
-#define VERBOSE_UNSUPPORTED_FORMAT_KIND "unsupported format kind"
 
 #define VERBOSE_ISA_SPARSE_ENCODING_MISMATCH \
     "sparse encoding is not supported on this isa"
@@ -103,8 +102,6 @@
 #define VERBOSE_WS_MISMATCH \
     "workspace mismatch between forward and backward primitive " \
     "descriptors"
-#define VERBOSE_TENSOR_FORMAT_MISMATCH \
-    "memory formats for %s and %s tensors do not match"
 
 #define VERBOSE_WS_INIT "workspace initialization failed"
 #define VERBOSE_SCRATCHPAD_INIT "scratchpad initialization unsuccessful"

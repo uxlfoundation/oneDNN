@@ -55,6 +55,8 @@ struct brgemm_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
 
+        ~pd_t() = default;
+
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brg_conv_fwd:", isa, ""),
                 brgemm_convolution_fwd_t);
 

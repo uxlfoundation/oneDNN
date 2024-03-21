@@ -888,7 +888,7 @@ inline void construct_f32_MHA(dnnl::impl::graph::graph_t *agraph,
 inline void construct_dnnl_float_MHA(dnnl::impl::graph::graph_t *agraph,
         impl::data_type_t dtype = impl::data_type::f32, int batch_size = 1,
         int seq_len = 384, int num_head = 16, int head_dim = 1024,
-        bool transpose = false) {
+        bool transpose = false, bool attention_mask = true) {
     using namespace dnnl::impl::graph;
     using namespace dnnl::graph::tests;
 
@@ -1000,275 +1000,6 @@ inline void construct_dnnl_float_MHA(dnnl::impl::graph::graph_t *agraph,
     agraph->add_op(&matmul_qk);
     agraph->add_op(&fscore_div);
     if (attention_mask) agraph->add_op(&fscore_add);
-    agraph->add_op(&softmax);
-    agraph->add_op(&matmul_v);
-    agraph->add_op(&transpose_output);
-    agraph->add_op(&reshape_output);
-}
-
-inline void construct_select_float_MHA(dnnl::impl::graph::graph_t *agraph,
-        impl::data_type_t dtype = impl::data_type::f32, int batch_size = 1,
-        int seq_len = 128, int num_head = 12, int head_dim = 768,
-        bool transpose = false, bool distil = true, bool gpt = false) {
-    using namespace dnnl::impl::graph;
-    using namespace dnnl::graph::tests;
-
-    int size_per_head = head_dim / num_head;
-    dims QKV_RESHAPED_SHAPE = {batch_size, seq_len, num_head, size_per_head};
-    dims EXTENDED_ATTENTION_MASK_SHAPE = {batch_size, 1, 1, seq_len};
-    dims QKV_TRANSPOSED_SHAPE = {batch_size, num_head, seq_len, size_per_head};
-    dims KEY_TRANSPOSED_SHAPE;
-    if (!transpose)
-        KEY_TRANSPOSED_SHAPE = {batch_size, num_head, size_per_head, seq_len};
-    else
-        KEY_TRANSPOSED_SHAPE = {batch_size, num_head, seq_len, size_per_head};
-    dims MATMUL_QK_OUTPUT_SHAPE = {batch_size, num_head, seq_len, seq_len};
-    dims MATMUL_V_OUTPUT_SHAPE = {batch_size, num_head, seq_len, size_per_head};
-
-    dims CONST_SHAPE = {1};
-
-    dims QKV_TRANSPOSED_ORDER = {0, 2, 1, 3};
-    dims KEY_TRANSPOSED_ORDER = {0, 1, 3, 2};
-
-    size_t lt_id = 0;
-    size_t op_id = 0;
-
-    auto attention_mask_flt = unit::utils::logical_tensor_init(
-            lt_id++, EXTENDED_ATTENTION_MASK_SHAPE, dtype);
-
-    auto query_input = unit::utils::logical_tensor_init(
-            lt_id++, QKV_TRANSPOSED_SHAPE, dtype);
-
-    auto key_input = unit::utils::logical_tensor_init(
-            lt_id++, KEY_TRANSPOSED_SHAPE, dtype);
-
-    auto matmul_qk_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-
-    auto fscore_scale
-            = unit::utils::logical_tensor_init(lt_id++, CONST_SHAPE, dtype);
-    fscore_scale.property = property_type::constant;
-    auto fscore_div_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-
-    auto condition_input = unit::utils::logical_tensor_init(
-            lt_id++, EXTENDED_ATTENTION_MASK_SHAPE, impl::data_type::boolean);
-    auto select_other_input
-            = unit::utils::logical_tensor_init(lt_id++, CONST_SHAPE, dtype);
-    auto select_output = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-
-    auto softmax_input = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-
-    auto softmax_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-
-    auto tc1_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, impl::data_type::f32);
-    auto tc2_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-
-    auto value_input = unit::utils::logical_tensor_init(
-            lt_id++, QKV_TRANSPOSED_SHAPE, dtype);
-
-    auto matmul_v_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_V_OUTPUT_SHAPE, dtype);
-
-    auto context_transpose_out = unit::utils::logical_tensor_init(
-            lt_id++, QKV_RESHAPED_SHAPE, dtype);
-
-    auto context_reshape_out = unit::utils::logical_tensor_init(
-            lt_id++, QKV_RESHAPED_SHAPE, dtype);
-
-    op_t matmul_qk {op_id++, op_kind::MatMul, "matmul_qk"};
-    matmul_qk.set_attr<bool>(op_attr::transpose_b, transpose);
-
-    op_t fscore_select {op_id++, op_kind::Select, "fscore_select"};
-
-    op_t fscore_div {op_id++, op_kind::Divide, "fscore_div"};
-    fscore_div.set_attr(op_attr::auto_broadcast, std::string("numpy"));
-    op_t fscore_add {op_id++, op_kind::Add, "fscore_add"};
-    fscore_add.set_attr(op_attr::auto_broadcast, std::string("numpy"));
-    op_t softmax {op_id++, op_kind::SoftMax, "softmax"};
-    softmax.set_attr(op_attr::axis, (int64_t)3);
-
-    op_t tc1 {op_id++, op_kind::TypeCast, "tc1"};
-    op_t tc2 {op_id++, op_kind::TypeCast, "tc2"};
-    op_t matmul_v {op_id++, op_kind::MatMul, "matmul_v"};
-
-    // transpose + reshape before output
-    op_t transpose_output {
-            op_id++, op_kind::StaticTranspose, "transpose_output"};
-    transpose_output.set_attr<std::vector<int64_t>>(
-            op_attr::order, QKV_TRANSPOSED_ORDER);
-
-    op_t reorder_output {op_id++, op_kind::Reorder, "reorder_output"};
-
-    matmul_qk.add_input(query_input);
-    matmul_qk.add_input(key_input);
-    matmul_qk.add_output(matmul_qk_out);
-    if (gpt) {
-        fscore_select.add_input(condition_input);
-        fscore_select.add_input(matmul_qk_out);
-        fscore_select.add_input(select_other_input);
-        fscore_select.add_output(select_output);
-        fscore_div.add_input(select_output);
-    } else {
-        fscore_div.add_input(matmul_qk_out);
-    }
-    fscore_div.add_input(fscore_scale);
-    fscore_div.add_output(fscore_div_out);
-
-    if (distil) {
-        fscore_select.add_input(condition_input);
-        fscore_select.add_input(select_other_input);
-        fscore_select.add_input(fscore_div_out);
-        fscore_select.add_output(select_output);
-        softmax.add_input(select_output);
-    } else if (gpt) {
-        fscore_add.add_input(fscore_div_out);
-        fscore_add.add_input(attention_mask_flt);
-        fscore_add.add_output(softmax_input);
-        softmax.add_input(softmax_input);
-    }
-    softmax.add_output(softmax_out);
-    if (gpt && dtype == impl::data_type::bf16) {
-        tc1.add_input(softmax_out);
-        tc1.add_output(tc1_out);
-        tc2.add_input(tc1_out);
-        tc2.add_output(tc2_out);
-        matmul_v.add_input(tc2_out);
-    } else {
-        matmul_v.add_input(softmax_out);
-    }
-    matmul_v.add_input(value_input);
-    matmul_v.add_output(matmul_v_out);
-
-    transpose_output.add_input(matmul_v_out);
-    transpose_output.add_output(context_transpose_out);
-
-    reorder_output.add_input(context_transpose_out);
-    reorder_output.add_output(context_reshape_out);
-
-    agraph->add_op(&matmul_qk);
-    agraph->add_op(&fscore_div);
-    agraph->add_op(&fscore_select);
-    if (gpt) agraph->add_op(&fscore_add);
-    agraph->add_op(&softmax);
-    if (gpt && dtype == impl::data_type::bf16) {
-        agraph->add_op(&tc1);
-        agraph->add_op(&tc2);
-    }
-    agraph->add_op(&matmul_v);
-    agraph->add_op(&transpose_output);
-    agraph->add_op(&reorder_output);
-}
-
-inline void construct_dnnl_float_JAX_MHA(dnnl::impl::graph::graph_t *agraph,
-        impl::data_type_t dtype = impl::data_type::f32, int batch_size = 1,
-        int seq_len = 384, int num_head = 16, int head_dim = 1024) {
-    using namespace dnnl::impl::graph;
-    using namespace dnnl::graph::tests;
-
-    int size_per_head = head_dim / num_head; //64
-    dims QUERY_SHAPE = {batch_size, num_head, seq_len, size_per_head};
-    dims KEY_SHAPE = {batch_size, num_head, size_per_head, seq_len};
-    dims MATMUL_QK_OUTPUT_SHAPE = {batch_size, num_head, seq_len, seq_len};
-    dims VALUE_SHAPE = {batch_size, num_head, size_per_head, seq_len};
-    dims MATMUL_V_OUTPUT_SHAPE = {batch_size, num_head, size_per_head, seq_len};
-    dims EXTENDED_ATTENTION_MASK_SHAPE = {batch_size, 1, 1, seq_len};
-    dims QKV_RESHAPED_SHAPE = {batch_size, seq_len, num_head, size_per_head};
-    dims CONST_SHAPE = {1};
-    dims TRANSPOSE_SOFTMAX_OUT_ORDER = {0, 1, 3, 2};
-    dims QKV_TRANSPOSED_ORDER = {0, 3, 1, 2};
-
-    size_t lt_id = 0;
-    auto attention_mask_flt = unit::utils::logical_tensor_init(
-            lt_id++, EXTENDED_ATTENTION_MASK_SHAPE, dtype);
-    auto query_input
-            = unit::utils::logical_tensor_init(lt_id++, QUERY_SHAPE, dtype);
-    auto key_input
-            = unit::utils::logical_tensor_init(lt_id++, KEY_SHAPE, dtype);
-    auto matmul_qk_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-    auto fscore_scale
-            = unit::utils::logical_tensor_init(lt_id++, CONST_SHAPE, dtype);
-    fscore_scale.property = property_type::constant;
-    auto fscore_div_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-    auto fscore_add_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-    auto softmax_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-    auto tranpose_softmax_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-    auto reorder_softmax_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_QK_OUTPUT_SHAPE, dtype);
-    auto value_input
-            = unit::utils::logical_tensor_init(lt_id++, VALUE_SHAPE, dtype);
-    auto matmul_v_out = unit::utils::logical_tensor_init(
-            lt_id++, MATMUL_V_OUTPUT_SHAPE, dtype);
-    auto context_transpose_out = unit::utils::logical_tensor_init(
-            lt_id++, QKV_RESHAPED_SHAPE, dtype);
-    auto context_reorder_out = unit::utils::logical_tensor_init(
-            lt_id++, QKV_RESHAPED_SHAPE, dtype);
-
-    op_t matmul_qk {0, op_kind::MatMul, "matmul_qk"};
-    op_t fscore_div {1, op_kind::Divide, "fscore_div"};
-    fscore_div.set_attr(op_attr::auto_broadcast, std::string("numpy"));
-    op_t fscore_add {2, op_kind::Add, "fscore_add"};
-    fscore_add.set_attr(op_attr::auto_broadcast, std::string("numpy"));
-    op_t softmax {3, op_kind::SoftMax, "softmax"};
-    softmax.set_attr(op_attr::axis, (int64_t)3);
-    // transpose+reorder after softmax
-    op_t transpose_softmax_output {
-            4, op_kind::StaticTranspose, "transpose_softmax_output"};
-    transpose_softmax_output.set_attr<std::vector<int64_t>>(
-            op_attr::order, TRANSPOSE_SOFTMAX_OUT_ORDER);
-    op_t reorder_softmax_output {5, op_kind::Reorder, "reorder_softmax_output"};
-
-    op_t matmul_v {6, op_kind::MatMul, "matmul_v"};
-    // transpose + reshape before output
-    op_t transpose_output {7, op_kind::StaticTranspose, "transpose_output"};
-    transpose_output.set_attr<std::vector<int64_t>>(
-            op_attr::order, QKV_TRANSPOSED_ORDER);
-
-    op_t reorder_output {8, op_kind::Reorder, "reorder_output"};
-
-    matmul_qk.add_input(query_input);
-    matmul_qk.add_input(key_input);
-    matmul_qk.add_output(matmul_qk_out);
-
-    fscore_div.add_input(matmul_qk_out);
-    fscore_div.add_input(fscore_scale);
-    fscore_div.add_output(fscore_div_out);
-
-    fscore_add.add_input(fscore_div_out);
-    fscore_add.add_input(attention_mask_flt);
-    fscore_add.add_output(fscore_add_out);
-    softmax.add_input(fscore_add_out);
-    softmax.add_output(softmax_out);
-
-    transpose_softmax_output.add_input(softmax_out);
-    transpose_softmax_output.add_output(tranpose_softmax_out);
-
-    reorder_softmax_output.add_input(tranpose_softmax_out);
-    reorder_softmax_output.add_output(reorder_softmax_out);
-
-    matmul_v.add_input(value_input);
-    matmul_v.add_input(reorder_softmax_out);
-    matmul_v.add_output(matmul_v_out);
-
-    transpose_output.add_input(matmul_v_out);
-    transpose_output.add_output(context_transpose_out);
-
-    reorder_output.add_input(context_transpose_out);
-    reorder_output.add_output(context_reorder_out);
-
-    agraph->add_op(&matmul_qk);
-    agraph->add_op(&fscore_div);
-    agraph->add_op(&fscore_add);
     agraph->add_op(&softmax);
     agraph->add_op(&transpose_softmax_output);
     agraph->add_op(&reorder_softmax_output);
@@ -1391,7 +1122,8 @@ inline void construct_dnnl_float_JAX_MQA(dnnl::impl::graph::graph_t *agraph,
 
 inline void construct_int8_MHA(dnnl::impl::graph::graph_t *agraph,
         int batch_size = 1, int seq_len = 384, int num_head = 16,
-        int head_dim = 1024, bool transpose = false) {
+        int head_dim = 1024, bool transpose = false,
+        bool attention_mask = true) {
     using namespace dnnl::impl::graph;
     using namespace dnnl::graph::tests;
 
@@ -1786,13 +1518,14 @@ inline void construct_select_int8_MHA(dnnl::impl::graph::graph_t *agraph,
 
 inline void construct_int8_bf16_MHA(dnnl::impl::graph::graph_t *agraph,
         int batch_size = 1, int seq_len = 384, int num_head = 16,
-        int head_dim = 1024, bool transpose = false) {
+        int head_dim = 1024, bool transpose = false,
+        bool attention_mask = true) {
     using namespace dnnl::impl::graph;
     using namespace dnnl::graph::tests;
 
     // construct a int8 MHA pattern first
-    construct_int8_MHA(
-            agraph, batch_size, seq_len, num_head, head_dim, transpose);
+    construct_int8_MHA(agraph, batch_size, seq_len, num_head, head_dim,
+            transpose, attention_mask);
 
     // change the f32 logical tensor to bf16
     for (auto &op : agraph->get_ops()) {

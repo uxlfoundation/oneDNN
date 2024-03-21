@@ -22,10 +22,13 @@
 // Must be included before emulation.hpp
 #include "gpu/jit/ngen/ngen.hpp"
 
+#include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
+#include "gpu/gpu_primitive.hpp"
 #include "gpu/jit/emulation.hpp"
 #include "gpu/jit/jit_generator_base.hpp"
-#include "oneapi/dnnl/dnnl_config.h"
+#include "gpu/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/jit/utils/utils.hpp"
 
 #include "gpu/intel/jit/ngen/ngen_opencl.hpp"
 
@@ -192,28 +195,40 @@ void jit_generator<hw>::dbg_alloc(cl_context context) {
 }
 #endif
 
-void check_kernel_size(
-        const std::string &kernel_name, size_t kernel_size, size_t icache_size);
+inline size_t icache_size(ngen::HW arch) {
+    switch (arch) {
+        case gpu_gen9: return 48 * 1024;
+        case gpu_gen11: return 48 * 1024;
+        case gpu_xe_lp: return 48 * 1024;
+        case gpu_xe_hp: return 48 * 1024;
+        case gpu_xe_hpg: return 96 * 1024;
+        case gpu_xe_hpc: return 80 * 1024;
+        case gpu_xe2: return 96 * 1024;
+        default: return 0;
+    }
+}
 
 template <template <ngen::HW> class KernelT, ngen::HW arch, typename... ArgsT>
-std::unique_ptr<jit::jit_generator_base> make_generator(
-        const compute::device_info_t &device_info, ArgsT &&...args) {
+std::unique_ptr<jit::jit_generator_base> make_generator(ArgsT &&...args) {
 
     auto raw_kernel = new KernelT<arch>(std::forward<ArgsT>(args)...);
-    check_kernel_size(raw_kernel->kernel_name(),
-            raw_kernel->getRootStreamLength(), device_info.icache_size());
+    if (raw_kernel->getRootStreamLength() > icache_size(arch)) {
+        ir_warning() << raw_kernel->kernel_name()
+                     << " larger than icache, kernel: "
+                     << raw_kernel->getRootStreamLength()
+                     << " bytes, icache: " << icache_size(arch) << " bytes\n";
+    }
     return std::unique_ptr<jit::jit_generator_base>(raw_kernel);
 }
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>
-compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
-        impl::engine_t *engine, ArgsT &&...args) {
+compute::kernel_t make_kernel(
+        gpu_primitive_t *primitive, engine_t *engine, ArgsT &&...args) {
     using namespace compute;
     kernel_t kernel;
 
     if (primitive->cache_blob()) {
-        status_t status = primitive->create_kernel(
-                engine, &kernel, nullptr, register_kernel);
+        status_t status = primitive->create_kernel(engine, &kernel, nullptr);
         if (status != status::success) return kernel_t();
         return kernel;
     }
@@ -226,7 +241,7 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
 #define CASE(gpu_arch) \
     case gpu_arch: \
         jit_kernel = make_generator<KernelT, gpu_arch>( \
-                *device_info, std::forward<ArgsT>(args)...); \
+                std::forward<ArgsT>(args)...); \
         break;
     switch (arch) {
         REG_GEN9_ISA(CASE(gpu_gen9));
@@ -236,27 +251,32 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         REG_XEHPG_ISA(CASE(gpu_xe_hpg));
         REG_XEHPC_ISA(CASE(gpu_xe_hpc));
         REG_XE2_ISA(CASE(gpu_xe2));
-        REG_XE3_ISA(CASE(gpu_xe3));
-#if XE3P
-        REG_XE3P_ISA(CASE(gpu_xe3p));
-#endif
         default: break;
     }
 #undef CASE
 
+#ifdef DNNL_DEV_MODE
+    gpu_gen_t actual_arch = ngen::HW::Unknown;
+    switch (device_info->gpu_arch()) {
+        case gpu_arch_t::gen9: actual_arch = gpu_gen9; break;
+        case gpu_arch_t::gen11: actual_arch = gpu_gen11; break;
+        case gpu_arch_t::xe_lp: actual_arch = gpu_xe_lp; break;
+        case gpu_arch_t::xe_hp: actual_arch = gpu_xe_hp; break;
+        case gpu_arch_t::xe_hpg: actual_arch = gpu_xe_hpg; break;
+        case gpu_arch_t::xe_hpc: actual_arch = gpu_xe_hpc; break;
+        case gpu_arch_t::xe2: actual_arch = gpu_xe2; break;
+        case gpu_arch_t::unknown: actual_arch = ngen::HW::Unknown; break;
+    }
+    ir_assert(actual_arch == arch)
+            << "Cannot emulate executing gpu_arch environment";
+#endif
+
     if (!jit_kernel) return kernel_t();
 
-    status_t status = primitive->create_kernel(
-            engine, &kernel, jit_kernel.get(), register_kernel);
+    status_t status
+            = primitive->create_kernel(engine, &kernel, jit_kernel.get());
     if (status != status::success) return kernel_t();
     return kernel;
-}
-
-template <template <ngen::HW> class KernelT, typename... ArgsT>
-compute::kernel_t make_kernel(
-        gpu_primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
-    return make_kernel<KernelT>(primitive, /*register_kernel=*/true, engine,
-            std::forward<ArgsT>(args)...);
 }
 
 } // namespace jit

@@ -13792,8 +13792,7 @@ bool gemm_kernel_generator_t<hw>::gemmMake2DQuantizationLayouts(bool isA,
     Txo_int = Txo.isInteger() ? sintType(Tx) : Tx;
     Txs_int = Tx;
 
-    bool int4SpecialPath
-            = Tx_ext.isInt4() && one_of(Tx, Type::f16, Type::bf16, Type::f32);
+    bool int4SpecialPath = Tx_ext.isInt4() && one_of(Tx, Type::f16, Type::f32);
     if (int4SpecialPath) Txo_int = Txs_int = Type::f16;
 
     int r, c, k;

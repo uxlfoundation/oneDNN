@@ -1267,7 +1267,7 @@ inline void construct_dnnl_float_JAX_MHA(dnnl::impl::graph::graph_t *agraph,
 
     agraph->add_op(&matmul_qk);
     agraph->add_op(&fscore_div);
-    agraph->add_op(&fscore_add);
+    if (attention_mask) agraph->add_op(&fscore_add);
     agraph->add_op(&softmax);
     agraph->add_op(&transpose_softmax_output);
     agraph->add_op(&reorder_softmax_output);

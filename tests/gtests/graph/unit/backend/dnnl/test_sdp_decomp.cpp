@@ -725,44 +725,47 @@ TEST(test_sdp_decomp_execute, F32DistilBertSdpCorr_CPU) {
         graph::compiled_partition_t cp(p);
         ASSERT_EQ(p.compile(&cp, inputs, outputs, eng), graph::status::success);
 
-        std::vector<test_tensor> inputs_ts, outputs_ts;
-        for (auto &lt : inputs) {
-            inputs_ts.emplace_back(*lt, eng);
-            inputs_ts.back().fill<float>();
-        }
+            for (auto &lt : outputs) {
+                graph::logical_tensor_t compiled_output;
+                cp.query_logical_tensor(lt->id, &compiled_output);
+                outputs_ts.emplace_back(compiled_output, eng);
+            }
 
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp.query_logical_tensor(lt->id, &compiled_output);
-            outputs_ts.emplace_back(compiled_output, eng);
-        }
+            // -------------------------case 1----------------------------------
+            custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "0", 1);
+            graph::compiled_partition_t cp1(p);
+            ASSERT_EQ(p.compile(&cp1, inputs, outputs, eng),
+                    graph::status::success);
+            std::vector<test_tensor> outputs1_ts;
+            for (auto &lt : outputs) {
+                graph::logical_tensor_t compiled_output;
+                cp1.query_logical_tensor(lt->id, &compiled_output);
+                outputs1_ts.emplace_back(compiled_output, eng);
+            }
+            ASSERT_EQ(cp1.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
+                              test_tensor::to_graph_tensor(outputs1_ts)),
+                    graph::status::success);
+            strm->wait();
 
-        // -------------------------case 1----------------------------------
-        custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "0", 1);
-        graph::compiled_partition_t cp1(p);
-        ASSERT_EQ(
-                p.compile(&cp1, inputs, outputs, eng), graph::status::success);
-        std::vector<test_tensor> outputs1_ts;
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp1.query_logical_tensor(lt->id, &compiled_output);
-            outputs1_ts.emplace_back(compiled_output, eng);
-        }
-        ASSERT_EQ(cp1.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
-                          test_tensor::to_graph_tensor(outputs1_ts)),
-                graph::status::success);
-        strm->wait();
+            // -------------------------case 2----------------------------------
+            custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
+            graph::compiled_partition_t cp2(p);
+            ASSERT_EQ(p.compile(&cp2, inputs, outputs, eng),
+                    graph::status::success);
+            std::vector<test_tensor> outputs2_ts;
+            for (auto &lt : outputs) {
+                graph::logical_tensor_t compiled_output;
+                cp2.query_logical_tensor(lt->id, &compiled_output);
+                outputs2_ts.emplace_back(compiled_output, eng);
+            }
+            ASSERT_EQ(cp2.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
+                              test_tensor::to_graph_tensor(outputs2_ts)),
+                    graph::status::success);
+            strm->wait();
 
-        // -------------------------case 2----------------------------------
-        custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
-        graph::compiled_partition_t cp2(p);
-        ASSERT_EQ(
-                p.compile(&cp2, inputs, outputs, eng), graph::status::success);
-        std::vector<test_tensor> outputs2_ts;
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp2.query_logical_tensor(lt->id, &compiled_output);
-            outputs2_ts.emplace_back(compiled_output, eng);
+            ASSERT_TRUE(allclose<float>(outputs1_ts[0], outputs2_ts[0],
+                    /*rtol*/ 0.01f,
+                    /*atol*/ 1.f));
         }
         ASSERT_EQ(cp2.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
                           test_tensor::to_graph_tensor(outputs2_ts)),
@@ -926,6 +929,7 @@ TEST(test_sdp_decomp_execute, Bf16DistilBertSdpCorr_CPU) {
             {seq_len * head_dim, size_per_head, 1, head_dim},
             {seq_len * head_dim, size_per_head * seq_len, size_per_head, 1}};
     std::vector<bool> transpose_b = {false, true};
+    std::vector<bool> attention_mask_vec = {false, true};
 
     for (size_t i = 0; i < KEY_STRIDES.size(); ++i) {
         graph::graph_t g(eng->kind());
@@ -968,47 +972,53 @@ TEST(test_sdp_decomp_execute, Bf16DistilBertSdpCorr_CPU) {
             outputs.emplace_back(&lt);
         }
 
-        graph::compiled_partition_t cp(p);
-        ASSERT_EQ(p.compile(&cp, inputs, outputs, eng), graph::status::success);
+            std::vector<test_tensor> inputs_ts, outputs_ts;
+            for (auto &lt : inputs) {
+                inputs_ts.emplace_back(*lt, eng);
+                inputs_ts.back().fill<bfloat16_t>();
+            }
 
-        std::vector<test_tensor> inputs_ts, outputs_ts;
-        for (auto &lt : inputs) {
-            inputs_ts.emplace_back(*lt, eng);
-            inputs_ts.back().fill<bfloat16_t>();
-        }
+            for (auto &lt : outputs) {
+                graph::logical_tensor_t compiled_output;
+                cp.query_logical_tensor(lt->id, &compiled_output);
+                outputs_ts.emplace_back(compiled_output, eng);
+            }
 
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp.query_logical_tensor(lt->id, &compiled_output);
-            outputs_ts.emplace_back(compiled_output, eng);
-        }
+            // -------------------------case 1----------------------------------
+            custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "0", 1);
+            graph::compiled_partition_t cp1(p);
+            ASSERT_EQ(p.compile(&cp1, inputs, outputs, eng),
+                    graph::status::success);
+            std::vector<test_tensor> outputs1_ts;
+            for (auto &lt : outputs) {
+                graph::logical_tensor_t compiled_output;
+                cp1.query_logical_tensor(lt->id, &compiled_output);
+                outputs1_ts.emplace_back(compiled_output, eng);
+            }
+            ASSERT_EQ(cp1.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
+                              test_tensor::to_graph_tensor(outputs1_ts)),
+                    graph::status::success);
+            strm->wait();
 
-        // -------------------------case 1----------------------------------
-        custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "0", 1);
-        graph::compiled_partition_t cp1(p);
-        ASSERT_EQ(
-                p.compile(&cp1, inputs, outputs, eng), graph::status::success);
-        std::vector<test_tensor> outputs1_ts;
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp1.query_logical_tensor(lt->id, &compiled_output);
-            outputs1_ts.emplace_back(compiled_output, eng);
-        }
-        ASSERT_EQ(cp1.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
-                          test_tensor::to_graph_tensor(outputs1_ts)),
-                graph::status::success);
-        strm->wait();
+            // -------------------------case 2----------------------------------
+            custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
+            graph::compiled_partition_t cp2(p);
+            ASSERT_EQ(p.compile(&cp2, inputs, outputs, eng),
+                    graph::status::success);
+            std::vector<test_tensor> outputs2_ts;
+            for (auto &lt : outputs) {
+                graph::logical_tensor_t compiled_output;
+                cp2.query_logical_tensor(lt->id, &compiled_output);
+                outputs2_ts.emplace_back(compiled_output, eng);
+            }
+            ASSERT_EQ(cp2.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
+                              test_tensor::to_graph_tensor(outputs2_ts)),
+                    graph::status::success);
+            strm->wait();
 
-        // -------------------------case 2----------------------------------
-        custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
-        graph::compiled_partition_t cp2(p);
-        ASSERT_EQ(
-                p.compile(&cp2, inputs, outputs, eng), graph::status::success);
-        std::vector<test_tensor> outputs2_ts;
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp2.query_logical_tensor(lt->id, &compiled_output);
-            outputs2_ts.emplace_back(compiled_output, eng);
+            ASSERT_TRUE(allclose<bfloat16_t>(outputs1_ts[0], outputs2_ts[0],
+                    /*rtol*/ 0.01f,
+                    /*atol*/ 1.f));
         }
         ASSERT_EQ(cp2.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
                           test_tensor::to_graph_tensor(outputs2_ts)),
@@ -1268,6 +1278,7 @@ TEST(test_sdp_decomp_execute, Int8DistilBertSdpCorr_CPU) {
             {seq_len * head_dim, size_per_head, 1, head_dim},
             {seq_len * head_dim, size_per_head * seq_len, size_per_head, 1}};
     std::vector<bool> transpose_b = {false, true};
+    std::vector<bool> attention_mask_vec = {false, true};
 
     for (size_t i = 0; i < KEY_STRIDES.size(); ++i) {
         graph::graph_t g(eng->kind());
@@ -1330,16 +1341,9 @@ TEST(test_sdp_decomp_execute, Int8DistilBertSdpCorr_CPU) {
                 graph::status::success);
         strm->wait();
 
-        // -------------------------case 2----------------------------------
-        custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
-        graph::compiled_partition_t cp2(p);
-        ASSERT_EQ(
-                p.compile(&cp2, inputs, outputs, eng), graph::status::success);
-        std::vector<test_tensor> outputs2_ts;
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp2.query_logical_tensor(lt->id, &compiled_output);
-            outputs2_ts.emplace_back(compiled_output, eng);
+            ASSERT_TRUE(allclose<int8_t>(outputs1_ts[0], outputs2_ts[0],
+                    /*rtol*/ 0.01f,
+                    /*atol*/ 1.f));
         }
         ASSERT_EQ(cp2.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
                           test_tensor::to_graph_tensor(outputs2_ts)),
@@ -1442,16 +1446,9 @@ TEST(test_sdp_decomp_execute, Int8Bf16DistilBertSdpCorr_CPU) {
                 graph::status::success);
         strm->wait();
 
-        // -------------------------case 2----------------------------------
-        custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
-        graph::compiled_partition_t cp2(p);
-        ASSERT_EQ(
-                p.compile(&cp2, inputs, outputs, eng), graph::status::success);
-        std::vector<test_tensor> outputs2_ts;
-        for (auto &lt : outputs) {
-            graph::logical_tensor_t compiled_output;
-            cp2.query_logical_tensor(lt->id, &compiled_output);
-            outputs2_ts.emplace_back(compiled_output, eng);
+            ASSERT_TRUE(allclose<int8_t>(outputs1_ts[0], outputs2_ts[0],
+                    /*rtol*/ 0.01f,
+                    /*atol*/ 1.f));
         }
         ASSERT_EQ(cp2.execute(strm, test_tensor::to_graph_tensor(inputs_ts),
                           test_tensor::to_graph_tensor(outputs2_ts)),

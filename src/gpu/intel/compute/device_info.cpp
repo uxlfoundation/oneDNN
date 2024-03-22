@@ -269,7 +269,35 @@ size_t device_info_t::icache_size() const {
     return 0;
 }
 
-status_t device_info_t::init_attributes_common(impl::engine_t *engine) {
+size_t device_info_t::icache_size() const {
+    switch (gpu_arch_) {
+        case gpu::compute::gpu_arch_t::gen9:
+        case gpu::compute::gpu_arch_t::gen11:
+        case gpu::compute::gpu_arch_t::xe_lp:
+        case gpu::compute::gpu_arch_t::xe_hp: return 48 * 1024;
+        case gpu::compute::gpu_arch_t::xe_hpg: return 96 * 1024;
+        case gpu::compute::gpu_arch_t::xe_hpc: return 80 * 1024;
+        case gpu::compute::gpu_arch_t::xe2: return 96 * 1024;
+        case gpu::compute::gpu_arch_t::unknown: assert(!"not expected");
+    }
+    return 0;
+}
+
+status_t device_info_t::init_attributes_common(engine_t *engine) {
+    // TODO: Fix for discrete GPUs. The code below is written for
+    // integrated GPUs assuming that last-level cache for GPU is shared
+    // with CPU.
+    // Integrated GPUs share LLC with CPU which is L3 cache on CPU.
+
+    // XXX: this is the only place where GPU runtime functionally depends on
+    // CPU runtime. The `llc_cache_size_` is used only in one kernel for gen9.
+    // The idea is to use approximate cache size.
+
+    // llc_cache_size_ = cpu::platform::get_per_core_cache_size(3)
+    //        * cpu::platform::get_num_cores();
+    // Assumption is that HT is likely enabled on client systems.
+    llc_cache_size_ = std::thread::hardware_concurrency() * (1 << 20);
+
     bool ocl_backend = true;
 
 #ifdef DNNL_WITH_SYCL

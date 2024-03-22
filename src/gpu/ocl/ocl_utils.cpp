@@ -563,7 +563,8 @@ status_t get_ocl_device_enabled_native_float_atomics(
     return status::success;
 }
 
-status_t get_ocl_device_eu_count(cl_device_id device, int32_t *eu_count) {
+status_t get_ocl_device_eu_count(
+        cl_device_id device, gpu::compute::gpu_arch_t arch, int32_t *eu_count) {
     // Try to use Intel-specific slices/sub-slices to deduce EU count.
     auto status = get_ocl_device_eu_count_intel(device, arch, eu_count);
     if (status == status::success) return status;

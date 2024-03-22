@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,8 +26,7 @@ struct jit_amx_tilecfg_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_amx_tilecfg_t)
 
     // TODO: Need to check status
-    jit_amx_tilecfg_t(bool lazy = false)
-        : jit_generator(jit_name(), avx512_core_amx), is_lazy_(lazy) {
+    jit_amx_tilecfg_t() : jit_generator(jit_name(), avx512_core_amx) {
         create_kernel();
     }
 

@@ -266,6 +266,7 @@ public:
     static int max_slm_size_per_tg(
             gpu_arch_t gpu_arch, int tg_size, bool large_grf_mode = false);
     size_t llc_cache_size() const { return llc_cache_size_; }
+    size_t icache_size() const;
 
     const runtime_version_t &runtime_version() const {
         return runtime_version_;

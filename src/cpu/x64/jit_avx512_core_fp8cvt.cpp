@@ -135,8 +135,8 @@ void fp8_emulation_e4m3_t::prepare_table() {
     }
 }
 
-void fp8_emulation_e5m2_t::vcvt_f8_to_f16(const Xbyak::Xmm &xmm_out,
-        const Xbyak::Operand &op_in, bool do_nan_check) {
+void fp8_emulation_e5m2_t::vcvt_f8_to_f16(
+        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
     const Xbyak::Ymm ymm_out(xmm_out.getIdx());
@@ -239,8 +239,8 @@ void fp8_emulation_e5m2_t::vcvt_f8_to_f32(
     host_->vcvtph2psx(zmm_out, ymm_out);
 }
 
-void fp8_emulation_e4m3_t::vcvt_f8_to_f16(const Xbyak::Xmm &xmm_out,
-        const Xbyak::Operand &op_in, bool do_nan_check) {
+void fp8_emulation_e4m3_t::vcvt_f8_to_f16(
+        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
 

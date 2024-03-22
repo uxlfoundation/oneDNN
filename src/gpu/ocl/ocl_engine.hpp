@@ -43,10 +43,10 @@ public:
         std::vector<cl_device_id> ocl_devices;
 
         status = get_ocl_devices(&ocl_devices, CL_DEVICE_TYPE_GPU);
-        VERROR_ENGINE(
+        VCHECK_ENGINE(
                 status == status::success, status, "no ocl devices found");
 
-        VERROR_ENGINE(index < ocl_devices.size(), status::invalid_arguments,
+        VCHECK_ENGINE(index < ocl_devices.size(), status::invalid_arguments,
                 VERBOSE_INVALID_ENGINE_IDX, ocl_devices.size(), "ocl", index);
 
         auto *ocl_engine

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2025 Intel Corporation
+* Copyright 2016-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,13 +32,8 @@
 #include "graph/interface/allocator.hpp"
 #endif
 
-#define VERROR_ENGINE(cond, stat, msg, ...) \
-    do { \
-        if (!(cond)) { \
-            VERROR(common, runtime, msg, ##__VA_ARGS__); \
-            return stat; \
-        } \
-    } while (0)
+#define VCHECK_ENGINE(cond, stat, msg, ...) \
+    VCONDCHECK(common, create, check, engine, (cond), stat, msg, ##__VA_ARGS__)
 
 /** \brief An abstraction of an execution unit with shared resources
  *

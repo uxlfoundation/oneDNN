@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2025 Intel Corporation
+* Copyright 2016-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -82,26 +82,14 @@ size_t dnnl_engine_get_count(engine_kind_t kind) {
 status_t dnnl_engine_create(
         engine_t **engine, engine_kind_t kind, size_t index) {
     using namespace dnnl::impl;
-    VERROR_ENGINE(engine != nullptr, invalid_arguments, VERBOSE_NULL_ARG);
+    VCHECK_ENGINE(engine != nullptr, invalid_arguments, VERBOSE_NULL_ARG);
 
     // engine_factory creation can fail with an exception
     try {
         auto ef = get_engine_factory(kind, get_default_runtime(kind));
-        VERROR_ENGINE(ef != nullptr, invalid_arguments,
-                VERBOSE_INVALID_ENGINE_KIND, "", dnnl_engine_kind2str(kind));
-
-        auto s_runtime_kind = dnnl_runtime2str(kind == engine_kind::cpu
-                        ? dnnl_version()->cpu_runtime
-                        : dnnl_version()->gpu_runtime);
-
-        VERROR_ENGINE(ef->count() > 0, invalid_arguments,
-                "%s %s devices queried but not found",
-                get_default_runtime(kind) == runtime_kind::none
-                        ? ""
-                        : s_runtime_kind,
-                dnnl_engine_kind2str(kind));
-
-        VERROR_ENGINE(index < ef->count(), invalid_arguments,
+        VCHECK_ENGINE(ef != nullptr, invalid_arguments,
+                VERBOSE_INVALID_ENGINE_KIND, dnnl_engine_kind2str(kind));
+        VCHECK_ENGINE(index < ef->count(), invalid_arguments,
                 VERBOSE_INVALID_ENGINE_IDX, ef->count(),
                 dnnl_engine_kind2str(kind), index);
 

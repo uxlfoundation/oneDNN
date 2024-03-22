@@ -88,9 +88,6 @@
 #define VERBOSE_UNSUPPORTED_FEATURE "unsupported feature for implementation: %s"
 #define VERBOSE_UNSUPPORTED_DEVICE_FEATURE "%s feature unavailable for device"
 #define VERBOSE_UNSUPPORTED_BACKEND "unsupported %s backend"
-#define VERBOSE_UNSUPPORTED_PAD_FEATURE "unsupported feature for padding: %s"
-#define VERBOSE_UNSUPPORTED_TENSOR_LAYOUT "unsupported %s tensor layout"
-#define VERBOSE_UNSUPPORTED_ARCH "unsupported %s architecture"
 
 #define VERBOSE_UNSUPPORTED_TAG "unsupported format tag"
 #define VERBOSE_UNSUPPORTED_TAG_S "unsupported format tag for %s"
@@ -123,13 +120,8 @@
 #define VERBOSE_INCOMPATIBLE_GEMM_FMT "incompatible gemm format"
 
 #define VERBOSE_DEVICE_CTX_MISMATCH "device not found in the given context"
-#define VERBOSE_INVALID_PLATFORM "unsupported %s platform (expected %s got %s)"
+#define VERBOSE_INVALID_SYCL_PLATFORM \
+    "unsupported platform (expected %s got %s)"
 #define VERBOSE_ENGINE_CREATION_FAIL "failed to create %s engine with index %zu"
-#define VERBOSE_KERNEL_CREATION_FAIL "failed to create %s kernel"
-#define VERBOSE_DETERMINISTIC_FAIL "failed to run kernel deterministically"
-#define VERBOSE_SKIP_PRIMITIVE_IMPL \
-    "skipping or dispatching to another implementation"
-#define VERBOSE_MEM_DESC_CHECK_FAIL "bad arguments for memory descriptor"
-#define VERBOSE_INVALID_MEM_IDX "invalid memory index"
 
 #endif

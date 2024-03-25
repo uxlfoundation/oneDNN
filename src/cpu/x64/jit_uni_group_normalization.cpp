@@ -483,7 +483,6 @@ protected:
                 io_[data_type::f32]->load(
                         mean_ptr(ur * simd_w_), Vmm_mean(ur), tail);
             } else {
-                assert(simd_w_ % C_PER_G_ == 0);
                 io_[data_type::f32]->broadcast(
                         mean_ptr(ur * simd_w_ / C_PER_G_), Vmm_mean(ur));
             }

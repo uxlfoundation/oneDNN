@@ -1790,6 +1790,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             IMPLICATION(is_f32, one_of(isa, avx512_core, avx2) || jcp.is_bf32),
             VERBOSE_ISA_DT_MISMATCH);
 
+    VDISPATCH_CONV_IC(
+            post_ops_ok(jcp, attr, dst_d), VERBOSE_UNSUPPORTED_POSTOP);
+
     jcp.amx_h = 16;
     jcp.amx_w = 64 / (jcp.is_bf32 ? types::data_type_size(bf16) : jcp.src_dsz);
 
@@ -2218,14 +2221,6 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     VDISPATCH_CONV_IC(
             !(jcp.ow_block == 0 || jcp.ic_block == 0 || jcp.oc_block == 0),
             VERBOSE_BLOCKING_FAIL, "bad blocking dimensions");
-
-    // Dispatch the shape to VNNI for better performance on AMX
-    const bool is_int8_small_ic = jcp.oc == 32 && jcp.ic < jcp.simd_w / 2
-            && is_int8_convolution && is_amx(jcp.isa)
-            && everyone_is(640, jcp.oh, jcp.ow, jcp.ih, jcp.iw)
-            && everyone_is(3, jcp.kh, jcp.kw);
-    VDISPATCH_CONV_IC(!is_int8_small_ic, VERBOSE_IMPL_HEURISTIC_FAIL,
-            "Dispatch the shape that has small ic/oc to VNNI");
 
     // to avoid cache concurrent write access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);

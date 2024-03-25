@@ -70,6 +70,8 @@ struct gen9_global_pooling_fwd_t : public gpu_primitive_t {
                 init_default_ws(s32);
             }
 
+            VDISPATCH_POOLING_SC(init_conf(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "pooling");
             VDISPATCH_POOLING_SC(init_reduction(engine), "init_reduction()");
             init_scratchpad();
             return status::success;
@@ -203,6 +205,9 @@ struct gen9_global_pooling_bwd_t : public gpu_primitive_t {
                 VDISPATCH_POOLING(
                         compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
             }
+
+            VDISPATCH_POOLING_SC(init_conf(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "pooling");
             return status::success;
         }
 

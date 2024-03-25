@@ -1576,6 +1576,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     VDISPATCH_CONV_IC(IMPLICATION(is_f32, one_of(isa, avx512_core, avx2)),
             VERBOSE_ISA_DT_MISMATCH);
 
+    VDISPATCH_CONV_IC(post_ops_ok(jcp, attr, diff_src_d, is_deconv),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
     jcp.amx_h = 16;
     jcp.amx_w = 64 / jcp.src_dsz;
 
@@ -2039,7 +2042,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                                   && static_cast<dim_t>(jcp.ngroups) * jcp.nb_ic
                                                   * jcp.ic_block * jcp.iw
                                           > 4096),
-                "heuristic to skip amx implementation because of buffer size");
+                VERBOSE_IMPL_HEURISTIC_FAIL,
+                "skipping amx implementation because of buffer size");
         const auto comp_buffer_iw = jcp.exec_type == exec_trans ? jcp.iw : 1;
         jcp.ker_ranges_size = precalculate_comp_pad_kernels(jcp);
         jcp.comp_a_buffer_size = static_cast<dim_t>(jcp.ngroups) * jcp.nb_ic

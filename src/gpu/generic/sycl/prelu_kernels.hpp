@@ -183,8 +183,9 @@ struct prelu_bwd_kernel_vec_t {
                         diff_dst_mem, diff_data_mem, ithr);
                 break;
             default:
-                calculate_shared_axes(data_mem, weights_mem, diff_weights_mem,
-                        diff_dst_mem, diff_data_mem, ithr, item);
+                calculate_shared_axes(data_ptr(), weights_ptr(),
+                        diff_weights_ptr(), diff_dst_ptr(), diff_data_ptr(),
+                        ithr, item);
                 break;
         }
     }

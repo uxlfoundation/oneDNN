@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -68,6 +68,8 @@ struct ncsp_group_normalization_fwd_t : public primitive_t {
             VDISPATCH_GNORM(memory_desc_matches_one_of_tag(
                                     *dst_md(), ncdhw, nchw, ncw, nc),
                     VERBOSE_UNSUPPORTED_TAG_S, "dst");
+            VDISPATCH_GNORM(
+                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_GNORM(
                     attr()->has_default_values(skip_mask_t::scales_runtime)
                             && attr_scales_ok(),

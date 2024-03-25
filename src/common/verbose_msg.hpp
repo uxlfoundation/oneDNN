@@ -88,6 +88,8 @@
 #define VERBOSE_UNSUPPORTED_FEATURE "unsupported feature for implementation: %s"
 #define VERBOSE_UNSUPPORTED_DEVICE_FEATURE "%s feature unavailable for device"
 #define VERBOSE_UNSUPPORTED_BACKEND "unsupported %s backend"
+#define VERBOSE_UNSUPPORTED_PAD_FEATURE "unsupported feature for padding: %s"
+#define VERBOSE_UNSUPPORTED_TENSOR_LAYOUT "unsupported %s tensor layout"
 
 #define VERBOSE_UNSUPPORTED_TAG "unsupported format tag"
 #define VERBOSE_UNSUPPORTED_TAG_S "unsupported format tag for %s"
@@ -97,7 +99,7 @@
 #define VERBOSE_ISA_DT_MISMATCH \
     "datatype configuration not supported on this isa"
 #define VERBOSE_OFFSET_DT_MISMATCH "%s offsets do not fit into %s datatype"
-#define VERBOSE_PROPKIND_DT_MISMATCH "datatype and propagation kind mismatch"
+#define VERBOSE_PROPKIND_DT_MISMATCH "data type and propagation kind mismatch"
 #define VERBOSE_WS_MISMATCH \
     "workspace mismatch between forward and backward primitive " \
     "descriptors"
@@ -106,7 +108,6 @@
 #define VERBOSE_SCRATCHPAD_INIT "scratchpad initialization unsuccessful"
 
 #define VERBOSE_BLOCKING_FAIL "blocking heuristic fail: %s"
-#define VERBOSE_LARGE_SHAPES "large shapes fall back"
 #define VERBOSE_SMALL_SHAPES "small shapes fall back"
 #define VERBOSE_NONTRIVIAL_STRIDE "only trivial strides are supported"
 #define VERBOSE_UNSUPPORTED_MEM_STRIDE "unsupported memory stride"

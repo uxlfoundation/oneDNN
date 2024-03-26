@@ -566,6 +566,8 @@ private:
         op_ptr mm1, mm2, scale, add, select;
         for (const auto &cur_op : sg->get_ops()) {
             if (mm1 != nullptr && mm2 != nullptr) break;
+            if (cur_op->get_kind() == graph::op_kind::Select)
+                return status::unimplemented;
             if (cur_op->get_kind() != graph::op_kind::MatMul) continue;
             auto post_op = get_post_op(cur_op);
             if (post_op

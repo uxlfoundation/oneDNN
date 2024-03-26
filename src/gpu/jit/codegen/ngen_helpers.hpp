@@ -63,6 +63,7 @@ inline ngen::DataType to_ngen(const type_t &type) {
     CASE(bf16, bf);
     CASE(f16, hf);
     CASE(bf8, bf8);
+    CASE(hf8, hf8);
     CASE(tf32, tf32);
     CASE(f32, f);
     CASE(f64, df);

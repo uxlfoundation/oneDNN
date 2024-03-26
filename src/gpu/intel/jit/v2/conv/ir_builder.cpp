@@ -233,10 +233,10 @@ private:
 class offset_scope_t {
 public:
     offset_ctx_t(buffer_manager_t &buf_mgr, ir_context_t &ir_ctx,
-            const loop_nest_t &loop_nest, const coord_info_t &coord_info)
+            const loop_desc_t &loop_desc, const coord_info_t &coord_info)
         : buf_mgr_(buf_mgr)
         , ir_ctx_(ir_ctx)
-        , loop_nest_(loop_nest)
+        , loop_desc_(loop_desc)
         , coord_info_(coord_info) {}
 
     send_header_t add_header(int version, const send_1d_desc_t &desc,
@@ -311,7 +311,7 @@ public:
         return ret;
     }
 
-    stmt_t inc_loop_stmt(int loop_idx, int version) const {
+    stmt_t inc_loop_stmt(const loop_desc_entry_t &e) const {
         stmt_t ret;
         for (auto &o : offsets_) {
             if (o.version != version) continue;
@@ -332,6 +332,10 @@ private:
             const std::vector<expr_t> &_shift_vec, const expr_t &_shift,
             const offset_params_t &_params) {
         auto params = _params;
+        std::vector<expr_t> loop_idxs;
+        for (auto &e : loop_desc_) {
+            loop_idxs.push_back(coord_info_.loop_index(e.dim));
+        }
         expr_t _base_init;
         std::vector<expr_t> _loop_incs;
         split_to_linear(base, loop_nest_.indices(), _base_init, _loop_incs);
@@ -356,7 +360,7 @@ private:
         ret.esize = params.esize;
 
         expr_t comp_value = 0;
-        for (auto &e : loop_nest_) {
+        for (auto &e : loop_desc_) {
             auto loop_size = coord_info_.loop_size(e.dim);
             auto inc_value = simplify(_loop_incs[e.idx] - comp_value);
             auto inc = to_simple_expr(inc_value);
@@ -570,7 +574,7 @@ private:
 
     buffer_manager_t &buf_mgr_;
     ir_context_t &ir_ctx_;
-    loop_nest_t loop_nest_;
+    loop_desc_t loop_desc_;
     coord_info_t coord_info_;
 
     object_eq_map_t<expr_t, expr_t> expr2var_;
@@ -585,12 +589,12 @@ public:
     iterator_t() = default;
 
     iterator_t(buffer_manager_t &buf_mgr) : buf_mgr_(&buf_mgr) {
-        linear_loop_ = loop_t(loop_nest_entry_t(), 0, buf_mgr);
+        linear_loop_ = loop_t(loop_desc_entry_t(), 0, buf_mgr);
     }
 
     int nloops() const { return (int)loops_.size(); }
 
-    void add_loop(const loop_nest_entry_t &e, const expr_t &bound) {
+    void add_loop(const loop_desc_entry_t &e, const expr_t &bound) {
         if (is_one(bound)) return;
         loops_.emplace_back(e, bound, *buf_mgr_);
     }
@@ -630,12 +634,12 @@ public:
 
 private:
     struct loop_t {
-        loop_nest_entry_t entry;
+        loop_desc_entry_t entry;
         expr_t bound;
         expr_t var_buf;
 
         loop_t() = default;
-        loop_t(const loop_nest_entry_t &entry, const expr_t &bound,
+        loop_t(const loop_desc_entry_t &entry, const expr_t &bound,
                 buffer_manager_t &buf_mgr)
             : entry(entry), bound(bound) {
             auto buf_name = buf_mgr.ir_ctx().create_tmp_name("i");
@@ -828,9 +832,9 @@ public:
         , cset_(desc.spec_reqs.as_constraint_set(kernel_info))
         , ir_ctx_(desc.exec_cfg(), cset_)
         , buf_mgr_(ir_ctx_)
-        , off_ctx_(buf_mgr_, ir_ctx_, desc_.loop_nest, plan_.coord_info)
+        , off_ctx_(buf_mgr_, ir_ctx_, desc_.loop_desc, plan_.coord_info)
         , prefetch_off_ctx_(
-                  buf_mgr_, ir_ctx_, desc_.loop_nest, plan_.coord_info) {}
+                  buf_mgr_, ir_ctx_, desc_.loop_desc, plan_.coord_info) {}
 
     stmt_t build() {
         build_prefetch();
@@ -875,7 +879,7 @@ private:
         iterator_t prefetch_it;
         if (prefetch_dist > 0) {
             prefetch_it = iterator_t(buf_mgr_);
-            for (auto &e : loop_nest) {
+            for (auto &e : loop_desc) {
                 auto bound = coord_info.loop_size(e.dim);
                 prefetch_it.add_loop(e, bound);
             }
@@ -898,7 +902,7 @@ private:
         if (prefetch_dist > 0) {
             ret = ret.append(prefetch_it.inc_stmt(prefetch_off_ctx_));
         }
-        for (auto &e : loop_nest) {
+        for (auto &e : loop_desc) {
             auto var = coord_info.loop_index(e.dim);
             auto bound = coord_info.loop_size(e.dim);
             ret = ret.append(off_ctx_.inc_loop_stmt(e));

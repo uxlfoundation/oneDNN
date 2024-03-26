@@ -35,6 +35,46 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
+class loop_nest_t {
+public:
+    loop_nest_t() = default;
+
+    void add_loop(const expr_t &idx, const expr_t &size) {
+        loops_.push_back(loop_t {idx, size});
+    }
+
+    int nloops() const { return (int)loops_.size(); }
+    const expr_t &index(int level) const { return loops_[level].index; }
+    const expr_t &size(int level) const { return loops_[level].size; }
+    std::vector<expr_t> indices() const {
+        std::vector<expr_t> ret;
+        for (int i = 0; i < nloops(); i++) {
+            ret.push_back(index(i));
+        }
+        return ret;
+    }
+
+    std::string str() const {
+        std::ostringstream oss;
+        oss << "nloops: " << nloops();
+        for (int i = 0; i < nloops(); i++) {
+            oss << std::endl;
+            oss << "  idx: " << index(i) << " size: " << size(i);
+        }
+        return oss.str();
+    }
+
+    IR_DEFINE_DUMP()
+
+private:
+    struct loop_t {
+        expr_t index;
+        expr_t size;
+    };
+
+    std::vector<loop_t> loops_;
+};
+
 struct offset_params_t {
     // Type of the offset.
     type_t type;
@@ -232,12 +272,9 @@ private:
 
 class offset_scope_t {
 public:
-    offset_ctx_t(buffer_manager_t &buf_mgr, ir_context_t &ir_ctx,
-            const loop_desc_t &loop_desc, const coord_info_t &coord_info)
-        : buf_mgr_(buf_mgr)
-        , ir_ctx_(ir_ctx)
-        , loop_desc_(loop_desc)
-        , coord_info_(coord_info) {}
+    offset_scope_t(buffer_manager_t &buf_mgr, ir_context_t &ir_ctx,
+            const loop_nest_t &loop_nest)
+        : buf_mgr_(buf_mgr), ir_ctx_(ir_ctx), loop_nest_(loop_nest) {}
 
     send_header_t add_header(int version, const send_1d_desc_t &desc,
             const expr_t &mem_buf, const addr_t &addr, const expr_t &addr_inc) {
@@ -268,12 +305,12 @@ public:
         auto W_enc = to_simple_expr(desc.W) * type_size - 1;
         auto H_enc = to_simple_expr(desc.H) - 1;
         auto P_enc = to_simple_expr(desc.P) * type_size - 1;
-        (void)get_offset(
-                W_enc, off.buf + send_t::header_2d_off_surface_width());
-        (void)get_offset(
-                H_enc, off.buf + send_t::header_2d_off_surface_height());
-        (void)get_offset(
-                P_enc, off.buf + send_t::header_2d_off_surface_pitch());
+        (void)get_offset(version, W_enc,
+                off.buf + send_t::header_2d_off_surface_width());
+        (void)get_offset(version, H_enc,
+                off.buf + send_t::header_2d_off_surface_height());
+        (void)get_offset(version, P_enc,
+                off.buf + send_t::header_2d_off_surface_pitch());
 
         uint32_t w_enc = desc.w - 1;
         uint32_t h_enc = desc.h - 1;
@@ -296,13 +333,13 @@ public:
             params.allow_bcast = true;
             params.allow_reuse = true;
             auto off = get_offset(
-                    expr_t(0), dm.base, dm.slot_incs, shift, params);
+                    version, expr_t(0), dm.base, dm.slot_incs, shift, params);
             ret.add_mask(off, to_simple_expr(dm.bound), dm.has_underflow);
         }
         return ret;
     }
 
-    stmt_t init_stmt() const {
+    stmt_t init_stmt(int version) const {
         stmt_t ret;
         for (auto &o : offsets_) {
             if (o.version != version) continue;
@@ -311,7 +348,7 @@ public:
         return ret;
     }
 
-    stmt_t inc_loop_stmt(const loop_desc_entry_t &e) const {
+    stmt_t inc_loop_stmt(int loop_idx, int version) const {
         stmt_t ret;
         for (auto &o : offsets_) {
             if (o.version != version) continue;
@@ -332,10 +369,6 @@ private:
             const std::vector<expr_t> &_shift_vec, const expr_t &_shift,
             const offset_params_t &_params) {
         auto params = _params;
-        std::vector<expr_t> loop_idxs;
-        for (auto &e : loop_desc_) {
-            loop_idxs.push_back(coord_info_.loop_index(e.dim));
-        }
         expr_t _base_init;
         std::vector<expr_t> _loop_incs;
         split_to_linear(base, loop_nest_.indices(), _base_init, _loop_incs);
@@ -360,12 +393,12 @@ private:
         ret.esize = params.esize;
 
         expr_t comp_value = 0;
-        for (auto &e : loop_desc_) {
-            auto loop_size = coord_info_.loop_size(e.dim);
-            auto inc_value = simplify(_loop_incs[e.idx] - comp_value);
+        for (int i = 0; i < loop_nest_.nloops(); i++) {
+            auto loop_size = loop_nest_.size(i);
+            auto inc_value = simplify(_loop_incs[i] - comp_value);
             auto inc = to_simple_expr(inc_value);
             ret.loop_incs.push_back(inc);
-            comp_value = to_simple_expr(_loop_incs[e.idx] * loop_size);
+            comp_value = to_simple_expr(_loop_incs[i] * loop_size);
         }
 
         if (params.allow_reuse) {
@@ -562,114 +595,9 @@ private:
         return ret;
     }
 
-    expr_t to_simple_expr(const expr_t &e) {
-        if (is_const(e) || e.is<const_var_t>() || e.is<var_t>()) return e;
-        auto it = expr2var_.find(e);
-        if (it != expr2var_.end()) return it->second;
-        auto tmp_var = ir_ctx_.create_tmp_var(type_t::s32());
-        let_stmts_.push_back(let_t::make(tmp_var, e));
-        expr2var_.emplace(e, tmp_var);
-        return tmp_var;
-    }
-
-    buffer_manager_t &buf_mgr_;
-    ir_context_t &ir_ctx_;
-    loop_desc_t loop_desc_;
-    coord_info_t coord_info_;
-
-    object_eq_map_t<expr_t, expr_t> expr2var_;
-    std::vector<stmt_t> let_stmts_;
-
-    int offset_id_ = 0;
-    std::vector<offset_t> offsets_;
-};
-
-class iterator_t {
-public:
-    iterator_t() = default;
-
-    iterator_t(buffer_manager_t &buf_mgr) : buf_mgr_(&buf_mgr) {
-        linear_loop_ = loop_t(loop_desc_entry_t(), 0, buf_mgr);
-    }
-
-    int nloops() const { return (int)loops_.size(); }
-
-    void add_loop(const loop_desc_entry_t &e, const expr_t &bound) {
-        if (is_one(bound)) return;
-        loops_.emplace_back(e, bound, *buf_mgr_);
-    }
-
-    stmt_t init_stmt() const {
-        stmt_t ret;
-        for (auto &l : loops_) {
-            ret = ret.append(l.store_stmt(0));
-        }
-        ret = linear_loop_.store_stmt(linear_bound() - 1).append(ret);
-        return ret;
-    }
-
-    expr_t linear_loop_var() const { return linear_loop_.var(); }
-
-    stmt_t check_bounds_stmt(const stmt_t &body) const {
-        return if_t::make(linear_loop_.var() >= 0, body);
-    }
-
-    stmt_t inc_stmt(const offset_ctx_t &off_ctx) const {
-        stmt_t body;
-        for (int i = nloops() - 1; i >= 0; i--) {
-            auto &l = loops_[i];
-            auto *l_prev = (i - 1 >= 0) ? &loops_[i - 1] : nullptr;
-            auto *l_next = (i + 1 < nloops()) ? &loops_[i + 1] : nullptr;
-            stmt_t stmt;
-            if (l_prev) stmt = stmt.append(l_prev->store_stmt(0));
-            stmt = stmt.append(l.inc_stmt());
-            stmt = stmt.append(off_ctx.inc_loop_stmt(l.entry));
-            if (l_next)
-                stmt = stmt.append(if_t::make(l.var() >= l.bound, body));
-            body = stmt;
-        }
-        body = linear_loop_.inc_stmt(-1).append(body);
-        return body;
-    }
-
-private:
-    struct loop_t {
-        loop_desc_entry_t entry;
-        expr_t bound;
-        expr_t var_buf;
-
-        loop_t() = default;
-        loop_t(const loop_desc_entry_t &entry, const expr_t &bound,
-                buffer_manager_t &buf_mgr)
-            : entry(entry), bound(bound) {
-            auto buf_name = buf_mgr.ir_ctx().create_tmp_name("i");
-            var_buf = buf_mgr.get(buf_name, sizeof(int32_t));
-        }
-
-        stmt_t store_stmt(const expr_t &value) const {
-            return store_t::make(var_buf, 0, value);
-        }
-
-        stmt_t inc_stmt(int inc = 1) const { return store_stmt(var() + inc); }
-
-        expr_t var() const { return load_t::make(type_t::s32(), var_buf, 0); }
-    };
-
-    expr_t linear_bound() const {
-        expr_t ret;
-        for (auto &l : loops_) {
-            if (ret.is_empty()) {
-                ret = l.bound;
-            } else {
-                ret *= l.bound;
-            }
-        }
-        return ret;
-    }
-
-    buffer_manager_t *buf_mgr_ = nullptr;
-    std::vector<loop_t> loops_;
-    loop_t linear_loop_;
+    loop_nest_t loop_nest_;
+    std::vector<loop_index_t> loop_idxs_;
+    loop_index_t linear_idx_;
 };
 
 type_t to_send_type(const send_1d_desc_t &desc) {
@@ -821,6 +749,17 @@ stmt_t finalize_vars(const stmt_t &stmt, const kernel_info_t &kernel_info,
     return ret;
 }
 
+loop_nest_t make_loop_nest(
+        const loop_desc_t &loop_desc, const coord_info_t &coord_info) {
+    loop_nest_t ret;
+    for (auto &e : loop_desc) {
+        auto index = coord_info.loop_index(e.dim);
+        auto size = coord_info.loop_size(e.dim);
+        ret.add_loop(index, size);
+    }
+    return ret;
+}
+
 class ir_builder_t {
 public:
     ir_builder_t(const kernel_desc_t &desc, const kernel_info_t &kernel_info,
@@ -832,9 +771,10 @@ public:
         , cset_(desc.spec_reqs.as_constraint_set(kernel_info))
         , ir_ctx_(desc.exec_cfg(), cset_)
         , buf_mgr_(ir_ctx_)
-        , off_ctx_(buf_mgr_, ir_ctx_, desc_.loop_desc, plan_.coord_info)
-        , prefetch_off_ctx_(
-                  buf_mgr_, ir_ctx_, desc_.loop_desc, plan_.coord_info) {}
+        , loop_nest_(make_loop_nest(desc_.loop_desc, plan_.coord_info))
+        , off_ctx_(buf_mgr_, ir_ctx_, loop_nest_)
+        , prefetch_off_ctx_(off_ctx_.bump_version())
+        , epilogue_off_ctx_(prefetch_off_ctx_.bump_version()) {}
 
     stmt_t build() {
         build_prefetch();
@@ -852,12 +792,13 @@ public:
         epilogue_stmt = epilogue_stmt.append(c_store_stmt_);
 
         stmt_t stmt;
-        stmt = loop();
-        stmt = inject_compute_alloc(stmt);
-        stmt = init_stmt().append(stmt);
-        stmt = zero_out_stmt().append(stmt);
-        stmt = stmt.append(c_store_stmt_);
-        stmt = inject_alloc_and_let(stmt);
+        stmt = stmt.append(compute_stmt);
+        stmt = stmt.append(epilogue_stmt);
+
+        stmt = inject_alloc_stmts(stmt, buf_mgr_);
+        stmt = off_ctx_.inject_let_stmts(stmt);
+        stmt = inject_global_alloc(stmt);
+        stmt = inject_index_let(stmt);
         stmt = finalize_vars(
                 stmt, kernel_info_, grid_ctx_, plan_.tg_grid, ir_ctx_);
 
@@ -878,11 +819,7 @@ private:
         stmt_t init_stmt;
         iterator_t prefetch_it;
         if (prefetch_dist > 0) {
-            prefetch_it = iterator_t(buf_mgr_);
-            for (auto &e : loop_desc) {
-                auto bound = coord_info.loop_size(e.dim);
-                prefetch_it.add_loop(e, bound);
-            }
+            prefetch_it = iterator_t(buf_mgr_, loop_nest_);
             init_stmt = init_stmt.append(prefetch_it.init_stmt());
             for (int i = 0; i < prefetch_dist; i++) {
                 auto i_prefetch_stmt = prefetch_stmt_;
@@ -905,7 +842,7 @@ private:
         for (auto &e : loop_desc) {
             auto var = coord_info.loop_index(e.dim);
             auto bound = coord_info.loop_size(e.dim);
-            ret = ret.append(off_ctx_.inc_loop_stmt(e));
+            ret = ret.append(off_ctx_.inc_loop_stmt(e.idx));
             ret = for_t::make(var, 0, bound, ret);
         }
         ret = init_stmt.append(ret);
@@ -917,52 +854,6 @@ private:
         auto ret = stmt_group_t::make(stmt_label_t::c_zero_out(),
                 funcs::zero_out(c_entry.buf, c_entry.size));
         return ret;
-    }
-
-    stmt_t init_stmt() const {
-        stmt_t ret;
-        ret = ret.append(off_ctx_.init_stmt());
-        ret = ret.append(prefetch_off_ctx_.init_stmt());
-        return ret;
-    }
-
-    stmt_t inject_alloc_and_let(const stmt_t &stmt) const {
-        stmt_t ret = stmt;
-        ret = inject_out_alloc(ret);
-        ret = inject_header_alloc(ret);
-        ret = off_ctx_.inject_let_stmts(ret);
-        ret = prefetch_off_ctx_.inject_let_stmts(ret);
-        ret = inject_global_alloc(ret);
-        ret = inject_index_let(ret);
-        return ret;
-    }
-
-    static bool is_compute_alloc_buf(const expr_t &buf) {
-        return !is_out_alloc_buf(buf) && !is_offset_buf(buf);
-    }
-
-    static bool is_out_alloc_buf(const expr_t &buf) {
-        auto &buf_name = buf.as<var_t>().name;
-        return utils::one_of(buf_name, "c", "c_tmp");
-    }
-
-    static bool is_offset_buf(const expr_t &buf) {
-        auto &buf_name = buf.as<var_t>().name;
-        if (buf_name.find("h_") == 0) return true;
-        if (buf_name.find("m_") == 0) return true;
-        return false;
-    }
-
-    stmt_t inject_compute_alloc(const stmt_t &stmt) const {
-        return buf_mgr_.inject_allocs(stmt, is_compute_alloc_buf);
-    }
-
-    stmt_t inject_out_alloc(const stmt_t &stmt) const {
-        return buf_mgr_.inject_allocs(stmt, is_out_alloc_buf);
-    }
-
-    stmt_t inject_header_alloc(const stmt_t &stmt) const {
-        return buf_mgr_.inject_allocs(stmt, is_offset_buf);
     }
 
     stmt_t inject_global_alloc(const stmt_t &stmt) const {
@@ -1203,8 +1094,10 @@ private:
     mutable constraint_set_t cset_;
     mutable ir_context_t ir_ctx_;
     mutable buffer_manager_t buf_mgr_;
+    loop_nest_t loop_nest_;
     mutable offset_ctx_t off_ctx_;
     mutable offset_ctx_t prefetch_off_ctx_;
+    mutable offset_ctx_t epilogue_off_ctx_;
 
     stmt_t prefetch_stmt_;
     stmt_t x2r_mul_stmt_;

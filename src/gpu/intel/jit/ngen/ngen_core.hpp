@@ -375,39 +375,30 @@ enum {
 
 // Data types. Bits[0:4] are the ID, bits[5:7] hold log2(width in bits).
 enum class DataType : uint8_t {
-    ud = 0xA0,
-    d  = 0xA1,
-    uw = 0x82,
-    w  = 0x83,
-    ub = 0x64,
-    b  = 0x65,
-    df = 0xC6,
-    f  = 0xA7,
-    uq = 0xC8,
-    q  = 0xC9,
-    hf = 0x8A,
-    bf = 0x8B,
-    uv = 0xAD,
-    v  = 0xAE,
-    vf = 0xAF,
-    bf8 = 0x6C,
-    tf32 = 0xB0,
-    hf8 = 0x71,
-    u4 = 0x5C,
-    s4 = 0x5D,
-    u2 = 0x3E,
-    s2 = 0x3F,
-    invalid = 0x60
+    ud = 0x40,
+    d  = 0x41,
+    uw = 0x22,
+    w  = 0x23,
+    ub = 0x04,
+    b  = 0x05,
+    df = 0x66,
+    f  = 0x47,
+    uq = 0x68,
+    q  = 0x69,
+    hf = 0x2A,
+    bf = 0x2B,
+    uv = 0x4D,
+    v  = 0x4E,
+    vf = 0x4F,
+    bf8 = 0x0C,
+    hf8 = 0x0D,
+    tf32 = 0x50,
+    u4 = 0x1C,
+    s4 = 0x1D,
+    u2 = 0x1E,
+    s2 = 0x1F,
+    invalid = 0x00
 };
-
-static inline constexpr   int getLog2Bits(DataType type)               { return static_cast<int>(type) >> 5; }
-static inline constexpr14 int getLog2Bytes(DataType type)              { return std::max<int>(getLog2Bits(type) - 3, 0); }
-static inline constexpr14 int getLog2Dwords(DataType type)             { return std::max<int>(getLog2Bits(type) - 5, 0); }
-static inline constexpr14 int log2ElementsPerByte(DataType type)       { return std::max<int>(3 - getLog2Bits(type), 0); }
-static inline constexpr   int getBits(DataType type)                   { return 1 << getLog2Bits(type); }
-static inline constexpr14 int getBytes(DataType type)                  { return 1 << getLog2Bytes(type); }
-static inline constexpr14 int getDwords(DataType type)                 { return 1 << getLog2Dwords(type); }
-static inline constexpr14 int elementsPerByte(DataType type)           { return 1 << log2ElementsPerByte(type); }
 
 static inline constexpr bool isSigned(DataType type)
 {

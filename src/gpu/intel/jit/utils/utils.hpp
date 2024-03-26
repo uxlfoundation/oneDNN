@@ -872,6 +872,19 @@ inline bool stream_try_match(std::istream &in, const std::string &s) {
     return ok;
 }
 
+template <size_t idx, typename... ArgsT>
+void serialize_tuple(const std::tuple<ArgsT...> &tup, std::ostream &out) {
+    constexpr size_t end = std::tuple_size<std::tuple<ArgsT...>>::value - 1;
+    serialize(std::get<idx>(tup), out);
+    if (idx == end) return;
+    serialize_tuple<idx == end ? idx : idx + 1>(tup, out);
+}
+
+template <typename... ArgsT>
+void serialize(const std::tuple<ArgsT...> &tup, std::ostream &out) {
+    serialize_tuple<0>(tup, out);
+}
+
 template <typename T>
 using enum_name_t = std::pair<T, const char *>;
 
@@ -1014,6 +1027,19 @@ struct stringify_impl_t<T,
         get_parse_iface<T>().stringify(out, t);
     }
 };
+
+template <size_t idx, typename... ArgsT>
+void deserialize_tuple(const std::tuple<ArgsT...> &tup, std::istream &in) {
+    constexpr size_t end = std::tuple_size<std::tuple<ArgsT...>>::value - 1;
+    deserialize(std::get<idx>(tup), in);
+    if (idx == end) return;
+    deserialize_tuple<idx == end ? idx : idx + 1>(tup, in);
+}
+
+template <typename... ArgsT>
+void deserialize(const std::tuple<ArgsT...> &tup, std::istream &in) {
+    deserialize_tuple<0>(tup, in);
+}
 
 template <typename T>
 struct stringify_impl_t<T,

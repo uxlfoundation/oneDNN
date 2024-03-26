@@ -17419,23 +17419,6 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
     for (bool isA : {true, false})
         gemmMake2DQuantizationLayouts(isA, problem, strategy, state);
 
-    auto calcQInc
-            = [&](int stride, const Subregister &ld, Subregister &ld_kxq) {
-                  if (stride == 1)
-                      ld_kxq = ld;
-                  else {
-                      ld_kxq = state.ra.alloc_sub<uint32_t>();
-                      mulConstant(1, ld_kxq, ld, stride);
-                  }
-              };
-
-    if (ao2D) calcQInc(state.kaqStride, state.inputs.ldao, state.ldao_kaq);
-    if (as2D)
-        calcQInc(state.kaqStride, state.inputs.ldaScale, state.ldaScale_kaq);
-    if (bo2D) calcQInc(state.kbqStride, state.inputs.ldbo, state.ldbo_kbq);
-    if (bs2D)
-        calcQInc(state.kbqStride, state.inputs.ldbScale, state.ldbScale_kbq);
-
     // Grab flag registers now for named barriers. TODO: unlock these.
     if (strategy.needsNamedBarriersM(problem))
         state.barrierM = state.raVFlag.allocSubreg0();
@@ -17858,11 +17841,6 @@ void gemm_kernel_generator_t<hw>::gemmAccumulateCTeardown(
 
     deduplicateScalar(state.lda, state);
     deduplicateScalar(state.ldb, state);
-
-    state.ra.safeRelease(state.ldao_kaq);
-    state.ra.safeRelease(state.ldbo_kbq);
-    state.ra.safeRelease(state.ldaScale_kaq);
-    state.ra.safeRelease(state.ldbScale_kbq);
 
     state.raVFlag.safeRelease(state.barrierM);
     state.raVFlag.safeRelease(state.barrierN);

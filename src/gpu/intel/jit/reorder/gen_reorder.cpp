@@ -67,15 +67,9 @@ status_t gen_reorder_t::pd_t::init(
                 && (!zp_cfg.do_dst_compensation
                         || zp_cfg.is_common_dst_zero_point);
     };
-    auto is_bf16_or_f32_or_f8 = [](data_type_t dt) {
-        return utils::one_of(dt, bf16, f32, f8_e5m2, f8_e4m3);
-    };
-    auto hf8_ok = [&]() {
-        bool any_hf8 = utils::one_of(f8_e4m3, dst_dt, src_dt);
-        return IMPLICATION(any_hf8,
-                utils::everyone_is(f8_e4m3, dst_dt, src_dt)
-                        || utils::one_of(src_dt, bf16, f16, f32)
-                        || utils::one_of(dst_dt, bf16, f16, f32));
+    auto is_bf16_or_f32_or_bf8 = [](data_type_t dt) {
+        return utils::one_of(dt, data_type::bf16, data_type::f32,
+                data_type::f8_e5m2, data_type::f8_e4m3);
     };
     auto skip_mask = dnnl_primitive_attr::skip_mask_t::post_ops
             | dnnl_primitive_attr::skip_mask_t::zero_points_runtime
@@ -108,7 +102,8 @@ status_t gen_reorder_t::pd_t::init(
     VDISPATCH_REORDER(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_REORDER(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_REORDER(zps_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-    VDISPATCH_REORDER(hf8_ok(), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_REORDER(IMPLICATION(any_hf8, utils::one_of(f16, src_dt, dst_dt)),
+            VERBOSE_UNSUPPORTED_DT);
 
     memory_desc_wrapper src_mdw {src_md()};
     memory_desc_wrapper dst_mdw {dst_md()};

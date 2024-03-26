@@ -1495,8 +1495,6 @@ struct GEMMState : public CommonState {
     LDIncrements ldaoIncrements, ldboIncrements;
     LDIncrements ldasIncrements, ldbsIncrements;
     LDMultiples ldaMultiples, ldbMultiples, ldcMultiples[2];
-    ngen::Subregister ldao_kaq, ldaScale_kaq; // ud
-    ngen::Subregister ldbo_kbq, ldbScale_kbq; // ud
     ngen::Subregister k, K; // d
     ngen::Subregister kNoBarrierStart, kNoBarrierEnd; // d
     ngen::FlagRegister flagAP;
@@ -2439,7 +2437,7 @@ protected:
             const MatrixAddressing &atype,
             const MatrixAddressingStrategy &astrategy,
             const CommonStrategy &strategy, CommonState &state, bool decrement);
-    void incAddr2D(Type T, const std::vector<ngen::GRFRange> &addr, bool column,
+    void incAddrStrided(const std::vector<ngen::GRFRange> &addr, bool column,
             int k, const SubregisterPair &ld, const LDIncrements &incs,
             const std::vector<RegisterBlock> &layout,
             const MatrixAddressing &atype,

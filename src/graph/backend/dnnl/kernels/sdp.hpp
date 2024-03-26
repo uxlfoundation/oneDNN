@@ -157,7 +157,7 @@ public:
         // to record the input offset in a certain order of ops.
         auto op_status = record_input_offset(sg, inputs);
         if (op_status != status::success) return false;
-        memory::dims src1_user_dims = ltw(inputs[graph_inport[0]]).vdims();
+        memory::dims src1_user_dims = ltw(inputs[input_id[0]]).vdims();
         if (src1_user_dims.size() != 4) return false;
 
         // Initialize SDP input dimension according to the src of mm1
@@ -558,6 +558,8 @@ private:
         op_ptr mm1, mm2, scale, add;
         for (const auto &cur_op : sg->get_ops()) {
             if (mm1 != nullptr && mm2 != nullptr) break;
+            if (cur_op->get_kind() == graph::op_kind::Select)
+                return status::unimplemented;
             if (cur_op->get_kind() != graph::op_kind::MatMul) continue;
             auto post_op = get_post_op(cur_op);
             if (post_op

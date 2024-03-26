@@ -607,12 +607,12 @@ public:
     iterator_t() = default;
 
     iterator_t(buffer_manager_t &buf_mgr) : buf_mgr_(&buf_mgr) {
-        linear_loop_ = loop_t(loop_nest_entry_t(), 0, buf_mgr);
+        linear_loop_ = loop_t(loop_desc_entry_t(), 0, buf_mgr);
     }
 
     int nloops() const { return (int)loops_.size(); }
 
-    void add_loop(const loop_nest_entry_t &e, const expr_t &bound) {
+    void add_loop(const loop_desc_entry_t &e, const expr_t &bound) {
         if (is_one(bound)) return;
         loops_.emplace_back(e, bound, *buf_mgr_);
     }
@@ -652,12 +652,12 @@ public:
 
 private:
     struct loop_t {
-        loop_nest_entry_t entry;
+        loop_desc_entry_t entry;
         expr_t bound;
         expr_t var_buf;
 
         loop_t() = default;
-        loop_t(const loop_nest_entry_t &entry, const expr_t &bound,
+        loop_t(const loop_desc_entry_t &entry, const expr_t &bound,
                 buffer_manager_t &buf_mgr)
             : entry(entry), bound(bound) {
             auto buf_name = buf_mgr.ir_ctx().create_tmp_name("i");

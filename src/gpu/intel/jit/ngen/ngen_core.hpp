@@ -360,6 +360,7 @@ enum class DataType : uint8_t {
     v  = 0x4E,
     vf = 0x4F,
     bf8 = 0x0C,
+    hf8 = 0x0D,
     tf32 = 0x50,
 #ifdef PRERELEASE_HW
     hf8 = 0x11,

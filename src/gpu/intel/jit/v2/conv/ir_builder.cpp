@@ -394,8 +394,8 @@ public:
             params.allow_bcast = true;
             params.allow_reuse = true;
             auto off = get_offset(
-                    version, expr_t(0), dm.base, dm.slot_incs, shift, params);
-            ret.add_mask(off, to_simple_expr(dm.bound), dm.has_underflow);
+                    expr_t(0), dm.base, dm.slot_incs, shift, params);
+            ret.add_mask(off, let_ctx_.get(dm.bound), dm.has_underflow);
         }
         return ret;
     }

@@ -102,6 +102,11 @@ int get_nhwc_sp_block_size(
         int sp, int ic_dim, int eu_count, int threads_per_eu, int simd = 16);
 int get_nhwc_calc_stat_ic(int ic, int ic_block, int sg_size);
 
+int get_nhwc_vect_size(int ic, int max_vect_size, int simd = 16);
+int get_nhwc_sp_block_size(
+        int sp, int ic_dim, int eu_count, int threads_per_eu, int simd = 16);
+int get_nhwc_calc_stat_ic(int ic, int ic_block, int sg_size);
+
 status_t get_estimated_hw_utilization(model_params_t &p,
         nhwc_bnorm_params_t &conf, hw_params_t &hw_params, kernel_desc_t &desc);
 status_t make_kernel_perf_estimation(model_params_t &p,

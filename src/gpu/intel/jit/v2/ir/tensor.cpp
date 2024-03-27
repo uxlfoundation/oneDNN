@@ -1053,8 +1053,12 @@ std::string layout_iterator_t::str() const {
 }
 
 dim_mask_desc_t::dim_mask_desc_t(const prb_dim_t &dim, const expr_t &expr,
-        const expr_t &bound, int block, bool do_zero_cmp)
-    : dim(dim), bound(bound), block(block), do_zero_cmp(do_zero_cmp), base(0) {
+        const expr_t &bound, int block, bool has_underflow)
+    : dim(dim)
+    , bound(bound)
+    , block(block)
+    , has_underflow(has_underflow)
+    , base(0) {
     ir_assert(math::is_pow2(block));
     init_abc_xy(expr);
 }

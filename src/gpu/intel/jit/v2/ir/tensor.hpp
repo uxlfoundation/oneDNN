@@ -560,8 +560,8 @@ private:
 class dim_mask_desc_t {
 public:
     dim_mask_desc_t() = default;
-    dim_mask_desc_t(const pvar_t &dim, const expr_t &expr, const expr_t &bound,
-            int block, bool has_underflow);
+    dim_mask_desc_t(const prb_dim_t &dim, const expr_t &expr,
+            const expr_t &bound, int block, bool has_underflow);
     bool is_identity() const { return is_zero(c) && is_one(a) && y.is_empty(); }
 
     template <typename T>
@@ -575,7 +575,7 @@ public:
 
     prb_dim_t dim;
     expr_t bound;
-    dim_t block = 0;
+    int block = 0;
     bool has_underflow = false;
 
     expr_t base;

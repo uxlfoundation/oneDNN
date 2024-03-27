@@ -5929,14 +5929,6 @@ static inline int block2DWidthAlignment(Type T, const RegisterBlock &block,
 }
 
 static inline int block2DBaseAlignment(HW hw, int stepping) {
-#if XE3P
-    if (hw >= HW::Xe3p) return 4;
-#endif
-    if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
-    return 64;
-}
-
-static inline int block2DBaseAlignment(HW hw, int stepping) {
     if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
     return 64;
 }

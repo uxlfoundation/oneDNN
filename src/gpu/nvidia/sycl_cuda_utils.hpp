@@ -1,6 +1,6 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
-* Copyright 2020-2024 Codeplay Software Limited
+* Copyright 2020-2024 Intel Corporation
+* Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.

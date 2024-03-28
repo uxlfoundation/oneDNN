@@ -501,7 +501,7 @@ void vanilla_lstm_store(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
             + g_i * g_z;
     float Ht = g_o * tanh_fwd_tm(Ct, tm_cscale);
 
-    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_INPUT(Ht);
+    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_WS_STATE(Ht);
     c_states_t_l[cell_ws_state(states_ws_ld, n, c)] = Ct;
 }
 
@@ -522,7 +522,7 @@ void store_vanilla_rnn(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
     if (!RECOMPUTE_GATES && IS_TRAINING) {
         ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 0, c)] = g;
     }
-    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_INPUT(g);
+    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_WS_STATE(g);
 }
 
 #if CELL_KIND == LBR_GRU

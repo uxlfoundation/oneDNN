@@ -36,7 +36,6 @@
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/layout_id_mgr.hpp"
-#include "graph/backend/dnnl/patterns/data_type_check_pass.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
 namespace dnnl {

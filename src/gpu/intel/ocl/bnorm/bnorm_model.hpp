@@ -118,12 +118,6 @@ status_t get_params_by_model(nhwc_bnorm_params_t &conf,
         const batch_normalization_pd_t *pd, hw_params_t &hw_params,
         bool reusable_version);
 
-struct appr_formula_t {
-    float a;
-    float b;
-    appr_alg_t alg;
-};
-
 } // namespace bn_model
 } // namespace ocl
 } // namespace intel

@@ -14,9 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <assert.h>
-#include <tuple>
-#include <vector>
+#include "oneapi/dnnl/dnnl.h"
+
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
+
+#include "sycl/sycl_stream_submit_cpu_primitive.hpp"
 
 #include "common/primitive_iface.hpp"
 #include "common/utils.hpp"

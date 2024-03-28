@@ -46,7 +46,7 @@
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "xpu/ocl/engine_factory.hpp"
+#include "gpu/ocl/ocl_engine.hpp"
 #endif
 
 #include "tests/gtests/dnnl_test_macros.hpp"

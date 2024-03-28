@@ -33,15 +33,11 @@
 #if INPUT_DT_BF16
 #define TO_REF(x) cvt_bf16_to_f32(x)
 #else
-#define TO_REF(x) convert_float(x)
+#define TO_REF(x) (float)(x)
 #endif
 
-#if AUX_DT_F16
-#define TO_AUX(x) convert_half(x)
-#elif AUX_DT_F32
-#define TO_AUX(x) convert_float(x)
-#else
-#error "Unimplemented AUX_DATA_T type"
+#if DT_F16 && !IS_FWD
+#error "FP16 is not supported for BWD"
 #endif
 
 #define OFFTYPE ulong

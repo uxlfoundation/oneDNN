@@ -491,7 +491,7 @@ struct user_data_t : public data_helper_t {
 
         // src_layer dimension order: iter, mini-batch, channel
         const auto iter_stride
-                = offsets_.src_layer[0] * type_size(conf_.input_data_type);
+                = offsets_.src_layer[0] * type_size(conf_.src_data_type);
         dim_t offset = iter * iter_stride;
         auto cell_size = iter_stride;
         auto n_cells = all_iter ? conf_.n_iter - iter : 1;

@@ -60,10 +60,9 @@
 --attr-zero-points=,src:common:-2,src:common:128+dst:common:-1
 --batch=shapes_2d_no_tail_int8
 
-# f8
 --reset
---beta=0,1
---bs=1,16
 --dt=f8_e4m3:f8_e5m2:f8_e4m3,f8_e5m2:f8_e4m3:f8_e5m2
+--attr-post-ops=
+--bs=1
 --brgemm-attr=use_uker:1+use_interleave_stores:1,use_uker:0+use_interleave_stores:1
 --batch=shapes_2d_no_tail_int8

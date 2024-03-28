@@ -159,6 +159,13 @@ bool has_cpu_training_support(data_type_t data_type) {
 #else
             return false;
 #endif
+        case data_type::f8_e5m2:
+        case data_type::f8_e4m3:
+#if DNNL_X64
+            return mayiuse(avx512_core_fp16);
+#else
+            return false;
+#endif
         default: return true;
     }
 #else

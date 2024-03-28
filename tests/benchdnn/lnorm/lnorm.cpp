@@ -383,8 +383,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     }
 
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(
-            prb->attr, prb->ndims, prb->dims.data(), dnnl_layer_normalization);
+    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dims.data());
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args));
 
@@ -423,8 +422,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             prb->attr, res, dnnl_layer_normalization, prb->dt[0]);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_layer_normalization);
 
-    if (is_gpu() && prb->attr.post_ops.len() != 0) {
-        // GPU does not support post-ops
+    if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) != -1) {
         res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
         return;
     }

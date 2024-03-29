@@ -44,22 +44,6 @@
 #error "Unimplemented AUX_DATA_T type"
 #endif
 
-#if NEED_BIAS_ATOMIC_REDUCE
-#define MAYBE_ATOMIC volatile __global
-#define DIFF_BIAS_DATA_T CONCAT2(atomic_, DIFF_DATA_T)
-#else
-#define MAYBE_ATOMIC __global
-#define DIFF_BIAS_DATA_T DIFF_DATA_T
-#endif
-
-#if AUX_DT_F16
-#define TO_AUX(x) convert_half(x)
-#elif AUX_DT_F32
-#define TO_AUX(x) convert_float(x)
-#else
-#error "Unimplemented AUX_DATA_T type"
-#endif
-
 #define OFFTYPE ulong
 #define TO_WS_STATE(x) TO_SRC(x)
 

@@ -3,9 +3,6 @@
 oneAPI Deep Neural Network Library (oneDNN)
 ===========================================
 
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/8762/badge)](https://www.bestpractices.dev/projects/8762)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/oneapi-src/oneDNN/badge)](https://securityscorecards.dev/viewer/?uri=github.com/oneapi-src/oneDNN)
-
 oneAPI Deep Neural Network Library (oneDNN) is an open-source cross-platform
 performance library of basic building blocks for deep learning applications.
 oneDNN project is part of the [UXL Foundation] and is an implementation
@@ -361,6 +358,21 @@ You can also contact oneDNN developers via [UXL Foundation Slack] using
 [Github issues]: https://github.com/oneapi-src/oneDNN/issues
 [UXL Foundation Slack]: https://slack-invite.uxlfoundation.org/
 [#onednn]: https://uxlfoundation.slack.com/channels/onednn
+
+# Governance
+
+oneDNN project is governed by the [UXL Foundation] and you can get involved in
+this project in multiple ways. It is possible to join the [AI Special Interest
+Group (SIG)] meetings where the groups discuss and demonstrate work using this
+project. Members can also join the Open Source and Specification Working Group
+meetings.
+
+You can also join the [mailing lists for the UXL Foundation] to be informed
+of when meetings are happening and receive the latest information and
+discussions.
+
+[AI Special Interest Group (SIG)]: https://github.com/uxlfoundation/foundation
+[mailing lists for the UXL Foundation]: https://lists.uxlfoundation.org/g/main/subgroups
 
 # Contributing
 

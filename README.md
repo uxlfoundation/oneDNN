@@ -343,6 +343,21 @@ You can also contact oneDNN developers via [UXL Foundation Slack] using
 [UXL Foundation Slack]: https://slack-invite.uxlfoundation.org/
 [#onednn]: https://uxlfoundation.slack.com/channels/onednn
 
+# Governance
+
+oneDNN project is governed by the [UXL Foundation] and you can get involved in
+this project in multiple ways. It is possible to join the [AI Special Interest
+Group (SIG)] meetings where the groups discuss and demonstrate work using this
+project. Members can also join the Open Source and Specification Working Group
+meetings.
+
+You can also join the [mailing lists for the UXL Foundation] to be informed
+of when meetings are happening and receive the latest information and
+discussions.
+
+[AI Special Interest Group (SIG)]: https://github.com/uxlfoundation/foundation
+[mailing lists for the UXL Foundation]: https://lists.uxlfoundation.org/g/main/subgroups
+
 # Contributing
 
 We welcome community contributions to oneDNN. If you have an idea on how

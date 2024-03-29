@@ -87,6 +87,7 @@ static status_t init_ocl_conf(rnn_utils::ocl_conf_t &ocl_conf,
     using namespace rnn_utils;
 
     ocl_conf.src_dt = rnn.src_data_type;
+    ocl_conf.src_c_dt = src_iter_c_d.data_type();
     ocl_conf.wei_dt = weights_layer_d.data_type();
     ocl_conf.bia_dt = rnn.bias_data_type;
     ocl_conf.acc_dt = rnn.acc_data_type;
@@ -427,6 +428,7 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
 
     def_data_type(kernel_ctx, src_dt, "WS_STATE");
     def_data_type(kernel_ctx, src_dt, "SRC");
+    def_data_type(kernel_ctx, src_c_dt, "SRC_C");
     def_data_type(kernel_ctx, wei_dt, "WEI_LAYER");
     def_data_type(kernel_ctx, wei_dt, "WEI_ITER");
     def_data_type(kernel_ctx, acc_dt, "ACC");
@@ -679,7 +681,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
 
     init_rnn_conf(rnn_conf, *this->desc(), this->src_md(0), this->src_md(1),
             this->weights_md(0), this->weights_md(1), this->dst_md(0),
-            this->desc()->bias_desc, acc_data_t, device_info);
+            this->dst_md(1), this->desc()->bias_desc, acc_data_t, device_info);
 
     if (rnn_conf.is_int8) {
         auto has_trivial_strides = [](const memory_desc_wrapper &md) {

@@ -44,6 +44,14 @@
 #error "Unimplemented AUX_DATA_T type"
 #endif
 
+#if AUX_DT_F16
+#define TO_AUX(x) convert_half(x)
+#elif AUX_DT_F32
+#define TO_AUX(x) convert_float(x)
+#else
+#error "Unimplemented AUX_DATA_T type"
+#endif
+
 #define OFFTYPE ulong
 #define TO_WS_STATE(x) TO_SRC(x)
 

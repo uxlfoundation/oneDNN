@@ -122,7 +122,7 @@ float activation_bwd(float s, float alpha, float cliping) {
 }
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-simple_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
+ref_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
         __global char *src_base, __global AUX_DATA_T *scratch_diff_states,
         int lr, int rl, int batch, int dhc, int slc, int n_iter, int n_layer,
         int n_dir, int n_states, int states_ws_ld, int scratch_diff_states_ld,
@@ -159,7 +159,7 @@ simple_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
     const int s = get_global_id(0);
     if (s >= dhc || b >= batch || it >= n_iter) return;
 
-    __global DIFF_DATA_T *dst = scratch_diff_states;
+    __global AUX_DATA_T *dst = scratch_diff_states;
 
 #if DIRECTION_KIND == CONCAT
     __global DIFF_DATA_T *src = (__global DIFF_DATA_T *)src_base
@@ -275,8 +275,8 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 ref_rnn_copy_res_layer(
         __global WS_STATE_DATA_T *src_base, __global char *dst_base,
-        __global char *scratch_diff_states, int lr, int rl, int batch, int dhc,
-        int slc, int n_iter, int n_layer, int n_dir, int n_states,
+        __global AUX_DATA_T *scratch_diff_states, int lr, int rl, int batch,
+        int dhc, int slc, int n_iter, int n_layer, int n_dir, int n_states,
         int states_ws_ld, int scratch_diff_states_ld, int64x3_t strides
 #if IS_FWD
         ,
@@ -366,7 +366,7 @@ ref_rnn_copy_res_layer(
 __kernel void ref_rnn_copy_res_iter(
         __global WS_STATE_DATA_T *src_base, __global AUX_DATA_T *src_c_base,
         __global char *dst_base, __global char *dst_c_base,
-        __global char *scratch_diff_states, int batch, int dhc, int sic,
+        __global AUX_DATA_T *scratch_diff_states, int batch, int dhc, int sic,
         int n_iter, int n_layer, int n_dir, int n_states, int states_ws_ld,
         int scratch_diff_states_ld, int64x4_t strides
 #if (IS_FWD && WITH_DST_ITER_C) || (!IS_FWD && WITH_SRC_ITER_C)
@@ -756,6 +756,14 @@ ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 }
 #endif
 
+#if NEED_BIAS_ATOMIC_REDUCE
+#define MAYBE_ATOMIC volatile __global
+#define DIFF_BIAS_DATA_T CONCAT2(atomic_, DIFF_DATA_T)
+#else
+#define MAYBE_ATOMIC __global
+#define DIFF_BIAS_DATA_T DIFF_DATA_T
+#endif
+
 #if !IS_FWD
 // The scratch_diff_gates and scratch_gates buffers may refer to the
 // same memory when sizeof(SRC_DATA_T) == sizeof(AUX_DATA_T) or when
@@ -791,7 +799,6 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
 #endif
         MAYBE_ATOMIC DIFF_BIAS_DATA_T *diff_bias_base,
         int64x4_t diff_bias_strides) {
-#if !IS_FWD
     const int i_ = get_global_id(1) * ELEMWISE_BWD_BATCH_BLOCK; // batch
     const int j = get_global_id(0); // dhc
 
@@ -1040,228 +1047,9 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
     }
 }
 #else
-__kernel void simple_rnn_elemwise_bwd() {}
+__kernel void ref_rnn_elemwise_bwd() {}
 #endif // !IS_FWD
 
-#if CELL_COMP_ENABLED
-
-void gemm_sum_inner(float(C)[M_THR_BLOCK][N_THR_BLOCK],
-        const __global WS_STATE_DATA_T *restrict A, const int a_stride,
-        const __global WEI_LAYER_DATA_T *restrict B, const int b_stride,
-        const int m_thr_stride, const int n_thr_stride, int m_l_end,
-        int k_l_end, int n_l_end, bool mn_valid) {
-
-    // Load A - Invariant across the subgroup, can do cooperative load
-    float A_l[M_THR_BLOCK] = {};
-    unroll_for(int m_l = 0; m_l < M_THR_BLOCK; m_l++) {
-        load(A_l + m_l, A + m_l * m_thr_stride * a_stride,
-                (mn_valid || (m_l * m_thr_stride) < m_l_end)
-                        && (int)get_sub_group_local_id() < k_l_end);
-    }
-
-    // Load B
-    float B_l[gemm_k_block][N_THR_BLOCK] = {};
-    unroll_for(int n_l = 0; n_l < N_THR_BLOCK; n_l++) {
-        unroll_for(int k_l = 0; k_l < gemm_k_block; k_l++) {
-            load(&B_l[k_l][n_l], &B[k_l * b_stride + n_l * n_thr_stride],
-                    k_l < k_l_end
-                            && (mn_valid
-                                    || (int)get_sub_group_local_id()
-                                            < (n_l_end - n_l * n_thr_stride)));
-        }
-    }
-
-    // Compute
-    unroll_for(int m_l = 0; m_l < M_THR_BLOCK; m_l++) {
-        unroll_for(int k_l = 0; k_l < gemm_k_block; k_l++) {
-            unroll_for(int n_l = 0; n_l < N_THR_BLOCK; n_l++) {
-                C[m_l][n_l] += B_l[k_l][n_l] * sg_get(A_l[m_l], k_l);
-            }
-        }
-    }
-}
-
-// Perform C += A * B where all matrices are in row major layout
-void gemm_sum(float(C)[N_OUTER_BLOCK][M_THR_BLOCK][N_THR_BLOCK],
-        const __global WS_STATE_DATA_T *restrict A, const int a_stride,
-        const __global WEI_LAYER_DATA_T *restrict B, const int b_stride,
-        gemm_dims_t size, int m_sg, int m_thr_stride, int n_sg,
-        int n_thr_stride, bool enable_m_tail, bool enable_k_tail,
-        bool enable_n_tail) {
-
-    // Optimization opportunity: Loads across the m and n dimension can overflow
-    // so long as they do not cross the end of the buffer.
-    bool valid_mn
-            = (!enable_m_tail || m_sg + m_thr_stride * M_THR_BLOCK <= size.m)
-            && (!enable_n_tail
-                    || n_sg + n_thr_stride * N_THR_BLOCK <= size.n_inner);
-    if (valid_mn) {
-        int k_outer = 0;
-        while (valid_mn && k_outer < size.k - gemm_k_block + 1) {
-            int k_l_end = gemm_k_block;
-            const int m_l_end = m_thr_stride * M_THR_BLOCK;
-            const int n_l_end = n_thr_stride * N_THR_BLOCK;
-
-            const int a_off_base = m_sg * a_stride + k_outer;
-            for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
-                gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
-                        B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
-                        m_l_end, k_l_end, n_l_end, true);
-            }
-            k_outer += gemm_k_block;
-        }
-        while (enable_k_tail && k_outer < size.k) {
-            int k_l_end = size.k - k_outer;
-            const int m_l_end = size.m - m_sg;
-            const int n_l_end = size.n_inner - n_sg;
-
-            const int a_off_base = m_sg * a_stride + k_outer;
-            for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
-                gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
-                        B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
-                        m_l_end, k_l_end, n_l_end, true);
-            }
-            k_outer += gemm_k_block;
-        }
-    } else {
-        int k_outer = 0;
-        while (k_outer < size.k) {
-            int k_l_end = enable_k_tail ? size.k - k_outer : gemm_k_block;
-            const int m_l_end = size.m - m_sg;
-            const int n_l_end = size.n_inner - n_sg;
-
-            const int a_off_base = m_sg * a_stride + k_outer;
-            for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
-                gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
-                        B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
-                        m_l_end, k_l_end, n_l_end, false);
-            }
-            k_outer += gemm_k_block;
-        }
-    }
-}
-
-void cell_common_inner(const_wei_layer_cell_t wei_layer,
-        const_wei_iter_cell_t wei_iter, const_ws_state_cell_t cell_layer,
-        const_ws_state_cell_t cell_iter, aux_cell_t gates,
-        ws_state_cell_t states, const_aux_cell_t scratch_gates, cell_ctx_t ctx,
-        cell_dims_t outer, cell_dims_t dims) {
-    // Extract local id from the subgroup id rather than `get_local_id` as the
-    // mapping from subgroups to the local work group is not well defined.
-    const int local_sgid0
-            = get_sub_group_id() * SUBGROUP_SIZE % get_local_size(0);
-    const int local_sgid1
-            = get_sub_group_id() * SUBGROUP_SIZE / get_local_size(0);
-
-    const int c_tg = outer.dhc + get_group_id(0) * DHC_LOCAL;
-    const int c_sg = c_tg + local_sgid0 * CELL_DHC_THR;
-    const int c_thr = c_sg + get_sub_group_local_id();
-    const int c_thr_stride = SUBGROUP_SIZE;
-
-    const int n_tg = outer.mb + get_group_id(1) * BATCH_LOCAL;
-    const int n_sg = n_tg + local_sgid1 * CELL_BATCH_THR;
-    const int n_thr = n_sg;
-    const int n_thr_stride = 1;
-
-    float C[n_gates][CELL_BATCH_THR][CELL_DHC_THR] = {};
-
-    if (NEED_SCRATCH_GATES) {
-        // GEMM operations may be calculated in an separate external kernel and are
-        // passed in via `scratch_gates`
-        for_(int gate_idx = 0; gate_idx < n_gates; gate_idx++)
-        for (int n_l = 0; n_l < CELL_BATCH_THR; n_l++) {
-            int n = n_thr + n_l * n_thr_stride;
-            if (CELL_MB_TAIL && n >= dims.mb) break;
-            for (int c_l = 0; c_l < CELL_DHC_THR; c_l++) {
-                int c = c_thr + c_l * c_thr_stride;
-                if (CELL_DHC_TAIL && c >= dims.dhc) break;
-                C[gate_idx][n_l]
-                 [c_l] = convert_float(scratch_gates.ptr[cell_scratch_mem(
-                         scratch_gates.strides.mb, dims.dhc, n, gate_idx, c)]);
-            }
-        }
-    }
-
-    if (CELL_COMPUTE_GEMM_LAYER) {
-        // cell_states = batch x slc
-        // wei_layer = slc x (gates x dhc)
-        // C = batch x (gates x dhc)
-        gemm_dims_t size = {.m = dims.mb,
-                .k = dims.slc,
-                .n_inner = dims.dhc,
-                .n_outer = n_gates};
-        gemm_sum(C, cell_layer.ptr, cell_layer.strides.mb, wei_layer.ptr,
-                wei_layer.strides.slc, size, n_sg, n_thr_stride, c_sg,
-                c_thr_stride, CELL_DHC_TAIL, CELL_GEMM_LAYER_K_TAIL,
-                CELL_MB_TAIL);
-    }
-
-    if (CELL_COMPUTE_GEMM_ITER) {
-        // cell_states = batch x sic
-        // wei_iter  = sic x (gates x dhc)
-        // C = batch x (gates x dhc)
-        gemm_dims_t size = {.m = dims.mb,
-                .k = dims.sic,
-                .n_inner = dims.dhc,
-                .n_outer = n_gates};
-        gemm_sum(C, cell_iter.ptr, cell_iter.strides.mb, wei_iter.ptr,
-                wei_iter.strides.sic, size, n_sg, n_thr_stride, c_sg,
-                c_thr_stride, CELL_DHC_TAIL, CELL_GEMM_ITER_K_TAIL,
-                CELL_MB_TAIL);
-    }
-
-    for (int n_l = 0; n_l < CELL_BATCH_THR; n_l++) {
-        int n = n_thr + n_l * n_thr_stride;
-        if (CELL_MB_TAIL && n >= dims.mb) break;
-        for (int c_l = 0; c_l < CELL_DHC_THR; c_l++) {
-            int c = c_thr + c_l * c_thr_stride;
-            if (CELL_DHC_TAIL && c >= dims.dhc) break;
-            if (CELL_KIND == VANILLA_LSTM) {
-                float G[vanilla_lstm_n_gates];
-                float B[vanilla_lstm_n_bias];
-                for (int gate_idx = 0; gate_idx < vanilla_lstm_n_gates;
-                        gate_idx++) {
-                    G[gate_idx] = C[gate_idx][n_l][c_l];
-                    B[gate_idx] = convert_float(
-                            ctx.lstm.bias[off_ker_bias(dims.dhc, gate_idx, c)]);
-                }
-                vanilla_lstm_gates_t g
-                        = vanilla_lstm_compute_gates(G, B, ctx.lstm.tm_scales);
-                vanilla_lstm_store(gates.ptr, gates.strides.mb, states.ptr,
-                        ctx.lstm.c_states, ctx.lstm.c_states_iter,
-                        states.strides.mb, dims.dhc, n, c, ctx.lstm.tm_cscale,
-                        g);
-            } else if (CELL_KIND == VANILLA_RNN) {
-                float g = vanilla_rnn_compute_gates(C[0][n_l][c_l],
-                        ctx.rnn.bias[off_ker_bias(dims.dhc, 0, c)],
-                        ctx.rnn.alpha, ctx.rnn.tm_scales);
-                store_vanilla_rnn(gates.ptr, gates.strides.mb, states.ptr,
-                        states.strides.mb, dims.dhc, n, c, g);
-            }
-        }
-    }
-}
-
-void cell_common(const_wei_layer_cell_t wei_layer,
-        const_wei_iter_cell_t wei_iter, const_ws_state_cell_t cell_layer,
-        const_ws_state_cell_t cell_iter, aux_cell_t gates,
-        ws_state_cell_t states, const_aux_cell_t scratch_gates, cell_ctx_t ctx,
-        cell_dims_t dims, cell_loops_t loops) {
-
-    for_(cell_dim_t mb_outer = 0; mb_outer < loops.mb; mb_outer += BATCH_LOCAL)
-    for (cell_dim_t dhc_outer = 0; dhc_outer < loops.dhc;
-            dhc_outer += DHC_LOCAL) {
-        cell_dims_t outer = {.mb = mb_outer, .dhc = dhc_outer};
-        cell_common_inner(wei_layer, wei_iter, cell_layer, cell_iter, gates,
-                states, scratch_gates, ctx, outer, dims);
-    }
-}
 #if CELL_COMP_ENABLED
 #define DHC_TG get_local_size(0)
 #define DHC_LOCAL (CELL_DHC_THR * DHC_TG)

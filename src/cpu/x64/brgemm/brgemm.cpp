@@ -563,9 +563,8 @@ status_t brgemm_desc_set_attr(
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
 
-    // TODO: update conditions once other brgemm implementations are enabled
-    if (brg->is_fp8 && brg->brgattr.use_uker && !brg->is_fp8_via_convert())
-        return status::unimplemented;
+    // TODO: update conditions once other implementations are enabled
+    if (brg->is_fp8 && !brg->is_fp8_via_convert()) return status::unimplemented;
 
     return status::success;
 }

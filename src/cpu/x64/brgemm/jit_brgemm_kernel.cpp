@@ -46,7 +46,9 @@ struct jit_brgemm_kernel_t : public jit_generator {
         , brg(abrg)
         , postops_injector_(nullptr)
         , max_effective_vregs(isa_num_vregs(brg.isa_impl)
-                  - (brg.is_int8 && !brg.has_int8_vnni ? 2 : 0)) {
+                  - (brg.is_int8 && !brg.has_int8_vnni
+                                  ? 2
+                                  : (brg.is_fp8_via_convert() ? 5 : 0))) {
 
         // The implementation uses is_superset(), is_subset() utilities.
         // So avoid isa_all, isa_undef in these comparisions.
@@ -121,6 +123,22 @@ struct jit_brgemm_kernel_t : public jit_generator {
                     bf16_emu_reserv_1(), bf16_emu_reserv_2(),
                     bf16_emu_reserv_3(), bf16_emu_scratch, bf16_emu_reserv_4(),
                     bf16_emu_reserv_4());
+
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
+                        brg.dt_d))
+            // Note: avoid using 'vmm0' since it is used as
+            // 'fp8_to_f16_upconvert()' param and would collision with these
+            // emulation vmms
+            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+                    xmm_fp8_emu_aux2, xmm_fp8_emu_aux3, xmm_fp8_emu_aux4,
+                    kmask_fp8_aux, reg64_fp8_aux);
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
+                        brg.dt_d))
+            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+                    xmm_fp8_emu_aux1, xmm_fp8_emu_aux2, xmm_fp8_emu_aux3,
+                    xmm_fp8_emu_aux4, xmm_fp8_emu_aux5, reg64_fp8_aux);
     }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_t)
@@ -138,8 +156,8 @@ private:
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
+    std::unique_ptr<fp8_emulation_base_t> f8_e5m2_emulator_;
+    std::unique_ptr<fp8_emulation_base_t> f8_e4m3_emulator_;
 
     Xbyak::Label avx_tail_mask_;
     Xbyak::Label sum_zp_scale_data_;
@@ -207,9 +225,9 @@ private:
     const reg64_t reg_zp_a_val = reg_rdb_loop;
 
     const reg64_t reg_buf = reg_rdb_loop;
+    const reg64_t reg_compensation = reg_bias;
+    const reg64_t reg_aux_compensation = reg_aux_bias;
     const reg64_t reg_buf_aux = abi_param1;
-    const reg64_t reg_compensation = reg_rdb_loop;
-    const reg64_t reg_aux_compensation = reg_rdb_loop;
 
     const reg64_t reg_D = reg_aux_A;
     const reg64_t reg_aux_D = reg_BS_loop;
@@ -218,11 +236,8 @@ private:
     const reg64_t bf16_emu_scratch = reg_rdb_loop;
 
     // FP8 Convert
-    // Note: registers (GPR and VMM) used in the fp8 emulator should not
-    // intersect with the set of registers used in binary injector because fp8
-    // emulator may be called from injector
     const reg64_t reg_converted_stride = reg_rdb_loop;
-    const reg64_t reg64_fp8_aux = reg_a_offset;
+    const reg64_t reg64_fp8_aux = reg_A;
 
     constexpr static int origin_offs_batch_offs_ = 0;
     constexpr static int origin_strd_batch_offs_ = 0;
@@ -272,17 +287,6 @@ private:
     Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
 
-    static int get_max_effective_vregs(const brgemm_desc_t &brg) {
-        auto used_vregs = 0;
-        if (brg.is_int8 && !brg.has_int8_vnni)
-            used_vregs = 2;
-        else if (brg.is_fp8_via_convert())
-            used_vregs = 5;
-        else if (brg.is_f16_b_non_amx_vnni())
-            used_vregs = 2;
-        return isa_num_vregs(brg.isa_impl) - used_vregs;
-    }
-
     Vmm accm(int ld_block, int bd, int ld) {
         return Vmm(max_effective_vregs - 1 - (bd * ld_block + ld));
     }
@@ -329,11 +333,11 @@ private:
     // note: zmm reserv_5 is not necessary since it's only used for 'vdpbf16ps'
 
     // fp8 emulation convert
-    Vmm xmm_fp8_emu_aux1 = Vmm(1);
-    Vmm xmm_fp8_emu_aux2 = Vmm(2);
-    Vmm xmm_fp8_emu_aux3 = Vmm(3);
-    Vmm xmm_fp8_emu_aux4 = Vmm(4);
-    Vmm xmm_fp8_emu_aux5 = Vmm(5);
+    Vmm xmm_fp8_emu_aux1 = Vmm(0);
+    Vmm xmm_fp8_emu_aux2 = Vmm(1);
+    Vmm xmm_fp8_emu_aux3 = Vmm(2);
+    Vmm xmm_fp8_emu_aux4 = Vmm(3);
+    Vmm xmm_fp8_emu_aux5 = Vmm(4);
 
     // Required in every dot product for INT8 non-VNNI computation.
     Vmm int8_ones_words() const noexcept {
@@ -664,15 +668,21 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         case data_type::s8: uni_vpmovsxbd(vmm, op); break;
         case data_type::u8: uni_vpmovzxbd(vmm, op); break;
         case data_type::f8_e5m2:
-            if (brg.is_fp8_via_convert())
+            if (brg.is_fp8_via_convert()) {
+                // note: unoptimized, probably move stack use outside loop
+                mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
                 f8_e5m2_emulator_->vcvt_f8_to_f32(vmm, op);
-            else
+                mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
+            } else
                 assert(!"Error, native conversion unsupported");
             break;
         case data_type::f8_e4m3:
-            if (brg.is_fp8_via_convert())
+            if (brg.is_fp8_via_convert()) {
+                // note: unoptimized, probably move stack use outside loop
+                mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
                 f8_e4m3_emulator_->vcvt_f8_to_f32(vmm, op);
-            else
+                mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
+            } else
                 assert(!"Error, native conversion unsupported");
             break;
 
@@ -977,6 +987,83 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(int bd_block2,
             auto vmm = accm(ld_block2, bd, ld);
             uni_vpxor(vmm, vmm, vmm);
         }
+    }
+}
+
+// This method up-converts the data from bf8 to f16 and saves at reg_buf.
+// Generally used by matrix_A, where no vnni transformation of data is needed.
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert(int num_rows,
+        int tile_num_col_bytes, reg64_t reg_base, int offset,
+        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
+
+    int rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+
+    const int max_num_cols = rd_block; //tile_num_col_bytes / sizeof(float16_t);
+    const int col_tail = max_num_cols % 32;
+    auto zmm_1 = vmm_tmp(0);
+    auto zmm_1_masked = col_tail ? zmm_1 | fp8_col_mask | T_z : zmm_1;
+
+    assert(max_num_cols > 0);
+
+    if (col_tail) {
+        const int tail_mask = (1 << col_tail) - 1;
+        auto reg_tmp_32 = reg_tmp_gpr.cvt32();
+        mov(reg_tmp_32, tail_mask);
+        kmovd(fp8_col_mask, reg_tmp_32);
+    }
+    // Note: using the same register used in col_tail, so order is important
+    const auto reg_data_aux = reg_tmp_gpr;
+    lea(reg_data_aux, ptr[reg_base + offset]);
+
+    for (int r = 0; r < num_rows; ++r) {
+        if (dt == data_type::f8_e5m2)
+            f8_e5m2_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+        else if (dt == data_type::f8_e4m3)
+            f8_e4m3_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+        else
+            assert(!"unsupported data type");
+
+        vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_1);
+        add(reg_data_aux, reg_data_stride);
+    }
+}
+
+// This method up-converts and transforms the data from fp8_vnni to f16_vnni
+// format. Generally used by matrix_B.
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(int num_rows,
+        int tile_num_col_bytes, reg64_t reg_base, int offset,
+        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
+    const int num_cols_ele = tile_num_col_bytes / 2; // 32 for full tile
+    const int num_N = num_cols_ele / 2; // 16 for full tile
+    const auto zmm_2 = vmm_tmp(2);
+
+    assert(num_N > 0 && "bad tile parameters");
+    MAYBE_UNUSED(num_N);
+
+    const auto reg_data_aux = reg_tmp_gpr;
+    lea(reg_data_aux, ptr[reg_base + offset]);
+
+    int rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+    const int vnni_granularity = data_type_vnni_granularity(data_type::f16);
+    const int r_end = utils::div_up(rd_block, vnni_granularity);
+    assert(r_end <= num_rows && "bad tile parameters");
+
+    if (dt == data_type::f8_e5m2)
+        f8_e5m2_emulator_->vcvt_f8_to_f16_vnni_block(
+                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+    else if (dt == data_type::f8_e4m3)
+        f8_e4m3_emulator_->vcvt_f8_to_f16_vnni_block(
+                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+    else
+        assert(!"unsupported data type");
+
+    // zero rest of the tile data
+    if (r_end < num_rows) {
+        vpxord(zmm_2, zmm_2, zmm_2);
+        for (int r = r_end; r < num_rows; ++r)
+            vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_2);
     }
 }
 
@@ -1795,6 +1882,92 @@ void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
 }
 
 template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
+        const Tmm &t1, reg64_t reg_base, size_t offset, reg64_t reg_stride,
+        int num_rows, int num_col_bytes, bool is_rd_tail) {
+    constexpr int tile_size = 1024;
+    const auto transform_offset = brg.brgattr.use_interleave_stores
+            ? brg.get_num_C_tiles() * tile_size
+            : 0;
+    add(reg_buf_aux, transform_offset);
+
+    switch (matrix_kind) {
+        case matrix_A:
+            fp8_to_f16_upconvert(num_rows, num_col_bytes, reg_base, offset,
+                    reg_stride, brg.dt_a, is_rd_tail);
+            break;
+        case matrix_B:
+            fp8_to_f16_upconvert_to_vnni(num_rows, num_col_bytes, reg_base,
+                    offset, reg_stride, brg.dt_b, is_rd_tail);
+            break;
+        default: assert(!"Wrong Matrix");
+    }
+
+    // load into tmm from the transformed data.
+    mov(reg_converted_stride, zmm_width_in_bytes_);
+    tileloadd(t1, ptr[reg_buf_aux + reg_converted_stride]);
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
+        int idx, int offset, bool is_rd_tail, bool is_tail) {
+
+    const bool is_A = matrix_kind == matrix_kind_t::matrix_A;
+
+    const int tmm_idx = is_A ? brg.get_A_tensor(idx, is_tail)
+                             : brg.get_B_tensor(idx, is_tail);
+    auto t1 = Tmm(tmm_idx);
+
+    auto reg_base = is_A ? reg_aux_A : reg_aux_B;
+
+    auto reg_stride = is_A ? reg_stride_lda : reg_stride_ldb;
+    bool try_load_nt = brg.innermost_loop
+            == (is_A ? brgemm_bd_loop_innermost : brgemm_ld_loop_innermost);
+
+    if (brg.is_fp8_via_convert()) {
+        const int typesize_A
+                = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
+        const int typesize_B
+                = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
+        int rd_step = 4 / typesize_A;
+        int rd_block = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
+        if (brg.is_input_convert()) {
+            const int vnni_granularity
+                    = data_type_vnni_granularity(data_type::f16);
+            rd_block = utils::rnd_up(rd_block, vnni_granularity);
+        }
+
+        int A_col = typesize_A * rd_block;
+        int A_row = is_tail ? brg.bdb_tail : brg.bd_block;
+
+        int B_col = (is_tail ? brg.ldb_tail : brg.ld_block) * typesize_B
+                * rd_step;
+        int B_row = brg.typesize_C != 0 ? A_col / brg.typesize_C : 0;
+        mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
+        mov(ptr[rsp + reg_val_tmp_2_], reg_buf_aux);
+
+        mov(reg_buf_aux, ptr[rsp + reg_buf_offs_]);
+        maybe_pre_process_data(matrix_kind, t1, reg_base, offset, reg_stride,
+                is_A ? A_row : B_row, is_A ? A_col : B_col, is_rd_tail);
+
+        mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
+        mov(reg_buf_aux, ptr[rsp + reg_val_tmp_2_]);
+    } else {
+        const size_t cache_footprint = static_cast<size_t>(brg.typesize_A)
+                        * brg.brgattr.hint_expected_A_size
+                + static_cast<size_t>(brg.typesize_B)
+                        * brg.brgattr.hint_expected_B_size
+                + static_cast<size_t>(brg.typesize_C)
+                        * brg.brgattr.hint_expected_C_size;
+        if (try_load_nt
+                && cache_footprint >= platform::get_per_core_cache_size(1))
+            tileloaddt1(t1, ptr[reg_base + offset + reg_stride]);
+        else
+            tileloadd(t1, ptr[reg_base + offset + reg_stride]);
+    }
+}
+
+template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(int bd_block2,
         bool is_bdb_tail, int ld_block2, bool is_rd_tail, bool is_ld_tail) {
     auto tdpbxxd = [this](const Tmm &x1, const Tmm &x2, const Tmm &x3) {
@@ -1947,6 +2120,8 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
         int ld_block2, bool is_rd_tail, bool is_ld_tail, int vpad,
         int rows_for_rd_tail) {
+    assert(!brg.is_fp8_via_convert() && "No non-AMX path for fp8");
+
     MAYBE_UNUSED(bd_block2);
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     const auto bd_b = nstl::max(0, vpad);
@@ -2629,6 +2804,11 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         const int scale_int = float2int(brg.sum_scale);
         for (int i = 0; i < simd; ++i)
             dd(scale_int);
+    }
+
+    if (brg.is_fp8_via_convert()) {
+        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
+        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
     }
 
     if (brg.with_eltwise)

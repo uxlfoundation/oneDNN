@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -650,7 +650,7 @@ TEST(test_large_partition_execute, Int8GptMha) {
     strm->wait();
 }
 
-TEST(test_large_partition_execute, F32Mha) {
+TEST(test_large_partition_execute, Bf16Mha_CPU) {
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -770,7 +770,7 @@ TEST(test_large_partition_execute, F32DistilBertMha) {
     strm->wait();
 }
 
-TEST(test_large_partition_execute, F32GptMha) {
+TEST(test_large_partition_execute, Int8Bf16Mha_CPU) {
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 

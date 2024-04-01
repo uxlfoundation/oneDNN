@@ -154,8 +154,8 @@ TEST(test_subgraph_pass, LowerDownToInt8Conv) {
 
     graph::pass::pass_base_ptr apass
             = get_pass(engine_kind == graph::engine_kind::gpu
-                            ? "x8x8x8_conv_add_post_ops_gpu"
-                            : "x8x8x8_conv_add_post_ops_cpu");
+                            ? "x8s8x8_conv_add_post_ops_gpu"
+                            : "x8s8x8_conv_add_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -282,7 +282,10 @@ TEST(test_subgraph_pass, LowerDownToInt8Matmul) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -603,8 +606,8 @@ TEST(test_subgraph_pass, Int8ConvSumRelu) {
 
     graph::pass::pass_base_ptr apass
             = get_pass(engine_kind == graph::engine_kind::gpu
-                            ? "x8x8x8_conv_add_post_ops_gpu"
-                            : "x8x8x8_conv_add_post_ops_cpu");
+                            ? "x8s8x8_conv_add_post_ops_gpu"
+                            : "x8s8x8_conv_add_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
 
     apass->run(g);
@@ -863,7 +866,10 @@ TEST_P(int8_matmul_with_diff_inputs_t, Int8MatmulPasses) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -1297,7 +1303,7 @@ TEST(test_subgraph_pass, MemoryPlanning) {
     ASSERT_TRUE(mem_offkeys.empty());
 }
 
-TEST(test_subgraph_pass, FusePostOpsForConvDepthwise_CPU) {
+TEST(test_subgraph_pass_subgraph_pass, FusePostOpsForConvDepthwise_CPU) {
     /*   conv
           |
          conv (depthwise)
@@ -1368,7 +1374,7 @@ TEST(test_subgraph_pass, FusePostOpsForConvDepthwise_CPU) {
     ASSERT_EQ(subgraph->num_ops(), 2U);
 }
 
-TEST(test_subgraph_pass, FailToFusePostOpsForConvDepthwise_CPU) {
+TEST(test_subgraph_pass_subgraph_pass, FailToFusePostOpsForConvDepthwise_CPU) {
     /*   conv
           |
          conv (depthwise)

@@ -650,7 +650,7 @@ TEST(test_large_partition_execute, Int8GptMha) {
     strm->wait();
 }
 
-TEST(test_large_partition_execute, F32Mha) {
+TEST(test_large_partition_execute, Bf16Mha_CPU) {
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -770,7 +770,7 @@ TEST(test_large_partition_execute, F32DistilBertMha) {
     strm->wait();
 }
 
-TEST(test_large_partition_execute, F32GptMha) {
+TEST(test_large_partition_execute, Int8Bf16Mha_CPU) {
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 

@@ -4846,7 +4846,7 @@ INSTANTIATE_TEST_SUITE_P(test_pass_single_op_pass, test_single_op_pass_t,
                 single_op_params_t {graph::op_kind::LayerNormBackward, 6, 3,
                         graph::data_type::bf16, false}));
 
-TEST(test_pass, ConvSingleOpReplacement) {
+TEST(test_pass_pass, ConvSingleOpReplacement) {
     const auto engine_kind = get_test_engine_kind();
     graph_t agraph(engine_kind);
     op_t conv {0, Convolution, "conv"};
@@ -4875,7 +4875,7 @@ TEST(test_pass, ConvSingleOpReplacement) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 2U);
 }
 
-TEST(test_pass, ConvSingleOpReplacementWithBias) {
+TEST(test_pass_pass, ConvSingleOpReplacementWithBias) {
     const auto engine_kind = get_test_engine_kind();
     graph_t agraph(engine_kind);
     op_t conv {0, Convolution, "conv"};
@@ -4994,7 +4994,8 @@ TEST(test_pass_pass, TestPassFilterFunc) {
            |
           biasAdd
     */
-    graph_t agraph;
+    const auto engine_kind = get_test_engine_kind();
+    graph_t agraph(engine_kind);
     graph::op_t matmul_op(0, graph::op_kind::MatMul, "matmul_op");
     graph::op_t add_op(1, graph::op_kind::BiasAdd, "add_op");
 
@@ -6230,8 +6231,8 @@ TEST(test_pass, FuseToInt8ConvBiasAdd) {
     agraph.finalize();
 
     pass::pass_base_ptr apass = get_pass(engine_kind == engine_kind::cpu
-                    ? "x8x8x8_conv_add_post_ops_cpu"
-                    : "x8x8x8_conv_add_post_ops_gpu");
+                    ? "x8s8x8_conv_add_post_ops_cpu"
+                    : "x8s8x8_conv_add_post_ops_gpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -6548,8 +6549,8 @@ TEST(test_pass, FuseToInt8ConvBiasAddRelu) {
 
     graph::pass::pass_base_ptr apass
             = get_pass(engine_kind == graph::engine_kind::gpu
-                            ? "x8x8x8_conv_add_post_ops_gpu"
-                            : "x8x8x8_conv_add_post_ops_cpu");
+                            ? "x8s8x8_conv_add_post_ops_gpu"
+                            : "x8s8x8_conv_add_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -6758,8 +6759,8 @@ TEST(test_pass, FuseToInt8ConvBiasAddReluWithInputBias) {
 
     graph::pass::pass_base_ptr apass
             = get_pass(engine_kind == graph::engine_kind::gpu
-                            ? "x8x8x8_conv_add_post_ops_gpu"
-                            : "x8x8x8_conv_add_post_ops_cpu");
+                            ? "x8s8x8_conv_add_post_ops_gpu"
+                            : "x8s8x8_conv_add_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -7215,7 +7216,10 @@ TEST(test_pass, FuseToInt8Matmul) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -7370,7 +7374,10 @@ TEST(test_pass, OptionalQuantForInt8Matmul) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -7461,7 +7468,10 @@ TEST(test_pass, OptionalQuantWith2ConsumersForInt8Matmul) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -7557,7 +7567,9 @@ TEST(test_pass, FuseToInt8MatMulBinary) {
             agraph.finalize();
 
             graph::pass::pass_base_ptr apass
-                    = get_pass("x8x8x_matmul_post_ops");
+                    = get_pass(engine_kind == graph::engine_kind::gpu
+                                    ? "x8s8x_matmul_post_ops_gpu"
+                                    : "x8x8x_matmul_post_ops_cpu");
             ASSERT_NE(apass, nullptr);
             apass->run(agraph);
             ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -7654,7 +7666,10 @@ TEST(test_pass, FailToFuseToInt8MatMulDivOrSubtract) {
 
         agraph.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+        graph::pass::pass_base_ptr apass
+                = get_pass(engine_kind == graph::engine_kind::gpu
+                                ? "x8s8x_matmul_post_ops_gpu"
+                                : "x8x8x_matmul_post_ops_cpu");
         ASSERT_NE(apass, nullptr);
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -7808,7 +7823,10 @@ TEST(test_pass, FuseToInt8MatmulBias) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -7951,7 +7969,10 @@ TEST(test_pass, FuseToInt8MatmulRelu) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -8102,7 +8123,10 @@ TEST(test_pass, FuseToInt8MatmulBiasRelu) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -8158,7 +8182,10 @@ TEST(test_pass, FuseToX8s8f32Matmul) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -8216,7 +8243,10 @@ TEST(test_pass, FuseToX8s8f32MatmulBias) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -8675,7 +8705,7 @@ TEST(test_pass_system, FuseToInt8PoolAdd) {
     }
 }
 
-TEST(test_pass_system, Quantize) {
+TEST(test_pass_pass_system, Quantize) {
     const auto engine_kind = get_test_engine_kind();
 
     graph_t agraph(engine_kind);
@@ -8694,7 +8724,7 @@ TEST(test_pass_system, Quantize) {
     ASSERT_EQ(agraph.finalize(), status::success);
 
     auto &backend_ptr
-            = dnnl::impl::graph::dnnl_impl::dnnl_backend_t::get_singleton();
+            = dnnl::impl::graph::dnnl_impl::dnnl_backend::get_singleton();
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
     pm.run_passes(agraph, "no_config");
@@ -8997,7 +9027,10 @@ TEST(test_pass, FuseToX8x8f32MatmulDivAdd) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_matmul_post_ops_gpu"
+                            : "x8x8x_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -9013,7 +9046,7 @@ TEST(test_pass, FuseToX8x8f32MatmulDivAdd) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 8U);
 }
 
-TEST(test_pass_system, FuseToX8x8f32MatmulDivAdd_CPU) {
+TEST(test_pass_pass_system, FuseToX8x8f32MatmulDivAdd_CPU) {
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -9142,7 +9175,10 @@ TEST(test_pass, FuseToX8s8bf16Matmul) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -9156,10 +9192,7 @@ TEST(test_pass, FuseToX8s8bf16Matmul) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 6U);
 }
 
-TEST(test_pass_pass_system, FuseToX8s8bf16Matmul) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
-
+TEST(test_pass_pass_system, FuseToX8s8bf16Matmul_CPU) {
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -9294,7 +9327,10 @@ TEST(test_pass, FuseToX8s8bf16MatmulDiv) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -9309,9 +9345,7 @@ TEST(test_pass, FuseToX8s8bf16MatmulDiv) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 8U);
 }
 
-TEST(test_pass_pass_system, FuseToX8s8bf16MatmulDiv) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
+TEST(test_pass_pass_system, FuseToX8s8bf16MatmulDiv_CPU) {
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -9493,7 +9527,10 @@ TEST(test_pass, FuseToX8s8bf16MatmulScaleAdd) {
 
         agraph.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+        graph::pass::pass_base_ptr apass
+                = get_pass(engine_kind == graph::engine_kind::gpu
+                                ? "x8s8x_tc_matmul_post_ops_gpu"
+                                : "x8x8x_tc_matmul_post_ops_cpu");
         ASSERT_NE(apass, nullptr);
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -9510,9 +9547,7 @@ TEST(test_pass, FuseToX8s8bf16MatmulScaleAdd) {
     }
 }
 
-TEST(test_pass_pass_system, FuseToX8s8bf16MatmulScaleAdd) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
+TEST(test_pass_pass_system, FuseToX8s8bf16MatmulScaleAdd_CPU) {
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -9664,7 +9699,10 @@ TEST(test_pass, FuseToX8s8bf16MatmulBias) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -9680,8 +9718,6 @@ TEST(test_pass, FuseToX8s8bf16MatmulBias) {
 }
 
 TEST(test_pass_pass_system, FuseToX8s8bf16MatmulBias) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -9844,7 +9880,10 @@ TEST(test_pass, FuseToX8s8bf16MatmulBiasAddBF16) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     ASSERT_TRUE(apass);
     apass->run(agraph);
@@ -9863,8 +9902,6 @@ TEST(test_pass, FuseToX8s8bf16MatmulBiasAddBF16) {
 }
 
 TEST(test_pass_pass_system, FuseToX8s8bf16MatmulBiasAddBF16) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -10030,7 +10067,10 @@ TEST(test_pass, MixInt8AndBf16MatmulBiasGelu) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
 
@@ -10046,8 +10086,6 @@ TEST(test_pass, MixInt8AndBf16MatmulBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulBiasGelu) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10068,7 +10106,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulBiasGelu) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10221,7 +10259,10 @@ TEST(test_pass, MixInt8AndBf16MatmulGelu) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
 
@@ -10236,8 +10277,6 @@ TEST(test_pass, MixInt8AndBf16MatmulGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulGelu) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10258,7 +10297,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulGelu) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10411,7 +10450,10 @@ TEST(test_pass, MixInt8AndBf16MatmulBias) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
 
@@ -10427,8 +10469,6 @@ TEST(test_pass, MixInt8AndBf16MatmulBias) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulBias) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10447,7 +10487,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulBias) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10594,7 +10634,10 @@ TEST(test_pass, MixInt8AndBf16Matmul) {
 
     agraph.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("x8x8x_tc_matmul_post_ops");
+    graph::pass::pass_base_ptr apass
+            = get_pass(engine_kind == graph::engine_kind::gpu
+                            ? "x8s8x_tc_matmul_post_ops_gpu"
+                            : "x8x8x_tc_matmul_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
 
@@ -10609,8 +10652,6 @@ TEST(test_pass, MixInt8AndBf16Matmul) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16Matmul) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10629,7 +10670,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16Matmul) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10704,7 +10745,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16Matmul) {
 TEST(test_pass_pass_system, QuantWeiMixBf16MatmulBiasTransposeReshapeQuantize) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
-
+    const auto engine_kind = get_test_engine_kind();
     auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<bool> with_bias_typecasts {false, true};
@@ -10923,8 +10964,6 @@ TEST(test_pass, MixInt8AndBf16ConvolutionBias) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBias) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -10943,7 +10982,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBias) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -11205,8 +11244,6 @@ TEST(test_pass, MixInt8AndBf16ConvolutionBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11227,7 +11264,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -11311,8 +11348,6 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionAdd) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11330,7 +11365,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionAdd) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -11592,7 +11627,7 @@ TEST(test_pass_system, FuseSoftmaxQuantize) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 2U);
 }
 
-TEST(test_pass_system, FuseLayernormQuantize_CPU) {
+TEST(test_pass_pass_system, FuseLayernormQuantize_CPU) {
     /*
              | (f32)
            layernorm
@@ -11646,8 +11681,6 @@ TEST(test_pass_system, FuseLayernormQuantize_CPU) {
 }
 
 TEST(test_pass_pass_system, FuseSoftmaxTypecast) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            softmax
@@ -11689,9 +11722,7 @@ TEST(test_pass_pass_system, FuseSoftmaxTypecast) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 2U);
 }
 
-TEST(test_pass_pass_system, FuseLayernormTypecast) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
+TEST(test_pass_pass_system, FuseLayernormTypecast_CPU) {
     /*
              | (bf16)
            layernorm
@@ -11744,8 +11775,6 @@ TEST(test_pass_pass_system, FuseLayernormTypecast) {
 }
 
 TEST(test_pass_pass_system, FuseSoftmaxTypecastQuantize) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            softmax
@@ -11799,9 +11828,7 @@ TEST(test_pass_pass_system, FuseSoftmaxTypecastQuantize) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 3U);
 }
 
-TEST(test_pass_pass_system, FuseLayernormTypecastQuantize) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
+TEST(test_pass_pass_system, FuseLayernormTypecastQuantize_CPU) {
     /*
              | (bf16)
            layernorm
@@ -11865,8 +11892,6 @@ TEST(test_pass_pass_system, FuseLayernormTypecastQuantize) {
 }
 
 TEST(test_pass_pass_system, NotFuseLayernormTypecast) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            layernorm
@@ -12003,8 +12028,7 @@ TEST(test_pass, ShuffleFusion) {
 }
 
 TEST(test_pass_pass_system, FuseTypecaseQuantize) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
+
     /*
              | (bf16)
            typecast
@@ -12017,7 +12041,7 @@ TEST(test_pass_pass_system, FuseTypecaseQuantize) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -12052,8 +12076,6 @@ TEST(test_pass_pass_system, FuseTypecaseQuantize) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -12074,7 +12096,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -12165,8 +12187,6 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulDiv) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -12187,7 +12207,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulDiv) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -12647,7 +12667,7 @@ TEST(test_pass_system, FuseInt8ReorderAdd) {
             partition_kind_t::misc_quantized_post_ops);
 }
 
-TEST(test_pass, SingleInterpolatePass) {
+TEST(test_pass_pass, SingleInterpolatePass) {
     const auto engine_kind = get_test_engine_kind();
     graph_t agraph(engine_kind);
     op_t interpolate {0, Interpolate, "interpolate"};
@@ -12946,7 +12966,7 @@ TEST(test_pass, FuseInterpolateMul) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 3U);
 }
 
-TEST(test_pass, Int8MhaFusion) {
+TEST(test_pass_pass, Int8MhaFusion) {
     const auto engine_kind = get_test_engine_kind();
     graph_t agraph(engine_kind);
     dnnl::graph::tests::unit::utils::construct_int8_MHA(&agraph);
@@ -12958,7 +12978,7 @@ TEST(test_pass, Int8MhaFusion) {
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 }
 
-TEST(test_pass, F32MhaFusion) {
+TEST(test_pass_pass, F32MhaFusion) {
     const auto engine_kind = get_test_engine_kind();
     graph_t agraph(engine_kind);
     dnnl::graph::tests::unit::utils::construct_dnnl_float_MHA(&agraph);
@@ -13316,7 +13336,7 @@ TEST(test_pass, FailToFuseInt8Concat) {
     ASSERT_EQ(agraph.get_num_partitions(), 0U);
 }
 
-TEST(test_pass, FuseToInt8ConvTransposeAdd_CPU) {
+TEST(test_pass_pass, FuseToInt8ConvTransposeAdd_CPU) {
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -13549,7 +13569,7 @@ TEST(test_pass_system, FuseToInt8ConvTransposeAdd) {
     }
 }
 
-TEST(test_pass, FuseToInt8ConvtransposeEltwise_CPU) {
+TEST(test_pass_pass, FuseToInt8ConvtransposeEltwise_CPU) {
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -13670,7 +13690,7 @@ TEST(test_pass, FuseToInt8ConvtransposeEltwise_CPU) {
     }
 }
 
-TEST(test_pass_system, FuseToInt8ConvtransposeEltwise_CPU) {
+TEST(test_pass_pass_system, FuseToInt8ConvtransposeEltwise_CPU) {
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -13792,7 +13812,7 @@ TEST(test_pass_system, FuseToInt8ConvtransposeEltwise_CPU) {
     }
 }
 
-TEST(test_pass, FuseToInt8ConvtransposeBinary_CPU) {
+TEST(test_pass_pass, FuseToInt8ConvtransposeBinary_CPU) {
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -14684,7 +14704,7 @@ TEST(test_pass_system, FuseConvTransposeSwish) {
     ASSERT_EQ(agraph.get_partitions()[0]->get_outputs()[0].id, 4U);
 }
 
-TEST(test_pass_system, FuseToInt8ConvTransposeSwishReLU_CPU) {
+TEST(test_pass_pass_system, FuseToInt8ConvTransposeSwishReLU_CPU) {
     /*
         | (u8/s8)  | (s8)
      dequant    dequant

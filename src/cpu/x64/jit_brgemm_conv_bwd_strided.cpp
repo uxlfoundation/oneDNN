@@ -111,6 +111,12 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
             && IMPLICATION(
                     with_bias(), one_of(bias_md_.data_type, f32, wei_type));
 
+    const bool is_fp8_supported = one_of(wei_type, f8_e5m2, f8_e4m3)
+            && one_of(diff_dst_type, f8_e5m2, f8_e4m3)
+            && one_of(diff_src_type, wei_type, f32, f8_e5m2, f8_e4m3)
+            && IMPLICATION(
+                    with_bias(), one_of(bias_md_.data_type, f32, wei_type));
+
     VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(
             impl_supports_datatype(diff_src_type), VERBOSE_UNSUPPORTED_DT);

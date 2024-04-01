@@ -17681,6 +17681,34 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
         if (!strategy.persistent) state.ra.safeRelease(state.inputs.boPtr);
     }
 
+    // Load and convert 0D offsets for 2D dequantization.
+    if (aoTo2D) {
+        if (problem.aoPtrDims == 1) stub();
+        auto aoLoad = loadScalars(
+                problem.Tao, {state.inputs.aoPtr}, strategy, state);
+        auto A_offsetLayout = state.Ar_offsetLayout;
+        A_offsetLayout[0].offsetBytes = aoLoad.getByteOffset();
+        gemmRepack2DOffsetData(problem.Ta_ext, problem.Tao, state.Tao_int,
+                A_offsetLayout, state.Ar_offsetLayout,
+                GRFRange(aoLoad.getBase(), 1), state.Ar_offsetRegs, problem,
+                strategy, state);
+        state.ra.safeRelease(aoLoad);
+        state.ra.safeRelease(state.inputs.aoPtr);
+    }
+    if (boTo2D) {
+        if (problem.boPtrDims == 1) stub();
+        auto boLoad = loadScalars(
+                problem.Tbo, {state.inputs.boPtr}, strategy, state);
+        auto B_offsetLayout = state.Br_offsetLayout;
+        B_offsetLayout[0].offsetBytes = boLoad.getByteOffset();
+        gemmRepack2DOffsetData(problem.Tb_ext, problem.Tbo, state.Tbo_int,
+                B_offsetLayout, state.Br_offsetLayout,
+                GRFRange(boLoad.getBase(), 1), state.Br_offsetRegs, problem,
+                strategy, state);
+        state.ra.safeRelease(boLoad);
+        state.ra.safeRelease(state.inputs.boPtr);
+    }
+
     // Free unneeded registers after address setup.
     if (!state.isNested) {
         if (strategy.A.address2D

@@ -1115,7 +1115,7 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx2d) {
     }
 }
 
-TEST(test_matmul_execute_subgraph_int8, MatmulU8U8) {
+TEST(test_matmul_execute_subgraph_int8, MatmulU8U8_CPU) {
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [quantize]
     // case 2: [quantize] - [int8_matmul]

@@ -9677,8 +9677,6 @@ TEST(test_pass_pass, FuseToX8s8bf16MatmulBias) {
 }
 
 TEST(test_pass_pass_system, FuseToX8s8bf16MatmulBias) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -9860,8 +9858,6 @@ TEST(test_pass_pass, FuseToX8s8bf16MatmulBiasAddBF16) {
 }
 
 TEST(test_pass_pass_system, FuseToX8s8bf16MatmulBiasAddBF16) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (s8)
      dequant    dequant
@@ -10043,8 +10039,6 @@ TEST(test_pass_pass, MixInt8AndBf16MatmulBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulBiasGelu) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10233,8 +10227,6 @@ TEST(test_pass_pass, MixInt8AndBf16MatmulGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulGelu) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10424,8 +10416,6 @@ TEST(test_pass_pass, MixInt8AndBf16MatmulBias) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulBias) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10606,8 +10596,6 @@ TEST(test_pass_pass, MixInt8AndBf16Matmul) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16Matmul) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -10920,8 +10908,6 @@ TEST(test_pass_pass, MixInt8AndBf16ConvolutionBias) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBias) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11203,8 +11189,6 @@ TEST(test_pass_pass, MixInt8AndBf16ConvolutionBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11309,8 +11293,6 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionAdd) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | s8
      dequant    dequant
@@ -11644,8 +11626,6 @@ TEST(test_pass_pass_system, FuseLayernormQuantize_CPU) {
 }
 
 TEST(test_pass_pass_system, FuseSoftmaxTypecast) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            softmax
@@ -11740,8 +11720,6 @@ TEST(test_pass_pass_system, FuseLayernormTypecast_CPU) {
 }
 
 TEST(test_pass_pass_system, FuseSoftmaxTypecastQuantize) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
              | (bf16)
            softmax
@@ -12043,8 +12021,6 @@ TEST(test_pass_pass_system, FuseTypecaseQuantize) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant
@@ -12156,8 +12132,6 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
 }
 
 TEST(test_pass_pass_system, MixInt8AndBf16MatmulDiv) {
-    SKIP_IF(!is_supported_dtype(data_type::bf16),
-            "Skip bf16 tests for systems that do not support avx512_core.");
     /*
         | (u8/s8)  | (u8/s8)
      dequant    dequant

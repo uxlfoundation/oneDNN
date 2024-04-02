@@ -457,9 +457,7 @@ protected:
                     rhs_arg_params.vmm_idx_to_out_addr.emplace(
                             vmm_dst.getIdx(), dst_ptr());
                     rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                            vmm_dst.getIdx(),
-                            (offt_elems + j * simd_w_)
-                                    * dst_d_.data_type_size());
+                            vmm_dst.getIdx(), offt_elems + j * simd_w_);
                     if (tail)
                         rhs_arg_params.vmm_tail_idx_.emplace(vmm_dst.getIdx());
                 }
@@ -1233,9 +1231,9 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
 
         return injector::post_ops_ok(post_ops_args);
     };
+    VDISPATCH_LNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_LNORM(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_LNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_LNORM(fill_compatible_stats_md(*src_md(), reordered_stat_md_)
                     == status::success,

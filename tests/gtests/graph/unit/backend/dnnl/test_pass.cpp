@@ -4988,14 +4988,13 @@ TEST(test_pass, SaveLoadJson) {
     ASSERT_EQ(agraph.get_partitions()[1]->get_outputs()[0].id, 8U);
 }
 
-TEST(test_pass, TestPassFilterFunc) {
+TEST(test_pass_pass, TestPassFilterFunc) {
     /*   \   /
           Matmul
            |
           biasAdd
     */
-    const auto engine_kind = get_test_engine_kind();
-    graph_t agraph(engine_kind);
+    graph_t agraph;
     graph::op_t matmul_op(0, graph::op_kind::MatMul, "matmul_op");
     graph::op_t add_op(1, graph::op_kind::BiasAdd, "add_op");
 
@@ -5013,7 +5012,7 @@ TEST(test_pass, TestPassFilterFunc) {
     ASSERT_EQ(agraph.num_ops(), 2U);
 
     auto &backend_ptr
-            = dnnl::impl::graph::dnnl_impl::dnnl_backend_t::get_singleton();
+            = dnnl::impl::graph::dnnl_impl::dnnl_backend::get_singleton();
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
     partition_policy_t policy = graph::partition_policy::debug;
@@ -5029,7 +5028,7 @@ TEST(test_pass, TestPassFilterFunc) {
     ASSERT_EQ(agraph.get_num_partitions(), 2U);
 }
 
-TEST(test_pass, InputJsonIsValid) {
+TEST(test_pass_pass, InputJsonIsValid) {
     /*   \   /
           conv
            |

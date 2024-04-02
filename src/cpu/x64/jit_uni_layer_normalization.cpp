@@ -63,10 +63,9 @@ static bcast_set_t get_supported_bcast_strategies(int ndims) {
     switch (ndims) {
         case 2: set.insert(broadcasting_strategy_t::per_oc); break;
         case 3:
-        // XXX: Currently the binary injector assumes nchw order of logical
-        // dimensions while lnorm has tnc, so `c` is the last dimension. To
-        // support `per_oc` for lnorm currently `per_w` is passed as an expected
-        // policy to the injector.
+        // XXX: Currently the binary injector assumes nchw order of logical dimensions
+        // while lnorm has tnc, so c is the last dimension. To support per_oc
+        // for lnorm currently per_w is passed as an expected policy to the injector.
         // TODO: Update the injector logic to support per_oc for the primitives
         // that have dimension order different from nchw.
         case 4:
@@ -458,9 +457,7 @@ protected:
                     rhs_arg_params.vmm_idx_to_out_addr.emplace(
                             vmm_dst.getIdx(), dst_ptr());
                     rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                            vmm_dst.getIdx(),
-                            (offt_elems + j * simd_w_)
-                                    * dst_d_.data_type_size());
+                            vmm_dst.getIdx(), offt_elems + j * simd_w_);
                     if (tail)
                         rhs_arg_params.vmm_tail_idx_.emplace(vmm_dst.getIdx());
                 }
@@ -1215,8 +1212,10 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_LNORM(stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_FEATURE,
             "unsupported scale or shift data type");
-    VDISPATCH_LNORM(attr()->has_default_values(skip_mask_t::scales_runtime
-                            | skip_mask_t::post_ops),
+    VDISPATCH_LNORM(
+            //            attr()->has_default_values(skip_mask_t::scales_runtime),
+            attr()->has_default_values(
+                    skip_mask_t::scales_runtime | skip_mask_t::post_ops),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_LNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
@@ -1236,9 +1235,9 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
 
         return injector::post_ops_ok(post_ops_args);
     };
+    VDISPATCH_LNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_LNORM(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_LNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_LNORM(fill_compatible_stats_md(*src_md(), reordered_stat_md_)
                     == status::success,

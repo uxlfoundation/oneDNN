@@ -4994,8 +4994,7 @@ TEST(test_pass_pass, TestPassFilterFunc) {
            |
           biasAdd
     */
-    const auto engine_kind = get_test_engine_kind();
-    graph_t agraph(engine_kind);
+    graph_t agraph;
     graph::op_t matmul_op(0, graph::op_kind::MatMul, "matmul_op");
     graph::op_t add_op(1, graph::op_kind::BiasAdd, "add_op");
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -104,11 +104,11 @@ public:
     impl::status_t run_passes(graph_t &agraph,
             const std::string &pass_config_json,
             partition_policy_t policy = partition_policy::fusion,
-            const pass_filter_fn &filter_fn = default_pass_filter);
+            pass_filter_fn filter_fn = default_pass_filter);
 
     impl::status_t run_passes(graph_t &agraph, std::istream *fs,
             partition_policy_t policy = partition_policy::fusion,
-            const pass_filter_fn &filter_fn = default_pass_filter);
+            pass_filter_fn filter_fn = default_pass_filter);
 };
 
 } // namespace pass

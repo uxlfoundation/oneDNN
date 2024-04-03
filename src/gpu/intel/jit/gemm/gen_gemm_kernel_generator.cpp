@@ -21231,8 +21231,8 @@ void gemm_kernel_generator_t<hw>::gemmAutoTypeConversions(
     if (Tb.isF8()) Tb = Type::f16;
 #endif
 
-    if (Ta == Type::bf8) Ta = Type::f16;
-    if (Tb == Type::bf8) Tb = Type::f16;
+    if (Ta.isF8()) Ta = Type::f16;
+    if (Tb.isF8()) Tb = Type::f16;
 
     if (hw > HW::Gen9 && !strategy.systolic && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

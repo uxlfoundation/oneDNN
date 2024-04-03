@@ -582,6 +582,10 @@ struct attr_args_t {
         entries.insert(std::make_pair(arg, mask));
     };
 
+    void prepare_zero_points(const attr_t &attr, int arg, int mask = -1) {
+        entries.insert(std::make_pair(DNNL_ARG_ATTR_ZERO_POINTS | arg, mask));
+    };
+
     int prepare_post_ops_mds(const attr_t &attr, int ndims,
             const dnnl_dims_t prb_dims,
             dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive);

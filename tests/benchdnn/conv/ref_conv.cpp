@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2025 Intel Corporation
+* Copyright 2017-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,15 +43,6 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
     const int wei_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_convolution, wei_m.ndims(), prb->has_groups);
-    const int src_scale_mask = prb->attr.scales.get_mask(
-            DNNL_ARG_SRC, dnnl_convolution, src_m.ndims(), prb->has_groups);
-    const int dst_scale_mask = prb->attr.scales.get_mask(
-            DNNL_ARG_DST, dnnl_convolution, dst_m.ndims(), prb->has_groups);
-
-    assert(IMPLICATION(
-            has_src_scale, src_scales.nelems() == 1 || src_scale_mask == 3));
-    assert(IMPLICATION(
-            has_dst_scale, dst_scales.nelems() == 1 || dst_scale_mask == 2));
 
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_zp

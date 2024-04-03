@@ -210,17 +210,13 @@ int attr_t::policy2mask(int arg, policy_t policy,
             default: SAFE(FAIL, CRIT); return -1;
         }
     } else if (prim_kind == dnnl_matmul) {
-        if ((arg != DNNL_ARG_SRC && arg != DNNL_ARG_WEIGHTS
-                    && arg != DNNL_ARG_DST)
-                || policy == policy_t::COMMON)
+        if (arg != DNNL_ARG_WEIGHTS || policy == policy_t::COMMON)
             return attr_t::get_default_mask(policy);
 
-        if (ndims < 2) SAFE_V(FAIL);
+        if (ndims <= 0) SAFE_V(FAIL);
         switch (policy) {
-            case PER_DIM_1:
             case PER_OC: return (1 << (ndims - 1));
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));
-            case PER_TENSOR: return attr_t::get_default_mask(policy);
             default: SAFE_V(FAIL); return -1;
         }
     } else if (prim_kind == dnnl_layer_normalization) {
@@ -229,7 +225,7 @@ int attr_t::policy2mask(int arg, policy_t policy,
 
         // PER_OC
         assert(policy == policy_t::PER_OC);
-        if (ndims < 1) SAFE_V(FAIL);
+        if (ndims <= 0) SAFE_V(FAIL);
         return 1 << (ndims - 1);
     } else {
         // Default case

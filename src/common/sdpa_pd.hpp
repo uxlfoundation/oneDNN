@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,6 +27,11 @@
 namespace dnnl {
 namespace impl {
 
+#define DNNL_ARG_QUERIES DNNL_ARG_SRC_0
+#define DNNL_ARG_KEYS DNNL_ARG_SRC_1
+#define DNNL_ARG_VALUES DNNL_ARG_SRC_2
+#define DNNL_ARG_ATTN_MASK DNNL_ARG_SHIFT
+
 #define VDISPATCH_SDPA(cond, msg, ...) \
     VCONDCHECK(primitive, create, dispatch, sdpa, (cond), \
             status::unimplemented, "%s," msg, this->info(engine), \
@@ -49,11 +54,7 @@ struct sdpa_pd_t : public primitive_desc_t {
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_QUERIES, DNNL_ARG_KEYS, DNNL_ARG_VALUES,
-                    DNNL_ARG_ATTN_MASK, DNNL_ARG_SCALE,
-                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
-                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+                    DNNL_ARG_ATTN_MASK, DNNL_ARG_SCALE))
             return arg_usage_t::input;
 
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
@@ -93,88 +94,28 @@ struct sdpa_pd_t : public primitive_desc_t {
     const memory_desc_t *val_md() const { return &desc_.v_desc; }
     const memory_desc_t *attn_mask_md() const { return &desc_.attn_mask_desc; }
 
-    int n_inputs() const override {
-        return 3 + int(with_attn_mask()) + int(with_attn_scale());
-    }
+    int n_inputs() const override { return 3 + int(with_attn_mask()); }
     int n_outputs() const override { return 1; }
-
-    bool with_attn_scale() const {
-        return (desc_.scale_dt != data_type::undef);
-    }
 
     bool with_attn_mask() const {
         return (attn_mask_md()->data_type != data_type::undef);
     }
 
-    /// If true, dequantize the K tensor using scaling in the KQ matmul
-    bool with_key_scales() const {
-        return (!desc()->kq_scales.has_default_values());
-    }
-
-    /// If true, dequantize the V tensor using scaling in the VS matmul
-    bool with_value_scales() const {
-        return (!desc()->vs_scales.has_default_values());
-    }
-
-    /// If true, dequantize the K tensor with zero points in the KQ matmul
-    bool with_key_zp() const {
-        return (!desc()->kq_zero_points.has_default_values(DNNL_ARG_WEIGHTS));
-    }
-
-    /// If true, dequantize the V tensor with zero points in the VS matmul
-    bool with_value_zp() const {
-        return (!desc()->vs_zero_points.has_default_values(DNNL_ARG_WEIGHTS));
-    }
-
-    /// Returns the data type of the scales tensor for the KQ matmul
-    data_type_t key_scales_dt() const { return desc()->kq_scales.data_type_; }
-
-    /// Returns the data type of the zero points tensor for the KQ matmul
-    data_type_t key_zp_dt() const {
-        return desc()->kq_zero_points.get_data_type(DNNL_ARG_WEIGHTS);
-    }
-
-    /// Returns the data type of the scales tensor for the VS matmul
-    data_type_t value_scales_dt() const { return desc()->vs_scales.data_type_; }
-
-    /// Returns the data type of the zero points tensor for the VS matmul
-    data_type_t value_zp_dt() const {
-        return desc()->vs_zero_points.get_data_type(DNNL_ARG_WEIGHTS);
-    }
-
-    // Returns the group size for the quantization parameters for the KQ matmul
-    int key_group_size() const {
-        int out = 0;
-        if (with_key_scales())
-            out = scale_group_size(desc()->kq_scales, *key_md());
-        else if (with_key_zp()) {
-            out = zp_group_size(desc()->kq_zero_points, *key_md());
-        }
-        return out;
-    }
-
-    // Returns the group size for the quantization parameters for the VS matmul
-    int value_group_size() const {
-        int out = 0;
-        if (with_value_scales())
-            out = scale_group_size(desc()->vs_scales, *val_md());
-        else if (with_value_zp()) {
-            out = zp_group_size(desc()->vs_zero_points, *val_md());
-        }
-        return out;
-    }
-
 protected:
     sdpa_desc_t desc_;
 
-    sdpa_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+    sdpa_pd_t(const sdpa_desc_t *adesc, const primitive_attr_t *attr,
             const hint_class *hint_fwd_pd)
-        : primitive_desc_t(attr, base_pkind)
-        , desc_(*op_desc_t::to_desc<sdpa_desc_t>(adesc)) {}
+        : primitive_desc_t(attr, base_pkind), desc_(*adesc) {}
 
+    // By default, we just resolve 'any' with blocked layout and trivial strides
     bool set_default_format(memory_desc_t *md) {
         memory_desc_wrapper mdw(md);
-        if (mdw.format_any()) return false;
+        if (mdw.format_any()) {
+            if (mdw.has_runtime_dims_or_strides()) return false;
+            status_t status = memory_desc_init_by_strides(*md, nullptr);
+            if (status != status::success) return false;
+        }
 
         return true;
     }
@@ -191,46 +132,6 @@ protected:
         ok = ok && (status == status::success);
 
         return ok;
-    }
-
-private:
-    static int scale_group_size(
-            const runtime_scales_t &scales, const memory_desc_t &desc) {
-        dim_t out = utils::array_product(desc.dims, desc.ndims);
-        if (scales.has_default_groups()) {
-            for (int idx : mask_iterator(scales.mask_)) {
-                out /= desc.dims[idx];
-            }
-        } else {
-            for (int idx : mask_iterator(scales.mask_)) {
-                if (idx < 2) {
-                    out /= desc.dims[idx];
-                } else {
-                    out /= (desc.dims[idx] / scales.group_dims_[idx - 2]);
-                }
-            }
-        }
-        return static_cast<int>(out);
-    }
-
-    static int zp_group_size(
-            const zero_points_t &zp, const memory_desc_t &desc) {
-        dim_t out = utils::array_product(desc.dims, desc.ndims);
-        if (zp.has_default_groups(DNNL_ARG_WEIGHTS)) {
-            for (int idx : mask_iterator(zp.get(DNNL_ARG_WEIGHTS))) {
-                out /= desc.dims[idx];
-            }
-        } else {
-            auto groups = zp.get_groups(DNNL_ARG_WEIGHTS);
-            for (int idx : mask_iterator(zp.get(DNNL_ARG_WEIGHTS))) {
-                if (idx < 2) {
-                    out /= desc.dims[idx];
-                } else {
-                    out /= (desc.dims[idx] / groups[idx - 2]);
-                }
-            }
-        }
-        return static_cast<int>(out);
     }
 };
 

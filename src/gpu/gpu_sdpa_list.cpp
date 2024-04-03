@@ -1,6 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
-* Copyright 2020 Codeplay Software Limited
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,8 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/ref_concat.hpp"
-#include "gpu/nvidia/sycl_cuda_engine.hpp"
+#include "common/compiler_workarounds.hpp"
+
+#include "gpu/gpu_impl_list.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -24,10 +24,11 @@ namespace gpu {
 
 namespace {
 
-constexpr impl_list_item_t cuda_concat_impl_list[]
-        = {impl_list_item_t::concat_type_deduction_helper_t<
-                   gpu::intel::ocl::ref_concat_t::pd_t>(),
-                nullptr};
+// clang-format off
+constexpr impl_list_item_t impl_list[] = {
+        nullptr,
+};
+// clang-format on
 } // namespace
 
 const impl_list_item_t *get_sdpa_impl_list(const sdpa_desc_t *desc) {

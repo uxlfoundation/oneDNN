@@ -640,15 +640,10 @@ void serialize_desc(serialization_stream_t &sstream, const sdpa_desc_t &desc) {
     serialize_md(sstream, desc.q_desc);
     serialize_md(sstream, desc.k_desc);
     serialize_md(sstream, desc.v_desc);
-    serialize_runtime_scales(sstream, desc.kq_scales);
-    serialize_zero_points(sstream, desc.kq_zero_points);
-    serialize_runtime_scales(sstream, desc.vs_scales);
-    serialize_zero_points(sstream, desc.vs_zero_points);
     serialize_md(sstream, desc.dst_desc);
     serialize_md(sstream, desc.attn_mask_desc);
     sstream.write(&desc.scale_dt);
     sstream.write(&desc.invert_scale);
-    sstream.write(&desc.kv_head_number);
 }
 
 } // namespace serialization

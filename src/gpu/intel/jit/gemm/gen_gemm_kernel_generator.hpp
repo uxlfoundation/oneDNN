@@ -98,6 +98,9 @@ public:
     constexpr bool isInt8() const {
         return (val == Type::u8) || (val == Type::s8);
     }
+    constexpr bool isF8() const {
+        return (val == Type::bf8 || val == Type::hf8);
+    }
     constexpr bool isSigned() const {
         return (uint32_t(val) & 0x810000) != 0x800000;
     }

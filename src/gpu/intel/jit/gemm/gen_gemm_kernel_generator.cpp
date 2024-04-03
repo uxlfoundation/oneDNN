@@ -92,7 +92,7 @@ bool Type::isSubsetOf(Type T) const {
     if (*this == T) return true;
 
     if (isInteger() && T == bf16) return false;
-    if (isInteger() && T == bf8) return false;
+    if (isInteger() && T.isF8()) return false;
 
     return (bits() < T.bits());
 }
@@ -10820,6 +10820,7 @@ void gemm_kernel_generator_t<hw>::convert(const GRFMultirange &range, Type Told,
         Type Tnew, const CommonStrategy &strategy, CommonState &state) {
     if (Told == Tnew) return;
     if (Told.isInt4() || Tnew.isInt4()) stub();
+    if (Told == Type::hf8 || Tnew == Type::hf8) stub();
 
     // Gen9: round to nearest before downconvert (not done by mov).
     if (hw == HW::Gen9 && Told == Type::f32 && !Tnew.isFP()) {
@@ -21025,8 +21026,8 @@ void gemm_kernel_generator_t<hw>::gemmAutoTypeConversions(
     if ((Ta.isInt8() || Ta.isInt4()) && Tb.isFP() && Tc.isFP()) Ta = Tb;
     if ((Tb.isInt8() || Tb.isInt4()) && Ta.isFP() && Tc.isFP()) Tb = Ta;
 
-    if (Ta == Type::bf8) Ta = Type::f16;
-    if (Tb == Type::bf8) Tb = Type::f16;
+    if (Ta.isF8()) Ta = Type::f16;
+    if (Tb.isF8()) Tb = Type::f16;
 
     if (hw > HW::Gen9 && !strategy.systolic && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;
@@ -27501,7 +27502,7 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
         if (int4OK) return true;
     }
 
-    Subregister saveF0;
+    Subregister saveF0, saveF1, saveF2;
     bool releaseEmuFlag = false;
     bool preswizzle = (hw >= HW::XeHP);
     GRFRange copyTemp;
@@ -27643,9 +27644,9 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                 nelems_real = std::min(nelems_real,
                                         nes_real); // Special case: mixed mode packed downconversion limited to 1 GRF.
 
-                            bool src_bf8 = (Ts_real == Type::bf8);
-                            bool dst_bf8 = (Td_real == Type::bf8);
-                            bool bf8_align = src_bf8 ^ dst_bf8;
+                            bool src_f8 = Ts_real.isF8();
+                            bool dst_f8 = Td_real.isF8();
+                            bool f8_align = src_f8 ^ dst_f8;
 
                             // Check if separate conversions are needed due to size changes.
                             auto sconvertCP = Ts_real.isInt4()
@@ -27673,7 +27674,7 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                     && !Ts_real.isFP()
                                                     && dcrosspack != sconvertCP
                                                     && hw > HW::Gen9));
-                            sconvert &= !bf8_align;
+                            sconvert &= !f8_align;
                             if (sconvert && preserveSrc) stub();
                             bool byteAlign = sconvert
                                     && (Ts_real.isInt4() || Td_real.isInt4()
@@ -27707,16 +27708,16 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                     && Td_real.size() > 2
                                                     && (sreg.getOffset() & 1)
                                                     && hw >= HW::XeHP));
-                            dconvert &= !bf8_align;
+                            dconvert &= !f8_align;
                             bool bfHfCvt = (!sconvert && !dconvert && !byteAlign
-                                                   && !bf8_align)
+                                                   && !f8_align)
                                     && one_of(Ts_real, Type::bf16, Type::f16)
                                     && one_of(Td_real, Type::f16, Type::bf16)
                                     && Ts_real != Td_real;
                             if (bfHfCvt)
                                 sregConverted = sreg.reinterpret(
                                         0, ngen::DataType::f)(scrosspack);
-                            if (bf8_align || bfHfCvt) allocTemp();
+                            if (f8_align || bfHfCvt) allocTemp();
                             if ((byteAlign || bfHfCvt) && Td_real != Type::u16)
                                 nelems_real = std::min(
                                         nelems_real, elementsPerGRF<float>(hw));
@@ -27732,7 +27733,6 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                 if (!sconvert && !dconvert)
                                     mmodMov = mmodMov | sat;
                             }
-
                             auto cvt_f8_to_x = [&]() {
                                 if (Ts_real == Type::bf8) {
                                     mov(nelems_real | modMov, copyTemp[0].ub(),
@@ -27751,52 +27751,8 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                         mov(nelems_real | modMov,
                                                 dreg.ud()(dcrosspack),
                                                 copyTemp[0].ud());
-                                    } else if (Td_real == Type::bf16) {
-                                        mov(nelems_real | modMov,
-                                                copyTemp[0].f(),
-                                                copyTemp[1].hf());
-                                        mov(nelems_real | modMov,
-                                                copyTemp[1].sub(
-                                                        0, Td_real.ngen())(1),
-                                                copyTemp[0].f());
-                                        mov(nelems_real | modMov,
-                                                dreg.uw()(dcrosspack),
-                                                copyTemp[1].uw());
                                     } else
                                         stub();
-#if XE3P
-                                } else if (Ts_real == Type::hf8
-                                        && hw >= HW::Xe3p) {
-                                    mov(nelems_real | modMov, copyTemp[0].ub(),
-                                            sreg.ub()(scrosspack));
-                                    mov(nelems_real | modMov, copyTemp[1].hf(),
-                                            copyTemp[0].hf8());
-                                    if (Td_real == Type::f16) {
-                                        mov(nelems_real | modMov,
-                                                dreg.uw()(dcrosspack),
-                                                copyTemp[1].uw());
-                                    } else if (Td_real == Type::f32) {
-                                        mov(nelems_real | modMov,
-                                                copyTemp[0].sub(
-                                                        0, Td_real.ngen())(1),
-                                                copyTemp[1].hf());
-                                        mov(nelems_real | modMov,
-                                                dreg.ud()(dcrosspack),
-                                                copyTemp[0].ud());
-                                    } else if (Td_real == Type::bf16) {
-                                        mov(nelems_real | modMov,
-                                                copyTemp[0].f(),
-                                                copyTemp[1].hf());
-                                        mov(nelems_real | modMov,
-                                                copyTemp[1].sub(
-                                                        0, Td_real.ngen())(1),
-                                                copyTemp[0].f());
-                                        mov(nelems_real | modMov,
-                                                dreg.uw()(dcrosspack),
-                                                copyTemp[1].uw());
-                                    } else
-                                        stub();
-#endif
                                 } else if (Ts_real == Type::hf8) {
                                     if (!one_of(Td_real, Type::f16, Type::f32))
                                         stub();
@@ -27854,294 +27810,90 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                 }
                             };
 
-                            auto cvt_x_to_bf8 = [&]() {
-                                auto tmp0 = copyTemp[0].sub(0, Ts_real.ngen());
-                                moveToIntPipe(tmp0);
-                                moveToIntPipe(sreg);
-                                mov(nelems_real | modMov, tmp0(1),
-                                        sreg(scrosspack));
-                                if (Ts_real.ngen() == ngen::DataType::hf) {
-                                    auto tmp1 = copyTemp[1].bf8();
-                                    mov(nelems_real | modMov, tmp1, tmp0.hf());
-                                    mov(nelems_real | modMov,
-                                            dreg.ub()(dcrosspack), tmp1.ub());
-                                } else if (Ts_real.ngen()
-                                        == ngen::DataType::f) {
+                            auto cvt_x_to_f8 = [&]() {
+                                if (Td_real == Type::bf8) {
+                                    auto tmp0 = copyTemp[0].sub(
+                                            0, Ts_real.ngen());
+                                    moveToIntPipe(tmp0);
+                                    moveToIntPipe(sreg);
+                                    mov(nelems_real | modMov, tmp0(1),
+                                            sreg(scrosspack));
+                                    if (Ts_real.ngen() == ngen::DataType::hf) {
+                                        auto tmp1 = copyTemp[1].bf8();
+                                        mov(nelems_real | modMov, tmp1,
+                                                tmp0.hf());
+                                        mov(nelems_real | modMov,
+                                                dreg.ub()(dcrosspack),
+                                                tmp1.ub());
+                                    } else if (Ts_real.ngen()
+                                            == ngen::DataType::f) {
+                                        auto tmp1 = copyTemp[1].sub(
+                                                0, ngen::DataType::hf);
+                                        movePipes(tmp0);
+                                        movePipes(sreg);
+                                        mov(nelems_real | modMov, tmp1(1),
+                                                tmp0(1));
+                                        mov(nelems_real | modMov, tmp0.bf8()(1),
+                                                tmp1(1));
+                                        mov(nelems_real | modMov,
+                                                dreg.ub()(dcrosspack),
+                                                tmp0.ub()(1));
+                                    } else
+                                        stub();
+                                } else if (Td_real == Type::hf8) {
+                                    auto tmp0 = copyTemp[0].sub(
+                                            0, ngen::DataType::ub);
+                                    moveToIntPipe(tmp0);
+                                    moveToIntPipe(sreg);
+                                    if (!one_of(Ts_real, Type::f16, Type::f32))
+                                        stub();
                                     auto tmp1 = copyTemp[1].sub(
-                                            0, ngen::DataType::hf);
-                                    movePipes(tmp0);
-                                    movePipes(sreg);
-                                    mov(nelems_real | modMov, tmp1(1), tmp0(1));
-                                    mov(nelems_real | modMov, tmp0.bf8()(1),
-                                            tmp1(1));
+                                            0, ngen::DataType::uw);
+                                    if (Ts_real == Type::f32) {
+                                        mov(nelems_real | modMov, tmp1.ud()(1),
+                                                sreg.ud()(scrosspack));
+                                        mov(nelems_real | modMov, tmp1.hf()(2),
+                                                tmp1.f()(1));
+                                        mov(nelems_real | modMov, tmp1(1),
+                                                tmp1(2));
+                                    } else {
+                                        mov(nelems_real | modMov, tmp1(1),
+                                                sreg(scrosspack));
+                                    }
+                                    // get sign bits
+                                    and_(nelems_real | nz | f2[0], null.uw(),
+                                            tmp1(1), Immediate(0x8000));
+                                    // multiply by hf 128 to force overflow of exponent
+                                    mul(nelems_real, tmp1.hf()(1), tmp1.hf()(1),
+                                            Immediate::hf(0x5800));
+                                    // multiply by 2^(-15) to undo mul, preserving overflows,
+                                    // shift and underflow for hf8
+                                    mul(nelems_real, tmp1.hf()(1), tmp1.hf()(1),
+                                            Immediate::hf(0x0200));
+                                    // check for NaN, inf.
+                                    and_(nelems_real | ze | f0[0], null.uw(),
+                                            ~tmp1(1), 0x7C00);
+                                    // round.
+                                    add(nelems_real, tmp1(1), tmp1(1),
+                                            Immediate(-0x40));
+                                    // check for zero mantissa.
+                                    and_(nelems_real | nz | f1[0], null.uw(),
+                                            tmp1(1), 0x3FF);
+                                    eshr(nelems_real, tmp1(1), tmp1(1), 7,
+                                            strategy, state);
+                                    add(nelems_real | f1[0], tmp1(1), tmp1(1),
+                                            Immediate(1));
+                                    mov(nelems_real | modMov | f0[0], tmp1(1),
+                                            Immediate(0x7F));
+                                    or_(nelems_real | f2[0], tmp1(1), tmp1(1),
+                                            Immediate(0x80));
+                                    mov(nelems_real | modMov, tmp0(2), tmp1(1));
+                                    mov(nelems_real | modMov, tmp0(1), tmp0(2));
                                     mov(nelems_real | modMov,
                                             dreg.ub()(dcrosspack),
                                             tmp0.ub()(1));
                                 } else {
                                     stub();
-                                }
-                            };
-
-                            auto doByteAlign = [&]() {
-                                allocTemp();
-                                if (Ts_real.isInt4()) {
-                                    int scrosspack_byte = scrosspack;
-                                    auto tmp0 = copyTemp[0].w(0);
-                                    auto tmp1 = copyTemp[1].f(0);
-                                    int n_bytes = nelems_real;
-
-                                    if (int4Zip) scrosspack_byte >>= 1;
-
-                                    auto dreg1 = dreg;
-                                    int effDCP = dcrosspack;
-                                    InstructionModifier writeCombine;
-                                    if (int4Zip) {
-                                        int delems1;
-                                        const RegisterBlock *dblockPtr1;
-                                        int di1 = sblock.offsetR + eoffR
-                                                + dOffR;
-                                        int dj1 = sblock.offsetC + eoffC
-                                                + dOffC;
-                                        (sblock.colMajor ? dj1 : di1)++;
-                                        dreg1 = findBlockReg(Td, layoutDst, di1,
-                                                dj1, dst, delems1, dblockPtr1,
-                                                qCX);
-                                        nelems_real *= 2;
-                                    } else {
-                                        dreg1.setOffset(
-                                                dreg1.getOffset() + dcrosspack);
-                                        effDCP *= 2;
-                                        n_bytes /= 2;
-                                    }
-
-                                    if (hw >= HW::XeHPC && Td.isInt8()
-                                            && elementDiff(hw, dreg1, dreg)
-                                                    == 1)
-                                        writeCombine |= Atomic;
-
-                                    if (Td.isInteger()) {
-                                        if (Ts_real.isSigned()) {
-                                            if (Td_real.isInt16()) {
-                                                shl(n_bytes | modMov,
-                                                        dreg(effDCP),
-                                                        sreg.ub()(
-                                                                scrosspack_byte),
-                                                        12);
-                                                shl(n_bytes | modMov,
-                                                        dreg1(effDCP),
-                                                        sreg.ub()(
-                                                                scrosspack_byte),
-                                                        8);
-                                                asr(n_bytes | modMov,
-                                                        dreg.w()(effDCP),
-                                                        dreg.w()(effDCP), 12);
-                                                asr(n_bytes | modMov,
-                                                        dreg1.w()(effDCP),
-                                                        dreg1.w()(effDCP), 12);
-                                            } else if (!Td_real.isInt8())
-                                                stub();
-                                            if (effDCP > 2 && !int4Zip) {
-                                                shl(n_bytes | modMov,
-                                                        tmp0.w(0)(2),
-                                                        sreg.b()(
-                                                                scrosspack_byte),
-                                                        4);
-                                                mov(n_bytes | modMov,
-                                                        tmp0.w(1)(2),
-                                                        sreg.b()(
-                                                                scrosspack_byte));
-                                                asr(nelems_real | modMov,
-                                                        dreg(effDCP / 2),
-                                                        tmp0.b()(2), 4);
-                                            } else {
-                                                shl(n_bytes | modMov,
-                                                        dreg(effDCP),
-                                                        sreg.ub()(
-                                                                scrosspack_byte),
-                                                        4);
-                                                asr(n_bytes | modMov
-                                                                | writeCombine,
-                                                        dreg1(effDCP),
-                                                        sreg.b()(
-                                                                scrosspack_byte),
-                                                        4);
-                                                asr(n_bytes | modMov,
-                                                        dreg(effDCP),
-                                                        dreg.b()(effDCP), 4);
-                                            }
-                                        } else {
-                                            if (Td_real.size() == 1
-                                                    && effDCP > 4) {
-                                                and_(n_bytes | modMov,
-                                                        tmp0.uw(0)(2),
-                                                        sreg.ub()(
-                                                                scrosspack_byte),
-                                                        0x0F);
-                                                shr(n_bytes | modMov,
-                                                        tmp0.uw(1)(2),
-                                                        sreg.ub()(
-                                                                scrosspack_byte),
-                                                        4);
-                                                mov(nelems_real | modMov,
-                                                        dreg(effDCP / 2),
-                                                        tmp0.ub()(2));
-                                            } else {
-                                                mov(n_bytes | modMov,
-                                                        tmp0.ub()(
-                                                                scrosspack_byte),
-                                                        sreg.ub()(
-                                                                scrosspack_byte));
-                                                mov(n_bytes | modMov,
-                                                        tmp0.ub()(1),
-                                                        tmp0.ub()(
-                                                                scrosspack_byte));
-                                                and_(n_bytes | modMov
-                                                                | writeCombine,
-                                                        dreg(effDCP),
-                                                        tmp0.ub()(1), 0x0F);
-                                                shr(n_bytes | modMov,
-                                                        dreg1(effDCP),
-                                                        tmp0.ub()(1), 4);
-                                            }
-                                        }
-                                    } else {
-                                        if (scrosspack_byte > 2) {
-                                            mov(n_bytes | modMov,
-                                                    tmp0.ub()(scrosspack_byte),
-                                                    sreg.ub()(scrosspack_byte));
-                                            mov(n_bytes | modMov, tmp0.ub()(2),
-                                                    tmp0.ub()(scrosspack_byte));
-                                        } else
-                                            mov(n_bytes | modMov, tmp0.ub()(2),
-                                                    sreg.ub()(scrosspack_byte));
-
-                                        and_(n_bytes | modMov, tmp1.w()(4),
-                                                tmp0.w()(1), 0x0F);
-                                        shr(n_bytes | modMov, tmp0.w()(1),
-                                                tmp0.w()(1), 4);
-                                        and_(n_bytes | modMov, tmp1.w(2)(4),
-                                                tmp0.w()(1), 0x0F);
-                                        // if signed, do sign extension
-                                        if (Ts == Type::s4) {
-                                            shl(nelems_real | modMov,
-                                                    tmp1.w()(2), tmp1.w()(2),
-                                                    12);
-                                            asr(nelems_real | modMov,
-                                                    tmp1.w()(2), tmp1.w()(2),
-                                                    12);
-                                        }
-
-                                        mov(nelems_real | modMov, tmp1(1),
-                                                tmp1.w()(2));
-                                        if (Td.isF8()) {
-                                            mov(nelems_real | modMov,
-                                                    tmp1.reinterpret(0,
-                                                            ngen::DataType::hf)(
-                                                            2),
-                                                    tmp1.f()(1));
-                                            mov(nelems_real | modMov,
-                                                    tmp1.w()(1), tmp1.w()(2));
-                                            mov(nelems_real | modMov,
-                                                    tmp1.bf8()(2),
-                                                    tmp1.hf()(1));
-                                            mov(nelems_real | modMov,
-                                                    tmp1.ub()(1), tmp1.ub()(2));
-                                            if (!int4Zip)
-                                                mov(nelems_real | modMov,
-                                                        dreg.ub()(dcrosspack),
-                                                        tmp1.ub()(1));
-                                            else {
-                                                mov((n_bytes) | modMov,
-                                                        dreg.ub()(effDCP),
-                                                        tmp1.ub(0)(2));
-                                                mov((n_bytes) | modMov,
-                                                        dreg1.ub()(effDCP),
-                                                        tmp1.ub(1)(2));
-                                            }
-                                        } else if (Td != Type::f32) {
-                                            mov(nelems_real | modMov,
-                                                    tmp1.reinterpret(0,
-                                                            Td_real.ngen())(2),
-                                                    tmp1.f()(1));
-                                            mov(nelems_real | modMov,
-                                                    tmp1.w()(1), tmp1.w()(2));
-                                            if (!int4Zip)
-                                                mov(nelems_real | modMov,
-                                                        dreg.w()(dcrosspack),
-                                                        tmp1.w()(1));
-                                            else {
-                                                mov(n_bytes | modMov,
-                                                        dreg.w()(effDCP),
-                                                        tmp1.w(0)(2));
-                                                mov(n_bytes | modMov,
-                                                        dreg1.w()(effDCP),
-                                                        tmp1.w(1)(2));
-                                            }
-                                        } else if (!int4Zip)
-                                            mov(nelems_real | modMov,
-                                                    dreg.d()(dcrosspack),
-                                                    tmp1.d()(1));
-                                        else {
-                                            mov(n_bytes | modMov,
-                                                    dreg.d()(effDCP),
-                                                    tmp1.d(0)(2));
-                                            mov(n_bytes | modMov,
-                                                    dreg1.d()(effDCP),
-                                                    tmp1.d(1)(2));
-                                        }
-                                    }
-                                } else {
-                                    auto tmp0 = copyTemp[0].w(0);
-                                    auto tmp1 = copyTemp[1].f(0);
-                                    mov(nelems_real | modMov, tmp0(2),
-                                            sreg(scrosspack));
-                                    mov(nelems_real | modMov, tmp1(1),
-                                            tmp0.w()(2));
-                                    mov(nelems_real | modMov,
-                                            tmp0.reinterpret(0, Td_real.ngen())(
-                                                    2),
-                                            tmp1(1));
-                                    mov(nelems_real | modMov,
-                                            dreg.w()(dcrosspack), tmp0.w()(2));
-                                }
-                            };
-
-                            auto doBfHfCvt = [&]() {
-                                if (Ts_real == Type::bf16) {
-                                    if (scrosspack != 1) {
-                                        mov(nelems_real, copyTemp[0].uw(0)(2),
-                                                sreg.uw()(scrosspack));
-                                        shl(nelems_real, copyTemp[0].ud(0)(1),
-                                                copyTemp[0].uw(0)(2), 16);
-                                        mov(nelems_real, copyTemp[0].hf(0)(2),
-                                                copyTemp[0].f(0)(1));
-                                        emov(nelems_real | mmodMov,
-                                                dreg.uw(0)(dcrosspack),
-                                                copyTemp[0].uw(0)(2), strategy,
-                                                state);
-                                    } else {
-                                        shl(nelems_real,
-                                                copyTemp[0].ud(
-                                                        sreg.getOffset())(
-                                                        scrosspack),
-                                                sreg.uw()(scrosspack), 16);
-                                        emov(nelems_real | mmodMov,
-                                                dregConverted,
-                                                copyTemp[0].f(sreg.getOffset())(
-                                                        scrosspack),
-                                                strategy, state);
-                                    }
-                                } else {
-                                    mov(nelems_real, copyTemp[0].uw(0)(2),
-                                            sreg.uw()(scrosspack));
-                                    mov(nelems_real, copyTemp[0].f(0)(1),
-                                            copyTemp[0].hf(0)(2));
-                                    shr(nelems_real, copyTemp[0].uw(0)(2),
-                                            copyTemp[0].ud(0)(1), 16);
-                                    emov(nelems_real | mmodMov,
-                                            dreg.uw(0)(dcrosspack),
-                                            copyTemp[0].uw(0)(2), strategy,
-                                            state);
                                 }
                             };
 
@@ -28301,11 +28053,11 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                             rnde(nelems_real, sreg(scrosspack),
                                                     sreg(scrosspack));
                                         }
-                                        if (bf8_align) {
-                                            if (src_bf8)
-                                                cvt_bf8_to_x();
-                                            else if (dst_bf8)
-                                                cvt_x_to_bf8();
+                                        if (f8_align) {
+                                            if (src_f8)
+                                                cvt_f8_to_x();
+                                            else if (dst_f8)
+                                                cvt_x_to_f8();
                                         } else if (sconvert) {
                                             if (byteAlign)
                                                 doByteAlign();
@@ -28370,7 +28122,7 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                                 ? base(1)
                                                                 : base(0, wd,
                                                                         1));
-                                            } else if (!byteAlign && !bf8_align
+                                            } else if (!byteAlign && !f8_align
                                                     && !bfHfCvt)
                                                 emov(telems | mmodMov,
                                                         dregConverted,

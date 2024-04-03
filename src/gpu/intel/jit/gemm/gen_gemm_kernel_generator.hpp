@@ -98,6 +98,9 @@ public:
     constexpr bool isInt8() const {
         return (val == Type::u8) || (val == Type::s8);
     }
+    constexpr bool isF8() const {
+        return (val == Type::bf8 || val == Type::hf8);
+    }
     constexpr bool isSigned() const {
         return (uint32_t(val) & 0x110000) != 0x100000;
     }
@@ -171,18 +174,13 @@ public:
     }
 
     ngen::DataType ngen() const {
-        using DT = ngen::DataType;
-        auto none = DT::invalid;
-#if XE3P
-        auto hf8 = DT::hf8;
-#else
-        auto hf8 = DT::ub;
-#endif
-        static const DT table[32] = {DT::hf, DT::f, DT::df, none, none, none,
-                none, none, none, none, none, none, DT::bf, DT::tf32, DT::bf8,
-                hf8, none, none, DT::u4, DT::s4, DT::ub, DT::b, DT::uw, DT::w,
-                DT::ud, DT::d, DT::uq, DT::q, none, none, none, none};
-        return table[(uint32_t(val) >> 16) & 0x1F];
+        using namespace ngen;
+        static const DataType table[16] = {DataType::hf, DataType::f,
+                DataType::df, DataType::invalid, DataType::ub, DataType::b,
+                DataType::uw, DataType::w, DataType::ud, DataType::d,
+                DataType::uq, DataType::q, DataType::bf, DataType::tf32,
+                DataType::bf8, DataType::ub};
+        return table[(uint32_t(val) >> 16) & 0xF];
     }
 
     bool isSubsetOf(Type T) const;

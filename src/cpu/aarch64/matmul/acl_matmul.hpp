@@ -38,7 +38,65 @@ struct acl_matmul_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("gemm:acl", acl_matmul_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine);
+        status_t init(engine_t *engine) {
+            using smask_t = primitive_attr_t::skip_mask_t;
+            const bool is_fp32_ok
+                    = utils::everyone_is(data_type::f32, src_md()->data_type,
+                              weights_md()->data_type, dst_md()->data_type,
+                              desc()->accum_data_type)
+                    && platform::has_data_type_support(data_type::f32);
+            const bool is_fp16_ok
+                    = utils::everyone_is(data_type::f16, src_md()->data_type,
+                              weights_md()->data_type, dst_md()->data_type)
+                    && platform::has_data_type_support(data_type::f16);
+            const bool is_bf16_ok
+                    = utils::everyone_is(data_type::bf16, src_md()->data_type,
+                              weights_md()->data_type, dst_md()->data_type)
+                    && platform::has_data_type_support(data_type::bf16);
+
+            // we need to save this state as it can change inside set_default_formats()
+            weights_format_kind_ = weights_md_.format_kind;
+
+            VDISPATCH_MATMUL(
+                    is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(
+                    utils::one_of(true, is_fp32_ok, is_fp16_ok, is_bf16_ok),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_MATMUL(
+                    attr()->has_default_values(smask_t::oscale
+                            | smask_t::post_ops | smask_t::fpmath_mode),
+                    VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_MATMUL(attr_oscale_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_MATMUL(!has_runtime_dims_or_strides(),
+                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+            if (weights_format_kind_ == format_kind::any) {
+                CHECK(acl_matmul_utils::init_conf_matmul_fixed_format(
+                        amp_, src_md_, weights_md_, dst_md_, *desc(), *attr()));
+            } else {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+                // to avoid seg. fault in case threadpool is enabled and its pointer is null
+                if (threadpool_utils::get_active_threadpool() == nullptr)
+                    return status::unimplemented;
+#endif
+                CHECK(acl_matmul_utils::init_conf_matmul_non_fixed_format(
+                        amp_, src_md_, weights_md_, dst_md_, *desc(), *attr()));
+            }
+
+            arm_compute::ActivationLayerInfo act_info;
+            CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_, act_info));
+            amp_.gemm_info.set_activation_info(act_info);
+            amp_.use_dst_acc = post_ops.has_sum();
+
+            // Validate ACL GEMM
+            ACL_CHECK_VALID(arm_compute::NEGEMM::validate(&amp_.src_tensor_info,
+                    &amp_.wei_tensor_info, nullptr, &amp_.dst_tensor_info,
+                    amp_.alpha, 0.0f, amp_.gemm_info));
+
+            return status::success;
+        }
 
         acl_matmul_conf_t amp_;
         acl_post_ops_t acl_post_ops;

@@ -43,6 +43,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     const auto dst_dt = dst_md()->data_type;
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
+    zero_points_config_t zp_cfg(this);
     using namespace data_type;
 
     auto post_ops_ok = [&]() {
@@ -64,11 +65,16 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     auto is_bf16_or_f32_or_f8 = [](data_type_t dt) {
         return utils::one_of(dt, bf16, f32, f8_e5m2, f8_e4m3);
     };
-    auto is_bf16_or_f32_or_bf8 = [](data_type_t dt) {
-        return utils::one_of(dt, data_type::bf16, data_type::f32,
-                data_type::f8_e5m2, data_type::f8_e4m3);
+    auto is_bf16_or_f32_or_f8 = [](data_type_t dt) {
+        return utils::one_of(dt, bf16, f32, f8_e5m2, f8_e4m3);
     };
-    bool any_hf8 = utils::one_of(data_type::f8_e4m3, dst_dt, src_dt);
+    auto hf8_ok = [&]() {
+        bool any_hf8 = utils::one_of(f8_e4m3, dst_dt, src_dt);
+        return IMPLICATION(any_hf8,
+                utils::everyone_is(f8_e4m3, dst_dt, src_dt)
+                        || utils::one_of(src_dt, bf16, f16, f32)
+                        || utils::one_of(dst_dt, bf16, f16, f32));
+    };
     auto skip_mask = dnnl_primitive_attr::skip_mask_t::post_ops
             | dnnl_primitive_attr::skip_mask_t::zero_points_runtime
             | dnnl_primitive_attr::skip_mask_t::scales_runtime;
@@ -84,11 +90,9 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     VDISPATCH_REORDER(IMPLICATION(src_dt == f16 || dst_dt == f16,
                               device_info->has_native(f16)),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(IMPLICATION(src_dt == data_type::bf16,
-                              is_bf16_or_f32_or_bf8(dst_dt)),
+    VDISPATCH_REORDER(IMPLICATION(src_dt == bf16, is_bf16_or_f32_or_f8(dst_dt)),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(IMPLICATION(dst_dt == data_type::bf16,
-                              is_bf16_or_f32_or_bf8(src_dt)),
+    VDISPATCH_REORDER(IMPLICATION(dst_dt == bf16, is_bf16_or_f32_or_f8(src_dt)),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_REORDER(IMPLICATION(utils::one_of(f8_e5m2, src_dt, dst_dt),
                               device_info->has_native(f8_e5m2)),
@@ -111,8 +115,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
                         || zp_cfg.is_common_dst_zero_point);
     };
     VDISPATCH_REORDER(zps_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-    VDISPATCH_REORDER(IMPLICATION(any_hf8, utils::one_of(f16, src_dt, dst_dt)),
-            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_REORDER(hf8_ok(), VERBOSE_UNSUPPORTED_DT);
 
     memory_desc_wrapper src_mdw {src_md()};
     memory_desc_wrapper dst_mdw {dst_md()};

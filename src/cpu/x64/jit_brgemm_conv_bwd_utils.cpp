@@ -1502,8 +1502,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const data_type_t last_oc_block_dt
             = get_mac_emu_data_type(jcp.wei_dt, isa, isa == avx512_core_fp16);
-    brg_blocking_t::last_oc_block_size
-            = data_type_vnni_granularity(last_oc_block_dt);
+    jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc
     const bool is_grouped_small_oc

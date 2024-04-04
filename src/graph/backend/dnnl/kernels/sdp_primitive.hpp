@@ -37,7 +37,7 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/ocl_stream.hpp"
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-#include "gpu/intel/sycl/stream.hpp"
+#include "sycl/sycl_stream.hpp"
 #endif
 
 #include "graph/interface/backend.hpp"
@@ -197,9 +197,8 @@ public:
 
         if (status != status::success) {
             if (get_verbose(verbose_t::create_dispatch, component_t::graph)) {
-                verbose_printf(
-                        "onednn_verbose,graph,create:dispatch,sdpa,could not "
-                        "create primitive, falling back\n");
+                printf("onednn_verbose,graph,create:dispatch,sdpa,could not "
+                       "create primitive, falling back\n");
             }
         }
 
@@ -240,7 +239,7 @@ public:
         // First, dry run on a deep copy
         subgraph_ = std::make_shared<subgraph_t>(
                 graph_t::deep_copy(part->get_ops()), p_engine_,
-                part->get_fpmath_mode(), false, true);
+                part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
         CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
         subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
@@ -293,7 +292,7 @@ public:
         // Successfully created the primitive. Rerun the passes again, modifying
         //   the original ops.
         subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
-                part->get_fpmath_mode(), false, true);
+                part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
         CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
         CHECK(modify_subgraph());
         CHECK(cfg_.locate_io(subgraph_, inputs, outputs));
@@ -369,9 +368,12 @@ public:
         execution_args_set_t *res = res_cache.get_or_add(
                 reinterpret_cast<size_t>(this), resource_ctor_);
 
-        // Micro kernel doesn't use scratchpad memory, here we force-set size as
-        // zero to avoid redundant memory allocation and deallocation.
-        temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+        temporary_scratchpad_t scratchpad(
+                memory_planner_.total_internal_temporary_size(), p_engine_,
+                *g_alloc_);
+        assertm(scratchpad.size()
+                        >= memory_planner_.total_internal_temporary_size(),
+                "not enough scratchpad memory");
         prepare_args_set(res, inputs, outputs, scratchpad);
 
         memory mem_storage[6];
@@ -395,9 +397,12 @@ public:
         execution_args_set_t *res = res_cache.get_or_add(
                 reinterpret_cast<size_t>(this), resource_ctor_);
 
-        // Micro kernel doesn't use scratchpad memory, here we force-set size as
-        // zero to avoid redundant memory allocation and deallocation.
-        temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+        temporary_scratchpad_t scratchpad(
+                memory_planner_.total_internal_temporary_size(), p_engine_,
+                *g_alloc_);
+        assertm(scratchpad.size()
+                        >= memory_planner_.total_internal_temporary_size(),
+                "not enough scratchpad memory");
         prepare_args_set(res, inputs, outputs, scratchpad);
 
         memory mem_storage[6];
@@ -405,11 +410,8 @@ public:
         CHECK(get_prim_exec_args(args, mem_storage, res));
         exec_ctx_t ctx(p_stream.get(), std::move(args));
 
-        // Relying on the library's internals here. Since graph API is currently
-        // enabled only for the Intel vendor it is fine to cast stream to
-        // gpu::intel::sycl::stream_t unconditionally.
         auto *sycl_stream = dnnl::impl::utils::downcast<
-                dnnl::impl::gpu::intel::sycl::stream_t *>(p_stream.get());
+                dnnl::impl::sycl::sycl_stream_t *>(p_stream.get());
 
         sycl_stream->before_exec_hook();
 
@@ -441,9 +443,12 @@ public:
         execution_args_set_t *res = res_cache.get_or_add(
                 reinterpret_cast<size_t>(this), resource_ctor_);
 
-        // Micro kernel doesn't use scratchpad memory, here we force-set size as
-        // zero to avoid redundant memory allocation and deallocation.
-        temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+        temporary_scratchpad_t scratchpad(
+                memory_planner_.total_internal_temporary_size(), p_engine_,
+                *g_alloc_);
+        assertm(scratchpad.size()
+                        >= memory_planner_.total_internal_temporary_size(),
+                "not enough scratchpad memory");
         prepare_args_set(res, inputs, outputs, scratchpad);
 
         memory mem_storage[6];

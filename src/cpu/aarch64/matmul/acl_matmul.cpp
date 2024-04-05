@@ -34,7 +34,7 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
     bool is_transA = pd()->amp_.is_transA;
     bool is_transB = pd()->amp_.is_transB;
     bool do_transC = pd()->amp_.do_transC;
-    bool use_dst_acc_for_sum = pd()->amp_.use_dst_acc_for_sum;
+    bool use_dst_acc = pd()->amp_.use_dst_acc;
 
     std::lock_guard<std::mutex> _lock {this->mtx};
     auto *acl_resource = ctx.get_resource_mapper()->get<acl_resource_t>(this);
@@ -62,11 +62,7 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
         acl_obj.src_tensor.allocator()->import_memory(
                 const_cast<data_t *>(src_base));
     } else if (is_transA && is_transB && !do_transC) {
-        auto transA_scratch = scratchpad.get<void>(
-                memory_tracking::names::key_matmul_src_trans);
-        auto transB_scratch = scratchpad.get<void>(
-                memory_tracking::names::key_matmul_wei_trans);
-        acl_obj.src_tensor.allocator()->import_memory(transA_scratch);
+        acl_obj.src_tensor.allocator()->allocate();
         acl_obj.src_acc_tensor.allocator()->import_memory(
                 const_cast<data_t *>(src_base));
         acl_obj.wei_tensor.allocator()->import_memory(transB_scratch);
@@ -79,18 +75,14 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
                 const_cast<data_t *>(src_base));
         acl_obj.wei_tensor.allocator()->import_memory(
                 const_cast<data_t *>(wei_base));
-        if (do_transC) {
-            auto transC_scratch = scratchpad.get<void>(
-                    memory_tracking::names::key_matmul_dst_trans);
-            acl_obj.dst_acc_tensor.allocator()->import_memory(transC_scratch);
-        }
+        if (do_transC) { acl_obj.dst_acc_tensor.allocator()->allocate(); }
     }
 
-    // If we have an unfused sum post op, put the result in a scratchpad tensor.
-    // Result will be summed to the dst during acl_post_ops.execute
-    auto dst_base = use_dst_acc_for_sum ? scratchpad.get<void>(
+    // Put the result in a new tensor, if we have a sum post op.
+    // Result will be accumulated to the dst during the post ops.
+    auto dst_base = use_dst_acc ? scratchpad.get<void>(
                             memory_tracking::names::key_matmul_dst_in_acc_dt)
-                                        : CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+                                : CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     acl_obj.dst_tensor.allocator()->import_memory(dst_base);
 
     acl_obj.gemm.run();

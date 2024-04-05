@@ -41,19 +41,22 @@ const std::map<int, matmul_key_t> matmul_keys
 } // namespace
 
 struct acl_matmul_obj_t {
-    arm_compute::experimental::op::ll::CpuGemmAssemblyDispatch asm_gemm;
-    arm_compute::experimental::op::CpuActivation act;
-    arm_compute::experimental::op::CpuTranspose transA;
-    arm_compute::experimental::op::CpuTranspose transB;
-    arm_compute::experimental::op::CpuTranspose transC;
-    arm_compute::experimental::MemoryRequirements aux_mem_req;
+    arm_compute::NEGEMM gemm;
+    arm_compute::NETranspose transA;
+    arm_compute::NETranspose transB;
+    arm_compute::NETranspose transC;
+    arm_compute::Tensor src_tensor;
+    arm_compute::Tensor src_acc_tensor;
+    arm_compute::Tensor wei_acc_tensor;
+    arm_compute::Tensor dst_acc_tensor;
+    arm_compute::Tensor wei_tensor;
+    arm_compute::Tensor dst_tensor;
 };
 
 struct acl_matmul_conf_t {
     bool is_transA;
     bool is_transB;
     bool do_transC;
-    bool do_act;
     // If this is true, the result of the matmul goes into a temporarily
     // allocated ACL tensor to be accumulated into the oneDNN dst during postops
     bool use_dst_acc_for_sum;
@@ -74,9 +77,7 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
         const primitive_attr_t &attr);
 
 status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
-        const acl_matmul_conf_t &amp, const memory_desc_t &src_md,
-        const memory_desc_t &weights_md, const memory_desc_t &dst_md,
-        const arm_compute::experimental::MemoryRequirements &aux_mem_req);
+        acl_matmul_conf_t &amp, memory_desc_t &dst_md);
 
 } // namespace acl_matmul_utils
 

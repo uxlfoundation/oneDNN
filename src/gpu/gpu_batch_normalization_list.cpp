@@ -43,15 +43,12 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::nhwc_reusable_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::nhwc_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::simple_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::reusable_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::ref_batch_normalization_bwd_t)
-        GPU_INSTANCE_NVIDIA(nvidia::cudnn_batch_normalization_bwd_t)
-        GPU_INSTANCE_AMD(amd::miopen_batch_normalization_bwd_t)
-        GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_batch_normalization_bwd_t)
+        INSTANCE(ocl::nhwc_reusable_batch_normalization_bwd_t)
+        INSTANCE(ocl::nhwc_batch_normalization_bwd_t)
+        INSTANCE(ocl::gen9_batch_normalization_bwd_t)
+        INSTANCE(ocl::simple_batch_normalization_bwd_t)
+        INSTANCE(ocl::reusable_batch_normalization_bwd_t)
+        INSTANCE(ocl::ref_batch_normalization_bwd_t)
         nullptr,
     })},
 });

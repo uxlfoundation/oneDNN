@@ -181,7 +181,6 @@ inline T max_value(data_type_t data_type) {
         CASE(u8);
         CASE(s4);
         CASE(u4);
-        case f64: return nstl::numeric_limits<T>::max();
         case data_type::undef:
         default: assert(!"unknown data_type");
     }

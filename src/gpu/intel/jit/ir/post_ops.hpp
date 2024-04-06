@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -109,9 +109,7 @@ private:
         // time than the in-situ compensations; that usually happens around
         // MB = 64, but the exact number is just a heuristic.
         // TODO: a finer-grained estimate
-        return (pd->invariant_src_md()->dims[0] >= 64)
-                && pd->attr()->zero_points_.has_default_values(
-                        DNNL_ARG_WEIGHTS);
+        return pd->invariant_src_md()->dims[0] >= 64;
     }
 };
 

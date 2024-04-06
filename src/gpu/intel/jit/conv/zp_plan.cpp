@@ -1443,10 +1443,7 @@ private:
 };
 
 struct zp_plan_impl_t : public base_plan_t {
-    bool src_2d_loads = false;
     bool needs_precalc = false;
-    bool has_dpasw = false;
-    split_dispatcher_t sd;
     send_plan_t load;
     zp_comp_init_plan_t comp_init;
     zp_mask_init_plan_t mask_init;
@@ -1520,56 +1517,25 @@ zp_plan_t::~zp_plan_t() = default;
 
 void zp_plan_t::init(const conv_config_t &cfg, bool src_2d_loads,
         const gemm_schedule_t &gemm_schedule, const view_t &zp_view,
-        const view_t &zp_src_view, const layout_t &src_layout,
-        const layout_t &wei_layout, const layout_t &dst_layout) {
-    impl->src_2d_loads = src_2d_loads;
-    impl->has_dpasw = cfg.fma_kind() == fma_kind_t::dpasw;
+        const layout_t &src_layout, const layout_t &wei_layout,
+        const layout_t &dst_layout) {
     impl->needs_precalc = cfg.zp_cfg().needs_src_precalc;
-    bool do_src = cfg.zp_cfg().do_src_compensation && !impl->needs_precalc;
-    bool do_wei = cfg.zp_cfg().do_wei_compensation;
-    send_plan_t impl_load;
+    if (impl->needs_precalc) return;
 
-    if (do_src || do_wei) {
-        auto load_params = get_send_params(
-                cfg.exec_cfg(), send_op_t::load, send_address_t::a64, zp_view);
-        impl_load = create_send_plan(cfg.exec_cfg(), zp_view, load_params);
-        impl->comp_init = zp_comp_init_plan_t(cfg.hw(), cfg.prb().is_fwd,
-                impl_load.reg_layout(), src_layout, wei_layout);
-        impl->sd = split_dispatcher_t(impl->comp_init.comp_layout(), dst_layout,
-                cfg.hw(), cfg.prb().is_fwd, gemm_schedule.bmnk_mapper());
-    }
-    if (do_src) {
-        std::swap(impl->load, impl_load);
-        impl->mask_init = zp_mask_init_plan_t(cfg, gemm_schedule, src_layout);
-        impl->comp_apply = zp_comp_apply_plan_t(cfg.hw(),
-                impl->comp_init.comp_layout(), impl->mask_init.mask_layout(),
-                dst_layout, impl->sd.simd_str());
-    }
-    if (do_wei) {
-        auto load_params = get_send_params(cfg.exec_cfg(), send_op_t::load,
-                send_address_t::a64, zp_src_view);
-        impl->wei_load
-                = create_send_plan(cfg.exec_cfg(), zp_src_view, load_params);
-        impl->wei_init
-                = zp_wei_init_plan_t(cfg.hw(), cfg.prb().is_fwd, cfg.simd(),
-                        src_layout.type(), zp_src_view.tlayout(), wei_layout);
-    }
+    auto &exec_cfg = cfg.exec_cfg();
+    auto load_params = get_send_params(
+            exec_cfg, send_op_t::load, send_address_t::a64, zp_view);
+    impl->load = create_send_plan(exec_cfg, zp_view, load_params);
+    impl->comp_init = zp_comp_init_plan_t(
+            cfg.hw(), cfg.prb().is_fwd, impl->load.reg_layout(), wei_layout);
+    impl->mask_init = zp_mask_init_plan_t(cfg, gemm_schedule, src_layout);
+    impl->comp_apply = zp_comp_apply_plan_t(cfg.hw(), cfg.prb().is_fwd,
+            impl->comp_init.comp_layout(), impl->mask_init.mask_layout(),
+            dst_layout, gemm_schedule.bmnk_mapper());
 }
 
 zp_plan_t::operator bool() const {
     return (bool)*impl;
-}
-
-bool zp_plan_t::is_src_precomp_compatible() const {
-    return impl->is_src_precomp_compatible();
-}
-
-bool zp_plan_t::has_zp_src() const {
-    return impl->has_zp_src();
-}
-
-bool zp_plan_t::has_zp_wei() const {
-    return impl->has_zp_wei();
 }
 
 bool zp_plan_t::needs_precalc() const {

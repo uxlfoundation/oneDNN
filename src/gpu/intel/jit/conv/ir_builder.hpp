@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ class conv_ir_builder_t : public ir_builder_t {
 public:
     conv_ir_builder_t(const conv_config_t &cfg,
             const kernel_info_t &kernel_info, const layout_t &zp_dst)
-        : kernel_info_(kernel_info)
+        : ir_builder_t(kernel_info)
         , prb_(cfg.prb())
         , cfg_(cfg)
         , zp_dst_(zp_dst) {

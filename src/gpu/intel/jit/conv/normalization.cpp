@@ -175,15 +175,14 @@ void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
 // this method only gets called when ZP precompute is in order;
 // in all other cases ZPs are applied ad-hoc, without a post-op
 view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
-    auto map_o2k = [](view_t &v, dim_idx_t idx, dim_t O, dim_t I, dim_t KD,
-                           dim_t P, dim_t S) {
+    auto map_o2k = [](view_t &v, int idx, int O, int I, int KD, int P, int S) {
         const bool needs_right_bound = ((O - 1) * S + (KD - P) >= I);
         expr_t o = v.vvars()[idx];
         if (KD >= I) {
             o = o * S;
         } else {
             expr_t l, r;
-            dim_t off = P;
+            int32_t off = P;
             if (P > 0) l = binary_op_t::make(op_kind_t::_min, o * S - P, 0);
             if (needs_right_bound) {
                 r = binary_op_t::make(op_kind_t::_max, o * S + (KD - P), I);
@@ -194,7 +193,7 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
             o = (off != 0) ? o + off : o;
         }
         const auto &x = view_t::placeholder_var();
-        dim_t L = ir_utils::max_unique_pad_states(O, I, KD, P, S, true);
+        int32_t L = ir_utils::max_unique_pad_states(O, I, KD, P, S, true);
         bool mask = L < ir_utils::max_unique_pad_states(O, I, KD, P, S, false);
         v.set_vdim(v.vvars()[idx], (needs_right_bound) ? O : 1);
         v.set_tdim(idx, o, (mask) ? x < L : expr_t());

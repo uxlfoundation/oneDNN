@@ -43,9 +43,6 @@ struct zp_plan_t : public base_plan_t {
             const layout_t &wei_layout, const layout_t &dst_layout);
 
     explicit operator bool() const;
-    bool is_src_precomp_compatible() const;
-    bool has_zp_src() const;
-    bool has_zp_wei() const;
     bool needs_precalc() const;
     int load_reg_buf_size() const;
     int mask_reg_buf_size() const;

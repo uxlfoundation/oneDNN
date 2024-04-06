@@ -44,7 +44,8 @@ public:
     IR_KERNEL_FORWARD(hw)
 
     conv_kernel_t(const conv_config_t &cfg, const kernel_info_t &kernel_info,
-            const compute::range_t &local_range, const layout_t &zp_dst);
+            const compute::nd_range_t &nd_range, const layout_t &zp_dst,
+            grf_mode_t grf_mode = grf_mode_t::any);
 
 private:
     const conv_problem_t &prb_;
@@ -53,10 +54,11 @@ private:
 
 template <ngen::HW hw>
 conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
-        const kernel_info_t &kernel_info, const compute::range_t &local_range,
-        const layout_t &zp_dst)
-    : ir_kernel_t<hw>("gen_conv", cfg.exec_cfg(), kernel_info, local_range,
-            utils::one_of(cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw))
+        const kernel_info_t &kernel_info, const compute::nd_range_t &nd_range,
+        const layout_t &zp_dst, grf_mode_t grf_mode)
+    : ir_kernel_t<hw>("gen_conv", cfg.exec_cfg(), kernel_info, nd_range,
+            utils::one_of(cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw),
+            grf_mode)
     , prb_(cfg.prb())
     , cfg_(cfg) {
 

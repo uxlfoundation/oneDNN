@@ -1398,6 +1398,20 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
     d.pop(t);
 }
 
+// Calculate how many unique filter padding states a conv dimension can produce
+// (see conv_post_op_view_mapper_t for more context)
+inline int max_unique_pad_states(int O, int I, int KD, int P, int S, bool lim) {
+    int retn = 1;
+    if (I > KD) {
+        retn += std::min((O - 1) * S - P, 0)
+                + std::max((O - 1) * S + (KD - P), I) + (P - I);
+    } else { // I <= KD, no two states are the same
+        retn += (O - 1) * S;
+    }
+    return (lim) ? std::min(retn, P + std::min(I, KD)) : retn;
+}
+
+} // namespace ir_utils
 } // namespace jit
 } // namespace intel
 } // namespace gpu

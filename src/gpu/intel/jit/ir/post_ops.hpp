@@ -109,9 +109,7 @@ private:
         // time than the in-situ compensations; that usually happens around
         // MB = 64, but the exact number is just a heuristic.
         // TODO: a finer-grained estimate
-        return (pd->invariant_src_md()->dims[0] >= 64)
-                && pd->attr()->zero_points_.has_default_values(
-                        DNNL_ARG_WEIGHTS);
+        return pd->invariant_src_md()->dims[0] >= 64;
     }
 };
 

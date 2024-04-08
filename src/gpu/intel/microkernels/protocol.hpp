@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,34 +53,6 @@ public:
         bool localB = false;
         bool addToC = false;
         bool slmPtr = false;
-        bool offsetA = false;
-        bool offsetB = false;
-        bool scaleA = false;
-        bool scaleB = false;
-
-        Options() = default;
-        explicit Options(int flags)
-            : localA(flags & (1 << 0))
-            , localB(flags & (1 << 1))
-            , addToC(flags & (1 << 2))
-            , slmPtr(flags & (1 << 3))
-            , offsetA(flags & (1 << 4))
-            , offsetB(flags & (1 << 5))
-            , scaleA(flags & (1 << 6))
-            , scaleB(flags & (1 << 7)) {}
-
-        int toOptionsMask() const {
-            int ioptions = 0;
-            if (localA) ioptions |= (1 << 0);
-            if (localB) ioptions |= (1 << 1);
-            if (addToC) ioptions |= (1 << 2);
-            if (slmPtr) ioptions |= (1 << 3);
-            if (offsetA) ioptions |= (1 << 4);
-            if (offsetB) ioptions |= (1 << 5);
-            if (scaleA) ioptions |= (1 << 6);
-            if (scaleB) ioptions |= (1 << 7);
-            return ioptions;
-        }
     };
 
     GEMMProtocol() : GEMMProtocol(Options {}) {}
@@ -105,9 +77,7 @@ struct StructuredType {
         u16,
         s16,
         u8,
-        s8,
-        u4,
-        s4, //    integral
+        s8, //    integral
         f64,
         f32,
         f16,

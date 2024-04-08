@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -72,8 +72,7 @@ EntranceAgent::Status EntranceAgent::scan(Package &package) {
             else
                 base = j, len = 1;
         } else if (len > 0) {
-            package.clobbers.emplace_back(
-                    RegisterRange(base * regBytes, len * regBytes));
+            package.clobbers.emplace_back(base * regBytes, len * regBytes);
             len = 0;
         }
     }

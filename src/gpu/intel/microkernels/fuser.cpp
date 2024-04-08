@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ namespace micro {
 static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust);
 
 void fuseMicrokernel(std::vector<uint8_t> &binary,
-        const std::vector<uint8_t> &microkernel, long id) {
+        const std::vector<uint8_t> &microkernel, int id) {
     auto base = binary.data();
     auto bytes = binary.size();
 
@@ -55,27 +55,28 @@ void fuseMicrokernel(std::vector<uint8_t> &binary,
     bool foundZeInfo = false;
     SectionHeader *text = nullptr;
     const char *snames = nullptr;
-    int textSectionID = -1, relSectionID = -1;
+    int textSectionID = -1;
 
-    auto *sheaders = reinterpret_cast<SectionHeader *>(
+    auto *sheaderPtr = reinterpret_cast<SectionHeader *>(
             base + fheaderPtr->sectionTableOff);
 
-    snames = reinterpret_cast<char *>(
-            base + sheaders[fheaderPtr->strTableIndex].offset);
+    if (fheaderPtr->strTableIndex >= 0)
+        snames = reinterpret_cast<char *>(
+                base + sheaderPtr[fheaderPtr->strTableIndex].offset);
 
-    for (int s = 0; s < fheaderPtr->sectionCount; s++) {
-        switch (sheaders[s].type) {
+    for (int s = 0; s < fheaderPtr->sectionCount; s++, sheaderPtr++) {
+        switch (sheaderPtr->type) {
             case SectionHeader::Type::ZeInfo: foundZeInfo = true; break;
             case SectionHeader::Type::Program: {
                 if (snames) {
-                    std::string sname(snames + sheaders[s].name);
+                    std::string sname(snames + sheaderPtr->name);
                     if (sname == ".text.Intel_Symbol_Table_Void_Program")
                         continue;
                     if (sname.substr(0, 6) != ".text.") continue;
                 }
                 if (text)
                     throw std::runtime_error("Multiple kernels in program");
-                text = sheaders + s;
+                text = sheaderPtr;
                 textSectionID = s;
                 break;
             }
@@ -87,27 +88,18 @@ void fuseMicrokernel(std::vector<uint8_t> &binary,
         throw std::runtime_error(
                 "IGC did not generate a valid zebin program binary");
 
-    std::string rname = ".rel";
-    rname += (snames + text->name);
-    for (int s = 0; s < fheaderPtr->sectionCount; s++) {
-        if (sheaders[s].type != SectionHeader::Type::Relocation) continue;
-        if (rname != (snames + sheaders[s].name)) continue;
-        if (relSectionID >= 0)
-            throw std::runtime_error("Multiple relocation sections for kernel");
-        relSectionID = s;
-    }
-
     auto *insn = reinterpret_cast<const uint32_t *>(base + text->offset);
-    auto *iend = reinterpret_cast<const uint32_t *>(
-            base + text->offset + text->size);
+    int icount = text->size >> 4;
 
     const uint8_t *spliceStart = nullptr;
     const uint8_t *spliceEnd = nullptr;
 
-    for (; insn < iend; insn += 4) {
+    for (int inum = 0; inum < icount; inum++, insn += 4) {
         if (insn[0] & (1u << 29))
-            insn -= 2;
-        else if (insn[3] == (sigilStart ^ id))
+            throw std::runtime_error(
+                    "Found a compacted instruction. Please run with the "
+                    "environment variable IGC_disableCompaction=1");
+        if (insn[3] == (sigilStart ^ id))
             spliceStart = reinterpret_cast<const uint8_t *>(insn);
         else if (insn[3] == (sigilEnd ^ id)) {
             spliceEnd = reinterpret_cast<const uint8_t *>(insn);
@@ -143,21 +135,11 @@ void fuseMicrokernel(std::vector<uint8_t> &binary,
     if (fheaderPtr->sectionTableOff > before)
         fheaderPtr->sectionTableOff += sizeAdjust;
 
-    sheaders = reinterpret_cast<SectionHeader *>(
+    sheaderPtr = reinterpret_cast<SectionHeader *>(
             newBase + fheaderPtr->sectionTableOff);
-    sheaders[textSectionID].size += sizeAdjust;
-    for (int s = 0; s < fheaderPtr->sectionCount; s++)
-        if (sheaders[s].offset > before) sheaders[s].offset += sizeAdjust;
-
-    if (relSectionID >= 0) {
-        auto relSection = sheaders + relSectionID;
-        auto rel = reinterpret_cast<Relocation *>(newBase + relSection->offset);
-        auto relEnd = reinterpret_cast<Relocation *>(
-                newBase + relSection->offset + relSection->size);
-        for (; rel < relEnd; rel++) {
-            if (rel->offset >= kbefore) rel->offset += sizeAdjust;
-        }
-    }
+    sheaderPtr[textSectionID].size += sizeAdjust;
+    for (int s = 0; s < fheaderPtr->sectionCount; s++, sheaderPtr++)
+        if (sheaderPtr->offset > before) sheaderPtr->offset += sizeAdjust;
 
 #ifdef SPLICE_DEBUG
     std::ofstream dump0("original.bin");
@@ -185,26 +167,21 @@ void fuseMicrokernels(std::vector<uint8_t> &binary, const char *source) {
             s = std::strstr(s, sigilBinary)) {
         s += sigilLen;
         char *after;
-        long id = strtol(s, &after, 10);
+        int id = strtol(s, &after, 10);
         microkernel.clear();
         for (s = after + 1; *s != '\n'; s += 2) {
             if (!s[0] || !s[1]) break;
-            microkernel.push_back(static_cast<uint8_t>(
-                    (toNybble(s[0]) << 4) | toNybble(s[1])));
+            microkernel.push_back((toNybble(s[0]) << 4) | toNybble(s[1]));
         }
         fuseMicrokernel(binary, microkernel, id);
     }
 }
 
 static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust) {
-    auto istart = reinterpret_cast<int32_t *>(start);
-    auto iend = reinterpret_cast<int32_t *>(start + len);
+    auto insn = reinterpret_cast<int32_t *>(start);
+    auto icount = len >> 4;
 
-    for (auto insn = istart; insn < iend; insn += 4) {
-        if (insn[0] & (1u << 29)) {
-            insn -= 2; /* skip compacted instructions */
-            continue;
-        }
+    for (size_t inum = 0; inum < icount; inum++, insn += 4) {
         uint8_t op = insn[0] & 0xFF;
         if ((op & 0xF0) != 0x20) continue; /* skip non-jumps */
         if (op == 0x2B || op == 0x2D) continue; /* skip ret/calla */
@@ -212,7 +189,7 @@ static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust) {
                 || op == 0x2A || op == 0x2E);
 
         auto jumpFixup = [=](int32_t &ip) {
-            auto target = ((insn - istart) << 2) + ip;
+            auto target = ptrdiff_t(inum << 4) + ip;
             if (target < 0 || target >= ptrdiff_t(len)) ip += adjust;
         };
 

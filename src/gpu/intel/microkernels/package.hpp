@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -69,10 +69,10 @@ struct Package {
 
 // Contiguous span of register space.
 struct RegisterRange {
-    uint32_t boffset = 0; // Byte offset into GRF
-    uint32_t blen = 0; // Length of range in bytes
+    uint32_t boffset; // Byte offset into GRF
+    uint32_t blen; // Length of range in bytes
 
-    RegisterRange() = default;
+    RegisterRange() {}
     RegisterRange(uint32_t boffset_, uint32_t blen_)
         : boffset(boffset_), blen(blen_) {}
 };

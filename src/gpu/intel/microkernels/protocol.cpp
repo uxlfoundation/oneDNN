@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,11 +29,20 @@ namespace micro {
 
 GEMMProtocol::GEMMProtocol(const Options &options) {
     family = Family::GEMM;
-    ioptions = options.toOptionsMask();
+    ioptions = 0;
+    if (options.localA) ioptions |= (1 << 0);
+    if (options.localB) ioptions |= (1 << 1);
+    if (options.addToC) ioptions |= (1 << 2);
+    if (options.slmPtr) ioptions |= (1 << 3);
 }
 
 GEMMProtocol::Options GEMMProtocol::options() const {
-    return Options(ioptions);
+    Options options {};
+    options.localA = (ioptions & (1 << 0));
+    options.localB = (ioptions & (1 << 1));
+    options.addToC = (ioptions & (1 << 2));
+    options.slmPtr = (ioptions & (1 << 3));
+    return options;
 }
 
 #define PDISPATCH(routine, cand) \
@@ -87,18 +96,10 @@ std::vector<ProtocolArgument> GEMMProtocol::arguments() const {
     std::vector<ProtocolArgument> argsV
             = {args, args + sizeof(args) / sizeof(args[0])};
 
-    auto o = options();
-
-    if (o.localA) argsV[0].stype.format = LocalPointer;
-    if (o.localB) argsV[2].stype.format = LocalPointer;
-    if (o.addToC) argsV[4].direction = ProtocolArgument::InOut;
-    if (o.slmPtr) argsV.push_back({"slm", In, LocalPointer});
-    if (o.scaleA) argsV.push_back({"a_scale", In, GlobalPointer});
-    if (o.offsetA) argsV.push_back({"a_offset", In, GlobalPointer});
-    if (o.offsetA || o.scaleA) argsV.push_back({"ldaq", In, s32});
-    if (o.scaleB) argsV.push_back({"b_scale", In, GlobalPointer});
-    if (o.offsetB) argsV.push_back({"b_offset", In, GlobalPointer});
-    if (o.offsetB || o.scaleB) { argsV.push_back({"ldbq", In, s32}); }
+    if (options().localA) argsV[0].stype.format = LocalPointer;
+    if (options().localB) argsV[2].stype.format = LocalPointer;
+    if (options().addToC) argsV[4].direction = ProtocolArgument::InOut;
+    if (options().slmPtr) argsV.push_back({"slm", In, LocalPointer});
 
     return argsV;
 }

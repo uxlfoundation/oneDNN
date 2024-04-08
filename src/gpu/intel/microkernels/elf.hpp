@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,11 +56,6 @@ struct FileHeader {
     uint16_t strTableIndex;
 };
 
-struct Relocation {
-    uint64_t offset;
-    uint64_t info;
-};
-
 struct SectionHeader {
     uint32_t name;
     enum Type : uint32_t {
@@ -69,7 +64,6 @@ struct SectionHeader {
         SymbolTable = 2,
         StringTable = 3,
         Note = 7,
-        Relocation = 9,
         ZeInfo = 0xFF000011
     } type;
     uint64_t flags;

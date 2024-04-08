@@ -39,7 +39,7 @@ bool req_copy_scales(
 // to do so scratchpad memory for scales must be booked e.g. using
 // book_precomputed_scales with force_scales_book = true.
 const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
-        const float *src_scales, const float *wei_scales, dim_t oc,
+        const float *src_scales, const float *wei_scales, dim_t wei_scale_count,
         const primitive_attr_t *attr, float scale_adjust_factor = 1.0f);
 const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
         const float *src_scales, const float *wei_scales, dim_t ic, dim_t oc,

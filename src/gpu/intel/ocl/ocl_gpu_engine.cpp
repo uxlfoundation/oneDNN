@@ -23,6 +23,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/kernel_list.hpp"
+#include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/kernel_utils.hpp"
 #include "gpu/intel/ocl/ocl_gpu_device_info.hpp"
 #include "gpu/intel/ocl/ocl_gpu_engine.hpp"
@@ -269,16 +270,16 @@ status_t ocl_gpu_engine_t::build_program_from_source(
     debugdump_processed_source(
             pp_code_str, options, dev_info->get_cl_ext_options());
 
-    program = xpu::ocl::make_wrapper(clCreateProgramWithSource(
-            context(), 1, &pp_code_str_ptr, nullptr, &err));
+    auto ctx = context();
+    program = xpu::ocl::make_wrapper(
+            clCreateProgramWithSource(ctx, 1, &pp_code_str_ptr, nullptr, &err));
     OCL_CHECK(err);
 
     auto dev = device();
     err = clBuildProgram(program, 1, &dev, options.c_str(), nullptr, nullptr);
     OCL_CHECK(maybe_print_debug_info(err, program, dev));
 
-    if (kernel_ctx.has_custom_headers())
-        CHECK(fuse_microkernels(ctx, dev, program, pp_code_str_ptr));
+    CHECK(fuse_microkernels(ctx, dev, program, pp_code_str_ptr));
 
     return status::success;
 }

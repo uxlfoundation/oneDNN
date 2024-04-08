@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 #ifndef GPU_MICROKERNELS_FUSER_HPP
 #define GPU_MICROKERNELS_FUSER_HPP
 
-#include   "gpu/intel/ocl/kernel_utils.hpp"
+#include <cstdint>
+#include <vector>
 
 namespace dnnl {
 namespace impl {

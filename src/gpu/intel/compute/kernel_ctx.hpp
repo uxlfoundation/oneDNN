@@ -142,7 +142,7 @@ public:
 
     void add_custom_header(
             const std::string &header_name, std::string &&source) {
-        custom_headers_[header_name] = std::move(source);
+        custom_headers_[header_name] = source;
     }
 
     const char *get_custom_header(const std::string &header_name) const {
@@ -183,7 +183,6 @@ private:
     std::map<std::string, float> float_var_map_;
     std::set<std::string> option_set_;
     std::unordered_map<std::string, std::string> custom_headers_;
-    bool use_int32_offset_ = true;
 };
 
 template <>

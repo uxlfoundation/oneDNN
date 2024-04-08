@@ -260,7 +260,8 @@ status_t ocl_gpu_engine_t::build_program_from_source(
     err = clBuildProgram(program, 1, &dev, options.c_str(), nullptr, nullptr);
     OCL_CHECK(maybe_print_debug_info(err, program, dev));
 
-    CHECK(fuse_microkernels(ctx, dev, program, pp_code_str_ptr));
+    if (kernel_ctx.has_custom_headers())
+        CHECK(fuse_microkernels(ctx, dev, program, pp_code_str_ptr));
 
     return status::success;
 }

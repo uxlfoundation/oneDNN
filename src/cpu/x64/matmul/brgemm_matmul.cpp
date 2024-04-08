@@ -160,6 +160,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (idx < 0) continue;
 
         brgemm_desc_t &brg = brg_descs_[idx];
+        if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
+            brg.skip_zp_b_compensation = true;
         auto LDA = i_K && bgmmc_.use_buffer_a_tail_only
                 ? (dim_t)bgmmc_.wei_k_blk
                 : bgmmc_.LDA;

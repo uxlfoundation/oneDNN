@@ -17,6 +17,7 @@
 #include "common/compiler_workarounds.hpp"
 
 #include "gpu/gpu_impl_list.hpp"
+#include "gpu/intel/ocl/ref_sdpa.hpp"
 
 #include "gpu/intel/ocl/micro_sdpa.hpp"
 #include "gpu/intel/ocl/ref_sdpa.hpp"

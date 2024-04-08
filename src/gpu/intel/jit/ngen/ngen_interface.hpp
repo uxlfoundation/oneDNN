@@ -436,6 +436,14 @@ void InterfaceHandler::finalize()
     int nextSurface = 0;
     const int grfSize = GRF::bytes(hw);
 
+    if (baseOverride.isValid()) {
+        base = GRF(baseOverride.getBase());
+        offset = baseOverride.getByteOffset();
+    } else {
+        base = getCrossthreadBase();
+        offset = 32;
+    }
+
     auto assignArgsOfType = [&](ExternalArgumentType which) {
         for (auto &assignment : assignments) {
             auto exttype = assignment.exttype;

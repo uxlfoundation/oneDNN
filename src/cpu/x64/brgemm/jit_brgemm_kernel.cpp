@@ -41,7 +41,7 @@ using namespace dnnl::impl::utils;
 using namespace Xbyak;
 template <typename Wmm>
 struct jit_brgemm_kernel_t : public jit_generator {
-    jit_brgemm_kernel_t(const brgemm_t &abrg)
+    jit_brgemm_kernel_t(const brgemm_desc_t &abrg)
         : jit_generator(jit_name(), abrg.isa_impl)
         , brg(abrg)
         , postops_injector_(nullptr)
@@ -2840,7 +2840,7 @@ brgemm_attr_t::brgemm_attr_t()
     , static_offsets(nullptr) {}
 
 template <typename Wmm>
-brgemm_kernel_common_t<Wmm>::brgemm_kernel_common_t(const brgemm_t &abrd)
+brgemm_kernel_common_t<Wmm>::brgemm_kernel_common_t(const brgemm_desc_t &abrd)
     : brgemm_kernel_(new jit_brgemm_kernel_t<Wmm>(abrd)) {}
 
 template <typename Wmm>

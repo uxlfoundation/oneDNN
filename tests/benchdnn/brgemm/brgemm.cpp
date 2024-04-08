@@ -671,7 +671,18 @@ void init_memory_args(
 
     dims_t src_strides = {prb->get_lda(), 1};
     dims_t dst_strides = {prb->get_ldd(), 1};
-    dims_t acc_strides = prb->use_dst_as_acc() ? dst_strides : dims_t();
+    dims_t acc_strides = use_dst_as_acc ? dst_strides : dims_t();
+
+    auto dst_md = dnn_mem_t::init_md(prb->ndims, prb->dst_dims.data(),
+            prb->dst_dt(), prb->dtag, dst_strides);
+
+    using namespace dnnl::impl::cpu::x64;
+
+    brgemm_desc_t brgemm_desc;
+    // Supports only address model for now as only affects the way memory is
+    // passed to `brgemm_batch_element_t` object.
+    brgemm_batch_kind_t batch_kind = brgemm_batch_kind_t::brgemm_addr;
+    brgemm_layout_t layout = brgemm_layout_t::brgemm_row_major;
 
     auto src_md = dnn_mem_t::init_md(
             prb->ndims, src_dims, prb->src_dt(), "", src_strides);

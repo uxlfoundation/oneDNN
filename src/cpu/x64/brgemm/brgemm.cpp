@@ -616,6 +616,8 @@ status_t brgemm_kernel_destroy(brgemm_kernel_t *brg_kernel) {
 }
 
 status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
+    constexpr int max_palette_size_in_bytes = 64;
+
     if (!brg.is_tmm) return status::unimplemented;
 
     //TODO: Add support of tail processing by reduction dimension

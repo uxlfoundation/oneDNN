@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 #include "common/sdpa_pd.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/gpu_resource.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -42,13 +42,9 @@ struct ref_sdpa_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_sdpa_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
-
-            /* Reference SDPA is only enabled on-demand, for testing. */
-            bool enable_ref = gpu_utils::dev_getenv("enable_ref_sdpa", false);
-            VDISPATCH_SDPA(enable_ref, VERBOSE_SKIP_PRIMITIVE_IMPL);
 
             VDISPATCH_SDPA(attr()->has_default_values(smask_t::scales_runtime),
                     VERBOSE_UNSUPPORTED_ATTR);
@@ -66,7 +62,7 @@ struct ref_sdpa_t : public gpu_primitive_t {
         }
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
 
         kernel_ctx.set_data_type(pd()->dst_md()->data_type);
@@ -94,7 +90,6 @@ struct ref_sdpa_t : public gpu_primitive_t {
 
         kernel_ctx.define_int("SIZE_K", pd()->desc()->keys());
         kernel_ctx.define_int("INVERT_SCALE", pd()->desc()->invert_scale);
-        kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
         kernel_ctx.define_int("WITH_ATTN_MASK", pd()->with_attn_mask());
 
         def_data_type(kernel_ctx, pd()->qry_md()->data_type, "QRY");

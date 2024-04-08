@@ -475,6 +475,11 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                 zp_type = brgemm_broadcast_t::per_n;
         }
 
+        const bool skip_zero_point
+                = mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation;
+        zp_type = zero_points.has_default_values(mem_arg) || skip_zero_point
+                ? brgemm_broadcast_t::none
+                : brgemm_broadcast_t::per_tensor;
         return status::success;
     };
 

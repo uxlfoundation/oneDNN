@@ -163,7 +163,7 @@ struct DNNL_API brgemm_attr_t {
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
     bool postops_only {false};
-    // Hint for bs_group value in brgemm_t
+    // Hint for bs_group value in brgemm_desc_t
     int hint_bs_group {0};
 
     int hint_bd_block {0};
@@ -423,13 +423,6 @@ struct brgemm_desc_t {
     }
 
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }
-
-    bool is_f16_b_non_amx_vnni() const {
-        // This function controls the code section which relies on
-        // `avx512_core_fp16` instructions directly.
-        return dt_b == data_type::f16 && brgattr.b_is_vnni
-                && isa_impl == avx512_core_fp16;
-    }
 
     bool operator==(const brgemm_desc_t &rhs) const;
     bool operator<(const brgemm_desc_t &rhs) const;

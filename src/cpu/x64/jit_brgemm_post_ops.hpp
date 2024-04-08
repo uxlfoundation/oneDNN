@@ -50,8 +50,22 @@ struct brgemm_kernel_diff_bias_t {
 
 template <typename Vmm>
 struct jit_brgemm_kernel_diff_bias_t : public jit_generator {
-    jit_brgemm_kernel_diff_bias_t(const jit_brgemm_primitive_conf_t &ajbgp,
-            const brgemm_desc_t &abrg);
+    jit_brgemm_kernel_diff_bias_t(
+            const jit_brgemm_primitive_conf_t &ajbgp, const brgemm_desc_t &abrg)
+        : jit_generator(jit_name())
+        , brg_(abrg)
+        , ddst_dt_(ajbgp.dst_dt)
+        , bia_dt_(ajbgp.bia_dt)
+        , acc_dt_(ajbgp.acc_dt)
+        , bia_typesize_(types::data_type_size(bia_dt_))
+        , acc_typesize_(types::data_type_size(acc_dt_)) {
+
+        ddst_dt_ = (ajbgp.isa == avx512_core_fp16 && ajbgp.use_buffer_b)
+                ? data_type::f32
+                : ajbgp.dst_dt;
+        ddst_typesize_ = types::data_type_size(ddst_dt_);
+        mult_ = data_type_vnni_granularity(ddst_dt_);
+    }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_diff_bias_t)
 
@@ -121,7 +135,7 @@ template <cpu_isa_t isa>
 struct jit_brgemm_kernel_post_ops : public jit_generator {
 
     jit_brgemm_kernel_post_ops(const jit_brgemm_conv_conf_t &ajcp,
-            const brgemm_t &abrg, const primitive_attr_t &aattr)
+            const brgemm_desc_t &abrg, const primitive_attr_t &aattr)
         : jit_generator(jit_name(), abrg.isa_impl)
         , brg(abrg)
         , jcp(ajcp)
@@ -169,8 +183,9 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops_t)
 
-    // Used for assertion on implementation side in debug mode.
-    int get_bcast_dim() const override { return brg_.bcast_dim; }
+    brgemm_desc_t brg;
+    jit_brgemm_conv_conf_t jcp;
+    const primitive_attr_t &attr;
 
 private:
     // This can't be a reference, otherwise, `get_bcast_dim()` would return

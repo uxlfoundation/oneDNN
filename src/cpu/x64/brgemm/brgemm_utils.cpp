@@ -253,15 +253,6 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
 }
 
 status_t brgemm_blocking(brgemm_desc_t *brg) {
-    const data_type_t ld_step_compute_dt
-            = get_mac_emu_data_type(brg->dt_b, brg->isa_impl,
-                    brg->isa_impl != avx2_vnni_2 && !brg->is_fp8_via_convert());
-    brg->ld_step = brg->is_f16_b_non_amx_vnni()
-            ? 2
-            : data_type_vnni_granularity(ld_step_compute_dt);
-    const data_type_t rd_step_compute_dt = get_mac_emu_data_type(
-            brg->dt_b, brg->isa_impl, !brg->is_fp8_via_convert());
-    brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
 
     set_isa_impl(brg);
     if (brg->isa_impl == isa_undef) return status::unimplemented;

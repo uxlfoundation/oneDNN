@@ -760,8 +760,8 @@ status_t brgemm_convolution_fwd_t<isa>::add_brg_kernel(int brg_idx) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
+template <cpu_isa_t isa, bool use_inversion>
+status_t brgemm_convolution_fwd_t<isa, use_inversion>::add_po_kernel(
         brgemm_desc_t *bcfg, int ker_idx, bool is_init) {
     if (!bcfg) return status::success;
     const auto _pd = pd();

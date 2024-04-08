@@ -268,7 +268,9 @@ private:
     int tail_length() { return n_block1_tail() % simd_w_; }
 
     inline int bs_group() const { return brg.bs_group; }
-    static bool grouped_bs(const brgemm_t &brg) { return brg.bs_group > 1; }
+    static bool grouped_bs(const brgemm_desc_t &brg) {
+        return brg.bs_group > 1;
+    }
     inline bool grouped_bs() const { return grouped_bs(brg); }
     static bool is_fma_embd(const brgemm_desc_t &brg) {
         return grouped_bs(brg)

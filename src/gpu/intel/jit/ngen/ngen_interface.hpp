@@ -124,6 +124,7 @@ public:
     void requireWorkgroup(size_t x, size_t y = 1,
                           size_t z = 1)                  { wg[0] = x; wg[1] = y; wg[2] = z; }
 
+    void setArgumentBase(RegData base)                   { baseOverride = base; }
     void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
@@ -428,6 +429,14 @@ void InterfaceHandler::finalize()
     int offset;
     int nextSurface = 0;
     const int grfSize = GRF::bytes(hw);
+
+    if (baseOverride.isValid()) {
+        base = GRF(baseOverride.getBase());
+        offset = baseOverride.getByteOffset();
+    } else {
+        base = getCrossthreadBase();
+        offset = 32;
+    }
 
     auto assignArgsOfType = [&](ExternalArgumentType which) {
         for (auto &assignment : assignments) {

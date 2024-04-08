@@ -127,10 +127,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(
             attr()->has_default_values(
                     primitive_attr_t::skip_mask_t::scales_runtime_data_type
-                            | primitive_attr_t::skip_mask_t::
-                                    scales_runtime_groups
-                            | primitive_attr_t::skip_mask_t::
-                                    zero_points_runtime_data_type
+                            | primitive_attr_t::skip_mask_t::zero_points_runtime
                             | primitive_attr_t::skip_mask_t::post_ops
                             | primitive_attr_t::skip_mask_t::sum_dt
                             | primitive_attr_t::skip_mask_t::fpmath_mode,
@@ -280,11 +277,7 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
     // TODO: enable transpose in JIT scales
     const bool is_jit_supported = mayiuse(avx512_core);
     const auto attr = pd()->attr();
-    const auto wei_scale_count = bgmmc.is_oscale_per_k
-            ? (bgmmc.is_oscale_per_n ? pd()->N() * pd()->K() : pd()->K())
-            : pd()->N();
-    if (is_jit_supported && wei_scale_count > 1 && req_copy_scales(attr)
-            && !bgmmc.req_transpose_scales) {
+    if (is_jit_supported && pd()->N() > 1 && req_copy_scales(attr)) {
         const auto &attr_scales = attr->scales_;
         int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
         if (wei_scale_mask != 0) {

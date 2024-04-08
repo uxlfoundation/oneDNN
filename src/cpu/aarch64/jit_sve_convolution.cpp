@@ -1132,8 +1132,6 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
 
 template struct jit_sve_convolution_bwd_data_t<data_type::f32, data_type::f32,
         data_type::f32, sve_512>;
-template struct jit_sve_convolution_bwd_data_t<data_type::f32, data_type::f32,
-        data_type::f32, sve_256>;
 
 template <data_type_t src_type, data_type_t diff_dst_type,
         data_type_t diff_weights_type, cpu_isa_t isa>
@@ -1862,8 +1860,6 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
 
 template struct jit_sve_convolution_bwd_weights_t<data_type::f32,
         data_type::f32, data_type::f32, sve_512>;
-template struct jit_sve_convolution_bwd_weights_t<data_type::f32,
-        data_type::f32, data_type::f32, sve_256>;
 
 } // namespace aarch64
 } // namespace cpu

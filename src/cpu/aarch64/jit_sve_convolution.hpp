@@ -114,7 +114,7 @@ struct jit_sve_convolution_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
         using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
 
-        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", isa, ""),
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", sve_512, ""),
                 jit_sve_convolution_bwd_data_t);
 
         status_t init(engine_t *engine) {
@@ -182,7 +182,7 @@ struct jit_sve_convolution_bwd_weights_t : public primitive_t {
         using cpu_convolution_bwd_weights_pd_t::
                 cpu_convolution_bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", isa, ""),
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", sve_512, ""),
                 jit_sve_convolution_bwd_weights_t);
 
         status_t init(engine_t *engine) {
@@ -257,8 +257,8 @@ private:
     int nthr_, nthr_mb_, nthr_g_, nthr_oc_b_, nthr_ic_b_;
 
     jit_sve_conv_bwd_weights_kernel_f32<isa> *kernel_;
-    cpu_accumulator_1d_t<diff_weights_type, isa> *acc_ker_;
-    cpu_reducer_t<diff_weights_type, isa> *reducer_bias_;
+    cpu_accumulator_1d_t<diff_weights_type> *acc_ker_;
+    cpu_reducer_t<diff_weights_type> *reducer_bias_;
 };
 
 } // namespace aarch64

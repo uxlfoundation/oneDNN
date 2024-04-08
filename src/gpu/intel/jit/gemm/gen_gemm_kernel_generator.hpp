@@ -42,6 +42,9 @@
 
 #include "gpu/intel/jit/emulation.hpp"
 
+#include "gpu/intel/microkernels/entrance_agent.hpp"
+#include "gpu/intel/microkernels/package.hpp"
+
 #include <array>
 #include <complex>
 #include <cstdint>
@@ -1009,6 +1012,8 @@ struct GEMMProblem : public CommonProblem {
     bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D; }
     bool quantized2DB() const { return (boPtrDims == 2) || bScale2D; }
 
+    void transpose();
+
     /* Kernel cache helpers. */
     void serialize(serialized_data_t &s) const {
         s.append(Ta, Tb, Tc, Ts);
@@ -1347,6 +1352,10 @@ struct GEMMStrategy : public GEMMStrategyPOD {
     bool nondeterministic(const GEMMProblem &problem) const;
 
     bool checkAdd32Rem() const { return checkAdd32 && emulate.emulate64; }
+
+    bool registerOutput() const {
+        return C.base.getModel() == ngen::ModelInvalid;
+    }
 
     int aqGroupKGranularity() const {
         return groupKReduce(slmA ? unrollKSLM : ka_load);
@@ -2982,7 +2991,7 @@ protected:
             int dOffC, const Scalar &alpha, const SubregisterPair &alpha_real,
             const SubregisterPair &alpha_imag, bool conjugate,
             const CommonStrategy &strategy, CommonState &state,
-            bool preserveSrc = false, bool do_shift = true);
+            bool preserveSrc = false);
     void overlappedCopy(const GRFMultirange &src, const GRFMultirange &dst,
             CommonState &state);
 

@@ -50,8 +50,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy,
 
 Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo,
         SizeParams sizes, const GEMMProblem &problem_,
-        const std::vector<StrategyRequirement> &reqs_,
-        void (*strategyAdjuster)(GEMMStrategy &strategy)) {
+        const std::vector<StrategyRequirement> &reqs_) {
     kcatalog::Catalog catalog;
 
     bool localA = protocol.options().localA;
@@ -81,7 +80,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo,
     auto stepping = hwInfo.gmdid & 0xFF;
 
     /* Create catalog matcher */
-    MatchParams matchParams(hw, hwInfo.systolicAvailable, problem);
+    MatchParams matchParams(hw, problem);
 
     matchParams.sizes = sizes;
     matchParams.stepping = stepping;
@@ -93,6 +92,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo,
         tags++;
     *tags++ = kcatalog::ReqBlock2DA;
     *tags++ = kcatalog::ReqBlock2DB;
+    if (hwInfo.systolicAvailable) *tags++ = kcatalog::ReqSystolic;
 
     /* Provide information for kernel selection */
     EvaluateParams evalParams;
@@ -168,10 +168,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo,
     /* C output in registers */
     strategy.C.base = AddressBase {};
 
-    /* Allow caller to adjust strategy further */
-    if (strategyAdjuster) strategyAdjuster(strategy);
-
-    /* Preflight */
     strategy.preflight(hw, problem);
 
     /* Set up arguments for microkernel */
@@ -211,19 +207,13 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo,
     }
 
     switch (hw) {
-        REG_GEN9_ISA(ARCH_DISPATCH(Gen9))
-        REG_GEN11_ISA(ARCH_DISPATCH(Gen11))
-        REG_XELP_ISA(ARCH_DISPATCH(XeLP))
-        REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
-        REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
-        REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
-        REG_XE2_ISA(ARCH_DISPATCH(Xe2))
-#if XE3
-        REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-#endif
-#if XE3P
-        REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
-#endif
+        ARCH_DISPATCH(Gen9)
+        ARCH_DISPATCH(Gen11)
+        ARCH_DISPATCH(XeLP)
+        ARCH_DISPATCH(XeHP)
+        ARCH_DISPATCH(XeHPG)
+        ARCH_DISPATCH(XeHPC)
+        ARCH_DISPATCH(Xe2)
         default: throw std::runtime_error("Unsupported architecture");
     }
 #undef ARCH_DISPATCH
@@ -236,11 +226,9 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy,
     if (problem.C.layout == MatrixLayout::T) return false;
     if (!hwInfo.systolicAvailable) return false;
     if (problem.Ta.size() != 2 || problem.Tb.size() != 2) return false;
-    bool systolic = hwInfo.systolicAvailable;
-    bool block2DA
-            = (hw >= HW::XeHPC) && systolic && (problem.A.alignment % 16) == 0;
-    bool block2DB
-            = (hw >= HW::XeHPC) && systolic && (problem.B.alignment % 16) == 0;
+
+    bool block2DA = (hw >= HW::XeHPC) && (problem.A.alignment % 16) == 0;
+    bool block2DB = (hw >= HW::XeHPC) && (problem.B.alignment % 16) == 0;
 
     problem.A.alignment = std::min<int>(problem.A.alignment, 16);
     problem.B.alignment = std::min<int>(problem.B.alignment, 16);
@@ -273,12 +261,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy,
         s.B.accessType = AccessType::Block;
         s.doubleMasking = true;
         s.kb_load = (problem.B.layout == MatrixLayout::N) ? 32 : 16;
-        if (systolic) {
-            s.doubleMasking = true;
-            s.kb_load = (problem.B.layout == MatrixLayout::N) ? 32 : 16;
-        }
         s.slmB = true;
-
     } else if (problem.B.layout == MatrixLayout::T)
         s.B.accessType = AccessType::Block2DTranspose;
     else if (problem.B.layout == MatrixLayout::N) {
@@ -333,7 +316,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy,
 
     if (s.wgTile(LoopM) * s.wgTile(LoopN) == 0) return false;
 
-    s.systolic = systolic;
+    s.systolic = true;
     s.registerScheme = GEMMStrategy::VAvoid;
     if (s.wgTile(LoopM) * s.wgTile(LoopN) > 512) s.GRFs = 256;
     if (localA && !localB) s.loadBFirst = true;

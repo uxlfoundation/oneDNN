@@ -18732,7 +18732,8 @@ bool gemm_kernel_generator_t<hw>::gemmBodyInternal(
 
     // Late exit.
     Label labelLateExit;
-    if (state.doLateExit && !strategy.fusePostOps)
+    if (state.doLateExit && !strategy.fusePostOps
+            && !(strategy.registerOutput() && outputCRange.empty()))
         gemmOOBExit(labelLateExit, strategy, state);
 
     // Handle fused post-ops for atomic update kernels.
@@ -18741,8 +18742,19 @@ bool gemm_kernel_generator_t<hw>::gemmBodyInternal(
             return false;
     }
 
-    // C update.
-    if (!gemmUpdateCDispatch(problem, strategy, state)) return false;
+    if (strategy.registerOutput()) {
+        // Marshal C into output registers. The main path defines the output registers.
+        if (outputCRange.empty()) {
+            outputCRange = state.C_regs[0];
+            outputCLayout = state.C_layout;
+        } else {
+            // FIXME: check that layouts are compatible, and rearrange if not.
+            overlappedCopy(state.C_regs[0], outputCRange, state);
+        }
+    } else {
+        // Regular C update into memory.
+        if (!gemmUpdateCDispatch(problem, strategy, state)) return false;
+    }
 
     // Cleanup.
     if (remaskC_M)
@@ -20923,6 +20935,23 @@ void gemm_kernel_generator_t<hw>::gemmScaleInputs(const GEMMProblem &problem,
     state.ra.safeRelease(inputs.offsetBq);
 }
 
+// Calculate workgroup m/n remainders.
+template <HW hw>
+void gemm_kernel_generator_t<hw>::gemmCalcWGRemainders(
+        const GEMMProblem &problem, const GEMMStrategy &strategy,
+        GEMMState &state) {
+    if (wgRemCheck(problem, strategy)) {
+        state.remaindersWG[LoopM] = state.ra.alloc_sub<uint32_t>(
+                getHint(HintType::TempComp1, strategy));
+        state.remaindersWG[LoopN] = state.ra.alloc_sub<uint32_t>(
+                getHint(HintType::TempComp0, strategy));
+        add(1 | sat, state.remaindersWG[LoopM], -state.wgI0, state.inputs.m);
+        add(1 | sat, state.remaindersWG[LoopN], -state.wgJ0, state.inputs.n);
+    }
+    if (strategy.coopA != CoopSplit::FullK) state.ra.safeRelease(state.wgI0);
+    if (strategy.coopB != CoopSplit::FullK) state.ra.safeRelease(state.wgJ0);
+}
+
 // Cache multiples of lda/ldb for later address calculations.
 template <HW hw>
 void gemm_kernel_generator_t<hw>::gemmCacheLDABMultiples(
@@ -22132,7 +22161,7 @@ void gemm_kernel_generator_t<hw>::gemmMicrokernel(GEMMProblem problem,
 
     interface = interface_;
 
-    problem.autoTypeConversions(hw, strategy.systolic);
+    gemmAutoTypeConversions(problem, strategy);
     gemmInitState(problem, strategy, state);
     for (int q = 0; q < 2; q++)
         state.ra.safeRelease(state.emulate.temp[q]);
@@ -22586,7 +22615,6 @@ static inline micro::StructuredType::Type microType(Type T) {
 #define CASE(x) \
     case Type::x: return ST::x;
     switch (T) {
-        CASE(f64)
         CASE(f32)
         CASE(f16)
         CASE(bf16)
@@ -22596,7 +22624,7 @@ static inline micro::StructuredType::Type microType(Type T) {
         CASE(u32)
         CASE(u16)
         CASE(u8)
-        default: stub("Unsupported type");
+        default: throw std::runtime_error("Unsupported type");
     }
 #undef CASE
 }
@@ -22610,8 +22638,7 @@ micro::Package gemm_kernel_generator_t<hw>::gemmMicrokernelPackage(
     Package package;
 
     auto problem = problem_;
-    problem.autoTypeConversions(hw, strategy.systolic);
-
+    gemmAutoTypeConversions(problem, strategy);
     gemmMicrokernel(problem, strategy, interface_);
 
     package.protocol = protocol;
@@ -22635,10 +22662,10 @@ micro::Package gemm_kernel_generator_t<hw>::gemmMicrokernelPackage(
             if (!isLayoutColMajor(outputCLayout))
                 stub(); /* Swap dims and block ordering */
 
-            int blockGRF = 8;
+            int blockGRF = 8 / problem.Tc;
             for (auto &r : outputCRange.ranges)
                 blockGRF = gcd(blockGRF, r.getLen());
-            int maxBlock = blockGRF * elementsPerGRF(hw, problem.Tc);
+            int maxBlock = blockGRF * GRF::bytes(hw);
 
             if (blockM > maxBlock) {
                 if (blockM % maxBlock) stub();

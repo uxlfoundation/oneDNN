@@ -33,7 +33,6 @@ namespace ocl {
 using namespace bn_lookup_table;
 using namespace bn_utils;
 using namespace bn_model;
-using namespace bn_utils::kernel_id;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::gpu::gpu_utils;
@@ -293,7 +292,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
     if (cmpl_conf.calculate_stats && rt_conf.use_fused_atomics_reduction) {
         // Atomics-based reduction requires zeroing mean and variance
-        // Single kernel runs faster than two compute_stream_t::fill
+        // TODO:  try compute_stream_t::fill instead
         compute::kernel_arg_list_t arg_list;
         arg_list.append(mean);
         arg_list.append(variance);
@@ -304,7 +303,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
         arg_list.append(aux_fwd);
 
         auto nd_range = pd()->dispatch_reduce_aux.nd_range();
-        status = parallel_for(ctx, nd_range, kernels_[reduce_aux], arg_list);
+        status = parallel_for(ctx, nd_range, reduce_aux_kernel_, arg_list);
         if (status != status::success) return status;
     }
 
@@ -334,7 +333,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
         auto nd_range_calc_mean = pd()->dispatch_calc_stat.nd_range();
 
-        status = parallel_for(ctx, nd_range_calc_mean, kernels_[calc_mean],
+        status = parallel_for(ctx, nd_range_calc_mean, calculate_mean_kernel_,
                 calc_mean_arg_list);
         if (status != status::success) return status;
 
@@ -349,8 +348,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
             arg_list.append(aux_fwd);
 
             auto nd_range = pd()->dispatch_reduce_aux.nd_range();
-            status = parallel_for(
-                    ctx, nd_range, kernels_[reduce_aux], arg_list);
+            status = parallel_for(ctx, nd_range, reduce_aux_kernel_, arg_list);
             if (status != status::success) return status;
         } else {
             compute::kernel_arg_list_t arg_list;
@@ -364,7 +362,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
             arg_list.append(local_sum_size, nullptr);
             auto nd_range = pd()->dispatch_reduce_stat.nd_range();
             status = parallel_for(
-                    ctx, nd_range, kernels_[reduce_fwd_reg], arg_list);
+                    ctx, nd_range, reduce_fwd_reg_kernel_, arg_list);
             if (status != status::success) return status;
         }
 
@@ -386,8 +384,8 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
         auto nd_range_calc_var = pd()->dispatch_calc_stat.nd_range();
 
-        status = parallel_for(
-                ctx, nd_range_calc_var, kernels_[calc_var], calc_var_arg_list);
+        status = parallel_for(ctx, nd_range_calc_var, calculate_var_kernel_,
+                calc_var_arg_list);
         if (status != status::success) return status;
 
         if (rt_conf.use_fused_atomics_reduction) {
@@ -401,8 +399,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
             arg_list.append(aux_fwd);
 
             auto nd_range = pd()->dispatch_reduce_aux.nd_range();
-            status = parallel_for(
-                    ctx, nd_range, kernels_[reduce_aux], arg_list);
+            status = parallel_for(ctx, nd_range, reduce_aux_kernel_, arg_list);
             if (status != status::success) return status;
         } else {
             compute::kernel_arg_list_t arg_list;
@@ -417,7 +414,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
             auto nd_range = pd()->dispatch_reduce_stat.nd_range();
             status = parallel_for(
-                    ctx, nd_range, kernels_[reduce_fwd_reg], arg_list);
+                    ctx, nd_range, reduce_fwd_reg_kernel_, arg_list);
             if (status != status::success) return status;
         }
     }
@@ -440,7 +437,8 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
         arg_list.append(2 * calc_slm_size, nullptr);
 
         auto nd_range = pd()->dispatch_calc_stat.nd_range();
-        status = parallel_for(ctx, nd_range, kernels_[calc_mean_var], arg_list);
+        status = parallel_for(
+                ctx, nd_range, calculate_mean_var_kernel_, arg_list);
         if (status != status::success) return status;
 
         if (rt_conf.use_fused_atomics_reduction) {
@@ -454,8 +452,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
             arg_list.append(aux_fwd);
 
             auto nd_range = pd()->dispatch_reduce_aux.nd_range();
-            status = parallel_for(
-                    ctx, nd_range, kernels_[reduce_aux], arg_list);
+            status = parallel_for(ctx, nd_range, reduce_aux_kernel_, arg_list);
             if (status != status::success) return status;
         } else {
             compute::kernel_arg_list_t arg_list;
@@ -473,7 +470,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
             auto nd_range = pd()->dispatch_reduce_stat.nd_range();
             status = parallel_for(
-                    ctx, nd_range, kernels_[reduce_fwd_1pass], arg_list);
+                    ctx, nd_range, reduce_mean_var_kernel_, arg_list);
             if (status != status::success) return status;
         }
     }
@@ -495,7 +492,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
     arg_list.append(rt_conf.update_sp_block);
 
     auto nd_range = pd()->dispatch.nd_range();
-    return parallel_for(ctx, nd_range, kernels_[norm_fwd], arg_list);
+    return parallel_for(ctx, nd_range, update_kernel_, arg_list);
 }
 
 status_t nhwc_reusable_batch_normalization_bwd_t::pd_t::init_conf(
@@ -554,7 +551,7 @@ status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
         arg_list.append(aux_bwd);
 
         auto nd_range = pd()->dispatch_reduce_aux.nd_range();
-        status = parallel_for(ctx, nd_range, kernels_[reduce_aux], arg_list);
+        status = parallel_for(ctx, nd_range, reduce_aux_kernel_, arg_list);
         if (status != status::success) return status;
     }
 
@@ -582,8 +579,8 @@ status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
     calc_stats_arg_list.append(calc_slm_size);
 
     auto calc_stats_nd_range = pd()->dispatch_calc_stat.nd_range();
-    status = parallel_for(
-            ctx, calc_stats_nd_range, kernels_[calc_stat], calc_stats_arg_list);
+    status = parallel_for(ctx, calc_stats_nd_range, calculate_stats_kernel_,
+            calc_stats_arg_list);
     if (status != status::success) return status;
 
     if (rt_conf.use_fused_atomics_reduction) {
@@ -597,7 +594,7 @@ status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
         arg_list.append(aux_bwd);
 
         auto nd_range = pd()->dispatch_reduce_aux.nd_range();
-        status = parallel_for(ctx, nd_range, kernels_[reduce_aux], arg_list);
+        status = parallel_for(ctx, nd_range, reduce_aux_kernel_, arg_list);
         if (status != status::success) return status;
     } else {
         const dim_t local_sum_size = sizeof(float) * rt_conf.sg_size
@@ -617,7 +614,7 @@ status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
         arg_list.append(local_sum_size, nullptr);
 
         auto nd_range = pd()->dispatch_reduce_stat.nd_range();
-        status = parallel_for(ctx, nd_range, kernels_[reduce_stat], arg_list);
+        status = parallel_for(ctx, nd_range, reduce_stats_kernel_, arg_list);
         if (status != status::success) return status;
     }
 
@@ -639,7 +636,7 @@ status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
     arg_list.append(rt_conf.update_sp_block);
 
     auto nd_range = pd()->dispatch.nd_range();
-    return parallel_for(ctx, nd_range, kernels_[norm_bwd], arg_list);
+    return parallel_for(ctx, nd_range, update_kernel_, arg_list);
 }
 
 } // namespace ocl

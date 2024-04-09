@@ -26,7 +26,8 @@ struct jit_amx_tilecfg_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_amx_tilecfg_t)
 
     // TODO: Need to check status
-    jit_amx_tilecfg_t() : jit_generator(jit_name(), avx512_core_amx) {
+    jit_amx_tilecfg_t(bool lazy = false)
+        : jit_generator(jit_name(), avx512_core_amx), is_lazy_(lazy) {
         create_kernel();
     }
 

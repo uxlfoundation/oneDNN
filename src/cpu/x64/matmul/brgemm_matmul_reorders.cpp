@@ -121,8 +121,6 @@ status_t brgemm_matmul_matrix_B_reorder_t::pd_t::init(
     const bool is_s8s8 = type_i == data_type::s8 && type_o == data_type::s8;
     const bool is_bf16_with_int_wei = type_o == data_type::bf16
             && utils::one_of(type_i, data_type::s8, data_type::u8);
-    const bool with_wei_decompression = type_i != type_o
-            && utils::one_of(type_i, data_type::s8, data_type::u8);
     const bool has_adj_scale
             = od.extra().flags & memory_extra_flags::scale_adjust;
     const bool args_ok = true && dt_ok && id.is_dense()
@@ -135,73 +133,7 @@ status_t brgemm_matmul_matrix_B_reorder_t::pd_t::init(
             && !od.has_runtime_dims_or_strides() && !od.has_zero_dim();
     if (!args_ok) return invalid_arguments;
 
-    const auto &dims = id.dims();
-    // TODO: enable for itag = {ba, acb}
-    format_tag_t itag = id.matches_one_of_tag(ab, abc);
-    format_tag_t otag = format_tag::undef;
-
-    const auto vnni_granularity = data_type_vnni_granularity(type_o);
-    switch (vnni_granularity) {
-        case 4:
-            otag = od.matches_one_of_tag(aCB16b64c4b, BA16a64b4a, aCB16b48c4b,
-                    BA16a48b4a, aCB16b32c4b, BA16a32b4a, aCB16b16c4b,
-                    BA16a16b4a);
-            break;
-        case 2:
-            otag = od.matches_one_of_tag(aCB16b64c2b, BA16a64b2a, aCB16b48c2b,
-                    BA16a48b2a, aCB16b32c2b, BA16a32b2a, aCB16b16c2b,
-                    BA16a16b2a);
-            break;
-        case 1:
-            otag = od.matches_one_of_tag(aCB16b64c, BA16a64b, aCB16b48c,
-                    BA16a48b, aCB16b32c, BA16a32b, aCB16b16c, BA16a16b);
-            break;
-        default: otag = format_tag::undef;
-    }
-    if (is_bf16_with_int_wei) itag = id.matches_one_of_tag(ab, abc, otag);
-
-    if (utils::one_of(format_tag::undef, itag, otag)) return invalid_arguments;
-
-    // initialize all required fields to generate copy_b kernel
-    matmul_conf_for_reorder_.blocked_B = !utils::one_of(itag, ab, abc);
-    matmul_conf_for_reorder_.is_bf16_with_int_wei = is_bf16_with_int_wei;
-    matmul_conf_for_reorder_.with_wei_decompression = with_wei_decompression;
-    matmul_conf_for_reorder_.apply_scales_in_buffer_b = false;
-    matmul_conf_for_reorder_.orig_wei_dt = type_i;
-    matmul_conf_for_reorder_.wei_tag = itag;
-    matmul_conf_for_reorder_.batch = ndims > 2 ? dims[ndims - 3] : 1;
-    matmul_conf_for_reorder_.K = dims[ndims - 2];
-    matmul_conf_for_reorder_.N = dims[ndims - 1];
-    matmul_conf_for_reorder_.wei_n_blk = matmul_conf_for_reorder_.N_blk
-            = matmul_conf_for_reorder_.LDB = matmul::get_n_block_from_tag(otag);
-    matmul_conf_for_reorder_.N_tail
-            = matmul_conf_for_reorder_.N % matmul_conf_for_reorder_.N_blk;
-    matmul_conf_for_reorder_.K_blk = 16 * vnni_granularity;
-    matmul_conf_for_reorder_.K_tail
-            = matmul_conf_for_reorder_.K % matmul_conf_for_reorder_.K_blk;
-    matmul_conf_for_reorder_.src_dt = matmul_conf_for_reorder_.wei_dt = type_o;
-    matmul_conf_for_reorder_.a_dt_sz = matmul_conf_for_reorder_.tr_a_dt_sz
-            = types::data_type_size(matmul_conf_for_reorder_.src_dt);
-    matmul_conf_for_reorder_.b_dt_sz = types::data_type_size(type_i);
-    matmul_conf_for_reorder_.tr_b_dt_sz
-            = types::data_type_size(matmul_conf_for_reorder_.wei_dt);
-    matmul_conf_for_reorder_.copy_B_wei_stride
-            = matmul_conf_for_reorder_.N * matmul_conf_for_reorder_.b_dt_sz;
-    matmul_conf_for_reorder_.transposed_B = false;
-    matmul_conf_for_reorder_.s8s8_comp_b_str = utils::rnd_up(
-            matmul_conf_for_reorder_.N, matmul_conf_for_reorder_.wei_n_blk);
-    matmul_conf_for_reorder_.s8s8_comp_n_str
-            = matmul_conf_for_reorder_.wei_n_blk;
-    matmul_conf_for_reorder_.s8s8_compensation_required
-            = od.extra().flags & memory_extra_flags::compensation_conv_s8s8;
-    const bool req_asymmetric_comp = od.extra().flags
-            & memory_extra_flags::compensation_conv_asymmetric_src;
-    matmul_conf_for_reorder_.src_zp_type = req_asymmetric_comp
-            ? brgemm_broadcast_t::per_tensor
-            : brgemm_broadcast_t::none;
-    matmul_conf_for_reorder_.has_zero_point_a
-            = matmul_conf_for_reorder_.src_zp_type != brgemm_broadcast_t::none;
-    matmul_conf_for_reorder_.isa = is_f16 ? avx512_core_fp16 : avx512_core;
+    CHECK(init_conf(matmul_conf_for_reorder_, src_md_, dst_md_));
 
     auto mask_ok = [&](bool check, int mask) {
         return IMPLICATION(

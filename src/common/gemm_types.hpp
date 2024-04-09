@@ -72,9 +72,7 @@ struct gemm_desc_t {
 
     // Simplified accessors that comply to GEMM API
     static transpose_t get_trans(const memory_desc_t &md) {
-        if (!md.ndims) return transpose::notrans; // arbitrary
-        return md.dims[md.ndims - 1] != 1
-                        && md.format_desc.blocking.strides[md.ndims - 1] != 1
+        return md.format_desc.blocking.strides[md.ndims - 1] != 1
                 ? transpose::trans
                 : transpose::notrans;
     }

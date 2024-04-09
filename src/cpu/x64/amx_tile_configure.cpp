@@ -26,16 +26,16 @@ struct jit_amx_tilecfg_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_amx_tilecfg_t)
 
     // TODO: Need to check status
-    jit_amx_tilecfg_t() : jit_generator(jit_name(), avx512_core_amx) {
+    jit_amx_tilecfg_t(bool lazy = false)
+        : jit_generator(jit_name(), avx512_core_amx), is_lazy_(lazy) {
         create_kernel();
     }
 
     void tile_configure(const char *palette) const { (*this)(palette); }
     // TODO: merge into a single call. Keep both versions for now until there's
     // a clear path lazy initialization API used across the library.
-    void tile_lazy_configure(
-            const char *new_palette, const char *old_palette) const {
-        (*this)(new_palette, old_palette);
+    void tile_lazy_configure(const char *palette) const {
+        (*this)(palette, palette_store_);
     }
 
 private:
@@ -45,11 +45,12 @@ private:
     // According to measurements, the impact on performance is marginal compared
     // to manual handling of when palette should be loaded.
     bool is_lazy_;
+    char palette_store_[AMX_PALETTE_SIZE];
 
     void generate() override {
         if (is_lazy_) {
             Xbyak::Label skip_tilecfg;
-            // Store currect tilecfg into `old_palette`.
+            // Store currect tilecfg into `palette_store_`.
             sttilecfg(ptr[abi_param2]);
             // Move tilecfg into Zmm for further comparison.
             vmovdqu64(Xbyak::Zmm(0), ptr[abi_param2]);
@@ -95,10 +96,7 @@ status_t amx_tile_configure(const char palette[AMX_PALETTE_SIZE]) {
 
 status_t amx_tile_lazy_configure(const char palette[AMX_PALETTE_SIZE]) {
     static const jit_amx_tilecfg_t tilecfg(/* is_lazy = */ true);
-    // Must be a per-thread storage to avoid writing race condition if used as
-    // a member of `jit_amx_tilecfg_t` class.
-    char palette_storage[AMX_PALETTE_SIZE];
-    tilecfg.tile_lazy_configure(palette, palette_storage);
+    tilecfg.tile_lazy_configure(palette);
     return status::success;
 };
 

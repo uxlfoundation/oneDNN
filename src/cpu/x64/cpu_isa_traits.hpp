@@ -444,9 +444,9 @@ static inline int isa_max_vlen(cpu_isa_t isa) {
 
     if (is_avx512)
         return cpu_isa_traits<avx512_core>::vlen;
-    else if (is_avx)
+    else if (is_superset(isa, avx))
         return cpu_isa_traits<avx>::vlen;
-    else
+    else if (is_superset(isa, sse41))
         return cpu_isa_traits<sse41>::vlen;
 }
 
@@ -460,9 +460,9 @@ static inline int isa_num_vregs(cpu_isa_t isa) {
 
     if (is_avx512)
         return cpu_isa_traits<avx512_core>::n_vregs;
-    else if (is_avx)
+    else if (is_superset(isa, avx))
         return cpu_isa_traits<avx>::n_vregs;
-    else
+    else if (is_superset(isa, sse41))
         return cpu_isa_traits<sse41>::n_vregs;
 }
 

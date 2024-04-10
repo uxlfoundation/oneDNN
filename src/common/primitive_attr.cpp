@@ -114,16 +114,17 @@ status_t zero_points_t::set(int arg, int mask, int ndims, const dims_t groups,
 }
 
 status_t dropout_t::set_default_formats(const memory_desc_t *dst_md) {
-    auto is_any_or_undef = [](format_kind_t kind) {
-        return one_of(kind, dnnl_format_kind_any, dnnl_format_kind_undef);
-    };
-    const bool dst_ok = dst_md && !is_any_or_undef(dst_md->format_kind);
-    if (dst_ok && is_any_or_undef(dropout_desc_.format_kind)) {
+    if (memory_desc_matches_one_of_tag(
+                dropout_desc_, dnnl_format_tag_any, dnnl_format_tag_undef)) {
+        if (!dst_md
+                || memory_desc_matches_one_of_tag(
+                        *dst_md, dnnl_format_tag_any, dnnl_format_tag_undef))
+            return status::invalid_arguments;
         const memory_desc_wrapper dst_mdw(dst_md);
         CHECK(memory_desc_init_by_blocking_desc(
                 dropout_desc_, dst_mdw.blocking_desc()));
     }
-    return (dst_ok) ? status::success : status::invalid_arguments;
+    return status::success;
 }
 
 } // namespace impl
@@ -171,8 +172,6 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
                     dnnl::impl::accumulation_mode::any)));
     CHECK_ARG(IMPLICATION(
             (bool)(~mask & smask_t::dropout), dropout_.has_default_values()));
-    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::rounding_mode),
-            rounding_mode_.has_default_values()));
     CHECK_ARG(this->defined(defined_mask));
     bool fpmath_mode_ok = IMPLICATION(
             (bool)(~mask & smask_t::fpmath_mode) && fpmath_.apply_to_int_,

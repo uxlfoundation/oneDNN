@@ -418,7 +418,6 @@ struct attr_t {
     void insert(dnnl_accumulation_mode_t am) { this->acc_mode = am; }
     void insert(const deterministic_t &d) { this->deterministic = d; }
     void insert(const dropout_t &d) { this->dropout = d; }
-    void insert(const rounding_mode_t &rm) { this->rounding_mode = rm; }
 
     // When parallel creation modifier is enabled, the library scratchpad mode
     // can't be used unless "-DDNNL_ENABLE_CONCURRENT_EXEC=ON" is enabled at the
@@ -439,7 +438,6 @@ struct attr_t {
     dnnl_accumulation_mode_t acc_mode;
     deterministic_t deterministic;
     dropout_t dropout;
-    rounding_mode_t rounding_mode;
 
     bool is_def(bool skip_fpmath = false) const;
 };
@@ -565,7 +563,6 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops);
 std::ostream &operator<<(std::ostream &s, dnnl_scratchpad_mode_t sm);
 std::ostream &operator<<(std::ostream &s, const attr_t::fpmath_mode_t &fm);
 std::ostream &operator<<(std::ostream &s, dnnl_accumulation_mode_t am);
-std::ostream &operator<<(std::ostream &s, dnnl_rounding_mode_t rm);
 std::ostream &operator<<(std::ostream &s, const attr_t::dropout_t &drop);
 std::ostream &operator<<(std::ostream &s, const attr_t &attr);
 
@@ -653,6 +650,8 @@ dnnl_rounding_mode_t str2rounding_mode(const std::string &str);
 
 struct dnn_mem_t;
 
+struct dnn_mem_t;
+
 void maybe_scale(const attr_t &attr, float &d, const float *scales, int64_t c,
         int arg, bool opposite_scale = false);
 void maybe_zero_point(const attr_t &attr, float &d, const int32_t *zero_points,
@@ -661,12 +660,9 @@ float compute_eltwise_fwd(
         attr_t::post_ops_t::kind_t kind, float src, float alpha, float beta);
 float compute_eltwise_bwd(attr_t::post_ops_t::kind_t kind, float d_dst,
         float src, float alpha, float beta);
-float compute_binary(
-        attr_t::post_ops_t::kind_t kind, float src0, float src1, bool src2);
+float compute_binary(attr_t::post_ops_t::kind_t kind, float src0, float src1);
 void maybe_dropout(const attr_t &attr, float &val, int64_t offset,
         const dnn_mem_t &dropout);
-void maybe_round(const attr_t &attr, int arg, float &val, int64_t offset,
-        dnnl_data_type_t dst_dt);
 void maybe_post_ops(const attr_t &attr, float &val, float sum_val,
         const std::vector<float> &v_po_vals);
 inline void maybe_post_ops(

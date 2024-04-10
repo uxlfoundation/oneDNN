@@ -74,6 +74,8 @@ const fill_cfg_t &get_perf_fill_cfg(dnnl_data_type_t dt);
 
 int fill_dropout_mask(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp);
 
+int fill_dropout_mask(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp);
+
 int fill_scales(
         const attr_t &attr, int arg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp);
 int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2025 Intel Corporation
+* Copyright 2018-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -64,8 +64,7 @@ status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
                                 == (DNNL_ARG_ATTR_POST_OP_DW
                                         | DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
                         || (arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY)
-                        || (arg == DNNL_ARG_ATTR_DROPOUT_SEED)
-                        || (arg == DNNL_ARG_ATTR_ROUNDING_SEED);
+                        || (arg == DNNL_ARG_ATTR_DROPOUT_SEED);
                 break;
             case primitive_desc_t::arg_usage_t::output:
                 args[arg] = {mem, false};

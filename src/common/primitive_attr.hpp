@@ -389,6 +389,20 @@ private:
     }
 };
 
+struct dropout_t : public c_compatible {
+    dropout_t() = default;
+
+    bool has_default_values() const {
+        return types::is_zero_md(&user_dropout_desc_);
+    }
+    bool operator==(const dropout_t &rhs) const {
+        return user_dropout_desc_ == rhs.user_dropout_desc_;
+    }
+    status_t set_default_formats(const memory_desc_t *dst_md);
+    dnnl::impl::memory_desc_t dropout_desc_;
+    dnnl::impl::memory_desc_t user_dropout_desc_;
+};
+
 struct serialization_stream_t;
 
 struct primitive_attr_item_t {
@@ -724,7 +738,6 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         zero_points_runtime_data_type
         = (unsigned)zero_points_runtime | (1u << 18),
         dropout = 1u << 19,
-        rounding_mode = 1u << 20,
     };
 
     /** Returns true if the attributes have default values.
@@ -750,8 +763,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
                 && ((gpu_attr_ && rhs.gpu_attr_
                             && gpu_attr_->is_equal(*rhs.gpu_attr_))
                         || (!gpu_attr_ && !rhs.gpu_attr_))
-                && dropout_ == rhs.dropout_
-                && rounding_mode_ == rhs.rounding_mode_;
+                && dropout_ == rhs.dropout_;
         return ret;
     }
 
@@ -826,7 +838,6 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
     dnnl::impl::rnn_create_time_scales_t rnn_weights_projection_qparams_;
     dnnl::impl::rnn_tparams_t rnn_tparams_;
     dnnl::impl::dropout_t dropout_;
-    dnnl::impl::rnd_mode_t rounding_mode_;
 
     std::unique_ptr<dnnl::impl::primitive_attr_item_t> gpu_attr_;
 

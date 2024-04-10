@@ -265,6 +265,36 @@ static int check_attr() {
         def = base_settings_t();
     }
 
+    {
+        base_settings_t s;
+        std::vector<attr_t::dropout_t> &d = s.dropout;
+        auto st = parse_attributes(s, def, "--attr-dropout=0.5:12345:axb");
+        SELF_CHECK_EQ(st, true);
+        SELF_CHECK_EQ(d[0].p, 0.5f);
+        SELF_CHECK_EQ(d[0].seed, 12345);
+        SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::axb);
+    }
+
+    {
+        base_settings_t s;
+        std::vector<attr_t::dropout_t> &d = s.dropout;
+        auto st = parse_attributes(s, def, "--attr-dropout=0.75");
+        SELF_CHECK_EQ(st, true);
+        SELF_CHECK_EQ(d[0].p, 0.75f);
+        SELF_CHECK_EQ(d[0].seed, 0);
+        SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::any);
+    }
+
+    {
+        base_settings_t s;
+        std::vector<attr_t::dropout_t> &d = s.dropout;
+        auto st = parse_attributes(s, def, "--attr-dropout=");
+        SELF_CHECK_EQ(st, true);
+        SELF_CHECK_EQ(d[0].p, 0.f);
+        SELF_CHECK_EQ(d[0].seed, 0);
+        SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::any);
+    }
+
 #undef SELF_CHECK_ATTR_ZP
 
     return OK;

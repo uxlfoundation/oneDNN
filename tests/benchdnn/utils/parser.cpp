@@ -316,30 +316,6 @@ attr_t::fpmath_mode_t parse_attr_fpmath_mode_func(const std::string &s) {
     return v;
 }
 
-attr_t::rounding_mode_t parse_attr_rounding_mode_func(const std::string &s) {
-    attr_t::rounding_mode_t rm;
-
-    if (s.empty()) return rm;
-
-    size_t start_pos = 0;
-    while (start_pos != std::string::npos) {
-        auto subs = parser::get_substr(s, start_pos, '+');
-        size_t subs_pos = 0;
-
-        auto arg = str2arg(parser::get_substr(subs, subs_pos, ':'));
-        if (arg == DNNL_ARG_UNDEF) {
-            BENCHDNN_PRINT(0, "%s\n", "Error: undefined argument index");
-            SAFE_V(FAIL);
-        }
-        if (subs_pos != std::string::npos)
-            rm.set(arg,
-                    str2rounding_mode(parser::get_substr(subs, subs_pos, ':')));
-        if (subs_pos != std::string::npos)
-            rm.set_seed(stoll_safe(get_substr(subs, subs_pos, ':')));
-    }
-    return rm;
-}
-
 attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     const char *err = "Error: dangling symbol at the end of input";
     attr_t::dropout_t v;
@@ -369,7 +345,8 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
         }
 
         if (start_pos != std::string::npos) {
-            v.tag = get_substr(s, start_pos, '\0');
+            subs = get_substr(s, start_pos, '\0');
+            v.tag = subs;
 
             if (check_tag(v.tag) != OK) {
                 BENCHDNN_PRINT(0, "%s \'%s\' %s\n", "Error: dropout mask tag",
@@ -385,30 +362,6 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     }
 
     return v;
-}
-
-bool parse_impl_filter(impl_filter_t &impl_filter,
-        const impl_filter_t &def_impl_filter, bool use_impl, const char *str,
-        const std::string &option_name, const std::string &help) {
-    const auto chars2chars = [](const char *str) { return str; };
-    const auto str2impl_filter = [&](const char *str) {
-        std::vector<std::string> v, def;
-        parse_vector_str(v, def, chars2chars, str);
-
-        // Remove all quotes from input string since they affect the search.
-        for_(auto &e : v)
-        for (auto c : {'"', '\''}) {
-            size_t start_pos = 0;
-            while (start_pos != eol) {
-                start_pos = e.find_first_of(c, start_pos);
-                if (start_pos != eol) e.erase(start_pos, 1);
-            }
-        }
-
-        return impl_filter_t(v, use_impl);
-    };
-    return parse_single_value_option(impl_filter, def_impl_filter,
-            str2impl_filter, str, option_name, help);
 }
 
 } // namespace parser_utils
@@ -643,6 +596,7 @@ bool parse_attributes(
     const bool parsed_attrs = parse_attr_scales(s.scales, str)
             || parse_attr_zero_points(s.zero_points, str)
             || parse_attr_post_ops(s.post_ops, str)
+            || parse_attr_dropout(s.dropout, def.dropout, str)
             || parse_attr_scratchpad_mode(
                     s.scratchpad_mode, def.scratchpad_mode, str)
             || parse_attr_fpmath_mode(s.fpmath_mode, def.fpmath_mode, str)

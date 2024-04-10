@@ -602,7 +602,7 @@ bool attr_t::is_def(bool skip_fpmath) const {
             && scratchpad_mode == get_default_scratchpad_mode()
             && IMPLICATION(!skip_fpmath, fpmath_mode.is_def())
             && acc_mode == dnnl_accumulation_mode_strict
-            && deterministic.is_def();
+            && deterministic.is_def() && dropout.is_def();
 }
 
 int attr_t::post_ops_t::find(pk_t kind, int start, int stop) const {
@@ -1611,9 +1611,56 @@ void maybe_dropout(const attr_t &attr, float &val, int64_t offset,
         const dnn_mem_t &dropout_m) {
 
     auto philox_bernoulli = [](float p, int seed, int64_t d) {
-        uint32_t r = dnnl::impl::math::philox4x32(d, seed);
+        auto philox4x32round = [](uint32_t *ctr, uint32_t *key) {
+            auto mulhilo32
+                    = [](uint32_t a, uint32_t b, uint32_t &hi, uint32_t &lo) {
+                          const uint64_t product = static_cast<uint64_t>(a) * b;
+                          lo = static_cast<uint32_t>(product);
+                          hi = static_cast<uint32_t>(product >> 32);
+                      };
+            constexpr static uint32_t PHILOX_M4x32_0 = 0xD2511F53;
+            constexpr static uint32_t PHILOX_M4x32_1 = 0xCD9E8D57;
+            uint32_t hi0, lo0;
+            uint32_t hi1, lo1;
+            mulhilo32(PHILOX_M4x32_0, ctr[0], hi0, lo0);
+            mulhilo32(PHILOX_M4x32_1, ctr[2], hi1, lo1);
+            ctr[0] = hi1 ^ ctr[1] ^ key[0];
+            ctr[1] = lo1;
+            ctr[2] = hi0 ^ ctr[3] ^ key[1];
+            ctr[3] = lo0;
+        };
+
+        auto philox4x32bumpkey = [](uint32_t *key) {
+            constexpr static uint32_t PHILOX_W4x32_0 = 0x9E3779B9;
+            constexpr static uint32_t PHILOX_W4x32_1 = 0xBB67AE85;
+            key[0] += PHILOX_W4x32_0;
+            key[1] += PHILOX_W4x32_1;
+        };
+
+        uint32_t x = (d & ~3L);
+        uint32_t ctr[4] = {x + 0, x + 1, x + 2, x + 3};
+        uint32_t key[2] = {uint32_t(seed), uint32_t(seed)};
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
+        philox4x32bumpkey(key);
+        philox4x32round(ctr, key);
         p = std::max(std::min(p, 1.f), 0.f);
-        return (r > double(std::numeric_limits<uint32_t>::max()) * p);
+        return (ctr[d & 3L] > double(std::numeric_limits<uint32_t>::max()) * p);
     };
 
     if (!attr.dropout.is_def()) {
@@ -1623,19 +1670,6 @@ void maybe_dropout(const attr_t &attr, float &val, int64_t offset,
         uint8_t m = philox_bernoulli(p, seed, offset);
         dropout_m.set_elem(offset, m);
         val = (m) ? val * inv_q : 0;
-    }
-}
-
-void maybe_round(const attr_t &attr, int arg, float &val, int64_t offset,
-        dnnl_data_type_t dst_dt) {
-    uint32_t seed = attr.rounding_mode.seed;
-    switch (attr.rounding_mode.get(arg)) {
-        case dnnl_rounding_mode_stochastic:
-            val = dnnl::impl::math::stochastic_round_fwd(
-                    val, offset, seed, dst_dt);
-            break;
-        case dnnl_rounding_mode_environment: break;
-        default: assert(!"unknown rounding mode");
     }
 }
 

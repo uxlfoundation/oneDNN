@@ -884,7 +884,6 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 dnn_mem_t(ndims, dims.data(), dnnl_f32, tag::axb, test_engine));
     }
 
-    // Dropout
     if (is_fwd_training(prop_kind) && !prb->attr.dropout.is_def()) {
         const auto &dropout_md = query_md(const_pd, DNNL_ARG_ATTR_DROPOUT_MASK);
         mem_map.emplace(

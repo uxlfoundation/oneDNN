@@ -858,8 +858,7 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
     }
 
     if (!attr->dropout_.has_default_values()) {
-        ss << field_delim() << "attr-dropout";
-        const memory_desc_wrapper mdw(attr->dropout_.user_dropout_desc_);
+        const memory_desc_wrapper mdw(attr->dropout_.dropout_desc_);
         switch (mdw.format_kind()) {
             case format_kind::blocked:
                 if (!mdw.count_non_unit_dims(1))

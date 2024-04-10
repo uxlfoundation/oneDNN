@@ -3986,11 +3986,10 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     void get_dropout(memory::desc &mask_desc) const {
         const_dnnl_memory_desc_t cdesc;
         error::wrap_c_api(dnnl_primitive_attr_get_dropout(get(), &cdesc),
-                err_message_list::get_failure(
-                        "parameters of a dropout attribute"));
+                "could not get parameters of a dropout attribute");
         dnnl_memory_desc_t cloned_md = nullptr;
         error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md, cdesc),
-                err_message_list::clone_error("memory descriptor"));
+                "could not clone a memory descriptor");
         mask_desc = memory::desc(cloned_md);
     }
 
@@ -4000,7 +3999,7 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     void set_dropout(const memory::desc &mask_desc) {
         error::wrap_c_api(
                 dnnl_primitive_attr_set_dropout(get(), mask_desc.get()),
-                err_message_list::set_failure("dropout primitive attribute"));
+                "could not set dropout primitive attribute");
     }
 
     /// Returns the fpmath mode

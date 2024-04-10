@@ -1,7 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -77,6 +76,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 && attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_ != 0) {
             // This case requires scratchpad
             if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
+        }
+
+        if (!attr()->scales_.get(DNNL_ARG_SRC).has_default_values()
+                || !attr()->scales_.get(DNNL_ARG_WEIGHTS).has_default_values()
+                || !attr()->scales_.get(DNNL_ARG_DST).has_default_values()) {
+            return false;
         }
 
         if (!attr()->post_ops_.sum_with_default_dt()) return false;
@@ -175,8 +180,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             abced, abcdfe, abcdegf, abcdefhg, abcdefgih, abcdefghji,
             abcdefghikj, abcdefghijlk);
 
-    if ((mayiuse(sve_512) && is_B_transposed) || is_A_transposed)
-        return status::unimplemented;
+    if (is_A_transposed || is_B_transposed) return status::unimplemented;
 
     return status::success;
 }
@@ -643,6 +647,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
                 = (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
         ctx.current_K_start = k;
         ctx.current_K_iters = nstl::min(bgmmc.K_blk, bgmmc.K);
+        assert(isa == sve_512);
         (*copy_B_kernel_)(&ctx);
     }
 
@@ -654,6 +659,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
                 = (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
         ctx.current_K_start = k;
         ctx.current_K_iters = bgmmc.K % bgmmc.K_blk;
+        assert(isa == sve_512);
         (*copy_B_kernel_)(&ctx);
     }
 }
@@ -1427,7 +1433,6 @@ private:
 };
 
 template struct brgemm_matmul_t<sve_512>;
-template struct brgemm_matmul_t<sve_256>;
 
 } // namespace matmul
 } // namespace aarch64

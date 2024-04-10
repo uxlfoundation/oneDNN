@@ -2339,8 +2339,8 @@ struct jit_single_blk_kernel_t : public jit_generator {
     }
 
     // tail can be 1 ~ 16, using sve2 for now
-    void gen_ker16x16_in_8x8(int i_off, int o_off, int input_stride,
-            int output_stride, int in_tail, int out_tail) {
+    void gen_ker16x16_in_8x8(
+            int input_stride, int output_stride, int in_tail, int out_tail) {
         constexpr auto lane = 16;
         constexpr auto sub_lane = lane / 2;
         auto tail = in_tail != lane ? in_tail : out_tail;

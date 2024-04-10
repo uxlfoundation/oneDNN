@@ -27,16 +27,17 @@ struct base_settings_t {
                 const std::vector<dnnl_scratchpad_mode_t> &scratchpad_mode,
                 const std::vector<attr_t::fpmath_mode_t> &fpmath_mode,
                 const std::vector<dnnl_accumulation_mode_t> &acc_mode,
-                const std::vector<attr_t::deterministic_t> &deterministic) {
+                const std::vector<attr_t::deterministic_t> &deterministic,
+                const std::vector<attr_t::dropout_t> &dropout) {
             for_(const auto &s : scales)
             for_(const auto &zp : zero_points)
             for_(const auto &po : post_ops)
             for_(const auto &sm : scratchpad_mode)
             for_(const auto &fm : fpmath_mode)
             for_(const auto &am : acc_mode)
-            for (const auto &d : deterministic) {
-                attrs_.push_back(get_attr(s, zp, po, sm, fm, am, d));
-            }
+            for_(const auto &d : deterministic)
+            for (const auto &dr : dropout)
+                attrs_.push_back(get_attr(s, zp, po, sm, fm, am, d, dr));
         }
 
         using vector_type = std::vector<attr_t>;
@@ -118,7 +119,7 @@ struct base_settings_t {
     virtual void finalize() {
         attributes.clear();
         attributes.init(scales, zero_points, post_ops, scratchpad_mode,
-                fpmath_mode, acc_mode, deterministic);
+                fpmath_mode, acc_mode, deterministic, dropout);
     }
 };
 

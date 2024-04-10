@@ -2927,12 +2927,6 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
 
             if (hw < HW::XeHPC || !astrategy.newDP) hw_unsupported();
 
-            int minAlign = (astrategy.prefetch ? 4 : 8);
-            // temporarily disabled pending catalog update:
-            // if (hw >= HW::Xe2) minAlign = 16;
-            if (hw >= HW::Xe3p) minAlign = 4; /* alignment drama */
-            if (hw >= HW::Xe2) minAlign = 16;
-
             // Choose underlying type.
             auto Tblock = T;
             if (transpose) {

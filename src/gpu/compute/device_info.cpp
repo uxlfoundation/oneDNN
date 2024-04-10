@@ -230,6 +230,9 @@ int device_info_t::slm_memory_bank_count(gpu_arch_t gpu_arch) {
         case gpu::compute::gpu_arch_t::xe_hp: return 65;
         case gpu::compute::gpu_arch_t::xe2:
         case gpu::compute::gpu_arch_t::xe_hpc: return 64;
+#if XE3P
+        case gpu::compute::gpu_arch_t::xe3p: return 64;
+#endif
         case gpu::compute::gpu_arch_t::xe_hpg: return 32;
         case gpu::compute::gpu_arch_t::unknown: assert(!"not expected");
     }
@@ -245,6 +248,9 @@ int device_info_t::slm_memory_bank_granularity(gpu_arch_t gpu_arch) {
         case gpu::compute::gpu_arch_t::xe2:
         case gpu::compute::gpu_arch_t::xe_hpc:
         case gpu::compute::gpu_arch_t::xe_hpg: return 8;
+#if XE3P
+        case gpu::compute::gpu_arch_t::xe3p: return 8;
+#endif
         case gpu::compute::gpu_arch_t::unknown: assert(!"not expected");
     }
     return 4;
@@ -260,7 +266,7 @@ size_t device_info_t::icache_size() const {
         case gpu::compute::gpu_arch_t::xe_hpc: return 80 * 1024;
         case gpu::compute::gpu_arch_t::xe2: return 96 * 1024;
 #if XE3P
-        case gpu_xe3p: return 80 * 1024;
+        case gpu::compute::gpu_arch_t::xe3p: return 80 * 1024;
 #endif
         case gpu::compute::gpu_arch_t::unknown: assert(!"not expected");
     }

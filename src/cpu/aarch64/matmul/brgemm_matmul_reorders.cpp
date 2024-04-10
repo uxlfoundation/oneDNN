@@ -85,8 +85,7 @@ status_t brgemm_matmul_matrix_B_reorder_t::pd_t::init(
     matmul_conf_for_reorder_.K = dims[ndims - 2];
     matmul_conf_for_reorder_.N = dims[ndims - 1];
     matmul_conf_for_reorder_.wei_n_blk = matmul_conf_for_reorder_.N_blk
-            = matmul_conf_for_reorder_.LDB
-            = matmul::get_default_n_block(otag, matmul_conf_for_reorder_);
+            = matmul_conf_for_reorder_.LDB = matmul::get_default_n_block(otag);
     matmul_conf_for_reorder_.N_tail
             = matmul_conf_for_reorder_.N % matmul_conf_for_reorder_.N_blk;
     matmul_conf_for_reorder_.K_blk = 16 * vnni_granularity;
@@ -110,7 +109,7 @@ status_t brgemm_matmul_matrix_B_reorder_t::pd_t::init(
             : brgemm_broadcast_t::none;
     matmul_conf_for_reorder_.has_zero_point_a
             = matmul_conf_for_reorder_.src_zp_type != brgemm_broadcast_t::none;
-    matmul_conf_for_reorder_.isa = (!mayiuse(sve_512)) ? sve_256 : sve_512;
+    matmul_conf_for_reorder_.isa = sve_512;
 
     auto mask_ok = [&](bool check, int mask) {
         return IMPLICATION(

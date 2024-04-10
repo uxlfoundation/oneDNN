@@ -1,6 +1,5 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
-* Copyright 2023-2024 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,7 +18,6 @@
 #define CPU_AARCH64_MATMUL_BRGEMM_MATMUL_UTILS_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/math_utils.hpp"
 #include "common/memory_tracking.hpp"
 
 #include "common/verbose.hpp"
@@ -313,7 +311,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         const brgemm_matmul_conf_t &bgmmc);
 
-int get_default_n_block(format_tag_t, brgemm_matmul_conf_t &bgmmc);
+int get_default_n_block(format_tag_t matrix_b_tag);
 
 } // namespace matmul
 } // namespace aarch64

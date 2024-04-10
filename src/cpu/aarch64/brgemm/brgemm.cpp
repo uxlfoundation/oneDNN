@@ -1,7 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
-* Copyright 2023-2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2023 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -171,8 +170,8 @@ status_t brgemm_desc_init(brgemm_t *brg, cpu_isa_t isa,
     if (brg == nullptr) return status::invalid_arguments;
     if (transA || transB) return status::unimplemented;
 
-    CHECK(brgemm_utils::init_brgemm_conf(brg, isa, type, dt_a, dt_b, layout,
-            alpha, beta, LDA, LDB, LDC, M, N, K, strides));
+    brgemm_utils::init_brgemm_conf(brg, isa, type, dt_a, dt_b, layout, alpha,
+            beta, LDA, LDB, LDC, M, N, K, strides);
 
     if (M <= 0 || N <= 0 || K <= 0) return status::invalid_arguments;
     bool ldx_check = (brg->is_row_major()) ? (LDA < K)
@@ -198,8 +197,8 @@ status_t brdgmm_desc_init(brgemm_t *brg, cpu_isa_t isa,
     if (transA || layout != brgemm_row_major || alpha != 1.0f || beta != 0.f)
         return status::unimplemented;
 
-    CHECK(brgemm_utils::init_brdgmm_conf(brg, isa, type, dt_a, dt_b, layout,
-            alpha, beta, LDA, LDC, M, N, strides));
+    brgemm_utils::init_brdgmm_conf(brg, isa, type, dt_a, dt_b, layout, alpha,
+            beta, LDA, LDC, M, N, strides);
 
     const bool ldx_check = (LDA < N || LDC < N);
     if (ldx_check) return status::invalid_arguments;
@@ -334,10 +333,8 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
     init_zp_type(brg->zp_type_c, DNNL_ARG_DST);
 
     // src zero points require additional register in brgemm kernel
-    const bool is_zp_src = brg->zp_type_a != brgemm_broadcast_t::none;
-    if (brg->is_dgmm) {
-        if (is_zp_src) CHECK(brdgmm_blocking(brg));
-    } else if (is_zp_src || brg->is_bf16_emu)
+    if (brg->zp_type_a != brgemm_broadcast_t::none
+            || (brg->is_bf16_emu && !brg->is_dgmm))
         CHECK(brgemm_blocking(brg));
 
     return status::success;
@@ -400,6 +397,9 @@ status_t brgemm_desc_set_attr(brgemm_t *brg, const brgemm_attr_t &brgattr) {
 
     if (!IMPLICATION(brg->is_blocked, brg->layout = brgemm_row_major))
         return status::invalid_arguments;
+
+    if (brgattr.max_top_vpad > 0 || brgattr.max_bottom_vpad > 0)
+        return status::unimplemented;
 
     brg->prfA = brgattr.hint_prfA;
     brg->prfB = brgattr.hint_prfB;
@@ -518,7 +518,6 @@ int brgemm_cmp(const brgemm_t &lhs, const brgemm_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.bd_mask_level);
     CMP_BRGEMM_FIELD(brgattr.use_uker);
     CMP_BRGEMM_FIELD(brgattr.use_interleave_stores);
-    CMP_BRGEMM_FIELD(brgattr.b_is_vnni);
     CMP_BRGEMM_FIELD(brgattr.fpmath_mode);
     CMP_BRGEMM_FIELD(brgattr.LDA2);
     CMP_BRGEMM_FIELD(brgattr.LDB2);

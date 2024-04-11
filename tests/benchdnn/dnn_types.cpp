@@ -601,8 +601,7 @@ bool attr_t::is_def(bool skip_fpmath) const {
             && scratchpad_mode == get_default_scratchpad_mode()
             && IMPLICATION(!skip_fpmath, fpmath_mode.is_def())
             && acc_mode == dnnl_accumulation_mode_strict
-            && rounding_mode.is_def() && deterministic.is_def()
-            && dropout.is_def();
+            && deterministic.is_def();
 }
 
 int attr_t::post_ops_t::find(pk_t kind, int start, int stop) const {

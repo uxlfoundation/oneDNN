@@ -15,9 +15,26 @@ where *reorder-knobs* are:
             Refer to [tags](knobs_tag.md) for details.
  - `--dtag={nchw [default], ...}` -- physical dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
- - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
-            for `src` and `dst` tensors through strides values.
-            Refer to [option documentation](knob_strides.md) for details.
+ - `--strides=S_0xS_1x..xS_n:D_0xD_1x..xD_n` -- direct
+            stride specification for `src` and `dst` tensors that can be
+            specified as an alternative to memory formats. The syntax matches
+            with dimensions descriptor where `x` is the delimiter for
+            dimensions within a tensor and `:` is the delimiter for tensors in
+            the order `src` and `dst` respectively. The stride for either of the
+            tensors can be skipped and moreover if a separate tag
+            is not provided for the skipped tensor, trivial strides based on the
+            default format of the skipped tensor will be used. As long as
+            `--strides` and `--tag` options refer to different tensors, they
+            can be specified together.
+ - `--attr-scales=STRING` -- per argument scales primitive attribute. No
+            scales are set by default. Refer to [attributes](knobs_attr.md)
+            for details.
+ - `--attr-zero-points=STRING` -- zero points primitive attribute. No zero
+            points are set by default. Refer to [attributes](knobs_attr.md)
+            for details.
+ - `--attr-post-ops=STRING` -- post operation primitive attribute. No post
+            operations are set by default. Refer to [attributes](knobs_attr.md)
+            for details.
  - `--oflag=FLAG:MASK[+...]` -- memory descriptor extra field specifier. By
             default `FLAG` is empty and `MASK` is `0`. Possible `FLAG` values
             are:

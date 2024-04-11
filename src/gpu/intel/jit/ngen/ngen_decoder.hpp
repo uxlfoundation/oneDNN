@@ -17,11 +17,6 @@
 #ifndef NGEN_DECODER_HPP
 #define NGEN_DECODER_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
-
 #include "ngen_core.hpp"
 #include "ngen_auto_swsb.hpp"
 
@@ -79,8 +74,10 @@ bool Decoder::getOperandRegion(autoswsb::DependencyRegion &region, int opNum) co
 {
     checkCompaction();
     region.hw = hw;
+#if XE3P
     if (hw >= HW::Xe3p)
         return get<InstructionXe3p>().getOperandRegion(region, opNum);
+#endif
     if (hw >= HW::XeHPC)
         return get<InstructionXeHPC>().getOperandRegion(region, opNum);
     if (hw >= HW::Gen12LP)
@@ -93,9 +90,5 @@ bool Decoder::getOperandRegion(autoswsb::DependencyRegion &region, int opNum) co
 }
 
 } /* namespace NGEN_NAMESPACE */
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif
 
 #endif /* header guard */

@@ -28,14 +28,11 @@ namespace graph {
 struct flex_rewrite {
     flex_rewrite(const std::map<size_t, std::string> &in_shapes,
             const std::map<size_t, std::string> &op_attrs,
-            const graph_fpmath_mode_t &fpmath_mode, const int64_t mb,
-            const dnnl_data_type_t dt)
-
+            const std::string &fpmath_mode, const int64_t mb)
         : in_shapes_(in_shapes)
         , op_attrs_(op_attrs)
         , fpmath_mode_(fpmath_mode)
-        , mb_(mb)
-        , dt_(dt) {}
+        , mb_(mb) {}
 
     void rewrite(deserialized_graph &dgraph);
 
@@ -44,7 +41,7 @@ private:
     std::map<size_t, std::string> in_shapes_;
     // input attributes from CML
     std::map<size_t, std::string> op_attrs_;
-    graph_fpmath_mode_t fpmath_mode_;
+    std::string fpmath_mode_;
     int64_t mb_;
     dnnl_data_type_t dt_;
 
@@ -69,7 +66,6 @@ private:
     void update_output_info(deserialized_op &aop, deserialized_graph &dgraph,
             bool change_stride);
     void graph_attrs_rewrite(deserialized_graph &dgraph);
-    void dt_rewrite(deserialized_graph &dgraph);
 };
 
 } // namespace graph

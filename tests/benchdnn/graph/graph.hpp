@@ -47,11 +47,8 @@ struct settings_t : public base_settings_t {
     std::string json_file;
     std::vector<std::map<size_t, std::string>> in_shapes_vec {{{0, "default"}}};
     std::vector<std::map<size_t, std::string>> op_attrs_vec {{{0, "default"}}};
-    // `0` means not specified by user with command line knob, will skip
-    // the partition num check.
-    std::vector<size_t> expected_n_partition_vec {0};
-    std::vector<graph_fpmath_mode_t> fpmath_mode_vec {graph_fpmath_mode_t {}};
-    std::vector<dnnl_data_type_t> dt {dnnl_data_type_undef};
+    // `default` means not specified by user with command line knob.
+    std::vector<std::string> fpmath_mode_vec {"default"};
 
     const char *perf_template_csv
             = "perf,%engine%,%DESC%,"
@@ -64,12 +61,11 @@ struct settings_t : public base_settings_t {
 
 // TODO evaluate prb_t struct
 struct prb_t {
-    prb_t(const deserialized_graph &dg, const size_t &expected_n_partition)
-        : dg(dg), expected_n_partition(expected_n_partition) {
+    prb_t(const deserialized_graph &dg) : dg(dg) {
 
-        const auto &fpmath = dg.get_fpmath_mode();
-        fpmath_mode.mode_ = fpmath.first;
-        fpmath_mode.apply_to_int_ = fpmath.second;
+        const std::string &fpmath_mode = dg.get_fpmath_mode();
+        this->fpmath_mode = static_cast<dnnl::fpmath_mode>(
+                str2fpmath_mode(fpmath_mode.c_str()));
     }
 
     deserialized_graph dg;

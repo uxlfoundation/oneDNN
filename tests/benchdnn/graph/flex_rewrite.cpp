@@ -36,7 +36,6 @@ void flex_rewrite::rewrite(deserialized_graph &dgraph) {
     infer_output_shape(dgraph, change_stride);
     quantized_graph_rewrite(dgraph);
     graph_attrs_rewrite(dgraph);
-    dt_rewrite(dgraph);
 }
 
 void flex_rewrite::split_ncx(const std::string &data_format, dims_t &in,
@@ -1052,106 +1051,14 @@ void flex_rewrite::quantized_graph_rewrite(deserialized_graph &dgraph) {
     }
 }
 
-// Select: only rewrite src_1/src_2/dst as `cond` is always `bool`.
-void dt_rewrite_select(deserialized_op &select, const std::string &dt) {
-    select.in_lts_[1].data_type_ = dt;
-    select.in_lts_[2].data_type_ = dt;
-    select.out_lts_[0].data_type_ = dt;
-}
-
-// Normalization ops: only rewrite src/dst/diff_src/diff_dst as f16
-// normalization still requires f32 for gamma/beta/etc. This is good for most of
-// the cases. But there is a potential issue if gamma/beta/etc is connected to
-// another op which will rewrite the data type at other places.
-void dt_rewrite_norm(deserialized_op &norm, const std::string &dt) {
-    if (norm.kind_ == "BatchNormTrainingBackward"
-            || norm.kind_ == "LayerNormBackward") {
-        // rewrite for src/diff_dst/diff_src.
-        norm.in_lts_[0].data_type_ = dt;
-        norm.in_lts_[1].data_type_ = dt;
-        norm.out_lts_[0].data_type_ = dt;
-    } else {
-        // only rewrite for src/dst.
-        norm.in_lts_[0].data_type_ = dt;
-        norm.out_lts_[0].data_type_ = dt;
-    }
-}
-
-void flex_rewrite::dt_rewrite(deserialized_graph &dgraph) {
-    if (dt_ == dnnl_data_type_undef) return;
-
-    // We can only do data type rewriting for pure floating-point graph.
-    static const std::vector<dnnl_data_type_t> fp_dts {
-            dnnl_f32, dnnl_bf16, dnnl_f16};
-    if (!std::any_of(fp_dts.begin(), fp_dts.end(),
-                [this](const dnnl_data_type_t &dt) { return dt_ == dt; })) {
-        BENCHDNN_PRINT(0, "graph: rewrite: `%s` data type is not supported\n",
-                dt2str(dt_));
-        SAFE_V(FAIL);
-    }
-
-    static const std::vector<std::string> lowp_ops {
-            "TypeCast",
-            "Quantize",
-            "Dequantize",
-            "DynamicQuantize",
-            "DynamicDequantize",
-    };
-    // If the graph contains mix-precision ops, we cannot rewrite the data type
-    // trivially.
-    for (auto &aop : dgraph.ops_) {
-        if (std::any_of(lowp_ops.begin(), lowp_ops.end(),
-                    [&aop](const std::string &k) { return aop.kind_ == k; })) {
-            BENCHDNN_PRINT(0,
-                    "graph: rewrite: the graph contains operation `%s`\n",
-                    aop.kind_.c_str());
-            SAFE_V(FAIL);
-        }
-    }
-
-    // Normalization ops need additional handling. See the comments of function
-    // `dt_rewrite_norm`.
-    static const std::vector<std::string> norm_ops {
-            "BatchNormForwardTraining",
-            "BatchNormInference",
-            "BatchNormTrainingBackward",
-            "GroupNorm",
-            "LayerNorm",
-            "LayerNormBackward",
-    };
-
-    // rewrite
-    std::string str_dt(dt2str(dt_));
-    for (auto &aop : dgraph.ops_) {
-        if (aop.kind_ == "Select") {
-            dt_rewrite_select(aop, str_dt);
-        } else if (std::any_of(norm_ops.begin(), norm_ops.end(),
-                           [&aop](const std::string &k) {
-                               return aop.kind_ == k;
-                           })) {
-            dt_rewrite_norm(aop, str_dt);
-        } else {
-            for (auto &lt : aop.in_lts_) {
-                lt.data_type_ = str_dt;
-            }
-
-            for (auto &lt : aop.out_lts_) {
-                lt.data_type_ = str_dt;
-            }
-        }
-    }
-}
-
 void flex_rewrite::graph_attrs_rewrite(deserialized_graph &dgraph) {
 
-    // if the fpmath mode is specified by users through cml, replace the fpmath
-    // mode from JSON file with the value from cml.
-    if (fpmath_mode_.override_json_value_) dgraph.set_fpmath_mode(fpmath_mode_);
+    // if the fpmath mode is specified by users through cml
+    if (fpmath_mode_ != "default") dgraph.set_fpmath_mode(fpmath_mode_);
 
     for (auto &aop : dgraph.ops_) {
         // save the graph-level config for ops
-        aop.fpmath_mode_ = fpmath_mode_.mode_;
-        aop.fpmath_mode_apply_to_int_ = bool2str(fpmath_mode_.apply_to_int_);
+        aop.fpmath_mode_ = dgraph.get_fpmath_mode();
     }
 }
 

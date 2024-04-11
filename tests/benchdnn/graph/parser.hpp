@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,11 +36,8 @@ bool parse_input_shapes(
 bool parse_op_attrs(std::vector<std::map<size_t, std::string>> &op_attrs_vec,
         const char *str);
 
-bool parse_graph_expected_n_partitions(
-        std::vector<size_t> &expected_n_partition_vec, const char *str);
-
 bool parse_graph_fpmath_mode(
-        std::vector<graph_fpmath_mode_t> &fpmath_mode_vec, const char *str);
+        std::vector<std::string> &fpmath_mode_vec, const char *str);
 
 bool parse_input_file(std::string &json_file, const char *str);
 

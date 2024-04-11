@@ -76,17 +76,8 @@ void assign_shape_val(int64_t &c, int64_t &w, int64_t &h, int64_t &d,
 bool get_graph_attr(const deserialized_op &base_op_ref,
         attr_t::fpmath_mode_t &arg_fpmath_mode) {
 
-    const auto &op_kind = base_op_ref.kind_;
-    static const std::unordered_set<std::string> accept_fpmath_op {"MatMul",
-            "Convolution", "ConvolutionBackwardData",
-            "ConvolutionBackwardWeights", "ConvTranspose",
-            "ConvTransposeBackwardData", "ConvTransposeBackwardWeights"};
-
-    if (accept_fpmath_op.find(op_kind) != accept_fpmath_op.end()) {
-        const auto &fpmath_mode = base_op_ref.fpmath_mode_;
-        arg_fpmath_mode.set(str2fpmath_mode(fpmath_mode.c_str()),
-                str2bool(base_op_ref.fpmath_mode_apply_to_int_.c_str()));
-    }
+    const auto &fpmath_mode = base_op_ref.fpmath_mode_;
+    arg_fpmath_mode.set(str2fpmath_mode(fpmath_mode.c_str()));
 
     return true;
 }
@@ -455,8 +446,9 @@ bool get_concat_stag_and_dtag(
             concat::get_concat_prb_vdims(base_op_ref, op_setting.prb_vdims),
             res);
 
-    DNN_GRAPH_CHECK_SETTINGS(
-            concat::get_concat_sdt_and_ddt(base_op_ref, op_setting), res);
+    DNN_GRAPH_CHECK_SETTINGS(concat::get_concat_sdt_and_ddt(
+                                     base_op_ref, op_setting, rewrite_lt_ids),
+            res);
     DNN_GRAPH_CHECK_SETTINGS(
             concat::get_concat_stag_and_dtag(base_op_ref, op_setting), res);
 

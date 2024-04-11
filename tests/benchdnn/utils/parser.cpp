@@ -643,13 +643,12 @@ bool parse_attributes(
     const bool parsed_attrs = parse_attr_scales(s.scales, str)
             || parse_attr_zero_points(s.zero_points, str)
             || parse_attr_post_ops(s.post_ops, str)
-            || parse_attr_dropout(s.dropout, def.dropout, str)
             || parse_attr_scratchpad_mode(
                     s.scratchpad_mode, def.scratchpad_mode, str)
             || parse_attr_fpmath_mode(s.fpmath_mode, def.fpmath_mode, str)
             || parse_attr_acc_mode(s.acc_mode, def.acc_mode, str)
-            || parse_attr_deterministic(s.deterministic, def.deterministic, str)
-            || parse_attr_rounding_mode(s.rounding_mode, str);
+            || parse_attr_deterministic(
+                    s.deterministic, def.deterministic, str);
     return parsed_attrs;
 }
 

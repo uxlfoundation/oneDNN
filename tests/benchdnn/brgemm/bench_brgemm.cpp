@@ -174,8 +174,6 @@ int bench(int argc, char **argv) {
                         s.beta, def.beta, atof, argv[0], "beta", help_beta)
                 || parse_vector_option(s.brgemm_attr, def.brgemm_attr, cstr2str,
                         argv[0], "brgemm-attr", help_brgemm_attr)
-                || parse_vector_option(s.batch_kind, def.batch_kind, cstr2str,
-                        argv[0], "batch-kind", help_batch_kind)
                 || parse_attributes(s, def, argv[0])
                 || parse_test_pattern_match(s.pattern, argv[0])
                 || parse_perf_template(s.perf_template, s.perf_template_def,

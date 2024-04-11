@@ -29,47 +29,29 @@ struct base_settings_t {
                 const std::vector<dnnl_scratchpad_mode_t> &scratchpad_mode,
                 const std::vector<attr_t::fpmath_mode_t> &fpmath_mode,
                 const std::vector<dnnl_accumulation_mode_t> &acc_mode,
-                const std::vector<attr_t::deterministic_t> &deterministic,
-                const std::vector<attr_t::dropout_t> &dropout,
-                const std::vector<attr_t::rounding_mode_t> &rounding_mode) {
+                const std::vector<attr_t::deterministic_t> &deterministic) {
             for_(const auto &s : scales)
             for_(const auto &zp : zero_points)
             for_(const auto &po : post_ops)
             for_(const auto &sm : scratchpad_mode)
             for_(const auto &fm : fpmath_mode)
             for_(const auto &am : acc_mode)
-            for_(const auto &d : deterministic)
-            for_(const auto &dr : dropout)
-            for (const auto &rm : rounding_mode)
-                attrs_.push_back(get_attr(s, zp, po, sm, fm, am, d, dr, rm));
+            for (const auto &d : deterministic) {
+                attrs_.push_back(get_attr(s, zp, po, sm, fm, am, d));
+            }
         }
 
         using vector_type = std::vector<attr_t>;
         using iterator = vector_type::iterator;
         using const_iterator = vector_type::const_iterator;
-        using const_reference = const attr_t &;
 
         iterator begin() noexcept { return attrs_.begin(); }
         const_iterator begin() const noexcept { return attrs_.begin(); }
         iterator end() noexcept { return attrs_.end(); }
         const_iterator end() const noexcept { return attrs_.end(); }
-        size_t size() const noexcept { return attrs_.size(); }
-        const_reference front() const {
-            // Used in prb_t(const settings_t &) constructor which requires
-            // settings to have a single setup.
-            assert(size() == 1);
-            return *attrs_.begin();
-        }
 
     private:
         std::vector<attr_t> attrs_;
-
-        template <typename... ArgsT>
-        static attr_t get_attr(const ArgsT &...args) {
-            attr_t attr;
-            attr.insert(args...);
-            return attr;
-        }
     };
 
     base_settings_t() {
@@ -114,6 +96,14 @@ struct base_settings_t {
               "Gflops%,%0time%,%0Gflops%";
     const char *perf_template = perf_template_def;
 
+    // TODO: move to settings_attributes_t
+    template <typename... ArgsT>
+    static attr_t get_attr(const ArgsT &...args) {
+        attr_t attr;
+        attr.insert(args...);
+        return attr;
+    }
+
     // Returns `true` if all vector members in this class have capacity of one.
     virtual bool has_single_setup() const {
         return mb.size() == 1 && inplace.size() == 1 && scales.size() == 1
@@ -126,7 +116,7 @@ struct base_settings_t {
     virtual void finalize() {
         attributes.clear();
         attributes.init(scales, zero_points, post_ops, scratchpad_mode,
-                fpmath_mode, acc_mode, deterministic, dropout, rounding_mode);
+                fpmath_mode, acc_mode, deterministic);
     }
 };
 

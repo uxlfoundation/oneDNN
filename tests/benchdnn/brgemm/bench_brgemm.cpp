@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,13 +40,12 @@ void check_correctness(const settings_t &s) {
     for_(const auto &i_beta : s.beta)
     for_(const auto &i_batch_size : s.batch_size)
     for_(const auto &i_brgemm_attr : s.brgemm_attr)
-    for_(const auto &i_batch_kind : s.batch_kind)
     for_(const auto &i_attr : s.attributes)
     for_(const auto &i_ctx_init : s.ctx_init)
     for (const auto &i_ctx_exe : s.ctx_exe) {
-        const prb_t prb(s.prb_vdims, i_dt, i_stag, i_wtag, i_dtag, i_strides,
-                i_ld, i_bia_dt, i_alpha, i_beta, i_batch_size, i_brgemm_attr,
-                i_batch_kind, i_attr, i_ctx_init, i_ctx_exe, s.impl_filter);
+        const prb_t prb(s.prb_vdims, i_dt, i_stag, i_wtag, i_dtag, i_ld,
+                i_bia_dt, i_alpha, i_beta, i_batch_size, i_brgemm_attr, i_attr,
+                i_ctx_init, i_ctx_exe);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
         BENCHDNN_PRINT(1, "run: %s\n", prb.str());
 
@@ -187,9 +186,9 @@ int bench(int argc, char **argv) {
 
             parse_prb_vdims(s.prb_vdims, argv[0]);
 
-            SAFE(verify_input(s, def), WARN);
+            SAFE(verify_input(s), WARN);
             s.finalize();
-            check_correctness(s);
+            check_correctness(s, def);
         }
     }
     return parse_last_argument();

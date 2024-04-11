@@ -49,11 +49,8 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (auto i_runtime_dim_mask : s.runtime_dim_mask) {
-        auto attr = settings_t::get_attr(i_scales, i_zero_points, i_post_ops,
-                i_scratchpad_mode, i_acc_mode, i_deterministic);
-
         const prb_t prb(s.prb_dims, i_sdt, i_ddt, i_stag, i_dtag, i_strides,
-                attr, i_ctx_init, i_ctx_exe, i_oflag, i_cross_engine,
+                i_attr, i_ctx_init, i_ctx_exe, i_oflag, i_cross_engine,
                 i_runtime_dim_mask);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 

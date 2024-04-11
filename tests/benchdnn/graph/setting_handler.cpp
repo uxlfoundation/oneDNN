@@ -446,8 +446,9 @@ bool get_concat_stag_and_dtag(
             concat::get_concat_prb_vdims(base_op_ref, op_setting.prb_vdims),
             res);
 
-    DNN_GRAPH_CHECK_SETTINGS(
-            concat::get_concat_sdt_and_ddt(base_op_ref, op_setting), res);
+    DNN_GRAPH_CHECK_SETTINGS(concat::get_concat_sdt_and_ddt(
+                                     base_op_ref, op_setting, rewrite_lt_ids),
+            res);
     DNN_GRAPH_CHECK_SETTINGS(
             concat::get_concat_stag_and_dtag(base_op_ref, op_setting), res);
 

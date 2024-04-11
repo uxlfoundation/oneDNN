@@ -163,9 +163,10 @@ static int check_attr() {
     }
 
     {
-        std::vector<attr_t::zero_points_t> zp;
-        SELF_CHECK_EQ(parse_attr_zero_points(
-                              zp, "--attr-zero-points=wei:per_ocic:s8:2x1"),
+        base_settings_t s;
+        std::vector<attr_t::zero_points_t> &zp = s.zero_points;
+        SELF_CHECK_EQ(parse_attributes(
+                              s, def, "--attr-zero-points=wei:per_ocic:s8:2x1"),
                 true);
         SELF_CHECK_EQ(zp.size(), 1);
         std::vector<dnnl_dim_t> groups = {2, 1};
@@ -174,9 +175,10 @@ static int check_attr() {
     }
 
     {
-        std::vector<attr_t::arg_scales_t> sc;
-        SELF_CHECK_EQ(parse_attr_scales(
-                              sc, "--attr-scales=attr_post_op_dw_wei:common:2"),
+        base_settings_t s;
+        std::vector<attr_t::arg_scales_t> &sc = s.scales;
+        SELF_CHECK_EQ(parse_attributes(s, def,
+                              "--attr-scales=attr_post_op_dw_wei:common:2"),
                 true);
         SELF_CHECK_EQ(sc.size(), 1);
         const auto arg = DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS;
@@ -260,36 +262,6 @@ static int check_attr() {
         SELF_CHECK_EQ(fm[0].apply_to_int, true);
         // Reset default settings
         def = base_settings_t();
-    }
-
-    {
-        base_settings_t s;
-        std::vector<attr_t::dropout_t> &d = s.dropout;
-        auto st = parse_attributes(s, def, "--attr-dropout=0.5:12345:axb");
-        SELF_CHECK_EQ(st, true);
-        SELF_CHECK_EQ(d[0].p, 0.5f);
-        SELF_CHECK_EQ(d[0].seed, 12345);
-        SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::axb);
-    }
-
-    {
-        base_settings_t s;
-        std::vector<attr_t::dropout_t> &d = s.dropout;
-        auto st = parse_attributes(s, def, "--attr-dropout=0.75");
-        SELF_CHECK_EQ(st, true);
-        SELF_CHECK_EQ(d[0].p, 0.75f);
-        SELF_CHECK_EQ(d[0].seed, 0);
-        SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::any);
-    }
-
-    {
-        base_settings_t s;
-        std::vector<attr_t::dropout_t> &d = s.dropout;
-        auto st = parse_attributes(s, def, "--attr-dropout=");
-        SELF_CHECK_EQ(st, true);
-        SELF_CHECK_EQ(d[0].p, 0.f);
-        SELF_CHECK_EQ(d[0].seed, 0);
-        SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::any);
     }
 
 #undef SELF_CHECK_ATTR_ZP

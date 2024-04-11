@@ -39,13 +39,12 @@ void check_correctness(const settings_t &s, const settings_t &def) {
     for_(const auto &i_beta : s.beta)
     for_(const auto &i_batch_size : s.batch_size)
     for_(const auto &i_brgemm_attr : s.brgemm_attr)
-    for_(const auto &i_batch_kind : s.batch_kind)
     for_(const auto &i_attr : s.attributes)
     for_(const auto &i_ctx_init : s.ctx_init)
     for (const auto &i_ctx_exe : s.ctx_exe) {
         const prb_t prb(s.prb_vdims, i_dt, i_stag, i_wtag, i_dtag, i_ld,
-                i_bia_dt, i_alpha, i_beta, i_batch_size, i_brgemm_attr,
-                i_batch_kind, i_attr, i_ctx_init, i_ctx_exe);
+                i_bia_dt, i_alpha, i_beta, i_batch_size, i_brgemm_attr, i_attr,
+                i_ctx_init, i_ctx_exe);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
         BENCHDNN_PRINT(1, "run: %s\n", prb.str());
 

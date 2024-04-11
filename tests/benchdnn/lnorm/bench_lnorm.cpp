@@ -49,20 +49,12 @@ void check_correctness(
     for_(const auto &i_stat_tag : s.stat_tag)
     for_(const auto &i_ss_dt : s.ss_dt)
     for_(const auto &i_flags : s.flags)
-    for_(const auto &i_scales : s.scales)
-    for_(const auto &i_post_ops : s.post_ops)
-    for_(const auto &i_scratchpad_mode : s.scratchpad_mode)
-    for_(const auto &i_acc_mode : s.acc_mode)
-    for_(const auto &i_deterministic : s.deterministic)
+    for_(const auto &i_attr : s.attributes)
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (auto i_inplace : s.inplace) {
-        auto attr = settings_t::get_attr(i_post_ops, i_scales,
-                i_scratchpad_mode, i_acc_mode, i_deterministic);
-
         const prb_t prb(s.prb_dims, i_tag, i_stat_tag, i_ss_dt, i_dir, i_dt,
-                i_flags, s.check_alg, i_inplace, i_attr, i_ctx_init, i_ctx_exe,
-                s.impl_filter);
+                i_flags, i_attr, i_ctx_init, i_ctx_exe, i_inplace, s.check_alg);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
         task_executor.submit(

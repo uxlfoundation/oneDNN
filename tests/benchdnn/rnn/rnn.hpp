@@ -286,10 +286,10 @@ struct prb_t : public desc_t {
         : prb_t(s.desc, dt_conf_t::create(s.cfg[0], s.attributes.front()),
                 s.tag[0], s.prop[0], s.alg[0], s.with_peephole[0],
                 s.with_projection[0], s.direction[0], s.scale_policy[0],
-                s.scale_proj_policy[0], s.flags[0], s.activation[0], s.alpha,
+                s.scale_proj_policy[0], s.flags[0], s.activation[0],
+                s.attributes.front(), s.ctx_init[0], s.ctx_exe[0], s.alpha,
                 s.beta, s.skip_nonlinear[0], s.trivial_strides[0], s.n_layer[0],
-                s.n_iter[0], s.mb[0], s.attributes.front(), s.ctx_init[0],
-                s.ctx_exe[0], s.impl_filter) {
+                s.n_iter[0], s.mb[0]) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 

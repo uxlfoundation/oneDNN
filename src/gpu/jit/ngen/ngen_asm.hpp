@@ -1100,7 +1100,7 @@ protected:
     template <typename DT = void>
     void math(const InstructionModifier &mod, MathFunction fc, const RegData &dst, const RegData &src0) {
 #ifdef NGEN_SAFE
-        if (mathArgCount(fc) != 1) throw invalid_operand_count_exception();
+        if (mathArgCount(hardware, fc) != 1) throw invalid_operand_count_exception();
 #endif
         if (fc == MathFunction::rsqtm)
             math<DT>(mod, fc, dst | nomme, src0 | nomme);
@@ -1110,7 +1110,7 @@ protected:
     template <typename DT = void>
     void math(const InstructionModifier &mod, MathFunction fc, const RegData &dst, const RegData &src0, const RegData &src1) {
 #ifdef NGEN_SAFE
-        if (mathArgCount(fc) != 2) throw invalid_operand_count_exception();
+        if (mathArgCount(hardware, fc) != 2) throw invalid_operand_count_exception();
 #endif
         if (fc == MathFunction::invm)
             math<DT>(mod, fc, dst | nomme, src0 | nomme, src1 | nomme);

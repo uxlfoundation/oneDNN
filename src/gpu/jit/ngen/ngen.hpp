@@ -822,14 +822,14 @@ protected:
     template <typename DT = void>
     void math(const InstructionModifier &mod, MathFunction fc, const RegData &dst, const RegData &src0) {
 #ifdef NGEN_SAFE
-        if (mathArgCount(fc) != 1) throw invalid_operand_count_exception();
+        if (mathArgCount(hw, fc) != 1) throw invalid_operand_count_exception();
 #endif
         opMath(Opcode::math, getDataType<DT>(), mod, fc, dst, src0);
     }
     template <typename DT = void>
     void math(const InstructionModifier &mod, MathFunction fc, const RegData &dst, const RegData &src0, const RegData &src1) {
 #ifdef NGEN_SAFE
-        if (mathArgCount(fc) != 2) throw invalid_operand_count_exception();
+        if (mathArgCount(hw, fc) != 2) throw invalid_operand_count_exception();
 #endif
         opMath(Opcode::math, getDataType<DT>(), mod, fc, dst, src0, src1);
     }

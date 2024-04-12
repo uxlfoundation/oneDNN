@@ -148,6 +148,12 @@ template <typename DT = void>
 void rsqtm(const InstructionModifier &mod, const ExtendedReg &dst, const ExtendedReg &src0) {
     math<DT>(mod, MathFunction::rsqtm, dst, src0);
 }
+#if XE3P
+template <typename DT = void>
+void sigm(const InstructionModifier &mod, const RegData &dst, const RegData &src0) {
+    math<DT>(mod, MathFunction::sigm, dst, src0);
+}
+#endif
 template <typename DT = void>
 void sin(const InstructionModifier &mod, const RegData &dst, const RegData &src0) {
     math<DT>(mod, MathFunction::sin, dst, src0);
@@ -156,6 +162,12 @@ template <typename DT = void>
 void sqt(const InstructionModifier &mod, const RegData &dst, const RegData &src0) {
     math<DT>(mod, MathFunction::sqt, dst, src0);
 }
+#if XE3P
+template <typename DT = void>
+void tanh(const InstructionModifier &mod, const RegData &dst, const RegData &src0) {
+    math<DT>(mod, MathFunction::tanh, dst, src0);
+}
+#endif
 
 #define TMP(n) tmp[n].retype(dst.getType())
 

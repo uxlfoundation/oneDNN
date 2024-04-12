@@ -439,24 +439,35 @@ template <> inline DataType getDataType<int2>() { return DataType::s2; }
 
 // Math function codes.
 enum class MathFunction : uint8_t {
-    inv   = 1,
-    log   = 2,
-    exp   = 3,
-    sqt   = 4,
-    rsqt  = 5,
-    sin   = 6,
-    cos   = 7,
-    fdiv  = 9,
-    pow   = 10,
-    idiv  = 11,
-    iqot  = 12,
-    irem  = 13,
-    invm  = 14,
-    rsqtm = 15
+    inv   = 0x1,
+    log   = 0x2,
+    exp   = 0x3,
+    sqt   = 0x4,
+    rsqt  = 0x5,
+    sin   = 0x6,
+    cos   = 0x7,
+    fdiv  = 0x9,
+    pow   = 0xA,
+    idiv  = 0xB,
+    iqot  = 0xC,
+    irem  = 0xD,
+    invm  = 0xE,
+    rsqtm = 0xF,
+#if XE3P
+    tanh  = 0x19,
+    sigm  = 0x1A,
+#endif
+
 };
 
-static inline int mathArgCount(MathFunction func)
+static inline int mathArgCount(HW hw, MathFunction func)
 {
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        static const char argCounts[16] = {0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2, 2, 2, 2, 1};
+        return argCounts[static_cast<uint8_t>(func) & 0xF];
+    }
+#endif
     static const char argCounts[16] = {0, 1, 1, 1, 1, 1, 1, 1, 0, 2, 2, 2, 2, 2, 2, 1};
     return argCounts[static_cast<uint8_t>(func) & 0xF];
 }
@@ -464,8 +475,14 @@ static inline int mathArgCount(MathFunction func)
 #ifdef NGEN_ASM
 static inline std::ostream &operator<<(std::ostream &str, MathFunction func)
 {
+#if XE3P
+    static const char *names[32] = {"", "inv", "log", "exp", "sqt", "rsqt", "sin", "cos", "", "fdiv", "pow",  "idiv", "iqot", "irem", "invm", "rsqtm",
+                                    "", "",    "",    "",    "",    "",     "",    "",    "", "tanh", "sigm", "",     "",     "",     "",     ""};
+    str << names[static_cast<uint8_t>(func) & 0x1F];
+#else
     static const char *names[16] = {"", "inv", "log", "exp", "sqt", "rsqt", "sin", "cos", "", "fdiv", "pow", "idiv", "iqot", "irem", "invm", "rsqtm"};
     str << names[static_cast<uint8_t>(func) & 0xF];
+#endif
     return str;
 }
 #endif

@@ -163,7 +163,12 @@ int jit_eltwise_injector_f32<hw>::phase_count(alg_kind_t alg) {
             case eltwise_relu:
             case eltwise_relu_use_dst_for_bwd: return (alpha_ == 0) ? 1 : 2;
             case eltwise_soft_relu: return 10;
-            case eltwise_swish: return 5;
+            case eltwise_swish:
+#if XE3P
+                return (hw != gpu_xe3p) ? 5 : 3;
+#else
+                return 5;
+#endif
             case eltwise_tanh:
             case eltwise_tanh_use_dst_for_bwd:
 #if XE3P
@@ -177,7 +182,12 @@ int jit_eltwise_injector_f32<hw>::phase_count(alg_kind_t alg) {
             case eltwise_clip_v2_use_dst_for_bwd: return 2;
             case eltwise_gelu_tanh: return 8;
             case eltwise_logistic:
-            case eltwise_logistic_use_dst_for_bwd: return 4;
+            case eltwise_logistic_use_dst_for_bwd:
+#if XE3P
+                return (hw != gpu_xe3p) ? 4 : 1;
+#else
+                return 4;
+#endif
             default: break;
         }
     } else {
@@ -307,16 +317,29 @@ void jit_eltwise_injector_f32<hw>::round_compute_fwd(
 template <gpu_gen_t hw>
 void jit_eltwise_injector_f32<hw>::swish_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
-    const float log2e = 1.442695f; // log_2(e)
     auto temp = scratch_[off].f();
-    switch (phase) {
-        case 0: h->mul(simd, temp, r, -1.f * log2e * alpha_); break;
-        case 1: h->exp(simd, temp, temp); break;
-        case 2: h->add(simd, temp, temp, 1.f); break;
-        case 3: h->inv(simd, temp, temp); break;
-        case 4: h->mul(simd, r, r, temp); break;
-        default: assert(!"invalid phase");
+#if XE3P
+    if (hw != gpu_xe3p) {
+#endif
+        const float log2e = 1.442695f; // log_2(e)
+        switch (phase) {
+            case 0: h->mul(simd, temp, r, -1.f * log2e * alpha_); break;
+            case 1: h->exp(simd, temp, temp); break;
+            case 2: h->add(simd, temp, temp, 1.f); break;
+            case 3: h->inv(simd, temp, temp); break;
+            case 4: h->mul(simd, r, r, temp); break;
+            default: assert(!"invalid phase");
+        }
+#if XE3P
+    } else {
+        switch (phase) {
+            case 0: h->mul(simd, temp, r, alpha_); break;
+            case 1: h->sigm(simd, temp, temp); break;
+            case 2: h->mul(simd, r, r, temp); break;
+            default: assert(!"invalid phase");
+        }
     }
+#endif
 }
 
 template <gpu_gen_t hw>
@@ -368,14 +391,25 @@ void jit_eltwise_injector_f32<hw>::gelu_tanh_compute_fwd(
 template <gpu_gen_t hw>
 void jit_eltwise_injector_f32<hw>::logistic_compute_fwd(
         int simd, const ngen::GRF &r, int phase) {
-    const float log2e = 1.442695f; // log_2(e)
-    switch (phase) {
-        case 0: h->mul(simd, r, r, -1.f * log2e); break;
-        case 1: h->exp(simd, r, r); break;
-        case 2: h->add(simd, r, r, 1.f); break;
-        case 3: h->inv(simd, r, r); break;
-        default: assert(!"invalid phase");
+#if XE3P
+    if (hw != gpu_xe3p) {
+#endif
+        const float log2e = 1.442695f; // log_2(e)
+        switch (phase) {
+            case 0: h->mul(simd, r, r, -1.f * log2e); break;
+            case 1: h->exp(simd, r, r); break;
+            case 2: h->add(simd, r, r, 1.f); break;
+            case 3: h->inv(simd, r, r); break;
+            default: assert(!"invalid phase");
+        }
+#if XE3P
+    } else {
+        switch (phase) {
+            case 0: h->sigm(simd, r, r); break;
+            default: assert(!"invalid phase");
+        }
     }
+#endif
 }
 
 template <gpu_gen_t hw>

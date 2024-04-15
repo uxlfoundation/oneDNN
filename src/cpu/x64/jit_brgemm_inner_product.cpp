@@ -633,6 +633,8 @@ template struct brgemm_inner_product_fwd_t<avx512_core_vnni>;
 template struct brgemm_inner_product_fwd_t<avx512_core_amx>;
 template struct brgemm_inner_product_fwd_t<avx512_core_fp16>;
 template struct brgemm_inner_product_fwd_t<avx512_core_amx_fp16>;
+template struct brgemm_inner_product_fwd_t<avx10_2_512>;
+template struct brgemm_inner_product_fwd_t<avx10_2_512_amx_2>;
 
 template <cpu_isa_t isa>
 void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(

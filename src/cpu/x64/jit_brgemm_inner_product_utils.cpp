@@ -1366,7 +1366,8 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
 
     if (!IMPLICATION(is_int8,
                 one_of(isa, avx2_vnni, avx2_vnni_2, avx512_core,
-                        avx512_core_vnni, avx512_core_amx)))
+                        avx512_core_vnni, avx512_core_amx, avx10_2_512,
+                        avx10_2_512_amx_2)))
         return status::unimplemented;
     if (!IMPLICATION(is_bf16,
                 one_of(isa, avx2_vnni_2, avx512_core_bf16, avx512_core_amx)))
@@ -1401,7 +1402,8 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
             = (jbgp.os <= 16 && jbgp.ic <= amx_row && jbgp.oc <= amx_row)
             || (jbgp.ic <= max_size && jbgp.oc <= max_size && jbgp.mb == 1
                     && jbgp.ic % amx_row != 0);
-    if (one_of(jbgp.isa, avx512_core_amx, avx512_core_amx) && is_small_shapes)
+    if (one_of(jbgp.isa, avx512_core_amx, avx512_core_amx, avx10_2_512_amx_2)
+            && is_small_shapes)
         return status::unimplemented;
 
     auto set_or_check_tags = [&]() -> status_t {

@@ -42,7 +42,7 @@ status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     if (!IMPLICATION(
                 utils::one_of(src_mdw.data_type(), data_type::s4, data_type::u4)
                         || utils::one_of(dst_mdw.data_type(), data_type::s4,
-                                data_type::s4),
+                                data_type::u4),
                 dst_mdw.is_plain() && src_mdw.is_plain()))
         return status::unimplemented;
 

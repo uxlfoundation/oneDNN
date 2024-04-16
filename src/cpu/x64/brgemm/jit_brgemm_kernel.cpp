@@ -363,10 +363,9 @@ private:
         return Vmm(isa_num_vregs(brg.isa_impl) - 2);
     }
 
-    Vmm vmm_mask(const Vmm vmm_in, bool mask_flag, bool store,
+    template <typename U>
+    U vmm_mask(const U umm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) const;
-    Vmm_lower_t vmm_lower_mask(const Vmm_lower_t vmm_lower_in, bool mask_flag,
-            bool store, Xbyak::Opmask ktail_mask) const;
     void maybe_set_avx_mask(bool is_ld_tail);
 
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
@@ -640,22 +639,12 @@ dim_t jit_brgemm_kernel_t<Wmm>::zp_c_values_offset(
     return 0;
 }
 template <typename Wmm>
-typename jit_brgemm_kernel_t<Wmm>::Vmm jit_brgemm_kernel_t<Wmm>::vmm_mask(
-        const Vmm vmm_in, bool mask_flag, bool store,
+template <typename U>
+U jit_brgemm_kernel_t<Wmm>::vmm_mask(const U vmm_in, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask) const {
-    return mask_flag && is_superset(brg.isa_impl, avx512_core)
+    return mask_flag && isa_has_masks(brg.isa_impl)
             ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
             : vmm_in;
-}
-
-template <typename Wmm>
-typename jit_brgemm_kernel_t<Wmm>::Vmm_lower_t
-jit_brgemm_kernel_t<Wmm>::vmm_lower_mask(const Vmm_lower_t vmm_lower_in,
-        bool mask_flag, bool store, Xbyak::Opmask ktail_mask) const {
-    return mask_flag && is_superset(brg.isa_impl, avx512_core)
-            ? (store ? vmm_lower_in | ktail_mask
-                     : vmm_lower_in | ktail_mask | T_z)
-            : vmm_lower_in;
 }
 
 template <typename Wmm>
@@ -1424,9 +1413,9 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         if (is_superset(brg.isa_impl, avx512_core)) {
             const Vmm r_vmm = vmm_mask(vmm, is_tail, true, k_mask);
             const Vmm_lower_t r_ymm
-                    = vmm_lower_mask(vmm_lower, is_tail, true, k_mask);
+                    = vmm_mask(vmm_lower, is_tail, true, k_mask);
             const Xmm xmm = Xmm(vmm.getIdx());
-            const Xmm r_xmm = is_tail ? xmm | k_mask : xmm;
+            const Xmm r_xmm = vmm_mask(xmm, is_tail, true, k_mask);
             switch (brg.dt_d) {
                 case data_type::f32:
                 case data_type::s32: uni_vmovups(addr, r_vmm); break;

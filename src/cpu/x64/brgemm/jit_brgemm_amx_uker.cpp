@@ -449,9 +449,8 @@ private:
         return Xbyak::Zmm(15 + ldb);
     }
 
-    Xbyak::Zmm zmm_mask(const Xbyak::Zmm &zmm_in, bool mask_flag, bool store,
-            Xbyak::Opmask ktail_mask) const;
-    Xbyak::Ymm ymm_mask(const Xbyak::Ymm &ymm_in, bool mask_flag, bool store,
+    template <typename U>
+    U vmm_mask(const U &vmm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) const;
     Xbyak::Xmm xmm_mask(const Xbyak::Xmm &xmm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) const;
@@ -815,16 +814,11 @@ int jit_brgemm_amx_uker_base_t::get_out_bd(
         return bd;
 }
 
-Xbyak::Zmm jit_brgemm_amx_uker_base_t::zmm_mask(const Xbyak::Zmm &zmm_in,
-        bool mask_flag, bool store, Xbyak::Opmask ktail_mask) const {
-    return mask_flag ? (store ? zmm_in | ktail_mask : zmm_in | ktail_mask | T_z)
-                     : zmm_in;
-}
-
-Xbyak::Ymm jit_brgemm_amx_uker_base_t::ymm_mask(const Xbyak::Ymm &ymm_in,
-        bool mask_flag, bool store, Xbyak::Opmask ktail_mask) const {
-    return mask_flag ? (store ? ymm_in | ktail_mask : ymm_in | ktail_mask | T_z)
-                     : ymm_in;
+template <typename U>
+U jit_brgemm_amx_uker_base_t::vmm_mask(const U &vmm_in, bool mask_flag,
+        bool store, Xbyak::Opmask ktail_mask) const {
+    return mask_flag ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
+                     : vmm_in;
 }
 
 Xbyak::Xmm jit_brgemm_amx_uker_base_t::xmm_mask(const Xbyak::Xmm &xmm_in,
@@ -836,7 +830,7 @@ Xbyak::Xmm jit_brgemm_amx_uker_base_t::xmm_mask(const Xbyak::Xmm &xmm_in,
 void jit_brgemm_amx_uker_base_t::cvt2ps(data_type_t type_in,
         const Xbyak::Zmm &zmm_in, const Xbyak::Operand &op, bool mask_flag,
         bool store, Xbyak::Opmask ktail_mask) {
-    const Xbyak::Zmm zmm = zmm_mask(zmm_in, mask_flag, store, ktail_mask);
+    const Xbyak::Zmm zmm = vmm_mask(zmm_in, mask_flag, store, ktail_mask);
     switch (type_in) {
         case data_type::f32:
         case data_type::s32: vmovups(zmm, op); break;
@@ -1377,7 +1371,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
             auto zmm = accm(bd);
-            const Xbyak::Zmm scaled_zmm = zmm_mask(zmm, true, false, k_mask);
+            const Xbyak::Zmm scaled_zmm = vmm_mask(zmm, true, false, k_mask);
             vmulps(scaled_zmm, scaled_zmm, zmm_scales(ldb));
         }
     }
@@ -1426,9 +1420,9 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
     auto ymm = Xbyak::Ymm(idx);
     auto xmm = Xbyak::Xmm(idx);
     auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
-    const Xbyak::Zmm r_zmm = zmm_mask(zmm, true, true, k_mask);
-    const Xbyak::Ymm r_ymm = ymm_mask(ymm, true, true, k_mask);
-    const Xbyak::Xmm r_xmm = xmm_mask(xmm, true, true, k_mask);
+    const Xbyak::Zmm r_zmm = vmm_mask(zmm, true, true, k_mask);
+    const Xbyak::Ymm r_ymm = vmm_mask(ymm, true, true, k_mask);
+    const Xbyak::Xmm r_xmm = vmm_mask(xmm, true, true, k_mask);
 
     switch (brg.dt_d) {
         case data_type::f32:

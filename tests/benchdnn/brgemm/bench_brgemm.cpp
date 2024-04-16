@@ -40,12 +40,13 @@ void check_correctness(const settings_t &s) {
     for_(const auto &i_beta : s.beta)
     for_(const auto &i_batch_size : s.batch_size)
     for_(const auto &i_brgemm_attr : s.brgemm_attr)
+    for_(const auto &i_batch_kind : s.batch_kind)
     for_(const auto &i_attr : s.attributes)
     for_(const auto &i_ctx_init : s.ctx_init)
     for (const auto &i_ctx_exe : s.ctx_exe) {
         const prb_t prb(s.prb_vdims, i_dt, i_stag, i_wtag, i_dtag, i_ld,
-                i_bia_dt, i_alpha, i_beta, i_batch_size, i_brgemm_attr, i_attr,
-                i_ctx_init, i_ctx_exe);
+                i_bia_dt, i_alpha, i_beta, i_batch_size, i_brgemm_attr,
+                i_batch_kind, i_attr, i_ctx_init, i_ctx_exe);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
         BENCHDNN_PRINT(1, "run: %s\n", prb.str());
 
@@ -174,6 +175,8 @@ int bench(int argc, char **argv) {
                         s.beta, def.beta, atof, argv[0], "beta", help_beta)
                 || parse_vector_option(s.brgemm_attr, def.brgemm_attr, cstr2str,
                         argv[0], "brgemm-attr", help_brgemm_attr)
+                || parse_vector_option(s.batch_kind, def.batch_kind, cstr2str,
+                        argv[0], "batch-kind", help_batch_kind)
                 || parse_attributes(s, def, argv[0])
                 || parse_test_pattern_match(s.pattern, argv[0])
                 || parse_perf_template(s.perf_template, s.perf_template_def,

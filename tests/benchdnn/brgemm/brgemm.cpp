@@ -209,15 +209,15 @@ std::string prepare_wei_format_string(
     return wtag;
 }
 
-namespace_impl::brgemm_batch_kind_t str2batch_kind(const std::string &str) {
+dnnl::impl::cpu::x64::brgemm_batch_kind_t str2batch_kind(
+        const std::string &str) {
     if (str == "addr")
-        return namespace_impl::brgemm_batch_kind_t::brgemm_addr;
+        return dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_addr;
     else if (str == "offs")
-        return namespace_impl::brgemm_batch_kind_t::brgemm_offs;
+        return dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_offs;
     assert(!"Unsupported batch kind value");
-    return namespace_impl::brgemm_batch_kind_t::brgemm_batch_kind_undef;
+    return dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_batch_kind_undef;
 }
-#endif
 
 int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
         dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
@@ -622,19 +622,20 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
 // A special wrapper needed to match internal benchdnn infrastructure.
 dnnl_status_t brgemm_kernel_execute_postops_wrapper(
-        const namespace_impl::brgemm_kernel_t *brgemm_kernel,
-        const std::string &batch_kind, int batch_size, const void *src_ptr,
-        const void *wei_ptr,
-        const namespace_impl::brgemm_batch_element_t *batch_element,
+        const dnnl::impl::cpu::x64::brgemm_kernel_t *brgemm_kernel,
+        dnnl::impl::cpu::x64::brgemm_batch_kind_t batch_kind, int batch_size,
+        const void *src_ptr, const void *wei_ptr,
+        const dnnl::impl::cpu::x64::brgemm_batch_element_t *batch_element,
         void *acc_ptr, void *dst_ptr,
         const namespace_impl::brgemm_post_ops_data_t &post_ops_data,
         void *scratchpad_ptr, const dnnl_stream_t &stream,
         const std::vector<dnnl_exec_arg_t> &dnnl_args) {
 
-    if (batch_kind == "addr") {
+    if (batch_kind == dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_addr) {
         brgemm_kernel_execute_postops(brgemm_kernel, batch_size, batch_element,
                 acc_ptr, dst_ptr, post_ops_data, scratchpad_ptr);
-    } else if (batch_kind == "offs") {
+    } else if (batch_kind
+            == dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_offs) {
         brgemm_kernel_execute_postops(brgemm_kernel, batch_size, src_ptr,
                 wei_ptr, batch_element, acc_ptr, dst_ptr, post_ops_data,
                 scratchpad_ptr);
@@ -687,7 +688,7 @@ void init_memory_args(
     brgemm_desc_t brgemm_desc;
     // Supports only address model for now as only affects the way memory is
     // passed to `brgemm_batch_element_t` object.
-    brgemm_batch_kind_t batch_kind = brgemm_batch_kind_t::brgemm_addr;
+    brgemm_batch_kind_t batch_kind = str2batch_kind(prb->batch_kind);
     brgemm_layout_t layout = brgemm_layout_t::brgemm_row_major;
 
     // Pass `isa_undef` for now since internal work with it or rather isa bits
@@ -1230,11 +1231,64 @@ int doit(const prb_t *prb, res_t *res) {
     BENCHDNN_PRINT(6, "src_batch_offset=%ld wei_batch_offset=%ld\n",
             (long)src_batch_offset, (long)wei_batch_offset);
 
-    // The implementation memory must be mapped to setup point arguments for
-    // brgemm implementation call. This assumes that mapping is effectively a
-    // no-op on the target device.
-    for (auto &kv : mem_map) {
-        if (!kv.second.is_mapped()) kv.second.map();
+    for (size_t i = 0; i < v_batch_element.size(); i++) {
+        if (batch_kind == brgemm_batch_kind_t::brgemm_addr) {
+            v_batch_element[i].ptr.A
+                    = src_ptr + i * src_batch_offset * src_dt.sizeof_dt();
+            v_batch_element[i].ptr.B
+                    = wei_ptr + i * wei_batch_offset * wei_dt.sizeof_dt();
+        } else if (batch_kind == brgemm_batch_kind_t::brgemm_offs) {
+            v_batch_element[i].offset.A
+                    = i * src_batch_offset * src_dt.sizeof_dt();
+            v_batch_element[i].offset.B
+                    = i * wei_batch_offset * wei_dt.sizeof_dt();
+        }
+    }
+
+    // Brgemm takes single pointer oscale, but relies on a combination of arg
+    // scales attributes. This helps to reuse attributes from primitives, but
+    // requires them to pre-compute oscale = src_scale * wei_scale[:]
+    auto src_scale = prb->attr.scales.get(DNNL_ARG_SRC);
+    auto attr_scale = !wei_scale.is_def() ? wei_scale : src_scale;
+
+    const int64_t count = attr_scale.policy == policy_t::COMMON ? 1 : prb->n;
+    dnn_mem_t scales(1, &count, dnnl_f32, tag::x, get_test_engine());
+    for (int64_t c = 0; c < count; ++c)
+        scales.set_elem(c, prb->scales[c]);
+
+    // Handle output scale common policy separately since the implementation
+    // always expects them to be of vector length in case of `common` policy.
+    std::vector<float> v16_scales(16, prb->scales[0]);
+    const float *scales_ptr = attr_scale.policy == policy_t::COMMON
+            ? v16_scales.data()
+            : (const float *)scales;
+
+    assert(prb->attr.scales.get(DNNL_ARG_DST).policy == policy_t::COMMON);
+    const int64_t dst_scales_count = 1;
+    dnn_mem_t dst_scales(
+            1, &dst_scales_count, dnnl_f32, tag::x, get_test_engine());
+    for (int64_t c = 0; c < dst_scales_count; ++c)
+        // precompute inverted dst scales as expected in brgemm implementation
+        dst_scales.set_elem(c, 1.f / prb->dst_scales[c]);
+
+    // Handle output scale common policy separately since the implementation
+    // always expects them to be of vector length in case of `common` policy.
+    std::vector<float> v16_dst_scales(16, 1.f / prb->dst_scales[0]);
+    const float *dst_scales_ptr = v16_dst_scales.data();
+
+    char *acc_ptr = (char *)acc_dt;
+
+    const int32_t *dst_zp_ptr = (const int32_t *)prb->dst_zp;
+    char *src_comp_ptr = (char *)wei_dt + wei_offset_zp;
+    int32_t zp_a_val
+            = !prb->attr.zero_points.is_def(DNNL_ARG_SRC) ? prb->src_zp[0] : 0;
+
+    if (!prb->attr.zero_points.is_def(DNNL_ARG_WEIGHTS)) {
+        // TODO: weights zero point is not supported yet.
+        // It requires enabling f32 -> u8 reorder with compensation on the
+        // library side. When enabled, it produces incorrect results for cases
+        // with K=1. Likely there's a bug inside. Postpone supporting it.
+        return res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED, OK;
     }
 
     const char *src_ptr = (const char *)mem_map.at(DNNL_ARG_SRC);
@@ -1329,68 +1383,15 @@ int doit(const prb_t *prb, res_t *res) {
 #else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
     char *wei_packed_ptr = (char *)mem_map.at(DNNL_ARG_WEIGHTS_1);
 
-    char *scratchpad_ptr = mem_map.count(DNNL_ARG_SCRATCHPAD)
-            ? (char *)mem_map.at(DNNL_ARG_SCRATCHPAD)
-            : nullptr;
-
-    if (kernel_args.need_pack_) {
-        DNN_SAFE(dnnl_transform_execute(transform, wei_ptr, wei_packed_ptr),
-                WARN);
-    } else {
-        const auto &wei_dt = mem_map.at(DNNL_ARG_WEIGHTS);
-        auto &wei_packed_dt = mem_map.at(DNNL_ARG_WEIGHTS_1);
-        SAFE(wei_packed_dt.reorder(wei_dt), WARN);
-    }
-
-    std::vector<dnnl_dim_t> offsets(2 * prb->batch_size);
-    for (dnnl_dim_t i = 0; i < prb->batch_size; i++) {
-        offsets[2 * i + 0] = i * prb->get_src_batch_offset();
-        offsets[2 * i + 1] = i * prb->get_wei_batch_offset();
-    }
-
-    dnnl_ukernel_attr_params_t attr_params_ptr;
-    DNN_SAFE(dnnl_ukernel_attr_params_create(&attr_params_ptr), WARN);
-    auto attr_params = make_benchdnn_dnnl_wrapper(attr_params_ptr);
-    DNN_SAFE(dnnl_ukernel_attr_params_set_post_ops_args(
-                     attr_params, binary_po_v.data()),
-            WARN);
-
-    const void *src_scales_ptr
-            = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC)
-            ? (const void *)mem_map.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC)
-            : nullptr;
-    const void *wei_scales_ptr
-            = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)
-            ? (const void *)mem_map.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)
-            : nullptr;
-    DNN_SAFE(dnnl_ukernel_attr_params_set_A_scales(attr_params, src_scales_ptr),
-            WARN);
-    DNN_SAFE(dnnl_ukernel_attr_params_set_B_scales(attr_params, wei_scales_ptr),
-            WARN);
-    DNN_SAFE(dnnl_ukernel_attr_params_set_D_scales(attr_params, dst_scales_ptr),
-            WARN);
-#endif
-
-    SAFE(init_hw_config(kernel_args), WARN);
-
-#if !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    if (prb->batch_kind == "addr") {
+    if (batch_kind == brgemm_batch_kind_t::brgemm_addr) {
         brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size,
                 v_batch_element.data(), acc_ptr, dst_ptr, post_ops_data,
                 scratchpad_ptr);
-    } else if (prb->batch_kind == "offs") {
+    } else if (batch_kind == brgemm_batch_kind_t::brgemm_offs) {
         brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size, src_ptr,
                 wei_ptr, v_batch_element.data(), acc_ptr, dst_ptr,
                 post_ops_data, scratchpad_ptr);
     }
-#else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    // `prb->use_dst_as_acc()=true` will make `dst_ptr=acc_ptr` and rest should
-    // be handled by API.
-    DNN_SAFE(dnnl_brgemm_execute_postops(brgemm, src_ptr, wei_packed_ptr,
-                     offsets.data(), acc_ptr, dst_ptr, scratchpad_ptr,
-                     attr_params),
-            WARN);
-#endif
     res->state = EXECUTED;
 
     if (has_bench_mode_bit(mode_bit_t::corr)) {
@@ -1400,17 +1401,9 @@ int doit(const prb_t *prb, res_t *res) {
     // Create a bind to match internals to run performance measurements.
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
     perf_function_t perf_func = std::bind(brgemm_kernel_execute_postops_wrapper,
-            kernel_args.brgemm_kernel_, prb->batch_kind, prb->batch_size,
-            src_ptr, wei_ptr, v_batch_element.data(), acc_ptr, dst_ptr,
-            post_ops_data, scratchpad_ptr, std::placeholders::_1,
-            std::placeholders::_2);
-#else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    perf_function_t perf_func = std::bind(brgemm_kernel_execute_postops_wrapper,
-            kernel_args.brgemm_, prb->use_dst_as_acc(), src_ptr, wei_packed_ptr,
-            offsets, acc_ptr, dst_ptr, scratchpad_ptr, attr_params_ptr,
-            std::placeholders::_1, std::placeholders::_2);
-#endif
-
+            brgemm_kernel_, batch_kind, prb->batch_size, src_ptr, wei_ptr,
+            v_batch_element.data(), acc_ptr, dst_ptr, post_ops_data,
+            scratchpad_ptr, std::placeholders::_1, std::placeholders::_2);
     measure_perf(prb->ctx_exe, res, perf_func, args);
 
     SAFE(release_hw_config(kernel_args), WARN);

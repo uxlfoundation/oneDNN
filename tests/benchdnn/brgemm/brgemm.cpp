@@ -103,6 +103,12 @@ dnnl_status_t brgemm_attr_init(
     // `fpmath_mode` is handled directly through the driver interface.
     brgattr->fpmath_mode = prb->attr.fpmath_mode.mode;
 
+    // `max_bs` is handled directly through the driver interface.
+    brgattr->max_bs = prb->batch_size;
+
+    // `fpmath_mode` is handled directly through the driver interface.
+    brgattr->fpmath_mode = prb->attr.fpmath_mode.mode;
+
     const auto &str = prb->brgemm_attr;
     if (str.empty()) return dnnl_success;
 

@@ -31,7 +31,7 @@ namespace sycl {
 
 struct binary_kernel_vec_t {
     static constexpr int vec_len = 8;
-    static constexpr int max_supported_ndims = 6;
+    static constexpr int max_supported_ndims = 5;
 
     binary_kernel_vec_t(const sycl_binary_conf_t &conf,
             xpu::sycl::in_memory_arg_t &src0, xpu::sycl::in_memory_arg_t &src1,
@@ -76,28 +76,17 @@ struct binary_kernel_vec_t {
                         ? load_float_value(scales_dt_, src1_scale_ptr(), 0)
                         : 1.f);
 
-        dims_t dims, strides, off_dst, off0, off1;
+        dims_t dims, off;
         bool any_broadcast = false;
-        bool is_same_tag = true;
         for (int i = 0; i < max_supported_ndims; i++) {
-            if (i < dst_md().ndims()) {
-                dims[i] = dst_md().dims()[i];
-                strides[i] = dst_md().strides()[i];
-                any_broadcast |= conf_.broadcast_dims0[i];
-                any_broadcast |= conf_.broadcast_dims1[i];
-            } else {
-                dims[i] = 1;
-                strides[i] = INT_MAX;
-            }
+            dims[i] = (i < src0_md().ndims()) ? src0_md().dims()[i] : 1;
             if (i < src0_md().ndims()) {
-                is_same_tag = is_same_tag
-                        && (src0_md().strides()[i] == src1_md().strides()[i]);
+                any_broadcast |= conf_.broadcast_dims[i];
             }
         }
-        if (!any_broadcast && conf_.post_ops.get_post_op() == 0
+        if (!any_broadcast
                 && sg_base_idx + (sg.get_local_range()[0] * conf_.block_size)
-                        < conf_.wk_size
-                && is_same_tag) {
+                        < conf_.wk_size) {
             for (int i = 0; i < conf_.block_size / vec_len; i++) {
                 auto src0_vec = load_float_vec<vec_len>(
                         src0_md().data_type(), src0_ptr(), vec_base_idx + i);
@@ -123,17 +112,16 @@ struct binary_kernel_vec_t {
             for (int i = 0; i < conf_.block_size; i++) {
                 int idx = base_idx + i;
                 if (idx < conf_.wk_size) {
-                    for (int i = 0; i < max_supported_ndims; i++) {
-                        off_dst[i] = idx / strides[i] % dims[i];
-                    }
+                    utils::l_dims_by_l_offset(
+                            off, idx, dims, max_supported_ndims);
 
                     for (int i = 0; i < max_supported_ndims; i++) {
-                        off0[i] = conf_.broadcast_dims0[i] ? 0 : off_dst[i];
-                        off1[i] = conf_.broadcast_dims1[i] ? 0 : off_dst[i];
+                        if (conf_.broadcast_dims[i] && i < src0_md().ndims()) {
+                            off[i] = 0;
+                        }
                     }
 
-                    int idx0 = src0_md().off_v(off0);
-                    int idx1 = src1_md().off_v(off1);
+                    int idx1 = src1_md().off_v(off);
 
                     auto src0 = load_float_value(
                             src0_md().data_type(), src0_ptr(), idx0);

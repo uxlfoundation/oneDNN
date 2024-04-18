@@ -409,6 +409,8 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
                     return dg_op_kind == kind;
                 });
         if (has_unimplemented_op) {
+            BENCHDNN_PRINT(
+                    2, "[INFO]: Unimplemented op: %s.\n", dg_op_kind.c_str());
             res->state = SKIPPED;
             res->reason = CASE_NOT_SUPPORTED;
             return;
@@ -675,16 +677,9 @@ int doit(const prb_t *prb, res_t *res) {
         input_ts_all.emplace_back(input_ts);
         output_ts_all.emplace_back(output_ts);
 
-        auto &graph_mem_mgr = graph_mem_manager_t::get_instance();
-        graph_mem_mgr.start_graph_mem_check();
         BENCHDNN_PRINT(3, "[INFO]: Start execution of partition #%zd.\n", i);
-        // Need following clean-up steps as the memories have been mappped to
-        // device. Otherwise the deconstruction will fail.
-        DNN_GRAPH_SAFE(
-                c_partitions[i - idx_offset].execute(strm, input_ts, output_ts),
-                (WARN | NEED_CLEANUP), res);
-        DNN_GRAPH_SAFE(strm.wait(), WARN, res);
-        graph_mem_mgr.stop_graph_mem_check();
+        c_partitions[i - idx_offset].execute(strm, input_ts, output_ts);
+        strm.wait();
 
         // map memory from device back to host
         map_unmap_partition_mem(partition_mem_map_v[i], inputs, MAP, res);

@@ -414,7 +414,9 @@ struct rnn_conf_t {
 
     inline bool is_cell_int8_amx() const {
 #if DNNL_X64
-        return brgemm_isa == x64::avx512_core_amx && is_cell_dt_int8();
+        return is_cell_dt_int8()
+                && utils::one_of(brgemm_isa, x64::avx512_core_amx,
+                        x64::avx10_2_512_amx_2);
 #else
         return false;
 #endif

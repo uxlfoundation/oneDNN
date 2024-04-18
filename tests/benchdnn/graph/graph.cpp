@@ -405,6 +405,8 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
                     return dg_op_kind == kind;
                 });
         if (has_unimplemented_op) {
+            BENCHDNN_PRINT(
+                    2, "[INFO]: Unimplemented op: %s.\n", dg_op_kind.c_str());
             res->state = SKIPPED;
             res->reason = CASE_NOT_SUPPORTED;
             return;

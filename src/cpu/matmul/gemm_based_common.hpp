@@ -119,10 +119,7 @@ inline bool check_gemm_binary_per_oc_compatible_formats(const matmul_pd_t &pd) {
         ok = ok && strides[i] == strides[i + 1] * dims[i + 1];
 
     // only allowed for nchw and nhwc (b0xb1xMxN or b0xMxNxb1 for matmul)
-    for (int i = 1; i < ndims - 1; ++i) {
-        if (dims[i] == 0) { ok = false; }
-    }
-    return ok && strides[0];
+    return ok && (strides[ndims - 1] == 1 || strides[1] == 1);
 }
 
 inline size_t get_scratchpad_block_elements(const dim_t batch, dim_t M,

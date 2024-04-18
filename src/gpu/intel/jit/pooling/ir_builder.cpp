@@ -183,12 +183,12 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     for (int i = 0; i < int(padded_dims.size()); i++)
         padded_dims[i] = dims_grid[i];
     ir_assert(padded_dims.size() == 5);
-    std::vector<int> dims {int(src_layout.dim(0)), int(src_layout.dim(1)),
+    std::vector<int> dims {padded_dims[0], int(src_layout.dim(1)),
             padded_dims[2], padded_dims[3], padded_dims[4]};
 
     // Source.
     auto src_view = view_t({mb, oc, od, oh, ow, kd, kh, kw}, 5);
-    src_view.set_vdim(mb, (!is_xe2_or_xe3_small_kdhw) ? dims[0] : prb.mb);
+    src_view.set_vdim(mb, prb.mb);
     src_view.set_vdim(oc, dims[1]);
     src_view.set_vdim(od, dims[2]);
     src_view.set_vdim(oh, dims[3]);
@@ -209,7 +209,7 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
 
     // Destination.
     auto dst_view = view_t({mb, oc, od, oh, ow}, 5);
-    dst_view.set_vdim(mb, (!is_xe2_or_xe3_small_kdhw) ? dims[0] : prb.mb);
+    dst_view.set_vdim(mb, prb.mb);
     dst_view.set_vdim(oc, dims[1]);
     dst_view.set_vdim(od, dims[2]);
     dst_view.set_vdim(oh, dims[3]);
@@ -524,12 +524,6 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
                                             : (od < prb.od);
     if (!exit_cond.is_empty())
         stmt = if_t::make(shuffle_t::make_broadcast(exit_cond, simd), stmt);
-
-    if (!is_xe2_or_xe3_small_kdhw && ((dims[0] - prb.mb) / lg[0] >= 1)) {
-        auto stop = gen_zero_out(simd, false, acc_buf, dst_tile, write_layout);
-        stmt = if_t::make(shuffle_t::make_broadcast(mb >= prb.mb, simd),
-                stop.append(write_stmt), stmt);
-    }
 
     stmt = schedule.create_bind_stmt(stmt);
     stmt = inject_let_stmts(stmt, init_stmts);

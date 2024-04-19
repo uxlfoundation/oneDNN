@@ -256,6 +256,22 @@ struct primitive_t : public impl::primitive_t {
     }
 
 protected:
+    int32_t version() const { return version_; }
+
+    void set_version(int32_t version) { version_ = version; }
+
+    void register_primitive(const primitive_t *primitive) {
+        registered_compute_blocks_.emplace_back(primitive);
+    }
+
+    status_t register_kernels(const std::vector<compute::kernel_t> &kernels) {
+        for (const auto &k : kernels) {
+            if (k) CHECK(k.dump());
+            registered_compute_blocks_.emplace_back(k);
+        }
+        return status::success;
+    }
+
     virtual status_t init_res_storage(
             impl::engine_t *engine, gpu_resource_t *r) const {
         return status::success;

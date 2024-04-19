@@ -1723,7 +1723,7 @@ private:
 
         // TODO: move unaligned portion of offset to block start x
         auto offset = info_.view().tlayout().offset_in_bytes();
-        if (!is_const(offset) || to_cpp<int64_t>(offset) % base_align)
+        if (!is_const(offset) || to_cpp<int>(offset) % base_align)
             return fail_2d("Unsupported base alignment: ", base_align);
 
         if (!base_mod.is_divisible(base_align) != 0)

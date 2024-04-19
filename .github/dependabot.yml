@@ -20,6 +20,5 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    labels: [ "devops" ]
     commit-message:
       prefix: "github: workflows"

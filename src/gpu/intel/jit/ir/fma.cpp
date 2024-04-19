@@ -103,7 +103,12 @@ type_t multiply_desc_t::get_c_type(
 
 bool dpas_t::is_src_type(type_t type) {
     return utils::one_of(type.kind(), type_kind_t::u8, type_kind_t::s8,
+#if XE3P
+            type_kind_t::bf16, type_kind_t::f16, type_kind_t::tf32,
+            type_kind_t::bf8);
+#else
             type_kind_t::bf16, type_kind_t::f16, type_kind_t::tf32);
+#endif
 }
 
 layout_t dpas_t::a_layout() const {

@@ -847,7 +847,12 @@ bool data_types_ok(const conv_problem_t &prb, const hw_t &hw) {
                     && !hw.has_fp64_atomic_support()))
         return false;
     if (is_bf8
+#if XE3P
+            && !(utils::one_of(hw, ngen::HW::XeHPC, ngen::HW::Xe3p)
+                    && hw.systolic_support()))
+#else
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
+#endif
         return false;
     if (is_hf8) return false;
     if (prb.is_fwd) return true;

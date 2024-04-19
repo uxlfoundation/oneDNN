@@ -259,9 +259,6 @@ void ref_primitive_t::check_correctness(
         cmp.set_has_eltwise_post_op(has_eltwise);
         cmp.set_op_output_has_nans(has_nans);
         dnn_mem_t mem_fp_abx(mem_fp, dnnl_f32, tag::abx, ::get_cpu_engine());
-        // Reset `res` counters when more than a single arg is checked.
-        res->errors = 0;
-        res->total = 0;
         auto st = cmp.compare(mem_fp_abx, mem_dt, attr, res);
         if (st == OK) continue;
 
@@ -298,39 +295,13 @@ void ref_primitive_t::check_correctness(
         //   matmul's output precise.
         // * bf16 softmax's output contains irregular floating-point values that
         //   potentially get accumulated in a different order on each end, and
-        //   it leads to an output mismatch. Different underlying
-        //   implementations can add more to that.
+        //   it leads to an output mismatch.
         //
         // Note: the following threshold is obtained from actual runs on
         // different hardware.
-        cmp.set_threshold(1e-4f);
+        cmp.set_threshold(7e-5f);
         cmp.set_norm_validation_mode(true);
         cmp.compare(mem_fp_abx, mem_dt, attr, res);
-    }
-}
-
-int ref_primitive_t::displace_scales() const {
-    // Runtime data for scales attribute is supported for quantization ops only.
-    if (op_.kind_ != "Dequantize" && op_.kind_ != "Quantize") return OK;
-
-    const auto it_attr_scales = op_.attrs_.find("scales");
-    const bool has_scales = it_attr_scales != op_.attrs_.end();
-    if (!has_scales) return OK;
-
-    int arg = DNNL_ARG_UNDEF;
-    bool scales_found = false;
-    for (auto it = mems_.begin(); it != mems_.end(); it++) {
-        const int cur_arg = (*it).first;
-        const bool is_scales_arg = (cur_arg & DNNL_ARG_ATTR_SCALES);
-        if (!is_scales_arg) continue;
-        // Protection from the cases when somehow scales are applied to more
-        // than a single argument (which is unexpected).
-        if (scales_found) {
-            assert(!"scales are applied to more than a single arg");
-            return FAIL;
-        }
-        scales_found = true;
-        arg = cur_arg;
     }
 
     // No correspondent memory was found. Nothing to update.

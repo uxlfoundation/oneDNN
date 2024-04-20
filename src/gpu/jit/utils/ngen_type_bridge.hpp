@@ -53,6 +53,9 @@ inline ngen::HW convert_dnnl_arch_to_ngen(compute::gpu_arch_t gpu_arch) {
         case compute::gpu_arch_t::xe_hpg: return ngen::HW::XeHPG;
         case compute::gpu_arch_t::xe_hpc: return ngen::HW::XeHPC;
         case compute::gpu_arch_t::xe2: return ngen::HW::Xe2;
+#if XE3
+        case compute::gpu_arch_t::xe3: return ngen::HW::Xe3;
+#endif
 #if XE3P
         case compute::gpu_arch_t::xe3p: return ngen::HW::Xe3p;
 #endif
@@ -70,9 +73,11 @@ inline compute::gpu_arch_t convert_ngen_arch_to_dnnl(ngen::HW gpu_arch) {
         case ngen::HW::XeHPG: return compute::gpu_arch_t::xe_hpg;
         case ngen::HW::XeHPC: return compute::gpu_arch_t::xe_hpc;
         case ngen::HW::Xe2: return compute::gpu_arch_t::xe2;
+#if XE3
+        case ngen::HW::Xe3: return compute::gpu_arch_t::xe3;
+#endif
 #if XE3P
         case ngen::HW::Xe3p: return compute::gpu_arch_t::xe3p;
-        case ngen::HW::Xe3:
 #endif
         case ngen::HW::Gen10:
             // Gen10 is not supported. Included here instead of default so

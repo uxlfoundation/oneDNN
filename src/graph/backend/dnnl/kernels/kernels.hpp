@@ -30,6 +30,7 @@
 #include "graph/backend/dnnl/kernels/log_softmax.hpp"
 #include "graph/backend/dnnl/kernels/matmul.hpp"
 #include "graph/backend/dnnl/kernels/mqa.hpp"
+#include "graph/backend/dnnl/kernels/mqa_base.hpp"
 #include "graph/backend/dnnl/kernels/pool.hpp"
 #include "graph/backend/dnnl/kernels/prelu.hpp"
 #include "graph/backend/dnnl/kernels/quantize.hpp"

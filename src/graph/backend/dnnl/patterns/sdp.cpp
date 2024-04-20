@@ -17,8 +17,8 @@
 #include "graph/backend/dnnl/kernels/sdp.hpp"
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 #include "graph/backend/dnnl/kernels/matmul.hpp"
-#include "graph/backend/dnnl/kernels/mqa.hpp"
-
+#include "graph/backend/dnnl/kernels/mqa_base.hpp"
+#include "graph/backend/dnnl/kernels/sdp_base.hpp"
 #include "graph/backend/dnnl/patterns/fusions.hpp"
 #include "graph/backend/dnnl/patterns/pattern_matcher_pass.hpp"
 #include "graph/backend/dnnl/patterns/utils.hpp"
@@ -227,7 +227,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_mqa_jax_fusion)
                             graph::op_kind::MatMul, {in_edge(1, reshape2, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<
+                    mqa_base_t<false, memory::data_type::f32>>();
         });
 
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, int8_sdp_fusion)

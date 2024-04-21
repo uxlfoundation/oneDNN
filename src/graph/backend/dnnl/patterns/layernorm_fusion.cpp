@@ -33,9 +33,9 @@ using FCreatePattern = graph::pass::FCreatePattern;
 
 //             LayerNorm
 //                 |
-//            [TypeCast]*
-//                 |
 // [unary/binary]*[0,MAX_REPETITION)
+//                 |
+//            [TypeCast]*
 //                 |
 //            [Quantize]*
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(layernorm_fusion)
@@ -54,18 +54,6 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, layernorm_post_ops_fusion_cpu)
                                     1>);
                     layernorm_base->append_decision_function(
                             check_begin_norm_axis_attr);
-                    // primitive only support 2-5D data tensor for layernorm
-                    layernorm_base->append_decision_function(
-                            check_input_ndim_from_offset<0, 2, 5>);
-
-                    // optional typecast
-                    auto tc_graph = std::make_shared<pb_graph_t>();
-                    pm::pb_op_t *ptypecast
-                            = tc_graph->append_op(graph::op_kind::TypeCast);
-                    tc_graph->create_input_port(0, ptypecast, 0);
-                    tc_graph->create_output_port(0, ptypecast, 0);
-                    auto pre_tc = pgraph->append_optional(tc_graph,
-                            in_edges_t {in_edge(0, layernorm_base, 0)});
 
                     // repetition(alternation(unary | binary))
                     auto alt_unary_binary = std::make_shared<pb_graph_t>();
@@ -76,16 +64,26 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, layernorm_post_ops_fusion_cpu)
                     alt_unary_binary->create_output_port(0, palt, 0);
                     auto prep = pgraph->append_repetition(alt_unary_binary,
                             {0, 0}, 0, MAX_REPETITION,
-                            in_edges_t {in_edge(0, pre_tc, 0)});
+                            in_edges_t {in_edge(0, layernorm_base, 0)});
+
+                    // optional typecast
+                    auto tc_graph = std::make_shared<pb_graph_t>();
+                    pm::pb_op_t *ptypecast
+                            = tc_graph->append_op(graph::op_kind::TypeCast);
+                    tc_graph->create_input_port(0, ptypecast, 0);
+                    tc_graph->create_output_port(0, ptypecast, 0);
+                    auto pre_tc = pgraph->append_optional(
+                            tc_graph, in_edges_t {in_edge(0, prep, 0)});
 
                     // optional quantize
                     auto q_graph = std::make_shared<pb_graph_t>();
                     pm::pb_op_t *pquantize
                             = q_graph->append_op(graph::op_kind::Quantize);
+                    pquantize->append_decision_function(check_zps_values<0>);
                     q_graph->create_input_port(0, pquantize, 0);
                     q_graph->create_output_port(0, pquantize, 0);
                     pgraph->append_optional(
-                            q_graph, in_edges_t {in_edge(0, prep, 0)});
+                            q_graph, in_edges_t {in_edge(0, pre_tc, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<layer_norm_fwd_t>();

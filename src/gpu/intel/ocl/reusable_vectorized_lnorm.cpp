@@ -25,13 +25,18 @@
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/lnorm_utils.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/reusable_lnorm.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
+#include <memory>
+#include <tuple>
+#include <utility>
 #include <vector>
 
+using std::make_tuple;
+using std::tie;
+using std::unique_ptr;
 using std::vector;
 
 namespace dnnl {
@@ -39,6 +44,33 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace ocl {
+
+static vector<compute::dim_id_t> get_dims(
+        size_t ndims, bool for_stats = false) {
+    assert(ndims > 1 && ndims < 6);
+    // The last logical dimension is not included in lnorm stats
+    if (for_stats) ndims--;
+    vector<compute::dim_id_t> ret(ndims);
+    uint8_t idx = 0;
+    ret[idx++] = lnorm_dims::mb;
+    if (ndims >= 2) ret[idx++] = lnorm_dims::ic;
+    if (ndims >= 3) ret[idx++] = lnorm_dims::sp0;
+    if (ndims >= 4) ret[idx++] = lnorm_dims::sp1;
+    if (ndims >= 5) ret[idx++] = lnorm_dims::sp2;
+    return ret;
+}
+
+static compute::named_buffer_t get_ss_buffer(
+        const memory_desc_t *md, compute::dim_id_t dim) {
+    if (types::is_zero_md(md)) {
+        // Scale/shift are unused. We need to construct a buffer that will not be dispatched to
+        compute::named_buffer_t ret("SS");
+        ret.data_type = data_type::f32; // Anything but undef
+        return ret;
+    } else {
+        return compute::named_buffer_t("SS", *md, {dim});
+    }
+}
 
 using namespace dnnl::impl::gpu::intel::compute;
 struct single_subgroup_lws_strategy_t : public lws_strategy_t {
@@ -48,8 +80,8 @@ struct single_subgroup_lws_strategy_t : public lws_strategy_t {
         : lws_strategy_t(engine, gpu_attr)
         , desired_sg_size(_desired_sg_size) {};
 
-    range_t create_lws(
-            range_t &gws, const gws_bin_mapping_t &mapper) const override {
+    range_t create_lws(const range_t &gws,
+            const gws_bin_mapping_t &mapper) const override {
         range_t lws = {desired_sg_size, 1, 1};
         return lws;
     }
@@ -60,32 +92,10 @@ struct single_subgroup_lws_strategy_t : public lws_strategy_t {
     }
 };
 
-bool is_sg_and_vector_size_compatible(
-        const compute_engine_t *engine, int sg_size, int vector_size) {
-    // Check if subgroup size is supported
-    if (!engine->mayiuse_sub_group(sg_size)) return false;
-
-    // Check if subgroup size is supported for block reads and writes
-    if (!engine->mayiuse_block_reads_writes_with_sub_group(sg_size))
-        return false;
-
-    return true;
-}
-
-bool is_sg_stride_compatible(int norm_axis, int sg_stride) {
-    // Check if norm_axis size is less than the number of elements read by the subgroup
-    if (norm_axis < sg_stride) return false;
-
-    // Check if norm_axis is a multiple of the subgroup size and vector size
-    if (norm_axis % sg_stride != 0) return false;
-
-    return true;
-}
-
 static status_t init_conf_common(const layer_normalization_pd_t *pd,
         reusable_vectorized_lnorm_params_t *conf,
         reusable_vectorized_lnorm_runtime_params_t *rt_conf,
-        const impl::engine_t *engine, const compute::named_buffer_t &input_buf,
+        const engine_t *engine, const compute::named_buffer_t &input_buf,
         const compute::named_buffer_t &output_buf,
         const compute::named_buffer_t &stat_buf,
         const compute::named_buffer_t &ss_buf) {
@@ -98,32 +108,26 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     conf->save_stats = pd->is_training();
 
     auto scales = pd->attr()->scales_;
+    conf->with_src_scale = !scales.get(DNNL_ARG_SRC).has_default_values();
+    conf->with_dst_scale = !scales.get(DNNL_ARG_DST).has_default_values();
 
     // We require that the lnorm axis is a single dense block, so that it can
     // be represented by a stride + size alone.
-    size_t ndims = into<size_t>(input_buf.ndims);
-    vector<dim_idx_t> dims = get_dims(ndims);
-
-    memory_desc_wrapper src_mdw(pd->src_md());
-    memory_desc_wrapper dst_mdw(pd->dst_md());
-    if (src_mdw.blocking_desc().inner_nblks != 0
-            || dst_mdw.blocking_desc().inner_nblks != 0) {
-        VDEBUGINFO(15, primitive, lnorm,
-                "Reusable Vectorized LNorm not used because source or "
-                "destination tensors have blocked memory layouts.");
-        return status::unimplemented;
-    }
-
-    bool c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
-    if (!(src_mdw.is_dense() && c_is_last_physical)) {
-        VDEBUGINFO(15, primitive, lnorm,
-                "Reusable Vectorized LNorm not used because the source tensor "
-                "is not dense(%s) or the last axis(stride[ndims-1] = %d) "
-                "is not continuous.",
-                src_mdw.is_dense() ? "true" : "false",
-                int(src_mdw.blocking_desc().strides[ndims - 1]));
-        return status::unimplemented;
-    }
+    size_t ndims = gpu_utils::into<size_t>(input_buf.ndims);
+    vector<compute::dim_id_t> dims = get_dims(ndims);
+    block_layout_t layout = input_buf.layout();
+    const block_t *norm_block = [&layout, &dims]() -> const block_t * {
+        const block_t *ret = nullptr;
+        for (const block_t &block : layout) {
+            if (gpu_utils::into<size_t>(block.dim_idx) == dims.back()) {
+                if (ret) return nullptr;
+                ret = &block;
+            }
+        }
+        gpu_assert(ret) << "Expected to find a norm block";
+        return ret;
+    }();
+    if (!norm_block) return status::unimplemented;
 
     const auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
@@ -131,43 +135,51 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     const auto *compute_engine
             = utils::downcast<const compute::compute_engine_t *>(engine);
 
-    conf->sg_size = 0;
-    conf->vector_size = 0;
-    bool found_compatible_sg_and_vector_size = false;
-    for (int sg_size : {32, 16}) {
-        for (int vector_size : {8, 4, 2, 1}) {
-            bool sg_and_vector_size_ok = is_sg_and_vector_size_compatible(
-                    compute_engine, sg_size, vector_size);
-            bool sg_stride_ok = is_sg_stride_compatible(
-                    into<dim_idx_t>(pd->norm_axis()), sg_size * vector_size);
-
-            if (sg_and_vector_size_ok && sg_stride_ok) {
-                conf->sg_size = sg_size;
-                conf->vector_size = vector_size;
-                found_compatible_sg_and_vector_size = true;
-                break;
+    int desired_sg_size = 32;
+    int desired_vector_size = 8;
+    tie(conf->sg_size, conf->vector_size) = [&]() {
+        size_t size = desired_sg_size;
+        for (size_t vec_size = desired_vector_size; vec_size > 1;
+                vec_size /= 2) {
+            size = desired_sg_size;
+            while (size > 1) {
+                if (compute_engine->mayiuse_sub_group(size)
+                        && compute_engine
+                                   ->mayiuse_block_reads_writes_with_sub_group(
+                                           size)
+                        && (pd->norm_axis()
+                                >= static_cast<dim_t>(size * vec_size))
+                        && ((pd->norm_axis() % (size * vec_size)) == 0)) {
+                    return make_tuple(size, vec_size);
+                }
+                size /= 2;
             }
         }
-        if (found_compatible_sg_and_vector_size) break;
-    }
+        return make_tuple(size, 0UL);
+    }();
 
-    if (found_compatible_sg_and_vector_size == false) {
+    if (conf->sg_size <= 1) {
         VDEBUGINFO(15, primitive, lnorm,
                 "Reusable Vectorized LNorm not used because norm_axis(%ld) "
                 "is not a multiple of the vector size and subgroup size.",
-                long(pd->norm_axis()));
+                pd->norm_axis());
         return status::unimplemented;
     }
 
-    conf->unroll = std::min<int>(
-            4, (int)pd->norm_axis() / (conf->sg_size * conf->vector_size));
+    conf->unroll = std::min<size_t>(
+            4UL, pd->norm_axis() / (conf->sg_size * conf->vector_size));
+
+    memory_desc_wrapper src_mdw(pd->src_md());
+    bool c_is_last_physical = false;
+    c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
+    if (!(src_mdw.is_dense() && c_is_last_physical))
+        return status::unimplemented;
 
     // Norm dispatch: all dimensions
     auto lws_strategy = single_subgroup_lws_strategy_t(
             compute_engine, gpu_attr, conf->sg_size);
 
-    compute::reusable_dispatch_config_t dispatch_config(
-            compute_engine, std::move(dims));
+    compute::reusable_dispatch_config_t dispatch_config(compute_engine, dims);
     CHECK(dispatch_config.register_buffer(input_buf));
     CHECK(dispatch_config.register_buffer(output_buf));
     CHECK(dispatch_config.register_buffer(stat_buf));
@@ -182,10 +194,10 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
 }
 
 status_t reusable_vectorized_layer_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+        engine_t *engine) {
     size_t ndims = static_cast<size_t>(src_md()->ndims);
-    vector<dim_idx_t> dims = get_dims(ndims);
-    vector<dim_idx_t> stat_dims = get_dims(ndims, true);
+    vector<compute::dim_id_t> dims = get_dims(ndims);
+    vector<compute::dim_id_t> stat_dims = get_dims(ndims, true);
 
     //init_scratchpad();
     // FWD buffers:
@@ -215,8 +227,11 @@ reusable_vectorized_lnorm_params_t::get_kernel_ctx() const {
     kernel_ctx.define_int("USE_SCALE", use_scale);
     kernel_ctx.define_int("USE_SHIFT", use_shift);
 
+    kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scale);
+    kernel_ctx.define_int("WITH_DST_SCALES", with_dst_scale);
+
     kernel_ctx.define_int("CALCULATE_STATS", calculate_stats);
-    kernel_ctx.define_int("SAVE_STATS", save_stats && calculate_stats);
+    kernel_ctx.define_int("SAVE_STATS", save_stats);
 
     kernel_ctx.define_int("SG_SIZE", sg_size);
     kernel_ctx.define_int("VECT_DT_N", vector_size);
@@ -241,17 +256,22 @@ status_t reusable_vectorized_layer_normalization_fwd_t::execute_forward(
     auto &src_scale = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     auto &dst_scale = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
-    memory_storage_t &mean = pd()->stats_are_src()
-            ? CTX_IN_STORAGE(DNNL_ARG_MEAN)
-            : CTX_OUT_STORAGE(DNNL_ARG_MEAN);
-    memory_storage_t &variance = pd()->stats_are_src()
-            ? CTX_IN_STORAGE(DNNL_ARG_VARIANCE)
-            : CTX_OUT_STORAGE(DNNL_ARG_VARIANCE);
+    unique_ptr<memory_storage_t> tmp_mean = nullptr;
+    unique_ptr<memory_storage_t> tmp_var = nullptr;
+
+    memory_storage_t *mean_ptr;
+    memory_storage_t *variance_ptr;
+    if (conf.save_stats || !conf.calculate_stats) {
+        mean_ptr = ctx.output(DNNL_ARG_MEAN)->memory_storage();
+        variance_ptr = ctx.output(DNNL_ARG_VARIANCE)->memory_storage();
+    }
 
     compute::kernel_arg_list_t lnorm_arg_list;
     lnorm_arg_list.append(src);
-    lnorm_arg_list.append(mean);
-    lnorm_arg_list.append(variance);
+    if (conf.save_stats || !conf.calculate_stats) {
+        lnorm_arg_list.append(*mean_ptr);
+        lnorm_arg_list.append(*variance_ptr);
+    }
     lnorm_arg_list.append(pd()->norm_axis());
     lnorm_arg_list.append(dst);
     lnorm_arg_list.append(scale);
@@ -266,10 +286,9 @@ status_t reusable_vectorized_layer_normalization_fwd_t::execute_forward(
     lnorm_arg_list.append(rt_conf.gws_params.get());
 
     compute::nd_range_t gws_nd_range_calc(
-            {static_cast<size_t>(conf.sg_size),
-                    rt_conf.gws_params.nd_range.global_range().data()[1],
+            {conf.sg_size, rt_conf.gws_params.nd_range.global_range().data()[1],
                     rt_conf.gws_params.nd_range.global_range().data()[2]},
-            {static_cast<size_t>(conf.sg_size), 1, 1});
+            {conf.sg_size, 1, 1});
 
     return parallel_for(
             ctx, gws_nd_range_calc, calculate_lnorm_kernel_, lnorm_arg_list);

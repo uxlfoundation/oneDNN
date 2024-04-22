@@ -59,7 +59,6 @@ public:
         for (size_t i = 0; i < dims.size(); i++) {
             dims_[i] = gpu_utils::into<size_t>(dims[i]);
         }
-        return true;
     }
 
     // Initialize a valid nd-range with one element, to be mutated

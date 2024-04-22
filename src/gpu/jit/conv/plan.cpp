@@ -1408,8 +1408,10 @@ dim_t find_min_stride_without_conflicts(
     int stride_step = 16;
     dim_t stride_beg = dense_stride_bytes;
     dim_t stride_end = 2 * dense_stride_bytes;
-    const int slm_banks = slm_memory_bank_count(hw.to_ngen());
-    const int bank_granularity = slm_memory_bank_granularity(hw.to_ngen());
+    auto arch = convert_ngen_arch_to_dnnl(hw.to_ngen());
+    const int slm_banks = compute::device_info_t::slm_memory_bank_count(arch);
+    const int bank_granularity
+            = compute::device_info_t::slm_memory_bank_granularity(arch);
     for (dim_t s = stride_beg; s < stride_end; s += stride_step) {
         bool ok = true;
         for (dim_t off0 = 0; off0 < inner_bytes; off0 += write_step) {

@@ -26,7 +26,6 @@
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/utils.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {

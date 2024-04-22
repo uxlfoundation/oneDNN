@@ -18,12 +18,13 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/jit/codegen/kernel.hpp"
-#include "gpu/jit/ir/kernel_info.hpp"
-#include "gpu/jit/v2/conv/kernel.hpp"
-#include "gpu/jit/v2/conv/plan.hpp"
-#include "gpu/jit/v2/conv/problem.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gpu/intel/jit/ir/kernel_info.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/jit/v2/conv/kernel.hpp"
+#include "gpu/intel/jit/v2/conv/plan.hpp"
+#include "gpu/intel/jit/v2/conv/problem.hpp"
 
 namespace dnnl {
 namespace impl {

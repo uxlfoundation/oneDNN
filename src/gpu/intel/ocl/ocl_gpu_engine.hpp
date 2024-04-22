@@ -23,8 +23,6 @@
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/ocl/ocl_gpu_engine_id.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
-#include "xpu/ocl/engine_impl.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {

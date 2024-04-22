@@ -27,18 +27,18 @@
 #include <unordered_map>
 
 #include "common/c_types_map.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/jit/ir/epilogue.hpp"
-#include "gpu/jit/ir/gemm_schedule.hpp"
-#include "gpu/jit/ir/ir.hpp"
-#include "gpu/jit/ir/message.hpp"
-#include "gpu/jit/ir/post_ops.hpp"
-#include "gpu/jit/ir/reorder.hpp"
-#include "gpu/jit/ir/tensor.hpp"
-#include "gpu/jit/pass/pass.hpp"
-#include "gpu/jit/utils/iterator.hpp"
-#include "gpu/jit/utils/range.hpp"
-#include "gpu/jit/utils/trace.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/jit/ir/epilogue.hpp"
+#include "gpu/intel/jit/ir/gemm_schedule.hpp"
+#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/post_ops.hpp"
+#include "gpu/intel/jit/ir/reorder.hpp"
+#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/pass/pass.hpp"
+#include "gpu/intel/jit/utils/iterator.hpp"
+#include "gpu/intel/jit/utils/range.hpp"
+#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {

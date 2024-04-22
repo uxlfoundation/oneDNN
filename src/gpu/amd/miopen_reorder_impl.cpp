@@ -1,5 +1,6 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2022 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,34 +14,40 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-
-#include "gpu/gpu_impl_list.hpp"
-
-#include "gpu/intel/ocl/gemm_matmul.hpp"
-#include "gpu/intel/ocl/ref_matmul.hpp"
+#include "common/engine.hpp"
+#include "common/impl_list_item.hpp"
+#include "gpu/amd/miopen_reorder.hpp"
+#include "gpu/amd/sycl_hip_engine.hpp"
+#include "gpu/intel/ocl/cross_engine_reorder.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace amd {
 
 namespace {
 
+#define REORDER_INSTANCE(...) \
+    impl_list_item_t( \
+            impl_list_item_t::reorder_type_deduction_helper_t<__VA_ARGS__>()),
+
 // clang-format off
-constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
-        GPU_INSTANCE_INTEL(intel::ocl::gemm_matmul_t)
-        GPU_INSTANCE_REF_INTEL(intel::ocl::ref_matmul_t)
-        GPU_INSTANCE_NVIDIA(nvidia::cudnn_matmul_t)
-        GPU_INSTANCE_AMD(amd::miopen_matmul_t)
+constexpr impl_list_item_t hip_reorder_impl_list[] = {
+        REORDER_INSTANCE(gpu::ocl::cross_engine_reorder_t::pd_t)
+        REORDER_INSTANCE(miopen_reorder_t::pd_t)
         nullptr,
-});
+};
 // clang-format on
+
 } // namespace
 
-const impl_list_item_t *get_matmul_impl_list(const matmul_desc_t *desc) {
-    UNUSED(desc);
-    return impl_list;
+const impl_list_item_t *
+hip_gpu_engine_impl_list_t::get_reorder_implementation_list(
+        const memory_desc_t *, const memory_desc_t *) {
+    return hip_reorder_impl_list;
 }
 
+} // namespace amd
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

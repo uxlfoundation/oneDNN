@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_JIT_REDUCTION_HPP
-#define GPU_INTEL_JIT_JIT_REDUCTION_HPP
+#ifndef GPU_JIT_JIT_REDUCTION_HPP
+#define GPU_JIT_JIT_REDUCTION_HPP
 
 // A small wrapper on the jit_reduction_generator_t, used to test its functionality.
 // Only valid in dev mode for now, until performance is improved.
@@ -37,7 +37,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 struct jit_reduction_t : public gpu_primitive_t {
@@ -112,7 +111,6 @@ private:
 };
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

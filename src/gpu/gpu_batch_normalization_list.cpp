@@ -16,27 +16,12 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/bnorm/gen9_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/intel/ocl/bnorm/nhwc_reusable.hpp"
 #include "gpu/intel/ocl/bnorm/ref_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/reusable_bnorm.hpp"
 #include "gpu/intel/ocl/bnorm/simple_bnorm.hpp"
-
-#ifdef DNNL_DEV_MODE
-#include "gpu/intel/ocl/bnorm/nhwc_reusable.hpp"
-#endif
-
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_batch_normalization.hpp"
-#include "gpu/sycl/ref_batch_normalization.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_batch_normalization.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

@@ -18,9 +18,9 @@
 #define GPU_INTEL_OCL_BNORM_BNORM_UTILS_HPP
 
 #include "common/batch_normalization_pd.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/primitive_conf.hpp"
-#include "gpu/utils.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/utils.hpp"
 
 #include <string.h>
 

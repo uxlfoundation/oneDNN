@@ -45,7 +45,8 @@ Difficulty is in determining how to achieve the above goal for
 
 #include <algorithm>
 #include "common/c_types_map.hpp"
-#include "gpu/ocl/generic_reorder.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/ocl/generic_reorder.hpp"
 
 #include "common/utils.hpp"
 #include "gpu/intel/ocl/ocl_stream.hpp"

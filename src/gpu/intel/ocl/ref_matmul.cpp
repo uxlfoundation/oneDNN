@@ -18,7 +18,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
-#include "gpu/compute/utils.hpp"
+#include "gpu/intel/compute/utils.hpp"
 namespace dnnl {
 namespace impl {
 namespace gpu {

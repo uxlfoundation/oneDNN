@@ -20,16 +20,16 @@
 #include <memory>
 
 // Must be included before emulation.hpp
-#include "gpu/jit/ngen/ngen.hpp"
+#include "gpu/intel/jit/ngen/ngen.hpp"
 
 #include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
-#include "gpu/compute/device_info.hpp"
-#include "gpu/gpu_primitive.hpp"
-#include "gpu/jit/emulation.hpp"
-#include "gpu/jit/jit_generator_base.hpp"
-#include "gpu/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/jit/utils/utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/jit/emulation.hpp"
+#include "gpu/intel/jit/jit_generator_base.hpp"
+#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
 
 #include "gpu/intel/jit/ngen/ngen_opencl.hpp"
 

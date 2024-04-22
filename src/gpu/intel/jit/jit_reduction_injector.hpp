@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_JIT_REDUCTION_INJECTOR_HPP
-#define GPU_INTEL_JIT_JIT_REDUCTION_INJECTOR_HPP
+#ifndef GPU_JIT_JIT_REDUCTION_INJECTOR_HPP
+#define GPU_JIT_JIT_REDUCTION_INJECTOR_HPP
 
 #include <assert.h>
 
@@ -30,7 +30,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 inline bool jit_reduction_injector_f32_is_supported(alg_kind_t alg) {
@@ -56,9 +55,8 @@ struct jit_reduction_injector_f32 {
 
 private:
     void initialize(int simd, const ngen::GRF &reg);
-    // Load data from a contiguous range in global memory into a contiguous
-    // range of registers (block load)
-    void eload(const ngen::GRFRange &dst, const ngen::GRF &base_src_addr);
+    void eload(
+            int simd, int dt_size, const ngen::GRF &dst, const ngen::GRF &addr);
 
     // Emulation functions
     void emov(jit_generator<hw> &host, const ngen::InstructionModifier &mod,
@@ -83,16 +81,15 @@ private:
     jit_generator<hw> &h;
     reg_allocator_t &ra;
 
-    void sum_fwd(int simd, const ngen::GRF &acc, const ngen::GRF &val);
-    void max_fwd(int simd, const ngen::GRF &acc, const ngen::GRF &val);
-    void min_fwd(int simd, const ngen::GRF &acc, const ngen::GRF &val);
-    void mul_fwd(int simd, const ngen::GRF &acc, const ngen::GRF &val);
+    void sum_fwd(int simd, ngen::GRF &acc, ngen::GRF &val);
+    void max_fwd(int simd, ngen::GRF &acc, ngen::GRF &val);
+    void min_fwd(int simd, ngen::GRF &acc, ngen::GRF &val);
+    void mul_fwd(int simd, ngen::GRF &acc, ngen::GRF &val);
 };
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_JIT_JIT_REDUCTION_INJECTOR_HPP
+#endif // GPU_JIT_JIT_REDUCTION_INJECTOR_HPP

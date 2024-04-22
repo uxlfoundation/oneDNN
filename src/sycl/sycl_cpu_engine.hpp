@@ -20,7 +20,6 @@
 #include "common/impl_list_item.hpp"
 #include "cpu/cpu_engine.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
-#include "gpu/intel/sycl/utils.hpp"
 #include "sycl/sycl_engine_base.hpp"
 
 namespace dnnl {

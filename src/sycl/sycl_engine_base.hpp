@@ -25,8 +25,6 @@
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/ocl/ocl_gpu_engine.hpp"
 #include "gpu/intel/ocl/ocl_gpu_kernel.hpp"
-#include "gpu/intel/sycl/compat.hpp"
-#include "gpu/intel/sycl/utils.hpp"
 #include "gpu/sycl/sycl_interop_gpu_kernel.hpp"
 #include "xpu/sycl/engine_id.hpp"
 #include "xpu/sycl/engine_impl.hpp"

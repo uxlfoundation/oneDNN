@@ -16,20 +16,9 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/gen9_softmax.hpp"
 #include "gpu/intel/ocl/ref_softmax.hpp"
 #include "gpu/intel/ocl/reusable_softmax.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_softmax.hpp"
-#include "gpu/sycl/ref_softmax.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_softmax.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

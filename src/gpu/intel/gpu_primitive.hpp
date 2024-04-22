@@ -18,7 +18,7 @@
 #define GPU_INTEL_GPU_PRIMITIVE_HPP
 
 #include <cassert>
-#include "gpu/compute/utils.hpp"
+#include "gpu/intel/compute/utils.hpp"
 
 #ifndef DISABLE_VERBOSE
 #include <iostream>
@@ -37,7 +37,6 @@
 #include "gpu/intel/jit/jit_generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
 #include "gpu/intel/ocl/types_interop.hpp"
-#include "xpu/utils.hpp"
 
 #define CTX_GPU_RES_STORAGE(arg) \
     (*(ctx.get_resource_mapper() \

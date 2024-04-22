@@ -14,12 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/ocl/combined_reduction.hpp"
+#include "gpu/intel/ocl/reduction/combined_reduction.hpp"
 #include "common/c_types_map.hpp"
-#include "common/scratchpad.hpp"
-#include "gpu/block_structure.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/ocl/ocl_utils.hpp"
+#include "gpu/intel/block_structure.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/reduction/reduction_utils.hpp"
 
 namespace dnnl {
 namespace impl {

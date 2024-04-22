@@ -21,7 +21,6 @@
 #include <CL/cl.h>
 
 #include "gpu/intel/compute/kernel.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {

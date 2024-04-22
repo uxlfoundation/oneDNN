@@ -20,7 +20,6 @@
 #include "gpu/intel/ocl/ocl_engine.hpp"
 #include "gpu/intel/ocl/ocl_gpu_hw_info.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
-#include "gpu/intel/sycl/compat.hpp"
 #include "gpu/sycl/sycl_gpu_engine.hpp"
 
 #include "cpu/platform.hpp"

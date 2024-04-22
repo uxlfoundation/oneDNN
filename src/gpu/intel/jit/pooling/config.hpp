@@ -21,9 +21,9 @@
 #include <sstream>
 
 #include "common/utils.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/jit/ir/config.hpp"
-#include "gpu/primitive_conf.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/jit/ir/config.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

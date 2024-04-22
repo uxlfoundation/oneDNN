@@ -1,5 +1,6 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
+* Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,6 +15,28 @@
 * limitations under the License.
 *******************************************************************************/
 
-// ngen_register_allocator.hpp is now header-only to match the rest of nGEN.
-//
-// This file is present only for backward compatibility.
+#include "gpu/intel/ocl/ref_concat.hpp"
+#include "gpu/nvidia/sycl_cuda_engine.hpp"
+
+namespace dnnl {
+namespace impl {
+namespace gpu {
+namespace nvidia {
+
+namespace {
+
+constexpr impl_list_item_t cuda_concat_impl_list[]
+        = {impl_list_item_t::concat_type_deduction_helper_t<
+                   gpu::ocl::ref_concat_t::pd_t>(),
+                nullptr};
+} // namespace
+
+const impl_list_item_t *
+cuda_gpu_engine_impl_list_t::get_concat_implementation_list() {
+    return cuda_concat_impl_list;
+}
+
+} // namespace nvidia
+} // namespace gpu
+} // namespace impl
+} // namespace dnnl

@@ -23,7 +23,6 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/kernel_list.hpp"
-#include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/kernel_utils.hpp"
 #include "gpu/intel/ocl/ocl_gpu_device_info.hpp"
 #include "gpu/intel/ocl/ocl_gpu_engine.hpp"

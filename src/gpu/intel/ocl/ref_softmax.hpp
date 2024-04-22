@@ -19,10 +19,6 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "gpu/compute/compute.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/gpu_primitive.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_softmax_pd.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive.hpp"

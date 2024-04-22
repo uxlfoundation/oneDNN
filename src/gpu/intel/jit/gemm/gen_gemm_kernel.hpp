@@ -25,7 +25,6 @@
 #include "gpu/intel/jit/gemm/kernel_evaluator.hpp"
 #include "gpu/intel/jit/jit_generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {

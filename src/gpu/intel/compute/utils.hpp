@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_COMPUTE_UTILS_HPP
-#define GPU_INTEL_COMPUTE_UTILS_HPP
+#ifndef GPU_COMPUTE_UTILS_HPP
+#define GPU_COMPUTE_UTILS_HPP
 
 #include <array>
 #include <cassert>
@@ -23,6 +23,7 @@
 #include <tuple>
 #include <vector>
 
+#include "common/optional.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/utils.hpp"
@@ -30,18 +31,26 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace compute {
+
+using binary_t = std::vector<uint8_t>;
+using device_uuid_t = std::tuple<uint64_t, uint64_t>;
+
+struct device_uuid_hasher_t {
+    size_t operator()(const device_uuid_t &uuid) const {
+        const size_t seed = hash_combine(0, std::get<0>(uuid));
+        return hash_combine(seed, std::get<1>(uuid));
+    }
+};
 
 class range_t {
 public:
     static constexpr size_t max_ndims = 3;
-    constexpr range_t() = default;
-    range_t(size_t dim0) : ndims_(1), dims_ {dim0, 0, 0} {}
-    range_t(size_t dim0, size_t dim1) : ndims_(2), dims_ {dim0, dim1, 0} {}
+    range_t() = default;
+    range_t(size_t dim0) : ndims_(1), dims_ {dim0, 1, 1} {}
+    range_t(size_t dim0, size_t dim1) : ndims_(2), dims_ {dim0, dim1, 1} {}
     range_t(size_t dim0, size_t dim1, size_t dim2)
         : ndims_(3), dims_ {dim0, dim1, dim2} {}
-
     template <typename int_type>
     range_t(const std::vector<int_type> &dims) {
         gpu_assert(dims.size() <= max_ndims)
@@ -51,67 +60,44 @@ public:
             dims_[i] = gpu_utils::into<size_t>(dims[i]);
         }
     }
-
-    // Initialize a valid nd-range with one element, to be mutated
-    static range_t one(size_t ndims = max_ndims) {
-        range_t ret;
-        ret.ndims_ = ndims;
-        for (size_t i = 0; i < ndims; i++) {
-            ret.dims_[i] = 1;
-        }
-        return ret;
-    }
-
-    // Initialize a valid nd-range with zero elements, to have dimensions set individually
-    static range_t empty(size_t ndims = max_ndims) {
-        range_t ret;
-        ret.ndims_ = ndims;
-        return ret;
-    }
-
     size_t &operator[](size_t idx) {
-        assert(idx < ndims_);
+        assert(idx < ndims());
         return dims_[idx];
     }
     size_t operator[](size_t idx) const {
-        assert(idx < ndims_);
+        assert(idx < ndims());
         return dims_[idx];
     }
     size_t ndims() const { return ndims_; }
     size_t nelems() const {
-        if (ndims_ == 0) return 0;
         return utils::array_product(dims_.data(), ndims_);
     };
     const size_t *data() const { return dims_.data(); }
 
-    bool operator==(const range_t &rhs) const {
-        if (ndims_ != rhs.ndims_) return false;
-        for (size_t i = 0; i < ndims_; i++) {
-            if (dims_[i] != rhs.dims_[i]) return false;
-        }
-        return true;
+    static range_t empty_like(const range_t &other) {
+        range_t ret;
+        ret.ndims_ = other.ndims_;
+        return ret;
     }
-    bool operator!=(const range_t &rhs) const { return !operator==(rhs); }
-
-    operator bool() const { return ndims_ > 0; }
 
 private:
-    size_t ndims_ = 0;
-    std::array<size_t, max_ndims> dims_ = {0, 0, 0};
+    size_t ndims_ = max_ndims;
+    std::array<size_t, max_ndims> dims_ = {1, 1, 1};
 };
 
 // Stores global/local ranges to use for kernel enqueueing
 class nd_range_t {
 public:
     nd_range_t() = default;
-    nd_range_t(
-            const range_t &global_range, const range_t &local_range = range_t())
+    nd_range_t(const range_t &global_range,
+            const utils::optional_t<range_t> &local_range = utils::nullopt)
         : global_range_(global_range), local_range_(local_range) {
-        if (local_range_) {
-            gpu_assert(local_range_.ndims() == global_range_.ndims())
+        if (local_range_.has_value()) {
+            const auto &lws = local_range_.value();
+            gpu_assert(lws.ndims() == global_range_.ndims())
                     << "Incompatible gws/lws dimensions";
-            for (size_t i = 0; i < local_range_.ndims(); i++) {
-                gpu_assert(local_range_[i] != 0) << "Invalid local work size";
+            for (size_t i = 0; i < lws.ndims(); i++) {
+                gpu_assert(lws[i] != 0) << "Invalid local work size";
             }
         }
     }
@@ -119,7 +105,9 @@ public:
     size_t ndims() const { return global_range_.ndims(); }
     const range_t &global_range() const { return global_range_; }
 
-    const range_t &local_range() const { return local_range_; }
+    const utils::optional_t<range_t> &local_range() const {
+        return local_range_;
+    }
 
     bool is_zero() const { return (global_range_.nelems() == 0); }
 
@@ -131,11 +119,11 @@ public:
             oss << global_range_[i];
         }
         oss << "] lws = ";
-        if (local_range_) {
+        if (local_range_.has_value()) {
             oss << "[";
             for (size_t i = 0; i < ndims(); i++) {
                 if (i > 0) oss << ", ";
-                oss << local_range_[i];
+                oss << local_range_.value()[i];
             }
             oss << "]";
         } else {
@@ -146,13 +134,12 @@ public:
 
 private:
     range_t global_range_;
-    range_t local_range_;
+    utils::optional_t<range_t> local_range_;
 };
 
 } // namespace compute
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_COMPUTE_UTILS_HPP
+#endif // GPU_COMPUTE_UTILS_HPP

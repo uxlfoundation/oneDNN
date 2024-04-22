@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/sycl/compat.hpp"
+#include "sycl/sycl_compat.hpp"
 
 namespace dnnl {
 namespace impl {

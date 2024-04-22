@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 #include "gpu/intel/ocl/bnorm/gen9_bnorm.h"
-#include "gpu/intel/ocl/bnorm/gen9_bnorm_reduce.h"
 
 // FWD kernels for regular and 1-pass (under USE_STATS_ONE_PASS) bnorm
 // algorithms that are specially optimized for NHWC layout

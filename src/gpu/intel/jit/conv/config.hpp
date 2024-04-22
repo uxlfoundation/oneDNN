@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_CONV_CONFIG_HPP
-#define GPU_INTEL_JIT_CONV_CONFIG_HPP
+#ifndef GPU_JIT_CONV_CONFIG_HPP
+#define GPU_JIT_CONV_CONFIG_HPP
 
 #include <iostream>
 #include <sstream>
@@ -29,27 +29,12 @@
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
-#include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
-
-class allow_global_reduction_param_t : public bool_param_t {
-public:
-    allow_global_reduction_param_t() : bool_param_t(default_value) {}
-    std::string name() const override { return "global-reduction"; }
-    std::string desc() const override {
-        return "Whether global reduction via atomics is allowed.";
-    }
-    bool is_overridable() const override { return true; }
-    bool is_default() const override { return get() == default_value; }
-
-    static const bool default_value;
-};
 
 // Special optimization techniques for backward by data convolution.
 //
@@ -142,7 +127,7 @@ public:
     bool is_default() const override { return false; }
 
     void set_from_str(const std::string &s) override {
-        value_ = to_enum<fma_kind_t>(s);
+        value_ = str_to_fma_kind(s);
     }
 
     std::string str() const override {
@@ -394,7 +379,7 @@ public:
     void set_from_str(const std::string &s) override {
         a_ = 1;
         b_ = 1;
-        for (auto &kv : ir_utils::to_string_int_pairs(s)) {
+        for (auto &kv : ir_utils::to_string_int_map(s)) {
             if (kv.first == "a") {
                 a_ = kv.second;
             } else if (kv.first == "b") {
@@ -424,29 +409,6 @@ public:
 private:
     int a_ = 1;
     int b_ = 1;
-};
-
-class walk_order_param_t : public value_param_t<walk_order_t> {
-public:
-    using value_param_t::value_param_t;
-
-    std::string name() const override { return "walk-order"; }
-    std::string desc() const override {
-        return "Kernel grid walk order (innermost -> outermost).";
-    }
-    bool is_overridable() const override { return true; }
-    bool is_default() const override { return false; }
-
-    void set_from_str(const std::string &s) override {
-        if (s.empty()) return;
-        value_ = walk_order_t(s);
-    }
-
-    std::string str() const override {
-        std::ostringstream oss;
-        oss << short_name() << "=" << value_;
-        return oss.str();
-    }
 };
 
 class wei_layout_param_t : public layout_param_t {
@@ -501,12 +463,10 @@ public:
     } \
     name##_param_t &name() { return name##_; }
 
-    DECL_PARAM(allow_global_reduction)
     DECL_PARAM(bwd_d_optimize_kind)
     DECL_PARAM(fma_kind)
     DECL_PARAM(pad_slm)
     DECL_PARAM(prb)
-    DECL_PARAM(walk_order)
     DECL_PARAM2(pipeline)
     DECL_PARAM2(prefetch)
     DECL_PARAM2(slm)
@@ -520,10 +480,10 @@ public:
 
     std::string str() const override;
 
-    const std::vector<pvar_t> &index_dims() const override {
+    const std::vector<prb_dim_t> &index_dims() const override {
         return conv_index_dims(prb().prop_kind());
     }
-    pvar_tile_t shape(bool pad) const override;
+    prb_tile_t shape(bool pad) const override;
 
     std::string blocking_brief_str() const;
 
@@ -535,9 +495,9 @@ public:
     // compute and store, we still need to pad 8 to 32 and
     // spawn more thread groups to ensure 32c block is
     // properly zero-padded.
-    int pad_block(const pvar_t &d) const override;
+    int pad_block(const prb_dim_t &d) const override;
 
-    int unroll(const pvar_t &d) const { return into<int>(unroll()(d)); }
+    int unroll(const prb_dim_t &d) const { return unroll()(d); }
 
     int reserved_regs() const;
 
@@ -572,7 +532,8 @@ public:
     compute::nd_range_t nd_range() const {
         compute::range_t gws = compute::range_t::empty();
         compute::range_t lws = compute::range_t::empty();
-        for (int i = 0; i < into<int>(compute::range_t::max_ndims); i++) {
+        for (int i = 0; i < gpu_utils::into<int>(compute::range_t::max_ndims);
+                i++) {
             lws[i] = thread_group_grid().dim(i) * (i == 0 ? simd() : 1);
             gws[i] = kernel_grid().dim(i) * lws[i];
         }
@@ -620,7 +581,6 @@ private:
                   return &((const conv_config_t *)c)->name##_; \
               });
 
-    INIT_PARAM(allow_global_reduction)
     INIT_PARAM(bwd_d_optimize_kind)
     INIT_PARAM(fma_kind)
     INIT_PARAM(pad_slm)
@@ -632,7 +592,6 @@ private:
     INIT_PARAM(unroll)
     INIT_PARAM(wei_layout)
     INIT_PARAM(bia_layout)
-    INIT_PARAM(walk_order)
 
 #undef INIT_PARAM
 };
@@ -646,41 +605,39 @@ public:
         gemm_loop_ = to_gemm(cfg.loop_dims().get(), prb);
     }
 
-    dim_t iter_dim(pvar_t d) const { return gemm_iter_.get(d, 1); }
+    int iter_dim(prb_dim_t d) const { return gemm_iter_.get(d, 1); }
 
-    dim_t thread_group_dim(pvar_t d) const {
+    int thread_group_dim(prb_dim_t d) const {
         return gemm_thread_group_.get(d, 1);
     }
 
-    dim_t loop_dim(pvar_t d) const { return gemm_loop_.get(d, 1); }
+    int loop_dim(prb_dim_t d) const { return gemm_loop_.get(d, 1); }
 
 private:
-    pvar_tile_t gemm_iter_;
-    pvar_tile_t gemm_thread_group_;
-    pvar_tile_t gemm_loop_;
+    prb_tile_t gemm_iter_;
+    prb_tile_t gemm_thread_group_;
+    prb_tile_t gemm_loop_;
 };
 
 status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
-        impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr);
+        const engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr);
 status_t init_cfg(conv_config_t &cfg, const primitive_t *prim);
 status_t init_regs(conv_config_t &cfg);
-int slm_bufs_hint(const conv_problem_t &prb, dim_t m_tg, dim_t n_tg,
+int slm_bufs_hint(const conv_problem_t &prb, int m_tg, int n_tg,
         bool do_src_zp_compensation, bool enable_a, bool enable_b,
         bool do_unroll);
 tensor_config_t get_tensor_config(
         const conv_config_t &cfg, const memory_desc_t *zp_src);
-bool is_small(const type_t &type, dim_t elems);
 int estimate_register_count(const conv_config_t &cfg);
 int default_regs(const conv_config_t &cfg);
 void init_kernel_grid(conv_config_t &cfg);
-void init_walk_order(conv_config_t &cfg);
 void init_thread_group_grid(conv_config_t &cfg);
-std::array<pvar_tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
-std::array<pvar_tile_t, 3> get_thread_group_grid_conv_dims(
-        const conv_config_t &cfg);
+const std::array<prb_tile_t, 3> &get_kernel_grid_conv_dims(
+        const conv_problem_t &prb);
+const std::array<prb_tile_t, 3> &get_thread_group_grid_conv_dims(
+        const conv_problem_t &prb);
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -16,10 +16,8 @@
 
 #include <algorithm>
 #include <iomanip>
-#include <limits>
 #include <sstream>
 
-#include "common/math_utils.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
@@ -28,84 +26,48 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace compute {
 
 // Compute optimal local work size for the given global work size.
-compute::range_t get_optimal_lws(compute::range_t &gws,
-        const dim_idx_t mapped_vec_dim_idx, const gpu_arch_t gpu_arch) {
+compute::range_t get_optimal_lws(const compute::range_t &gws,
+        const int mapped_vec_dim_idx, const gpu_arch_t gpu_arch) {
+    const size_t lws_max = 256;
     // Factors in descending order, prefer bigger sizes for local work size.
     const size_t optimal_lws_values[]
             = {256, 224, 192, 160, 128, 96, 64, 32, 16, 8, 7, 6, 5, 4, 3, 2, 1};
-    const size_t optimal_vect_values[] = {256, 128, 64, 32, 16, 8, 4, 2, 1};
-
-    auto match = [](const size_t *values, size_t gws_i, size_t max_lws_i,
-                         size_t min_lws_i) {
-        size_t lws_idx = 0;
-        while (max_lws_i < values[lws_idx])
-            lws_idx++;
-        while (gws_i % values[lws_idx])
-            lws_idx++;
-        if (values[lws_idx] < min_lws_i) return min_lws_i;
-        return values[lws_idx];
-    };
-
-    const auto ndims = gws.ndims();
-    // Avoid GPU limitation where work-group size must fit in uint32_t
-    auto lws_min = compute::range_t::empty(ndims);
-    for (size_t i = 0; i < ndims; i++)
-        lws_min[i]
-                = utils::div_up(gws[i], std::numeric_limits<uint32_t>::max());
-
-    auto lws_max = [&]() {
-        auto ret = compute::range_t::empty(ndims);
-        size_t max = 256;
-        size_t min = 1;
-        for (dim_t i = ndims - 1; i >= 0; i--) {
-            ret[i] = std::max(max / min, size_t(1));
-            min *= lws_min[i];
-        }
-        return ret;
-    }();
-
-    // Starting from XE_HP subgroups may not be contained in lws[0] when lws[0]
-    // is not a power of 2. To account for this, we consider multiple allocation
-    // strategies which require subgroups to be contained in lws[0] and take the
-    // best outcome.
-
-    auto lws_1d = [&]() {
-        auto ret = compute::range_t::one(ndims);
-        if (lws_min.nelems() == lws_min[0]) {
-            ret[0] = match(optimal_lws_values, gws[0], lws_max[0], lws_min[0]);
-        }
-        return ret;
-    }();
-
-    auto lws_nd = compute::range_t::one(ndims);
     size_t total_lws = 1;
+
+    compute::range_t gws_copy = gws;
+    auto lws = compute::range_t::one(gws_copy.ndims());
 
     // Iterate through global work size and calculate max divisor from
     // the array optimal_lws_values.
-    for (size_t i = 0; i < ndims; ++i) {
-        auto rest_lws = std::max(lws_max[i] / total_lws, size_t(1));
-        auto lws_i = (static_cast<size_t>(mapped_vec_dim_idx) == i
-                             && gpu_arch >= gpu_arch_t::xe_hp)
-                ? match(optimal_vect_values, gws[i], rest_lws,
-                        utils::rnd_up_pow2(lws_min[i]))
-                : match(optimal_lws_values, gws[i], rest_lws, lws_min[i]);
+    for (size_t i = 0; i < gws_copy.ndims(); ++i) {
+        auto rest_lws = lws_max / total_lws;
+        size_t lws_idx = 0;
+        while (rest_lws < optimal_lws_values[lws_idx])
+            lws_idx++;
 
-        lws_nd[i] *= lws_i;
-        total_lws *= lws_i;
+        while (gws_copy[i] % optimal_lws_values[lws_idx])
+            lws_idx++;
+
+        lws[i] *= optimal_lws_values[lws_idx];
+        total_lws *= optimal_lws_values[lws_idx];
+        gws_copy[i] /= optimal_lws_values[lws_idx];
     }
 
-    auto ret_lws = lws_nd.nelems() >= lws_1d.nelems() ? lws_nd : lws_1d;
-
-    // Ensure uniform work-groups
-    for (dim_idx_t i = 0; i < ndims; i++) {
-        gws[i] = utils::rnd_up(gws[i], ret_lws[i]);
+    // Temporary WA for HW/Compiler walk order issue:
+    // starting from XE_HP, if LWS vectorized dim is not power of 2
+    // it may generate sub_groups with inconsecutive SIMD elements.
+    // TODO: remove it when the original issue fixed
+    if (mapped_vec_dim_idx != -1 && gpu_arch >= gpu_arch_t::xe_hp) {
+        if (!math::is_pow2(lws[mapped_vec_dim_idx])) {
+            for (size_t i = 0; i < lws.ndims(); i++) {
+                if (i != (size_t)mapped_vec_dim_idx) lws[i] = 1;
+            }
+        }
     }
-
-    return ret_lws;
+    return lws;
 }
 
 dispatch_t::dispatch_t(const compute_engine_t *engine, const memory_desc_t *md)
@@ -141,7 +103,7 @@ dispatch_t::dispatch_t(const compute_engine_t *engine, const memory_desc_t *md)
 
 std::string dispatch_t::str() const {
     std::ostringstream oss;
-    for (dim_idx_t i = 0; i < ndims_; ++i) {
+    for (int i = 0; i < ndims_; ++i) {
         auto &d = dims_[i];
         oss << "    "
             << "dim #" << i << " name: " << std::setw(10) << d.name
@@ -155,9 +117,10 @@ std::string dispatch_t::str() const {
 
 void dispatch_t::define_dim_with_nesting_level(
         const std::string &name, int nesting_level, dim_t size, dim_t block) {
-    for (dim_idx_t i = 0; i < ndims_; ++i)
-        gpu_assert(dims_[i].name != name)
-                << "Name " << dims_[i].name << " is not unique";
+#ifndef NDEBUG
+    for (int i = 0; i < ndims_; ++i)
+        assert(dims_[i].name != name && "Name is not unique.");
+#endif
 
     dim_info_t di;
     di.name = name;
@@ -166,7 +129,7 @@ void dispatch_t::define_dim_with_nesting_level(
     di.nesting_level = nesting_level;
     di.vector_size = 1;
     di.gws_index = -1;
-    dims_[ndims_] = std::move(di);
+    dims_[ndims_] = di;
 
     ++ndims_;
 }
@@ -174,7 +137,7 @@ void dispatch_t::define_dim_with_nesting_level(
 status_t dispatch_t::vectorize_dim(const std::string &name, int vector_size) {
     if (!engine_->mayiuse_sub_group(vector_size)) return status::unimplemented;
     assert(vector_size > 1);
-    for (dim_idx_t i = 0; i < ndims_; ++i) {
+    for (int i = 0; i < ndims_; ++i) {
         if (dims_[i].name == name) {
             assert(dims_[i].size % vector_size == 0);
             assert(dims_[i].size % (vector_size * dims_[i].block) == 0);
@@ -202,7 +165,7 @@ void dispatch_t::def_kernel_macros(kernel_ctx_t &kernel_ctx) const {
 
     kernel_ctx.define_int(utils::format("%s_DEF", gws_prefix.c_str()), 1);
 
-    for (dim_idx_t i = 0; i < ndims_; ++i) {
+    for (int i = 0; i < ndims_; ++i) {
         auto get_dim_str = utils::format("-DGWS_GET_%s=%s_GET_ID%d",
                 dims_[i].name.c_str(), gws_prefix.c_str(), i);
         kernel_ctx.add_option(get_dim_str);
@@ -236,7 +199,7 @@ void dispatch_t::def_kernel_macros(kernel_ctx_t &kernel_ctx) const {
     }
 
     // Local work size and subgroup sizes.
-    dim_idx_t vec_dim_idx = find_vectorized_dim();
+    int vec_dim_idx = find_vectorized_dim();
     kernel_ctx.define_int(utils::format("GWS_WITH_SG_%s", attr_suffix_),
             vec_dim_idx != dim_not_found);
 
@@ -249,26 +212,7 @@ void dispatch_t::def_kernel_macros(kernel_ctx_t &kernel_ctx) const {
         for (size_t i = 0; i < r.global_range().ndims(); i++) {
             kernel_ctx.define_int(
                     utils::format("GWS_LWS%zu_%s", i, attr_suffix_),
-                    into<int64_t>(r.local_range()[i]));
-        }
-    }
-
-    compute::range_t gws_actual {1, 1, 1};
-    for (dim_idx_t i = 0; i < ndims_; i++) {
-        const auto &d = dims_[i];
-        gws_actual[d.gws_index] *= utils::div_up(d.size, d.block);
-    };
-    auto &gws = nd_range_.global_range();
-    for (dim_idx_t i = 0; i < 3; i++) {
-        if (i < nd_range_.ndims() && gws[i] > gws_actual[i]) {
-            std::string overflow_check = utils::format(
-                    "-DGWS%d_OVERFLOW=\"(get_global_id(%d) >= %zu%s)\"", i, i,
-                    gws_actual[i], gws_actual[i] > UINT32_MAX ? "ul" : "u");
-            kernel_ctx.add_option(overflow_check);
-        } else {
-            std::string overflow_check
-                    = utils::format("-DGWS%d_OVERFLOW=false", i);
-            kernel_ctx.add_option(overflow_check);
+                    gpu_utils::into<int64_t>(r.local_range()[i]));
         }
     }
 }
@@ -283,7 +227,7 @@ void dispatch_t::generate(bool generate_lws) {
     // XXX: Move dimensions with size = 1 to the end.
     for (int i = ndims_ - 2; i >= 0; --i) {
         if (dims_[i].size == 1) {
-            for (dim_idx_t j = i; j < ndims_ - 1; ++j) {
+            for (int j = i; j < ndims_ - 1; ++j) {
                 if (dims_[j + 1].size == 1) break;
                 std::swap(dims_[j], dims_[j + 1]);
             }
@@ -291,18 +235,18 @@ void dispatch_t::generate(bool generate_lws) {
     }
 
     // Find vectorized dimension (if any).
-    dim_idx_t vec_dim_idx = find_vectorized_dim();
+    int vec_dim_idx = find_vectorized_dim();
 
     // Compute GWS indices.
-    for (dim_idx_t i = 0; i < ndims_; ++i) {
+    for (int i = 0; i < ndims_; ++i) {
         if (vec_dim_idx == dim_not_found) {
             // Keep up to 4 dims in gws[0] to have bigger choice for work group
             // size.
-            dims_[i].gws_index = std::min(2, std::max(0, into<int>(i) - 3));
+            dims_[i].gws_index = std::min(2, std::max(0, i - 3));
         } else {
             // With vectorized dimension, work group size choices are more
             // limited so no need to group dimensions together.
-            dims_[i].gws_index = std::min(2, into<int>(i));
+            dims_[i].gws_index = std::min(2, i);
         }
     }
 
@@ -319,7 +263,7 @@ void dispatch_t::generate(bool generate_lws) {
     size_t hw_threads = dev_info->hw_threads();
 
     // Calculate block sizes for the dimensions with flexible blocking.
-    for (dim_idx_t i = 0; i < ndims_; ++i) {
+    for (int i = 0; i < ndims_; ++i) {
         if (dims_[i].block == 0) {
             int gws_index = dims_[i].gws_index;
             // Heuristic: use max blocking but keep at least eu_count work items.
@@ -338,8 +282,9 @@ void dispatch_t::generate(bool generate_lws) {
         if (vec_dim_idx != dim_not_found) {
             lws = compute::range_t::one(gws.ndims());
             int gws_index = dims_[vec_dim_idx].gws_index;
-            size_t vec_size = into<size_t>(dims_[vec_dim_idx].vector_size);
-            size_t nblocks = into<size_t>(
+            size_t vec_size
+                    = gpu_utils::into<size_t>(dims_[vec_dim_idx].vector_size);
+            size_t nblocks = gpu_utils::into<size_t>(
                     dims_[vec_dim_idx].size / dims_[vec_dim_idx].block);
             // XXX: max 256 work items per group
             lws[gws_index]
@@ -350,9 +295,9 @@ void dispatch_t::generate(bool generate_lws) {
                     * vec_size;
 
             // Move the vectorized dimension to the first place in the group.
-            dim_idx_t group_beg = ndims_ - 1;
-            dim_idx_t group_end = 0;
-            for (dim_idx_t i = 0; i < ndims_; ++i) {
+            int group_beg = ndims_ - 1;
+            int group_end = 0;
+            for (int i = 0; i < ndims_; ++i) {
                 if (dims_[i].gws_index == gws_index) {
                     group_beg = std::min(group_beg, i);
                     group_end = std::max(group_end, i);
@@ -361,10 +306,10 @@ void dispatch_t::generate(bool generate_lws) {
 
             if (vec_dim_idx != group_beg) {
                 auto vec_dim_info = dims_[vec_dim_idx];
-                for (int i = vec_dim_idx - 1; i >= into<int>(group_beg); --i) {
+                for (int i = vec_dim_idx - 1; i >= group_beg; --i) {
                     dims_[i + 1] = dims_[i];
                 }
-                dims_[group_beg] = std::move(vec_dim_info);
+                dims_[group_beg] = vec_dim_info;
             }
         }
 
@@ -376,20 +321,10 @@ void dispatch_t::generate(bool generate_lws) {
         if (!lws) {
             // Compute the best lws.
             lws = get_optimal_lws(gws,
-                    vec_dim_idx != dim_idx::invalid
-                            ? dims_[vec_dim_idx].gws_index
-                            : dim_idx::invalid,
+                    vec_dim_idx != -1 ? dims_[vec_dim_idx].gws_index : -1,
                     dev_info->gpu_arch());
-            gpu_assert(lws) << "Unexpected missing lws";
-        } else {
-            // Last ditch effort to avoid dispatching restriction on Intel GPUs.
-            for (size_t i = 0; i < gws.ndims(); i++) {
-                if (gws[i] > lws[i] * UINT_MAX) {
-                    lws[i] *= utils::div_up(gws[i], UINT_MAX);
-                    gws[i] = utils::rnd_up(gws[i], lws[i]);
-                }
-            }
         }
+        gpu_assert(lws) << "Unexpected missing lws";
     }
 
     nd_range_ = nd_range_t(gws, lws);
@@ -414,8 +349,8 @@ void dispatch_t::set_lws(const compute::range_t &lrange) {
     nd_range_ = nd_range_t(grange, lrange);
 }
 
-void dispatch_t::define_dim_with_md_hint(const std::string &name,
-        dim_idx_t md_hint_index, dim_t size, dim_t block) {
+void dispatch_t::define_dim_with_md_hint(
+        const std::string &name, int md_hint_index, dim_t size, dim_t block) {
     int nesting_level = min_nesting_level;
     if (md_ndims_ > 0) {
         assert(md_hint_index >= 0 && md_hint_index < md_ndims_);
@@ -426,7 +361,6 @@ void dispatch_t::define_dim_with_md_hint(const std::string &name,
 }
 
 } // namespace compute
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

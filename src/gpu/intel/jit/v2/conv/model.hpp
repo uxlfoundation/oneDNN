@@ -18,8 +18,8 @@
 #define GPU_INTEL_JIT_V2_CONV_MODEL_HPP
 
 #include "gpu/intel/jit/v2/conv/bench_data.hpp"
+#include "gpu/intel/jit/v2/conv/ml.hpp"
 #include "gpu/intel/jit/v2/conv/problem.hpp"
-#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {

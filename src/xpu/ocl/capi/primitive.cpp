@@ -25,10 +25,11 @@
 #include "common/primitive_iface.hpp"
 #include "common/utils.hpp"
 
-#include "xpu/ocl/c_types_map.hpp"
-#include "xpu/ocl/memory_storage.hpp"
-#include "xpu/ocl/stream_impl.hpp"
-#include "xpu/ocl/utils.hpp"
+#include "gpu/intel/ocl/ocl_c_types_map.hpp"
+#include "gpu/intel/ocl/ocl_engine.hpp"
+#include "gpu/intel/ocl/ocl_memory_storage.hpp"
+#include "gpu/intel/ocl/ocl_stream.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 using namespace dnnl::impl;
 

@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_JIT_REDUCTION_GENERATOR_HPP
-#define GPU_INTEL_JIT_JIT_REDUCTION_GENERATOR_HPP
+#ifndef GPU_JIT_REDUCTION_GENERATOR_HPP
+#define GPU_JIT_REDUCTION_GENERATOR_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"
@@ -31,7 +31,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 template <gpu_gen_t hw>
@@ -185,9 +184,8 @@ protected:
 };
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_JIT_JIT_REDUCTION_GENERATOR_HPP
+#endif // GPU_JIT_JIT_REDUCTION_GENERATOR_HPP

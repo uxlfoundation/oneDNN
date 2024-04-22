@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_CONV_ZERO_OUT_HPP
-#define GPU_INTEL_JIT_CONV_ZERO_OUT_HPP
+#ifndef GPU_JIT_CONV_ZERO_OUT_HPP
+#define GPU_JIT_CONV_ZERO_OUT_HPP
 
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
@@ -25,7 +25,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 template <ngen::HW hw = ngen::HW::Unknown>
@@ -34,9 +33,10 @@ public:
     IR_KERNEL_FORWARD(hw)
 
     zero_out_kernel_t(const exec_config_t &exec_cfg,
-            const kernel_info_t &kernel_info, bool require_dpas)
+            const kernel_info_t &kernel_info, bool require_dpas,
+            grf_mode_t grf_mode)
         : ir_kernel_t<hw>("zero_out", exec_cfg, kernel_info,
-                kernel_info.nd_range().local_range(), require_dpas) {
+                kernel_info.nd_range(), require_dpas, grf_mode) {
 
         setup_interface();
         generate_prologue();
@@ -47,10 +47,12 @@ public:
         }
 
         int simd_size = getSIMD();
-        bool use_lsc = (hw >= ngen::HW::XeHPG);
+        // XXX: Stateful messages don't work on XeHPC.
+        bool use_a64 = (hw >= ngen::HW::XeHPC);
 
         auto size = getArgument(arg_names[0]);
         auto ptr = getArgument(arg_names[1]);
+        auto surf = Surface(getArgumentSurfaceIfExists(arg_names[1]));
         auto global_id = ra_.template alloc_sub<uint32_t>();
         auto off0 = ra_.template alloc_sub<uint32_t>();
 
@@ -91,26 +93,30 @@ public:
                             src1, idx_vec.uw((i % grf_size) * 2)(2))),
                     ngen_operand_t(reg_buf_data_t(src0, off0)),
                     ngen_operand_t(i));
-            auto ptr_sub_vec
-                    = get_subregister(hw, ngen::DataType::uq, ptr_vec, i)(1);
-            auto off_sub_vec_q_strided = get_subregister(
-                    hw, ngen::DataType::ud, off_vec_q_strided, i * 2)(2);
-            emov(8, off_sub_vec_q_strided, off_sub_vec);
-            eadd(8, ptr_sub_vec, ptr, off_sub_vec_q_strided);
+            if (use_a64) {
+                auto ptr_sub_vec = get_subregister(
+                        hw, ngen::DataType::uq, ptr_vec, i)(1);
+                auto off_sub_vec_q_strided = get_subregister(
+                        hw, ngen::DataType::ud, off_vec_q_strided, i * 2)(2);
+                emov(8, off_sub_vec_q_strided, off_sub_vec);
+                eadd(8, ptr_sub_vec, ptr, off_sub_vec_q_strided);
+            }
         }
 
         for (int i = 0; i < bytes_per_thr; i += bytes_per_store) {
             auto off_sub_vec
                     = get_subregister(hw, ngen::DataType::ud, off_vec, i)(1);
             cmp(16 | lt | f0[0], off_sub_vec, size);
-            auto h = get_subregister(hw, ngen::DataType::uq, ptr_vec, i);
-            if (use_lsc) {
+            if (use_a64) {
+                auto h_a64
+                        = get_subregister(hw, ngen::DataType::uq, ptr_vec, i);
                 std::unique_ptr<ngen::DataSpecLSC> lsc_spec;
                 lsc_spec = utils::make_unique<ngen::DataSpecLSC>(
                         ngen::scattered(ngen::DataSizeLSC::D8U32, 1));
-                store.ugm(16 | f0[0], *lsc_spec, A64, h, zero[0]);
+                store.ugm(16 | f0[0], *lsc_spec, A64, h_a64, zero[0]);
             } else {
-                store(16 | f0[0], ngen::scattered_byte(), A64, h, zero[0]);
+                auto h_bts = off_sub_vec;
+                store(16 | f0[0], ngen::scattered_byte(), surf, h_bts, zero[0]);
             }
         }
 
@@ -118,8 +124,8 @@ public:
     }
 
     static compute::nd_range_t nd_range(int simd, int size) {
-        return compute::nd_range_t(
-                into<size_t>(utils::div_up(size, bytes_per_thr) * simd), simd);
+        return compute::nd_range_t(gpu_utils::into<size_t>(
+                utils::div_up(size, bytes_per_thr) * simd));
     }
 
     static const int bytes_per_thr;
@@ -129,7 +135,6 @@ template <ngen::HW hw>
 const int zero_out_kernel_t<hw>::bytes_per_thr = 128;
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

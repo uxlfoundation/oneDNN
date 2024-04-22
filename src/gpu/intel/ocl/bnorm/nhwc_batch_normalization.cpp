@@ -26,13 +26,11 @@ using namespace dnnl::impl::memory_tracking::names;
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 using namespace bn_lookup_table;
 using namespace bn_utils;
 using namespace bn_model;
 using namespace dnnl::impl::utils;
-using namespace dnnl::impl::gpu::intel::gpu_utils;
 
 static size_t get_slm_buff_size(
         int ic_block, nhwc_bnorm_params_t &conf, const compute::range_t &lws) {
@@ -48,7 +46,7 @@ static size_t get_slm_buff_size(
 }
 // Local group size adjustment for calc_stat kernel
 static void adjust_lws_calc_kernel(int ic_block, nhwc_bnorm_params_t &conf,
-        compute::dispatch_t &dispatch, impl::engine_t *engine,
+        compute::dispatch_t &dispatch, engine_t *engine,
         bool large_grf_mode = false) {
     auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
     auto eu_count = compute_engine->device_info()->eu_count();
@@ -63,8 +61,8 @@ static void adjust_lws_calc_kernel(int ic_block, nhwc_bnorm_params_t &conf,
     const compute::range_t &base_lws = generated_nd.local_range();
     gpu_assert(base_lws) << "lws is missing";
 
-    compute::range_t tuned_lws
-            = {into<size_t>(conf.sub_group_size), base_lws[1], base_lws[2]};
+    compute::range_t tuned_lws = {gpu_utils::into<size_t>(conf.sub_group_size),
+            base_lws[1], base_lws[2]};
     compute::range_t curr_lws = tuned_lws;
 
     // The search is based on subslice utilization which calculated as the ratio
@@ -100,7 +98,7 @@ static void adjust_lws_calc_kernel(int ic_block, nhwc_bnorm_params_t &conf,
 }
 
 static int get_reduce_sub_group_count(
-        const dim_t reduce_stat_nblocks, const int sub_group_size) {
+        const int reduce_stat_nblocks, const int sub_group_size) {
     int reduce_sub_group_count = 1;
     while (reduce_stat_nblocks % (2 * reduce_sub_group_count) == 0
             && 2 * reduce_sub_group_count * sub_group_size <= 256) {
@@ -110,7 +108,7 @@ static int get_reduce_sub_group_count(
 }
 
 status_t nhwc_bnorm_kernel_dispatching(kernel_kind_t kernel,
-        nhwc_bnorm_params_t &conf, impl::engine_t *engine,
+        nhwc_bnorm_params_t &conf, engine_t *engine,
         compute::dispatch_t &dispatch) {
 
     conf.stat_sp_nblocks
@@ -124,7 +122,7 @@ status_t nhwc_bnorm_kernel_dispatching(kernel_kind_t kernel,
             = rnd_dn(conf.sp, conf.update_sp_block()) / conf.update_sp_block();
     conf.reduce_stat_nblocks = conf.stat_sp_nblocks;
 
-    const dim_t calc_stat_ic = get_nhwc_calc_stat_ic(
+    const int calc_stat_ic = get_nhwc_calc_stat_ic(
             conf.ic, conf.ic_block(), conf.sub_group_size);
 
     switch (kernel) {
@@ -194,12 +192,11 @@ static status_t init_conf_common(nhwc_bnorm_params_t &conf, offsets_t &off,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat,
         compute::dispatch_t &dispatch, compute::dispatch_t &dispatch_reduce_aux,
-        const batch_normalization_pd_t *pd, impl::engine_t *engine) {
+        const batch_normalization_pd_t *pd, engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
 
-    conf.impl = bn_impl_t::nhwc_opt;
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
 
@@ -367,8 +364,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t nhwc_batch_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t nhwc_batch_normalization_fwd_t::pd_t::init_conf(engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
@@ -571,8 +567,7 @@ status_t nhwc_batch_normalization_fwd_t::execute_forward(
     return status;
 }
 
-status_t nhwc_batch_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t nhwc_batch_normalization_bwd_t::pd_t::init_conf(engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
@@ -689,7 +684,6 @@ status_t nhwc_batch_normalization_bwd_t::execute_backward(
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

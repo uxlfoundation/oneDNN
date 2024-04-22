@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_POOLING_CONFIG_HPP
-#define GPU_INTEL_JIT_POOLING_CONFIG_HPP
+#ifndef GPU_JIT_POOLING_CONFIG_HPP
+#define GPU_JIT_POOLING_CONFIG_HPP
 
 #include <iostream>
 #include <sstream>
@@ -28,7 +28,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 class pooling_problem_param_t : public value_param_t<pool_conf_t> {
@@ -70,8 +69,7 @@ public:
 
         // only allow SIMD-aligned channel-first layouts
         const auto &oc_blk = src.blocks()[0];
-        if ((oc_blk.dim_idx != dim_idx_t(1)) || (oc_blk.block % exec.simd()))
-            return false;
+        if ((oc_blk.dim_idx != 1) || (oc_blk.block % exec.simd())) return false;
 
         // for some reason 3D pooling works poorly on PVC at the moment
         // TODO: bring PVC 3D pooling back
@@ -127,14 +125,14 @@ public:
         set_exec_cfg(ec);
     }
 
-    pvar_tile_t shape(bool pad) const override {
+    prb_tile_t shape(bool pad) const override {
 #define SET(g_name, l_name) \
-    ret[pvars::g_name] = (pad) \
-            ? utils::rnd_up(prb.l_name, pad_block(pvars::g_name)) \
+    ret[prb_dims::g_name] = (pad) \
+            ? utils::rnd_up(prb.l_name, pad_block(prb_dims::g_name)) \
             : prb.l_name
 
         const auto &prb = pooling_problem();
-        pvar_tile_t ret;
+        prb_tile_t ret;
         SET(mb, mb);
         SET(oc, c);
         if (is_fwd()) {
@@ -154,36 +152,38 @@ public:
 #undef SET
     }
 
-    const std::vector<pvar_t> &index_dims() const override {
+    const std::vector<prb_dim_t> &index_dims() const override {
         auto get_dims = [&](bool is_fwd) {
-            std::vector<pvar_t> ret;
-            ret.push_back(pvars::mb);
-            ret.push_back(pvars::oc);
+            std::vector<prb_dim_t> ret;
+            ret.push_back(prb_dims::mb);
+            ret.push_back(prb_dims::oc);
             if (is_fwd) {
-                ret.push_back(pvars::od);
-                ret.push_back(pvars::oh);
-                ret.push_back(pvars::ow);
+                ret.push_back(prb_dims::od);
+                ret.push_back(prb_dims::oh);
+                ret.push_back(prb_dims::ow);
             } else {
-                ret.push_back(pvars::id);
-                ret.push_back(pvars::ih);
-                ret.push_back(pvars::iw);
+                ret.push_back(prb_dims::id);
+                ret.push_back(prb_dims::ih);
+                ret.push_back(prb_dims::iw);
             }
-            ret.push_back(pvars::kd);
-            ret.push_back(pvars::kh);
-            ret.push_back(pvars::kw);
+            ret.push_back(prb_dims::kd);
+            ret.push_back(prb_dims::kh);
+            ret.push_back(prb_dims::kw);
             return ret;
         };
-        static std::vector<pvar_t> fwd_dims = get_dims(true);
-        static std::vector<pvar_t> bwd_dims = get_dims(false);
+        static std::vector<prb_dim_t> fwd_dims = get_dims(true);
+        static std::vector<prb_dim_t> bwd_dims = get_dims(false);
         return (is_fwd()) ? fwd_dims : bwd_dims;
     }
 
-    int pad_block(const pvar_t &d) const override {
-        if (d == pvars::mb)
-            return into<int>(src_layout().user().inner_block(0, true, false));
-        if (d == pvars::oc)
-            return into<int>(src_layout().user().inner_block(1, true, false));
-        return 1;
+    int pad_block(const prb_dim_t &d) const override {
+        switch (d.kind()) {
+            default: return 1;
+            case prb_dim_kind_t::mb:
+                return src_layout().user().inner_block(0, true, false);
+            case prb_dim_kind_t::oc:
+                return src_layout().user().inner_block(1, true, false);
+        }
     }
 
     bool is_fwd() const { return !pooling_problem().is_backward; }
@@ -222,43 +222,35 @@ public:
 
         //                  mb oc od oh ow kd kh kw
         //                  [0  1][2  3  4][5  6  7]
-        std::vector<dim_t> lg {1, 1, 1, 1, 1, 1, 1, 1};
-        std::vector<dim_t> tg {1, 1, 1}, kg {1, 1, 1};
+        std::vector<int> lg {1, 1, 1, 1, 1, 1, 1, 1};
+        std::vector<int> tg {1, 1, 1}, kg {1, 1, 1};
 
-        std::vector<dim_t> padded {
-                src.dim(0), src.dim(1), prb.od, prb.oh, prb.ow};
+        std::vector<int> padded {
+                int(src.dim(0)), int(src.dim(1)), prb.od, prb.oh, prb.ow};
         auto &mb = padded[0], &oc = padded[1];
         auto &od = padded[2], &oh = padded[3], &ow = padded[4];
 
         const bool is_scalar = (prb.kd * prb.kh * prb.kw == 1);
-        const bool is_small = (prb.kh * prb.kw <= 9);
-        const bool is_xe2_or_xe3 = (exec.hw().to_ngen() == ngen::HW::Xe2)
-                || (exec.hw().to_ngen() == ngen::HW::Xe3);
 
         const int src_type_size = src.type().size();
         const int acc_type_size = acc_type(1).size();
-        const dim_t oc_blk = src.blocks()[0].block;
-        const dim_t mb_blk = (is_blocked_by_mb()) ? src.blocks()[1].block : mb;
+        const int oc_blk = src.blocks()[0].block;
+        const int mb_blk = (is_blocked_by_mb()) ? src.blocks()[1].block : mb;
         // the constant being subtracted is heuristic
         const int regs_per_tile
                 = exec.regs() - (!is_scalar ? is_blocked_by_mb() ? 8 : 28 : 0);
 
-        auto optimize_load = [](dim_t &dim, dim_t mult) {
+        auto optimize_load = [](int &dim, int mult) {
             const int optimal_load_size = 256;
-            dim_t null = 0;
+            int null = 0;
             while ((dim * mult > optimal_load_size) && (dim > 1))
                 cut_dim(dim, null, 1);
         };
 
-        if (!is_scalar && is_small) {
+        if (!is_scalar && (prb.kh * prb.kw <= 9)) {
             // SMALL FILTERS
 
-            if (is_xe2_or_xe3)
-                mb = utils::rnd_up(
-                        mb, std::min(dim_t(8), utils::rnd_up_pow2(mb)));
-
-            const dim_t max_tg
-                    = exec.hw().max_tg_size(exec.regs(), exec.simd());
+            const int max_tg = exec.hw().max_tg_size(exec.regs(), exec.simd());
             ir_assert(max_tg == utils::rnd_up_pow2(max_tg));
 
             const bool ow_pow2
@@ -284,8 +276,8 @@ public:
             kg[2] = 1;
 
             if (ow_pow2 && (mb >= 512)) { // lower TGs preferable at higher MBs
-                const dim_t low_tg = std::max(
-                        dim_t(1), max_tg / (2 * utils::div_up(mb, 512)));
+                const int low_tg
+                        = std::max(1, max_tg / (2 * utils::div_up(mb, 512)));
                 if (tg[2] / low_tg > 1) {
                     kg[is_blocked_by_mb() ? 2 : 1] *= tg[2] / low_tg;
                     tg[2] = low_tg;
@@ -298,18 +290,18 @@ public:
             const int simds_per_line
                     = max_grf / (simd * (src_type_size + acc_type_size));
 
-            auto calc_non_sp
-                    = [](dim_t scale, dim_t simds, int opt, dim_t per_line) {
-                          dim_t pow2 = 1;
-                          for (dim_t i = simds; i % 2 == 0; i /= 2)
-                              pow2 *= 2;
-                          pow2 = (opt > pow2) ? simds : pow2;
-                          return scale * utils::max_div(pow2, per_line / scale);
-                      };
+            auto calc_non_sp = [](int scale, int simds, int opt, int per_line) {
+                int pow2 = 1;
+                for (int i = simds; i % 2 == 0; i /= 2)
+                    pow2 *= 2;
+                return scale
+                        * utils::max_div(
+                                (pow2 < opt) ? simds : pow2, per_line / scale);
+            };
             if (is_blocked_by_mb()) {
                 lg[1] = oc_blk / simd;
                 lg[0] = mb_blk;
-                dim_t null = 0;
+                int null = 0;
                 while (lg[1] * lg[0] > simds_per_line) {
                     if (lg[0] > 1)
                         cut_dim(lg[0], null, 1);
@@ -328,7 +320,7 @@ public:
                 } else {
                     lg[1] = utils::max_div(oc_blk / simd, simds_per_line);
                 }
-                if ((is_xe2_or_xe3 || (lg[1] < optimal_oc))
+                if ((lg[1] < optimal_oc)
                         && (lg[1] == utils::rnd_up_pow2(lg[1]))) {
                     const int oc_simds_per_line = simds_per_line / lg[1];
                     lg[0] = (mb <= oc_simds_per_line)
@@ -336,24 +328,22 @@ public:
                             : utils::max_div(mb, oc_simds_per_line);
                 }
             }
-            lg[0] = calc_non_sp(1, (is_xe2_or_xe3) ? mb : prb.mb, 1, lg[0]);
-            if (src.dim(0) % lg[0] == 0) mb = src.dim(0);
+            lg[0] = calc_non_sp(1, prb.mb, 1, lg[0]);
 
             const dim_t total_simds = dim_t(mb) * (oc / simd) * od * oh * ow;
-            const int safe_thr_count = eu_count * 4;
+            const dim_t safe_thr_count = eu_count * 4;
 
             if (total_simds < safe_thr_count * lg[1] * lg[0]) {
-                auto find_div = [](dim_t num, dim_t total_simds,
-                                        int thr_count) {
-                    if (total_simds <= thr_count) return dim_t(1);
-                    const dim_t orig = num;
+                auto find_div = [](int num, int total_simds, int thr_count) {
+                    if (total_simds <= thr_count) return 1;
+                    const int orig = num;
                     num = 0;
                     for (int div = sqrtf(orig); div >= 1; div--)
                         if (orig % div == 0) {
                             if (total_simds >= thr_count * (orig / div))
-                                num = std::max<dim_t>(num, orig / div);
+                                num = std::max(num, orig / div);
                             if (total_simds >= thr_count * div)
-                                num = std::max<dim_t>(num, div);
+                                num = std::max(num, div);
                         }
                     return (num == 0) ? orig : num;
                 };
@@ -375,11 +365,9 @@ public:
             const int loop_space = simds_per_line / (lg[0] * lg[1])
                     * (src_type_size + acc_type_size) / src_type_size;
             lg[7] = prb.kw;
-            lg[6] = std::max(
-                    utils::max_div(prb.kh, loop_space / lg[7]), dim_t(1));
+            lg[6] = std::max(utils::max_div(prb.kh, loop_space / lg[7]), 1);
             lg[5] = std::max(
-                    utils::max_div(prb.kd, loop_space / (lg[7] * lg[6])),
-                    dim_t(1));
+                    utils::max_div(prb.kd, loop_space / (lg[7] * lg[6])), 1);
         } else {
             // REGULAR FILTERS
 
@@ -429,7 +417,7 @@ public:
             }
 
             const int safe_thr_count = eu_count * 7;
-            const dim_t max_threads
+            const int max_threads
                     = utils::div_up(dim_t(utils::div_up(oc, simd)) * mb * tg[0]
                                     * tg[1] * tg[2] * kg[0] * kg[1] * kg[2],
                             safe_thr_count);
@@ -443,9 +431,8 @@ public:
                 }
             }
 
-            const dim_t simds_per_tile
-                    = (regs_per_tile * 32 / simd
-                              - lg[0] * lg[1] * acc_type_size)
+            const int simds_per_tile = (regs_per_tile * 32 / simd
+                                               - lg[0] * lg[1] * acc_type_size)
                     / src_type_size;
 
             if (simds_per_tile / (lg[0] * lg[1]) <= prb.kw) {
@@ -468,27 +455,26 @@ public:
             }
 
             if (!is_blocked_by_mb()) {
-                const dim_t oc_outer = oc / simd;
-                const dim_t layers_per_thr
+                const int oc_outer = oc / simd;
+                const int layers_per_thr
                         = simds_per_tile / (lg[7] * lg[6] * lg[5]);
                 if (max_threads > 1) {
                     lg[1] = std::min(max_threads,
                             utils::max_div(oc_blk / simd, layers_per_thr));
-                    lg[1] = utils::max_div(oc_outer, std::max(lg[1], dim_t(1)));
+                    lg[1] = utils::max_div(oc_outer, std::max(lg[1], 1));
                 }
                 if ((oc == lg[1] * simd) && (max_threads / lg[1] > 1)) {
-                    const dim_t mb_reg = layers_per_thr / lg[1] / src_type_size;
+                    const int mb_reg = layers_per_thr / lg[1] / src_type_size;
                     lg[0] = std::min(max_threads / lg[1],
                             (mb_reg > mb_blk) ? utils::rnd_dn(mb_reg, mb_blk)
                                               : utils::max_div(mb_blk, mb_reg));
-                    lg[0] = utils::max_div(mb, std::max(lg[0], dim_t(1)));
+                    lg[0] = utils::max_div(mb, std::max(lg[0], 1));
                 }
                 if ((lg[0] == 1) && (max_threads / lg[1] > 1)) {
-                    const dim_t oc_reg = layers_per_thr / lg[1] / src_type_size;
-                    const dim_t lg1 = std::min(max_threads / lg[1],
+                    const int oc_reg = layers_per_thr / lg[1] / src_type_size;
+                    const int lg1 = std::min(max_threads / lg[1],
                             utils::max_div(oc_outer / lg[1], oc_reg));
-                    lg[1] *= utils::max_div(
-                            oc_outer / lg[1], std::max(lg1, dim_t(1)));
+                    lg[1] *= utils::max_div(oc_outer / lg[1], std::max(lg1, 1));
                 }
             }
         }
@@ -526,8 +512,8 @@ public:
             desc.insert(desc.size(), 22 - desc.size(), ' ');
             oss << "  " << desc << layouts[i]->user() << std::endl;
         }
-        const dim_t kg_elems = kernel_grid().elems();
-        const dim_t tg_elems = thread_group_grid().elems();
+        const int kg_elems = kernel_grid().elems();
+        const int tg_elems = thread_group_grid().elems();
         //oss << blocking_brief_str();
         oss << "  Padded dimensions:    " << dims_padded() << std::endl;
         oss << "  Internal loop:        " << loop_grid() << std::endl;
@@ -549,7 +535,7 @@ public:
         const auto simd = exec_cfg().simd();
         auto kg(kernel_grid());
         auto lg(loop_grid());
-        dim_t null = 0;
+        int null = 0;
 
         if (lg[5] > 1)
             cut_dim(lg[5], null, 1); // kd
@@ -604,7 +590,7 @@ public:
 private:
     int n_cuts_ = 0;
 
-    static void cut_dim(dim_t &dn, dim_t &up, int scale) {
+    static void cut_dim(int &dn, int &up, int scale) {
         // clang-format off
         static const std::array<unsigned char, 54> primes_up_to_256 = {
               2,   3,   5,   7,  11,  13,  17,  19,  23,  29,  31,
@@ -627,13 +613,13 @@ private:
 
     std::string desc_str() const {
         const auto &prb = pooling_problem();
-        const std::array<dim_t, 6> xd
+        const std::array<int, 6> xd
                 = {prb.id, prb.od, prb.kd, prb.stride_d, prb.dd, prb.f_pad};
-        const std::array<dim_t, 6> xh
+        const std::array<int, 6> xh
                 = {prb.ih, prb.oh, prb.kh, prb.stride_h, prb.dh, prb.t_pad};
-        const std::array<dim_t, 6> xw
+        const std::array<int, 6> xw
                 = {prb.iw, prb.ow, prb.kw, prb.stride_w, prb.dw, prb.l_pad};
-        const std::array<dim_t, 6> xdef = {1, 1, 1, 1, 0, 0};
+        const std::array<int, 6> xdef = {1, 1, 1, 1, 0, 0};
         const std::array<char, 6> name = {'i', 'o', 'k', 's', 'd', 'p'};
 
         const bool has_d = !ir_utils::is_equal(xd, xdef);
@@ -660,7 +646,6 @@ private:
 };
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

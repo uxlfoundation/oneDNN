@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_OCL_UTILS_H
-#define GPU_INTEL_OCL_OCL_UTILS_H
+#ifndef GPU_OCL_OCL_UTILS_H
+#define GPU_OCL_OCL_UTILS_H
 
 #define CONCAt2(a, b) a##b
 #define CONCAT2(a, b) CONCAt2(a, b)
@@ -31,18 +31,6 @@
 #define IF_HALF_SUPPORTED(x) x
 #else
 #define IF_HALF_SUPPORTED(x)
-#endif
-
-#if __OPENCL_C_VERSION__ >= CL_VERSION_2_0
-#define ATOMICS_SUPPORTED 1
-#else
-#define ATOMICS_SUPPORTED 0
-#endif
-
-#if defined(cl_ext_float_atomics) && ATOMICS_SUPPORTED
-#define ATOMIC_FLOAT_SUPPORTED 1
-#else
-#define ATOMIC_FLOAT_SUPPORTED 0
 #endif
 
 #ifdef OCL_DEBUG
@@ -87,4 +75,4 @@ IF_HALF_SUPPORTED(DEF_special_vals(half, 0.0h, 1.0h, -HALF_MAX, HALF_MAX));
 #define ASSUME(x)
 #endif
 
-#endif // GPU_INTEL_OCL_OCL_UTILS_H
+#endif // GPU_OCL_OCL_UTILS_H

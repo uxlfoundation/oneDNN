@@ -19,7 +19,8 @@
 
 #include "oneapi/dnnl/dnnl_config.h"
 
-#include "graph/utils/ocl_check.hpp"
+#include "common/c_types_map.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 
 namespace dnnl {
 namespace impl {

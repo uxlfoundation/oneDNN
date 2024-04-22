@@ -21,9 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/ocl/memory_storage_base.hpp"
-
+#include "gpu/intel/ocl/ocl_memory_storage_base.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {

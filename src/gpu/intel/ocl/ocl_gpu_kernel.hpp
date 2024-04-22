@@ -20,7 +20,7 @@
 #include <string>
 #include <CL/cl.h>
 
-#include "gpu/compute/kernel.hpp"
+#include "gpu/intel/compute/kernel.hpp"
 
 namespace dnnl {
 namespace impl {

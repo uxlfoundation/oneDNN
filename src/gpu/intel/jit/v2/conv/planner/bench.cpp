@@ -20,13 +20,12 @@
 #include "gpu/intel/jit/v2/conv/plan.hpp"
 #include "gpu/intel/jit/v2/conv/plan_preset.hpp"
 #include "gpu/intel/jit/v2/conv/plan_registry.hpp"
-#include "gpu/intel/ocl/usm_utils.hpp"
+#include "gpu/intel/ocl/ocl_usm_utils.hpp"
 
 #include <algorithm>
 #include <cassert>
 #include <fstream>
 #include <iostream>
-#include <random>
 #include <sstream>
 
 #include "oneapi/dnnl/dnnl.hpp"
@@ -34,16 +33,13 @@
 
 using namespace dnnl;
 
-#ifndef DNNL_EXPERIMENTAL_PROFILING
 extern "C" dnnl_status_t dnnl_reset_profiling(dnnl_stream_t stream);
 extern "C" dnnl_status_t dnnl_query_profiling_data(dnnl_stream_t stream,
         int32_t data_kind, int *num_entries, uint64_t *data);
-#endif
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 namespace v2 {
 namespace conv {
@@ -59,8 +55,8 @@ static void fill_mem(stream &strm, const memory &mem) {
     auto md = mem.get_desc();
     size_t size = md.get_size();
     uint8_t pattern = 0;
-    impl::gpu::intel::ocl::usm::fill(strm.get(), ptr, &pattern, sizeof(pattern),
-            size, 0, nullptr, nullptr);
+    impl::gpu::ocl::usm::fill(strm.get(), ptr, &pattern, sizeof(pattern), size,
+            0, nullptr, nullptr);
 }
 
 class memory_pool_t {
@@ -102,8 +98,6 @@ public:
         is_finalized_ = true;
     }
 
-    operator bool() const { return !base_mems_.empty(); }
-
 private:
     bool is_finalized_ = false;
     std::unordered_map<int, size_t> arg_sizes_;
@@ -112,7 +106,7 @@ private:
 
 class bench_task_base_t {
 public:
-    static const int iters = 3;
+    static const int iters = 10;
 
     void init_mem(memory_pool_t &mem_pool) {
         for (auto &kv : get_mds()) {
@@ -120,40 +114,31 @@ public:
         }
     }
 
-    dnnl_status_t bench_async(stream &strm, const memory_pool_t &mem_pool) {
+    dnnl_status_t bench(stream &strm, const memory_pool_t &mem_pool) {
         using namespace dnnl::impl;
+        CHECK(dnnl_reset_profiling(strm.get()));
         auto args = mem_pool.get_args(get_mds());
         for (int i = 0; i < iters; i++) {
             prim_.execute(strm, args);
         }
-        return status::success;
-    }
-
-    template <typename TaskVectorT>
-    static dnnl_status_t sync(stream &strm, TaskVectorT &vec) {
         strm.wait();
-        int ntasks = (int)vec.size();
         int nentries = 0;
         CHECK(dnnl_query_profiling_data(
                 strm.get(), profiling_data_kind::time, &nentries, nullptr));
-        ir_assert(nentries == ntasks * iters);
+
+        assert(nentries == iters);
 
         std::vector<uint64_t> entries(nentries);
         CHECK(dnnl_query_profiling_data(strm.get(), profiling_data_kind::time,
                 &nentries, entries.data()));
-        for (int i = 0; i < ntasks * iters; i += iters) {
-            auto time = entries[i];
-            for (int j = 1; j < iters; j++) {
-                time = std::min(time, entries[i + j]);
-            }
-            vec[i / iters].set_time(time);
-        }
+        time_ = entries[0];
+        for (uint64_t t : entries)
+            time_ = std::min(time_, t);
 
         return status::success;
     }
 
     uint64_t time() const { return time_; }
-    void set_time(uint64_t time) { time_ = time; }
 
 protected:
     void set_primitive(const primitive &prim) { prim_ = prim; }
@@ -184,42 +169,39 @@ private:
     uint64_t time_ = 0;
 };
 
-using problem_t = dnnl::impl::gpu::intel::jit::v2::conv::problem_t;
-using kernel_desc_t = dnnl::impl::gpu::intel::jit::v2::conv::kernel_desc_t;
-using bench_data_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_data_t;
-using pvar_tile_t = dnnl::impl::gpu::intel::jit::pvar_tile_t;
-namespace pvars = dnnl::impl::gpu::intel::jit::pvars;
+using problem_t = dnnl::impl::gpu::jit::v2::conv::problem_t;
+using kernel_desc_t = dnnl::impl::gpu::jit::v2::conv::kernel_desc_t;
+using bench_data_t = dnnl::impl::gpu::jit::v2::conv::bench_data_t;
+using prb_tile_t = dnnl::impl::gpu::jit::prb_tile_t;
+namespace prb_dims = dnnl::impl::gpu::jit::prb_dims;
 
 class bench_task_t : public bench_task_base_t {
 public:
     bench_task_t(const problem_t &prb) : prb_(prb) {
-        g = prb.shape()[pvars::g];
-        mb = prb.shape()[pvars::mb];
-        oc = prb.shape()[pvars::oc];
-        ic = prb.shape()[pvars::ic];
-        ih = prb.shape()[pvars::ih];
-        iw = prb.shape()[pvars::iw];
-        oh = prb.shape()[pvars::oh];
-        ow = prb.shape()[pvars::ow];
-        kh = prb.shape()[pvars::kh];
-        kw = prb.shape()[pvars::kw];
-        sh = prb.shape()[pvars::sh];
-        sw = prb.shape()[pvars::sw];
-        ph = prb.shape()[pvars::ph];
-        pw = prb.shape()[pvars::pw];
+        mb = prb.shape()[prb_dims::mb];
+        oc = prb.shape()[prb_dims::oc];
+        ic = prb.shape()[prb_dims::ic];
+        ih = prb.shape()[prb_dims::ih];
+        iw = prb.shape()[prb_dims::iw];
+        oh = prb.shape()[prb_dims::oh];
+        ow = prb.shape()[prb_dims::ow];
+        kh = prb.shape()[prb_dims::kh];
+        kw = prb.shape()[prb_dims::kw];
+        sh = prb.shape()[prb_dims::sh];
+        sw = prb.shape()[prb_dims::sw];
+        ph = prb.shape()[prb_dims::ph];
+        pw = prb.shape()[prb_dims::pw];
     }
-
-    const problem_t &prb() const { return prb_; }
 
     bool init_primitive(engine &eng) {
         try {
-            memory::dims src_dims = {mb, g * ic, 1, ih, iw};
-            memory::dims wei_dims = {g, oc, ic, 1, kh, kw};
-            memory::dims dst_dims = {mb, g * oc, 1, oh, ow};
+            memory::dims src_dims = {mb, ic, ih, iw};
+            memory::dims wei_dims = {1, oc, ic, kh, kw};
+            memory::dims dst_dims = {mb, oc, oh, ow};
 
-            memory::dims strides = {1, sh, sw};
-            memory::dims padding_l = {0, ph, pw};
-            memory::dims padding_r = {0, ph, pw};
+            memory::dims strides = {sh, sw};
+            memory::dims padding_l = {ph, pw};
+            memory::dims padding_r = {ph, pw};
 
             switch (prb_.prop()) {
                 case prop_kind::forward_inference:
@@ -310,7 +292,6 @@ public:
 
     std::string str() const {
         std::ostringstream oss;
-        oss << "g" << g;
         oss << "mb" << mb;
         oss << "ic" << ic;
         oss << "ih" << ih;
@@ -326,30 +307,13 @@ private:
     memory::desc to_memory_desc(const layout_tag_t &tag,
             const memory::dims &dims, bool is_wei = false) const {
         auto type = static_cast<dnnl::memory::data_type>(to_dnnl(tag.type()));
-        layout_raw_tag_t raw_tags[] = {
-                layout_raw_tag_t("axb", 5),
-                layout_raw_tag_t("abx", 5),
-                layout_raw_tag_t("axbc", 6),
-                layout_raw_tag_t("axcb", 6),
-        };
-        for (auto &raw_tag : raw_tags) {
-            if (tag.raw_tag() == raw_tag) {
-                memory::dims strides(dims.size());
-                memory::dim stride = 1;
-                for (int i = raw_tag.nentries() - 1; i >= 0; i--) {
-                    auto &e = raw_tag.entries()[i];
-                    strides[e.index()] = stride;
-                    stride *= dims[e.index()];
-                }
-                return memory::desc(dims, type, strides);
-            }
-        }
-        ir_error_not_expected() << "Unknown tag: " << tag.str();
-        return memory::desc();
+        memory::desc md(dims, type,
+                is_wei ? memory::format_tag::ghwio : memory::format_tag::nhwc);
+        return md;
     }
 
     problem_t prb_;
-    memory::dim mb, g;
+    memory::dim mb;
     memory::dim oc, ic;
     memory::dim ih, iw;
     memory::dim oh, ow;
@@ -358,145 +322,43 @@ private:
     memory::dim ph, pw;
 };
 
-dim_t random(dim_t a, dim_t b) {
+int random(int a, int b) {
     return a + rand() % (b - a + 1);
 }
 
-struct random_dim_t {
-    dim_t lo = 0;
-    dim_t hi = 0;
-    dim_t tile = 0;
-
-    random_dim_t(const pvar_t &dim, dim_t _tile) : tile(_tile) {}
-    random_dim_t with_range(dim_t _lo, dim_t _hi) {
-        auto ret = *this;
-        ret.lo = utils::div_up(_lo, tile);
-        ret.hi = _hi / tile;
-        return ret;
-    }
-    explicit operator bool() const { return lo <= hi; }
-    bool with_tile() const { return tile > 1; }
-    dim_t operator()() const {
-        ir_assert(*this);
-        return random(lo, hi) * tile;
-    }
-};
-
-struct random_dim_set_t {
-    std::vector<random_dim_t> dims;
-
-    random_dim_set_t(const random_dim_t &d) {
-        if (!d) return;
-        dims.push_back(d);
-    }
-    random_dim_set_t operator|(const random_dim_set_t &other) const {
-        random_dim_set_t ret = *this;
-        ret.dims.insert(ret.dims.end(), other.dims.begin(), other.dims.end());
-        return ret;
-    }
-    size_t size() const { return dims.size(); }
-    bool with_tile() const { return dims[0].with_tile(); }
-    dim_t operator()() const {
-        dim_t idx = random(0, static_cast<dim_t>(size()) - 1);
-        return dims[idx]();
-    }
-};
-
-random_dim_set_t operator|(const random_dim_t &a, const random_dim_set_t &b) {
-    return random_dim_set_t(a) | b;
-}
-
-pvar_tile_t random_shape(
-        prop_kind_t prop, bool is_dw, const pvar_tile_t &tile) {
-    auto make_random_dim = [&](const pvar_t &dim, dim_t lo = 0, dim_t hi = 0) {
-        auto ret = random_dim_t(dim, tile.get(dim, 1));
-        return ret.with_range(lo, hi);
-    };
-    auto make_random_dim_set
-            = [&](const pvar_t &dim, dim_t s, dim_t m, dim_t l) {
-                  auto d = make_random_dim(dim);
-                  auto d_s = d.with_range(1, s);
-                  auto d_m = d.with_range(s + 1, m);
-                  auto d_l = d.with_range(m + 1, l);
-                  return d_s | d_m | d_l;
-              };
-    pvar_tile_t s = problem_t::default_shape();
-    auto g = make_random_dim(pvars::g, 2, 512);
-    auto mb = make_random_dim_set(pvars::mb, 1, 16, 128);
-    auto ic = make_random_dim_set(pvars::ic, 64, 512, 2048);
-    auto oc = make_random_dim_set(pvars::oc, 64, 512, 2048);
-    auto ow = make_random_dim_set(pvars::ow, 64, 512, 2048);
-    auto iw = make_random_dim_set(pvars::iw, 64, 512, 2048);
-    if (is_dw) {
-        s[pvars::g] = g();
-        s[pvars::mb] = mb();
-        s[pvars::ic] = 1;
-        s[pvars::oc] = 1;
-        s[pvars::iw] = s[pvars::ow] = (ow.with_tile() ? ow() : iw());
-    } else {
-        s[pvars::g] = 1;
-        s[pvars::mb] = mb();
-        s[pvars::ic] = ic();
-        s[pvars::oc] = oc();
-        s[pvars::iw] = s[pvars::ow] = (ow.with_tile() ? ow() : iw());
-    }
+prb_tile_t random_shape() {
+    prb_tile_t s = problem_t::default_shape();
+    s[prb_dims::g] = 1;
+    s[prb_dims::mb] = random(1, 16);
+    s[prb_dims::ic] = random(1, 512);
+    s[prb_dims::oc] = random(1, 512);
+    s[prb_dims::iw] = s[prb_dims::ow] = random(1, 512);
     return s;
 }
 
-double footprint(const layout_tag_t &src, const layout_tag_t &wei,
-        const layout_tag_t &dst, const pvar_tile_t &shape) {
-#define GET(name) shape[pvars::name]
-    double src_elems
-            = (double)GET(g) * GET(mb) * GET(ic) * GET(id) * GET(ih) * GET(iw);
-    double wei_elems
-            = (double)GET(g) * GET(oc) * GET(ic) * GET(kd) * GET(kh) * GET(kw);
-    double dst_elems
-            = (double)GET(g) * GET(mb) * GET(oc) * GET(od) * GET(oh) * GET(ow);
-#undef GET
-    double ret = 0;
-    ret += src_elems * src.type().size();
-    ret += wei_elems * wei.type().size();
-    ret += dst_elems * dst.type().size();
-    return ret;
-}
-
-pvar_tile_t expand_tile(
-        prop_kind_t prop, const prb_reqs_t &reqs, const pvar_tile_t &_tile) {
-    pvar_tile_t tile = _tile;
-    for (auto &d : conv_index_dims(prop)) {
-        dim_t mod = reqs.max_factor(d);
-        mod = math::lcm(mod, tile.get(d, 1));
-        if (mod == 1) continue;
-        tile[d] = mod;
-    }
-    return tile;
-}
-
-std::vector<problem_t> generate_problems(const bench_input_params_t &params) {
-    if (params.nprbs == 0) return {};
-    const double max_ops = 1e10;
-    const double max_bytes = 100e6;
-    auto tile = expand_tile(params.prop, params.reqs, params.tile);
-    srand(static_cast<unsigned>(
-            ir_utils::get_hash(params.reqs.str()) & 0xFFFFFFFFu));
+std::vector<problem_t> generate_problems(const kernel_desc_t &kd) {
+    srand(kd.get_hash());
+    ir_assert(!kd.is_dw);
     std::vector<problem_t> ret;
-    const int max_iters = (1 << 24);
+    const int nprbs = 100;
+    const int max_iters = (1 << 20);
     for (int iter = 0; iter < max_iters; iter++) {
-        auto shape = random_shape(params.prop, params.is_dw, tile);
-        if (problem_t::ops(params.prop, shape) > max_ops) continue;
-        if (footprint(params.src_tag, params.wei_tag, params.dst_tag, shape)
-                > max_bytes)
-            continue;
-        auto prb = params.problem();
-        prb.set_shape(shape);
-        if (!params.reqs.fits(prb.shape())) continue;
+        problem_t prb;
+        prb.set_hw(kd.hw);
+        prb.set_prop(kd.prop);
+        prb.set_shape(random_shape());
+        prb.set_src_tag(kd.src_tag);
+        prb.set_wei_tag(kd.wei_tag);
+        prb.set_dst_tag(kd.dst_tag);
+        if (!kd.fits(prb, /*check_tags=*/false)) continue;
+        ir_assert(kd.fits(prb));
         ret.push_back(prb);
-        if ((int)ret.size() >= params.nprbs) break;
+        if ((int)ret.size() >= nprbs) break;
     }
-    if ((int)ret.size() < params.nprbs) {
-        std::cout << "Could not generate " << params.nprbs << " problems after "
+    if ((int)ret.size() < nprbs) {
+        std::cout << "Could not generate " << nprbs << " problems after "
                   << max_iters << " iterations" << std::endl;
-        std::cout << params.reqs << std::endl;
+        std::cout << kd.reqs << std::endl;
         exit(1);
     }
     return ret;
@@ -513,188 +375,56 @@ std::vector<problem_t> load_problems(const std::string &path) {
     return prbs;
 }
 
-void clear_primitive_cache() {
-    int old_capacity = dnnl::get_primitive_cache_capacity();
-    dnnl::set_primitive_cache_capacity(0);
-    dnnl::set_primitive_cache_capacity(old_capacity);
-}
-
-bench_data_t bench(const bench_manager_t &bench_mger,
-        const kernel_desc_t &kernel_desc, std::vector<bench_task_t> &tasks,
-        memory_pool_t *mem_pool_ptr = nullptr) {
-    ir_assert(kernel_desc.is_finalized);
-    int ntasks = (int)tasks.size();
+bench_data_t bench(
+        const bench_manager_t &bench_mger, const kernel_desc_t &_kernel_desc) {
+    if (!_kernel_desc.is_supported()) return {};
+    auto kernel_desc = _kernel_desc;
+    auto plan = create_conv_plan_and_finalize_desc(kernel_desc);
+    if (!plan) return {};
 
     auto eng = bench_mger.get_engine();
-    auto strm = bench_mger.get_stream();
-    std::cout << "Running benchmark for descriptor: " << kernel_desc.cmd_str()
-              << std::endl;
-    clear_primitive_cache();
+    auto prbs = generate_problems(kernel_desc);
+    int nprbs = (int)prbs.size();
+
+    std::vector<bench_task_t> tasks;
+    for (auto &prb : prbs) {
+        tasks.emplace_back(prb);
+    }
 
     {
         auto guard = plan_preset_t::instance().make_guard(kernel_desc);
         if (!tasks[0].init_primitive(eng)) return {};
     }
 
-    ir_assert(kernel_desc.spec_strategy == spec_strategy_t::none);
-    auto kernel_desc_min_dims = kernel_desc;
-    kernel_desc_min_dims.spec_strategy = spec_strategy_t::min_dims;
-    {
-        auto guard = plan_preset_t::instance().make_guard(kernel_desc_min_dims);
-        if (!tasks[0].init_primitive(eng)) return {};
-    }
-
-    parallel_nd(ntasks, [&](dim_t i) {
-        auto guard = plan_preset_t::instance().make_guard(kernel_desc_min_dims);
+    parallel_nd(nprbs, [&](dim_t i) {
+        auto guard = plan_preset_t::instance().make_guard(kernel_desc);
         bool ok = tasks[i].init_primitive(eng);
         if (!ok) throw std::runtime_error("Initialization failed");
     });
 
-    memory_pool_t _mem_pool;
-    memory_pool_t &mem_pool = (mem_pool_ptr ? *mem_pool_ptr : _mem_pool);
-    if (!mem_pool) {
-        for (auto &t : tasks) {
-            t.init_mem(mem_pool);
-        }
-        mem_pool.finalize(strm);
+    auto flags = stream_flags::in_order | stream_flags::profiling;
+    stream strm(eng, static_cast<stream::flags>(flags));
+    memory_pool_t mem_pool;
+    for (auto &t : tasks) {
+        t.init_mem(mem_pool);
+    }
+    mem_pool.finalize(strm);
+
+    bench_data_t bd(kernel_desc);
+    for (int i = 0; i < nprbs; i++) {
+        tasks[i].bench(strm, mem_pool);
+        bd.add(prbs[i], tasks[i].time());
     }
 
-    bench_data_t bd(0, kernel_desc);
-    dnnl_reset_profiling(strm.get());
-    for (int i = 0; i < ntasks; i++) {
-        tasks[i].bench_async(strm, mem_pool);
-    }
-    bench_task_base_t::sync(strm, tasks);
-    for (int i = 0; i < ntasks; i++) {
-        bd.add(tasks[i].prb(), tasks[i].time());
-    }
     std::cout << bd << std::endl;
+
     return bd;
-}
-
-class bench_runner_impl_t {
-public:
-    bench_runner_impl_t(const bench_manager_t &bench_mger,
-            const bench_input_params_t &params)
-        : bench_mger_(bench_mger) {
-        auto prbs = generate_problems(params);
-        for (auto &prb : prbs) {
-            tasks_.emplace_back(prb);
-        }
-    }
-
-    bench_data_t bench(const kernel_desc_t &_kernel_desc) {
-        if (tasks_.empty()) return bench_data_t();
-        auto kernel_desc = _kernel_desc;
-        if (!finalize_conv_desc(kernel_desc, bench_mger_.hw())) return {};
-        return planner::bench(bench_mger_, kernel_desc, tasks_, &mem_pool_);
-    }
-
-private:
-    const bench_manager_t &bench_mger_;
-    std::vector<bench_task_t> tasks_;
-    memory_pool_t mem_pool_;
-};
-
-bench_runner_t::bench_runner_t(
-        const bench_manager_t &bench_mger, const bench_input_params_t &params)
-    : impl_(std::make_shared<bench_runner_impl_t>(bench_mger, params)) {}
-
-bench_data_t bench_runner_t::bench(const kernel_desc_t &kernel_desc) {
-    return impl_->bench(kernel_desc);
-}
-
-bench_data_t bench(const bench_manager_t &bench_mger,
-        const kernel_desc_t &_kernel_desc, int nprbs) {
-    auto kernel_desc = _kernel_desc;
-    if (!finalize_conv_desc(kernel_desc, bench_mger.hw())) return {};
-    bench_runner_t runner(bench_mger, bench_input_params_t(kernel_desc, nprbs));
-    return runner.bench(kernel_desc);
-}
-
-bool try_create(
-        const bench_manager_t &bench_mger, const kernel_desc_t &kernel_desc) {
-    bench_input_params_t params(kernel_desc, /*nprbs=*/1);
-    bench_task_t task(generate_problems(params)[0]);
-    auto engine = bench_mger.get_engine();
-    auto guard = plan_preset_t::instance().make_guard(kernel_desc);
-    return task.init_primitive(engine);
-}
-
-layout_tag_t &get_out_tag(kernel_desc_t &kernel_desc) {
-    switch (kernel_desc.prop) {
-        case prop_kind::forward: return kernel_desc.dst_tag;
-        case prop_kind::backward_data: return kernel_desc.src_tag;
-        case prop_kind::backward_weights: return kernel_desc.wei_tag;
-        default: ir_error_not_expected();
-    }
-    return kernel_desc.dst_tag;
-}
-
-std::vector<type_t> get_out_types(const kernel_desc_t &kernel_desc) {
-    std::vector<type_t> ret;
-    switch (kernel_desc.prop) {
-        case prop_kind::forward:
-            ret.push_back(type_t::s8());
-            ret.push_back(type_t::f16());
-            ret.push_back(type_t::f32());
-            break;
-        case prop_kind::backward_data: break;
-        case prop_kind::backward_weights:
-            ret.push_back(type_t::f32());
-            if (kernel_desc.wei_tag.type().is_bf16())
-                ret.push_back(type_t::bf16());
-        default: break;
-    }
-    return ret;
-}
-
-kernel_desc_t try_extensions(
-        const bench_manager_t &bench_mger, const kernel_desc_t &kernel_desc) {
-    auto &desc_out_type = kernel_desc.c_type();
-    std::vector<prb_reqs_t> reqs_vec({kernel_desc.reqs});
-    std::vector<int> out_type_sizes({desc_out_type.size()});
-    extensions_t ext;
-    for (auto &out_type : get_out_types(kernel_desc)) {
-        if (out_type.size() == desc_out_type.size()) continue;
-        auto d = kernel_desc;
-        auto &tag = get_out_tag(d);
-        tag = layout_tag_t(tag.desc(), out_type, tag.raw_tag());
-        d.is_finalized = false;
-        if (!finalize_conv_desc(d, bench_mger.hw())) continue;
-        if (!try_create(bench_mger, d)) continue;
-        ext.add(extensions_t::out_size(out_type.size()));
-        reqs_vec.push_back(d.reqs);
-        out_type_sizes.push_back(out_type.size());
-    }
-
-    if (kernel_desc.prop == prop_kind::backward_weights
-            && !kernel_desc.with_bias_bwd_w()) {
-        auto d = kernel_desc;
-        d.bias_type = type_t::f32();
-        d.is_finalized = false;
-        d.set_defaults();
-        if (finalize_conv_desc(d, bench_mger.hw())
-                && try_create(bench_mger, d)) {
-            ext.add(extension_kind_t::bias);
-            reqs_vec.push_back(d.reqs);
-            out_type_sizes.push_back(desc_out_type.size());
-        }
-    }
-
-    prb_reqs_t out_reqs;
-    prb_reqs_t::merge(reqs_vec, out_type_sizes, pvar_t("outsz"), out_reqs);
-    auto _kernel_desc = kernel_desc;
-    _kernel_desc.reqs = out_reqs;
-    _kernel_desc.ext = ext;
-    return _kernel_desc;
 }
 
 } // namespace planner
 } // namespace conv
 } // namespace v2
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -20,8 +20,6 @@
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
-#include <set>
-
 namespace dnnl {
 namespace impl {
 namespace gpu {

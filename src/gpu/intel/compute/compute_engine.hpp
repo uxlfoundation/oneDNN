@@ -28,11 +28,6 @@
 #include "common/resource.hpp"
 #include "common/stream.hpp"
 #include "common/verbose.hpp"
-
-#include "xpu/utils.hpp"
-
-#include "gpu/gpu_engine.hpp"
-
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/kernel.hpp"

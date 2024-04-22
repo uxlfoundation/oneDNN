@@ -14,11 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
-
 #include "gpu/intel/jit/binary_format.hpp"
 
 #include "common/utils.hpp"
@@ -42,7 +37,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 using namespace ngen;
@@ -52,7 +46,7 @@ class binary_format_kernel_t : public jit_generator<hw> {
     NGEN_FORWARD_OPENCL(hw);
 
 public:
-    binary_format_kernel_t(const compute::compute_engine_t *engine) {
+    binary_format_kernel_t() {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
         auto high_half = [](uint64_t q) -> uint32_t { return q >> 32; };
@@ -70,10 +64,6 @@ public:
         requireSIMD((GRF::bytes(hw) == 64) ? 16 : 8);
         requireLocalID(3); // r1-r3
         requireLocalSize(); // r7.0-2:ud
-#if XE3P
-        if (hw == ngen::HW::Xe3p)
-            setEfficient64Bit(engine->device_info()->is_efficient_64bit());
-#endif
         finalizeInterface();
 
         Label doWrite;
@@ -165,9 +155,10 @@ public:
         *skip_check = false;
 
         if (hw != HW::Unknown) {
-            binary_format_kernel_t<hw> binary_format_kernel(engine);
+            binary_format_kernel_t<hw> binary_format_kernel;
 
-            auto status = engine->create_kernel(&kernel, &binary_format_kernel);
+            auto status
+                    = engine->create_kernel(&kernel, &binary_format_kernel, {});
 
             if (status != status::success) return nullptr;
             *skip_check = binary_format_kernel.binaryIsZebin();
@@ -201,16 +192,6 @@ public:
                     kernel = binary_format_kernel_t<HW::Xe2>::make_kernel(
                             engine, skip_check);
                     break;
-                case compute::gpu_arch_t::xe3:
-                    kernel = binary_format_kernel_t<HW::Xe3>::make_kernel(
-                            engine, skip_check);
-                    break;
-#if XE3P
-                case compute::gpu_arch_t::xe3p:
-                    kernel = binary_format_kernel_t<HW::Xe3p>::make_kernel(
-                            engine, skip_check);
-                    break;
-#endif
                 case compute::gpu_arch_t::unknown: kernel = nullptr; break;
             }
         }
@@ -218,13 +199,13 @@ public:
     }
 };
 
-status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
+status_t gpu_supports_binary_format(bool *ok, engine_t *engine) {
     *ok = false;
 
     auto gpu_engine = utils::downcast<compute::compute_engine_t *>(engine);
     if (!gpu_engine) return status::invalid_arguments;
 
-    impl::stream_t *stream_generic;
+    stream_t *stream_generic;
     auto status = gpu_engine->get_service_stream(stream_generic);
     if (status != status::success) return status::runtime_error;
 
@@ -315,11 +296,6 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif

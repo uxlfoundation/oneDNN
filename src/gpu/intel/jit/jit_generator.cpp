@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/jit_generator.hpp"
+#include "gpu/intel/jit/v2/conv/bench_data.hpp"
 
 #include "gpu/intel/jit/utils/utils.hpp"
 

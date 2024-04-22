@@ -19,9 +19,9 @@
 #include <type_traits>
 
 #include "common/type_helpers.hpp"
-#include "gpu/compute/device_info.hpp"
-#include "gpu/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/intel/utils.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/engine.hpp"

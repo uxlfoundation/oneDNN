@@ -16,14 +16,8 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/ref_resampling.hpp"
 #include "gpu/intel/ocl/vectorized_resampling.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/ref_resampling.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

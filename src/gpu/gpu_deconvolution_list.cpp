@@ -16,25 +16,7 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/convolution_deconvolution.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/generic/sycl/ref_convolution.hpp"
-#include "gpu/generic/sycl/ref_deconvolution.hpp"
-#include "gpu/nvidia/cudnn_deconvolution.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_deconvolution.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/ref_deconvolution.hpp"
-#endif
-
-#include "gpu/generic/convolution_deconvolution.hpp"
+#include "gpu/intel/ocl/ref_deconvolution.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_COMPUTE_UTILS_HPP
-#define GPU_INTEL_COMPUTE_UTILS_HPP
+#ifndef GPU_COMPUTE_UTILS_HPP
+#define GPU_COMPUTE_UTILS_HPP
 
 #include <array>
 #include <cassert>
@@ -30,8 +30,17 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace compute {
+
+using binary_t = std::vector<uint8_t>;
+using device_uuid_t = std::tuple<uint64_t, uint64_t>;
+
+struct device_uuid_hasher_t {
+    size_t operator()(const device_uuid_t &uuid) const {
+        const size_t seed = hash_combine(0, std::get<0>(uuid));
+        return hash_combine(seed, std::get<1>(uuid));
+    }
+};
 
 class range_t {
 public:
@@ -48,7 +57,7 @@ public:
                 << "Too many dimensions for range_t";
         ndims_ = dims.size();
         for (size_t i = 0; i < dims.size(); i++) {
-            dims_[i] = into<size_t>(dims[i]);
+            dims_[i] = gpu_utils::into<size_t>(dims[i]);
         }
     }
 
@@ -95,19 +104,6 @@ public:
 
     operator bool() const { return ndims_ > 0; }
 
-    std::string str() const {
-        if (ndims_ == 0) return "(nil)";
-
-        std::stringstream oss;
-        oss << "[";
-        for (size_t i = 0; i < ndims(); i++) {
-            if (i > 0) oss << ", ";
-            oss << dims_[i];
-        }
-        oss << "]";
-        return oss.str();
-    }
-
 private:
     size_t ndims_ = 0;
     std::array<size_t, max_ndims> dims_ = {0, 0, 0};
@@ -117,7 +113,7 @@ private:
 class nd_range_t {
 public:
     nd_range_t() = default;
-    explicit nd_range_t(
+    nd_range_t(
             const range_t &global_range, const range_t &local_range = range_t())
         : global_range_(global_range), local_range_(local_range) {
         if (local_range_) {
@@ -138,10 +134,19 @@ public:
 
     std::string str() const {
         std::stringstream oss;
-        oss << "gws = " << global_range_.str();
-        oss << " lws = ";
+        oss << "gws = [";
+        for (size_t i = 0; i < ndims(); i++) {
+            if (i > 0) oss << ", ";
+            oss << global_range_[i];
+        }
+        oss << "] lws = ";
         if (local_range_) {
-            oss << local_range_.str();
+            oss << "[";
+            for (size_t i = 0; i < ndims(); i++) {
+                if (i > 0) oss << ", ";
+                oss << local_range_[i];
+            }
+            oss << "]";
         } else {
             oss << "(nil)";
         }
@@ -154,9 +159,8 @@ private:
 };
 
 } // namespace compute
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_COMPUTE_UTILS_HPP
+#endif // GPU_COMPUTE_UTILS_HPP

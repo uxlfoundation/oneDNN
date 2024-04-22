@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_JIT_REDUCTION_HPP
-#define GPU_INTEL_JIT_JIT_REDUCTION_HPP
+#ifndef GPU_JIT_JIT_REDUCTION_HPP
+#define GPU_JIT_JIT_REDUCTION_HPP
 
 // A small wrapper on the jit_reduction_generator_t, used to test its functionality.
 // Only valid in dev mode for now, until performance is improved.
@@ -37,7 +37,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 struct jit_reduction_t : public gpu_primitive_t {
@@ -47,7 +46,7 @@ struct jit_reduction_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("jit:ref", jit_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             // Require the corresponding environment variable - skip this impl
             // unless requested (do not report this skip to verbose)
             bool enable_jit_reduction
@@ -79,14 +78,14 @@ struct jit_reduction_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
         dim_t reduction_size = 0;
         dim_t reduction_stride = 0;
         int nregs = 1;
         compute::nd_range_t nd_range;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
 
         auto *gpu_engine = utils::downcast<ocl::ocl_gpu_engine_t *>(engine);
@@ -112,7 +111,6 @@ private:
 };
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

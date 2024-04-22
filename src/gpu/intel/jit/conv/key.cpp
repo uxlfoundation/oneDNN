@@ -23,7 +23,6 @@
 
 #include "common/utils.hpp"
 #include "gpu/intel/jit/conv/config.hpp"
-#include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ngen/ngen.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 

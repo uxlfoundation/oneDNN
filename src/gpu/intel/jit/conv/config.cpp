@@ -20,15 +20,15 @@
 #include <cstring>
 #include <mutex>
 
-#include "gpu/jit/conv/grf_usage.hpp"
-#include "gpu/jit/conv/message_patterns.hpp"
-#include "gpu/jit/conv/normalization.hpp"
-#include "gpu/jit/conv/plan.hpp"
-#include "gpu/jit/conv/problem.hpp"
-#include "gpu/jit/conv/tiler.hpp"
-#include "gpu/jit/ir/gemm_schedule.hpp"
-#include "gpu/jit/ir/tensor_config.hpp"
-#include "gpu/jit/jit_eltwise_injector.hpp"
+#include "gpu/intel/jit/conv/grf_usage.hpp"
+#include "gpu/intel/jit/conv/message_patterns.hpp"
+#include "gpu/intel/jit/conv/normalization.hpp"
+#include "gpu/intel/jit/conv/plan.hpp"
+#include "gpu/intel/jit/conv/problem.hpp"
+#include "gpu/intel/jit/conv/tiler.hpp"
+#include "gpu/intel/jit/ir/gemm_schedule.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
+#include "gpu/intel/jit/jit_eltwise_injector.hpp"
 
 namespace dnnl {
 namespace impl {

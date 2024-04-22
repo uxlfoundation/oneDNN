@@ -19,20 +19,16 @@ file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     )
 
-if(DNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DPRERELEASE_HW)
-add_definitions_with_host_compiler(-DXE3P)
-endif()
-
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
 
-add_subdirectory(generic)
+if(DNNL_WITH_SYCL)
+    add_subdirectory(sycl)
+endif()
 
-if(DNNL_GPU_VENDOR STREQUAL "INTEL")
+if(DNNL_GPU_VENDOR MATCHES "^(INTEL|NVIDIA|AMD)$")
     add_definitions_with_host_compiler(-DNGEN_CPP11)
     add_definitions_with_host_compiler(-DNGEN_SAFE)
     add_definitions_with_host_compiler(-DNGEN_NEO_INTERFACE)

@@ -13,9 +13,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef GPU_INTEL_OCL_BNORM_GEN9_BNORM_REDUCE_H
-#define GPU_INTEL_OCL_BNORM_GEN9_BNORM_REDUCE_H
-
 #include "gpu/intel/ocl/bnorm/gen9_bnorm.h"
 
 // Zeroing and finalization kernels are required for atomics-based

@@ -23,11 +23,10 @@
 #include "common/reorder.hpp"
 #include "common/reorder_pd.hpp"
 #include "common/stream.hpp"
-
-#include "gpu/gpu_engine.hpp"
-#include "gpu/gpu_primitive.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_sum_pd.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/gpu_resource.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

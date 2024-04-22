@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_JIT_REDUCTION_INJECTOR_HPP
-#define GPU_INTEL_JIT_JIT_REDUCTION_INJECTOR_HPP
+#ifndef GPU_JIT_JIT_REDUCTION_INJECTOR_HPP
+#define GPU_JIT_JIT_REDUCTION_INJECTOR_HPP
 
 #include <assert.h>
 
@@ -30,7 +30,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 inline bool jit_reduction_injector_f32_is_supported(alg_kind_t alg) {
@@ -90,9 +89,8 @@ private:
 };
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_JIT_JIT_REDUCTION_INJECTOR_HPP
+#endif // GPU_JIT_JIT_REDUCTION_INJECTOR_HPP

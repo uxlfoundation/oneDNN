@@ -24,8 +24,8 @@
 #include "common/engine.hpp"
 #include "common/stream.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/ocl/stream_impl.hpp"
+#include "gpu/intel/ocl/ocl_engine.hpp"
+#include "gpu/intel/ocl/ocl_stream.hpp"
 
 using namespace dnnl::impl;
 

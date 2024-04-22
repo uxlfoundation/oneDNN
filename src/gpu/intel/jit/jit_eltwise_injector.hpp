@@ -21,7 +21,6 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/jit_generator.hpp"
 
 namespace dnnl {

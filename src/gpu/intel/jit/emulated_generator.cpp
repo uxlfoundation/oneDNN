@@ -20,7 +20,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 using namespace ngen;
@@ -450,13 +449,8 @@ REG_XEHP_ISA(template class emulated_generator_t<gpu_xe_hp>);
 REG_XEHPG_ISA(template class emulated_generator_t<gpu_xe_hpg>);
 REG_XEHPC_ISA(template class emulated_generator_t<gpu_xe_hpc>);
 REG_XE2_ISA(template class emulated_generator_t<gpu_xe2>);
-REG_XE3_ISA(template class emulated_generator_t<gpu_xe3>);
-#if XE3P
-REG_XE3P_ISA(template class emulated_generator_t<gpu_xe3p>);
-#endif
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

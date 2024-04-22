@@ -18,7 +18,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
-#include "gpu/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 using namespace dnnl::impl::memory_tracking::names;
 

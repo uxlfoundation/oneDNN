@@ -19,8 +19,13 @@
 #include <map>
 #include <unordered_set>
 
+#include "gpu/intel/ocl/stream_profiler.hpp"
+
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/ocl/mdapi_utils.hpp"
+#include "gpu/intel/ocl/ocl_stream.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 #include "xpu/ocl/context.hpp"
 #include "xpu/ocl/stream_profiler.hpp"

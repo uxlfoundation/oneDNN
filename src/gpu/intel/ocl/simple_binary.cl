@@ -14,7 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/binary_common.h"
+#include "gpu/intel/ocl/binary_types.h"
+#include "gpu/intel/ocl/dispatch.h"
 
 #if IS_TENSOR_OP && IS_DENSE && IS_SAME_MD && !WITH_BINARY_POST_OP
 KERNEL_ATTR

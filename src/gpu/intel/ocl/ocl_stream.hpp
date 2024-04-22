@@ -14,57 +14,63 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_OCL_STREAM_HPP
-#define GPU_INTEL_OCL_OCL_STREAM_HPP
+#ifndef GPU_OCL_OCL_STREAM_HPP
+#define GPU_OCL_OCL_STREAM_HPP
 
 #include <memory>
 
 #include "common/c_types_map.hpp"
 #include "common/thread_local_storage.hpp"
-
-#include "xpu/stream_profiler.hpp"
-
-#include "xpu/ocl/context.hpp"
-#include "xpu/ocl/stream_impl.hpp"
-
 #include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/stream_profiler.hpp"
 #include "gpu/intel/ocl/mdapi_utils.hpp"
+#include "gpu/intel/ocl/ocl_context.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 struct ocl_stream_t : public compute::compute_stream_t {
-    static status_t create_stream(impl::stream_t **stream,
-            impl::engine_t *engine, impl::stream_impl_t *stream_impl) {
+    static status_t create_stream(
+            stream_t **stream, engine_t *engine, unsigned flags) {
 
-        std::unique_ptr<ocl_stream_t> s(new ocl_stream_t(engine, stream_impl));
-        if (!s) return status::out_of_memory;
+        std::unique_ptr<ocl_stream_t> ocl_stream(
+                new ocl_stream_t(engine, flags));
+        if (!ocl_stream) return status::out_of_memory;
 
-        status_t status = s->init();
-        if (status != status::success) {
-            // Stream owns stream_impl only if it's created successfully (including initialization).
-            s->impl_.release();
-            return status;
-        }
+        status_t status = ocl_stream->init();
+        if (status != status::success) return status;
 
-        *stream = s.release();
+        *stream = ocl_stream.release();
         return status::success;
     }
 
-    status_t wait() override { return impl()->wait(); }
+    static status_t create_stream(
+            stream_t **stream, engine_t *engine, cl_command_queue queue) {
+        unsigned flags;
+        status_t status = ocl_stream_t::init_flags(&flags, queue);
+        if (status != status::success) return status;
+
+        std::unique_ptr<ocl_stream_t> ocl_stream(
+                new ocl_stream_t(engine, flags, queue));
+        if (!ocl_stream) return status::out_of_memory;
+
+        status = ocl_stream->init();
+        if (status != status::success) return status;
+
+        *stream = ocl_stream.release();
+        return status::success;
+    }
+
+    status_t wait() override {
+        OCL_CHECK(clFinish(queue_));
+        return status::success;
+    }
 
     void before_exec_hook() override;
     void after_exec_hook() override;
-
-    double get_freq(const xpu::event_t &event) const override {
-        const auto &ocl_event = xpu::ocl::event_t::from(event).events;
-        gpu_assert(ocl_event.size() == 1);
-        return mdapi_helper().get_freq(ocl_event[0]);
-    }
 
     status_t reset_profiling() override {
         if (!is_profiling_enabled()) return status::invalid_arguments;
@@ -78,48 +84,79 @@ struct ocl_stream_t : public compute::compute_stream_t {
         return profiler_->get_info(data_kind, num_entries, data);
     }
 
-    cl_command_queue queue() const { return impl()->queue(); }
+    cl_command_queue queue() const { return queue_; }
 
     const mdapi_helper_t &mdapi_helper() const { return *mdapi_helper_; }
 
     status_t copy(const memory_storage_t &src, const memory_storage_t &dst,
-            size_t size, const xpu::event_t &deps,
-            xpu::event_t &out_dep) override;
+            size_t size, const compute::event_t &deps,
+            compute::event_t &out_dep) override;
 
     status_t fill(const memory_storage_t &dst, uint8_t pattern, size_t size,
-            const xpu::event_t &deps, xpu::event_t &out_dep) override;
+            const compute::event_t &deps, compute::event_t &out_dep) override;
 
-    status_t barrier() override;
-
-    ~ocl_stream_t() override = default;
-
-    const xpu::ocl::context_t &ocl_ctx() const { return impl()->ocl_ctx(); }
-    xpu::ocl::context_t &ocl_ctx() { return impl()->ocl_ctx(); }
-    xpu::context_t &ctx() override { return impl()->ocl_ctx(); }
-    const xpu::context_t &ctx() const override { return impl()->ocl_ctx(); }
-
-    const xpu::ocl::wrapper_t<cl_event> &get_output_event() const {
-        return impl()->get_output_event();
+    ~ocl_stream_t() override {
+        if (queue_) { clReleaseCommandQueue(queue_); }
     }
+
+    const ocl_context_t &ocl_ctx() const {
+        static ocl_context_t empty_ctx {};
+        return ctx_.get(empty_ctx);
+    }
+    ocl_context_t &ocl_ctx() {
+        const ocl_context_t &ctx
+                = const_cast<const ocl_stream_t *>(this)->ocl_ctx();
+        return *const_cast<ocl_context_t *>(&ctx);
+    }
+    gpu::compute::context_t &ctx() override { return ocl_ctx(); }
+    const gpu::compute::context_t &ctx() const override { return ocl_ctx(); }
+
+    const ocl_wrapper_t<cl_event> &get_output_event() const {
+        auto &deps = ocl_event_t::from(ctx().get_deps());
+        assert(deps.size() == 1);
+        return deps[0];
+    }
+
+    const compute::stream_profiler_t &profiler() const override {
+        return *profiler_;
+    }
+    compute::stream_profiler_t &profiler() override { return *profiler_; }
 
 private:
-    xpu::ocl::stream_impl_t *impl() const {
-        return (xpu::ocl::stream_impl_t *)impl::stream_t::impl_.get();
-    }
-
-    ocl_stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl)
-        : compute_stream_t(engine, stream_impl) {}
-
+    ocl_stream_t(engine_t *engine, unsigned flags)
+        : compute_stream_t(engine, flags), queue_(nullptr) {}
+    ocl_stream_t(engine_t *engine, unsigned flags, cl_command_queue queue)
+        : compute_stream_t(engine, flags), queue_(queue) {}
     status_t init();
+
+    static status_t init_flags(unsigned *flags, cl_command_queue queue) {
+        *flags = 0;
+        // Determine if the passed queue is in-order/out-of-order
+        cl_command_queue_properties props;
+        OCL_CHECK(clGetCommandQueueInfo(queue, CL_QUEUE_PROPERTIES,
+                sizeof(cl_command_queue_properties), &props, nullptr));
+
+        *flags |= (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE)
+                ? stream_flags::out_of_order
+                : stream_flags::in_order;
+#ifdef DNNL_EXPERIMENTAL_PROFILING
+        if (props & CL_QUEUE_PROFILING_ENABLE)
+            *flags |= stream_flags::profiling;
+#endif
+
+        return status::success;
+    }
 
     cl_command_queue create_queue(
             cl_context ctx, cl_device_id dev, cl_int *err) const;
 
+    cl_command_queue queue_;
     std::unique_ptr<mdapi_helper_t> mdapi_helper_;
+    std::unique_ptr<compute::stream_profiler_t> profiler_;
+    mutable utils::thread_local_storage_t<ocl_context_t> ctx_;
 };
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

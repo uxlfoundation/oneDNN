@@ -14,11 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_OCL_CONVERSION_H
-#define GPU_INTEL_OCL_OCL_CONVERSION_H
+#ifndef GPU_OCL_OCL_CONVERSION_H
+#define GPU_OCL_OCL_CONVERSION_H
 
 #include "gpu/intel/ocl/ocl_custom_types.h"
-#include "gpu/intel/ocl/ocl_math_utils.h"
 #include "gpu/intel/ocl/ocl_utils.h"
 
 // Idea: We want to have a uniform method of conversion between types within
@@ -41,11 +40,8 @@ IF_HALF_SUPPORTED(def_identity_into(half));
 
 #ifdef MATH_UTILS_DECLARE_BF8
 def_identity_into(f8_e5m2);
-#endif // MATH_UTILS_DECLARE_BF8
-
-#ifdef MATH_UTILS_DECLARE_HF8
 def_identity_into(f8_e4m3);
-#endif // MATH_UTILS_DECLARE_HF8
+#endif // MATH_UTILS_DECLARE_BF8
 
 #undef def_identity_into
 
@@ -158,12 +154,12 @@ f8_e5m2 __attribute__((overloadable)) into_f8_e5m2(half f) {
 
     // we always return R ind for Nan input as there is no good
     // conversion of payload
-    if (is_nan) { return as_f8_e5m2((fraw >> 8) | 0x02); }
+    if (is_nan) { return (fraw >> 8) | 0x02; }
 
     // if infinity, we just return it as is
     if (is_special) {
         uchar raw_bits = fraw >> 8;
-        return as_f8_e5m2(raw_bits);
+        return raw_bits;
     }
 
     // otherwise we just round and return
@@ -178,15 +174,10 @@ half __attribute__((overloadable)) into_half(f8_e5m2 b) {
     return as_half(iraw);
 }
 
-def_two_step_conversion(f8_e5m2, float, half);
-def_two_step_conversion(f8_e5m2, int, half);
-def_two_step_conversion(float, f8_e5m2, half);
+def_two_step_def_two_step_conversion(f8_e5m2, float, half);
+def_two_step_def_two_step_conversion(f8_e5m2, int, half);
+def_two_step_def_two_step_conversion(float, f8_e5m2, half);
 
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(f8_e5m2, double, float));
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f8_e5m2, float));
-#endif
-
-#ifdef MATH_UTILS_DECLARE_HF8
 f8_e4m3 __attribute__((overloadable)) into_f8_e4m3(half f) {
     // Here the idea is to add a large constant to the float16_t to force the
     // proper rounding to f8_e4m3 accuracy.
@@ -269,10 +260,11 @@ def_two_step_conversion(f8_e4m3, float, half);
 def_two_step_conversion(f8_e4m3, int, half);
 def_two_step_conversion(float, f8_e4m3, half);
 
+IF_DOUBLE_SUPPORTED(def_two_step_conversion(f8_e5m2, double, float));
 IF_DOUBLE_SUPPORTED(def_two_step_conversion(f8_e4m3, double, float));
+IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f8_e5m2, float));
 IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f8_e4m3, float));
-#endif // MATH_UTILS_DECLARE_HF8
-
+#endif // MATH_UTILS_DECLARE_BF8
 IF_DOUBLE_SUPPORTED(def_two_step_conversion(bf16, double, float));
 IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, bf16, float));
 

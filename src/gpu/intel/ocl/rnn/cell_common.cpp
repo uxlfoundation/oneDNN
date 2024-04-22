@@ -16,12 +16,11 @@
 
 // Common for RNN and LSTM cell execution
 
-#include "gpu/intel/ocl/rnn/rnn_grid.hpp"
+#include "gpu/intel/ocl/rnn/ref_rnn.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 using namespace dnnl::impl::utils;
@@ -40,7 +39,7 @@ strides_t<out_ndims> inner(const strides_t<in_ndims> &s) {
 }
 
 status_t compute_cell_fwd(const exec_ctx_t &ctx,
-        const compute::kernel_t &kernel, dim_t lay, dim_t dir, dim_t iter,
+        const compute::kernel_t &kernel, int lay, int dir, int iter,
         const workspace_t &workspace, const user_data_t user_data,
         const sub_buffer_t &weights_layer, const sub_buffer_t &weights_iter,
         const sub_buffer_t &cell_layer, const strides_t<4> &cell_layer_strides,
@@ -84,13 +83,13 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
     arg_list.append(offsets.weights_layer);
     arg_list.append(weights_iter, ocl_conf.wei_dt);
     arg_list.append(offsets.weights_iter);
-    arg_list.append(cell_layer, ocl_conf.ws_state_dt);
+    arg_list.append(cell_layer, ocl_conf.aux_dt);
     arg_list.append(inner<2>(cell_layer_strides));
-    arg_list.append(cell_iter, ocl_conf.ws_state_dt);
+    arg_list.append(cell_iter, ocl_conf.aux_dt);
     arg_list.append(inner<2>(cell_iter_strides));
     arg_list.append(gates, ocl_conf.aux_dt);
     arg_list.append(inner<2>(gates_strides));
-    arg_list.append(states, ocl_conf.ws_state_dt);
+    arg_list.append(states, ocl_conf.aux_dt);
     arg_list.append(inner<2>(states_strides));
 
     if (ocl_conf.cell_kind == alg_kind::vanilla_lstm) {
@@ -114,13 +113,13 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
     arg_list.append(conf.slc);
     arg_list.append(conf.sic);
 
-    arg_list.append(into<dim_t>(dhc_loop));
+    arg_list.append(gpu_utils::into<dim_t>(dhc_loop));
 
     return gpu_primitive_t::parallel_for(ctx, nd_range, kernel, arg_list.args);
 }
 
 template <prop_kind_t aprop>
-cell_execution_sig((_simple_rnn_common_t<aprop>::cell_execution)) {
+cell_execution_sig((_ref_rnn_common_t<aprop>::cell_execution)) {
     const conf_t &rnn = this->pd()->rnn_conf;
     const ocl_conf_t &ocl_conf = this->pd()->ocl_conf;
     const rnn_offsets_t &offsets = this->pd()->off;
@@ -207,12 +206,8 @@ cell_execution_sig((_simple_rnn_common_t<aprop>::cell_execution)) {
                 engine, ctx, wei_iter, diff_gates, diff_states, gemm_iter_bwd));
 
         if (!rnn.merge_gemm_layer) {
-
-            auto gemm_layer_cell_bwd = !rnn.copy_diff_src_layer && lay == 0
-                    ? gemm_layer_bwd_src
-                    : gemm_layer_bwd;
             CHECK(gemm_primitive(engine, ctx, wei_layer, diff_gates,
-                    diff_states1, gemm_layer_cell_bwd));
+                    diff_states1, gemm_layer_bwd));
 
             auto gemm_diff_wei_cell_layer = !rnn.copy_src_layer && lay == 0
                     ? gemm_diff_wei_layer_src
@@ -230,10 +225,9 @@ cell_execution_sig((_simple_rnn_common_t<aprop>::cell_execution)) {
     }
     return status::success;
 }
-template cell_execution_sig(simple_rnn_fwd_t::cell_execution);
-template cell_execution_sig(simple_rnn_bwd_t::cell_execution);
+template cell_execution_sig(ref_rnn_fwd_t::cell_execution);
+template cell_execution_sig(ref_rnn_bwd_t::cell_execution);
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

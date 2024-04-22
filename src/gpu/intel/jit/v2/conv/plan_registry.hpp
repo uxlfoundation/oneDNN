@@ -21,6 +21,8 @@
 #include "gpu/intel/jit/v2/conv/kernel_desc.hpp"
 #include "gpu/intel/jit/v2/conv/model.hpp"
 
+#include <unordered_map>
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

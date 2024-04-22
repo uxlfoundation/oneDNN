@@ -16,18 +16,14 @@
 
 #include "gpu/intel/ocl/reduction/combined_reduction.hpp"
 #include "common/c_types_map.hpp"
-#include "common/utils.hpp"
 #include "gpu/intel/block_structure.hpp"
-#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/reduction/reduction_utils.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 // Returns the next factor of big_num less than (or equal to) target
@@ -86,10 +82,6 @@ reduction_phase_conf_t::reduction_phase_conf_t(
     const int num_EU = compute_engine->device_info()->eu_count();
     const int max_wg_size = static_cast<int>(
             compute_engine->device_info()->max_wg_size(large_grf_mode));
-    compute::gpu_arch_t arch = compute_engine->device_info()->gpu_arch();
-    int threads_per_eu
-            = large_grf_mode ? 4 : compute::device_info_t::threads_per_eu(arch);
-    int num_threads = num_EU * threads_per_eu;
 
     // inner_dim can either be:
     // 1. packed into a single subgroup (small inner dim), or
@@ -98,39 +90,64 @@ reduction_phase_conf_t::reduction_phase_conf_t(
             = nstl::clamp(subgroup_size / inner_block.block, dim_t {1},
                     reduction_block.block);
     const dim_t num_split_inner_dims
-            = utils::div_up(inner_block.block, subgroup_size);
+            = utils::div_up(inner_block.block, subgroup_size); // S per I
 
-    int max_slm = utils::div_up(
-            num_threads, outer_block.block * num_split_inner_dims);
-    max_slm = nstl::min(max_slm, max_wg_size / subgroup_size);
-    slm_reductions = [this, &num_packed_inner_dims, &max_slm]() {
-        const dim_t rem_red = reduction_block.block / num_packed_inner_dims;
-        // XXX: max_div no longer required
-        int n_slm = into<int>(nstl::min(rem_red, into<dim_t>(max_slm)));
-        return gpu_utils::dev_getenv("combined_reduction_n_slm", n_slm);
-    }();
-    dim_t num_subgroups
-            = outer_block.block * num_split_inner_dims * slm_reductions;
+    const dim_t num_horiz_reductions
+            = reduction_block.block / num_packed_inner_dims;
 
-    // Increase num_outer_idxs to use persistent threading to reduce the number of subgroups
-    // and avoid overdispatching
-    outer_tile_size = [this, &arch, &num_threads, &num_subgroups]() -> int {
-        // Enable >1 block sizes only for PVC+, to avoid oldest-first thread arbitration
-        dim_t block_size = 1;
-        if (arch >= compute::gpu_arch_t::xe_hpc) {
-            block_size = num_subgroups / num_threads;
-            block_size = get_previous_factor(outer_block.block, block_size);
+    dim_t num_subgroups = outer_block.block * num_split_inner_dims;
+
+    // We need to determine 2 variables according to some heuristic:
+    // 1. Vector size (increases block load size)
+    // 2. Threads per EU (decreases scheduling overhead, in this case)
+
+    // Vector size requirements:
+    // 1. (required) reductions and inner_dim aligned with no tails on either one
+    // 2. (heuristic) Block loads should not exceed maximum instruction load size
+    // 3. (heuristic) EUs should not become unsaturated due to vector size
+    int nvec = 1;
+    bool reduce_vec = false;
+    if (with_block_reads) {
+        const size_t single_load_size = types::data_type_size(src_type)
+                * static_cast<size_t>(subgroup_size);
+        const int max_load_size = 256; // Set on ATS-M, may depend on arch
+        const int max_vect_size
+                = static_cast<int>(max_load_size / single_load_size);
+
+        for (int N : {8, 4, 2}) {
+            // Related to EU saturation
+            if (num_subgroups / N < num_EU) continue;
+            // Related to block load size
+            if (N > max_vect_size) continue;
+            if (num_horiz_reductions % N == 0) {
+                if (num_split_inner_dims == 1
+                        || num_split_inner_dims % N == 0) {
+                    nvec = N;
+                    reduce_vec = (num_split_inner_dims == 1);
+                    break;
+                }
+            }
         }
-        return gpu_utils::dev_getenv(
-                "combined_reduction_num_outer", into<int>(block_size));
-    }();
-    gpu_assert(outer_block.block % outer_tile_size == 0)
-            << "Invalid choice of persistent thread outer idxs";
-    num_subgroups /= outer_tile_size;
+    }
+    vect_size = nvec;
+    reduce_vector = reduce_vec;
+
+    if (!reduce_vector) num_subgroups /= vect_size;
+
+    // Compute the number of threads per EU - this has no major impact
+    // on average time, but can improve the best times on
+    // close-to-cache-size problems with high parallelism
+    const dim_t max_threads = num_subgroups / num_EU;
+    dim_t threads_per_wg
+            = nstl::clamp(static_cast<dim_t>(max_wg_size / subgroup_size),
+                    dim_t {1}, max_threads);
+    threads_per_wg = get_previous_factor(num_subgroups, threads_per_wg);
 
     // Compute the nd_range for this phase
-    compute::range_t gws(into<size_t>(num_subgroups * subgroup_size));
-    compute::range_t lws(into<size_t>(slm_reductions * subgroup_size));
+    compute::range_t gws(
+            gpu_utils::into<size_t>(num_subgroups * subgroup_size));
+    compute::range_t lws(
+            gpu_utils::into<size_t>(threads_per_wg * subgroup_size));
     nd_range = compute::nd_range_t(gws, lws);
 
     is_first = false;
@@ -181,60 +198,55 @@ status_t split_into_phases(const reduction_subproblem_t &subprb,
         data_type_t accum_data_type,
         const compute::compute_engine_t *compute_engine,
         std::vector<reduction_phase_conf_t> &phases, bool large_grf_mode) {
+
+    const int subgroup_size
+            = compute_engine->device_info()->max_subgroup_size();
+    const dim_t inner_elems = subprb.inner_block.block;
     const dim_t reduction_elems = subprb.reduction_block.block;
+    const dim_t outer_elems = subprb.outer_block.block;
 
-    //Heuristic:
-    // subsplitting has a high cost due to launching multiple sequential threads,
-    // so only split when parallelism is low and reductions per thread is large
-    reduction_phase_conf_t try_phase(subprb, accum_data_type, accum_data_type,
-            compute_engine, large_grf_mode);
-    const bool low_parallelism = [&compute_engine, &large_grf_mode,
-                                         &try_phase]() {
-        compute::gpu_arch_t arch = compute_engine->device_info()->gpu_arch();
-        int threads_per_EU = large_grf_mode
-                ? 4
-                : compute::device_info_t::threads_per_eu(arch);
-        const int num_EU = compute_engine->device_info()->eu_count();
-        const int min_threads = gpu_utils::dev_getenv(
-                "combined_reduction_occ_thresh", threads_per_EU * num_EU / 2);
-        const int dispatched_threads
-                = into<int>(try_phase.nd_range.global_range()[0]
-                        / into<size_t>(try_phase.subgroup_size));
-        return dispatched_threads < min_threads;
-    }();
-    const bool large_reduction = [&try_phase]() {
-        const int slm_red = into<int>(try_phase.nd_range.local_range()[0]
-                / into<size_t>(try_phase.subgroup_size));
-        const dim_t sg_red = nstl::clamp(
-                try_phase.subgroup_size / try_phase.inner_block.block,
-                dim_t {1}, try_phase.reduction_block.block);
-        const dim_t red_per_thread
-                = try_phase.reduction_block.block / slm_red / sg_red;
-        const int red_thresh
-                = gpu_utils::dev_getenv("combined_reduction_split_thresh", 128);
-        return red_per_thread >= red_thresh;
-    }();
-    if (!large_reduction || !low_parallelism) {
-        phases.emplace_back(try_phase);
-        return status::success;
-    }
+    const dim_t inner_dim_per_sg
+            = nstl::max(dim_t {1}, subgroup_size / inner_elems);
+    const int num_EU = compute_engine->device_info()->eu_count();
+    const dim_t num_sg_per_red_end
+            = outer_elems * utils::div_up(inner_elems, subgroup_size);
 
-    // Split into 2 phases
-    dim_t reduction_end = static_cast<dim_t>(std::sqrt(reduction_elems));
+    //Heuristics:
+    // EU_mult: reduce parallelism to at most num_EU*EU_mult (reduces scheduling overhead?)
+    const int EU_mult = 20;
+    // Target single_phase_threshold horizontal reductions with each phase
+    const int single_phase_threshold = 256;
+
+    // Estimate the number of phases remaining, and divide it up evenly around this target
+    int N = static_cast<int>(std::ceil(std::log2(reduction_elems)
+            / std::log2(single_phase_threshold * inner_dim_per_sg)));
+    N = std::max(1, N); // N must be positive
+    dim_t reduction_end = static_cast<dim_t>(
+            std::pow(reduction_elems, 1.0f - 1.0f / static_cast<float>(N)));
+
+    // Reduce parallelism and finalize reduction_end
+    reduction_end = nstl::clamp(
+            num_EU * EU_mult / num_sg_per_red_end, dim_t {1}, reduction_end);
     reduction_end = get_previous_factor(reduction_elems, reduction_end);
 
-    auto subdivided
-            = subdivide_subproblem(subprb, reduction_elems / reduction_end);
-    phases.emplace_back(subdivided[0], accum_data_type, accum_data_type,
-            compute_engine, large_grf_mode);
-    if (reduction_end > 1) {
-        phases.emplace_back(subdivided[1], accum_data_type, accum_data_type,
+    // Create the phase and recursively enter
+    dim_t reduction_size = reduction_elems / reduction_end;
+
+    if (reduction_end == 1) {
+        phases.emplace_back(subprb, accum_data_type, accum_data_type,
                 compute_engine, large_grf_mode);
+        return status::success;
+    } else {
+        // Subdivide the subproblem by reducing by reduction_size first
+        auto subdivided = subdivide_subproblem(subprb, reduction_size);
+        phases.emplace_back(subdivided[0], accum_data_type, accum_data_type,
+                compute_engine, large_grf_mode);
+        return split_into_phases(subdivided[1], accum_data_type, compute_engine,
+                phases, large_grf_mode);
     }
-    return status::success;
 }
 
-status_t combined_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t combined_reduction_t::pd_t::init_conf(engine_t *engine) {
     // To start, check for compatibility
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
@@ -242,10 +254,6 @@ status_t combined_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     const dim_t *src_dims = src_mdw.dims();
     const dim_t *src_padded_dims = src_mdw.padded_dims();
     const dim_t *dst_dims = dst_mdw.dims();
-
-    // Implementation uses int for offset calculations
-    if (src_mdw.nelems(true) > INT_MAX || dst_mdw.nelems(true) > INT_MAX)
-        return status::unimplemented;
 
     for (int i = 0; i < ndims; i++) {
         // Actually reduced dimensions
@@ -368,6 +376,13 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 
     kernel_ctx.set_data_type(phase.src_type);
 
+    // Used for packing small inner vectors into a subgroup
+    const dim_t inner_dim_per_sg
+            = nstl::clamp(phase.subgroup_size / phase.inner_block.block,
+                    dim_t {1}, phase.reduction_block.block);
+    const dim_t num_horiz_reductions
+            = phase.reduction_block.block / inner_dim_per_sg;
+
     kernel_ctx.define_int("SUBGROUP_SIZE", phase.subgroup_size);
     const auto &lws = phase.nd_range.local_range();
     if (!lws) return status::runtime_error;
@@ -381,10 +396,21 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("REDUCTION_SIZE", phase.reduction_block.block);
     kernel_ctx.define_int("INNER_DIM_SIZE", phase.inner_block.block);
 
-    kernel_ctx.define_int("OUTER_TILE_SIZE", phase.outer_tile_size);
-
     kernel_ctx.define_int("IS_FINAL", phase.is_final);
     kernel_ctx.define_int("IS_FIRST", phase.is_first);
+
+    kernel_ctx.define_int("VECT_DT_N", phase.vect_size);
+    kernel_ctx.define_int("REDUCE_VECTOR", phase.reduce_vector ? 1 : 0);
+
+    // Because the reduction loop is quite tight, we can override the compiler's
+    // loop unrolling logic to increase it a lot and get a bit more speed
+    // Heuristic determined on ATS-m, set to exclude the possibility of
+    // exceeding the instruction cache
+    const dim_t max_unroll = 256;
+    const dim_t unroll_factor = nstl::clamp(
+            num_horiz_reductions / (phase.reduce_vector ? phase.vect_size : 1),
+            dim_t {1}, max_unroll);
+    kernel_ctx.define_int("UNROLL_FACTOR", unroll_factor);
 
     kernel_ctx.define_int("WITH_BLOCK_READ", phase.with_block_reads ? 1 : 0);
 
@@ -438,14 +464,13 @@ status_t combined_reduction_t::pd_t::init_kernel_ctx(
     if (status != status_t::dnnl_success) return status;
 
     // Set post-op macros
-    auto empty_po = post_ops_t();
-    const auto &actual_po = &attr()->post_ops_;
-    const post_ops_t *po = phase.is_final ? actual_po : &empty_po;
-
-    CHECK(def_attr_info(kernel_ctx, conf.attr_info, *po, *dst_md()));
-    if (attr()->post_ops_.len() > 0 && phase.is_final) {
-        // Can only do this for the final phase, since it overwrites def_data_type for DST
-        def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    CHECK(def_attr_info(
+            kernel_ctx, conf.attr_info, attr()->post_ops_, *dst_md()));
+    if (attr()->post_ops_.len() > 0) {
+        if (phase.is_final) {
+            // Can only do this for the final phase, since it overwrites def_data_type for DST
+            def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+        }
         def_offsets(conf.off.dst_off, kernel_ctx, "DST", conf.ndims);
     }
 
@@ -477,11 +502,8 @@ status_t combined_reduction_t::execute_combined(const exec_ctx_t &ctx) const {
         reduction_arg_list.set(0, src_mem);
         reduction_arg_list.set(1, dst_mem);
 
-        // nullify post ops unless it's the final phase
-        auto empty_po = post_ops_t();
-        const auto &actual_po = &pd()->attr()->post_ops_;
-        const post_ops_t *po = phase.is_final ? actual_po : &empty_po;
-        append_post_ops_to_arg_list(ctx, reduction_arg_list, 2, *po);
+        append_post_ops_to_arg_list(
+                ctx, reduction_arg_list, 2, pd()->attr()->post_ops_);
 
         status = parallel_for(ctx, nd_range, kernel, reduction_arg_list);
         CHECK(status);
@@ -490,7 +512,6 @@ status_t combined_reduction_t::execute_combined(const exec_ctx_t &ctx) const {
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

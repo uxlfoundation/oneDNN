@@ -16,34 +16,14 @@
 
 #include "gpu/intel/ocl/ocl_post_ops.h"
 #include "gpu/intel/ocl/ocl_types.h"
-#include "gpu/intel/ocl/ocl_utils.h"
 #include "gpu/intel/ocl/reduction/ocl_reduction.h"
 
-#ifdef OCL_DEBUG
-#define DUMP(str, ...) \
-    do { \
-        const size_t gid[3] \
-                = {get_global_id(0), get_global_id(1), get_global_id(2)}; \
-        const size_t lid[3] \
-                = {get_local_id(0), get_local_id(1), get_local_id(2)}; \
-        const size_t wgid[3] \
-                = {get_group_id(0), get_group_id(1), get_group_id(2)}; \
-        const size_t lin_g = get_global_linear_id(); \
-        const size_t lin_l = get_local_linear_id(); \
-        const uint sglid = get_sub_group_local_id(); \
-        DEBUG_PRINT( \
-                "gid=(%zu,%zu,%zu) lid=(%zu,%zu,%zu) " \
-                "linear=(%zug/%zul/%usg): " str, \
-                gid[0], gid[1], gid[2], lid[0], lid[1], lid[2], lin_g, lin_l, \
-                sglid, ##__VA_ARGS__) \
-    } while (0)
-#else
-#define DUMP(...)
-#endif
+#define BLOCK_READ_DATA_T(data_ptr) \
+    AS_VECT_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)data_ptr))
 
 // Define how to read data
 #define BLOCK_READ_DATA_T(data_ptr) \
-    AS_DATA_T(BLOCK_READ((const __global BLOCK_DATA_T *)data_ptr))
+    AS_VECT_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)data_ptr))
 #define READ_DATA(val) WITH_BLOCK_READ ? BLOCK_READ_DATA_T(&val) : val
 
 // Zero-padding defines
@@ -110,6 +90,12 @@ dim_t dst_off_w_zero_padding(dim_t outer, dim_t inner) {
 
 #define _DST_OFF(outer, inner) dst_off_w_zero_padding(outer, inner)
 
+#if REDUCE_VECTOR
+#define FINAL_VEC_SIZE 1
+#else
+#define FINAL_VEC_SIZE VECT_DT_N
+#endif
+
 #if NUM_DST_ZPAD == 0
 #define PADDED_NELEMS OUTER_SIZE *INNER_DIM_SIZE
 #elif NUM_DST_ZPAD == 1
@@ -120,62 +106,17 @@ dim_t dst_off_w_zero_padding(dim_t outer, dim_t inner) {
             *DST_Z1_SIZE1
 #endif
 
-#if WITH_POST_OP
-void reverse_indexing(dim_t dst_off, int *res) {
-    // Reconstruct dimension indices from dst_off
-    res[0] = (DST_S0 == 0) ? 0
-                           : dst_off / DST_S0 % div_up(DST_D0, DST_B0) * DST_B0
-                    + dst_off / DST_SB0 % DST_B0;
-    res[1] = (DST_S1 == 0) ? 0
-                           : dst_off / DST_S1 % div_up(DST_D1, DST_B1) * DST_B1
-                    + dst_off / DST_SB1 % DST_B1;
-    res[2] = (DST_S2 == 0) ? 0
-                           : dst_off / DST_S2 % div_up(DST_D2, DST_B2) * DST_B2
-                    + dst_off / DST_SB2 % DST_B2;
-    res[3] = (DST_S3 == 0) ? 0
-                           : dst_off / DST_S3 % div_up(DST_D3, DST_B3) * DST_B3
-                    + dst_off / DST_SB3 % DST_B3;
-    res[4] = (DST_S4 == 0) ? 0
-                           : dst_off / DST_S4 % div_up(DST_D4, DST_B4) * DST_B4
-                    + dst_off / DST_SB4 % DST_B4;
-    res[5] = (DST_S5 == 0) ? 0
-                           : dst_off / DST_S5 % div_up(DST_D5, DST_B5) * DST_B5
-                    + dst_off / DST_SB5 % DST_B5;
-}
-#endif
-
-__attribute__((overloadable)) void write(
-        __global DST_DATA_T *dst, DST_DATA_T val) {
-    *dst = val;
-}
-
-__attribute__((overloadable)) DST_DATA_T load(__global DST_DATA_T *dst) {
-    return *dst;
-}
-
-void write_padded_zeros(__global DST_DATA_T *dst) {
-#if DST_Z0_IS_REDUCED && DST_Z1_IS_REDUCED
-    for (int i = 0; i < DST_Z0_SIZE0; i++) {
-        for (int j = 0; j < DST_Z1_SIZE0; j++) {
-            if (i == 0 && j == 0) continue;
-            write(dst + i * DST_Z0_STRIDE0 + j * DST_Z1_STRIDE0, TO_DST(0.0f));
-        }
-    }
-#elif DST_Z0_IS_REDUCED
-    for (int i = 1; i < DST_Z0_SIZE0; i++) {
-        write(dst + i * DST_Z0_STRIDE0, TO_DST(0.0f));
-    }
-#elif DST_Z1_IS_REDUCED
-    for (int j = 1; j < DST_Z1_SIZE0; j++) {
-        write(dst + j * DST_Z1_STRIDE0, TO_DST(0.0f));
-    }
-#endif
-}
-
-#if INNER_DIM_SIZE < SUBGROUP_SIZE
-#define SLM_PER_SG INNER_DIM_SIZE
+#if VECT_DT_N == 1
+#define GET_ELEM(vect, idx) vect
 #else
-#define SLM_PER_SG SUBGROUP_SIZE
+#define GET_ELEM(vect, idx) vect[idx]
+#endif
+
+// If reducing or not using vectorization, we can't access with an index
+#if !REDUCE_VECTOR && VECT_DT_N > 1
+#define GET_FINAL(x, idx) x[idx]
+#else
+#define GET_FINAL(x, idx) x
 #endif
 
 // Specifying wg size since larger work groups reduce performance.
@@ -186,131 +127,160 @@ __kernel void
 combined_reduce(
         __global SRC_DATA_T *src, __global DST_DATA_T *dst POST_OP_ARGS) {
     // Compute constants deriving from defined constants
-    const int sg_per_inner_dim = div_up(INNER_DIM_SIZE, SUBGROUP_SIZE);
-    const int red_per_sg
+    const int sg_per_inner_dim
+            = div_up(div_up(INNER_DIM_SIZE, VECT_DT_N), SUBGROUP_SIZE);
+    const int inner_dims_per_sg
             = min(REDUCTION_SIZE, max(1, SUBGROUP_SIZE / INNER_DIM_SIZE));
-    const int wg_reductions = LWS_SIZE / SUBGROUP_SIZE;
-    const int other_reductions = red_per_sg * wg_reductions;
-    const int num_horiz_reductions = REDUCTION_SIZE / other_reductions;
-    const int tail_reductions = REDUCTION_SIZE % other_reductions;
+    const int num_horiz_reductions = REDUCTION_SIZE / inner_dims_per_sg
+            / (REDUCE_VECTOR ? VECT_DT_N : 1);
+    const int tail_reductions = REDUCTION_SIZE % inner_dims_per_sg;
 
     // Direct indices from gws
-    const int sgid = get_sub_group_id();
-    ASSUME(sgid < wg_reductions);
-    ASSUME(sgid >= 0);
-    const int tgid = get_global_id(0) / LWS_SIZE;
-    const int inner_idx_start = (tgid % sg_per_inner_dim) * SUBGROUP_SIZE;
-    const int outer_idx_start = tgid / sg_per_inner_dim * OUTER_TILE_SIZE;
+    const int sgid = get_global_id(0) / SUBGROUP_SIZE;
+    const int inner_idx_start
+            = (sgid % sg_per_inner_dim) * SUBGROUP_SIZE * VECT_DT_N;
+    const int outer_idx = sgid / sg_per_inner_dim;
 
     // Handle inner vector packing into subgroups
     const int sglid = get_sub_group_local_id();
-    ASSUME(sglid < SUBGROUP_SIZE);
-    ASSUME(sglid >= 0);
-    const int inner_idx = (inner_idx_start + sglid) % INNER_DIM_SIZE;
-    const int red_off_sg = (inner_idx_start + sglid) / INNER_DIM_SIZE;
-    const int red_off_tg = red_off_sg + sgid * red_per_sg;
+    const int inner_idx = inner_idx_start + (sglid % INNER_DIM_SIZE);
+    const int red_off = sglid / INNER_DIM_SIZE;
 
-    const int active_channels = min(
-            SUBGROUP_SIZE, red_per_sg * (INNER_DIM_SIZE - inner_idx_start));
-    ASSUME(active_channels == SUBGROUP_SIZE || !WITH_BLOCK_READ);
+    // Case happens when inner_dim_size is not a multiple/factor of subgroup size
+    if (inner_idx >= INNER_DIM_SIZE
+            || sglid >= INNER_DIM_SIZE * inner_dims_per_sg)
+        return;
 
-    const int loop_stride = _SRC_OFF(0, other_reductions, 0);
-    __local DEF_ACC_DATA_T slm_acc[SLM_PER_SG * wg_reductions];
-    unroll_for(int oid = 0; oid < OUTER_TILE_SIZE; oid++) {
-        const int outer_idx = outer_idx_start + oid;
+    VECT_DEF_ACC_DATA_T acc;
+    init_acc(REDUCTION_ALG, &acc);
+    const int loop_stride = _SRC_OFF(
+            0, inner_dims_per_sg * (REDUCE_VECTOR ? VECT_DT_N : 1), 0);
+    int src_off = _SRC_OFF(outer_idx, WITH_BLOCK_READ ? 0 : red_off,
+            WITH_BLOCK_READ ? inner_idx_start : inner_idx);
+    __attribute__((opencl_unroll_hint(UNROLL_FACTOR))) // attr:no-format
+    for (int off = 0; off < num_horiz_reductions;
+            off++, src_off += loop_stride) {
+        // Load
+        const VECT_DATA_T src_val = READ_DATA(src[src_off]);
 
-        // ---- Work item (loop) reductions ----
+        // Accumulate
+        unroll_for(int i = 0; i < VECT_DT_N; i++) GET_ELEM(acc, i)
+                = reduce(REDUCTION_ALG, GET_ELEM(acc, i),
+                        GET_ELEM(AS_VECT_DEF_ACC_DATA_T(src_val), i), POWER);
+    }
+    if (red_off < tail_reductions) {
+        // Load
+        const VECT_DATA_T src_val = READ_DATA(src[src_off]);
 
-        DEF_ACC_DATA_T acc;
-        init_acc(REDUCTION_ALG, &acc);
-        // Each thread reduces in a loop
-        if (sglid < active_channels) {
-            // red_off_tg - red_off_sg to get the starting point for the subgroup
-            int src_off = _SRC_OFF(
-                    outer_idx, red_off_tg - red_off_sg, inner_idx_start);
-            if (!WITH_BLOCK_READ) src_off += sglid;
-            for (int iters = num_horiz_reductions; iters > 0; --iters) {
-                const DATA_T src_val = READ_DATA(src[src_off]);
-                acc = reduce(
-                        REDUCTION_ALG, acc, TO_DEF_ACC_DATA_T(src_val), POWER);
-                DUMP("(iter +%d) src[%d] = %f\n", iters, src_off,
-                        CONVERT_FLOAT_T(src_val));
-                src_off += loop_stride;
-            }
-            if (red_off_tg < tail_reductions) {
-                const DATA_T src_val = READ_DATA(src[src_off]);
-                acc = reduce(
-                        REDUCTION_ALG, acc, TO_DEF_ACC_DATA_T(src_val), POWER);
-                DUMP("(tail) src[%d] = %f\n", src_off,
-                        CONVERT_FLOAT_T(src_val));
-            }
-        }
+        // Accumulate
+        unroll_for(int i = 0; i < VECT_DT_N; i++) GET_ELEM(acc, i)
+                = reduce(REDUCTION_ALG, GET_ELEM(acc, i),
+                        GET_ELEM(AS_VECT_DEF_ACC_DATA_T(src_val), i), POWER);
+    }
 
-        // ---- Subgroup (intra-thread) reductions ----
-        // Reduces data-carrying channels from active_channels to num_dst_writes
-
-        DEF_ACC_DATA_T init;
-        init_acc(SECONDARY_REDUCTION_ALG, &init);
-        unroll_for(int shift = INNER_DIM_SIZE; shift < active_channels;
-                   shift *= 2) {
-            DEF_ACC_DATA_T next
-                    = intel_sub_group_shuffle_down(acc, init, shift);
-            acc = reduce(SECONDARY_REDUCTION_ALG, acc, next, POWER);
-            DUMP("(sg) acc from sglid %d: %f\n", sglid + shift,
-                    convert_float(next));
-        }
-
-        // ---- Work group (inter-thread/SLM) reductions ----
-        // Reduces data-carrying threads to 1 per thread group
-
-        if (wg_reductions > 1) {
-            const int local_idx = sgid * SLM_PER_SG + sglid;
-            if (red_off_sg == 0 && inner_idx < INNER_DIM_SIZE) {
-                slm_acc[local_idx] = acc;
-            }
-            init_acc(SECONDARY_REDUCTION_ALG, &acc);
-            barrier(CLK_LOCAL_MEM_FENCE);
-
-            if (red_off_tg == 0) {
-                unroll_for(int i = 0; i < wg_reductions; i++) {
-                    const int idx = i * SLM_PER_SG + sglid;
-                    acc = reduce(
-                            SECONDARY_REDUCTION_ALG, acc, slm_acc[idx], POWER);
-                    DUMP("(wg) acc from wg %d/%d: %f\n", i, idx,
-                            convert_float(slm_acc[idx]));
-                }
+    // Potentially accumulate within the subgroup too
+    // TODO: Change to tree-based reduce to help large inner_dims_per_sg cases
+    local VECT_DEF_ACC_DATA_T local_acc[LWS_SIZE];
+    const int local_idx = (sgid * SUBGROUP_SIZE + sglid) % LWS_SIZE;
+    local_acc[local_idx] = acc;
+    if (sglid < INNER_DIM_SIZE) {
+        unroll_for(int i = 1; i < inner_dims_per_sg; i++) {
+            unroll_for(int v = 0; v < VECT_DT_N; v++) {
+                GET_ELEM(acc, v) = reduce(SECONDARY_REDUCTION_ALG,
+                        GET_ELEM(acc, v),
+                        GET_ELEM(local_acc[local_idx + i * INNER_DIM_SIZE], v),
+                        POWER);
             }
         }
+    }
 
-        const dim_t dst_off = _DST_OFF(outer_idx, inner_idx);
+    if (sglid < INNER_DIM_SIZE) {
+#if REDUCE_VECTOR
+        DEF_ACC_DATA_T final_acc;
+        init_acc(SECONDARY_REDUCTION_ALG, &final_acc);
+        for (int i = 0; i < VECT_DT_N; i++) {
+            final_acc
+                    = reduce(SECONDARY_REDUCTION_ALG, acc[i], final_acc, POWER);
+        }
+#else
+        // Just rename the variable to match the REDUCE_VECTOR case
+        const VECT_DEF_ACC_DATA_T final_acc = acc;
+#endif // REDUCE_VECTOR
 
-        // ---- Finalize results and clean up ----
+        // For each result:
+        // 1. (if IS_FINAL) finalize the result
+        // 2. (if IS_FINAL) apply post-ops
+        // 3. write to dst
+        for (int i = 0; i < FINAL_VEC_SIZE; i++) {
+            const dim_t dst_off
+                    = _DST_OFF(outer_idx, inner_idx + i * SUBGROUP_SIZE);
+            // finalize the result
+#if IS_FINAL
+            float res = finalize(REDUCTION_ALG,
+                    convert_float(GET_FINAL(final_acc, i)), DIV, POWER, EPS);
 
-        if (red_off_tg == 0) {
-            float res = IS_FINAL ? finalize(REDUCTION_ALG, acc, DIV, POWER, EPS)
-                                 : acc;
+            // Apply post-ops
 #if WITH_POST_OP
             float dst_val;
 #if WITH_SUM
-            dst_val = DST_TO_REF(load(dst + dst_off));
+            dst_val = DST_TO_REF(dst[dst_off]);
 #endif // WITH_SUM
-            int idxs[6];
-            reverse_indexing(dst_off, idxs);
+
+            // Reconstruct MB/C/D/H/W indices from dst_off
+            const int mb = (DST_S0 == 0)
+                    ? 0
+                    : dst_off / DST_S0 % div_up(DST_D0, DST_B0) * DST_B0
+                            + dst_off / DST_SB0 % DST_B0;
+            const int c = (DST_S1 == 0)
+                    ? 0
+                    : dst_off / DST_S1 % div_up(DST_D1, DST_B1) * DST_B1
+                            + dst_off / DST_SB1 % DST_B1;
+            const int d = (DST_S2 == 0)
+                    ? 0
+                    : dst_off / DST_S2 % div_up(DST_D2, DST_B2) * DST_B2
+                            + dst_off / DST_SB2 % DST_B2;
+            const int h = (DST_S3 == 0)
+                    ? 0
+                    : dst_off / DST_S3 % div_up(DST_D3, DST_B3) * DST_B3
+                            + dst_off / DST_SB3 % DST_B3;
+            const int w = (DST_S4 == 0)
+                    ? 0
+                    : dst_off / DST_S4 % div_up(DST_D4, DST_B4) * DST_B4
+                            + dst_off / DST_SB4 % DST_B4;
 
             // Only use post-ops on non-zero-padded elements
-            if (idxs[0] < DST_D0 && idxs[1] < DST_D1 && idxs[2] < DST_D2
-                    && idxs[3] < DST_D3 && idxs[4] < DST_D4
-                    && idxs[5] < DST_D5) {
-                APPLY_POST_OPS_SERIAL(res, float, dst_val, float, idxs[0], 1,
-                        idxs[1], 1, idxs[2], 1, idxs[3], 1, idxs[4], 1, idxs[5],
-                        1);
+            if (mb < DST_D0 && c < DST_D1 && d < DST_D2 && h < DST_D3
+                    && w < DST_D4) {
+                APPLY_POST_OPS_SERIAL(res, float, dst_val, float, mb, 1, c, 1,
+                        d, 1, h, 1, w, 1, 0, 1);
+            }
+#endif // WITH_POST_OP
+#else
+            float res = GET_FINAL(final_acc, i);
+#endif // IS_FINAL
+
+            // Write to dst
+            if (is_dst_zero_padded(dst_off)) res = 0.0f;
+            dst[dst_off] = IS_FINAL ? TO_DST(res) : res;
+
+            // Reduced + zero-padded dims need extra zeros written
+#if DST_Z0_IS_REDUCED && DST_Z1_IS_REDUCED
+            for (int i = 0; i < DST_Z0_SIZE0; i++) {
+                for (int j = 0; j < DST_Z1_SIZE0; j++) {
+                    if (i == 0 && j == 0) continue;
+                    dst[dst_off + i * DST_Z0_STRIDE0 + j * DST_Z1_STRIDE0]
+                            = TO_DST(0.0f);
+                }
+            }
+#elif DST_Z0_IS_REDUCED
+            for (int i = 1; i < DST_Z0_SIZE0; i++) {
+                dst[dst_off + i * DST_Z0_STRIDE0] = TO_DST(0.0f);
+            }
+#elif DST_Z1_IS_REDUCED
+            for (int j = 1; j < DST_Z1_SIZE0; j++) {
+                dst[dst_off + j * DST_Z1_STRIDE0] = TO_DST(0.0f);
             }
 #endif
-            if (is_dst_zero_padded(dst_off)) res = 0.0f;
-            write(dst + dst_off, IS_FINAL ? TO_DST(res) : res);
-            DUMP("Wrote dst[%ld] = %f\n", dst_off, res);
-            write_padded_zeros(dst + dst_off);
-            DUMP("dst[%ld] <- %f\n", dst_off, TO_DST(res));
         }
     }
 }

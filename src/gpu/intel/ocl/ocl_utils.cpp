@@ -17,18 +17,11 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
-#include <mutex>
 #include <CL/cl_ext.h>
 
 #include "gpu/intel/ocl/ocl_gpu_engine.hpp"
-#include "gpu/intel/ocl/ocl_gpu_hw_info.hpp"
 #include "gpu/intel/ocl/ocl_gpu_kernel.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
-#include "xpu/ocl/utils.hpp"
-
-#if __has_include(<sycl/sycl.hpp>)
-#include "gpu/intel/sycl/engine.hpp"
-#endif
 
 #ifndef CL_KERNEL_BINARY_PROGRAM_INTEL
 #define CL_KERNEL_BINARY_PROGRAM_INTEL 0x407D
@@ -79,100 +72,194 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
-/// Tries to build a kernel with assembly instructions to check to see if the
-/// OpenCL compiler supports microkernels.
-bool try_building_with_microkernels(cl_context context, cl_device_id device) {
-    const char *kernel_code = R""""(
-        kernel void igc_check() {
-            __asm__ volatile(
-                    ".decl AA0 v_type=G type=ud num_elts=1\n"
-                    ".decl AA1 v_type=G type=ud num_elts=1\n"
-                    ".implicit_PSEUDO_INPUT AA0 offset=256 size=4\n"
-                    ".implicit_PSEUDO_INPUT AA1 offset=256 size=4\n"
-                    "mov (M1_NM,1) AA0(0,0)<1> AA1(0,0)<0;1,0>\n"
-            );
-        }
-        )"""";
-    cl_int err;
-    /// Not using existing build infrastructure to avoid error messages in the CI logs
-    xpu::ocl::wrapper_t<cl_program> program(
-            clCreateProgramWithSource(context, 1, &kernel_code, nullptr, &err));
-    if (err != CL_SUCCESS) return false;
-    err = clBuildProgram(program, 1, &device, nullptr, nullptr, nullptr);
-    return err == CL_SUCCESS;
+template <typename T, typename F>
+static std::string get_ocl_name(T obj, F get_func, cl_uint name_query) {
+    size_t name_size;
+    cl_int err = get_func(obj, name_query, 0, nullptr, &name_size);
+    // Ignore error.
+    UNUSED_OCL_RESULT(err);
+
+    // Include null terminator explicitly - to safely overwrite it in
+    // clGetKernelInfo
+    std::string name(name_size, 0);
+    err = get_func(obj, name_query, name_size, &name[0], nullptr);
+    // Ignore error.
+    UNUSED_OCL_RESULT(err);
+
+    // Remove the null terminator as std::string already includes it
+    name.resize(name_size - 1);
+    return name;
 }
 
-int get_sycl_ocl_device_and_context(
-        xpu::ocl::wrapper_t<cl_context> &ocl_context,
-        xpu::ocl::wrapper_t<cl_device_id> &ocl_device,
-        const impl::engine_t *engine) {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-    auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
-    auto &device = sycl_engine->device();
+std::string get_kernel_name(cl_kernel kernel) {
+    return get_ocl_name(kernel, clGetKernelInfo, CL_KERNEL_FUNCTION_NAME);
+}
 
-    auto be = xpu::sycl::get_backend(device);
-    if (be == xpu::sycl::backend_t::opencl) {
-        cl_int err = CL_SUCCESS;
-        auto ocl_dev = xpu::sycl::compat::get_native<cl_device_id>(device);
-        ocl_device = xpu::ocl::make_wrapper(ocl_dev, true);
+static std::string get_platform_name(cl_platform_id platform) {
+    return get_ocl_name(platform, clGetPlatformInfo, CL_PLATFORM_NAME);
+}
 
-        ocl_context = xpu::ocl::make_wrapper(
-                clCreateContext(nullptr, 1, &ocl_dev, nullptr, nullptr, &err),
-                true);
-        if (err) return -1;
-    } else if (be == xpu::sycl::backend_t::level0) {
-        std::unique_ptr<gpu::intel::ocl::ocl_gpu_engine_t, engine_deleter_t>
-                ocl_engine;
-        auto err
-                = gpu::intel::sycl::create_ocl_engine(&ocl_engine, sycl_engine);
-        if (err != status::success) return -1;
-        ocl_device = xpu::ocl::make_wrapper(ocl_engine->device(), true);
-        ocl_context = xpu::ocl::make_wrapper(ocl_engine->context(), true);
+static bool is_intel_platform(cl_platform_id platform) {
+    auto name = get_platform_name(platform);
+    return name.find("Intel") != std::string::npos;
+}
+
+status_t check_device(
+        engine_kind_t eng_kind, cl_device_id dev, cl_context ctx) {
+    assert(dev && ctx);
+
+    // Check device and context consistency.
+    size_t dev_bytes;
+    OCL_CHECK(
+            clGetContextInfo(ctx, CL_CONTEXT_DEVICES, 0, nullptr, &dev_bytes));
+
+    std::vector<cl_device_id> ctx_devices(dev_bytes / sizeof(cl_device_id));
+    OCL_CHECK(clGetContextInfo(
+            ctx, CL_CONTEXT_DEVICES, dev_bytes, &ctx_devices[0], nullptr));
+
+    bool found = false;
+    for (size_t i = 0; i < ctx_devices.size(); ++i) {
+        if (ctx_devices[i] == dev) {
+            found = true;
+            break;
+        }
     }
-#endif
-    return 0;
+    VERROR_ENGINE(
+            found, status::invalid_arguments, VERBOSE_DEVICE_CTX_MISMATCH);
+
+    // Check engine kind and device consistency.
+    cl_device_type dev_type;
+    OCL_CHECK(clGetDeviceInfo(
+            dev, CL_DEVICE_TYPE, sizeof(dev_type), &dev_type, nullptr));
+    VERROR_ENGINE(!((eng_kind == engine_kind::cpu)
+                          && (dev_type & CL_DEVICE_TYPE_CPU) == 0),
+            status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);
+    VERROR_ENGINE(!((eng_kind == engine_kind::gpu)
+                          && (dev_type & CL_DEVICE_TYPE_GPU) == 0),
+            status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);
+
+    // Check that the platform is an Intel platform.
+    cl_platform_id platform;
+    OCL_CHECK(clGetDeviceInfo(
+            dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
+
+    VERROR_ENGINE(is_intel_platform(platform), status::invalid_arguments,
+            VERBOSE_INVALID_PLATFORM, "ocl", "intel",
+            get_platform_name(platform).c_str());
+
+    return status::success;
 }
 
-bool mayiuse_microkernels(const impl::engine_t *engine) {
-    auto mayiuse_mk = [](const impl::engine_t *engine) {
-        xpu::ocl::wrapper_t<cl_device_id> ocl_device;
-        xpu::ocl::wrapper_t<cl_context> ocl_context;
+status_t get_ocl_devices(
+        std::vector<cl_device_id> *devices, cl_device_type device_type) {
+    cl_uint num_platforms = 0;
 
-        switch (engine->runtime_kind()) {
-            case runtime_kind::sycl: {
-                auto err = get_sycl_ocl_device_and_context(
-                        ocl_context, ocl_device, engine);
-                if (err) return false;
-            } break;
-            case runtime_kind::ocl: {
-                const ocl_gpu_engine_t *eng
-                        = utils::downcast<const ocl_gpu_engine_t *>(engine);
-                ocl_device = xpu::ocl::make_wrapper(eng->device(), true);
-                ocl_context = xpu::ocl::make_wrapper(eng->context(), true);
-            } break;
-            default: return false;
+    cl_int err = clGetPlatformIDs(0, nullptr, &num_platforms);
+    // No platforms - a valid scenario
+    if (err == CL_PLATFORM_NOT_FOUND_KHR) return status::success;
+
+    OCL_CHECK(err);
+
+    std::vector<cl_platform_id> platforms(num_platforms);
+    OCL_CHECK(clGetPlatformIDs(num_platforms, &platforms[0], nullptr));
+
+    for (size_t i = 0; i < platforms.size(); ++i) {
+        if (!is_intel_platform(platforms[i])) continue;
+
+        cl_uint num_devices = 0;
+        cl_int err = clGetDeviceIDs(
+                platforms[i], device_type, 0, nullptr, &num_devices);
+
+        if (!utils::one_of(err, CL_SUCCESS, CL_DEVICE_NOT_FOUND)) {
+            return status::runtime_error;
         }
 
-        bool mayiuse_microkernels = get_driver_version(ocl_device)
-                >= xpu::runtime_version_t(24, 22, 29735);
-        if (!mayiuse_microkernels) {
-            mayiuse_microkernels
-                    = try_building_with_microkernels(ocl_context, ocl_device);
+        if (num_devices != 0) {
+            std::vector<cl_device_id> plat_devices;
+            plat_devices.resize(num_devices);
+            OCL_CHECK(clGetDeviceIDs(platforms[i], device_type, num_devices,
+                    &plat_devices[0], nullptr));
+
+            // Use Intel devices only
+            for (size_t j = 0; j < plat_devices.size(); ++j) {
+                cl_uint vendor_id;
+                OCL_CHECK(clGetDeviceInfo(plat_devices[j], CL_DEVICE_VENDOR_ID,
+                        sizeof(cl_uint), &vendor_id, nullptr));
+                if (vendor_id == 0x8086) {
+                    devices->push_back(plat_devices[j]);
+                }
+            }
         }
-        return mayiuse_microkernels;
-    };
+    }
+    // No devices found but still return success
+    return status::success;
+}
 
-    static std::map<engine_id_t, bool> engine_microkernel_map {
-            {engine->engine_id(), mayiuse_mk(engine)}};
+status_t get_ocl_devices(std::vector<cl_device_id> *devices,
+        std::vector<ocl_wrapper_t<cl_device_id>> *sub_devices,
+        cl_device_type device_type) {
+    std::vector<cl_device_id> devices_tmp;
+    std::vector<ocl_wrapper_t<cl_device_id>> sub_devices_tmp;
 
-    static std::mutex map_mutex;
-    std::lock_guard<std::mutex> map_lock(map_mutex);
-    auto it = engine_microkernel_map.find(engine->engine_id());
-    if (it != std::end(engine_microkernel_map)) { return it->second; }
-    return engine_microkernel_map[engine->engine_id()] = mayiuse_mk(engine);
+    CHECK(get_ocl_devices(&devices_tmp, device_type));
+
+    for (cl_device_id d : devices_tmp) {
+        cl_uint max_sub_devices;
+        cl_device_partition_property properties[3]
+                = {CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN,
+                        CL_DEVICE_AFFINITY_DOMAIN_NEXT_PARTITIONABLE, 0};
+        cl_int err = clCreateSubDevices(
+                d, properties, 0, nullptr, &max_sub_devices);
+        if (err == CL_DEVICE_PARTITION_FAILED) continue;
+        OCL_CHECK(err);
+        std::vector<cl_device_id> sds(max_sub_devices);
+        OCL_CHECK(clCreateSubDevices(
+                d, properties, max_sub_devices, sds.data(), nullptr));
+        for (cl_device_id sd : sds)
+            sub_devices_tmp.emplace_back(sd);
+    }
+    *devices = devices_tmp;
+    *sub_devices = std::move(sub_devices_tmp);
+    return status::success;
+}
+
+status_t get_ocl_device_index(size_t *index, cl_device_id device) {
+    std::vector<cl_device_id> ocl_devices;
+    CHECK(get_ocl_devices(&ocl_devices, CL_DEVICE_TYPE_GPU));
+
+    // Search the top level device unconditionally
+    auto parent_device = device;
+    auto top_level_device = device;
+    while (parent_device) {
+        top_level_device = parent_device;
+        OCL_CHECK(clGetDeviceInfo(top_level_device, CL_DEVICE_PARENT_DEVICE,
+                sizeof(cl_device_id), &parent_device, nullptr));
+    }
+
+    // Find the top level device in the list
+    auto it = std::find(
+            ocl_devices.begin(), ocl_devices.end(), top_level_device);
+    if (it != ocl_devices.end()) {
+        *index = it - ocl_devices.begin();
+        return status::success;
+    } else {
+        *index = SIZE_MAX;
+        return status::invalid_arguments;
+    }
+}
+
+cl_platform_id get_ocl_platform(cl_device_id device) {
+    cl_platform_id platform;
+    cl_int err = clGetDeviceInfo(
+            device, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr);
+    if (err != CL_SUCCESS) return nullptr;
+    return platform;
+}
+
+cl_platform_id get_ocl_platform(engine_t *engine) {
+    return utils::downcast<ocl_gpu_engine_t *>(engine)->platform();
 }
 
 status_t get_ocl_kernel_arg_type(compute::scalar_type_t *type,
@@ -209,6 +296,11 @@ status_t get_ocl_kernel_arg_type(compute::scalar_type_t *type,
     return status::runtime_error;
 }
 
+cl_mem clCreateBuffer_wrapper(cl_context context, cl_mem_flags flags,
+        size_t size, void *host_ptr, cl_int *errcode_ret) {
+    return clCreateBuffer(context, flags, size, host_ptr, errcode_ret);
+}
+
 static status_t get_number_devices(cl_program program, size_t *n_devices) {
     cl_int err = clGetProgramInfo(program, CL_PROGRAM_NUM_DEVICES,
             sizeof(size_t), n_devices, nullptr);
@@ -232,7 +324,7 @@ status_t get_ocl_program_binary_size(
     OCL_CHECK(err);
 
     // Identify local device index in the list of devices the program was
-    // compiled for. Using global indexing through `get_device_index` may
+    // compiled for. Using global indexing through `get_ocl_device_index` may
     // fail due to presence of two or more physical devices in the system.
     std::vector<cl_device_id> devices(n_devices);
     err = clGetProgramInfo(program, CL_PROGRAM_DEVICES,
@@ -248,7 +340,7 @@ status_t get_ocl_program_binary_size(
 }
 
 status_t get_ocl_program_binary(
-        cl_program program, cl_device_id device, xpu::binary_t &binary) {
+        cl_program program, cl_device_id device, compute::binary_t &binary) {
     size_t n_devices = 0;
     CHECK(get_number_devices(program, &n_devices));
 
@@ -265,9 +357,9 @@ status_t get_ocl_program_binary(
     size_t device_idx = std::distance(
             devices.begin(), std::find(devices.begin(), devices.end(), device));
     std::vector<uint8_t *> binary_pointers(n_devices);
-    std::vector<xpu::binary_t> binaries(n_devices);
+    std::vector<compute::binary_t> binaries(n_devices);
     for (size_t i = 0; i < n_devices; ++i) {
-        binaries[i] = xpu::binary_t(binarySize[i]);
+        binaries[i] = compute::binary_t(binarySize[i]);
         binary_pointers[i] = binaries[i].data();
     }
 
@@ -279,7 +371,7 @@ status_t get_ocl_program_binary(
 }
 
 status_t get_ocl_program_binary(
-        cl_kernel kernel, cl_device_id device, xpu::binary_t &binary) {
+        cl_kernel kernel, cl_device_id device, compute::binary_t &binary) {
     cl_int err;
 
     cl_program program;
@@ -290,7 +382,8 @@ status_t get_ocl_program_binary(
     return get_ocl_program_binary(program, device, binary);
 }
 
-status_t get_ocl_kernel_binary(cl_kernel ocl_kernel, xpu::binary_t &binary) {
+status_t get_ocl_kernel_binary(
+        cl_kernel ocl_kernel, compute::binary_t &binary) {
     binary.clear();
     size_t binary_size;
     OCL_CHECK(clGetKernelInfo(ocl_kernel, CL_KERNEL_BINARY_PROGRAM_INTEL, 0,
@@ -365,20 +458,42 @@ void debugdump_processed_source(const std::string &source,
 }
 
 status_t get_kernel_arg_types(cl_kernel ocl_kernel,
-        std::vector<gpu::intel::compute::scalar_type_t> *arg_types) {
+        std::vector<gpu::compute::scalar_type_t> *arg_types) {
     cl_uint nargs;
     OCL_CHECK(clGetKernelInfo(
             ocl_kernel, CL_KERNEL_NUM_ARGS, sizeof(nargs), &nargs, nullptr));
 
-    *arg_types = std::vector<gpu::intel::compute::scalar_type_t>(nargs);
+    *arg_types = std::vector<gpu::compute::scalar_type_t>(nargs);
 
     for (cl_uint i = 0; i < nargs; i++) {
-        gpu::intel::compute::scalar_type_t type {};
-        CHECK(gpu::intel::ocl::get_ocl_kernel_arg_type(
+        gpu::compute::scalar_type_t type {};
+        CHECK(gpu::ocl::get_ocl_kernel_arg_type(
                 &type, ocl_kernel, i, /*allow_undef=*/true));
         (*arg_types)[i] = type;
     }
 
+    return status::success;
+}
+
+static status_t get_ocl_device_eu_count_intel(
+        cl_device_id device, gpu::compute::gpu_arch_t arch, int32_t *eu_count) {
+    cl_uint num_slices = 0;
+    cl_uint num_sub_slices_per_slice = 0;
+    cl_uint num_eus_per_sub_slice = 0;
+
+    OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_NUM_SLICES_INTEL,
+            sizeof(num_slices), &num_slices, nullptr));
+    OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_NUM_SUB_SLICES_PER_SLICE_INTEL,
+            sizeof(num_sub_slices_per_slice), &num_sub_slices_per_slice,
+            nullptr));
+    OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL,
+            sizeof(num_eus_per_sub_slice), &num_eus_per_sub_slice, nullptr));
+
+    if (arch == gpu::compute::gpu_arch_t::xe2)
+        num_eus_per_sub_slice = 8; /* runtime reports incorrect value */
+
+    *eu_count = (int32_t)(
+            num_slices * num_sub_slices_per_slice * num_eus_per_sub_slice);
     return status::success;
 }
 
@@ -402,15 +517,15 @@ status_t get_ocl_device_enabled_native_float_atomics(
         if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
                 && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
             native_extensions |= (uint64_t)
-                    gpu::intel::compute::native_ext_t::fp16_atomic_load_store;
+                    gpu::compute::native_ext_t::fp16_atomic_load_store;
         if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
                 && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
-            native_extensions |= (uint64_t)
-                    gpu::intel::compute::native_ext_t::fp16_atomic_add;
+            native_extensions
+                    |= (uint64_t)gpu::compute::native_ext_t::fp16_atomic_add;
         if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
                 && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
             native_extensions |= (uint64_t)
-                    gpu::intel::compute::native_ext_t::fp16_atomic_min_max;
+                    gpu::compute::native_ext_t::fp16_atomic_min_max;
     }
 
     err = clGetDeviceInfo(device, CL_DEVICE_SINGLE_FP_ATOMIC_CAPABILITIES_EXT,
@@ -419,15 +534,15 @@ status_t get_ocl_device_enabled_native_float_atomics(
         if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
                 && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
             native_extensions |= (uint64_t)
-                    gpu::intel::compute::native_ext_t::fp32_atomic_load_store;
+                    gpu::compute::native_ext_t::fp32_atomic_load_store;
         if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
                 && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
-            native_extensions |= (uint64_t)
-                    gpu::intel::compute::native_ext_t::fp32_atomic_add;
+            native_extensions
+                    |= (uint64_t)gpu::compute::native_ext_t::fp32_atomic_add;
         if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
                 && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
             native_extensions |= (uint64_t)
-                    gpu::intel::compute::native_ext_t::fp32_atomic_min_max;
+                    gpu::compute::native_ext_t::fp32_atomic_min_max;
     }
 
     // XeLPG lacks native support for f64 atomics.
@@ -438,67 +553,101 @@ status_t get_ocl_device_enabled_native_float_atomics(
         if (err == status::success) {
             if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
                     && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
-                native_extensions |= (uint64_t)gpu::intel::compute::
-                        native_ext_t::fp64_atomic_load_store;
+                native_extensions |= (uint64_t)
+                        gpu::compute::native_ext_t::fp64_atomic_load_store;
             if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
                     && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
                 native_extensions |= (uint64_t)
-                        gpu::intel::compute::native_ext_t::fp64_atomic_add;
+                        gpu::compute::native_ext_t::fp64_atomic_add;
             if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
                     && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
                 native_extensions |= (uint64_t)
-                        gpu::intel::compute::native_ext_t::fp64_atomic_min_max;
+                        gpu::compute::native_ext_t::fp64_atomic_min_max;
         }
     }
 
     return status::success;
 }
 
-status_t get_ocl_device_eu_count(cl_device_id device,
-        gpu::intel::compute::gpu_arch_t arch, int32_t *eu_count) {
-    // Start with standard OpenCL query.
+status_t get_ocl_device_eu_count(
+        cl_device_id device, gpu::compute::gpu_arch_t arch, int32_t *eu_count) {
+    // Try to use Intel-specific slices/sub-slices to deduce EU count.
+    auto status = get_ocl_device_eu_count_intel(device, arch, eu_count);
+    if (status == status::success) return status;
+
+    // If failed, fall back to common OpenCL query.
     cl_uint max_compute_units = 0;
     OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
             sizeof(max_compute_units), &max_compute_units, nullptr));
-
-    // Try to use Intel-specific slice/sub-slice queries to correct EU count
-    //   for certain buggy drivers.
-    bool ok = true;
-
-#ifdef _WIN32
-    // But don't try this on Windows Xe2 to avoid undercounting EUs.
-    ok &= (arch != gpu::intel::compute::gpu_arch_t::xe2);
-#endif
-
-    auto do_query = [&](cl_uint query) -> cl_uint {
-        cl_uint val = 0;
-        ok = ok
-                && (clGetDeviceInfo(device, query, sizeof(val), &val, nullptr)
-                        == CL_SUCCESS);
-        return val;
-    };
-
-    cl_uint num_slices = do_query(CL_DEVICE_NUM_SLICES_INTEL);
-    cl_uint num_sub_slices_per_slice
-            = do_query(CL_DEVICE_NUM_SUB_SLICES_PER_SLICE_INTEL);
-    cl_uint num_eus_per_sub_slice
-            = do_query(CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL);
-
-    if (ok) {
-        /* Some drivers report incorrect values on Xe2 */
-        if (arch == gpu::intel::compute::gpu_arch_t::xe2)
-            num_eus_per_sub_slice = 8;
-        max_compute_units = std::min(max_compute_units,
-                num_slices * num_sub_slices_per_slice * num_eus_per_sub_slice);
-    }
-
     *eu_count = (int32_t)max_compute_units;
 
     return status::success;
 }
 
+status_t clone_kernel(cl_kernel kernel, cl_kernel *cloned_kernel) {
+    cl_int err;
+#if !defined(DNNL_SYCL_HIP) && !defined(DNNL_SYCL_CUDA) \
+        && defined(CL_VERSION_2_1)
+    *cloned_kernel = clCloneKernel(kernel, &err);
+    OCL_CHECK(err);
+#else
+    // clCloneKernel is not available - recreate from the program.
+    auto name = get_kernel_name(kernel);
+
+    cl_program program;
+    err = clGetKernelInfo(
+            kernel, CL_KERNEL_PROGRAM, sizeof(program), &program, nullptr);
+    OCL_CHECK(err);
+
+    *cloned_kernel = clCreateKernel(program, name.c_str(), &err);
+    OCL_CHECK(err);
+#endif
+
+    return status::success;
+}
+
+status_t create_ocl_program(gpu::ocl::ocl_wrapper_t<cl_program> &ocl_program,
+        cl_device_id dev, cl_context ctx,
+        const gpu::compute::binary_t &binary) {
+    cl_int err;
+    const unsigned char *binary_buffer = binary.data();
+    size_t binary_size = binary.size();
+    assert(binary_size > 0);
+
+    ocl_program = clCreateProgramWithBinary(
+            ctx, 1, &dev, &binary_size, &binary_buffer, nullptr, &err);
+    OCL_CHECK(err);
+    err = clBuildProgram(ocl_program, 1, &dev, nullptr, nullptr, nullptr);
+    OCL_CHECK(err);
+
+    return status::success;
+}
+
+status_t get_device_uuid(
+        gpu::compute::device_uuid_t &uuid, cl_device_id ocl_dev) {
+    // This function is used only with SYCL that works with OpenCL 3.0
+    // that supports `cl_khr_device_uuid` extension.
+#if defined(cl_khr_device_uuid)
+    static_assert(
+            CL_UUID_SIZE_KHR == 16, "CL_UUID_SIZE_KHR is expected to be 16");
+
+    cl_uchar ocl_dev_uuid[CL_UUID_SIZE_KHR] = {};
+    OCL_CHECK(clGetDeviceInfo(ocl_dev, CL_DEVICE_UUID_KHR, CL_UUID_SIZE_KHR,
+            ocl_dev_uuid, nullptr));
+
+    uint64_t uuid_packed[CL_UUID_SIZE_KHR / sizeof(uint64_t)] = {};
+    for (size_t i = 0; i < CL_UUID_SIZE_KHR; ++i) {
+        size_t shift = i % sizeof(uint64_t) * CHAR_BIT;
+        uuid_packed[i / sizeof(uint64_t)]
+                |= (((uint64_t)ocl_dev_uuid[i]) << shift);
+    }
+    uuid = gpu::compute::device_uuid_t(uuid_packed[0], uuid_packed[1]);
+    return status::success;
+#endif
+    return status::runtime_error;
+}
+
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

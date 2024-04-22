@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/dispatch.h"
-#include "gpu/intel/ocl/ocl_philox.h"
 #include "gpu/intel/ocl/ocl_post_ops.h"
 #include "gpu/intel/ocl/ocl_types.h"
 

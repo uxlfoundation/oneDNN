@@ -14,12 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_PLAN_HPP
-#define GPU_INTEL_JIT_V2_CONV_PLAN_HPP
+#ifndef GPU_JIT_V2_CONV_PLAN_HPP
+#define GPU_JIT_V2_CONV_PLAN_HPP
 
 #include "gpu/intel/jit/v2/conv/kernel_desc.hpp"
 #include "gpu/intel/jit/v2/conv/problem.hpp"
-#include "gpu/intel/jit/v2/ir/plan.hpp"
+#include "gpu/intel/jit/v2/ir/plan_utils.hpp"
 #include "gpu/intel/jit/v2/ir/reqs.hpp"
 #include "gpu/intel/jit/v2/ir/send.hpp"
 #include "gpu/intel/jit/v2/ir/tensor.hpp"
@@ -29,23 +29,22 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 namespace v2 {
 namespace conv {
 
 class coord_info_t {
 public:
-    void add_dim(const pvar_t &dim, bool is_loop, bool is_global_loop,
-            dim_t tg_tile, const expr_t &thr_idx, dim_t iter_tile,
-            const prb_reqs_t &reqs) {
+    void add_dim(const prb_dim_t &dim, bool is_loop, bool is_global_loop,
+            int tg_tile, const expr_t &thr_idx, int iter_tile,
+            const spec_reqs_t &spec_reqs) {
         auto &e = entries_[dim];
         e.dim = dim;
         e.tg_size = tg_tile;
         e.iter_size = iter_tile;
         e.loop_idx = expr_t(0);
         e.loop_size = expr_t(1);
-        bool is_dim_1 = reqs.is_equal(dim, 1);
+        bool is_dim_1 = spec_reqs.is_equal(dim, 1);
         if (is_loop && !is_dim_1) {
             e.loop_idx = var_t::make(type_t::s32(), e.dim.str() + "_loop_idx");
             if (is_global_loop) {
@@ -53,8 +52,8 @@ public:
                         type_t::s32(), e.dim.str() + "_loop_size");
                 e.is_global_loop = true;
             } else {
-                e.loop_size = binary_op_t::make(
-                        op_kind_t::_div_up, e.dim.var(), tg_tile * iter_tile);
+                e.loop_size = binary_op_t::make(op_kind_t::_div_up,
+                        size_var(e.dim), tg_tile * iter_tile);
             }
         }
         e.tg_idx = expr_t(0);
@@ -74,31 +73,33 @@ public:
         e.loop_size = simplify_rewrite(e.loop_size);
     }
 
-    std::vector<pvar_t> dims() const { return entries_.keys(); }
+    std::vector<prb_dim_t> dims() const { return entries_.keys(); }
 
-    bool is_loop(const pvar_t &dim) const { return entries_.at(dim).is_loop(); }
-    bool is_global_loop(const pvar_t &dim) const {
+    bool is_loop(const prb_dim_t &dim) const {
+        return entries_.at(dim).is_loop();
+    }
+    bool is_global_loop(const prb_dim_t &dim) const {
         return entries_.at(dim).is_global_loop;
     }
-    const expr_t &tg_index(const pvar_t &dim) const {
+    const expr_t &tg_index(const prb_dim_t &dim) const {
         return entries_.at(dim).tg_idx;
     }
-    const expr_t &thr_index(const pvar_t &dim) const {
+    const expr_t &thr_index(const prb_dim_t &dim) const {
         return entries_.at(dim).thr_idx;
     }
-    const expr_t &iter_index(const pvar_t &dim) const {
+    const expr_t &iter_index(const prb_dim_t &dim) const {
         return entries_.at(dim).iter_idx;
     }
-    const expr_t &loop_size(const pvar_t &dim) const {
+    const expr_t &loop_size(const prb_dim_t &dim) const {
         return entries_.at(dim).loop_size;
     }
-    const expr_t &loop_index(const pvar_t &dim) const {
+    const expr_t &loop_index(const prb_dim_t &dim) const {
         return entries_.at(dim).loop_idx;
     }
 
-    pvar_coord_t<expr_t> iter_coord() const;
-    pvar_coord_t<expr_t> tg_iter_coord() const;
-    pvar_tile_t tg_iter_tile() const;
+    prb_coord_t<expr_t> iter_coord() const;
+    prb_coord_t<expr_t> tg_iter_coord() const;
+    prb_tile_t tg_iter_tile() const;
 
     std::string str() const {
         std::ostringstream oss;
@@ -116,14 +117,14 @@ public:
 
 private:
     struct entry_t {
-        pvar_t dim;
+        prb_dim_t dim;
         expr_t tg_idx;
         expr_t thr_idx;
         expr_t iter_idx;
         expr_t loop_idx;
 
-        dim_t tg_size = 0;
-        dim_t iter_size = 0;
+        int tg_size = 0;
+        int iter_size = 0;
         expr_t loop_size;
         bool is_global_loop = false;
 
@@ -140,7 +141,7 @@ private:
         IR_DEFINE_DUMP()
     };
 
-    pvar_map_t<entry_t> entries_;
+    dim_map_t<prb_dim_t, entry_t> entries_;
 };
 
 class virt_grid_t {
@@ -154,6 +155,33 @@ public:
 
 private:
     object_map_t<expr_t, expr_t> idxs_;
+};
+
+struct reorder_plan_t : public base_plan_t {
+    layout_t src;
+    layout_t dst;
+
+    using base_plan_t::base_plan_t;
+
+    reorder_plan_t() = default;
+    reorder_plan_t(const hw_t &hw, const layout_t &src, const layout_t &dst)
+        : base_plan_t(hw), src(src), dst(dst) {}
+
+    int grf_usage_bytes() const {
+        int ret = 0;
+        ret += utils::rnd_up(dst.size(), grf_size());
+        return ret;
+    }
+
+    std::string str() const {
+        if (!*this) return "(empty)";
+        std::ostringstream oss;
+        oss << "src_layout: " << src.str() << std::endl;
+        oss << "dst_layout: " << dst.str();
+        return oss.str();
+    }
+
+    IR_DEFINE_DUMP()
 };
 
 struct prefetch_plan_t : public base_plan_t {
@@ -189,24 +217,26 @@ struct prefetch_plan_t : public base_plan_t {
 };
 
 struct x2r_plan_t : public base_plan_t {
-    tensor_kind_t tensor_kind = tensor_kind_t::undef;
-    send_plan_t load;
-    reorder_plan_t reorder;
-    layout_t layout;
-    layout_t bia_layout;
+    send_plan_t a_load;
+    send_plan_t b_load;
+    reorder_plan_t a_reorder;
+    reorder_plan_t b_reorder;
+    layout_t a_layout;
+    layout_t b_layout;
 
     using base_plan_t::base_plan_t;
 
     int grf_usage_bytes() const {
         int ret = 0;
-        ret += load.grf_usage_bytes();
-        ret += reorder.grf_usage_bytes();
+        ret += a_load.grf_usage_bytes();
+        ret += b_load.grf_usage_bytes();
         return ret;
     }
 
     prb_reqs_t reqs() const {
         prb_reqs_t ret;
-        ret.add(load.reqs());
+        ret.add(a_load.reqs());
+        ret.add(b_load.reqs());
         ret.simplify();
         return ret;
     }
@@ -214,12 +244,14 @@ struct x2r_plan_t : public base_plan_t {
     std::string str() const {
         if (!*this) return "(empty)";
         std::ostringstream oss;
-        auto prefix = to_string(tensor_kind);
-        oss << prefix << "_layout: " << layout.str() << std::endl;
-        oss << ir_utils::add_tag(prefix + "_load", load.str()) << std::endl;
-        if (reorder)
-            oss << ir_utils::add_tag(prefix + "_reorder", reorder.str())
-                << std::endl;
+        oss << "a_layout: " << a_layout.str() << std::endl;
+        oss << "b_layout: " << b_layout.str() << std::endl;
+        oss << ir_utils::add_tag("a_load", a_load.str()) << std::endl;
+        oss << ir_utils::add_tag("b_load", b_load.str()) << std::endl;
+        if (a_reorder)
+            oss << ir_utils::add_tag("a_reorder", a_reorder.str()) << std::endl;
+        if (b_reorder)
+            oss << ir_utils::add_tag("b_reorder", b_reorder.str()) << std::endl;
         return oss.str();
     }
 
@@ -230,7 +262,7 @@ struct fma_plan_t : public base_plan_t {
     layout_t a_layout;
     layout_t b_layout;
     layout_t c_layout;
-    pvar_tile_t inst_tile;
+    prb_tile_t inst_tile;
     fma_kind_t fma = fma_kind_t::undef;
     int simd = 0;
 
@@ -256,143 +288,22 @@ struct fma_plan_t : public base_plan_t {
     IR_DEFINE_DUMP()
 };
 
-struct x2r_fma_plan_t : public base_plan_t {
-    struct stage_t {
-        x2r_plan_t x2r;
-        fma_plan_t fma;
-
-        stage_t() = default;
-        stage_t(const x2r_plan_t &x2r) : x2r(x2r) {}
-        stage_t(const fma_plan_t &fma) : fma(fma) {}
-        bool is_x2r() const { return (bool)x2r; }
-        bool is_fma() const { return (bool)fma; }
-
-        prb_reqs_t reqs() const {
-            if (is_x2r()) return x2r.reqs();
-            return prb_reqs_t();
-        }
-
-        std::string str() const {
-            if (is_x2r()) return x2r.str();
-            return fma.str();
-        }
-    };
-
-    pvar_tile_t outer;
-    layout_t c_layout;
-    layout_t bia_layout;
-    std::vector<stage_t> stages;
-
-    x2r_fma_plan_t(const hw_t &hw) : base_plan_t(hw) {}
-    void add_stage(const x2r_plan_t &x2r) { stages.emplace_back(x2r); }
-    void add_stage(const fma_plan_t &fma) { stages.emplace_back(fma); }
-    int nstages() const { return (int)stages.size(); }
-
-    int grf_usage_bytes() const {
-        int ret = 0;
-        ret += utils::rnd_up(c_layout.size(), grf_size());
-        std::unordered_map<tensor_kind_t, int,
-                ir_utils::enum_hash_t<tensor_kind_t>>
-                tensor_usage;
-        for (auto &s : stages) {
-            if (!s.is_x2r()) continue;
-            auto &usage = tensor_usage[s.x2r.tensor_kind];
-            usage = std::max(usage, s.x2r.grf_usage_bytes());
-        }
-        for (auto &kv : tensor_usage)
-            ret += kv.second;
-        return ret;
-    }
-
-    prb_reqs_t reqs() const {
-        prb_reqs_t ret;
-        for (auto &s : stages)
-            ret.add(s.reqs());
-        ret.simplify();
-        return ret;
-    }
-
-    std::string str() const {
-        if (!*this) return "(empty)";
-        std::ostringstream oss;
-        if (!outer.is_empty()) oss << "outer: " << outer << std::endl;
-        for (int i = 0; i < nstages(); i++) {
-            auto &s = stages[i];
-            auto tag = (s.is_x2r() ? "x2r_" : "fma_") + std::to_string(i);
-            oss << ir_utils::add_tag(tag, s.str()) << std::endl;
-        }
-        oss << "c_layout: " << c_layout;
-        return oss.str();
-    }
-};
-
-struct slm_reduce_plan_t : public base_plan_t {
-    send_plan_t store;
-    send_plan_t load;
-    reduce_plan_t reduce;
-    // C layout and tile coordinate after reduction and redistribution in
-    // threadgroup.
-    layout_t c_layout;
-    pvar_coord_t<expr_t> c_coord;
-
-    using base_plan_t::base_plan_t;
-
-    int grf_usage_bytes() const {
-        int ret = 0;
-        ret += utils::rnd_up(load.reg_layout().size(), grf_size());
-        return ret;
-    }
-
-    int slm_usage_bytes() const {
-        if (!*this) return 0;
-        int k_local
-                = ir_utils::safe_div(reduce.src.elems(), reduce.dst.elems());
-        return utils::rnd_up(store.reg_layout().size(), grf_size()) * k_local;
-    }
-
-    std::string str() const {
-        if (!*this) return "(empty)";
-        std::ostringstream oss;
-        oss << ir_utils::add_tag("store", store.str()) << std::endl;
-        oss << ir_utils::add_tag("load", load.str()) << std::endl;
-        oss << ir_utils::add_tag("reduce", reduce.str()) << std::endl;
-        oss << "c_layout: " << c_layout << std::endl;
-        oss << "c_coord:  " << c_coord;
-        return oss.str();
-    }
-};
-
 struct epilogue_plan_t : public base_plan_t {
-    pvar_tile_t tile;
-    slm_reduce_plan_t slm_reduce;
+    prb_tile_t tile;
     reorder_plan_t reorder;
-    reorder_plan_t bia_reorder;
-    layout_t c_reg_layout;
-    pvar_coord_t<expr_t> c_coord;
-    layout_t bia_reduced_reg_layout;
     send_plan_t c_store;
-    send_plan_t bia_store;
-    expr_t reduce_cond;
 
-    using base_plan_t::base_plan_t;
+    epilogue_plan_t(const hw_t &hw) : base_plan_t(hw) {}
 
     int grf_usage_bytes() const { return 0; }
-    int slm_usage_bytes() const { return slm_reduce.slm_usage_bytes(); }
 
     std::string str() const {
         if (!*this) return "(empty)";
         std::ostringstream oss;
         oss << "tile: " << tile << std::endl;
-        if (slm_reduce)
-            oss << ir_utils::add_tag("slm_reduce", slm_reduce.str())
-                << std::endl;
         if (reorder)
             oss << ir_utils::add_tag("reorder", reorder.str()) << std::endl;
-        if (bia_reorder)
-            oss << ir_utils::add_tag("bia_reorder", bia_reorder.str())
-                << std::endl;
-        oss << ir_utils::add_tag("c_store", c_store.str()) << std::endl;
-        oss << ir_utils::add_tag("bia_store", bia_store.str());
+        oss << ir_utils::add_tag("c_store", c_store.str());
         return oss.str();
     }
 
@@ -407,30 +318,29 @@ struct plan_t : public base_plan_t {
     virt_grid_t virt_grid;
 
     prefetch_plan_t prefetch;
-    x2r_fma_plan_t x2r_fma;
+    x2r_plan_t x2r;
+    fma_plan_t fma;
     epilogue_plan_t epilogue;
 
     plan_t(const hw_t &hw = hw_t())
-        : base_plan_t(hw), prefetch(hw), x2r_fma(hw), epilogue(hw) {}
+        : base_plan_t(hw), prefetch(hw), x2r(hw), fma(hw), epilogue(hw) {}
 
     int grf_usage_bytes() const {
         int ret = 0;
-        ret += x2r_fma.grf_usage_bytes();
+        ret += x2r.grf_usage_bytes();
+        ret += fma.grf_usage_bytes();
         ret += epilogue.grf_usage_bytes();
         return ret;
     }
 
-    int slm_usage_bytes() const {
-        int ret = 0;
-        ret += epilogue.slm_usage_bytes();
-        return ret;
-    }
+    prb_reqs_t reqs() const;
 
     std::string str() const {
         if (!*this) return "(empty)";
         std::ostringstream oss;
         oss << ir_utils::add_tag("prefetch", prefetch.str()) << std::endl;
-        oss << ir_utils::add_tag("x2r_fma", x2r_fma.str()) << std::endl;
+        oss << ir_utils::add_tag("x2r", x2r.str()) << std::endl;
+        oss << ir_utils::add_tag("fma", fma.str()) << std::endl;
         oss << ir_utils::add_tag("epilogue", epilogue.str());
         return ir_utils::add_tag("Plan", oss.str());
     }
@@ -439,15 +349,11 @@ struct plan_t : public base_plan_t {
 };
 
 plan_t create_conv_plan(const kernel_desc_t &desc);
-bool finalize_conv_desc(
-        kernel_desc_t &desc, const problem_t &prb, plan_t *plan = nullptr);
-bool finalize_conv_desc(
-        kernel_desc_t &desc, const hw_t &hw, plan_t *plan = nullptr);
+plan_t create_conv_plan_and_finalize_desc(kernel_desc_t &desc);
 
 } // namespace conv
 } // namespace v2
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

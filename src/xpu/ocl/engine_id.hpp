@@ -17,7 +17,7 @@
 #ifndef XPU_OCL_GPU_ENGINE_ID_HPP
 #define XPU_OCL_GPU_ENGINE_ID_HPP
 
-#include "xpu/ocl/utils.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

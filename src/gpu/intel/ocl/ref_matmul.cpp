@@ -22,7 +22,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
@@ -82,252 +81,64 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t M = c_d.dims()[last - 1];
     const dim_t N = c_d.dims()[last];
     const dim_t K = a_d.dims()[last];
-
-    const auto &attr_scales = pd()->attr()->scales_;
-    const int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
-    const bool wei_scale_per_k = wei_scale_mask & pd()->wei_qmask_K();
-    const auto wei_scale_group_ndim = attr_scales.get(DNNL_ARG_WEIGHTS).ndims_;
-    const auto wei_scale_group_k = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[0]
-            : (wei_scale_per_k ? 1 : K);
-    const auto wei_scale_group_n = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[1]
-            : 1;
-    const auto wei_scale_ngroups_k = K / wei_scale_group_k;
-    // Identify wei_scales dimensions as user may not pass them.
-    dims_t wei_scale_dims {};
-    dims_t wei_scale_strides {};
-    utils::copy_dims_with_mask(
-            wei_scale_dims, b_d.dims(), b_d.ndims(), wei_scale_mask);
-    wei_scale_dims[b_d.ndims() - 1] /= wei_scale_group_n;
-    wei_scale_dims[b_d.ndims() - 2] /= wei_scale_group_k;
-
-    dim_t last_scale_dim = 0;
-    dim_t last_scale_stride = 0;
-    for (int d = b_d.ndims() - 1; d >= 0; d--) {
-        if (wei_scale_dims[d] == 0) continue;
-        wei_scale_strides[d] = last_scale_stride == 0
-                ? 1
-                : last_scale_dim * last_scale_stride;
-        last_scale_stride = wei_scale_strides[d];
-        last_scale_dim = wei_scale_dims[d];
-    }
-
-    const dim_t wei_scale_stride_n = wei_scale_strides[b_d.ndims() - 1];
-    const dim_t wei_scale_stride_k = wei_scale_strides[b_d.ndims() - 2];
-    const dim_t wei_scale_stride_b0
-            = b_d.ndims() > 2 ? wei_scale_strides[b_d.ndims() - 3] : 0;
-    const dim_t wei_scale_stride_b1
-            = b_d.ndims() > 3 ? wei_scale_strides[b_d.ndims() - 4] : 0;
-
-    const int src_scale_mask = attr_scales.get(DNNL_ARG_SRC).mask_;
-    const bool src_scale_per_k = src_scale_mask & pd()->src_qmask_K();
-    const auto src_scale_group_ndim = attr_scales.get(DNNL_ARG_SRC).ndims_;
-    const auto src_scale_group_k = src_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_SRC).group_dims_[1]
-            : (src_scale_per_k ? 1 : K);
-    const auto src_scale_ngroups_k = K / src_scale_group_k;
-    // Identify src_scales dimensions as user may not pass them.
-    dims_t src_scale_dims {};
-    dims_t src_scale_strides {};
-    utils::copy_dims_with_mask(
-            src_scale_dims, a_d.dims(), a_d.ndims(), src_scale_mask);
-    src_scale_dims[a_d.ndims() - 1] /= src_scale_group_k;
-
-    last_scale_dim = 0;
-    last_scale_stride = 0;
-    for (int d = a_d.ndims() - 1; d >= 0; d--) {
-        if (src_scale_dims[d] == 0) continue;
-        src_scale_strides[d] = last_scale_stride == 0
-                ? 1
-                : last_scale_dim * last_scale_stride;
-        last_scale_stride = src_scale_strides[d];
-        last_scale_dim = src_scale_dims[d];
-    }
-
-    const dim_t src_scale_stride_k = src_scale_strides[a_d.ndims() - 1];
-    const dim_t src_scale_stride_m = src_scale_strides[a_d.ndims() - 2];
-    const dim_t src_scale_stride_b0
-            = a_d.ndims() > 2 ? src_scale_strides[a_d.ndims() - 3] : 0;
-    const dim_t src_scale_stride_b1
-            = a_d.ndims() > 3 ? src_scale_strides[a_d.ndims() - 4] : 0;
-
-    const auto &attr_zps = pd()->attr()->zero_points_;
-    int wei_zp_mask = 0;
-    attr_zps.get(DNNL_ARG_WEIGHTS, &wei_zp_mask);
-    const bool wei_zp_per_k = wei_zp_mask & pd()->wei_qmask_K();
-    const auto wei_zp_group_ndims = attr_zps.get_groups_ndims(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_k = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[0]
-            : (wei_zp_per_k ? 1 : K);
-    const auto wei_zp_group_n = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[1]
-            : 1;
-    const auto wei_zp_ngroups_k = K / wei_zp_group_k;
-    // Identify wei_zp dimensions as user may not pass them.
-    dims_t wei_zp_dims {};
-    dims_t wei_zp_strides {};
-    utils::copy_dims_with_mask(
-            wei_zp_dims, b_d.dims(), b_d.ndims(), wei_zp_mask);
-    wei_zp_dims[b_d.ndims() - 1] /= wei_zp_group_n;
-    wei_zp_dims[b_d.ndims() - 2] /= wei_zp_group_k;
-
-    dim_t last_zp_dim = 0;
-    dim_t last_zp_stride = 0;
-    for (int d = b_d.ndims() - 1; d >= 0; d--) {
-        if (wei_zp_dims[d] == 0) continue;
-        wei_zp_strides[d]
-                = last_zp_stride == 0 ? 1 : last_zp_dim * last_zp_stride;
-        last_zp_stride = wei_zp_strides[d];
-        last_zp_dim = wei_zp_dims[d];
-    }
-    const dim_t wei_zp_stride_n = wei_zp_strides[b_d.ndims() - 1];
-    const dim_t wei_zp_stride_k = wei_zp_strides[b_d.ndims() - 2];
-    const dim_t wei_zp_stride_b0
-            = b_d.ndims() > 2 ? wei_zp_strides[b_d.ndims() - 3] : 0;
-    const dim_t wei_zp_stride_b1
-            = b_d.ndims() > 3 ? wei_zp_strides[b_d.ndims() - 4] : 0;
-
-    int src_zp_mask = 0;
-    attr_zps.get(DNNL_ARG_SRC, &src_zp_mask);
-    const bool src_zp_per_k = src_zp_mask & pd()->src_qmask_K();
-    const auto src_zp_group_ndims = attr_zps.get_groups_ndims(DNNL_ARG_SRC);
-    const auto src_zp_group_k = src_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_SRC)[1]
-            : (src_zp_per_k ? 1 : K);
-    const auto src_zp_ngroups_k = K / src_zp_group_k;
-    // Identify src_zp dimensions as user may not pass them.
-    dims_t src_zp_dims {};
-    dims_t src_zp_strides {};
-    utils::copy_dims_with_mask(
-            src_zp_dims, a_d.dims(), a_d.ndims(), src_zp_mask);
-    src_zp_dims[a_d.ndims() - 1] /= src_zp_group_k;
-
-    last_zp_dim = 0;
-    last_zp_stride = 0;
-    for (int d = a_d.ndims() - 1; d >= 0; d--) {
-        if (src_zp_dims[d] == 0) continue;
-        src_zp_strides[d]
-                = last_zp_stride == 0 ? 1 : last_zp_dim * last_zp_stride;
-        last_zp_stride = src_zp_strides[d];
-        last_zp_dim = src_zp_dims[d];
-    }
-    const dim_t src_zp_stride_k = src_zp_strides[a_d.ndims() - 1];
-    const dim_t src_zp_stride_m = src_zp_strides[a_d.ndims() - 2];
-
-    // For compute kernel, the minimal group is picked.
-    const auto scale_ngroups_k
-            = std::max(src_scale_ngroups_k, wei_scale_ngroups_k);
-    const auto zp_ngroups_k = std::max(src_zp_ngroups_k, wei_zp_ngroups_k);
-    const auto ngroups_k = std::max(zp_ngroups_k, scale_ngroups_k);
-    const auto group_K = K / ngroups_k;
-
-    const bool subbyte_pack
-            = pd()->subbyte_pack_; //(c_d.data_type() == data_type::f4_e2m1);
-    const dim_t nelems = c_d.nelems();
-    auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
-            memory_tracking::names::key_matmul_pack_space);
+    const dim_t wei_scale_stride
+            = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_ == 0 ? 0 : 1;
 
     compute::kernel_arg_list_t arg_list;
-    int arg_idx = 0;
-    arg_list.set(arg_idx++, a);
-    arg_list.set(arg_idx++, b);
-    arg_list.set(arg_idx++, subbyte_pack ? *tmp : c);
-    arg_list.set(arg_idx++, bias);
-    arg_list.set(arg_idx++, a0);
-    arg_list.set(arg_idx++, src_zp_stride_k);
-    arg_list.set(arg_idx++, src_zp_stride_m);
-    arg_list.set(arg_idx++, src_zp_group_k);
-    arg_list.set(arg_idx++, b0);
-    arg_list.set(arg_idx++, wei_zp_stride_n);
-    arg_list.set(arg_idx++, wei_zp_stride_k);
-    arg_list.set(arg_idx++, wei_zp_stride_b0);
-    arg_list.set(arg_idx++, wei_zp_stride_b1);
-    arg_list.set(arg_idx++, wei_zp_group_n);
-    arg_list.set(arg_idx++, wei_zp_group_k);
-    arg_list.set(arg_idx++, c0);
-    arg_list.set(arg_idx++, src_scales);
-    arg_list.set(arg_idx++, src_scale_stride_k);
-    arg_list.set(arg_idx++, src_scale_stride_m);
-    arg_list.set(arg_idx++, src_scale_stride_b0);
-    arg_list.set(arg_idx++, src_scale_stride_b1);
-    arg_list.set(arg_idx++, src_scale_group_k);
-    arg_list.set(arg_idx++, wei_scales);
-    arg_list.set(arg_idx++, wei_scale_stride_n);
-    arg_list.set(arg_idx++, wei_scale_stride_k);
-    arg_list.set(arg_idx++, wei_scale_stride_b0);
-    arg_list.set(arg_idx++, wei_scale_stride_b1);
-    arg_list.set(arg_idx++, wei_scale_group_n);
-    arg_list.set(arg_idx++, wei_scale_group_k);
-    arg_list.set(arg_idx++, dst_scales);
-    arg_list.set(arg_idx++, group_K);
-    arg_list.set(arg_idx++, K);
-    arg_list.set(arg_idx++, N);
-    arg_list.set(arg_idx++, M);
-    arg_list.set(arg_idx++, D0);
-    arg_list.set(arg_idx++, D1);
-    arg_list.set(arg_idx++, D2);
-    arg_list.set(arg_idx++, bia_stride[5]);
-    arg_list.set(arg_idx++, bia_stride[4]);
-    arg_list.set(arg_idx++, bia_stride[3]);
-    arg_list.set(arg_idx++, bia_stride[2]);
-    arg_list.set(arg_idx++, bia_stride[1]);
-    arg_list.set(arg_idx++, bia_stride[0]);
-    arg_list.set(arg_idx++, a_stride[5]);
-    arg_list.set(arg_idx++, a_stride[4]);
-    arg_list.set(arg_idx++, a_stride[3]);
-    arg_list.set(arg_idx++, a_stride[2]);
-    arg_list.set(arg_idx++, a_stride[1]);
-    arg_list.set(arg_idx++, a_stride[0]);
-    arg_list.set(arg_idx++, b_stride[5]);
-    arg_list.set(arg_idx++, b_stride[4]);
-    arg_list.set(arg_idx++, b_stride[3]);
-    arg_list.set(arg_idx++, b_stride[2]);
-    arg_list.set(arg_idx++, b_stride[1]);
-    arg_list.set(arg_idx++, b_stride[0]);
-    arg_list.set(arg_idx++, c_stride[5]);
-    arg_list.set(arg_idx++, c_stride[4]);
-    arg_list.set(arg_idx++, c_stride[3]);
-    arg_list.set(arg_idx++, c_stride[2]);
-    arg_list.set(arg_idx++, c_stride[1]);
-    arg_list.set(arg_idx++, c_stride[0]);
+    arg_list.set(0, a);
+    arg_list.set(1, b);
+    arg_list.set(2, c);
+    arg_list.set(3, bias);
+    arg_list.set(4, a0);
+    arg_list.set(5, b0);
+    arg_list.set(6, c0);
+    arg_list.set(7, src_scales);
+    arg_list.set(8, wei_scales);
+    arg_list.set(9, wei_scale_stride);
+    arg_list.set(10, dst_scales);
+    arg_list.set(11, K);
+    arg_list.set(12, N);
+    arg_list.set(13, M);
+    arg_list.set(14, D0);
+    arg_list.set(15, D1);
+    arg_list.set(16, D2);
+    arg_list.set(17, bia_stride[5]);
+    arg_list.set(18, bia_stride[4]);
+    arg_list.set(19, bia_stride[3]);
+    arg_list.set(20, bia_stride[2]);
+    arg_list.set(21, bia_stride[1]);
+    arg_list.set(22, bia_stride[0]);
+    arg_list.set(23, a_stride[5]);
+    arg_list.set(24, a_stride[4]);
+    arg_list.set(25, a_stride[3]);
+    arg_list.set(26, a_stride[2]);
+    arg_list.set(27, a_stride[1]);
+    arg_list.set(28, a_stride[0]);
+    arg_list.set(29, b_stride[5]);
+    arg_list.set(30, b_stride[4]);
+    arg_list.set(31, b_stride[3]);
+    arg_list.set(32, b_stride[2]);
+    arg_list.set(33, b_stride[1]);
+    arg_list.set(34, b_stride[0]);
+    arg_list.set(35, c_stride[5]);
+    arg_list.set(36, c_stride[4]);
+    arg_list.set(37, c_stride[3]);
+    arg_list.set(38, c_stride[2]);
+    arg_list.set(39, c_stride[1]);
+    arg_list.set(40, c_stride[0]);
 
-    const bool dropout = !pd()->attr()->dropout_.has_default_values();
-    if (dropout) {
-        arg_list.set(arg_idx++, CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
-        arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED));
-        arg_list.set(
-                arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY));
-    }
-
-    const bool sround = !pd()->attr()->rounding_mode_.has_default_values();
-    if (sround) {
-        arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED));
-    }
-    append_post_ops_to_arg_list(
-            ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
+    append_post_ops_to_arg_list(ctx, arg_list, 41, pd()->attr()->post_ops_);
 
     compute::range_t gws = {1, (size_t)N, (size_t)(D0 * D1 * D2 * D3)};
     auto nd_range = compute::nd_range_t(gws);
 
-    status_t status = parallel_for(ctx, nd_range, kernels_[0], arg_list);
+    status_t status = parallel_for(ctx, nd_range, kernel_, arg_list);
 
     ctx.zero_pad_output(DNNL_ARG_DST);
-
-    if (!subbyte_pack) return status;
-    compute::kernel_arg_list_t repack_arg_list;
-    repack_arg_list.set(0, *tmp);
-    repack_arg_list.set(1, c);
-    repack_arg_list.set(2, into<dim_t>(nelems));
-    repack_arg_list.set(3, 4);
-    compute::range_t repack_gws((nelems * 4 + 7) / 8);
-    compute::nd_range_t repack_nd_range(repack_gws);
-    return large_parallel_for(
-            ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
+    return status;
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -13,13 +13,10 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef GPU_INTEL_OCL_BNORM_NHWC_REUSABLE_H
-#define GPU_INTEL_OCL_BNORM_NHWC_REUSABLE_H
+#ifndef GPU_OCL_NHWC_REUSABLE_BNORM_H
+#define GPU_OCL_NHWC_REUSABLE_BNORM_H
 
-#define MAX_IC_BLOCK_SGROUPS (MAX_IC_BLOCK / SUB_GROUP_SIZE)
-#define MAX_IC_TAIL_SGROUPS (VECT_SIZE - 1)
-#define MAY_HAVE_IC_TAIL (MAX_IC_TAIL_SGROUPS > 0)
-
+#define SG_SIZE 16
 #define VECT_DT_N VECT_SIZE
 #include "gpu/intel/ocl/dispatch.h"
 #include "gpu/intel/ocl/ocl_types.h"
@@ -99,8 +96,6 @@
 #define ACCUM_DATA2_T float2
 #define SUM_DATA_T ACCUM_DATA2_T
 
-#define AS_VECT_FLOAT(a) *(VECT_FLOAT_T *)(a)
-
 // Kahan summation algorithm. It's much more precise than simple sum and works
 // just as fast, since kernel is still memory-bound.
 SUM_DATA_T summation(ACCUM_DATA_T input, SUM_DATA_T state) {
@@ -111,4 +106,4 @@ SUM_DATA_T summation(ACCUM_DATA_T input, SUM_DATA_T state) {
     ret.s0 = t;
     return ret;
 }
-#endif // GPU_INTEL_OCL_BNORM_NHWC_REUSABLE_H
+#endif // GPU_OCL_NHWC_REUSABLE_BNORM_H

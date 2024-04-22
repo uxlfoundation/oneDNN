@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,115 +14,132 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_GPU_PRIMITIVE_HPP
-#define GPU_INTEL_GPU_PRIMITIVE_HPP
+#ifndef GPU_GPU_PRIMITIVE_HPP
+#define GPU_GPU_PRIMITIVE_HPP
 
 #include <cassert>
 #include "gpu/intel/compute/utils.hpp"
 
 #include "common/cache_blob.hpp"
+#include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_primitive.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/compute_stream.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/gemm/gpu_gemm_exec_types.hpp"
+#include "gpu/intel/gpu_resource.hpp"
 #include "gpu/intel/jit/jit_generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
 #include "gpu/intel/ocl/types_interop.hpp"
-#include "xpu/context.hpp"
-#include "xpu/utils.hpp"
+
+#include "gpu/gpu_resource.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 
-struct gpu_primitive_t : public gpu::primitive_t {
-    using primitive_t::primitive_t;
+struct primitive_t : public impl::primitive_t {
+    using impl::primitive_t::primitive_t;
 
-    struct compute_block_t : public gpu::primitive_t::compute_block_t {
-        compute_block_t(const compute::kernel_t &kernel)
-            : gpu::primitive_t::compute_block_t(nullptr), kernel_(kernel) {}
+    struct compute_block_t {
+        compute_block_t(impl::primitive_t *primitive) : primitive_(primitive) {}
+        virtual ~compute_block_t() = default;
 
-        compute::kernel_t kernel() const { return kernel_; }
+        status_t get_cache_blob_size(
+                impl::engine_t *engine, size_t *size) const {
+            if (primitive_)
+                return primitive_->get_cache_blob_size(engine, size);
+            return get_cache_blob_size_impl(engine, size);
+        }
+
+        status_t get_cache_blob(
+                impl::engine_t *engine, cache_blob_t &blob) const {
+            if (primitive_) return primitive_->get_cache_blob(engine, blob);
+            return get_cache_blob_impl(engine, blob);
+        }
+
+        bool empty() const { return empty_impl(); }
+
+        const impl::primitive_t *primitive() const { return primitive_; }
 
     private:
-        bool empty_impl() const override { return !bool(kernel_); }
+        virtual bool empty_impl() const { return !bool(primitive_); }
 
         virtual status_t get_cache_blob_size_impl(
-                impl::engine_t *engine, size_t *size) const override {
-            if (empty()) return status::success;
-            size_t sz = 0;
-            CHECK(kernel().get_binary_size(engine, &sz));
-            // We need additional sizeof(size_t) bytes to store the size
-            // of the binary when packing.
-            (*size) += sz + sizeof(size_t);
-            return status::success;
+                impl::engine_t *engine, size_t *size) const {
+            assert(!"unexpected");
+            return status::runtime_error;
         }
-
         virtual status_t get_cache_blob_impl(
-                impl::engine_t *engine, cache_blob_t &blob) const override {
-            if (empty()) return status::success;
-            xpu::binary_t binary;
-            CHECK(kernel().get_binary(engine, binary));
-            CHECK(blob.add_binary(binary.data(), binary.size()));
-            return status::success;
+                impl::engine_t *engine, cache_blob_t &blob) const {
+            assert(!"unexpected");
+            return status::runtime_error;
         }
 
-        compute::kernel_t kernel_;
+        // "primitive" is a common compute block for all vendors and kernel
+        // languages.
+        impl::primitive_t *primitive_;
     };
+
+    status_t create_nested_primitive(
+            std::shared_ptr<impl::primitive_t> &primitive,
+            const std::shared_ptr<primitive_desc_t> &pd,
+            impl::engine_t *engine) {
+        std::pair<std::shared_ptr<impl::primitive_t>, cache_state_t> p;
+        CHECK(pd->create_primitive_nested(p, engine, cache_blob()));
+
+        if (p.second == cache_state_t::kernel_hit) {
+            creation_cached_state_ = cache_state_t::nested_primitive_hit;
+        }
+        primitive = p.first;
+        register_compute_block(new compute_block_t(primitive.get()));
+        return status::success;
+    }
 
     status_t get_cache_blob_size(
             impl::engine_t *engine, size_t *size) const override {
         if (!size) return status::invalid_arguments;
-        if (version_ != -1) (*size) += sizeof(version_);
-        return gpu::primitive_t::get_cache_blob_size(engine, size);
+        // Query binary size for each created kernel.
+        for (const auto &cb : compute_blocks()) {
+            if (cb->empty()) continue;
+            CHECK(cb->get_cache_blob_size(engine, size));
+        }
+        return status::success;
     }
 
     status_t get_cache_blob(
             impl::engine_t *engine, cache_blob_t &blob) const override {
-        if (version_ != -1)
-            CHECK(blob.add_value((const uint8_t *)&version_, sizeof(version_)));
-        return gpu::primitive_t::get_cache_blob(engine, blob);
+        for (const auto &cb : compute_blocks()) {
+            if (cb->empty()) continue;
+            CHECK(cb->get_cache_blob(engine, blob));
+        }
+        return status::success;
     }
 
-    status_t create_kernel(impl::engine_t *engine, compute::kernel_t *kernel,
+    status_t create_kernel(engine_t *engine, compute::kernel_t *kernel,
             jit::jit_generator_base *jitter, bool register_kernel = true) {
         auto *compute_engine
                 = utils::downcast<compute::compute_engine_t *>(engine);
-        if (cache_blob()) {
-            CHECK(compute_engine->create_kernel_from_cache_blob(cache_blob(),
-                    *kernel, jitter ? jitter->kernel_name() : nullptr));
-            CHECK(register_kernels({*kernel}));
-            return status::success;
-        }
-        CHECK(compute_engine->create_kernel(kernel, jitter));
+        CHECK(compute_engine->create_kernel(kernel, jitter, cache_blob()));
         if (register_kernel) CHECK(register_kernels({*kernel}));
         return status::success;
     }
 
-    status_t create_kernels(impl::engine_t *engine,
+    status_t create_kernels(engine_t *engine,
             std::vector<compute::kernel_t> *kernels,
             const std::vector<const char *> &kernel_names,
             const compute::kernel_ctx_t &kernel_ctx) {
         auto *compute_engine
                 = utils::downcast<compute::compute_engine_t *>(engine);
-        if (cache_blob()) {
-            CHECK(compute_engine->create_kernels_from_cache_blob(
-                    cache_blob(), *kernels, kernel_names));
-            CHECK(register_kernels(*kernels));
-            return status::success;
-        }
         CHECK(compute_engine->create_kernels(
-                kernels, kernel_names, kernel_ctx));
+                kernels, kernel_names, kernel_ctx, cache_blob()));
         CHECK(register_kernels(*kernels));
         return status::success;
     }
 
-    status_t create_kernel(impl::engine_t *engine, compute::kernel_t *kernel,
+    status_t create_kernel(engine_t *engine, compute::kernel_t *kernel,
             const char *kernel_name, const compute::kernel_ctx_t &kernel_ctx) {
+
         std::vector<compute::kernel_t> kernels(1);
         auto status
                 = create_kernels(engine, &kernels, {kernel_name}, kernel_ctx);
@@ -131,29 +148,21 @@ struct gpu_primitive_t : public gpu::primitive_t {
     }
 
     template <typename T>
-    status_t create_kernels(impl::engine_t *engine,
+    status_t create_kernels(engine_t *engine,
             std::vector<compute::kernel_t> &kernels,
             const std::vector<const char *> &kernel_names, const T &params) {
         auto *compute_engine
                 = utils::downcast<compute::compute_engine_t *>(engine);
-        if (cache_blob()) {
-            CHECK(compute_engine->create_kernels_from_cache_blob(
-                    cache_blob(), kernels, kernel_names));
-            CHECK(register_kernels(kernels));
-            return status::success;
-        }
+        if (cache_blob())
+            return compute_engine->create_kernels_from_cache_blob(
+                    cache_blob(), kernels, kernel_names);
 
         auto key = std::make_shared<trivial_key_container_t<T>>(
                 params, compute_engine->engine_id());
         gpu_assert(key->key.is_valid());
 
-        cache_state_t kernel_cache_status;
         CHECK(get_cached_kernels<typename trivial_key_t<T>::value_type>(
-                std::move(key), engine, kernels, kernel_names,
-                kernel_cache_status));
-        if (kernel_cache_status == cache_state_t::kernel_hit) {
-            creation_cached_state_ = cache_state_t::kernel_hit;
-        }
+                std::move(key), engine, kernels, kernel_names));
 
         CHECK(register_kernels(kernels));
 
@@ -161,11 +170,18 @@ struct gpu_primitive_t : public gpu::primitive_t {
     }
 
     template <typename T>
-    status_t create_kernel(impl::engine_t *engine, compute::kernel_t &kernel,
+    status_t create_kernel(engine_t *engine, compute::kernel_t &kernel,
             const char *kernel_name, const T &params) {
         std::vector<compute::kernel_t> kernels(1);
         CHECK(create_kernels(engine, kernels, {kernel_name}, params));
         kernel = kernels[0];
+        return status::success;
+    }
+
+    status_t create_nested_primitive(std::shared_ptr<primitive_t> &primitive,
+            const std::shared_ptr<primitive_desc_t> &pd, engine_t *engine) {
+        CHECK(pd->create_primitive(primitive, engine, cache_blob()));
+        register_primitive(primitive.get());
         return status::success;
     }
 
@@ -244,31 +260,40 @@ protected:
 
     void set_version(int32_t version) { version_ = version; }
 
+    void register_primitive(const primitive_t *primitive) {
+        registered_compute_blocks_.emplace_back(primitive);
+    }
+
     status_t register_kernels(const std::vector<compute::kernel_t> &kernels) {
         for (const auto &k : kernels) {
             if (k) CHECK(k.dump());
-            register_compute_block(new compute_block_t(k));
+            registered_compute_blocks_.emplace_back(k);
         }
         return status::success;
     }
 
-private:
-    static status_t parallel_for(impl::stream_t &stream,
-            const compute::nd_range_t &range, const compute::kernel_t &kernel,
-            const compute::kernel_arg_list_t &arg_list,
-            const xpu::event_t &deps, xpu::event_t &out_dep) {
-        return kernel.parallel_for(stream, range, arg_list, deps, out_dep);
+    virtual status_t init_res_storage(
+            impl::engine_t *engine, gpu_resource_t *r) const {
+        return status::success;
     }
 
-    // Persistent cache versioning is not used by default. To enable versioning
-    // the primitive should:
-    // 1) Set the version via set_version() in case of non-cached initialization
-    // 2) Retrieve the version from the cache blob and set it via set_version()
-    //    in case of cached initialization
-    int32_t version_ = -1;
+    void register_compute_block(compute_block_t *cb) {
+        compute_blocks_.emplace_back(cb);
+    }
+
+    const std::vector<std::unique_ptr<compute_block_t>> &
+    compute_blocks() const {
+        return compute_blocks_;
+    }
+
+private:
+    void register_primitive(impl::primitive_t *primitive) {
+        compute_blocks_.emplace_back(new compute_block_t(primitive));
+    }
+
+    std::vector<std::unique_ptr<compute_block_t>> compute_blocks_;
 };
 
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -27,7 +27,13 @@
 #include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_pooling_pd.hpp"
 #include "gpu/intel/primitive_conf.hpp"
-#include "xpu/sycl/types.hpp"
+#include "gpu/sycl/sycl_gpu_primitive.hpp"
+#include "gpu/sycl/sycl_io_helper.hpp"
+#include "gpu/sycl/sycl_post_ops.hpp"
+#include "gpu/sycl/sycl_primitive_conf.hpp"
+#include "gpu/sycl/sycl_q10n.hpp"
+#include "gpu/sycl/sycl_types.hpp"
+#include "sycl/sycl_stream.hpp"
 
 namespace dnnl {
 namespace impl {

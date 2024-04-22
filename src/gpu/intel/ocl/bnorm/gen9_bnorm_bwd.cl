@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 #include "gpu/intel/ocl/bnorm/gen9_bnorm.h"
-#include "gpu/intel/ocl/bnorm/gen9_bnorm_reduce.h"
 
 // BWD kernels that support both blocked and NHWC layouts (USE_NHWC definition).
 // These kernels perform IC tail processing for NHWC and for ic % 8 == 0

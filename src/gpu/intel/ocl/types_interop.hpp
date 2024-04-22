@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2024-2025 Intel Corporation
+ * Copyright 2024 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_TYPES_INTEROP_HPP
-#define GPU_INTEL_OCL_TYPES_INTEROP_HPP
+#ifndef GPU_OCL_TYPES_INTEROP_HPP
+#define GPU_OCL_TYPES_INTEROP_HPP
 
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/ocl/types_interop.h"
@@ -23,7 +23,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace compute {
 
 template <>
@@ -62,7 +61,6 @@ struct scalar_type_traits<zero_pad_mask_t> {
 };
 
 } // namespace compute
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

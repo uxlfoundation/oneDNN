@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 // Same as reduction portions of alg_kind_t, plus:
@@ -128,7 +127,7 @@ inline void def_reduction_alg_kinds(compute::kernel_ctx_t &kernel_ctx) {
 // zeros. This is a kind of reorder that can be used
 // to short-circuit calculations to avoid reading/writing zeros.
 struct zero_padding_t {
-    zero_padding_t(const dim_idx_t dim_idx, const dim_t data_size,
+    zero_padding_t(const int dim_idx, const dim_t data_size,
             const dim_t outer_stride, const dim_t outer_size,
             const dim_t inner_stride, const dim_t inner_size)
         : dim_idx(dim_idx)
@@ -161,7 +160,7 @@ struct zero_padding_t {
         return os.str();
     }
 
-    dim_idx_t dim_idx;
+    dim_t dim_idx;
     dim_t data_size;
     dim_t outer_stride, outer_size;
     dim_t inner_stride, inner_size;
@@ -204,7 +203,6 @@ status_t generate_reduction_phases(const memory_desc_t *src,
         const memory_desc_t *dst, std::vector<reduction_subproblem_t> &subprbs);
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

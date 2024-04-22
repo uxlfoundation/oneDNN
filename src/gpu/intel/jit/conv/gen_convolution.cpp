@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,7 +38,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 struct conv_pd_data_t {
@@ -46,7 +45,7 @@ struct conv_pd_data_t {
     tensor_config_t tensor_cfg;
     std::vector<kernel_info_t> kernel_infos;
     std::shared_ptr<dnnl_primitive_desc> zp_pd;
-    std::shared_ptr<impl::primitive_t> zp_prim;
+    std::shared_ptr<primitive_t> zp_prim;
 };
 
 class gen_convolution_t {
@@ -54,7 +53,7 @@ public:
     static const int max_kernels = 16;
 
     template <typename T>
-    static status_t init_pd(T *pd, impl::engine_t *engine) {
+    static status_t init_pd(T *pd, engine_t *engine) {
         try {
             using compute::compute_engine_t;
             auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
@@ -108,8 +107,8 @@ public:
                 }
                 memory::dims S1 {1, 1, 1};
                 memory::dims P1 {0, 0, 0};
-                memory::dims dims_src {1, dim_t(prb.g) * prb.ic};
-                memory::dims dims_dst {1, dim_t(prb.g) * prb.oc};
+                memory::dims dims_src {1, prb.g * prb.ic};
+                memory::dims dims_dst {1, prb.g * prb.oc};
 
                 for (int i = off; i < int(K.size()); i++) {
                     const auto KD = (K[i] - 1) * (D[i] + 1) + 1;
@@ -160,7 +159,7 @@ public:
     gen_convolution_t() = default;
 
     template <typename T>
-    status_t init(T *primitive, impl::engine_t *engine) {
+    status_t init(T *primitive, engine_t *engine) {
         auto &data = *primitive->pd()->data;
         auto &tensor_cfg = data.tensor_cfg;
         auto tiler = std::make_shared<conv_tiler_t>(data.pd_cfg);
@@ -177,14 +176,7 @@ public:
         conv_config_t cfg;
         layout_t zp_dst;
         if (data.zp_pd) zp_dst = layout_t(data.zp_pd->impl()->dst_md(), false);
-
-        if (primitive->cache_blob()) {
-            tiler->set_cur_version(primitive->version());
-        }
-
         for (int try_iter = 0; try_iter < max_tries; try_iter++) {
-            if (try_iter != 0 && !tiler->is_tuning_mode())
-                tiler->move_next(cfg);
             try {
                 cfg = data.pd_cfg;
                 cfg.set_pd(
@@ -192,6 +184,8 @@ public:
                 cfg.set_tiler(tiler);
                 CHECK(init_cfg(cfg, primitive));
 
+                if (primitive->cache_blob() && try_iter != primitive->version())
+                    continue;
                 if (!tiler->is_grf_limit_ok(cfg)) continue;
 
                 ir_info() << "Configuration:" << std::endl;
@@ -205,10 +199,13 @@ public:
                     auto &info = kernel_infos[i];
                     switch (info.id()) {
                         case kernel_id_t::convolution: {
+                            grf_mode_t grf_mode = (cfg.regs() == 256)
+                                    ? grf_mode_t::large
+                                    : grf_mode_t::small;
                             tmp_kernels.push_back(make_kernel<conv_kernel_t>(
                                     primitive, /*register_kernel=*/false,
-                                    engine, cfg, info,
-                                    nd_ranges_[i].local_range(), zp_dst));
+                                    engine, cfg, info, nd_ranges_[i], zp_dst,
+                                    grf_mode));
                             break;
                         }
                         case kernel_id_t::pre_reorder: {
@@ -220,7 +217,8 @@ public:
                                     make_kernel<reorder_kernel_t>(primitive,
                                             /*register_kernel=*/false, engine,
                                             reorder_cfg, "conv_reorder", info,
-                                            cfg.is_dpas_or_dpasw_fma()));
+                                            cfg.is_dpas_or_dpasw_fma(),
+                                            grf_mode_t::matches));
                             break;
                         }
                         case kernel_id_t::post_reorder: {
@@ -231,7 +229,8 @@ public:
                                     make_kernel<reorder_kernel_t>(primitive,
                                             /*register_kernel=*/false, engine,
                                             reorder_cfg, "conv_reorder", info,
-                                            cfg.is_dpas_or_dpasw_fma()));
+                                            cfg.is_dpas_or_dpasw_fma(),
+                                            grf_mode_t::matches));
                             break;
                         }
                         case kernel_id_t::zero_out:
@@ -244,7 +243,7 @@ public:
                                             /*register_kernel=*/false, engine,
                                             cfg.exec_cfg(), info,
                                             cfg.is_dpas_or_dpasw_fma(),
-                                            engine));
+                                            grf_mode_t::matches));
                             break;
 
                         case kernel_id_t::zp_precalc:
@@ -260,7 +259,7 @@ public:
                     if (!tmp_kernels[i]) return status::runtime_error;
                 }
                 ok = true;
-                primitive->set_version(tiler->cur_version());
+                primitive->set_version(try_iter);
                 kernels_ = std::move(tmp_kernels);
                 break;
             } catch (ngen::out_of_registers_exception &err) {
@@ -281,6 +280,21 @@ public:
         primitive->register_kernels(kernels_);
 
         conv_tiler_t::after_create_hook(cfg, primitive);
+        return status::success;
+    }
+
+    template <typename T>
+    status_t init_res_storage(
+            const T *primitive, engine_t *engine, gpu_resource_t *r) const {
+        auto &data = *primitive->pd()->data;
+        auto &kernel_infos = data.kernel_infos;
+        for (int i = 0; i < int(kernel_infos.size()); i++) {
+            auto &kernel_info = kernel_infos[i];
+            for (int j = 0; j < kernel_info.nargs(); j++) {
+                if (!kernel_info.is_resource(j)) continue;
+                ir_error_not_expected();
+            }
+        }
         return status::success;
     }
 
@@ -309,8 +323,7 @@ public:
                     CHECK(primitive->parallel_for(
                             ctx, nd_ranges_[i], kernels_[i], arg_list));
                 } else if (info.id() == kernel_id_t::zp_precalc) {
-                    auto scratchpad_arg = [&](std::unique_ptr<memory_t,
-                                                      memory_deleter_t> &retn,
+                    auto scratchpad_arg = [&](std::unique_ptr<memory_t> &retn,
                                                   const std::string &name,
                                                   const memory_desc_t *md) {
                         auto s = ctx.get_scratchpad_grantor()
@@ -320,7 +333,7 @@ public:
                                         std::move(s)));
                     };
                     ir_assert(data.zp_prim);
-                    std::unique_ptr<memory_t, memory_deleter_t> zp_src, zp_dst;
+                    std::unique_ptr<memory_t> zp_src, zp_dst;
                     CHECK(scratchpad_arg(zp_src, "src_zero_points",
                             data.zp_pd->impl()->src_md()));
                     CHECK(scratchpad_arg(
@@ -397,17 +410,18 @@ private:
                     ki.register_user_arg(buf, compute_arg_key, is_input);
             };
             auto scratchpad_book = [&](int key) {
-                pd->scratchpad_registry().registrar().book(into<uint32_t>(key),
-                        compute_size, 1, ocl::OCL_BUFFER_ALIGNMENT);
+                pd->scratchpad_registry().registrar().book(
+                        gpu_utils::into<uint32_t>(key), compute_size, 1,
+                        ocl::OCL_BUFFER_ALIGNMENT);
             };
             auto create_zero_out_info = [&]() -> kernel_info_t & {
                 auto &zero_out_info
                         = create_kernel_info(pd, kernel_id_t::zero_out);
                 auto size_var = var_t::make(type_t::u32(), "size");
                 zero_out_info.register_internal_arg(
-                        size_var, into<uint32_t>(compute_size));
-                zero_out_info.set_nd_range(zero_out_kernel_desc_t::nd_range(
-                        cfg.simd(), compute_size));
+                        size_var, gpu_utils::into<uint32_t>(compute_size));
+                zero_out_info.set_nd_range(zero_out_kernel_t<>::nd_range(
+                        cfg.simd(), gpu_utils::into<int>(compute_size)));
                 return zero_out_info;
             };
 
@@ -443,9 +457,9 @@ private:
                             scratchpad_key, /*is_input=*/true, compute_size);
                     const auto &dim = ir_utils::max_unique_pad_states;
                     const auto &prb = cfg.prb();
-                    const dim_t KDD = (prb.kd - 1) * (prb.dd + 1) + 1;
-                    const dim_t KDH = (prb.kh - 1) * (prb.dh + 1) + 1;
-                    const dim_t KDW = (prb.kw - 1) * (prb.dw + 1) + 1;
+                    const int KDD = (prb.kd - 1) * (prb.dd + 1) + 1;
+                    const int KDH = (prb.kh - 1) * (prb.dh + 1) + 1;
+                    const int KDW = (prb.kw - 1) * (prb.dw + 1) + 1;
                     compute_size = int64_t(compute_size) * sizeof(int32_t)
                             * dim(prb.od, prb.id, KDD, prb.pd, prb.sd, true)
                             * dim(prb.oh, prb.ih, KDH, prb.ph, prb.sh, true)
@@ -495,7 +509,7 @@ private:
     static bool can_skip_zero_out(
             const kernel_info_t &info, const conv_config_t &cfg) {
         ir_assert(info.id() == kernel_id_t::zero_out);
-        auto &buf_name = info.arg_var(1).as<var_t>().name;
+        auto &buf_name = info.arg_var(0).as<var_t>().name;
         if (buf_name == "wei") return cfg.can_skip_wei_zero_out();
         if (buf_name == "bia") return cfg.can_skip_bia_zero_out();
         return false;
@@ -503,7 +517,7 @@ private:
 
     template <typename ExceptionT, typename T>
     static bool handle_exception(const ExceptionT &err, T *primitive,
-            impl::engine_t *engine, int iter, int max_iters) {
+            engine_t *engine, int iter, int max_iters) {
         if (iter + 1 < max_iters) return false;
         VERROR(primitive, gpu, "%s,%s", primitive->pd()->info(engine),
                 err.what());
@@ -514,13 +528,13 @@ private:
     std::vector<compute::nd_range_t> nd_ranges_;
 };
 
-status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV_IC(is_fwd(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_convolution_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_fwd_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }
@@ -529,19 +543,29 @@ status_t gen_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_fwd_t::init_res_storage(
+        engine_t *engine, gpu_resource_t *r) const {
+    return impl_->init_res_storage(this, engine, r);
+}
+
+status_t gen_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_convolution_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_data_t::init_res_storage(
+        engine_t *engine, gpu_resource_t *r) const {
+    return impl_->init_res_storage(this, engine, r);
+}
+
+status_t gen_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_w(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_convolution_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_data_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }
@@ -550,9 +574,14 @@ status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_weights_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
+}
+
+status_t gen_convolution_bwd_weights_t::init_res_storage(
+        engine_t *engine, gpu_resource_t *r) const {
+    return impl_->init_res_storage(this, engine, r);
 }
 
 status_t gen_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
@@ -560,7 +589,6 @@ status_t gen_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

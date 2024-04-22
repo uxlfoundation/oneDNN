@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,15 +26,13 @@ using namespace dnnl::impl::memory_tracking::names;
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 using namespace bn_lookup_table;
 using namespace bn_utils;
 using namespace dnnl::impl::utils;
-using namespace dnnl::impl::gpu::intel::gpu_utils;
 
 static bool use_fused_atomics_reduction(bn_lookup_table::params_t &conf,
-        const batch_normalization_pd_t *pd, impl::engine_t *engine) {
+        const batch_normalization_pd_t *pd, engine_t *engine) {
     // Currently the fused atomics reduction is targeting to PVC only.
     // Heuristics experimentally selected, based on PVC perf data
     auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
@@ -60,8 +58,7 @@ static size_t get_slm_buff_size(
 
 // Local group size adjustment.
 static void adjust_lws_calc_kernel(bn_lookup_table::params_t &conf,
-        compute::dispatch_t &dispatch, impl::engine_t *engine,
-        bool large_grf_mode) {
+        compute::dispatch_t &dispatch, engine_t *engine, bool large_grf_mode) {
     auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
     auto eu_count = compute_engine->device_info()->eu_count();
     auto max_lws = compute_engine->device_info()->max_wg_size(large_grf_mode);
@@ -75,8 +72,8 @@ static void adjust_lws_calc_kernel(bn_lookup_table::params_t &conf,
     const compute::range_t &base_lws = generated_nd.local_range();
     gpu_assert(base_lws) << "lws is missing";
 
-    compute::range_t tuned_lws
-            = {into<size_t>(conf.sub_group_size), base_lws[1], base_lws[2]};
+    compute::range_t tuned_lws = {gpu_utils::into<size_t>(conf.sub_group_size),
+            base_lws[1], base_lws[2]};
     compute::range_t curr_lws = tuned_lws;
 
     // The search is based on subslice utilization which calculated as the ratio
@@ -109,20 +106,20 @@ static void adjust_lws_calc_kernel(bn_lookup_table::params_t &conf,
     dispatch.set_lws(tuned_lws);
 }
 
-static dim_t get_block_size(bool is_backward, int hw_threads, dim_t nn,
-        dim_t ic, dim_t work_size, int simd = 16) {
-    dim_t block_size = 256;
+static int get_block_size(bool is_backward, int hw_threads, int nn, int ic,
+        int work_size, int simd = 16) {
+    int block_size = 256;
     float thread_efficiency = 0;
     int hw_thread_mult = hw_threads;
     const int align_size = is_backward ? 8 : 16;
     while (true) {
         const int nof_blocks
-                = nstl::max(into<int>((hw_thread_mult * simd) / ic), 1);
-        const dim_t min_block_size = rnd_up(work_size, nof_blocks) / nof_blocks;
-        const dim_t curr_block_size = rnd_up(min_block_size, align_size);
-        const dim_t nof_blocks_generated
+                = nstl::max(rnd_dn(hw_thread_mult * simd, ic) / ic, 1);
+        const int min_block_size = rnd_up(work_size, nof_blocks) / nof_blocks;
+        const int curr_block_size = rnd_up(min_block_size, align_size);
+        const int nof_blocks_generated
                 = rnd_up(work_size, curr_block_size) / curr_block_size;
-        const dim_t threads_generated = nof_blocks_generated * ic / simd;
+        const int threads_generated = nof_blocks_generated * ic / simd;
         const float curr_thread_efficiency = float(threads_generated * nn)
                 / float(rnd_up(threads_generated * nn, hw_threads));
         if (curr_thread_efficiency > thread_efficiency) {
@@ -139,11 +136,10 @@ static status_t init_conf_common(bn_lookup_table::params_t &conf,
         offsets_t &off, compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat,
         compute::dispatch_t &dispatch, compute::dispatch_t &dispatch_reduce_aux,
-        const batch_normalization_pd_t *pd, impl::engine_t *engine) {
+        const batch_normalization_pd_t *pd, engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
-    conf.impl = bn_impl_t::gen9;
 
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
@@ -303,7 +299,7 @@ static status_t init_conf_common(bn_lookup_table::params_t &conf,
     dispatch_reduce_stat.set_kernel_attr_suffix("REDUCE");
     dispatch_reduce_stat.generate();
 
-    const dim_t sp_pad = rnd_up(conf.sp, conf.vect_size);
+    const int sp_pad = rnd_up(conf.sp, conf.vect_size);
     conf.sp_tail = rnd_dn(conf.sp, conf.vect_size);
 
     dispatch = compute_engine->create_dispatch(data_mdw.md_);
@@ -392,8 +388,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t gen9_batch_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t gen9_batch_normalization_fwd_t::pd_t::init_conf(engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
@@ -596,8 +591,7 @@ status_t gen9_batch_normalization_fwd_t::execute_forward(
     return status;
 }
 
-status_t gen9_batch_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t gen9_batch_normalization_bwd_t::pd_t::init_conf(engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
@@ -714,7 +708,6 @@ status_t gen9_batch_normalization_bwd_t::execute_backward(
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

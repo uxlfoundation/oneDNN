@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 #ifdef DNNL_DEV_MODE
 
 #include "gpu/gpu_gemm_pd.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gemm/gpu_gemm.hpp"
+#include "gpu/intel/gpu_resource.hpp"
 #include "gpu/intel/jit/conv/gen_convolution.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 #include "gpu/intel/utils.hpp"

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,13 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_CODEGEN_KERNEL_HPP
-#define GPU_INTEL_JIT_CODEGEN_KERNEL_HPP
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
+#ifndef GPU_JIT_CODEGEN_KERNEL_HPP
+#define GPU_JIT_CODEGEN_KERNEL_HPP
 
 #include "common/cpp_compat.hpp"
 
@@ -30,21 +25,17 @@
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/jit/jit_generator.hpp"
 #include "gpu/intel/jit/ngen/ngen.hpp"
 #include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 template <template <ngen::HW> class KernelT>
@@ -54,16 +45,18 @@ struct ir_generator_t : public jit_generator_base {
 
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
-    xpu::binary_t get_binary(const ocl::ocl_gpu_engine_t *engine) override {
+    gpu::compute::binary_t get_binary(
+            cl_context context, cl_device_id device) override {
+        kernel_info_t kernel_info;
+        auto status = kernel_desc_.init_kernel_info(kernel_info);
+        if (status != status::success) return gpu::compute::binary_t();
         try {
 #define CASE(hw) \
     case ngen::HW::hw: { \
-        KernelT<ngen::HW::hw> kernel(kernel_desc_, engine); \
-        return kernel.getBinary(engine->context(), engine->device()); \
+        KernelT<ngen::HW::hw> kernel(kernel_desc_, kernel_info); \
+        return kernel.getBinary(context, device); \
     }
-            auto *device_info = engine->device_info();
-            auto hw = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
-            switch (hw) {
+            switch (kernel_desc_.hw().to_ngen()) {
                 REG_GEN9_ISA(CASE(Gen9));
                 REG_GEN11_ISA(CASE(Gen11));
                 REG_XELP_ISA(CASE(XeLP));
@@ -71,15 +64,13 @@ struct ir_generator_t : public jit_generator_base {
                 REG_XEHPG_ISA(CASE(XeHPG));
                 REG_XEHPC_ISA(CASE(XeHPC));
                 REG_XE2_ISA(CASE(Xe2));
-                REG_XE3_ISA(CASE(Xe3));
-#if XE3P
-                REG_XE3P_ISA(CASE(Xe3p));
-#endif
                 default: gpu_assert(false) << "Unexpected GPU architecture";
             }
 #undef CASE
-        } catch (ngen::out_of_registers_exception &) { return xpu::binary_t(); }
-        return xpu::binary_t();
+        } catch (ngen::out_of_registers_exception &) {
+            return gpu::compute::binary_t();
+        }
+        return gpu::compute::binary_t();
     }
 
 private:
@@ -181,6 +172,13 @@ class expr_evaluator_t;
 template <ngen::HW hw>
 class ir_to_ngen_t;
 
+enum class grf_mode_t {
+    any, // Kernel sets optimal grf mode
+    matches, // Propogate grf mode to avoid context switch
+    small, // Force small grf_mode
+    large, // Force large grf_mode
+};
+
 template <ngen::HW hw>
 class ir_kernel_t : public jit_generator<hw> {
 public:
@@ -190,39 +188,42 @@ public:
     friend class ir_to_ngen_t<hw>;
     friend class send_impl_t;
 
-    ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
-            const debug_config_t &debug_config)
+    ir_kernel_t(
+            const kernel_desc_base_t &desc, const kernel_info_t &kernel_info)
         : kernel_name_(desc.kernel_name())
-        , exec_cfg_(desc.exec_cfg(engine))
-        , local_range_(desc.local_range())
+        , exec_cfg_(desc.exec_cfg())
+        , kernel_info_(kernel_info)
+        , with_nd_range_(false)
         , require_dpas_(desc.with_dpas())
         , regs_(exec_cfg_.regs())
-        , ra_(hw, desc.kernel_name())
+        , ra_(hw, desc.kernel_name(), reg_allocator_t::warn_default)
         , emu_strategy(hw, exec_cfg_.hw().stepping_id()) {
-        desc.init_kernel_iface(kernel_iface_);
         setStepping(exec_cfg_.hw().stepping_id());
         ra_.setRegisterCount(regs_);
     }
 
     ir_kernel_t(const std::string &kernel_name, const exec_config_t &exec_cfg,
-            const compute::range_t &local_range, bool require_dpas,
-            const debug_config_t &debug_config)
+            const kernel_info_t &kernel_info,
+            const compute::nd_range_t &nd_range, bool require_dpas,
+            grf_mode_t grf_mode = grf_mode_t::any)
         : kernel_name_(kernel_name)
         , exec_cfg_(exec_cfg)
-        , local_range_(local_range)
+        , kernel_info_(kernel_info)
+        , nd_range_(nd_range)
+        , with_nd_range_(true)
         , require_dpas_(require_dpas)
-        , regs_(exec_cfg.regs())
-        , ra_(hw, kernel_name)
+        , regs_((grf_mode == grf_mode_t::large)             ? 256
+                          : (grf_mode == grf_mode_t::small) ? 128
+                                                            : exec_cfg.regs())
+        , ra_(hw, kernel_name,
+                  grf_mode == grf_mode_t::any ? reg_allocator_t::warn_all
+                                              : reg_allocator_t::warn_default)
         , emu_strategy(hw, exec_cfg.hw().stepping_id()) {
         setStepping(exec_cfg.hw().stepping_id());
         ra_.setRegisterCount(regs_);
     }
 
     const exec_config_t &exec_cfg() { return exec_cfg_; }
-    const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
-    void set_kernel_iface(const kernel_iface_t &kernel_iface) {
-        kernel_iface_ = kernel_iface;
-    }
 
     void setup_interface(const stmt_t &kernel_body = stmt_t()) {
         externalName(kernel_name_);
@@ -233,23 +234,18 @@ public:
         requireBarrier();
         if (require_dpas_) requireDPAS();
         if (has_send_atomics(kernel_body)) requireGlobalAtomics();
-#if XE3P
-        if (hw == ngen::HW::Xe3p && !exec_cfg_.hw().is_efficient_64bit())
-            setEfficient64Bit(false);
-#endif
 
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            auto &name = kernel_iface_.arg_name(i);
-            auto &type = kernel_iface_.arg_type(i);
+        for (int i = 0; i < kernel_info_.nargs(); i++) {
+            auto &name = kernel_info_.arg_name(i);
+            auto &type = kernel_info_.arg_type(i);
             if (type.is_ptr()) {
-                newArgument(name, ngen::ExternalArgumentType::GlobalPtr,
-                        ngen::GlobalAccessType::Stateless);
+                newArgument(name, ngen::ExternalArgumentType::GlobalPtr);
             } else {
                 newArgument(name, to_ngen(type));
             }
         }
 
-        if (!kernel_body.is_empty() && local_range_) {
+        if (!kernel_body.is_empty() && with_nd_range_) {
             int slm_size = alloc_manager_t(kernel_body)
                                    .total_size(alloc_kind_t::slm);
             int max_slm_size = compute::device_info_t::max_slm_size_per_tg(
@@ -276,8 +272,8 @@ public:
         for (int i = 0; i < 3; i++)
             ra_.claim(getLocalID(i));
 
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            ra_.claim(getArgument(kernel_iface_.arg_name(i)));
+        for (int i = 0; i < kernel_info_.nargs(); i++) {
+            ra_.claim(getArgument(kernel_info_.arg_name(i)));
         }
 
         if (emu_strategy.emulate64) {
@@ -295,14 +291,19 @@ public:
     }
 
     void bind_external_vars(const stmt_t &kernel_body,
-            const walk_order_t &kernel_grid_walk_order,
+            const grid_info_t &kernel_grid,
+            const std::array<expr_t, 3> &local_id,
             expr_binding_t &expr_binding) {
-        bind_external_vars(kernel_body, expr_binding);
-        bind_kernel_grid_walk_order(kernel_grid_walk_order, expr_binding);
+        grid_context_t grid_ctx(/*create_empty=*/true);
+        for (int i = 0; i < 3; i++) {
+            grid_ctx.set_tg_idx(i, kernel_grid.idx(i));
+            grid_ctx.set_local_id(i, local_id[i]);
+        }
+        bind_external_vars(kernel_body, grid_ctx, expr_binding);
     }
 
-    void bind_external_vars(
-            const stmt_t &kernel_body, expr_binding_t &expr_binding) {
+    void bind_external_vars(const stmt_t &kernel_body,
+            const grid_context_t &grid_ctx, expr_binding_t &expr_binding) {
         alloc_manager_t alloc_mgr(kernel_body);
 
         // Bind grid indices.
@@ -310,26 +311,20 @@ public:
         for (int i = 0; i < 3; i++) {
             auto tmp = ra_.template alloc_sub<int32_t>();
             mov(1, tmp, r0.ud(r0_sub_idxs[i]));
-            expr_binding.bind(ir_builder_t::tg_idxs()[i], tmp);
+            expr_binding.bind(grid_ctx.tg_idx(i), tmp);
         }
 
         // Bind local IDs.
         for (int i = 0; i < 3; i++) {
-            expr_binding.bind(
-                    ir_builder_t::local_ids()[i], getLocalID(i).uw(0));
+            expr_binding.bind(grid_ctx.local_id(i), getLocalID(i).uw(0));
         }
 
         // Bind arguments.
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            auto &arg_var = kernel_iface_.arg_var(i);
-            auto &name = kernel_iface_.arg_name(i);
+        for (int i = 0; i < kernel_info_.nargs(); i++) {
+            auto &arg_var = kernel_info_.arg_var(i);
+            auto &name = kernel_info_.arg_name(i);
             if (arg_var.type().is_ptr()) {
-                auto alloc_buf
-                        = alloc_mgr.find_buffer(name, /*allow_empty=*/true);
-                if (alloc_buf.is_empty()) {
-                    ir_warning() << "Unused argument: " << arg_var << std::endl;
-                    continue;
-                }
+                auto alloc_buf = alloc_mgr.find_buffer(name);
                 ir_assert(alloc_buf.is_same(arg_var));
             }
             expr_binding.bind(arg_var, getArgument(name));
@@ -338,136 +333,6 @@ public:
         // Bind SLM buffer (SLM loads/stores use 0-based offsets).
         auto slm_buf = alloc_mgr.find_buffer("slm", /*allow_empty=*/true);
         if (!slm_buf.is_empty()) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
-    }
-
-    void bind_kernel_grid_walk_order_blocked(const ngen::Subregister &id,
-            const std::vector<std::pair<int, int>> &blocks,
-            const std::vector<int> &dims, const std::vector<expr_t> &grid_vars,
-            expr_binding_t &expr_binding) {
-        int ndims = (int)dims.size();
-        int nblocks = (int)blocks.size();
-        std::vector<ngen::Subregister> rem_dims(ndims);
-        std::vector<ngen::Subregister> dim_idxs(ndims);
-        for (int i = 0; i < ndims; i++) {
-            rem_dims[i] = ra_.alloc_sub<int32_t>();
-            dim_idxs[i] = ra_.alloc_sub<int32_t>();
-            emov(1, rem_dims[i], dims[i]);
-            emov(1, dim_idxs[i], 0);
-        }
-
-        auto mul_add = [&](const ngen::Subregister &dst,
-                               const ngen::Subregister &src0,
-                               const ngen::Subregister &src1, uint32_t src2) {
-            bool is_src2_16_bit
-                    = (src2 <= std::numeric_limits<uint16_t>::max());
-            if (hw >= ngen::HW::XeLP && is_src2_16_bit && false) {
-                mad(1, dst, src0, src1, src2);
-            } else {
-                auto tmp = ra_.alloc_sub<uint64_t>();
-                mul(1, tmp.d(0), src1, src2 & 0xFFFF);
-                mul(1, tmp.d(1), src1, src2 >> 16);
-                shl<uint32_t>(1, tmp.ud(1), tmp.ud(1), 16);
-                add(1, tmp.d(0), tmp.d(1), tmp.d(0));
-                add(1, dst, src0, tmp.d(0));
-                ra_.safeRelease(tmp);
-            }
-        };
-
-        auto _id = ra_.alloc_sub<int32_t>();
-        auto qot = ra_.alloc_sub<int32_t>();
-        auto rem = ra_.alloc_sub<int32_t>();
-        auto rem_size = ra_.alloc_sub<uint32_t>();
-        auto rounded = ra_.alloc_sub<int32_t>();
-        emov(1, _id, id);
-        for (int i = nblocks - 1; i >= 0; i--) {
-            int dim_idx = blocks[i].first;
-            int inner_block_size = 1;
-            for (int j = 0; j < i; j++) {
-                if (blocks[j].first == dim_idx)
-                    inner_block_size *= blocks[j].second;
-            }
-            emov(1, rem_size, inner_block_size);
-            for (int j = 0; j < ndims; j++) {
-                if (j == dim_idx) continue;
-                emul(1, rem_size, rem_size, rem_dims[j]);
-            }
-            eidiv(1, qot, rem, _id, rem_size);
-            emov(1, _id, rem);
-            mul_add(dim_idxs[dim_idx], qot, dim_idxs[dim_idx],
-                    blocks[i].second);
-            emul(1, rounded, qot, inner_block_size);
-            eadd(1, rounded, rem_dims[dim_idx], -rounded);
-            min_(1, rem_dims[dim_idx], rounded, inner_block_size);
-        }
-        ra_.safeRelease(_id);
-        ra_.safeRelease(qot);
-        ra_.safeRelease(rem);
-        ra_.safeRelease(rem_size);
-        ra_.safeRelease(rounded);
-
-        for (int i = 0; i < ndims; i++)
-            ra_.safeRelease(rem_dims[i]);
-
-        for (int i = 0; i < ndims; i++) {
-            expr_binding.bind(grid_vars[i], dim_idxs[i]);
-        }
-    }
-
-    void bind_kernel_grid_walk_order_non_blocked(const ngen::Subregister &id,
-            const std::vector<std::pair<int, int>> &blocks,
-            const std::vector<expr_t> &grid_vars,
-            expr_binding_t &expr_binding) {
-        int nblocks = (int)blocks.size();
-        ir_assert((int)grid_vars.size() == nblocks);
-        if (nblocks == 1) {
-            expr_binding.bind(grid_vars[0], id);
-            return;
-        }
-        auto _id = ra_.alloc_sub<int32_t>();
-        emov(1, _id, id);
-        for (int i = 0; i < nblocks; i++) {
-            int dim_idx = blocks[i].first;
-            auto idx = ra_.alloc_sub<int32_t>();
-            eidiv(1, _id, idx, _id, (uint32_t)blocks[i].second);
-            expr_binding.bind(grid_vars[dim_idx], idx);
-        }
-        ra_.safeRelease(_id);
-    }
-
-    void bind_kernel_grid_walk_order(
-            const walk_order_t &walk_order, expr_binding_t &expr_binding) {
-        const int grid_ndims = 3;
-        ngen::Subregister grid_ids[grid_ndims] = {r0.ud(1), r0.ud(6), r0.ud(7)};
-        for (int i = 0; i < grid_ndims; i++) {
-            std::vector<std::pair<int, int>> blocks;
-            std::unordered_map<pvar_t, int> dim_map;
-            auto to_dim_idx = [&](const pvar_t &dim) {
-                if (dim_map.count(dim) != 0) return dim_map.at(dim);
-                int idx = (int)dim_map.size();
-                dim_map.emplace(dim, idx);
-                return idx;
-            };
-            for (auto &b : walk_order.blocks()) {
-                if (b.grid_id != i) continue;
-                blocks.emplace_back(to_dim_idx(b.dim), b.size);
-            }
-            if (dim_map.empty()) continue;
-            std::vector<int> dims;
-            std::vector<expr_t> grid_vars;
-            dims.resize(dim_map.size());
-            grid_vars.resize(dim_map.size());
-            for (auto &kv : dim_map) {
-                dims[kv.second] = walk_order.dim_size(kv.first);
-                grid_vars[kv.second] = walk_order.grid_var(kv.first);
-            }
-            if (walk_order.is_blocked(i) || gpu_utils::dev_getenv("B", false)) {
-                bind_kernel_grid_walk_order_blocked(
-                        grid_ids[i], blocks, dims, grid_vars, expr_binding);
-            } else {
-                bind_kernel_grid_walk_order_non_blocked(
-                        grid_ids[i], blocks, grid_vars, expr_binding);
-            }
-        }
     }
 
     void generate_epilogue() {
@@ -677,19 +542,7 @@ public:
         ir_assert(dst.type() == ngen::DataType::f);
         ir_assert(src0.type() == ngen::DataType::f);
         ir_assert(src1.type() == ngen::DataType::f);
-
-        if (src1.reg_data().getHS() != 0) {
-            int nregs = std::max(1, (mod.getExecSize() * 4) / grf_size);
-            auto s1 = src1.reg_data();
-            auto tmp_range_ = ra_.alloc_range(nregs);
-            auto tmp = tmp_range_[0].retype(s1.getType());
-            auto t1 = tmp.f(s1.getOffset())
-                              .setRegion(s1.getVS(), s1.getWidth(), s1.getHS());
-            inv(mod, t1, s1);
-            emul(mod, dst.reg_data(), src0.reg_data(), t1);
-            ra_.safeRelease(tmp);
-            return;
-        }
+        ir_assert(src1.reg_data().getHS() == 0);
 
         // fdiv_ieee() is not supported in XeHPG so we use a less precise, inv-based sequence.
         if (hw < ngen::HW::XeHPC) {
@@ -873,52 +726,6 @@ public:
     }
 
     // Emulates integer division by a non-constant (rounding towards negative
-    // infinity). This version is based on FP inverse and does not require a
-    // pre-computed "magic" value. Note, that cr0 register is updated/restored
-    // to use RTZ mode when converting float -> int.
-    // Requirements (validated range):
-    //    -2^20 <= x <= 2^20
-    //     0    <  y <= 2^20
-    // Computes:
-    //     qot = x / y
-    //     rem = x % y
-    void eidiv(const ngen::InstructionModifier &mod, const ngen::RegData &_qot,
-            const ngen::RegData &rem, const ngen::RegData &x,
-            const ngen::RegData &_y, bool update_cr0_fp_to_int_rtz = true) {
-        ir_assert(mod.getExecSize() == 1);
-        ir_assert(_y.getType() == ngen::DataType::ud);
-        auto cr0_save = ra_.alloc_sub<uint32_t>();
-        auto f_tmp = ra_.alloc_sub<float>();
-        auto x_tmp = ra_.alloc_sub<float>();
-        auto qot_tmp = ra_.alloc_sub<int32_t>();
-        auto y = ngen::Subregister(_y, _y.getOffset(), _y.getType());
-        mov(1, cr0_save, cr0);
-        // Set RTZ rounding mode when converting float to int.
-        and_(1, cr0, cr0, ~0x1000);
-        mov(1, f_tmp, y);
-        mov(1, x_tmp, x);
-        inv(1, f_tmp, f_tmp);
-        add(1, f_tmp.ud(0), f_tmp.ud(0), 1);
-        mul(1, f_tmp, x_tmp, f_tmp);
-        mov(mod, qot_tmp, f_tmp);
-        if (!rem.isInvalid()) {
-            auto tmp = ra_.alloc_sub<int64_t>();
-            mul(1, tmp.d(0), qot_tmp, y.uw(0));
-            mul(1, tmp.d(1), qot_tmp, y.uw(1));
-            shl<uint32_t>(1, tmp.ud(1), tmp.ud(1), 16);
-            add(1, tmp.d(0), tmp.d(1), tmp.d(0));
-            add(mod, rem, x, -tmp.d(0));
-            ra_.safeRelease(tmp);
-        }
-        if (!_qot.isInvalid()) mov(mod, _qot, qot_tmp);
-        mov(1, cr0, cr0_save);
-        ra_.safeRelease(cr0_save);
-        ra_.safeRelease(f_tmp);
-        ra_.safeRelease(x_tmp);
-        ra_.safeRelease(qot_tmp);
-    }
-
-    // Emulates integer division by a constant (rounding towards negative
     // infinity)
     // Requirements:
     //     INT32_MIN <= x <= UINT32_MAX
@@ -934,7 +741,7 @@ public:
         ir_assert(x.getHS() == 0);
         if (ngen::utils::is_zero_or_pow2(y)) {
             auto _x = get_subregister(x);
-            if (x.getNeg() || (x == qot) || (x == rem)) {
+            if (x.getNeg()) {
                 // Negation modifier has bitwise semantics with shr/and so x
                 // needs to be arithmetically negated first.
                 _x = ra_.alloc_sub(div_type);
@@ -956,20 +763,11 @@ public:
         mov(1, _x, x);
 
         // qot = (x * m) >> p
-        bool use_mach = true;
-#if XE3P
-        if (hw == ngen::HW::Xe3p) use_mach = false;
-#endif
-        if (use_mach) {
-            auto acc = acc0.retype(div_type);
-            mul(1, acc[0], _x, m & 0xFFFF);
-            mach(1, _qot, _x, m);
-            shr<uint32_t>(1, _qot, _qot, p - 32);
-        } else {
-            auto q_tmp = qot_tmp.retype(ngen::DataType::q);
-            emul(1, q_tmp[0], _x, m);
-            eshr(1, q_tmp.uq(0), q_tmp.uq(0), p);
-        }
+        auto acc = acc0.retype(div_type);
+        mul(1, acc[0], _x, m & 0xFFFF);
+        mach(1, _qot, _x, m);
+        shr<uint32_t>(1, _qot, _qot, p - 32);
+        if (!qot.isInvalid()) mov(mod, qot, _qot);
 
         if (!rem.isInvalid()) {
             // rem = x - qot * y
@@ -987,7 +785,6 @@ public:
                 ra_.safeRelease(tmp);
             }
         }
-        if (!qot.isInvalid()) mov(mod, qot, _qot);
 
         ra_.safeRelease(x_tmp);
         ra_.safeRelease(qot_tmp);
@@ -1144,18 +941,20 @@ protected:
     }
 
     int thread_group_size() const {
-        ir_assert(local_range_);
+        ir_assert(with_nd_range_);
         int local_size = 1;
-        for (int i = 0; i < (int)local_range_.ndims(); i++) {
-            local_size *= (int)local_range_[i];
+        ir_assert(nd_range_.local_range());
+        for (int i = 0; i < (int)nd_range_.ndims(); i++) {
+            local_size *= (int)nd_range_.local_range()[i];
         }
         return ir_utils::safe_divide(local_size, exec_cfg_.simd());
     }
 
-    kernel_iface_t kernel_iface_;
     std::string kernel_name_;
     exec_config_t exec_cfg_;
-    compute::range_t local_range_;
+    kernel_info_t kernel_info_;
+    compute::nd_range_t nd_range_;
+    bool with_nd_range_ = false;
     bool require_dpas_;
     bool require_signal_header_ = false;
     int regs_;
@@ -1176,9 +975,6 @@ protected:
 #define IR_KERNEL_FORWARD(hw) \
     NGEN_FORWARD_OPENCL(hw) \
     IR_KERNEL_EMULATION_FORWARD(hw) \
-    using ir_kernel_t<hw>::exec_cfg; \
-    using ir_kernel_t<hw>::kernel_iface; \
-    using ir_kernel_t<hw>::set_kernel_iface; \
     using ir_kernel_t<hw>::setup_interface; \
     using ir_kernel_t<hw>::bind_external_vars; \
     using ir_kernel_t<hw>::generate_prologue; \
@@ -1187,13 +983,8 @@ protected:
     using ir_kernel_t<hw>::ra_;
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif
 
 #endif

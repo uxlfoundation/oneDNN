@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/simple_layer_normalization.hpp"
+#include "gpu/intel/ocl/ref_layer_normalization.hpp"
 #include "common/c_types_map.hpp"
 #include "common/primitive_exec_types.hpp"
 #include "common/scratchpad.hpp"

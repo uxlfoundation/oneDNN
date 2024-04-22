@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #include "gpu/intel/jit/gen9_simple_sum.hpp"
 
 #include "gpu/intel/jit/gen9_simple_sum_kernel_f32.hpp"
+#include "gpu/intel/ocl/ocl_engine.hpp"
 #include "gpu/intel/ocl/ocl_gpu_kernel.hpp"
 
 namespace dnnl {

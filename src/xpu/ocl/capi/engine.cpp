@@ -20,10 +20,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/engine.hpp"
-
-#include "xpu/ocl/engine_factory.hpp"
-#include "xpu/ocl/engine_impl.hpp"
-#include "xpu/ocl/utils.hpp"
+#include "gpu/intel/ocl/ocl_engine.hpp"
 
 using namespace dnnl::impl;
 using namespace dnnl::impl::xpu::ocl;

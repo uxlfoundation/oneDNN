@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,23 +16,9 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/gen9_binary.hpp"
 #include "gpu/intel/ocl/multi_po_reorder_binary.hpp"
-#include "gpu/intel/ocl/simple_binary.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_binary.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_binary.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/ref_binary.hpp"
-#endif
+#include "gpu/intel/ocl/ref_binary.hpp"
 
 namespace dnnl {
 namespace impl {

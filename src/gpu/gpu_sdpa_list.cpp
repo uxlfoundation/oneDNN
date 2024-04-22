@@ -1,5 +1,6 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
+* Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,12 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/compiler_workarounds.hpp"
-
-#include "gpu/gpu_impl_list.hpp"
-
-#include "gpu/intel/ocl/micro_sdpa.hpp"
-#include "gpu/intel/ocl/ref_sdpa.hpp"
+#include "gpu/intel/ocl/ref_concat.hpp"
+#include "gpu/nvidia/sycl_cuda_engine.hpp"
 
 namespace dnnl {
 namespace impl {

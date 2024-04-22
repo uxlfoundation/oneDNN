@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,9 +17,8 @@
 #include <CL/cl.h>
 
 #include "common/memory_map_manager.hpp"
-
-#include "xpu/ocl/usm_memory_storage.hpp"
-#include "xpu/ocl/usm_utils.hpp"
+#include "gpu/intel/ocl/ocl_usm_memory_storage.hpp"
+#include "gpu/intel/ocl/ocl_usm_utils.hpp"
 
 namespace dnnl {
 namespace impl {

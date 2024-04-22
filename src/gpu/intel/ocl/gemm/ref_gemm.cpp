@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 status_t ref_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
@@ -30,8 +29,8 @@ status_t ref_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     auto &c = GEMM_CTX_ARG_STORAGE(c);
 
     auto pd_desc = pd()->desc();
-    bool runtime_dims = utils::one_of(DNNL_RUNTIME_DIM_VAL, pd_desc->batch(),
-            pd_desc->m(), pd_desc->n(), pd_desc->k());
+    bool runtime_dims = utils::one_of(
+            DNNL_RUNTIME_DIM_VAL, pd_desc->m(), pd_desc->n(), pd_desc->k());
     const auto exec_d = runtime_dims ? ctx.desc() : pd()->desc();
 
     if (exec_d->batch() == 0 || exec_d->n() == 0) return status::success;
@@ -43,6 +42,7 @@ status_t ref_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
             ? bias.offset() / types::data_type_size(exec_d->bias_type())
             : 0;
 
+    const auto &scales = memory_storage_t::empty_storage();
     const auto &a0 = GEMM_CTX_ARG_STORAGE(a_zero_point);
     const auto &b0 = GEMM_CTX_ARG_STORAGE(b_zero_point);
     const auto &c0 = GEMM_CTX_ARG_STORAGE(c_zero_point);
@@ -61,6 +61,7 @@ status_t ref_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     const dim_t ldb = exec_d->ldb();
     const dim_t ldc = exec_d->ldc();
 
+    const dim_t scale_stride = 1;
     const float eltwise_alpha = pd()->attr_info.eltwise_alpha;
     const float eltwise_beta = pd()->attr_info.eltwise_beta;
     const float eltwise_scale = pd()->attr_info.eltwise_scale;
@@ -99,9 +100,11 @@ status_t ref_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     arg_list.set(25, b0);
     arg_list.set(26, c0);
     arg_list.set(27, c0_mask);
-    arg_list.set(28, beta);
+    arg_list.set(28, scales);
+    arg_list.set(29, scale_stride);
+    arg_list.set(30, beta);
 
-    const compute::range_t gws = {(size_t)N, (size_t)M, (size_t)MB};
+    const compute::range_t gws = {1, (size_t)N, (size_t)MB};
     const auto nd_range = compute::nd_range_t(gws);
 
     status_t status = parallel_for(ctx, nd_range, kernel_, arg_list);
@@ -110,7 +113,6 @@ status_t ref_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

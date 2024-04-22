@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_GEN9_SIMPLE_SUM_HPP
-#define GPU_INTEL_JIT_GEN9_SIMPLE_SUM_HPP
+#ifndef GPU_JIT_GEN9_SIMPLE_SUM_HPP
+#define GPU_JIT_GEN9_SIMPLE_SUM_HPP
 
 #include "common/c_types_map.hpp"
 #include "gpu/gpu_sum_pd.hpp"
@@ -24,7 +24,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 struct gen9_simple_sum_t : public gpu_primitive_t {
@@ -33,28 +32,26 @@ struct gen9_simple_sum_t : public gpu_primitive_t {
 
         DECLARE_SUM_PD_T("ngen:simple:any", gen9_simple_sum_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
-            VDISPATCH_SUM(compute_engine->mayiuse_ngen_kernels(),
-                    VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
+            if (!compute_engine->mayiuse_ngen_kernels())
+                return status::unimplemented;
 
             const int n = n_inputs();
 
             constexpr auto data_type = data_type::f32;
 
-            VDISPATCH_SUM_SC(gpu_sum_pd_t::init(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "sum");
+            bool ok = gpu_sum_pd_t::init(engine) == status::success;
+            if (!ok) return status::unimplemented;
 
             const memory_desc_wrapper o_d(dst_md());
-            VDISPATCH_SUM(o_d.data_type() == data_type,
-                    VERBOSE_INVALID_DATATYPE, "o_d");
-            VDISPATCH_SUM(o_d.is_dense(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            ok = ok && o_d.data_type() == data_type && o_d.is_dense();
+            if (!ok) return status::unimplemented;
 
             for (int i = 0; i < n; ++i) {
                 const memory_desc_wrapper i_d(src_md(i));
-                VDISPATCH_SUM(
-                        i_d == o_d, VERBOSE_INCONSISTENT_MDS, "i_d", "o_d");
+                if (i_d != o_d) return status::unimplemented;
             }
 
             return status::success;
@@ -63,7 +60,7 @@ struct gen9_simple_sum_t : public gpu_primitive_t {
 
     gen9_simple_sum_t(const pd_t *apd) : gpu_primitive_t(apd) {}
 
-    virtual status_t init(impl::engine_t *engine);
+    virtual status_t init(engine_t *engine);
 
     virtual status_t execute(const exec_ctx_t &ctx) const {
         status_t status = status::success;
@@ -100,9 +97,8 @@ private:
 };
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_JIT_GEN9_SIMPLE_SUM_HPP
+#endif // GPU_JIT_GEN9_SIMPLE_SUM_HPP

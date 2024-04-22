@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,20 +14,22 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_REDUCTION_ATOMIC_REDUCTION_HPP
-#define GPU_INTEL_OCL_REDUCTION_ATOMIC_REDUCTION_HPP
+#ifndef GPU_atomic_REDUCTION_HPP
+#define GPU_atomic_REDUCTION_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_reduction_pd.hpp"
-#include "gpu/ocl/reduction/reduction_utils.hpp"
-#include "gpu/primitive_conf.hpp"
-#include "gpu/serialization.hpp"
+#include "gpu/intel/compute/dispatch_reusable.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/ocl/reduction/reduction_utils.hpp"
+#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 struct atomic_reduction_key_params_t
@@ -45,6 +47,10 @@ struct atomic_reduction_key_params_t
         static const std::vector<const char *> kernel_names = {"atomic_reduce"};
         return kernel_names;
     }
+
+#if __cplusplus >= 202002L
+    bool operator==(const atomic_reduction_key_params_t &) const = default;
+#endif
 
     status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
 
@@ -85,7 +91,7 @@ struct atomic_reduction_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:atomic", atomic_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = smask_t::gpu_attr;
             VDISPATCH_REDUCTION_SC(
@@ -105,8 +111,8 @@ struct atomic_reduction_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
-        status_t init_finalization_pd(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
+        status_t init_finalization_pd(engine_t *engine);
         void init_scratchpad();
 
         int div = 0;
@@ -116,7 +122,7 @@ struct atomic_reduction_t : public gpu_primitive_t {
         std::shared_ptr<primitive_desc_t> eltwise_pd_;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         auto &phases = pd()->phases;
 
         for (auto &phase : phases) {
@@ -144,11 +150,10 @@ private:
     }
 
     std::vector<compute::kernel_t> kernels_;
-    std::shared_ptr<impl::primitive_t> eltwise_p_;
+    std::shared_ptr<primitive_t> eltwise_p_;
 };
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

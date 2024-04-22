@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,20 +14,19 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_REDUCTION_REF_REDUCTION_HPP
-#define GPU_INTEL_OCL_REDUCTION_REF_REDUCTION_HPP
+#ifndef GPU_REF_REDUCTION_HPP
+#define GPU_REF_REDUCTION_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_reduction_pd.hpp"
-#include "gpu/primitive_conf.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 struct ref_reduction_t : public gpu_primitive_t {
@@ -37,7 +36,7 @@ struct ref_reduction_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("reduction_ref:any", ref_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = sm::post_ops | sm::gpu_attr;
 
@@ -57,13 +56,13 @@ struct ref_reduction_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
         reduction_conf_t conf;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
 
         status_t status = pd()->init_kernel_ctx(kernel_ctx);
@@ -87,7 +86,6 @@ private:
 };
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

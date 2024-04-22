@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,14 +16,8 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/ref_shuffle.hpp"
 #include "gpu/intel/ocl/shuffle_by_reorder.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/ref_shuffle.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

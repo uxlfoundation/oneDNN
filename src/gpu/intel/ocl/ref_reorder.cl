@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,31 +16,21 @@
 
 #define USE_CUSTOM_GWS_GET_ID
 
-// Temporary W/A for bf16 problems in HW and compiler
-#undef cl_future_bf16_cvt
-
 #include "gpu/intel/ocl/dispatch.h"
-#include "gpu/intel/ocl/ocl_philox.h"
 #include "gpu/intel/ocl/reorder_common.h"
 #include "gpu/intel/ocl/types_interop.h"
 
+#define TO_I4 ((DST_DT_U4 || DST_DT_S4) && (!SRC_DT_U4 && !SRC_DT_S4))
 #define FROM_I4 ((SRC_DT_U4 || SRC_DT_S4) && (!DST_DT_U4 && !DST_DT_S4))
-#define GWS_GET_THREAD_ID(index) \
-    (off_t)(get_global_id(index) + offset.array[index])
+#define GWS_GET_THREAD_ID(index) (get_global_id(index) + offset.array[index])
 
 KERNEL_ATTR
 __kernel void ref_reorder(__global SRC_DATA_T *restrict src,
-        __global DST_DATA_T *restrict dst,
-        __global SRC_SCALES_DATA_T *restrict src_scales,
-        __global SRC_ZP_DATA_T *restrict src_zps,
-        __global float *restrict dst_scales, __global int *dst_zps,
-        float sum_scale, int sum_zp,
-#if WITH_SROUND
-        __global uint *sround_seed_buf,
-#endif
-        int64x3_t offset) {
+        __global DST_DATA_T *restrict dst, __global float *restrict src_scales,
+        __global int *restrict src_zps, __global float *restrict dst_scales,
+        __global int *dst_zps, float sum_scale, int sum_zp, int64x3_t offset) {
 
-    int src_zp = 0;
+    const int src_zp = GET_SRC_ZP(src_zps);
     const int dst_zp = GET_DST_ZP(dst_zps);
     float src_scale = 1.0f;
     float dst_scale = 1.0f;
@@ -62,10 +52,6 @@ __kernel void ref_reorder(__global SRC_DATA_T *restrict src,
     const off_t d4_blk_end = d4_blk_start + GWS_GET_D4_BLOCK();
     const off_t d5_blk_end = d5_blk_start + GWS_GET_D5_BLOCK();
 
-#if WITH_SROUND
-    const uint sround_seed = *sround_seed_buf;
-#endif
-
     for_(off_t d0 = d0_blk_start; d0 < d0_blk_end; ++d0)
     for_(off_t d1 = d1_blk_start; d1 < d1_blk_end; ++d1)
     for_(off_t d2 = d2_blk_start; d2 < d2_blk_end; ++d2)
@@ -86,32 +72,29 @@ __kernel void ref_reorder(__global SRC_DATA_T *restrict src,
             continue;
         }
 #endif
-        // Both scales and zero-points include groups in their offsets.
-        // It involves division by a group value of a correspondent dX value,
-        // and also adjusting stride for a dimension with a group.
-#if WITH_SRC_ZPOINT
-        off_t zp_off = ZPOINT_OFF(SRC, d0, d1, d2, d3, d4, d5);
-        src_zp = SRC_ZP_TO_REF(src_zps, zp_off);
-#endif
 #if WITH_SRC_SCALE
-        off_t scale_off = SCALE_OFF(SRC, d0, d1, d2, d3, d4, d5);
-        src_scale = SRC_SCALES_TO_REF(src_scales[scale_off]);
+        src_scale = src_scales[SCALE_OFF(SRC, d0, d1, d2, d3, d4, d5)];
 #endif
 #if WITH_DST_SCALE
         dst_scale = dst_scales[SCALE_OFF(DST, d0, d1, d2, d3, d4, d5)];
 #endif
-#if FROM_I4 || SRC_DT_F4_E2M1
-        SRC_DATA_T src_value = GET_HALF_BYTE(src, src_off);
+#if FROM_I4
+        SRC_DATA_T sval = GET_HALF_BYTE(src, src_off);
+        dst[dst_off] = TO_DST(SRC_TO_REF(sval));
+#elif TO_I4
+        if (dst_off % 2) {
+            continue;
+        } else {
+            SRC_DATA_T sval = src[src_off];
+            uchar dval = 0;
+            dval = dval | TO_DST(sval);
+            sval = src[src_off + SRC_S_CONTIG_D];
+            dval = dval | ((TO_DST(sval) << 4));
+            SET_DOUBLE_HALF_BYTE(dst, dst_off, dval);
+        }
 #else
-        SRC_DATA_T src_value = src[src_off];
-#endif
-#if WITH_SROUND
-#define ROUND(f) stochastic_round_fwd(f, dst_off, sround_seed)
-#else
-#define ROUND DEFAULT_ROUND
-#endif
-
-        REORDER(ROUND, dst[dst_off], src_value, src_scale, dst_scale, sum_scale,
+        REORDER(dst[dst_off], src[src_off], src_scale, dst_scale, sum_scale,
                 src_zp, dst_zp, sum_zp);
+#endif
     }
 }

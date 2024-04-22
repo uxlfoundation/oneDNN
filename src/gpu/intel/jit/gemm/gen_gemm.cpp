@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,21 +22,19 @@
 #include "common/type_helpers.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
-#include "gpu/intel/jit/gemm/include/driver_info.hpp"
+#include "gpu/intel/jit/gemm/gen_gemm_kernel_common.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, zero_pool_t *zero_pool,
-        const memory_storage_t &a, const memory_storage_t &b,
-        const memory_storage_t &c, const memory_storage_t *ao,
-        const memory_storage_t *bo, const memory_storage_t *a_scales,
-        const memory_storage_t *b_scales, const memory_storage_t &co,
-        const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
+        compute::compute_stream_t *compute_stream, const memory_storage_t &a,
+        const memory_storage_t &b, const memory_storage_t &c,
+        const memory_storage_t *ao, const memory_storage_t *bo,
+        const memory_storage_t *a_scales, const memory_storage_t *b_scales,
+        const memory_storage_t &co, const memory_storage_t *c_temp,
         int po_count, const memory_storage_t **po_srcs, int64_t offset_a,
         int64_t offset_b, int64_t offset_c, int32_t offset_aq,
         int32_t offset_bq, int32_t offset_co, int32_t *offset_po_src,
@@ -51,6 +49,14 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             && !nocopy_info()->kParallelVariable();
 
     auto problem = pd()->kernel_desc()->problem();
+
+    auto stride_a0 = int32_t(pd()->eff_stride_a(0));
+    auto stride_b0 = int32_t(pd()->eff_stride_b(0));
+    auto stride_c0 = int32_t(pd()->desc()->stride_c(0));
+
+    auto stride_a1 = int32_t(pd()->eff_stride_a(1));
+    auto stride_b1 = int32_t(pd()->eff_stride_b(1));
+    auto stride_c1 = int32_t(pd()->desc()->stride_c(1));
 
     if (!last_k_block) flags |= FlagNonfinalKBlock;
     if (cmask & 1) flags |= FlagCOColumn;
@@ -80,21 +86,11 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
     if (problem->aScale2D) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D) arg_list.set(argn++, *b_scales);
     if (problem->aoPtrDims == 2 || problem->aScale2D) {
-        auto layout = problem->aScale2D ? problem->A_scale.layout
-                                        : problem->AO.layout;
-        int32_t ldaq = isColMajor(layout)
-                ? pd()->eff_m()
-                : utils::div_up(pd()->desc()->k(), problem->aqGroupK);
-        if (pd()->src_po_sc_ && swapab) ldaq = 0;
+        int32_t ldaq = pd()->eff_m();
         arg_list.set(argn++, ldaq);
     }
     if (problem->boPtrDims == 2 || problem->bScale2D) {
-        auto layout = problem->bScale2D ? problem->B_scale.layout
-                                        : problem->BO.layout;
-        int32_t ldbq = !isColMajor(layout)
-                ? pd()->eff_n()
-                : utils::div_up(pd()->desc()->k(), problem->bqGroupK);
-        if (pd()->src_po_sc_ && !swapab) ldbq = 0;
+        int32_t ldbq = pd()->eff_m();
         arg_list.set(argn++, ldbq);
     }
     if (pd()->with_c_zero_points() || pd()->with_bias()
@@ -107,10 +103,6 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         }
     }
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
-    if (problem->cStochasticRound) { arg_list.set(argn++, *sround_seed); }
-    arg_list.set(argn++, flags);
-    if (k_parallel_fixed) arg_list.set(argn++, k0);
-
     for (int i = 0; i < po_count; i++) {
         if (!po_srcs[i]) continue;
         arg_list.set(argn++, *po_srcs[i]);
@@ -119,37 +111,37 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         if (problem->binaryRow[i] && problem->binaryCol[i])
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
     }
+    arg_list.set(argn++, flags);
+    if (k_parallel_fixed) arg_list.set(argn++, k0);
 
     std::unique_ptr<memory_storage_t> zeros;
     int zp_token = 0;
     if (nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps()) {
-        CHECK(zero_pool->claim(
+        CHECK(zero_pool_->claim(
                 compute_stream, zero_pool_bytes_, zeros, &zp_token));
         arg_list.set(argn++, *zeros);
     }
 
     if (pd()->batch_dims() >= 1) {
-        for (int i = pd()->batch_dims() - 1; i >= 0; i--) {
-            auto stride_a = int32_t(pd()->eff_stride_a(i));
-            auto stride_b = int32_t(pd()->eff_stride_b(i));
-            auto stride_c = int32_t(pd()->desc()->stride_c(i));
-            arg_list.set(argn++, stride_a);
-            arg_list.set(argn++, stride_b);
-            arg_list.set(argn++, stride_c);
-        }
-        for (int i = 0; i < po_count; i++) {
-            if (problem->binaryBatch[i]) {
-                for (int b = pd()->batch_dims() - 1; b >= 0; b--) {
-                    arg_list.set(argn++, int32_t(pd()->stride_binary(i, b)));
-                }
-            }
-        }
-        for (int i = 1; i < pd()->batch_dims(); i++) {
-            auto batchSize = uint32_t(pd()->desc()->c_desc.dims[i]);
-            uint32_t recipBatchSize = uint32_reciprocal(batchSize);
-            arg_list.set(argn++, batchSize);
-            arg_list.set(argn++, recipBatchSize);
-        }
+        arg_list.set(argn++, stride_a0);
+        arg_list.set(argn++, stride_b0);
+        arg_list.set(argn++, stride_c0);
+        for (int i = 0; i < po_count; i++)
+            if (problem->binaryBatch[i])
+                arg_list.set(argn++, int32_t(pd()->stride_binary(i, 0)));
+    }
+
+    if (pd()->batch_dims() >= 2) {
+        auto batchSize1 = uint32_t(pd()->desc()->c_desc.dims[1]);
+        uint32_t recipBatchSize1 = uint32_reciprocal(batchSize1);
+        arg_list.set(argn++, stride_a1);
+        arg_list.set(argn++, stride_b1);
+        arg_list.set(argn++, stride_c1);
+        for (int i = 0; i < po_count; i++)
+            if (problem->binaryBatch[i])
+                arg_list.set(argn++, int32_t(pd()->stride_binary(i, 1)));
+        arg_list.set(argn++, batchSize1);
+        arg_list.set(argn++, recipBatchSize1);
     }
 
     auto lws_k = pd()->kernel_desc()->aux_params()->wgK;
@@ -219,7 +211,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
     auto status = parallel_for(ctx, nd_range, nocopy_kernel_, arg_list);
 
     if (nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps())
-        zero_pool->async_release(zp_token, compute_stream->ctx().get_deps());
+        zero_pool_->async_release(zp_token, compute_stream->ctx().get_deps());
 
     return status;
 }
@@ -227,17 +219,6 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
 status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     auto *compute_stream
             = utils::downcast<compute::compute_stream_t *>(ctx.stream());
-
-    auto zero_pool = zero_pool_;
-
-#ifdef DNNL_WITH_SYCL
-    if (!zero_pool) {
-        auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
-                ctx.stream()->engine());
-        CHECK(lookup_zero_pool(compute_engine, compute_stream,
-                zero_pool_chunk_size_, &zero_pool));
-    }
-#endif
 
     const auto d = pd()->desc();
     const auto &problem = *pd()->kernel_desc()->problem();
@@ -274,7 +255,6 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     auto &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point);
     auto &bias = GEMM_CTX_ARG_STORAGE(bias);
     auto &sum_ab = GEMM_CTX_ARG_STORAGE(sum_ab);
-    auto *sround_seed = &GEMM_CTX_ARG_STORAGE(sround_seed);
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
@@ -332,11 +312,11 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     }
 
     size_t off_a0
-            = types::bytes_to_elements(a_type, a.offset()) + pd()->dyn_offset_a;
+            = a.offset() / types::data_type_size(a_type) + pd()->dyn_offset_a;
     size_t off_b0
-            = types::bytes_to_elements(b_type, b.offset()) + pd()->dyn_offset_b;
+            = b.offset() / types::data_type_size(b_type) + pd()->dyn_offset_b;
     size_t off_c0
-            = types::bytes_to_elements(c_type, c.offset()) + pd()->dyn_offset_c;
+            = c.offset() / types::data_type_size(c_type) + pd()->dyn_offset_c;
     size_t off_aq0 = 0, off_bq0 = 0, off_co0 = 0;
 
     int32_t po_offsets0[GEMM_MAX_PO] = {0}, po_offsets[GEMM_MAX_PO] = {0};
@@ -345,16 +325,17 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
             po_offsets0[i] = po_srcs[i]->offset() / problem.Tbinary[i];
 
     int cmask = 0;
+
     if (pd()->with_c_zero_points()) {
-        off_co0 = types::bytes_to_elements(c_type, co->offset())
+        off_co0 = co->offset() / types::data_type_size(c_type)
                 + pd()->dyn_offset_co;
         CHECK(pd()->attr()->zero_points_.get(DNNL_ARG_DST, &cmask));
     } else if (pd()->with_bias()) {
-        off_co0 = types::bytes_to_elements(c_type, bias.offset());
+        off_co0 = bias.offset() / types::data_type_size(c_type);
         co = &bias;
         cmask = pd()->bias_cmask();
     } else if (pd()->with_sum_ab()) {
-        off_co0 = types::bytes_to_elements(c_type, sum_ab.offset());
+        off_co0 = sum_ab.offset() / types::data_type_size(c_type);
         co = &sum_ab;
         cmask = pd()->sum_ab_cmask();
     }
@@ -365,10 +346,10 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
         if (swapab) std::swap(ao, bo);
     }
 
-    if (pd()->wei_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
-
-    if (pd()->src_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
-    if (swapab) std::swap(a_scales, b_scales);
+    if (pd()->wei_scales_2d()) {
+        a_scales = &GEMM_CTX_ARG_STORAGE(a_scales);
+        if (swapab) std::swap(a_scales, b_scales);
+    }
 
     if (swapab) {
         uint8_t swap_table[4] = {0, 2, 1, 3};
@@ -405,11 +386,11 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
                 && (k > dim_t(k0) * pd()->kernel_desc()->aux_params()->wgK)) {
-            status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
-                    bo, a_scales, b_scales, *co, nullptr, sround_seed, po_count,
-                    po_srcs, off_a0, off_b0, off_c0, int32_t(off_aq0),
-                    int32_t(off_bq0), int32_t(off_co0), po_offsets0, lda, ldb,
-                    ldc, m, n, 0, 1, 1.0f, beta, 0, false, swapab, true);
+            status = launch_nocopy(ctx, compute_stream, a, b, c, ao, bo,
+                    a_scales, b_scales, *co, nullptr, po_count, po_srcs, off_a0,
+                    off_b0, off_c0, int32_t(off_aq0), int32_t(off_bq0),
+                    int32_t(off_co0), po_offsets0, lda, ldb, ldc, m, n, 0, 1,
+                    1.0f, beta, 0, false, swapab, true);
             if (status) return status;
             beta = 1.0f;
         }
@@ -467,12 +448,12 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
                 }
 
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
-                status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
-                        ao, bo, a_scales, b_scales, *co, c_temp.get(),
-                        sround_seed, po_count, po_srcs, off_a_src, off_b_src,
-                        off_c, off_aq, off_bq, off_co, po_offsets, lda, ldb,
-                        ldc, size_m, size_n, size_k, k0, alpha, eff_beta, cmask,
-                        last_k_block, swapab, disable_hilbert);
+                status = launch_nocopy(ctx, compute_stream, a, b, c, ao, bo,
+                        a_scales, b_scales, *co, c_temp.get(), po_count,
+                        po_srcs, off_a_src, off_b_src, off_c, off_aq, off_bq,
+                        off_co, po_offsets, lda, ldb, ldc, size_m, size_n,
+                        size_k, k0, alpha, eff_beta, cmask, last_k_block,
+                        swapab, disable_hilbert);
 
                 if (status) return status;
             }
@@ -483,7 +464,6 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

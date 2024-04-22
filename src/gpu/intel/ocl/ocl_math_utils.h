@@ -20,7 +20,7 @@
 #include "gpu/intel/ocl/ocl_custom_types.h"
 #include "gpu/intel/ocl/ocl_utils.h"
 
-#include "gpu/ocl/ocl_utils.h"
+#include "gpu/intel/ocl/ocl_utils.h"
 
 // Due to JIT compilation and a lack of bitwise operations in implementations,
 // this warning has a high false-positive rate.

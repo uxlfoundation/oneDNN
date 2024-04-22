@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_GEMM_GEMM_WALK_ORDERS_HPP
-#define GPU_INTEL_JIT_GEMM_GEMM_WALK_ORDERS_HPP
+#ifndef GPU_JIT_GEMM_GEMM_WALK_ORDERS_HPP
+#define GPU_JIT_GEMM_GEMM_WALK_ORDERS_HPP
 
 #include "common/utils.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -24,7 +24,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 inline uint32_t uint32_reciprocal(uint32_t x) {
@@ -54,7 +53,7 @@ inline void gemm_linear_order_args(compute::kernel_arg_list_t &arg_list,
     uint32_t ss_count = dev_info->eu_count() / dev_info->max_eus_per_wg();
     bool large_grf_mode = (info.grfCount > 128);
     uint32_t thread_per_ss = dev_info->hw_threads(large_grf_mode) / ss_count;
-    uint32_t thread_per_tg = into<uint32_t>(lws.nelems());
+    uint32_t thread_per_tg = gpu_utils::into<uint32_t>(lws.nelems());
     uint32_t tg_per_ss = thread_per_ss / thread_per_tg;
     uint32_t concurrent_tg = tg_per_ss * ss_count;
 
@@ -162,22 +161,11 @@ inline void gemm_linear_order_args(compute::kernel_arg_list_t &arg_list,
         if (k_parallel_start > 0 && k_parallel_start != group_count)
             k_parallel_start -= concurrent_tg;
 
-        int k_padding = info.kPadding(), old_k_padding = k_padding;
-        auto k_padded = k;
-        int64_t k_total = 0;
-        uint32_t k0 = k;
+        auto k_padded = utils::rnd_up(k + info.kPadding(), info.unroll[LoopK]);
+        auto k_total = int64_t(k_padded) * (group_count - k_parallel_start);
 
-        do {
-            k_padded = utils::rnd_up(k + k_padding, info.unroll[LoopK]);
-            k_total = int64_t(k_padded) * (group_count - k_parallel_start);
-            if (k_total == 0) break;
-
-            k0 = utils::div_up(k_total, concurrent_tg);
-            k0 = utils::rnd_up(k0, info.unroll[LoopK]);
-
-            old_k_padding = k_padding;
-            k_padding = std::min<int>(k_padding, 2 * k0);
-        } while (k_padding != old_k_padding);
+        uint32_t k0 = utils::div_up(k_total, concurrent_tg);
+        k0 = utils::rnd_up(k0, info.unroll[LoopK]);
 
         uint32_t k_recip = uint32_reciprocal(k_padded);
         uint32_t k0_recip = uint32_reciprocal(k0);
@@ -201,7 +189,6 @@ inline void gemm_linear_order_args(compute::kernel_arg_list_t &arg_list,
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

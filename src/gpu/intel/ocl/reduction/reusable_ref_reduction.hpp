@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_REDUCTION_REUSABLE_REF_REDUCTION_HPP
-#define GPU_INTEL_OCL_REDUCTION_REUSABLE_REF_REDUCTION_HPP
+#ifndef GPU_REUSABLE_REF_REDUCTION_HPP
+#define GPU_REUSABLE_REF_REDUCTION_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
@@ -30,7 +30,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 struct ref_reduction_key_params_t
@@ -49,6 +48,10 @@ struct ref_reduction_key_params_t
                 = {"reusable_ref_reduce"};
         return kernel_names;
     }
+
+#if __cplusplus >= 202002L
+    bool operator==(const ref_reduction_key_params_t &) const = default;
+#endif
 
     status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
 
@@ -82,7 +85,7 @@ struct reusable_ref_reduction_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:reusable:ref", reusable_ref_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = smask_t::gpu_attr;
             VDISPATCH_REDUCTION_SC(
@@ -100,14 +103,14 @@ struct reusable_ref_reduction_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
         void init_scratchpad();
 
         int div = 0;
         std::vector<ref_reduction_conf_t> phases;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         auto &phases = pd()->phases;
 
         for (auto &phase : phases) {
@@ -130,7 +133,6 @@ private:
 };
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

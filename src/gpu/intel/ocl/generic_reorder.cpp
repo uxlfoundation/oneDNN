@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -54,7 +54,6 @@ Difficulty is in determining how to achieve the above goal for
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 using namespace dnnl::impl::memory_tracking::names;
@@ -62,7 +61,7 @@ using namespace dnnl::impl::memory_tracking::names;
 struct dimension_t {
     dim_t size;
     dim_t step;
-    dim_idx_t idx;
+    int idx;
 };
 
 using dimensions_t = std::vector<dimension_t>;
@@ -108,17 +107,17 @@ dimensions_t dims_by_stride(const memory_desc_wrapper &mdw) {
 // outermost-> 1c:4a:3b:7d:8b:8a:2b <-innermost
 dimensions_t query_dims_and_blocks(const memory_desc_wrapper &mdw) {
     auto blocks = dims_by_stride(mdw);
-    const dim_idx_t ndims = mdw.ndims();
+    const int ndims = mdw.ndims();
     const auto &desc = mdw.blocking_desc();
-    const dim_idx_t nblks = desc.inner_nblks;
+    const int nblks = desc.inner_nblks;
 
     // Calculate info for inner blocks
     dimensions_t inner_blks(nblks);
-    std::vector<dim_t> steps(ndims, 1);
+    std::vector<int> steps(ndims, 1);
     dim_t blks_size = 1;
     for (int i = nblks - 1; i >= 0; --i) {
         auto &blk = inner_blks[i];
-        blk.idx = into<dim_idx_t>(desc.inner_idxs[i]);
+        blk.idx = desc.inner_idxs[i];
         blk.size = desc.inner_blks[i];
         blk.step = steps[blk.idx];
         // steps increase in reverse order of how blocks are listed
@@ -346,13 +345,13 @@ private:
     predicate_t pred;
 };
 
-#define NO_IDX dim_idx::invalid
+#define NO_IDX (-1)
 // Find the index of the dimension that always and only follows the dimension
 // with index idx. If none exists, return NO_IDX. If no dimension with index idx
 // is present in the given block representation, return idx to delete the
 // dimension
-dim_idx_t successor(const dimensions_t &a, dim_idx_t idx) {
-    dim_idx_t succ;
+int successor(const dimensions_t &a, int idx) {
+    int succ;
     auto match_idx = [&](const dim_pair_t &p) { return p[0].idx == idx; };
     auto match_xor = [&](const dim_pair_t &p) {
         return match_idx(p) ^ (p[1].idx == succ);
@@ -373,8 +372,7 @@ dim_idx_t successor(const dimensions_t &a, dim_idx_t idx) {
 // given block representations. The successor dimension will be combined with
 // the given dimension, or, in the case that the given dimension does not appear
 // in the block representation, it will be deleted.
-dim_idx_t successor(
-        const dimensions_t &a, const dimensions_t &b, dim_idx_t idx) {
+int successor(const dimensions_t &a, const dimensions_t &b, int idx) {
     auto succ = successor(a, idx);
     if (succ == NO_IDX || succ != successor(b, idx)) return NO_IDX;
 
@@ -393,7 +391,7 @@ dim_idx_t successor(
     return (it_a != end_a || it_b != end_b) ? NO_IDX : succ;
 }
 
-bool can_be_combined(dim_idx_t idx, int mask) {
+bool can_be_combined(int idx, int mask) {
     return !(idx == NO_IDX || (mask & (1 << idx)));
 }
 
@@ -402,10 +400,10 @@ void compress(memory_desc_t &a, memory_desc_t &b, int &a_mask, int &b_mask) {
     const auto blks_b = query_dims_and_blocks(b);
     const int skip_mask = a_mask | b_mask | extended_dims(a) | extended_dims(b);
 
-    const dim_idx_t ndims = a.ndims;
-    std::vector<dim_idx_t> successors(ndims, NO_IDX);
-    std::vector<dim_idx_t> aliases(ndims);
-    for (dim_idx_t i = 0; i < ndims; ++i) {
+    const int ndims = a.ndims;
+    std::vector<int> successors(ndims, NO_IDX);
+    std::vector<int> aliases(ndims);
+    for (int i = 0; i < ndims; ++i) {
         aliases[i] = i;
         if ((a_mask | b_mask) & (1 << i)) continue;
         auto succ = successor(blks_a, blks_b, i);
@@ -414,12 +412,12 @@ void compress(memory_desc_t &a, memory_desc_t &b, int &a_mask, int &b_mask) {
     }
 
     for (int i = ndims - 1; i >= 0; --i) {
-        dim_idx_t succ = successors[i];
+        int succ = successors[i];
         if (succ == NO_IDX) continue;
         while (succ != aliases[succ])
             succ = aliases[succ];
-        dim_idx_t from = std::max<dim_idx_t>(i, succ);
-        dim_idx_t into = std::min<dim_idx_t>(i, succ);
+        int from = std::max(i, succ);
+        int into = std::min(i, succ);
         combine(a, into, from);
         combine(b, into, from);
         remove_bit(a_mask, from);
@@ -497,7 +495,7 @@ bool fill_to_vect(
     subset.clear();
     for (auto &dim : all) {
         dim_t next_size = current_size * dim.size;
-        dim_t next_full_vecs = next_size / simd_size;
+        int next_full_vecs = next_size / simd_size;
         if (next_full_vecs >= min_full_vecs || next_size % simd_size == 0) {
             // Vectorize innermost dim(s). If it's not divisible by simd size,
             // they will need to be padded. And for that the vectorised dim(s)
@@ -529,7 +527,7 @@ bool add_to_vector(dimensions_t &v, const dimension_t &item) {
 }
 
 bool no_more_such_idx(dimensions_t &vect, size_t iter) {
-    const dim_idx_t idx_to_search_for = vect[iter].idx;
+    const int idx_to_search_for = vect[iter].idx;
     for (size_t i = iter + 1; i < vect.size(); i++) {
         if (vect[i].idx == idx_to_search_for) { return false; }
     }
@@ -547,7 +545,7 @@ dimensions_t fix_order_to(dimensions_t input, dimensions_t ref) {
         for (size_t j = 0; j < input.size(); j++) {
             if (ref[i].size != 1 && input[j].size != 1
                     && ref[i].idx == input[j].idx) {
-                dim_t smaller = std::min(ref[i].size, input[j].size);
+                int smaller = std::min(ref[i].size, input[j].size);
                 if (no_more_such_idx(ref, i) || j == input.size() - 1) {
                     smaller = input[j].size;
                 }
@@ -679,8 +677,8 @@ bool split_into_blocks_and_packets(size_t vect, size_t optimal_burst_bytes,
     // 6. At this point contents of src block and dst blocks are not sorted.
     // Sort each of them according to tensor format tag to make longest
     // possible continuous memory accesses.
-    src_block = fix_order_to(src_block, std::move(sremainder));
-    dst_block = fix_order_to(dst_block, std::move(dremainder));
+    src_block = fix_order_to(src_block, sremainder);
+    dst_block = fix_order_to(dst_block, dremainder);
     fix_steps(src_block, src_packet);
     fix_steps(dst_block, dst_packet);
     return true;
@@ -688,8 +686,8 @@ bool split_into_blocks_and_packets(size_t vect, size_t optimal_burst_bytes,
 
 bool fill_conf_vld(const memory_desc_wrapper &src,
         const memory_desc_wrapper &dst, int scale_mask, size_t memlimit_bytes,
-        size_t optimal_burst_bytes, vectorize_last_dim_t &cfg,
-        dim_idx_t &vect_dim, int &vect_size, dim_t *blocks) {
+        size_t optimal_burst_bytes, vectorize_last_dim_t &cfg, int &vect_dim,
+        int &vect_size, dim_t *blocks) {
 
     const dimensions_t src_dims = query_dims_and_blocks(src);
     const dimensions_t dst_dims = query_dims_and_blocks(dst);
@@ -718,31 +716,31 @@ bool fill_conf_vld(const memory_desc_wrapper &src,
         cfg.src_blk[i].dim_idx = 0;
         cfg.dst_blk[i].dim_idx = 0;
     }
-    cfg.src_vct[0].blk_size = into<int>(src_packet[0].size);
+    cfg.src_vct[0].blk_size = src_packet[0].size;
     cfg.src_vct[0].dim_idx = src_packet[0].idx;
-    cfg.dst_vct[0].blk_size = into<int>(dst_packet[0].size);
+    cfg.dst_vct[0].blk_size = dst_packet[0].size;
     cfg.dst_vct[0].dim_idx = dst_packet[0].idx;
     for (size_t i = 0; i < src_packet.size(); i++) {
         cfg.src_vct[i].dim_idx = src_packet[i].idx;
-        cfg.src_vct[i].blk_size = into<int>(src_packet[i].size);
-        cfg.src_vct[i].step_size = into<int>(src_packet[i].step);
+        cfg.src_vct[i].blk_size = src_packet[i].size;
+        cfg.src_vct[i].step_size = src_packet[i].step;
     }
     for (size_t i = 0; i < dst_packet.size(); i++) {
         cfg.dst_vct[i].dim_idx = dst_packet[i].idx;
-        cfg.dst_vct[i].blk_size = into<int>(dst_packet[i].size);
-        cfg.dst_vct[i].step_size = into<int>(dst_packet[i].step);
+        cfg.dst_vct[i].blk_size = dst_packet[i].size;
+        cfg.dst_vct[i].step_size = dst_packet[i].step;
     }
 
     // fill src's and dst's loop recipe
     for (size_t i = 0; i < src_block.size(); i++) {
         cfg.src_blk[i].dim_idx = src_block[i].idx;
-        cfg.src_blk[i].blk_size = into<int>(src_block[i].size);
-        cfg.src_blk[i].step_size = into<int>(src_block[i].step);
+        cfg.src_blk[i].blk_size = src_block[i].size;
+        cfg.src_blk[i].step_size = src_block[i].step;
     }
     for (size_t i = 0; i < dst_block.size(); i++) {
         cfg.dst_blk[i].dim_idx = dst_block[i].idx;
-        cfg.dst_blk[i].blk_size = into<int>(dst_block[i].size);
-        cfg.dst_blk[i].step_size = into<int>(dst_block[i].step);
+        cfg.dst_blk[i].blk_size = dst_block[i].size;
+        cfg.dst_blk[i].step_size = dst_block[i].step;
     }
     cfg.vector_dim = dst_packet[0].idx;
     vect_dim = dst_packet[0].idx;
@@ -771,7 +769,7 @@ bool fill_conf_vld(const memory_desc_wrapper &src,
     return true;
 }
 
-status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t generic_reorder_t::pd_t::init_conf(engine_t *engine) {
     using namespace format_tag;
 
     size_t memlimit_bytes;
@@ -825,7 +823,7 @@ status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     dim_t blocks[MAX_NDIMS] = {1, 1, 1, 1, 1, 1};
     int vect_size = 1;
-    dim_idx_t vect_dim = 0;
+    int vect_dim = 0;
 
     if (!fill_conf_vld(src_mdw, dst_mdw, src_mask | dst_mask, memlimit_bytes,
                 optimal_burst_bytes, conf.aux_data.vld, vect_dim, vect_size,
@@ -837,9 +835,9 @@ status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
 
-    for (dim_idx_t i = 0; i < MAX_NDIMS; ++i) {
+    for (int i = 0; i < MAX_NDIMS; ++i) {
         auto dim_str = utils::format("D%d", i);
-        if (i < into<dim_idx_t>(dst_mdw.ndims())) {
+        if (i < dst_mdw.ndims()) {
             uint64_t dim = padded_dims[i];
             // Pad vectorized dim to multiple of block size (to make sure that
             // enough work items will be generated to have only full subgroups,
@@ -1000,7 +998,6 @@ status_t generic_reorder_t::execute(const exec_ctx_t &ctx) const {
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,11 +16,6 @@
 
 #ifndef NGEN_REGISTER_ALLOCATOR_HPP
 #define NGEN_REGISTER_ALLOCATOR_HPP
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
 
 #include "ngen.hpp"
 #include <cstdint>
@@ -61,7 +56,7 @@ struct Bundle {
     inline int groupSize(HW hw) const;                  // Number of registers in each contiguous group of the bundle.
     inline int stride(HW hw) const;                     // Stride between register groups of the bundle.
 
-    inline uint64_t regMask(HW hw, int offset) const;   // Get register mask for this bundle, for registers [64*offset, 64*(offset+1)).
+    inline int64_t regMask(HW hw, int offset) const;    // Get register mask for this bundle, for registers [64*offset, 64*(offset+1)).
 
     friend constexpr bool operator==(const Bundle &b1, const Bundle &b2) {
         return b1.bundle_id == b2.bundle_id && b1.bank_id == b2.bank_id;
@@ -80,7 +75,7 @@ struct Bundle {
     static constexpr   int bank_count(HW hw)                { return bankCount(hw); }
     int first_reg(HW hw) const                              { return firstReg(hw); }
     int group_size(HW hw) const                             { return groupSize(hw); }
-    uint64_t reg_mask(HW hw, int offset) const              { return regMask(hw, offset); }
+    int64_t reg_mask(HW hw, int offset) const               { return regMask(hw, offset); }
     static bool same_bank(HW hw, RegData r1, RegData r2)    { return sameBank(hw, r1, r2); }
 };
 
@@ -97,8 +92,8 @@ struct BundleGroup {
 
     friend BundleGroup operator|(BundleGroup lhs, Bundle rhs) { lhs |= rhs; return lhs; }
     BundleGroup &operator|=(Bundle rhs) {
-        for (size_t rchunk = 0; rchunk < reg_masks.size(); rchunk++)
-            reg_masks[rchunk] |= rhs.reg_mask(hw, int(rchunk));
+        for (int rchunk = 0; rchunk < int(reg_masks.size()); rchunk++)
+            reg_masks[rchunk] |= rhs.regMask(hw, rchunk);
         return *this;
     }
 
@@ -174,11 +169,6 @@ public:
     inline int getRegisterCount() const { return regCount; }
     inline int countAllocedRegisters() const;
 
-    // Check availability.
-    inline bool isFree(GRF reg) const;
-    inline bool isFree(GRFRange range) const;
-    inline bool isFree(Subregister subreg) const;
-
 #ifdef NGEN_ENABLE_RA_DUMP
     inline void dump(std::ostream &str);
 #endif
@@ -240,10 +230,6 @@ int Bundle::firstReg(HW hw) const
     case HW::Gen12LP:
     case HW::XeHPC:
     case HW::Xe2:
-    case HW::Xe3:
-#if XE3P
-    case HW::Xe3p:
-#endif
         return (bundle0 << 1) | bank0;
     case HW::XeHP:
     case HW::XeHPG:
@@ -279,10 +265,6 @@ int Bundle::stride(HW hw) const
         return 4;
     case HW::Gen12LP:
     case HW::Xe2:
-    case HW::Xe3:
-#if XE3P
-    case HW::Xe3p:
-#endif
         return 16;
     case HW::XeHP:
     case HW::XeHPG:
@@ -294,9 +276,9 @@ int Bundle::stride(HW hw) const
     }
 }
 
-uint64_t Bundle::regMask(HW hw, int offset) const
+int64_t Bundle::regMask(HW hw, int offset) const
 {
-    uint64_t bundle_mask = -1, bank_mask = -1, base_mask = -1;
+    int64_t bundle_mask = -1, bank_mask = -1, base_mask = -1;
     int bundle0 = (bundle_id == any) ? 0 : bundle_id;
     int bank0   = (bank_id == any)   ? 0 : bank_id;
 
@@ -312,10 +294,6 @@ uint64_t Bundle::regMask(HW hw, int offset) const
         return bundle_mask & bank_mask;
     case HW::Gen12LP:
     case HW::Xe2:
-    case HW::Xe3:
-#if XE3P
-    case HW::Xe3p:
-#endif
         if (bundle_id != any)                           base_mask  = 0x0003000300030003;
         if (bank_id != any)                             base_mask &= 0x5555555555555555;
         return base_mask << (bank0 + (bundle0 << 1));
@@ -345,10 +323,6 @@ Bundle Bundle::locate(HW hw, RegData reg)
             return Bundle((base >> 1) & 1, base >> 6);
         case HW::Gen12LP:
         case HW::Xe2:
-        case HW::Xe3:
-#if XE3P
-        case HW::Xe3p:
-#endif
             return Bundle(base & 1, (base >> 1) & 7);
         case HW::XeHP:
         case HW::XeHPG:
@@ -379,10 +353,6 @@ void RegisterAllocator::init()
 
     if (hw < HW::XeHP)
         setRegisterCount(128);
-#if XE3P
-    else if (hw < HW::Xe3p)
-        setRegisterCount(256);
-#endif
 }
 
 void RegisterAllocator::claim(GRF reg)
@@ -488,31 +458,6 @@ void RegisterAllocator::release(FlagRegister flag)
         freeFlag |= (1 << (flag.index() + 1));
 }
 
-bool RegisterAllocator::isFree(GRF reg) const
-{
-    if (reg.isInvalid()) return true;
-    return freeSub[reg.getBase()] == fullSubMask;
-}
-
-bool RegisterAllocator::isFree(GRFRange range) const
-{
-    if (range.isInvalid()) return true;
-    for (int i = 0; i < range.getLen(); i++)
-        if (!isFree(range[i]))
-            return false;
-    return true;
-}
-
-bool RegisterAllocator::isFree(Subregister subreg) const
-{
-    if (subreg.isInvalid()) return true;
-    int r = subreg.getBase();
-    int dw = subreg.getDwords();
-    int o = (subreg.getByteOffset()) >> 2;
-    auto m = (1 << (o + dw)) - (1 << o);
-    return (~freeSub[r] & m) == 0;
-}
-
 // -------------------------------------------
 //  High-level register allocation functions.
 // -------------------------------------------
@@ -543,14 +488,14 @@ FlagRegister RegisterAllocator::allocFlag(bool sub)
 
 GRFRange RegisterAllocator::tryAllocRange(int nregs, Bundle baseBundle, BundleGroup bundleMask)
 {
-    uint64_t freeWhole64[sizeof(freeWhole) / sizeof(uint64_t)];
+    int64_t freeWhole64[sizeof(freeWhole) / sizeof(int64_t)];
     std::memcpy(freeWhole64, freeWhole, sizeof(freeWhole));
     bool ok = false;
     int r_base = -1;
 
     for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
-        uint64_t free = freeWhole64[rchunk] & bundleMask.regMask(rchunk);
-        uint64_t free_base = free & baseBundle.regMask(hw, rchunk);
+        int64_t free = freeWhole64[rchunk] & bundleMask.regMask(rchunk);
+        int64_t free_base = free & baseBundle.regMask(hw, rchunk);
 
         while (free_base) {
             // Find the first free base register.
@@ -586,7 +531,7 @@ GRFRange RegisterAllocator::tryAllocRange(int nregs, Bundle baseBundle, BundleGr
 
             // Not enough consecutive registers. Save time when looking for next base
             //  register by clearing the entire range of registers we just considered.
-            uint64_t clear_mask = free + (uint64_t(1) << first_bit);
+            int64_t clear_mask = free + (uint64_t(1) << first_bit);
             free &= clear_mask;
             free_base &= clear_mask;
         }
@@ -609,25 +554,17 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
     auto find_alloc_sub = [&,bundle,dwords](bool search_full_grf) -> bool {
         static const uint16_t alloc_patterns[4] = {0b1111111111111111, 0b0101010101010101, 0, 0b0001000100010001};
         auto alloc_pattern = alloc_patterns[(dwords - 1) & 3];
-        uint64_t freeWhole64[sizeof(freeWhole) / sizeof(uint64_t)];
+        int64_t freeWhole64[sizeof(freeWhole) / sizeof(int64_t)];
         std::memcpy(freeWhole64, freeWhole, sizeof(freeWhole));
-#if XE3P
-        /* Preferentially use r511 for small allocations as it can't be used in sendgx. */
-        if (search_full_grf && freeSub[511] == fullSubMask) {
-            r_alloc = 511;
-            o_alloc = 0;
-            return true;
-        }
-#endif
 
         for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
-            uint64_t free = search_full_grf ? freeWhole64[rchunk] : -1;
-            free &= bundle.reg_mask(hw, rchunk);
+            int64_t free = search_full_grf ? freeWhole64[rchunk] : -1;
+            free &= bundle.regMask(hw, rchunk);
 
             while (free) {
                 int rr = utils::bsf(free);
                 int r = rr + (rchunk << 6);
-                free &= ~(uint64_t(1) << rr);
+                free &= ~(int64_t(1) << rr);
 
                 if (search_full_grf || freeSub[r] != fullSubMask) {
                     int subfree = freeSub[r];
@@ -721,9 +658,5 @@ void RegisterAllocator::dump(std::ostream &str)
 #endif /* NGEN_ENABLE_RA_DUMP */
 
 } /* namespace NGEN_NAMESPACE */
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif
 
 #endif /* include guard */

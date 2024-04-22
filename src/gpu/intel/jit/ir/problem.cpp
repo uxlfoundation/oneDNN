@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 std::string to_string(tensor_kind_t tensor) {
@@ -40,115 +39,134 @@ std::string to_string(tensor_kind_t tensor) {
     return {};
 }
 
-const expr_t &pvar_t::index_var() const {
-    static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this)) {
-        auto var = var_t::make(type_t::s32(), name_ + "_idx");
-        vars[*this] = var;
+std::string to_string(prb_dim_kind_t kind) {
+    switch (kind) {
+#define CASE(name) \
+    case prb_dim_kind_t::name: return #name
+        CASE(undef);
+        CASE(g);
+        CASE(ic);
+        CASE(id);
+        CASE(ih);
+        CASE(iw);
+        CASE(kd);
+        CASE(kh);
+        CASE(kw);
+        CASE(mb);
+        CASE(oc);
+        CASE(od);
+        CASE(oh);
+        CASE(ow);
+        CASE(sd);
+        CASE(sh);
+        CASE(sw);
+        CASE(dd);
+        CASE(dh);
+        CASE(dw);
+        CASE(pd);
+        CASE(ph);
+        CASE(pw);
+        CASE(b);
+        CASE(m);
+        CASE(n);
+        CASE(k);
+#undef CASE
+        default: ir_error_not_expected();
     }
-    return vars[*this];
+    return {};
 }
 
-const expr_t &pvar_t::var() const {
-    static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this)) {
-        auto var = const_var_t::make(type_t::s32(), name_);
-        vars[*this] = var;
+prb_dim_spatial_kind_t to_spatial(prb_dim_kind_t kind) {
+    switch (kind) {
+        case prb_dim_kind_t::id:
+        case prb_dim_kind_t::od:
+        case prb_dim_kind_t::kd:
+        case prb_dim_kind_t::sd:
+        case prb_dim_kind_t::dd:
+        case prb_dim_kind_t::pd: return prb_dim_spatial_kind_t::d;
+        case prb_dim_kind_t::ih:
+        case prb_dim_kind_t::oh:
+        case prb_dim_kind_t::kh:
+        case prb_dim_kind_t::sh:
+        case prb_dim_kind_t::dh:
+        case prb_dim_kind_t::ph: return prb_dim_spatial_kind_t::h;
+        case prb_dim_kind_t::iw:
+        case prb_dim_kind_t::ow:
+        case prb_dim_kind_t::kw:
+        case prb_dim_kind_t::sw:
+        case prb_dim_kind_t::dw:
+        case prb_dim_kind_t::pw: return prb_dim_spatial_kind_t::w;
+        default: return prb_dim_spatial_kind_t::undef;
     }
-    return vars[*this];
 }
 
-pvar_t pvar_t::from_var(const expr_t &var) {
-    auto *ptr = var.as_ptr<const_var_t>();
-    if (!ptr) return pvar_t();
-    return pvar_t(ptr->name);
+namespace prb_dims {
+prb_dim_t undef(prb_dim_kind_t::undef);
+prb_dim_t g(prb_dim_kind_t::g);
+prb_dim_t ic(prb_dim_kind_t::ic);
+prb_dim_t id(prb_dim_kind_t::id);
+prb_dim_t ih(prb_dim_kind_t::ih);
+prb_dim_t iw(prb_dim_kind_t::iw);
+prb_dim_t kd(prb_dim_kind_t::kd);
+prb_dim_t kh(prb_dim_kind_t::kh);
+prb_dim_t kw(prb_dim_kind_t::kw);
+prb_dim_t mb(prb_dim_kind_t::mb);
+prb_dim_t oc(prb_dim_kind_t::oc);
+prb_dim_t od(prb_dim_kind_t::od);
+prb_dim_t oh(prb_dim_kind_t::oh);
+prb_dim_t ow(prb_dim_kind_t::ow);
+prb_dim_t sd(prb_dim_kind_t::sd);
+prb_dim_t sh(prb_dim_kind_t::sh);
+prb_dim_t sw(prb_dim_kind_t::sw);
+prb_dim_t dd(prb_dim_kind_t::dd);
+prb_dim_t dh(prb_dim_kind_t::dh);
+prb_dim_t dw(prb_dim_kind_t::dw);
+prb_dim_t pd(prb_dim_kind_t::pd);
+prb_dim_t ph(prb_dim_kind_t::ph);
+prb_dim_t pw(prb_dim_kind_t::pw);
+prb_dim_t b(prb_dim_kind_t::b);
+prb_dim_t m(prb_dim_kind_t::m);
+prb_dim_t n(prb_dim_kind_t::n);
+prb_dim_t k(prb_dim_kind_t::k);
+} // namespace prb_dims
+
+const expr_t &index_var(const prb_dim_t &prb_dim) {
+    static thread_local dim_map_t<prb_dim_t, expr_t> index_vars = []() {
+        dim_map_t<prb_dim_t, expr_t> ret;
+        for (auto &d : prb_dim_t::all()) {
+            ret[d] = var_t::make(type_t::s32(), d.str() + "_idx");
+        }
+        return ret;
+    }();
+    return index_vars.at(prb_dim);
 }
 
-pvar_t pvar_t::from_index_var(const expr_t &index_var) {
-    auto *ptr = index_var.as_ptr<var_t>();
-    if (!ptr) return pvar_t();
-    const char *suffix = "_idx";
-    const size_t suffix_len = std::strlen(suffix);
-    auto &name = ptr->name;
-    auto pos = name.find(suffix);
-    if (pos == std::string::npos || pos + suffix_len != name.length())
-        return pvar_t();
-    return pvar_t(name.substr(0, name.length() - suffix_len));
+const expr_t &size_var(const prb_dim_t &prb_dim) {
+    static thread_local dim_map_t<prb_dim_t, expr_t> size_vars = []() {
+        dim_map_t<prb_dim_t, expr_t> ret;
+        for (auto &d : prb_dim_t::all()) {
+            ret[d] = const_var_t::make(type_t::s32(), d.str());
+        }
+        return ret;
+    }();
+    return size_vars.at(prb_dim);
 }
 
-char pvar_t::to_spatial() const {
-    if (name_.size() != 2) return ' ';
-    char c0 = name_[0];
-    char c1 = name_[1];
-    if (!std::strchr("dikops", c0)) return ' ';
-    if (!std::strchr("dhw", c1)) return ' ';
-    return c1;
-}
-
-int pvar_t::spatial_index() const {
-    char sp = to_spatial();
-    switch (sp) {
-        case 'd': return 0;
-        case 'h': return 1;
-        case 'w': return 2;
-        default: return -1;
+prb_dim_t index_to_prb_dim(const expr_t &var) {
+    for (auto &d : prb_dim_t::all()) {
+        if (index_var(d).is_same(var)) return d;
     }
-    return -1;
+    return prb_dims::undef;
 }
 
-namespace pvars {
-pvar_t g("g");
-pvar_t ic("ic");
-pvar_t id("id");
-pvar_t ih("ih");
-pvar_t iw("iw");
-pvar_t kd("kd");
-pvar_t kh("kh");
-pvar_t kw("kw");
-pvar_t mb("mb");
-pvar_t oc("oc");
-pvar_t od("od");
-pvar_t oh("oh");
-pvar_t ow("ow");
-pvar_t sd("sd");
-pvar_t sh("sh");
-pvar_t sw("sw");
-pvar_t dd("dd");
-pvar_t dh("dh");
-pvar_t dw("dw");
-pvar_t pd("pd");
-pvar_t ph("ph");
-pvar_t pw("pw");
-pvar_t b("b");
-pvar_t m("m");
-pvar_t n("n");
-pvar_t k("k");
-} // namespace pvars
-
-bool is_spatial(const pvar_t &pvar, char prefix) {
-    if (pvar.name().size() != 2) return false;
-    char c0 = pvar.name()[0];
-    char c1 = pvar.name()[1];
-    return (c0 == prefix) && utils::one_of(c1, 'd', 'h', 'w');
-}
-bool is_input_spatial(const pvar_t &pvar) {
-    return is_spatial(pvar, 'i');
-}
-bool is_output_spatial(const pvar_t &pvar) {
-    return is_spatial(pvar, 'o');
-}
-bool is_kernel_spatial(const pvar_t &pvar) {
-    return is_spatial(pvar, 'k');
-}
-bool is_dilation(const pvar_t &pvar) {
-    return is_spatial(pvar, 'd');
-}
-bool is_padding(const pvar_t &pvar) {
-    return is_spatial(pvar, 'p');
+prb_dim_t size_to_prb_dim(const expr_t &var) {
+    for (auto &d : prb_dim_t::all()) {
+        if (size_var(d).is_same(var)) return d;
+    }
+    return prb_dims::undef;
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

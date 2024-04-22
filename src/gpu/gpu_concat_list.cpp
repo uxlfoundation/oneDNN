@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,14 +16,10 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#include "gpu/generic/ref_concat.hpp"
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/gen9_concat.hpp"
 #include "gpu/intel/ocl/multi_concat.hpp"
-#include "gpu/intel/ocl/reusable_simple_concat.hpp"
+#include "gpu/intel/ocl/ref_concat.hpp"
 #include "gpu/intel/ocl/simple_concat.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

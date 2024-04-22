@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_REDUCTION_OCL_REDUCTION_H
-#define GPU_INTEL_OCL_REDUCTION_OCL_REDUCTION_H
+#ifndef GPU_OCL_OCL_REDUCTION_H
+#define GPU_OCL_OCL_REDUCTION_H
 
 #include "gpu/intel/ocl/ocl_utils.h"
 
@@ -67,43 +67,9 @@ IF_DOUBLE_SUPPORTED(DEF_fp_minmax_abs(double));
 DEF_reduce(float);
 DEF_reduce(int);
 IF_DOUBLE_SUPPORTED(DEF_reduce(double));
-IF_HALF_SUPPORTED(DEF_reduce(half));
+IF_DOUBLE_SUPPORTED(DEF_reduce(half));
 
 #undef DEF_reduce
-
-#if !DETERMINISTIC && ATOMICS_SUPPORTED
-// Atomic reduction does not support mul... Must be checked on the caller side
-#define DEF_atomic_reduce(dt) \
-    dt __attribute__((overloadable)) atomic_reduce( \
-            int alg, __global ATOMIC(dt) * dst, dt rhs, float power) { \
-        switch (alg) { \
-            case (REDUCTION_MAX): return atomic_max_global(dst, rhs); \
-            case (REDUCTION_MIN): return atomic_min_global(dst, rhs); \
-            case (REDUCTION_LP_NORM_MAX): \
-            case (REDUCTION_LP_NORM_SUM): \
-            case (REDUCTION_LP_NORM_POWER_P_MAX): \
-            case (REDUCTION_LP_NORM_POWER_P_SUM): \
-            case (REDUCTION_LP_NORM_POWER_P): \
-                return atomic_add_global( \
-                        dst, (dt)pow(convert_float(abs(rhs)), power)); \
-            case (REDUCTION_SUM): \
-            case (REDUCTION_FINAL_MAX): \
-            case (REDUCTION_FINAL_SUM): \
-            case (REDUCTION_PTH_ROOT_MAX): \
-            case (REDUCTION_PTH_ROOT_SUM): \
-            case (REDUCTION_MEAN): return atomic_add_global(dst, rhs); \
-        } \
-        printf("Atomic reduction on unsupported alg: %d\n", alg); \
-        return SPECIAL(dt, zero); \
-    }
-
-#if ATOMIC_FLOAT_SUPPORTED
-DEF_atomic_reduce(float);
-#endif
-DEF_atomic_reduce(int);
-
-#undef DEF_atomic_reduce
-#endif
 
 // ************ Initialization functions ************* //
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,12 +19,8 @@
 
 #include <cstdio>
 
-#include "xpu/ocl/engine_factory.hpp"
-#include "xpu/ocl/engine_impl.hpp"
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/compute/device_info.hpp"
-#endif
+#include "gpu/intel/ocl/ocl_engine.hpp"
 
 namespace dnnl {
 namespace impl {

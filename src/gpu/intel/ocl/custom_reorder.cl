@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,9 +13,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-
-// Temporary W/A for bf16 problems in HW and compiler
-#undef cl_future_bf16_cvt
 
 #include "gpu/intel/ocl/dispatch.h"
 #include "gpu/intel/ocl/reorder_common.h"

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@
 #include "gpu/intel/config.hpp"
 #include "gpu/intel/jit/ir/blocking.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"

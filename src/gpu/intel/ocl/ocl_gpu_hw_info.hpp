@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,39 +14,32 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
-#define GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
+#ifndef GRAPH_UTILS_OCL_USM_UTILS_HPP
+#define GRAPH_UTILS_OCL_USM_UTILS_HPP
 
-#include <CL/cl.h>
+#include "oneapi/dnnl/dnnl_config.h"
 
 #include "common/c_types_map.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 
 namespace dnnl {
 namespace impl {
-namespace gpu {
-namespace intel {
+namespace graph {
+namespace utils {
 namespace ocl {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+void *malloc_shared(
+        cl_device_id dev, cl_context ctx, size_t size, size_t alignment = 0);
 
-xpu::runtime_version_t get_driver_version(cl_device_id device);
-
-#if XE3P
-void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
-        cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
-        int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
-        bool &mayiuse_systolic, bool &mayiuse_ngen_kernels,
-        bool &is_efficient_64bit);
-#else
-void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
-        cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
-        int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
-        bool &mayiuse_systolic, bool &mayiuse_ngen_kernels);
-#endif
+void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
+        compute::gpu_arch_t &gpu_arch, int &stepping_id,
+        uint64_t &native_extensions, bool &mayiuse_systolic,
+        bool &mayiuse_ngen_kernels);
 
 } // namespace ocl
-} // namespace intel
-} // namespace gpu
+} // namespace utils
+} // namespace graph
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
+#endif

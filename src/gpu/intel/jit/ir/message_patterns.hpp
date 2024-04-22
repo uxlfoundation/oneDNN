@@ -22,6 +22,7 @@
 
 #include "common/type_helpers.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/message_patterns.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {

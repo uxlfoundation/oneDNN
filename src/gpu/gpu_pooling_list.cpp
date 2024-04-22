@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,24 +18,10 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/jit/pooling/gen_pooling.hpp"
 #include "gpu/intel/ocl/gen9_global_pooling.hpp"
 #include "gpu/intel/ocl/gen9_pooling.hpp"
 #include "gpu/intel/ocl/ref_pooling.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_pooling.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_pooling.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/ref_pooling.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

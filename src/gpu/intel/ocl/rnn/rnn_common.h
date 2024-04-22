@@ -17,8 +17,8 @@
 #ifndef GPU_INTEL_OCL_RNN_RNN_COMMON_H
 #define GPU_INTEL_OCL_RNN_RNN_COMMON_H
 
-#include "gpu/ocl/ocl_types.h"
-#include "gpu/ocl/types_interop.h"
+#include "gpu/intel/ocl/ocl_types.h"
+#include "gpu/intel/ocl/types_interop.h"
 
 #if OUTPUT_DT_U8
 #define TO_OUTPUT(x) convert_uchar_sat_rte(x)

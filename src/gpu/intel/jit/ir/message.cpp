@@ -14,11 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
-
 #include "gpu/intel/jit/ir/message.hpp"
 
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"

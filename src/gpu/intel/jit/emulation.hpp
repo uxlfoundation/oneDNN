@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,15 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_EMULATION_HPP
-#define GPU_INTEL_JIT_EMULATION_HPP
+#ifndef EMULATION_HPP
+#define EMULATION_HPP
 
 #include <exception>
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 struct EmulationStrategy {
@@ -52,9 +51,6 @@ struct EmulationStrategy {
             else
                 emulate64_mul = emulate64_logic = true;
         }
-#if XE3P
-        if (hw_ >= HW::Xe3p) emulateDWxDW = emulate64_mul = false;
-#endif
         emulate64_mul |= emulate64;
     }
 };
@@ -82,35 +78,22 @@ struct EmulationImplementation {
     template <typename O>
     static bool isQW(const O &op) {
         using namespace ngen;
-        return utils::one_of(op.getType(), DataType::q, DataType::uq);
+        using dnnl::impl::utils::one_of;
+        return one_of(op.getType(), DataType::q, DataType::uq);
     }
 
     template <typename O>
     static bool isDW(const O &op) {
         using namespace ngen;
-        return utils::one_of(op.getType(), DataType::d, DataType::ud);
+        using dnnl::impl::utils::one_of;
+        return one_of(op.getType(), DataType::d, DataType::ud);
     }
 
     template <typename O>
     static bool isW(const O &op) {
         using namespace ngen;
-        return utils::one_of(op.getType(), DataType::w, DataType::uw);
-    }
-
-    static bool isDW(const ngen::Immediate &op) {
-        using namespace ngen;
-        if (op.getType() == DataType::w)
-            return int16_t(static_cast<uint64_t>(op)) < 0;
-        else
-            return utils::one_of(op.getType(), DataType::d, DataType::ud);
-    }
-
-    template <typename O>
-    static O expandDW(const O &op) {
-        return op;
-    }
-    static ngen::Immediate expandDW(const ngen::Immediate &op) {
-        return op.forceInt32();
+        using dnnl::impl::utils::one_of;
+        return one_of(op.getType(), DataType::w, DataType::uw);
     }
 
     template <typename T1, typename T2>
@@ -183,11 +166,9 @@ struct EmulationImplementation {
 
         if (isQ || isUQ) {
             outLo = uint32_t(static_cast<uint64_t>(in));
-            outLo = outLo.forceInt32();
             outLo.setType(DataType::ud);
 
             outHi = uint32_t(static_cast<uint64_t>(in) >> 32);
-            outHi = outHi.forceInt32();
             outHi.setType(isQ ? DataType::d : DataType::ud);
         } else {
             outLo = in;
@@ -262,12 +243,13 @@ struct EmulationImplementation {
             RegData dstHi, dstLo;
             splitToDW(dst, dstLo, dstHi);
             g.mov(mod, dstLo, src0);
-            if (!s0Signed)
+            if (!s0Signed) {
                 g.mov(mod, dstHi, 0);
-            else
+            } else {
                 g.asr(mod, dstHi, dstLo, uint16_t(31));
-        } else if (((dstQ || s0Q) && strategy.emulate64)
-                || (isDF && unaligned && g.hardware >= ngen::HW::XeHP)) {
+            }
+        } else if ((isDF && unaligned && g.hardware >= ngen::HW::XeHP)
+                || ((dstQ || s0Q) && (strategy.emulate64))) {
             if (dstQ != s0Q) stub();
 
             auto mod2x = mod;
@@ -332,11 +314,11 @@ struct EmulationImplementation {
         using namespace ngen;
         uint64_t raw = static_cast<uint64_t>(src1);
         if (src1.getType() == DataType::d) {
-            auto val = int32_t(raw);
+            int32_t val = raw;
             s1LoPos = uint32_t(std::abs(val));
             doSub = (val < 0);
         } else if (src1.getType() == DataType::w) {
-            auto val = int16_t(raw);
+            int16_t val = raw;
             s1LoPos = uint16_t(std::abs(val));
             doSub = (val < 0);
         }
@@ -377,7 +359,7 @@ struct EmulationImplementation {
             const ngen::RegData &src1) {
         if ((src1.getBytes() < 8) && isSigned(src1.getType())) {
             // Add sign extension of src1 to high 32 bits of dst (inefficient but rarely used path).
-            g.cmp(mod | (src1.getNeg() ? g.le : g.lt) | flag, src1, 0);
+            g.cmp(mod | (src1.getNeg() ? g.gt : g.lt) | flag, src1, 0);
             g.add(mod | flag, dstHi, dstHi, -1);
         }
     }
@@ -420,10 +402,9 @@ struct EmulationImplementation {
             splitToDW(src1, s1Lo, s1Hi);
             g.add(mod, dstLo, s0Lo, s1Lo);
 
-            if (s0Q && s1Q) {
-                if (!equal(dstHi, s0Hi) && !equal(dstHi, s1Hi))
-                    g.add(mod, dstHi, s0Hi, s1Hi);
-            } else if (s0Q) {
+            if (s0Q && s1Q)
+                g.add(mod, dstHi, s0Hi, s1Hi);
+            else if (s0Q) {
                 if (!equal(dstHi, s0Hi)) g.mov(mod, dstHi, s0Hi);
             } else if (s1Q) {
                 if (!equal(dstHi, s1Hi)) g.mov(mod, dstHi, s1Hi);
@@ -453,7 +434,6 @@ struct EmulationImplementation {
                     // Use flag register + ov.
                     auto Mx = g.ExecutionOffset(state.flagOffset);
                     bool neg = eaddIsNegative(s1Lo);
-                    bool revFlag = false;
 
                     auto s0LoUD = s0Lo;
                     auto s1LoMod = s1Lo;
@@ -461,7 +441,6 @@ struct EmulationImplementation {
                     if (s1Signed
                             && !std::is_base_of<ngen::Immediate, S1>::value) {
                         s1LoMod.setType(DataType::ud);
-                        revFlag = neg;
                         neg = false;
                     }
 
@@ -474,9 +453,7 @@ struct EmulationImplementation {
                         g.mov(mod, dstHi, s1Hi);
                     else if (!s0Q && !s1Q)
                         g.mov(mod, dstHi, 0);
-                    g.add(mod | Mx | (revFlag ? ~flag : flag), dstHi, dstHi,
-                            neg ? -1 : +1);
-                    eaddFixupQD(g, mod | Mx, flag, dstHi, src0);
+                    g.add(mod | Mx | flag, dstHi, dstHi, neg ? -1 : +1);
                     eaddFixupQD(g, mod | Mx, flag, dstHi, src1);
                 } else {
                     // Slow path: addc/subb + acc.
@@ -552,11 +529,7 @@ struct EmulationImplementation {
             const ngen::RegData &dst, const ngen::RegData &src0,
             const ngen::RegData &src1, const EmulationStrategy &strategy,
             const EmulationState &state) {
-        if (src0.getNeg() && !src1.getNeg() && strategy.emulate64
-                && !strategy.emulate64_add32)
-            eaddInternal<DT>(g, mod, dst, src1, src0, strategy, state);
-        else
-            eaddInternal<DT>(g, mod, dst, src0, src1, strategy, state);
+        eaddInternal<DT>(g, mod, dst, src0, src1, strategy, state);
     }
 
     template <typename DT = void, typename Generator>
@@ -593,31 +566,8 @@ struct EmulationImplementation {
 
         bool emulate64 = strategy.emulate64_mul;
 
-        if (s0Q) {
+        if (s0Q || s1Q) {
             stub();
-        } else if (s1Q) {
-            if (!s0D || !dstQ) stub();
-            auto s0Type = src0.getType();
-            ngen::RegData dstLo, dstHi;
-            S1 s1Hi, s1Lo;
-            splitToDW(dst, dstLo, dstHi);
-            splitToDW(src1, s1Lo, s1Hi);
-            s1Hi = expandDW(s1Hi);
-            s1Lo = expandDW(s1Lo);
-            dstLo.setType(src0.getType());
-            dstHi.setType(src0.getType());
-            auto s1W0 = lowWord(s1Lo);
-            auto s1W2 = lowWord(s1Hi);
-            auto accLo
-                    = g.acc0.retype(s0Type)[dstLo.getOffset()](dstLo.getHS());
-            auto accHi
-                    = g.acc0.retype(s0Type)[dstHi.getOffset()](dstHi.getHS());
-            g.mul(mod, accHi, src0, s1W2);
-            g.macl(mod, dstHi, src0, s1Hi);
-            g.mul(mod, accLo, src0, s1W0);
-            g.mach(mod, dstLo, src0, s1Lo);
-            g.add(mod, dstHi, dstHi, dstLo);
-            g.mov(mod, dstLo, accLo);
         } else if (dstQ && s0W && s1W) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
@@ -643,7 +593,7 @@ struct EmulationImplementation {
 
             g.mul(mod, acc, src0, lowWord(src1));
             if (s1D)
-                g.mach(mod, dstLo, src0, expandDW(src1));
+                g.mach(mod, dstLo, src0, src1);
             else
                 g.mach(mod, dstLo, src0, int32_t(0));
             g.mov(mod, dstHi, dstLo);
@@ -663,10 +613,10 @@ struct EmulationImplementation {
                 g.mul(mmod, acc, src0, lowWord(src1));
 
                 if (g.hardware < HW::Gen10) {
-                    g.mach(mmod, dummy, src0, expandDW(src1));
+                    g.mach(mmod, dummy, src0, src1);
                     g.mov(mmod, dst, acc);
                 } else {
-                    g.macl(mmod, dst, src0, expandDW(src1));
+                    g.macl(mmod, dst, src0, src1);
                 }
 
                 regionVSAdvance(g.hardware, dst, ne1);
@@ -816,7 +766,6 @@ struct EmulationImplementation {
 }; // struct EmulationHelper
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

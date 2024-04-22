@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,19 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_OCL_CUSTOM_TYPES_H
-#define GPU_INTEL_OCL_OCL_CUSTOM_TYPES_H
+#ifndef GPU_OCL_OCL_CUSTOM_TYPES_H
+#define GPU_OCL_OCL_CUSTOM_TYPES_H
 
-// Fixed to 64 bit per the OpenCL specification to align with same type in C++
-// source code
-typedef long dim_t;
-
-// Signed offset used to support the (rarely) used negative strides
-#ifdef USE_INT32_OFFSET
-typedef int off_t;
-#else
-typedef long off_t;
-#endif
+#define dim_t long // 64 bit per the OpenCL specification
 
 typedef struct {
     short data;
@@ -40,6 +31,7 @@ bf16 as_bf16(short data) {
 
 /*****************************/
 
+#ifdef MATH_UTILS_DECLARE_BF8
 typedef struct {
     char data;
 } f8_e5m2;
@@ -49,9 +41,11 @@ f8_e5m2 as_f8_e5m2(char data) {
     res.data = data;
     return res;
 }
+#endif
 
 /*****************************/
 
+#ifdef MATH_UTILS_DECLARE_BF8
 typedef struct {
     char data;
 } f8_e4m3;
@@ -61,5 +55,6 @@ f8_e4m3 as_f8_e4m3(char data) {
     res.data = data;
     return res;
 }
+#endif
 
 #endif

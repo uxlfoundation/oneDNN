@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,24 +16,8 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/gemm_matmul.hpp"
 #include "gpu/intel/ocl/ref_matmul.hpp"
-#include "gpu/intel/ocl/ref_sparse_matmul.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_matmul.hpp"
-#include "gpu/nvidia/cudnn_matmul_lt.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_matmul.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/ref_matmul.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

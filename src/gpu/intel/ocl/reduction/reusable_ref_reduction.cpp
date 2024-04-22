@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,24 +31,23 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 using namespace gpu_utils;
 
 namespace { // Use an anonymous namespace to avoid collisions with ocl:atomic
 namespace reduction_dims {
-dim_idx_t outer = 0;
-dim_idx_t reduction = 1;
-dim_idx_t inner = 2;
+compute::dim_id_t outer = 0;
+compute::dim_id_t reduction = 1;
+compute::dim_id_t inner = 2;
 } // namespace reduction_dims
 } // namespace
-static const std::vector<dim_idx_t> dims {
+static const std::vector<compute::dim_id_t> dims {
         reduction_dims::outer,
         reduction_dims::reduction,
         reduction_dims::inner,
 };
-static const std::vector<dim_idx_t> dispatch_dims {
+static const std::vector<compute::dim_id_t> dispatch_dims {
         reduction_dims::outer,
         reduction_dims::inner,
 };
@@ -59,7 +58,7 @@ ref_reduction_conf_t::ref_reduction_conf_t(const reduction_subproblem_t &subprb,
         gpu_primitive_attr_t *gpu_attr)
     : reduction_stride(subprb.reduction_block.stride)
     , reduction_size(subprb.reduction_block.block)
-    , num_dst_elems(into<size_t>(
+    , num_dst_elems(gpu_utils::into<size_t>(
               subprb.outer_block.block * subprb.inner_block.block)) {
     conf.alg = alg;
     conf.src_dt = src_dt;
@@ -113,7 +112,7 @@ void reusable_ref_reduction_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t reusable_ref_reduction_t::pd_t::init_conf(engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -242,7 +241,7 @@ status_t reusable_ref_reduction_t::execute(const exec_ctx_t &ctx) const {
                 = [use_int32_offset](
                           compute::kernel_arg_list_t &arg_list, dim_t off) {
                       if (use_int32_offset) {
-                          arg_list.append(into<int32_t>(off));
+                          arg_list.append(gpu_utils::into<int32_t>(off));
                       } else {
                           arg_list.append(off);
                       }
@@ -258,7 +257,8 @@ status_t reusable_ref_reduction_t::execute(const exec_ctx_t &ctx) const {
         reduction_arg_list.append(src_mem);
         reduction_arg_list.append(dst_mem);
         append_off(reduction_arg_list, phase.reduction_stride);
-        append_off(reduction_arg_list, into<dim_t>(phase.reduction_size));
+        append_off(reduction_arg_list,
+                gpu_utils::into<dim_t>(phase.reduction_size));
         reduction_arg_list.append(pd()->div);
         reduction_arg_list.append(pd()->desc()->p);
         reduction_arg_list.append(pd()->desc()->eps);
@@ -271,7 +271,6 @@ status_t reusable_ref_reduction_t::execute(const exec_ctx_t &ctx) const {
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

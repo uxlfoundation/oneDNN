@@ -14,7 +14,21 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/layer_norm_common.h"
+#include "gpu/intel/ocl/dispatch.h"
+#include "gpu/intel/ocl/ocl_types.h"
+
+#undef SRC_OFF
+#undef DST_OFF
+
+#define SRC_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC, x0, x1, x2, x3, x4, x5)
+#define DST_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(DST, x0, x1, x2, x3, x4, x5)
+#define STAT_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(STAT, x0, x1, x2, x3, x4, x5)
+
+#if SRC_DT_F64 || DST_DT_F64
+#define ACC_DATA_T double
+#else
+#define ACC_DATA_T float
+#endif
 
 #if IS_FWD
 KERNEL_ATTR

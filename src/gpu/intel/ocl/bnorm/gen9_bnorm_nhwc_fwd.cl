@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 #include "gpu/intel/ocl/bnorm/gen9_bnorm.h"
-#include "gpu/intel/ocl/bnorm/gen9_bnorm_reduce.h"
 
 // FWD kernels for regular and 1-pass (under USE_STATS_ONE_PASS) bnorm
 // algorithms that are specially optimized for NHWC layout

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,12 +30,11 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 using namespace gpu_utils;
 
-status_t jit_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t jit_reduction_t::pd_t::init_conf(engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -103,7 +102,7 @@ status_t jit_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     dim_t outer_nelems = dst_nelems / inner_nelems;
     compute::range_t gws(into<size_t>(gws0), into<size_t>(outer_nelems));
     compute::range_t lws(into<size_t>(tg_size * elems_per_reg), 1);
-    nd_range = compute::nd_range_t(gws, lws);
+    nd_range = {gws, lws};
 
     return status::success;
 }
@@ -124,7 +123,6 @@ status_t jit_reduction_t::execute(const exec_ctx_t &ctx) const {
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

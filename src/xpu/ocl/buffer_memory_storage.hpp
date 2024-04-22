@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,9 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/ocl/memory_storage_base.hpp"
-
+#include "gpu/intel/ocl/ocl_memory_storage_base.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {

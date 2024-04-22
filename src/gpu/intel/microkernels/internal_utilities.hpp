@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MICROKERNELS_INTERNAL_UTILITIES_HPP
-#define GPU_MICROKERNELS_INTERNAL_UTILITIES_HPP
+#ifndef GPU_JIT_PASS_DPAS_ATOMIC_HPP
+#define GPU_JIT_PASS_DPAS_ATOMIC_HPP
+
+#include "gpu/intel/jit/ir/ir.hpp"
 
 namespace dnnl {
 namespace impl {

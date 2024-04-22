@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_COMPUTE_DISPATCH_HPP
-#define GPU_INTEL_COMPUTE_DISPATCH_HPP
+#ifndef GPU_COMPUTE_DISPATCH_HPP
+#define GPU_COMPUTE_DISPATCH_HPP
 
 #include <cassert>
 #include <string>
@@ -29,10 +29,9 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace compute {
 
-range_t get_optimal_lws(range_t &gws, const dim_idx_t mapped_vec_dim_idx,
+range_t get_optimal_lws(const range_t &gws, const int mapped_vec_dim_idx,
         const gpu_arch_t gpu_arch);
 
 class compute_engine_t;
@@ -40,7 +39,7 @@ class compute_engine_t;
 class dispatch_t {
 public:
     static constexpr int min_nesting_level = -1;
-    static constexpr dim_idx_t dim_not_found = -1;
+    static constexpr int dim_not_found = -1;
 
     // md - memory descriptor hint to extract nesting levels based on the layout.
     dispatch_t(const compute_engine_t *engine = nullptr,
@@ -53,7 +52,7 @@ public:
 
     std::string str() const;
 
-    void define_dim(const std::string &name, dim_idx_t md_hint_idx, dim_t size,
+    void define_dim(const std::string &name, int md_hint_idx, dim_t size,
             dim_t block = 1) {
         define_dim_with_md_hint(name, md_hint_idx, size, block);
     }
@@ -107,12 +106,12 @@ public:
     };
 
 protected:
-    void define_dim_with_md_hint(const std::string &name,
-            dim_idx_t md_hint_index, dim_t size, dim_t block = 1);
+    void define_dim_with_md_hint(const std::string &name, int md_hint_index,
+            dim_t size, dim_t block = 1);
 
-    dim_idx_t find_vectorized_dim() const {
-        dim_idx_t vec_dim_idx = dim_not_found;
-        for (dim_idx_t i = 0; i < ndims_; ++i) {
+    int find_vectorized_dim() const {
+        int vec_dim_idx = dim_not_found;
+        for (int i = 0; i < ndims_; ++i) {
             if (dims_[i].vector_size != 1) {
                 assert(vec_dim_idx == dim_not_found);
                 assert(dims_[i].block > 0);
@@ -134,10 +133,10 @@ protected:
 
     const compute_engine_t *engine_;
 
-    dim_idx_t md_ndims_ = 0;
+    int md_ndims_ = 0;
     int md_nesting_levels_[DNNL_MAX_NDIMS];
 
-    dim_idx_t ndims_ = 0;
+    int ndims_ = 0;
     dim_info_t dims_[DNNL_MAX_NDIMS];
 
     std::string attr_suffix_ = "DEFAULT";
@@ -146,7 +145,6 @@ protected:
 };
 
 } // namespace compute
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

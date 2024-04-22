@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2024-2025 Intel Corporation
+ * Copyright 2024 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_EMULATED_GENERATOR_HPP
-#define GPU_INTEL_JIT_EMULATED_GENERATOR_HPP
+#ifndef GPU_JIT_EMULATED_GENERATOR_HPP
+#define GPU_JIT_EMULATED_GENERATOR_HPP
 
 // Must be included before emulation.hpp
 #include "gpu/intel/jit/ngen/ngen.hpp"
@@ -29,7 +29,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 template <gpu_gen_t hw>
@@ -128,9 +127,8 @@ void eadd3(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const
 // clang-format on
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_JIT_EMULATED_GENERATOR_HPP
+#endif // GPU_JIT_JIT_REDUCTION_GENERATOR_HPP

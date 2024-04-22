@@ -23,8 +23,8 @@
 #include "common/engine_id.hpp"
 #include "common/kernel_cache.hpp"
 #include "common/utils.hpp"
-#include "gpu/compute/compute_engine.hpp"
-#include "gpu/serialization.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {

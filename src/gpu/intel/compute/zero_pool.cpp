@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,11 +17,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "gpu/intel/compute/zero_pool.hpp"
-
-#ifdef DNNL_WITH_SYCL
-#include "gpu/intel/sycl/stream.hpp"
-#endif
+#include "gpu/intel/jit/gemm/zero_pool.hpp"
 
 namespace dnnl {
 namespace impl {

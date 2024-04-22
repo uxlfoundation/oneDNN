@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2024-2025 Intel Corporation
+# Copyright 2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,12 +14,6 @@
 # limitations under the License.
 #===============================================================================
 
-# TODO: Extend to all -Wconversion warnings
-if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM" OR CMAKE_CXX_COMPILER_ID MATCHES "(Apple)?[Cc]lang")
-    append(CMAKE_CXX_FLAGS "-Wbitfield-enum-conversion -Wbool-conversion -Wconstant-conversion -Wenum-conversion -Wimplicit-int-conversion -Wliteral-conversion -Wnon-literal-null-conversion -Wnull-conversion")
-    add_definitions("-DENABLE_LLVM_WCONVERSION")
-endif()
-
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
@@ -32,13 +26,8 @@ add_definitions_with_host_compiler(-DNGEN_NO_OP_NAMES)
 add_definitions_with_host_compiler(-DNGEN_WINDOWS_COMPAT)
 
 add_subdirectory(compute)
-add_subdirectory(microkernels)
 add_subdirectory(jit)
 add_subdirectory(ocl)
-
-if(DNNL_WITH_SYCL)
-    add_subdirectory(sycl)
-endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})

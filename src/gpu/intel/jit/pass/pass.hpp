@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include "gpu/intel/jit/pass/barrier.hpp"
 #include "gpu/intel/jit/pass/cse.hpp"
 #include "gpu/intel/jit/pass/dp4a.hpp"
-#include "gpu/intel/jit/pass/dpas.hpp"
+#include "gpu/intel/jit/pass/dpas_atomic.hpp"
 #include "gpu/intel/jit/pass/dpasw.hpp"
 #include "gpu/intel/jit/pass/expr_scalarizer.hpp"
 #include "gpu/intel/jit/pass/hoist.hpp"

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 #include "common/engine.hpp"
 #include "common/stream.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/ocl/stream_impl.hpp"
+#include "gpu/intel/ocl/ocl_engine.hpp"
+#include "gpu/intel/ocl/ocl_stream.hpp"
 
 using namespace dnnl::impl;
 

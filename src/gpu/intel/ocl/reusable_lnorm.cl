@@ -14,9 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/ocl/dispatch.h"
-#include "gpu/ocl/ocl_io.h"
-#include "gpu/ocl/types_interop.h"
+#include "gpu/intel/ocl/dispatch.h"
+#include "gpu/intel/ocl/ocl_io.h"
+#include "gpu/intel/ocl/types_interop.h"
 
 NAMED_KERNEL_ATTR(STAT)
 __kernel void lnorm_reusable_calc_mean(__global SRC_STAT_DT *src,

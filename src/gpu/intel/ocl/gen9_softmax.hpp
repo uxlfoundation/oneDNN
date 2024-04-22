@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_GEN9_SOFTMAX_HPP
-#define GPU_INTEL_OCL_GEN9_SOFTMAX_HPP
+#ifndef GPU_OCL_GEN9_SOFTMAX_HPP
+#define GPU_OCL_GEN9_SOFTMAX_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
@@ -27,7 +27,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 struct gen9_softmax_fwd_t : public gpu_primitive_t {
@@ -37,7 +36,7 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:gen9", gen9_softmax_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using namespace dnnl::impl::format_tag;
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
@@ -103,7 +102,7 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
             }
 
             if (is_nhwc) {
-                dim_t axis_padded = utils::rnd_up(axis_size(), subgroup_size);
+                int axis_padded = utils::rnd_up(axis_size(), subgroup_size);
                 group_size = subgroup_size
                         * utils::div_up(axis_padded, buffer_size);
                 if (group_size > (size_t)max_lws) {
@@ -188,7 +187,7 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
         int buffer_size = 128;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         if (pd()->has_zero_dim_memory()) return status::success;
 
         compute::kernel_ctx_t kernel_ctx;
@@ -251,7 +250,7 @@ struct gen9_softmax_bwd_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:gen9", gen9_softmax_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using namespace dnnl::impl::format_tag;
 
             auto *compute_engine
@@ -325,7 +324,7 @@ struct gen9_softmax_bwd_t : public gpu_primitive_t {
         const int buffer_size = 128;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         if (pd()->has_zero_dim_memory()) return status::success;
 
         compute::kernel_ctx_t kernel_ctx;
@@ -373,7 +372,6 @@ protected:
     compute::kernel_t kernel_;
 };
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

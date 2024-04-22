@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_BNORM_BNORM_UTILS_HPP
-#define GPU_INTEL_OCL_BNORM_BNORM_UTILS_HPP
+#ifndef GPU_BATCH_NORMALIZATION_UTILS_HPP
+#define GPU_BATCH_NORMALIZATION_UTILS_HPP
 
 #include "common/batch_normalization_pd.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -63,7 +63,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 namespace bn_utils {
 
@@ -85,12 +84,6 @@ constexpr size_t reduce_aux = 6;
 constexpr size_t norm_bwd = 7;
 constexpr size_t calc_stat = 8;
 constexpr size_t reduce_stat = 9;
-constexpr size_t norm_fwd_buff = 10;
-constexpr size_t norm_bwd_buff = 11;
-constexpr size_t calc_mean_buff = 12;
-constexpr size_t calc_var_buff = 13;
-constexpr size_t calc_mean_var_buff = 14;
-constexpr size_t calc_stat_buff = 15;
 } // namespace kernel_id
 
 float get_ss_utilization(
@@ -104,7 +97,6 @@ std::string get_prb_desc_str(const batch_normalization_pd_t *pd);
 
 } // namespace bn_utils
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

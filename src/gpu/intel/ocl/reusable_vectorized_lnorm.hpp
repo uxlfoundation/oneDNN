@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,6 +36,9 @@ namespace ocl {
 
 struct reusable_vectorized_lnorm_params_t
     : trivially_serializable_t<reusable_vectorized_lnorm_params_t> {
+#if __cplusplus >= 202002L
+    bool operator==(const reusable_vectorized_lnorm_params_t &) const = default;
+#endif
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names
@@ -52,30 +55,28 @@ struct reusable_vectorized_lnorm_params_t
 
     compute::kernel_ctx_t get_kernel_ctx() const;
 
-    compute::dispatch_compile_params_t gws_params;
-    /// Number of work items in a sub-group
-    int sg_size;
-
-    /// Number of elements to process in each work-item
-    int vector_size;
-
-    /// The number of times the loops need to unroll
-    int unroll;
-
     data_type_t input_dt = data_type::undef;
     data_type_t output_dt = data_type::undef;
     data_type_t ss_dt = data_type::undef;
-
     bool use_scale = false;
     bool use_shift = false;
-
-    /// If true calculate the mean and variance values. Otherwise reads from global memory
     bool calculate_stats = false;
-
-    /// Saves the mean and variance to memory
     bool save_stats = false;
 
-    uint8_t padding[4] = {false};
+    // Not used by bwd impl, but would be padding otherwise
+    bool with_src_scale = false;
+    bool with_dst_scale = false;
+
+    compute::dispatch_compile_params_t gws_params;
+
+    /// Number of work items in a sub-group
+    size_t sg_size;
+
+    /// Number of elements to process in each work-item
+    size_t vector_size;
+
+    /// The number of times the loops need to unroll
+    size_t unroll;
 };
 
 struct reusable_vectorized_lnorm_runtime_params_t {
@@ -93,7 +94,7 @@ struct reusable_vectorized_layer_normalization_fwd_t : public gpu_primitive_t {
         DECLARE_COMMON_PD_T("ocl:reusable:vectorized",
                 reusable_vectorized_layer_normalization_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using namespace data_type;
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
@@ -130,17 +131,22 @@ struct reusable_vectorized_layer_normalization_fwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
 
         reusable_vectorized_lnorm_params_t conf;
         reusable_vectorized_lnorm_runtime_params_t rt_conf;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         if (pd()->has_zero_dim_memory()) return status::success;
+        std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
 
-        return create_kernel(engine, calculate_lnorm_kernel_,
-                pd()->conf.get_kernel_names()[0], pd()->conf);
+        std::vector<compute::kernel_t> kernels;
+        CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
+
+        calculate_lnorm_kernel_ = kernels[0];
+
+        return status::success;
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {

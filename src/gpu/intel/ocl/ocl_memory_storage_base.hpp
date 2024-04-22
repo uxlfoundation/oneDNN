@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,35 +14,32 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
-#define GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
+#ifndef GPU_OCL_OCL_MEMORY_STORAGE_BASE_HPP
+#define GPU_OCL_OCL_MEMORY_STORAGE_BASE_HPP
 
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
+#include "common/memory_storage.hpp"
+#include "gpu/intel/ocl/ocl_c_types_map.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
-namespace jit {
-namespace v2 {
-namespace conv {
+namespace ocl {
 
-class kernel_desc_t;
+class ocl_memory_storage_base_t : public memory_storage_t {
+public:
+    // Explicitly define ctors due to a "circular dependencies" bug in ICC.
+    ocl_memory_storage_base_t(
+            engine_t *engine, const memory_storage_t *parent_storage)
+        : memory_storage_t(engine, parent_storage) {}
+    ocl_memory_storage_base_t(engine_t *engine)
+        : ocl_memory_storage_base_t(engine, this) {}
 
-namespace planner {
+    virtual memory_kind_t memory_kind() const = 0;
+};
 
-void search(const bench_manager_t &bench_mger, const kernel_desc_t &desc);
-void auto_search(const bench_manager_t &bench_mger);
-
-} // namespace planner
-} // namespace conv
-} // namespace v2
-} // namespace jit
-} // namespace intel
+} // namespace ocl
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif
+#endif // GPU_OCL_OCL_MEMORY_STORAGE_BASE_HPP

@@ -22,7 +22,7 @@
 
 #include <array>
 
-#include "gpu/jit/pass/simplify.hpp"
+#include "gpu/intel/jit/pass/simplify.hpp"
 
 namespace dnnl {
 namespace impl {

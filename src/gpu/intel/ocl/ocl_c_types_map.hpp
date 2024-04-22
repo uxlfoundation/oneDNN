@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,33 +14,23 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
-#define GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
+#ifndef GPU_OCL_OCL_C_TYPES_MAP_HPP
+#define GPU_OCL_OCL_C_TYPES_MAP_HPP
 
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
+#include "oneapi/dnnl/dnnl_ocl_types.h"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
-namespace jit {
-namespace v2 {
-namespace conv {
+namespace ocl {
 
-class kernel_desc_t;
+using memory_kind_t = dnnl_ocl_interop_memory_kind_t;
+namespace memory_kind {
+const memory_kind_t usm = dnnl_ocl_interop_usm;
+const memory_kind_t buffer = dnnl_ocl_interop_buffer;
+} // namespace memory_kind
 
-namespace planner {
-
-void search(const bench_manager_t &bench_mger, const kernel_desc_t &desc);
-void auto_search(const bench_manager_t &bench_mger);
-
-} // namespace planner
-} // namespace conv
-} // namespace v2
-} // namespace jit
-} // namespace intel
+} // namespace ocl
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

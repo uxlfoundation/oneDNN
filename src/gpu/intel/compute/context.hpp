@@ -14,33 +14,33 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
-#define GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
+#ifndef GPU_COMPUTE_CONTEXT_HPP
+#define GPU_COMPUTE_CONTEXT_HPP
 
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
+#include <memory>
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
-namespace jit {
-namespace v2 {
-namespace conv {
+namespace compute {
 
-class kernel_desc_t;
+class event_t {
+public:
+    virtual ~event_t() = 0;
+    virtual std::unique_ptr<event_t> clone() const = 0;
+};
+inline event_t::~event_t() = default;
 
-namespace planner {
+// Abstract class for runtime inputs and outputs
+class context_t {
+public:
+    virtual event_t &get_deps() = 0;
+    virtual const event_t &get_deps() const = 0;
 
-void search(const bench_manager_t &bench_mger, const kernel_desc_t &desc);
-void auto_search(const bench_manager_t &bench_mger);
+    virtual void append_deps(const compute::event_t &event) = 0;
+};
 
-} // namespace planner
-} // namespace conv
-} // namespace v2
-} // namespace jit
-} // namespace intel
+} // namespace compute
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

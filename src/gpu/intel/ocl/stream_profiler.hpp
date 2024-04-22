@@ -14,33 +14,25 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
-#define GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
+#ifndef GPU_OCL_STREAM_PROFILER_HPP
+#define GPU_OCL_STREAM_PROFILER_HPP
 
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
+#include "common/c_types_map.hpp"
+#include "gpu/intel/compute/stream_profiler.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
-namespace jit {
-namespace v2 {
-namespace conv {
+namespace ocl {
 
-class kernel_desc_t;
+struct ocl_stream_profiler_t : public compute::stream_profiler_t {
+    ocl_stream_profiler_t(const stream_t *stream) : stream_profiler_t(stream) {}
 
-namespace planner {
+    status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
+            uint64_t *data) const override;
+};
 
-void search(const bench_manager_t &bench_mger, const kernel_desc_t &desc);
-void auto_search(const bench_manager_t &bench_mger);
-
-} // namespace planner
-} // namespace conv
-} // namespace v2
-} // namespace jit
-} // namespace intel
+} // namespace ocl
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

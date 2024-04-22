@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,33 +14,20 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
-#define GPU_INTEL_JIT_V2_CONV_PLANNER_SEARCH_HPP
+#ifndef GPU_JIT_PASS_DPAS_ATOMIC_HPP
+#define GPU_JIT_PASS_DPAS_ATOMIC_HPP
 
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
+#include "gpu/intel/jit/ir/ir.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
-namespace v2 {
-namespace conv {
 
-class kernel_desc_t;
+// Adds {Atomic} modifier to dpas/dpasw instructions when applicable.
+stmt_t inject_atomic(const stmt_t &stmt);
 
-namespace planner {
-
-void search(const bench_manager_t &bench_mger, const kernel_desc_t &desc);
-void auto_search(const bench_manager_t &bench_mger);
-
-} // namespace planner
-} // namespace conv
-} // namespace v2
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

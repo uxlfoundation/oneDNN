@@ -17,8 +17,8 @@
 #include <algorithm>
 
 #include "common/c_types_map.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/ocl/custom_reorder.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/ocl/custom_reorder.hpp"
 
 #include "common/utils.hpp"
 #include "gpu/intel/ocl/ocl_stream.hpp"

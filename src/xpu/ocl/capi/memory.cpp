@@ -23,8 +23,8 @@
 #include "common/memory.hpp"
 #include "common/utils.hpp"
 
-#include "xpu/ocl/c_types_map.hpp"
-#include "xpu/ocl/memory_storage.hpp"
+#include "gpu/intel/ocl/ocl_c_types_map.hpp"
+#include "gpu/intel/ocl/ocl_memory_storage.hpp"
 
 using namespace dnnl::impl;
 using namespace dnnl::impl::xpu::ocl;

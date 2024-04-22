@@ -22,14 +22,14 @@
 
 #include "common/c_types_map.hpp"
 #include "common/convolution_pd.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/jit/conv/key.hpp"
-#include "gpu/jit/conv/problem.hpp"
-#include "gpu/jit/ir/config.hpp"
-#include "gpu/jit/ir/fma.hpp"
-#include "gpu/jit/ir/hw.hpp"
-#include "gpu/jit/ir/tensor_config.hpp"
-#include "gpu/jit/utils/utils.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/jit/conv/key.hpp"
+#include "gpu/intel/jit/conv/problem.hpp"
+#include "gpu/intel/jit/ir/config.hpp"
+#include "gpu/intel/jit/ir/fma.hpp"
+#include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {

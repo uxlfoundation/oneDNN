@@ -22,7 +22,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 struct EmulationStrategy {
@@ -52,9 +51,6 @@ struct EmulationStrategy {
             else
                 emulate64_mul = emulate64_logic = true;
         }
-#if XE3P
-        if (hw_ >= HW::Xe3p) emulateDWxDW = emulate64_mul = false;
-#endif
         emulate64_mul |= emulate64;
     }
 };
@@ -770,7 +766,6 @@ struct EmulationImplementation {
 }; // struct EmulationHelper
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

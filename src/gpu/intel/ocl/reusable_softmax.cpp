@@ -19,7 +19,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 compute::kernel_ctx_t reusable_softmax_params_t::get_kernel_ctx() const {
@@ -56,7 +55,6 @@ status_t reusable_softmax_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

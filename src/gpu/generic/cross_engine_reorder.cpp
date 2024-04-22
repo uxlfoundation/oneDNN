@@ -14,13 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/ocl/cross_engine_reorder.hpp"
+
 #include "common/reorder.hpp"
 #include "common/utils.hpp"
-
-#include "gpu/generic/cross_engine_reorder.hpp"
-#include "gpu/gpu_engine.hpp"
-#include "gpu/gpu_stream.hpp"
-#include "gpu/gpu_utils.hpp"
+#include "gpu/intel/ocl/ocl_stream.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

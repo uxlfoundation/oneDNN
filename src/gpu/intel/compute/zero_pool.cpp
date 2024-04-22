@@ -17,7 +17,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "gpu/intel/compute/zero_pool.hpp"
+#include "gpu/intel/jit/gemm/zero_pool.hpp"
 
 namespace dnnl {
 namespace impl {

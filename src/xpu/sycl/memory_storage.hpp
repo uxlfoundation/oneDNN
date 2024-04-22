@@ -17,7 +17,7 @@
 #ifndef XPU_SYCL_MEMORY_STORAGE_HPP
 #define XPU_SYCL_MEMORY_STORAGE_HPP
 
-#include "xpu/sycl/buffer_memory_storage.hpp"
-#include "xpu/sycl/usm_memory_storage.hpp"
+#include "gpu/intel/ocl/ocl_buffer_memory_storage.hpp"
+#include "gpu/intel/ocl/ocl_usm_memory_storage.hpp"
 
 #endif

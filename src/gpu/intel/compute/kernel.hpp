@@ -22,10 +22,10 @@
 #include <utility>
 
 #include "common/verbose.hpp"
-#include "gpu/compute/context.hpp"
-#include "gpu/compute/kernel_arg_list.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/utils.hpp"
+#include "gpu/intel/compute/context.hpp"
+#include "gpu/intel/compute/kernel_arg_list.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

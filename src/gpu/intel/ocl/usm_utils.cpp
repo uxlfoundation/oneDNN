@@ -17,7 +17,16 @@
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/ocl/stream_impl.hpp"
 
-#include "gpu/intel/ocl/usm_utils.hpp"
+#include <CL/cl.h>
+
+#include "common/cpp_compat.hpp"
+
+#include "common/utils.hpp"
+#include "common/verbose.hpp"
+#include "gpu/intel/ocl/ocl_gpu_engine.hpp"
+#include "gpu/intel/ocl/ocl_stream.hpp"
+#include "gpu/intel/ocl/ocl_usm_utils.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

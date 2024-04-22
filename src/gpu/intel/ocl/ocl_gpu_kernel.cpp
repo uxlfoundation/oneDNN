@@ -22,15 +22,12 @@
 
 #include "common/rw_mutex.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/stream_profiler.hpp"
-
-#include "xpu/ocl/context.hpp"
-#include "xpu/ocl/memory_storage.hpp"
-#include "xpu/ocl/usm_utils.hpp"
-
+#include "gpu/intel/ocl/ocl_context.hpp"
+#include "gpu/intel/ocl/ocl_memory_storage.hpp"
 #include "gpu/intel/ocl/ocl_stream.hpp"
+#include "gpu/intel/ocl/ocl_usm_utils.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/stream_profiler.hpp"
 
 namespace dnnl {
 namespace impl {

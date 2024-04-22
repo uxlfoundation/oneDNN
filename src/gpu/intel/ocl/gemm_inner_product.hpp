@@ -25,9 +25,9 @@
 #include "common/primitive_desc_iterator.hpp"
 #include "common/reduction_pd.hpp"
 #include "gpu/gpu_inner_product_pd.hpp"
-#include "gpu/gpu_primitive.hpp"
-#include "gpu/gpu_primitive_attr.hpp"
-#include "gpu/primitive_conf.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -87,9 +87,9 @@
 #ifndef GPU_OCL_OCL_TYPES_H
 #define GPU_OCL_OCL_TYPES_H
 
-#include "gpu/ocl/ocl_custom_types.h"
-#include "gpu/ocl/ocl_math_utils.h"
-#include "gpu/ocl/ocl_utils.h"
+#include "gpu/intel/ocl/ocl_custom_types.h"
+#include "gpu/intel/ocl/ocl_math_utils.h"
+#include "gpu/intel/ocl/ocl_utils.h"
 
 #define auto __auto_type
 #define typeof(x) __typeof__(x)

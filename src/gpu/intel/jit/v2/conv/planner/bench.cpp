@@ -17,10 +17,10 @@
 #include "gpu/intel/jit/v2/conv/planner/bench.hpp"
 
 #include "common/dnnl_thread.hpp"
-#include "gpu/jit/v2/conv/plan.hpp"
-#include "gpu/jit/v2/conv/plan_preset.hpp"
-#include "gpu/jit/v2/conv/plan_registry.hpp"
-#include "gpu/ocl/ocl_usm_utils.hpp"
+#include "gpu/intel/jit/v2/conv/plan.hpp"
+#include "gpu/intel/jit/v2/conv/plan_preset.hpp"
+#include "gpu/intel/jit/v2/conv/plan_registry.hpp"
+#include "gpu/intel/ocl/ocl_usm_utils.hpp"
 
 #include <algorithm>
 #include <cassert>

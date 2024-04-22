@@ -21,14 +21,14 @@
 #include "common/memory_tracking.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "gpu/block_structure.hpp"
-#include "gpu/compute/data_type_converter.hpp"
-#include "gpu/compute/dispatch_reusable.hpp"
-#include "gpu/compute/kernel_arg_list.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/ocl/ocl_utils.hpp"
-#include "gpu/ocl/reusable_lnorm.hpp"
-#include "gpu/primitive_conf.hpp"
+#include "gpu/intel/block_structure.hpp"
+#include "gpu/intel/compute/data_type_converter.hpp"
+#include "gpu/intel/compute/dispatch_reusable.hpp"
+#include "gpu/intel/compute/kernel_arg_list.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/reusable_lnorm.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

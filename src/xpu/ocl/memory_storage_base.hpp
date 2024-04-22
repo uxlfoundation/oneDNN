@@ -18,8 +18,7 @@
 #define XPU_OCL_MEMORY_STORAGE_BASE_HPP
 
 #include "common/memory_storage.hpp"
-
-#include "xpu/ocl/c_types_map.hpp"
+#include "gpu/intel/ocl/ocl_c_types_map.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -16,12 +16,12 @@
 
 #include "gpu/intel/jit/v2/conv/planner/planner.hpp"
 
-#include "gpu/jit/v2/conv/model.hpp"
-#include "gpu/jit/v2/conv/plan.hpp"
-#include "gpu/jit/v2/conv/planner/bench.hpp"
-#include "gpu/jit/v2/conv/planner/mkl_iface.hpp"
-#include "gpu/jit/v2/conv/planner/model_fit.hpp"
-#include "gpu/jit/v2/conv/planner/search.hpp"
+#include "gpu/intel/jit/v2/conv/model.hpp"
+#include "gpu/intel/jit/v2/conv/plan.hpp"
+#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
+#include "gpu/intel/jit/v2/conv/planner/mkl_iface.hpp"
+#include "gpu/intel/jit/v2/conv/planner/model_fit.hpp"
+#include "gpu/intel/jit/v2/conv/planner/search.hpp"
 
 namespace dnnl {
 namespace impl {

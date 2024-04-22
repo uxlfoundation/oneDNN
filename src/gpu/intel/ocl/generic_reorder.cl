@@ -16,9 +16,9 @@
 
 #define USE_CUSTOM_GWS_GET_ID
 
-#include "gpu/ocl/dispatch.h"
-#include "gpu/ocl/reorder_common.h"
-#include "gpu/ocl/types_interop.h"
+#include "gpu/intel/ocl/dispatch.h"
+#include "gpu/intel/ocl/reorder_common.h"
+#include "gpu/intel/ocl/types_interop.h"
 
 #define GWS_GET_THREAD_ID(index) (get_global_id(index) + offset.array[index])
 

@@ -21,8 +21,9 @@
 #include "common/memory.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_reorder_pd.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

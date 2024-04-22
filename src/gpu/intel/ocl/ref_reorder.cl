@@ -22,8 +22,7 @@
 
 #define TO_I4 ((DST_DT_U4 || DST_DT_S4) && (!SRC_DT_U4 && !SRC_DT_S4))
 #define FROM_I4 ((SRC_DT_U4 || SRC_DT_S4) && (!DST_DT_U4 && !DST_DT_S4))
-#define GWS_GET_THREAD_ID(index) \
-    (off_t)(get_global_id(index) + offset.array[index])
+#define GWS_GET_THREAD_ID(index) (get_global_id(index) + offset.array[index])
 
 KERNEL_ATTR
 __kernel void ref_reorder(__global SRC_DATA_T *restrict src,
@@ -69,11 +68,7 @@ __kernel void ref_reorder(__global SRC_DATA_T *restrict src,
         int pad_d4 = NDIMS > 4 && d4 >= SRC_D4;
         int pad_d5 = NDIMS > 5 && d5 >= SRC_D5;
         if (pad_d0 || pad_d1 || pad_d2 || pad_d3 || pad_d4 || pad_d5) {
-#if TO_I4
-            SET_DOUBLE_HALF_BYTE(dst, dst_off, 0);
-#else
             dst[dst_off] = 0;
-#endif
             continue;
         }
 #endif

@@ -14,12 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/compute/dispatch_reusable.hpp"
+#include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "common/c_types_map.hpp"
-#include "gpu/block_structure.hpp"
-#include "gpu/compute/data_type_converter.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/utils.hpp"
+#include "gpu/intel/block_structure.hpp"
+#include "gpu/intel/compute/data_type_converter.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

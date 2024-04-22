@@ -22,8 +22,8 @@
 #include "common/reorder_pd.hpp"
 #include "common/stream.hpp"
 #include "gpu/gpu_concat_pd.hpp"
-#include "gpu/gpu_engine.hpp"
-#include "gpu/gpu_primitive.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

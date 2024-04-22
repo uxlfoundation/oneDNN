@@ -17,10 +17,10 @@
 #include "gpu/intel/jit/binary_format.hpp"
 
 #include "common/utils.hpp"
-#include "gpu/compute/compute_engine.hpp"
-#include "gpu/compute/compute_stream.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/jit/jit_generator.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/jit/jit_generator.hpp"
 
 #define MAGIC0 0xBEEFCAFEu
 #define MAGIC1 0x3141592653589793ull

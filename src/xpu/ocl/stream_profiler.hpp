@@ -18,8 +18,7 @@
 #define XPU_OCL_STREAM_PROFILER_HPP
 
 #include "common/c_types_map.hpp"
-
-#include "xpu/stream_profiler.hpp"
+#include "gpu/intel/compute/stream_profiler.hpp"
 
 namespace dnnl {
 namespace impl {

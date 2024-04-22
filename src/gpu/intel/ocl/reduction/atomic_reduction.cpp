@@ -20,21 +20,20 @@
 #include <limits>
 #include "common/eltwise_pd.hpp"
 #include "common/utils.hpp"
-#include "gpu/block_structure.hpp"
-#include "gpu/compute/compute_engine.hpp"
-#include "gpu/compute/device_info.hpp"
-#include "gpu/compute/dispatch_reusable.hpp"
-#include "gpu/compute/kernel_ctx.hpp"
-#include "gpu/compute/utils.hpp"
-#include "gpu/gpu_primitive_attr.hpp"
-#include "gpu/ocl/ocl_utils.hpp"
-#include "gpu/ocl/reduction/atomic_reduction.hpp"
-#include "gpu/ocl/reduction/reduction_utils.hpp"
+#include "gpu/intel/block_structure.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/dispatch_reusable.hpp"
+#include "gpu/intel/compute/kernel_ctx.hpp"
+#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/reduction/atomic_reduction.hpp"
+#include "gpu/intel/ocl/reduction/reduction_utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 using namespace gpu_utils;
@@ -300,7 +299,7 @@ void atomic_reduction_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t atomic_reduction_t::pd_t::init_conf(engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -420,8 +419,7 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t atomic_reduction_t::pd_t::init_finalization_pd(
-        impl::engine_t *engine) {
+status_t atomic_reduction_t::pd_t::init_finalization_pd(engine_t *engine) {
     eltwise_desc_t eltwise_desc;
     memory_desc_t eltwise_mem_desc(*dst_md());
     // XXX: Just for mean currently
@@ -561,7 +559,6 @@ status_t atomic_reduction_t::execute_atomic(const exec_ctx_t &ctx) const {
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

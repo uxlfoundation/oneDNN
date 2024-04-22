@@ -25,7 +25,6 @@
 #endif
 
 #include "gpu/intel/ocl/ocl_eltwise.h"
-#include "gpu/intel/ocl/ocl_math_utils.h"
 #include "gpu/intel/ocl/ocl_types.h"
 
 float fwd_Xnary(unsigned kind, unsigned algorithm, float x, float y,

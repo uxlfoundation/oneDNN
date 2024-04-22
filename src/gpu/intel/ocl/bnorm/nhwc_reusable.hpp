@@ -14,18 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_BNORM_NHWC_REUSABLE_HPP
-#define GPU_INTEL_OCL_BNORM_NHWC_REUSABLE_HPP
+#ifndef GPU_OCL_NHWC_REUSABLE_BNORM_HPP
+#define GPU_OCL_NHWC_REUSABLE_BNORM_HPP
 
 #include <assert.h>
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_batch_normalization_pd.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/gpu_resource.hpp"
 #include "gpu/intel/ocl/ocl_stream.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
@@ -38,7 +38,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 struct nhwc_reusable_bnorm_compile_params_t {
@@ -55,11 +54,7 @@ struct nhwc_reusable_bnorm_compile_params_t {
                 "nhwc_reusable_calc_var", "nhwc_reusable_reduce_fwd_reg",
                 "nhwc_reusable_calc_mean_var", "nhwc_reusable_reduce_fwd_1pass",
                 "nhwc_reusable_reduce_aux", "nhwc_reusable_norm_bwd",
-                "nhwc_reusable_calc_stat", "nhwc_reusable_reduce_stat",
-                "nhwc_reusable_norm_fwd_buff", "nhwc_reusable_norm_bwd_buff",
-                "nhwc_reusable_calc_mean_buff", "nhwc_reusable_calc_var_buff",
-                "nhwc_reusable_calc_mean_var_buff",
-                "nhwc_reusable_calc_stat_buff"};
+                "nhwc_reusable_calc_stat", "nhwc_reusable_reduce_stat"};
         return kernel_names;
     }
 
@@ -82,8 +77,6 @@ struct nhwc_reusable_bnorm_compile_params_t {
 
     data_type_t data_type;
     int vect_size;
-    int sub_group_size;
-    int max_ic_block;
     bool use_scale;
     bool use_shift;
     bool is_training;
@@ -105,8 +98,6 @@ struct nhwc_reusable_bnorm_runtime_params_t {
     float relu_negative_slope;
     float eps;
     bool use_fused_atomics_reduction;
-    bool use_buffers_calc;
-    bool use_buffers_norm;
     compute::range_t calc_adj_lws;
 };
 
@@ -125,7 +116,7 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
                                               : "ocl:nhwc_reusable";
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using namespace data_type;
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
@@ -175,7 +166,7 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
         void init_scratchpad();
 
         nhwc_reusable_bnorm_compile_params_t cmpl_conf;
@@ -188,7 +179,7 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
         compute::dispatch_t dispatch_reduce_aux;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         if (pd()->has_zero_dim_memory()) return status::success;
         auto kernel_names = pd()->cmpl_conf.get_kernel_names();
         CHECK(create_kernels(engine, kernels_, kernel_names, pd()->cmpl_conf));
@@ -216,7 +207,7 @@ struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
         DECLARE_COMMON_PD_T(
                 "ocl:nhwc_reusable", nhwc_reusable_batch_normalization_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(engine_t *engine) {
             using namespace data_type;
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
@@ -259,7 +250,7 @@ struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(engine_t *engine);
         void init_scratchpad();
 
         nhwc_reusable_bnorm_compile_params_t cmpl_conf;
@@ -272,7 +263,7 @@ struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
         compute::dispatch_t dispatch_reduce_aux;
     };
 
-    status_t init(impl::engine_t *engine) override {
+    status_t init(engine_t *engine) override {
         if (pd()->has_zero_dim_memory()) return status::success;
         auto kernel_names = pd()->cmpl_conf.get_kernel_names();
         CHECK(create_kernels(engine, kernels_, kernel_names, pd()->cmpl_conf));
@@ -290,7 +281,6 @@ private:
 };
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

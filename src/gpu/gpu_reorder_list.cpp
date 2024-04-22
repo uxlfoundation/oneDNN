@@ -16,25 +16,12 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#include "gpu/generic/cross_engine_reorder.hpp"
-#include "gpu/generic/direct_copy.hpp"
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/jit/reorder/gen_reorder.hpp"
+#include "gpu/intel/ocl/cross_engine_reorder.hpp"
 #include "gpu/intel/ocl/custom_reorder.hpp"
 #include "gpu/intel/ocl/generic_reorder.hpp"
 #include "gpu/intel/ocl/ref_reorder.hpp"
 #include "gpu/intel/ocl/rnn/rnn_reorders.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/generic/sycl/ref_reorder.hpp"
-#include "gpu/nvidia/cudnn_reorder.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_reorder.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

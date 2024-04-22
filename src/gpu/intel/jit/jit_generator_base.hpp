@@ -20,7 +20,7 @@
 #include <vector>
 #include <CL/cl.h>
 
-#include "xpu/utils.hpp"
+#include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -16,9 +16,7 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/simple_zero_pad.hpp"
-#endif
+#include "gpu/intel/ocl/ref_zero_pad.hpp"
 
 namespace dnnl {
 namespace impl {

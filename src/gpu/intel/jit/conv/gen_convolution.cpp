@@ -38,7 +38,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 struct conv_pd_data_t {
@@ -46,7 +45,7 @@ struct conv_pd_data_t {
     tensor_config_t tensor_cfg;
     std::vector<kernel_info_t> kernel_infos;
     std::shared_ptr<dnnl_primitive_desc> zp_pd;
-    std::shared_ptr<impl::primitive_t> zp_prim;
+    std::shared_ptr<primitive_t> zp_prim;
 };
 
 class gen_convolution_t {
@@ -54,7 +53,7 @@ public:
     static const int max_kernels = 16;
 
     template <typename T>
-    static status_t init_pd(T *pd, impl::engine_t *engine) {
+    static status_t init_pd(T *pd, engine_t *engine) {
         try {
             using compute::compute_engine_t;
             auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
@@ -108,8 +107,8 @@ public:
                 }
                 memory::dims S1 {1, 1, 1};
                 memory::dims P1 {0, 0, 0};
-                memory::dims dims_src {1, dim_t(prb.g) * prb.ic};
-                memory::dims dims_dst {1, dim_t(prb.g) * prb.oc};
+                memory::dims dims_src {1, prb.g * prb.ic};
+                memory::dims dims_dst {1, prb.g * prb.oc};
 
                 for (int i = off; i < int(K.size()); i++) {
                     const auto KD = (K[i] - 1) * (D[i] + 1) + 1;
@@ -160,7 +159,7 @@ public:
     gen_convolution_t() = default;
 
     template <typename T>
-    status_t init(T *primitive, impl::engine_t *engine) {
+    status_t init(T *primitive, engine_t *engine) {
         auto &data = *primitive->pd()->data;
         auto &tensor_cfg = data.tensor_cfg;
         auto tiler = std::make_shared<conv_tiler_t>(data.pd_cfg);
@@ -200,9 +199,13 @@ public:
                     auto &info = kernel_infos[i];
                     switch (info.id()) {
                         case kernel_id_t::convolution: {
+                            grf_mode_t grf_mode = (cfg.regs() == 256)
+                                    ? grf_mode_t::large
+                                    : grf_mode_t::small;
                             tmp_kernels.push_back(make_kernel<conv_kernel_t>(
                                     primitive, /*register_kernel=*/false,
-                                    engine, cfg, info, nd_ranges_[i], zp_dst));
+                                    engine, cfg, info, nd_ranges_[i], zp_dst,
+                                    grf_mode));
                             break;
                         }
                         case kernel_id_t::pre_reorder: {
@@ -214,7 +217,8 @@ public:
                                     make_kernel<reorder_kernel_t>(primitive,
                                             /*register_kernel=*/false, engine,
                                             reorder_cfg, "conv_reorder", info,
-                                            cfg.is_dpas_or_dpasw_fma()));
+                                            cfg.is_dpas_or_dpasw_fma(),
+                                            grf_mode_t::matches));
                             break;
                         }
                         case kernel_id_t::post_reorder: {
@@ -225,7 +229,8 @@ public:
                                     make_kernel<reorder_kernel_t>(primitive,
                                             /*register_kernel=*/false, engine,
                                             reorder_cfg, "conv_reorder", info,
-                                            cfg.is_dpas_or_dpasw_fma()));
+                                            cfg.is_dpas_or_dpasw_fma(),
+                                            grf_mode_t::matches));
                             break;
                         }
                         case kernel_id_t::zero_out:
@@ -237,7 +242,8 @@ public:
                                     make_kernel<zero_out_kernel_t>(primitive,
                                             /*register_kernel=*/false, engine,
                                             cfg.exec_cfg(), info,
-                                            cfg.is_dpas_or_dpasw_fma()));
+                                            cfg.is_dpas_or_dpasw_fma(),
+                                            grf_mode_t::matches));
                             break;
 
                         case kernel_id_t::zp_precalc:
@@ -278,8 +284,8 @@ public:
     }
 
     template <typename T>
-    status_t init_res_storage(const T *primitive, impl::engine_t *engine,
-            gpu_resource_t *r) const {
+    status_t init_res_storage(
+            const T *primitive, engine_t *engine, gpu_resource_t *r) const {
         auto &data = *primitive->pd()->data;
         auto &kernel_infos = data.kernel_infos;
         for (int i = 0; i < int(kernel_infos.size()); i++) {
@@ -503,7 +509,7 @@ private:
     static bool can_skip_zero_out(
             const kernel_info_t &info, const conv_config_t &cfg) {
         ir_assert(info.id() == kernel_id_t::zero_out);
-        auto &buf_name = info.arg_var(1).as<var_t>().name;
+        auto &buf_name = info.arg_var(0).as<var_t>().name;
         if (buf_name == "wei") return cfg.can_skip_wei_zero_out();
         if (buf_name == "bia") return cfg.can_skip_bia_zero_out();
         return false;
@@ -511,7 +517,7 @@ private:
 
     template <typename ExceptionT, typename T>
     static bool handle_exception(const ExceptionT &err, T *primitive,
-            impl::engine_t *engine, int iter, int max_iters) {
+            engine_t *engine, int iter, int max_iters) {
         if (iter + 1 < max_iters) return false;
         VERROR(primitive, gpu, "%s,%s", primitive->pd()->info(engine),
                 err.what());
@@ -522,13 +528,13 @@ private:
     std::vector<compute::nd_range_t> nd_ranges_;
 };
 
-status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV_IC(is_fwd(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_convolution_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_fwd_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }
@@ -538,28 +544,28 @@ status_t gen_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 }
 
 status_t gen_convolution_fwd_t::init_res_storage(
-        impl::engine_t *engine, gpu_resource_t *r) const {
+        engine_t *engine, gpu_resource_t *r) const {
     return impl_->init_res_storage(this, engine, r);
 }
 
-status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_convolution_t::init_pd(this, engine));
     return status::success;
 }
 
 status_t gen_convolution_bwd_data_t::init_res_storage(
-        impl::engine_t *engine, gpu_resource_t *r) const {
+        engine_t *engine, gpu_resource_t *r) const {
     return impl_->init_res_storage(this, engine, r);
 }
 
-status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_w(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_convolution_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_data_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }
@@ -568,13 +574,13 @@ status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
+status_t gen_convolution_bwd_weights_t::init(engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }
 
 status_t gen_convolution_bwd_weights_t::init_res_storage(
-        impl::engine_t *engine, gpu_resource_t *r) const {
+        engine_t *engine, gpu_resource_t *r) const {
     return impl_->init_res_storage(this, engine, r);
 }
 
@@ -583,7 +589,6 @@ status_t gen_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

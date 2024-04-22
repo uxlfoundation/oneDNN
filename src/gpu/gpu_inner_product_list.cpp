@@ -16,21 +16,10 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/convolution_inner_product.hpp"
 #include "gpu/intel/ocl/gemm_inner_product.hpp"
 #include "gpu/intel/ocl/gemm_post_ops_inner_product.hpp"
 #include "gpu/intel/ocl/ref_inner_product.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/cudnn_conv_inner_product.hpp"
-#include "gpu/nvidia/cudnn_gemm_inner_product.hpp"
-#endif
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/miopen_gemm_inner_product.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

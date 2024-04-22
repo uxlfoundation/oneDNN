@@ -19,7 +19,7 @@
 #include <vector>
 #include <unordered_map>
 
-#include "gpu/intel/ocl/kernel_utils.hpp"
+#include   "gpu/intel/ocl/kernel_utils.hpp"
 
 namespace dnnl {
 namespace impl {

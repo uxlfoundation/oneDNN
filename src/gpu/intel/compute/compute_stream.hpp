@@ -18,7 +18,7 @@
 #define GPU_INTEL_COMPUTE_COMPUTE_STREAM_HPP
 
 #include "common/stream.hpp"
-#include "gpu/compute/context.hpp"
+#include "gpu/intel/compute/context.hpp"
 
 namespace dnnl {
 namespace impl {

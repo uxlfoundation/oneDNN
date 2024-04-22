@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/ocl/gen9_binary.hpp"
-#include "gpu/primitive_conf.hpp"
+#include "gpu/intel/ocl/gen9_binary.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

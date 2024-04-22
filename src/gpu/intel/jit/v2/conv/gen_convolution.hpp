@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_GEN_CONVOLUTION_HPP
-#define GPU_INTEL_JIT_V2_CONV_GEN_CONVOLUTION_HPP
+#ifndef GPU_JIT_V2_CONV_GEN_CONVOLUTION_HPP
+#define GPU_JIT_V2_CONV_GEN_CONVOLUTION_HPP
 
 #include <memory>
 
@@ -27,7 +27,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 class exec_plan_t;
@@ -46,14 +45,14 @@ public:
         using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
 
         DECLARE_COMMON_PD_T("jit:ir_v2", gen_convolution_fwd_t);
-        status_t init(impl::engine_t *engine);
+        status_t init(engine_t *engine);
 
         std::shared_ptr<exec_plan_t> exec_plan;
     };
 
     using gpu_primitive_t::gpu_primitive_t;
 
-    status_t init(impl::engine_t *engine) override;
+    status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
@@ -71,14 +70,14 @@ public:
         using gpu_convolution_bwd_data_pd_t::gpu_convolution_bwd_data_pd_t;
 
         DECLARE_COMMON_PD_T("jit:ir_v2", gen_convolution_bwd_data_t);
-        status_t init(impl::engine_t *engine);
+        status_t init(engine_t *engine);
 
         std::shared_ptr<exec_plan_t> exec_plan;
     };
 
     using gpu_primitive_t::gpu_primitive_t;
 
-    status_t init(impl::engine_t *engine) override;
+    status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
@@ -97,14 +96,14 @@ public:
                 gpu_convolution_bwd_weights_pd_t;
 
         DECLARE_COMMON_PD_T("jit:ir_v2", gen_convolution_bwd_weights_t);
-        status_t init(impl::engine_t *engine);
+        status_t init(engine_t *engine);
 
         std::shared_ptr<exec_plan_t> exec_plan;
     };
 
     using gpu_primitive_t::gpu_primitive_t;
 
-    status_t init(impl::engine_t *engine) override;
+    status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
@@ -116,7 +115,6 @@ private:
 } // namespace conv
 } // namespace v2
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -30,7 +30,6 @@
 #include "gpu/intel/jit/conv/config.hpp"
 #include "gpu/intel/jit/conv/grf_usage.hpp"
 #include "gpu/intel/jit/conv/ir_builder.hpp"
-#include "gpu/intel/jit/conv/plan.hpp"
 
 namespace dnnl {
 namespace impl {

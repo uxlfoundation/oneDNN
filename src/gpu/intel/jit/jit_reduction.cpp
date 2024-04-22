@@ -30,12 +30,11 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace jit {
 
 using namespace gpu_utils;
 
-status_t jit_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t jit_reduction_t::pd_t::init_conf(engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -124,7 +123,6 @@ status_t jit_reduction_t::execute(const exec_ctx_t &ctx) const {
 }
 
 } // namespace jit
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

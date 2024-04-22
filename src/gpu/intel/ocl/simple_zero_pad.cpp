@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#include "gpu/ocl/ref_zero_pad.hpp"
-#include "gpu/compute/utils.hpp"
+#include "gpu/intel/ocl/ref_zero_pad.hpp"
+#include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
 namespace impl {

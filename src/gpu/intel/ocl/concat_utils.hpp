@@ -18,6 +18,7 @@
 #include <numeric>
 
 #include "gpu/intel/compute/dispatch.hpp"
+#include "gpu/intel/ocl/simple_concat.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -21,8 +21,8 @@
 #include <vector>
 #include <unordered_map>
 
-#include "gpu/config.hpp"
-#include "gpu/primitive_conf.hpp"
+#include "gpu/intel/config.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

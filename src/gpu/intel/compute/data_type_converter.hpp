@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_COMPUTE_DATA_TYPE_CONVERTER_HPP
-#define GPU_INTEL_COMPUTE_DATA_TYPE_CONVERTER_HPP
+#ifndef GPU_COMPUTE_DATA_TYPE_CONVERTER_HPP
+#define GPU_COMPUTE_DATA_TYPE_CONVERTER_HPP
 
 #include "common/c_types_map.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
@@ -24,7 +24,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace compute {
 
 inline std::string get_ocl_type(data_type_t type) {
@@ -72,7 +71,6 @@ protected:
 };
 
 } // namespace compute
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -19,12 +19,8 @@
 
 #include <cstdio>
 
-#include "xpu/ocl/engine_factory.hpp"
-#include "xpu/ocl/engine_impl.hpp"
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/compute/device_info.hpp"
-#endif
+#include "gpu/intel/ocl/ocl_engine.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_COMPUTE_UTILS_HPP
-#define GPU_INTEL_COMPUTE_UTILS_HPP
+#ifndef GPU_COMPUTE_UTILS_HPP
+#define GPU_COMPUTE_UTILS_HPP
 
 #include <array>
 #include <cassert>
@@ -30,8 +30,17 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace compute {
+
+using binary_t = std::vector<uint8_t>;
+using device_uuid_t = std::tuple<uint64_t, uint64_t>;
+
+struct device_uuid_hasher_t {
+    size_t operator()(const device_uuid_t &uuid) const {
+        const size_t seed = hash_combine(0, std::get<0>(uuid));
+        return hash_combine(seed, std::get<1>(uuid));
+    }
+};
 
 class range_t {
 public:
@@ -150,9 +159,8 @@ private:
 };
 
 } // namespace compute
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_COMPUTE_UTILS_HPP
+#endif // GPU_COMPUTE_UTILS_HPP

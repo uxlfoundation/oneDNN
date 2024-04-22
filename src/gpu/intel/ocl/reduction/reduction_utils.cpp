@@ -19,7 +19,6 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
 namespace ocl {
 
 // Convert a block structure + dims to a list of zero-padding structs
@@ -237,7 +236,6 @@ status_t generate_reduction_phases(const memory_desc_t *src,
 }
 
 } // namespace ocl
-} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

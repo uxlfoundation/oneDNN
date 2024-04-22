@@ -18,7 +18,6 @@
 #define GPU_INTEL_JIT_GEN9_SIMPLE_SUM_HPP
 
 #include "common/c_types_map.hpp"
-#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_sum_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 

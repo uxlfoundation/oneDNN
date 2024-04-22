@@ -26,8 +26,8 @@
 #include <unordered_map>
 
 #include "common/bit_cast.hpp"
-#include "gpu/gpu_primitive_attr.hpp"
-#include "gpu/utils.hpp"
+#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

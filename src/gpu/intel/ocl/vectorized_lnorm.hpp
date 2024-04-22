@@ -21,8 +21,8 @@
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_layer_normalization_pd.hpp"
-#include "gpu/gpu_primitive.hpp"
-#include "gpu/primitive_conf.hpp"
+#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

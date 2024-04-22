@@ -19,10 +19,10 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-#include "gpu/compute/compute_engine.hpp"
 #include "gpu/gpu_impl_list.hpp"
-#include "gpu/ocl/ocl_gpu_engine_id.hpp"
-#include "gpu/ocl/ocl_utils.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/ocl/ocl_gpu_engine_id.hpp"
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

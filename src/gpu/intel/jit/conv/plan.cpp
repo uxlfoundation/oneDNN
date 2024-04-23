@@ -145,6 +145,36 @@ void bind_kernel_grid(
     }
 }
 
+void bind_grid_idx(const conv_config_t &cfg, gemm_schedule_t &gemm_schedule,
+        const expr_t &var, bool is_tg) {
+    auto &grid_dims = is_tg ? get_thread_group_grid_conv_dims(cfg.prb())
+                            : get_kernel_grid_conv_dims(cfg.prb());
+    int grid_idx = -1;
+    for (auto &v : gemm_schedule.get_root_vars(var)) {
+        auto v_dim = prb_dim_t::from_name(v.as<var_t>().name);
+        for (int i = 0; i < 3; i++) {
+            if (grid_dims[i].has(v_dim)) {
+                ir_assert(grid_idx == -1 || grid_idx == i);
+                grid_idx = i;
+            }
+        }
+    }
+    ir_assert(grid_idx != -1);
+    gemm_schedule.bind(var,
+            is_tg ? cfg.thread_group_grid().idx(grid_idx)
+                  : cfg.kernel_grid().idx(grid_idx));
+}
+
+void bind_kernel_grid_idx(const conv_config_t &cfg,
+        gemm_schedule_t &gemm_schedule, const expr_t &var) {
+    bind_grid_idx(cfg, gemm_schedule, var, /*is_tg=*/false);
+}
+
+void bind_thread_group_grid_idx(const conv_config_t &cfg,
+        gemm_schedule_t &gemm_schedule, const expr_t &var) {
+    bind_grid_idx(cfg, gemm_schedule, var, /*is_tg=*/true);
+}
+
 void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
         view_t &src_view, view_t &wei_view, view_t &dst_view) {
     auto &prb_ = cfg_.prb();

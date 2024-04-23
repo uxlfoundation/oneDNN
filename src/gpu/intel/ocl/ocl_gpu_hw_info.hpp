@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GRAPH_UTILS_OCL_USM_UTILS_HPP
-#define GRAPH_UTILS_OCL_USM_UTILS_HPP
+#ifndef GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
+#define GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
 
 #include "oneapi/dnnl/dnnl_config.h"
 
@@ -42,4 +42,4 @@ void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
 } // namespace impl
 } // namespace dnnl
 
-#endif
+#endif // GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP

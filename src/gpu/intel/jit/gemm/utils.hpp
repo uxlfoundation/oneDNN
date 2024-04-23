@@ -17,14 +17,6 @@
 #ifndef GPU_INTEL_JIT_GEMM_UTILS_HPP
 #define GPU_INTEL_JIT_GEMM_UTILS_HPP
 
-#include <stdexcept>
-
-#if __cplusplus >= 202002L
-#if __has_include(<source_location>)
-#include <source_location>
-#endif
-#endif
-
 #include "common/math_utils.hpp"
 #include "common/utils.hpp"
 

@@ -19,8 +19,6 @@
 
 #include "gpu/intel/jit/v2/conv/planner/bench.hpp"
 
-#include "gpu/intel/jit/v2/conv/planner/bench.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {

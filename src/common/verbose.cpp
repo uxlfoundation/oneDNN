@@ -1567,14 +1567,9 @@ std::string init_info_softmax(const engine_t *e, const pd_t *pd) {
     auto dst_md = pd->dst_md();
     auto diff_dst_md = pd->diff_dst_md();
 
-    ss << md2fmt_str("src", src_md, pd->invariant_src_user_format_kind())
-       << " ";
-    ss << md2fmt_str("dst", dst_md, pd->dst_md(0, true)->format_kind);
-    if (!types::is_zero_md(diff_dst_md)) {
-        ss << " "
-           << md2fmt_str("diff_dst", diff_dst_md,
-                      pd->diff_dst_md(0, true)->format_kind);
-    }
+    ss << "src_" << md2fmt_str(src_md, pd->invariant_src_user_format_kind());
+    ss << " dst_" << dst_md;
+    if (!types::is_zero_md(diff_dst_md)) ss << " diff_dst_" << diff_dst_md;
 
     ss << "," << pd->attr() << ",";
     ss << "alg:" << pd->alg_kind() << " axis:" << pd->axis() << ",";

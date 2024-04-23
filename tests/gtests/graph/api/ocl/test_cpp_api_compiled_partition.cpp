@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,11 +76,11 @@ TEST(OCLApi, CompiledPartition) {
     inputs_ts.reserve(inputs.size());
     outputs_ts.reserve(outputs.size());
     for (const auto &in : inputs) {
-        inputs_ts.emplace_back(in, eng);
+        inputs_ts.push_back(tensor {in, eng});
     }
 
     for (const auto &out : outputs) {
-        outputs_ts.emplace_back(out, eng);
+        outputs_ts.push_back(tensor {out, eng});
     }
 
     EXPECT_NO_THROW({

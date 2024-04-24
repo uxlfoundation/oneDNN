@@ -1661,6 +1661,9 @@ public:
         // block is 1D; fallback to block/scattered message
         if (w == 1 || h == 1) return fail_2d("No benefit from 2D message");
 
+        // block is 1D; fallback to block/scattered message
+        if (w == 1 || h == 1) return fail_2d("No benefit from 2D message");
+
         // Check v -> t strides.
         dim_t w_vstride = w_tdim.vstride_by_vidx(w_vidx);
         if (w_vstride != 1)

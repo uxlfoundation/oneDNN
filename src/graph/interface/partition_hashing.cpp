@@ -68,7 +68,7 @@ bool key_t::operator==(const key_t &rhs) const {
 
     bool ret = true && lhs_num_ops == rhs_num_ops && lhs_num_ins == rhs_num_ins
             && lhs_num_outs == rhs_num_outs && nthread_ == rhs.nthread_
-            && engine_ == rhs.engine_;
+            && engine_id_ == rhs.engine_id_;
     if (!ret) return false;
 
     for (size_t i = 0; i < lhs_num_ops; ++i) {
@@ -120,33 +120,31 @@ size_t get_attributes_hash(
     for (auto &attr : attributes) {
         seed = hash_combine(seed, static_cast<size_t>(attr.first));
         auto kind = attr.second.get_kind();
-        try {
-            switch (kind) {
-                case attribute_kind::f:
-                    seed = hash_combine(seed, attr.second.get<float>());
-                    break;
-                case attribute_kind::i:
-                    seed = hash_combine(seed, attr.second.get<int64_t>());
-                    break;
-                case attribute_kind::s:
-                    seed = hash_combine(seed, attr.second.get<std::string>());
-                    break;
-                case attribute_kind::b:
-                    seed = hash_combine(seed, attr.second.get<bool>());
-                    break;
-                case attribute_kind::fs:
-                    seed = get_array_hash(seed,
-                            attr.second.get<std::vector<float>>().data(),
-                            attr.second.get<std::vector<float>>().size());
-                    break;
-                case attribute_kind::is:
-                    seed = get_array_hash(seed,
-                            attr.second.get<std::vector<int64_t>>().data(),
-                            attr.second.get<std::vector<int64_t>>().size());
-                    break;
-                default: break;
-            }
-        } catch (...) { assert(!"should not reach here"); }
+        switch (kind) {
+            case attribute_kind::f:
+                seed = hash_combine(seed, attr.second.get<float>());
+                break;
+            case attribute_kind::i:
+                seed = hash_combine(seed, attr.second.get<int64_t>());
+                break;
+            case attribute_kind::s:
+                seed = hash_combine(seed, attr.second.get<std::string>());
+                break;
+            case attribute_kind::b:
+                seed = hash_combine(seed, attr.second.get<bool>());
+                break;
+            case attribute_kind::fs:
+                seed = get_array_hash(seed,
+                        attr.second.get<std::vector<float>>().data(),
+                        attr.second.get<std::vector<float>>().size());
+                break;
+            case attribute_kind::is:
+                seed = get_array_hash(seed,
+                        attr.second.get<std::vector<int64_t>>().data(),
+                        attr.second.get<std::vector<int64_t>>().size());
+                break;
+            default: break;
+        }
     }
     return seed;
 }

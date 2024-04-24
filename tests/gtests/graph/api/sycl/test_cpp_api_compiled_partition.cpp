@@ -57,7 +57,7 @@ inline void construct_conv_relu(graph &g, size_t seed) {
     g.finalize();
 }
 
-TEST(SYCLApi, CompiledPartitionExecute) {
+TEST(ApiExecute, ConvReLU) {
 
     dnnl::engine::kind ekind
             = static_cast<dnnl::engine::kind>(api_test_engine_kind);
@@ -121,7 +121,7 @@ TEST(SYCLApi, CompiledPartitionExecute) {
     strm.wait();
 }
 
-TEST(SYCLApi, CompiledPartitionInteropExecute) {
+TEST(SyclApiExecute, ConvReLU) {
     dnnl::engine::kind ekind
             = static_cast<dnnl::engine::kind>(api_test_engine_kind);
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL

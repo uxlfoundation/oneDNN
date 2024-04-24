@@ -29,6 +29,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 using namespace ngen;
@@ -28203,6 +28204,7 @@ REG_XE2_ISA(template class gemm_kernel_generator_t<HW::Xe2>);
 REG_XE3P_ISA(template class gemm_kernel_generator_t<HW::Xe3p>);
 
 } // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

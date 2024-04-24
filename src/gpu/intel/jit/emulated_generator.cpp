@@ -20,6 +20,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 using namespace ngen;
@@ -454,6 +455,7 @@ REG_XE3P_ISA(template class emulated_generator_t<gpu_xe3p>);
 #endif
 
 } // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

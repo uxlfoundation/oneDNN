@@ -190,6 +190,7 @@ struct type_info_t {
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 enum class type_kind_t {
@@ -2646,6 +2647,7 @@ static_assert(sizeof(stmt_t) <= sizeof(void *),
 #endif
 
 } // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

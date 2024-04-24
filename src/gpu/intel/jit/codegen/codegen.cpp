@@ -28,6 +28,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 inline ngen::ConditionModifier cmp_op_to_ngen(op_kind_t op_kind) {
@@ -1582,6 +1583,7 @@ REG_XE3P_ISA(template void convert_ir_to_ngen(const stmt_t &body,
 #endif
 
 } // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

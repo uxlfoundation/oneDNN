@@ -25,6 +25,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace ocl {
 
 #if XE3P
@@ -40,6 +41,7 @@ void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
 #endif
 
 } // namespace ocl
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

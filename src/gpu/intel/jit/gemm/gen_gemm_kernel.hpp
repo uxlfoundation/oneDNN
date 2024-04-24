@@ -29,6 +29,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 struct gen_gemm_kernel_desc_t {
@@ -168,7 +169,7 @@ struct gen_gemm_kernel_t : public jit_generator_base {
         : desc_(desc) {}
 
     const char *kernel_name() const override { return "gemm_kernel"; }
-    gpu::compute::binary_t get_binary(
+    gpu::intel::compute::binary_t get_binary(
             cl_context context, cl_device_id device) override;
 
     const gen_gemm_kernel_desc_t *desc() const { return &desc_; }
@@ -204,6 +205,7 @@ struct trivial_key_validator_t<jit::gen_gemm_xe_systolic_kernel_desc_t> {
     }
 };
 
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

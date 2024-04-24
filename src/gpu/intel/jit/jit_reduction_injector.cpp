@@ -30,6 +30,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 using namespace ngen;
@@ -287,6 +288,7 @@ REG_XE3P_ISA(template struct jit_reduction_injector_f32<gpu_xe3p>);
 #endif
 
 } // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

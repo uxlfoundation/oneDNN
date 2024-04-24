@@ -24,6 +24,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 expr_t const_fold_non_recursive(const expr_t &expr);
@@ -693,6 +694,7 @@ void ir_visitor_t::_visit(const pexpr_t &obj) {
 }
 
 } // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

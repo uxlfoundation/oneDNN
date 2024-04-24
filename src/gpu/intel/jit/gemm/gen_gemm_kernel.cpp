@@ -25,6 +25,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 namespace jit {
 
 #define _CATALOG_ gemm_catalog
@@ -722,7 +723,7 @@ void gen_gemm_kernel_t::init_interface() {
 #endif
 }
 
-gpu::compute::binary_t gen_gemm_kernel_t::get_binary(
+gpu::intel::compute::binary_t gen_gemm_kernel_t::get_binary(
         cl_context context, cl_device_id device) {
     init_interface();
 
@@ -757,6 +758,7 @@ gpu::compute::binary_t gen_gemm_kernel_t::get_binary(
 }
 
 } // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

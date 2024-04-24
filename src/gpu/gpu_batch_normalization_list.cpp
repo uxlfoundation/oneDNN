@@ -47,9 +47,9 @@ using namespace dnnl::impl::prop_kind;
 
 #ifdef DNNL_DEV_MODE
 #define NHWC_REUSABLE_FWD_INSTANCE \
-    INSTANCE(ocl::nhwc_reusable_batch_normalization_fwd_t)
+    INSTANCE(intel::ocl::nhwc_reusable_batch_normalization_fwd_t)
 #define NHWC_REUSABLE_BWD_INSTANCE \
-    INSTANCE(ocl::nhwc_reusable_batch_normalization_bwd_t)
+    INSTANCE(intel::ocl::nhwc_reusable_batch_normalization_bwd_t)
 #else
 #define NHWC_REUSABLE_FWD_INSTANCE
 #define NHWC_REUSABLE_BWD_INSTANCE

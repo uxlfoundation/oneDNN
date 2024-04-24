@@ -97,6 +97,17 @@ const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
 
 #define GET_OFF(field) offsetof(scale_utils::jit_call_t, field)
 
+void jit_avx512_core_scale_precompute_t::store(
+        const int offset_base, const bool compute_tail) {
+    mov(reg_aux_dst_scales_, reg_dst_scales_);
+    const auto addr_offset = static_cast<size_t>(offset_base) * sizeof(float);
+    const Vmm vmm_m_dst = compute_tail ? vmm_dst_ | ktail_f32_mask_ : vmm_dst_;
+    for (size_t g = 0; g < wei_groups_ic_; g++) {
+        vmovups(ptr[reg_aux_dst_scales_ + addr_offset], vmm_m_dst);
+        add(reg_aux_dst_scales_, reg_groups_stride_);
+    }
+}
+
 void jit_avx512_core_scale_precompute_t::cvt2ps(data_type_t type_in,
         const Vmm vmm_in, const Xbyak::Operand &op,
         const bool mask_flag = false) {
@@ -114,14 +125,11 @@ void jit_avx512_core_scale_precompute_t::cvt2ps(data_type_t type_in,
 
 void jit_avx512_core_scale_precompute_t::compute_scale(
         const int offset_base, const bool compute_tail) {
-    const size_t dst_addr_offset
-            = static_cast<size_t>(offset_base) * sizeof(float);
     const size_t wei_addr_offset
             = static_cast<size_t>(offset_base) * wei_scales_dsz_;
     const Vmm vmm_m_wei_scales = compute_tail
             ? vmm_wei_scales_ | ktail_f32_mask_ | T_z
             : vmm_wei_scales_;
-    const Vmm vmm_m_dst = compute_tail ? vmm_dst_ | ktail_f32_mask_ : vmm_dst_;
 
     cvt2ps(wei_scales_dt_, vmm_wei_scales_,
             ptr[reg_wei_scales_ + wei_addr_offset], compute_tail);
@@ -129,7 +137,7 @@ void jit_avx512_core_scale_precompute_t::compute_scale(
         vmulps(vmm_m_wei_scales, vmm_scale_factor_, vmm_m_wei_scales);
 
     vmulps(vmm_dst_, vmm_m_wei_scales, ptr_b[reg_src_scales_]);
-    vmovups(ptr[reg_dst_scales_ + dst_addr_offset], vmm_m_dst);
+    store(offset_base, compute_tail);
 }
 
 void jit_avx512_core_scale_precompute_t::setup_mask() {

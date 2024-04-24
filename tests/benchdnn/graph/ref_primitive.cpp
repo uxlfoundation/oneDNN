@@ -113,7 +113,7 @@ int ref_primitive_t::init_prim(
         if (is_special_backward_op_) { \
             SAFE(create_primitive(fwd_prim_, ref_eng, ::driver::init_pd, prb, \
                          res, FLAG_FWD, nullptr, prb->dir &FLAG_BWD, nullptr, \
-                         false), \
+                         force_f32_prim_dt), \
                     WARN); \
             if (res->state == SKIPPED || res->state == UNIMPLEMENTED) \
                 return OK; \
@@ -128,7 +128,7 @@ int ref_primitive_t::init_prim(
         SAFE(create_primitive(prim_, ref_eng, ::driver::init_pd, prb, res, \
                      prb->dir, \
                      is_special_backward_op_ ? query_pd(fwd_prim_) : nullptr, \
-                     false, nullptr, false), \
+                     false, nullptr, force_f32_prim_dt), \
                 WARN); \
         if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK; \
         break; \

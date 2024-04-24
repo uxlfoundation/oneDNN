@@ -50,13 +50,44 @@ namespace compat {
 
 using namespace gpu::intel::compute;
 
+namespace {
+template <typename sycl_object_t>
+void *get_native_impl(backend_t backend, const sycl_object_t &sycl_object) {
+    if (backend == backend_t::opencl) {
+        return ::sycl::get_native<::sycl::backend::opencl>(sycl_object);
+    } else if (backend == backend_t::level0) {
+        return ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+                sycl_object);
+    } else {
+        assert(!"unexpected");
+        return nullptr;
+    }
+    return nullptr;
+}
+
+} // namespace
+
+void *get_native(const ::sycl::device &dev) {
+    auto backend = get_sycl_backend(dev);
+    return get_native_impl(backend, dev);
+}
+
+void *get_native(const ::sycl::context &ctx) {
+    auto devices = ctx.get_devices();
+    assert(!devices.empty());
+    if (devices.empty()) return nullptr;
+    // backend is expected to be the same for all devices in a context.
+    auto backend = get_sycl_backend(devices[0]);
+    return get_native_impl(backend, ctx);
+}
+
 status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
-        const impl::sycl::sycl_engine_base_t *sycl_engine,
-        const xpu::binary_t &binary, const char *kernel_name) {
-    auto backend = xpu::sycl::get_backend(sycl_engine->device());
-    if (backend == xpu::sycl::backend_t::opencl) {
-        xpu::ocl::wrapper_t<cl_program> ocl_program;
-        CHECK(xpu::ocl::create_program(ocl_program, sycl_engine->ocl_device(),
+        const sycl_engine_base_t *sycl_engine,
+        const gpu::intel::compute::binary_t &binary, const char *kernel_name) {
+    auto backend = get_sycl_backend(sycl_engine->device());
+    if (backend == backend_t::opencl) {
+        gpu::intel::ocl::ocl_wrapper_t<cl_program> ocl_program;
+        CHECK(create_ocl_program(ocl_program, sycl_engine->ocl_device(),
                 sycl_engine->ocl_context(), binary));
         cl_int err;
         cl_kernel ocl_kernel = clCreateKernel(ocl_program, kernel_name, &err);

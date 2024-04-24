@@ -98,9 +98,8 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
                                 engine())
                                 ->device()),
                 offset % gpu::intel::ocl::OCL_BUFFER_ALIGNMENT == 0));
-        xpu::sycl::buffer_u8_t *sub_buffer = buffer_
-                ? new xpu::sycl::buffer_u8_t(
-                        parent_buffer(), base_offset_ + offset, size)
+        buffer_u8_t *sub_buffer = buffer_
+                ? new buffer_u8_t(parent_buffer(), base_offset_ + offset, size)
                 : nullptr;
         storage->buffer_.reset(sub_buffer);
         storage->base_offset_ = base_offset_ + offset;

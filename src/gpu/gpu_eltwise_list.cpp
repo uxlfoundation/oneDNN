@@ -30,19 +30,13 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_ELTWISE_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_eltwise_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::ref_eltwise_fwd_t)
-        GPU_INSTANCE_NVIDIA(nvidia::cudnn_eltwise_fwd_t)
-        GPU_INSTANCE_AMD(amd::miopen_eltwise_fwd_t)
-        GPU_INSTANCE_GENERIC_SYCL(sycl::ref_sycl_eltwise_fwd_t)
+        INSTANCE(intel::ocl::gen9_eltwise_fwd_t)
+        INSTANCE(intel::ocl::ref_eltwise_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_eltwise_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::ref_eltwise_bwd_t)
-        GPU_INSTANCE_NVIDIA(nvidia::cudnn_eltwise_bwd_t)
-        GPU_INSTANCE_AMD(amd::miopen_eltwise_bwd_t)
-        GPU_INSTANCE_GENERIC_SYCL(sycl::ref_sycl_eltwise_bwd_t)
+        INSTANCE(intel::ocl::gen9_eltwise_bwd_t)
+        INSTANCE(intel::ocl::ref_eltwise_bwd_t)
         nullptr,
     })},
 });

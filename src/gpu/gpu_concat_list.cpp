@@ -28,12 +28,11 @@ namespace gpu {
 namespace {
 
 // clang-format off
-constexpr impl_list_item_t impl_list[] = REG_CONCAT_P({
-        GPU_CONCAT_INSTANCE_INTEL(intel::ocl::simple_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::ocl::gen9_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::ocl::multi_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::ocl::ref_concat_t)
-        GPU_CONCAT_INSTANCE_NVIDIA(intel::ocl::ref_concat_t)
+constexpr impl_list_item_t concat_impl_list[] = REG_CONCAT_P({
+        CONCAT_INSTANCE(intel::ocl::simple_concat_t)
+        CONCAT_INSTANCE(intel::ocl::gen9_concat_t)
+        CONCAT_INSTANCE(intel::ocl::multi_concat_t)
+        CONCAT_INSTANCE(intel::ocl::ref_concat_t)
         nullptr,
 });
 // clang-format on

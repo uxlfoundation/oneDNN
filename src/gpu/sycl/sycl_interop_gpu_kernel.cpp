@@ -182,8 +182,8 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(stream_t &stream,
 }
 
 status_t sycl_interop_gpu_kernel_t::dump() const {
-    xpu::binary_t binary;
-    CHECK(gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary));
+    intel::compute::binary_t binary;
+    CHECK(get_kernel_binary(sycl_kernel(), binary));
     return gpu::intel::gpu_utils::dump_kernel_binary(binary, name());
 }
 

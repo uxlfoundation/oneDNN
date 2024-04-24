@@ -463,6 +463,70 @@ status_t get_ocl_device_eu_count(cl_device_id device,
     return status::success;
 }
 
+status_t clone_kernel(cl_kernel kernel, cl_kernel *cloned_kernel) {
+    cl_int err;
+#if !defined(DNNL_SYCL_HIP) && !defined(DNNL_SYCL_CUDA) \
+        && defined(CL_VERSION_2_1)
+    *cloned_kernel = clCloneKernel(kernel, &err);
+    OCL_CHECK(err);
+#else
+    // clCloneKernel is not available - recreate from the program.
+    auto name = get_kernel_name(kernel);
+
+    cl_program program;
+    err = clGetKernelInfo(
+            kernel, CL_KERNEL_PROGRAM, sizeof(program), &program, nullptr);
+    OCL_CHECK(err);
+
+    *cloned_kernel = clCreateKernel(program, name.c_str(), &err);
+    OCL_CHECK(err);
+#endif
+
+    return status::success;
+}
+
+status_t create_ocl_program(
+        gpu::intel::ocl::ocl_wrapper_t<cl_program> &ocl_program,
+        cl_device_id dev, cl_context ctx,
+        const gpu::intel::compute::binary_t &binary) {
+    cl_int err;
+    const unsigned char *binary_buffer = binary.data();
+    size_t binary_size = binary.size();
+    assert(binary_size > 0);
+
+    ocl_program = clCreateProgramWithBinary(
+            ctx, 1, &dev, &binary_size, &binary_buffer, nullptr, &err);
+    OCL_CHECK(err);
+    err = clBuildProgram(ocl_program, 1, &dev, nullptr, nullptr, nullptr);
+    OCL_CHECK(err);
+
+    return status::success;
+}
+
+status_t get_device_uuid(
+        gpu::intel::compute::device_uuid_t &uuid, cl_device_id ocl_dev) {
+    // This function is used only with SYCL that works with OpenCL 3.0
+    // that supports `cl_khr_device_uuid` extension.
+#if defined(cl_khr_device_uuid)
+    static_assert(
+            CL_UUID_SIZE_KHR == 16, "CL_UUID_SIZE_KHR is expected to be 16");
+
+    cl_uchar ocl_dev_uuid[CL_UUID_SIZE_KHR] = {};
+    OCL_CHECK(clGetDeviceInfo(ocl_dev, CL_DEVICE_UUID_KHR, CL_UUID_SIZE_KHR,
+            ocl_dev_uuid, nullptr));
+
+    uint64_t uuid_packed[CL_UUID_SIZE_KHR / sizeof(uint64_t)] = {};
+    for (size_t i = 0; i < CL_UUID_SIZE_KHR; ++i) {
+        size_t shift = i % sizeof(uint64_t) * CHAR_BIT;
+        uuid_packed[i / sizeof(uint64_t)]
+                |= (((uint64_t)ocl_dev_uuid[i]) << shift);
+    }
+    uuid = gpu::intel::compute::device_uuid_t(uuid_packed[0], uuid_packed[1]);
+    return status::success;
+#endif
+    return status::runtime_error;
+}
+
 } // namespace ocl
 } // namespace intel
 } // namespace gpu

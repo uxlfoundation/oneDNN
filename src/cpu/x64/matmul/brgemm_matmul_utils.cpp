@@ -1373,12 +1373,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             && bgmmc.is_oscale_per_k && bgmmc.is_oscale_per_n
             && bgmmc.transposed_B;
 
-    // int4 weights decompression only supports plain layout for now
-    // TODO: enable int4 reorder and extend support to other weight layouts
-    if (bgmmc.with_wei_decompression && bgmmc.is_int4_weights)
-        VCONDCHECK_BG(bm_conf_utils.check_is_plain(bgmmc.wei_tag),
-                VERBOSE_UNSUPPORTED_TAG);
-
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);
     // if M == 1 we can still treat formally transposed A as plain
     // and avoid copy routine creation/execution

@@ -177,11 +177,9 @@ struct matmul_pd_t : public primitive_desc_t {
 
         bool ok = attr()->scales_.has_default_values(supported_args);
         for (int arg : supported_args) {
-            const auto &sc = attr()->scales_.get(arg);
-            const auto &mask = sc.mask_;
-            if (sc.has_default_values()) { continue; }
-
+            const auto &mask = attr()->scales_.get(arg).mask_;
             if (arg == DNNL_ARG_WEIGHTS) {
+                const auto &sc = attr()->scales_.get(arg);
                 ok = ok
                         && utils::one_of(mask, 0, wei_qmask_N(),
                                 wei_qmask_K() + wei_qmask_N());
@@ -189,25 +187,8 @@ struct matmul_pd_t : public primitive_desc_t {
                         && IMPLICATION(sc.ndims_ == 2,
                                 sc.group_dims_[1] == 1
                                         && K() % sc.group_dims_[0] == 0);
-            } else if (arg == DNNL_ARG_SRC) {
-                ok = ok
-                        && utils::one_of(mask, 0, src_qmask_K(),
-                                src_qmask_M() + src_qmask_K());
-                ok = ok && utils::one_of(sc.ndims_, 0, 2);
-                ok = ok && IMPLICATION((mask & src_qmask_K()), sc.ndims_ == 2);
-                ok = ok
-                        && IMPLICATION(sc.ndims_ == 2,
-                                sc.group_dims_[0] == 1
-                                        && K() % sc.group_dims_[1] == 0);
-            } else {
-                ok = ok
-                        && utils::one_of(mask, 0, dst_qmask_N(),
-                                dst_qmask_M() + dst_qmask_N());
-                ok = ok && utils::one_of(sc.ndims_, 0, 2)
-                        && IMPLICATION(sc.ndims_ == 2,
-                                sc.group_dims_[1] == 1
-                                        && M() % sc.group_dims_[0] == 0);
-            }
+            } else
+                ok = ok && (mask == 0);
         }
         return ok;
     }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ struct ref_batch_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    kernel_t kernel_;
+    intel::compute::kernel_t kernel_;
 };
 
 struct ref_batch_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
@@ -163,7 +163,7 @@ struct ref_batch_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
 private:
     status_t execute_backward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    kernel_t kernel_;
+    intel::compute::kernel_t kernel_;
 };
 
 } // namespace sycl

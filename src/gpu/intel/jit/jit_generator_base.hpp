@@ -26,11 +26,6 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-
-namespace ocl {
-class ocl_gpu_engine_t;
-}
-
 namespace jit {
 
 struct jit_generator_base {

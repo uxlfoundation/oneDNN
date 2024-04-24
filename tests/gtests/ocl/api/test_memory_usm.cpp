@@ -25,7 +25,7 @@
 #include <cstdint>
 #include <vector>
 
-using namespace dnnl::impl::xpu::ocl;
+using namespace dnnl::impl::gpu::intel::ocl;
 
 namespace dnnl {
 
@@ -198,114 +198,13 @@ TEST(ocl_memory_usm_test, ErrorMakeMemoryUsingSystemMemory) {
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, DeviceMapUnmap) {
-    test_usm_map_unmap(dnnl::impl::xpu::ocl::usm::malloc_device,
-            dnnl::impl::xpu::ocl::usm::free);
+    test_usm_map_unmap(dnnl::impl::gpu::intel::ocl::usm::malloc_device,
+            dnnl::impl::gpu::intel::ocl::usm::free);
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, SharedMapUnmap) {
-    test_usm_map_unmap(dnnl::impl::xpu::ocl::usm::malloc_shared,
-            dnnl::impl::xpu::ocl::usm::free);
-}
-
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryCreation) {
-    engine eng(engine::kind::gpu, 0);
-    const int nnz = 12;
-    memory::desc md;
-
-    // COO.
-    ASSERT_NO_THROW(md = memory::desc::coo({64, 128}, memory::data_type::f32,
-                            nnz, memory::data_type::s32));
-
-    memory mem;
-    // Default memory constructor.
-    EXPECT_NO_THROW(mem = memory(md, eng));
-    // Default interop API to create a memory object.
-    EXPECT_NO_THROW(mem
-            = ocl_interop::make_memory(md, eng, ocl_interop::memory_kind::usm));
-    // User provided buffers.
-    auto ocl_values = allocate_usm(md.get_size(0), eng);
-    ASSERT_NE(ocl_values, nullptr);
-
-    auto ocl_row_indices = allocate_usm(md.get_size(1), eng);
-    ASSERT_NE(ocl_row_indices, nullptr);
-
-    auto ocl_col_indices = allocate_usm(md.get_size(2), eng);
-    ASSERT_NE(ocl_col_indices, nullptr);
-
-    EXPECT_NO_THROW(mem
-            = ocl_interop::make_memory(md, eng, ocl_interop::memory_kind::usm,
-                    {ocl_values.get(), ocl_row_indices.get(),
-                            ocl_col_indices.get()}));
-
-    ASSERT_NO_THROW(mem.set_data_handle(nullptr, 0));
-    ASSERT_NO_THROW(mem.set_data_handle(nullptr, 1));
-    ASSERT_NO_THROW(mem.set_data_handle(nullptr, 2));
-
-    ASSERT_EQ(mem.get_data_handle(0), nullptr);
-    ASSERT_EQ(mem.get_data_handle(1), nullptr);
-    ASSERT_EQ(mem.get_data_handle(2), nullptr);
-}
-
-HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryMapUnmap) {
-    engine eng(engine::kind::gpu, 0);
-
-    const int nnz = 2;
-    memory::desc md;
-
-    // COO.
-    ASSERT_NO_THROW(md = memory::desc::coo({2, 2}, memory::data_type::f32, nnz,
-                            memory::data_type::s32));
-
-    // User provided buffers.
-    std::vector<float> coo_values = {1.5, 2.5};
-    std::vector<int> row_indices = {0, 1};
-    std::vector<int> col_indices = {0, 1};
-
-    // User provided buffers.
-    auto ocl_values = allocate_usm(md.get_size(0), eng);
-    ASSERT_NE(ocl_values, nullptr);
-
-    auto ocl_row_indices = allocate_usm(md.get_size(1), eng);
-    ASSERT_NE(ocl_row_indices, nullptr);
-
-    auto ocl_col_indices = allocate_usm(md.get_size(2), eng);
-    ASSERT_NE(ocl_col_indices, nullptr);
-
-    auto s = stream(eng);
-    usm::memcpy(s.get(), ocl_values.get(), coo_values.data(), md.get_size(0));
-    usm::memcpy(
-            s.get(), ocl_row_indices.get(), row_indices.data(), md.get_size(1));
-    usm::memcpy(
-            s.get(), ocl_col_indices.get(), col_indices.data(), md.get_size(2));
-    s.wait();
-
-    memory coo_mem;
-    EXPECT_NO_THROW(coo_mem
-            = ocl_interop::make_memory(md, eng, ocl_interop::memory_kind::usm,
-                    {ocl_values.get(), ocl_row_indices.get(),
-                            ocl_col_indices.get()}));
-
-    float *mapped_coo_values = nullptr;
-    int *mapped_row_indices = nullptr;
-    int *mapped_col_indices = nullptr;
-
-    ASSERT_NO_THROW(mapped_coo_values = coo_mem.map_data<float>(0));
-    ASSERT_NO_THROW(mapped_row_indices = coo_mem.map_data<int>(1));
-    ASSERT_NO_THROW(mapped_col_indices = coo_mem.map_data<int>(2));
-
-    for (size_t i = 0; i < coo_values.size(); i++)
-        ASSERT_EQ(coo_values[i], mapped_coo_values[i]);
-
-    for (size_t i = 0; i < row_indices.size(); i++)
-        ASSERT_EQ(row_indices[i], mapped_row_indices[i]);
-
-    for (size_t i = 0; i < col_indices.size(); i++)
-        ASSERT_EQ(col_indices[i], mapped_col_indices[i]);
-
-    ASSERT_NO_THROW(coo_mem.unmap_data(mapped_coo_values, 0));
-    ASSERT_NO_THROW(coo_mem.unmap_data(mapped_row_indices, 1));
-    ASSERT_NO_THROW(coo_mem.unmap_data(mapped_col_indices, 2));
+    test_usm_map_unmap(dnnl::impl::gpu::intel::ocl::usm::malloc_shared,
+            dnnl::impl::gpu::intel::ocl::usm::free);
 }
 #endif
 

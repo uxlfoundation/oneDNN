@@ -94,18 +94,13 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
         storage->buffer_ = buffer_;
         storage->base_offset_ = base_offset_ + offset;
     } else {
-        const auto *sycl_engine_impl
-                = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                        engine()->impl());
-        MAYBE_UNUSED(sycl_engine_impl);
-        // TODO: Generalize gpu_assert to make it available for use in the xpu
-        // space.
-        assert(IMPLICATION(
-                xpu::sycl::is_intel_device(sycl_engine_impl->device()),
-                offset % sycl_engine_impl->get_buffer_alignment() == 0));
-        xpu::sycl::buffer_u8_t *sub_buffer = buffer_
-                ? new xpu::sycl::buffer_u8_t(
-                        parent_buffer(), base_offset_ + offset, size)
+        gpu_assert(IMPLICATION(
+                is_intel_device(
+                        utils::downcast<const sycl_engine_base_t *>(engine())
+                                ->device()),
+                offset % gpu::intel::ocl::OCL_BUFFER_ALIGNMENT == 0));
+        buffer_u8_t *sub_buffer = buffer_
+                ? new buffer_u8_t(parent_buffer(), base_offset_ + offset, size)
                 : nullptr;
         storage->buffer_.reset(sub_buffer);
         storage->base_offset_ = base_offset_ + offset;

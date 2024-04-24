@@ -25,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace sycl {
 
-class device_info_t : public gpu::intel::compute::device_info_t {
+class sycl_device_info_t : public gpu::intel::compute::device_info_t {
 protected:
     status_t init_device_name(impl::engine_t *engine) override;
     status_t init_arch(impl::engine_t *engine) override;

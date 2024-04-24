@@ -48,17 +48,6 @@ namespace compat {
 
 using namespace gpu::intel::compute;
 
-status_t make_kernels(
-        std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
-        const std::vector<const char *> &kernel_names,
-        const gpu::intel::sycl::engine_t *sycl_engine,
-        const xpu::binary_t &binary) {
-    auto backend = xpu::sycl::get_backend(sycl_engine->device());
-    if (backend == xpu::sycl::backend_t::opencl) {
-        xpu::ocl::wrapper_t<cl_program> ocl_program;
-        CHECK(xpu::ocl::create_program(ocl_program, sycl_engine->ocl_device(),
-                sycl_engine->ocl_context(), binary));
-
         sycl_kernels.resize(kernel_names.size());
         for (size_t i = 0; i < kernel_names.size(); i++) {
             if (kernel_names[i] == nullptr) continue;
@@ -89,7 +78,27 @@ status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
 
     if (sycl_kernels.empty()) return status::runtime_error;
 
-    sycl_kernel = std::move(sycl_kernels[0]);
+status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
+        const sycl_engine_base_t *sycl_engine,
+        const gpu::intel::compute::binary_t &binary, const char *kernel_name) {
+    auto backend = get_sycl_backend(sycl_engine->device());
+    if (backend == backend_t::opencl) {
+        gpu::intel::ocl::ocl_wrapper_t<cl_program> ocl_program;
+        CHECK(create_ocl_program(ocl_program, sycl_engine->ocl_device(),
+                sycl_engine->ocl_context(), binary));
+        cl_int err;
+        cl_kernel ocl_kernel = clCreateKernel(ocl_program, kernel_name, &err);
+        OCL_CHECK(err);
+        sycl_kernel = utils::make_unique<::sycl::kernel>(
+                ::sycl::make_kernel<::sycl::backend::opencl>(
+                        ocl_kernel, sycl_engine->context()));
+    } else if (backend == backend_t::level0) {
+        CHECK(sycl_create_kernel_with_level_zero(
+                sycl_kernel, kernel_name, sycl_engine, binary));
+    } else {
+        assert(!"unexpected");
+        return status::invalid_arguments;
+    }
     return status::success;
 }
 

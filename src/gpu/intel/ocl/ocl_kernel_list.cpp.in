@@ -23,7 +23,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace micro {
+namespace ocl {
 
 // Markers for patch sections.
 static constexpr uint32_t sigilStart = 0xCAFEFADE;
@@ -38,7 +38,20 @@ void fuseMicrokernel(std::vector<uint8_t> &binary,
 void fuseMicrokernels(std::vector<uint8_t> &binary, const char *source);
 bool hasMicrokernels(const char *source);
 
-} /* namespace micro */
+    assert(kernel_list.count(name) == 1);
+    return kernel_list.at(name);
+}
+
+const char *get_kernel_header(const std::string &name) {
+    static const std::unordered_map<std::string, const char *> kernel_header_list ={
+        @KER_HEADER_LIST_ENTRIES@
+    };
+
+    assert(kernel_header_list.count(name) == 1);
+    return kernel_header_list.at(name);
+}
+
+} // namespace ocl
 } // namespace intel
 } // namespace gpu
 } // namespace impl

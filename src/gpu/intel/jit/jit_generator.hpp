@@ -37,11 +37,6 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-
-namespace ocl {
-class ocl_gpu_engine_t;
-}
-
 namespace jit {
 
 using gpu_gen_t = ngen::HW;

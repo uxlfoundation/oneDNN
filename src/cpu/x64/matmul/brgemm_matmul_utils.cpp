@@ -1417,23 +1417,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             && bgmmc.is_oscale_per_k && bgmmc.is_oscale_per_n
             && bgmmc.transposed_B;
 
-    if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
-            && is_superset(bgmmc.isa, avx2) && bm_conf_utils.use_buffer_b()) {
-        // ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`
-        bgmmc.src_dt = f32;
-        bgmmc.wei_dt = f32;
-        bgmmc.tr_a_dt_sz = types::data_type_size(f32);
-        bgmmc.tr_b_dt_sz = types::data_type_size(f32);
-    }
-
-    // int4 weights decompression only supports plain and transpose layouts
-    // TODO: enable int4 reorder and extend support to blocked weights
-    // layout when needed
-    if (bgmmc.with_wei_decompression && bgmmc.is_int4_weights)
-        VCONDCHECK_BG(bm_conf_utils.check_is_plain(bgmmc.wei_tag)
-                        || bm_conf_utils.check_is_transposed(bgmmc.wei_tag),
-                VERBOSE_UNSUPPORTED_TAG);
-
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);
     // if M == 1 we can still treat formally transposed A as plain
     // and avoid copy routine creation/execution

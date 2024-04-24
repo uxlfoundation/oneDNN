@@ -269,8 +269,6 @@ int partition_data_displacer_t::gen_quantize_filling(
             // Use u8 as output data type for two-input operations to avoid
             // data overflow due to the specific driver logic.
             op.out_lts_[0].data_type_ = "u8";
-        } else if (is_f8_quantization) {
-            op.out_lts_[0].data_type_ = "f8_e5m2";
         } else {
             // Use f32 as output data type since not all primitives support
             // different data types for input and output.

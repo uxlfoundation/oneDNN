@@ -1462,6 +1462,7 @@ inline void def_dispatch(compute::kernel_ctx_t &kernel_ctx,
     dispatch.def_kernel_macros(kernel_ctx);
 }
 
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

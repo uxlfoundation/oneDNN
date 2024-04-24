@@ -26,7 +26,7 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
-struct kernel_t {
+struct sycl_gpu_kernel_t : public intel::compute::kernel_impl_t {
     using kernel_bundle_e_t
             = ::sycl::kernel_bundle<::sycl::bundle_state::executable>;
 

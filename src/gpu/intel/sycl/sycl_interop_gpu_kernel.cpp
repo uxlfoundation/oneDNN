@@ -87,10 +87,11 @@ static void set_scalar_arg(::sycl::handler &cgh, int index,
     }
 }
 
-status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
+status_t sycl_interop_gpu_kernel_t::parallel_for(stream_t &stream,
         const gpu::intel::compute::nd_range_t &range,
         const gpu::intel::compute::kernel_arg_list_t &arg_list,
-        const xpu::event_t &deps, xpu::event_t &out_dep) {
+        const gpu::intel::compute::event_t &deps,
+        gpu::intel::compute::event_t &out_dep) {
     if (range.is_zero()) return status::success;
     auto *gpu_stream = utils::downcast<gpu::stream_t *>(&stream);
     auto &queue
@@ -184,8 +185,8 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
 }
 
 status_t sycl_interop_gpu_kernel_t::dump() const {
-    xpu::binary_t binary;
-    CHECK(gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary));
+    intel::compute::binary_t binary;
+    CHECK(get_kernel_binary(sycl_kernel(), binary));
     return gpu::intel::gpu_utils::dump_kernel_binary(binary, name());
 }
 

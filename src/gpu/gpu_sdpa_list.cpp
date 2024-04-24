@@ -24,13 +24,10 @@ namespace gpu {
 
 namespace {
 
-// clang-format off
-constexpr impl_list_item_t impl_list[] = REG_SDPA_P({
-        GPU_INSTANCE_INTEL(intel::ocl::micro_sdpa_t)
-        GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::ref_sdpa_t)
-        nullptr,
-});
-// clang-format on
+constexpr impl_list_item_t cuda_concat_impl_list[]
+        = {impl_list_item_t::concat_type_deduction_helper_t<
+                   gpu::intel::ocl::ref_concat_t::pd_t>(),
+                nullptr};
 } // namespace
 
 const impl_list_item_t *get_sdpa_impl_list(const sdpa_desc_t *desc) {

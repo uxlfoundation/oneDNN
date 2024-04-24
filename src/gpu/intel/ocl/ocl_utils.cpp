@@ -470,8 +470,8 @@ status_t get_kernel_arg_types(cl_kernel ocl_kernel,
     return status::success;
 }
 
-static status_t get_ocl_device_eu_count_intel(
-        cl_device_id device, gpu::compute::gpu_arch_t arch, int32_t *eu_count) {
+static status_t get_ocl_device_eu_count_intel(cl_device_id device,
+        gpu::intel::compute::gpu_arch_t arch, int32_t *eu_count) {
     cl_uint num_slices = 0;
     cl_uint num_sub_slices_per_slice = 0;
     cl_uint num_eus_per_sub_slice = 0;
@@ -484,7 +484,7 @@ static status_t get_ocl_device_eu_count_intel(
     OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL,
             sizeof(num_eus_per_sub_slice), &num_eus_per_sub_slice, nullptr));
 
-    if (arch == gpu::compute::gpu_arch_t::xe2)
+    if (arch == gpu::intel::compute::gpu_arch_t::xe2)
         num_eus_per_sub_slice = 8; /* runtime reports incorrect value */
 
     *eu_count = (int32_t)(
@@ -504,80 +504,6 @@ status_t get_ocl_device_enabled_systolic_intel(
 status_t get_ocl_device_enabled_native_float_atomics(
         cl_device_id device, uint64_t &native_extensions, bool is_xelpg) {
     cl_bitfield res;
-
-    cl_int err
-            = clGetDeviceInfo(device, CL_DEVICE_HALF_FP_ATOMIC_CAPABILITIES_EXT,
-                    sizeof(cl_bitfield), &res, nullptr);
-    if (err == status::success) {
-        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
-                && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
-            native_extensions |= (uint64_t)
-                    gpu::compute::native_ext_t::fp16_atomic_load_store;
-        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
-                && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
-            native_extensions
-                    |= (uint64_t)gpu::compute::native_ext_t::fp16_atomic_add;
-        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
-                && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
-            native_extensions |= (uint64_t)
-                    gpu::compute::native_ext_t::fp16_atomic_min_max;
-    }
-
-    err = clGetDeviceInfo(device, CL_DEVICE_SINGLE_FP_ATOMIC_CAPABILITIES_EXT,
-            sizeof(cl_bitfield), &res, nullptr);
-    if (err == status::success) {
-        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
-                && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
-            native_extensions |= (uint64_t)
-                    gpu::compute::native_ext_t::fp32_atomic_load_store;
-        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
-                && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
-            native_extensions
-                    |= (uint64_t)gpu::compute::native_ext_t::fp32_atomic_add;
-        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
-                && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
-            native_extensions |= (uint64_t)
-                    gpu::compute::native_ext_t::fp32_atomic_min_max;
-    }
-
-    // XeLPG lacks native support for f64 atomics.
-    if (!is_xelpg) {
-        err = clGetDeviceInfo(device,
-                CL_DEVICE_DOUBLE_FP_ATOMIC_CAPABILITIES_EXT,
-                sizeof(cl_bitfield), &res, nullptr);
-        if (err == status::success) {
-            if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
-                    && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
-                native_extensions |= (uint64_t)
-                        gpu::compute::native_ext_t::fp64_atomic_load_store;
-            if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
-                    && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
-                native_extensions |= (uint64_t)
-                        gpu::compute::native_ext_t::fp64_atomic_add;
-            if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
-                    && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
-                native_extensions |= (uint64_t)
-                        gpu::compute::native_ext_t::fp64_atomic_min_max;
-        }
-    }
-
-    return status::success;
-}
-
-status_t get_ocl_device_eu_count(
-        cl_device_id device, gpu::compute::gpu_arch_t arch, int32_t *eu_count) {
-    // Try to use Intel-specific slices/sub-slices to deduce EU count.
-    auto status = get_ocl_device_eu_count_intel(device, arch, eu_count);
-    if (status == status::success) return status;
-
-    // If failed, fall back to common OpenCL query.
-    cl_uint max_compute_units = 0;
-    OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
-            sizeof(max_compute_units), &max_compute_units, nullptr));
-    *eu_count = (int32_t)max_compute_units;
-
-    return status::success;
-}
 
     cl_int err
             = clGetDeviceInfo(device, CL_DEVICE_HALF_FP_ATOMIC_CAPABILITIES_EXT,
@@ -650,6 +576,108 @@ status_t get_ocl_device_eu_count(cl_device_id device,
             sizeof(max_compute_units), &max_compute_units, nullptr));
     *eu_count = (int32_t)max_compute_units;
 
+    return status::success;
+}
+
+    cl_int err
+            = clGetDeviceInfo(device, CL_DEVICE_HALF_FP_ATOMIC_CAPABILITIES_EXT,
+                    sizeof(cl_bitfield), &res, nullptr);
+    if (err == status::success) {
+        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
+                && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
+            native_extensions |= (uint64_t)
+                    gpu::intel::compute::native_ext_t::fp16_atomic_load_store;
+        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
+                && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
+            native_extensions |= (uint64_t)
+                    gpu::intel::compute::native_ext_t::fp16_atomic_add;
+        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
+                && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
+            native_extensions |= (uint64_t)
+                    gpu::intel::compute::native_ext_t::fp16_atomic_min_max;
+    }
+
+    err = clGetDeviceInfo(device, CL_DEVICE_SINGLE_FP_ATOMIC_CAPABILITIES_EXT,
+            sizeof(cl_bitfield), &res, nullptr);
+    if (err == status::success) {
+        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
+                && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
+            native_extensions |= (uint64_t)
+                    gpu::intel::compute::native_ext_t::fp32_atomic_load_store;
+        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
+                && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
+            native_extensions |= (uint64_t)
+                    gpu::intel::compute::native_ext_t::fp32_atomic_add;
+        if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
+                && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
+            native_extensions |= (uint64_t)
+                    gpu::intel::compute::native_ext_t::fp32_atomic_min_max;
+    }
+
+    // XeLPG lacks native support for f64 atomics.
+    if (!is_xelpg) {
+        err = clGetDeviceInfo(device,
+                CL_DEVICE_DOUBLE_FP_ATOMIC_CAPABILITIES_EXT,
+                sizeof(cl_bitfield), &res, nullptr);
+        if (err == status::success) {
+            if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
+                    && res & CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT)
+                native_extensions |= (uint64_t)gpu::intel::compute::
+                        native_ext_t::fp64_atomic_load_store;
+            if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT
+                    && res & CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT)
+                native_extensions |= (uint64_t)
+                        gpu::intel::compute::native_ext_t::fp64_atomic_add;
+            if (res & CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT
+                    && res & CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT)
+                native_extensions |= (uint64_t)
+                        gpu::intel::compute::native_ext_t::fp64_atomic_min_max;
+        }
+    }
+
+    return status::success;
+}
+
+status_t create_ocl_program(
+        gpu::intel::ocl::ocl_wrapper_t<cl_program> &ocl_program,
+        cl_device_id dev, cl_context ctx,
+        const gpu::intel::compute::binary_t &binary) {
+    cl_int err;
+    const unsigned char *binary_buffer = binary.data();
+    size_t binary_size = binary.size();
+    assert(binary_size > 0);
+
+    ocl_program = clCreateProgramWithBinary(
+            ctx, 1, &dev, &binary_size, &binary_buffer, nullptr, &err);
+    OCL_CHECK(err);
+    err = clBuildProgram(ocl_program, 1, &dev, nullptr, nullptr, nullptr);
+    OCL_CHECK(err);
+
+    // If failed, fall back to common OpenCL query.
+    cl_uint max_compute_units = 0;
+    OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
+            sizeof(max_compute_units), &max_compute_units, nullptr));
+    *eu_count = (int32_t)max_compute_units;
+
+status_t get_device_uuid(
+        gpu::intel::compute::device_uuid_t &uuid, cl_device_id ocl_dev) {
+    // This function is used only with SYCL that works with OpenCL 3.0
+    // that supports `cl_khr_device_uuid` extension.
+#if defined(cl_khr_device_uuid)
+    static_assert(
+            CL_UUID_SIZE_KHR == 16, "CL_UUID_SIZE_KHR is expected to be 16");
+
+    cl_uchar ocl_dev_uuid[CL_UUID_SIZE_KHR] = {};
+    OCL_CHECK(clGetDeviceInfo(ocl_dev, CL_DEVICE_UUID_KHR, CL_UUID_SIZE_KHR,
+            ocl_dev_uuid, nullptr));
+
+    uint64_t uuid_packed[CL_UUID_SIZE_KHR / sizeof(uint64_t)] = {};
+    for (size_t i = 0; i < CL_UUID_SIZE_KHR; ++i) {
+        size_t shift = i % sizeof(uint64_t) * CHAR_BIT;
+        uuid_packed[i / sizeof(uint64_t)]
+                |= (((uint64_t)ocl_dev_uuid[i]) << shift);
+    }
+    uuid = gpu::intel::compute::device_uuid_t(uuid_packed[0], uuid_packed[1]);
     return status::success;
 }
 

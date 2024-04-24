@@ -177,44 +177,18 @@ struct matmul_pd_t : public primitive_desc_t {
 
         bool ok = attr()->scales_.has_default_values(supported_args);
         for (int arg : supported_args) {
-            const auto &sc = attr()->scales_.get(arg);
-            const auto &mask = sc.mask_;
-            if (sc.has_default_values()) { continue; }
-
+            const auto &mask = attr()->scales_.get(arg).mask_;
             if (arg == DNNL_ARG_WEIGHTS) {
-                const bool wei_k_group_ok
-                        = IMPLICATION(sc.ndims_ == 2 && sc.group_dims_[0] > 1,
-                                K() % sc.group_dims_[0] == 0);
-                const bool wei_n_group_ok
-                        = IMPLICATION(sc.ndims_ == 2 && sc.group_dims_[1] > 1,
-                                N() % sc.group_dims_[1] == 0);
-
-                // Any group is allowed to be greater than 1 but only one at a
-                // time, not both.
-                ok = ok && utils::one_of(sc.ndims_, 0, 2)
-                        && IMPLICATION(sc.ndims_ == 2,
-                                utils::one_of(
-                                        1, sc.group_dims_[0], sc.group_dims_[1])
-                                        && wei_k_group_ok && wei_n_group_ok);
-            } else if (arg == DNNL_ARG_SRC) {
+                const auto &sc = attr()->scales_.get(arg);
                 ok = ok
-                        && utils::one_of(mask, 0, src_qmask_K(),
-                                src_qmask_M() + src_qmask_K());
-                ok = ok && utils::one_of(sc.ndims_, 0, 2);
-                ok = ok && IMPLICATION((mask & src_qmask_K()), sc.ndims_ == 2);
-                ok = ok
-                        && IMPLICATION(sc.ndims_ == 2,
-                                sc.group_dims_[0] == 1
-                                        && K() % sc.group_dims_[1] == 0);
-            } else {
-                ok = ok
-                        && utils::one_of(mask, 0, dst_qmask_N(),
-                                dst_qmask_M() + dst_qmask_N());
+                        && utils::one_of(mask, 0, wei_qmask_N(),
+                                wei_qmask_K() + wei_qmask_N());
                 ok = ok && utils::one_of(sc.ndims_, 0, 2)
                         && IMPLICATION(sc.ndims_ == 2,
                                 sc.group_dims_[1] == 1
-                                        && M() % sc.group_dims_[0] == 0);
-            }
+                                        && K() % sc.group_dims_[0] == 0);
+            } else
+                ok = ok && (mask == 0);
         }
         return ok;
     }

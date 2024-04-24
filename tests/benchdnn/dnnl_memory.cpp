@@ -465,7 +465,7 @@ void dnn_mem_t::memset(int value, size_t size) const {
             case memory_kind_ext_t::usm:
             case memory_kind_ext_t::usm_device:
             case memory_kind_ext_t::usm_shared: {
-                DNN_SAFE_V(dnnl::impl::xpu::ocl::usm::memset(
+                DNN_SAFE_V(dnnl::impl::gpu::intel::ocl::usm::memset(
                         stream, mem_handle, value, size));
                 DNN_SAFE_V(dnnl_stream_wait(stream));
                 return;
@@ -758,27 +758,13 @@ int dnn_mem_t::initialize_memory_create_opencl(
         case memory_kind_ext_t::usm_device:
         case memory_kind_ext_t::usm_shared: {
             is_data_owner_ = true;
-
-            const int nhandles = query_md_num_handles(md_);
-            for (int i = 0; i < nhandles; i++) {
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-                size_t sz = dnnl_memory_desc_get_size_v2(md_padded, i);
-#else
-                size_t sz = dnnl_memory_desc_get_size(md_padded);
-#endif
-                if (memory_kind == memory_kind_ext_t::usm_device) {
-                    data_.push_back(dnnl::impl::xpu::ocl::usm::malloc_device(
-                            engine_, sz));
-                } else {
-                    data_.push_back(dnnl::impl::xpu::ocl::usm::malloc_shared(
-                            engine_, sz));
-                }
-
-                if (sz > 0 && !data_[i]) {
-                    for (void *p : data_)
-                        dnnl::impl::xpu::ocl::usm::free(engine_, p);
-                    DNN_SAFE(dnnl_out_of_memory, CRIT);
-                }
+            size_t sz = dnnl_memory_desc_get_size(md_padded);
+            if (memory_kind == memory_kind_ext_t::usm_device) {
+                data_.push_back(dnnl::impl::gpu::intel::ocl::usm::malloc_device(
+                        engine_, sz));
+            } else {
+                data_.push_back(dnnl::impl::gpu::intel::ocl::usm::malloc_shared(
+                        engine_, sz));
             }
 #ifdef DNNL_EXPERIMENTAL_SPARSE
             DNN_SAFE(dnnl_ocl_interop_memory_create_v2(&m_padded_, md_padded,
@@ -925,7 +911,7 @@ static int cleanup_opencl(
         case memory_kind_ext_t::usm_device:
         case memory_kind_ext_t::usm_shared:
             for (void *p : data)
-                dnnl::impl::xpu::ocl::usm::free(engine, p);
+                dnnl::impl::gpu::intel::ocl::usm::free(engine, p);
             break;
         default: break;
     }

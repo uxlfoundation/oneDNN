@@ -24,8 +24,8 @@
 
 namespace dnnl {
 namespace impl {
-namespace graph {
-namespace utils {
+namespace gpu {
+namespace intel {
 namespace ocl {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 void *malloc_shared(
@@ -37,8 +37,8 @@ void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
         bool &mayiuse_ngen_kernels);
 
 } // namespace ocl
-} // namespace utils
-} // namespace graph
+} // namespace intel
+} // namespace gpu
 } // namespace impl
 } // namespace dnnl
 

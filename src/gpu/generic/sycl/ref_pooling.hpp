@@ -94,7 +94,7 @@ struct ref_pooling_fwd_t : public gpu::generic::sycl::primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    kernel_t kernel_;
+    intel::compute::kernel_t kernel_;
 };
 
 struct ref_pooling_bwd_t : public gpu::generic::sycl::primitive_t {
@@ -145,7 +145,7 @@ struct ref_pooling_bwd_t : public gpu::generic::sycl::primitive_t {
 private:
     status_t execute_backward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    kernel_t kernel_;
+    intel::compute::kernel_t kernel_;
 };
 
 } // namespace sycl

@@ -120,7 +120,7 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    kernel_t kernel_;
+    intel::compute::kernel_t kernel_;
 };
 
 } // namespace sycl

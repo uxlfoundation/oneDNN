@@ -29,15 +29,18 @@ namespace sycl {
 
 class sycl_interop_gpu_kernel_t : public gpu::intel::compute::kernel_impl_t {
 public:
-    sycl_interop_gpu_kernel_t(std::unique_ptr<::sycl::kernel> &&sycl_kernel)
-        : sycl_kernel_(std::move(sycl_kernel)) {}
+    sycl_interop_gpu_kernel_t(const ::sycl::kernel &sycl_kernel,
+            const std::vector<gpu::intel::compute::scalar_type_t> &arg_types)
+        : sycl_kernel_(new ::sycl::kernel(sycl_kernel))
+        , arg_types_(arg_types) {}
 
     ::sycl::kernel sycl_kernel() const { return *sycl_kernel_; }
 
-    status_t parallel_for(impl::stream_t &stream,
+    status_t parallel_for(stream_t &stream,
             const gpu::intel::compute::nd_range_t &range,
             const gpu::intel::compute::kernel_arg_list_t &arg_list,
-            const xpu::event_t &deps, xpu::event_t &out_dep) override;
+            const gpu::intel::compute::event_t &deps,
+            gpu::intel::compute::event_t &out_dep) override;
 
     const std::vector<gpu::intel::compute::scalar_type_t> &
     arg_types() const override {

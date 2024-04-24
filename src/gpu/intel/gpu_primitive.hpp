@@ -37,6 +37,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
 
 struct primitive_t : public impl::primitive_t {
     using impl::primitive_t::primitive_t;
@@ -294,6 +295,7 @@ private:
     std::vector<std::unique_ptr<compute_block_t>> compute_blocks_;
 };
 
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

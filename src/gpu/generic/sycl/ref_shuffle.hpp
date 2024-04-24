@@ -71,7 +71,7 @@ struct ref_shuffle_t : public gpu::generic::sycl::primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute(const exec_ctx_t &ctx) const override;
-    kernel_t kernel_;
+    intel::compute::kernel_t kernel_;
 };
 
 } // namespace sycl

@@ -28,8 +28,8 @@ namespace ocl {
 #define AOC array_offset_calculator
 
 using namespace dnnl::impl::utils;
-using namespace dnnl::impl::gpu::gpu_utils;
-using namespace dnnl::impl::gpu::compute;
+using namespace dnnl::impl::gpu::intel::gpu_utils;
+using namespace dnnl::impl::gpu::intel::compute;
 using namespace prop_kind;
 using namespace data_type;
 

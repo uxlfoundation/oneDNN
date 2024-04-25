@@ -343,9 +343,7 @@ using namespace dnnl::graph;
 std::string case_to_str(const std::string &json_file,
         const std::map<size_t, std::string> &in_shapes,
         const std::map<size_t, std::string> &op_attrs,
-        const graph_fpmath_mode_t &fpmath_mode,
-        const size_t expected_n_partitions, const int64_t mb,
-        const dnnl_data_type_t dt) {
+        const std::string &fpmath_mode, const int64_t mb) {
     std::stringstream s;
     dump_global_params(s);
 
@@ -376,15 +374,8 @@ std::string case_to_str(const std::string &json_file,
         s << " ";
     }
 
-    if (fpmath_mode.override_json_value_) {
-        s << "--attr-fpmath=" << fpmath_mode.mode_.c_str();
-        if (fpmath_mode.apply_to_int_) { s << ":true"; }
-        s << " ";
-    }
-
-    if (expected_n_partitions != 0) {
-        s << "--expected-n-partitions=" << std::to_string(expected_n_partitions)
-          << " ";
+    if (strcmp(fpmath_mode.c_str(), "default") != 0) {
+        s << "--attr-fpmath=" << fpmath_mode << " ";
     }
 
     s << "--case=" << json_file;

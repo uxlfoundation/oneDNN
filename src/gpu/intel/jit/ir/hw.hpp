@@ -73,9 +73,6 @@ public:
     int large_grf_support() const { return large_grf_support_; }
     int grf_size() const { return ngen::GRF::bytes(hw_); }
     int systolic_support() const { return systolic_support_; }
-#if XE3P
-    int is_efficient_64bit() const { return is_efficient_64bit_; }
-#endif
     size_t l3_cache_size() const { return l3_cache_size_; }
 
     int max_tg_size(int regs, int simd) const {
@@ -123,9 +120,43 @@ public:
     bool operator>=(ngen::HW rhs) const { return hw_ >= rhs; }
     bool operator==(ngen::HW rhs) const { return hw_ == rhs; }
     bool operator!=(ngen::HW rhs) const { return hw_ != rhs; }
-#if __cplusplus >= 202002L
-    bool operator==(const hw_t &other) const = default;
-#endif
+
+    bool operator==(const hw_t &other) const {
+        if (hw_ != other.hw_) return false;
+        if (stepping_id_ != other.stepping_id_) return false;
+        if (eu_count_ != other.eu_count_) return false;
+        if (max_wg_size_ != other.max_wg_size_) return false;
+        if (large_grf_support_ != other.large_grf_support_) return false;
+        if (systolic_support_ != other.systolic_support_) return false;
+        return true;
+    }
+
+    bool operator!=(const hw_t &other) const { return !operator==(other); }
+
+    size_t get_hash() const {
+        return ir_utils::get_hash(hw_, stepping_id_, eu_count_, max_wg_size_,
+                large_grf_support_, systolic_support_);
+    }
+
+    void serialize(std::ostream &out) const {
+        ir_utils::serialize(hw_, out);
+        ir_utils::serialize(stepping_id_, out);
+        ir_utils::serialize(eu_count_, out);
+        ir_utils::serialize(max_wg_size_, out);
+        ir_utils::serialize(l3_cache_size_, out);
+        ir_utils::serialize(large_grf_support_, out);
+        ir_utils::serialize(systolic_support_, out);
+    }
+
+    void deserialize(std::istream &in) {
+        ir_utils::deserialize(hw_, in);
+        ir_utils::deserialize(stepping_id_, in);
+        ir_utils::deserialize(eu_count_, in);
+        ir_utils::deserialize(max_wg_size_, in);
+        ir_utils::deserialize(l3_cache_size_, in);
+        ir_utils::deserialize(large_grf_support_, in);
+        ir_utils::deserialize(systolic_support_, in);
+    }
 
 private:
     int max_wg_size(int regs = 128) const {

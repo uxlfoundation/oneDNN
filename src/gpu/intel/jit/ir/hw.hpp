@@ -115,9 +115,6 @@ public:
     int large_grf_support() const { return large_grf_support_; }
     int grf_size() const { return ngen::GRF::bytes(hw_); }
     int systolic_support() const { return systolic_support_; }
-#if XE3P
-    int is_efficient_64bit() const { return is_efficient_64bit_; }
-#endif
     size_t l3_cache_size() const { return l3_cache_size_; }
 
     int max_tg_size(int regs, int simd) const {

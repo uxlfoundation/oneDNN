@@ -33,6 +33,7 @@ Both kinds of experimental features can be enabled simultaneously.
 | ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_BACKEND | Enable experimental graph compiler backend of the graph component. |
 | ONEDNN_EXPERIMENTAL_LOGGING                | Enable experimental logging support for oneDNN verbose mode.       |
 
+
 ## Features details
 
 ### ONEDNN_EXPERIMENTAL_SPARSE
@@ -270,6 +271,17 @@ destination tensor should also work for the sparse one.
 runtime agnostic API to do that.
 * Sparse memory and memory descriptor can only be used with the Matrix
 Multiplication and Reorder primitives.
+
+### ONEDNN_EXPERIMENTAL_UKERNEL
+
+This option enables a new set of CPU-only APIs to support block-level
+functionalities. By composing these low-level, sequential operations, users can
+implement their own custom operations/fusions, and tailor blocking/threading
+logic to their applications.
+
+More details on this API are available in the [Microkernel APIs
+section](@ref dev_guide_ukernel_basic_concepts).
+
 
 ### ONEDNN_EXPERIMENTAL_UKERNEL
 

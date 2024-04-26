@@ -35,7 +35,7 @@ public:
     size_t count() const override {
         std::vector<cl_device_id> ocl_devices;
         status_t status
-                = xpu::ocl::get_devices(&ocl_devices, CL_DEVICE_TYPE_GPU);
+                = hrt::ocl::get_devices(&ocl_devices, CL_DEVICE_TYPE_GPU);
         if (status != status::success) return status;
         return ocl_devices.size();
     }
@@ -48,7 +48,7 @@ public:
         status_t status;
         std::vector<cl_device_id> ocl_devices;
 
-        status = xpu::ocl::get_devices(&ocl_devices, CL_DEVICE_TYPE_GPU);
+        status = hrt::ocl::get_devices(&ocl_devices, CL_DEVICE_TYPE_GPU);
         VERROR_ENGINE(
                 status == status::success, status, "no ocl devices found");
 

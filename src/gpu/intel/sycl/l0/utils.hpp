@@ -33,14 +33,14 @@ class sycl_engine_base_t;
 } // namespace impl
 } // namespace dnnl
 
-gpu::intel::compute::device_uuid_t get_device_uuid(const ::sycl::device &dev);
+hrt::device_uuid_t get_device_uuid(const ::sycl::device &dev);
 
 xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev);
 
 status_t sycl_create_kernel_with_level_zero(
         std::unique_ptr<::sycl::kernel> &sycl_kernel,
         const std::string &kernel_name, const sycl_engine_base_t *sycl_engine,
-        const gpu::intel::compute::binary_t &binary);
+        const hrt::binary_t &binary);
 
 bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
 

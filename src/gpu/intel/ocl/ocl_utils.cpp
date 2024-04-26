@@ -153,7 +153,7 @@ status_t get_ocl_program_binary_size(
 }
 
 status_t get_ocl_program_binary(
-        cl_program program, cl_device_id device, xpu::binary_t &binary) {
+        cl_program program, cl_device_id device, hrt::binary_t &binary) {
     size_t n_devices = 0;
     CHECK(get_number_devices(program, &n_devices));
 
@@ -170,9 +170,9 @@ status_t get_ocl_program_binary(
     size_t device_idx = std::distance(
             devices.begin(), std::find(devices.begin(), devices.end(), device));
     std::vector<uint8_t *> binary_pointers(n_devices);
-    std::vector<xpu::binary_t> binaries(n_devices);
+    std::vector<hrt::binary_t> binaries(n_devices);
     for (size_t i = 0; i < n_devices; ++i) {
-        binaries[i] = xpu::binary_t(binarySize[i]);
+        binaries[i] = hrt::binary_t(binarySize[i]);
         binary_pointers[i] = binaries[i].data();
     }
 
@@ -184,7 +184,7 @@ status_t get_ocl_program_binary(
 }
 
 status_t get_ocl_program_binary(
-        cl_kernel kernel, cl_device_id device, xpu::binary_t &binary) {
+        cl_kernel kernel, cl_device_id device, hrt::binary_t &binary) {
     cl_int err;
 
     cl_program program;
@@ -195,7 +195,7 @@ status_t get_ocl_program_binary(
     return get_ocl_program_binary(program, device, binary);
 }
 
-status_t get_ocl_kernel_binary(cl_kernel ocl_kernel, xpu::binary_t &binary) {
+status_t get_ocl_kernel_binary(cl_kernel ocl_kernel, hrt::binary_t &binary) {
     binary.clear();
     size_t binary_size;
     OCL_CHECK(clGetKernelInfo(ocl_kernel, CL_KERNEL_BINARY_PROGRAM_INTEL, 0,
@@ -461,70 +461,6 @@ status_t get_ocl_device_eu_count(cl_device_id device,
     *eu_count = (int32_t)max_compute_units;
 
     return status::success;
-}
-
-status_t clone_kernel(cl_kernel kernel, cl_kernel *cloned_kernel) {
-    cl_int err;
-#if !defined(DNNL_SYCL_HIP) && !defined(DNNL_SYCL_CUDA) \
-        && defined(CL_VERSION_2_1)
-    *cloned_kernel = clCloneKernel(kernel, &err);
-    OCL_CHECK(err);
-#else
-    // clCloneKernel is not available - recreate from the program.
-    auto name = get_kernel_name(kernel);
-
-    cl_program program;
-    err = clGetKernelInfo(
-            kernel, CL_KERNEL_PROGRAM, sizeof(program), &program, nullptr);
-    OCL_CHECK(err);
-
-    *cloned_kernel = clCreateKernel(program, name.c_str(), &err);
-    OCL_CHECK(err);
-#endif
-
-    return status::success;
-}
-
-status_t create_ocl_program(
-        gpu::intel::ocl::ocl_wrapper_t<cl_program> &ocl_program,
-        cl_device_id dev, cl_context ctx,
-        const gpu::intel::compute::binary_t &binary) {
-    cl_int err;
-    const unsigned char *binary_buffer = binary.data();
-    size_t binary_size = binary.size();
-    assert(binary_size > 0);
-
-    ocl_program = clCreateProgramWithBinary(
-            ctx, 1, &dev, &binary_size, &binary_buffer, nullptr, &err);
-    OCL_CHECK(err);
-    err = clBuildProgram(ocl_program, 1, &dev, nullptr, nullptr, nullptr);
-    OCL_CHECK(err);
-
-    return status::success;
-}
-
-status_t get_device_uuid(
-        gpu::intel::compute::device_uuid_t &uuid, cl_device_id ocl_dev) {
-    // This function is used only with SYCL that works with OpenCL 3.0
-    // that supports `cl_khr_device_uuid` extension.
-#if defined(cl_khr_device_uuid)
-    static_assert(
-            CL_UUID_SIZE_KHR == 16, "CL_UUID_SIZE_KHR is expected to be 16");
-
-    cl_uchar ocl_dev_uuid[CL_UUID_SIZE_KHR] = {};
-    OCL_CHECK(clGetDeviceInfo(ocl_dev, CL_DEVICE_UUID_KHR, CL_UUID_SIZE_KHR,
-            ocl_dev_uuid, nullptr));
-
-    uint64_t uuid_packed[CL_UUID_SIZE_KHR / sizeof(uint64_t)] = {};
-    for (size_t i = 0; i < CL_UUID_SIZE_KHR; ++i) {
-        size_t shift = i % sizeof(uint64_t) * CHAR_BIT;
-        uuid_packed[i / sizeof(uint64_t)]
-                |= (((uint64_t)ocl_dev_uuid[i]) << shift);
-    }
-    uuid = gpu::intel::compute::device_uuid_t(uuid_packed[0], uuid_packed[1]);
-    return status::success;
-#endif
-    return status::runtime_error;
 }
 
 } // namespace ocl

@@ -66,9 +66,129 @@ public:
         res_cache.release();
     }
 
-    static void setup_pipeline_stage1(pass_pipeline_t &pipeline);
+    static void setup_pipeline_stage1(pass_pipeline_t &pipeline) {
+        // Directly lower down (1 to 1 mapping)
+        BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+
+        // Indirectly lower down (N to 1 mapping)
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_reciprocal_mul_to_div);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_mul_sigmoid_to_swish);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_to_dnnl_sum);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_to_shuffle);
+
+        // TODO(xx) The implementation of these two passes relay on a non-fully
+        // lowered subgraph. We need to improve them.
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_to_int8_concat);
+
+        BACKEND_DNNL_ADD_PASS(
+                pipeline, lift_up_weight_reshape_for_depthwiseconv);
+        // Fusion and canonicalization passes begin
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_typecast);
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_quantize);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_bias_add);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_bn_folding);
+        BACKEND_DNNL_ADD_PASS(pipeline, check_with_bias);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, binary_broadcast_swap);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_matmul_or_conv);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_add);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_mul_scales);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_bias_to_f32);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_to_int8_pool);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, combine_binary_post_op_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_src_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_src_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_zero_points);
+        // tricky here.
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_runtime_u8_to_s8_for_matmul);
+
+        BACKEND_DNNL_ADD_PASS(
+                pipeline, insert_unsqueeze_and_squeeze_for_reduction);
+        // bnorm here.
+        BACKEND_DNNL_ADD_PASS(pipeline, swap_relu_mul_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, fold_pre_mul_scale_into_bn);
+        BACKEND_DNNL_ADD_PASS(pipeline, fold_post_mul_scale_into_bn);
+
+        // MQA pattern fusion
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_post_add_for_matmul);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
+        BACKEND_DNNL_ADD_PASS(pipeline, fold_mul_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_zero_points);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, defer_src_zps_for_pool);
+        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
+        BACKEND_DNNL_ADD_PASS(pipeline, fold_sub_zps_add_zps);
+        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
+        BACKEND_DNNL_ADD_PASS(pipeline, replace_quant_data_with_binary_post_op);
+
+        // fuse those new post-binaries converted from add_zps and mul_scales
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_runtime_mul_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_runtime_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dynamic_mul_scales_add_zps);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dynamic_sub_zps_mul_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_dynamic_quantize_ops);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_u8_to_s8_for_matmul);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_reshape_for_ndx2d_matmul);
+        BACKEND_DNNL_ADD_PASS(
+                pipeline, insert_unsqueeze_and_squeeze_for_matmul);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_unsqueeze_for_prelu);
+        BACKEND_DNNL_ADD_PASS(
+                pipeline, insert_unsqueeze_and_squeeze_for_prelu_bwd);
+        BACKEND_DNNL_ADD_PASS(
+                pipeline, insert_unsqueeze_and_squeeze_for_reduction);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_conv_or_deconv);
+        BACKEND_DNNL_ADD_PASS(
+                pipeline, insert_permute_for_op_only_require_data_format);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_to_group_for_conv_or_deconv);
+        BACKEND_DNNL_ADD_PASS(pipeline, conv_bwd_data_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, conv_bwd_weights_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, batchnorm_bwd_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, pool_fwd_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, pool_bwd_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_shuffle);
+        BACKEND_DNNL_ADD_PASS(pipeline, reorder_canonicalization);
+    }
+
     static void setup_pipeline_stage2(pass_pipeline_t &pipeline,
-            memory_planner_t &mem_planner, bool enable_constant_cache);
+            memory_planner_t &mem_planner, bool enable_constant_cache) {
+        pipeline.reset_visualize_arg(true, false);
+        BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_transpose_to_matmul);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_matmul);
+        BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
+        BACKEND_DNNL_ADD_PASS(pipeline, common_reorder_elimination);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_adjacent_reorders);
+
+        // constant propagation
+        if (enable_constant_cache) {
+            BACKEND_DNNL_ADD_PASS(pipeline, constant_propagation);
+        }
+
+        auto memory_plan = [&](std::shared_ptr<subgraph_t> &sg) {
+            return mem_planner.run(sg);
+        };
+        pipeline.reset_visualize_arg(true, true);
+        BACKEND_DNNL_ADD_PASS(pipeline, memory_plan);
+        BACKEND_DNNL_ADD_PASS(pipeline, compile_ops);
+    }
+
     static void setup_pipeline(pass_pipeline_t &pipeline,
             memory_planner_t &mem_planner, bool enable_constant_cache);
 

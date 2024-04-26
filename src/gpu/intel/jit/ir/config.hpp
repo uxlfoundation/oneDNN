@@ -198,9 +198,9 @@ public:
     dim_t operator()(const pvar_t &pvar) const { return get(pvar); }
 
     void set_from_str(const std::string &s) override {
-        tile_ = pvar_tile_t();
+        tile_ = prb_tile_t();
         for (auto &kv : ir_utils::to_string_int_pairs(s)) {
-            tile_[pvar_t(kv.first)] = kv.second;
+            tile_[prb_dim_t::from_name(kv.first)] = kv.second;
         }
     }
 

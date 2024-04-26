@@ -1320,13 +1320,26 @@ private:
     void (*post_parse_func_)(T &) = nullptr;
 };
 
-template <typename E, size_t N>
-std::string to_string_impl(
-        E e, const std::array<enum_name_t<E>, N> &enum_names) {
-    for (auto &p : enum_names)
-        if (p.first == e) return p.second;
-    ir_error_not_expected();
-    return {};
+inline std::vector<std::pair<std::string, int>> to_string_int_pairs(
+        const std::string &s) {
+    std::vector<std::pair<std::string, int>> ret;
+    int name_beg = -1;
+    int value_beg = -1;
+    for (int pos = 0; pos < (int)s.size() + 1; pos++) {
+        bool prev_digit = pos > 0 && std::isdigit(s[pos - 1]);
+        bool cur_digit = pos < (int)s.size() && std::isdigit(s[pos]);
+        if ((pos == 0 || prev_digit) && !cur_digit) {
+            if (name_beg != -1 && value_beg != -1) {
+                auto key = s.substr(name_beg, value_beg - name_beg);
+                auto value = std::stoi(s.substr(value_beg, pos - value_beg));
+                ret.emplace_back(key, value);
+            }
+            name_beg = pos;
+            value_beg = -1;
+        }
+        if (!prev_digit && cur_digit) value_beg = pos;
+    }
+    return ret;
 }
 
 template <typename E, size_t N>

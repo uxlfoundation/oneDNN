@@ -23,6 +23,7 @@
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/ocl/ocl_gpu_engine_id.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
+#include "hrt/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -46,12 +47,12 @@ public:
     status_t create_stream(
             impl::stream_t **stream, impl::stream_impl_t *stream_impl) override;
 
-    status_t create_binary_from_ocl_source(xpu::binary_t &binary,
+    status_t create_binary_from_ocl_source(hrt::binary_t &binary,
             const char *code_string,
             const compute::kernel_ctx_t &kernel_ctx) const;
 
     status_t create_kernel_from_binary(compute::kernel_t &kernel,
-            const xpu::binary_t &binary,
+            const hrt::binary_t &binary,
             const char *kernel_name) const override;
 
     status_t create_kernels_from_cache_blob(const cache_blob_t &cache_blob,
@@ -109,11 +110,7 @@ public:
     DECLARE_COMMON_OCL_ENGINE_FUNCTIONS();
 
 protected:
-    const xpu::ocl::engine_impl_t *impl() const {
-        return (const xpu::ocl::engine_impl_t *)engine_t::impl();
-    }
-
-    status_t build_program_from_source(xpu::ocl::wrapper_t<cl_program> &program,
+    status_t build_program_from_source(hrt::ocl::wrapper_t<cl_program> &program,
             const char *code_string,
             const compute::kernel_ctx_t &kernel_ctx) const;
 

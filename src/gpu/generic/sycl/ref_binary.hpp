@@ -100,7 +100,8 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
                 if (!utils::one_of(t, f32, bf16, f16, s8, u8)) return false;
             }
 
-            return true;
+            return IMPLICATION(utils::one_of(bf16, src0_dt, src1_dt, dst_dt),
+                    src0_dt == dst_dt && src1_dt == dst_dt);
         }
 
         static bool check_formats(const memory_desc_wrapper &src0,
@@ -109,7 +110,9 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
             using namespace format_tag;
 
             for (const auto &mdw : {src0, src1, dst}) {
-                if (!mdw.is_plain()) { return false; }
+                if (mdw.matches_one_of_tag(a, ab, abc, abcd, abcde) == undef) {
+                    return false;
+                }
             }
             return true;
         }

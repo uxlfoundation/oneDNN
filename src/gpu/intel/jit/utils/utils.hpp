@@ -1055,7 +1055,7 @@ private:
     std::vector<arg_t> args_;
 };
 
-inline std::unordered_map<std::string, int> to_string_int_map(
+inline std::vector<std::pair<std::string, int>> to_string_int_pairs(
         const std::string &s) {
     std::vector<std::pair<std::string, int>> ret;
     int name_beg = -1;

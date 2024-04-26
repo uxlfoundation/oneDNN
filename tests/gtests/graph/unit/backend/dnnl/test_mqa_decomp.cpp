@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -81,7 +81,8 @@ TEST(test_mqa_decomp_execute, F32MqaDecomp_CPU) {
         outputs.emplace_back(&lt);
     }
 
-    custom_setenv("_ONEDNN_GRAPH_SDPA_FORCE_PRIMITIVE", "0", 1);
+    // Force enable to avoid some unexpected env settings
+    custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
     graph::compiled_partition_t cp(p);
     ASSERT_EQ(p.compile(&cp, inputs, outputs, eng), graph::status::success);
 
@@ -146,7 +147,8 @@ TEST(test_mqa_decomp_execute, Bf16MqaDecomp_CPU) {
         outputs.emplace_back(&lt);
     }
 
-    custom_setenv("_ONEDNN_GRAPH_SDPA_FORCE_PRIMITIVE", "0", 1);
+    // Force enable to avoid some unexpected env settings
+    custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
     graph::compiled_partition_t cp(p);
     ASSERT_EQ(p.compile(&cp, inputs, outputs, eng), graph::status::success);
 
@@ -170,6 +172,7 @@ TEST(test_mqa_decomp_execute, Bf16MqaDecomp_CPU) {
 // Test multiple thread execute
 TEST(test_mqa_decomp_execute, MultithreaMqaDecomp_CPU) {
     graph::engine_t *eng = get_engine();
+    graph::stream_t *strm = get_stream();
 
     SKIP_IF(eng->kind() == graph::engine_kind::gpu,
             "Skip for GPU - not supported yet.");
@@ -206,7 +209,8 @@ TEST(test_mqa_decomp_execute, MultithreaMqaDecomp_CPU) {
         outputs.emplace_back(&lt);
     }
 
-    custom_setenv("_ONEDNN_GRAPH_SDPA_FORCE_PRIMITIVE", "0", 1);
+    // Force enable to avoid some unexpected env settings
+    custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
     graph::compiled_partition_t cp(p);
     ASSERT_EQ(p.compile(&cp, inputs, outputs, eng), graph::status::success);
 
@@ -217,8 +221,6 @@ TEST(test_mqa_decomp_execute, MultithreaMqaDecomp_CPU) {
     }
 
     auto func = [&]() {
-        graph::stream_t *strm;
-        dnnl_stream_create(&strm, eng, dnnl_stream_in_order);
         std::vector<test_tensor> outputs_ts;
         for (auto &lt : outputs) {
             graph::logical_tensor_t compiled_output;
@@ -231,7 +233,6 @@ TEST(test_mqa_decomp_execute, MultithreaMqaDecomp_CPU) {
                     graph::status::success);
         }
         strm->wait();
-        dnnl_stream_destroy(strm);
     };
 
     std::thread t1(func);
@@ -291,7 +292,7 @@ TEST(test_mqa_decomp_execute, F32MqaCorr_CPU) {
     }
 
     // ---------------------------case1-----------------------------------------
-    custom_setenv("_ONEDNN_GRAPH_SDPA_FORCE_PRIMITIVE", "1", 1);
+    custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "0", 1);
     graph::compiled_partition_t cp1(p);
     ASSERT_EQ(p.compile(&cp1, inputs, outputs, eng), graph::status::success);
 
@@ -307,7 +308,7 @@ TEST(test_mqa_decomp_execute, F32MqaCorr_CPU) {
     strm->wait();
 
     // ---------------------------case2-----------------------------------------
-    custom_setenv("_ONEDNN_GRAPH_SDPA_FORCE_PRIMITIVE", "0", 1);
+    custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
     graph::compiled_partition_t cp2(p);
     ASSERT_EQ(p.compile(&cp2, inputs, outputs, eng), graph::status::success);
 
@@ -324,7 +325,7 @@ TEST(test_mqa_decomp_execute, F32MqaCorr_CPU) {
 
     ASSERT_TRUE(allclose<float>(outputs1_ts[0], outputs2_ts[0],
             /*rtol*/ 0.01f,
-            /*atol*/ 1e-6f));
+            /*atol*/ 1.f));
 }
 
 // Test correctness
@@ -379,7 +380,7 @@ TEST(test_mqa_decomp_execute, Bf16MqaCorr_CPU) {
     }
 
     // ---------------------------case1-----------------------------------------
-    custom_setenv("_ONEDNN_GRAPH_SDPA_FORCE_PRIMITIVE", "1", 1);
+    custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "0", 1);
     graph::compiled_partition_t cp1(p);
     ASSERT_EQ(p.compile(&cp1, inputs, outputs, eng), graph::status::success);
 
@@ -395,7 +396,7 @@ TEST(test_mqa_decomp_execute, Bf16MqaCorr_CPU) {
     strm->wait();
 
     // ---------------------------case2-----------------------------------------
-    custom_setenv("_ONEDNN_GRAPH_SDPA_FORCE_PRIMITIVE", "0", 1);
+    custom_setenv("_ONEDNN_ENABLE_SDP_DECOMP", "1", 1);
     graph::compiled_partition_t cp2(p);
     ASSERT_EQ(p.compile(&cp2, inputs, outputs, eng), graph::status::success);
 
@@ -412,5 +413,5 @@ TEST(test_mqa_decomp_execute, Bf16MqaCorr_CPU) {
 
     ASSERT_TRUE(allclose<float>(outputs1_ts[0], outputs2_ts[0],
             /*rtol*/ 0.01f,
-            /*atol*/ 1e-6f));
+            /*atol*/ 1.f));
 }

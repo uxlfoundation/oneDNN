@@ -31,6 +31,7 @@
 #include "gpu/intel/jit/jit_generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
 #include "gpu/intel/ocl/types_interop.hpp"
+#include "hrt/utils.hpp"
 
 #include "gpu/gpu_resource.hpp"
 
@@ -111,8 +112,21 @@ struct primitive_t : public impl::primitive_t {
     status_t get_cache_blob(
             impl::engine_t *engine, cache_blob_t &blob) const override {
         for (const auto &cb : compute_blocks()) {
-            if (cb->empty()) continue;
-            CHECK(cb->get_cache_blob(engine, blob));
+            if (!cb) continue;
+
+            switch (cb.kind()) {
+                case compute_block_t::kind_t::kernel: {
+                    // Get a binary for each kernel within current primitive.
+                    hrt::binary_t binary;
+                    CHECK(cb.kernel().get_binary(engine, binary));
+                    CHECK(blob.add_binary(binary.data(), binary.size()));
+                    break;
+                }
+                case compute_block_t::kind_t::primitive:
+                    CHECK(cb.primitive()->get_cache_blob(engine, blob));
+                    break;
+                default: assert(!"unexpected"); return status::runtime_error;
+            }
         }
         return status::success;
     }

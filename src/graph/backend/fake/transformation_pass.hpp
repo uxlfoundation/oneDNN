@@ -54,8 +54,8 @@ public:
         // for each pattern. match it
         std::vector<op_t *> matched_op_list;
         if (get_verbose(verbose_t::create_dispatch, component_t::graph)) {
-            verbose_printf(
-                    "graph,create:dispatch,pattern_matcher,%s,fake_backend\n",
+            printf("onednn_verbose,graph,create:dispatch,pattern_"
+                   "matcher,%s,fake_backend\n",
                     get_pass_name().c_str());
         }
         pu.match(agraph, pgraph, matched_op_list);

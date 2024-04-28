@@ -35,8 +35,6 @@ This mode is for developers especially who is familiar with pattern
 matcher and want to debug pattern matcher.
 */
 #if defined(DNNL_DEV_MODE)
-#define DEBUGINFO_PM 5
-
 #define DEBUg(debug_level, ...) \
     do { \
         if (get_verbose(verbose_t::debuginfo, component_t::graph) \
@@ -46,7 +44,6 @@ matcher and want to debug pattern matcher.
             printf("\n"); \
         } \
     } while (0)
-#define DEBUG(debug_level, ...) DEBUg(debug_level, __VA_ARGS__)
 #else
 #define DEBUg(debug_level, ...)
 #endif

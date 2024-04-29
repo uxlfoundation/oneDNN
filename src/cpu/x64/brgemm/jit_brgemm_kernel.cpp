@@ -57,41 +57,21 @@ struct jit_brgemm_kernel_t : public jit_generator {
         const int is_ldb_tail = brg.ldb_tail ? 1 : 0;
         is_ldb_loop_ = brg.ldb2 + is_ldb2_tail + is_ldb_tail > 1;
 
-        bool has_f8_e5m2_binary_postops = false;
-        bool has_f8_e4m3_binary_postops = false;
-        if (brg.with_binary) {
-            const auto &post_ops = brg.attr()->post_ops_;
-            for (int i = 0; i < post_ops.len(); i++) {
-                const auto &entry = post_ops.entry_[i];
-                if (!entry.is_binary()) continue;
-                has_f8_e5m2_binary_postops
-                        = entry.binary.src1_desc.data_type == data_type::f8_e5m2
-                        || has_f8_e5m2_binary_postops;
-                has_f8_e4m3_binary_postops
-                        = entry.binary.src1_desc.data_type == data_type::f8_e4m3
-                        || has_f8_e4m3_binary_postops;
-            }
-        }
-
-        if (brg.is_fp8_via_convert() || has_f8_e5m2_binary_postops
-                || has_f8_e4m3_binary_postops) {
-            if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d)
-                    || has_f8_e5m2_binary_postops)
-                // Note: avoid using 'vmm0' since it is used as
-                // 'fp8_to_f16_upconvert()' param and would collision with these
-                // emulation vmms
-                f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(
-                        this, xmm_fp8_emu_aux1, xmm_fp8_emu_aux2,
-                        xmm_fp8_emu_aux3, kmask_fp8_aux, reg64_fp8_aux);
-            if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d)
-                    || has_f8_e4m3_binary_postops)
-                f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(
-                        this, xmm_fp8_emu_aux1, xmm_fp8_emu_aux2,
-                        xmm_fp8_emu_aux3, xmm_fp8_emu_aux4, xmm_fp8_emu_aux5,
-                        reg64_fp8_aux);
-        }
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
+                        brg.dt_d))
+            // Note: avoid using 'vmm0' since it is used as
+            // 'fp8_to_f16_upconvert()' param and would collision with these
+            // emulation vmms
+            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+                    xmm_fp8_emu_aux2, xmm_fp8_emu_aux3, xmm_fp8_emu_aux4,
+                    kmask_fp8_aux, reg64_fp8_aux);
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
+                        brg.dt_d))
+            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+                    xmm_fp8_emu_aux1, xmm_fp8_emu_aux2, xmm_fp8_emu_aux3,
+                    xmm_fp8_emu_aux4, xmm_fp8_emu_aux5, reg64_fp8_aux);
 
         if (brg.with_eltwise || brg.with_binary || brg.with_sum) {
 
@@ -118,6 +98,15 @@ struct jit_brgemm_kernel_t : public jit_generator {
                     dst_md_wrapper, static_cast<size_t>(brg.ldb_tail),
                     ld_tail_mask, use_exact_tail_scalar_bcast};
 
+            fp8_emulation_base_t *f8_emu = nullptr;
+            if (brg.dt_d == data_type::f8_e5m2)
+                f8_emu = f8_e5m2_emulator_.get();
+            else if (brg.dt_d == data_type::f8_e4m3)
+                f8_emu = f8_e4m3_emulator_.get();
+
+            const binary_injector::static_params_t bsp {
+                    this->param1, enabled_bcast_strategy, rhs_sp, f8_emu};
+
             auto st = safe_ptr_assign(postops_injector_,
                     po_injector_t::create(
                             this, brg.isa_impl, brg.attr()->post_ops_, bsp));
@@ -134,22 +123,6 @@ struct jit_brgemm_kernel_t : public jit_generator {
                     bf16_emu_reserv_1(), bf16_emu_reserv_2(),
                     bf16_emu_reserv_3(), bf16_emu_scratch, bf16_emu_reserv_4(),
                     bf16_emu_reserv_4());
-
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d))
-            // Note: avoid using 'vmm0' since it is used as
-            // 'fp8_to_f16_upconvert()' param and would collision with these
-            // emulation vmms
-            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
-                    xmm_fp8_emu_aux2, xmm_fp8_emu_aux3, xmm_fp8_emu_aux4,
-                    kmask_fp8_aux, reg64_fp8_aux);
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d))
-            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
-                    xmm_fp8_emu_aux1, xmm_fp8_emu_aux2, xmm_fp8_emu_aux3,
-                    xmm_fp8_emu_aux4, xmm_fp8_emu_aux5, reg64_fp8_aux);
     }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_t)

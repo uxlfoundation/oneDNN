@@ -45,35 +45,16 @@ struct jit_brgemm_amx_uker_base_t : public jit_generator {
         , brg(abrg)
         , postops_injector_(nullptr) {
 
-        bool has_f8_e5m2_binary_postops = false;
-        bool has_f8_e4m3_binary_postops = false;
-        if (brg.with_binary) {
-            const auto &post_ops = brg.attr()->post_ops_;
-            for (int i = 0; i < post_ops.len(); i++) {
-                const auto &entry = post_ops.entry_[i];
-                if (!entry.is_binary()) continue;
-                has_f8_e5m2_binary_postops
-                        = entry.binary.src1_desc.data_type == data_type::f8_e5m2
-                        || has_f8_e5m2_binary_postops;
-                has_f8_e4m3_binary_postops
-                        = entry.binary.src1_desc.data_type == data_type::f8_e4m3
-                        || has_f8_e4m3_binary_postops;
-            }
-        }
-
-        if (brg.is_fp8_via_convert() || has_f8_e5m2_binary_postops
-                || has_f8_e4m3_binary_postops) {
-            if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d)
-                    || has_f8_e5m2_binary_postops)
-                f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(
-                        this, fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
-                        fp8_tmp_mask, fp8_tmp_reg);
-            if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d)
-                    || has_f8_e4m3_binary_postops)
-                f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(
-                        this, fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
-                        fp8_emu_xmm_4(), fp8_emu_xmm_5(), fp8_tmp_reg);
-        }
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                    fp8_tmp_mask, fp8_tmp_reg);
+        if (brg.is_fp8_via_convert()
+                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d))
+            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                    fp8_emu_xmm_4(), fp8_emu_xmm_5(), fp8_tmp_reg);
 
         if (brg.with_eltwise || brg.with_binary || brg.with_sum) {
 
@@ -101,9 +82,14 @@ struct jit_brgemm_amx_uker_base_t : public jit_generator {
                     dst_md_wrapper, static_cast<size_t>(brg.ldb_tail),
                     ld_tail_mask, use_exact_tail_scalar_bcast};
 
-            const binary_injector::static_params_t bsp(this->param1,
-                    binary_injector::get_all_strategies_supported_by_injector(),
-                    rhs_sp, f8_e5m2_emulator_.get(), f8_e4m3_emulator_.get());
+            fp8_emulation_base_t *f8_emu = nullptr;
+            if (brg.dt_d == data_type::f8_e5m2)
+                f8_emu = f8_e5m2_emulator_.get();
+            else if (brg.dt_d == data_type::f8_e4m3)
+                f8_emu = f8_e4m3_emulator_.get();
+
+            const binary_injector::static_params_t bsp(
+                    this->param1, enabled_bcast_strategy, rhs_sp, f8_emu);
 
             eltwise_injector::static_params_t esp;
             esp.preserve_vmm = preserve_vmm;
@@ -138,17 +124,6 @@ struct jit_brgemm_amx_uker_base_t : public jit_generator {
                     || with_binary_per_w_bcast_ || with_binary_batch_bcast_
                     || with_binary_spatial_bcast_ || with_binary_no_bcast_;
         }
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d))
-            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
-                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
-                    fp8_tmp_mask, fp8_tmp_reg);
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d))
-            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
-                    fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
-                    fp8_emu_xmm_4(), fp8_emu_xmm_5(), fp8_tmp_reg);
-
         use_ils_ = brg.brgattr.use_interleave_stores;
     }
 

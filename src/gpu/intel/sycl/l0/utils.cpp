@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -209,7 +209,7 @@ hrt::device_uuid_t get_device_uuid(const ::sycl::device &dev) {
     auto ze_device_properties = ze_device_properties_t();
     ze_device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
 
-    auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(dev);
+    auto ze_device = impl::sycl::compat::get_native<ze_device_handle_t>(dev);
     auto status = func_zeDeviceGetProperties(ze_device, &ze_device_properties);
     MAYBE_UNUSED(status);
     assert(status == status::success);
@@ -226,7 +226,8 @@ hrt::device_uuid_t get_device_uuid(const ::sycl::device &dev) {
 
 status_t sycl_create_kernel_with_level_zero(
         std::unique_ptr<::sycl::kernel> &sycl_kernel,
-        const std::string &kernel_name, const sycl_engine_base_t *sycl_engine,
+        const std::string &kernel_name,
+        const impl::sycl::sycl_engine_base_t *sycl_engine,
         const hrt::binary_t &binary) {
     auto desc = ze_module_desc_t();
     desc.stype = ZE_STRUCTURE_TYPE_MODULE_DESC;
@@ -238,9 +239,9 @@ status_t sycl_create_kernel_with_level_zero(
 
     ze_module_handle_t ze_module;
 
-    auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(
+    auto ze_device = impl::sycl::compat::get_native<ze_device_handle_t>(
             sycl_engine->device());
-    auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(
+    auto ze_ctx = impl::sycl::compat::get_native<ze_context_handle_t>(
             sycl_engine->context());
 
     CHECK(func_zeModuleCreate(ze_ctx, ze_device, &desc, &ze_module, nullptr));
@@ -265,8 +266,10 @@ status_t sycl_create_kernel_with_level_zero(
 }
 
 bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs) {
-    auto lhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(lhs);
-    auto rhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(rhs);
+    auto lhs_ze_handle
+            = impl::sycl::compat::get_native<ze_device_handle_t>(lhs);
+    auto rhs_ze_handle
+            = impl::sycl::compat::get_native<ze_device_handle_t>(rhs);
 
     return lhs_ze_handle == rhs_ze_handle;
 }

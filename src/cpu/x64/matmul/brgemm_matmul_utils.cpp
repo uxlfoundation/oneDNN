@@ -198,10 +198,11 @@ status_t check_isa_with_datatype(
 }
 
 status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
-    const bool ok = one_of(true, bm_conf_utils.is_f32(),
-                            bm_conf_utils.is_bf16(), bm_conf_utils.is_f16(),
-                            bm_conf_utils.is_bf32(), bm_conf_utils.is_int8(),
-                            bm_conf_utils.is_bf16_with_int_wei())
+    const bool ok
+            = one_of(true, bm_conf_utils.is_f32(), bm_conf_utils.is_bf16(),
+                      bm_conf_utils.is_f16(), bm_conf_utils.is_bf32(),
+                      bm_conf_utils.is_f8(), bm_conf_utils.is_int8(),
+                      bm_conf_utils.is_bf16_with_int_wei())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei(),
                     bm_conf_utils.with_weights_decompression());
     return ok ? status::success : status::unimplemented;

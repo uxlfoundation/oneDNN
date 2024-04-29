@@ -106,8 +106,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     auto check_attr_zero_points
             = [&]() -> bool { return attr()->zero_points_.common(); };
-    const bool problem_dt_correct = one_of(
-            true, is_int8, is_bf16, is_f32, is_f16, is_bf16_with_int_wei);
+    const bool problem_dt_correct = one_of(true, is_int8, is_f8, is_bf16,
+            is_f32, is_f16, is_bf16_with_int_wei);
 
     auto src_d = memory_desc_wrapper(src_md_);
     auto weights_d = memory_desc_wrapper(weights_md_);

@@ -100,9 +100,9 @@ public:
     // Thread nums during the workflow
     int nthr;
 
-    // Used to record the exact input offset of mm1_src,mm1_wei,mm1_scale,mm1_add,
-    // mm2_wei in subgraph
-    std::vector<int> input_id;
+    // Used to record the exact input offset in subgraph
+    // [mm1_src,mm1_wei,mm1_scale,mm1_add,mm2_wei,select_condition,select_other_input]
+    std::vector<int> graph_inport;
 
     // Primitives that actually perform calculations
     primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim;
@@ -123,8 +123,9 @@ public:
     // reorder1
     memory sub_wei1_user, sub_wei1_zp;
     //mm1
-    memory sub_mm1_src, sub_mm1_wei, sub_mm1_dst, sub_mm1_post_scale,
-            sub_mm1_post_add;
+    memory sub_mm1_src, sub_mm1_wei, sub_mm1_dst;
+    // sub_mm1_post_mem contains [post_scale, attn_mask(optional), post_binary(from select)...]
+    std::vector<memory> sub_mm1_post_mem;
     //softmax
     memory sub_softmax_dst;
     //reorder2
@@ -138,11 +139,17 @@ public:
     // shared memory
     memory sub_max_src1_src2, sub_max_dst1_wei2;
 
-    bool attention_mask;
+    bool attention_mask = false, has_select = false;
+    // Used to record the ops from select
+    std::vector<op_ptr> select_op;
+    std::vector<int> select_outop_index;
 
 private:
     // Used to record the ops contained in SDP
-    std::vector<std::shared_ptr<op_t>> sdp_op;
+    // sdp_op = [reorder1, mm1, softmax, reorder2, mm2]
+    // reorder1 is using mm1 weight u8->s8
+    // reorder2 is using mm2 weight u8->s8
+    std::vector<op_ptr> sdp_op;
 
 public:
     // The function is used to check if the configuration of SDP is supported by
@@ -157,7 +164,7 @@ public:
         // to record the input offset in a certain order of ops.
         auto op_status = record_input_offset(sg, inputs);
         if (op_status != status::success) return false;
-        memory::dims src1_user_dims = ltw(inputs[input_id[0]]).vdims();
+        memory::dims src1_user_dims = ltw(inputs[graph_inport[0]]).vdims();
         if (src1_user_dims.size() != 4) return false;
 
         // Initialize SDP input dimension according to the src of mm1
@@ -207,9 +214,9 @@ public:
         // Acquire the data type from input param for later primitive creation.
         // The src and wei dt of both quantized sdp and float sdp are the same.
         memory::data_type dt_src_user = static_cast<memory::data_type>(
-                ltw(inputs[input_id[0]]).data_type());
+                ltw(inputs[graph_inport[0]]).data_type());
         memory::data_type dt_wei_user = static_cast<memory::data_type>(
-                ltw(inputs[input_id[1]]).data_type());
+                ltw(inputs[graph_inport[1]]).data_type());
         memory::data_type dt_wei
                 = quantized ? memory::data_type::s8 : dt_src_user;
         memory::data_type dt_inter = quantized ? dt : dt_src_user;
@@ -224,9 +231,10 @@ public:
 #endif
         // intermediate md used to create primitives
         memory::desc sub_src1_md, sub_wei1_user_md, sub_wei1_md, sub_mm1_src_md,
-                sub_mm1_wei_md, sub_mm1_dst_md, sub_mm1_post_scale_md,
-                sub_mm1_post_add_md, sub_softmax_dst_md, sub_wei2_user_md,
-                sub_mm2_wei_md, sub_mm2_dst_md, sub_dst_md, sub_dst_user_md;
+                sub_mm1_wei_md, sub_mm1_dst_md, sub_softmax_dst_md,
+                sub_wei2_user_md, sub_mm2_wei_md, sub_mm2_dst_md, sub_dst_md,
+                sub_dst_user_md;
+        std::vector<memory::desc> sub_mm1_post_md;
 
         // must use user mode to support concurrent execution
         primitive_attr sub_reorder0_attr;
@@ -234,7 +242,7 @@ public:
 
         // per-head: reorder src1 to dense, for first matmul
         memory::dims sub_src1_dims = {1, 1, seq_len, size_per_head};
-        src1_strides = ltw(inputs[input_id[0]]).vstrides();
+        src1_strides = ltw(inputs[graph_inport[0]]).vstrides();
         sub_src1_md = memory::desc(sub_src1_dims, dt_src_user,
                 {1, 1, src1_strides[2], src1_strides[3]});
         auto sub_src1_d_md
@@ -273,22 +281,21 @@ public:
         sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, tag::abdc);
         sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, tag::abcd);
         dnnl::post_ops dnnl_pops;
-        auto scale_dt = static_cast<dnnl::memory::data_type>(
-                ltw(inputs[input_id[2]]).data_type());
-        // TODO: It is presupposed that the dims of scale and add's src are certain,
-        // which may not always be true.
-        sub_mm1_post_scale_md = memory::desc({1, 1, 1, 1}, scale_dt, tag::abcd);
         auto ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
-        auto alg = static_cast<algorithm>(
-                ori_dnnl_pops.get()->entry_[0].binary.alg);
-        dnnl_pops.append_binary(alg, sub_mm1_post_scale_md);
-        if (attention_mask) {
-            auto post_add_shape = ltw(inputs[input_id[3]]).vdims();
-            post_add_strides = ltw(inputs[input_id[3]]).vstrides();
-            sub_mm1_post_add_md
-                    = memory::desc({1, 1, post_add_shape[2], post_add_shape[3]},
-                            dt_inter, tag::abcd);
-            dnnl_pops.append_binary(algorithm::binary_add, sub_mm1_post_add_md);
+        for (int i = 0; i < ori_dnnl_pops.get()->len(); i++) {
+            auto alg = static_cast<algorithm>(
+                    ori_dnnl_pops.get()->entry_[i].binary.alg);
+            const dnnl::impl::memory_desc_t &ori_desc
+                    = ori_dnnl_pops.get()->entry_[i].binary.user_src1_desc;
+            auto post_shape = ori_desc.dims;
+            auto post_stride = ori_desc.format_desc.blocking.strides;
+            auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
+            memory::dims post_stride_dims
+                    = memory::dims(post_stride, post_stride + ori_desc.ndims);
+            auto new_sub_md = memory::desc({1, 1, post_shape[2], post_shape[3]},
+                    post_dt, post_stride_dims);
+            sub_mm1_post_md.emplace_back(new_sub_md);
+            dnnl_pops.append_binary(alg, new_sub_md);
         }
         sub_matmul1_attr.set_post_ops(std::move(dnnl_pops));
         auto sub_mm1_pd = matmul::primitive_desc(p_engine, sub_mm1_src_md,
@@ -312,7 +319,7 @@ public:
         dnnl::primitive_attr sub_reorder2_attr
                 = make_primitive_attr(sdp_op[3], mgr);
         memory::dims sub_wei2_dims = {1, 1, seq_len, size_per_head};
-        wei2_strides = ltw(inputs[input_id[4]]).vstrides();
+        wei2_strides = ltw(inputs[graph_inport[4]]).vstrides();
         sub_wei2_user_md = memory::desc(sub_wei2_dims, dt_wei_user,
                 {1, 1, wei2_strides[2], wei2_strides[3]});
         // The format is `abcd` due to performance of reorder to `abdc` is low.
@@ -396,8 +403,10 @@ public:
         sub_mm1_src = memory(sub_mm1_src_md, p_engine, nullptr);
         sub_mm1_wei = memory(sub_mm1_wei_md, p_engine, nullptr);
         sub_mm1_dst = memory(sub_mm1_dst_md, p_engine, nullptr);
-        sub_mm1_post_scale = memory(sub_mm1_post_scale_md, p_engine, nullptr);
-        sub_mm1_post_add = memory(sub_mm1_post_add_md, p_engine, nullptr);
+        for (size_t i = 0; i < sub_mm1_post_md.size(); i++) {
+            sub_mm1_post_mem.emplace_back(
+                    memory(sub_mm1_post_md[i], p_engine, nullptr));
+        }
         // softmax
         sub_softmax_dst = memory(sub_softmax_dst_md, p_engine, nullptr);
         // reorder2
@@ -421,13 +430,11 @@ public:
 
         sub_mm1_args = {{DNNL_ARG_SRC, sub_mm1_src},
                 {DNNL_ARG_WEIGHTS, sub_mm1_wei}, {DNNL_ARG_DST, sub_mm1_dst},
-                {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                        sub_mm1_post_scale},
                 {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
-        if (attention_mask) {
+        for (int i = 0; i < (int)sub_mm1_post_mem.size(); i++) {
             sub_mm1_args.insert(
-                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
-                            sub_mm1_post_add});
+                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
+                            sub_mm1_post_mem[i]});
         }
 
         sub_softmax_args
@@ -541,7 +548,7 @@ private:
 
     impl::status_t record_input_offset(const std::shared_ptr<subgraph_t> &sg,
             const std::vector<logical_tensor_t> &inputs) {
-        auto find_input_id = [&](std::shared_ptr<value_t> val) {
+        auto find_graph_inport = [&](std::shared_ptr<value_t> val) {
             // for quantized mamtul, it has producer such as add_zp,sub_zp,mul_scale.
             if (val->get_consumers()[0].get_op().get_kind()
                     == graph::op_kind::MatMul) {
@@ -555,11 +562,9 @@ private:
             // If the corresponding input is not found, return an invalid value
             return -1;
         };
-        op_ptr mm1, mm2, scale, add;
+        op_ptr mm1, mm2, scale, add, select;
         for (const auto &cur_op : sg->get_ops()) {
             if (mm1 != nullptr && mm2 != nullptr) break;
-            if (cur_op->get_kind() == graph::op_kind::Select)
-                return status::unimplemented;
             if (cur_op->get_kind() != graph::op_kind::MatMul) continue;
             auto post_op = get_post_op(cur_op);
             if (post_op
@@ -568,34 +573,52 @@ private:
                                     == graph::op_kind::Multiply)) {
                 mm1 = cur_op;
                 scale = post_op;
-                if (get_post_op(post_op)->get_kind() == graph::op_kind::Add) {
-                    add = get_post_op(post_op);
+                const auto pop = get_post_op(post_op);
+                if (pop->get_kind() == graph::op_kind::Add) {
+                    add = pop;
                     attention_mask = true;
+                } else if (pop->get_kind() == graph::op_kind::Select) {
+                    select = pop;
+                    has_select = true;
                 } else {
                     add = nullptr;
-                    attention_mask = false;
+                    select = nullptr;
                 }
+            } else if (post_op->get_kind() == graph::op_kind::Select) {
+                return status::unimplemented;
             } else
                 mm2 = cur_op;
         }
-        int src1_id = find_input_id(mm1->get_input_value(0));
-        input_id.emplace_back(src1_id);
-        int wei1_id = find_input_id(mm1->get_input_value(1));
-        input_id.emplace_back(wei1_id);
+        int src1_id = find_graph_inport(mm1->get_input_value(0));
+        graph_inport.emplace_back(src1_id);
+        int wei1_id = find_graph_inport(mm1->get_input_value(1));
+        graph_inport.emplace_back(wei1_id);
         // for scale and add op. The input order is uncertain.
-        int scale_id = find_input_id(scale->get_input_value(1));
-        if (scale_id == -1) scale_id = find_input_id(scale->get_input_value(0));
-        input_id.emplace_back(scale_id);
+        int scale_id = find_graph_inport(scale->get_input_value(1));
+        if (scale_id == -1)
+            scale_id = find_graph_inport(scale->get_input_value(0));
+        graph_inport.emplace_back(scale_id);
         if (add) {
-            int add_id = find_input_id(add->get_input_value(1));
-            if (add_id == -1) add_id = find_input_id(add->get_input_value(0));
-            input_id.emplace_back(add_id);
+            int add_id = find_graph_inport(add->get_input_value(1));
+            if (add_id == -1)
+                add_id = find_graph_inport(add->get_input_value(0));
+            graph_inport.emplace_back(add_id);
         } else {
             //placeholder
-            input_id.emplace_back(-1);
+            graph_inport.emplace_back(-1);
         }
-        int wei2_id = find_input_id(mm2->get_input_value(1));
-        input_id.emplace_back(wei2_id);
+        int wei2_id = find_graph_inport(mm2->get_input_value(1));
+        graph_inport.emplace_back(wei2_id);
+        if (select) {
+            int cond_id = find_graph_inport(select->get_input_value(0));
+            int src0_id = find_graph_inport(select->get_input_value(1));
+            graph_inport.emplace_back(cond_id);
+            graph_inport.emplace_back(src0_id);
+        } else {
+            //placeholder
+            graph_inport.emplace_back(-1);
+            graph_inport.emplace_back(-1);
+        }
         return status::success;
     }
 
@@ -996,6 +1019,24 @@ public:
                 + size_offset);
     }
 
+    void prepare_args_set(const execution_args_set_t *res,
+            const std::vector<tensor_t> &inputs,
+            const scratchpad_t &scratchpad) {
+        // update the data of partition in/outputs args
+        for (const auto &mem_idx : res->get_mems_use_external_inputs()) {
+            mem_idx.first.set_data_handle(
+                    inputs[mem_idx.second].get_data_handle());
+        }
+
+        grantor_t var_grantor = memory_planner_.internal_temporary_grantor(
+                scratchpad.get_buffer());
+
+        for (auto &mem_offkey : res->get_mems_use_internal_temporary()) {
+            mem_offkey.first.set_data_handle(
+                    var_grantor.get(mem_offkey.second));
+        }
+    }
+
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs) override {
@@ -1032,7 +1073,19 @@ public:
         char *dst2_user_pointer
                 = static_cast<char *>(outputs[0].get_data_handle());
 
-        // allocate the internal memory
+        // allocate the select internal memory
+        temporary_scratchpad_t select_scratchpad(
+                memory_planner_.total_internal_temporary_size(), p_engine_,
+                *g_alloc_);
+        assertm(select_scratchpad.size()
+                        >= memory_planner_.total_internal_temporary_size(),
+                "no enough scratchpad memory");
+        if (sdp_cfg_.has_select) {
+            const std::vector<tensor_t> select_inputs
+                    = {inputs[sdp_cfg_.graph_inport[5]],
+                            inputs[sdp_cfg_.graph_inport[6]]};
+            prepare_args_set(select_res, select_inputs, select_scratchpad);
+        }
         size_t block_size = sdp_registry_.size();
         temporary_scratchpad_t scratchpad(
                 block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
@@ -1056,20 +1109,41 @@ public:
 
             // matmul1
             auto &sub_mm1_post_scale_tid
-                    = res->mem_map[sdp_cfg_.sub_mm1_post_scale.get()][tid];
+                    = res->mem_map[sdp_cfg_.sub_mm1_post_mem[0].get()][tid];
             sub_mm1_post_scale_tid.set_data_handle(
-                    inputs[sdp_cfg_.input_id[2]].get_data_handle());
+                    inputs[sdp_cfg_.graph_inport[2]].get_data_handle());
 
+            //The first post_op is post_scale, so it starts from 1.
+            size_t start_index = 1;
             if (sdp_cfg_.attention_mask) {
                 auto &sub_mm1_post_add_tid
-                        = res->mem_map[sdp_cfg_.sub_mm1_post_add.get()][tid];
+                        = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
+                                               .get()][tid];
+                auto mask_input = inputs[sdp_cfg_.graph_inport[3]];
+                auto mask_strides = mask_input.get_logical_tensor().dims;
                 sub_mm1_post_add_tid.set_data_handle(
-                        static_cast<char *>(
-                                inputs[sdp_cfg_.input_id[3]].get_data_handle())
-                        + bo * sdp_cfg_.post_add_strides[1]
-                                * get_mem_dt_size(sdp_cfg_.sub_mm1_post_add));
+                        static_cast<char *>(mask_input.get_data_handle())
+                        + bo * mask_strides[1]
+                                * get_mem_dt_size(sub_mm1_post_add_tid));
             }
-
+            if (sdp_cfg_.has_select) {
+                //connect select_graph and sdp_graph
+                for (size_t i = start_index;
+                        i < sdp_cfg_.sub_mm1_post_mem.size(); i++) {
+                    auto &sub_mm1_post_tid
+                            = res->mem_map[sdp_cfg_.sub_mm1_post_mem[i].get()]
+                                          [tid];
+                    const auto &select_res_args = select_res->get_exec_args();
+                    auto out_mem = select_res_args[sdp_cfg_.select_outop_index[i
+                                                           - 1]]
+                                           .at(DNNL_ARG_DST);
+                    auto out_strides = out_mem.get_desc().get_strides();
+                    sub_mm1_post_tid.set_data_handle(
+                            static_cast<char *>(out_mem.get_data_handle())
+                            + bo * out_strides[0]
+                                    * get_mem_dt_size(sub_mm1_post_tid));
+                }
+            }
             // reorder2:
             auto &sub_wei2_user_tid
                     = res->mem_map[sdp_cfg_.sub_wei2_user.get()][tid];
@@ -1123,11 +1197,12 @@ public:
             sdp_cfg_.sub_mm2_prim.execute(strm, res->sub_mm2_args[tid]);
             sdp_cfg_.sub_reorder3.execute(strm, res->sub_reorder3_args[tid]);
         };
-        // TODO: remove this when primitive new API ready
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
-        omp_set_num_threads(sdp_cfg_.nthr);
-#endif
-
+        if (sdp_cfg_.has_select) {
+            for (size_t i = 0; i < select_subgraph_->execs_.size(); i++) {
+                select_subgraph_->execs_[i]->execute(
+                        strm, select_res->get_exec_args()[i]);
+            }
+        }
         parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

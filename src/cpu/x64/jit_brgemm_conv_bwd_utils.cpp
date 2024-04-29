@@ -1575,9 +1575,6 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     VDISPATCH_CONV_IC(IMPLICATION(is_f32, one_of(isa, avx512_core, avx2)),
             VERBOSE_ISA_DT_MISMATCH);
 
-    VDISPATCH_CONV_IC(post_ops_ok(jcp, attr, diff_src_d, is_deconv),
-            VERBOSE_UNSUPPORTED_POSTOP);
-
     jcp.amx_h = 16;
     jcp.amx_w = 64 / jcp.src_dsz;
 
@@ -1636,7 +1633,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     CHECK(init_tag(jcp.dst_tag, diff_src_md, diff_src_d, src_tag));
     CHECK(attr.set_default_formats(&diff_src_md));
 
-    VDISPATCH_CONV_IC(post_ops_ok(jcp, attr, diff_src_d, cd.use_inversion),
+    VDISPATCH_CONV_IC(post_ops_ok(jcp, attr, diff_src_d, is_deconv),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     return status::success;

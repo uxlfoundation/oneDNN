@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2018-2023 Intel Corporation
-* Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2020-2023 FUJITSU LIMITED
 * Copyright 2022-2024 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -166,8 +166,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                           && !interim_f32_needed(p, false) && p.beta == 0.f)
                 || (p.itype != bf16 && p.otype != bf16)
                 || (p.itype == f32 && p.otype == bf16 && mayiuse_bf16()
-                        && p.beta == 0.f)
-                || (p.itype == bf16 && p.otype == f32 && mayiuse_bf16()
                         && p.beta == 0.f);
 
         bool ok = true && p.ndims > 0
@@ -1303,6 +1301,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
     static bool interim_f32_needed(const prb_t &prb, bool compensation_needed) {
         using namespace data_type;
+
         bool ret = utils::one_of(f32, prb.itype, prb.otype)
                 || prb.src_scale_type != scale_type_t::NONE
                 || prb.dst_scale_type != scale_type_t::NONE || prb.beta != 0.f

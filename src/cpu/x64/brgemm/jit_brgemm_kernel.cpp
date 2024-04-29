@@ -125,22 +125,6 @@ struct jit_brgemm_kernel_t : public jit_generator {
                     bf16_emu_reserv_1(), bf16_emu_reserv_2(),
                     bf16_emu_reserv_3(), bf16_emu_scratch, bf16_emu_reserv_4(),
                     bf16_emu_reserv_4());
-
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d))
-            // Note: avoid using 'vmm0' since it is used as
-            // 'fp8_to_f16_upconvert()' param and would collision with these
-            // emulation vmms
-            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
-                    xmm_fp8_emu_aux2, xmm_fp8_emu_aux3, xmm_fp8_emu_aux4,
-                    kmask_fp8_aux, reg64_fp8_aux);
-        if (brg.is_fp8_via_convert()
-                && one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d))
-            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
-                    xmm_fp8_emu_aux1, xmm_fp8_emu_aux2, xmm_fp8_emu_aux3,
-                    xmm_fp8_emu_aux4, xmm_fp8_emu_aux5, reg64_fp8_aux);
     }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_t)

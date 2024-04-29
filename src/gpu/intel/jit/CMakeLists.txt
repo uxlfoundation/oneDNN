@@ -43,8 +43,6 @@ else()
     endforeach()
 endif()
 
-add_subdirectory(gemm)
-
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel_jit)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS

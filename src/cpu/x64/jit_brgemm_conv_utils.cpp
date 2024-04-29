@@ -1790,9 +1790,6 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             IMPLICATION(is_f32, one_of(isa, avx512_core, avx2) || jcp.is_bf32),
             VERBOSE_ISA_DT_MISMATCH);
 
-    VDISPATCH_CONV_IC(
-            post_ops_ok(jcp, attr, dst_d), VERBOSE_UNSUPPORTED_POSTOP);
-
     jcp.amx_h = 16;
     jcp.amx_w = 64 / (jcp.is_bf32 ? types::data_type_size(bf16) : jcp.src_dsz);
 

@@ -24,11 +24,16 @@
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/sycl/compat.hpp"
 
+// including sycl_engine_base.hpp leads to circular dependencies, w/a for now.
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace sycl {
+class sycl_engine_base_t;
+}
+} // namespace impl
+} // namespace dnnl
 
 class engine_t;
 

@@ -21,6 +21,8 @@
 
 #include "gpu/intel/sycl/l0/level_zero/ze_api.h"
 
+#include "gpu/intel/sycl/l0/level_zero/ze_api.h"
+
 #if __has_include(<sycl/backend/opencl.hpp>)
 #include <sycl/backend/opencl.hpp>
 #elif __has_include(<CL/sycl/backend/opencl.hpp>)

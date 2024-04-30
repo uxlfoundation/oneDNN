@@ -628,8 +628,8 @@ private:
         auto ne_mod = esize | flag | host_->ne | flag;
         auto eq_mod = esize | flag | host_->eq | flag;
         host_->add(esize, region, old_region, rd.setRegion(4, 4, 1));
-        cmpwr.emit(host_, scope, mod | flag, old_region, mem_buf_rd, surf_bti,
-                mem_off_op, old_region);
+        cmpwr.emit(
+                host_, scope, mod | flag, old_region, mem_off_op, old_region);
         host_->cmp(ne_mod, old_save_region, old_region);
         // The previous comparison always fails for NaNs so check for NaNs
         // explictly to prevent an infinite loop.
@@ -677,8 +677,8 @@ private:
                 || (hw == ngen::HW::XeHPG && send_func.is_atomic()
                         && send_func.type.kind() == type_kind_t::qword
                         && !with_atomic_fp64_)) {
-            send_atomic_add_emu(scope, send_func, mask_op, mod, mem_buf_rd,
-                    surf_bti, mem_off_op.reg_data(), rd);
+            send_atomic_add_emu(
+                    scope, send_func, mask_op, mod, mem_off_op.reg_data(), rd);
         } else {
             spec_impl.emit(host_, scope, mod, mem_off_op.reg_data(), rd);
         }

@@ -889,7 +889,7 @@ TEST(test_sdp_decomp_execute, F32DistilBertSdpCorr_CPU) {
 
         ASSERT_TRUE(allclose<float>(outputs1_ts[0], outputs2_ts[0],
                 /*rtol*/ 0.01f,
-                /*atol*/ 1.f));
+                /*atol*/ 1e-6f));
     }
 }
 
@@ -1262,7 +1262,7 @@ TEST(test_sdp_decomp_execute, Bf16DistilBertSdpCorr_CPU) {
 
         ASSERT_TRUE(allclose<bfloat16_t>(outputs1_ts[0], outputs2_ts[0],
                 /*rtol*/ 0.01f,
-                /*atol*/ 1.f));
+                /*atol*/ 1e-6f));
     }
 }
 

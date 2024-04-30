@@ -293,11 +293,7 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, const GEMMProblem &problem) {
         case ngen::HW::XeHP: selector.hw = kcatalog::HWTagXeHP; break;
         case ngen::HW::XeHPG: selector.hw = kcatalog::HWTagXeHPG; break;
         case ngen::HW::XeHPC: selector.hw = kcatalog::HWTagXeHPC; break;
-        /* Temporarily reuse all XeHPC strategies for Xe2 */
-        case ngen::HW::Xe2: selector.hw = kcatalog::HWTagXeHPC; break;
-#if XE3P
-        case ngen::HW::Xe3p: selector.hw = kcatalog::HWTagXe3p; break;
-#endif
+        case ngen::HW::Xe2: selector.hw = kcatalog::HWTagXe2; break;
     }
 
     auto &C = problem.C;

@@ -69,7 +69,16 @@ partition_data_displacer_t::partition_data_displacer_t(
             for (auto *lt = &aop.in_lts_[i]; true;
                     lt = &parent_op->in_lts_[0]) {
                 parent_op = &dg_->get_op_by_out_lt(lt->id_);
-                if (parent_op->empty()) break;
+                if (parent_op->empty()) {
+                    if (aop.kind_ == "Divide") {
+                        // There's a special case for Divide, when second (user)
+                        // input should be displaced with power-of-2 values.
+                        quantize_displace_.emplace(lt->id_,
+                                std::make_tuple(
+                                        aop, i, *lt, filling_type_t::pow2));
+                    }
+                    break;
+                }
 
                 if (parent_op->kind_ == "Dequantize") {
                     // Dequantize is accepted when it doesn't have any
@@ -82,7 +91,8 @@ partition_data_displacer_t::partition_data_displacer_t(
                             || op_ids_set_.find(prev_parent_op.id_)
                                     == op_ids_set_.end()) {
                         quantize_displace_.emplace(parent_op_in_lt.id_,
-                                std::make_tuple(aop, i, parent_op_in_lt));
+                                std::make_tuple(aop, i, parent_op_in_lt,
+                                        filling_type_t::quantization));
                         break;
                     }
                 }
@@ -127,24 +137,7 @@ int partition_data_displacer_t::displace_input_data(
                      main_op, main_op_arg, mem_replace, tensor.data_type_, res),
                 WARN);
     } else if (filling_type == filling_type_t::pow2) {
-        // This custom displace serves a shrinking the output purpose. Values
-        // are picked in the way to have more chances of ending with exact lower
-        // data type representative in the output, which in turn decreases the
-        // number of points with non-zero absolute diff.
-
-        // Division has values > 1.f to reduce final values.
-        static const std::vector<float> pow2_div_vals {2.f, 4.f, 8.f};
-        // Multiplication has values <= 1.f to reduce final values.
-        static const std::vector<float> pow2_mul_vals {0.25f, 0.5f, 1.f};
-        // Guard set.
-        static const std::vector<float> dummy {};
-
-        const bool is_div = main_op.kind_ == "Divide";
-        const bool is_mul = main_op.kind_ == "Multiply";
-        const auto &user_set
-                = is_div ? pow2_div_vals : (is_mul ? pow2_mul_vals : dummy);
-        fill_cfg_t fill_cfg(user_set, "Mul/Div displacer");
-        SAFE(gen_pow2_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
+        SAFE(gen_pow2_filling(mem_replace, mem.md_, res), WARN);
     } else {
         assert(!"unexepcted filling type");
     }
@@ -153,7 +146,7 @@ int partition_data_displacer_t::displace_input_data(
 
     // do the reverse job
     auto *parent_op = &dg_->get_op_by_out_lt(tensor.id_);
-    while (!parent_op->empty()
+    while (filling_type == filling_type_t::quantization && !parent_op->empty()
             && op_ids_set_.find(parent_op->id_) != op_ids_set_.end()) {
         // generate the reverse op based on OP kind
         // make a copy of deserialized_op to avoid impact on graph execution
@@ -300,17 +293,18 @@ int partition_data_displacer_t::gen_quantize_filling(
     return OK;
 }
 
-int partition_data_displacer_t::gen_pow2_filling(dnn_mem_t &mem,
-        const_dnnl_memory_desc_t md, const fill_cfg_t &fill_cfg,
-        res_t *res) const {
+int partition_data_displacer_t::gen_pow2_filling(
+        dnn_mem_t &mem, const_dnnl_memory_desc_t md, res_t *res) const {
 
     dnn_mem_t m(md, get_test_engine());
     const int64_t nelems = m.nelems();
 
-    BENCHDNN_PRINT(6, "%s\n", fill_cfg.print_verbose().c_str());
-
-    const auto &vals = fill_cfg.predefined_set_;
-    const int n_vals = static_cast<int>(vals.size());
+    // These values are picked with the purpose of shrinking the output in case
+    // only second operand is updated. It is done to have more chances of ending
+    // with exact lower data type representative in the output, which in turn
+    // decreases number of points with non-zero absolute diff.
+    static float pow2_vals[] = {2.f, 4.f, 8.f};
+    const int n_vals = sizeof(pow2_vals) / sizeof(*pow2_vals);
 
     /* Do fixed partitioning to have same filling for any number of threads */
     static constexpr int64_t chunk_size = 64;
@@ -328,7 +322,7 @@ int partition_data_displacer_t::gen_pow2_filling(dnn_mem_t &mem,
         std::uniform_int_distribution<> gen(0, n_vals - 1);
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            const float val = vals[gen(int_seed)];
+            const float val = pow2_vals[gen(int_seed)];
             m.set_elem(idx, val);
         }
     });

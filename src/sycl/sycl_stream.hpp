@@ -264,7 +264,7 @@ struct sycl_stream_t : public gpu::intel::compute::compute_stream_t {
             out_event = queue_->submit([&](::sycl::handler &cgh) {
                 // need a u8 accessor to get the proper range
                 ::sycl::accessor<uint8_t, 1, ::sycl::access::mode::write,
-                        xpu::sycl::compat::target_device>
+                        hrt::sycl::compat::target_device>
                         acc_dst(buffer_dst->buffer(), cgh,
                                 ::sycl::range<1>(size), ::sycl::id<1>(0));
                 cgh.depends_on(sycl_event_t::from(deps).events);
@@ -344,7 +344,7 @@ protected:
 
     // XXX: this is a temporary solution to make sycl_memory_arg_t
     // default constructible.
-    xpu::sycl::buffer_u8_t dummy_buffer_ = xpu::sycl::buffer_u8_t(1);
+    hrt::sycl::buffer_u8_t dummy_buffer_ = hrt::sycl::buffer_u8_t(1);
 
 private:
     status_t init();

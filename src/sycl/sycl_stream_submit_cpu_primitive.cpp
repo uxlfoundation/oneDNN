@@ -26,8 +26,8 @@
 #include "common/stream.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/sycl/compat.hpp"
-#include "xpu/sycl/c_types_map.hpp"
-#include "xpu/sycl/memory_storage.hpp"
+#include "sycl/sycl_c_types_map.hpp"
+#include "sycl/sycl_memory_storage.hpp"
 
 #include <assert.h>
 #include <exception>
@@ -57,7 +57,7 @@ template <typename... param_types>
 status_t submit_cpu_primitive_with_params_impl(
         submit_ctx_t *submit_ctx, ::sycl::handler &cgh, param_types... params) {
 
-    xpu::sycl::compat::host_task(cgh, [=]() {
+    hrt::sycl::compat::host_task(cgh, [=]() {
         thunk_params_t thunk_params;
         thunk_params.submit_ctx_ptr = submit_ctx;
 

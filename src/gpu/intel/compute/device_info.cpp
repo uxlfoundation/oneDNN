@@ -272,11 +272,8 @@ status_t device_info_t::init_attributes_common(engine_t *engine) {
 
 #ifdef DNNL_WITH_SYCL
     if (engine->runtime_kind() == runtime_kind::sycl) {
-        const auto *sycl_engine_impl
-                = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                        engine->impl());
-        ocl_backend
-                = (sycl_engine_impl->backend() == xpu::sycl::backend_t::opencl);
+        auto *sycl_engine = utils::downcast<const sycl_engine_base_t *>(engine);
+        ocl_backend = (sycl_engine->backend() == hrt::sycl::backend_t::opencl);
     }
 #endif
 

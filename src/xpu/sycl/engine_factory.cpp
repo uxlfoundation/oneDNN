@@ -32,7 +32,7 @@ status_t engine_factory_t::engine_create(
     auto dev_type = (engine_kind_ == engine_kind::cpu)
             ? ::sycl::info::device_type::cpu
             : ::sycl::info::device_type::gpu;
-    auto devices = xpu::sycl::get_devices(dev_type);
+    auto devices = hrt::sycl::get_devices(dev_type);
     auto &dev = devices[index];
 
     auto exception_handler = [](const ::sycl::exception_list &eptr_list) {
@@ -62,7 +62,7 @@ status_t engine_factory_t::engine_create(engine_t **engine,
         const ::sycl::device &dev, const ::sycl::context &ctx,
         size_t index) const {
     // Validate device and context.
-    VERROR_ENGINE(dev_ctx_consistency_check(dev, ctx),
+    VERROR_ENGINE(hrt::sycl::dev_ctx_consistency_check(dev, ctx),
             status::invalid_arguments, VERBOSE_DEVICE_CTX_MISMATCH);
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_GENERIC
@@ -77,7 +77,7 @@ status_t engine_factory_t::engine_create(engine_t **engine,
                 engine, engine_kind_, dev, ctx, index);
 #endif
     VERROR_ENGINE(!(engine_kind_ == engine_kind::cpu && !dev.is_cpu()
-                          && !is_host(dev)),
+                          && !hrt::sycl::is_host(dev)),
             status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);
     VERROR_ENGINE(!(engine_kind_ == engine_kind::gpu && !dev.is_gpu()),
             status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);

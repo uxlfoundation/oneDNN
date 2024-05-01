@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "gpu/intel/compute/kernel.hpp"
-#include "sycl/sycl_compat.hpp"
+#include "gpu/intel/sycl/compat.hpp"
 
 // including sycl_engine_base.hpp leads to circular dependencies, w/a for now.
 namespace dnnl {

@@ -20,7 +20,7 @@
 
 #include <cuda.h>
 
-#include "xpu/sycl/compat.hpp"
+#include "hrt/sycl/compat.hpp"
 
 namespace dnnl {
 namespace impl {

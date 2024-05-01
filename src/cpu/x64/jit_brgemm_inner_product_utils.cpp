@@ -1402,9 +1402,7 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
             = (jbgp.os <= 16 && jbgp.ic <= amx_row && jbgp.oc <= amx_row)
             || (jbgp.ic <= max_size && jbgp.oc <= max_size && jbgp.mb == 1
                     && jbgp.ic % amx_row != 0);
-    if (one_of(jbgp.isa, avx512_core_amx, avx512_core_amx, avx10_2_512_amx_2)
-            && is_small_shapes)
-        return status::unimplemented;
+    if (jbgp.is_amx && is_small_shapes) return status::unimplemented;
 
     auto set_or_check_tags = [&]() -> status_t {
         using namespace format_tag;

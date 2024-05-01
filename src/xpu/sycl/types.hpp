@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/utils.hpp"
-#include "xpu/sycl/compat.hpp"
-#include "xpu/sycl/utils.hpp"
+#include "hrt/sycl/compat.hpp"
+#include "hrt/sycl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

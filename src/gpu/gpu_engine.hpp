@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,13 +20,9 @@
 #include <mutex>
 
 #include "common/engine.hpp"
-
-#include "gpu/gpu_impl_list.hpp"
-
-#define CTX_GPU_RES_STORAGE(arg) \
-    (*(ctx.get_resource_mapper() \
-                    ->template get<gpu_resource_t>(this) \
-                    ->get_memory_storage(arg)))
+#include "common/utils.hpp"
+#include "gpu/intel/sycl/utils.hpp"
+#include "sycl/sycl_engine_base.hpp"
 
 namespace dnnl {
 namespace impl {

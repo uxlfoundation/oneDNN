@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "hrt/sycl/utils.hpp"
+#include "sycl/sycl_stream_cpu_thunk.hpp"
 
 #include "xpu/sycl/utils.hpp"
 

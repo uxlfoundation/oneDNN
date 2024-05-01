@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,9 +17,19 @@
 #ifndef GPU_INTEL_SYCL_COMPAT_HPP
 #define GPU_INTEL_SYCL_COMPAT_HPP
 
-#include "xpu/sycl/compat.hpp"
+#include "hrt/sycl/compat.hpp"
 
 #include "gpu/intel/sycl/utils.hpp"
+
+namespace dnnl {
+namespace impl {
+namespace sycl {
+
+class sycl_engine_base_t;
+
+}
+} // namespace impl
+} // namespace dnnl
 
 namespace dnnl {
 namespace impl {
@@ -27,19 +37,11 @@ namespace gpu {
 namespace intel {
 namespace sycl {
 
-class engine_t;
-
 namespace compat {
 
-status_t make_kernels(
-        std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
-        const std::vector<const char *> &kernel_names,
-        const gpu::intel::sycl::engine_t *sycl_engine,
-        const xpu::binary_t &binary);
-
 status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
-        const char *kernel_name, const gpu::intel::sycl::engine_t *sycl_engine,
-        const xpu::binary_t &binary);
+        const impl::sycl::sycl_engine_base_t *sycl_engine,
+        const hrt::binary_t &binary, const char *kernel_name);
 
 uint64_t init_extensions(const ::sycl::device &dev);
 

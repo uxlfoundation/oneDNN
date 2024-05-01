@@ -17,10 +17,7 @@
 #include <type_traits>
 
 #include "gpu/intel/sycl/utils.hpp"
-#include "gpu/intel/utils.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
-
-#include "gpu/intel/sycl/l0/level_zero/ze_api.h"
 
 #include "gpu/intel/sycl/l0/level_zero/ze_api.h"
 
@@ -36,8 +33,8 @@
 
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/l0/utils.hpp"
-#include "sycl/sycl_compat.hpp"
 #include "sycl/sycl_engine_base.hpp"
 
 namespace dnnl {
@@ -50,41 +47,11 @@ namespace compat {
 
 using namespace gpu::intel::compute;
 
-        sycl_kernels.resize(kernel_names.size());
-        for (size_t i = 0; i < kernel_names.size(); i++) {
-            if (kernel_names[i] == nullptr) continue;
-            cl_int err;
-            xpu::ocl::wrapper_t<cl_kernel> ocl_kernel
-                    = clCreateKernel(ocl_program, kernel_names[i], &err);
-            OCL_CHECK(err);
-            sycl_kernels[i] = utils::make_unique<::sycl::kernel>(
-                    ::sycl::make_kernel<::sycl::backend::opencl>(
-                            ocl_kernel, sycl_engine->context()));
-        }
-    } else if (backend == xpu::sycl::backend_t::level0) {
-        CHECK(sycl_create_kernels_with_level_zero(
-                sycl_kernels, kernel_names, sycl_engine, binary));
-    } else {
-        gpu_error_not_expected();
-        return status::invalid_arguments;
-    }
-    return status::success;
-}
-
 status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
-        const char *kernel_name, const gpu::intel::sycl::engine_t *sycl_engine,
-        const xpu::binary_t &binary) {
-    std::vector<std::unique_ptr<::sycl::kernel>> sycl_kernels;
-    std::vector<const char *> kernel_names = {kernel_name};
-    CHECK(make_kernels(sycl_kernels, kernel_names, sycl_engine, binary));
-
-    if (sycl_kernels.empty()) return status::runtime_error;
-
-status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
-        const sycl_engine_base_t *sycl_engine, const hrt::binary_t &binary,
-        const char *kernel_name) {
-    auto backend = get_sycl_backend(sycl_engine->device());
-    if (backend == backend_t::opencl) {
+        const impl::sycl::sycl_engine_base_t *sycl_engine,
+        const hrt::binary_t &binary, const char *kernel_name) {
+    auto backend = hrt::sycl::get_backend(sycl_engine->device());
+    if (backend == hrt::sycl::backend_t::opencl) {
         hrt::ocl::wrapper_t<cl_program> ocl_program;
         CHECK(hrt::ocl::create_program(ocl_program, sycl_engine->ocl_device(),
                 sycl_engine->ocl_context(), binary));
@@ -94,7 +61,7 @@ status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
         sycl_kernel = utils::make_unique<::sycl::kernel>(
                 ::sycl::make_kernel<::sycl::backend::opencl>(
                         ocl_kernel, sycl_engine->context()));
-    } else if (backend == backend_t::level0) {
+    } else if (backend == hrt::sycl::backend_t::level0) {
         CHECK(sycl_create_kernel_with_level_zero(
                 sycl_kernel, kernel_name, sycl_engine, binary));
     } else {

@@ -475,7 +475,8 @@ inline bool isa_has_int8_vnni(cpu_isa_t isa) {
 }
 
 inline bool isa_has_s8s8(cpu_isa_t isa) {
-    return is_superset(isa, amx_int8) || is_superset(isa, avx2_vnni_2);
+    return is_superset(isa, avx2_vnni_2) || is_superset(isa, avx10_2_512)
+            || is_superset(isa, amx_int8);
 }
 
 inline bool isa_has_bf16(cpu_isa_t isa) {

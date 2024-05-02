@@ -636,8 +636,54 @@ void init_memory_args(
     brgemm_batch_kind_t batch_kind = str2batch_kind(prb->batch_kind);
     brgemm_layout_t layout = brgemm_layout_t::brgemm_row_major;
 
-    auto src_md = dnn_mem_t::init_md(
-            prb->ndims, src_dims, prb->src_dt(), "", src_strides);
+    // Pass `isa_undef` for now since internal work with it or rather isa bits
+    // than isa values directly which causes misalignment between public enum
+    // and internal values.
+    // TODO: re-consider enabling isa values.
+    const auto isa_undef = cpu_isa_t::isa_undef;
+
+    // Create BRGeMM descriptor, analogous to primitive descriptor creation
+    const auto status_init = brgemm_desc_init(&brgemm_desc, isa_undef,
+            batch_kind, prb->src_dt(), prb->wei_dt(), false /* transA */,
+            false /* transB */, layout, prb->alpha, prb->beta, prb->get_lda(),
+            prb->get_ldb(), prb->get_ldc(use_dst_as_acc), prb->m, prb->n,
+            prb->k, nullptr /* strides */);
+    SAFE(check_dnnl_status(status_init, prb, res), WARN);
+    if (res->state == SKIPPED) return OK;
+    if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
+
+    attr_args_t attr_args;
+    auto wei_scale = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
+    if (wei_scale.policy == policy_t::PER_OC) {
+        attr_args.prepare_scales(prb->attr, DNNL_ARG_WEIGHTS, 2);
+    }
+    auto dnnl_attr = make_benchdnn_dnnl_wrapper(
+            create_dnnl_attr(prb->attr, attr_args));
+
+    SAFE(check_dnnl_status(brgemm_desc_set_postops(&brgemm_desc, dnnl_attr,
+                                   dst_md, prb->get_ldd(), prb->bia_dt),
+                 prb, res),
+            WARN);
+    if (res->state == SKIPPED) return OK;
+
+    brgemm_attr_t brgemm_attr;
+    DNN_SAFE(brgemm_attr_init(&brgemm_attr, prb), WARN);
+    SAFE(check_dnnl_status(
+                 brgemm_desc_set_attr(&brgemm_desc, brgemm_attr), prb, res),
+            WARN);
+    if (res->state == SKIPPED) return OK;
+
+    // Create BRGeMM kernel, analogous to primitive creation.
+    // ctx_init can here be used to select core type on hetero ISA with
+    // tbb
+    brgemm_kernel_t *brgemm_kernel_;
+    {
+        auto brgemm_kernel_addr = &brgemm_kernel_;
+        DNN_SAFE(create_in_thr_ctx(prb->ctx_init, brgemm_kernel_create,
+                         brgemm_kernel_addr, brgemm_desc),
+                WARN);
+    }
+    auto brgemm_kernel = make_benchdnn_dnnl_wrapper(brgemm_kernel_);
 
 #if defined(brg_x64)
     const auto is_tmm = brgemm_desc.is_tmm;
@@ -726,21 +772,6 @@ void init_memory_args(
             multiplier *= simd_w;
         }
     }
-
-    const dnnl_dim_t k_rounded = multiplier * div_up(prb->k, multiplier);
-    const dnnl_dims_t wei_packed_dims = {k_rounded * prb->batch_size, prb->n};
-    dims_t wei_packed_strides = {prb->get_ldb(), 1};
-    auto wei_packed_md = dnn_mem_t::init_md(
-            prb->ndims, wei_packed_dims, prb->wei_dt(), "", wei_packed_strides);
-#endif
-
-    dnnl_dim_t scratchpad_size
-            = static_cast<dnnl_dim_t>(kernel_args.scratchpad_size_);
-    int ndims = scratchpad_size ? 1 : 0;
-    dnnl_data_type_t dt = scratchpad_size ? dnnl_u8 : dnnl_data_type_undef;
-    dnnl_dims_t scratchpad_dims = {scratchpad_size};
-    auto scratchpad_md
-            = dnn_mem_t::init_md(ndims, scratchpad_dims, dt, tag::abx);
 
     const auto &test_engine = get_test_engine();
 

@@ -61,10 +61,6 @@ static inline std::string to_string(gpu_arch_t arch) {
     CASE(xe_hpg);
     CASE(xe_hpc);
     CASE(xe2);
-    CASE(xe3);
-#if XE3P
-    CASE(xe3p);
-#endif
     return "unknown";
 #undef CASE
 }

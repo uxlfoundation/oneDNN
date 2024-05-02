@@ -68,6 +68,16 @@ status_t cudnn_convolution_fwd_t::execute_convolution(
                     ::sycl::access::mode::read_write>(y_fp32_data_mem, cgh);
         }
 
+        impl::sycl::sycl_memory_arg_t<::sycl::access::mode::read_write>
+                y_fp32_data;
+
+        if (!arg_dst_scale.empty() || !arg_src_scale.empty()
+                || !arg_wei_scale.empty()) {
+            memory_storage_t *y_fp32_data_mem = scratch_storage_3.get();
+            y_fp32_data = impl::sycl::sycl_memory_arg_t<
+                    ::sycl::access::mode::read_write>(y_fp32_data_mem, cgh);
+        }
+
         compat::host_task(cgh, [=, this](const compat::interop_handle &ih) {
             auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(
                     cuda_stream->engine());

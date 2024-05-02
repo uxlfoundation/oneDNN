@@ -105,7 +105,7 @@ public:
     bool using_transformed_filter() const { return filter_needs_transform; }
     bool with_scratchpad() const { return scratchpad_size > 0; }
 
-    virtual status_t init(impl::engine_t *engine, convolution_pd_t *pd,
+    virtual status_t init(engine_t *engine, convolution_pd_t *pd,
             bool use_scratch_dst = false, bool use_scales_dst = false) {
         CHECK(configure_parameters(pd));
         CHECK(create_cudnn_descs(pd));
@@ -492,8 +492,8 @@ public:
         return status::success;
     }
 
-    status_t init(impl::engine_t *engine, convolution_pd_t *pd,
-            bool use_scratch_dst, bool use_scales_dst) override {
+    status_t init(engine_t *engine, convolution_pd_t *pd, bool use_scratch_dst,
+            bool use_scales_dst) override {
         use_temp_dst_ = use_scratch_dst;
         use_scales_dst_ = use_scales_dst;
         CHECK(configure_parameters(pd));

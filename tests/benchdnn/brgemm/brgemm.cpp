@@ -626,6 +626,7 @@ void init_memory_args(
             prb->k, nullptr /* strides */);
     SAFE(check_dnnl_status(status_init, prb, res), WARN);
     if (res->state == SKIPPED) return OK;
+    if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
 
     attr_args_t attr_args;
     auto wei_scale = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
@@ -747,21 +748,6 @@ void init_memory_args(
             multiplier *= simd_w;
         }
     }
-
-    const dnnl_dim_t k_rounded = multiplier * div_up(prb->k, multiplier);
-    const dnnl_dims_t wei_packed_dims = {k_rounded * prb->batch_size, prb->n};
-    dims_t wei_packed_strides = {prb->get_ldb(), 1};
-    auto wei_packed_md = dnn_mem_t::init_md(
-            prb->ndims, wei_packed_dims, prb->wei_dt(), "", wei_packed_strides);
-#endif
-
-    dnnl_dim_t scratchpad_size
-            = static_cast<dnnl_dim_t>(kernel_args.scratchpad_size_);
-    int ndims = scratchpad_size ? 1 : 0;
-    dnnl_data_type_t dt = scratchpad_size ? dnnl_u8 : dnnl_data_type_undef;
-    dnnl_dims_t scratchpad_dims = {scratchpad_size};
-    auto scratchpad_md
-            = dnn_mem_t::init_md(ndims, scratchpad_dims, dt, tag::abx);
 
     const auto &test_engine = get_test_engine();
 

@@ -1396,12 +1396,11 @@ bool parse_bench_settings(const char *str) {
             || parse_check_ref_impl(str) || parse_cold_cache(str)
             || parse_cpu_isa_hints(str) || parse_engine(str)
             || parse_fast_ref(str) || parse_fast_ref_gpu(str)
-            || parse_fix_times_per_prb(str) || parse_global_impl(str)
-            || parse_global_skip_impl(str) || parse_max_ms_per_prb(str)
+            || parse_fix_times_per_prb(str) || parse_max_ms_per_prb(str)
             || parse_num_streams(str) || parse_repeats_per_prb(str)
             || parse_mem_check(str) || parse_memory_kind(str) || parse_mode(str)
-            || parse_mode_modifier(str) || parse_start(str)
-            || parse_stream_kind(str) || parse_verbose(str);
+            || parse_mode_modifier(str) || parse_skip_impl(str)
+            || parse_start(str) || parse_stream_kind(str) || parse_verbose(str);
 
     // Last condition makes this help message to be triggered once driver_name
     // is already known.

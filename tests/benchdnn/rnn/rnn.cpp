@@ -837,7 +837,8 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
             return;
         }
         if (is_gpu() && prb.tag[1] != tag::any) {
-            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
             return;
         }
     }

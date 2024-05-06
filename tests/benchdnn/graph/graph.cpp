@@ -389,7 +389,7 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
     // TODO: extend with `getenv` call if limits too much.
     if (is_gc_backend()) {
         res->state = SKIPPED;
-        res->reason = CASE_NOT_SUPPORTED;
+        res->reason = skip_reason::case_not_supported;
         return;
     }
 
@@ -412,7 +412,7 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
             BENCHDNN_PRINT(
                     2, "[INFO]: Unimplemented op: %s.\n", dg_op_kind.c_str());
             res->state = SKIPPED;
-            res->reason = CASE_NOT_SUPPORTED;
+            res->reason = skip_reason::case_not_supported;
             return;
         }
     }
@@ -426,7 +426,7 @@ void skip_unimplemented_graph_attribute(
         if (fpmath_mode != dnnl::fpmath_mode::strict
                 && fpmath_mode != dnnl::fpmath_mode::bf16) {
             res->state = SKIPPED;
-            res->reason = CASE_NOT_SUPPORTED;
+            res->reason = skip_reason::case_not_supported;
             return;
         }
     }

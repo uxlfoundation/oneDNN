@@ -523,74 +523,6 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     const bool req_s8_comp = prb->src_dt() == dnnl_s8;
     const bool req_zp_comp = !prb->attr.zero_points.is_def(DNNL_ARG_SRC);
     if (is_bad_ldb && (req_s8_comp || req_zp_comp)) {
-        BENCHDNN_PRINT(2, "%s\n",
-                "Reorder with compensation is not supported for a given LDB");
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-
-    if (!prb->attr.zero_points.is_def(DNNL_ARG_WEIGHTS)) {
-        // TODO: weights zero point is not supported yet.
-        // It requires enabling f32 -> u8 reorder with compensation on the
-        // library side. When enabled, it produces incorrect results for cases
-        // with K=1. Likely there's a bug inside. Postpone supporting it.
-        BENCHDNN_PRINT(2, "%s\n",
-                "Reorder with compensation is not supported for u8 destination "
-                "data type");
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-
-    if (prb->wtag != tag::abx) {
-        BENCHDNN_PRINT(
-                2, "%s\n", "`wtag` option is supported for ukernel API only.");
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-
-    if (!prb->strides[STRIDES_WEI].empty()) {
-        BENCHDNN_PRINT(2, "%s\n",
-                "`strides` option for weights is supported for ukernel API "
-                "only.");
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-#else
-    if (!prb->attr.is_def()) {
-        bool non_def_zps = !prb->attr.zero_points.is_def();
-        bool non_def_fpmath = !prb->attr.fpmath_mode.is_def();
-        if (non_def_zps || non_def_fpmath) {
-            BENCHDNN_PRINT(2, "%s\n",
-                    "Non-default scales/zero-points/fpmath attributes are not "
-                    "supported");
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-
-        bool non_def_po = !prb->attr.post_ops.is_def();
-        if (non_def_po) {
-            const auto &po = prb->attr.post_ops;
-            bool has_sum = po.find(attr_t::post_ops_t::kind_t::SUM) != -1;
-            if (has_sum) {
-                BENCHDNN_PRINT(2, "%s\n", "Sum post-op is not supported");
-                res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
-                return;
-            }
-        }
-    }
-
-    const bool ldb_ok = prb->get_ldb() == 16 || prb->get_ldb() == 32
-            || prb->get_ldb() == 48 || prb->get_ldb() == 64;
-    if (!ldb_ok) {
-        BENCHDNN_PRINT(2, "%s\n",
-                "Unsupported leading B dimension. Only 16, 32, 48, and 64 are "
-                "supported");
         res->state = SKIPPED;
         res->reason = skip_reason::case_not_supported;
         return;
@@ -1253,29 +1185,21 @@ int doit(const prb_t *prb, res_t *res) {
     int32_t zp_a_val
             = !prb->attr.zero_points.is_def(DNNL_ARG_SRC) ? prb->src_zp[0] : 0;
 
-    SAFE(scales_post_processing(mem_map), WARN);
+    if (!prb->attr.zero_points.is_def(DNNL_ARG_WEIGHTS)) {
+        // TODO: weights zero point is not supported yet.
+        // It requires enabling f32 -> u8 reorder with compensation on the
+        // library side. When enabled, it produces incorrect results for cases
+        // with K=1. Likely there's a bug inside. Postpone supporting it.
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+        return OK;
+    }
 
-    std::vector<const void *> binary_po_v;
-    SAFE(binary_post_op_preprocessing(binary_po_v, mem_map), WARN);
-
-    const float *dst_scales_ptr
-            = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
-            ? (const float *)mem_map.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
-            : nullptr;
-
-#if !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    std::vector<namespace_impl::brgemm_batch_element_t> v_batch_element(
-            prb->batch_size);
-    for (size_t i = 0; i < v_batch_element.size(); i++) {
-        if (prb->batch_kind == "addr") {
-            v_batch_element[i].ptr.A
-                    = src_ptr + i * prb->get_src_batch_offset();
-            v_batch_element[i].ptr.B
-                    = wei_ptr + i * prb->get_wei_batch_offset();
-        } else if (prb->batch_kind == "offs") {
-            v_batch_element[i].offset.A = i * prb->get_src_batch_offset();
-            v_batch_element[i].offset.B = i * prb->get_wei_batch_offset();
-        }
+    if (prb->attr.post_ops.binary_index() >= 0) {
+        // TODO: binary post-op is not supported yet.
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+        return OK;
     }
 
     // For internal API, scales are combined. See `scales_post_processing`.

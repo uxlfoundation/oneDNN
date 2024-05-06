@@ -774,13 +774,15 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
         // FIXME: this will disable int8 RNN testing if the library is built with
         //        Intel MKL that does have packed IGEMM
         if (prb.is_int8()) {
-            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
             return;
         }
 #endif
         // cpu backward only supports `any` or `abx` layouts for weights
         if (IMPLICATION(prb.prop == dnnl_backward, prb.tag[1] != tag::abx)) {
-            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
             return;
         }
 
@@ -788,7 +790,8 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
         const bool is_f16_not_ok
                 = prb.cfg[SRC_LAYER].dt == dnnl_f16 && !(dir & FLAG_INF);
         if (is_f16_not_ok) {
-            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
             return;
         }
 
@@ -796,7 +799,8 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
         const bool is_acl_f16_not_ok = prb.cfg[SRC_LAYER].dt == dnnl_f16
                 && dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16);
         if (is_acl_f16_not_ok) {
-            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
             return;
         }
 #endif
@@ -832,17 +836,14 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
             res->reason = skip_reason::case_not_supported;
             return;
         }
-        if (is_gpu() && prb.tag[1] != tag::any) {
-            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
-            return;
-        }
     }
 
     // LSTM w/ projection is not supported for bf16
     if (prb.is_lstm_projection()
             && (prb.cfg[SRC_LAYER].dt == dnnl_bf16
                     || prb.cfg[SRC_LAYER].dt == dnnl_f16)) {
-        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
         return;
     }
 

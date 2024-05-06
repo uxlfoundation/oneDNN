@@ -376,13 +376,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         const bool is_f16_dst = prb->get_dt(DST) == dnnl_f16;
         const bool is_x8x8f16 = is_int8_src && is_int8_wei && is_f16_dst;
 
-        const auto &src_scale = prb->attr.scales.get(DNNL_ARG_SRC);
-        const auto &dst_scale = prb->attr.scales.get(DNNL_ARG_DST);
-        const bool per_oc_src_dst = (src_scale.policy != attr_t::COMMON
-                || dst_scale.policy != attr_t::COMMON);
-
-        if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16
-                || per_oc_src_dst) {
+        if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16) {
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;

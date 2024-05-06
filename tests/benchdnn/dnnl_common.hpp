@@ -359,17 +359,16 @@ int fetch_impl(benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> &pdw,
 
         // Iterator is not supported, further logic is not applicable.
         if (!init_pd_args.is_iterator_supported) {
-            if (res) res->state = SKIPPED;
-            if (res) res->reason = skip_reason::skip_impl_hit;
+            res->state = SKIPPED;
+            res->reason = skip_reason::skip_impl_hit;
             return OK;
         }
 
         auto status = dnnl_primitive_desc_next_impl(pdw);
         if (status == dnnl_last_impl_reached) {
-            BENCHDNN_PRINT(2, "%s\n",
-                    "[IMPL_FILTER] All implementations were skipped!");
-            if (res) res->state = SKIPPED;
-            if (res) res->reason = skip_reason::skip_impl_hit;
+            BENCHDNN_PRINT(2, "%s\n", "All implementations were skipped!");
+            res->state = SKIPPED;
+            res->reason = skip_reason::skip_impl_hit;
             pdw.reset(nullptr);
             return OK;
         } else if (status == dnnl_success) {

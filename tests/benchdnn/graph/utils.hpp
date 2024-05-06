@@ -56,26 +56,6 @@ struct bdnn_state_t {
     std::string reason;
 };
 
-enum class dnnl_driver_t {
-    binary,
-    bnorm,
-    concat,
-    conv,
-    custom,
-    deconv,
-    eltwise,
-    lnorm,
-    matmul,
-    pool,
-    prelu,
-    reduction,
-    reorder,
-    resampling,
-    softmax,
-    gnorm,
-    others
-};
-
 extern bdnn_state_t convert_state(const dnnl_status_t &s);
 
 // Flags that controls the behavior for handling exceptions. The logic

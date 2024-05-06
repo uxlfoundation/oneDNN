@@ -122,12 +122,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
 
-        if (prb->is_ternary_op()) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-
         // gpu does not support s32
         for (const auto &dt : dts)
             if (dt == dnnl_s32) {

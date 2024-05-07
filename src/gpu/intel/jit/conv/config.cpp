@@ -1255,33 +1255,14 @@ void init_params(conv_config_t &cfg) {
     cfg.tiler().set_params(cfg);
 }
 
-const std::array<prb_tile_t, 3> &get_kernel_grid_conv_dims(
-        const conv_problem_t &prb) {
-    static const prb_tile_t fwd_0({prb_dims::oc});
-    static const prb_tile_t fwd_1(
-            {prb_dims::g, prb_dims::od, prb_dims::oh, prb_dims::ow});
-    static const prb_tile_t fwd_2({prb_dims::mb});
-
-    static const prb_tile_t bwd_d_0({prb_dims::ic});
-    static const prb_tile_t bwd_d_1(
-            {prb_dims::g, prb_dims::id, prb_dims::ih, prb_dims::iw});
-    static const prb_tile_t bwd_d_2({prb_dims::mb});
-
-    static const prb_tile_t bwd_w_0({prb_dims::oc});
-    static const prb_tile_t bwd_w_1({prb_dims::ic, prb_dims::kd, prb_dims::kh,
-            prb_dims::kw, prb_dims::od, prb_dims::oh, prb_dims::ow});
-    static const prb_tile_t bwd_w_2({prb_dims::g, prb_dims::mb});
-
-    using prb_tile_3 = std::array<prb_tile_t, 3>;
-    static const prb_tile_3 fwd = {fwd_0, fwd_1, fwd_2};
-    static const prb_tile_3 bwd_d = {bwd_d_0, bwd_d_1, bwd_d_2};
-    static const prb_tile_3 bwd_w = {bwd_w_0, bwd_w_1, bwd_w_2};
-
-    if (prb.is_fwd) return fwd;
-    if (prb.is_bwd_d) return bwd_d;
-    if (prb.is_bwd_w) return bwd_w;
-    ir_error_not_expected();
-    return fwd;
+std::array<prb_tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg) {
+    std::array<prb_tile_t, 3> grid_dims;
+    for (int i = 0; i < 3; i++) {
+        for (auto &d : cfg.walk_order().grid_dims(i)) {
+            grid_dims[i][d] = 1;
+        }
+    }
+    return grid_dims;
 }
 
 using prb_tile_3 = std::array<prb_tile_t, 3>;

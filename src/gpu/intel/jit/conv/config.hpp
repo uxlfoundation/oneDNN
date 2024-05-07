@@ -29,6 +29,7 @@
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
+#include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -657,11 +658,11 @@ tensor_config_t get_tensor_config(
 int estimate_register_count(const conv_config_t &cfg);
 int default_regs(const conv_config_t &cfg);
 void init_kernel_grid(conv_config_t &cfg);
+void init_walk_order(conv_config_t &cfg);
 void init_thread_group_grid(conv_config_t &cfg);
-const std::array<prb_tile_t, 3> &get_kernel_grid_conv_dims(
-        const conv_problem_t &prb);
-const std::array<prb_tile_t, 3> &get_thread_group_grid_conv_dims(
-        const conv_problem_t &prb);
+std::array<prb_tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
+std::array<prb_tile_t, 3> get_thread_group_grid_conv_dims(
+        const conv_config_t &cfg);
 
 } // namespace jit
 } // namespace intel

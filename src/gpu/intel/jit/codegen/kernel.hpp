@@ -29,6 +29,7 @@
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/jit/jit_generator.hpp"
 #include "gpu/intel/jit/ngen/ngen.hpp"
 #include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"

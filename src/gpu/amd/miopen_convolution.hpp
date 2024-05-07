@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -259,7 +259,7 @@ struct miopen_convolution_fwd_t : public gpu::primitive_t {
 
 private:
     ::sycl::buffer<uint8_t, 1> &buffer(memory_storage_t *mem_storage) const {
-        return utils::downcast<xpu::sycl::buffer_memory_storage_t *>(
+        return utils::downcast<hrt::sycl::buffer_memory_storage_t *>(
                 mem_storage)
                 ->buffer();
     }

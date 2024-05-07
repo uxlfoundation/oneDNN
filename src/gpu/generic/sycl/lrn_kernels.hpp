@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,12 +17,9 @@
 #ifndef GPU_GENERIC_SYCL_LRN_KERNELS_HPP
 #define GPU_GENERIC_SYCL_LRN_KERNELS_HPP
 
-#include "common/c_types_map.hpp"
-#include "common/primitive_exec_types.hpp"
-#include "gpu/generic/sycl/sycl_io_helper.hpp"
-#include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-#include "xpu/sycl/memory_storage_base.hpp"
-#include "xpu/sycl/types.hpp"
+#include "gpu/sycl/sycl_io_helper.hpp"
+#include "gpu/sycl/sycl_primitive_conf.hpp"
+#include "hrt/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,12 +28,10 @@ namespace generic {
 namespace sycl {
 
 struct lrn_fwd_kernel_vec_t {
-    lrn_fwd_kernel_vec_t(const sycl_lrn_conf_t &conf, ::sycl::handler &cgh,
-            const exec_ctx_t &ctx, const format_tag_t &tag)
-        : conf_(conf)
-        , src_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
-        , dst_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST))
-        , tag_(tag) {}
+    lrn_fwd_kernel_vec_t(const sycl_lrn_conf_t &conf,
+            hrt::sycl::in_memory_arg_t &src, hrt::sycl::out_memory_arg_t &dst,
+            const format_tag_t &tag)
+        : conf_(conf), src_(src), dst_(dst), tag_(tag) {}
 
     void operator()(::sycl::nd_item<1> item) const {
         memory_tensor_t src_mem(src_, conf_.src_md);
@@ -134,18 +129,23 @@ struct lrn_fwd_kernel_vec_t {
     }
 
 private:
-    const xpu::sycl::md_t &src_md() const { return conf_.src_md; }
-    const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
+    const hrt::sycl::md_t &src_md() const { return conf_.src_md; }
+    const hrt::sycl::md_t &dst_md() const { return conf_.dst_md; }
+
+    void *src_ptr() const { return src_.get_pointer(); }
+    void *dst_ptr() const { return dst_.get_pointer(); }
 
     sycl_lrn_conf_t conf_;
-    xpu::sycl::in_memory_arg_t src_;
-    xpu::sycl::out_memory_arg_t dst_;
+    hrt::sycl::in_memory_arg_t src_;
+    hrt::sycl::out_memory_arg_t dst_;
     format_tag_t tag_;
 };
 
 struct lrn_bwd_kernel_vec_t {
-    lrn_bwd_kernel_vec_t(const sycl_lrn_conf_t &conf, ::sycl::handler &cgh,
-            const exec_ctx_t &ctx, const format_tag_t &tag)
+    lrn_bwd_kernel_vec_t(const sycl_lrn_conf_t &conf,
+            hrt::sycl::in_memory_arg_t &src,
+            hrt::sycl::in_memory_arg_t &diff_dst,
+            hrt::sycl::out_memory_arg_t &diff_src, const format_tag_t &tag)
         : conf_(conf)
         , src_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
         , diff_dst_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_DST))
@@ -296,14 +296,18 @@ struct lrn_bwd_kernel_vec_t {
     }
 
 private:
-    const xpu::sycl::md_t &src_md() const { return conf_.src_md; }
-    const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
-    const xpu::sycl::md_t &diff_src_md() const { return conf_.diff_src_md; }
+    const hrt::sycl::md_t &src_md() const { return conf_.src_md; }
+    const hrt::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
+    const hrt::sycl::md_t &diff_src_md() const { return conf_.diff_src_md; }
+
+    void *src_ptr() const { return src_.get_pointer(); }
+    void *diff_dst_ptr() const { return diff_dst_.get_pointer(); }
+    void *diff_src_ptr() const { return diff_src_.get_pointer(); }
 
     sycl_lrn_conf_t conf_;
-    xpu::sycl::in_memory_arg_t src_;
-    xpu::sycl::in_memory_arg_t diff_dst_;
-    xpu::sycl::out_memory_arg_t diff_src_;
+    hrt::sycl::in_memory_arg_t src_;
+    hrt::sycl::in_memory_arg_t diff_dst_;
+    hrt::sycl::out_memory_arg_t diff_src_;
     format_tag_t tag_;
 };
 

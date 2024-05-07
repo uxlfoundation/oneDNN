@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
-#include "xpu/sycl/types.hpp"
+#include "hrt/sycl/types.hpp"
 
 #include "gpu/generic/sycl/ref_batch_normalization.hpp"
 
@@ -34,27 +34,21 @@ status_t ref_batch_normalization_fwd_t::pd_t::init_conf() {
     conf_.ndims = ndims();
     conf_.flags = desc()->flags;
     conf_.wk_size = memory_desc_wrapper(src_md(0)).nelems();
-    // Here and below only set the memory descriptors in `conf_` if they are used
-    // by the current configuration. Setting them uncoditionally triggers the
-    // assertion in xpu::sycl::md_t's constructor in Debug mode.
-    if (fuse_norm_add_relu()) { conf_.src1_md = xpu::sycl::md_t(dst_md(3)); }
+    conf_.src1_md = hrt::sycl::md_t(dst_md(3));
+    conf_.dst1_md = hrt::sycl::md_t(dst_md(0));
     conf_.block_size = 16;
     conf_.wg_size = 32;
     conf_.dir = !is_fwd();
     conf_.use_scale = use_scale();
     conf_.use_shift = use_shift();
-    conf_.data_md = xpu::sycl::md_t(src_md(0));
-    if (use_scale() || use_shift()) {
-        conf_.data_scaleshift_md = xpu::sycl::md_t(weights_md(0));
-    }
-    if (is_training() || use_global_stats()) {
-        conf_.stat_md = stats_is_src() ? xpu::sycl::md_t(src_md(1))
-                                       : xpu::sycl::md_t(dst_md(1));
-        conf_.var_md = stats_is_src() ? xpu::sycl::md_t(src_md(2))
-                                      : xpu::sycl::md_t(dst_md(2));
-    }
-    conf_.dst_md = xpu::sycl::md_t(dst_md(0));
-    if (is_training()) { conf_.ws_dt = workspace_md(0)->data_type; }
+    conf_.data_md = hrt::sycl::md_t(src_md(0));
+    conf_.data_scaleshift_md = hrt::sycl::md_t(weights_md(0));
+    conf_.stat_md = stats_is_src() ? hrt::sycl::md_t(src_md(1))
+                                   : hrt::sycl::md_t(dst_md(1));
+    conf_.dst_md = hrt::sycl::md_t(dst_md(0));
+    conf_.var_md = stats_is_src() ? hrt::sycl::md_t(src_md(2))
+                                  : hrt::sycl::md_t(dst_md(2));
+    conf_.ws_md = hrt::sycl::md_t(workspace_md(0));
     int work_per_wg = conf_.wg_size * conf_.block_size;
     int n_wgs = (C() + work_per_wg - 1) / work_per_wg;
     conf_.n_thr = n_wgs * conf_.wg_size;
@@ -129,21 +123,17 @@ status_t ref_batch_normalization_bwd_t::pd_t::init_conf() {
     conf_.prop_kind = desc_.prop_kind;
     conf_.use_scale = use_scale();
     conf_.use_shift = use_shift();
-    conf_.data_md = xpu::sycl::md_t(src_md(0));
-    conf_.diff_data_md = xpu::sycl::md_t(diff_src_md(0));
-    if (fuse_norm_add_relu()) {
-        conf_.diff_src1_dt = diff_dst_md(1)->data_type;
-    }
-    if (use_scale() || use_shift()) {
-        conf_.data_scaleshift_md = xpu::sycl::md_t(weights_md(0));
-        conf_.diff_data_scaleshift_md = xpu::sycl::md_t(diff_weights_md(0));
-    }
-    conf_.stat_md = xpu::sycl::md_t(stat_md());
-    conf_.var_md = xpu::sycl::md_t(src_md(2));
-    conf_.diff_dst_md = xpu::sycl::md_t(diff_dst_md(0));
-    if (fuse_norm_add_relu() || fuse_norm_relu()) {
-        conf_.ws_dt = workspace_md(0)->data_type;
-    }
+    conf_.data_md = hrt::sycl::md_t(src_md(0));
+    conf_.dst1_md = hrt::sycl::md_t(dst_md(0));
+    conf_.diff_data_md = hrt::sycl::md_t(diff_src_md(0));
+    conf_.diff_src1_md = hrt::sycl::md_t(diff_dst_md(1));
+    conf_.data_scaleshift_md = hrt::sycl::md_t(weights_md(0));
+    conf_.diff_data_scaleshift_md = hrt::sycl::md_t(diff_weights_md(0));
+    conf_.diff_dst_md = hrt::sycl::md_t(diff_dst_md(0));
+    conf_.stat_md = hrt::sycl::md_t(stat_md());
+    conf_.var_md = hrt::sycl::md_t(src_md(2));
+    conf_.dst_md = hrt::sycl::md_t(dst_md(0));
+    conf_.ws_md = hrt::sycl::md_t(workspace_md(0));
     int work_per_wg = conf_.wg_size * conf_.block_size;
     int n_wgs = (C() + work_per_wg - 1) / work_per_wg;
     conf_.n_thr = n_wgs * conf_.wg_size;

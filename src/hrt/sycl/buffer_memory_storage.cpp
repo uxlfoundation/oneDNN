@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,10 +19,8 @@
 
 #include "common/memory.hpp"
 #include "common/memory_map_manager.hpp"
-#include "common/stream.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/sycl/engine_impl.hpp"
+#include "sycl/sycl_stream.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -93,7 +91,6 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
 
     if (engine()->kind() == engine_kind::cpu) {
         storage->buffer_ = buffer_;
-        storage->base_offset_ = base_offset_ + offset;
     } else {
         gpu_assert(IMPLICATION(
                 hrt::sycl::is_intel_device(

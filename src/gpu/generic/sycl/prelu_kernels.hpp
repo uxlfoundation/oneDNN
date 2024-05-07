@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,11 +21,13 @@
 #include "common/dnnl_thread.hpp"
 #include "common/primitive_exec_types.hpp"
 #include "common/utils.hpp"
-#include "gpu/generic/sycl/sycl_io_helper.hpp"
-#include "gpu/generic/sycl/sycl_math_utils.hpp"
-#include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-#include "xpu/sycl/memory_storage_base.hpp"
-#include "xpu/sycl/types.hpp"
+
+#include "gpu/sycl/sycl_io_helper.hpp"
+#include "gpu/sycl/sycl_math_utils.hpp"
+#include "gpu/sycl/sycl_post_ops.hpp"
+#include "gpu/sycl/sycl_primitive_conf.hpp"
+#include "gpu/sycl/sycl_q10n.hpp"
+#include "hrt/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -38,12 +40,11 @@ static constexpr int max_supported_ndims = 5;
 struct prelu_fwd_kernel_vec_t {
     static constexpr int vec_len = 8;
 
-    prelu_fwd_kernel_vec_t(const sycl_prelu_conf_t &conf, ::sycl::handler &cgh,
-            const exec_ctx_t &ctx)
-        : conf_(conf)
-        , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
-        , weights_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_WEIGHTS))
-        , dst_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST)) {}
+    prelu_fwd_kernel_vec_t(const sycl_prelu_conf_t &conf,
+            hrt::sycl::in_memory_arg_t &data,
+            hrt::sycl::in_memory_arg_t &weights,
+            hrt::sycl::out_memory_arg_t &dst)
+        : conf_(conf), data_(data), weights_(weights), dst_(dst) {}
 
     void operator()(::sycl::nd_item<1> item) const {
         memory_tensor_t data_mem(data_, conf_.data_md);
@@ -112,11 +113,15 @@ struct prelu_fwd_kernel_vec_t {
     }
 
 private:
-    const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
-    const xpu::sycl::md_t &weights_md() const { return conf_.weights_md; }
-    const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
+    const hrt::sycl::md_t &data_md() const { return conf_.data_md; }
+    const hrt::sycl::md_t &weights_md() const { return conf_.weights_md; }
+    const hrt::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
-    static dim_t offset(const xpu::sycl::md_t &mem, dims_t dims) {
+    void *data_ptr() const { return data_.get_pointer(); }
+    void *weights_ptr() const { return weights_.get_pointer(); }
+    void *dst_ptr() const { return dst_.get_pointer(); }
+
+    static dim_t offset(const hrt::sycl::md_t &mem, dims_t dims) {
         const int ndims = mem.ndims();
         switch (ndims) {
             case 1: return mem.off(dims[0]);
@@ -130,7 +135,7 @@ private:
     }
 
     static dim_t weights_offset(
-            const int mask, const xpu::sycl::md_t &mem, dims_t &dims) {
+            const int mask, const hrt::sycl::md_t &mem, dims_t &dims) {
         dims_t dims_w {};
         std::copy(dims, dims + max_supported_ndims, dims_w);
         utils::apply_mask_on_dims(dims_w, mem.ndims(), mask);
@@ -138,17 +143,21 @@ private:
     }
 
     sycl_prelu_conf_t conf_;
-    xpu::sycl::in_memory_arg_t data_;
-    xpu::sycl::in_memory_arg_t weights_;
-    xpu::sycl::out_memory_arg_t dst_;
+    hrt::sycl::in_memory_arg_t data_;
+    hrt::sycl::in_memory_arg_t weights_;
+    hrt::sycl::out_memory_arg_t dst_;
 };
 
 struct prelu_bwd_kernel_vec_t {
     static constexpr int vec_len = 8;
 
-    prelu_bwd_kernel_vec_t(const sycl_prelu_conf_t &conf, ::sycl::handler &cgh,
-            const exec_ctx_t &ctx, bool reduce_diff_weights,
-            std::unique_ptr<memory_t, memory_deleter_t> &scratch_mem)
+    prelu_bwd_kernel_vec_t(const sycl_prelu_conf_t &conf,
+            hrt::sycl::in_memory_arg_t &data,
+            hrt::sycl::out_memory_arg_t &diff_data,
+            hrt::sycl::in_memory_arg_t &weights,
+            hrt::sycl::out_memory_arg_t &diff_weights,
+            hrt::sycl::in_memory_arg_t &diff_dst,
+            hrt::sycl::out_memory_arg_t &scratchpad)
         : conf_(conf)
         , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
         , diff_data_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC))
@@ -216,15 +225,27 @@ struct prelu_bwd_kernel_vec_t {
     }
 
 private:
-    const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
-    const xpu::sycl::md_t &weights_md() const { return conf_.weights_md; }
-    const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
-    const xpu::sycl::md_t &diff_weights_md() const {
+    const hrt::sycl::md_t &data_md() const { return conf_.data_md; }
+    const hrt::sycl::md_t &weights_md() const { return conf_.weights_md; }
+    const hrt::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
+    const hrt::sycl::md_t &diff_weights_md() const {
         return conf_.diff_weights_md;
+    }
+    const hrt::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
+
+    float *data_ptr() const { return (float *)(data_.get_pointer()); }
+    float *weights_ptr() const { return (float *)(weights_.get_pointer()); }
+    float *diff_data_ptr() const { return (float *)(diff_data_.get_pointer()); }
+    float *diff_weights_ptr() const {
+        return (float *)(diff_weights_.get_pointer());
+    }
+    float *diff_dst_ptr() const { return (float *)(diff_dst_.get_pointer()); }
+    float *scratchpad_ptr() const {
+        return (float *)(scratchpad_.get_pointer());
     }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
 
-    static dim_t offset(const xpu::sycl::md_t &mem, dims_t dims) {
+    static dim_t offset(const hrt::sycl::md_t &mem, dims_t dims) {
         const int ndims = mem.ndims();
         switch (ndims) {
             case 1: return mem.off(dims[0]);
@@ -238,7 +259,7 @@ private:
     }
 
     static dim_t weights_offset(
-            const int mask, const xpu::sycl::md_t &mem, dims_t &dims) {
+            const int mask, const hrt::sycl::md_t &mem, dims_t &dims) {
         dims_t dims_w {};
         std::copy(dims, dims + max_supported_ndims, dims_w);
         utils::apply_mask_on_dims(dims_w, mem.ndims(), mask);
@@ -497,12 +518,12 @@ private:
     }
 
     sycl_prelu_conf_t conf_;
-    xpu::sycl::in_memory_arg_t data_;
-    xpu::sycl::out_memory_arg_t diff_data_;
-    xpu::sycl::in_memory_arg_t weights_;
-    xpu::sycl::out_memory_arg_t diff_weights_;
-    xpu::sycl::in_memory_arg_t diff_dst_;
-    xpu::sycl::out_memory_arg_t scratchpad_;
+    hrt::sycl::in_memory_arg_t data_;
+    hrt::sycl::out_memory_arg_t diff_data_;
+    hrt::sycl::in_memory_arg_t weights_;
+    hrt::sycl::out_memory_arg_t diff_weights_;
+    hrt::sycl::in_memory_arg_t diff_dst_;
+    hrt::sycl::out_memory_arg_t scratchpad_;
 };
 
 } // namespace sycl

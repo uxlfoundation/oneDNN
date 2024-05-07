@@ -18,8 +18,10 @@
 
 #include "common/memory.hpp"
 #include "common/memory_map_manager.hpp"
-#include "common/stream.hpp"
 #include "common/utils.hpp"
+
+#include "sycl/sycl_engine_base.hpp"
+#include "sycl/sycl_stream.hpp"
 
 namespace dnnl {
 namespace impl {

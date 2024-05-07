@@ -48,14 +48,6 @@ namespace sycl {
                     &CTX_OUT_STORAGE(arg)) \
                       ->get_out_memory_arg(ctx.stream(), cgh)
 
-#define CTX_INOUT_SYCL_KERNEL_MEMORY(arg) \
-    CTX_OUT_STORAGE(arg).is_null() \
-            ? xpu::sycl::memory_storage_base_t::empty_inout_memory_arg( \
-                    ctx.stream(), cgh) \
-            : utils::downcast<const xpu::sycl::memory_storage_base_t *>( \
-                    &CTX_OUT_STORAGE(arg)) \
-                      ->get_inout_memory_arg(ctx.stream(), cgh)
-
 #define CHECK_SYCL_KERNEL_ARG_TYPE(type) \
     static_assert(::sycl::is_device_copyable_v<type>)
 
@@ -129,7 +121,7 @@ struct md_t {
         data_type_ = mdw.data_type();
 #define CHECK_AND_ASSIGN(lhs, rhs) \
     assert((rhs) <= INT32_MAX); \
-    (lhs) = static_cast<dim32_t>(rhs)
+    (lhs) = (rhs)
 
         CHECK_AND_ASSIGN(ndims_, mdw.ndims());
         CHECK_AND_ASSIGN(offset0_, mdw.offset0());
@@ -184,12 +176,6 @@ struct md_t {
             phys_offset += p * strides()[d];
         }
         return phys_offset;
-    }
-
-    dim_t off_v_masked(const dims_t pos, int mask, bool is_pos_padded = false) {
-        dims_t pos_masked;
-        utils::copy_dims_with_mask(pos_masked, pos, ndims(), mask);
-        return off_v(pos_masked, is_pos_padded);
     }
 
     dim_t off_l(dim_t l_offset, bool is_pos_padded = false) const {

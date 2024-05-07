@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@
 #define COMMON_ENGINE_IMPL_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/engine_id.hpp"
-#include "common/stream_impl.hpp"
 #include "common/utils.hpp"
 
 #ifdef ONEDNN_BUILD_GRAPH
@@ -49,37 +47,12 @@ public:
     runtime_kind_t runtime_kind() const { return runtime_kind_; }
     size_t index() const { return index_; }
 
-    virtual engine_id_t engine_id() const {
-        // Used for non-sycl CPU engine only that doesn't have device and
-        // context.
-        return {};
-    }
-
 #ifdef ONEDNN_BUILD_GRAPH
     void *get_allocator() const { return (void *)(&allocator_); };
     void set_allocator(graph::allocator_t *alloc) { allocator_ = *alloc; }
 #endif
 
     virtual status_t init() { return status::success; }
-
-    virtual status_t create_memory_storage(memory_storage_t **storage,
-            engine_t *engine, unsigned flags, size_t size, void *handle) const {
-        assert(!"unexpected");
-        return status::runtime_error;
-    }
-
-    virtual status_t create_stream_impl(
-            impl::stream_impl_t **stream_impl, unsigned flags) const {
-        auto *si = new impl::stream_impl_t(flags);
-        if (!si) return status::out_of_memory;
-        *stream_impl = si;
-        return status::success;
-    }
-
-    virtual int get_buffer_alignment() const {
-        assert(!"unexpected");
-        return -1;
-    }
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(engine_impl_t)

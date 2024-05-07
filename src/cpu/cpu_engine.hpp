@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2025 Intel Corporation
+* Copyright 2016-2024 Intel Corporation
 * Copyright 2020-2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -116,7 +116,9 @@ public:
 
 class cpu_engine_t : public engine_t {
 public:
-    cpu_engine_t(impl::engine_impl_t *engine_impl) : engine_t(engine_impl) {}
+    cpu_engine_t()
+        : engine_t(new impl::engine_impl_t(
+                engine_kind::cpu, get_cpu_native_runtime(), 0)) {}
 
     /* implementation part */
 

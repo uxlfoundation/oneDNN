@@ -21,7 +21,6 @@
 
 #include "c_types_map.hpp"
 #include "common/engine_impl.hpp"
-#include "common/stream_impl.hpp"
 #include "engine_id.hpp"
 #include "memory.hpp"
 #include "memory_storage.hpp"
@@ -59,6 +58,8 @@ struct dnnl_engine : public dnnl::impl::c_compatible {
 
     /** get index of the current engine */
     size_t index() const { return impl()->index(); }
+
+    virtual dnnl::impl::device_id_t device_id() const = 0;
 
     virtual dnnl::impl::engine_id_t engine_id() const {
         return impl()->engine_id();

@@ -75,37 +75,8 @@ status_t ocl_gpu_engine_t::init() {
 }
 
 status_t ocl_gpu_engine_t::init(const std::vector<uint8_t> &cache_blob) {
-    cl_int err = CL_SUCCESS;
-    err = clGetDeviceInfo(device_, CL_DEVICE_PLATFORM, sizeof(platform_),
-            &platform_, nullptr);
-    if (err != CL_SUCCESS) {
-        device_ = nullptr;
-        context_ = nullptr;
-    }
-
-    OCL_CHECK(err);
-
-    err = clRetainDevice(device_);
-    if (err != CL_SUCCESS) {
-        device_ = nullptr;
-        context_ = nullptr;
-    }
-
-    OCL_CHECK(err);
-
-    if (is_user_context_) {
-        err = clRetainContext(context_);
-        if (err != CL_SUCCESS) context_ = nullptr;
-    } else {
-        context_
-                = clCreateContext(nullptr, 1, &device_, nullptr, nullptr, &err);
-    }
-
-    OCL_CHECK(err);
-
-    CHECK(xpu::ocl::check_device(engine_kind::gpu, device_, context_));
-    compute::compute_engine_t::init(cache_blob);
-
+    CHECK(init_impl());
+    CHECK(compute::compute_engine_t::init(cache_blob));
     return status::success;
 }
 

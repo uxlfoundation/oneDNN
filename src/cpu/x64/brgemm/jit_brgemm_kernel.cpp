@@ -652,21 +652,15 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         case data_type::s8: uni_vpmovsxbd(vmm, op); break;
         case data_type::u8: uni_vpmovzxbd(vmm, op); break;
         case data_type::f8_e5m2:
-            if (brg.is_fp8_via_convert()) {
-                // note: unoptimized, probably move stack use outside loop
-                mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
+            if (brg.is_fp8_via_convert())
                 f8_e5m2_emulator_->vcvt_f8_to_f32(vmm, op);
-                mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
-            } else
+            else
                 assert(!"Error, native conversion unsupported");
             break;
         case data_type::f8_e4m3:
-            if (brg.is_fp8_via_convert()) {
-                // note: unoptimized, probably move stack use outside loop
-                mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
+            if (brg.is_fp8_via_convert())
                 f8_e4m3_emulator_->vcvt_f8_to_f32(vmm, op);
-                mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
-            } else
+            else
                 assert(!"Error, native conversion unsupported");
             break;
 

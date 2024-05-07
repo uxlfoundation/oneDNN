@@ -452,7 +452,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
             strategy.arbitrationMode
                     = ngen::ThreadArbitrationMode::RoundRobinOnStall;
         else if (mod == "l2d")
-            strategy.optAlignAB = GEMMStrategy::AlignBlock2D;
+            strategy.optAlignAB2D = true;
         else if (mod == "nq") {
             strategy.A.noExtraPad = strategy.A_prefetch.noExtraPad = true;
             strategy.B.noExtraPad = strategy.B_prefetch.noExtraPad = true;
@@ -599,7 +599,7 @@ void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy,
             && !isPacked(problem.C.layout);
 
     // Notify kernel generator to downgrade block 2D prefetches if block 2D cannot be used.
-    if (tags && strategy.optAlignAB != GEMMStrategy::AlignBlock2D) {
+    if (tags && !strategy.optAlignAB2D) {
         bool block2DA = false, block2DB = false;
         while (*tags) {
             block2DA |= (*tags == kcatalog::ReqBlock2DA);

@@ -346,7 +346,7 @@ public:
     }
 
     static int get_max_threadgroups_per_wave(
-            const exec_config_t &exec_cfg, dim_t tg_elems) {
+            const exec_config_t &exec_cfg, int tg_elems) {
         auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw().to_ngen());
         int threads_per_eu = compute::device_info_t::threads_per_eu(
                 arch, exec_cfg.regs() > 128);
@@ -366,20 +366,17 @@ public:
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
         int subslice_count = exec_cfg.hw().eu_count() / eus_per_subslice;
 
-        dim_t min_wg_per_subslice_wave
-                = std::max<dim_t>(eus_per_subslice / tg_elems, 1);
-        dim_t min_wg_per_wave = subslice_count * min_wg_per_subslice_wave;
-        return (100.f * float(kg_elems))
-                / float(utils::rnd_up(kg_elems, min_wg_per_wave));
+        int min_wg_per_subslice_wave = std::max(eus_per_subslice / tg_elems, 1);
+        int min_wg_per_wave = subslice_count * min_wg_per_subslice_wave;
+        return (100.f * kg_elems) / utils::rnd_up(kg_elems, min_wg_per_wave);
     }
 
     // Return wave utilization as a percentage. If this value is low, memory
     // latency may be an issue due to limited use of SMT to hide the latency.
     static float get_wave_utilization(
-            const exec_config_t &exec_cfg, dim_t kg_elems, dim_t tg_elems) {
+            const exec_config_t &exec_cfg, int kg_elems, int tg_elems) {
         int tgs_per_wave = get_max_threadgroups_per_wave(exec_cfg, tg_elems);
-        return (100.f * float(kg_elems))
-                / float(utils::rnd_up(kg_elems, tgs_per_wave));
+        return (100.f * kg_elems) / utils::rnd_up(kg_elems, tgs_per_wave);
     }
 
 #define DECL_PARAM(name) \

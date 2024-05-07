@@ -21,7 +21,6 @@
 
 #include "c_types_map.hpp"
 #include "common/engine_impl.hpp"
-#include "common/stream_impl.hpp"
 #include "engine_id.hpp"
 #include "memory.hpp"
 #include "memory_storage.hpp"

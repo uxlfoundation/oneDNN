@@ -968,7 +968,6 @@ public:
             emul(1, q_tmp[0], _x, m);
             eshr(1, q_tmp.uq(0), q_tmp.uq(0), p);
         }
-        if (!qot.isInvalid()) mov(mod, qot, _qot);
 
         if (!rem.isInvalid()) {
             // rem = x - qot * y

@@ -19,8 +19,8 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive_attr.hpp"
-#include "gpu/generic/sycl/sycl_math_utils.hpp"
-#include "xpu/sycl/types.hpp"
+#include "gpu/sycl/sycl_math_utils.hpp"
+#include "hrt/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -134,7 +134,7 @@ private:
 struct sycl_post_ops_t {
     // SYCL has a limitation on total size of kernel arguments.
     // This affects number of post ops, e.g. binary post op (which is not yet
-    // implemented) contains xpu::sycl::md_t which is large enough to limit
+    // implemented) contains hrt::sycl::md_t which is large enough to limit
     // the number of post ops.
     static constexpr int max_post_ops = 5;
 

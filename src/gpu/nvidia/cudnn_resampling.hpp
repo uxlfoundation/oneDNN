@@ -60,12 +60,12 @@ protected:
     };
 
     ::sycl::buffer<uint8_t, 1> &buffer(memory_storage_t *mem_storage) {
-        return utils::downcast<xpu::sycl::buffer_memory_storage_t *>(
+        return utils::downcast<hrt::sycl::buffer_memory_storage_t *>(
                 mem_storage)
                 ->buffer();
     }
     ::sycl::buffer<uint8_t, 1> &buffer(memory_storage_t *mem_storage) const {
-        return utils::downcast<xpu::sycl::buffer_memory_storage_t *>(
+        return utils::downcast<hrt::sycl::buffer_memory_storage_t *>(
                 mem_storage)
                 ->buffer();
     }

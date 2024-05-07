@@ -19,11 +19,11 @@
 
 #include "common/dnnl_thread.hpp"
 #include "common/dnnl_traits.hpp"
-#include "gpu/generic/sycl/sycl_io_helper.hpp"
-#include "gpu/generic/sycl/sycl_post_ops.hpp"
-#include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-#include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "xpu/sycl/types.hpp"
+#include "gpu/sycl/sycl_io_helper.hpp"
+#include "gpu/sycl/sycl_post_ops.hpp"
+#include "gpu/sycl/sycl_primitive_conf.hpp"
+#include "gpu/sycl/sycl_q10n.hpp"
+#include "hrt/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,7 +33,7 @@ namespace sycl {
 
 struct shuffle_kernel_vec1_t {
     shuffle_kernel_vec1_t(const sycl_shuffle_conf_t &conf,
-            xpu::sycl::in_memory_arg_t &data, xpu::sycl::out_memory_arg_t &dst)
+            hrt::sycl::in_memory_arg_t &data, hrt::sycl::out_memory_arg_t &dst)
         : conf_(conf), data_(data), dst_(dst) {}
 
     void operator()(::sycl::nd_item<1> item) const {
@@ -64,21 +64,21 @@ struct shuffle_kernel_vec1_t {
     }
 
 private:
-    const xpu::sycl::md_t &data_md() const { return conf_.src_md; }
-    const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
-    const xpu::sycl::md_t &stat_md() const { return conf_.stat_md; }
+    const hrt::sycl::md_t &data_md() const { return conf_.src_md; }
+    const hrt::sycl::md_t &dst_md() const { return conf_.dst_md; }
+    const hrt::sycl::md_t &stat_md() const { return conf_.stat_md; }
 
     void *data_ptr() const { return data_.get_pointer(); }
     void *dst_ptr() const { return dst_.get_pointer(); }
 
     sycl_shuffle_conf_t conf_;
-    xpu::sycl::in_memory_arg_t data_;
-    xpu::sycl::out_memory_arg_t dst_;
+    hrt::sycl::in_memory_arg_t data_;
+    hrt::sycl::out_memory_arg_t dst_;
 };
 
 struct shuffle_kernel_vec2_t {
     shuffle_kernel_vec2_t(const sycl_shuffle_conf_t &conf,
-            xpu::sycl::in_memory_arg_t &data, xpu::sycl::out_memory_arg_t &dst)
+            hrt::sycl::in_memory_arg_t &data, hrt::sycl::out_memory_arg_t &dst)
         : conf_(conf), data_(data), dst_(dst) {}
 
     void operator()(::sycl::nd_item<1> item) const {
@@ -104,21 +104,21 @@ struct shuffle_kernel_vec2_t {
     }
 
 private:
-    const xpu::sycl::md_t &data_md() const { return conf_.src_md; }
-    const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
-    const xpu::sycl::md_t &stat_md() const { return conf_.stat_md; }
+    const hrt::sycl::md_t &data_md() const { return conf_.src_md; }
+    const hrt::sycl::md_t &dst_md() const { return conf_.dst_md; }
+    const hrt::sycl::md_t &stat_md() const { return conf_.stat_md; }
 
     void *data_ptr() const { return data_.get_pointer(); }
     void *dst_ptr() const { return dst_.get_pointer(); }
 
     sycl_shuffle_conf_t conf_;
-    xpu::sycl::in_memory_arg_t data_;
-    xpu::sycl::out_memory_arg_t dst_;
+    hrt::sycl::in_memory_arg_t data_;
+    hrt::sycl::out_memory_arg_t dst_;
 };
 
 struct shuffle_kernel_vec3_t {
     shuffle_kernel_vec3_t(const sycl_shuffle_conf_t &conf,
-            xpu::sycl::in_memory_arg_t &data, xpu::sycl::out_memory_arg_t &dst)
+            hrt::sycl::in_memory_arg_t &data, hrt::sycl::out_memory_arg_t &dst)
         : conf_(conf), data_(data), dst_(dst) {}
 
     void operator()(::sycl::nd_item<1> item) const {
@@ -150,16 +150,16 @@ struct shuffle_kernel_vec3_t {
     }
 
 private:
-    const xpu::sycl::md_t &data_md() const { return conf_.src_md; }
-    const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
-    const xpu::sycl::md_t &stat_md() const { return conf_.stat_md; }
+    const hrt::sycl::md_t &data_md() const { return conf_.src_md; }
+    const hrt::sycl::md_t &dst_md() const { return conf_.dst_md; }
+    const hrt::sycl::md_t &stat_md() const { return conf_.stat_md; }
 
     void *data_ptr() const { return data_.get_pointer(); }
     void *dst_ptr() const { return dst_.get_pointer(); }
 
     sycl_shuffle_conf_t conf_;
-    xpu::sycl::in_memory_arg_t data_;
-    xpu::sycl::out_memory_arg_t dst_;
+    hrt::sycl::in_memory_arg_t data_;
+    hrt::sycl::out_memory_arg_t dst_;
 };
 
 } // namespace sycl

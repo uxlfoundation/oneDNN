@@ -21,7 +21,10 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/gpu_eltwise_pd.hpp"
-#include "xpu/sycl/types.hpp"
+#include "gpu/sycl/sycl_gpu_primitive.hpp"
+#include "gpu/sycl/sycl_post_ops.hpp"
+#include "gpu/sycl/sycl_primitive_conf.hpp"
+#include "hrt/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -19,7 +19,6 @@
 
 #include "oneapi/dnnl/dnnl_config.h"
 
-#include "common/engine.hpp"
 #include "common/memory_storage.hpp"
 #include "common/utils.hpp"
 #include "hrt/sycl/memory_storage_base.hpp"

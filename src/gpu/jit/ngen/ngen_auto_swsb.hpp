@@ -1335,6 +1335,9 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
         bb.opRegions.resize(bb.iend - bb.istart);
         std::array<bool, 4> ignoreDeps = {false};
 
+        DependencyRegion subDstRegion(hw);
+        subDstRegion.clear();
+
         for (uint32_t n = bb.istart; n < bb.iend; n++) {
             auto &regions = bb.opRegions[n - bb.istart];
             const auto &insn = program[n];
@@ -1345,6 +1348,13 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                     case Directive::ignoredep_src0: ignoreDeps[1] = true; break;
                     case Directive::ignoredep_src1: ignoreDeps[2] = true; break;
                     case Directive::ignoredep_src2: ignoreDeps[3] = true; break;
+                    case Directive::subdep_dst:
+#ifdef NGEN_SAFE
+                        if (!subDstRegion.empty())
+                            throw invalid_directive_exception();
+#endif
+                        insn.getOperandRegion(subDstRegion, 0);
+                        break;
                     case Directive::wrdep:
                         regions[1].hw = hw;
                         insn.getOperandRegion(regions[1], 0);
@@ -1358,6 +1368,11 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                 regions[srcN + 1].hw = hw;
                 if (ignoreDeps[srcN + 1] || !insn.getOperandRegion(regions[srcN + 1], srcN))
                     regions[srcN + 1].clear();
+            }
+
+            if (!subDstRegion.empty()) {
+                regions[0] = subDstRegion;
+                subDstRegion.clear();
             }
 
             ignoreDeps.fill(false);

@@ -133,6 +133,10 @@ class invalid_operand_count_exception : public std::runtime_error {
 public:
     invalid_operand_count_exception() : std::runtime_error("Invalid operand count") {}
 };
+class invalid_directive_exception : public std::runtime_error {
+public:
+    invalid_directive_exception() : std::runtime_error("Invalid directive") {}
+};
 class invalid_arf_exception : public std::runtime_error {
 public:
     invalid_arf_exception() : std::runtime_error("Invalid ARF specified") {}
@@ -1813,6 +1817,7 @@ enum class Directive {
     ignoredep_src0 = 1,
     ignoredep_src1 = 2,
     ignoredep_src2 = 3,
+    subdep_dst = 8,
     wrdep = 0x10,
     fencedep = 0x11,
 };

@@ -1425,12 +1425,18 @@ public:
             opX(Opcode::directive, DataType::ud, InstructionModifier(), GRF(static_cast<int>(op)), NullRegister(), NullRegister());
     }
     void subdep(Operand op, const GRFRange &r) {
-        ignoredep(op);
-        wrdep(r);
+        if (op == Operand::dst && !r.isEmpty()) {
+#ifdef NGEN_SAFE
+            if (r.getLen() > 32) throw invalid_directive_exception();
+#endif
+            opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::subdep_dst)), r[0], r[r.getLen() - 1]);
+        } else {
+            ignoredep(op);
+            wrdep(r);
+        }
     }
     void subdep(Operand op, const GRF &r) {
-        ignoredep(op);
-        wrdep(r);
+        subdep(op, r-r);
     }
     void wrdep(const GRFRange &r) {
 #ifdef NGEN_SAFE

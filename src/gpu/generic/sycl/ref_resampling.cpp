@@ -39,12 +39,21 @@ status_t ref_resampling_fwd_t::pd_t::init_conf() {
     int n_wgs = (nelems_A + work_per_wg - 1) / work_per_wg;
     conf_.n_thr = n_wgs * conf_.wg_size;
 
-    conf_.src_md = xpu::sycl::md_t(src_md(0));
-    conf_.dst_md = xpu::sycl::md_t(dst_md());
+    conf_.src_md = hrt::sycl::md_t(src_md(0));
+    conf_.dst_md = hrt::sycl::md_t(dst_md());
 
     conf_.alg = desc()->alg_kind;
+    const auto *att = attr();
+    const auto &attr_po = att->post_ops_;
+    conf_.po_len = attr_po.len();
 
-    conf_.post_ops = sycl_post_ops_t(attr(), dst_md());
+    for (auto i = 0; i < attr_po.len(); ++i) {
+        if (attr_po.contain(primitive_kind::binary, i)) {
+            dnnl::impl::memory_desc_t mem = attr_po.entry_[i].binary.src1_desc;
+            conf_.src1_md[i] = hrt::sycl::md_t(&mem);
+        }
+    }
+    conf_.post_ops = sycl_post_ops_t(attr());
     return status::success;
 }
 
@@ -75,8 +84,8 @@ status_t ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 status_t ref_resampling_bwd_t::pd_t::init_conf() {
     conf_ = sycl_resampling_conf_t();
 
-    conf_.diff_src_md = xpu::sycl::md_t(diff_src_md(0));
-    conf_.diff_dst_md = xpu::sycl::md_t(diff_dst_md());
+    conf_.diff_src_md = hrt::sycl::md_t(diff_src_md(0));
+    conf_.diff_dst_md = hrt::sycl::md_t(diff_dst_md());
 
     conf_.block_size = 16;
     conf_.wg_size = 32;

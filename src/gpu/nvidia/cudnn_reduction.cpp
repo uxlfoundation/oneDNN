@@ -18,7 +18,8 @@
 #include "gpu/nvidia/cudnn_reduction.hpp"
 #include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
-#include "xpu/sycl/memory_storage_helper.hpp"
+#include "gpu/nvidia/sycl_cuda_stream.hpp"
+#include "hrt/sycl/memory_storage_helper.hpp"
 
 namespace dnnl {
 namespace impl {

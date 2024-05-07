@@ -19,7 +19,7 @@
 #include "gpu/amd/stream.hpp"
 #include "gpu/amd/sycl_hip_scoped_context.hpp"
 #include "gpu/amd/sycl_hip_utils.hpp"
-#include "xpu/sycl/memory_storage_helper.hpp"
+#include "hrt/sycl/memory_storage_helper.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -41,17 +41,17 @@ status_t miopen_convolution_fwd_t::execute_convolution(
                 memory_tracking::names::key_conv_miopen_filter);
         auto arg_oscale = CTX_IN_SYCL_MEMORY(DNNL_ARG_ATTR_OUTPUT_SCALES);
 
-        xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read_write>
+        hrt::sycl::interop_memory_arg_t<::sycl::access::mode::read_write>
                 temp_dst;
-        xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read_write>
+        hrt::sycl::interop_memory_arg_t<::sycl::access::mode::read_write>
                 temp_reorder;
 
         if (pd()->use_temp_dst()) {
             memory_storage_t *temp_dst_mem = scratch_storage.get();
             memory_storage_t *temp_reorder_mem = scratch_storage_2.get();
-            temp_dst = xpu::sycl::interop_memory_arg_t<
+            temp_dst = hrt::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>(temp_dst_mem, cgh);
-            temp_reorder = xpu::sycl::interop_memory_arg_t<
+            temp_reorder = hrt::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>(temp_reorder_mem, cgh);
         }
 
@@ -145,7 +145,7 @@ status_t miopen_convolution_bwd_weights_t::execute_convolution(
         auto arg_filter_scratch = CTX_SCRATCH_SYCL_MEMORY(
                 memory_tracking::names::key_conv_miopen_filter);
 
-        xpu::sycl::interop_memory_arg_t<::sycl::access::mode::write>
+        hrt::sycl::interop_memory_arg_t<::sycl::access::mode::write>
                 arg_diff_bias;
 
         if (with_bias) {

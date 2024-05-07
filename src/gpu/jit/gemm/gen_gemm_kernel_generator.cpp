@@ -2282,6 +2282,7 @@ static inline int block2DMinAlignment(HW hw, const MatrixAddressing &atype,
         const MatrixAddressingStrategy &astrategy, bool asIfBlock2D = false) {
     if (!isBlock2D(astrategy.accessType) && !asIfBlock2D) return 0;
     if (hw == HW::Xe2) return 16;
+    if (hw >= HW::Xe3p) return 4;
     return (isTransposing(astrategy.accessType) || astrategy.prefetch) ? 4 : 8;
 }
 

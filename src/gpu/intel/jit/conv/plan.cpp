@@ -154,25 +154,26 @@ void bind_grid_idx(const conv_config_t &cfg, gemm_schedule_t &gemm_schedule,
         auto v_dim = prb_dim_t::from_name(v.as<var_t>().name);
         for (int i = 0; i < 3; i++) {
             if (grid_dims[i].has(v_dim)) {
-                ir_assert(grid_idx == -1 || grid_idx == i);
-                grid_idx = i;
+                ir_assert(grid_id == -1 || grid_id == i);
+                grid_id = i;
             }
         }
     }
-    ir_assert(grid_idx != -1);
-    gemm_schedule.bind(var,
-            is_tg ? cfg.thread_group_grid().idx(grid_idx)
-                  : cfg.kernel_grid().idx(grid_idx));
+    ir_assert(grid_id != -1);
+    gemm_schedule.bind(var, cfg.thread_group_grid().idx(grid_id));
 }
 
-void bind_kernel_grid_idx(const conv_config_t &cfg,
-        gemm_schedule_t &gemm_schedule, const expr_t &var) {
-    bind_grid_idx(cfg, gemm_schedule, var, /*is_tg=*/false);
-}
-
-void bind_thread_group_grid_idx(const conv_config_t &cfg,
-        gemm_schedule_t &gemm_schedule, const expr_t &var) {
-    bind_grid_idx(cfg, gemm_schedule, var, /*is_tg=*/true);
+void bind_kernel_grid(
+        gemm_schedule_t &gemm_schedule, const std::vector<expr_t> &vars) {
+    for (auto &v : vars) {
+        if (gemm_schedule.var_bound(v) == 1) continue;
+        auto root_vars = gemm_schedule.get_root_vars(v);
+        ir_assert((int)root_vars.size() == 1);
+        auto v_dim = prb_dim_t::from_name(root_vars[0].as<var_t>().name);
+        auto dummy_grid_var
+                = gemm_schedule.kernel_grid_walk_order().grid_var(v_dim);
+        gemm_schedule.bind(v, dummy_grid_var);
+    }
 }
 
 void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,

@@ -738,7 +738,7 @@ void gen_gemm_kernel_t::init_interface() {
 #endif
 }
 
-hrt::binary_t gen_gemm_kernel_t::get_binary(
+xpu::binary_t gen_gemm_kernel_t::get_binary(
         cl_context context, cl_device_id device) {
     init_interface();
 

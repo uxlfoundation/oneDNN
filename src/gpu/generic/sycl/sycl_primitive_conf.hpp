@@ -19,7 +19,7 @@
 
 #include "common/broadcast_strategy.hpp"
 #include "gpu/sycl/sycl_post_ops.hpp"
-#include "hrt/sycl/types.hpp"
+#include "xpu/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -28,16 +28,16 @@ namespace generic {
 namespace sycl {
 
 struct sycl_binary_conf_t {
-    hrt::sycl::md_t src0_md;
-    hrt::sycl::md_t src1_md;
-    hrt::sycl::md_t dst_md;
+    xpu::sycl::md_t src0_md;
+    xpu::sycl::md_t src1_md;
+    xpu::sycl::md_t dst_md;
 
     alg_kind_t alg_kind;
 
     bool do_scale_src0;
     bool do_scale_src1;
 
-    int broadcast_dims[hrt::sycl::md_t::max_dims];
+    int broadcast_dims[xpu::sycl::md_t::max_dims];
     int ndims;
     bool is_tensor_op;
 
@@ -94,10 +94,10 @@ struct sycl_convolution_bwd_weights_conf_t : sycl_convolution_common_conf_t {
 
 struct sycl_eltwise_conf_t {
     prop_kind_t prop_kind;
-    hrt::sycl::md_t src_md;
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t diff_src_md;
-    hrt::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t src_md;
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t diff_src_md;
+    xpu::sycl::md_t diff_dst_md;
     alg_kind_t alg_kind;
     float alpha;
     float beta;
@@ -108,7 +108,7 @@ struct sycl_eltwise_conf_t {
     dim_t w;
     dim_t wk_size;
     dim_t post_po_len;
-    hrt::sycl::md_t binary_src_arr[8];
+    xpu::sycl::md_t binary_src_arr[8];
     sycl_post_ops_t post_ops;
 };
 
@@ -143,12 +143,12 @@ struct sycl_matmul_conf_t {
 
 struct sycl_prelu_conf_t {
     prop_kind_t prop_kind;
-    hrt::sycl::md_t data_md;
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t weights_md;
-    hrt::sycl::md_t diff_data_md;
-    hrt::sycl::md_t diff_dst_md;
-    hrt::sycl::md_t diff_weights_md;
+    xpu::sycl::md_t data_md;
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t weights_md;
+    xpu::sycl::md_t diff_data_md;
+    xpu::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t diff_weights_md;
     dim_t work_amount;
     dim_t work_amount_wei;
     dim_t work_amount_src;
@@ -164,10 +164,10 @@ struct sycl_prelu_conf_t {
 };
 
 struct sycl_shuffle_conf_t {
-    hrt::sycl::md_t src_md;
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t stat_md;
-    hrt::sycl::md_t axis_md;
+    xpu::sycl::md_t src_md;
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t stat_md;
+    xpu::sycl::md_t axis_md;
     dim_t transpose_col;
     dim_t transpose_row;
     dim_t group_size;
@@ -221,16 +221,16 @@ struct sycl_resampling_conf_t {
     data_type_t src_dt;
     data_type_t dst_dt;
 
-    hrt::sycl::md_t src_md;
-    hrt::sycl::md_t src1_md[8];
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t diff_src_md;
-    hrt::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t src_md;
+    xpu::sycl::md_t src1_md[8];
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t diff_src_md;
+    xpu::sycl::md_t diff_dst_md;
 
     alg_kind_t alg;
     float src_scale;
     bool do_scale_src;
-    int broadcast_dims[hrt::sycl::md_t::max_dims];
+    int broadcast_dims[xpu::sycl::md_t::max_dims];
     int ndims;
     bool is_tensor_op;
 
@@ -243,17 +243,17 @@ struct sycl_resampling_conf_t {
 
 struct sycl_layer_normalization_conf_t {
     prop_kind_t prop_kind;
-    hrt::sycl::md_t data_md;
-    hrt::sycl::md_t diff_data_md;
-    hrt::sycl::md_t data_scaleshift_md;
-    hrt::sycl::md_t diff_data_scaleshift_md;
-    hrt::sycl::md_t scale;
-    hrt::sycl::md_t shift;
-    hrt::sycl::md_t stat_md;
-    hrt::sycl::md_t stat_d;
-    hrt::sycl::md_t var_md;
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t data_md;
+    xpu::sycl::md_t diff_data_md;
+    xpu::sycl::md_t data_scaleshift_md;
+    xpu::sycl::md_t diff_data_scaleshift_md;
+    xpu::sycl::md_t scale;
+    xpu::sycl::md_t shift;
+    xpu::sycl::md_t stat_md;
+    xpu::sycl::md_t stat_d;
+    xpu::sycl::md_t var_md;
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t diff_dst_md;
     dim_t wk_size;
     bool is_fwd;
     bool src_def;
@@ -295,18 +295,18 @@ struct sycl_batch_normalization_conf_t {
     bool use_shift;
     float alpha;
     bool dir;
-    hrt::sycl::md_t data_md;
-    hrt::sycl::md_t src1_md;
-    hrt::sycl::md_t dst1_md;
-    hrt::sycl::md_t diff_data_md;
-    hrt::sycl::md_t diff_src1_md;
-    hrt::sycl::md_t data_scaleshift_md;
-    hrt::sycl::md_t diff_data_scaleshift_md;
-    hrt::sycl::md_t stat_md;
-    hrt::sycl::md_t var_md;
-    hrt::sycl::md_t ws_md;
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t data_md;
+    xpu::sycl::md_t src1_md;
+    xpu::sycl::md_t dst1_md;
+    xpu::sycl::md_t diff_data_md;
+    xpu::sycl::md_t diff_src1_md;
+    xpu::sycl::md_t data_scaleshift_md;
+    xpu::sycl::md_t diff_data_scaleshift_md;
+    xpu::sycl::md_t stat_md;
+    xpu::sycl::md_t var_md;
+    xpu::sycl::md_t ws_md;
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t diff_dst_md;
     dim_t N;
     dim_t C;
     dim_t D;
@@ -325,12 +325,12 @@ struct sycl_batch_normalization_conf_t {
 
 struct sycl_softmax_conf_t {
     prop_kind_t prop_kind;
-    hrt::sycl::md_t src_md;
-    hrt::sycl::md_t dst_md;
+    xpu::sycl::md_t src_md;
+    xpu::sycl::md_t dst_md;
 
-    hrt::sycl::md_t diff_md;
-    hrt::sycl::md_t diff_src_md;
-    hrt::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t diff_md;
+    xpu::sycl::md_t diff_src_md;
+    xpu::sycl::md_t diff_dst_md;
     alg_kind_t alg_kind;
     dim_t wk_size;
 
@@ -346,10 +346,10 @@ struct sycl_softmax_conf_t {
 };
 
 struct sycl_lrn_conf_t {
-    hrt::sycl::md_t src_md;
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t diff_dst_md;
-    hrt::sycl::md_t diff_src_md;
+    xpu::sycl::md_t src_md;
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t diff_src_md;
     alg_kind_t alg_kind;
 
     dim_t mb;
@@ -370,12 +370,12 @@ struct sycl_lrn_conf_t {
 };
 
 struct sycl_pooling_conf_t {
-    hrt::sycl::md_t src_md;
-    hrt::sycl::md_t src1_md[8];
-    hrt::sycl::md_t dst_md;
-    hrt::sycl::md_t ws_md;
-    hrt::sycl::md_t diff_src_md;
-    hrt::sycl::md_t diff_dst_md;
+    xpu::sycl::md_t src_md;
+    xpu::sycl::md_t src1_md[8];
+    xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t ws_md;
+    xpu::sycl::md_t diff_src_md;
+    xpu::sycl::md_t diff_dst_md;
     int ndims;
     bool zero_dims;
     int block_size;

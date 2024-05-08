@@ -17,7 +17,7 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
 #include "gpu/sycl/layer_normalizations_kernels.hpp"
-#include "hrt/sycl/types.hpp"
+#include "xpu/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -28,13 +28,13 @@ namespace sycl {
 status_t ref_layer_normalization_fwd_t::pd_t::init_conf() {
     conf_ = sycl_layer_normalization_conf_t();
 
-    conf_.var_md = stats_are_src() ? hrt::sycl::md_t(src_md(2))
-            : is_training()        ? hrt::sycl::md_t(dst_md(2))
-                                   : hrt::sycl::md_t {};
+    conf_.var_md = stats_are_src() ? xpu::sycl::md_t(src_md(2))
+            : is_training()        ? xpu::sycl::md_t(dst_md(2))
+                                   : xpu::sycl::md_t {};
     conf_.ndims = ndims();
     conf_.flags = desc()->flags;
     conf_.wk_size = memory_desc_wrapper(src_md(0)).nelems();
-    conf_.stat_d = hrt::sycl::md_t(stat_md());
+    conf_.stat_d = xpu::sycl::md_t(stat_md());
     conf_.block_size = 16;
 
     conf_.rt_scaling = !attr()->scales_.has_default_values();
@@ -51,13 +51,13 @@ status_t ref_layer_normalization_fwd_t::pd_t::init_conf() {
     conf_.use_scale = use_scale();
     conf_.use_shift = use_shift();
     conf_.use_ss = conf_.use_scale || conf_.use_shift;
-    conf_.data_md = hrt::sycl::md_t(src_md(0));
-    conf_.data_scaleshift_md = hrt::sycl::md_t(weights_md(0));
+    conf_.data_md = xpu::sycl::md_t(src_md(0));
+    conf_.data_scaleshift_md = xpu::sycl::md_t(weights_md(0));
 
-    conf_.stat_md = stats_are_src() ? hrt::sycl::md_t(src_md(1))
-            : is_training()         ? hrt::sycl::md_t(dst_md(2))
-                                    : hrt::sycl::md_t {};
-    conf_.dst_md = hrt::sycl::md_t(dst_md(0));
+    conf_.stat_md = stats_are_src() ? xpu::sycl::md_t(src_md(1))
+            : is_training()         ? xpu::sycl::md_t(dst_md(2))
+                                    : xpu::sycl::md_t {};
+    conf_.dst_md = xpu::sycl::md_t(dst_md(0));
     conf_.shift_off = conf_.use_ss && !has_zero_dim_memory()
             ? conf_.data_scaleshift_md.off(1, 0)
             : 0;
@@ -112,7 +112,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
 status_t ref_layer_normalization_bwd_t::pd_t::init_conf() {
     conf_ = sycl_layer_normalization_conf_t();
 
-    conf_.var_md = hrt::sycl::md_t(src_md(2));
+    conf_.var_md = xpu::sycl::md_t(src_md(2));
     conf_.ndims = ndims();
     conf_.flags = desc()->flags;
     conf_.block_size = (16);
@@ -121,15 +121,15 @@ status_t ref_layer_normalization_bwd_t::pd_t::init_conf() {
     conf_.use_scale = use_scale();
     conf_.use_shift = use_shift();
     conf_.use_ss = conf_.use_scale || conf_.use_shift;
-    conf_.data_md = hrt::sycl::md_t(src_md(0));
-    conf_.diff_data_md = hrt::sycl::md_t(diff_src_md(0));
-    conf_.data_scaleshift_md = hrt::sycl::md_t(weights_md(0));
+    conf_.data_md = xpu::sycl::md_t(src_md(0));
+    conf_.diff_data_md = xpu::sycl::md_t(diff_src_md(0));
+    conf_.data_scaleshift_md = xpu::sycl::md_t(weights_md(0));
     conf_.diff_data_scaleshift_md = conf_.use_ss
-            ? hrt::sycl::md_t(diff_weights_md(0))
-            : hrt::sycl::md_t {};
-    conf_.stat_md = hrt::sycl::md_t(src_md(1));
-    conf_.diff_dst_md = hrt::sycl::md_t(diff_dst_md(0));
-    conf_.stat_d = hrt::sycl::md_t(stat_md());
+            ? xpu::sycl::md_t(diff_weights_md(0))
+            : xpu::sycl::md_t {};
+    conf_.stat_md = xpu::sycl::md_t(src_md(1));
+    conf_.diff_dst_md = xpu::sycl::md_t(diff_dst_md(0));
+    conf_.stat_d = xpu::sycl::md_t(stat_md());
     conf_.zero_dims = has_zero_dim_memory();
     auto nelems_A = memory_desc_wrapper(src_md(0)).nelems();
     conf_.diff_shift_off = conf_.use_ss && !conf_.zero_dims

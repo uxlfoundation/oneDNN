@@ -26,8 +26,8 @@ namespace sycl {
 
 status_t ref_sycl_softmax_fwd_t::pd_t::init_conf() {
     conf_ = sycl_softmax_conf_t();
-    conf_.src_md = hrt::sycl::md_t(src_md());
-    conf_.dst_md = hrt::sycl::md_t(dst_md());
+    conf_.src_md = xpu::sycl::md_t(src_md());
+    conf_.dst_md = xpu::sycl::md_t(dst_md());
     conf_.alg_kind = desc()->alg_kind;
     conf_.axis = axis();
     conf_.axis_size = axis_size(true);
@@ -64,9 +64,9 @@ status_t ref_sycl_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
 status_t ref_sycl_softmax_bwd_t::pd_t::init_conf() {
     conf_ = sycl_softmax_conf_t();
-    conf_.dst_md = hrt::sycl::md_t(dst_md());
-    conf_.diff_dst_md = hrt::sycl::md_t(diff_dst_md());
-    conf_.diff_src_md = hrt::sycl::md_t(diff_src_md());
+    conf_.dst_md = xpu::sycl::md_t(dst_md());
+    conf_.diff_dst_md = xpu::sycl::md_t(diff_dst_md());
+    conf_.diff_src_md = xpu::sycl::md_t(diff_src_md());
     conf_.alg_kind = desc()->alg_kind;
     conf_.axis = axis();
     conf_.axis_size = axis_size(true);

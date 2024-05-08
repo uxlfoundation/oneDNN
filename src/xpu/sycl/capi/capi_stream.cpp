@@ -14,16 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <memory>
-
 #include "oneapi/dnnl/dnnl_sycl.h"
 
 #include "common/c_types_map.hpp"
 #include "common/engine.hpp"
 #include "common/stream.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/sycl/stream_impl.hpp"
+#include "sycl/sycl_engine.hpp"
+#include "sycl/sycl_stream.hpp"
 
 using dnnl::impl::engine_t;
 using dnnl::impl::status_t;
@@ -36,21 +34,10 @@ status_t dnnl_sycl_interop_stream_create(
             && engine->runtime_kind() == runtime_kind::sycl;
     if (!args_ok) return status::invalid_arguments;
 
+    auto *sycl_engine
+            = utils::downcast<dnnl::impl::sycl::sycl_engine_base_t *>(engine);
     auto &sycl_queue = *static_cast<::sycl::queue *>(queue);
-
-    unsigned flags;
-    CHECK(dnnl::impl::xpu::sycl::stream_impl_t::init_flags(&flags, sycl_queue));
-
-    std::unique_ptr<dnnl::impl::stream_impl_t> stream_impl(
-            new dnnl::impl::xpu::sycl::stream_impl_t(sycl_queue, flags));
-    if (!stream_impl) return status::out_of_memory;
-
-    CHECK(engine->create_stream(stream, stream_impl.get()));
-    // `create_stream` captures `stream_impl_ptr` internally. To avoid double
-    // free of the same object, `stream_impl` releases it and delegates freeing
-    // part to the stream.
-    stream_impl.release();
-    return status::success;
+    return sycl_engine->create_stream(stream, sycl_queue);
 }
 
 status_t dnnl_sycl_interop_stream_get_queue(stream_t *stream, void **queue) {
@@ -60,10 +47,9 @@ status_t dnnl_sycl_interop_stream_get_queue(stream_t *stream, void **queue) {
 
     if (!args_ok) return status::invalid_arguments;
 
-    auto *sycl_stream_impl
-            = utils::downcast<dnnl::impl::xpu::sycl::stream_impl_t *>(
-                    stream->impl());
-    auto &sycl_queue = *sycl_stream_impl->queue();
+    auto sycl_stream
+            = utils::downcast<dnnl::impl::sycl::sycl_stream_t *>(stream);
+    auto &sycl_queue = sycl_stream->queue();
     *queue = static_cast<void *>(&sycl_queue);
     return status::success;
 }

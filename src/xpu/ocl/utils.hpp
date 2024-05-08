@@ -200,9 +200,9 @@ cl_platform_id get_platform(engine_t *engine);
 template <typename F>
 struct ext_func_t {
     ext_func_t(const char *ext_func_name, const char *vendor_name = "Intel")
-        : ext_func_ptrs_(vendor_platforms(vendor_name).size()) {
-        for (size_t i = 0; i < vendor_platforms(vendor_name).size(); ++i) {
-            auto p = vendor_platforms(vendor_name)[i];
+        : ext_func_ptrs_(vendor_platforms().size()) {
+        for (size_t i = 0; i < vendor_platforms().size(); ++i) {
+            auto p = vendor_platforms()[i];
             auto it = ext_func_ptrs_.insert(
                     {p, load_ext_func(p, ext_func_name)});
             assert(it.second);
@@ -233,14 +233,12 @@ private:
                 platform, ext_func_name));
     }
 
-    static const std::vector<cl_platform_id> &vendor_platforms(
-            const char *vendor_name) {
-        static auto vendor_platforms = get_vendor_platforms(vendor_name);
+    static const std::vector<cl_platform_id> &vendor_platforms() {
+        static auto vendor_platforms = get_vendor_platforms();
         return vendor_platforms;
     }
 
-    static std::vector<cl_platform_id> get_vendor_platforms(
-            const char *vendor_name) {
+    static std::vector<cl_platform_id> get_vendor_platforms() {
         cl_uint num_platforms = 0;
         cl_int err = clGetPlatformIDs(0, nullptr, &num_platforms);
         if (err != CL_SUCCESS) return {};
@@ -250,14 +248,12 @@ private:
         if (err != CL_SUCCESS) return {};
 
         std::vector<cl_platform_id> vendor_platforms;
-        char platform_vendor_name[128] = {};
+        char vendor_name[128] = {};
         for (cl_platform_id p : platforms) {
-            err = clGetPlatformInfo(p, CL_PLATFORM_VENDOR,
-                    sizeof(platform_vendor_name), platform_vendor_name,
-                    nullptr);
+            err = clGetPlatformInfo(p, CL_PLATFORM_VENDOR, sizeof(vendor_name),
+                    vendor_name, nullptr);
             if (err != CL_SUCCESS) continue;
-            if (std::string(platform_vendor_name).find(vendor_name)
-                    != std::string::npos)
+            if (std::string(vendor_name).find(vendor_name) != std::string::npos)
                 vendor_platforms.push_back(p);
         }
 
@@ -297,14 +293,6 @@ status_t get_device_uuid(xpu::device_uuid_t &uuid, cl_device_id ocl_dev);
 status_t check_device(engine_kind_t eng_kind, cl_device_id dev, cl_context ctx);
 
 status_t clone_kernel(cl_kernel kernel, cl_kernel *cloned_kernel);
-
-#ifdef DNNL_ENABLE_MEM_DEBUG
-cl_mem DNNL_WEAK clCreateBuffer_wrapper(cl_context context, cl_mem_flags flags,
-        size_t size, void *host_ptr, cl_int *errcode_ret);
-#else
-cl_mem clCreateBuffer_wrapper(cl_context context, cl_mem_flags flags,
-        size_t size, void *host_ptr, cl_int *errcode_ret);
-#endif
 
 } // namespace ocl
 } // namespace xpu

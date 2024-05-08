@@ -22,7 +22,8 @@
 #include "common/primitive_iface.hpp"
 #include "common/utils.hpp"
 
-#include "xpu/sycl/engine_factory.hpp"
+#include "sycl/sycl_engine.hpp"
+#include "sycl/sycl_stream.hpp"
 
 using dnnl::impl::status_t;
 using dnnl::impl::stream_t;
@@ -37,16 +38,15 @@ status_t dnnl_sycl_interop_primitive_execute(
             && IMPLICATION(nargs > 0, args != nullptr);
     if (!ok) return status::invalid_arguments;
 
-    auto *sycl_stream_impl
-            = utils::downcast<dnnl::impl::xpu::sycl::stream_impl_t *>(
-                    stream->impl());
+    auto *sycl_stream
+            = utils::downcast<dnnl::impl::sycl::sycl_stream_t *>(stream);
 
-    stream->before_exec_hook();
+    sycl_stream->before_exec_hook();
 
     if (deps_ != nullptr) {
-        auto deps = dnnl::impl::xpu::sycl::event_t(
+        auto deps = dnnl::impl::sycl::sycl_event_t(
                 *(const std::vector<::sycl::event> *)deps_);
-        sycl_stream_impl->sycl_ctx().set_deps(std::move(deps));
+        sycl_stream->sycl_ctx().set_deps(std::move(deps));
     }
 
     // run primitive
@@ -54,15 +54,15 @@ status_t dnnl_sycl_interop_primitive_execute(
     CHECK(cvt_primitive_args(
             primitive_iface->pd()->impl().get(), nargs, args, exec_args));
 
-    exec_ctx_t ctx(stream, std::move(exec_args));
+    exec_ctx_t ctx(sycl_stream, std::move(exec_args));
     CHECK(primitive_execute(primitive_iface, ctx));
 
     // return output event
-    ::sycl::event return_event = sycl_stream_impl->get_output_event();
+    ::sycl::event return_event = sycl_stream->get_output_event();
     if (return_event_ != nullptr)
         *(::sycl::event *)return_event_ = return_event;
 
-    stream->after_exec_hook();
+    sycl_stream->after_exec_hook();
 
     return status::success;
 }

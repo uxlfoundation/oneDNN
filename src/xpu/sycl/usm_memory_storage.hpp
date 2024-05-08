@@ -19,17 +19,16 @@
 
 #include "oneapi/dnnl/dnnl_config.h"
 
-#include "common/engine.hpp"
 #include "common/memory_storage.hpp"
 #include "common/utils.hpp"
-#include "hrt/sycl/memory_storage_base.hpp"
 #include "sycl/sycl_engine_base.hpp"
+#include "xpu/sycl/memory_storage_base.hpp"
 
 #include <memory>
 
 namespace dnnl {
 namespace impl {
-namespace hrt {
+namespace xpu {
 namespace sycl {
 
 class usm_memory_storage_t : public memory_storage_base_t {
@@ -128,7 +127,7 @@ protected:
         auto &sycl_ctx = sycl_engine->context();
         using ::sycl::usm::alloc;
 
-        if (usm_kind_ == alloc::unknown) usm_kind_ = alloc::device;
+        if (usm_kind_ == alloc::unknown) usm_kind_ = alloc::shared;
 
         void *usm_ptr_alloc = nullptr;
 
@@ -157,7 +156,7 @@ private:
 };
 
 } // namespace sycl
-} // namespace hrt
+} // namespace xpu
 } // namespace impl
 } // namespace dnnl
 

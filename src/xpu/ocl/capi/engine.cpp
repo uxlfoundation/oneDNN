@@ -21,6 +21,7 @@
 #include "common/c_types_map.hpp"
 #include "common/engine.hpp"
 #include "gpu/intel/ocl/ocl_engine.hpp"
+#include "xpu/ocl/utils.hpp"
 
 using namespace dnnl::impl;
 using namespace dnnl::impl::gpu::intel::ocl;

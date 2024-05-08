@@ -22,8 +22,8 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/utils.hpp"
-#include "hrt/sycl/compat.hpp"
-#include "hrt/sycl/utils.hpp"
+#include "xpu/sycl/compat.hpp"
+#include "xpu/sycl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -37,7 +37,7 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
 #define CASE(dt) \
     case dt: \
         return static_cast<int>(reinterpret_cast< \
-                const typename hrt::sycl::prec_traits<dt>::type *>(ptr)[idx]);
+                const typename xpu::sycl::prec_traits<dt>::type *>(ptr)[idx]);
     using namespace data_type;
     switch (dt) {
         CASE(s32);
@@ -54,7 +54,7 @@ inline float load_float_value(data_type_t dt, const void *ptr, dim_t idx) {
 #define CASE(dt) \
     case dt: \
         return static_cast<float>(reinterpret_cast< \
-                const typename hrt::sycl::prec_traits<dt>::type *>(ptr)[idx]);
+                const typename xpu::sycl::prec_traits<dt>::type *>(ptr)[idx]);
 
     using namespace data_type;
     switch (dt) {
@@ -74,7 +74,7 @@ inline float load_float_value(data_type_t dt, const void *ptr, dim_t idx) {
 inline void store_float_value(data_type_t dt, float val, void *ptr, dim_t idx) {
 #define CASE(dt) \
     case dt: { \
-        using type_ = typename hrt::sycl::prec_traits<dt>::type; \
+        using type_ = typename xpu::sycl::prec_traits<dt>::type; \
         *(reinterpret_cast<type_ *>(ptr) + idx) \
                 = gpu::generic::sycl::saturate_and_round<type_>(val); \
     } break;
@@ -109,8 +109,8 @@ inline ::sycl::vec<float, width> handle_bf16_load(void *ptr, dim_t offset) {
     ::sycl::vec<float, width> vec_f32;
     for (int i = 0; i < width; i++) {
         // Convert u16 value to bfloat16_t.
-        const hrt::sycl::bfloat16_t bf16_val
-                = static_cast<hrt::sycl::bfloat16_t>(vec_u16[i]);
+        const xpu::sycl::bfloat16_t bf16_val
+                = static_cast<xpu::sycl::bfloat16_t>(vec_u16[i]);
         // Convert bfloat16_t to float.
         const float f32_val = static_cast<float>(bf16_val);
         // Write result to vector.
@@ -127,8 +127,8 @@ inline void handle_bf16_store(
 
     for (int i = 0; i < width; i++) {
         // Convert float value to bfloat16_t.
-        const hrt::sycl::bfloat16_t bf16_val
-                = static_cast<hrt::sycl::bfloat16_t>(vec_f32[i]);
+        const xpu::sycl::bfloat16_t bf16_val
+                = static_cast<xpu::sycl::bfloat16_t>(vec_f32[i]);
         // Convert bfloat16_t to uint16_t.
         const uint16_t u16_val = bf16_val.raw_bits_;
         // Write result to vector.
@@ -143,7 +143,7 @@ inline ::sycl::vec<float, width> load_float_vec(
         data_type_t dt, void *ptr, dim_t offset) {
 #define CASE(dt) \
     case dt: { \
-        using type = typename hrt::sycl::prec_traits<dt>::type; \
+        using type = typename xpu::sycl::prec_traits<dt>::type; \
         global_ptr<type> gptr_dt(reinterpret_cast<type *>(ptr)); \
         ::sycl::vec<type, width> vec_dt; \
         vec_dt.load(offset, gptr_dt); \
@@ -169,7 +169,7 @@ inline void store_float_vec(data_type_t dt, ::sycl::vec<float, width> vec_f32,
         void *ptr, dim_t offset) {
 #define CASE(dt) \
     case dt: { \
-        using type = typename hrt::sycl::prec_traits<dt>::type; \
+        using type = typename xpu::sycl::prec_traits<dt>::type; \
         global_ptr<type> gptr_dt(reinterpret_cast<type *>(ptr)); \
         auto vec_dt \
                 = gpu::generic::sycl::saturate_and_round_vec<type>(vec_f32); \

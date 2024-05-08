@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,6 +24,24 @@
 
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
+#elif __has_include(<CL/sycl.hpp>)
+#include <CL/sycl.hpp>
+#else
+#error "Unsupported compiler"
+#endif
+
+#if defined(__INTEL_LLVM_COMPILER)
+#if (__INTEL_LLVM_COMPILER < 20230000)
+#define DNNL_USE_SYCL121_API 1
+#else
+#define DNNL_USE_SYCL121_API 0
+#endif
+#elif defined(__LIBSYCL_MAJOR_VERSION)
+#if (__LIBSYCL_MAJOR_VERSION < 6)
+#define DNNL_USE_SYCL121_API 1
+#else
+#define DNNL_USE_SYCL121_API 0
+#endif
 #else
 #error "Unsupported compiler"
 #endif
@@ -49,14 +67,12 @@ bool are_equal(const ::sycl::device &lhs, const ::sycl::device &rhs);
 status_t check_device(engine_kind_t eng_kind, const ::sycl::device &dev,
         const ::sycl::context &ctx);
 
+device_id_t device_id(const ::sycl::device &dev);
 bool dev_ctx_consistency_check(
         const ::sycl::device &dev, const ::sycl::context &ctx);
 
 bool is_intel_device(const ::sycl::device &dev);
 bool is_intel_platform(const ::sycl::platform &plat);
-
-bool is_nvidia_gpu(const ::sycl::device &dev);
-bool is_amd_gpu(const ::sycl::device &dev);
 
 bool is_subdevice(const ::sycl::device &dev);
 

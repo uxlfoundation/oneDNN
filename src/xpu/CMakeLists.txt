@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2024-2025 Intel Corporation
+# Copyright 2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ if(DNNL_WITH_SYCL)
     add_subdirectory(sycl)
 endif()
 
-if(DNNL_GPU_VENDOR STREQUAL "INTEL")
-    add_subdirectory(ocl)
-endif()
+# TODO: When the dependency of nvidia and amd on intel vendor is removed the
+# `ocl` directory will have to be added only for the intel vendor.
+add_subdirectory(ocl)
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_xpu)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})

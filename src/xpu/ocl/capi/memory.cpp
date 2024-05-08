@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,63 +27,7 @@
 #include "gpu/intel/ocl/ocl_memory_storage.hpp"
 
 using namespace dnnl::impl;
-using namespace dnnl::impl::xpu::ocl;
-
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-status_t dnnl_ocl_interop_memory_create_v2(memory_t **memory,
-        const memory_desc_t *md, engine_t *engine, memory_kind_t memory_kind,
-        int nhandles, void **handles) {
-
-    bool ok = !utils::any_null(memory, md, engine, handles) && nhandles > 0
-            && engine->runtime_kind() == runtime_kind::ocl;
-    if (!ok) return status::invalid_arguments;
-
-    const auto mdw = memory_desc_wrapper(md);
-    if (mdw.format_any() || mdw.has_runtime_dims_or_strides())
-        return status::invalid_arguments;
-
-    std::vector<unsigned> flags_vec(nhandles);
-    std::vector<void *> handles_vec(nhandles);
-    for (int i = 0; i < nhandles; i++) {
-        unsigned f = (handles[i] == DNNL_MEMORY_ALLOCATE)
-                ? memory_flags_t::alloc
-                : memory_flags_t::use_runtime_ptr;
-        void *h = (handles[i] == DNNL_MEMORY_ALLOCATE) ? nullptr : handles[i];
-        flags_vec[i] = f;
-        handles_vec[i] = h;
-    }
-
-    bool is_usm = memory_kind == memory_kind::usm;
-    std::vector<std::unique_ptr<memory_storage_t>> mem_storages(nhandles);
-
-    if (is_usm) {
-        for (int i = 0; i < nhandles; i++) {
-            if (handles[i] != DNNL_MEMORY_NONE
-                    && handles[i] != DNNL_MEMORY_ALLOCATE
-                    && xpu::ocl::usm::get_pointer_type(engine, handles[i])
-                            == xpu::ocl::usm::kind_t::unknown
-                    && !engine->mayiuse_system_memory_allocators()) {
-                return status::invalid_arguments;
-            }
-            size_t sz = dnnl_memory_desc_get_size_v2(md, i);
-            mem_storages[i].reset(new xpu::ocl::usm_memory_storage_t(engine));
-            if (!mem_storages[i]) return status::out_of_memory;
-            CHECK(mem_storages[i]->init(flags_vec[i], sz, handles_vec[i]));
-        }
-    } else {
-        for (int i = 0; i < nhandles; i++) {
-            size_t sz = dnnl_memory_desc_get_size_v2(md, i);
-            mem_storages[i].reset(
-                    new xpu::ocl::buffer_memory_storage_t(engine));
-            if (!mem_storages[i]) return status::out_of_memory;
-            CHECK(mem_storages[i]->init(flags_vec[i], sz, handles_vec[i]));
-        }
-    }
-
-    return safe_ptr_assign(
-            *memory, new memory_t(engine, md, std::move(mem_storages)));
-}
-#endif
+using namespace dnnl::impl::gpu::intel::ocl;
 
 status_t dnnl_ocl_interop_memory_create(memory_t **memory,
         const memory_desc_t *md, engine_t *engine, memory_kind_t memory_kind,
@@ -107,15 +51,18 @@ status_t dnnl_ocl_interop_memory_create(memory_t **memory,
 
     std::unique_ptr<memory_storage_t> mem_storage;
     if (is_usm) {
+        const auto *ocl_engine
+                = utils::downcast<gpu::intel::compute::compute_engine_t *>(
+                        engine);
         if (handle != DNNL_MEMORY_NONE && handle != DNNL_MEMORY_ALLOCATE
-                && xpu::ocl::usm::get_pointer_type(engine, handle)
-                        == xpu::ocl::usm::kind_t::unknown
-                && !engine->mayiuse_system_memory_allocators()) {
+                && usm::get_pointer_type(engine, handle)
+                        == usm::ocl_usm_kind_t::unknown
+                && !ocl_engine->mayiuse_system_memory_allocators()) {
             return status::invalid_arguments;
         }
-        mem_storage.reset(new xpu::ocl::usm_memory_storage_t(engine));
+        mem_storage.reset(new ocl_usm_memory_storage_t(engine));
     } else
-        mem_storage.reset(new xpu::ocl::buffer_memory_storage_t(engine));
+        mem_storage.reset(new ocl_buffer_memory_storage_t(engine));
     if (!mem_storage) return status::out_of_memory;
 
     CHECK(mem_storage->init(flags, size, handle_ptr));
@@ -157,7 +104,7 @@ status_t dnnl_ocl_interop_memory_get_memory_kind(
             && memory->engine()->runtime_kind() == runtime_kind::ocl;
     if (!ok) return status::invalid_arguments;
 
-    *memory_kind = utils::downcast<const xpu::ocl::memory_storage_base_t *>(
+    *memory_kind = utils::downcast<const ocl_memory_storage_base_t *>(
             memory->memory_storage())
                            ->memory_kind();
     return status::success;

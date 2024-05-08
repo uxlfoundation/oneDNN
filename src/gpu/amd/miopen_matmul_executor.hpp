@@ -24,7 +24,7 @@
 #include "gpu/amd/stream.hpp"
 #include "gpu/amd/sycl_hip_scoped_context.hpp"
 #include "gpu/amd/sycl_hip_stream.hpp"
-#include "hrt/sycl/memory_storage_helper.hpp"
+#include "xpu/sycl/memory_storage_helper.hpp"
 
 #include <memory>
 
@@ -45,13 +45,13 @@ protected:
     void interop_task(std::shared_ptr<miopen_matmul_impl_t> matmul_impl_,
             engine_t *engine, ::sycl::handler &cgh,
             amd::sycl_hip_stream_t *hip_stream,
-            hrt::sycl::interop_memory_arg_t<::sycl::access::mode::read>
+            xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_weights,
-            hrt::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
-            hrt::sycl::interop_memory_arg_t<::sycl::access::mode::write>
+            xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
+            xpu::sycl::interop_memory_arg_t<::sycl::access::mode::write>
                     arg_dst,
-            hrt::sycl::interop_memory_arg_t<bias_m> arg_bias,
-            hrt::sycl::interop_memory_arg_t<scratch_m> arg_scratch) {
+            xpu::sycl::interop_memory_arg_t<bias_m> arg_bias,
+            xpu::sycl::interop_memory_arg_t<scratch_m> arg_scratch) {
 
         compat::host_task(cgh, [=](const compat::interop_handle &ih) {
             auto &sycl_engine
@@ -107,7 +107,7 @@ struct miopen_matmul_scratch_runtime_args_bias_exec_t
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
             auto arg_bias = CTX_IN_SYCL_MEMORY(DNNL_ARG_BIAS);
-            auto arg_scratch = hrt::sycl::interop_memory_arg_t<
+            auto arg_scratch = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>(*scratch_buff_, cgh);
 
             interop_task(matmul_impl_, engine, cgh, hip_stream, arg_wt, arg_src,
@@ -131,9 +131,9 @@ struct miopen_matmul_runtime_args_scratch_exec_t
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
-            auto arg_scratch = hrt::sycl::interop_memory_arg_t<
+            auto arg_scratch = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>(*scratch_buff_, cgh);
-            auto arg_bias = hrt::sycl::interop_memory_arg_t<
+            auto arg_bias = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read>();
 
             interop_task(matmul_impl_, engine, cgh, hip_stream, arg_wt, arg_src,
@@ -157,7 +157,7 @@ struct miopen_matmul_runtime_args_bias_exec_t
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
             auto arg_bias = CTX_IN_SYCL_MEMORY(DNNL_ARG_BIAS);
 
-            auto arg_scratch = hrt::sycl::interop_memory_arg_t<
+            auto arg_scratch = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>();
 
             interop_task(matmul_impl_, engine, cgh, hip_stream, arg_wt, arg_src,
@@ -179,9 +179,9 @@ struct miopen_matmul_runtime_args_exec_t : public miopen_matmul_exec_base_t {
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
 
-            auto arg_bias = hrt::sycl::interop_memory_arg_t<
+            auto arg_bias = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read>();
-            auto arg_scratch = hrt::sycl::interop_memory_arg_t<
+            auto arg_scratch = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>();
 
             interop_task(matmul_impl_, engine, cgh, hip_stream, arg_wt, arg_src,
@@ -228,7 +228,7 @@ struct miopen_matmul_scratch_exec_t : public miopen_matmul_exec_base_t {
             auto arg_scratch = CTX_SCRATCH_SYCL_MEMORY(
                     memory_tracking::names::key_matmul_dst_in_acc_dt);
 
-            auto arg_bias = hrt::sycl::interop_memory_arg_t<
+            auto arg_bias = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read>();
 
             interop_task(matmul_impl_, engine, cgh, hip_stream, arg_wt, arg_src,
@@ -251,7 +251,7 @@ struct miopen_matmul_bias_exec_t : public miopen_matmul_exec_base_t {
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
             auto arg_bias = CTX_IN_SYCL_MEMORY(DNNL_ARG_BIAS);
 
-            auto arg_scratch = hrt::sycl::interop_memory_arg_t<
+            auto arg_scratch = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>();
 
             interop_task(matmul_impl_, engine, cgh, hip_stream, arg_wt, arg_src,
@@ -273,9 +273,9 @@ struct miopen_matmul_exec_t : public miopen_matmul_exec_base_t {
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
 
-            auto arg_bias = hrt::sycl::interop_memory_arg_t<
+            auto arg_bias = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read>();
-            auto arg_scratch = hrt::sycl::interop_memory_arg_t<
+            auto arg_scratch = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read_write>();
 
             interop_task(matmul_impl_, engine, cgh, hip_stream, arg_wt, arg_src,

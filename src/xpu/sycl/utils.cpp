@@ -14,25 +14,41 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/verbose_msg.hpp"
-
-#include "xpu/sycl/compat.hpp"
 #include "xpu/sycl/utils.hpp"
+#include "xpu/sycl/compat.hpp"
 
-// XXX: Include this header for VERROR_ENGINE.
-// TODO: Move VERROR_ENGINE and other similar macros to a separate file.
-#include "common/engine.hpp"
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+// TODO: Include only for GPU vendor intel.
 #include "gpu/intel/sycl/l0/utils.hpp"
-#endif
 
+// TODO: Refactor build system for NVIDIA and AMD parts to enable them properly
+// to be able to include their utility headers here.
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-#include "gpu/nvidia/sycl_cuda_utils.hpp"
+// Do not include sycl_cuda_utils.hpp because it's intended for use in
+// gpu/nvidia directory only.
+
+namespace dnnl {
+namespace impl {
+namespace gpu {
+namespace nvidia {
+bool compare_cuda_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
+}
+} // namespace gpu
+} // namespace impl
+} // namespace dnnl
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-#include "gpu/amd/sycl_hip_utils.hpp"
+// Do not include sycl_hip_utils.hpp because it's intended for use in
+// gpu/amd directory only.
+namespace dnnl {
+namespace impl {
+namespace gpu {
+namespace amd {
+bool compare_hip_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
+}
+} // namespace gpu
+} // namespace impl
+} // namespace dnnl
 #endif
 
 namespace dnnl {
@@ -139,17 +155,14 @@ bool are_equal(const ::sycl::device &lhs, const ::sycl::device &rhs) {
     // Only one host device exists.
     if (lhs_be == backend_t::host) return true;
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL \
-        || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     if (lhs_be == backend_t::opencl) {
         // Use wrapper objects to avoid memory leak.
         auto lhs_ocl_handle = compat::get_native<cl_device_id>(lhs);
         auto rhs_ocl_handle = compat::get_native<cl_device_id>(rhs);
         return lhs_ocl_handle == rhs_ocl_handle;
     }
-#endif
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     if (lhs_be == backend_t::level0) {
         return gpu::intel::sycl::compare_ze_devices(lhs, rhs);
     }
@@ -168,6 +181,33 @@ bool are_equal(const ::sycl::device &lhs, const ::sycl::device &rhs) {
 #endif
     assert(!"not expected");
     return false;
+}
+
+device_id_t device_id(const ::sycl::device &dev) {
+    if (is_host(dev))
+        return std::make_tuple(static_cast<int>(backend_t::host), 0, 0);
+
+    device_id_t device_id
+            = device_id_t {static_cast<int>(backend_t::unknown), 0, 0};
+    switch (get_backend(dev)) {
+        case backend_t::opencl: {
+            auto ocl_device = xpu::ocl::make_wrapper(
+                    compat::get_native<cl_device_id>(dev));
+            device_id = std::make_tuple(static_cast<int>(backend_t::opencl),
+                    reinterpret_cast<uint64_t>(ocl_device.get()), 0);
+            break;
+        }
+        case backend_t::level0: {
+            device_id = std::tuple_cat(
+                    std::make_tuple(static_cast<int>(backend_t::level0)),
+                    gpu::intel::sycl::get_device_uuid(dev));
+            break;
+        }
+        case backend_t::unknown: assert(!"unknown backend"); break;
+        default: assert(!"unreachable");
+    }
+    assert(std::get<0>(device_id) != static_cast<int>(backend_t::unknown));
+    return device_id;
 }
 
 bool dev_ctx_consistency_check(
@@ -225,23 +265,10 @@ status_t check_device(engine_kind_t eng_kind, const ::sycl::device &dev,
     return status::success;
 }
 
-static bool is_vendor_device(const ::sycl::device &dev, int vendor_id) {
-    return (int)dev.get_info<::sycl::info::device::vendor_id>() == vendor_id;
-}
-
 bool is_intel_device(const ::sycl::device &dev) {
     const int intel_vendor_id = 0x8086;
-    return is_vendor_device(dev, intel_vendor_id);
-}
-
-bool is_nvidia_gpu(const ::sycl::device &dev) {
-    const int nvidia_vendor_id = 0x10DE;
-    return dev.is_gpu() && is_vendor_device(dev, nvidia_vendor_id);
-}
-
-bool is_amd_gpu(const ::sycl::device &dev) {
-    const int amd_vendor_id = 0x1002;
-    return dev.is_gpu() && is_vendor_device(dev, amd_vendor_id);
+    auto vendor_id = dev.get_info<::sycl::info::device::vendor_id>();
+    return vendor_id == intel_vendor_id;
 }
 
 std::vector<::sycl::device> get_devices(

@@ -19,8 +19,8 @@
 #include "common/c_types_map.hpp"
 #include "common/engine.hpp"
 #include "common/utils.hpp"
-#include "hrt/sycl/utils.hpp"
 #include "sycl/sycl_engine.hpp"
+#include "xpu/sycl/utils.hpp"
 
 using dnnl::impl::engine_t;
 using dnnl::impl::status_t;
@@ -37,7 +37,7 @@ status_t dnnl_sycl_interop_engine_create(
     engine_kind_t kind;
     if (sycl_dev.is_gpu())
         kind = engine_kind::gpu;
-    else if (sycl_dev.is_cpu() || dnnl::impl::hrt::sycl::is_host(sycl_dev))
+    else if (sycl_dev.is_cpu() || dnnl::impl::xpu::sycl::is_host(sycl_dev))
         kind = engine_kind::cpu;
     else
         VERROR_ENGINE(
@@ -52,7 +52,7 @@ status_t dnnl_sycl_interop_engine_create(
     VERROR_ENGINE(ef, status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);
 
     size_t index;
-    CHECK(dnnl::impl::hrt::sycl::get_device_index(&index, sycl_dev));
+    CHECK(dnnl::impl::xpu::sycl::get_device_index(&index, sycl_dev));
 
     return ef->engine_create(engine, sycl_dev, sycl_ctx, index);
 }
@@ -64,10 +64,9 @@ status_t dnnl_sycl_interop_engine_get_context(engine_t *engine, void **ctx) {
 
     if (!args_ok) return status::invalid_arguments;
 
-    const auto *sycl_engine_impl
-            = utils::downcast<const dnnl::impl::xpu::sycl::engine_impl_t *>(
-                    engine->impl());
-    auto &sycl_ctx = const_cast<::sycl::context &>(sycl_engine_impl->context());
+    auto *sycl_engine
+            = utils::downcast<dnnl::impl::sycl::sycl_engine_base_t *>(engine);
+    auto &sycl_ctx = const_cast<::sycl::context &>(sycl_engine->context());
     *ctx = static_cast<void *>(&sycl_ctx);
     return status::success;
 }
@@ -79,10 +78,9 @@ status_t dnnl_sycl_interop_engine_get_device(engine_t *engine, void **dev) {
 
     if (!args_ok) return status::invalid_arguments;
 
-    const auto *sycl_engine_impl
-            = utils::downcast<const dnnl::impl::xpu::sycl::engine_impl_t *>(
-                    engine->impl());
-    auto &sycl_dev = const_cast<::sycl::device &>(sycl_engine_impl->device());
+    auto *sycl_engine
+            = utils::downcast<dnnl::impl::sycl::sycl_engine_base_t *>(engine);
+    auto &sycl_dev = const_cast<::sycl::device &>(sycl_engine->device());
     *dev = static_cast<void *>(&sycl_dev);
     return status::success;
 }

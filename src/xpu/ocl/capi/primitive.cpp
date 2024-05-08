@@ -24,6 +24,7 @@
 #include "common/primitive_desc_iface.hpp"
 #include "common/primitive_iface.hpp"
 #include "common/utils.hpp"
+#include "xpu/ocl/utils.hpp"
 
 #include "gpu/intel/ocl/ocl_c_types_map.hpp"
 #include "gpu/intel/ocl/ocl_engine.hpp"
@@ -44,17 +45,16 @@ status_t dnnl_ocl_interop_primitive_execute(
             && IMPLICATION(ndeps > 0, deps != nullptr);
     if (!ok) return status::invalid_arguments;
 
-    auto *ocl_stream_impl
-            = utils::downcast<xpu::ocl::stream_impl_t *>(stream->impl());
+    auto *ocl_stream = utils::downcast<gpu::intel::ocl::ocl_stream_t *>(stream);
 
-    stream->before_exec_hook();
+    ocl_stream->before_exec_hook();
 
     if (deps != nullptr) {
         std::vector<xpu::ocl::wrapper_t<cl_event>> events(ndeps);
         for (int i = 0; i < ndeps; i++) {
             events[i] = xpu::ocl::wrapper_t<cl_event>(deps[i], true);
         }
-        ocl_stream_impl->ocl_ctx().set_deps(events);
+        ocl_stream->ocl_ctx().set_deps(events);
     }
 
     // run primitive
@@ -62,20 +62,20 @@ status_t dnnl_ocl_interop_primitive_execute(
     CHECK(cvt_primitive_args(
             primitive_iface->pd()->impl().get(), nargs, args, exec_args));
 
-    exec_ctx_t ctx(stream, std::move(exec_args));
+    exec_ctx_t ctx(ocl_stream, std::move(exec_args));
     CHECK(primitive_execute(primitive_iface, ctx));
 
     // return output event
     if (return_event != nullptr) {
-        if (ocl_stream_impl->flags() & stream_flags::in_order) {
+        if (ocl_stream->flags() & stream_flags::in_order) {
             *return_event = nullptr;
         } else {
-            auto last_event = ocl_stream_impl->get_output_event();
+            auto last_event = ocl_stream->get_output_event();
             *return_event = last_event.release();
         }
     }
 
-    stream->after_exec_hook();
+    ocl_stream->after_exec_hook();
 
     return status::success;
 }

@@ -21,7 +21,7 @@
 #include "gpu/sycl/sycl_post_ops.hpp"
 #include "gpu/sycl/sycl_primitive_conf.hpp"
 #include "gpu/sycl/sycl_q10n.hpp"
-#include "hrt/sycl/types.hpp"
+#include "xpu/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,10 +34,10 @@ struct binary_kernel_vec_t {
     static constexpr int max_supported_ndims = 5;
 
     binary_kernel_vec_t(const sycl_binary_conf_t &conf,
-            hrt::sycl::in_memory_arg_t &src0, hrt::sycl::in_memory_arg_t &src1,
-            hrt::sycl::out_memory_arg_t &dst,
-            hrt::sycl::in_memory_arg_t &src0_scale,
-            hrt::sycl::in_memory_arg_t &src1_scale, data_type_t scales_dt)
+            xpu::sycl::in_memory_arg_t &src0, xpu::sycl::in_memory_arg_t &src1,
+            xpu::sycl::out_memory_arg_t &dst,
+            xpu::sycl::in_memory_arg_t &src0_scale,
+            xpu::sycl::in_memory_arg_t &src1_scale, data_type_t scales_dt)
         : conf_(conf)
         , src0_(src0)
         , src1_(src1)
@@ -140,9 +140,9 @@ struct binary_kernel_vec_t {
     }
 
 private:
-    const hrt::sycl::md_t &src0_md() const { return conf_.src0_md; }
-    const hrt::sycl::md_t &src1_md() const { return conf_.src1_md; }
-    const hrt::sycl::md_t &dst_md() const { return conf_.dst_md; }
+    const xpu::sycl::md_t &src0_md() const { return conf_.src0_md; }
+    const xpu::sycl::md_t &src1_md() const { return conf_.src1_md; }
+    const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
     void *src0_ptr() const { return src0_.get_pointer(); }
     void *src1_ptr() const { return src1_.get_pointer(); }
@@ -264,11 +264,11 @@ private:
 
     sycl_binary_conf_t conf_;
 
-    hrt::sycl::in_memory_arg_t src0_;
-    hrt::sycl::in_memory_arg_t src1_;
-    hrt::sycl::out_memory_arg_t dst_;
-    hrt::sycl::in_memory_arg_t src0_scale_;
-    hrt::sycl::in_memory_arg_t src1_scale_;
+    xpu::sycl::in_memory_arg_t src0_;
+    xpu::sycl::in_memory_arg_t src1_;
+    xpu::sycl::out_memory_arg_t dst_;
+    xpu::sycl::in_memory_arg_t src0_scale_;
+    xpu::sycl::in_memory_arg_t src1_scale_;
     data_type_t scales_dt_;
     xpu::sycl::in_memory_arg_t po1_src_;
     xpu::sycl::in_memory_arg_t po2_src_;

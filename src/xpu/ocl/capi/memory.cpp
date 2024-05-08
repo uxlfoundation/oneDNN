@@ -27,7 +27,7 @@
 #include "gpu/intel/ocl/ocl_memory_storage.hpp"
 
 using namespace dnnl::impl;
-using namespace dnnl::impl::xpu::ocl;
+using namespace dnnl::impl::gpu::intel::ocl;
 
 status_t dnnl_ocl_interop_memory_create(memory_t **memory,
         const memory_desc_t *md, engine_t *engine, memory_kind_t memory_kind,
@@ -51,15 +51,18 @@ status_t dnnl_ocl_interop_memory_create(memory_t **memory,
 
     std::unique_ptr<memory_storage_t> mem_storage;
     if (is_usm) {
+        const auto *ocl_engine
+                = utils::downcast<gpu::intel::compute::compute_engine_t *>(
+                        engine);
         if (handle != DNNL_MEMORY_NONE && handle != DNNL_MEMORY_ALLOCATE
-                && xpu::ocl::usm::get_pointer_type(engine, handle)
-                        == xpu::ocl::usm::kind_t::unknown
-                && !engine->mayiuse_system_memory_allocators()) {
+                && usm::get_pointer_type(engine, handle)
+                        == usm::ocl_usm_kind_t::unknown
+                && !ocl_engine->mayiuse_system_memory_allocators()) {
             return status::invalid_arguments;
         }
-        mem_storage.reset(new xpu::ocl::usm_memory_storage_t(engine));
+        mem_storage.reset(new ocl_usm_memory_storage_t(engine));
     } else
-        mem_storage.reset(new xpu::ocl::buffer_memory_storage_t(engine));
+        mem_storage.reset(new ocl_buffer_memory_storage_t(engine));
     if (!mem_storage) return status::out_of_memory;
 
     CHECK(mem_storage->init(flags, size, handle_ptr));
@@ -101,7 +104,7 @@ status_t dnnl_ocl_interop_memory_get_memory_kind(
             && memory->engine()->runtime_kind() == runtime_kind::ocl;
     if (!ok) return status::invalid_arguments;
 
-    *memory_kind = utils::downcast<const xpu::ocl::memory_storage_base_t *>(
+    *memory_kind = utils::downcast<const ocl_memory_storage_base_t *>(
             memory->memory_storage())
                            ->memory_kind();
     return status::success;

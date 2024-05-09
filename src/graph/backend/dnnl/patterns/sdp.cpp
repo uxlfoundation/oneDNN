@@ -126,14 +126,9 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion)
                     auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
                             {in_edge(0, p_select2, 0)});
                     auto matmul_v = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(1, s_reorder, 0)});
-                    auto transpose_output
-                            = pgraph->append_op(graph::op_kind::StaticTranspose,
-                                    {in_edge(0, matmul_v, 0)});
-                    pgraph->append_alternation(
-                            {graph::op_kind::Reorder,
-                                    graph::op_kind::StaticReshape},
-                            {in_edge(0, transpose_output, 0)});
+                            graph::op_kind::MatMul, {in_edge(0, softmax, 0)});
+                    // Optional transpose + reshape/reorder
+                    optional_transpose_reshape(pgraph, matmul_v, 0);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<larger_partition_kernel_t>();

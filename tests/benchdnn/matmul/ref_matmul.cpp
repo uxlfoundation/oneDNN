@@ -188,22 +188,12 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
         const auto v_po_vals
                 = prepare_po_vals(dst_m, args, v_po_masks, dst_off);
-        maybe_dropout(prb->attr, dst, dst_off, dropout);
-        const auto sum_val = dst_m.get_elem(dst_off);
-        maybe_post_ops(prb->attr, dst, sum_val, v_po_vals);
 
-        int dst_zp = 0;
-        if (has_dst_zp) {
-            const auto dst_zp_idx = dst_m.get_idx(dst_off, dst_zp_mask);
-            dst_zp = dst_zps.get_elem(dst_zp_idx);
-        }
-        float dst_scale = 1.f;
-        if (has_dst_scale) {
-            dst_scale = 1.f / dst_scales.get_elem(dst_scale_mask > 0 ? n : 0);
-        }
-        float dst_val = dst_scale * dst + dst_zp;
-        maybe_round(prb->attr, DNNL_ARG_DST, dst_val, dst_off, prb->dst_dt());
-        dst_m.set_elem(dst_off, dst_val);
+        maybe_dropout(prb->attr, tmp, dst_off, dropout);
+        maybe_post_ops(prb->attr, tmp, dst, v_po_vals);
+
+        int dst_zp = has_dst_zp ? dst_zps.get_elem(dst_zp_mask > 0 ? n : 0) : 0;
+        dst = tmp * dst_scale + dst_zp;
     });
 }
 

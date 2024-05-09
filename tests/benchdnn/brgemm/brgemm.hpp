@@ -28,7 +28,8 @@
 
 #if defined(DNNL_X64) && DNNL_X64 == 1
 #include "src/cpu/x64/brgemm/brgemm.hpp"
-#elif defined(DNNL_AARCH64) && DNNL_AARCH64 == 1
+#elif defined(DNNL_AARCH64) && DNNL_AARCH64 == 1 \
+        && (DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE)
 #include "src/cpu/aarch64/brgemm/brgemm.hpp"
 #endif
 

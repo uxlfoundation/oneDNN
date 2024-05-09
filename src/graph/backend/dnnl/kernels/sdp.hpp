@@ -584,7 +584,8 @@ private:
                     add = nullptr;
                     select = nullptr;
                 }
-            } else if (post_op->get_kind() == graph::op_kind::Select) {
+            } else if (post_op
+                    && (post_op->get_kind() == graph::op_kind::Select)) {
                 return status::unimplemented;
             } else
                 mm2 = cur_op;

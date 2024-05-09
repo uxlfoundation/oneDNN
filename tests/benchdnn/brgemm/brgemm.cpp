@@ -83,11 +83,29 @@ struct dnnl_api_traits<dnnl_ukernel_attr_params_t> {
     }
 };
 
+#elif defined(DNNL_AARCH64) && DNNL_AARCH64 == 1 \
+        && DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+template <>
+struct dnnl_api_traits<dnnl::impl::cpu::aarch64::brgemm_kernel_t *> {
+    static void destroy(dnnl::impl::cpu::aarch64::brgemm_kernel_t *t) {
+        DNN_SAFE_V(dnnl::impl::cpu::aarch64::brgemm_kernel_destroy(t));
+    }
+};
 #endif
 
 #endif // DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
 
 namespace brgemm {
+
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+#if defined(DNNL_X64) && DNNL_X64 == 1
+#define brg_x64
+#define namespace_impl dnnl::impl::cpu::x64
+#elif defined(DNNL_AARCH64) && DNNL_AARCH64 == 1
+#define brg_aarch64
+#define namespace_impl dnnl::impl::cpu::aarch64
+#endif
+#endif
 
 #if defined(brg_x64) || defined(brg_aarch64)
 
@@ -103,12 +121,6 @@ namespace brgemm {
 dnnl_status_t brgemm_attr_init(
         namespace_impl::brgemm_attr_t *brgattr, const prb_t *prb) {
     using namespace namespace_impl;
-
-    // `max_bs` is handled directly through the driver interface.
-    brgattr->max_bs = prb->batch_size;
-
-    // `fpmath_mode` is handled directly through the driver interface.
-    brgattr->fpmath_mode = prb->attr.fpmath_mode.mode;
 
     // `max_bs` is handled directly through the driver interface.
     brgattr->max_bs = prb->batch_size;
@@ -209,14 +221,13 @@ std::string prepare_wei_format_string(
     return wtag;
 }
 
-dnnl::impl::cpu::x64::brgemm_batch_kind_t str2batch_kind(
-        const std::string &str) {
+namespace_impl::brgemm_batch_kind_t str2batch_kind(const std::string &str) {
     if (str == "addr")
-        return dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_addr;
+        return namespace_impl::brgemm_batch_kind_t::brgemm_addr;
     else if (str == "offs")
-        return dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_offs;
+        return namespace_impl::brgemm_batch_kind_t::brgemm_offs;
     assert(!"Unsupported batch kind value");
-    return dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_batch_kind_undef;
+    return namespace_impl::brgemm_batch_kind_t::brgemm_batch_kind_undef;
 }
 
 int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
@@ -622,20 +633,19 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
 // A special wrapper needed to match internal benchdnn infrastructure.
 dnnl_status_t brgemm_kernel_execute_postops_wrapper(
-        const dnnl::impl::cpu::x64::brgemm_kernel_t *brgemm_kernel,
-        dnnl::impl::cpu::x64::brgemm_batch_kind_t batch_kind, int batch_size,
+        const namespace_impl::brgemm_kernel_t *brgemm_kernel,
+        namespace_impl::brgemm_batch_kind_t batch_kind, int batch_size,
         const void *src_ptr, const void *wei_ptr,
-        const dnnl::impl::cpu::x64::brgemm_batch_element_t *batch_element,
+        const namespace_impl::brgemm_batch_element_t *batch_element,
         void *acc_ptr, void *dst_ptr,
         const namespace_impl::brgemm_post_ops_data_t &post_ops_data,
         void *scratchpad_ptr, const dnnl_stream_t &stream,
         const std::vector<dnnl_exec_arg_t> &dnnl_args) {
 
-    if (batch_kind == dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_addr) {
+    if (batch_kind == namespace_impl::brgemm_batch_kind_t::brgemm_addr) {
         brgemm_kernel_execute_postops(brgemm_kernel, batch_size, batch_element,
                 acc_ptr, dst_ptr, post_ops_data, scratchpad_ptr);
-    } else if (batch_kind
-            == dnnl::impl::cpu::x64::brgemm_batch_kind_t::brgemm_offs) {
+    } else if (batch_kind == namespace_impl::brgemm_batch_kind_t::brgemm_offs) {
         brgemm_kernel_execute_postops(brgemm_kernel, batch_size, src_ptr,
                 wei_ptr, batch_element, acc_ptr, dst_ptr, post_ops_data,
                 scratchpad_ptr);
@@ -683,9 +693,12 @@ void init_memory_args(
     auto dst_md = dnn_mem_t::init_md(prb->ndims, prb->dst_dims.data(),
             prb->dst_dt(), prb->dtag, dst_strides);
 
-    using namespace dnnl::impl::cpu::x64;
-
+    using namespace namespace_impl;
+#if defined(brg_x64)
     brgemm_desc_t brgemm_desc;
+#elif defined(brg_aarch64)
+    brgemm_t brgemm_desc;
+#endif
     // Supports only address model for now as only affects the way memory is
     // passed to `brgemm_batch_element_t` object.
     brgemm_batch_kind_t batch_kind = str2batch_kind(prb->batch_kind);
@@ -694,8 +707,14 @@ void init_memory_args(
     auto src_md = dnn_mem_t::init_md(
             prb->ndims, src_dims, prb->src_dt(), "", src_strides);
 
-    auto dst_md = dnn_mem_t::init_md(
-            prb->ndims, prb->dst_dims.data(), prb->dst_dt(), "", dst_strides);
+#if defined(brg_x64)
+    const auto is_tmm = brgemm_desc.is_tmm;
+    if (is_tmm) {
+        char palette[AMX_PALETTE_SIZE] = {};
+        DNN_SAFE(brgemm_init_tiles(brgemm_desc, palette), WARN);
+        DNN_SAFE(amx_tile_configure(palette), WARN);
+    }
+#endif
 
     // Same as dst_md but with a pre-defined data type according to doc.
     auto acc_md = dnn_mem_t::init_md(prb->ndims, prb->dst_dims.data(),
@@ -1343,7 +1362,9 @@ int doit(const prb_t *prb, res_t *res) {
             scratchpad_ptr, std::placeholders::_1, std::placeholders::_2);
     measure_perf(prb->ctx_exe, res, perf_func, args);
 
-    SAFE(release_hw_config(kernel_args), WARN);
+#if defined(brg_x64)
+    if (is_tmm) DNN_SAFE(amx_tile_release(), WARN);
+#endif
 
     return OK;
 }

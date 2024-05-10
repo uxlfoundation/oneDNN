@@ -500,16 +500,16 @@ void registerfence(const RegData &dst)
 // Global memory fence.
 void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
+    registerfence(dst);
+
 #if XE3P
     if (useEfficient64Bit) {
         uint32_t desc = 0x1F;
         desc |= static_cast<uint32_t>(flushing) << 8;
         desc |= static_cast<uint32_t>(scope) << 11;
-        sendgx(1 | mod | NoMask, SharedFunction::ugm, null, desc);
+        sendgx(1 | mod | NoMask, SharedFunction::ugm, null, GRFRange(header.getBase(), 1), desc);
     } else
 #endif
-    registerfence(dst);
-
     if (hardware >= HW::XeHPG) {
         if (flushing == FlushTypeLSC::None && hardware == HW::XeHPG && scope > FenceScopeLSC::Subslice)
             flushing = static_cast<FlushTypeLSC>(6);    /* workaround for DG2 bug */
@@ -542,13 +542,13 @@ void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0
 // SLM-only memory fence.
 void slmfence(const InstructionModifier &mod, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
-#if XE3P
-    if (useEfficient64Bit)
-        sendgx(1 | mod | NoMask, SharedFunction::slm, null, 0x1F);
-    else
-#endif
     registerfence(dst);
 
+#if XE3P
+    if (useEfficient64Bit)
+        sendgx(1 | mod | NoMask, SharedFunction::slm, null, GRFRange(header.getBase(), 1), 0x1F);
+    else
+#endif
     if (hardware >= HW::XeHPG)
         send(1 | mod | NoMask, SharedFunction::slm, dst, header, null, 0, 0x210011F);
     else {
@@ -706,7 +706,7 @@ void epilogue(int GRFCount, bool hasSLM, const RegData &r0_info)
 {
     GRF tmp0(GRFCount - 3);
     GRF tmp1(GRFCount - 2);
-    GRF lastReg(GRFCount - 1);
+    GRF r0_copy(GRFCount - 4);
 
     bool doMemFence = false;
     bool doSLMFence = false;
@@ -728,7 +728,7 @@ void epilogue(int GRFCount, bool hasSLM, const RegData &r0_info)
     if (!hasSLM) doSLMFence = false;
 
     int dwordsPerReg = GRF::bytes(hardware) / sizeof(uint32_t);
-    mov<uint32_t>(dwordsPerReg, lastReg, r0_info);
+    mov<uint32_t>(dwordsPerReg, r0_copy, r0_info);
 
     if (doMemFence) memfence(tmp0, r0_info);
     if (doSLMFence) slmfence(tmp1, r0_info);
@@ -741,7 +741,7 @@ void epilogue(int GRFCount, bool hasSLM, const RegData &r0_info)
     if (doMemFence) wrdep(tmp0);
     if (doSLMFence) wrdep(tmp1);
 
-    threadend(lastReg);
+    threadend(r0_copy);
 }
 
 

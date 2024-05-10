@@ -578,10 +578,10 @@ struct Instruction12 {
     inline bool getImm32(uint32_t &imm) const;
     inline bool getSendDesc(MessageDescriptor &desc) const;
     inline bool getARFType(ARFType &arfType, int opNum, HW hw) const;
+    inline int getFencedepJIP() const;
 #if XE3P
     inline SendgMessageDescriptor getSendgDesc() const;
 #endif
-    inline int getFencedepJIP() const;
 
     bool isMathMacro() const {
         if (opcode() != Opcode::math) return false;
@@ -602,6 +602,30 @@ struct InstructionXeHPC : public Instruction12 {
     template <typename Tag = EncodingTagXeHPC>
     bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const {
         return Instruction12::getOperandRegion<EncodingTagXeHPC>(region, opNum);
+    }
+
+#if XE3
+    bool isSendg() const {
+        if (opcode() == Opcode::sendg || opcode() == Opcode::sendgc) return true;
+#if XE3P
+        if (opcode() == Opcode::sendgx) return true;
+#endif
+        return false;
+    }
+#endif
+
+    bool eot() const {
+#if XE3
+        if (isSendg()) return sendg.eot;
+#endif
+        return Instruction12::eot();
+    }
+
+    bool atomic() const {
+#if XE3
+        if (isSendg()) return false;    /* no atomic field */
+#endif
+        return Instruction12::atomic();
     }
 };
 
@@ -1562,6 +1586,13 @@ bool Instruction12::getSendDesc(MessageDescriptor &desc) const
     return !send.descIsReg;
 }
 
+int Instruction12::getFencedepJIP() const
+{
+    uint32_t imm = 0;
+    (void) getImm32(imm);
+    return int32_t(imm) / sizeof(Instruction12);
+}
+
 #if XE3P
 SendgMessageDescriptor Instruction12::getSendgDesc() const
 {
@@ -1577,12 +1608,6 @@ SendgMessageDescriptor Instruction12::getSendgDesc() const
     return desc;
 }
 #endif
-int Instruction12::getFencedepJIP() const
-{
-    uint32_t imm = 0;
-    (void) getImm32(imm);
-    return int32_t(imm) / sizeof(Instruction12);
-}
 
 bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const
 {

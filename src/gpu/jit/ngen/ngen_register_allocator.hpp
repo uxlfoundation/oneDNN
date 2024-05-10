@@ -92,8 +92,8 @@ struct BundleGroup {
 
     friend BundleGroup operator|(BundleGroup lhs, Bundle rhs) { lhs |= rhs; return lhs; }
     BundleGroup &operator|=(Bundle rhs) {
-        for (int rchunk = 0; rchunk < int(reg_masks.size()); rchunk++)
-            reg_masks[rchunk] |= rhs.regMask(hw, rchunk);
+        for (size_t rchunk = 0; rchunk < reg_masks.size(); rchunk++)
+            reg_masks[rchunk] |= rhs.reg_mask(hw, rchunk);
         return *this;
     }
 
@@ -114,14 +114,6 @@ struct BundleGroup {
 
 private:
     HW hw;
-
-#if XE3P
-    static constexpr int max_regs = 512;
-#else
-    static constexpr int max_regs = 256;
-#endif
-    static constexpr int nmasks = max_regs / 64;
-
     std::array<uint64_t, GRF::maxRegs() / 64> reg_masks{};
 };
 
@@ -198,11 +190,6 @@ public:
     FlagRegister try_alloc_flag(bool sub = true)                              { return tryAllocFlag(sub); }
 
 protected:
-#if XE3P
-    static constexpr int max_regs = 512;
-#else
-    static constexpr int max_regs = 256;
-#endif
     using mtype = uint16_t;
 
     HW hw;                                      // HW generation.
@@ -597,6 +584,7 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
         auto alloc_pattern = alloc_patterns[(dwords - 1) & 3];
         int64_t freeWhole64[sizeof(freeWhole) / sizeof(int64_t)];
         std::memcpy(freeWhole64, freeWhole, sizeof(freeWhole));
+
 #if XE3P
         /* Preferentially use r511 for small allocations as it can't be used in sendgx. */
         if (search_full_grf && freeSub[511]) {
@@ -608,7 +596,7 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
 
         for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
             int64_t free = search_full_grf ? freeWhole64[rchunk] : -1;
-            free &= bundle.regMask(hw, rchunk);
+            free &= bundle.reg_mask(hw, rchunk);
 
             while (free) {
                 int rr = utils::bsf(free);

@@ -1491,9 +1491,6 @@ protected:
     void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, ind0, ind1, desc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, NullRegister(), NullRegister(), NoOperand(), NoOperand(), desc);
-    }
     void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
         opSendg(Opcode::sendgx, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);
     }

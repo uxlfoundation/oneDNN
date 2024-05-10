@@ -77,6 +77,7 @@ status_t sycl_device_info_t::init_arch(engine_t *engine) {
         stepping_id_ = dev_info->stepping_id();
         mayiuse_systolic_ = dev_info->mayiuse_systolic();
         mayiuse_ngen_kernels_ = dev_info->mayiuse_ngen_kernels();
+        is_efficient_64bit_ = dev_info->is_efficient_64bit();
     } else {
         assert(!"not_expected");
     }

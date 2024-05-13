@@ -71,6 +71,58 @@ public:
         res_cache.release();
     }
 
+    status_t compile_impl(const dnnl_partition_impl_t *part,
+            const engine_t *g_engine,
+            const std::vector<logical_tensor_t> &inputs,
+            const std::vector<logical_tensor_t> &outputs) override {
+        p_engine_ = make_dnnl_engine(*g_engine);
+        g_alloc_ = reinterpret_cast<graph::allocator_t *>(
+                g_engine->get_allocator());
+
+        subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
+                part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
+        BACKEND_DNNL_CHECK(
+                set_given_inputs_outputs(subgraph_, inputs, outputs));
+
+        subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
+            return this->memory_planner_.get_memory_info(val);
+        });
+        pass_pipeline_t pipeline(vis);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_mul_sigmoid_to_swish);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, binary_broadcast_swap);
+
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
+
+        pipeline.reset_visualize_arg(true, false);
+        BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
+
+        auto memory_plan = [&](std::shared_ptr<subgraph_t> &sg) {
+            return memory_planner_.run(sg);
+        };
+        pipeline.reset_visualize_arg(true, true);
+        BACKEND_DNNL_ADD_PASS(pipeline, memory_plan);
+        BACKEND_DNNL_ADD_PASS(pipeline, compile_ops);
+
+        // Run the added passes
+        BACKEND_DNNL_CHECK(pipeline.run(subgraph_));
+
+        // fill information for outputs logical tensors
+        for (size_t i = 0; i < outputs.size(); i++) {
+            auto &out = const_cast<logical_tensor_t &>(outputs[i]);
+            out = subgraph_->outs_[i];
+        }
+
+        resource_ctor_ = [this]() {
+            return this->memory_planner_.get_exec_args_set().clone();
+        };
+
+        return status::success;
+    }
+
     void prepare_args_set(const execution_args_set_t *res,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,

@@ -1662,7 +1662,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     CHECK(init_tag(jcp.dst_tag, diff_src_md, diff_src_d, src_tag));
     CHECK(attr.set_default_formats(&diff_src_md));
 
-    VDISPATCH_CONV_IC(post_ops_ok(jcp, attr, diff_src_d, is_deconv),
+    VDISPATCH_CONV_IC(post_ops_ok(jcp, attr, diff_src_d, cd.use_inversion),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     return status::success;

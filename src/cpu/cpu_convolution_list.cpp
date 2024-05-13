@@ -84,8 +84,6 @@ using namespace dnnl::impl::prop_kind;
             CPU_INSTANCE_AMX( \
                     brgemm_1x1_convolution_fwd_t<avx10_1_512_amx_fp16>) \
             CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_1_512_amx_fp16>) \
-            CPU_INSTANCE_AMX( \
-                    brgemm_convolution_fwd_t<avx10_1_512_amx_fp16, true>) \
             CPU_INSTANCE(ref_convolution_fwd_t) nullptr, \
         } \
     }
@@ -99,12 +97,8 @@ using namespace dnnl::impl::prop_kind;
                                 CPU_INSTANCE_AMX( \
                                         brgemm_convolution_bwd_strided_t< \
                                                 avx10_1_512_amx_fp16>) \
-                                        CPU_INSTANCE_AMX( \
-                                                brgemm_convolution_bwd_strided_t< \
-                                                        avx10_1_512_amx_fp16, \
-                                                        true>) \
-                                                CPU_INSTANCE( \
-                                                        ref_convolution_bwd_data_t) nullptr, \
+                                        CPU_INSTANCE( \
+                                                ref_convolution_bwd_data_t) nullptr, \
                 }) \
     }
 
@@ -178,7 +172,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(gemm_bf16_convolution_fwd_t<bf16>)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
-            CPU_INSTANCE_AARCH64_ACL(acl_indirect_gemm_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_fwd_t)
             CPU_INSTANCE(ref_fused_convolution_fwd_t)
             nullptr,

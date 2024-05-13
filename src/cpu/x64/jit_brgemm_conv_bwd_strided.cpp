@@ -111,12 +111,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
             && IMPLICATION(
                     with_bias(), one_of(bias_md_.data_type, f32, wei_type));
 
-    const bool is_fp8_supported = one_of(wei_type, f8_e5m2, f8_e4m3)
-            && one_of(diff_dst_type, f8_e5m2, f8_e4m3)
-            && one_of(diff_src_type, wei_type, f32, f8_e5m2, f8_e4m3)
-            && IMPLICATION(
-                    with_bias(), one_of(bias_md_.data_type, f32, wei_type));
-
     VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(
             impl_supports_datatype(diff_src_type), VERBOSE_UNSUPPORTED_DT);
@@ -261,107 +255,15 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
-        int vM, bool is_N_tail, bool is_K_tail, bool do_init) {
-
-    if (do_init && is_K_tail && jcp_.K > 0) return status::success;
-
-    const float alpha = 1.0;
-    const float beta = 1.0;
-
-    auto vbeta = do_init ? 0 : beta;
-    auto vN = is_N_tail ? jcp_.N_tail : jcp_.N;
-    auto vK = is_K_tail ? jcp_.K_tail : jcp_.K;
-
-    const auto is_amx = brgemm_convolution_bwd_utils::is_amx(isa);
-
-    if (vN == 0 || vK == 0) return status::success;
-
-    auto brg_idx = get_brg_idx(vM, do_init, is_N_tail, is_K_tail);
-    // if brgemm_desc_t already created then skip this iteration
-    if (brg_idx != -1) return status::success;
-
-    brgemm_desc_t brg;
-    brgemm_strides_t brg_strides;
-    brg_strides.stride_a = jcp_.brg_stride_a;
-    brg_strides.stride_b = jcp_.brg_stride_b;
-    brg.req_cal_comp_pads = jcp_.req_brg_comp_pad;
-    brg.req_comp_pads_with_bcast
-            = jcp_.req_cal_comp_pad && jcp_.exec_type == exec_trans;
-    const auto strides_ptr
-            = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
-    CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, jcp_.src_dt, jcp_.wei_dt,
-            false, false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB,
-            jcp_.LDC, vM, vN, vK, strides_ptr));
-
-    brgemm_attr_t brgattr;
-    brgattr.use_uker = jcp_.use_uker;
-    brgattr.use_interleave_stores = jcp_.use_interleave_stores;
-    brgattr.hint_prefetching = jcp_.hint_prefetching;
-    brgattr.max_bs = jcp_.max_batch;
-    brgattr.hint_innermost_loop = jcp_.brgemm_bd_loop_innermost
-            ? brgemm_bd_loop_innermost
-            : brgemm_ld_loop_innermost;
-    if (jcp_.amx_tile_load_xx) {
-        // assuming 2x2 decomposition in amx brgemm kernel
-        // and overlap of input by kw
-        const auto bd_blocking = 2 * jcp_.amx_h;
-        const auto ld_blocking = 2 * 16;
-        brgattr.hint_expected_A_size
-                = bd_blocking * jcp_.K * jcp_.kd_block * jcp_.kh_block;
-        brgattr.hint_expected_B_size = ld_blocking * jcp_.K * jcp_.kd_block
-                * jcp_.kh_block * jcp_.kw_block;
-        brgattr.hint_expected_C_size = bd_blocking * ld_blocking;
-    } else {
-        brgattr.hint_expected_A_size = 0;
-        brgattr.hint_expected_B_size = 0;
-        brgattr.hint_expected_C_size = 0;
-    }
-
-    brgattr.wary_tail_read = false;
-    // use_M_mask is always 0 for brgemm_convolution_bwd_strided_t
-    brgattr.bd_mask = nullptr;
-    brgattr.bd_mask_level = jcp_.use_M_mask;
-
-    if (is_amx) {
-        brgattr.max_top_vpad = 0;
-        brgattr.max_bottom_vpad = 0;
-    } else {
-        brgattr.max_top_vpad = jcp_.max_vpad;
-        brgattr.max_bottom_vpad = jcp_.max_vpad;
-    }
-    brgattr.generate_skip_accumulation = true;
-    CHECK(brgemm_desc_set_attr(&brg, brgattr));
-
-    auto LDD = jcp_.stride_w * jcp_.ic_without_padding;
-    brg.with_sum = jcp_.with_sum;
-    brg.with_weights_scale_adjust = jcp_.scale_adjust_factor != 1.0f;
-    CHECK(brgemm_desc_set_postops(
-            &brg, attr(), &diff_src_md_, LDD, jcp_.bia_dt));
-    jcp_.amx_buf_size_per_thread = nstl::max(
-            brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread);
-    brg_idx = brgs_->insert(brg);
-
-    const std::array<int, 4> key = {vM, is_N_tail, is_K_tail, do_init};
-    if (brg_indices.find(key) == brg_indices.end()) {
-        brg_indices.insert({key, brg_idx});
-        brg_indices_c++;
-    }
-
-    return status::success;
-}
-
-template <cpu_isa_t isa>
-void brgemm_convolution_bwd_strided_t<isa>::pd_t::get_kw_range(int iw,
-        int iw_raw, int &kw_s, int &kw_full_s, int &kw_full_f,
-        int &kw_f) const {
+void brgemm_convolution_bwd_strided_t<isa>::get_kw_range(int iw, int iw_raw,
+        int &kw_s, int &kw_full_s, int &kw_full_f, int &kw_f) const {
     // This function is needed for exec_base only
     brgemm_convolution_bwd_utils::get_kw_range(
             jcp_, iw, iw_raw, kw_s, kw_full_s, kw_full_f, kw_f);
 }
 
 template <cpu_isa_t isa>
-void brgemm_convolution_bwd_strided_t<isa>::pd_t::get_iw_range(
+void brgemm_convolution_bwd_strided_t<isa>::get_iw_range(
         int iw, int iw_raw, int kw, int &iw_s, int &M_without_overflow) const {
     // This function is needed for exec_base only
 
@@ -370,7 +272,9 @@ void brgemm_convolution_bwd_strided_t<isa>::pd_t::get_iw_range(
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_strided_t<isa>::add_brg_kernel(int brg_idx) {
+status_t brgemm_convolution_bwd_strided_t<isa>::add_brg_kernel(
+        int bs, int M, int i_N, int i_K, int i_init) {
+    if (M <= 0) return status::success;
     const auto _pd = pd();
     const auto &brgs = *(_pd->brgs_);
 
@@ -383,8 +287,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::add_brg_kernel(int brg_idx) {
     return status::success;
 }
 
-template <cpu_isa_t isa, bool is_deconv>
-status_t brgemm_convolution_bwd_strided_t<isa, is_deconv>::add_po_kernel(
+template <cpu_isa_t isa>
+status_t brgemm_convolution_bwd_strided_t<isa>::add_po_kernel(
         brgemm_desc_t *bcfg, int ker_idx, bool is_init) {
     if (!bcfg) return status::success;
     const auto _pd = pd();
@@ -440,7 +344,6 @@ void brgemm_convolution_bwd_strided_t<isa>::add_po_kernels(
         }
     }
 }
-
 template <cpu_isa_t isa>
 int brgemm_convolution_bwd_strided_t<isa>::get_comp_ker_idx(const int kd_b,
         const int kd_e, const int kh_b, const int kh_e, const int kw_b,

@@ -52,7 +52,7 @@ namespace {
 using namespace dnnl::impl::data_type;
 
 // clang-format off
-constexpr impl_list_item_t reorder_impl_list[] = REG_REORDER_P({
+constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
         REORDER_INSTANCE(intel::ocl::rnn_weights_reorder_t::pd_t)
         REORDER_INSTANCE(intel::ocl::cross_engine_reorder_t::pd_t)
         REORDER_INSTANCE(intel::jit::gen_reorder_t::pd_t)

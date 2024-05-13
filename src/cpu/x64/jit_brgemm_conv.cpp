@@ -729,20 +729,6 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-dim_t brgemm_convolution_fwd_t<isa>::get_src_base_offset(
-        const brgemm_thread_ctx_t &btc, const dim_t ic) const {
-    const auto &jcp = pd()->jcp_;
-    const memory_desc_wrapper src_d(pd()->src_md());
-
-    // The second arg in template means sub_offset0 = true
-    // See `blk_off` method definition.
-    const auto batch_offs = btc.n * src_d.blk_off<false, true>(1);
-    const auto group_offs
-            = btc.g * src_d.blk_off<false, true>(0, 1) * jcp.ic + ic;
-    return src_dsz * (src_d.off_l(0) + batch_offs + group_offs);
-}
-
-template <cpu_isa_t isa>
 brgemm_convolution_fwd_t<isa>::brgemm_convolution_fwd_t(const pd_t *apd)
     : primitive_t(apd), bias_d(pd()->weights_md(1)) {}
 
@@ -760,8 +746,8 @@ status_t brgemm_convolution_fwd_t<isa>::add_brg_kernel(int brg_idx) {
     return status::success;
 }
 
-template <cpu_isa_t isa, bool use_inversion>
-status_t brgemm_convolution_fwd_t<isa, use_inversion>::add_po_kernel(
+template <cpu_isa_t isa>
+status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
         brgemm_desc_t *bcfg, int ker_idx, bool is_init) {
     if (!bcfg) return status::success;
     const auto _pd = pd();

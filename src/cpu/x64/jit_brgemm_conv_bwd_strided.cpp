@@ -111,12 +111,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
             && IMPLICATION(
                     with_bias(), one_of(bias_md_.data_type, f32, wei_type));
 
-    const bool is_fp8_supported = one_of(wei_type, f8_e5m2, f8_e4m3)
-            && one_of(diff_dst_type, f8_e5m2, f8_e4m3)
-            && one_of(diff_src_type, wei_type, f32, f8_e5m2, f8_e4m3)
-            && IMPLICATION(
-                    with_bias(), one_of(bias_md_.data_type, f32, wei_type));
-
     VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(
             impl_supports_datatype(diff_src_type), VERBOSE_UNSUPPORTED_DT);
@@ -290,8 +284,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::add_brg_kernel(
     return status::success;
 }
 
-template <cpu_isa_t isa, bool is_deconv>
-status_t brgemm_convolution_bwd_strided_t<isa, is_deconv>::add_po_kernel(
+template <cpu_isa_t isa>
+status_t brgemm_convolution_bwd_strided_t<isa>::add_po_kernel(
         brgemm_desc_t *bcfg, int ker_idx, bool is_init) {
     if (!bcfg) return status::success;
     const auto _pd = pd();
@@ -312,7 +306,6 @@ status_t brgemm_convolution_bwd_strided_t<isa, is_deconv>::add_po_kernel(
     return status::success;
 }
 
-// TODO: consolidate with jit_brgemm_conv.cpp version.
 template <cpu_isa_t isa>
 void brgemm_convolution_bwd_strided_t<isa>::add_po_kernels(
         int i_N, int init_bcast_dim, int po_bcast_dim) {
@@ -350,7 +343,6 @@ void brgemm_convolution_bwd_strided_t<isa>::add_po_kernels(
         }
     }
 }
-
 template <cpu_isa_t isa>
 int brgemm_convolution_bwd_strided_t<isa>::get_comp_ker_idx(const int kd_b,
         const int kd_e, const int kh_b, const int kh_e, const int kw_b,

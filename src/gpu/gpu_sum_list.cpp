@@ -35,7 +35,7 @@ namespace {
 // INSTANCE(jit::gen9_simple_sum_t)
 
 // clang-format off
-constexpr impl_list_item_t sum_impl_list[] = REG_SUM_P({
+constexpr impl_list_item_t impl_list[] = REG_SUM_P({
         SUM_INSTANCE(intel::ocl::multi_po_reorder_sum)
         SUM_INSTANCE(intel::ocl::gen9_sum_t)
         SUM_INSTANCE(intel::ocl::many_inputs_sum_t)

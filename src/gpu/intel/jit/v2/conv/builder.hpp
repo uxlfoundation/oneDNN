@@ -1,5 +1,6 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
+* Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,12 +15,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_V2_CONV_BUILDER_HPP
-#define GPU_INTEL_JIT_V2_CONV_BUILDER_HPP
-
-#include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
-#include "gpu/intel/jit/v2/conv/kernel_desc.hpp"
+#include "gpu/nvidia/cudnn_sum.hpp"
+#include "gpu/gpu_impl_list.hpp"
+#include "gpu/nvidia/sycl_cuda_engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,8 +27,14 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-stmt_t build_ir(const kernel_desc_t &desc, const kernel_info_t &kernel_info,
-        const grid_context_t &grid_ctx);
+// clang-format off
+constexpr impl_list_item_t cuda_sum_impl_list[] = {
+        GPU_SUM_INSTANCE_NVIDIA(gpu::nvidia::cudnn_ref_sum_t)
+        nullptr
+};
+// clang-format on
+
+} // namespace
 
 } // namespace conv
 } // namespace v2

@@ -20,6 +20,8 @@
 #include <map>
 #include <vector>
 
+#include "oneapi/dnnl/dnnl.h"
+
 #include "common/engine.hpp"
 #include "common/impl_list_item.hpp"
 #include "common/impl_registration.hpp"
@@ -138,22 +140,14 @@ namespace gpu {
     DNNL_GPU_AMD_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
 #define GPU_REORDER_INSTANCE_GENERIC_SYCL(...) \
     DNNL_GPU_GENERIC_SYCL_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
-#define GPU_REORDER_INSTANCE_GENERIC(...) GPU_REORDER_INSTANCE(__VA_ARGS__)
+#define GPU_REORDER_INSTANCE_GENERIC(...) GPU_REORDER_INSTANCE(__VA_ARGS_)
 
 // Instance macros that are enabled only in the DEV_MODE.
 #ifdef DNNL_DEV_MODE
 #define GPU_INSTANCE_INTEL_DEVMODE(...) \
-    DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
+    DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS_))
 #else
 #define GPU_INSTANCE_INTEL_DEVMODE(...)
-#endif
-
-// Instance macros that are enabled only when REF is disabled
-#ifdef DNNL_DISABLE_GPU_REF_KERNELS
-#define GPU_INSTANCE_INTEL_REF(...)
-#else
-#define GPU_INSTANCE_INTEL_REF(...) \
-    DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
 #endif
 
 #define DECLARE_IMPL_LIST(kind) \

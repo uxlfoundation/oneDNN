@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2024 Intel Corporation
-* Copyright 2020-2022 Codeplay Software Limited
+* Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,36 +14,33 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#include "common/engine.hpp"
-#include "gpu/amd/miopen_reorder.hpp"
-#include "gpu/amd/sycl_hip_engine.hpp"
+
 #include "gpu/gpu_impl_list.hpp"
-#include "gpu/intel/ocl/cross_engine_reorder.hpp"
+#include "gpu/intel/ocl/ref_concat.hpp"
+#include "gpu/nvidia/sycl_cuda_engine.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace amd {
+namespace nvidia {
 
 namespace {
 
 // clang-format off
-constexpr impl_list_item_t hip_reorder_impl_list[] = {
-        GPU_REORDER_INSTANCE_AMD(gpu::intel::ocl::cross_engine_reorder_t::pd_t)
-        GPU_REORDER_INSTANCE_AMD(gpu::amd::miopen_reorder_t::pd_t)
-        nullptr,
+constexpr impl_list_item_t cuda_concat_impl_list[] = {
+        GPU_CONCAT_INSTANCE_NVIDIA(gpu::intel::ocl::ref_concat_t)
+        nullptr
 };
 // clang-format on
 
 } // namespace
 
 const impl_list_item_t *
-hip_gpu_engine_impl_list_t::get_reorder_implementation_list(
-        const memory_desc_t *, const memory_desc_t *) {
-    return hip_reorder_impl_list;
+cuda_gpu_engine_impl_list_t::get_concat_implementation_list() {
+    return cuda_concat_impl_list;
 }
 
-} // namespace amd
+} // namespace nvidia
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

@@ -30,6 +30,10 @@
 #include "gpu/amd/miopen_eltwise.hpp"
 #endif
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
+#include "gpu/amd/miopen_eltwise.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

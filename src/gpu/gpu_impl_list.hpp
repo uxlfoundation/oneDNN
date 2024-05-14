@@ -20,6 +20,8 @@
 #include <map>
 #include <vector>
 
+#include "oneapi/dnnl/dnnl.h"
+
 #include "common/engine.hpp"
 #include "common/impl_list_item.hpp"
 #include "common/impl_registration.hpp"
@@ -37,7 +39,8 @@ namespace gpu {
 // - INTEL
 // - NVIDIA
 // - AMD
-// - GENERIC (standalone or in a combination with the other vendors)
+// - GENERIC (standalone (not yet supported) or in a combination with the
+//            other vendors)
 //
 // The macros for INTEL, NVIDIA and AMD vendors assume that all implementations
 // within a single vendor can be enabled at once.
@@ -48,6 +51,8 @@ namespace gpu {
 //            and runtime, e.g. an implementation of the concat primitive
 //            based on reorders.
 // - GENERIC_SYCL: SYCL generic implementations (written in generic SYCL).
+//                 NOTE: these implementations are currently only enabled for
+//                 NVIDIA vendor.
 //
 // The concat, sum and reorder primitives require specialized versions of the
 // macros because their `pd_t::create` functions have unique signatures.
@@ -71,12 +76,11 @@ namespace gpu {
 #define DNNL_GPU_AMD_ONLY(...)
 #endif
 
+// NOTE: Support for the standalone GENERIC vendor has not been added yet.
 #if defined(DNNL_WITH_SYCL) \
         && ((DNNL_GPU_VENDOR == DNNL_VENDOR_GENERIC) \
-                || (DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA) \
-                || (DNNL_AMD_ENABLE_SYCL_KERNELS == 1))
+                || (DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA))
 #define DNNL_GPU_GENERIC_SYCL_ONLY(...) __VA_ARGS__
-#define GENERIC_SYCL_KERNELS_ENABLED
 #else
 #define DNNL_GPU_GENERIC_SYCL_ONLY(...)
 #endif
@@ -136,30 +140,14 @@ namespace gpu {
     DNNL_GPU_AMD_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
 #define GPU_REORDER_INSTANCE_GENERIC_SYCL(...) \
     DNNL_GPU_GENERIC_SYCL_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
-#define GPU_REORDER_INSTANCE_GENERIC(...) GPU_REORDER_INSTANCE(__VA_ARGS__)
+#define GPU_REORDER_INSTANCE_GENERIC(...) GPU_REORDER_INSTANCE(__VA_ARGS_)
 
 // Instance macros that are enabled only in the DEV_MODE.
 #ifdef DNNL_DEV_MODE
 #define GPU_INSTANCE_INTEL_DEVMODE(...) \
-    DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
+    DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS_))
 #else
 #define GPU_INSTANCE_INTEL_DEVMODE(...)
-#endif
-
-// Instance macros that are enabled only with DNNL_EXPERIMENTAL.
-#ifdef DNNL_EXPERIMENTAL
-#define GPU_INSTANCE_INTEL_EXPERIMENTAL(...) \
-    DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
-#else
-#define GPU_INSTANCE_INTEL_EXPERIMENTAL(...)
-#endif
-
-// Instance macros that are enabled only when REF is disabled
-#ifdef DNNL_DISABLE_GPU_REF_KERNELS
-#define GPU_INSTANCE_INTEL_REF(...)
-#else
-#define GPU_INSTANCE_INTEL_REF(...) \
-    DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
 #endif
 
 #define DECLARE_IMPL_LIST(kind) \

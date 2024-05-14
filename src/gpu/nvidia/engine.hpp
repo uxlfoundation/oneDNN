@@ -23,7 +23,6 @@
 
 #include "common/stream.hpp"
 #include "common/thread_local_storage.hpp"
-#include "gpu/gpu_engine.hpp"
 #include "gpu/gpu_impl_list.hpp"
 #include "gpu/nvidia/sycl_cuda_utils.hpp"
 #include "xpu/sycl/engine_impl.hpp"
@@ -33,29 +32,35 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
-status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
-        const ::sycl::device &dev, const ::sycl::context &ctx, size_t index);
-
-class engine_t : public gpu::engine_t {
+class sycl_cuda_engine_t : public dnnl::impl::sycl::sycl_engine_base_t {
 public:
     engine_t(const ::sycl::device &dev, const ::sycl::context &ctx,
             size_t index);
 
     status_t init() { return init_impl(); }
 
-    status_t create_memory_storage(memory_storage_t **storage, unsigned flags,
-            size_t size, void *handle) override;
-
-    status_t create_stream(
-            impl::stream_t **stream, impl::stream_impl_t *stream_impl) override;
-
     void activate_stream_cudnn(CUstream cuda_stream);
     void activate_stream_cublas(CUstream cuda_stream);
 
-    const ::sycl::device &device() const { return impl()->device(); }
-    const ::sycl::context &context() const { return impl()->context(); }
+    const impl_list_item_t *get_reorder_implementation_list(
+            const memory_desc_t *src_md,
+            const memory_desc_t *dst_md) const override {
+        return gpu::gpu_impl_list_t::get_reorder_implementation_list(
+                src_md, dst_md);
+    }
 
-    xpu::sycl::backend_t backend() const { return impl()->backend(); }
+    const impl_list_item_t *get_concat_implementation_list() const override {
+        return gpu::gpu_impl_list_t::get_concat_implementation_list();
+    }
+
+    const impl_list_item_t *get_sum_implementation_list() const override {
+        return gpu::gpu_impl_list_t::get_sum_implementation_list();
+    }
+
+    const impl_list_item_t *get_implementation_list(
+            const op_desc_t *desc) const override {
+        return gpu::gpu_impl_list_t::get_implementation_list(desc);
+    }
 
     CUcontext get_underlying_context() const;
     CUdevice get_underlying_device() const;

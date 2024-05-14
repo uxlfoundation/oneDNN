@@ -82,6 +82,10 @@ struct dnnl_api_traits<dnnl_brgemm_pack_B_t> {
 
 namespace brgemm {
 
+#endif // DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+
+namespace brgemm {
+
 #if defined(brg_x64) || defined(brg_aarch64)
 
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
@@ -685,6 +689,14 @@ void init_memory_args(
     auto scratchpad_md
             = dnn_mem_t::init_md(ndims, scratchpad_dims, dt, tag::abx);
 
+    dnnl_dim_t scratchpad_size
+            = static_cast<dnnl_dim_t>(kernel_args.scratchpad_size_);
+    int ndims = scratchpad_size ? 1 : 0;
+    dnnl_data_type_t dt = scratchpad_size ? dnnl_u8 : dnnl_data_type_undef;
+    dnnl_dims_t scratchpad_dims = {scratchpad_size};
+    auto scratchpad_md
+            = dnn_mem_t::init_md(ndims, scratchpad_dims, dt, tag::abx);
+
     const auto &test_engine = get_test_engine();
 
     mem_map.emplace(DNNL_ARG_SRC, dnn_mem_t(src_md, test_engine));
@@ -741,6 +753,7 @@ void init_memory_args(
                 = dnn_mem_t::init_md(ndims, dims.data(), b.src1_dt, tag::abx);
         mem_map.emplace(po_arg, dnn_mem_t(po_md, test_engine));
     }
+}
 
     if (!prb->attr.scales.is_def()) {
         const auto &sc = prb->attr.scales;

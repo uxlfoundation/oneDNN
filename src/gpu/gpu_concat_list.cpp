@@ -24,6 +24,10 @@
 #include "gpu/intel/ocl/simple_concat.hpp"
 #endif
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+#include "gpu/intel/ocl/ref_concat.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

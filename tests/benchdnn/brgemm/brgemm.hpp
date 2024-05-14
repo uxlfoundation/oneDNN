@@ -99,8 +99,7 @@ struct prb_t : public prb_vdims_t {
         , batch_kind(batch_kind)
         , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
 
         // Broadcast data types if needed
         if (dt.size() == 1) {

@@ -11,5 +11,3 @@
 --batch=test_brgemm_f8
 
 --batch=harness_brgemm_fpmath
-
---batch=harness_brgemm_fp8

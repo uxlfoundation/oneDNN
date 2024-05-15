@@ -59,11 +59,7 @@ applied, the dimension should be the number of groups, which equals to
 @note `zps` is a tensor with offset values that map to zero. For `qtype` =
 `per-tensor`, there should be only one element in the `zps` tensor. For `qtype` =
 `per-channel`, the element number should be equal to the element number of input
-tensor along the dimension axis. For `qtype` = `per-group`, the `zps` tensor
-should have the same number of dimensions as the `src` tensor. On the dimensions
-where grouped quantization is applied, the dimension should be the number of
-groups, which equals to `src_dim` / `group_size`, while other dimensions should
-match the `src` tensor. If omitted, the `zps` values are assumed to be zero.
+tensor along the dimension axis. If omitted, zps values are assumed to be zero.
 
 ### Outputs
 

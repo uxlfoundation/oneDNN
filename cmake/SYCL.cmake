@@ -74,6 +74,27 @@ macro(adjust_headers_priority targets)
     endif()
 endmacro()
 
+# CUDA and ROCm contain OpenCL headers that conflict with the OpenCL
+# headers located in the compiler's directory.
+# The workaround is to get interface include directories from all CUDA/ROCm
+# import targets and lower their priority via `-idirafter` so that the
+# compiler picks up the proper OpenCL headers.
+macro(adjust_headers_priority targets)
+    if(NOT WIN32)
+        set(include_dirs)
+        foreach(import_target ${targets})
+            get_target_property(import_target_include_dirs ${import_target} INTERFACE_INCLUDE_DIRECTORIES)
+            set_target_properties(${import_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
+            list(APPEND include_dirs ${import_target_include_dirs})
+        endforeach()
+
+        list(REMOVE_DUPLICATES include_dirs)
+        foreach(include_dir ${include_dirs})
+            append(CMAKE_CXX_FLAGS "-idirafter${include_dir}")
+        endforeach()
+    endif()
+endmacro()
+
 if(DNNL_SYCL_CUDA)
     # XXX: Suppress warning coming from SYCL headers:
     #   error: use of function template name with no prior declaration in

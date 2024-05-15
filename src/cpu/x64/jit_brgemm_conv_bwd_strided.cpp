@@ -303,12 +303,12 @@ status_t brgemm_convolution_bwd_strided_t<isa>::add_po_kernel(
             = (!is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer)) ? 1 : 0;
     bcfg->beta = is_init ? 0 : 1;
     CHECK(safe_ptr_assign(kernels_po_[ker_idx],
-            jit_brgemm_kernel_post_ops_base_t::create(
-                    isa, *bcfg, *_pd->attr())));
-    kernels_po_[ker_idx]->generate_kernel();
+            new jit_brgemm_kernel_post_ops<isa>(*bcfg, *_pd->attr())));
+    kernels_po_[ker_idx]->create_kernel();
     return status::success;
 }
 
+// TODO: consolidate with jit_brgemm_conv.cpp version.
 template <cpu_isa_t isa>
 void brgemm_convolution_bwd_strided_t<isa>::add_po_kernels(
         int i_N, int init_bcast_dim, int po_bcast_dim) {
@@ -344,6 +344,7 @@ void brgemm_convolution_bwd_strided_t<isa>::add_po_kernels(
         }
     }
 }
+
 template <cpu_isa_t isa>
 int brgemm_convolution_bwd_strided_t<isa>::get_comp_ker_idx(const int kd_b,
         const int kd_e, const int kh_b, const int kh_e, const int kw_b,

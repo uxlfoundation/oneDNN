@@ -18,7 +18,6 @@
 #include "common/verbose.hpp"
 
 #include "gpu/nvidia/engine.hpp"
-#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_compat.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
 

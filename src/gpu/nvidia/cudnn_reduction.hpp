@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,7 +25,7 @@
 #include "gpu/gpu_primitive.hpp"
 #include "gpu/nvidia/cudnn_reduction_impl.hpp"
 #include "gpu/nvidia/engine.hpp"
-#include "gpu/nvidia/stream.hpp"
+#include "gpu/nvidia/sycl_cuda_stream.hpp"
 #include "gpu/nvidia/sycl_cuda_utils.hpp"
 
 namespace dnnl {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +18,9 @@
 #include "xpu/sycl/utils.hpp"
 
 #include "gpu/nvidia/engine.hpp"
-#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_compat.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
+#include "gpu/nvidia/sycl_cuda_stream.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -38,6 +38,11 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
     *engine = e.release();
 
     return status::success;
+}
+
+status_t engine_t::create_memory_storage(
+        memory_storage_t **storage, unsigned flags, size_t size, void *handle) {
+    return impl()->create_memory_storage(storage, this, flags, size, handle);
 }
 
 engine_t::engine_t(
@@ -89,9 +94,12 @@ CUdevice engine_t::get_underlying_device() const {
     return compat::get_native<CUdevice>(device());
 }
 
-status_t engine_t::create_stream(
-        impl::stream_t **stream, impl::stream_impl_t *stream_impl) {
-    return nvidia::stream_t::create_stream(stream, this, stream_impl);
+status_t engine_t::create_stream(stream_t **stream, unsigned flags) {
+    return sycl_cuda_stream_t::create_stream(stream, this, flags);
+}
+
+status_t engine_t::create_stream(stream_t **stream, ::sycl::queue &queue) {
+    return sycl_cuda_stream_t::create_stream(stream, this, queue);
 }
 
 cudnnHandle_t *engine_t::get_cudnn_handle() {
@@ -102,6 +110,12 @@ cudnnHandle_t *engine_t::get_cudnn_handle() {
 cublasHandle_t *engine_t::get_cublas_handle() {
     if (!cublas_handle_.is_set()) set_cublas_handle();
     return cublas_handle_.get().get();
+}
+
+device_id_t engine_t::device_id() const {
+    return device_id_t(static_cast<int>(xpu::sycl::backend_t::nvidia),
+            static_cast<uint64_t>(compat::get_native<CUdevice>(device())),
+            static_cast<uint64_t>(0));
 }
 
 void engine_t::activate_stream_cublas(CUstream cuda_stream) {

@@ -71,6 +71,11 @@ protected:
         return (const xpu::sycl::engine_impl_t *)impl::engine_t::impl();
     }
 
+protected:
+    const xpu::sycl::engine_impl_t *impl() const {
+        return (const xpu::sycl::engine_impl_t *)impl::engine_t::impl();
+    }
+
 private:
     status_t set_cudnn_handle();
     status_t set_cublas_handle();

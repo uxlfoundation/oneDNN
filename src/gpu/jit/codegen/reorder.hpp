@@ -1027,20 +1027,34 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     int dst_byte_off = dst.byte_offset();
 
     // If src is aligned with dst, return.
+#if XE3P
+    if (scope.hw() < ngen::Core::Xe3p && (is_xf || is_bf_to_f)
+            && src_off == dst_off)
+        return;
+#else
     if ((is_xf || is_bf_to_f) && src_off == dst_off) return;
+#endif
     if (!is_xf && src_byte_off == dst_byte_off) return;
 
     int new_src_byte_off = (is_xf ? dst_off * src_type_size : dst_byte_off);
 
     int esize = mod.getExecSize();
+    int new_stride = src_stride;
     int grf_size = ngen::GRF::bytes(scope.hw());
     int src_size = std::max(src_type_size * esize * src_stride, src_type_size);
 
+#if XE3P
+    if (is_bf_to_f && scope.hw() == ngen::Core::Xe3p) {
+        new_stride = 2;
+        new_src_byte_off = 2;
+    }
+#endif
+
     auto new_src = scope.alloc_reg_buf_data(
             utils::div_up(src_size + new_src_byte_off, grf_size));
-    new_src = new_src.format(new_src_byte_off, src.type(), esize, src_stride);
+    new_src = new_src.format(new_src_byte_off, src.type(), esize, new_stride);
     emit_reorder_1d_tile(scope.hw(), host, scope, esize, src, src_stride,
-            new_src, src_stride);
+            new_src, new_stride);
     src = std::move(new_src);
 }
 

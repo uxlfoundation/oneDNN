@@ -179,6 +179,10 @@ struct gen_gemm_t : public gpu_gemm_t {
                     IMPLICATION(with_bias(),
                             (d->c_type() != f64 || d->bias_type() == f64)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
+            VDISPATCH_GEMM(
+                    IMPLICATION(with_bias(),
+                            (d->c_type() != f64 || d->bias_type() == f64)),
+                    VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
             VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),

@@ -17,6 +17,8 @@
 #ifndef GPU_INTEL_JIT_GEMM_UTILS_HPP
 #define GPU_INTEL_JIT_GEMM_UTILS_HPP
 
+#include <stdexcept>
+
 #include "common/math_utils.hpp"
 #include "common/utils.hpp"
 
@@ -72,35 +74,13 @@ static inline int largest_pow2_divisor(int x) {
 
 class stub_exception : public std::runtime_error {
 public:
-    stub_exception(const char *msg = unimpl()) : std::runtime_error(msg) {}
-    stub_exception(const char *msg, const char *file, size_t line)
-        : std::runtime_error(std::string(msg) + " (at " + std::string(file)
-                + ":" + std::to_string(line) + ")") {}
-    stub_exception(const char *file, size_t line)
-        : stub_exception(unimpl(), file, line) {}
-    static const char *unimpl() { return "Functionality is unimplemented"; };
+    stub_exception()
+        : std::runtime_error("Functionality not yet implemented") {}
 };
 
-#ifdef __cpp_lib_source_location
-[[noreturn]] static inline void stub(
-        std::source_location where = std::source_location::current()) {
-    throw stub_exception(where.file_name(), where.line());
-}
-
-[[noreturn]] static inline void stub(const char *msg,
-        std::source_location where = std::source_location::current()) {
-    throw stub_exception(msg, where.file_name(), where.line());
-}
-
-#else
 [[noreturn]] static inline void stub() {
     throw stub_exception();
 }
-
-[[noreturn]] static inline void stub(const char *msg) {
-    throw stub_exception(msg);
-}
-#endif
 
 } // namespace jit
 } // namespace intel

@@ -266,9 +266,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
 
     strategy.unroll[LoopK] = 1;
     strategy.checkAdd32 = !native64Bit(hw) || (hw == HW::XeHPC);
-#if XE3P
-    strategy.checkAdd32 &= (hw < HW::Xe3p);
-#endif
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block)
             || strategy.kParallel;
 

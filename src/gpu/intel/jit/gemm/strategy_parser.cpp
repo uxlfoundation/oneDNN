@@ -257,7 +257,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
     strategy.B_prefetch.padded |= isPacked(problem.B.layout);
 
     strategy.unroll[LoopK] = 1;
-    strategy.checkAdd32 = !native64Bit(hw) || (hw >= HW::XeHPC);
+    strategy.checkAdd32 = !native64Bit(hw) || (hw == HW::XeHPC);
     strategy.checkAdd32 &= (hw < HW::Xe3p);
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block)
             || strategy.kParallel;

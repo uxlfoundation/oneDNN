@@ -68,6 +68,7 @@ public:
         reorder_prim_ = reorder(pd);
         return status::success;
     }
+    bool get_inplace() { return is_inplace_; }
     status_t execute(const stream &astream,
             const std::unordered_map<int, memory> &args) const {
         if (is_inplace_)
@@ -88,10 +89,6 @@ public:
 
     // SDP input dimension
     memory::dim batch_size, num_head, seq_len_q, size_per_head;
-
-    // SDP input and output strides
-    memory::dims src1_strides, wei1_strides, wei2_strides, dst_strides,
-            post_add_strides;
 
     // SDP input and output strides
     memory::dims src1_strides, wei1_strides, wei2_strides, dst_strides,
@@ -241,7 +238,7 @@ public:
         sub_reorder0_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
         // per-head: reorder src1 to dense, for first matmul
-        memory::dims sub_src1_dims = {1, 1, seq_len, size_per_head};
+        memory::dims sub_src1_dims = {1, 1, seq_len_q, size_per_head};
         src1_strides = ltw(inputs[graph_inport[0]]).vstrides();
         sub_src1_md = memory::desc(sub_src1_dims, dt_src_user,
                 {1, 1, src1_strides[2], src1_strides[3]});
@@ -257,7 +254,7 @@ public:
         // create reorder1 primitive attr
         dnnl::primitive_attr sub_reorder1_attr
                 = make_primitive_attr(sdp_op[0], mgr);
-        memory::dims sub_wei1_dims = {1, 1, size_per_head, seq_len};
+        memory::dims sub_wei1_dims = {1, 1, size_per_head, seq_len_kv};
         auto wei_md = make_dnnl_memory_desc(
                 sdp_op[1]->get_input_value(1)->get_logical_tensor());
         wei1_strides = wei_md.get_strides();
@@ -318,7 +315,7 @@ public:
         // create reorder2 primitive attr
         dnnl::primitive_attr sub_reorder2_attr
                 = make_primitive_attr(sdp_op[3], mgr);
-        memory::dims sub_wei2_dims = {1, 1, seq_len, size_per_head};
+        memory::dims sub_wei2_dims = {1, 1, seq_len_kv, size_per_head};
         wei2_strides = ltw(inputs[graph_inport[4]]).vstrides();
         sub_wei2_user_md = memory::desc(sub_wei2_dims, dt_wei_user,
                 {1, 1, wei2_strides[2], wei2_strides[3]});
@@ -346,7 +343,7 @@ public:
         // per-head: reorder dst2 from dense to strided
         primitive_attr sub_reorder3_attr;
         sub_reorder3_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-        memory::dims sub_dst_dims = {1, 1, seq_len, size_per_head};
+        memory::dims sub_dst_dims = {1, 1, seq_len_q, size_per_head};
         auto out_lt = sdp_op[4]->get_output_value(0)->get_logical_tensor();
         dst_strides = ltw(out_lt).vstrides();
         sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, tag::abcd);
@@ -1156,6 +1153,10 @@ public:
             //reorder3
             auto &sub_dst_user_tid
                     = res->mem_map[sdp_cfg_.sub_dst_user.get()][tid];
+
+            // matmul2
+            auto &sub_mm2_dst_tid
+                    = res->mem_map[sdp_cfg_.sub_mm2_dst.get()][tid];
 
             const size_t sub_src1_offset
                     = (bo * sdp_cfg_.src1_strides[0]

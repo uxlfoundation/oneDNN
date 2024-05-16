@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,11 +16,7 @@
 
 #include "common/engine.hpp"
 
-#include "common/memory.hpp"
-#include "common/memory_storage.hpp"
-#include "gpu/intel/sycl/compat.hpp"
-#include "sycl/sycl_device_info.hpp"
-#include "sycl/sycl_stream.hpp"
+#include "xpu/sycl/engine_impl.hpp"
 #include "xpu/sycl/memory_storage.hpp"
 
 namespace dnnl {
@@ -39,9 +35,9 @@ status_t engine_impl_t::create_memory_storage(memory_storage_t **storage,
 
     if (flags & memory_flags_t::prefer_device_usm) {
         _storage.reset(new xpu::sycl::usm_memory_storage_t(
-                this, ::sycl::usm::alloc::device));
+                engine, ::sycl::usm::alloc::device));
     } else
-        _storage.reset(new xpu::sycl::buffer_memory_storage_t(this));
+        _storage.reset(new xpu::sycl::buffer_memory_storage_t(engine));
 
     if (!_storage) return status::out_of_memory;
 

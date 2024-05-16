@@ -157,6 +157,15 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
         return jit_generator::operator()(args);
     }
 
+    // These two methods are required for a base class to work since it's not
+    // derived from the jit_generator.
+    status_t generate_kernel() override {
+        return jit_generator::create_kernel();
+    }
+    void operator()(brgemm_kernel_post_ops_args_t *args) const override {
+        return jit_generator::operator()(args);
+    }
+
     ~jit_brgemm_kernel_post_ops_t() = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops_t)

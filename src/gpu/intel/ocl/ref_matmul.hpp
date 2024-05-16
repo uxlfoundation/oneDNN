@@ -95,6 +95,8 @@ struct ref_matmul_t : public gpu_primitive_t {
                                      utils::one_of(bia_dt_, f32, u8, s8, s32)))
                             || ((utils::everyone_is(
                                          f32, src_dt_, wei_dt_, dst_dt_)
+                                        || utils::everyone_is(
+                                                f64, src_dt_, wei_dt_, dst_dt_)
                                         || (utils::everyone_is(
                                                     f16, src_dt_, wei_dt_)
                                                 && utils::one_of(
@@ -116,17 +118,6 @@ struct ref_matmul_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_MATMUL_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(post_ops_with_binary_ok(attr(), dst_dt_, 6),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            const memory_desc_wrapper dropout_md(attr_.dropout_.dropout_desc_);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            dropout_md.similar_to(dst_md(), true, false)),
-                    VERBOSE_INCONSISTENT_MDS, "dropout", "dst");
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            utils::one_of(dropout_md.data_type(), u8, s8)),
-                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(
                     IMPLICATION(utils::one_of(f64, src_dt_, wei_dt_, dst_dt_),
                             dev_info_->has_native(f64)),

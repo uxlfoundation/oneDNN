@@ -97,10 +97,6 @@ bool Type::isSubsetOf(Type T) const {
     return (bits() < T.bits());
 }
 
-void Type::subByteCheck() const {
-    if (isInt4()) stub();
-}
-
 constexpr bool operator==(const RegData &rd, int i) {
     return false;
 }
@@ -166,8 +162,8 @@ static inline bool hasNativeAtomicAdd(HW hw, Type T,
         return true;
     else if (T == Type::f32)
         return floatAtomics && (hw >= HW::XeHP);
-    else if (T == Type::f16 || T == Type::bf16)
-        return (hw >= HW::Xe3p);
+    else if (T == Type::f64)
+        return floatAtomics && (hw >= HW::XeHPC);
     else
         return false;
 }
@@ -5882,12 +5878,9 @@ static inline bool canRelAddr(const RegisterBlock &blockSrc,
 }
 
 static inline int block2DWidthAlignment(Type T, const RegisterBlock &block,
-        const MatrixAddressing &atype,
         const MatrixAddressingStrategy &astrategy) {
     // Block 2D width must be DW-aligned, but generally use QW alignment for better performance for reads.
-    return ((astrategy.noExtraPad || block.writable || atype.alignment % 8)
-                    ? 4
-                    : 8);
+    return ((astrategy.noExtraPad || block.writable) ? 4 : 8);
 }
 
 static inline int block2DBaseAlignment(HW hw, int stepping) {
@@ -6110,7 +6103,7 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
             if (doBaseAdjust && !astrategy.address2D) stub();
             Subregister baStorage, baseAdjust, baseAdjustElems;
 
-            int widthAlign = block2DWidthAlignment(T, block, atype, astrategy);
+            int widthAlign = block2DWidthAlignment(T, block, astrategy);
 
             if (!astrategy.address2D) mov(4, addr[0].ud(4)(1), 0u);
 
@@ -6867,7 +6860,6 @@ void gemm_kernel_generator_t<hw>::remaskLayout(Type T, int index, bool column,
 }
 
 static bool needsRemask(Type T, bool column, const RegisterBlock &block,
-        const MatrixAddressing &atype,
         const MatrixAddressingStrategy &astrategy, bool ignoreMasks = false) {
     if (!ignoreMasks)
         if (column ? !block.remainderC : !block.remainderR) return false;
@@ -6879,8 +6871,8 @@ static bool needsRemask(Type T, bool column, const RegisterBlock &block,
     int maskGranularity = block.ebytes;
     if (block.ebytes >= 16) maskGranularity = 4;
     if (block2DRemask)
-        maskGranularity = std::max(maskGranularity,
-                block2DWidthAlignment(T, block, atype, astrategy));
+        maskGranularity = std::max(
+                maskGranularity, block2DWidthAlignment(T, block, astrategy));
     if (ignoreMasks && !(block2DRemask && astrategy.address2D))
         maskGranularity = 256;
 
@@ -6888,11 +6880,10 @@ static bool needsRemask(Type T, bool column, const RegisterBlock &block,
 }
 
 static bool needsRemask(Type T, bool column,
-        const vector<RegisterBlock> &layout, const MatrixAddressing &atype,
+        const vector<RegisterBlock> &layout,
         const MatrixAddressingStrategy &astrategy, bool ignoreMasks = false) {
     for (auto &block : layout)
-        if (needsRemask(T, column, block, atype, astrategy, ignoreMasks))
-            return true;
+        if (needsRemask(T, column, block, astrategy, ignoreMasks)) return true;
     return false;
 }
 
@@ -14889,11 +14880,11 @@ void gemm_kernel_generator_t<hw>::kLoopActivateSLMRemainder(bool active,
     bool asIfMaskedAi = Ai_lateKRem && state.Ai_strategy.padded;
     bool asIfMaskedBi = Bi_lateKRem && state.Bi_strategy.padded;
     slmRemaskA = slmA && mayAccessAllK && !Ai_remIncrCopy
-            && needsRemask(Ta_ext, true, state.Ai_layoutRem, state.Ai,
-                    state.Ai_strategy, asIfMaskedAi);
+            && needsRemask(Ta_ext, true, state.Ai_layoutRem, state.Ai_strategy,
+                    asIfMaskedAi);
     slmRemaskB = slmB && mayAccessAllK && !Bi_remIncrCopy
-            && needsRemask(Tb_ext, false, state.Bi_layoutRem, state.Bi,
-                    state.Bi_strategy, asIfMaskedBi);
+            && needsRemask(Tb_ext, false, state.Bi_layoutRem, state.Bi_strategy,
+                    asIfMaskedBi);
 }
 
 static inline void kLoopModifiedFlagAP(GEMMState &state) {
@@ -15557,8 +15548,10 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         int last = unrollK;
         if (hasFlags(state.A_layout)) last = std::min(last, ka_loadMain);
         if (hasFlags(state.B_layout)) last = std::min(last, kb_loadMain);
-        if (hasFlags(state.Ap_layout)) last = std::min(last, ka_pfStride);
-        if (hasFlags(state.Bp_layout)) last = std::min(last, kb_pfStride);
+        if (hasFlags(state.Ap_layout))
+            last = std::min(last, 1 + (strategy.prefetchA - 1) % ka_pfStride);
+        if (hasFlags(state.Bp_layout))
+            last = std::min(last, 1 + (strategy.prefetchB - 1) % kb_pfStride);
         if (hasFlags(state.Ai_layout) || hasFlags(state.Bi_layout)) {
             last = std::min(last, unrollKSLM);
             if (lookaheadSLMReload % unrollKSLM != 0)
@@ -15759,11 +15752,11 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
 
     // A/B remasking in k dimension, during remainder handling.
     bool remaskA = !slmA && readA && (minOPCount > 1)
-            && needsRemask(Ta_load, true, state.A_layoutRem, problem.A,
-                    strategy.A, state.A_lateKRem);
+            && needsRemask(Ta_load, true, state.A_layoutRem, strategy.A,
+                    state.A_lateKRem);
     bool remaskB = !slmB && readB && (minOPCount > 1)
-            && needsRemask(Tb_load, false, state.B_layoutRem, problem.B,
-                    strategy.B, state.B_lateKRem);
+            && needsRemask(Tb_load, false, state.B_layoutRem, strategy.B,
+                    state.B_lateKRem);
 
     if (Ta.isInteger() && Tb.isInteger() && !calcASums && !calcBSums) {
         // Only need to remask one operand for integer A/B. Choose the smaller one.
@@ -16688,8 +16681,12 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
     for (LoopType loop : {LoopM, LoopN, LoopK})
         state.remaindersCoop[loop] = state.remainders[loop];
 
-    if ((slmA || (strategy.prefetchA && strategy.cooperativePF)) && remM_A)
-        switch (state.effCoopA) {
+    auto calcMNRemCoop = [&](CoopSplit split, bool isM) {
+        auto loopX = isM ? LoopM : LoopN;
+        auto loopY = isM ? LoopN : LoopM;
+        switch (split) {
+            default: return state.remainders[loopX];
+            case CoopSplit::FullK: return state.remaindersWG[loopX];
             case CoopSplit::MN: {
                 auto rem = state.ra.alloc_sub<uint16_t>();
                 int32_t chunk = strategy.unroll[loopX] / strategy.wg[loopY];
@@ -16701,21 +16698,13 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
         }
     };
 
-    if ((slmB || (strategy.prefetchB && strategy.cooperativePF)) && remN_B)
-        switch (state.effCoopB) {
-            case CoopSplit::MN: {
-                state.remaindersCoop[LoopN] = state.ra.alloc_sub<uint16_t>();
-                int32_t chunkN = unrollN / strategy.wg[LoopM];
-                emad(1 | sat, state.remaindersCoop[LoopN],
-                        state.remainders[LoopN], -state.lidM.w(), chunkN,
-                        strategy, state);
-                break;
-            }
-            case CoopSplit::FullK:
-                state.remaindersCoop[LoopN] = state.remaindersWG[LoopN];
-                break;
-            default: break;
-        }
+    if ((slmA || (strategy.prefetchA && strategy.cooperativePF)) && remM_A) {
+        state.remaindersCoop[LoopM] = calcMNRemCoop(state.effCoopA, true);
+    }
+
+    if ((slmB || (strategy.prefetchB && strategy.cooperativePF)) && remN_B) {
+        state.remaindersCoop[LoopN] = calcMNRemCoop(state.effCoopB, false);
+    }
 
     // Prepare layouts for prefetch.
     bool remM_Cp = remM_C && strategy.C.base.isStateless();
@@ -17376,13 +17365,9 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
 
     auto assignAllMasks = [&]() {
         return assignMasks(state.A_layout, LoopM, LoopK, masks, strategy, state)
-                && assignMasks(
-                        state.A_layoutAlt, LoopM, LoopK, masks, strategy, state)
                 && assignMasks(state.A_offsetLayout, LoopM, LoopK, masks,
                         strategy, state)
                 && assignMasks(state.A_scaleLayout, LoopM, LoopK, masks,
-                        strategy, state)
-                && assignMasks(state.Ap_layout, LoopM, LoopK, A_cmasks,
                         strategy, state)
                 && assignMasks(state.Ap_layout, LoopM, LoopK, A_cmasks,
                         strategy, state)
@@ -17390,13 +17375,9 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
                         strategy, state)
                 && assignMasks(
                         state.B_layout, LoopK, LoopN, masks, strategy, state)
-                && assignMasks(
-                        state.B_layoutAlt, LoopK, LoopN, masks, strategy, state)
                 && assignMasks(state.B_offsetLayout, LoopK, LoopN, masks,
                         strategy, state)
                 && assignMasks(state.B_scaleLayout, LoopK, LoopN, masks,
-                        strategy, state)
-                && assignMasks(state.Bp_layout, LoopK, LoopN, B_cmasks,
                         strategy, state)
                 && assignMasks(state.Bp_layout, LoopK, LoopN, B_cmasks,
                         strategy, state)
@@ -22896,6 +22877,11 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
         if (hw < HW::Gen12LP && isIGEMM(Ta, Tb, Tc)) fmaSIMD = 32;
     }
 
+    // Force wider SIMD for 4x24 ZGEMM (otherwise uses too many flag registers)
+    if (GRF::bytes(hw) == 32 && (Tc == Type::f64) && unroll[LoopN] > 16) {
+        C.smode = ScatterSIMD::Wide;
+    }
+
     doubleWA |= (Tc_real == Type::f64) && (hw <= HW::Gen9);
 
     slmFenceWARWA |= (hw >= HW::XeHPG);
@@ -27635,8 +27621,8 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                 nelems_real = std::min(nelems_real,
                                         nes_real); // Special case: mixed mode packed downconversion limited to 1 GRF.
 
-                            bool src_f8 = Ts_real.isF8();
-                            bool dst_f8 = Td_real.isF8();
+                            bool src_f8 = Ts.isF8();
+                            bool dst_f8 = Td.isF8();
                             bool f8_align = src_f8 ^ dst_f8;
 
                             // Check if separate conversions are needed due to size changes.
@@ -27711,6 +27697,7 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                             if (bfHfCvt)
                                 sregConverted = sreg.reinterpret(
                                         0, ngen::DataType::f)(scrosspack);
+
                             if (f8_align || bfHfCvt) allocTemp();
                             if ((byteAlign || bfHfCvt) && Td_real != Type::u16)
                                 nelems_real = std::min(

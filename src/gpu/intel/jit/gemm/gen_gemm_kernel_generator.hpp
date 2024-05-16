@@ -64,6 +64,7 @@ public:
         invalid = 0,
         f16 = 0x01000201,
         f32 = 0x01010402,
+        f64 = 0x01020803,
         u4 = 0x21840100,
         s4 = 0x21850100,
         u8 = 0x01840100,
@@ -99,7 +100,7 @@ public:
         return (val == Type::u8) || (val == Type::s8);
     }
     constexpr bool isF8() const {
-        return (val == Type::bf8 || val == Type::hf8);
+        return (val == Type::bf8) || (val == Type::hf8);
     }
     constexpr bool isSigned() const {
         return (uint32_t(val) & 0x810000) != 0x800000;
@@ -115,8 +116,9 @@ public:
         return paddedSize();
     }
     constexpr int perByte() const { return isInt4() ? 2 : 1; }
-
-    void subByteCheck() const;
+    void subByteCheck() const {
+        if (isInt4()) stub();
+    }
 
     constexpr Type arithmetic() const {
         return (val == tf32) ? Type(f32) : real();
@@ -1319,8 +1321,25 @@ struct GEMMStrategy : public GEMMStrategyPOD {
 
     bool checkAdd32Rem() const { return checkAdd32 && emulate.emulate64; }
 
-    int aqGroupKGranularity() const { return slmA ? unrollKSLM : ka_load; }
-    int bqGroupKGranularity() const { return slmB ? unrollKSLM : kb_load; }
+    bool allowDoubleMasking(LoopType loop) const {
+        return doubleMasking || unroll[loop] == 1;
+    }
+
+    bool registerOutput() const {
+        return C.base.getModel() == ngen::ModelInvalid;
+    }
+
+    int aqGroupKGranularity() const {
+        return groupKReduce(slmA ? unrollKSLM : ka_load);
+    }
+    int bqGroupKGranularity() const {
+        return groupKReduce(slmB ? unrollKSLM : kb_load);
+    }
+    int groupKReduce(int x) const {
+        while (x > 32 && (x & 1) == 0)
+            x >>= 1;
+        return x;
+    }
 
     void serialize(serialized_data_t &s) const {
         const GEMMStrategyPOD &pod = *this;
@@ -2974,6 +2993,7 @@ inline char precisionChar(Type T) {
         case Type::bf8: return 'Q';
         case Type::hf8: return 'q';
         case Type::f32: return 'S';
+        case Type::f64: return 'D';
         case Type::u4: return 'f';
         case Type::s4: return 'F';
         case Type::u8: return 'o';
@@ -2996,6 +3016,7 @@ static inline Type charPrecision(char c) {
         case 'Q': return Type::bf8;
         case 'q': return Type::hf8;
         case 'S': return Type::f32;
+        case 'D': return Type::f64;
         case 'f': return Type::u4;
         case 'F': return Type::s4;
         case 'o': return Type::u8;

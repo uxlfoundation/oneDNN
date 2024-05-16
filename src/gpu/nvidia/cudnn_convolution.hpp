@@ -169,7 +169,7 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
 
     status_t init_temp_dst(impl::engine_t *engine) {
         const auto impl = pd()->impl_.get();
-        auto sycl_engine = utils::downcast<sycl_cuda_engine_t *>(engine);
+        auto sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
         memory_storage_t *scratch_ptr = nullptr;
         auto wrap = memory_desc_wrapper(pd()->dst_md_temp_);
         if (impl && impl->use_temp_dst()) {

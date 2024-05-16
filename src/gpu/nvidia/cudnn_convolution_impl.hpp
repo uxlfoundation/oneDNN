@@ -26,7 +26,6 @@
 #include "gpu/nvidia/cudnn_conv_filter_adjustment_base.hpp"
 #include "gpu/nvidia/cudnn_convolution_pd.hpp"
 #include "gpu/nvidia/engine.hpp"
-#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
 #include "gpu/nvidia/sycl_cuda_utils.hpp"
 
@@ -676,7 +675,7 @@ public:
         }
     }
     status_t init_scratchpad(impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<sycl_cuda_engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
         stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 
@@ -707,7 +706,7 @@ public:
     }
     status_t configure_alg_kind(
             impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<sycl_cuda_engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
         cuda_sycl_scoped_context_handler_t sc(sycl_engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -838,7 +837,7 @@ protected:
     int returned_algo_count = 0;
     status_t configure_alg_kind(
             impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<sycl_cuda_engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
         cuda_sycl_scoped_context_handler_t sc(sycl_engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -903,7 +902,7 @@ protected:
     }
 
     status_t init_scratchpad(impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<sycl_cuda_engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
         stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 
@@ -986,7 +985,7 @@ public:
     }
     virtual status_t configure_alg_kind(
             impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<sycl_cuda_engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
         cuda_sycl_scoped_context_handler_t sc(sycl_engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -1053,7 +1052,7 @@ public:
     }
 
     status_t init_scratchpad(impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<sycl_cuda_engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
         stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 

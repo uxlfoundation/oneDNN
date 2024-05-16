@@ -24,7 +24,6 @@
 #include "common/type_helpers.hpp"
 #include "gpu/nvidia/cudnn_batch_normalization_impl.hpp"
 #include "gpu/nvidia/engine.hpp"
-#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
 #include "gpu/nvidia/sycl_cuda_utils.hpp"
 #include "sycl_cuda_utils.hpp"

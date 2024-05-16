@@ -135,8 +135,29 @@ struct brgemm_kernel_post_ops_args_t {
     void *ptr_dst_scales;
 };
 
-template <cpu_isa_t isa>
-struct jit_brgemm_kernel_post_ops_t : public jit_generator {
+// This is a shim user interface that allows to create a template-free object
+// of post-ops class.
+struct jit_brgemm_kernel_post_ops_base_t {
+    // `isa` argument specifies the `Vmm` type the kernel to be generated for.
+    // Rest arguments are propagated as is to the underlying class.
+    static jit_brgemm_kernel_post_ops_base_t *create(cpu_isa_t isa,
+            const brgemm_desc_t &abrg, const primitive_attr_t &aattr);
+
+    virtual ~jit_brgemm_kernel_post_ops_base_t() = default;
+
+    virtual status_t generate_kernel() = 0;
+
+    virtual void operator()(brgemm_kernel_post_ops_args_t *args) const = 0;
+
+    virtual int get_bcast_dim() const = 0;
+};
+
+// An implementation class for post-ops based on `Vmm` template argument.
+// `Vmm` is propagated further to uni_postops injector class.
+// Shouldn't be called directly on implementation side.
+template <typename Vmm>
+struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
+                                      public jit_generator {
 
     // TODO: the proper design should replace `brgemm_desc_t` argument and
     // introduce a dedicated struct with members properly initialized. This will
@@ -147,6 +168,7 @@ struct jit_brgemm_kernel_post_ops_t : public jit_generator {
         : jit_generator(jit_name(), abrg.isa_impl)
         , brg_(abrg)
         , attr_(aattr)
+        , max_vregs_(isa_num_vregs(brg_.isa_impl))
         , with_binary_non_scalar_bcast_(brg_.with_binary
                   && binary_injector::
                           any_binary_postop_rhs_non_scalar_broadcast(
@@ -215,9 +237,12 @@ struct jit_brgemm_kernel_post_ops_t : public jit_generator {
             const eltwise_injector::static_params_t esp {
                     save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
-            postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<po_isa_t>>(
-                    this, attr_.post_ops_, bsp, esp);
+            auto st = safe_ptr_assign(postops_injector_,
+                    po_injector_t::create(
+                            this, brg_.isa_impl, attr_.post_ops_, bsp, esp));
+            if (st != status::success) {
+                assert(!"postops_injector creation failed");
+            }
         }
 
         const auto &wei_scales = attr_.scales_.get(DNNL_ARG_WEIGHTS);
@@ -235,12 +260,21 @@ struct jit_brgemm_kernel_post_ops_t : public jit_generator {
         bia_typesize_ = brg_.typesize_bias;
     }
 
+    // These two methods are required for a base class to work since it's not
+    // derived from the jit_generator.
+    status_t generate_kernel() override {
+        return jit_generator::create_kernel();
+    }
+    void operator()(brgemm_kernel_post_ops_args_t *args) const override {
+        return jit_generator::operator()(args);
+    }
+
     ~jit_brgemm_kernel_post_ops_t() = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops_t)
 
     // Used for assertion on implementation side in debug mode.
-    int get_bcast_dim() const { return brg_.bcast_dim; }
+    int get_bcast_dim() const override { return brg_.bcast_dim; }
 
 private:
     // This can't be a reference, otherwise, `get_bcast_dim()` would return
@@ -254,12 +288,11 @@ private:
     data_type_t inp_dt_;
     data_type_t out_dt_;
     data_type_t bia_dt_;
-    // TODO: get rid of this map because it requires updates with every new isa
-    static constexpr cpu_isa_t po_isa_t = utils::map(isa, avx512_core, avx2,
-            avx2, avx2_vnni, avx2, avx2_vnni_2, avx2_vnni_2, avx512_core_fp16,
-            avx512_core_fp16, avx10_1_512_amx_fp16, avx512_core_fp16);
-    std::unique_ptr<injector::jit_uni_postops_injector_t<po_isa_t>>
-            postops_injector_;
+
+    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower2_t = typename vreg_traits<Vmm_lower_t>::Vmm_lower_t;
+    using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
+    std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
     std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
     std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
@@ -274,11 +307,6 @@ private:
     int is_oc_scale_;
 
     using reg64_t = const Xbyak::Reg64;
-    using Vmm = typename utils::conditional<utils::one_of(isa, avx2, avx2_vnni,
-                                                    avx2_vnni_2),
-            Xbyak::Ymm, Xbyak::Zmm>::type;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
-    using Vmm_lower2_t = typename vreg_traits<Vmm_lower_t>::Vmm_lower_t;
 
     // Register decomposition
     const reg64_t reg_reserved_eltwise = rax;
@@ -379,7 +407,7 @@ private:
                 // no tail and full vmm must be processed.
                 && tail_size > 0;
 
-        if (IMPLICATION(is_tail, isa_has_masks(isa))) {
+        if (IMPLICATION(is_tail, isa_has_masks(brg_.isa_impl))) {
             const Vmm vmm = maybe_mask(vmm_in, is_tail, store, ktail_mask);
             switch (type_in) {
                 case data_type::f32:
@@ -428,7 +456,7 @@ private:
             auto vmm_sum_zp = vmm_tmp(1);
             if (*p_sum_zp != 0) {
                 mov(reg_ptr_sum_zp, (size_t)p_sum_zp);
-                if (is_superset(isa, avx512_core)) {
+                if (is_superset(brg_.isa_impl, avx512_core)) {
                     vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
                 } else {
                     vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
@@ -449,7 +477,7 @@ private:
                 if (*p_sum_scale == 1.f)
                     uni_vaddps(vmm, vmm, vmm_prev_dst);
                 else {
-                    if (is_superset(isa, avx512_core)) {
+                    if (is_superset(brg_.isa_impl, avx512_core)) {
                         vfmadd231ps(
                                 vmm, vmm_prev_dst, ptr_b[reg_ptr_sum_scale]);
                     } else {
@@ -499,10 +527,10 @@ private:
             for (int n = 0; n < n_block; n++) {
                 const size_t zp_comp_offset
                         = sizeof(int32_t) * (n * brg_.ld_block + m * brg_.LDB);
-                auto zp_comp_a_addr = is_superset(isa, avx512_core)
+                auto zp_comp_a_addr = is_superset(brg_.isa_impl, avx512_core)
                         ? EVEX_compress_addr(aux_reg_zp_a_comp, zp_comp_offset)
                         : ptr[aux_reg_zp_a_comp + zp_comp_offset];
-                if (IMPLICATION(has_tail, isa_has_masks(isa))) {
+                if (IMPLICATION(has_tail, isa_has_masks(brg_.isa_impl))) {
                     auto vmm_zp_comp_a_masked = maybe_mask(
                             vmm_zp_comp_a, has_tail, false, k_mask);
                     vmovups(vmm_zp_comp_a_masked, zp_comp_a_addr);
@@ -525,11 +553,11 @@ private:
                 const size_t s8s8_comp_offset
                         = sizeof(int32_t) * (n * brg_.ld_block + m * brg_.LDB);
 
-                auto comp_addr = is_superset(isa, avx512_core)
+                auto comp_addr = is_superset(brg_.isa_impl, avx512_core)
                         ? EVEX_compress_addr(
                                 aux_reg_s8s8_comp, s8s8_comp_offset)
                         : ptr[aux_reg_s8s8_comp + s8s8_comp_offset];
-                if (IMPLICATION(tail > 0, isa_has_masks(isa))) {
+                if (IMPLICATION(tail > 0, isa_has_masks(brg_.isa_impl))) {
                     auto vmm_comp_masked
                             = maybe_mask(vmm_comp, tail > 0, false, k_mask);
                     vmovups(vmm_comp_masked, comp_addr);
@@ -588,7 +616,7 @@ private:
                 const auto addr = ptr[aux_reg_scales
                         + is_oc_scale_ * sizeof(float) * (n * brg_.ld_block)];
                 auto vmm = vector(m, n);
-                if (IMPLICATION(tail > 0, isa_has_masks(isa))) {
+                if (IMPLICATION(tail > 0, isa_has_masks(brg_.isa_impl))) {
                     vmm = maybe_mask(vector(m, n), tail > 0, false, k_mask);
                     vmulps(vmm, vmm, addr);
                 } else {
@@ -617,12 +645,12 @@ private:
             mov(aux_reg_dst_scales, ptr[rsp + reg_dst_scales_offs_]);
             const auto addr = ptr[aux_reg_dst_scales];
             auto vmm_scales = vmm_tmp(0);
-            if (!isa_has_masks(isa)) vmovups(vmm_scales, addr);
+            if (!isa_has_masks(brg_.isa_impl)) vmovups(vmm_scales, addr);
 
             for_(int m = 0; m < m_block; m++)
             for (int n = 0; n < n_block; n++) {
                 auto vmm = vector(m, n);
-                if (isa_has_masks(isa)) {
+                if (isa_has_masks(brg_.isa_impl)) {
                     vmm = maybe_mask(vector(m, n), tail > 0, false, k_mask);
                     vmulps(vmm, vmm, addr);
                 } else {
@@ -635,7 +663,7 @@ private:
             mov(aux_reg_zp_c_values, ptr[rsp + aux_reg_zp_c_values_offs_]);
             auto vmm_zp_c = vmm_tmp(0);
             if (brg_.zp_type_c == brgemm_broadcast_t::per_tensor) {
-                if (is_superset(isa, avx512_core))
+                if (is_superset(brg_.isa_impl, avx512_core))
                     vcvtdq2ps(vmm_zp_c,
                             EVEX_compress_addr(aux_reg_zp_c_values, 0, true));
                 else {
@@ -646,7 +674,7 @@ private:
             for (int n = 0; n < n_block; n++) {
                 if (brg_.zp_type_c == brgemm_broadcast_t::per_n) {
                     int zp_c_off = zp_c_values_offset(n);
-                    auto zp_c_addr = is_superset(isa, avx512_core)
+                    auto zp_c_addr = is_superset(brg_.isa_impl, avx512_core)
                             ? EVEX_compress_addr(aux_reg_zp_c_values, zp_c_off)
                             : ptr[aux_reg_zp_c_values + zp_c_off];
                     cvt2ps(data_type::s32, vmm_zp_c, zp_c_addr, tail, false,
@@ -685,7 +713,7 @@ private:
                 saturate_cvt_f32(vmm, vmm_lbound, vmm_ubound, out_dt_);
             }
 
-            if (is_superset(isa, avx512_core)) {
+            if (is_superset(brg_.isa_impl, avx512_core)) {
                 auto vmm_masked = maybe_mask(vmm, tail > 0, true, k_mask);
                 Vmm_lower_t vmm_low = Vmm_lower_t(vmm.getIdx());
                 Vmm_lower2_t vmm_low2 = Vmm_lower2_t(vmm_low.getIdx());
@@ -873,7 +901,7 @@ private:
         int mb = brg_.bcast_dim / m_block;
         int mb_tail = brg_.bcast_dim % m_block;
 
-        if (isa_has_masks(isa)) {
+        if (isa_has_masks(brg_.isa_impl)) {
             const auto full_mask = size_t {0xffffffffffffffff};
             const auto tail_mask = size_t((1 << nb_tail) - 1);
 

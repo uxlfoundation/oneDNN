@@ -533,6 +533,10 @@ DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
             (r) * sizeof(*(ptr)), c, (rmax) * sizeof(*(ptr)), cmax, \
             (ld) * sizeof(*(ptr)), sg_id, n_sg, sg_size, caching)
 
+#define cooperative_prefetch_2d_rem(ptr, r, c, rmax, cmax, ld, sg_id, n_sg, sg_size, caching) \
+    cooperative_prefetch_2d_internal(ptr, (r) * sizeof(*(ptr)), c, \
+            (rmax) * sizeof(*(ptr)), cmax, (ld) * sizeof(*(ptr)), sg_id, n_sg, sg_size, caching)
+
 /* IGC prefetch intrinsics */
 enum LSC_LDCC {
     LSC_LDCC_DEFAULT = 0,

@@ -94,6 +94,9 @@ reduction_phase_conf_t::reduction_phase_conf_t(
     // inner_dim can either be:
     // 1. packed into a single subgroup (small inner dim), or
     // 2. split among several subgroups (large inner dim)
+    const dim_t num_packed_inner_dims
+            = nstl::clamp(subgroup_size / inner_block.block, dim_t {1},
+                    reduction_block.block);
     const dim_t num_split_inner_dims
             = utils::div_up(inner_block.block, subgroup_size);
 

@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "acl_convolution_utils.hpp"
+#include "cpu/aarch64/acl_convolution_utils.hpp"
 #include "common/convolution_pd.hpp"
 #include "common/utils.hpp"
 #include "oneapi/dnnl/dnnl.h"

@@ -341,9 +341,70 @@ public:
         return true;
     }
 
-    bool set_skip_exprs(const stmt_t &root, int limit, int grf_size) {
-        cse_skipper_t skipper(cse_exprs_, limit, grf_size);
-        skipper.visit(root);
+    void set_skip_exprs(const stmt_t &root, int limit, int grf_size) {
+        // Initialize variable-entry for each potential CSE variable.
+        std::vector<cse_var_entry_t> var_entries;
+        for (auto &kv : cse_exprs_) {
+            auto &cse_expr = kv.second;
+            if (cse_expr.cse_var.is_empty()) continue;
+            var_entries.emplace_back(&cse_expr);
+        }
+        // Create mapping from CSE var to entry.
+        object_map_t<expr_t, cse_var_entry_t *> var2entry;
+        for (auto &e : var_entries) {
+            var2entry.emplace(e.cse_expr()->cse_var, &e);
+            e.set_var2entry(var2entry);
+        }
+        // Initialize back references.
+        for (auto &e : var_entries) {
+            auto vars = find_objects<var_t>(e.cse_expr()->expr);
+            for (auto &v : vars) {
+                auto it = var2entry.find(v);
+                if (it == var2entry.end()) continue;
+                it->second->add_back_ref(&e);
+            }
+            var2entry.emplace(e.cse_expr()->cse_var, &e);
+        }
+        // Initialize cost.
+        for (auto &e : var_entries) {
+            e.recompute_cost();
+        }
+        // Initialize statement-entry for each potential statement of CSE
+        // variable attachement.
+        std::unordered_map<const object_impl_t *, cse_stmt_entry_t>
+                stmt_entries;
+        cse_memory_usage_visitor_t mem_usage_visitor(
+                stmt_entries, cse_exprs_, grf_size);
+        mem_usage_visitor.visit(root);
+        for (auto &kv : stmt_entries)
+            kv.second.propagate_usage_up();
+
+        // Greedily find the variable with the highest current complexity that
+        // won't exceed the usage limit, mark it as allocated and recompute
+        // complexity for other dependent vars. Stop once there are no
+        // such variables.
+        std::vector<cse_var_entry_t *> sorted_var_entries;
+        for (auto &e : var_entries)
+            sorted_var_entries.push_back(&e);
+
+        for (auto it = sorted_var_entries.begin();
+                it != sorted_var_entries.end();) {
+            std::sort(it, sorted_var_entries.end(),
+                    [&](const cse_var_entry_t *a, const cse_var_entry_t *b) {
+                        // Sort by cost per byte
+                        return a->cost() * b->size() > b->cost() * a->size();
+                    });
+            while (it != sorted_var_entries.end()) {
+                auto &e = **it;
+                auto &stmt_entry = stmt_entries.at(e.cse_expr()->path.back());
+                if (stmt_entry.try_allocate(e.size(), limit)) {
+                    e.mark_as_allocated();
+                    ++it;
+                    break;
+                }
+                ++it;
+            }
+        }
 
         // TODO: Rather than rerun CSE, just delete `let_t` and substitute
         // variables with their value.

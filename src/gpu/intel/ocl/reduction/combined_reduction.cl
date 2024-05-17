@@ -178,6 +178,10 @@ void write_padded_zeros(__global DST_DATA_T *dst) {
 #define SLM_PER_SG SUBGROUP_SIZE
 #endif
 
+#define DUMP(str, ...) \
+    DEBUG_PRINT("%d->%d/%d/%d: " str, get_global_id(0), tgid, sgid, sglid, \
+            __VA_ARGS__)
+
 // Specifying wg size since larger work groups reduce performance.
 // TODO: Look into why this is the case
 __attribute__((reqd_work_group_size(LWS_SIZE, 1, 1))) // attr:no-format

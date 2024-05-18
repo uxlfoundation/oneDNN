@@ -77,7 +77,12 @@ public:
 
     const cse_expr_t *cse_expr() const { return cse_expr_; }
 
-    bool allocated() const { return allocated_; }
+    bool unallocated() const { return allocated_ == allocated_t::no; }
+    bool allocated() const { return allocated_ == allocated_t::yes; }
+
+    void set_unallocated() { allocated_ = allocated_t::no; }
+    void set_allocated() { allocated_ = allocated_t::yes; }
+    void mark() { allocated_ = allocated_t::mark; }
 
     void set_unallocated() { allocated_ = false; }
     void set_allocated() { allocated_ = true; }

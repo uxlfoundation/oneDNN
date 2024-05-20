@@ -28,6 +28,7 @@
 #include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/utils.hpp"
 #include "gpu/sycl/sycl_interop_gpu_kernel.hpp"
+#include "xpu/ocl/utils.hpp"
 #include "xpu/sycl/engine_id.hpp"
 
 namespace dnnl {
@@ -173,16 +174,17 @@ public:
             assert(!"not expected");
             return nullptr;
         }
-        assert(device_.is_cpu() || device_.is_gpu());
+        assert(device().is_cpu() || device().is_gpu());
         return xpu::ocl::make_wrapper(
                 xpu::sycl::compat::get_native<cl_device_id>(device()));
     }
+
     cl_context ocl_context() const {
         if (backend() != xpu::sycl::backend_t::opencl) {
             assert(!"not expected");
             return nullptr;
         }
-        assert(device_.is_cpu() || device_.is_gpu());
+        assert(device().is_cpu() || device().is_gpu());
         return xpu::ocl::make_wrapper(
                 xpu::sycl::compat::get_native<cl_context>(context()));
     }

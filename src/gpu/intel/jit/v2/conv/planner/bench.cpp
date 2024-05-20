@@ -179,6 +179,7 @@ namespace prb_dims = dnnl::impl::gpu::intel::jit::prb_dims;
 class bench_task_t : public bench_task_base_t {
 public:
     bench_task_t(const problem_t &prb) : prb_(prb) {
+        g = prb.shape()[prb_dims::g];
         mb = prb.shape()[prb_dims::mb];
         oc = prb.shape()[prb_dims::oc];
         ic = prb.shape()[prb_dims::ic];
@@ -315,7 +316,7 @@ private:
     }
 
     problem_t prb_;
-    memory::dim mb;
+    memory::dim mb, g;
     memory::dim oc, ic;
     memory::dim ih, iw;
     memory::dim oh, ow;
@@ -348,7 +349,7 @@ prb_tile_t random_shape(bool is_dw = false) {
 }
 
 std::vector<problem_t> generate_problems(const kernel_desc_t &kd) {
-    srand(ir_utils::get_hash(jit::stringify(kd)));
+    srand(kd.get_hash());
     std::vector<problem_t> ret;
     const int nprbs = 100;
     const int max_iters = (1 << 20);

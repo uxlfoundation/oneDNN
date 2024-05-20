@@ -57,7 +57,8 @@ kernel_desc_t plan_registry_t::find_best(const problem_t &prb) const {
         float eff = e.model.eff(prb, e.desc);
         if (eff > best_eff) {
             best_eff = eff;
-            best = e.desc;
+            best = desc;
+            best.set_defaults();
         }
     }
     return best;

@@ -1135,6 +1135,10 @@ status_t infer_norm_output_shape(op_t *n,
     auto in0 = logical_tensor_wrapper_t(inputs[0]);
     const dims input0_dims = in0.vdims();
 
+    const dim_t begin_norm_axis = n->has_attr(op_attr::begin_norm_axis)
+            ? n->get_attr<dim_t>(op_attr::begin_norm_axis)
+            : -1;
+
     auto out1 = logical_tensor_wrapper_t(outputs[1]);
     auto out2 = logical_tensor_wrapper_t(outputs[2]);
     dims output_dims(input0_dims);

@@ -210,6 +210,8 @@ struct sycl_reorder_conf_t {
 
     int ndims;
 
+    int block_size;
+    int wg_size;
     int wk_size;
 
     sycl_post_ops_t post_ops;

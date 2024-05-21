@@ -75,7 +75,7 @@ struct batch_normalization_fwd_kernel_vec_t {
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &src1_md() const { return conf_.src1_md; }
-    const xpu::sycl::md_t &ws_md() const { return conf_.ws_md; }
+    const data_type_t &ws_dt() const { return conf_.ws_dt; }
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
     }
@@ -220,7 +220,7 @@ struct batch_normalization_fwd_kernel_vec_t1 {
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &src1_md() const { return conf_.src1_md; }
-    const xpu::sycl::md_t &ws_md() const { return conf_.ws_md; }
+    const data_type_t &ws_dt() const { return conf_.ws_dt; }
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
     }
@@ -385,7 +385,7 @@ struct batch_normalization_bwd_kernel_vec_t {
             xpu::sycl::in_memory_arg_t &stat, xpu::sycl::in_memory_arg_t &var,
             xpu::sycl::in_memory_arg_t &diff_dst,
             xpu::sycl::in_memory_arg_t &dst, xpu::sycl::in_memory_arg_t &ws,
-            xpu::sycl::in_memory_arg_t &diff_src1)
+            xpu::sycl::out_memory_arg_t &diff_src1)
         : conf_(conf)
         , data_(data)
         , diff_data_(diff_data)
@@ -409,9 +409,9 @@ struct batch_normalization_bwd_kernel_vec_t {
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
-    const xpu::sycl::md_t &diff_src1_md() const { return conf_.diff_src1_md; }
+    const data_type_t &diff_src1_dt() const { return conf_.diff_src1_dt; }
     const xpu::sycl::md_t &stat_d() const { return conf_.stat_md; }
-    const xpu::sycl::md_t &ws_md() const { return conf_.ws_md; }
+    const data_type_t &ws_dt() const { return conf_.ws_dt; }
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
     }
@@ -576,7 +576,7 @@ private:
     xpu::sycl::in_memory_arg_t diff_dst_;
     xpu::sycl::in_memory_arg_t dst_;
     xpu::sycl::in_memory_arg_t ws_;
-    xpu::sycl::in_memory_arg_t diff_src1_;
+    xpu::sycl::out_memory_arg_t diff_src1_;
 };
 
 } // namespace sycl

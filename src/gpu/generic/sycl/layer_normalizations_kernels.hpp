@@ -68,8 +68,7 @@ private:
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
     const unsigned flags() const { return conf_.flags; }
@@ -177,8 +176,7 @@ private:
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
     const unsigned flags() const { return conf_.flags; }
@@ -306,7 +304,6 @@ struct layer_normalization_bwd_kernel_vec_t {
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
     const xpu::sycl::md_t &stat_md() const { return conf_.stat_md; }
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
@@ -314,7 +311,7 @@ private:
     const xpu::sycl::md_t &diff_data_scaleshift_md() const {
         return conf_.diff_data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
     const unsigned flags() const { return conf_.flags; }
@@ -426,7 +423,6 @@ struct layer_normalization_bwd_kernel_vec2_t {
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
     const xpu::sycl::md_t &stat_md() const { return conf_.stat_md; }
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
@@ -434,7 +430,7 @@ private:
     const xpu::sycl::md_t &diff_data_scaleshift_md() const {
         return conf_.diff_data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
 
     const unsigned flags() const { return conf_.flags; }

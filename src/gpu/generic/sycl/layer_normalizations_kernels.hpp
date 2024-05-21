@@ -63,8 +63,7 @@ private:
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
     const unsigned flags() const { return conf_.flags; }
@@ -92,8 +91,9 @@ private:
 
         float eps = epsilon();
         const size_t s_off = conf_.stat_md.off_l(idx);
-        auto v_mean = stat_mem.load(s_off);
-        auto v_variance = var_mem.load(s_off);
+        auto v_mean
+                = load_float_value(stat_md().data_type(), stat_ptr(), s_off);
+        auto v_variance = load_float_value(var_dt(), var_ptr(), s_off);
         dim_t C = conf_.C;
 
         float sqrt_variance = sqrtf(v_variance + eps);
@@ -162,8 +162,7 @@ private:
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
     const unsigned flags() const { return conf_.flags; }
@@ -189,8 +188,8 @@ private:
         memory_tensor_t dst_mem(dst_, conf_.dst_md);
 
         if (conf_.zero_dims && conf_.calculate_stats && conf_.save_stats) {
-            stat_out_mem.store(0, idx);
-            var_out_mem.store(0, idx);
+            store_float_value(stat_md().data_type(), 0, stat_out_ptr(), idx);
+            store_float_value(var_dt(), 0, var_out_ptr(), idx);
         }
         float eps = epsilon();
         const size_t s_off = conf_.stat_md.off_l(idx);
@@ -238,8 +237,9 @@ private:
         }
 
         if (conf_.calculate_stats && conf_.save_stats) {
-            stat_out_mem.store(v_mean, s_off);
-            var_out_mem.store(v_variance, s_off);
+            store_float_value(
+                    stat_md().data_type(), v_mean, stat_out_ptr(), s_off);
+            store_float_value(var_dt(), v_variance, var_out_ptr(), s_off);
         }
     }
 
@@ -284,7 +284,6 @@ struct layer_normalization_bwd_kernel_vec_t {
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
     const xpu::sycl::md_t &stat_md() const { return conf_.stat_md; }
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
@@ -292,7 +291,7 @@ private:
     const xpu::sycl::md_t &diff_data_scaleshift_md() const {
         return conf_.diff_data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
     const unsigned flags() const { return conf_.flags; }
@@ -344,11 +343,15 @@ private:
                                diff_dst_off = diff_dst_md().off_l(index),
                                s_off = stat_md().off_l(n);
 
-                    float inv_sqrt_variance
-                            = 1.f / sqrtf(var_mem.load(s_off) + eps); //stat
-                    float s = data_mem.load(src_off);
-                    auto dd = diff_dst_mem.load(diff_dst_off);
-                    auto stat_v = stat_mem.load(s_off);
+                    float inv_sqrt_variance = 1.f
+                            / sqrtf(load_float_value(var_dt(), var_ptr(), s_off)
+                                    + eps); //stat
+                    float s = load_float_value(
+                            data_md().data_type(), data_ptr(), src_off);
+                    auto dd = load_float_value(diff_dst_md().data_type(),
+                            diff_dst_ptr(), diff_dst_off);
+                    auto stat_v = load_float_value(
+                            stat_md().data_type(), stat_ptr(), s_off);
                     diff_gamma += (s - stat_v) * dd * inv_sqrt_variance;
                     diff_beta += dd;
                 }
@@ -405,7 +408,6 @@ struct layer_normalization_bwd_kernel_vec2_t {
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
-    const xpu::sycl::md_t &stat_d() const { return conf_.stat_d; }
     const xpu::sycl::md_t &stat_md() const { return conf_.stat_md; }
     const xpu::sycl::md_t &data_scaleshift_md() const {
         return conf_.data_scaleshift_md;
@@ -413,7 +415,7 @@ private:
     const xpu::sycl::md_t &diff_data_scaleshift_md() const {
         return conf_.diff_data_scaleshift_md;
     }
-    const xpu::sycl::md_t &var_md() const { return conf_.var_md; }
+    const data_type_t &var_dt() const { return conf_.var_dt; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
 
     const unsigned flags() const { return conf_.flags; }

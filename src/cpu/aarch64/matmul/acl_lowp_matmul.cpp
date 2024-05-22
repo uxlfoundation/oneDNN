@@ -224,6 +224,8 @@ status_t acl_lowp_matmul_t::create_resource(
 
     mapper.add(this, std::move(r));
 
+    CHECK(pd()->acl_post_ops.create_resource(engine, mapper));
+
     return status::success;
 }
 

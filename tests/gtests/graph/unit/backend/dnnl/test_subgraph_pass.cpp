@@ -2184,10 +2184,10 @@ TEST(test_subgraph_pass, CombineBinaryPostOpScales) {
     ASSERT_EQ(subgraph->num_ops(), 2U);
 }
 
-TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
+TEST(test_subgraph_pass_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     namespace utils = dnnl::graph::tests::unit::utils;
-    dnnl_impl::dnnl_backend_t::get_singleton();
+    dnnl_impl::dnnl_backend::get_singleton();
     graph::engine_t &engine = *get_engine();
     dnnl::engine p_engine = graph::dnnl_impl::make_dnnl_engine(engine);
 
@@ -2331,8 +2331,6 @@ TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
                 return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
             });
-    ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info_key));
     int64_t key = (*qconv_op)->get_attr<int64_t>(
             dnnl_impl::op_attr::fusion_info_key);
     auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
@@ -2340,10 +2338,10 @@ TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
     ASSERT_EQ(post_ops.size(), 1U);
 }
 
-TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
+TEST(test_subgraph_pass_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     namespace utils = dnnl::graph::tests::unit::utils;
-    dnnl_impl::dnnl_backend_t::get_singleton();
+    dnnl_impl::dnnl_backend::get_singleton();
     graph::engine_t &engine = *get_engine();
     dnnl::engine p_engine = graph::dnnl_impl::make_dnnl_engine(engine);
 
@@ -2487,8 +2485,6 @@ TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
                 return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
             });
-    ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info_key));
     int64_t key = (*qconv_op)->get_attr<int64_t>(
             dnnl_impl::op_attr::fusion_info_key);
     auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);

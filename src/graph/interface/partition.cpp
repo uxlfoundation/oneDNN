@@ -48,6 +48,7 @@
 #include "graph/utils/ocl_check.hpp"
 #endif
 
+using dnnl::impl::cache_state2str;
 using dnnl::impl::cache_state_t;
 using namespace dnnl::impl::graph;
 
@@ -704,9 +705,7 @@ status_t dnnl_graph_partition::compile(
     if (result.status != status::success) return result.status;
 
     compiled_partition.first->init(result.value->pimpl_);
-    const bool cp_from_cache
-            = (context.cache_status == cache_state_t::compiled_partition_hit);
-    compiled_partition.second = cp_from_cache;
+    compiled_partition.second = context.cache_status;
 
     return result.status;
 }

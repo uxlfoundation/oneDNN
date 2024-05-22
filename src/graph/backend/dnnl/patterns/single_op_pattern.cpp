@@ -308,6 +308,8 @@ DNNL_BACKEND_SINGLE_OP_TRANSFORM(
 #endif
 
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, Reorder, float_reorder)
+DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, StaticTranspose, float_reorder)
+DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, StaticReshape, float_reorder)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(select_pass, Select, select_t)
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gn_pass)
         .set_priority(DEFAULT_P)

@@ -28,6 +28,7 @@
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
+#include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/utils/ngen_proxy.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
@@ -2062,9 +2063,7 @@ public:
     }
 
     int register_alloc_size(int grf_size) const {
-        return (kind == alloc_kind_t::grf)
-                ? into<int>(utils::rnd_up(size, grf_size))
-                : 0;
+        return (kind == alloc_kind_t::grf) ? utils::rnd_up(size, grf_size) : 0;
     }
 
     IR_DECLARE_TRAVERSERS()

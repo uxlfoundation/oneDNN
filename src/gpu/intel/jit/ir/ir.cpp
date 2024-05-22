@@ -20,7 +20,6 @@
 
 #include "common/math_utils.hpp"
 #include "common/optional.hpp"
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"

@@ -98,14 +98,15 @@ public:
     }
 
     void recompute_cost() {
-        cost_ = expr_cost(cse_expr_->expr) * cse_expr_->refs;
+        cost_ = expr_cost(cse_expr_->expr, var2entry_) * cse_expr_->refs;
     }
 
-private:
-    int expr_cost(const expr_t &e) {
+    static int expr_cost(const expr_t &e,
+            const object_map_t<expr_t, cse_var_entry_t *> *var2entry) {
         if (is_var(e)) {
-            auto it = var2entry_->find(e);
-            if (it == var2entry_->end()) return 0;
+            if (var2entry == nullptr) return 0;
+            auto it = var2entry->find(e);
+            if (it == var2entry->end()) return 0;
             if (it->second->allocated()) return 0;
             // If variable is not allocated, its value
             // has to be recomputed every time.

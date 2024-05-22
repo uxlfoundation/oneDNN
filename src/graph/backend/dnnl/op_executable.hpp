@@ -232,15 +232,12 @@ struct memory_reparser_t : public dummy_impl_t {
 
     void execute(const stream &stream,
             const std::unordered_map<int, memory> &args) const override {
-        auto from = args.find(DNNL_ARG_FROM);
-        auto to = args.find(DNNL_ARG_TO);
-        if (from == args.end() || to == args.end()) return;
-
-        if (from->second.get_data_handle() == to->second.get_data_handle())
+        if (args.find(DNNL_ARG_FROM)->second.get_data_handle()
+                == args.find(DNNL_ARG_TO)->second.get_data_handle())
             dummy_impl_t::execute(stream, args);
         else {
-            const memory &dst_mem = to->second;
-            const memory &src_mem = from->second;
+            const memory &dst_mem = args.find(DNNL_ARG_TO)->second;
+            const memory &src_mem = args.find(DNNL_ARG_FROM)->second;
             const memory temp_mem = make_dnnl_memory(dst_mem.get_desc(),
                     src_mem.get_engine(), src_mem.get_data_handle());
             dnnl::reorder(temp_mem, dst_mem)
@@ -253,15 +250,12 @@ struct memory_reparser_t : public dummy_impl_t {
     ::sycl::event execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps = {}) const override {
-        auto from = args.find(DNNL_ARG_FROM);
-        auto to = args.find(DNNL_ARG_TO);
-        if (from == args.end() || to == args.end()) return {};
-
-        if (from->second.get_data_handle() == to->second.get_data_handle())
+        if (args.find(DNNL_ARG_FROM)->second.get_data_handle()
+                == args.find(DNNL_ARG_TO)->second.get_data_handle())
             return dummy_impl_t::execute_sycl(stream, args, deps);
         else {
-            const memory &src_mem = from->second;
-            const memory &dst_mem = to->second;
+            const memory &src_mem = args.find(DNNL_ARG_FROM)->second;
+            const memory &dst_mem = args.find(DNNL_ARG_TO)->second;
             auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
             auto e = sycl_queue.memcpy(dst_mem.get_data_handle(),
                     src_mem.get_data_handle(), dst_mem.get_desc().get_size());
@@ -274,15 +268,12 @@ struct memory_reparser_t : public dummy_impl_t {
     cl_event execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps = {}) const override {
-        auto from = args.find(DNNL_ARG_FROM);
-        auto to = args.find(DNNL_ARG_TO);
-        if (from == args.end() || to == args.end()) return {};
-
-        if (from->second.get_data_handle() == to->second.get_data_handle())
+        if (args.find(DNNL_ARG_FROM)->second.get_data_handle()
+                == args.find(DNNL_ARG_TO)->second.get_data_handle())
             return dummy_impl_t::execute_ocl(stream, args, deps);
         else {
-            const memory &src_mem = from->second;
-            const memory &dst_mem = to->second;
+            const memory &src_mem = args.find(DNNL_ARG_FROM)->second;
+            const memory &dst_mem = args.find(DNNL_ARG_TO)->second;
             assert(deps.size() <= 1);
             // Passing the empty event to memcpy below causes failure.
             const bool empty = deps.size() == 0 || deps[0] == 0;
@@ -294,17 +285,6 @@ struct memory_reparser_t : public dummy_impl_t {
                     empty ? nullptr : deps.data(), &e));
             return e;
         }
-    }
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream &stream,
-            const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps = {}) const override {
-        assertm(args.find(DNNL_ARG_FROM)->second.get_data_handle()
-                        == args.find(DNNL_ARG_TO)->second.get_data_handle(),
-                "memory reparser must be inplaced");
-        return dummy_impl_t::execute_ocl(stream, args, deps);
     }
 #endif
 };

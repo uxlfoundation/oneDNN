@@ -143,7 +143,6 @@ public:
         ir_utils::serialize(stepping_id_, out);
         ir_utils::serialize(eu_count_, out);
         ir_utils::serialize(max_wg_size_, out);
-        ir_utils::serialize(l3_cache_size_, out);
         ir_utils::serialize(large_grf_support_, out);
         ir_utils::serialize(systolic_support_, out);
     }
@@ -153,7 +152,6 @@ public:
         ir_utils::deserialize(stepping_id_, in);
         ir_utils::deserialize(eu_count_, in);
         ir_utils::deserialize(max_wg_size_, in);
-        ir_utils::deserialize(l3_cache_size_, in);
         ir_utils::deserialize(large_grf_support_, in);
         ir_utils::deserialize(systolic_support_, in);
     }

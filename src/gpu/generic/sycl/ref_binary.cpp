@@ -46,7 +46,10 @@ status_t ref_binary_t::pd_t::init_conf() {
             = !attr()->scales_.get(DNNL_ARG_SRC_1).has_default_values();
     conf_.is_tensor_op = is_tensor_op();
     for (size_t i = 0; i < xpu::sycl::md_t::max_dims; i++) {
-        conf_.broadcast_dims[i] = broadcast_dims()[i];
+        conf_.broadcast_dims0[i]
+                = conf_.src0_md.dims()[i] == 1 && conf_.src1_md.dims()[i] != 1;
+        conf_.broadcast_dims1[i]
+                = conf_.src0_md.dims()[i] != 1 && conf_.src1_md.dims()[i] == 1;
     }
 
     conf_.post_ops = sycl_post_ops_t(attr());

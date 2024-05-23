@@ -113,8 +113,7 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
             using namespace format_tag;
 
             for (const auto &mdw : {src0, src1, dst}) {
-                if (mdw.matches_one_of_tag(a, ab, abc, abcd, abcde) == undef) {
-                    return false;
+                if (!mdw.is_plain()) { return false; }
             }
 
             return true;

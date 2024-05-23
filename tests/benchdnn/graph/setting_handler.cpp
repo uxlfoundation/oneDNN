@@ -556,12 +556,9 @@ bool get_conv_dir(const deserialized_op &base_op_ref, dir_t &dir) {
 bool get_conv_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
     dnnl_data_type_t src_dt, wei_dt, dst_dt;
-    auto in_lt0_dt
-            = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
-    auto in_lt1_dt
-            = convert_dt(get_data_type(base_op_ref.in_lts_[1].data_type_));
-    auto out_lt_dt
-            = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
+    auto in_lt0_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    auto in_lt1_dt = convert_dt(base_op_ref.in_lts_[1].get_data_type());
+    auto out_lt_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
 
     const auto &op_kind = base_op_ref.kind_;
 
@@ -766,12 +763,9 @@ bool get_deconv_dir(const deserialized_op &base_op_ref, dir_t &dir) {
 bool get_deconv_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
     dnnl_data_type_t src_dt, wei_dt, dst_dt;
-    auto in_lt0_dt
-            = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
-    auto in_lt1_dt
-            = convert_dt(get_data_type(base_op_ref.in_lts_[1].data_type_));
-    auto out_lt_dt
-            = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
+    auto in_lt0_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    auto in_lt1_dt = convert_dt(base_op_ref.in_lts_[1].get_data_type());
+    auto out_lt_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
     const auto &op_kind = base_op_ref.kind_;
 
     if (op_kind == "ConvTranspose") {
@@ -1275,9 +1269,9 @@ bool get_matmul_prb_vdims(
 
 bool get_matmul_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
-    auto src_dt = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
-    auto wei_dt = convert_dt(get_data_type(base_op_ref.in_lts_[1].data_type_));
-    auto dst_dt = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
+    auto src_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    auto wei_dt = convert_dt(base_op_ref.in_lts_[1].get_data_type());
+    auto dst_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
     dt = {src_dt, wei_dt, dst_dt};
 
     return true;
@@ -1441,8 +1435,8 @@ bool get_pool_dir(const deserialized_op &base_op_ref, dir_t &dir) {
 
 bool get_pool_dt(
         const deserialized_op &base_op_ref, std::vector<dnnl_data_type_t> &dt) {
-    auto src_dt = convert_dt(get_data_type(base_op_ref.in_lts_[0].data_type_));
-    auto dst_dt = convert_dt(get_data_type(base_op_ref.out_lts_[0].data_type_));
+    auto src_dt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    auto dst_dt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
     dt = {src_dt, dst_dt};
     return true;
 }

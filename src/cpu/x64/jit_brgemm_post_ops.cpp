@@ -528,7 +528,7 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_scratch, emu_reserv_4,
                 emu_reserv_4);
-    if (brg_.is_fp8_via_convert() || has_f8_e5m2_binary_postops
+    if (brg_.is_fp8 || has_f8_e5m2_binary_postops
             || has_f8_e4m3_binary_postops) {
         if (utils::one_of(data_type::f8_e5m2, brg_.dt_a, brg_.dt_b, brg_.dt_d)
                 || has_f8_e5m2_binary_postops)
@@ -645,16 +645,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::cvt2ps(
                 break;
             case data_type::f16: vcvtph2ps(vmm, op); break;
             case data_type::f8_e5m2:
-                if (brg_.is_fp8_via_convert())
-                    f8_e5m2_cvt_->vcvt_f8_to_f32(vmm, op);
-                else
-                    assert(!"Not supported yet");
+                f8_e5m2_cvt_->vcvt_f8_to_f32(vmm, op);
                 break;
             case data_type::f8_e4m3:
-                if (brg_.is_fp8_via_convert())
-                    f8_e4m3_cvt_->vcvt_f8_to_f32(vmm, op);
-                else
-                    assert(!"Not supported yet");
+                f8_e4m3_cvt_->vcvt_f8_to_f32(vmm, op);
                 break;
             default: assert(!"unsupported data type");
         }
@@ -974,18 +968,12 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
                     vmovdqu16(addr, vmm_low_masked);
                     break;
                 case data_type::f8_e5m2:
-                    if (brg_.is_fp8_via_convert()) {
-                        f8_e5m2_cvt_->vcvt_f32_to_f8(vmm_low2, vmm);
-                        vmovdqu8(addr, vmm_low2_masked);
-                    } else
-                        assert(!"Not supported yet");
+                    f8_e5m2_cvt_->vcvt_f32_to_f8(vmm_low2, vmm);
+                    vmovdqu8(addr, vmm_low2_masked);
                     break;
                 case data_type::f8_e4m3:
-                    if (brg_.is_fp8_via_convert()) {
-                        f8_e4m3_cvt_->vcvt_f32_to_f8(vmm_low2, vmm);
-                        vmovdqu8(addr, vmm_low2_masked);
-                    } else
-                        assert(!"Not supported yet");
+                    f8_e4m3_cvt_->vcvt_f32_to_f8(vmm_low2, vmm);
+                    vmovdqu8(addr, vmm_low2_masked);
                     break;
                 case data_type::s8:
                     if (dt_requires_saturation

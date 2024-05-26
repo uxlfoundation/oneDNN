@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "graph/backend/dnnl/internal_ops.hpp"
-#include "graph/backend/dnnl/kernels/group_norm.hpp"
+#include "graph/backend/dnnl/kernels/groupnorm.hpp"
 #include "graph/backend/dnnl/patterns/fusions.hpp"
 #include "graph/backend/dnnl/patterns/pattern_matcher_pass.hpp"
 #include "graph/backend/dnnl/patterns/utils.hpp"
@@ -42,6 +42,7 @@ using FCreatePattern = graph::pass::FCreatePattern;
 //            [Quantize]*
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(groupnorm_fusion)
 
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, groupnorm_post_ops_fusion)
         .set_priority(8.4f)
         .set_kind(graph::partition_kind_t::misc_post_ops)
@@ -89,14 +90,16 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, groupnorm_post_ops_fusion)
                     auto q_graph = std::make_shared<pb_graph_t>();
                     pm::pb_op_t *pquantize
                             = q_graph->append_op(graph::op_kind::Quantize);
+                    pquantize->append_decision_function(check_zps_values<0>);
                     q_graph->create_input_port(0, pquantize, 0);
                     q_graph->create_output_port(0, pquantize, 0);
                     pgraph->append_optional(
                             q_graph, in_edges_t {in_edge(0, prep, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<group_norm_fwd_t>();
+            return std::make_shared<groupnorm_fwd_t>();
         });
+#endif
 DNNL_BACKEND_REGISTER_PATTERN_DEF_END
 
 } // namespace pattern

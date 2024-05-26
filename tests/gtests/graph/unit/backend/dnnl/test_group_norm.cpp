@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ TEST(test_group_norm_execute, GroupnormTraining) {
     graph::engine_t *eng = get_engine();
 
     // src shape: (2, 2, 2, 3) nxc
-    std::vector<float> src(24);
-    for (size_t i = 0; i < src.size(); i++) {
-        src[i] = i * i;
+    std::vector<float> src;
+    for (int i = 0; i < 24; i++) {
+        src.push_back(i * i);
     }
     std::vector<float> scale {1.0, 2.0, 3.0};
     std::vector<float> shift {0.0, 1.0, 2.0};
@@ -126,9 +126,9 @@ TEST(test_group_norm_execute, GroupnormInference) {
     graph::engine_t *eng = get_engine();
 
     // src shape: (2, 3, 2, 2) ncx
-    std::vector<float> src(24);
-    for (size_t i = 0; i < src.size(); i++) {
-        src[i] = i * i;
+    std::vector<float> src;
+    for (int i = 0; i < 24; i++) {
+        src.push_back(i * i);
     }
     std::vector<float> scale {1.0, 2.0, 3.0};
     std::vector<float> shift {0.0, 1.0, 2.0};
@@ -207,9 +207,9 @@ TEST(test_group_norm_execute, GroupnormSwishTypecastQuant) {
             "Skip bf16 tests for systems that do not support avx512_core.");
 
     // src shape: (2, 3, 2, 2) ncx
-    std::vector<bfloat16_t> src(24);
-    for (size_t i = 0; i < src.size(); i++) {
-        src[i] = i * i;
+    std::vector<bfloat16_t> src;
+    for (int i = 0; i < 24; i++) {
+        src.push_back(i * i);
     }
     std::vector<float> scale {1.0, 2.0, 3.0};
     std::vector<float> shift {0.0, 1.0, 2.0};
@@ -228,7 +228,7 @@ TEST(test_group_norm_execute, GroupnormSwishTypecastQuant) {
     graph::op_t typecast(3, graph::op_kind::TypeCast, "typecast");
     graph::op_t quantize(4, graph::op_kind::Quantize, "quantize");
     quantize.set_attr<std::vector<float>>(graph::op_attr::scales, {0.1f});
-    quantize.set_attr<std::vector<int64_t>>(graph::op_attr::zps, {9});
+    quantize.set_attr<std::vector<int64_t>>(graph::op_attr::zps, {0});
     quantize.set_attr<std::string>(graph::op_attr::qtype, "per_tensor");
 
     std::vector<int64_t> groupnorm_shape {2, 3, 2, 2};

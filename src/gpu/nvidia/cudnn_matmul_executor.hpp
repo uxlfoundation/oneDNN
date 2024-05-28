@@ -43,7 +43,7 @@ struct cudnn_matmul_exec_base_t {
 protected:
     template <::sycl::access::mode bias_m, ::sycl::access::mode scratch_m>
     void interop_task(std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
-            engine_t *engine, ::sycl::handler &cgh,
+            impl::engine_t *engine, ::sycl::handler &cgh,
             nvidia::sycl_cuda_stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_weights,

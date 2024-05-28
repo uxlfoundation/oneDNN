@@ -167,9 +167,8 @@ struct cudnn_deconvolution_fwd_t : public gpu::primitive_t {
         }
 
         status_t init(impl::engine_t *engine) {
-            auto *sycl_engine_impl
-                    = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                            engine->impl());
+            auto *sycl_engine
+                    = utils::downcast<impl::sycl::sycl_engine_base_t *>(engine);
             using namespace format_tag;
             bool ok = true && is_fwd();
             ok = ok
@@ -290,9 +289,8 @@ struct cudnn_deconvolution_bwd_data_t : public gpu::primitive_t {
         }
 
         status_t init(impl::engine_t *engine) {
-            auto *sycl_engine_impl
-                    = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                            engine->impl());
+            auto *sycl_engine
+                    = utils::downcast<impl::sycl::sycl_engine_base_t *>(engine);
             bool ok = true && desc()->prop_kind == prop_kind::backward_data
                     && (utils::everyone_is(data_type::f32,
                                 desc()->diff_src_desc.data_type,
@@ -402,9 +400,8 @@ struct cudnn_deconvolution_bwd_weights_t : public gpu::primitive_t {
         }
 
         status_t init(impl::engine_t *engine) {
-            auto *sycl_engine_impl
-                    = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                            engine->impl());
+            auto *sycl_engine
+                    = utils::downcast<impl::sycl::sycl_engine_base_t *>(engine);
             using namespace format_tag;
             bool ok = true && desc()->prop_kind == prop_kind::backward_weights
                     && (utils::everyone_is(data_type::f32,

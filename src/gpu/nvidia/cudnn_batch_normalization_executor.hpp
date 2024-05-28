@@ -45,7 +45,7 @@ protected:
     template <::sycl::access::mode mean_var_m = ::sycl::access::mode::write>
     void interop_task_fwd(
             std::shared_ptr<cudnn_batch_normalization_impl_base_t> bnorm_impl,
-            engine_t *engine, ::sycl::handler &cgh,
+            impl::engine_t *engine, ::sycl::handler &cgh,
             nvidia::sycl_cuda_stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::write>
@@ -110,7 +110,7 @@ protected:
 
     void interop_task_bwd(
             std::shared_ptr<cudnn_batch_normalization_impl_base_t> bnorm_impl,
-            engine_t *engine, ::sycl::handler &cgh,
+            impl::engine_t *engine, ::sycl::handler &cgh,
             nvidia::sycl_cuda_stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>

@@ -47,6 +47,7 @@ struct ref_resampling_fwd_t : public gpu::generic::sycl::primitive_t {
         DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_resampling_fwd_t);
 
         status_t init(impl::engine_t *engine) {
+            using namespace data_type;
             using namespace prop_kind;
             using namespace alg_kind;
             using sm = primitive_attr_t::skip_mask_t;

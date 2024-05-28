@@ -139,12 +139,6 @@ status_t ref_prelu_bwd_t::pd_t::init_conf() {
 }
 
 status_t ref_prelu_bwd_t::init(impl::engine_t *engine) {
-    if (pd()->reduce_diff_weights_) {
-        std::pair<std::shared_ptr<impl::primitive_t>, cache_state_t> p;
-        CHECK(pd()->reduction_pd_->create_primitive_nested(p, engine));
-        reduction_p_ = p.first;
-    }
-
     const auto kid = ::sycl::get_kernel_id<prelu_bwd_kernel_vec_t>();
     return create_kernel(engine, kid, &kernel_);
 }

@@ -37,6 +37,7 @@ namespace gpu {
 namespace nvidia {
 struct cudnn_matmul_base_exec_t {
 
+struct cudnn_matmul_exec_base_t {
     virtual status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
             const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
             const std::shared_ptr<cublas_params> params,
@@ -48,7 +49,7 @@ struct cudnn_matmul_base_exec_t {
 protected:
     template <::sycl::access::mode bias_m, ::sycl::access::mode scratch_m>
     void interop_task(std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
-            engine_t *engine, ::sycl::handler &cgh,
+            impl::engine_t *engine, ::sycl::handler &cgh,
             nvidia::sycl_cuda_stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_weights,
@@ -97,6 +98,15 @@ protected:
             ::sycl::free(bias_scratch_ptr, cuda_stream->queue());
         }
     }
+};
+
+struct cudnn_matmul_scratch_runtime_args_base_exec_t
+    : public cudnn_matmul_exec_base_t {
+    virtual status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
+            const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
+            std::size_t scratchpad_size)
+            = 0;
+    virtual ~cudnn_matmul_scratch_runtime_args_base_exec_t() = default;
 
     xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read_write>
     init_scratch_from_ptr(std::size_t size_of_ptr, uint8_t *ptr) {
@@ -110,7 +120,11 @@ protected:
     }
 };
 
-struct cudnn_matmul_exec_t final : cudnn_matmul_base_exec_t {
+struct cudnn_matmul_scratch_runtime_args_bias_exec_t
+    : public cudnn_matmul_scratch_runtime_args_base_exec_t {
+    status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
+            const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
+            std::size_t scratchpad_size) override {
 
     status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
             const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
@@ -148,7 +162,7 @@ struct cudnn_matmul_exec_t final : cudnn_matmul_base_exec_t {
 
 struct cudnn_matmul_runtime_args_scratch_exec_t
     : public cudnn_matmul_scratch_runtime_args_base_exec_t {
-    status_t execute(const exec_ctx_t &ctx, engine_t *engine,
+    status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
             const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
             std::size_t scratchpad_size) override {
 
@@ -182,8 +196,7 @@ struct cudnn_matmul_runtime_args_scratch_exec_t
     ~cudnn_matmul_exec_t() = default;
 };
 
-struct cudnn_matmul_runtime_args_exec_t final
-    : public cudnn_matmul_base_exec_t {
+struct cudnn_matmul_runtime_args_bias_exec_t : public cudnn_matmul_exec_base_t {
     status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
             const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
             const std::shared_ptr<cublas_params> params,
@@ -234,8 +247,10 @@ struct cudnn_matmul_runtime_args_exec_t final
     }
     ~cudnn_matmul_runtime_args_exec_t() = default;
 
-protected:
-};
+struct cudnn_matmul_runtime_args_exec_t : public cudnn_matmul_exec_base_t {
+    status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
+            const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
+            std::size_t scratchpad_size) override {
 
 struct cudnn_matmul_lt_base_exec_t {
 
@@ -299,7 +314,10 @@ protected:
     }
 };
 
-struct cudnn_matmul_lt_exec_t final : public cudnn_matmul_lt_base_exec_t {
+struct cudnn_matmul_bias_scratch_exec_t : public cudnn_matmul_exec_base_t {
+    status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
+            const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
+            std::size_t scratchpad_size) override {
 
     status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
             const std::shared_ptr<cudnn_matmul_lt_impl_t> matmul_impl_,
@@ -373,22 +391,10 @@ struct cudnn_matmul_lt_exec_t final : public cudnn_matmul_lt_base_exec_t {
     ~cudnn_matmul_lt_exec_t() = default;
 };
 
-struct cudnn_matmul_lt_runtime_args_exec_t final
-    : public cudnn_matmul_lt_base_exec_t {
+struct cudnn_matmul_scratch_exec_t : public cudnn_matmul_exec_base_t {
     status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
-            const std::shared_ptr<cudnn_matmul_lt_impl_t> matmul_impl_,
-            const std::shared_ptr<cublas_lt_params> params,
-            const memory_desc_wrapper &src_d,
-            const memory_desc_wrapper &weights_d,
-            const memory_desc_wrapper &dst_d) {
-
-        std::shared_ptr<cublas_lt_params> matmul_params
-                = std::make_shared<cublas_lt_params>();
-        matmul_params->init_from_params(params);
-        if (matmul_params->has_runtime_params_) {
-            matmul_params->rt_cleanup();
-            matmul_params->set_params(src_d, weights_d, dst_d, engine);
-        }
+            const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
+            std::size_t scratchpad_size) override {
 
         nvidia::stream_t *cuda_stream
                 = utils::downcast<nvidia::stream_t *>(ctx.stream());
@@ -405,8 +411,10 @@ struct cudnn_matmul_lt_runtime_args_exec_t final
         uint8_t *block_b_scratch_ptr
                 = alloc_ptr(matmul_params->source_size_, cuda_stream->queue());
 
-        uint8_t *block_c_scratch_ptr
-                = alloc_ptr(matmul_params->dest_size_, cuda_stream->queue());
+struct cudnn_matmul_bias_exec_t : public cudnn_matmul_exec_base_t {
+    status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
+            const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
+            std::size_t scratchpad_size) override {
 
         uint8_t *src_scale_scratch_ptr = alloc_ptr(
                 matmul_params->src_scale_size_, cuda_stream->queue());
@@ -441,6 +449,20 @@ struct cudnn_matmul_lt_runtime_args_exec_t final
                     src_scale_scratch_ptr, wei_scale_scratch_ptr);
         });
     }
+};
+
+struct cudnn_matmul_exec_t : public cudnn_matmul_exec_base_t {
+    status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
+            const std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
+            std::size_t scratchpad_size) override {
+
+        nvidia::sycl_cuda_stream_t *cuda_stream
+                = utils::downcast<nvidia::sycl_cuda_stream_t *>(ctx.stream());
+
+        return cuda_stream->interop_task([=, this](::sycl::handler &cgh) {
+            auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
+            auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
+            auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
 
             auto arg_bias = xpu::sycl::interop_memory_arg_t<
                     ::sycl::access::mode::read>();

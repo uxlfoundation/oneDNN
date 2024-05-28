@@ -1,0 +1,1 @@
+--reset --mb=1 --dt=s8,f16,f32,bf16 --batch=shapes_basic

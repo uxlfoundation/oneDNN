@@ -106,6 +106,11 @@ private:
     std::string name_;
     runtime_version_t runtime_version_;
 
+    engine_id_t engine_id() const override {
+        return engine_id_t(new xpu::sycl::engine_id_impl_t(
+                device(), context(), kind(), runtime_kind(), index()));
+    }
+
 private:
     ::sycl::device device_;
     ::sycl::context context_;

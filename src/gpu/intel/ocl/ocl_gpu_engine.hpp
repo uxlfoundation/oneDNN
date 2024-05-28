@@ -21,7 +21,6 @@
 #include "common/utils.hpp"
 #include "gpu/gpu_impl_list.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/ocl/ocl_gpu_engine_id.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/utils.hpp"
@@ -105,12 +104,6 @@ public:
     status_t get_cache_blob(size_t size, uint8_t *cache_blob) const override {
         return device_info_->get_cache_blob(size, cache_blob);
     }
-
-    status_t create_program(xpu::ocl::wrapper_t<cl_program> &program,
-            const std::vector<const char *> &kernel_names,
-            const compute::kernel_ctx_t &kernel_ctx) const;
-
-    DECLARE_COMMON_OCL_ENGINE_FUNCTIONS();
 
 protected:
     const xpu::ocl::engine_impl_t *impl() const {

@@ -47,7 +47,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_points, DNNL_ARG_SRC);
+    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(wei_zero_points, DNNL_ARG_WEIGHTS);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
 
@@ -76,6 +76,14 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t batch = helper.batch();
 
     const auto &attr_zps = pd()->attr()->zero_points_;
+    const bool with_wei_zero_points
+            = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
+    int wei_zp_mask = 0;
+    attr_zps.get(DNNL_ARG_WEIGHTS, &wei_zp_mask);
+    const bool wei_zp_per_n = wei_zp_mask & pd()->wei_qmask_N();
+    const bool wei_zp_per_k = wei_zp_mask & pd()->wei_qmask_K();
+    const dim_t wei_zp_stride_n = wei_zp_per_n ? 1 : 0;
+    const dim_t wei_zp_stride_k = wei_zp_per_k ? wei_zp_per_n ? N : 1 : 0;
 
     const int src_mask
             = utils::get_dims_mask(dst_d.dims(), src_d.dims(), ndims);
@@ -160,7 +168,11 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
                                 wei_scale_dt, wei_scales, wei_scale_offset);
                 acc_f *= wei_scale;
             }
-            d += acc_f;
+            if (with_wei_zero_points) {
+                w -= io::load_int_value(data_type::s32, wei_zero_points,
+                        wei_zp_stride_n * n + wei_zp_stride_k * k);
+            }
+            acc += s * w;
         }
         return d;
     };

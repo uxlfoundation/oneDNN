@@ -41,18 +41,18 @@ cudnnHandle_t &stream_t::get_cudnn_handle(CUstream cuda_stream) {
     e->activate_stream_cudnn(cuda_stream);
     return *(e->get_cudnn_handle());
 }
-// the stream_t will not own this. it is an observer pointer
-CUstream stream_t::get_underlying_stream() {
+// the sycl_cuda_stream_t will not own this. it is an observer pointer
+CUstream sycl_cuda_stream_t::get_underlying_stream() {
     return compat::get_native<CUstream>(queue());
 }
 
-// the stream_t will not own this. it is an observer pointer
-CUcontext stream_t::get_underlying_context() {
+// the sycl_cuda_stream_t will not own this. it is an observer pointer
+CUcontext sycl_cuda_stream_t::get_underlying_context() {
     return compat::get_native<CUcontext>(queue().get_device());
 }
 
-// the stream_t will not own this. it is an observer pointer
-CUdevice stream_t::get_underlying_device() {
+// the sycl_cuda_stream_t will not own this. it is an observer pointer
+CUdevice sycl_cuda_stream_t::get_underlying_device() {
     return compat::get_native<CUdevice>(queue().get_device());
 }
 
@@ -69,7 +69,7 @@ status_t stream_t::init() {
     auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine());
     auto status = status::success;
 
-    if (!impl()->queue()) {
+    if (impl()->queue()) {
         auto &sycl_ctx = sycl_engine.context();
         auto &sycl_dev = sycl_engine.device();
         ::sycl::property_list prop_list;

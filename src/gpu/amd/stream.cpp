@@ -41,19 +41,19 @@ miopenHandle_t &stream_t::get_miopen_handle(HIPstream hip_stream) {
     e->activate_stream_miopen(hip_stream);
     return *(e->get_miopen_handle());
 }
-// the stream_t will not own this. it is an observer pointer
-HIPstream stream_t::get_underlying_stream() {
+// the sycl_hip_stream_t will not own this. it is an observer pointer
+HIPstream sycl_hip_stream_t::get_underlying_stream() {
     return compat::get_native<HIPstream>(queue());
 }
 
-// the stream_t will not own this. it is an observer pointer
-HIPcontext stream_t::get_underlying_context() {
-    return compat::get_native<HIPcontext>(queue().get_device());
+// the sycl_hip_stream_t will not own this. it is an observer pointer
+HIPcontext sycl_hip_stream_t::get_underlying_context() {
+    return compat::get_native<HIPcontext>(queue()->get_device());
 }
 
-// the stream_t will not own this. it is an observer pointer
-HIPdevice stream_t::get_underlying_device() {
-    return compat::get_native<HIPdevice>(queue().get_device());
+// the sycl_hip_stream_t will not own this. it is an observer pointer
+HIPdevice sycl_hip_stream_t::get_underlying_device() {
+    return compat::get_native<HIPdevice>(queue()->get_device());
 }
 
 status_t stream_t::init() {

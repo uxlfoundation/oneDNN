@@ -86,35 +86,15 @@ struct ref_matmul_t : public primitive_t {
                                     | smask_t::zero_points_runtime_data_type
                                     | smask_t::zero_points_runtime_groups
                                     | smask_t::post_ops | smask_t::sum_dt
-                                    | smask_t::fpmath_mode | smask_t::dropout
-                                    | smask_t::rounding_mode,
-                            dst_type),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(attr_.post_ops_.check_sum_consistency(dst_type,
-                                     /* is_int8 */ false),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(
-                    ref_post_ops_t::primitive_kind_ok(attr()->post_ops_),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-            VDISPATCH_MATMUL(
-                    attr_.set_default_formats(dst_md(0)) == status::success,
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            utils::one_of(
-                                    attr_.dropout_.dropout_desc_.data_type, u8,
-                                    s8)),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            memory_desc_wrapper(dst_md(0)).similar_to(
-                                    attr_.dropout_.dropout_desc_, true, false)),
-                    VERBOSE_UNSUPPORTED_ATTR);
-
-            return status::success;
+                                    | smask_t::fpmath_mode,
+                            dst_type)
+                    && attr_.post_ops_.check_sum_consistency(dst_type,
+                            /* is_int8 */ false)
+                    && ref_post_ops_t::primitive_kind_ok(attr()->post_ops_)
+                    && attr_scales_ok() && set_default_formats()
+                    && zero_points_ok()
+                    && attr_.set_default_formats(dst_md(0)) == status::success;
+            return ok ? status::success : status::unimplemented;
         }
 
     private:

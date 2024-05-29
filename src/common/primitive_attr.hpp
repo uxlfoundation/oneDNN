@@ -182,8 +182,22 @@ private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(rnn_create_time_scales_t);
 };
 
-struct dropout_t : public c_compatible {
-    dropout_t() = default;
+struct runtime_scales_t : public c_compatible {
+    // Clang-3.8.1 raises an error for a default initialization of a const
+    // object. Const runtime_scales_t object is used as default_scales.
+    // runtime_scales_t() = default;
+    runtime_scales_t() {}
+
+    runtime_scales_t &operator=(const runtime_scales_t &rhs) {
+        mask_ = rhs.mask_;
+        is_set_ = rhs.is_set_;
+        ndims_ = rhs.ndims_;
+        if (ndims_ > 0) utils::array_copy(group_dims_, rhs.group_dims_, ndims_);
+        data_type_ = rhs.data_type_;
+        return *this;
+    }
+
+    status_t set(int mask) { return set(0, mask, {}, data_type::f32); }
 
     bool has_default_values() const {
         return types::is_zero_md(&user_dropout_desc_);
@@ -208,9 +222,69 @@ struct rnd_mode_t : public c_compatible {
         return rounding_modes_map_.at(arg);
     }
 
-    dnnl_status_t set(int arg, dnnl_rounding_mode_t rm) {
-        if (!check(arg, rm)) return status::invalid_arguments;
-        if (rm != default_mode) rounding_modes_map_[arg] = rm;
+    bool has_default_values(const std::vector<int> &skip_args = {}) const {
+        auto predicate = [](const runtime_scales_t &s) {
+            return s.has_default_values();
+        };
+        return has_default_property(skip_args, predicate);
+    }
+
+    bool has_default_data_type(const std::vector<int> &skip_args = {}) const {
+        auto predicate = [](const runtime_scales_t &s) {
+            return s.has_default_data_type();
+        };
+        return has_default_property(skip_args, predicate);
+    }
+
+    bool has_default_groups(const std::vector<int> &skip_args = {}) const {
+        auto predicate = [](const runtime_scales_t &s) {
+            return s.has_default_groups();
+        };
+        return has_default_property(skip_args, predicate);
+    }
+
+    status_t set(int arg, int mask) {
+        return set(arg, mask, 0, {}, data_type::f32);
+    }
+
+    status_t set(int arg, int mask, int ndims, const dims_t group_dims,
+            data_type_t data_type) {
+        if (!check_arg(arg)) return status::invalid_arguments;
+        return scales_[arg].set(ndims, mask, group_dims, data_type);
+    }
+
+    status_t get(int arg, int *mask, bool *is_set, int *ndims = nullptr,
+            dims_t group_dims = nullptr) const {
+        if (!check_arg(arg)) return status::invalid_arguments;
+        const auto &s = get(arg);
+        if (mask) *mask = s.mask_;
+        if (is_set) *is_set = s.is_set_;
+        if (ndims) *ndims = s.ndims_;
+        if (group_dims && s.ndims_ > 0)
+            utils::array_copy(group_dims, s.group_dims_, s.ndims_);
+        return status::success;
+    }
+
+    status_t reset(int arg) {
+        if (!check_arg(arg)) return status::invalid_arguments;
+        const auto it = scales_.find(arg);
+        if (it != scales_.end()) scales_.erase(it);
+        return status::success;
+    }
+
+    bool defined() const { return has_default_values(); }
+
+    status_t copy_from(const arg_scales_t &other) {
+        for (auto it = other.scales_.begin(); it != other.scales_.end(); ++it) {
+            // Find an entry that can match the arguments without constructing a
+            // new object.
+            if (scales_.count(it->first) == 1) {
+                auto &entry = scales_[it->first];
+                if (entry == it->second) continue;
+            }
+
+            CHECK(set(it->first, it->second));
+        }
         return status::success;
     }
 

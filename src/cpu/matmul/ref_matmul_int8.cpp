@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,40 +76,6 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t batch = helper.batch();
 
     const auto &attr_zps = pd()->attr()->zero_points_;
-    const bool with_src_zero_points
-            = !attr_zps.has_default_values(DNNL_ARG_SRC);
-    int src_zp_mask = 0;
-    attr_zps.get(DNNL_ARG_SRC, &src_zp_mask);
-    const bool src_zp_per_k = src_zp_mask & pd()->src_qmask_K();
-    const auto &src_zp_dt = attr_zps.get_data_type(DNNL_ARG_SRC);
-    const auto src_zp_group_ndims = attr_zps.get_groups_ndims(DNNL_ARG_SRC);
-    const auto src_zp_group_k = src_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_SRC)[1]
-            : (src_zp_per_k ? 1 : K);
-    const auto src_zp_ngroups_k = K / src_zp_group_k;
-    // Initialize a memory desc for quant entries for easier offset calculation.
-    memory_desc_t src_zp_md {};
-    CHECK(matmul_helper_t::get_quant_md(src_zp_md, ndims, src_d.dims(),
-            src_zp_mask, 1, src_zp_group_k, src_zp_dt));
-
-    const bool with_wei_zero_points
-            = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
-    int wei_zp_mask = 0;
-    attr_zps.get(DNNL_ARG_WEIGHTS, &wei_zp_mask);
-    const bool wei_zp_per_k = wei_zp_mask & pd()->wei_qmask_K();
-    const auto &wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_ndims = attr_zps.get_groups_ndims(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_k = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[0]
-            : (wei_zp_per_k ? 1 : K);
-    const auto wei_zp_group_n = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[1]
-            : 1;
-    const auto wei_zp_ngroups_k = K / wei_zp_group_k;
-    // Initialize a memory desc for quant entries for easier offset calculation.
-    memory_desc_t wei_zp_md {};
-    CHECK(matmul_helper_t::get_quant_md(wei_zp_md, ndims, weights_d.dims(),
-            wei_zp_mask, wei_zp_group_k, wei_zp_group_n, wei_zp_dt));
 
     const int src_mask
             = utils::get_dims_mask(dst_d.dims(), src_d.dims(), ndims);
@@ -119,52 +85,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             = utils::get_dims_mask(dst_d.dims(), bia_d.dims(), ndims);
 
     // zp_idx_mult = 1 for per_dim1 zero points and 0, otherwise
+    const int src_zp_idx_mult = !attr_zps.common(DNNL_ARG_SRC);
     const int dst_zp_idx_mult = !attr_zps.common(DNNL_ARG_DST);
-
-    // arg scales section
-    const auto &attr_scales = pd()->attr()->scales_;
-    const bool with_wei_scales
-            = !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_values();
-    const bool with_dst_scales
-            = !attr_scales.get(DNNL_ARG_DST).has_default_values();
-    const int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
-    const auto &wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
-    const bool wei_scale_per_k = wei_scale_mask & pd()->wei_qmask_K();
-    const auto wei_scale_group_ndim = attr_scales.get(DNNL_ARG_WEIGHTS).ndims_;
-    const auto wei_scale_group_k = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[0]
-            : (wei_scale_per_k ? 1 : K);
-    const auto wei_scale_group_n = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[1]
-            : 1;
-    const auto wei_scale_ngroups_k = K / wei_scale_group_k;
-    // Initialize a memory desc for quant entries for easier offset calculation.
-    memory_desc_t wei_scale_md {};
-    CHECK(matmul_helper_t::get_quant_md(wei_scale_md, ndims, weights_d.dims(),
-            wei_scale_mask, wei_scale_group_k, wei_scale_group_n,
-            wei_scale_dt));
-
-    const bool with_src_scales
-            = !attr_scales.get(DNNL_ARG_SRC).has_default_values();
-    const int src_scale_mask = attr_scales.get(DNNL_ARG_SRC).mask_;
-    const auto &src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
-    const bool src_scale_per_k = src_scale_mask & pd()->src_qmask_K();
-    const auto src_scale_group_ndim = attr_scales.get(DNNL_ARG_SRC).ndims_;
-    const auto src_scale_group_k = src_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_SRC).group_dims_[1]
-            : (src_scale_per_k ? 1 : K);
-    const auto src_scale_ngroups_k = K / src_scale_group_k;
-    // Initialize a memory desc for quant entries for easier offset calculation.
-    memory_desc_t src_scale_md {};
-    CHECK(matmul_helper_t::get_quant_md(src_scale_md, ndims, src_d.dims(),
-            src_scale_mask, 1, src_scale_group_k, src_scale_dt));
-
-    // For compute kernel, the minimal group is picked.
-    const auto zp_ngroups_k = std::max(src_zp_ngroups_k, wei_zp_ngroups_k);
-    const auto scale_ngroups_k
-            = std::max(src_scale_ngroups_k, wei_scale_ngroups_k);
-    const auto ngroups_k = std::max(zp_ngroups_k, scale_ngroups_k);
-    const auto group_k = K / ngroups_k;
 
     // mm kernel
     // Note: classical int8 computation involve scales precomputing

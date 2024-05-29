@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,8 +32,8 @@ namespace impl {
 namespace cpu {
 
 struct cpu_stream_t : public stream_t {
-    cpu_stream_t(engine_t *engine, impl::stream_impl_t *stream_impl)
-        : stream_t(engine, stream_impl) {}
+    cpu_stream_t(engine_t *engine, unsigned flags)
+        : stream_t(engine, new impl::stream_impl_t(flags)) {}
     virtual ~cpu_stream_t() = default;
 
     dnnl::impl::status_t wait() override {

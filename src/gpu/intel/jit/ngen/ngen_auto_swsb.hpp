@@ -1348,6 +1348,13 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                     case Directive::ignoredep_src0: ignoreDeps[1] = true; break;
                     case Directive::ignoredep_src1: ignoreDeps[2] = true; break;
                     case Directive::ignoredep_src2: ignoreDeps[3] = true; break;
+                    case Directive::subdep_dst:
+#ifdef NGEN_SAFE
+                        if (!subDstRegion.empty())
+                            throw invalid_directive_exception();
+#endif
+                        insn.getOperandRegion(subDstRegion, 0);
+                        break;
                     case Directive::wrdep:
                         regions[1].hw = hw;
                         insn.getOperandRegion(regions[1], 0);

@@ -33,7 +33,7 @@ namespace ocl {
 
 #if XE3P
 void init_gpu_hw_info(engine_t *engine, cl_device_id device, cl_context context,
-        compute::gpu_arch_t &gpu_arch, int &stepping_id,
+        uint32_t &ip_version, compute::gpu_arch_t &gpu_arch, int &stepping_id,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels, bool &is_efficient_64bit) {
 #else

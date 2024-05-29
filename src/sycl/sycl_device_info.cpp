@@ -51,12 +51,12 @@ status_t sycl_device_info_t::init_arch(engine_t *engine) {
         OCL_CHECK(err);
 
 #if XE3P
-        gpu::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper, ocl_ctx_wrapper,
+        gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper,
                 ocl_ctx_wrapper, ip_version_, gpu_arch_, stepping_id_,
                 native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_,
                 is_efficient_64bit_);
 #else
-        gpu::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper, ocl_ctx_wrapper,
+        gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper,
                 ocl_ctx_wrapper, ip_version_, gpu_arch_, stepping_id_,
                 native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_);
 #endif

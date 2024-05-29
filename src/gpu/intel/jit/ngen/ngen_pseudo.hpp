@@ -501,7 +501,6 @@ void registerfence(const RegData &dst)
 void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     registerfence(dst);
-
 #if XE3P
     if (useEfficient64Bit) {
         uint32_t desc = 0x1F;
@@ -531,7 +530,7 @@ void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(
 
 void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
-    memfence(InstructionModifier(), scope, flushing, dst, header);
+    memfence(InstructionModifier(), dst, header);
 }
 
 void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0))

@@ -1226,6 +1226,7 @@ private:
             std::swap(src0, src1);
         }
         ir_assert(is_src1_ok(hw, dst, src0, src1));
+
         switch (obj.op_kind) {
             case op_kind_t::_add: host_->eadd(mod, dst, src0, src1); break;
             case op_kind_t::_sub: host_->eadd(mod, dst, src0, -src1); break;

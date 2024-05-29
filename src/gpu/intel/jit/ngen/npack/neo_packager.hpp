@@ -217,6 +217,7 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::MTL) return NGEN_NAMESPACE::ProductFamily::MTL;
     if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
+    if (family > ProductFamily::PVC && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
 #ifdef PRERELEASE_HW
     if (family == ProductFamily::RLT) return NGEN_NAMESPACE::ProductFamily::RLT;
 #endif

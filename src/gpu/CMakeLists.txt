@@ -19,12 +19,6 @@ file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     )
 
-add_definitions_with_host_compiler(-DNGEN_CPP11)
-add_definitions_with_host_compiler(-DNGEN_SAFE)
-add_definitions_with_host_compiler(-DNGEN_NEO_INTERFACE)
-add_definitions_with_host_compiler(-DNGEN_NO_OP_NAMES)
-add_definitions_with_host_compiler(-DNGEN_WINDOWS_COMPAT)
-
 if(DNNL_WITH_XE3P)
 add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
 add_definitions_with_host_compiler(-DPRERELEASE_HW)

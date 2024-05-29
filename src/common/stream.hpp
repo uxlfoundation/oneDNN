@@ -76,7 +76,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);
 
-    dnnl::impl::stream_impl_t *impl() { return impl_.get(); }
+    //const dnnl::impl::stream_impl_t *impl() const { return impl_.get(); }
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     dnnl::impl::status_t get_threadpool(
@@ -84,7 +84,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
         using namespace dnnl::impl;
         if (engine_->kind() != engine_kind::cpu)
             return status::invalid_arguments;
-        return impl_->get_threadpool(threadpool);
+        return impl()->get_threadpool(threadpool);
     }
 #endif
 

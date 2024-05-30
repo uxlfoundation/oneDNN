@@ -37,16 +37,8 @@ struct sycl_gpu_kernel_t : public gpu::intel::compute::kernel_impl_t {
         : kernel_bundle_(utils::make_unique<kernel_bundle_e_t>(kernel_bundle)) {
     }
 
-    kernel_t(const kernel_t &other) = delete;
-    kernel_t &operator=(const kernel_t &other) = delete;
-
-    kernel_t(kernel_t &&other) = default;
-    kernel_t &operator=(kernel_t &&other) = default;
-
-    ~kernel_t() = default;
-
     status_t parallel_for(impl::stream_t &stream,
-            const std::function<void(::sycl::handler &)> &cgf) const;
+            const std::function<void(void *)> &cgf) override;
 
 private:
     std::unique_ptr<kernel_bundle_e_t> kernel_bundle_;

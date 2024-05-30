@@ -297,7 +297,7 @@ protected:
         compute_blocks_.emplace_back(cb);
     }
 
-    static status_t parallel_for(stream_t &stream,
+    static status_t parallel_for(impl::stream_t &stream,
             const compute::nd_range_t &range, const compute::kernel_t &kernel,
             const compute::kernel_arg_list_t &arg_list,
             const xpu::event_t &deps, xpu::event_t &out_dep) {

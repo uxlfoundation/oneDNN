@@ -25,7 +25,7 @@
 
 #include "common/c_types_map.hpp"
 
-#include "gpu/intel/compute/context.hpp"
+#include "xpu/context.hpp"
 
 namespace dnnl {
 namespace impl {

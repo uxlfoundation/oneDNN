@@ -566,7 +566,7 @@ struct miopen_gemm_inner_product_bwd_weights_impl_t
                     strides_[io::bia]));
             CHECK(create_and_set_reduce_descriptor());
 
-            auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
+            auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
             impl::stream_t *service_stream;
             CHECK(sycl_engine.get_service_stream(service_stream));
 

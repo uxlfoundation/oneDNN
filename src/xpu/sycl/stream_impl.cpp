@@ -27,8 +27,7 @@ namespace sycl {
 
 status_t stream_impl_t::copy(impl::stream_t *stream,
         const memory_storage_t &src, const memory_storage_t &dst, size_t size,
-        const xpu::event_t &deps, xpu::event_t &out_dep,
-        xpu::stream_profiler_t *stream_profiler) {
+        const xpu::event_t &deps, xpu::event_t &out_dep) {
 
     if (size == 0) return status::success;
     // TODO: add src and dst sizes check
@@ -72,7 +71,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
                 = utils::downcast<const xpu::sycl::usm_memory_storage_t *>(
                         &dst);
         e = queue()->submit([&](::sycl::handler &cgh) {
-            cgh.depends_on(xpu::sycl::event_t::from(deps).events);
+            cgh.depends_on(impl::sycl::sycl_event_t::from(deps).events);
             cgh.memcpy(usm_dst->usm_ptr(), usm_src->usm_ptr(), size);
         });
     } else if (usm_src && !usm_dst) {
@@ -84,7 +83,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
                         &dst);
         auto &b_dst = buffer_dst->buffer();
         e = queue()->submit([&](::sycl::handler &cgh) {
-            cgh.depends_on(xpu::sycl::event_t::from(deps).events);
+            cgh.depends_on(impl::sycl::sycl_event_t::from(deps).events);
             auto acc_dst = b_dst.get_access<::sycl::access::mode::write>(cgh);
             cgh.copy(usm_src->usm_ptr(), acc_dst);
         });
@@ -97,7 +96,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
                 = utils::downcast<const xpu::sycl::usm_memory_storage_t *>(
                         &dst);
         e = queue()->submit([&](::sycl::handler &cgh) {
-            cgh.depends_on(xpu::sycl::event_t::from(deps).events);
+            cgh.depends_on(impl::sycl::sycl_event_t::from(deps).events);
             auto acc_src = b_src.get_access<::sycl::access::mode::read>(cgh);
             cgh.copy(acc_src, usm_dst->usm_ptr());
         });
@@ -114,25 +113,18 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
         e = queue()->submit([&](::sycl::handler &cgh) {
             auto acc_src = b_src.get_access<::sycl::access::mode::read>(cgh);
             auto acc_dst = b_dst.get_access<::sycl::access::mode::write>(cgh);
-            cgh.depends_on(xpu::sycl::event_t::from(deps).events);
+            cgh.depends_on(impl::sycl::sycl_event_t::from(deps).events);
             cgh.copy(acc_src, acc_dst);
         });
     }
 
-    if (is_profiling_enabled()) {
-        auto sycl_event = utils::make_unique<xpu::sycl::event_t>(
-                std::vector<::sycl::event> {e});
-        stream_profiler->register_event(std::move(sycl_event));
-    }
-
-    xpu::sycl::event_t::from(out_dep).events = {e};
+    impl::sycl::sycl_event_t::from(out_dep).events = {e};
 
     return status::success;
 }
 
 status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
-        size_t size, const xpu::event_t &deps, xpu::event_t &out_dep,
-        xpu::stream_profiler_t *stream_profiler) {
+        size_t size, const xpu::event_t &deps, xpu::event_t &out_dep) {
     auto *sycl_dst
             = utils::downcast<const xpu::sycl::memory_storage_base_t *>(&dst);
     bool usm = sycl_dst->memory_kind() == xpu::sycl::memory_kind::usm;
@@ -147,7 +139,7 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
         // Note: we cannot use queue_.fill since it cannot handle
         // events as input
         out_event = queue()->submit([&](::sycl::handler &cgh) {
-            cgh.depends_on(xpu::sycl::event_t::from(deps).events);
+            cgh.depends_on(impl::sycl::sycl_event_t::from(deps).events);
             cgh.memset(dst_ptr, pattern, size);
         });
     } else {
@@ -160,30 +152,24 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
                     xpu::sycl::compat::target_device>
                     acc_dst(buffer_dst->buffer(), cgh, ::sycl::range<1>(size),
                             ::sycl::id<1>(0));
-            cgh.depends_on(xpu::sycl::event_t::from(deps).events);
+            cgh.depends_on(impl::sycl::sycl_event_t::from(deps).events);
             cgh.fill(acc_dst, pattern);
         });
     }
 
-    if (is_profiling_enabled()) {
-        auto sycl_event = utils::make_unique<xpu::sycl::event_t>(
-                std::vector<::sycl::event> {out_event});
-        stream_profiler->register_event(std::move(sycl_event));
-    }
-
-    xpu::sycl::event_t::from(out_dep).events = {out_event};
+    impl::sycl::sycl_event_t::from(out_dep).events = {out_event};
     return status::success;
 }
 
-const xpu::sycl::context_t &stream_impl_t::sycl_ctx() const {
-    static xpu::sycl::context_t empty_ctx {};
+const impl::sycl::sycl_context_t &stream_impl_t::sycl_ctx() const {
+    static impl::sycl::sycl_context_t empty_ctx {};
     return ctx_.get(empty_ctx);
 }
 
-xpu::sycl::context_t &stream_impl_t::sycl_ctx() {
-    const xpu::sycl::context_t &ctx
+impl::sycl::sycl_context_t &stream_impl_t::sycl_ctx() {
+    const impl::sycl::sycl_context_t &ctx
             = const_cast<const stream_impl_t *>(this)->sycl_ctx();
-    return *const_cast<xpu::sycl::context_t *>(&ctx);
+    return *const_cast<impl::sycl::sycl_context_t *>(&ctx);
 }
 
 xpu::context_t &stream_impl_t::ctx() {

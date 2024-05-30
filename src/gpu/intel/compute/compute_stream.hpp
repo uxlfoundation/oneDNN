@@ -20,6 +20,7 @@
 #include "common/stream.hpp"
 
 #include "xpu/context.hpp"
+#include "xpu/stream_profiler.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -44,8 +45,8 @@ public:
 
     virtual xpu::context_t &ctx() = 0;
     virtual const xpu::context_t &ctx() const = 0;
-    virtual const compute::stream_profiler_t &profiler() const = 0;
-    virtual compute::stream_profiler_t &profiler() = 0;
+    virtual const xpu::stream_profiler_t &profiler() const = 0;
+    virtual xpu::stream_profiler_t &profiler() = 0;
     status_t notify_profiling_complete() const override;
 
     virtual status_t barrier() = 0;

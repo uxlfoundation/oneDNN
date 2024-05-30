@@ -18,14 +18,15 @@
 #define XPU_SYCL_STREAM_PROFILER_HPP
 
 #include "common/c_types_map.hpp"
-#include "gpu/intel/compute/stream_profiler.hpp"
+
+#include "xpu/stream_profiler.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace xpu {
 namespace sycl {
 
-struct sycl_stream_profiler_t : public gpu::intel::compute::stream_profiler_t {
+struct sycl_stream_profiler_t : public xpu::stream_profiler_t {
     sycl_stream_profiler_t(const stream_t *stream)
         : stream_profiler_t(stream) {}
 

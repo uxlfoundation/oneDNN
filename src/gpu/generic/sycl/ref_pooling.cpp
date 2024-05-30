@@ -66,6 +66,9 @@ status_t ref_pooling_fwd_t::pd_t::init_conf() {
 
     const auto *att = attr();
     const auto &attr_po = att->post_ops_;
+    if (attr_po.len() > sycl_post_ops_t::max_post_ops) {
+        return dnnl_unimplemented;
+    }
     conf_.po_len = attr_po.len();
     for (auto i = 0; i < attr_po.len(); ++i) {
         if (attr_po.contain(binary, i)) {

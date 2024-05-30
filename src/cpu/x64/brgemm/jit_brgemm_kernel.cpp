@@ -71,7 +71,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8_via_convert() || has_f8_e5m2_binary_postops
+        if (brg.is_fp8 || has_f8_e5m2_binary_postops
                 || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
                         brg.dt_d)
@@ -677,18 +677,8 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         case data_type::f16: vcvtph2ps(vmm, op); break;
         case data_type::s8: uni_vpmovsxbd(vmm, op); break;
         case data_type::u8: uni_vpmovzxbd(vmm, op); break;
-        case data_type::f8_e5m2:
-            if (brg.is_fp8_via_convert())
-                f8_e5m2_cvt_->vcvt_f8_to_f32(vmm, op);
-            else
-                assert(!"Error, native conversion unsupported");
-            break;
-        case data_type::f8_e4m3:
-            if (brg.is_fp8_via_convert())
-                f8_e4m3_cvt_->vcvt_f8_to_f32(vmm, op);
-            else
-                assert(!"Error, native conversion unsupported");
-            break;
+        case data_type::f8_e5m2: f8_e5m2_cvt_->vcvt_f8_to_f32(vmm, op); break;
+        case data_type::f8_e4m3: f8_e4m3_cvt_->vcvt_f8_to_f32(vmm, op); break;
 
         default: assert(!"unsupported data type");
     }
@@ -1440,18 +1430,12 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                     vmovdqu16(addr, r_ymm);
                     break;
                 case data_type::f8_e5m2:
-                    if (brg.is_fp8_via_convert()) {
-                        f8_e5m2_cvt_->vcvt_f32_to_f8(xmm, vmm);
-                        vmovdqu8(addr, r_xmm);
-                    } else
-                        assert(!"Error, native conversion unsupported");
+                    f8_e5m2_cvt_->vcvt_f32_to_f8(xmm, vmm);
+                    vmovdqu8(addr, r_xmm);
                     break;
                 case data_type::f8_e4m3:
-                    if (brg.is_fp8_via_convert()) {
-                        f8_e4m3_cvt_->vcvt_f32_to_f8(xmm, vmm);
-                        vmovdqu8(addr, r_xmm);
-                    } else
-                        assert(!"Error, native conversion unsupported");
+                    f8_e4m3_cvt_->vcvt_f32_to_f8(xmm, vmm);
+                    vmovdqu8(addr, r_xmm);
                     break;
                 case data_type::s8: vpmovsdb(addr, r_vmm); break;
                 case data_type::u8: vpmovusdb(addr, r_vmm); break;
@@ -2048,22 +2032,29 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
         bool is_bdb_tail, dim_t ld_block2, bool is_rd_tail, bool is_ld_tail,
         bool last_bdb) {
     auto tdpbxxd = [this](const Tmm &x1, const Tmm &x2, const Tmm &x3) {
-        if (brg.is_fp8) {
-            if (brg.is_fp8_via_convert())
-                tdpfp16ps(x1, x2, x3);
-            else
-                assert(!"Not supported!");
-        } else if (brg.dt_a == data_type::bf16 && brg.dt_b == data_type::bf16) {
-            tdpbf16ps(x1, x2, x3);
-        } else if (brg.dt_a == data_type::f16 && brg.dt_b == data_type::f16) {
+        using namespace data_type;
+
+        if (brg.is_fp8 && brg.is_fp8_via_convert()) {
             tdpfp16ps(x1, x2, x3);
-        } else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::u8) {
+        } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+            tdpbf8ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
+            tdpbhf8ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+            tdphf8ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
+            tdphbf8ps(x1, x2, x3);
+        } else if (brg.dt_a == bf16 && brg.dt_b == bf16) {
+            tdpbf16ps(x1, x2, x3);
+        } else if (brg.dt_a == f16 && brg.dt_b == f16) {
+            tdpfp16ps(x1, x2, x3);
+        } else if (brg.dt_a == u8 && brg.dt_b == u8) {
             tdpbuud(x1, x2, x3);
-        } else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::s8) {
+        } else if (brg.dt_a == u8 && brg.dt_b == s8) {
             tdpbusd(x1, x2, x3);
-        } else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::u8) {
+        } else if (brg.dt_a == s8 && brg.dt_b == u8) {
             tdpbsud(x1, x2, x3);
-        } else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::s8) {
+        } else if (brg.dt_a == s8 && brg.dt_b == s8) {
             tdpbssd(x1, x2, x3);
         } else {
             assert(!"unsupported combination");

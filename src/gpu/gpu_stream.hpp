@@ -44,9 +44,7 @@ public:
     virtual const xpu::stream_profiler_t &profiler() const {
         return *profiler_;
     }
-    xpu::stream_profiler_t &profiler() { return *profiler_; }
-
-    virtual double get_freq(const xpu::event_t &event) const { return 0.0; }
+    virtual xpu::stream_profiler_t &profiler() { return *profiler_; }
 
 protected:
     std::unique_ptr<xpu::stream_profiler_t> profiler_;

@@ -60,7 +60,7 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8_via_convert() || has_f8_e5m2_binary_postops
+        if (brg.is_fp8 || has_f8_e5m2_binary_postops
                 || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d)
                     || has_f8_e5m2_binary_postops)
@@ -1760,23 +1760,28 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
     const Tmm &x2 = Tmm(brg.get_A_tensor(bdb_idx, bi.bdi->is_tail(bdb_idx)));
     const Tmm &x3 = Tmm(brg.get_B_tensor(ldb_idx, bi.ldi->is_tail(ldb_idx)));
 
-    if (brg.is_bf32
-            || (brg.dt_a == data_type::bf16 && brg.dt_b == data_type::bf16)) {
+    using namespace data_type;
+    if (brg.is_bf32 || (brg.dt_a == bf16 && brg.dt_b == bf16)) {
         tdpbf16ps(x1, x2, x3);
-    } else if (brg.dt_a == data_type::f16 && brg.dt_b == data_type::f16) {
+    } else if (brg.dt_a == f16 && brg.dt_b == f16) {
         tdpfp16ps(x1, x2, x3);
-    } else if (brg.is_fp8) {
-        if (brg.is_fp8_via_convert())
-            tdpfp16ps(x1, x2, x3);
-        else
-            assert(!"Not supported!");
-    } else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::u8) {
+    } else if (brg.is_fp8 && brg.is_fp8_via_convert()) {
+        tdpfp16ps(x1, x2, x3);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+        tdpbf8ps(x1, x2, x3);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
+        tdpbhf8ps(x1, x2, x3);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+        tdphf8ps(x1, x2, x3);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
+        tdphbf8ps(x1, x2, x3);
+    } else if (brg.dt_a == u8 && brg.dt_b == u8) {
         tdpbuud(x1, x2, x3);
-    } else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::s8) {
+    } else if (brg.dt_a == u8 && brg.dt_b == s8) {
         tdpbusd(x1, x2, x3);
-    } else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::u8) {
+    } else if (brg.dt_a == s8 && brg.dt_b == u8) {
         tdpbsud(x1, x2, x3);
-    } else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::s8) {
+    } else if (brg.dt_a == s8 && brg.dt_b == s8) {
         tdpbssd(x1, x2, x3);
     } else {
         assert(!"unsupported combination");

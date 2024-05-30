@@ -35,7 +35,7 @@ namespace sycl {
 
 using namespace nstl;
 struct pooling_fwd_kernel_vec_t {
-    pooling_fwd_kernel_vec_t(const sycl_pooling_conf_t &conf,
+    pooling_fwd_kernel_vec_t(const sycl_pooling_fwd_conf_t &conf,
             xpu::sycl::in_memory_arg_t &src, xpu::sycl::out_memory_arg_t &dst,
             xpu::sycl::out_memory_arg_t &ws, xpu::sycl::in_memory_arg_t &src_1,
             xpu::sycl::in_memory_arg_t &src_2,
@@ -307,7 +307,7 @@ private:
 };
 
 struct pooling_bwd_kernel_vec_t {
-    pooling_bwd_kernel_vec_t(const sycl_pooling_conf_t &conf,
+    pooling_bwd_kernel_vec_t(const sycl_pooling_bwd_conf_t &conf,
             xpu::sycl::in_memory_arg_t &diff_dst,
             xpu::sycl::out_memory_arg_t &diff_src,
             xpu::sycl::in_memory_arg_t &ws)
@@ -484,7 +484,7 @@ private:
         }
     }
 
-    sycl_pooling_conf_t conf_;
+    sycl_pooling_bwd_conf_t conf_;
     xpu::sycl::in_memory_arg_t diff_dst_;
     xpu::sycl::out_memory_arg_t diff_src_;
     xpu::sycl::in_memory_arg_t ws_;

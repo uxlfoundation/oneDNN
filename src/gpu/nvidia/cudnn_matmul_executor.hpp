@@ -21,8 +21,8 @@
 #include "gpu/nvidia/cudnn_matmul.hpp"
 #include "gpu/nvidia/cudnn_matmul_impl.hpp"
 #include "gpu/nvidia/engine.hpp"
+#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
-#include "gpu/nvidia/sycl_cuda_stream.hpp"
 #include "xpu/sycl/memory_storage_helper.hpp"
 
 #include <memory>
@@ -43,7 +43,7 @@ protected:
     template <::sycl::access::mode bias_m, ::sycl::access::mode scratch_m>
     void interop_task(std::shared_ptr<cudnn_matmul_impl_t> matmul_impl_,
             impl::engine_t *engine, ::sycl::handler &cgh,
-            nvidia::sycl_cuda_stream_t *cuda_stream,
+            nvidia::stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_weights,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,

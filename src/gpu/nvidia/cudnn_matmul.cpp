@@ -23,6 +23,7 @@
 
 #include "gpu/nvidia/cudnn_matmul_executor.hpp"
 #include "gpu/nvidia/engine.hpp"
+#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
 #include "gpu/nvidia/sycl_cuda_stream_utils.hpp"
 

@@ -81,9 +81,33 @@ status_t ocl_gpu_engine_t::init(const std::vector<uint8_t> &cache_blob) {
     return status::success;
 }
 
+status_t ocl_gpu_engine_t::create_memory_storage(
+        memory_storage_t **storage, unsigned flags, size_t size, void *handle) {
+    std::unique_ptr<memory_storage_t> _storage;
+
+    if (flags & memory_flags_t::prefer_device_usm) {
+        _storage.reset(new ocl_usm_memory_storage_t(
+                this, usm::ocl_usm_kind_t::device));
+    } else
+        _storage.reset(new ocl_buffer_memory_storage_t(this));
+
+    if (!_storage) return status::out_of_memory;
+
+    status_t status = _storage->init(flags, size, handle);
+    if (status != status::success) return status;
+
+    *storage = _storage.release();
+    return status::success;
+}
+
 status_t ocl_gpu_engine_t::create_stream(
-        impl::stream_t **stream, impl::stream_impl_t *stream_impl) {
-    return ocl_stream_t::create_stream(stream, this, stream_impl);
+        impl::stream_t **stream, unsigned flags) {
+    return ocl_stream_t::create_stream(stream, this, flags);
+}
+
+status_t ocl_gpu_engine_t::create_stream(
+        impl::stream_t **stream, cl_command_queue queue) {
+    return ocl_stream_t::create_stream(stream, this, queue);
 }
 
 namespace {

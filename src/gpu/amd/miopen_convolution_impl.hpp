@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -562,9 +562,8 @@ public:
             execute_reorder(handle, post_op_scratch, y, false);
         }
     }
-    status_t init_scratchpad(
-            impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
+    status_t init_scratchpad(engine_t *engine, convolution_pd_t *pd) override {
+        auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
         auto hip_stream = utils::downcast<stream_t *>(service_stream);
@@ -685,9 +684,8 @@ protected:
         return status::success;
     }
 
-    status_t init_scratchpad(
-            impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
+    status_t init_scratchpad(engine_t *engine, convolution_pd_t *pd) override {
+        auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 
@@ -822,9 +820,8 @@ public:
         return status::success;
     }
 
-    status_t init_scratchpad(
-            impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
+    status_t init_scratchpad(engine_t *engine, convolution_pd_t *pd) override {
+        auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 

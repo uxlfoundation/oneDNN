@@ -168,7 +168,21 @@ public:
         return dispatch_t(this, md);
     }
 
-    virtual gpu_utils::device_id_t device_id() const = 0;
+    status_t get_service_stream(impl::stream_t *&stream) override {
+        status_t status = status::success;
+        if (service_stream_ == nullptr) {
+            const std::lock_guard<std::mutex> lock(service_stream_mutex_);
+            if (service_stream_ == nullptr) {
+                impl::stream_t *service_stream_ptr;
+                status = create_stream(
+                        &service_stream_ptr, stream_flags::default_flags);
+                if (status == status::success)
+                    service_stream_.reset(service_stream_ptr);
+            }
+        }
+        stream = service_stream_.get();
+        return status;
+    }
 
 protected:
     virtual status_t init_device_info() = 0;
@@ -189,6 +203,8 @@ private:
     std::shared_ptr<impl::primitive_t> zero_pad_primitive_;
     resource_mapper_t zero_pad_resources_;
     std::once_flag zero_pad_init_;
+    std::unique_ptr<impl::stream_t> service_stream_;
+    std::mutex service_stream_mutex_;
 };
 
 } // namespace compute

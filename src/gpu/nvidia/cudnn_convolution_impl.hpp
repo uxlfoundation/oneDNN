@@ -674,7 +674,7 @@ public:
     }
     status_t init_scratchpad(impl::engine_t *engine, convolution_pd_t *pd) override {
         auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
-        stream_t *service_stream;
+        impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 
         auto cuda_stream = utils::downcast<nvidia::stream_t *>(service_stream);
@@ -901,7 +901,7 @@ protected:
 
     status_t init_scratchpad(impl::engine_t *engine, convolution_pd_t *pd) override {
         auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
-        stream_t *service_stream;
+        impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 
         auto cuda_stream = utils::downcast<nvidia::stream_t *>(service_stream);
@@ -1051,7 +1051,7 @@ public:
 
     status_t init_scratchpad(impl::engine_t *engine, convolution_pd_t *pd) override {
         auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(engine);
-        stream_t *service_stream;
+        impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
 
         auto cuda_stream = utils::downcast<nvidia::stream_t *>(service_stream);

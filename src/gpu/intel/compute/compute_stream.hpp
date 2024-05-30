@@ -18,7 +18,8 @@
 #define GPU_INTEL_COMPUTE_COMPUTE_STREAM_HPP
 
 #include "common/stream.hpp"
-#include "gpu/intel/compute/context.hpp"
+
+#include "xpu/context.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,6 +34,18 @@ class compute_stream_t : public gpu::stream_t {
 public:
     using stream_t::stream_t;
 
+    virtual status_t copy(const memory_storage_t &src,
+            const memory_storage_t &dst, size_t size, const xpu::event_t &dep,
+            xpu::event_t &out_dep)
+            = 0;
+    virtual status_t fill(const memory_storage_t &dst, uint8_t pattern,
+            size_t size, const xpu::event_t &deps, xpu::event_t &out_dep)
+            = 0;
+
+    virtual xpu::context_t &ctx() = 0;
+    virtual const xpu::context_t &ctx() const = 0;
+    virtual const compute::stream_profiler_t &profiler() const = 0;
+    virtual compute::stream_profiler_t &profiler() = 0;
     status_t notify_profiling_complete() const override;
 
     virtual status_t barrier() = 0;

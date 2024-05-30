@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,9 +44,7 @@ public:
     virtual const xpu::stream_profiler_t &profiler() const {
         return *profiler_;
     }
-    xpu::stream_profiler_t &profiler() { return *profiler_; }
-
-    virtual double get_freq(const xpu::event_t &event) const { return 0.0; }
+    virtual xpu::stream_profiler_t &profiler() { return *profiler_; }
 
 protected:
     std::unique_ptr<xpu::stream_profiler_t> profiler_;

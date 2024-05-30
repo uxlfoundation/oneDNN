@@ -156,15 +156,19 @@ static inline bool hasNativeAtomicAdd(HW hw, Type T,
     bool floatAtomics = (astrategy.base.getModel() == ModelA64);
     if (astrategy.newDP)
         floatAtomics |= (astrategy.base.getModel() != ModelSLM);
+#if XE3P
     if (hw >= HW::Xe3p) floatAtomics = true;
+#endif
 
     if (T.isInt4()) return false;
     if (T.isInteger() && T.size() >= (astrategy.newDP ? 2 : 4))
         return true;
     else if (T == Type::f32)
         return floatAtomics && (hw >= HW::XeHP);
+#if XE3P
     else if (T == Type::f16 || T == Type::bf16)
         return (hw >= HW::Xe3p);
+#endif
     else if (T == Type::f64)
         return floatAtomics && (hw >= HW::XeHPC);
     else
@@ -180,8 +184,12 @@ static inline size_t slmCapacity(HW hw) {
         case HW::XeHPG:
         case HW::XeHPC:
         case HW::Xe2: return 131072;
+#if XE3
         case HW::Xe3: return 131072;
+#endif
+#if XE3P
         case HW::Xe3p: return 393216;
+#endif
         default: return 0;
     }
 }
@@ -206,8 +214,10 @@ static inline int eusPerSubslice(HW hw) {
         case HW::Gen11:
         case HW::XeHPC:
         case HW::Xe2:
+#if XE3P
         case HW::Xe3:
         case HW::Xe3p: return 8;
+#endif
         case HW::Gen12LP:
         case HW::XeHP:
         case HW::XeHPG: return 16;
@@ -216,7 +226,9 @@ static inline int eusPerSubslice(HW hw) {
 }
 
 static inline int r0DWords(HW hw) {
+#if XE3P
     if (hw >= HW::Xe3p) return 16;
+#endif
     return 8;
 }
 
@@ -2279,7 +2291,9 @@ static inline int block2DMinAlignment(HW hw, const MatrixAddressing &atype,
         const MatrixAddressingStrategy &astrategy, bool asIfBlock2D = false) {
     if (!isBlock2D(astrategy.accessType) && !asIfBlock2D) return 0;
     if (hw == HW::Xe2) return 16;
+#if XE3P
     if (hw >= HW::Xe3p) return 4;
+#endif
     return (isTransposing(astrategy.accessType) || astrategy.prefetch) ? 4 : 8;
 }
 
@@ -2937,7 +2951,9 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
                 } else {
                     Tblock = Type::u32;
                     maxW = 8;
+#if XE3P
                     if (hw >= HW::Xe3p) maxW = 16;
+#endif
                 }
                 maxXBlock = std::min(maxXBlock, (maxW * Tblock) / T);
             } else if (vnni) {
@@ -2987,6 +3003,7 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
             }
             xblock = std::min(xblock, maxXBlock * count);
 
+#if XE3P
             // On Xe3p and later, large-height transpose messages effectively behave
             //  like block arrays.
             if (hw >= HW::Xe3p && transpose) {
@@ -2996,6 +3013,7 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
                     yblock = count * ychunk;
                 }
             }
+#endif
 
             // Crosspack calculation.
             int crosspack = (transpose || vnni) ? std::max(1, 4 / T) : 1;
@@ -5883,7 +5901,9 @@ static inline int block2DWidthAlignment(Type T, const RegisterBlock &block,
 }
 
 static inline int block2DBaseAlignment(HW hw, int stepping) {
+#if XE3P
     if (hw >= HW::Xe3p) return 4;
+#endif
     if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
     return 64;
 }
@@ -6001,10 +6021,12 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
                     eadd(simd1, addr[0].uq(), addr[0].ud(0)(udStride),
                             ptrShifted, strategy, state);
                 } else if (ptrShifted != 0) {
+#if XE3P
                     if (consecutive > 1 || tblock > 1 || hw >= HW::Xe3p) {
                         mulConstant<uint32_t>(simdSize, addr, iv, stride);
                         add<uint32_t>(simdSize, addr, addr, ptrShifted);
                     } else
+#endif
                         emad(simdSize, addr[0].ud(), ptrShifted, ivBase(1),
                                 int32_t(stride), strategy, state);
                 } else
@@ -22670,7 +22692,9 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
                 || barrierFreq || fuseBeta)
             moveR0 = MoveR0::None;
 
+#if XE3P
     if (hw >= HW::Xe3p) moveR0 = MoveR0::None;
+#endif
 
     // Mixed mode restrictions:
     //  - mixed hf/f is max SIMD 8 on Gen9
@@ -28225,7 +28249,9 @@ REG_XEHP_ISA(template class gemm_kernel_generator_t<HW::XeHP>);
 REG_XEHPG_ISA(template class gemm_kernel_generator_t<HW::XeHPG>);
 REG_XEHPC_ISA(template class gemm_kernel_generator_t<HW::XeHPC>);
 REG_XE2_ISA(template class gemm_kernel_generator_t<HW::Xe2>);
+#if XE3P
 REG_XE3P_ISA(template class gemm_kernel_generator_t<HW::Xe3p>);
+#endif
 
 } // namespace jit
 } // namespace intel

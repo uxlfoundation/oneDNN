@@ -115,11 +115,14 @@ CacheSettingsLSC getCaching(char l1, char l2, char l3) {
 }
 
 CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw) {
+    char l1, l2, l3;
+#if XE3P
     if (hw >= HW::Xe3p) {
-        char l1, l2, l3;
         s >> l1 >> l2 >> l3;
         return getCaching(l1, l2, l3);
-    } else {
+    } else
+#endif
+    {
         char l1, l3;
         s >> l1 >> l3;
         return getCaching(l1, l3);
@@ -135,8 +138,9 @@ void getCaching(
     cachingW = CacheSettingsLSC::L1WB_L3WB;
 
     if (hw >= HW::XeHPC) cachingW = CacheSettingsLSC::L1UC_L3WB;
-
+#if XE3P
     if (hw >= HW::Xe3p) cachingR = CacheSettingsLSC::L1C_L2C_L3C;
+#endif
 
     if (s.peek() == '{') {
         char eat;
@@ -237,7 +241,9 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
     strategy.A.cachingW = CacheSettingsLSC::Default;
     strategy.B.cachingW = CacheSettingsLSC::Default;
     strategy.CO.cachingR = CacheSettingsLSC::L1C_L3C;
+#if XE3P
     if (hw >= HW::Xe3p) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
+#endif
     strategy.A_prefetch.prefetch = true;
     strategy.B_prefetch.prefetch = true;
     strategy.C_prefetch.prefetch = true;
@@ -258,7 +264,9 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
 
     strategy.unroll[LoopK] = 1;
     strategy.checkAdd32 = !native64Bit(hw) || (hw == HW::XeHPC);
+#if XE3P
     strategy.checkAdd32 &= (hw < HW::Xe3p);
+#endif
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block)
             || strategy.kParallel;
 

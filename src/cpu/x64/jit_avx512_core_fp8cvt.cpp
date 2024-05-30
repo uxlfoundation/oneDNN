@@ -35,6 +35,23 @@ void fp8_conversion_base_t::bcst_f8_to_f32(
 
 void fp8_conversion_e5m2_t::prepare_table() {
     host_->align(64);
+    host_->L(label_vnni_permute_index_table_);
+    for (size_t i = 0; i < 64; ++i) {
+        // 2, 0, 3, 1, ...
+        size_t index = i;
+        switch (i % 4) {
+            case 0: index = i + 2; break;
+            case 1: index = i - 1; break;
+            case 2: index = i + 1; break;
+            case 3: index = i - 2; break;
+        }
+        host_->db(index);
+    }
+
+    // Other tables are not needed if fp8 is native
+    if (is_fp8_native()) return;
+
+    host_->align(64);
     host_->L(label_table_to_f8_);
     // 0: mask for 2nd msb of f16 mantissa, used in rounding
     for (uint8_t u8 = 0; u8 < 32; ++u8) {
@@ -53,23 +70,23 @@ void fp8_conversion_e5m2_t::prepare_table() {
         int idx = u8 * 2 + 1; // 1, 3, 5, ...
         host_->db(idx);
     }
-    host_->align(64);
-    host_->L(label_vnni_permute_index_table_);
-    for (size_t i = 0; i < 64; ++i) {
-        // 2, 0, 3, 1, ...
-        size_t index = i;
-        switch (i % 4) {
-            case 0: index = i + 2; break;
-            case 1: index = i - 1; break;
-            case 2: index = i + 1; break;
-            case 3: index = i - 2; break;
-        }
-        host_->db(index);
-    }
 }
 
 void fp8_conversion_e4m3_t::prepare_table() {
     host_->align(64);
+    host_->L(label_vnni_permute_index_table_);
+    for (size_t i = 0; i < 32; ++i) {
+        size_t index = 4 * (i / 2) + (i % 2);
+        host_->db(index);
+    }
+    for (size_t i = 32; i < 64; ++i) {
+        size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
+        host_->db(index);
+    }
+
+    // Other tables are not needed if fp8 is native
+    if (is_fp8_native()) return;
+
     host_->L(label_table_from_f8_);
     // 0: map from f8_e4m3 byte to high byte of f16 (ignoring sign)
     for (uint8_t u8 = 0; u8 < 128; ++u8) {
@@ -130,16 +147,6 @@ void fp8_conversion_e4m3_t::prepare_table() {
     }
     // 320: absolute value mask for f16 values
     host_->dd(0x7fff7fff);
-    host_->align(64);
-    host_->L(label_vnni_permute_index_table_);
-    for (size_t i = 0; i < 32; ++i) {
-        size_t index = 4 * (i / 2) + (i % 2);
-        host_->db(index);
-    }
-    for (size_t i = 32; i < 64; ++i) {
-        size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
-        host_->db(index);
-    }
 }
 
 void fp8_conversion_e5m2_t::vcvt_f8_to_f16(
@@ -188,6 +195,7 @@ void fp8_conversion_e5m2_t::prepare_f8_to_f16_vnni_masks(int zmm_permute_idx) {
     host_->vmovups(zmm_permute,
             host_->ptr[host_->rip + label_vnni_permute_index_table_]);
 }
+
 void fp8_conversion_e5m2_t::perform_f8_to_f16_vnni_conversion(
         const Xbyak::Zmm &zmm_out1, const Xbyak::Zmm &zmm_out2,
         const Xbyak::Operand &op_in, int zmm_permute_idx) {
@@ -250,6 +258,11 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+
+    if (is_fp8_native()) {
+        host_->vcvtnehf82ph(xmm_out, op_in);
+        return;
+    }
 
     host_->lea(reg64_aux_,
             host_->ptr[host_->rip + label_table_from_f8_]); // base of table
@@ -342,7 +355,10 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
     const Xbyak::Zmm zmm_out(xmm_out.getIdx());
 
     // f16 <- f8_e4m3
-    vcvt_f8_to_f16(ymm_mask(xmm_out), op_in);
+    if (is_fp8_native())
+        host_->vcvtnehf82ph(ymm_mask(xmm_out), op_in);
+    else
+        vcvt_f8_to_f16(ymm_mask(xmm_out), op_in);
 
     // f32 <- f16
     host_->vcvtph2psx(zmm_out, ymm_out);
@@ -359,13 +375,21 @@ void fp8_conversion_e5m2_t::vcvt_f32_to_f8(
     // f16 <- f32
     host_->vcvtps2phx(op_in.isXMM() ? xmm_out : ymm_mask(xmm_out), op_in);
     // f8_e5m2 <- f16 (RNE)
-    vcvt_f16_to_f8(xmm_out, ymm_out);
+    if (is_fp8_native())
+        host_->vcvtneph2bf8(xmm_out, ymm_out);
+    else
+        vcvt_f16_to_f8(xmm_out, ymm_out);
 }
 
 void fp8_conversion_e5m2_t::vcvt_f16_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+    if (is_fp8_native()) {
+        host_->vcvtneph2bf8(xmm_out, op_in);
+        return;
+    }
+
     // load base of table
     host_->lea(reg64_aux_, host_->ptr[host_->rip + label_table_to_f8_]);
 
@@ -413,13 +437,21 @@ void fp8_conversion_e4m3_t::vcvt_f32_to_f8(
     // f16 <- f32
     host_->vcvtps2phx(ymm_mask(xmm_out), op_in);
     // f8_e4m3 <- f16 (RNE)
-    vcvt_f16_to_f8(xmm_out, ymm_out);
+    if (is_fp8_native())
+        host_->vcvtneph2hf8(xmm_out, ymm_out);
+    else
+        vcvt_f16_to_f8(xmm_out, ymm_out);
 }
 
 void fp8_conversion_e4m3_t::vcvt_f16_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+    if (is_fp8_native()) {
+        host_->vcvtneph2hf8(xmm_out, op_in);
+        return;
+    }
+
     host_->lea(reg64_aux_,
             host_->ptr[host_->rip + label_table_to_f8_]); // load base of table
 

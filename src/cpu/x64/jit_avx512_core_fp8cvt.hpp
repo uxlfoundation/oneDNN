@@ -76,6 +76,10 @@ protected:
     const Xbyak::Xmm xmm_aux3_;
     const Xbyak::Reg64 reg64_aux_;
 
+    bool is_fp8_native() {
+        return is_superset(host_->max_cpu_isa(), cpu_isa_t::avx10_2_512_amx_2);
+    }
+
     Xbyak::Zmm zmm_mask(
             const Xbyak::Xmm &xmm_in, const Xbyak::Xmm &xmm_with_mask) const {
         const Xbyak::Zmm zmm_out(xmm_in.getIdx());

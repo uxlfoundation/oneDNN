@@ -18,6 +18,7 @@
 #include "common/verbose.hpp"
 
 #include "gpu/nvidia/engine.hpp"
+#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_compat.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
 
@@ -41,18 +42,18 @@ cudnnHandle_t &stream_t::get_cudnn_handle(CUstream cuda_stream) {
     e->activate_stream_cudnn(cuda_stream);
     return *(e->get_cudnn_handle());
 }
-// the sycl_cuda_stream_t will not own this. it is an observer pointer
-CUstream sycl_cuda_stream_t::get_underlying_stream() {
+// the stream_t will not own this. it is an observer pointer
+CUstream stream_t::get_underlying_stream() {
     return compat::get_native<CUstream>(queue());
 }
 
-// the sycl_cuda_stream_t will not own this. it is an observer pointer
-CUcontext sycl_cuda_stream_t::get_underlying_context() {
+// the stream_t will not own this. it is an observer pointer
+CUcontext stream_t::get_underlying_context() {
     return compat::get_native<CUcontext>(queue().get_device());
 }
 
-// the sycl_cuda_stream_t will not own this. it is an observer pointer
-CUdevice sycl_cuda_stream_t::get_underlying_device() {
+// the stream_t will not own this. it is an observer pointer
+CUdevice stream_t::get_underlying_device() {
     return compat::get_native<CUdevice>(queue().get_device());
 }
 

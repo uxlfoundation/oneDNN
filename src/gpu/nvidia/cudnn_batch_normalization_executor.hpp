@@ -24,6 +24,7 @@
 #include "common/type_helpers.hpp"
 #include "gpu/nvidia/cudnn_batch_normalization_impl.hpp"
 #include "gpu/nvidia/engine.hpp"
+#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
 #include "gpu/nvidia/sycl_cuda_utils.hpp"
 #include "sycl_cuda_utils.hpp"
@@ -45,7 +46,7 @@ protected:
     void interop_task_fwd(
             std::shared_ptr<cudnn_batch_normalization_impl_base_t> bnorm_impl,
             impl::engine_t *engine, ::sycl::handler &cgh,
-            nvidia::sycl_cuda_stream_t *cuda_stream,
+            nvidia::stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::write>
                     arg_dst,
@@ -110,7 +111,7 @@ protected:
     void interop_task_bwd(
             std::shared_ptr<cudnn_batch_normalization_impl_base_t> bnorm_impl,
             impl::engine_t *engine, ::sycl::handler &cgh,
-            nvidia::sycl_cuda_stream_t *cuda_stream,
+            nvidia::stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_diff_dst,
@@ -187,8 +188,7 @@ protected:
 
     template <typename T = float>
     void init_scaleshift(cuda_sycl_scoped_context_handler_t &sc,
-            const compat::interop_handle &ih,
-            nvidia::sycl_cuda_stream_t *cuda_stream,
+            const compat::interop_handle &ih, nvidia::stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::write>
                     arg_scale,
             float val, const size_t n) const {
@@ -208,8 +208,7 @@ protected:
 
     template <typename T = float>
     void init_mean_var(cuda_sycl_scoped_context_handler_t &sc,
-            const compat::interop_handle &ih,
-            nvidia::sycl_cuda_stream_t *cuda_stream,
+            const compat::interop_handle &ih, nvidia::stream_t *cuda_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access_mode::write>
                     arg_mean,
             xpu::sycl::interop_memory_arg_t<::sycl::access_mode::write> arg_var,

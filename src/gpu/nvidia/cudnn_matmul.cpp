@@ -24,6 +24,7 @@
 
 #include "gpu/nvidia/cudnn_matmul_executor.hpp"
 #include "gpu/nvidia/engine.hpp"
+#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
 #include "gpu/nvidia/sycl_cuda_stream_utils.hpp"
 
@@ -154,16 +155,8 @@ status_t cudnn_matmul_lt_t::execute(const exec_ctx_t &ctx) const {
         CHECK(binary_->execute(binary_ctx));
     }
 
-    if (has_dst_scales
-            && (pd()->params_->multi_dst_scale_
-                    || pd()->params_->acc_type_ == CUDA_R_32I)) {
-        // dst scale sycl binary
-        exec_args_t dst_scale_binary_args;
-        dst_scale_binary_args[DNNL_ARG_SRC_0]
-                = memory_arg_t {ctx.args().at(DNNL_ARG_DST).mem, true};
-        dst_scale_binary_args[DNNL_ARG_SRC_1] = memory_arg_t {
-                ctx.args().at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST).mem, true};
-        dst_scale_binary_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+    nvidia::stream_t *cuda_stream
+            = utils::downcast<nvidia::stream_t *>(ctx.stream());
 
         exec_ctx_t binary_ctx(ctx, std::move(dst_scale_binary_args));
 

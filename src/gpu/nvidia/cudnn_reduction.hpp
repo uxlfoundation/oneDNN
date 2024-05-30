@@ -25,7 +25,7 @@
 #include "gpu/gpu_primitive.hpp"
 #include "gpu/nvidia/cudnn_reduction_impl.hpp"
 #include "gpu/nvidia/engine.hpp"
-#include "gpu/nvidia/sycl_cuda_stream.hpp"
+#include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_utils.hpp"
 
 namespace dnnl {

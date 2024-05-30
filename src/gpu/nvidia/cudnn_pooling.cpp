@@ -18,7 +18,6 @@
 #include "gpu/nvidia/cudnn_pooling.hpp"
 #include "gpu/nvidia/stream.hpp"
 #include "gpu/nvidia/sycl_cuda_scoped_context.hpp"
-#include "gpu/nvidia/sycl_cuda_stream.hpp"
 #include "xpu/sycl/buffer_memory_storage.hpp"
 
 #include "common/nstl.hpp"

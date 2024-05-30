@@ -38,20 +38,28 @@ public:
     cublasHandle_t &get_cublas_handle(CUstream cuda_stream = nullptr);
     cudnnHandle_t &get_cudnn_handle(CUstream cuda_stream = nullptr);
 
+    static status_t create_stream(
+            impl::stream_t **stream, impl::engine_t *engine, unsigned flags) {
+        std::unique_ptr<nvidia::stream_t> sycl_stream(
+                new nvidia::stream_t(engine, flags));
+        if (!sycl_stream) return status::out_of_memory;
+
+        CHECK(sycl_stream->init());
+        *stream = sycl_stream.release();
+        return status::success;
+    }
+
     static status_t create_stream(impl::stream_t **stream,
-            impl::engine_t *engine, impl::stream_impl_t *stream_impl) {
-        std::unique_ptr<nvidia::stream_t> s(
-                new nvidia::stream_t(engine, stream_impl));
-        if (!s) return status::out_of_memory;
+            impl::engine_t *engine, ::sycl::queue &queue) {
+        unsigned flags;
+        CHECK(xpu::sycl::stream_impl_t::init_flags(&flags, queue));
 
-        status_t status = s->init();
-        if (status != status::success) {
-            // Stream owns stream_impl only if it's created successfully (including initialization).
-            s->impl_.release();
-            return status;
-        }
+        std::unique_ptr<nvidia::stream_t> sycl_stream(
+                new nvidia::stream_t(engine, flags, queue));
 
-        *stream = s.release();
+        CHECK(sycl_stream->init());
+
+        *stream = sycl_stream.release();
         return status::success;
     }
 
@@ -65,16 +73,36 @@ public:
     status_t copy(const memory_storage_t &src, const memory_storage_t &dst,
             size_t size, const xpu::event_t &deps,
             xpu::event_t &out_dep) override {
-        return impl()->copy(this, src, dst, size, deps, out_dep);
+        CHECK(impl()->copy(this, src, dst, size, deps, out_dep));
+
+        if (is_profiling_enabled()) {
+            assert(impl::sycl::sycl_event_t::from(out_dep).size() == 1);
+            auto sycl_event = utils::make_unique<impl::sycl::sycl_event_t>(
+                    std::vector<::sycl::event> {
+                            impl::sycl::sycl_event_t::from(out_dep)[0]});
+            profiler_->register_event(std::move(sycl_event));
+        }
+        return status::success;
     }
 
     status_t fill(const memory_storage_t &dst, uint8_t pattern, size_t size,
             const xpu::event_t &deps, xpu::event_t &out_dep) override {
-        return impl()->fill(dst, pattern, size, deps, out_dep);
+        CHECK(impl()->fill(dst, pattern, size, deps, out_dep));
+
+        if (is_profiling_enabled()) {
+            assert(impl::sycl::sycl_event_t::from(out_dep).size() == 1);
+            auto sycl_event = utils::make_unique<impl::sycl::sycl_event_t>(
+                    std::vector<::sycl::event> {
+                            impl::sycl::sycl_event_t::from(out_dep)[0]});
+            profiler_->register_event(std::move(sycl_event));
+        }
+        return status::success;
     }
 
-    const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }
-    xpu::sycl::context_t &sycl_ctx() { return impl()->sycl_ctx(); }
+    const impl::sycl::sycl_context_t &sycl_ctx() const {
+        return impl()->sycl_ctx();
+    }
+    impl::sycl::sycl_context_t &sycl_ctx() { return impl()->sycl_ctx(); }
 
     xpu::context_t &ctx() override { return impl()->sycl_ctx(); }
     const xpu::context_t &ctx() const override { return impl()->sycl_ctx(); }
@@ -98,8 +126,10 @@ private:
     }
 
     status_t init();
-    stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl)
-        : gpu::stream_t(engine, stream_impl) {}
+    stream_t(impl::engine_t *engine, unsigned flags, ::sycl::queue &queue)
+        : gpu::stream_t(engine, new xpu::sycl::stream_impl_t(queue, flags)) {}
+    stream_t(impl::engine_t *engine, unsigned flags)
+        : gpu::stream_t(engine, new xpu::sycl::stream_impl_t(flags)) {}
 };
 
 } // namespace nvidia

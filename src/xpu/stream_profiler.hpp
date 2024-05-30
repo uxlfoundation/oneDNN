@@ -19,13 +19,13 @@
 
 #include <cassert>
 #include <limits>
-#include <map>
 #include <mutex>
 #include <vector>
+#include <unordered_map>
 
 #include "common/c_types_map.hpp"
 
-#include "gpu/intel/compute/context.hpp"
+#include "xpu/context.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -70,11 +70,6 @@ struct stream_profiler_t {
         m_.unlock();
     }
 
-    // The contract is profiler interfaces are called only in between
-    // `start_profiling` and `stop_profiling`, which provide a secure
-    // multi-threaded access because of the lock. It allows to strip the lock
-    // from all other calls, e.g., `stamp, or `register_event` (except `reset`)
-    // to reduce the overhead for profiling.
     void start_profiling() {
         m_.lock();
         stamp_++;
@@ -91,7 +86,8 @@ struct stream_profiler_t {
     }
 
 protected:
-    status_t get_info_impl(const std::map<uint64_t, entry_t> &stamp2entry,
+    status_t get_info_impl(
+            const std::unordered_map<uint64_t, entry_t> &stamp2entry,
             profiling_data_kind_t data_kind, uint64_t *data) const {
         int idx = 0;
         for (auto &kv : stamp2entry) {
@@ -100,8 +96,7 @@ protected:
                 case profiling_data_kind::time: data[idx] = e.get_nsec(); break;
                 case profiling_data_kind::cycles: {
                     double freq = e.freq / e.kernel_count;
-                    data[idx] = static_cast<uint64_t>(
-                            freq * static_cast<double>(e.get_nsec()) / 1e9);
+                    data[idx] = freq * e.get_nsec() / 1e9;
                     if (callback_) callback_(kv.first, e.get_nsec());
                     break;
                 }

@@ -94,6 +94,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
     const int64_t wei_zp_group_k
             = !wei_zp_groups.empty() ? wei_zp_groups[0] : 1;
+    const bool apply_scales_in_ker = wei_decompression || wei_scale_per_k;
 
     const bool wei_decompression = prb->weights_decompression();
     const bool apply_scales_in_ker
@@ -131,21 +132,11 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             auto w = wei[wei_off_f(prb, wei_mb, k, n)] - wei_zp;
             // Compression scaling happens before the matmul, unlike regular
             // quantization, to preserve the accuracy.
-            // Also, regular quantized matmul can have per group K-dim scales
-            // which require handling inside the kernel.
-            if (apply_scales_in_ker) {
-                if (has_src_scale) {
-                    float src_scale = src_scales.get_elem(
-                            src_scale_stride_k * (k / src_scale_group_k)
-                            + src_scale_stride_m * m);
-                    s *= src_scale;
-                }
-                if (has_wei_scale) {
-                    float wei_scale = wei_scales.get_elem(
-                            wei_scale_stride_k * (k / wei_scale_group_k)
-                            + wei_scale_stride_n * n);
-                    w *= wei_scale;
-                }
+            if (has_wei_scale && apply_scales_in_ker) {
+                float wei_scale = wei_scales.get_elem(
+                        wei_scale_stride_k * (k / wei_scale_group_k)
+                        + wei_scale_stride_n * n);
+                w *= wei_scale;
             }
             dst += s * w;
         }
@@ -159,19 +150,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         float &dst = ((float *)dst_m)[dst_off];
 
         float wei_scale = 1.f;
-        float src_scale = 1.f;
-        float dst_scale = 1.f;
-        if (!apply_scales_in_ker) {
-            assert(IMPLICATION(has_src_scale, src_scales.nelems() == 1));
-            if (has_src_scale) { src_scale = src_scales.get_elem(0); }
-            if (has_wei_scale) {
-                wei_scale = wei_scales.get_elem(wei_scale_mask > 0 ? n : 0);
-            }
-        }
-        if (has_dst_scale) {
-            dst_scale = 1.f / dst_scales.get_elem(dst_scale_mask > 0 ? n : 0);
-        }
-
+        if (has_wei_scale && !apply_scales_in_ker)
+            wei_scale = wei_scales.get_elem(wei_scale_mask > 0 ? n : 0);
         float tmp = ((float *)dst_tmp)[dst_off] * src_scale * wei_scale;
 
         if (prb->bia_dt != dnnl_data_type_undef) {

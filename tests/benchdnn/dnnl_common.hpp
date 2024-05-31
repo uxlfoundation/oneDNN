@@ -661,8 +661,10 @@ float reorder_rescale_factor();
 //     for a not matched dimension. Thus, `ndims` of a new object will remain
 //     the same as for original md. When set to `false`, a dim is skipped and
 //     the final object could end up with smaller `ndims` (or `size()`) value.
-dims_t md2dims(
-        const_dnnl_memory_desc_t md, int mask = -1, bool extend_by_ones = true);
+// `groups` specify a vector of group values which decrease the final dimension
+//     values by dividing on the group size.
+dims_t md2dims(const_dnnl_memory_desc_t md, int mask = -1,
+        bool extend_by_ones = true, const std::vector<int64_t> &groups = {});
 
 // Function adjusts data type if fpmath mode is present or sum_dt is different
 // from destination_dt. It is used in `cfg` objects that regulate filling.
@@ -912,6 +914,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             int64_t ndims = 1;
             const auto mask = sc.get_mask(exec_arg, prim_kind,
                     query_md_ndims(wei_md), has_channel_groups);
+            const auto &groups = sc.get(exec_arg).groups;
 
             if (mask > 0) {
                 const auto &md = query_md(const_pd, exec_arg);
@@ -960,6 +963,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             dims_t dims = {};
             const auto mask
                     = zp.get_mask(exec_arg, prim_kind, query_md_ndims(wei_md));
+            const auto &groups = e.groups;
 
             if (mask > 0) {
                 const auto &md = query_md(const_pd, exec_arg);

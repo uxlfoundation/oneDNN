@@ -568,7 +568,9 @@ status_t dnnl_primitive_attr_set_scales(primitive_attr_t *attr, int arg,
         int mask, int ndims, const dims_t group_dims, data_type_t data_type) {
     using namespace data_type;
     bool ok = attr && mask >= 0 && arg >= 0 && ndims >= 0
-            && utils::one_of(data_type, f32, bf16, f16, f8_e5m2, f8_e4m3)
+            && utils::one_of(data_type, f32, bf16, f16)
+            && IMPLICATION(!utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS),
+                    data_type == f32 && ndims == 0)
             && IMPLICATION(ndims, validate_dims(ndims, group_dims));
     if (!ok) return invalid_arguments;
     return attr->scales_.set(arg, mask, ndims, group_dims, data_type);

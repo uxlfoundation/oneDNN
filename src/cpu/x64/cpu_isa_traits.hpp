@@ -498,7 +498,7 @@ static inline bool isa_has_masks(cpu_isa_t isa) {
 
 static inline bool isa_has_sat_cvt(cpu_isa_t isa, data_type_t dt) {
     return utils::one_of(dt, data_type::u8, data_type::s8)
-            && is_superset(isa, avx10_2_256);
+            && is_superset(isa, avx10_2_512); // Todo: allow avx10_2_256
 }
 
 static inline int isa_max_vlen(cpu_isa_t isa) {

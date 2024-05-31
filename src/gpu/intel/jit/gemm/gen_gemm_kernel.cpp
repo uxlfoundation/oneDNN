@@ -397,7 +397,10 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
 #if XE3P
     /* Reuse PVC strategies for legacy mode on Xe3p */
-    if (arch == arch_t::xe3p && !efficient_64b_)
+    if (arch == arch_t::xe3p
+            && (!efficient_64b_
+                    || utils::one_of(
+                            Type::f64, problem_.Ta, problem_.Tb, problem_.Tc)))
         match_params[0].selector.hw = kcatalog::HWTagXeHPC;
 #endif
 

@@ -20667,8 +20667,13 @@ void gemm_kernel_generator_t<hw>::gemmAutoTypeConversions(
     if ((Ta.isInt8() || Ta.isInt4()) && Tb.isFP() && Tc.isFP()) Ta = Tb;
     if ((Tb.isInt8() || Tb.isInt4()) && Ta.isFP() && Tc.isFP()) Tb = Ta;
 
-    if (Ta.isF8()) Ta = Type::f16;
-    if (Tb.isF8()) Tb = Type::f16;
+    if (ngen::Core::Xe3p == hw) {
+        if (Ta == Type::hf8) Ta = Type::f16;
+        if (Tb == Type::hf8) Tb = Type::f16;
+    } else {
+        if (Ta.isF8()) Ta = Type::f16;
+        if (Tb.isF8()) Tb = Type::f16;
+    }
 
     if (hw > HW::Gen9 && !strategy.systolic && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

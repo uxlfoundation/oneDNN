@@ -76,14 +76,21 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t batch = helper.batch();
 
     const auto &attr_zps = pd()->attr()->zero_points_;
+    const bool with_src_zero_points
+            = !attr_zps.has_default_values(DNNL_ARG_SRC);
     const bool with_wei_zero_points
             = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
+    int src_zp_mask = 0;
     int wei_zp_mask = 0;
+    attr_zps.get(DNNL_ARG_SRC, &src_zp_mask);
     attr_zps.get(DNNL_ARG_WEIGHTS, &wei_zp_mask);
+    const bool src_zp_per_k = src_zp_mask & pd()->src_qmask_K();
     const bool wei_zp_per_n = wei_zp_mask & pd()->wei_qmask_N();
     const bool wei_zp_per_k = wei_zp_mask & pd()->wei_qmask_K();
+    const dim_t src_zp_stride_k = src_zp_per_k ? 1 : 0;
     const dim_t wei_zp_stride_n = wei_zp_per_n ? 1 : 0;
     const dim_t wei_zp_stride_k = wei_zp_per_k ? wei_zp_per_n ? N : 1 : 0;
+    const auto &wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
 
     const int src_mask
             = utils::get_dims_mask(dst_d.dims(), src_d.dims(), ndims);
@@ -93,7 +100,6 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             = utils::get_dims_mask(dst_d.dims(), bia_d.dims(), ndims);
 
     // zp_idx_mult = 1 for per_dim1 zero points and 0, otherwise
-    const int src_zp_idx_mult = !attr_zps.common(DNNL_ARG_SRC);
     const int dst_zp_idx_mult = !attr_zps.common(DNNL_ARG_DST);
 
     // mm kernel
@@ -115,61 +121,20 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
         weights_dims_idx[ndims - 1] = n;
         auto &src_k_dim = src_dims_idx[ndims - 1];
         auto &wei_k_dim = weights_dims_idx[ndims - 2];
-        for (dim_t i_group = 0; i_group < ngroups_k; i_group++) {
-            int acc = 0;
-            for (dim_t k = 0; k < group_k; ++k) {
-                src_k_dim = k + i_group * group_k;
-                wei_k_dim = k + i_group * group_k;
-                const auto src_off = src_d.off_v(src_dims_idx);
-                const auto weights_off = weights_d.off_v(weights_dims_idx);
-                int s = io::load_int_value(src_d.data_type(), src, src_off);
-                int w = io::load_int_value(
-                        weights_d.data_type(), weights, weights_off);
-                if (with_src_zero_points) {
-                    const dim_t src_zp_offset = matmul_helper_t::get_quant_off(
-                            src_dims_idx, ndims, src_zp_mask, 1, src_zp_group_k,
-                            src_zp_md);
-                    const auto src_zp = io::load_int_value(
-                            src_zp_dt, src_zero_points, src_zp_offset);
-                    s -= src_zp;
-                }
-                if (with_wei_zero_points) {
-                    const dim_t wei_zp_offset = matmul_helper_t::get_quant_off(
-                            weights_dims_idx, ndims, wei_zp_mask,
-                            wei_zp_group_k, wei_zp_group_n, wei_zp_md);
-                    const auto wei_zp = io::load_int_value(
-                            wei_zp_dt, wei_zero_points, wei_zp_offset);
-                    w -= wei_zp;
-                }
-                acc += s * w;
-            }
-
-            // Apply scaling after computing a group.
-            float acc_f = static_cast<float>(acc);
-            if (with_src_scales) {
-                const dim_t src_scale_offset = matmul_helper_t::get_quant_off(
-                        src_dims_idx, ndims, src_scale_mask, 1,
-                        src_scale_group_k, src_scale_md);
-                // Single scale value was already converted into f32.
-                const float src_scale = src_scales_d.nelems() == 1
-                        ? src_scales[0]
-                        : io::load_float_value(
-                                src_scale_dt, src_scales, src_scale_offset);
-                acc_f *= src_scale;
-            }
-            if (with_wei_scales) {
-                const dim_t wei_scale_offset = matmul_helper_t::get_quant_off(
-                        weights_dims_idx, ndims, wei_scale_mask,
-                        wei_scale_group_k, wei_scale_group_n, wei_scale_md);
-                // Single scale value was already converted into f32.
-                const float wei_scale = wei_scales_d.nelems() == 1
-                        ? wei_scales[0]
-                        : io::load_float_value(
-                                wei_scale_dt, wei_scales, wei_scale_offset);
-                acc_f *= wei_scale;
+        for (dim_t k = 0; k < K; ++k) {
+            src_k_dim = k;
+            wei_k_dim = k;
+            const auto src_off = src_d.off_v(src_dims_idx);
+            const auto weights_off = weights_d.off_v(weights_dims_idx);
+            int s = io::load_int_value(src_d.data_type(), src, src_off);
+            int w = io::load_int_value(
+                    weights_d.data_type(), weights, weights_off);
+            if (with_src_zero_points) {
+                s -= io::load_int_value(
+                        data_type::s32, src_zero_point, src_zp_stride_k * k);
             }
             if (with_wei_zero_points) {
-                w -= io::load_int_value(data_type::s32, wei_zero_points,
+                w -= io::load_int_value(wei_zp_dt, wei_zero_points,
                         wei_zp_stride_n * n + wei_zp_stride_k * k);
             }
             acc += s * w;
@@ -185,6 +150,20 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
         return io::load_float_value(bia_d.data_type(), bias, bias_off);
     };
 
+    // arg scales section
+    const auto &attr_scales = pd()->attr()->scales_;
+    const bool with_src_scales
+            = !attr_scales.get(DNNL_ARG_SRC).has_default_values();
+    const bool with_wei_scales
+            = !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_values();
+    const bool with_dst_scales
+            = !attr_scales.get(DNNL_ARG_DST).has_default_values();
+    const int src_scale_mask = attr_scales.get(DNNL_ARG_SRC).mask_;
+    const int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
+    const dim_t wei_scale_stride = wei_scale_mask != 0;
+    const auto &src_scales_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
+    const auto &wei_scales_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
+
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     // computations
@@ -193,7 +172,23 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
         // account for M, N dims for index calculations
         const size_t l_offset = mb * M * N + m * N + n;
         utils::l_dims_by_l_offset(dst_dims_idx, l_offset, dst_d.dims(), ndims);
-        float d = ker(dst_dims_idx, m, n);
+        int acc = ker(dst_dims_idx, m, n);
+        float d = static_cast<float>(acc);
+        if (with_src_scales) {
+            // Single scale value was already converted into f32.
+            const float src_scale = src_scale_mask == 0
+                    ? src_scales[0]
+                    : io::load_float_value(src_scales_dt, src_scales, 0);
+            d *= src_scale;
+        }
+        if (with_wei_scales) {
+            // Single scale value was already converted into f32.
+            const float wei_scale = wei_scale_mask == 0
+                    ? wei_scales[0]
+                    : io::load_float_value(
+                            wei_scales_dt, wei_scales, wei_scale_stride * n);
+            d *= wei_scale;
+        }
         if (bias) d += ker_bias(dst_dims_idx);
 
         const auto dst_off = dst_d.off_v(dst_dims_idx);

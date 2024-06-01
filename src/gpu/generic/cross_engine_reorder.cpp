@@ -14,13 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/cross_engine_reorder.hpp"
-
 #include "common/reorder.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/ocl/ocl_stream.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+
+#include "gpu/generic/cross_engine_reorder.hpp"
+#include "gpu/gpu_engine.hpp"
+#include "gpu/gpu_stream.hpp"
+#include "gpu/gpu_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -92,7 +92,7 @@ status_t cross_engine_reorder_t::execute(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_FROM);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_TO);
 
-    std::unique_ptr<memory_t, memory_deleter_t> wspace;
+    std::unique_ptr<memory_t> wspace;
     if (pd()->do_reorder_) {
         auto src_engine_kind = pd()->desc()->src_engine_kind;
         auto reorder_engine_kind = pd()->reorder_engine_kind_;

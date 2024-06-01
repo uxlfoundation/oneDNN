@@ -96,6 +96,7 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     conf->ss_dt = ss_buf.data_type;
     conf->calculate_stats = !pd->stats_are_src();
     conf->save_stats = pd->is_training();
+    conf->stats_are_tmp = pd->stats_are_tmp();
 
     auto scales = pd->attr()->scales_;
 
@@ -221,6 +222,7 @@ reusable_vectorized_lnorm_params_t::get_kernel_ctx() const {
     kernel_ctx.define_int("VECT_DT_N", vector_size);
     kernel_ctx.define_int("SG_STRIDE", sg_size * vector_size);
     kernel_ctx.define_int("N_UNROLL", unroll);
+    kernel_ctx.define_int("STATS_ARE_TMP", stats_are_tmp);
 
     gws_params.def_kernel_macros(kernel_ctx);
 

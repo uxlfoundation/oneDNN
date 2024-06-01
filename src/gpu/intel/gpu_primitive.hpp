@@ -34,8 +34,6 @@
 #include "xpu/context.hpp"
 #include "xpu/utils.hpp"
 
-#include "gpu/gpu_resource.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -259,11 +257,6 @@ protected:
             if (k) CHECK(k.dump());
             register_compute_block(new compute_block_t(k));
         }
-        return status::success;
-    }
-
-    virtual status_t init_res_storage(
-            impl::engine_t *engine, gpu_resource_t *r) const {
         return status::success;
     }
 

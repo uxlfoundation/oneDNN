@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@
 #include "common/reorder_pd.hpp"
 #include "common/stream.hpp"
 #include "gpu/gpu_concat_pd.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/gpu_engine.hpp"
+#include "gpu/gpu_primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,7 +33,13 @@ namespace generic {
 struct ref_concat_t : public gpu::primitive_t {
     using gpu::primitive_t::primitive_t;
     struct pd_t : public gpu_concat_pd_t {
-        using gpu_concat_pd_t::gpu_concat_pd_t;
+        pd_t(const primitive_attr_t *attr, const memory_desc_t *dst_md, int n,
+                int concat_dim, const memory_desc_t *const *src_mds)
+            : gpu_concat_pd_t(attr, dst_md, n, concat_dim, src_mds)
+            , tent_dst_md_(types::zero_md()) {}
+
+        pd_t(const pd_t &rhs) = default;
+        ~pd_t() = default;
 
         DECLARE_CONCAT_PD_T("ref:any", ref_concat_t);
 
@@ -42,8 +48,6 @@ struct ref_concat_t : public gpu::primitive_t {
 
             VDISPATCH_CONCAT(attr()->has_default_values(sm::scales_runtime),
                     VERBOSE_UNSUPPORTED_ATTR);
-
-            tent_dst_md_ = types::zero_md();
 
             if (gpu_concat_pd_t::init() != status::success) {
                 assert(dst_md_.format_kind != format_kind::undef);
@@ -125,9 +129,6 @@ struct ref_concat_t : public gpu::primitive_t {
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        if (memory_desc_wrapper(pd()->dst_md()).size() == 0)
-            return status::success;
-
         using namespace memory_tracking::names;
         impl::engine_t *engine = ctx.stream()->engine();
         const auto n = pd()->n_inputs();
@@ -154,10 +155,8 @@ struct ref_concat_t : public gpu::primitive_t {
             auto scratchpad = ctx.get_scratchpad_grantor().get_memory_storage(
                     memory_tracking::names::key_concat_tent_dst);
 
-            std::unique_ptr<memory_t, memory_deleter_t> tent_dst;
-            CHECK(safe_ptr_assign(tent_dst,
-                    new memory_t(engine, &pd()->tent_dst_md_,
-                            std::move(scratchpad))));
+            memory_t tent_dst(
+                    engine, &pd()->tent_dst_md_, std::move(scratchpad));
 
             for (int i = 0; i < n; ++i) {
                 const auto &src_scales_arg = ctx.args().find(
@@ -168,10 +167,10 @@ struct ref_concat_t : public gpu::primitive_t {
                     src_scales = &src_scales_arg->second;
                 CHECK(execute_reorder(reorders_[i],
                         ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i),
-                        {tent_dst.get(), false}, src_scales, i));
+                        {&tent_dst, false}, src_scales, i));
             }
 
-            CHECK(execute_reorder(reorders_[n], {tent_dst.get(), true},
+            CHECK(execute_reorder(reorders_[n], {&tent_dst, true},
                     ctx.args().at(DNNL_ARG_DST), nullptr, n));
         } else {
             for (int i = 0; i < n; ++i) {

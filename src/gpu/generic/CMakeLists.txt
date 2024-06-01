@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2024-2025 Intel Corporation
+# Copyright 2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,13 +18,6 @@ file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     )
-
-# - Always enable generic SYCL kernels for generic vendor.
-# - Always enable generic SYCL kernels for NVIDIA vendor.
-# - Only enable the generic SYCL kernels for AMD vendor if target architecture has been specified.
-if(DNNL_SYCL_GENERIC OR DNNL_SYCL_CUDA OR DNNL_AMD_ENABLE_SYCL_KERNELS)
-    add_subdirectory(sycl)
-endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_generic)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})

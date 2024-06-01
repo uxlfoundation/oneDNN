@@ -39,7 +39,6 @@
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/jit/jit_generator_base.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {

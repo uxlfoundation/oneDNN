@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_GENERIC_REF_SUM_HPP
-#define GPU_GENERIC_REF_SUM_HPP
+#ifndef GPU_INTEL_OCL_REF_SUM_HPP
+#define GPU_INTEL_OCL_REF_SUM_HPP
 
 #include <mutex>
 
@@ -31,10 +31,11 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace generic {
+namespace intel {
+namespace ocl {
 
-struct ref_sum_t : public gpu::primitive_t {
-    using gpu::primitive_t::primitive_t;
+struct ref_sum_t : public gpu_primitive_t {
+    using gpu_primitive_t::gpu_primitive_t;
     struct pd_t : public gpu_sum_pd_t {
         using gpu_sum_pd_t::gpu_sum_pd_t;
 
@@ -76,7 +77,7 @@ struct ref_sum_t : public gpu::primitive_t {
             VDISPATCH_SUM_SC(memory_desc_init_by_tag(scale_md_, format_tag::x),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            init_scratchpad(engine);
+            init_scratchpad();
             return status::success;
         }
 
@@ -84,14 +85,13 @@ struct ref_sum_t : public gpu::primitive_t {
         memory_desc_t scale_md_;
 
     private:
-        void init_scratchpad(impl::engine_t *engine) {
+        void init_scratchpad() {
             using namespace memory_tracking::names;
             auto scratchpad = scratchpad_registry().registrar();
-            auto *gpu_engine = utils::downcast<gpu::engine_t *>(engine);
             if (need_output_reorder()) {
                 const memory_desc_wrapper dst_acc_d(dst_acc_md());
                 scratchpad.book(key_sum_reduction, dst_acc_d.size(), 1,
-                        gpu_engine->get_buffer_alignment());
+                        OCL_BUFFER_ALIGNMENT);
             }
 
             for (size_t i = 0; i < reorder_pds_.size(); i++) {
@@ -147,7 +147,7 @@ struct ref_sum_t : public gpu::primitive_t {
         const auto n = pd()->n_inputs();
         exec_args_t r_args;
 
-        std::unique_ptr<memory_t, memory_deleter_t> p_temp_dst_acc;
+        std::unique_ptr<memory_t> p_temp_dst_acc;
         if (pd()->need_output_reorder()) {
             auto scratchpad = ctx.get_scratchpad_grantor().get_memory_storage(
                     key_sum_reduction);
@@ -160,16 +160,13 @@ struct ref_sum_t : public gpu::primitive_t {
         memory_arg_t dst_acc = {p_temp_dst_acc.get(), false};
 
         for (int i = 0; i < n; ++i) {
-            std::unique_ptr<memory_t, memory_deleter_t> scales_mem;
-            CHECK(safe_ptr_assign(scales_mem,
-                    new memory_t(ctx.stream()->engine(), &pd()->scale_md_,
-                            nullptr)));
-            CHECK(scales_mem->set_data_handle(
+            memory_t scales_mem(
+                    ctx.stream()->engine(), &pd()->scale_md_, nullptr);
+            CHECK(scales_mem.set_data_handle(
                     CTX_GPU_RES_STORAGE(i).data_handle()));
             r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i);
             r_args[DNNL_ARG_DST] = pd()->need_output_reorder() ? dst_acc : dst;
-            r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
-                    = {scales_mem.get(), true};
+            r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC] = {&scales_mem, true};
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
             nested_scratchpad_t ns(ctx, key_nested_multiple + i, reorders_[i]);
@@ -199,7 +196,8 @@ private:
     std::vector<std::shared_ptr<impl::primitive_t>> reorders_;
 };
 
-} // namespace generic
+} // namespace ocl
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

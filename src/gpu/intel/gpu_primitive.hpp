@@ -40,11 +40,6 @@
 #include "xpu/context.hpp"
 #include "xpu/utils.hpp"
 
-#define CTX_GPU_RES_STORAGE(arg) \
-    (*(ctx.get_resource_mapper() \
-                    ->template get<gpu_resource_t>(this) \
-                    ->get_memory_storage(arg)))
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -265,11 +260,6 @@ protected:
             if (k) CHECK(k.dump());
             register_compute_block(new compute_block_t(k));
         }
-        return status::success;
-    }
-
-    virtual status_t init_res_storage(
-            impl::engine_t *engine, gpu_resource_t *r) const {
         return status::success;
     }
 

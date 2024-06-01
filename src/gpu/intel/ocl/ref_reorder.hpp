@@ -42,11 +42,6 @@ struct ref_reorder_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
                 impl::engine_t *dst_engine) {
-            using namespace data_type;
-            using smask_t = dnnl_primitive_attr::skip_mask_t;
-            using compute::device_ext_t;
-            const auto sdt = src_md()->data_type;
-            const auto ddt = dst_md()->data_type;
 
             VDISPATCH_REORDER(
                     src_engine == dst_engine, VERBOSE_BAD_ENGINE_KIND);

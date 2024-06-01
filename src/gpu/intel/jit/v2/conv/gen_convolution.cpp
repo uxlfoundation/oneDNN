@@ -132,7 +132,7 @@ private:
 
     template <typename T>
     static status_t init_conv(std::shared_ptr<kernel_desc_base_t> &desc,
-            std::shared_ptr<kernel_params_base_t> &params, T *pd,
+            std::shared_ptr<kernel_params_base_t> &params, convolution_pd_t *pd,
             impl::engine_t *engine) {
         auto prb = to_problem(pd, engine);
         kernel_desc_t _desc;
@@ -189,11 +189,11 @@ status_t gen_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
+status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
     return gen_convolution_t::init_pd(this, engine, prop_kind::backward_data);
 }
 
-status_t gen_convolution_bwd_data_t::init(engine_t *engine) {
+status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }
@@ -202,12 +202,12 @@ status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
+status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
     return gen_convolution_t::init_pd(
             this, engine, prop_kind::backward_weights);
 }
 
-status_t gen_convolution_bwd_weights_t::init(engine_t *engine) {
+status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
     impl_.reset(new gen_convolution_t());
     return impl_->init(this, engine);
 }

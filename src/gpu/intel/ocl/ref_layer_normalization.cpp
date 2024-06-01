@@ -266,7 +266,7 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t simple_layer_normalization_fwd_t::pd_t::init_conf(
+status_t ref_layer_normalization_fwd_t::pd_t::init_conf(
         impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
@@ -314,7 +314,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
     return status;
 }
 
-status_t simple_layer_normalization_bwd_t::pd_t::init_conf(
+status_t ref_layer_normalization_bwd_t::pd_t::init_conf(
         impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }

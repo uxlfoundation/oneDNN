@@ -226,7 +226,7 @@ struct miopen_convolution_fwd_t : public gpu::primitive_t {
     };
 
     status_t init_temp_dst(impl::engine_t *engine) {
-        auto sycl_engine = utils::downcast<amd::engine_t *>(engine);
+        auto sycl_engine = utils::downcast<sycl_hip_engine_t *>(engine);
         memory_storage_t *scratch_ptr = nullptr;
         auto wrap = memory_desc_wrapper(pd()->dst_md_temp_);
         CHECK(sycl_engine->create_memory_storage(

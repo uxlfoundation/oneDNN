@@ -26,6 +26,7 @@
 #include "common/primitive_exec_types.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_eltwise_pd.hpp"
+#include "gpu/gpu_utils.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"

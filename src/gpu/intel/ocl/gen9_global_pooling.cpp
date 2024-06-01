@@ -23,7 +23,7 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-dim_t calculate_spatial_chunk(const pool_conf_t &conf, impl::engine_t *engine) {
+int calculate_spatial_chunk(const pool_conf_t &conf, impl::engine_t *engine) {
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
     const int hw_threads = compute_engine->device_info()->hw_threads();
     const bool is_xe_hp_plus = compute_engine->is_xe_hp()

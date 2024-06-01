@@ -38,7 +38,7 @@ namespace ocl {
 
 static status_t init_conf_common(const layer_normalization_pd_t *pd,
         reusable_lnorm_params_t *conf, reusable_lnorm_runtime_params_t *rt_conf,
-        const engine_t *engine, const compute::named_buffer_t &src_buf,
+        const impl::engine_t *engine, const compute::named_buffer_t &src_buf,
         const compute::named_buffer_t &dst_buf,
         const compute::named_buffer_t &stat_buf,
         const compute::named_buffer_t &ss_buf) {

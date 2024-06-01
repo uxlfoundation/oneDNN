@@ -383,6 +383,54 @@ private:
     std::vector<arg_t> args_;
 };
 
+class exec_plan_t {
+public:
+    int kernel_count() const { return (int)entries_.size(); }
+
+    status_t create_kernels(std::vector<compute::kernel_t> &kernels,
+            gpu_primitive_t *primitive, impl::engine_t *engine) const {
+        for (auto &e : entries_) {
+            compute::kernel_t kernel;
+            CHECK(e.desc->create_kernel(kernel, primitive, engine));
+            kernels.push_back(kernel);
+        }
+        return status::success;
+    }
+
+    template <typename T>
+    status_t execute(const T *primitive, const exec_ctx_t &ctx,
+            const std::vector<compute::kernel_t> &kernels) const {
+        for (int i = 0; i < kernel_count(); i++) {
+            auto &e = entries_[i];
+            kernel_info_t info;
+            CHECK(e.params->init_dispatch_kernel_info(info, *e.desc));
+            std::vector<memory_storage_wrapper_t> storage_list;
+            info.init_memory_storage_list(storage_list, ctx, primitive);
+            compute::kernel_arg_list_t arg_list;
+            info.set_args(arg_list, storage_list);
+            CHECK(primitive->parallel_for(
+                    ctx, info.nd_range(), kernels[i], arg_list));
+        }
+        return status::success;
+    }
+
+    void add_kernel(const std::shared_ptr<kernel_desc_base_t> &desc,
+            const std::shared_ptr<kernel_params_base_t> &params) {
+        entry_t e;
+        e.desc = desc;
+        e.params = params;
+        entries_.push_back(e);
+    }
+
+private:
+    struct entry_t {
+        std::shared_ptr<kernel_desc_base_t> desc;
+        std::shared_ptr<kernel_params_base_t> params;
+    };
+
+    std::vector<entry_t> entries_;
+};
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

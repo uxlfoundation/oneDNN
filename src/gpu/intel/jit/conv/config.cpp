@@ -132,7 +132,7 @@ bool is_small_oc(const conv_problem_t &prb) {
 }
 
 status_t conv_problem_t::init(
-        impl::engine_t *engine, const convolution_pd_t *conv_pd) {
+        const impl::engine_t *engine, const convolution_pd_t *conv_pd) {
     using namespace compute;
 
     VDISPATCH_CHECK(conv_pd, engine, !conv_pd->has_zero_dim_memory(),
@@ -1063,7 +1063,8 @@ void init_bwd_d_optimize(conv_config_t &cfg) {
 }
 
 status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
-        impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr) {
+        const impl::engine_t *engine, convolution_pd_t *pd,
+        primitive_attr_t *attr) {
     hw_t hw(engine);
 
     VDISPATCH_CHECK(pd, engine, hw_ok(hw), VERBOSE_UNSUPPORTED_ISA);

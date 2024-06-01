@@ -562,7 +562,8 @@ public:
             execute_reorder(handle, post_op_scratch, y, false);
         }
     }
-    status_t init_scratchpad(engine_t *engine, convolution_pd_t *pd) override {
+    status_t init_scratchpad(
+            impl::engine_t *engine, convolution_pd_t *pd) override {
         auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -605,7 +606,7 @@ public:
 
     status_t configure_alg_kind(
             impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         hip_sycl_scoped_context_handler_t sc(sycl_engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -676,7 +677,7 @@ struct miopen_convolution_impl_bwd_data_t
 protected:
     status_t configure_alg_kind(
             impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         hip_sycl_scoped_context_handler_t sc(sycl_engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -684,7 +685,8 @@ protected:
         return status::success;
     }
 
-    status_t init_scratchpad(engine_t *engine, convolution_pd_t *pd) override {
+    status_t init_scratchpad(
+            impl::engine_t *engine, convolution_pd_t *pd) override {
         auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -812,7 +814,7 @@ public:
     }
     virtual status_t configure_alg_kind(
             impl::engine_t *engine, convolution_pd_t *pd) override {
-        auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
+        auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         hip_sycl_scoped_context_handler_t sc(sycl_engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));
@@ -820,7 +822,8 @@ public:
         return status::success;
     }
 
-    status_t init_scratchpad(engine_t *engine, convolution_pd_t *pd) override {
+    status_t init_scratchpad(
+            impl::engine_t *engine, convolution_pd_t *pd) override {
         auto &sycl_engine = *utils::downcast<sycl_hip_engine_t *>(engine);
         impl::stream_t *service_stream;
         CHECK(sycl_engine.get_service_stream(service_stream));

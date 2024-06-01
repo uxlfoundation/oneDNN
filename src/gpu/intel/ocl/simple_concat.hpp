@@ -37,7 +37,7 @@ struct simple_concat_t : public gpu_primitive_t {
 
         DECLARE_CONCAT_PD_T("simple:any", simple_concat_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(impl::engine_t *engine) {
             VDISPATCH_CONCAT(n_inputs() <= 64, VERBOSE_BAD_PARAM, "n_inputs");
             VDISPATCH_CONCAT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

@@ -160,7 +160,7 @@ struct miopen_reduction_impl_t : public miopen_reduction_impl_base_t {
 
     void create_and_set_workspace(
             reduction_pd_t *pd, impl::engine_t *engine) override {
-        auto sycl_engine = utils::downcast<amd::engine_t *>(engine);
+        auto sycl_engine = utils::downcast<sycl_hip_engine_t *>(engine);
 
         impl::stream_t *service_stream;
         sycl_engine->get_service_stream(service_stream);

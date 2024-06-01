@@ -83,8 +83,8 @@
             const memory_storage_t &diff_bias, int part) const
 
 #define cell_execution_sig(f) \
-    status_t f(engine_t *engine, const exec_ctx_t &ctx, dim_t dir, dim_t lay, \
-            dim_t iter, const rnn_utils::user_data_t &user_data, \
+    status_t f(impl::engine_t *engine, const exec_ctx_t &ctx, dim_t dir, \
+            dim_t lay, dim_t iter, const rnn_utils::user_data_t &user_data, \
             const rnn_utils::workspace_t &workspace, \
             const rnn_utils::scratch_t &scratch, \
             const memory_storage_t &diff_bias, const memory_storage_t *scales, \

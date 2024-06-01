@@ -43,7 +43,7 @@ struct miopen_matmul_exec_base_t {
 protected:
     template <::sycl::access::mode bias_m, ::sycl::access::mode scratch_m>
     void interop_task(std::shared_ptr<miopen_matmul_impl_t> matmul_impl_,
-            engine_t *engine, ::sycl::handler &cgh,
+            impl::engine_t *engine, ::sycl::handler &cgh,
             amd::sycl_hip_stream_t *hip_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_weights,

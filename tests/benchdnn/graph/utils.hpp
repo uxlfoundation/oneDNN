@@ -149,6 +149,26 @@ inline bool is_plain(dnnl_format_tag_t fmt_tag) {
 dnnl::graph::op::kind opstr2kind(const std::string &kind);
 dnnl::graph::op::attr attrstr2kind(const std::string &attr_name);
 
+enum class dnnl_driver_t {
+    binary,
+    bnorm,
+    concat,
+    conv,
+    custom,
+    deconv,
+    eltwise,
+    lnorm,
+    matmul,
+    pool,
+    prelu,
+    reduction,
+    reorder,
+    resampling,
+    softmax,
+    gnorm,
+    others
+};
+
 dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind);
 
 // permute md based on permutation

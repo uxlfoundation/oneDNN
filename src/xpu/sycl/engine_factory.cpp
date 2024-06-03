@@ -83,18 +83,6 @@ status_t engine_factory_t::engine_create(engine_t **engine,
             status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    std::unique_ptr<sycl_engine_base_t, engine_deleter_t> sycl_engine(
-            (engine_kind_ == engine_kind::cpu)
-                    ? static_cast<sycl_engine_base_t *>(
-                            new sycl_cpu_engine_t(dev, ctx, index))
-                    : static_cast<sycl_engine_base_t *>(
-                            new gpu::sycl::sycl_gpu_engine_t(dev, ctx, index)));
-#else
-
-    VERROR_ENGINE(engine_kind_ != engine_kind::cpu, status::unimplemented,
-            VERBOSE_BAD_ENGINE_KIND);
-
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
     if (engine_kind_ == engine_kind::cpu) {
         return cpu::sycl::engine_create(engine, dev, ctx, index);
     }
@@ -103,6 +91,13 @@ status_t engine_factory_t::engine_create(engine_t **engine,
     VERROR_ENGINE(engine_kind_ != engine_kind::cpu, status::unimplemented,
             VERBOSE_BAD_ENGINE_KIND);
 #endif
+
+    std::unique_ptr<sycl_engine_base_t, engine_deleter_t> sycl_engine(
+            new gpu::sycl::sycl_gpu_engine_t(dev, ctx, index));
+    if (!sycl_engine) return status::out_of_memory;
+
+    CHECK(sycl_engine->init());
+    *engine = sycl_engine.release();
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     if (xpu::sycl::is_intel_device(dev))

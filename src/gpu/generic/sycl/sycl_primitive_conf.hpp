@@ -223,11 +223,8 @@ struct sycl_resampling_conf_t {
     int dst_ndims;
     size_t work_amount;
 
-    data_type_t src_dt;
-    data_type_t dst_dt;
-
     xpu::sycl::md_t src_md;
-    xpu::sycl::md_t src1_md[8];
+    xpu::sycl::md_t src1_md[sycl_post_ops_t::max_post_ops];
     xpu::sycl::md_t dst_md;
     xpu::sycl::md_t diff_src_md;
     xpu::sycl::md_t diff_dst_md;
@@ -236,7 +233,6 @@ struct sycl_resampling_conf_t {
     float src_scale;
     bool do_scale_src;
     int broadcast_dims[xpu::sycl::md_t::max_dims];
-    int ndims;
     bool is_tensor_op;
 
     int block_size;
@@ -374,7 +370,8 @@ struct sycl_lrn_conf_t {
 
 struct sycl_pooling_conf_t {
     xpu::sycl::md_t src_md;
-    xpu::sycl::md_t src1_md[8];
+    // The size "5" is lower than DNNL_MAX_NDIMS because only 5 dimension formats are supported.
+    xpu::sycl::md_t src1_md[5];
     xpu::sycl::md_t dst_md;
     xpu::sycl::md_t ws_md;
     xpu::sycl::md_t diff_src_md;

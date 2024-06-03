@@ -11128,7 +11128,7 @@ void gemm_kernel_generator_t<hw>::gemmLoadBinaryOpArgs(
     auto args = state.ra.alloc_range(nGRFs);
 
     if (state.r0_info.isARF() || state.r0_info.getBase() != 0) stub();
-    loadargs(args, nGRFs, temp);
+    loadargs(args, nGRFs, temp, false);
 
     int grfOffset = args.getBase() - loadBase;
 

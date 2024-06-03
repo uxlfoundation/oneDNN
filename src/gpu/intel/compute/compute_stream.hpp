@@ -20,7 +20,6 @@
 #include "gpu/gpu_stream.hpp"
 #include "xpu/context.hpp"
 #include "xpu/stream_profiler.hpp"
-
 #include "gpu/gpu_stream.hpp"
 
 namespace dnnl {

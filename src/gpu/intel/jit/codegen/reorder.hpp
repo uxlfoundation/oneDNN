@@ -424,7 +424,12 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             int esize = step;
             auto s = src.subregister(i, esize, src_stride);
             auto d = dst.subregister(i, esize, 1);
-            if (src_stride > 1 && s.getByteOffset() > 1) {
+            if ((src_stride > 1 && s.getByteOffset() > 1)
+#if XE3P
+                    || (ngen::HW::Xe3p == hw
+                            && d.getByteOffset() != s.getByteOffset())
+#endif
+            ) {
                 host->mov(esize,
                         tmp1.subregister(0, ngen::DataType::ub)(src_stride),
                         s.reinterpret(0, ngen::DataType::ub)(src_stride));

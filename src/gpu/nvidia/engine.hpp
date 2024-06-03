@@ -62,17 +62,6 @@ public:
     cudnnHandle_t *get_cudnn_handle();
     cublasHandle_t *get_cublas_handle();
 
-    bool mayiuse_system_memory_allocators() const override {
-        return impl()->mayiuse_system_memory_allocators();
-    }
-
-    DECLARE_COMMON_SYCL_ENGINE_FUNCTIONS();
-
-protected:
-    const xpu::sycl::engine_impl_t *impl() const {
-        return (const xpu::sycl::engine_impl_t *)impl::engine_t::impl();
-    }
-
 protected:
     const xpu::sycl::engine_impl_t *impl() const {
         return (const xpu::sycl::engine_impl_t *)impl::engine_t::impl();

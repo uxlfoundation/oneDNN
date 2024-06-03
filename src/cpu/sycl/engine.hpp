@@ -23,7 +23,8 @@
 #include "xpu/sycl/utils.hpp"
 
 #include "cpu/cpu_engine.hpp"
-#include "cpu/sycl/stream.hpp"
+
+#include "sycl/sycl_stream.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -48,19 +49,18 @@ public:
                 storage, this, flags, size, handle);
     }
 
-    status_t create_stream(impl::stream_t **stream,
-            impl::stream_impl_t *stream_impl) override {
-        return cpu::sycl::stream_t::create_stream(stream, this, stream_impl);
+    status_t create_stream(impl::stream_t **stream, unsigned flags) override {
+        return impl::sycl::sycl_stream_t::create_stream(stream, this, flags);
+    }
+
+    status_t create_stream(impl::stream_t **stream, ::sycl::queue &queue) {
+        return impl::sycl::sycl_stream_t::create_stream(stream, this, queue);
     }
 
     const ::sycl::device &device() const { return impl()->device(); }
     const ::sycl::context &context() const { return impl()->context(); }
 
     xpu::sycl::backend_t backend() const { return impl()->backend(); }
-
-    bool mayiuse_system_memory_allocators() const override {
-        return impl()->mayiuse_system_memory_allocators();
-    }
 
 protected:
     const xpu::sycl::engine_impl_t *impl() const {

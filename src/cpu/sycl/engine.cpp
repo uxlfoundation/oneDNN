@@ -1,6 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
-* Copyright 2020 Codeplay Software Limited
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,9 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/nvidia/cudnn_sum.hpp"
-#include "gpu/gpu_impl_list.hpp"
-#include "gpu/nvidia/sycl_cuda_engine.hpp"
+#include <memory>
+
+#include "cpu/sycl/engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,14 +29,8 @@ status_t engine_create(impl::engine_t **engine, const ::sycl::device &dev,
             (new cpu::sycl::engine_t(dev, ctx, index)));
     if (!e) return status::out_of_memory;
 
-// clang-format off
-constexpr impl_list_item_t cuda_sum_impl_list[] = {
-        GPU_SUM_INSTANCE_NVIDIA(gpu::nvidia::cudnn_ref_sum_t)
-        nullptr
-};
-// clang-format on
-
-} // namespace
+    CHECK(e->init());
+    *engine = e.release();
 
     return status::success;
 }

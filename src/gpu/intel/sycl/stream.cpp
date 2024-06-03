@@ -19,7 +19,6 @@
 #include "common/verbose.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 #include "sycl/stream_profiler.hpp"
-#include "sycl/sycl_engine.hpp"
 
 #include <map>
 #include <memory>

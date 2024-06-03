@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2025 Intel Corporation
+* Copyright 2016-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,9 +41,9 @@ status_t cpu_engine_t::create_memory_storage(
     return status::success;
 }
 
-status_t cpu_engine_t::create_stream(
-        stream_t **stream, impl::stream_impl_t *stream_impl) {
-    return safe_ptr_assign(*stream, new cpu_stream_t(this, stream_impl));
+status_t cpu_engine_t::create_stream(stream_t **stream, unsigned flags) {
+    return safe_ptr_assign(
+            *stream, new cpu_stream_t(this, new impl::stream_impl_t(flags)));
 }
 
 engine_t *get_service_engine() {

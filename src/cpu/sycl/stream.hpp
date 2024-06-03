@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,9 +26,10 @@
 
 #include "cpu/cpu_stream.hpp"
 
-#include "xpu/sycl/context.hpp"
 #include "xpu/sycl/memory_storage.hpp"
 #include "xpu/sycl/stream_impl.hpp"
+
+#include "sycl/sycl_context.hpp"
 
 #include "cpu/sycl/stream_cpu_thunk.hpp"
 #include "cpu/sycl/stream_submit_cpu_primitive.hpp"
@@ -39,17 +40,28 @@ namespace cpu {
 namespace sycl {
 
 struct stream_t : public cpu::cpu_stream_t {
-    static status_t create_stream(impl::stream_t **stream, engine_t *engine,
-            impl::stream_impl_t *stream_impl) {
-        std::unique_ptr<stream_t> s(new stream_t(engine, stream_impl));
+    static status_t create_stream(
+            impl::stream_t **stream, engine_t *engine, unsigned flags) {
+        std::unique_ptr<stream_t> s(new stream_t(engine, flags));
         if (!s) return status::out_of_memory;
 
         status_t status = s->init();
-        if (status != status::success) {
-            // Stream owns stream_impl only if it's created successfully (including initialization).
-            s->impl_.release();
-            return status;
-        }
+        if (status != status::success) return status;
+        *stream = s.release();
+        return status::success;
+    }
+
+    static status_t create_stream(
+            impl::stream_t **stream, engine_t *engine, ::sycl::queue &queue) {
+        unsigned flags;
+        status_t status = xpu::sycl::stream_impl_t::init_flags(&flags, queue);
+        if (status != status::success) return status;
+
+        std::unique_ptr<stream_t> s(new stream_t(engine, flags, queue));
+
+        status = s->init();
+        if (status != status::success) return status;
+
         *stream = s.release();
         return status::success;
     }
@@ -72,8 +84,10 @@ struct stream_t : public cpu::cpu_stream_t {
         return status::success;
     }
 
-    const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }
-    xpu::sycl::context_t &sycl_ctx() { return impl()->sycl_ctx(); }
+    const impl::sycl::sycl_context_t &sycl_ctx() const {
+        return impl()->sycl_ctx();
+    }
+    impl::sycl::sycl_context_t &sycl_ctx() { return impl()->sycl_ctx(); }
 
     ::sycl::event get_output_event() const {
         return impl()->get_output_event();
@@ -90,8 +104,11 @@ protected:
         return (xpu::sycl::stream_impl_t *)impl::stream_t::impl_.get();
     }
 
-    stream_t(engine_t *engine, impl::stream_impl_t *stream_impl)
-        : cpu::cpu_stream_t(engine, stream_impl) {}
+    stream_t(engine_t *engine, unsigned flags)
+        : cpu::cpu_stream_t(engine, new xpu::sycl::stream_impl_t(flags)) {}
+    stream_t(engine_t *engine, unsigned flags, ::sycl::queue &queue)
+        : cpu::cpu_stream_t(
+                engine, new xpu::sycl::stream_impl_t(queue, flags)) {}
 
 private:
     status_t init();

@@ -46,10 +46,7 @@ struct resampling_kernel_fwd_vec_t {
         , po_args_(cgh, ctx, conf_.post_ops) {}
 
     void operator()(::sycl::nd_item<1> item) const {
-        memory_tensor_t src_mem(src_, conf_.src_md);
-        memory_tensor_t dst_mem(dst_, conf_.dst_md);
-
-        size_t ithr = item.get_global_id(0);
+        size_t ithr = item.get_group(0) * conf_.wg_size + item.get_local_id();
 
         const auto &src_ndims = conf_.src_md.ndims();
         const auto &src_dims = conf_.src_md.dims();
@@ -222,7 +219,7 @@ struct resampling_kernel_bwd_vec_t {
         memory_tensor_t diff_src_mem(diff_src_, conf_.diff_src_md);
         memory_tensor_t diff_dst_mem(diff_dst_, conf_.diff_dst_md);
 
-        size_t ithr = item.get_global_id(0);
+        size_t ithr = item.get_group(0) * conf_.wg_size + item.get_local_id();
 
         const auto &diff_src_ndims = conf_.diff_src_md.ndims();
         const auto &diff_src_dims = conf_.diff_src_md.dims();

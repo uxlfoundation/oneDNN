@@ -20,8 +20,6 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
-#include "sycl/sycl_stream_cpu_thunk.hpp"
-#include "xpu/sycl/utils.hpp"
 
 #include "xpu/sycl/utils.hpp"
 

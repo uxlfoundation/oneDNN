@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@
 #include "xpu/sycl/utils.hpp"
 
 #include "cpu/cpu_engine.hpp"
-#include "cpu/sycl/stream.hpp"
+
+#include "sycl/sycl_stream.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -42,16 +43,24 @@ public:
 
     status_t init() { return init_impl(); }
 
-    status_t create_stream(impl::stream_t **stream,
-            impl::stream_impl_t *stream_impl) override {
-        return cpu::sycl::stream_t::create_stream(stream, this, stream_impl);
+    status_t create_memory_storage(memory_storage_t **storage, unsigned flags,
+            size_t size, void *handle) override {
+        return impl()->create_memory_storage(
+                storage, this, flags, size, handle);
     }
 
-    bool mayiuse_system_memory_allocators() const override {
-        return impl()->mayiuse_system_memory_allocators();
+    status_t create_stream(impl::stream_t **stream, unsigned flags) override {
+        return impl::sycl::sycl_stream_t::create_stream(stream, this, flags);
     }
 
-    DECLARE_COMMON_SYCL_ENGINE_FUNCTIONS();
+    status_t create_stream(impl::stream_t **stream, ::sycl::queue &queue) {
+        return impl::sycl::sycl_stream_t::create_stream(stream, this, queue);
+    }
+
+    const ::sycl::device &device() const { return impl()->device(); }
+    const ::sycl::context &context() const { return impl()->context(); }
+
+    xpu::sycl::backend_t backend() const { return impl()->backend(); }
 
 protected:
     const xpu::sycl::engine_impl_t *impl() const {

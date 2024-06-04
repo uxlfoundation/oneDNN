@@ -75,13 +75,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
     int ndims_src = desc.src_desc.ndims;
     int ndims_wei = desc.weights_desc.ndims;
-    int ndims_dst = desc.dst_desc.ndims;
     assert(ndims_src >= 2);
     assert(ndims_wei >= 2);
-    assert(ndims_dst >= 2);
-    int src_qmask_M = 1 << (ndims_src - 2);
     int src_qmask_K = 1 << (ndims_src - 1);
-
+    int wei_qmask_N = 1 << (ndims_wei - 1);
     int wei_qmask_K = 1 << (ndims_wei - 2);
     int wei_qmask_N = 1 << (ndims_wei - 1);
 
@@ -96,14 +93,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         const int mask_dst = sc.get(DNNL_ARG_DST).mask_;
 
         // Check allowed masks.
-        VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K,
-                                     src_qmask_M + src_qmask_K)
+        VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K)
                         && utils::one_of(mask_wei, 0, wei_qmask_N,
                                 wei_qmask_N + wei_qmask_K)
-                        && (engine->kind() == engine_kind::gpu ? utils::one_of(
-                                    mask_dst, 0, dst_qmask_N, dst_qmask_K,
-                                    dst_qmask_N + dst_qmask_K)
-                                                               : mask_dst == 0),
+                        && mask_dst == 0,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
         // Check dependency between scales.
         // Source scales groups are supported for int8 source and must divide
@@ -118,9 +111,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                 src_scale_group_k > 1 && wei_scale_group_k > 1,
                 (src_scale_group_k % wei_scale_group_k == 0)
                         || (wei_scale_group_k % src_scale_group_k == 0));
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(src_scale_group_k > 1,
-                        (src_is_int8 || src_is_fp8) && groups_are_divisible),
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(src_scale_group_k > 1,
+                                     src_is_int8 && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 

@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "common/c_types_map.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
 namespace dnnl {

@@ -17,7 +17,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "gpu/intel/jit/gemm/zero_pool.hpp"
+#include "gpu/intel/compute/zero_pool.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,9 +27,9 @@ namespace intel {
 static std::unordered_map<engine_id_t, zero_pool_t *> zero_pool_cache;
 static std::mutex zero_pool_cache_mutex;
 
-struct cleanup_sentinel_t {
-    cleanup_sentinel_t(bool *ptr) : ptr_(ptr) {}
-    ~cleanup_sentinel_t() { *ptr_ = true; }
+struct cleanup_sentinel {
+    cleanup_sentinel(bool *ptr) : ptr_(ptr) {}
+    ~cleanup_sentinel() { *ptr_ = true; }
 
 private:
     bool *ptr_;
@@ -37,7 +37,7 @@ private:
 
 static bool in_cleanup() {
     static bool destroyed = false;
-    static cleanup_sentinel_t sentinel {&destroyed};
+    static cleanup_sentinel sentinel {&destroyed};
 
     return destroyed;
 }

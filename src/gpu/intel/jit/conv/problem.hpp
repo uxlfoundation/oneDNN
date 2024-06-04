@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "common/c_types_map.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
 namespace dnnl {
@@ -59,14 +60,16 @@ T &&pick_abc(tensor_kind_t abc, prop_kind_t prop, T &&src, T &&wei, T &&dst) {
 
 template <typename T>
 T &&pick_a(prop_kind_t prop, T &&src, T &&wei, T &&dst) {
-    return std::forward<T>(pick_abc(tensor_kind_t::a, prop,
-            std::forward<T>(src), std::forward<T>(wei), std::forward<T>(dst)));
+    bool is_fwd = (prop == prop_kind::forward);
+    bool is_bwd_w = (prop == prop_kind::backward_weights);
+    return std::forward<T>(is_fwd || is_bwd_w ? src : dst);
 }
 
 template <typename T>
 T &&pick_b(prop_kind_t prop, T &&src, T &&wei, T &&dst) {
-    return std::forward<T>(pick_abc(tensor_kind_t::b, prop,
-            std::forward<T>(src), std::forward<T>(wei), std::forward<T>(dst)));
+    bool is_fwd = (prop == prop_kind::forward);
+    bool is_bwd_d = (prop == prop_kind::backward_data);
+    return std::forward<T>(is_fwd || is_bwd_d ? wei : dst);
 }
 
 template <typename T>

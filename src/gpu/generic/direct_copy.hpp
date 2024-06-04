@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -121,8 +121,7 @@ struct direct_copy_t : public primitive_t {
                         || (l_stride == r_stride && l.first > r.first);
             };
             std::sort(blocks.begin() + offset, blocks.end(), cmp);
-            if (offset > 0 && blocks.size() > offset
-                    && blocks[offset].first == blocks[offset - 1].first
+            if (offset > 0 && blocks[offset].first == blocks[offset - 1].first
                     && blocking.strides[blocks[offset].first] == stride) {
                 blocks[offset - 1].second *= blocks[offset].second;
                 stride *= blocks[offset].second;

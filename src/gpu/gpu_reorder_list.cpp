@@ -22,7 +22,6 @@
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/jit/reorder/gen_reorder.hpp"
 #include "gpu/intel/ocl/custom_reorder.hpp"
-#include "gpu/intel/ocl/direct_copy.hpp"
 #include "gpu/intel/ocl/generic_reorder.hpp"
 #include "gpu/intel/ocl/ref_reorder.hpp"
 #include "gpu/intel/ocl/rnn/rnn_reorders.hpp"

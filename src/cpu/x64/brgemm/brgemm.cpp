@@ -534,8 +534,8 @@ status_t brgemm_desc_set_attr(
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
 
-    // TODO: update conditions once other implementations are enabled
-    if (brg->is_fp8 && !brg->is_fp8_via_convert()) return status::unimplemented;
+    if (brg->is_fp8 && !is_superset(brg->isa_impl, avx512_core_amx_fp16))
+        return status::unimplemented;
 
     return status::success;
 }

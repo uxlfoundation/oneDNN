@@ -186,6 +186,7 @@ void set_isa_impl(brgemm_desc_t *brg) {
                         is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2), avx2);
     } else if (brg->is_fp8) {
         brg->isa_impl = utils::map(true, isa_undef,
+                is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
                 is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16);
     }
 }
@@ -917,7 +918,7 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
             && utils::one_of(brg->isa_user, isa_undef, avx512_core_amx)
             && mayiuse(avx512_core_amx);
     brg->is_fp8_tmm
-            = brg->is_fp8 && one_of(brg->isa_impl, avx512_core_amx_fp16);
+            = brg->is_fp8 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
 
     brg->has_int8_vnni = isa_has_int8_vnni(brg->isa_impl);
 

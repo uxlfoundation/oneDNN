@@ -578,8 +578,8 @@ struct attr_args_t {
 
     attr_args_t() = default;
 
-    void prepare_quant(const attr_t &attr, int arg, int mask = -1) {
-        entries.insert(std::make_pair(arg, mask));
+    void prepare_scales(const attr_t &attr, int arg, int mask = -1) {
+        entries.insert(std::make_pair(DNNL_ARG_ATTR_SCALES | arg, mask));
     };
 
     void prepare_zero_points(const attr_t &attr, int arg, int mask = -1) {

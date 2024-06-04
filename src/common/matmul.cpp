@@ -78,9 +78,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     int ndims_wei = desc.weights_desc.ndims;
     assert(ndims_src >= 2);
     assert(ndims_wei >= 2);
-    int src_qmask_M = 1 << (ndims_src - 2);
     int src_qmask_K = 1 << (ndims_src - 1);
-
+    int wei_qmask_N = 1 << (ndims_wei - 1);
     int wei_qmask_K = 1 << (ndims_wei - 2);
     int wei_qmask_N = 1 << (ndims_wei - 1);
 
@@ -97,58 +96,27 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         const int mask_wei = sc_wei.mask_;
         const int mask_dst = sc.get(DNNL_ARG_DST).mask_;
 
-        VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K,
-                                     src_qmask_M + src_qmask_K),
+        // Check allowed masks.
+        VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K)
+                        && utils::one_of(mask_wei, 0, wei_qmask_N,
+                                wei_qmask_N + wei_qmask_K)
+                        && mask_dst == 0,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
-        // Masks for weights scales can be any - skipping them.
-        if (engine->kind() == engine_kind::gpu) {
-            VCHECK_MATMUL_UNIMPL(
-                    utils::one_of(mask_dst, 0, dst_qmask_N, dst_qmask_M,
-                            dst_qmask_N + dst_qmask_M),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-        } else {
-            VCHECK_MATMUL_UNIMPL(mask_dst == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
-        }
         // Check dependency between scales.
         // Source scales groups are supported for int8 source and must divide
         // or be divided by weights groups when both are greater than 1.
-        const auto src_scale_group_k
-                = (mask_src & src_qmask_K) && sc_src.ndims_ > 0
-                ? sc_src.group_dims_[1]
+        const auto src_scale_group_k = (mask_src & src_qmask_K)
+                ? sc.get(DNNL_ARG_SRC).group_dims_[1]
                 : 1;
-        const auto wei_scale_group_k
-                = (mask_wei & wei_qmask_K) && sc_wei.ndims_ > 0
-                ? sc_wei.group_dims_[0]
+        const auto wei_scale_group_k = (mask_wei & wei_qmask_K)
+                ? sc.get(DNNL_ARG_WEIGHTS).group_dims_[0]
                 : 1;
         const bool groups_are_divisible = IMPLICATION(
                 src_scale_group_k > 1 && wei_scale_group_k > 1,
                 (src_scale_group_k % wei_scale_group_k == 0)
                         || (wei_scale_group_k % src_scale_group_k == 0));
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(src_scale_group_k > 1,
-                        (src_is_int8 || src_is_fp8) && groups_are_divisible),
-                VERBOSE_UNSUPPORTED_SCALES_CFG);
-
-        // Groups per N are solely for weights decompression as it's impossible
-        // to get performant kernel for a single `k` element in chain for
-        // regular quantized case.
-        const auto wei_scale_group_n
-                = (mask_wei & wei_qmask_N) && sc_wei.ndims_ > 0
-                ? sc_wei.group_dims_[1]
-                : 1;
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(wei_scale_group_n > 1, attr->fpmath_.apply_to_int_),
-                VERBOSE_UNSUPPORTED_SCALES_CFG);
-
-        // Due to hardware specifics, groups should be multiple of 32.
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(src_scale_group_k > 1, src_scale_group_k % 32 == 0),
-                VERBOSE_UNSUPPORTED_SCALES_CFG);
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(wei_scale_group_k > 1, wei_scale_group_k % 32 == 0),
-                VERBOSE_UNSUPPORTED_SCALES_CFG);
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(wei_scale_group_n > 1, wei_scale_group_n % 32 == 0),
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(src_scale_group_k > 1,
+                                     src_is_int8 && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 

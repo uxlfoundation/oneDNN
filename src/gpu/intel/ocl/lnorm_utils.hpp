@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,18 +29,19 @@ namespace intel {
 namespace ocl {
 
 namespace lnorm_dims {
-constexpr dim_idx_t mb = 0;
-constexpr dim_idx_t ic = 1;
-constexpr dim_idx_t sp0 = 2;
-constexpr dim_idx_t sp1 = 3;
-constexpr dim_idx_t sp2 = 4;
+constexpr compute::dim_id_t mb = 0;
+constexpr compute::dim_id_t ic = 1;
+constexpr compute::dim_id_t sp0 = 2;
+constexpr compute::dim_id_t sp1 = 3;
+constexpr compute::dim_id_t sp2 = 4;
 }; // namespace lnorm_dims
 
-static std::vector<dim_idx_t> get_dims(size_t ndims, bool for_stats = false) {
+static std::vector<compute::dim_id_t> get_dims(
+        size_t ndims, bool for_stats = false) {
     assert(ndims > 1 && ndims < 6);
     // The last logical dimension is not included in lnorm stats
     if (for_stats) ndims--;
-    std::vector<dim_idx_t> ret(ndims);
+    std::vector<compute::dim_id_t> ret(ndims);
     uint8_t idx = 0;
     ret[idx++] = lnorm_dims::mb;
     if (ndims >= 2) ret[idx++] = lnorm_dims::ic;
@@ -51,7 +52,7 @@ static std::vector<dim_idx_t> get_dims(size_t ndims, bool for_stats = false) {
 }
 
 static compute::named_buffer_t get_ss_buffer(
-        const memory_desc_t *md, dim_idx_t dim) {
+        const memory_desc_t *md, compute::dim_id_t dim) {
     if (types::is_zero_md(md)) {
         // Scale/shift are unused. We need to construct a buffer that will not be dispatched to
         compute::named_buffer_t ret("SS");

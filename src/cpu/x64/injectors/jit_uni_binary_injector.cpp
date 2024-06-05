@@ -2579,18 +2579,12 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_no_tail(
                 assert(!"unsupported ISA for given data type");
             break;
         case data_type::f8_e5m2:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e5m2_cvt_);
-                f8_e5m2_cvt_->bcst_f8_to_f32(tmp_vmm, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e5m2_cvt_);
+            f8_e5m2_cvt_->bcst_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::f8_e4m3:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e4m3_cvt_);
-                f8_e4m3_cvt_->bcst_f8_to_f32(tmp_vmm, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e4m3_cvt_);
+            f8_e4m3_cvt_->bcst_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::bf16:
             if (is_avx512_) {
@@ -2739,20 +2733,14 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_with_opmask(
                 assert(!"unsupported masked tail processing");
             break;
         case data_type::f8_e5m2:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e5m2_cvt_);
-                f8_e5m2_cvt_->bcst_f8_to_f32(
-                        tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e5m2_cvt_);
+            f8_e5m2_cvt_->bcst_f8_to_f32(
+                    tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
             break;
         case data_type::f8_e4m3:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e4m3_cvt_);
-                f8_e4m3_cvt_->bcst_f8_to_f32(
-                        tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e4m3_cvt_);
+            f8_e4m3_cvt_->bcst_f8_to_f32(
+                    tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
             break;
         case data_type::bf16:
             host_->vpbroadcastw(tmp_vmm, rhs_addr);
@@ -2890,10 +2878,6 @@ struct helper_bcast_tail_t<avx2_vnni_2, Vmm> {
                 host->vpslld(tmp_vmm, tmp_vmm, 16);
             } else if (data_type == data_type::f16) {
                 host->vcvtph2ps(tmp_vmm, tmp_lower_vmm);
-            } else if (data_type == data_type::f8_e5m2) {
-                f8_e5m2_cvt->vcvt_f8_to_f32(tmp_vmm, tmp_lower_vmm);
-            } else if (data_type == data_type::f8_e4m3) {
-                f8_e4m3_cvt->vcvt_f8_to_f32(tmp_vmm, tmp_lower_vmm);
             } else
                 assert(!"Unsupported data type");
 
@@ -3088,18 +3072,12 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
                 assert(!"unsupported ISA for given data type");
             break;
         case data_type::f8_e5m2:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e5m2_cvt_);
-                f8_e5m2_cvt_->vcvt_f8_to_f32(tmp_vmm, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e5m2_cvt_);
+            f8_e5m2_cvt_->vcvt_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::f8_e4m3:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e4m3_cvt_);
-                f8_e4m3_cvt_->vcvt_f8_to_f32(tmp_vmm, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e4m3_cvt_);
+            f8_e4m3_cvt_->vcvt_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::bf16:
             if (is_avx512_ || isa == avx2_vnni_2) {
@@ -3176,20 +3154,14 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_dynamically_with_opmask(
                 assert(!"unsupported masked tail processing");
             break;
         case data_type::f8_e5m2:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e5m2_cvt_);
-                f8_e5m2_cvt_->vcvt_f8_to_f32(
-                        tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e5m2_cvt_);
+            f8_e5m2_cvt_->vcvt_f8_to_f32(
+                    tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
             break;
         case data_type::f8_e4m3:
-            if (is_superset(isa, avx512_core_fp16)) {
-                assert(f8_e4m3_cvt_);
-                f8_e4m3_cvt_->vcvt_f8_to_f32(
-                        tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
-            } else
-                assert(!"unsupported ISA for given data type");
+            assert(f8_e4m3_cvt_);
+            f8_e4m3_cvt_->vcvt_f8_to_f32(
+                    tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
             break;
         case data_type::bf16:
             host_->vpmovzxwd(tmp_vmm | tail_opmask | host_->T_z, rhs_addr);

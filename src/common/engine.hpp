@@ -21,6 +21,7 @@
 
 #include "c_types_map.hpp"
 #include "common/engine_impl.hpp"
+#include "common/stream_impl.hpp"
 #include "engine_id.hpp"
 #include "memory.hpp"
 #include "memory_storage.hpp"
@@ -93,8 +94,6 @@ struct dnnl_engine : public dnnl::impl::c_compatible {
 
         dnnl::impl::stream_t *s;
         CHECK(create_stream(&s, stream_impl.get()));
-        // stream (`s`) takes ownership of `stream_impl` if `create_stream` call
-        // is successful.
         stream_impl.release();
         *stream = s;
         return dnnl::impl::status::success;

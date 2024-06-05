@@ -448,7 +448,6 @@ status_t combined_reduction_t::pd_t::init_kernel_ctx(
         def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
         def_offsets(conf.off.dst_off, kernel_ctx, "DST", conf.ndims);
     }
-    def_offsets(conf.off.dst_off, kernel_ctx, "DST", conf.ndims);
 
     return status;
 }

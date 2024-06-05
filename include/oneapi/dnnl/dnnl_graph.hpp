@@ -642,8 +642,7 @@ public:
     logical_tensor get_logical_tensor() const {
         dnnl_graph_logical_tensor_t lt;
         error::wrap_c_api(dnnl_graph_tensor_get_logical_tensor(get(), &lt),
-                dnnl::err_message_list::desc_query(
-                        "logical tensor", "tensor object"));
+                "could not get logical tensor from a tensor object");
         return logical_tensor(lt);
     }
 };

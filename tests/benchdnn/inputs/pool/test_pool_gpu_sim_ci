@@ -1,0 +1,16 @@
+--reset
+--mb=1
+
+--alg=max,avg_np #,avg_p
+# Training
+--dt=f32,bf16,f16
+--dir=FWD_D,BWD_D
+--batch=shapes_basic
+
+# Inference
+--dir=FWD_I
+--tag=axb
+
+## All inference configs
+--dt=f32,bf16,f16
+--batch=shapes_basic

@@ -1,0 +1,11 @@
+# f32, bf16
+--reset
+
+--inplace=true,false
+--dt=f32,bf16
+--tag=abx,aBx16b,ABx16a16b
+--dir=FWD_D
+--batch=option_set_all_algs_ci
+--dir=BWD_D
+--attr-post-ops=
+--batch=option_set_all_algs_ci

@@ -1,0 +1,7 @@
+--reset
+
+--stag=abx:any,axb:any,abx:abx,axb:axb
+
+--dir=FWD_D,BWD_DW
+--sdt=f32,bf16:f32,bf16,f16,f16:f32
+--batch=shapes_ci

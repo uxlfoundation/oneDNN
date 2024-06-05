@@ -1,0 +1,17 @@
+--reset
+
+# reference reorders
+--sdt=f32,bf16,f16,f8_e5m2,s32
+--ddt=f32,bf16,f16,f8_e5m2,s32
+--stag=abx
+--dtag=abx,axb,xba
+--oflag=
+2x16x3x4 1x17x5x3 30x1
+
+--reset
+# compensation reorders without groups
+--sdt=f32,s8,bf16
+--ddt=s8
+--stag=abx
+--dtag=xba
+2x16x3x4 1x17x5x3

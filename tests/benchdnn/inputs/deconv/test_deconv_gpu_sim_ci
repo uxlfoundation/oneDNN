@@ -1,0 +1,17 @@
+--reset
+
+--mb=2
+
+# Training
+## Forward
+--dir=FWD_B,FWD_D
+### Direct
+--alg=direct
+
+--dt=f32,bf16,f16
+--batch=shapes_ci
+## Backward
+--dir=BWD_D,BWD_W #,BWD_WB
+--dt=f32,f16
+--attr-post-ops=
+--batch=shapes_ci

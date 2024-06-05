@@ -1,0 +1,6 @@
+--reset
+
+--tag=abx,aBx16b,ABx16a16b,ABx32a16b
+--dir=FWD_D,BWD_DW --flags=CHR,GCH,CH --attr-post-ops=       --batch=shapes_1d 
+--dir=FWD_D        --flags=GCH,CH    --attr-post-ops=relu --batch=shapes_1d
+--dir=BWD_D        --flags=        --attr-post-ops=       --batch=shapes_1d

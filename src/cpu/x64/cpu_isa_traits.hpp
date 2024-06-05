@@ -444,9 +444,9 @@ static inline int isa_max_vlen(cpu_isa_t isa) {
 
     if (is_avx512)
         return cpu_isa_traits<avx512_core>::vlen;
-    else if (is_superset(isa, avx))
+    else if (is_avx)
         return cpu_isa_traits<avx>::vlen;
-    else if (is_superset(isa, sse41))
+    else
         return cpu_isa_traits<sse41>::vlen;
 }
 
@@ -460,9 +460,9 @@ static inline int isa_num_vregs(cpu_isa_t isa) {
 
     if (is_avx512)
         return cpu_isa_traits<avx512_core>::n_vregs;
-    else if (is_superset(isa, avx))
+    else if (is_avx)
         return cpu_isa_traits<avx>::n_vregs;
-    else if (is_superset(isa, sse41))
+    else
         return cpu_isa_traits<sse41>::n_vregs;
 }
 
@@ -545,7 +545,9 @@ inline size_t data_type_vnni_simd_elems(data_type_t data_type, cpu_isa_t isa) {
     if (data_type == data_type::s8 && isa != avx512_core)
         return data_type_vnni_simd_elems(data_type, avx512_core);
 
-    return isa_max_vlen(isa) / dt_size;
+    size_t vlen = isa_max_vlen(isa);
+    assert(vlen >= dt_size);
+    return vlen / dt_size;
 }
 
 } // namespace x64

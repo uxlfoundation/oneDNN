@@ -39,12 +39,8 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
     *engine = e.release();
 
 status_t sycl_engine_base_t::create_stream(
-        impl::stream_t **stream, unsigned flags) {
-    return sycl_stream_t::create_stream(stream, this, flags);
-}
-status_t sycl_engine_base_t::create_stream(
-        impl::stream_t **stream, ::sycl::queue &queue) {
-    return sycl_stream_t::create_stream(stream, this, queue);
+        impl::stream_t **stream, impl::stream_impl_t *stream_impl) {
+    return sycl_stream_t::create_stream(stream, this, stream_impl);
 }
 
 status_t engine_t::init_device_info() {

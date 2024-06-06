@@ -94,6 +94,9 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         bool bigger_val = false; // Out of all loops.
         bool is_nonzero = true; // Out of all loops, too.
 
+        float m_check = 0.f; // To verify that filled data mean will match.
+        bool bigger_val = false; // Out of all loops.
+
         for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
                 ++c) {
             // The filling logic must start from scratch for odd n_channels.
@@ -680,7 +683,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     std::vector<data_kind_t> check_kinds;
     if (prb->dir & FLAG_FWD) {
-        if (!(prb->flags & GLOB_STATS) && !(prb->dir & FLAG_INF)) {
+        if (!(prb->flags & GLOB_STATS)) {
             check_kinds.push_back(MEAN);
             check_kinds.push_back(VAR);
         }

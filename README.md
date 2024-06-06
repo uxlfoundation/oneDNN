@@ -84,14 +84,14 @@ The library is optimized for the following CPUs:
 * Intel 64/AMD64 architecture
   * Intel Atom(R) processor (at least Intel SSE4.1 support is required)
   * Intel Core(TM) processor (at least Intel SSE4.1 support is required)
+  * Intel Core Ultra processors (formerly Meteor Lake)
   * Intel Xeon(R) processor E3, E5, and E7 family (formerly Sandy Bridge,
     Ivy Bridge, Haswell, and Broadwell)
   * Intel Xeon Scalable processor (formerly Skylake, Cascade Lake, Cooper
     Lake, Ice Lake, Sapphire Rapids, and Emerald Rapids)
   * Intel Xeon CPU Max Series (formerly Sapphire Rapids HBM)
-  * Intel Core Ultra processors (formerly Meteor Lake, Arrow Lake,
-    and Lunar Lake)
-  * Intel Xeon 6 processors (formerly Sierra Forest and Granite Rapids)
+  * future Intel Xeon Scalable processors (code name Sierra Forest
+and Granite Rapids)
 * AArch64 architecture
   * Arm Neoverse(TM) N1 and V1 processors
 
@@ -173,7 +173,7 @@ On a CPU based on Arm AArch64 architecture, oneDNN CPU engine can be built with
 machine learning applications and provides AArch64 optimized implementations
 of core functions. This functionality currently requires that ACL is downloaded
 and built separately. See [Build from Source] section of the Developer Guide for
-details. oneDNN only supports Compute Library versions 24.09 or later.
+details. oneDNN only supports Compute Library versions 24.04 or later.
 
 [Arm Compute Library (ACL)]: https://github.com/arm-software/ComputeLibrary
 
@@ -306,6 +306,13 @@ on Windows Server\* 2019 with
 
 on macOS 11 (Big Sur) with
 * Apple LLVM version 13.0
+
+on Ubuntu 20.04 AArch64 with
+* GNU Compiler Collection 7.0, 8.0, 9.0, 10.0
+* Clang\* 9.0, 17.0
+* [Arm Compiler for Linux] 24.04
+* [Arm Compute Library (ACL)] built for armv8-a arch, latest stable version
+available at the time of release
 
 on Ubuntu 20.04 AArch64 with
 * GNU Compiler Collection 7.0, 8.0, 9.0, 10.0

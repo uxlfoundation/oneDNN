@@ -757,14 +757,13 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
 }
 
 status_t brgemm_blocking(brgemm_desc_t *brg) {
-    const data_type_t ld_step_compute_dt
-            = get_mac_emu_data_type(brg->dt_b, brg->isa_impl,
-                    brg->isa_impl != avx2_vnni_2 && !brg->is_fp8_via_convert());
+    const data_type_t ld_step_compute_dt = get_mac_emu_data_type(
+            brg->dt_b, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     brg->ld_step = brg->is_f16_b_non_amx_vnni()
             ? 2
             : data_type_vnni_granularity(ld_step_compute_dt);
-    const data_type_t rd_step_compute_dt = get_mac_emu_data_type(
-            brg->dt_b, brg->isa_impl, !brg->is_fp8_via_convert());
+    const data_type_t rd_step_compute_dt
+            = get_mac_emu_data_type(brg->dt_b, brg->isa_impl);
     brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
 
     set_isa_impl(brg);

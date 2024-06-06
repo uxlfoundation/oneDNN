@@ -52,11 +52,9 @@ cpu_isa_t get_io_isa(cpu_isa_t isa, bool has_f16, bool has_bf16) {
 }
 
 const bcast_set_t &get_supported_bcast_strategies() {
-    // Group norm processes a single group of channels so far. Because of that,
-    // the offset per channel must be passed to the kernel but current binary po
-    // logic prevents doing it in scalable way. Keeping only `common` for now.
-    static const bcast_set_t set_group_norm {broadcasting_strategy_t::scalar};
-    return set_group_norm;
+    static const bcast_set_t set {
+            broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc};
+    return set;
 }
 
 template <cpu_isa_t isa>
@@ -77,6 +75,11 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
         , use_scale_(pd->use_scale())
         , use_shift_(pd->use_shift())
         , eps_(pd->desc()->group_norm_epsilon) {
+
+        const auto &post_ops = pd->attr()->post_ops_;
+        with_postops_ = post_ops.len() != 0;
+        with_binary_ = post_ops.find(primitive_kind::binary) != -1;
+        with_eltwise_ = post_ops.find(primitive_kind::eltwise) != -1;
 
         const auto &attr_scales = pd->attr()->scales_;
         with_src_scales_ = !attr_scales.get(DNNL_ARG_SRC).has_default_values();
@@ -245,8 +248,14 @@ protected:
     const bool use_scale_ = false;
     const bool use_shift_ = false;
     const float eps_;
+    bool with_postops_ = false;
+    bool with_binary_ = false;
+    bool with_eltwise_ = false;
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
+
+    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+            postops_injector_;
 
     void compute_dst_body(size_t offt_elems, bool tail = false) {
         if (use_scale_) {
@@ -285,6 +294,18 @@ protected:
         if (with_src_scales_) {
             uni_vmovups(vmm_qscale, ptr[reg_src_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
+        }
+        if (with_postops_) {
+            binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
+            if (with_binary_) {
+                rhs_arg_params.vmm_idx_to_out_addr.emplace(
+                        vmm_dst.getIdx(), dst_ptr());
+                rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_dst.getIdx(), offt_elems * dst_d_.data_type_size());
+                if (tail)
+                    rhs_arg_params.vmm_tail_idx_.emplace(vmm_dst.getIdx());
+            }
+            postops_injector_->compute_vector(vmm_dst.getIdx(), rhs_arg_params);
         }
         if (with_dst_scales_) {
             uni_vmovups(vmm_qscale, ptr[reg_dst_scales]);
@@ -806,8 +827,8 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
                                         dst_md()->data_type),
                             mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_GNORM(attr()->has_default_values(skip_mask_t::scales_runtime)
-                    && attr_scales_ok(),
+    VDISPATCH_GNORM(attr()->has_default_values(skip_mask_t::scales_runtime
+                            | skip_mask_t::post_ops),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_GNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
@@ -817,6 +838,20 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_GNORM(
             memory_desc_matches_one_of_tag(*dst_md(), ndhwc, nhwc, nwc, nc),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+
+    auto post_ops_ok = [&]() -> bool {
+        const std::vector<injector::post_op_type> accepted_post_ops
+                = {injector::eltwise, injector::binary, injector::sum};
+        const memory_desc_wrapper dst_d(dst_md());
+        injector::post_ops_ok_args_t post_ops_args(get_supported_isa(),
+                accepted_post_ops, attr()->post_ops_, &dst_d, true, true, true,
+                true, get_supported_bcast_strategies());
+
+        return injector::post_ops_ok(post_ops_args);
+    };
+    VDISPATCH_GNORM(attr_.set_default_formats(dst_md(0)) == status::success,
+            VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_GNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
 
     const size_t C_PER_G = C() / G();
     const size_t vlen = isa_max_vlen(get_max_cpu_isa());
@@ -1026,7 +1061,8 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
             const dim_t block_size = SP_end - SP_start;
 
             (*kernel_)(src_ptr, dst_ptr, scale, shift, &mean[n * G],
-                    &variance[n * G], src_scales, dst_scales, block_size);
+                    &variance[n * G], src_scales, dst_scales,
+                    post_ops_binary_rhs_arg_vec.data(), block_size);
         }
     });
 

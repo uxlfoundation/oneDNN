@@ -551,28 +551,19 @@ inline int isa_num_vregs(cpu_isa_t isa) {
 // CPU ISAs with non-native instruction support.
 inline data_type_t get_mac_emu_data_type(const data_type_t data_type,
         const cpu_isa_t isa, const bool req_emulation = true) {
+    if (!req_emulation) return data_type;
     using namespace data_type;
-    if (req_emulation) switch (data_type) {
-            case bf16:
-                if (utils::one_of(isa, avx2, avx2_vnni_2, avx512_core))
-                    return f32;
-                break;
-            case f16:
-                if (utils::one_of(isa, avx2, avx2_vnni_2, avx512_core,
-                            avx512_core_fp16))
-                    return f32;
-                break;
-            case f8_e5m2:
-            case f8_e4m3:
-                if (isa == avx10_1_512_amx_fp16) return f16;
-                break;
-            case f32:
-            case s32:
-            case s8:
-            case u8:
-            case data_type::undef:
-            default: return data_type;
-        }
+    switch (data_type) {
+        case bf16:
+            if (utils::one_of(isa, avx2, avx2_vnni_2, avx512_core)) return f32;
+            break;
+        case f16:
+            if (utils::one_of(
+                        isa, avx2, avx2_vnni_2, avx512_core, avx512_core_fp16))
+                return f32;
+            break;
+        default: return data_type;
+    }
     return data_type;
 }
 

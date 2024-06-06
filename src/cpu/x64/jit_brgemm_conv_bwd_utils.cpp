@@ -1511,8 +1511,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const auto wei_dt
             = jcp.is_f32_f16 || jcp.is_f32_bf16 ? jcp.src_dt : jcp.wei_dt;
-    const data_type_t last_oc_block_dt = get_mac_emu_data_type(
-            wei_dt, isa, isa == avx512_core_fp16 && !jcp.is_fp8_convert);
+    const data_type_t last_oc_block_dt
+            = get_mac_emu_data_type(wei_dt, isa, isa == avx512_core_fp16);
     jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc

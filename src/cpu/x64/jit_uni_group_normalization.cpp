@@ -77,11 +77,6 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
         , use_shift_(pd->use_shift())
         , eps_(pd->desc()->group_norm_epsilon) {
 
-        const auto &post_ops = pd->attr()->post_ops_;
-        with_postops_ = post_ops.len() != 0;
-        with_binary_ = post_ops.find(primitive_kind::binary) != -1;
-        with_eltwise_ = post_ops.find(primitive_kind::eltwise) != -1;
-
         const auto &attr_scales = pd->attr()->scales_;
         with_src_scales_ = !attr_scales.get(DNNL_ARG_SRC).has_default_values();
         with_dst_scales_ = !attr_scales.get(DNNL_ARG_DST).has_default_values();
@@ -249,14 +244,8 @@ protected:
     const bool use_scale_ = false;
     const bool use_shift_ = false;
     const float eps_;
-    bool with_postops_ = false;
-    bool with_binary_ = false;
-    bool with_eltwise_ = false;
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
-
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
-            postops_injector_;
 
     void compute_dst_body(size_t offt_elems, bool tail = false) {
         if (use_scale_) {
@@ -295,18 +284,6 @@ protected:
         if (with_src_scales_) {
             uni_vmovups(vmm_qscale, ptr[reg_src_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
-        }
-        if (with_postops_) {
-            binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
-            if (with_binary_) {
-                rhs_arg_params.vmm_idx_to_out_addr.emplace(
-                        vmm_dst.getIdx(), dst_ptr());
-                rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                        vmm_dst.getIdx(), offt_elems * dst_d_.data_type_size());
-                if (tail)
-                    rhs_arg_params.vmm_tail_idx_.emplace(vmm_dst.getIdx());
-            }
-            postops_injector_->compute_vector(vmm_dst.getIdx(), rhs_arg_params);
         }
         if (with_dst_scales_) {
             uni_vmovups(vmm_qscale, ptr[reg_dst_scales]);

@@ -794,59 +794,40 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_GNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_GNORM(mayiuse(avx2), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_GNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
-    VDISPATCH_GNORM(utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8),
+    VDISPATCH_GNORM(utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8)
+                    && IMPLICATION(
+                            utils::one_of(src_md()->data_type, bf16, f16),
+                            mayiuse(avx512_core)),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_GNORM(utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8),
+    VDISPATCH_GNORM(utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8)
+                    && IMPLICATION(
+                            utils::one_of(dst_md()->data_type, bf16, f16),
+                            mayiuse(avx512_core)),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_GNORM(IMPLICATION(utils::one_of(bf16, src_md()->data_type,
-                                        dst_md()->data_type),
-                            mayiuse(avx512_core) || mayiuse(avx2_vnni_2)),
-            VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_GNORM(IMPLICATION(utils::one_of(f16, src_md()->data_type,
-                                        dst_md()->data_type),
-                            mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2)),
-            VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_GNORM(attr()->has_default_values(skip_mask_t::scales_runtime
-                            | skip_mask_t::post_ops),
+    VDISPATCH_GNORM(attr()->has_default_values(skip_mask_t::scales_runtime)
+                    && attr_scales_ok(),
             VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_GNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_GNORM(
             memory_desc_matches_one_of_tag(*src_md(), ndhwc, nhwc, nwc, nc),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
     VDISPATCH_GNORM(
             memory_desc_matches_one_of_tag(*dst_md(), ndhwc, nhwc, nwc, nc),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
 
-    // Instance Normalization is handled in a different implementation. This
-    // implementation has some turns in the kernel that is done differently
-    // due to processing a group and not having an ability to process full
-    // registers of channels.
-    // It has also some dispatching logic in parallelization to process groups
-    // differently, see the comment in a correspondent section.
     const size_t C_PER_G = C() / G();
-    VDISPATCH_GNORM(C_PER_G > 1, "Instance norm is not supported");
-
-    auto post_ops_ok = [&]() -> bool {
-        const std::vector<injector::post_op_type> accepted_post_ops
-                = {injector::eltwise, injector::binary, injector::sum};
-        const memory_desc_wrapper dst_d(dst_md());
-        injector::post_ops_ok_args_t post_ops_args(get_supported_isa(),
-                accepted_post_ops, attr()->post_ops_, &dst_d, true, true, true,
-                true, get_supported_bcast_strategies());
-
-        return injector::post_ops_ok(post_ops_args);
-    };
-    VDISPATCH_GNORM(attr_.set_default_formats(dst_md(0)) == status::success,
-            VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_GNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+    const size_t vlen = isa_max_vlen(get_max_cpu_isa());
+    const size_t simd_w = vlen / types::data_type_size(stat_md()->data_type);
+    VDISPATCH_GNORM(IMPLICATION(C_PER_G != 1, C_PER_G % simd_w == 0),
+            VERBOSE_INCONSISTENT_DIM, "C", (int)C(), "groups",
+            (int)desc()->groups);
+    // C_PER_G should be less than simd_w * unroll_c (which is 6 for var)
+    VDISPATCH_GNORM(C_PER_G / simd_w <= 6, VERBOSE_SHAPE_RESTRICTION);
 
     nthr_ = dnnl_get_max_threads();
     auto scratchpad = scratchpad_registry().registrar();
     if (!stats_is_src()) {
         using namespace memory_tracking::names;
-        // C() is used here for convenience, to let C++ reduce over the group.
-        // TODO: replace with G() instead and make reduction in registers.
         const size_t stats_size = MB() * C();
         const size_t stats_reduction_buf_sz = stats_size * nthr_;
         scratchpad.template book<float>(

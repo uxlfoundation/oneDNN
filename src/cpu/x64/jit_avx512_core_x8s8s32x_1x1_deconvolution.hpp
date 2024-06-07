@@ -136,8 +136,8 @@ struct jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
 
     private:
-        std::string name_
-                = JIT_IMPL_NAME_HELPER("jit_deconvolution:", avx512_core, "");
+        std::string name_ = JIT_IMPL_NAME_HELPER("jit_1x1_deconvolution:",
+                (jcp_.has_vnni ? avx512_core_vnni : avx512_core), "");
 
         void init_name() {
             name_.append("+");

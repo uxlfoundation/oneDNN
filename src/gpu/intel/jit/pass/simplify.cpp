@@ -1261,7 +1261,7 @@ public:
         expr_t ret = reduce_v1(obj);
         if (!ret.is_empty()) return ret;
         ret = reduce_v2(obj);
-        return (!ret.is_empty()) ? std::move(ret) : obj;
+        return (!ret.is_empty()) ? ret : obj;
     }
 
     // Applies the following rules:

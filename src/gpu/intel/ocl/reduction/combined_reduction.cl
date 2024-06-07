@@ -179,7 +179,7 @@ void write_padded_zeros(__global DST_DATA_T *dst) {
 #endif
 
 #define DUMP(str, ...) \
-    DEBUG_PRINT("%d->%d/%d/%d: " str, get_global_id(0), tgid, sgid, sglid, \
+    DEBUG_PRINT("%zu->%d/%d/%d: " str, get_global_id(0), tgid, sgid, sglid, \
             __VA_ARGS__)
 
 // Specifying wg size since larger work groups reduce performance.

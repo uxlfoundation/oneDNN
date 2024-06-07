@@ -1410,10 +1410,12 @@ struct GEMMState : public CommonState {
         ngen::Subregister statusBuffer; // q
         uint8_t surfaceA, surfaceAO, surfaceAScale; // BTS indices
         uint8_t surfaceB, surfaceBO, surfaceBScale; // BTS indices
-        uint8_t surfaceC[2], surfaceCO, surfaceTempC; // BTS indices
-        ngen::Subregister strideA[2], strideB[2],
-                strideC[2]; // ud, used for strided batch.
-        ngen::Subregister batchSize1, recipBatchSize1; // ud, 2D strided batch
+        uint8_t surfaceC[2], surfaceCO, surfaceTempC; // BTS
+        std::vector<ngen::Subregister> strideA; // ud, used for strided batch.
+        std::vector<ngen::Subregister> strideB; // ud
+        std::vector<ngen::Subregister> strideC; // ud
+        std::vector<ngen::Subregister> batchSize; // ud
+        std::vector<ngen::Subregister> recipBatchSize; // ud
         ngen::Subregister offsetBatch; // ud, used for non-strided batch.
         ngen::Subregister incr_a_array,
                 incr_b_array; // ud, used for non-strided variable batch.

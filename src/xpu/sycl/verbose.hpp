@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@
 #include "gpu/intel/compute/compute_engine.hpp"
 #endif
 
-#include "xpu/sycl/engine_factory.hpp"
+#include "sycl/sycl_engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -35,13 +35,8 @@ namespace xpu {
 namespace sycl {
 
 void print_verbose_header(engine_kind_t kind) {
-    engine_factory_t factory(kind);
+    impl::sycl::sycl_engine_factory_t factory(kind);
     auto s_engine_kind = (kind == engine_kind::cpu ? "cpu" : "gpu");
-
-    verbose_printf("info,%s,engine,sycl %s device count:%zu %s\n",
-            s_engine_kind, s_engine_kind, factory.count(),
-            factory.count() == 0 ? "- no devices available." : "");
-
     for (size_t i = 0; i < factory.count(); ++i) {
         try {
             impl::engine_t *eng_ptr = nullptr;
@@ -67,21 +62,19 @@ void print_verbose_header(engine_kind_t kind) {
                                 eng.get())
                                   ->device_info()
                         : nullptr;
-                auto s_binary_kernels
-                        = dev_info && dev_info->mayiuse_ngen_kernels()
+                auto s_binary_kernels = dev_info->mayiuse_ngen_kernels()
                         ? "enabled"
                         : "disabled";
 
-                verbose_printf(
-                        "info,%s,engine,%zu,backend:%s,name:%s,driver_version:%"
-                        "s,binary_kernels:%s\n",
+                printf("onednn_verbose,info,%s,engine,%zu,backend:%s,name:%s,"
+                       "driver_version:%s,binary_kernels:%s\n",
                         s_engine_kind, i, s_backend.c_str(), s_name.c_str(),
                         s_ver.c_str(), s_binary_kernels);
                 continue;
             }
 #endif
-            verbose_printf(
-                    "info,%s,engine,%zu,backend:%s,name:%s,driver_version:%s\n",
+            printf("onednn_verbose,info,%s,engine,%zu,backend:%s,name:%s,"
+                   "driver_version:%s\n",
                     s_engine_kind, i, s_backend.c_str(), s_name.c_str(),
                     s_ver.c_str());
         } catch (...) {

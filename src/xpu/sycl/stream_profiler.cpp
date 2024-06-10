@@ -19,7 +19,9 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-#include "sycl/sycl_stream.hpp"
+
+#include "xpu/sycl/context.hpp"
+#include "xpu/sycl/stream_profiler.hpp"
 #include "xpu/sycl/utils.hpp"
 
 namespace dnnl {

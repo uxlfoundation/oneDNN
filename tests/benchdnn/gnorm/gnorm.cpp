@@ -94,9 +94,6 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         bool bigger_val = false; // Out of all loops.
         bool is_nonzero = true; // Out of all loops, too.
 
-        float m_check = 0.f; // To verify that filled data mean will match.
-        bool bigger_val = false; // Out of all loops.
-
         for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
                 ++c) {
             // The filling logic must start from scratch for odd n_channels.

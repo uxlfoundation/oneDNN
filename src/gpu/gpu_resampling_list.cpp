@@ -18,6 +18,12 @@
 
 #include "gpu/intel/ocl/ref_resampling.hpp"
 #include "gpu/intel/ocl/vectorized_resampling.hpp"
+#endif
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+#include "gpu/generic/sycl/ref_resampling.hpp"
+#include "gpu/nvidia/cudnn_resampling.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -30,12 +36,16 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_RESAMPLING_P({
     {{forward}, {
-        INSTANCE(intel::ocl::ref_resampling_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::ref_resampling_fwd_t)
+        GPU_INSTANCE_NVIDIA(nvidia::cudnn_resampling_fwd_t)
+        GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_resampling_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        INSTANCE(intel::ocl::vectorized_resampling_bwd_t)
-        INSTANCE(intel::ocl::ref_resampling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::vectorized_resampling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::ref_resampling_bwd_t)
+        GPU_INSTANCE_NVIDIA(nvidia::cudnn_resampling_bwd_t)
+        GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_resampling_bwd_t)
         nullptr,
     })},
 });

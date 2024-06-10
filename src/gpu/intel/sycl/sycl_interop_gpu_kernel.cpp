@@ -22,9 +22,9 @@
 #include "gpu/intel/ocl/stream_profiler.hpp"
 #include "gpu/intel/ocl/types_interop.hpp"
 #include "gpu/intel/sycl/l0/utils.hpp"
+#include "gpu/intel/sycl/stream.hpp"
 #include "gpu/intel/sycl/utils.hpp"
 #include "gpu/intel/utils.hpp"
-#include "sycl/sycl_stream.hpp"
 #include "xpu/sycl/c_types_map.hpp"
 #include "xpu/utils.hpp"
 
@@ -104,7 +104,7 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
     // XXX: DPCPP/L0 does not support non-uniform work-groups and does not
     // provide any diagnostics. This is to catch potential issues on oneDNN
     // side.
-    if (sycl_engine->backend() == xpu::sycl::backend_t::level0
+    if (sycl_engine_impl->backend() == xpu::sycl::backend_t::level0
             && range.local_range()) {
         for (size_t i = 0; i < range.ndims(); i++) {
             size_t gws = range.global_range()[i];

@@ -14,17 +14,17 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "sycl/sycl_stream.hpp"
+#include <map>
+#include <memory>
+#include <CL/cl.h>
 
 #include "common/verbose.hpp"
 
 #include "xpu/sycl/stream_profiler.hpp"
 
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/sycl/stream.hpp"
 
-#include <map>
-#include <memory>
-#include <CL/cl.h>
+#include "gpu/intel/ocl/ocl_utils.hpp"
 
 #include "common/verbose.hpp"
 
@@ -99,7 +99,7 @@ void stream_t::before_exec_hook() {
     if (is_profiling_enabled()) profiler_->start_profiling();
 }
 
-void sycl_stream_t::after_exec_hook() {
+void stream_t::after_exec_hook() {
     sycl_ctx().set_deps(xpu::sycl::event_t());
     if (is_profiling_enabled()) profiler_->stop_profiling();
 }

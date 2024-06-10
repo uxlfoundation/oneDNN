@@ -38,8 +38,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
-struct ref_resampling_fwd_t : public gpu::generic::sycl::primitive_t {
-    using gpu::generic::sycl::primitive_t::primitive_t;
+struct ref_resampling_fwd_t : public gpu::sycl::primitive_t {
+    using gpu::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_resampling_fwd_pd_t {
         using gpu_resampling_fwd_pd_t::gpu_resampling_fwd_pd_t;
@@ -79,11 +79,11 @@ struct ref_resampling_fwd_t : public gpu::generic::sycl::primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    intel::compute::kernel_t kernel_;
+    kernel_t kernel_;
 };
 
-struct ref_resampling_bwd_t : public gpu::generic::sycl::primitive_t {
-    using gpu::generic::sycl::primitive_t::primitive_t;
+struct ref_resampling_bwd_t : public gpu::sycl::primitive_t {
+    using gpu::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_resampling_bwd_pd_t {
         using gpu_resampling_bwd_pd_t::gpu_resampling_bwd_pd_t;
@@ -119,7 +119,7 @@ struct ref_resampling_bwd_t : public gpu::generic::sycl::primitive_t {
 private:
     status_t execute_backward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    intel::compute::kernel_t kernel_;
+    kernel_t kernel_;
 };
 
 } // namespace sycl

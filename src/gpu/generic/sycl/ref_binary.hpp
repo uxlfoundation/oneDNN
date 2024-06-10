@@ -38,8 +38,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
-struct ref_binary_t : public gpu::generic::sycl::primitive_t {
-    using gpu::generic::sycl::primitive_t::primitive_t;
+struct ref_binary_t : public gpu::sycl::primitive_t {
+    using gpu::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_binary_pd_t {
         using gpu_binary_pd_t::gpu_binary_pd_t;
@@ -125,7 +125,7 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    intel::compute::kernel_t kernel_;
+    kernel_t kernel_;
 };
 
 } // namespace sycl

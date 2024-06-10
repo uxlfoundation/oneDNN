@@ -1026,7 +1026,7 @@ struct GEMMProblem : public CommonProblem {
     }
 
     Type Tc_compute() const {
-        if (Ta.isInteger() && Tb.isInteger() && Tc.isFP())
+        if (Ta.isInteger() && Tb.isInteger() && Tc == Type::f32)
             return Type::s32;
         else
             return Tc;
@@ -1522,6 +1522,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister kSLMA, kSLMB, kSLMStorage; // w/w/ud
     bool kSLMCountUp = false;
     int kaq, kbq, kaqStride, kbqStride;
+    bool lateScale2DA = false, lateScale2DB = false;
     std::vector<RegisterBlock> A_layout, B_layout, C_layout;
     std::vector<RegisterBlock> A_layoutRem, B_layoutRem;
     std::vector<RegisterBlock> A_layoutAlt, B_layoutAlt;
@@ -1538,6 +1539,7 @@ struct GEMMState : public CommonState {
     std::vector<RegisterBlock> A_scaleLayout, B_scaleLayout;
     std::vector<RegisterBlock> Ar_offsetLayout, Br_offsetLayout;
     std::vector<RegisterBlock> Ar_scaleLayout, Br_scaleLayout;
+    std::vector<RegisterBlock> Cr_layout;
     std::vector<RegisterBlock> C_layoutExt, C_layoutExtUnmasked,
             C_layoutExtNonatomicUnmasked;
     Address2DParams A_params, B_params;
@@ -2483,7 +2485,7 @@ protected:
     void setupTeardownAccumulateSumSystolic(bool setup, Type Tother,
             const GEMMProblem &problem, const GEMMStrategy &strategy,
             GEMMState &state);
-    void outerProductRepackC(int x0, int xr0, int nx, int h,
+    void outerProductRepackC(int x0, int xr0, int nx, int ha, int hb,
             const GEMMProblem &problem, const GEMMStrategy &strategy,
             GEMMState &state);
 

@@ -13945,9 +13945,9 @@ void gemm_kernel_generator_t<hw>::gemm2DDequantizeOperation(bool doA, Type T,
 
                 int ne, neq;
                 const RegisterBlock *qblock;
-                auto data = findBlockReg(T, block, ii0, jj0, regs, ne);
+                auto data = findBlockReg(To, block, ii0, jj0, regs, ne);
                 auto qdata = findBlockReg(
-                        To, qlayout, io0, jo0, qregs, neq, qblock);
+                        T, qlayout, io0, jo0, qregs, neq, qblock);
 
                 int strideq = 1;
                 if (broadcast)
@@ -14911,6 +14911,8 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     bool slmDequantize2DB = dequantize2DB && slmB;
     dequantize2DA &= !slmDequantize2DA;
     dequantize2DB &= !slmDequantize2DB;
+    bool dequantRepack2DA = dequantize2DA && !state.lateScale2DA;
+    bool dequantRepack2DB = dequantize2DB && !state.lateScale2DB;
     int aqGroupK = problem.aqGroupK;
     int bqGroupK = problem.bqGroupK;
     int kaq_load = aqGroupK * state.kaq;
@@ -15900,11 +15902,11 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto reqRepackARem = every(ka_loadRem) | variants(A_copies);
     bool convertA = (Ta != Ta_load) && (Ta.bits() == Ta_load.bits());
     bool scheduleRepackA
-            = state.repackA || state.repackARem || convertA || dequantize2DA;
+            = state.repackA || state.repackARem || convertA || dequantRepack2DA;
 
     auto doRepackA = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
                              bool repackA, int ha) {
-        if (dequantize2DA)
+        if (dequantRepack2DA)
             gemm2DDequantizeAB(true, Ta_load, Ta, layout, state.Ar_layout, regs,
                     state.Ar_regs, ha, problem, strategy, state);
         else if (repackA)
@@ -15929,11 +15931,11 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto reqRepackBRem = every(kb_loadRem) | variants(B_copies);
     bool convertB = (Tb != Tb_load) && (Tb.bits() == Tb_load.bits());
     bool scheduleRepackB
-            = state.repackB || state.repackBRem || convertB || dequantize2DB;
+            = state.repackB || state.repackBRem || convertB || dequantRepack2DB;
 
     auto doRepackB = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
                              bool repackB, int hb) {
-        if (dequantize2DB)
+        if (dequantRepack2DB)
             gemm2DDequantizeAB(false, Tb_load, Tb, layout, state.Br_layout,
                     regs, state.Br_regs, hb, problem, strategy, state);
         else if (repackB)
@@ -22354,9 +22356,7 @@ void gemm_kernel_generator_t<hw>::gemmMicrokernel(GEMMProblem problem,
     strategy.forceWGUpdate = WGFixed;
 
     state.isNested = true;
-
-    /* Leave some space for host kernel arguments */
-    state.ra.claim((GRF::bytes(hw) >= 64) ? r0 - r6 : r0 - r8);
+    state.ra.claim(r0 - r6); /* Leave some space for host kernel arguments */
 
     state.fullK = state.inputs.k;
 
@@ -28538,6 +28538,7 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
     } /* phase loop */
 
     if (releaseEmuFlag) state.raVFlag.safeRelease(state.emulate.flag);
+
     if (saveF2.isValid()) {
         mov(1, f2, saveF2);
         state.ra.safeRelease(saveF2);

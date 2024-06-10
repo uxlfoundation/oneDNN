@@ -28,9 +28,6 @@
 #include "xpu/sycl/context.hpp"
 #include "xpu/sycl/utils.hpp"
 
-// TODO: move sycl_context to xpu
-#include "sycl/sycl_context.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace xpu {

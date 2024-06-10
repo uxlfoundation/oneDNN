@@ -26,9 +26,9 @@ namespace impl {
 namespace xpu {
 namespace sycl {
 
-struct sycl_stream_profiler_t : public xpu::stream_profiler_t {
-    sycl_stream_profiler_t(const stream_t *stream)
-        : stream_profiler_t(stream) {}
+struct stream_profiler_t : public xpu::stream_profiler_t {
+    stream_profiler_t(const stream_t *stream)
+        : xpu::stream_profiler_t(stream) {}
 
     status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
             uint64_t *data) const override;

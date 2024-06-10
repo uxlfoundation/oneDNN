@@ -17,8 +17,10 @@
 #include "sycl/sycl_stream.hpp"
 
 #include "common/verbose.hpp"
+
+#include "xpu/sycl/stream_profiler.hpp"
+
 #include "gpu/intel/ocl/ocl_utils.hpp"
-#include "sycl/stream_profiler.hpp"
 
 #include <map>
 #include <memory>

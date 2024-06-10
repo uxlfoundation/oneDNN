@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,15 +38,19 @@
 #endif
 
 #ifdef DNNL_SYCL_HIP
-#include "gpu/amd/engine.hpp"
-#endif
+// XXX: forward declarations to avoid cuda dependencies on sycl level.
+namespace dnnl {
+namespace impl {
+namespace gpu {
+namespace amd {
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/sycl/engine.hpp"
-#endif
+status_t hip_engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
+        const ::sycl::device &dev, const ::sycl::context &ctx, size_t index);
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_GENERIC
-#include "gpu/generic/sycl/engine.hpp"
+}
+} // namespace gpu
+} // namespace impl
+} // namespace dnnl
 #endif
 
 namespace dnnl {

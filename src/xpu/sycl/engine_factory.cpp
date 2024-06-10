@@ -16,6 +16,8 @@
 
 #include "xpu/sycl/engine_factory.hpp"
 
+#include "gpu/sycl/sycl_gpu_engine.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace xpu {
@@ -92,8 +94,8 @@ status_t engine_factory_t::engine_create(engine_t **engine,
             VERBOSE_BAD_ENGINE_KIND);
 #endif
 
-    std::unique_ptr<sycl_engine_base_t, engine_deleter_t> sycl_engine(
-            new gpu::sycl::sycl_gpu_engine_t(dev, ctx, index));
+    std::unique_ptr<impl::sycl::sycl_engine_base_t, engine_deleter_t>
+            sycl_engine(new gpu::sycl::sycl_gpu_engine_t(dev, ctx, index));
     if (!sycl_engine) return status::out_of_memory;
 
     CHECK(sycl_engine->init());

@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/sycl/sycl_interop_gpu_kernel.hpp"
+#include "gpu/generic/sycl/sycl_interop_gpu_kernel.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -31,6 +31,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace generic {
 namespace sycl {
 
 using namespace impl::gpu::intel::sycl;
@@ -190,6 +191,7 @@ status_t sycl_interop_gpu_kernel_t::dump() const {
 }
 
 } // namespace sycl
+} // namespace generic
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

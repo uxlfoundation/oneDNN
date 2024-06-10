@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 #include "gpu/generic/sycl/sycl_io_helper.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_layer_normalization_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -52,39 +51,18 @@ struct ref_layer_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper dst_d(dst_md(0));
             const memory_desc_wrapper var_d(src_md(2));
 
-            VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_LNORM((src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_LNORM(is_supported_type(src_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(is_supported_type(dst_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(is_supported_type(stat_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(check_scale_shift_data_type({f32, bf16, f16}),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(attr()->has_default_values(sm::scales_runtime),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_LNORM(IMPLICATION(!attr()->scales_.has_default_values(),
-                                    scales_ok()),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(
-                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM(md_dims_in_range(src_md()), VERBOSE_UNSUPPORTED_DT);
+            const bool ok = is_fwd()
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && utils::one_of(
+                            src_md(0)->data_type, f32, bf16, f16, s8, u8)
+                    && utils::one_of(
+                            dst_md(0)->data_type, f32, bf16, f16, s8, u8)
+                    && stat_md()->data_type == f32
+                    && check_scale_shift_data_type({f32, bf16, f16})
+                    && attr()->has_default_values(sm::scales_runtime)
+                    && attr_scales_ok() && set_default_formats_common();
+            if (!ok) return status::unimplemented;
             return init_conf();
-        }
-
-        bool scales_ok() const {
-            const std::vector<int> supported_args
-                    = {DNNL_ARG_SRC, DNNL_ARG_DST};
-
-            const auto &scales = attr()->scales_;
-            for (auto arg : supported_args) {
-                auto dt = scales.get(arg).data_type_;
-                if (!is_supported_type(dt)) { return false; }
-            }
-            return true;
         }
 
         status_t init_conf();
@@ -122,28 +100,18 @@ struct ref_layer_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper diff_dst_d(diff_dst_md(0));
             const memory_desc_wrapper var_d(src_md(2));
 
-            VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_LNORM((src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_LNORM(
-                    (diff_dst_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_LNORM(is_supported_type(src_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(is_supported_type(diff_dst_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(is_supported_type(diff_src_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(is_supported_type(stat_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(check_scale_shift_data_type({f32, bf16, f16}),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_LNORM(
-                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM(md_dims_in_range(diff_dst_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "diff_dst");
+            const bool ok = !is_fwd()
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && (diff_dst_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && utils::one_of(src_md(0)->data_type, f32, bf16)
+                    && utils::one_of(diff_dst_md(0)->data_type, f32, bf16)
+                    && utils::one_of(diff_src_md(0)->data_type, f32, bf16)
+                    && stat_md()->data_type == f32
+                    && check_scale_shift_data_type({f32, bf16, f16})
+                    && attr()->has_default_values()
+                    && set_default_formats_common();
+
+            if (!ok) return status::unimplemented;
             return init_conf();
         }
 

@@ -16,7 +16,6 @@
 
 #include "gpu/generic/sycl/ref_lrn.hpp"
 #include "gpu/generic/sycl/lrn_kernels.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

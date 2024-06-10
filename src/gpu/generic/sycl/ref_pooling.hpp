@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_pooling_pd.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 #include "xpu/sycl/types.hpp"
@@ -52,32 +51,23 @@ struct ref_pooling_fwd_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper dst_d(dst_md(0));
             const memory_desc_wrapper ws_d(workspace_md(0));
 
-            VDISPATCH_POOLING(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_POOLING(
-                    (src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_POOLING((!utils::one_of(f64, src_md(0)->data_type,
-                                      dst_md(0)->data_type))
-                            && (IMPLICATION(src_md(0)->data_type == bf16,
-                                    dst_md(0)->data_type == bf16))
-                            && (IMPLICATION(src_md(0)->data_type == s8,
-                                    dst_md(0)->data_type != u8))
-                            && (IMPLICATION(src_md(0)->data_type == u8,
-                                    dst_md(0)->data_type != s8))
-                            && (IMPLICATION(src_md(0)->data_type
-                                            != dst_md(0)->data_type,
-                                    desc()->prop_kind == forward_inference)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_POOLING(attr()->has_default_values(sm::post_ops),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_POOLING(sycl_post_ops_t::post_ops_ok(attr(), true, false),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_POOLING_SC(attr_.set_default_formats(dst_md(0)),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_POOLING(md_dims_in_range(src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
-
+            const bool ok = is_fwd() && set_default_params() == status::success
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && (utils::everyone_is(
+                                s8, src_md(0)->data_type, dst_md(0)->data_type)
+                            || utils::everyone_is(u8, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(f32, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(bf16, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(f16, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(s32, src_md(0)->data_type,
+                                    dst_md(0)->data_type))
+                    && attr()->has_default_values(sm::post_ops)
+                    && attr_.set_default_formats(dst_md(0)) == status::success;
+            if (!ok) return status::unimplemented;
             bool is_training = desc_.prop_kind == prop_kind::forward_training;
             if (desc()->alg_kind == alg_kind::pooling_max && is_training)
                 init_default_ws();
@@ -85,7 +75,7 @@ struct ref_pooling_fwd_t : public gpu::generic::sycl::primitive_t {
         }
 
         status_t init_conf();
-        sycl_pooling_fwd_conf_t conf_;
+        sycl_pooling_conf_t conf_;
     };
 
     status_t init(impl::engine_t *engine) override;
@@ -114,35 +104,28 @@ struct ref_pooling_bwd_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper diff_src_d(diff_src_md(0));
             const memory_desc_wrapper ws_d(workspace_md(0));
 
-            VDISPATCH_POOLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_POOLING(
-                    (utils::everyone_is(f32, diff_src_md(0)->data_type,
-                             diff_dst_md(0)->data_type)
+            const bool ok = !is_fwd() && set_default_params() == status::success
+                    && (utils::everyone_is(f32, diff_src_md(0)->data_type,
+                                diff_dst_md(0)->data_type)
                             || utils::everyone_is(bf16,
                                     diff_src_md(0)->data_type,
                                     diff_dst_md(0)->data_type)
                             || utils::everyone_is(f16,
                                     diff_src_md(0)->data_type,
-                                    diff_dst_md(0)->data_type)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_POOLING(
-                    (src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_POOLING(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_POOLING(md_dims_in_range(diff_dst_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
+                                    diff_dst_md(0)->data_type))
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && attr()->has_default_values();
 
+            if (!ok) return status::unimplemented;
             if (desc()->alg_kind == alg_kind::pooling_max) {
                 init_default_ws();
-                VDISPATCH_POOLING(compare_ws(hint_fwd_pd_), VERBOSE_WS_INIT);
+                if (!compare_ws(hint_fwd_pd_)) return status::unimplemented;
             }
             return init_conf();
         }
 
         status_t init_conf();
-        sycl_pooling_bwd_conf_t conf_;
+        sycl_pooling_conf_t conf_;
     };
 
     status_t init(impl::engine_t *engine) override;

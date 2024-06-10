@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_shuffle_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -43,30 +42,19 @@ struct ref_shuffle_t : public gpu::generic::sycl::primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
-            auto src_data_md = invariant_src_md();
-            auto dst_data_md = invariant_dst_md();
+            const memory_desc_wrapper data_d(src_md(0));
+            const memory_desc_wrapper dst_d(dst_md(0));
 
-            VDISPATCH_SHUFFLE(src_data_md->data_type == dst_data_md->data_type,
-                    VERBOSE_INCONSISTENT_DT, "src", "dst");
-            VDISPATCH_SHUFFLE(
-                    (utils::one_of(src_data_md->data_type, bf16, f16, f32)
-                            || (is_fwd()
-                                    && utils::one_of(src_data_md->data_type,
-                                            s32, s8, u8))),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SHUFFLE(
-                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_SHUFFLE(
-                    IMPLICATION(is_fwd(),
-                            src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_SHUFFLE(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_SHUFFLE(memory_desc_wrapper(src_data_md)
-                            == memory_desc_wrapper(dst_data_md),
-                    VERBOSE_INCONSISTENT_MDS, "src", "dst");
-            VDISPATCH_SHUFFLE(md_dims_in_range(src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
+            const bool ok = src_md()->data_type == dst_md()->data_type
+                    && (src_md()->data_type == bf16 || src_md()->data_type == s8
+                            || src_md()->data_type == f16
+                            || src_md()->data_type == f32)
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && attr()->has_default_values()
+                    && set_default_formats_common()
+
+                    && IMPLICATION(!is_fwd(), set_default_formats_common());
+            if (!ok) return status::unimplemented;
             return init_conf();
         }
 

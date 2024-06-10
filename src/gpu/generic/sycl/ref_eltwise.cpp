@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 #include "gpu/generic/sycl/ref_eltwise.hpp"
 #include "gpu/generic/sycl/eltwise_kernels.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,13 +31,28 @@ status_t ref_sycl_eltwise_fwd_t::pd_t::init_conf() {
     conf_.alg_kind = desc()->alg_kind;
     conf_.alpha = desc()->alpha;
     conf_.beta = desc()->beta;
+    conf_.block_size = 16;
+    conf_.wg_size = 32;
     conf_.mb = MB();
     conf_.c = C();
     conf_.d = D();
     conf_.h = H();
     conf_.w = W();
 
-    conf_.post_ops = sycl_post_ops_t(attr(), dst_md());
+    conf_.post_po_len = attr()->post_ops_.len();
+    conf_.post_ops = sycl_post_ops_t(attr());
+
+    for (auto i = 0; i < conf_.post_po_len; ++i)
+        conf_.binary_src_arr[i] = xpu::sycl::md_t(
+                arg_md(DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
+
+    const int block_size = conf_.block_size;
+    const int wg_size = conf_.wg_size;
+    const int t_work = conf_.wk_size;
+    int wg_work = wg_size * block_size;
+    int wg_cnt = (t_work + wg_work - 1) / wg_work;
+    wg_thr = wg_cnt * wg_size;
+    wg_thr = wg_thr < 1 ? 1 : wg_thr;
 
     return status::success;
 }
@@ -50,10 +64,26 @@ status_t ref_sycl_eltwise_fwd_t::init(impl::engine_t *engine) {
 
 status_t ref_sycl_eltwise_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
-        eltwise_fwd_kernel_vec_t eltwise_fwd_kernel_(pd()->conf_, cgh, ctx);
+        auto src_mem_arg = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC);
+        auto dst_mem_arg = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST);
 
-        cgh.parallel_for(
-                get_range(ctx, pd()->conf_.wk_size), eltwise_fwd_kernel_);
+        auto src_mem_po_1 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1));
+        auto src_mem_po_2 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1));
+        auto src_mem_po_3 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1));
+        auto src_mem_po_4 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(3) | DNNL_ARG_SRC_1));
+        auto src_mem_po_5 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(4) | DNNL_ARG_SRC_1));
+
+        eltwise_fwd_kernel_vec_t eltwise_fwd_kernel_(pd()->conf_, src_mem_arg,
+                dst_mem_arg, src_mem_po_1, src_mem_po_2, src_mem_po_3,
+                src_mem_po_4, src_mem_po_5);
+
+        cgh.parallel_for(::sycl::nd_range<1>(pd()->wg_thr, pd()->conf_.wg_size),
+                eltwise_fwd_kernel_);
     });
 }
 
@@ -62,6 +92,8 @@ status_t ref_sycl_eltwise_bwd_t::pd_t::init_conf() {
     conf_.src_md = xpu::sycl::md_t(data_md(0));
     conf_.diff_src_md = xpu::sycl::md_t(diff_src_md());
     conf_.diff_dst_md = xpu::sycl::md_t(diff_dst_md());
+    conf_.block_size = 16;
+    conf_.wg_size = 32;
     conf_.wk_size = memory_desc_wrapper(data_md(0)).nelems();
     conf_.alg_kind = desc()->alg_kind;
     conf_.alpha = desc()->alpha;
@@ -71,6 +103,14 @@ status_t ref_sycl_eltwise_bwd_t::pd_t::init_conf() {
     conf_.d = D();
     conf_.h = H();
     conf_.w = W();
+
+    const int block_size = conf_.block_size;
+    const int wg_size = conf_.wg_size;
+    const int t_work = conf_.wk_size;
+    int wg_work = wg_size * block_size;
+    int wg_cnt = (t_work + wg_work - 1) / wg_work;
+    wg_thr = wg_cnt * wg_size;
+    wg_thr = wg_thr < 1 ? 1 : wg_thr;
 
     return status::success;
 }
@@ -82,11 +122,18 @@ status_t ref_sycl_eltwise_bwd_t::init(impl::engine_t *engine) {
 
 status_t ref_sycl_eltwise_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
-        eltwise_bwd_kernel_vec_t eltwise_bwd_kernel_(
-                pd()->conf_, cgh, ctx, pd()->use_dst());
+        auto src_mem_arg = pd()->use_dst()
+                ? CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DST)
+                : CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC);
 
-        cgh.parallel_for(
-                get_range(ctx, pd()->conf_.wk_size), eltwise_bwd_kernel_);
+        auto diff_dst_mem_arg = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_DST);
+        auto diff_src_mem_arg = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC);
+
+        eltwise_bwd_kernel_vec_t eltwise_bwd_kernel_(
+                pd()->conf_, diff_dst_mem_arg, src_mem_arg, diff_src_mem_arg);
+
+        cgh.parallel_for(::sycl::nd_range<1>(pd()->wg_thr, pd()->conf_.wg_size),
+                eltwise_bwd_kernel_);
     });
 }
 

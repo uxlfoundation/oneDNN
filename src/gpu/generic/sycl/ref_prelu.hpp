@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,15 +18,12 @@
 #define GPU_GENERIC_SYCL_REF_PRELU_HPP
 
 #include "common/broadcast_strategy.hpp"
-#include "common/primitive_desc_iterator.hpp"
-#include "common/reduction_pd.hpp"
 #include "gpu/generic/sycl/prelu_kernels.hpp"
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_prelu_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -51,35 +48,16 @@ struct ref_prelu_fwd_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper weights_d(weights_md(0));
             const memory_desc_wrapper dst_d(dst_md(0));
 
-            VDISPATCH_PRELU(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_PRELU(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_PRELU((src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_PRELU(
-                    (weights_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_PRELU(check_data_types(data_d, weights_d, dst_d),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_PRELU(md_dims_in_range(src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
-            VDISPATCH_PRELU(md_dims_in_range(weights_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "weights");
-            VDISPATCH_PRELU(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            const bool ok = is_fwd() && set_default_formats()
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && (weights_md(0)->format_desc.blocking.inner_nblks == 0);
+
+            if (!ok) return status::unimplemented;
             return init_conf();
         }
 
         status_t init_conf();
         sycl_prelu_conf_t conf_;
-
-        static bool check_data_types(const memory_desc_wrapper &src,
-                const memory_desc_wrapper &wei,
-                const memory_desc_wrapper &dst) {
-            for (const auto &mdw : {src, wei, dst}) {
-                if (!is_supported_type(mdw.data_type())) return false;
-            }
-            return true;
-        }
     };
 
     status_t init(impl::engine_t *engine) override;
@@ -109,52 +87,19 @@ struct ref_prelu_bwd_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper diff_weights_d(diff_weights_md(0));
             const memory_desc_wrapper diff_dst_d(diff_dst_md(0));
 
-            VDISPATCH_PRELU(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_PRELU(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_PRELU((src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_PRELU(
-                    (weights_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_PRELU(diff_src_md(0)->data_type == src_md(0)->data_type,
-                    VERBOSE_INCONSISTENT_DT, "src", "diff_src");
-            VDISPATCH_PRELU(
-                    diff_weights_md(0)->data_type == weights_md(0)->data_type,
-                    VERBOSE_INCONSISTENT_DT, "weights", "diff_weights");
-            VDISPATCH_PRELU(check_data_types(data_d, weights_d, diff_dst_d),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_PRELU(md_dims_in_range(diff_src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "diff_src");
-            VDISPATCH_PRELU(md_dims_in_range(weights_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "weights");
-            VDISPATCH_PRELU(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            const bool ok = !is_fwd() && set_default_formats()
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && (weights_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && diff_src_md(0)->data_type == src_md(0)->data_type
+                    && diff_weights_md(0)->data_type
+                            == weights_md(0)->data_type;
 
-            CHECK(init_conf());
-            CHECK(init_reduction(engine));
-            init_scratchpad();
-
-            return status::success;
+            if (!ok) return status::unimplemented;
+            return init_conf();
         }
 
         status_t init_conf();
-        status_t init_reduction(impl::engine_t *engine);
-        void init_scratchpad();
-
-        static bool check_data_types(const memory_desc_wrapper &src,
-                const memory_desc_wrapper &wei,
-                const memory_desc_wrapper &dst) {
-            for (const auto &mdw : {src, wei, dst}) {
-                if (!is_supported_type(mdw.data_type())) return false;
-            }
-
-            return true;
-        }
-
         sycl_prelu_conf_t conf_;
-        bool reduce_diff_weights_ = false;
-        memory_desc_t scratch_md_;
-        std::shared_ptr<primitive_desc_t> reduction_pd_;
     };
 
     status_t init(impl::engine_t *engine) override;
@@ -166,7 +111,6 @@ private:
     status_t execute_backward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     kernel_t kernel_;
-    std::shared_ptr<impl::primitive_t> reduction_p_;
 };
 
 } // namespace sycl

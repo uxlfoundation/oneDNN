@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,55 +42,13 @@ struct sycl_binary_conf_t {
     int ndims;
     bool is_tensor_op;
 
+    int block_size;
+    int wg_size;
     int wk_size;
 
-    sycl_post_ops_t post_ops;
-};
-
-struct sycl_convolution_common_conf_t {
-    bool has_bias = false;
-    data_type_t bias_dt;
-
-    int padding[3];
-    int strides[3];
-    int dilation[3];
-
-    bool do_scale_data;
-    bool do_scale_weights;
-    bool do_scale_dst;
-    bool single_weight_scale;
-
-    bool use_data_zeropoints;
-    bool use_dst_zeropoints;
-    bool single_data_zeropoint;
-    bool single_dst_zeropoint;
-
-    int ndims;
-
-    int wk_size;
-    bool has_groups;
-
-    bool is_deconvolution;
+    xpu::sycl::md_t binary_src_arr[8];
 
     sycl_post_ops_t post_ops;
-};
-
-struct sycl_convolution_fwd_conf_t : sycl_convolution_common_conf_t {
-    xpu::sycl::md_t data_md;
-    xpu::sycl::md_t dst_md;
-    xpu::sycl::md_t weights_md;
-};
-
-struct sycl_convolution_bwd_data_conf_t : sycl_convolution_common_conf_t {
-    xpu::sycl::md_t weights_md;
-    xpu::sycl::md_t diff_data_md;
-    xpu::sycl::md_t diff_dst_md;
-};
-
-struct sycl_convolution_bwd_weights_conf_t : sycl_convolution_common_conf_t {
-    xpu::sycl::md_t data_md;
-    xpu::sycl::md_t diff_dst_md;
-    xpu::sycl::md_t diff_weights_md;
 };
 
 struct sycl_eltwise_conf_t {
@@ -107,37 +65,12 @@ struct sycl_eltwise_conf_t {
     dim_t d;
     dim_t h;
     dim_t w;
+    dim_t block_size;
+    dim_t wg_size;
     dim_t wk_size;
+    dim_t post_po_len;
+    xpu::sycl::md_t binary_src_arr[8];
     sycl_post_ops_t post_ops;
-};
-
-struct sycl_matmul_conf_t {
-    xpu::sycl::md_t data_md;
-    xpu::sycl::md_t dst_md;
-    xpu::sycl::md_t weights_md;
-    xpu::sycl::md_t bias_md;
-    alg_kind_t alg_kind;
-    bool transpose_data; //TODO can we remove?
-    bool transpose_dst;
-    bool transpose_weights;
-    bool transpose_bias;
-    sycl_post_ops_t post_ops;
-    int wk_size;
-
-    int data_mask;
-    int weights_mask;
-    int bias_mask;
-
-    bool do_scale_data;
-    bool do_scale_weights;
-    bool do_scale_dst;
-    bool single_weights_scale;
-
-    bool use_data_zeropoints;
-    bool use_weights_zeropoints;
-    bool use_dst_zeropoints;
-
-    bool use_dropout;
 };
 
 struct sycl_prelu_conf_t {
@@ -152,6 +85,7 @@ struct sycl_prelu_conf_t {
     dim_t work_amount_wei;
     dim_t work_amount_src;
     dim_t work_load;
+    bool reduce_diff_weights = 0;
     int mask;
     float sum;
     broadcasting_strategy_t bcast_type;
@@ -207,6 +141,8 @@ struct sycl_reorder_conf_t {
 
     int ndims;
 
+    int block_size;
+    int wg_size;
     int wk_size;
 
     sycl_post_ops_t post_ops;
@@ -215,9 +151,11 @@ struct sycl_reorder_conf_t {
 struct sycl_resampling_conf_t {
     dims_t dst_dims;
     int dst_ndims;
+    int po_len;
     size_t work_amount;
 
     xpu::sycl::md_t src_md;
+    xpu::sycl::md_t src1_md[sycl_post_ops_t::max_post_ops];
     xpu::sycl::md_t dst_md;
     xpu::sycl::md_t diff_src_md;
     xpu::sycl::md_t diff_dst_md;
@@ -245,8 +183,6 @@ struct sycl_layer_normalization_conf_t {
     xpu::sycl::md_t shift;
     xpu::sycl::md_t stat_md;
     data_type_t var_dt;
-    data_type_t scales_src_dt;
-    data_type_t scales_dst_dt;
     xpu::sycl::md_t dst_md;
     xpu::sycl::md_t diff_dst_md;
     dim_t wk_size;
@@ -326,6 +262,8 @@ struct sycl_softmax_conf_t {
     xpu::sycl::md_t diff_src_md;
     xpu::sycl::md_t diff_dst_md;
     alg_kind_t alg_kind;
+    dim_t block_size;
+    dim_t wg_size;
     dim_t wk_size;
 
     dim_t axis;
@@ -335,8 +273,6 @@ struct sycl_softmax_conf_t {
     dim_t channels;
     bool do_scale_src;
     bool do_scale_dst;
-
-    sycl_post_ops_t post_ops;
 };
 
 struct sycl_lrn_conf_t {
@@ -360,12 +296,21 @@ struct sycl_lrn_conf_t {
     float beta;
     float k;
 
+    int block_size;
+    int wg_size;
     int wk_size;
 };
 
-struct sycl_pooling_base_conf_t {
+struct sycl_pooling_conf_t {
+    xpu::sycl::md_t src_md;
+    // The size "5" is lower than DNNL_MAX_NDIMS because only 5 dimension formats are supported.
+    xpu::sycl::md_t src1_md[5];
+    xpu::sycl::md_t dst_md;
     xpu::sycl::md_t ws_md;
+    xpu::sycl::md_t diff_src_md;
+    xpu::sycl::md_t diff_dst_md;
     int ndims;
+    int po_len;
     bool zero_dims;
     int block_size;
     int wg_size;
@@ -391,39 +336,9 @@ struct sycl_pooling_base_conf_t {
     dim_t DD;
     dim_t DH;
     dim_t DW;
-};
-
-struct sycl_pooling_fwd_conf_t : public sycl_pooling_base_conf_t {
-    xpu::sycl::md_t src_md;
-    xpu::sycl::md_t dst_md;
+    dims_t dst_dims;
+    int dst_ndims;
     sycl_post_ops_t post_ops;
-};
-
-// Intel GPU kernel fails to run with more than 8 tensors.
-#define DNNL_REF_SUM_MAX_NUM_TENSORS 8
-
-struct sycl_sum_conf_t {
-    xpu::sycl::md_t src_md[DNNL_REF_SUM_MAX_NUM_TENSORS];
-    xpu::sycl::md_t dst_md;
-    float src_scales[DNNL_REF_SUM_MAX_NUM_TENSORS];
-    int n;
-    int wk_size;
-};
-
-struct sycl_pooling_bwd_conf_t : public sycl_pooling_base_conf_t {
-    xpu::sycl::md_t diff_src_md;
-    xpu::sycl::md_t diff_dst_md;
-};
-
-struct sycl_simple_reduction_conf_t {
-    dnnl_alg_kind_t alg = dnnl_alg_kind_undef;
-    xpu::sycl::md_t src_md;
-    xpu::sycl::md_t dst_md;
-    float p;
-    float eps;
-    sycl_post_ops_t post_ops;
-    dim_t reduce_dims[xpu::sycl::md_t::max_dims];
-    int reduce_size = 1;
 };
 
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_binary_conf_t);
@@ -435,14 +350,7 @@ CHECK_SYCL_KERNEL_ARG_TYPE(sycl_softmax_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_layer_normalization_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_eltwise_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_lrn_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_sum_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_pooling_base_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_pooling_fwd_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_pooling_bwd_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_convolution_fwd_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_convolution_bwd_data_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_convolution_bwd_weights_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_simple_reduction_conf_t);
+CHECK_SYCL_KERNEL_ARG_TYPE(sycl_pooling_conf_t);
 
 } // namespace sycl
 } // namespace generic

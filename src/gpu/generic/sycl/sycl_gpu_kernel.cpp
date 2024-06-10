@@ -17,9 +17,8 @@
 #include "common/stream.hpp"
 
 #include "xpu/sycl/stream_impl.hpp"
-#include "xpu/sycl/utils.hpp"
 
-#include "gpu/sycl/sycl_gpu_kernel.hpp"
+#include "gpu/generic/sycl/sycl_gpu_kernel.hpp"
 
 namespace dnnl {
 namespace impl {

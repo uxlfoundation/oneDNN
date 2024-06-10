@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_resampling_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -41,30 +40,32 @@ struct ref_resampling_fwd_t : public gpu::generic::sycl::primitive_t {
         DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_resampling_fwd_t);
 
         status_t init(impl::engine_t *engine) {
+            using namespace data_type;
             using namespace prop_kind;
             using namespace alg_kind;
             using sm = primitive_attr_t::skip_mask_t;
             const memory_desc_wrapper src_d(src_md(0));
             const memory_desc_wrapper dst_d(dst_md(0));
 
-            VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_RESAMPLING(is_supported_type(src_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_RESAMPLING(is_supported_type(dst_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_RESAMPLING(attr()->has_default_values(sm::post_ops),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_RESAMPLING(sycl_post_ops_t::post_ops_ok(attr()),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_RESAMPLING_SC(
-                    set_default_params(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_RESAMPLING_SC(attr_.set_default_formats(dst_md(0)),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_RESAMPLING(
-                    (src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_RESAMPLING(md_dims_in_range(src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
+            const bool ok = src_md()->data_type == dst_md()->data_type
+                    && set_default_params() == status::success
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && (utils::everyone_is(
+                                s8, src_md(0)->data_type, dst_md(0)->data_type)
+                            || utils::everyone_is(u8, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(f32, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(bf16, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(f16, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(s32, src_md(0)->data_type,
+                                    dst_md(0)->data_type))
+                    && attr()->has_default_values(sm::post_ops)
+                    && attr_.set_default_formats(dst_md(0)) == status::success;
+
+            if (!ok) { return status::unimplemented; }
             return init_conf();
         }
 
@@ -97,23 +98,11 @@ struct ref_resampling_bwd_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper diff_dst_d(diff_dst_md(0));
             const memory_desc_wrapper diff_src_d(diff_src_md(0));
 
-            VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_RESAMPLING(is_supported_type(diff_src_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_RESAMPLING(is_supported_type(diff_dst_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_RESAMPLING_SC(
-                    set_default_params(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_RESAMPLING(
-                    (diff_src_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_RESAMPLING(
-                    (diff_dst_md(0)->format_desc.blocking.inner_nblks == 0),
-                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_RESAMPLING(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_RESAMPLING(md_dims_in_range(diff_dst_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
+            bool ok = !is_fwd() && set_default_params() == status::success
+                    && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && (diff_dst_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && attr()->has_default_values();
+            if (!ok) return status::unimplemented;
             return init_conf();
         }
 

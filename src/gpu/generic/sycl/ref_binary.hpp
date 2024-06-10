@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_binary_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -48,29 +47,16 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper src1_d(src_md(1));
             const memory_desc_wrapper dst_d(dst_md());
 
-            VDISPATCH_BINARY_SC(
-                    set_default_params(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
-            VDISPATCH_BINARY_SC(attr_.set_default_formats(dst_md()),
-                    VERBOSE_UNSUPPORTED_TAG_S, "dst");
-            VDISPATCH_BINARY(check_data_types(src0_d, src1_d, dst_d),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_BINARY(check_formats(src0_d, src1_d, dst_d),
-                    VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_BINARY(attr()->has_default_values(
-                                     sm::scales_runtime | sm::post_ops),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_BINARY(!is_ternary_op(), VERBOSE_BAD_ALGORITHM);
-            VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
-                                     scales_ok()),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_BINARY(sycl_post_ops_t::post_ops_ok(attr()),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_BINARY(md_dims_in_range(src_md(0)),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src(0)");
-            VDISPATCH_BINARY(md_dims_in_range(src_md(1)),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src(1)");
-            VDISPATCH_BINARY(md_dims_in_range(dst_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "dst");
+            const bool ok = set_default_params() == status::success
+                    && attr_.set_default_formats(dst_md()) == status::success
+                    && check_data_types(src0_d, src1_d, dst_d)
+                    && check_formats(src0_d, src1_d, dst_d)
+                    && attr()->has_default_values(
+                            sm::scales_runtime | sm::post_ops)
+                    && IMPLICATION(!attr()->scales_.has_default_values(),
+                            check_scales_mask())
+                    && post_ops_ok();
+            if (!ok) return status::unimplemented;
 
             return init_conf();
         }
@@ -80,17 +66,19 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
     private:
         status_t init_conf();
 
-        bool scales_ok() const {
+        bool check_scales_mask() const {
             const std::vector<int> supported_args
                     = {DNNL_ARG_SRC_0, DNNL_ARG_SRC_1};
+            return attr_scales_ok(supported_args);
+        }
 
-            const auto &scales = attr()->scales_;
-            bool dt_ok = true;
-            for (auto arg : supported_args) {
-                auto &s = scales.get(arg);
-                dt_ok = dt_ok && is_supported_type(s.data_type_);
-            }
-            return dt_ok && attr_scales_ok(supported_args);
+        bool post_ops_ok() const {
+            // Dw conv post-ops are not supported.
+            return attr()->post_ops_.len() <= sycl_post_ops_t::max_post_ops
+                    && attr()->post_ops_.has_default_values(
+                            {primitive_kind::eltwise, primitive_kind::binary,
+                                    primitive_kind::prelu,
+                                    primitive_kind::sum});
         }
 
         static bool check_data_types(const memory_desc_wrapper &src0,
@@ -103,11 +91,11 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
             const auto dst_dt = dst.data_type();
 
             for (auto t : {src0_dt, src1_dt, dst_dt}) {
-                if (!utils::one_of(t, f32, bf16, f16, s8, u8, s32))
-                    return false;
+                if (!utils::one_of(t, f32, bf16, f16, s8, u8)) return false;
             }
 
-            return true;
+            return IMPLICATION(utils::one_of(bf16, src0_dt, src1_dt, dst_dt),
+                    src0_dt == dst_dt && src1_dt == dst_dt);
         }
 
         static bool check_formats(const memory_desc_wrapper &src0,
@@ -116,11 +104,8 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
             using namespace format_tag;
 
             for (const auto &mdw : {src0, src1, dst}) {
-                if (!(mdw.is_plain() || mdw.matches_tag(format_tag::Ab32a)
-                            || mdw.matches_tag(format_tag::aBc32b)))
-                    return false;
+                if (!mdw.is_plain()) { return false; }
             }
-
             return true;
         }
     };

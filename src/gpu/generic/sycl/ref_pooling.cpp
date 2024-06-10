@@ -17,7 +17,7 @@
 #include "gpu/generic/sycl/ref_pooling.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
-#include "gpu/sycl/pooling_kernels.hpp"
+#include "gpu/generic/sycl/pooling_kernels.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

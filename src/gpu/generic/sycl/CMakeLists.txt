@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2025 Intel Corporation
+# Copyright 2022-2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,26 +14,30 @@
 # limitations under the License.
 #===============================================================================
 
-file(GLOB_RECURSE SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
-    )
-
-if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DXE3P)
-endif()
-
-if(DNNL_SYCL_CUDA OR (DNNL_SYCL_GENERIC AND NVIDIA_TARGET_SUPPORTED))
-    append(CMAKE_CXX_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda")
-    # Suppress irrelevant warning about incompatible triplets.
-    append(CMAKE_CXX_FLAGS "-Wno-linker-warnings")
-endif()
-
-if(DNNL_AMD_ENABLE_SYCL_KERNELS)
-    append(CMAKE_CXX_FLAGS "-fsycl-targets=amdgcn-amd-amdhsa -Xsycl-target-backend --offload-arch=${DNNL_AMD_SYCL_KERNELS_TARGET_ARCH}")
+if(DNNL_SYCL_CUDA OR DNNL_SYCL_HIP)
+    file(GLOB_RECURSE SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+        )
+    # Interop kernel is not used for non-Intel GPU vendor.
+    list(REMOVE_ITEM SOURCES
+        "sycl_interop_gpu_kernel.hpp"
+        "sycl_interop_gpu_kernel.cpp"
+        )
+    if(DNNL_SYCL_CUDA)
+        append(CMAKE_CXX_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda")
+        # Suppress irrelevant warning about incompatible triplets.
+        append(CMAKE_CXX_FLAGS "-Wno-linker-warnings")
+    endif()
+else()
+    # GPU vendor Intel needs only the following files from this directory.
+    set(SOURCES
+       "sycl_interop_gpu_kernel.hpp"
+       "sycl_interop_gpu_kernel.cpp"
+       "sycl_gpu_engine.hpp"
+       )
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_generic_sycl)

@@ -15,11 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/generic/sycl/ref_prelu.hpp"
-#include "common/primitive_exec_types.hpp"
-#include "common/stream.hpp"
 #include "common/utils.hpp"
 #include "gpu/generic/sycl/prelu_kernels.hpp"
-#include "xpu/sycl/stream_impl.hpp"
 
 namespace dnnl {
 namespace impl {

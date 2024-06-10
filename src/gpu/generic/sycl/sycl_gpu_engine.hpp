@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_SYCL_SYCL_GPU_ENGINE_HPP
-#define GPU_SYCL_SYCL_GPU_ENGINE_HPP
+#ifndef GPU_GENERIC_SYCL_SYCL_GPU_ENGINE_HPP
+#define GPU_GENERIC_SYCL_SYCL_GPU_ENGINE_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/engine.hpp"
@@ -26,6 +26,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace generic {
 namespace sycl {
 
 class sycl_gpu_engine_t : public gpu::intel::sycl::engine_t {
@@ -76,6 +77,7 @@ protected:
 };
 
 } // namespace sycl
+} // namespace generic
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

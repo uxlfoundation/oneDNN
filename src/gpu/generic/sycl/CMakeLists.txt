@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2024 Intel Corporation
+# Copyright 2022-2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,28 +14,30 @@
 # limitations under the License.
 #===============================================================================
 
-file(GLOB_RECURSE SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
-    )
-
-if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DPRERELEASE_HW)
-# XE3 macro is required to compile nGEN with XE3P support.
-add_definitions_with_host_compiler(-DXE3)
-add_definitions_with_host_compiler(-DXE3P)
-elseif(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_WITH_XE3)
-add_definitions_with_host_compiler(-DPRERELEASE_HW)
-add_definitions_with_host_compiler(-DXE3)
-endif()
-
-if(DNNL_SYCL_CUDA)
-    append(CMAKE_CXX_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda")
-    # Suppress irrelevant warning about incompatible triplets.
-    append(CMAKE_CXX_FLAGS "-Wno-linker-warnings")
+if(DNNL_SYCL_CUDA OR DNNL_SYCL_HIP)
+    file(GLOB_RECURSE SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+        )
+    # Interop kernel is not used for non-Intel GPU vendor.
+    list(REMOVE_ITEM SOURCES
+        "sycl_interop_gpu_kernel.hpp"
+        "sycl_interop_gpu_kernel.cpp"
+        )
+    if(DNNL_SYCL_CUDA)
+        append(CMAKE_CXX_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda")
+        # Suppress irrelevant warning about incompatible triplets.
+        append(CMAKE_CXX_FLAGS "-Wno-linker-warnings")
+    endif()
+else()
+    # GPU vendor Intel needs only the following files from this directory.
+    set(SOURCES
+       "sycl_interop_gpu_kernel.hpp"
+       "sycl_interop_gpu_kernel.cpp"
+       "sycl_gpu_engine.hpp"
+       )
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_generic_sycl)

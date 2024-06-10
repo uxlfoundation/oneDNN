@@ -30,7 +30,6 @@
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
 #include "gpu/generic/sycl/ref_reorder.hpp"
 #include "gpu/nvidia/cudnn_reorder.hpp"
-#include "gpu/sycl/ref_reorder.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_AMD

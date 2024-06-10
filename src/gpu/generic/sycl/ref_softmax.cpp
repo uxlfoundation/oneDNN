@@ -16,7 +16,6 @@
 
 #include "gpu/generic/sycl/ref_softmax.hpp"
 #include "gpu/generic/sycl/softmax_kernels.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -22,13 +22,7 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_binary_pd.hpp"
-#include "gpu/sycl/sycl_gpu_primitive.hpp"
-#include "gpu/sycl/sycl_io_helper.hpp"
-#include "gpu/sycl/sycl_post_ops.hpp"
-#include "gpu/sycl/sycl_primitive_conf.hpp"
-#include "gpu/sycl/sycl_q10n.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {
@@ -37,8 +31,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
-struct ref_binary_t : public gpu::sycl::primitive_t {
-    using gpu::sycl::primitive_t::primitive_t;
+struct ref_binary_t : public gpu::generic::sycl::primitive_t {
+    using gpu::generic::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_binary_pd_t {
         using gpu_binary_pd_t::gpu_binary_pd_t;

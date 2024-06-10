@@ -24,14 +24,8 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_pooling_pd.hpp"
 #include "gpu/intel/primitive_conf.hpp"
-#include "gpu/sycl/sycl_gpu_primitive.hpp"
-#include "gpu/sycl/sycl_io_helper.hpp"
-#include "gpu/sycl/sycl_post_ops.hpp"
-#include "gpu/sycl/sycl_primitive_conf.hpp"
-#include "gpu/sycl/sycl_q10n.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {
@@ -40,8 +34,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
-struct ref_pooling_fwd_t : public gpu::sycl::primitive_t {
-    using gpu::sycl::primitive_t::primitive_t;
+struct ref_pooling_fwd_t : public gpu::generic::sycl::primitive_t {
+    using gpu::generic::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_pooling_fwd_pd_t {
         using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
@@ -96,8 +90,8 @@ private:
     kernel_t kernel_;
 };
 
-struct ref_pooling_bwd_t : public gpu::sycl::primitive_t {
-    using gpu::sycl::primitive_t::primitive_t;
+struct ref_pooling_bwd_t : public gpu::generic::sycl::primitive_t {
+    using gpu::generic::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_pooling_bwd_pd_t {
         using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;

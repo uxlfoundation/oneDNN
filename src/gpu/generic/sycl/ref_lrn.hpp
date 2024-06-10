@@ -18,10 +18,7 @@
 
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_lrn_pd.hpp"
-#include "gpu/sycl/sycl_gpu_primitive.hpp"
-#include "gpu/sycl/sycl_primitive_conf.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {
@@ -30,8 +27,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
-struct ref_sycl_lrn_fwd_t : public gpu::sycl::primitive_t {
-    using gpu::sycl::primitive_t::primitive_t;
+struct ref_sycl_lrn_fwd_t : public gpu::generic::sycl::primitive_t {
+    using gpu::generic::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_lrn_fwd_pd_t {
         using gpu_lrn_fwd_pd_t::gpu_lrn_fwd_pd_t;
@@ -77,8 +74,8 @@ private:
     kernel_t kernel_;
 };
 
-struct ref_sycl_lrn_bwd_t : public gpu::sycl::primitive_t {
-    using gpu::sycl::primitive_t::primitive_t;
+struct ref_sycl_lrn_bwd_t : public gpu::generic::sycl::primitive_t {
+    using gpu::generic::sycl::primitive_t::primitive_t;
 
     struct pd_t : public gpu_lrn_bwd_pd_t {
         using gpu_lrn_bwd_pd_t::gpu_lrn_bwd_pd_t;

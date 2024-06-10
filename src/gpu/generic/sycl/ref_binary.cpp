@@ -16,7 +16,6 @@
 
 #include "gpu/generic/sycl/ref_binary.hpp"
 #include "gpu/generic/sycl/binary_kernels.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,6 +30,10 @@ status_t ref_binary_t::pd_t::init_conf() {
     conf_.src1_md = xpu::sycl::md_t(src_md(1));
     conf_.dst_md = xpu::sycl::md_t(dst_md());
     conf_.ndims = ndims();
+
+    // XXX: should probably be tuned.
+    conf_.block_size = 16;
+    conf_.wg_size = 32;
 
     conf_.wk_size = memory_desc_wrapper(dst_md()).nelems();
 
@@ -49,28 +52,65 @@ status_t ref_binary_t::pd_t::init_conf() {
                 = conf_.src0_md.dims()[i] != 1 && conf_.src1_md.dims()[i] == 1;
     }
 
-    conf_.post_ops = sycl_post_ops_t(attr(), dst_md());
+    conf_.post_ops = sycl_post_ops_t(attr());
 
+    for (auto i = 0; i < conf_.post_ops.get_post_op(); ++i) {
+        const auto &e = attr()->post_ops_.entry_[i];
+        if (e.is_binary() || e.is_prelu()) {
+            conf_.binary_src_arr[i] = xpu::sycl::md_t(
+                    arg_md(DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
+        }
+    }
     return status::success;
 }
 
 status_t ref_binary_t::init(impl::engine_t *engine) {
-    if (memory_desc_wrapper(pd()->dst_md()).size() == 0) return status::success;
-
     const auto kid = ::sycl::get_kernel_id<binary_kernel_vec_t>();
     CHECK(create_kernel(engine, kid, &kernel_));
     return status::success;
 }
 
 status_t ref_binary_t::execute(const exec_ctx_t &ctx) const {
-    if (memory_desc_wrapper(pd()->dst_md()).size() == 0) return status::success;
-
-    ctx.zero_pad_output(DNNL_ARG_TO);
 
     parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
-        binary_kernel_vec_t binary_kernel(pd()->conf_, cgh, ctx);
+        auto src0_mem_arg = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC_0);
+        auto src1_mem_arg = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC_1);
+        auto src0_scale_mem_arg = CTX_IN_SYCL_KERNEL_MEMORY(
+                DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0);
+        auto src1_scale_mem_arg = CTX_IN_SYCL_KERNEL_MEMORY(
+                DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1);
+        auto dst_mem_arg = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST);
 
-        cgh.parallel_for(get_range(ctx, pd()->conf_.wk_size), binary_kernel);
+        auto scales_dt = (pd()->conf_.do_scale_src0)
+                ? ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0)
+                          .data_type()
+                : data_type_t::dnnl_f32;
+
+        auto src_mem_po_1 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1));
+        auto src_mem_po_2 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1));
+        auto src_mem_po_3 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1));
+        auto src_mem_po_4 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(3) | DNNL_ARG_SRC_1));
+        auto src_mem_po_5 = CTX_IN_SYCL_KERNEL_MEMORY(
+                (DNNL_ARG_ATTR_MULTIPLE_POST_OP(4) | DNNL_ARG_SRC_1));
+
+        binary_kernel_vec_t binary_kernel(pd()->conf_, src0_mem_arg,
+                src1_mem_arg, dst_mem_arg, src0_scale_mem_arg,
+                src1_scale_mem_arg, scales_dt, src_mem_po_1, src_mem_po_2,
+                src_mem_po_3, src_mem_po_4, src_mem_po_5);
+
+        const int block_size = pd()->conf_.block_size;
+        const int wg_size = pd()->conf_.wg_size;
+
+        const int t_work = pd()->conf_.wk_size;
+        const int wg_work = wg_size * block_size;
+        const int wg_cnt = utils::div_up(t_work, wg_work);
+
+        cgh.parallel_for(
+                ::sycl::nd_range<1>(wg_cnt * wg_size, wg_size), binary_kernel);
     });
 
     return status::success;

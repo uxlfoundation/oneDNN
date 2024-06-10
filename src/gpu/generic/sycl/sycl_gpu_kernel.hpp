@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_SYCL_KERNEL_HPP
-#define GPU_SYCL_KERNEL_HPP
+#ifndef GPU_GENERIC_SYCL_SYCL_GPU_KERNEL_HPP
+#define GPU_GENERIC_SYCL_SYCL_GPU_KERNEL_HPP
 
 #include "xpu/sycl/utils.hpp"
 

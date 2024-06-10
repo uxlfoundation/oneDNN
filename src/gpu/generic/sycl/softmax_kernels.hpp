@@ -19,12 +19,8 @@
 
 #include "common/compiler_workarounds.hpp"
 
-#include "common/primitive_exec_types.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"
-#include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-#include "xpu/sycl/memory_storage_base.hpp"
-#include "xpu/sycl/types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,33 +30,25 @@ namespace sycl {
 
 struct softmax_fwd_kernel_vec_t {
     softmax_fwd_kernel_vec_t(const sycl_softmax_conf_t &conf,
-            ::sycl::handler &cgh, const exec_ctx_t &ctx)
+            xpu::sycl::in_memory_arg_t &src,
+            xpu::sycl::in_memory_arg_t &scale_src,
+            xpu::sycl::in_memory_arg_t &scale_dst,
+            xpu::sycl::out_memory_arg_t &dst)
         : conf_(conf)
-        , src_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
-        , scale_src_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC))
-        , scale_dst_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
-        , dst_(CTX_INOUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST))
-        , po_args_(cgh, ctx, conf_.post_ops) {}
+        , src_(src)
+        , scale_src_(scale_src)
+        , scale_dst_(scale_dst)
+        , dst_(dst) {}
 
     void operator()(::sycl::nd_item<1> item) const {
-        memory_tensor_t src_mem(src_, conf_.src_md);
-        memory_tensor_t dst_mem(dst_, conf_.dst_md);
-        memory_plain_t src_scale_mem(scale_src_, data_type::f32);
-        memory_plain_t dst_scale_mem(scale_dst_, data_type::f32);
+        auto sg = item.get_sub_group();
+        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
+        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
+        size_t wi_offset_t = sg.get_local_id();
+        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
+        size_t base_idx = offset_t * conf_.block_size;
 
-        dims_t dst_dims;
-        for (int i = 0; i < xpu::sycl::md_t::max_dims; i++) {
-            if (i < dst_mem.md().ndims()) {
-                dst_dims[i] = dst_mem.md().dims()[i];
-            } else {
-                dst_dims[i] = 1;
-            }
-        }
-
-        auto operation = [= WA_THIS_COPY_CAPTURE](
-                                 dim_t &ou, dim_t &in) mutable {
+        auto operation = [= WA_THIS_COPY_CAPTURE](dim_t &ou, dim_t &in) {
             float space_denom = 0;
             float space_max = -FLT_MAX;
             dim_t ou_in_offset = ou * conf_.channels * conf_.inner_size + in;
@@ -68,13 +56,15 @@ struct softmax_fwd_kernel_vec_t {
             for (dim_t c = 0; c < conf_.channels; c++) {
                 size_t off
                         = src_md().off_l(ou_in_offset + c * conf_.inner_size);
-                float s = src_mem.load(off);
+                float s = load_float_value(
+                        src_md().data_type(), src_ptr(), off);
                 space_max = nstl::max(space_max, s);
             }
             for (dim_t c = 0; c < conf_.channels; c++) {
                 size_t src_off
                         = src_md().off_l(ou_in_offset + c * conf_.inner_size);
-                float s = src_mem.load(src_off);
+                float s = load_float_value(
+                        src_md().data_type(), src_ptr(), src_off);
                 float d = s - space_max;
                 space_denom += ::sycl::exp((float)d);
             }
@@ -84,7 +74,8 @@ struct softmax_fwd_kernel_vec_t {
             for (dim_t c = 0; c < conf_.channels; c++) {
                 size_t src_off
                         = src_md().off_l(ou_in_offset + c * conf_.inner_size);
-                float s = src_mem.load(src_off);
+                float s = load_float_value(
+                        src_md().data_type(), src_ptr(), src_off);
                 float d = s - space_max;
                 if (conf_.alg_kind == alg_kind::softmax_accurate) {
                     d = ::sycl::exp((float)d);
@@ -96,35 +87,29 @@ struct softmax_fwd_kernel_vec_t {
                     d -= sd;
                 }
 
+                float scale = 1.0f;
+                scale = conf_.do_scale_src
+                        ? load_float_value(data_type::f32, scale_src_ptr(), 0)
+                        : scale;
+                scale /= conf_.do_scale_dst
+                        ? load_float_value(data_type::f32, scale_dst_ptr(), 0)
+                        : 1.0f;
+
+                d = (d * scale);
                 size_t dst_off
                         = dst_md().off_l(ou_in_offset + c * conf_.inner_size);
-
-                float scale = 1.0f;
-                if (conf_.do_scale_src) {
-                    scale = conf_.do_scale_src ? src_scale_mem.load(0) : scale;
-                    d = d * scale;
-                }
-
-                dims_t off;
-                utils::l_dims_by_l_offset(off,
-                        ou_in_offset + c * conf_.inner_size, dst_dims,
-                        dst_md().ndims());
-                d = conf_.post_ops.apply(d, po_args_, off);
-
-                if (conf_.do_scale_dst) {
-                    scale = conf_.do_scale_dst ? dst_scale_mem.load(0) : scale;
-                    d = d / scale;
-                }
-
-                dst_mem.store(d, dst_off);
+                store_float_value(dst_md().data_type(), d, dst_ptr(), dst_off);
             }
         };
 
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
-                idx += item.get_global_range(0)) {
-            dim_t in = (idx / (1)) % conf_.inner_size;
-            dim_t ou = (idx / (conf_.inner_size)) % conf_.outer_size;
-            operation(ou, in);
+        for (dim_t blk_idx = 0; blk_idx < conf_.block_size; blk_idx++) {
+            dim_t idx = base_idx + blk_idx;
+
+            if (idx < conf_.wk_size) {
+                dim_t in = (idx / (1)) % conf_.inner_size;
+                dim_t ou = (idx / (conf_.inner_size)) % conf_.outer_size;
+                operation(ou, in);
+            }
         }
     }
 
@@ -132,43 +117,46 @@ private:
     const xpu::sycl::md_t &src_md() const { return conf_.src_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
-    void *gen_ptr(xpu::sycl::in_memory_arg_t gen_) const {
-        return gen_.get_pointer();
-    }
+    void *src_ptr() const { return src_.get_pointer(); }
+    void *dst_ptr() const { return dst_.get_pointer(); }
+    void *scale_src_ptr() const { return scale_src_.get_pointer(); }
+    void *scale_dst_ptr() const { return scale_dst_.get_pointer(); }
 
     sycl_softmax_conf_t conf_;
     xpu::sycl::in_memory_arg_t src_;
     xpu::sycl::in_memory_arg_t scale_src_;
     xpu::sycl::in_memory_arg_t scale_dst_;
-    xpu::sycl::inout_memory_arg_t dst_;
-    post_op_input_args po_args_;
+    xpu::sycl::out_memory_arg_t dst_;
 };
 
 struct softmax_bwd_kernel_vec_t {
     softmax_bwd_kernel_vec_t(const sycl_softmax_conf_t &conf,
-            ::sycl::handler &cgh, const exec_ctx_t &ctx)
-        : conf_(conf)
-        , dst_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DST))
-        , diff_dst_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_DST))
-        , diff_src_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC)) {}
+            xpu::sycl::in_memory_arg_t &dst,
+            xpu::sycl::in_memory_arg_t &diff_dst,
+            xpu::sycl::out_memory_arg_t &diff_src)
+        : conf_(conf), dst_(dst), diff_dst_(diff_dst), diff_src_(diff_src) {}
 
     void operator()(::sycl::nd_item<1> item) const {
-        memory_tensor_t dst_mem(dst_, conf_.dst_md);
-        memory_tensor_t diff_src_mem(diff_src_, conf_.diff_src_md);
-        memory_tensor_t diff_dst_mem(diff_dst_, conf_.diff_dst_md);
+        auto sg = item.get_sub_group();
+        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
+        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
+        size_t wi_offset_t = sg.get_local_id();
+        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
+        size_t base_idx = offset_t * conf_.block_size;
 
-        auto operation = [= WA_THIS_COPY_CAPTURE](
-                                 dim_t &ou, dim_t &in) mutable {
+        auto operation = [= WA_THIS_COPY_CAPTURE](dim_t &ou, dim_t &in) {
             dim_t ou_in_offset = ou * conf_.channels * conf_.inner_size + in;
             float sbr = 0;
             for (dim_t c = 0; c < conf_.channels; ++c) {
                 auto diff_dst_off = diff_dst_md().off_l(
                         ou_in_offset + c * conf_.inner_size);
-                float dd = diff_dst_mem.load(diff_dst_off);
+                float dd = load_float_value(diff_dst_md().data_type(),
+                        diff_dst_ptr(), diff_dst_off);
                 if (conf_.alg_kind == alg_kind::softmax_accurate) {
                     auto dst_off = dst_md().off_l(
                             ou_in_offset + c * conf_.inner_size);
-                    float d = dst_mem.load(dst_off);
+                    float d = load_float_value(
+                            dst_md().data_type(), dst_ptr(), dst_off);
                     sbr += dd * d;
                 } else if (conf_.alg_kind == alg_kind::softmax_log) {
                     sbr += dd;
@@ -181,8 +169,10 @@ struct softmax_bwd_kernel_vec_t {
                 auto dst_off
                         = dst_md().off_l(ou_in_offset + c * conf_.inner_size);
 
-                float d = dst_mem.load(dst_off);
-                float dd = diff_dst_mem.load(diff_dst_off);
+                float d = load_float_value(
+                        dst_md().data_type(), dst_ptr(), dst_off);
+                float dd = load_float_value(diff_dst_md().data_type(),
+                        diff_dst_ptr(), diff_dst_off);
 
                 float val = 0;
                 if (conf_.alg_kind == alg_kind::softmax_accurate) {
@@ -193,15 +183,18 @@ struct softmax_bwd_kernel_vec_t {
 
                 auto diff_src_off = diff_src_md().off_l(
                         ou_in_offset + c * conf_.inner_size);
-                diff_src_mem.store(val, diff_src_off);
+                store_float_value(diff_src_md().data_type(), val,
+                        diff_src_ptr(), diff_src_off);
             }
         };
 
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
-                idx += item.get_global_range(0)) {
-            dim_t in = (idx / 1) % conf_.inner_size;
-            dim_t ou = (idx / conf_.inner_size) % conf_.outer_size;
-            operation(ou, in);
+        for (dim_t i = 0; i < conf_.block_size; i++) {
+            dim_t idx = base_idx + i;
+            if (idx < conf_.wk_size) {
+                dim_t in = (idx / 1) % conf_.inner_size;
+                dim_t ou = (idx / conf_.inner_size) % conf_.outer_size;
+                operation(ou, in);
+            }
         }
     }
 
@@ -209,6 +202,10 @@ private:
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
     const xpu::sycl::md_t &diff_src_md() const { return conf_.diff_src_md; }
+
+    void *dst_ptr() const { return dst_.get_pointer(); }
+    void *diff_dst_ptr() const { return diff_dst_.get_pointer(); }
+    void *diff_src_ptr() const { return diff_src_.get_pointer(); }
 
     sycl_softmax_conf_t conf_;
     xpu::sycl::in_memory_arg_t dst_;

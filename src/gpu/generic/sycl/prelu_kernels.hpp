@@ -22,11 +22,11 @@
 #include "common/primitive_exec_types.hpp"
 #include "common/utils.hpp"
 
-#include "gpu/sycl/sycl_io_helper.hpp"
-#include "gpu/sycl/sycl_math_utils.hpp"
-#include "gpu/sycl/sycl_post_ops.hpp"
-#include "gpu/sycl/sycl_primitive_conf.hpp"
-#include "gpu/sycl/sycl_q10n.hpp"
+#include "gpu/generic/sycl/sycl_io_helper.hpp"
+#include "gpu/generic/sycl/sycl_math_utils.hpp"
+#include "gpu/generic/sycl/sycl_post_ops.hpp"
+#include "gpu/generic/sycl/sycl_primitive_conf.hpp"
+#include "gpu/generic/sycl/sycl_q10n.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

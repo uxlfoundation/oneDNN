@@ -17,12 +17,10 @@
 #ifndef GPU_GENERIC_SYCL_REORDER_KERNELS_HPP
 #define GPU_GENERIC_SYCL_REORDER_KERNELS_HPP
 
-#include "common/primitive_exec_types.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-#include "xpu/sycl/memory_storage_base.hpp"
-#include "xpu/sycl/types.hpp"
+#include "gpu/generic/sycl/sycl_q10n.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,36 +32,33 @@ struct reorder_kernel_t {
     static constexpr int vec_len = 8;
     static constexpr int max_supported_ndims = 6;
 
-    reorder_kernel_t(const sycl_reorder_conf_t &conf, ::sycl::handler &cgh,
-            const exec_ctx_t &ctx)
+    reorder_kernel_t(const sycl_reorder_conf_t &conf,
+            xpu::sycl::in_memory_arg_t &src, xpu::sycl::out_memory_arg_t &dst,
+            xpu::sycl::in_memory_arg_t &src_scale,
+            xpu::sycl::in_memory_arg_t &dst_scale, data_type_t scales_src_dt,
+            data_type_t scales_dst_dt)
         : conf_(conf)
-        , src_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC_0))
-        , dst_(CTX_INOUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST))
-        , src_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0))
-        , dst_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
-        , scales_src_dt_(conf_.do_scale_src
-                          ? ctx.memory_mdw(
-                                       DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0)
-                                    .data_type()
-                          : data_type_t::dnnl_f32)
-        , scales_dst_dt_(conf_.do_scale_dst
-                          ? ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
-                                    .data_type()
-                          : data_type_t::dnnl_f32) {}
+        , src_(src)
+        , dst_(dst)
+        , src_scale_(src_scale)
+        , dst_scale_(dst_scale)
+        , scales_src_dt_(scales_src_dt)
+        , scales_dst_dt_(scales_dst_dt) {}
 
     void operator()(::sycl::nd_item<1> item) const {
-        memory_tensor_t src_mem(src_, conf_.src_md);
-        memory_tensor_t dst_mem(dst_, conf_.dst_md);
-        memory_plain_t src_scale_mem(src_scale_, scales_src_dt_);
-        memory_plain_t dst_scale_mem(dst_scale_, scales_dst_dt_);
+        auto sg = item.get_sub_group();
+        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
+        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
+        size_t wi_offset_t = sg.get_local_id();
+        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
+
+        size_t base_idx = offset_t * conf_.block_size;
 
         float scale_src = conf_.do_scale_src && conf_.scale_src_mask == 0
-                ? src_scale_mem.load(0)
+                ? load_float_value(scales_src_dt_, src_scale_ptr(), 0)
                 : 1.f;
         float scale_dst = conf_.do_scale_dst && conf_.scale_dst_mask == 0
-                ? dst_scale_mem.load(0)
+                ? load_float_value(scales_dst_dt_, dst_scale_ptr(), 0)
                 : 1.f;
 
         dims_t dims, off, strides;
@@ -87,52 +82,60 @@ struct reorder_kernel_t {
             }
         }
 
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
-                idx += item.get_global_range(0)) {
-            for (int i = 0; i < max_supported_ndims; i++) {
-                off[i] = idx / strides[i] % dims[i];
-            }
-
-            int dst_idx = dst_md().off_v(off);
-            auto src = src_mem.load(idx);
-
-            if (conf_.do_scale_src) {
-                if (conf_.scale_src_mask != 0) {
-                    int scale_idx = 0;
-                    for (int i = 0; i < max_supported_ndims; i++) {
-                        if (i < src_md().ndims()) {
-                            int off_scales_i = conf_.scale_src_mask >> i & 1
-                                    ? off[i]
-                                    : 0;
-                            scale_idx = scale_idx * dims_scales_src[i]
-                                    + off_scales_i;
-                        }
-                    }
-                    scale_src = src_scale_mem.load(scale_idx);
+        for (int i = 0; i < conf_.block_size; i++) {
+            int idx = base_idx + i;
+            if (idx < conf_.wk_size) {
+                for (int i = 0; i < max_supported_ndims; i++) {
+                    off[i] = idx / strides[i] % dims[i];
                 }
-                src *= scale_src;
-            }
 
-            auto acc = src;
-            acc = conf_.post_ops.apply(acc, dst_, dst_idx);
-            if (conf_.do_scale_dst) {
-                if (conf_.scale_dst_mask != 0) {
-                    int scale_idx = 0;
-                    for (int i = 0; i < max_supported_ndims; i++) {
-                        if (i < src_md().ndims()) {
-                            int off_scales_i = conf_.scale_dst_mask >> i & 1
-                                    ? off[i]
-                                    : 0;
-                            scale_idx = scale_idx * dims_scales_dst[i]
-                                    + off_scales_i;
+                int dst_idx = dst_md().off_v(off);
+                auto src = load_float_value(
+                        src_md().data_type(), src_ptr(), idx);
+                auto dst = load_float_value(
+                        dst_md().data_type(), dst_ptr(), dst_idx);
+
+                if (conf_.do_scale_src) {
+                    if (conf_.scale_src_mask != 0) {
+                        int scale_idx = 0;
+                        for (int i = 0; i < max_supported_ndims; i++) {
+                            if (i < src_md().ndims()) {
+                                int off_scales_i = conf_.scale_src_mask >> i & 1
+                                        ? off[i]
+                                        : 0;
+                                scale_idx = scale_idx * dims_scales_src[i]
+                                        + off_scales_i;
+                            }
                         }
+                        scale_src = load_float_value(
+                                scales_src_dt_, src_scale_ptr(), scale_idx);
                     }
-
-                    scale_dst = dst_scale_mem.load(scale_idx);
+                    src *= scale_src;
                 }
-                acc /= scale_dst;
+
+                auto acc = src;
+                acc = conf_.post_ops.apply(acc, dst);
+                if (conf_.do_scale_dst) {
+                    if (conf_.scale_dst_mask != 0) {
+                        int scale_idx = 0;
+                        for (int i = 0; i < max_supported_ndims; i++) {
+                            if (i < src_md().ndims()) {
+                                int off_scales_i = conf_.scale_dst_mask >> i & 1
+                                        ? off[i]
+                                        : 0;
+                                scale_idx = scale_idx * dims_scales_dst[i]
+                                        + off_scales_i;
+                            }
+                        }
+
+                        scale_dst = load_float_value(
+                                scales_dst_dt_, dst_scale_ptr(), scale_idx);
+                    }
+                    acc /= scale_dst;
+                }
+                store_float_value(
+                        dst_md().data_type(), acc, dst_ptr(), dst_idx);
             }
-            dst_mem.store(acc, dst_idx);
         }
     }
 
@@ -140,10 +143,19 @@ private:
     const xpu::sycl::md_t &src_md() const { return conf_.src_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
+    void *src_ptr() const { return src_.get_pointer(); }
+    void *dst_ptr() const { return dst_.get_pointer(); }
+    float *src_scale_ptr() const {
+        return static_cast<float *>(src_scale_.get_pointer());
+    }
+    float *dst_scale_ptr() const {
+        return static_cast<float *>(dst_scale_.get_pointer());
+    }
+
     sycl_reorder_conf_t conf_;
 
     xpu::sycl::in_memory_arg_t src_;
-    xpu::sycl::inout_memory_arg_t dst_;
+    xpu::sycl::out_memory_arg_t dst_;
     xpu::sycl::in_memory_arg_t src_scale_;
     xpu::sycl::in_memory_arg_t dst_scale_;
     data_type_t scales_src_dt_;

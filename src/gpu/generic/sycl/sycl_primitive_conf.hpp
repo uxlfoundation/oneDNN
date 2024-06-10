@@ -18,7 +18,7 @@
 #define GPU_GENERIC_SYCL_SYCL_PRIMITIVE_CONF_HPP
 
 #include "common/broadcast_strategy.hpp"
-#include "gpu/sycl/sycl_post_ops.hpp"
+#include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

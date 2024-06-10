@@ -22,7 +22,6 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_reorder_pd.hpp"
 
 namespace dnnl {
@@ -47,18 +46,16 @@ struct ref_reorder_t : public gpu::generic::sycl::primitive_t {
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
 
-            const bool ok = src_engine == dst_engine
-                    && !src_d.has_runtime_dims_or_strides()
-                    && !dst_d.has_runtime_dims_or_strides()
-                    && check_data_types(src_d, dst_d)
+            const bool ok = check_data_types(src_d, dst_d)
                     && check_formats(src_d, dst_d)
                     && attr()->has_default_values(
                             sm::scales_runtime | sm::post_ops)
-                    && IMPLICATION(
-                            !attr()->scales_.has_default_values(), scales_ok())
-                    && sycl_post_ops_t::post_ops_ok(attr())
-                    && md_dims_in_range(dst_md());
+                    && post_ops_ok();
             if (!ok) return status::unimplemented;
+
+            for (int i = 0; i < dst_d.ndims(); i++) {
+                if (dst_d.dims()[i] > INT_MAX) { return status::unimplemented; }
+            }
 
             return init_conf();
         }
@@ -70,10 +67,24 @@ struct ref_reorder_t : public gpu::generic::sycl::primitive_t {
 
         status_t init_conf();
 
+        bool post_ops_ok() const {
+            for (int i = 0; i < attr()->post_ops_.len(); i++) {
+                if (!attr()->post_ops_.entry_[i].is_sum()) { return false; }
+            }
+            return attr()->post_ops_.len() <= sycl_post_ops_t::max_post_ops
+                    && attr()->post_ops_.has_default_values(
+                            {primitive_kind::sum});
+        }
+
         static bool check_data_types(const memory_desc_wrapper &src,
                 const memory_desc_wrapper &dst) {
-            for (const auto &mdw : {src, dst}) {
-                if (!is_supported_type(mdw.data_type())) return false;
+            using namespace data_type;
+
+            const auto src_dt = src.data_type();
+            const auto dst_dt = dst.data_type();
+
+            for (auto t : {src_dt, dst_dt}) {
+                if (!utils::one_of(t, f32, bf16, f16, s8, u8)) return false;
             }
 
             return true;
@@ -85,18 +96,6 @@ struct ref_reorder_t : public gpu::generic::sycl::primitive_t {
 
             for (const auto &mdw : {src, dst}) {
                 if (!mdw.is_plain()) { return false; }
-            }
-            return true;
-        }
-
-        bool scales_ok() const {
-            const std::vector<int> supported_args
-                    = {DNNL_ARG_SRC, DNNL_ARG_DST};
-
-            const auto &scales = attr()->scales_;
-            for (auto arg : supported_args) {
-                auto dt = scales.get(arg).data_type_;
-                if (!is_supported_type(dt)) { return false; }
             }
             return true;
         }

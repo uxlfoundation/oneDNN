@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,6 +38,11 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
     *engine = e.release();
 
     return status::success;
+}
+
+status_t engine_t::create_memory_storage(
+        memory_storage_t **storage, unsigned flags, size_t size, void *handle) {
+    return impl()->create_memory_storage(storage, this, flags, size, handle);
 }
 
 engine_t::engine_t(

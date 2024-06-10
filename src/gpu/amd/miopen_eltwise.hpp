@@ -19,9 +19,9 @@
 #define GPU_AMD_SYCL_HIP_ELTWISE_HPP
 
 #include "common/eltwise_pd.hpp"
+#include "common/primitive.hpp"
 #include "gpu/amd/engine.hpp"
 #include "gpu/amd/miopen_eltwise_impl.hpp"
-#include "gpu/gpu_primitive.hpp"
 
 namespace dnnl {
 namespace impl {

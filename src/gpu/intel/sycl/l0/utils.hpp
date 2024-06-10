@@ -37,6 +37,8 @@ class sycl_engine_base_t;
 
 class engine_t;
 
+class engine_t;
+
 xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev);
 
 status_t sycl_create_kernel_with_level_zero(

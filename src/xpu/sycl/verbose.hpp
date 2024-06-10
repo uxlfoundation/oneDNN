@@ -27,7 +27,7 @@
 #include "gpu/intel/compute/compute_engine.hpp"
 #endif
 
-#include "xpu/sycl/engine_factory.hpp"
+#include "sycl/sycl_engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -35,7 +35,7 @@ namespace xpu {
 namespace sycl {
 
 void print_verbose_header(engine_kind_t kind) {
-    engine_factory_t factory(kind);
+    impl::sycl::sycl_engine_factory_t factory(kind);
     auto s_engine_kind = (kind == engine_kind::cpu ? "cpu" : "gpu");
     for (size_t i = 0; i < factory.count(); ++i) {
         try {
@@ -66,17 +66,15 @@ void print_verbose_header(engine_kind_t kind) {
                         ? "enabled"
                         : "disabled";
 
-                verbose_printf(
-                        "onednn_verbose,info,%s,engine,%zu,backend:%s,name:%s,"
-                        "driver_version:%s,binary_kernels:%s\n",
+                printf("onednn_verbose,info,%s,engine,%zu,backend:%s,name:%s,"
+                       "driver_version:%s,binary_kernels:%s\n",
                         s_engine_kind, i, s_backend.c_str(), s_name.c_str(),
                         s_ver.c_str(), s_binary_kernels);
                 continue;
             }
 #endif
-            verbose_printf(
-                    "onednn_verbose,info,%s,engine,%zu,backend:%s,name:%s,"
-                    "driver_version:%s\n",
+            printf("onednn_verbose,info,%s,engine,%zu,backend:%s,name:%s,"
+                   "driver_version:%s\n",
                     s_engine_kind, i, s_backend.c_str(), s_name.c_str(),
                     s_ver.c_str());
         } catch (...) {

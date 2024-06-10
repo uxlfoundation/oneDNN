@@ -14,9 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
+
 #include "common/memory.hpp"
 
 #include "xpu/sycl/memory_storage.hpp"
+
+#include "gpu/intel/sycl/compat.hpp"
+#include "gpu/intel/sycl/engine.hpp"
+#include "gpu/intel/sycl/stream.hpp"
+
+#include "sycl/sycl_device_info.hpp"
 
 #include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/device_info.hpp"
@@ -38,13 +45,21 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
     CHECK(e->init());
     *engine = e.release();
 
-status_t sycl_engine_base_t::create_stream(
+    return status::success;
+}
+
+status_t engine_t::create_memory_storage(
+        memory_storage_t **storage, unsigned flags, size_t size, void *handle) {
+    return impl()->create_memory_storage(storage, this, flags, size, handle);
+}
+
+status_t engine_t::create_stream(
         impl::stream_t **stream, impl::stream_impl_t *stream_impl) {
-    return sycl_stream_t::create_stream(stream, this, stream_impl);
+    return gpu::intel::sycl::stream_t::create_stream(stream, this, stream_impl);
 }
 
 status_t engine_t::init_device_info() {
-    device_info_.reset(new gpu::intel::sycl::device_info_t());
+    device_info_.reset(new impl::sycl::sycl_device_info_t());
     CHECK(device_info_->init(this));
     return status::success;
 }

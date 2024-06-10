@@ -35,10 +35,11 @@
 #include "xpu/sycl/stream_impl.hpp"
 #include "xpu/sycl/stream_profiler.hpp"
 
-#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/compute_stream.hpp"
 
 #include "gpu/intel/ocl/ocl_utils.hpp"
+
+#include "gpu/sycl/sycl_gpu_engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -47,8 +48,8 @@ namespace intel {
 namespace sycl {
 
 struct stream_t : public gpu::intel::compute::compute_stream_t {
-    static status_t create_stream(impl::stream_t **stream,
-            impl::engine_t *engine, impl::stream_impl_t *stream_impl) {
+    static status_t create_stream(impl::stream_t **stream, engine_t *engine,
+            impl::stream_impl_t *stream_impl) {
         std::unique_ptr<intel::sycl::stream_t> s(
                 new intel::sycl::stream_t(engine, stream_impl));
         if (!s) return status::out_of_memory;
@@ -100,8 +101,6 @@ struct stream_t : public gpu::intel::compute::compute_stream_t {
         return impl()->fill(dst, pattern, size, deps, out_dep, profiler_.get());
     }
 
-    status_t barrier() override { return impl()->barrier(); }
-
     const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }
     xpu::sycl::context_t &sycl_ctx() { return impl()->sycl_ctx(); }
 
@@ -116,35 +115,16 @@ struct stream_t : public gpu::intel::compute::compute_stream_t {
         return impl()->register_deps(cgh);
     }
 
-    bool recording() const;
-    using weak_graph_t = ::sycl::ext::oneapi::weak_object<
-            ::sycl::ext::oneapi::experimental::command_graph<::sycl::ext::
-                            oneapi::experimental::graph_state::modifiable>>;
-    weak_graph_t get_current_graph_weak() const;
-
-    status_t enter_immediate_mode() override;
-    status_t exit_immediate_mode() override;
-
 protected:
     xpu::sycl::stream_impl_t *impl() const {
         return (xpu::sycl::stream_impl_t *)impl::stream_t::impl_.get();
     }
 
-    stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl)
+    stream_t(engine_t *engine, impl::stream_impl_t *stream_impl)
         : gpu::intel::compute::compute_stream_t(engine, stream_impl) {}
 
 private:
     status_t init();
-
-    status_t pause_recording();
-    status_t resume_recording();
-
-    std::mutex immediate_mode_mutex_;
-    int immediate_mode_level_ = 0;
-    std::unique_ptr<::sycl::ext::oneapi::experimental::command_graph<
-            ::sycl::ext::oneapi::experimental::graph_state::modifiable>>
-            paused_graph_;
-    xpu::sycl::event_t paused_dep_;
 };
 
 } // namespace sycl

@@ -23,7 +23,6 @@
 #include "gpu/amd/miopen_matmul_impl.hpp"
 #include "gpu/amd/stream.hpp"
 #include "gpu/amd/sycl_hip_scoped_context.hpp"
-#include "gpu/amd/sycl_hip_stream.hpp"
 #include "xpu/sycl/memory_storage_helper.hpp"
 
 #include <memory>
@@ -44,7 +43,7 @@ protected:
     template <::sycl::access::mode bias_m, ::sycl::access::mode scratch_m>
     void interop_task(std::shared_ptr<miopen_matmul_impl_t> matmul_impl_,
             impl::engine_t *engine, ::sycl::handler &cgh,
-            amd::sycl_hip_stream_t *hip_stream,
+            amd::stream_t *hip_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_weights,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,

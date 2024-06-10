@@ -19,7 +19,6 @@
 #include "common/nstl.hpp"
 #include "gpu/amd/stream.hpp"
 #include "gpu/amd/sycl_hip_scoped_context.hpp"
-#include "gpu/amd/sycl_hip_stream.hpp"
 #include "xpu/sycl/buffer_memory_storage.hpp"
 #include "xpu/sycl/memory_storage_helper.hpp"
 

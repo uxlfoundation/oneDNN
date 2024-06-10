@@ -46,7 +46,7 @@ protected:
     void interop_task_fwd(
             std::shared_ptr<miopen_batch_normalization_impl_base_t> bnorm_impl,
             impl::engine_t *engine, ::sycl::handler &cgh,
-            amd::sycl_hip_stream_t *hip_stream,
+            amd::stream_t *hip_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::write>
                     arg_dst,
@@ -112,7 +112,7 @@ protected:
     void interop_task_bwd(
             std::shared_ptr<miopen_batch_normalization_impl_base_t> bnorm_impl,
             impl::engine_t *engine, ::sycl::handler &cgh,
-            amd::sycl_hip_stream_t *hip_stream,
+            amd::stream_t *hip_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read> arg_src,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read>
                     arg_diff_dst,
@@ -189,8 +189,7 @@ protected:
 
     template <typename T = float>
     void init_scaleshift(hip_sycl_scoped_context_handler_t &sc,
-            const compat::interop_handle &ih,
-            amd::sycl_hip_stream_t *hip_stream,
+            const compat::interop_handle &ih, amd::stream_t *hip_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::write>
                     arg_scale,
             float val, const size_t n) const {
@@ -213,8 +212,7 @@ protected:
 
     template <typename T = float>
     void init_mean_var(hip_sycl_scoped_context_handler_t &sc,
-            const compat::interop_handle &ih,
-            amd::sycl_hip_stream_t *hip_stream,
+            const compat::interop_handle &ih, amd::stream_t *hip_stream,
             xpu::sycl::interop_memory_arg_t<::sycl::access_mode::write>
                     arg_mean,
             xpu::sycl::interop_memory_arg_t<::sycl::access_mode::write> arg_var,

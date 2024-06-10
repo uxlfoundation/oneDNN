@@ -19,7 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive_attr.hpp"
-#include "gpu/sycl/sycl_math_utils.hpp"
+#include "gpu/generic/sycl/sycl_math_utils.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

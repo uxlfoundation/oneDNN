@@ -16,7 +16,7 @@
 #include "gpu/generic/sycl/ref_layer_normalizations.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
-#include "gpu/sycl/layer_normalizations_kernels.hpp"
+#include "gpu/generic/sycl/layer_normalizations_kernels.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

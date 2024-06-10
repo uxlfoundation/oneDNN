@@ -20,10 +20,10 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/dnnl_traits.hpp"
-#include "gpu/sycl/sycl_io_helper.hpp"
-#include "gpu/sycl/sycl_post_ops.hpp"
-#include "gpu/sycl/sycl_primitive_conf.hpp"
-#include "gpu/sycl/sycl_q10n.hpp"
+#include "gpu/generic/sycl/sycl_io_helper.hpp"
+#include "gpu/generic/sycl/sycl_post_ops.hpp"
+#include "gpu/generic/sycl/sycl_primitive_conf.hpp"
+#include "gpu/generic/sycl/sycl_q10n.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {
@@ -157,7 +157,7 @@ private:
                 }
 
                 if (data_md().data_type() == data_type::s8) {
-                    bn_res = ::dnnl::impl::sycl::qz_a1b0<float,
+                    bn_res = gpu::generic::sycl::qz_a1b0<float,
                             xpu::sycl::prec_traits<data_type::s8>::type>()(
                             maybe_post_op(bn_res));
                     store_float_value(
@@ -331,7 +331,7 @@ private:
                 }
 
                 if (data_md().data_type() == data_type::s8) {
-                    bn_res = ::dnnl::impl::sycl::qz_a1b0<float,
+                    bn_res = gpu::generic::sycl::qz_a1b0<float,
                             xpu::sycl::prec_traits<data_type::s8>::type>()(
                             maybe_post_op(bn_res));
                     store_float_value(

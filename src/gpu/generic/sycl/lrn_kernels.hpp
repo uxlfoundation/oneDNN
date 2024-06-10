@@ -17,8 +17,8 @@
 #ifndef GPU_GENERIC_SYCL_LRN_KERNELS_HPP
 #define GPU_GENERIC_SYCL_LRN_KERNELS_HPP
 
-#include "gpu/sycl/sycl_io_helper.hpp"
-#include "gpu/sycl/sycl_primitive_conf.hpp"
+#include "gpu/generic/sycl/sycl_io_helper.hpp"
+#include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

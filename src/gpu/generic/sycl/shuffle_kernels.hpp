@@ -19,10 +19,10 @@
 
 #include "common/dnnl_thread.hpp"
 #include "common/dnnl_traits.hpp"
-#include "gpu/sycl/sycl_io_helper.hpp"
-#include "gpu/sycl/sycl_post_ops.hpp"
-#include "gpu/sycl/sycl_primitive_conf.hpp"
-#include "gpu/sycl/sycl_q10n.hpp"
+#include "gpu/generic/sycl/sycl_io_helper.hpp"
+#include "gpu/generic/sycl/sycl_post_ops.hpp"
+#include "gpu/generic/sycl/sycl_primitive_conf.hpp"
+#include "gpu/generic/sycl/sycl_q10n.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

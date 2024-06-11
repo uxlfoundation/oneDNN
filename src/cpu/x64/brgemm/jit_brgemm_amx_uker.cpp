@@ -64,13 +64,13 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
                 || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d)
                     || has_f8_e5m2_binary_postops)
-                f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(
-                        this, fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
+                        fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
                         fp8_tmp_mask, fp8_tmp_reg);
             if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d)
                     || has_f8_e4m3_binary_postops)
-                f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(
-                        this, fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
+                f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,
+                        fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
                         fp8_emu_xmm_4(), fp8_emu_xmm_5(), fp8_tmp_reg);
         }
 
@@ -92,7 +92,7 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
 
             const binary_injector::static_params_t bsp(this->param1,
                     binary_injector::get_all_strategies_supported_by_injector(),
-                    rhs_sp, f8_e5m2_emulator_.get(), f8_e4m3_emulator_.get());
+                    rhs_sp, f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get());
 
             eltwise_injector::static_params_t esp;
             esp.preserve_vmm = preserve_vmm;
@@ -140,8 +140,8 @@ private:
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Zmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
 
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
     using reg64_t = const Xbyak::Reg64;
     enum {
@@ -415,7 +415,7 @@ private:
     const Xbyak::Zmm &zmm_tmp_2() const noexcept { return this->zmm1; }
     const Xbyak::Zmm &zmm_tmp_3() const noexcept { return this->zmm2; }
 
-    /* fp8 emulation */
+    /* for fp8 emulation only */
     Xmm fp8_emu_xmm_1() const noexcept { return Xmm(1); }
     Xmm fp8_emu_xmm_2() const noexcept { return Xmm(2); }
     Xmm fp8_emu_xmm_3() const noexcept { return Xmm(3); }
@@ -839,12 +839,8 @@ void jit_brgemm_amx_uker_base_t::cvt2ps(data_type_t type_in,
             vpslld(zmm, zmm, 16);
             break;
         case data_type::f16: vcvtph2ps(zmm, op); break;
-        case data_type::f8_e5m2:
-            f8_e5m2_emulator_->vcvt_f8_to_f32(zmm, op);
-            break;
-        case data_type::f8_e4m3:
-            f8_e4m3_emulator_->vcvt_f8_to_f32(zmm, op);
-            break;
+        case data_type::f8_e5m2: f8_e5m2_cvt_->vcvt_f8_to_f32(zmm, op); break;
+        case data_type::f8_e4m3: f8_e4m3_cvt_->vcvt_f8_to_f32(zmm, op); break;
         case data_type::s8: vpmovsxbd(zmm, op); break;
         case data_type::u8: vpmovzxbd(zmm, op); break;
         default: assert(!"unsupported data type");
@@ -1443,11 +1439,11 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
             vmovdqu16(addr, r_ymm);
             break;
         case data_type::f8_e5m2:
-            f8_e5m2_emulator_->vcvt_f32_to_f8(xmm, zmm);
+            f8_e5m2_cvt_->vcvt_f32_to_f8(xmm, zmm);
             vmovdqu8(addr, r_xmm);
             break;
         case data_type::f8_e4m3:
-            f8_e4m3_emulator_->vcvt_f32_to_f8(xmm, zmm);
+            f8_e4m3_cvt_->vcvt_f32_to_f8(xmm, zmm);
             vmovdqu8(addr, r_xmm);
             break;
         case data_type::s8: vpmovsdb(addr, r_zmm); break;
@@ -1815,9 +1811,9 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
 
     for (int r = 0; r < num_rows; ++r) {
         if (dt == data_type::f8_e5m2)
-            f8_e5m2_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
         else if (dt == data_type::f8_e4m3)
-            f8_e4m3_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
         else
             assert(!"unsupported data type");
 
@@ -1891,10 +1887,10 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert_to_vnni(
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2)
-        f8_e5m2_emulator_->vcvt_f8_to_f16_vnni_block(
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
                 r_end, reg_data_aux, reg_data_stride, reg_buf);
     else if (dt == data_type::f8_e4m3)
-        f8_e4m3_emulator_->vcvt_f8_to_f16_vnni_block(
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
                 r_end, reg_data_aux, reg_data_stride, reg_buf);
     else
         assert(!"unsupported data type");
@@ -2731,8 +2727,8 @@ void jit_brgemm_amx_uker_base_t::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 
     if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
+        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
     }
 
     if (brg.is_bf32) {

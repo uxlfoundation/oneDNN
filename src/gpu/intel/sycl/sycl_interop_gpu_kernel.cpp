@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/stream_profiler.hpp"
 #include "gpu/intel/ocl/types_interop.hpp"
 #include "gpu/intel/sycl/l0/utils.hpp"
 #include "gpu/intel/sycl/stream.hpp"
@@ -30,7 +31,7 @@
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
+namespace generic {
 namespace sycl {
 
 using namespace impl::gpu::intel::sycl;
@@ -155,7 +156,7 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
             } else if (arg.is_local()) {
                 auto acc = xpu::sycl::compat::local_accessor<uint8_t, 1>(
                         ::sycl::range<1>(arg.size()), cgh);
-                cgh.set_arg((int)i, std::move(acc));
+                cgh.set_arg((int)i, acc);
             } else {
                 set_scalar_arg(cgh, (int)i, arg.scalar_type(), arg.value());
             }
@@ -179,7 +180,7 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
         gpu_stream->profiler().register_event(std::move(sycl_event));
     }
 
-    xpu::sycl::event_t::from(out_dep).events = {std::move(event)};
+    xpu::sycl::event_t::from(out_dep).events = {event};
     return status::success;
 }
 
@@ -190,7 +191,7 @@ status_t sycl_interop_gpu_kernel_t::dump() const {
 }
 
 } // namespace sycl
-} // namespace intel
+} // namespace generic
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

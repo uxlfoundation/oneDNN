@@ -1292,16 +1292,16 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     Reg64 emu_scratch = reg_tmp;
     Xbyak::Opmask emu_mask = Xbyak::Opmask(4);
 
-    std::unique_ptr<fp8_emulation_base_t> f8_emu;
+    std::unique_ptr<fp8_conversion_base_t> f8_cvt;
     if (out_dt_ == data_type::f8_e5m2)
-        f8_emu = utils::make_unique<fp8_emulation_e5m2_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e5m2_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_mask, emu_scratch);
     else if (out_dt_ == data_type::f8_e4m3)
-        f8_emu = utils::make_unique<fp8_emulation_e4m3_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e4m3_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_reserv_4, emu_reserv_5,
                 emu_scratch);
     if (utils::one_of(out_dt_, data_type::f8_e5m2, data_type::f8_e4m3)
-            && f8_emu == nullptr) {
+            && f8_cvt == nullptr) {
         assert(!"Failed to create f8 emulation kernel.");
         return;
     }
@@ -1414,13 +1414,13 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
                             const auto src_off2 = src_off1 + ts_inp * oc_block_;
                             const auto src_off3 = src_off2 + ts_inp * oc_block_;
 
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_0, ptr[reg_input_kw + src_off0]);
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_1, ptr[reg_input_kw + src_off1]);
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_2, ptr[reg_input_kw + src_off2]);
-                            f8_emu->vcvt_f32_to_f8(
+                            f8_cvt->vcvt_f32_to_f8(
                                     xmm_src_3, ptr[reg_input_kw + src_off3]);
                             vinserti64x2(zmm_out, zmm_out, xmm_src_0, 0);
                             vinserti64x2(zmm_out, zmm_out, xmm_src_1, 1);
@@ -1494,7 +1494,7 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     for (int i = 0; i < ts_inp * oc_block_ * ic_block_; ++i)
         db(zero);
 
-    if (f8_emu) f8_emu->prepare_table();
+    if (f8_cvt) f8_cvt->prepare_table();
 }
 
 #undef GET_OFF

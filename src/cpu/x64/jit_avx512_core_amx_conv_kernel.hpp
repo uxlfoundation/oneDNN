@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -787,7 +787,7 @@ private:
     Xbyak::Reg64 emu_scratch = r10;
     Xbyak::Opmask emu_mask = Xbyak::Opmask(4);
 
-    std::unique_ptr<fp8_emulation_base_t> f8_emu;
+    std::unique_ptr<fp8_conversion_base_t> f8_cvt;
 
     void compute_diff_bias_row(int ocb);
     void compute_diff_bias(int nb_oc_blocking);

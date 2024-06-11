@@ -257,8 +257,8 @@ private:
 
     static bool has_large_buffers(const pooling_pd_t *ppd);
 
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emu_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emu_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;

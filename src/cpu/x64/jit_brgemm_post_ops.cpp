@@ -532,12 +532,12 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
             || has_f8_e4m3_binary_postops) {
         if (utils::one_of(data_type::f8_e5m2, brg_.dt_a, brg_.dt_b, brg_.dt_d)
                 || has_f8_e5m2_binary_postops)
-            f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
                     emu_reserv_1, emu_reserv_2, emu_reserv_3, emu_mask,
                     emu_scratch);
         if (utils::one_of(data_type::f8_e4m3, brg_.dt_a, brg_.dt_b, brg_.dt_d)
                 || has_f8_e4m3_binary_postops)
-            f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,
                     emu_reserv_1, emu_reserv_2, emu_reserv_3, emu_reserv_4,
                     emu_reserv_5, emu_scratch);
     }
@@ -556,7 +556,7 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
                 use_exact_tail_scalar_bcast};
         const binary_injector::static_params_t bsp(this->param1,
                 binary_injector::get_all_strategies_supported_by_injector(),
-                rhs_sp, f8_e5m2_emulator_.get(), f8_e4m3_emulator_.get());
+                rhs_sp, f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get());
 
         const bool save_state = brg_.with_eltwise;
         const auto &reserved_eltwise_gpr = reg_reserved_eltwise;
@@ -646,13 +646,13 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::cvt2ps(
             case data_type::f16: vcvtph2ps(vmm, op); break;
             case data_type::f8_e5m2:
                 if (brg_.is_fp8_via_convert())
-                    f8_e5m2_emulator_->vcvt_f8_to_f32(vmm, op);
+                    f8_e5m2_cvt_->vcvt_f8_to_f32(vmm, op);
                 else
                     assert(!"Not supported yet");
                 break;
             case data_type::f8_e4m3:
                 if (brg_.is_fp8_via_convert())
-                    f8_e4m3_emulator_->vcvt_f8_to_f32(vmm, op);
+                    f8_e4m3_cvt_->vcvt_f8_to_f32(vmm, op);
                 else
                     assert(!"Not supported yet");
                 break;
@@ -975,14 +975,14 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
                     break;
                 case data_type::f8_e5m2:
                     if (brg_.is_fp8_via_convert()) {
-                        f8_e5m2_emulator_->vcvt_f32_to_f8(vmm_low2, vmm);
+                        f8_e5m2_cvt_->vcvt_f32_to_f8(vmm_low2, vmm);
                         vmovdqu8(addr, vmm_low2_masked);
                     } else
                         assert(!"Not supported yet");
                     break;
                 case data_type::f8_e4m3:
                     if (brg_.is_fp8_via_convert()) {
-                        f8_e4m3_emulator_->vcvt_f32_to_f8(vmm_low2, vmm);
+                        f8_e4m3_cvt_->vcvt_f32_to_f8(vmm_low2, vmm);
                         vmovdqu8(addr, vmm_low2_masked);
                     } else
                         assert(!"Not supported yet");
@@ -1198,8 +1198,8 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
     if (postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
     if (brg_.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
+        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
     }
 }
 

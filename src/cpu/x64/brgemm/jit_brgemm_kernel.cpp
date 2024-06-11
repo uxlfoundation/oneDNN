@@ -79,14 +79,14 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
                 // Note: avoid using 'vmm0' since it is used as
                 // 'fp8_to_f16_upconvert()' param and would collision with these
                 // emulation vmms
-                f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(
-                        this, vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
+                f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
+                        vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
                         vmm_fp8_emu_aux3(), kmask_fp8_aux, reg64_fp8_aux);
             if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
                         brg.dt_d)
                     || has_f8_e4m3_binary_postops)
-                f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(
-                        this, vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
+                f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,
+                        vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
                         vmm_fp8_emu_aux3(), vmm_fp8_emu_aux4(),
                         vmm_fp8_emu_aux5(), reg64_fp8_aux);
         }
@@ -107,7 +107,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
 
             const binary_injector::static_params_t bsp {this->param1,
                     binary_injector::get_all_strategies_supported_by_injector(),
-                    rhs_sp, f8_e5m2_emulator_.get(), f8_e4m3_emulator_.get()};
+                    rhs_sp, f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get()};
 
             auto st = safe_ptr_assign(postops_injector_,
                     po_injector_t::create(
@@ -144,8 +144,8 @@ private:
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
     Xbyak::Label avx_tail_mask_;
     Xbyak::Label sum_zp_scale_data_;
@@ -679,13 +679,13 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         case data_type::u8: uni_vpmovzxbd(vmm, op); break;
         case data_type::f8_e5m2:
             if (brg.is_fp8_via_convert())
-                f8_e5m2_emulator_->vcvt_f8_to_f32(vmm, op);
+                f8_e5m2_cvt_->vcvt_f8_to_f32(vmm, op);
             else
                 assert(!"Error, native conversion unsupported");
             break;
         case data_type::f8_e4m3:
             if (brg.is_fp8_via_convert())
-                f8_e4m3_emulator_->vcvt_f8_to_f32(vmm, op);
+                f8_e4m3_cvt_->vcvt_f8_to_f32(vmm, op);
             else
                 assert(!"Error, native conversion unsupported");
             break;
@@ -1024,9 +1024,9 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert(dim_t num_rows,
 
     for (dim_t r = 0; r < num_rows; ++r) {
         if (dt == data_type::f8_e5m2)
-            f8_e5m2_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
         else if (dt == data_type::f8_e4m3)
-            f8_e4m3_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
         else
             assert(!"unsupported data type");
 
@@ -1057,10 +1057,10 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(dim_t num_rows,
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2)
-        f8_e5m2_emulator_->vcvt_f8_to_f16_vnni_block(
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
                 r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
     else if (dt == data_type::f8_e4m3)
-        f8_e4m3_emulator_->vcvt_f8_to_f16_vnni_block(
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
                 r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
     else
         assert(!"unsupported data type");
@@ -1441,14 +1441,14 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                     break;
                 case data_type::f8_e5m2:
                     if (brg.is_fp8_via_convert()) {
-                        f8_e5m2_emulator_->vcvt_f32_to_f8(xmm, vmm);
+                        f8_e5m2_cvt_->vcvt_f32_to_f8(xmm, vmm);
                         vmovdqu8(addr, r_xmm);
                     } else
                         assert(!"Error, native conversion unsupported");
                     break;
                 case data_type::f8_e4m3:
                     if (brg.is_fp8_via_convert()) {
-                        f8_e4m3_emulator_->vcvt_f32_to_f8(xmm, vmm);
+                        f8_e4m3_cvt_->vcvt_f32_to_f8(xmm, vmm);
                         vmovdqu8(addr, r_xmm);
                     } else
                         assert(!"Error, native conversion unsupported");
@@ -2876,8 +2876,8 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     }
 
     if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
+        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
     }
 
     if (brg.with_eltwise)

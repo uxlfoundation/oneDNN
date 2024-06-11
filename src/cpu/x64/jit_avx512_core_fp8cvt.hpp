@@ -27,8 +27,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct fp8_emulation_base_t {
-    fp8_emulation_base_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
+struct fp8_conversion_base_t {
+    fp8_conversion_base_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
             const Xbyak::Reg64 reg64_aux)
         : host_(host)
@@ -37,7 +37,7 @@ struct fp8_emulation_base_t {
         , xmm_aux3_(xmm_aux3.getIdx())
         , reg64_aux_(reg64_aux) {}
 
-    virtual ~fp8_emulation_base_t() = default;
+    virtual ~fp8_conversion_base_t() = default;
 
     // Must be called from host kernel after postamble to populate lookup table.
     virtual void prepare_table() = 0;
@@ -101,12 +101,12 @@ protected:
     }
 };
 
-struct fp8_emulation_e5m2_t : public fp8_emulation_base_t {
-    fp8_emulation_e5m2_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
+struct fp8_conversion_e5m2_t : public fp8_conversion_base_t {
+    fp8_conversion_e5m2_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
-            const Xbyak::Opmask kmask_aux_, const Xbyak::Reg64 reg64_aux)
-        : fp8_emulation_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
-        , kmask_aux_(kmask_aux_) {}
+            const Xbyak::Opmask kmask_aux, const Xbyak::Reg64 reg64_aux)
+        : fp8_conversion_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
+        , kmask_aux_(kmask_aux) {}
 
     void prepare_table() override;
 
@@ -135,12 +135,12 @@ private:
             int zmm_permute_idx);
 };
 
-struct fp8_emulation_e4m3_t : public fp8_emulation_base_t {
-    fp8_emulation_e4m3_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
+struct fp8_conversion_e4m3_t : public fp8_conversion_base_t {
+    fp8_conversion_e4m3_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
             const Xbyak::Xmm &xmm_aux4, const Xbyak::Xmm &xmm_aux5,
             const Xbyak::Reg64 reg64_aux)
-        : fp8_emulation_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
+        : fp8_conversion_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
         , xmm_aux4_(xmm_aux4.getIdx())
         , xmm_aux5_(xmm_aux5.getIdx()) {}
 
@@ -205,7 +205,7 @@ private:
     const Xbyak::Reg64 reg64_out = abi_param1;
     const Xbyak::Reg64 reg64_inp = abi_param2;
     void generate() override;
-    std::unique_ptr<fp8_emulation_base_t> fp8_emu_;
+    std::unique_ptr<fp8_conversion_base_t> fp8_cvt_;
     f32_convert_mode_t mode_;
 };
 

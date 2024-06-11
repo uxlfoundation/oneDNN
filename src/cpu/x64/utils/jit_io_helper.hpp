@@ -32,7 +32,7 @@ namespace cpu {
 namespace x64 {
 
 struct bf16_emulation_t;
-struct fp8_emulation_base_t;
+struct fp8_conversion_base_t;
 
 namespace io {
 
@@ -104,6 +104,7 @@ public:
 
     io_emu_fp8_conf_t &operator=(const io_emu_fp8_conf_t &other) = default;
 
+    // For fp8 via emulation only.
     Xbyak::Zmm fp8_emu_reserv_1_ = Xbyak::Zmm(27);
     Xbyak::Zmm fp8_emu_reserv_2_ = Xbyak::Zmm(28);
     Xbyak::Zmm fp8_emu_reserv_3_ = Xbyak::Zmm(29);
@@ -242,7 +243,7 @@ private:
     const bool f16_supported_;
     const bool fp8_supported_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_base_t> fp8_emu_;
+    std::unique_ptr<fp8_conversion_base_t> fp8_cvt_;
     const io_conf_t io_conf_;
     const utils::optional_t<io_tail_conf_t> tail_conf_;
     const utils::optional_t<io_emu_bf16_conf_t> bf16_conf_;

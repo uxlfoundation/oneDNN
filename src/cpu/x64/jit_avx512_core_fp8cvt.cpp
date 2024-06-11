@@ -26,14 +26,14 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-void fp8_emulation_base_t::bcst_f8_to_f32(
+void fp8_conversion_base_t::bcst_f8_to_f32(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     const Xbyak::Xmm tmp_xmm(xmm_out.getIdx());
     host_->vpbroadcastb(tmp_xmm, op_in);
     vcvt_f8_to_f32(xmm_out, tmp_xmm);
 }
 
-void fp8_emulation_e5m2_t::prepare_table() {
+void fp8_conversion_e5m2_t::prepare_table() {
     host_->align(64);
     host_->L(label_table_to_f8_);
     // 0: mask for 2nd msb of f16 mantissa, used in rounding
@@ -68,7 +68,7 @@ void fp8_emulation_e5m2_t::prepare_table() {
     }
 }
 
-void fp8_emulation_e4m3_t::prepare_table() {
+void fp8_conversion_e4m3_t::prepare_table() {
     host_->align(64);
     host_->L(label_table_from_f8_);
     // 0: map from f8_e4m3 byte to high byte of f16 (ignoring sign)
@@ -142,7 +142,7 @@ void fp8_emulation_e4m3_t::prepare_table() {
     }
 }
 
-void fp8_emulation_e5m2_t::vcvt_f8_to_f16(
+void fp8_conversion_e5m2_t::vcvt_f8_to_f16(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -180,7 +180,7 @@ void fp8_emulation_e5m2_t::vcvt_f8_to_f16(
     }
 }
 
-void fp8_emulation_e5m2_t::prepare_f8_to_f16_vnni_masks(int zmm_permute_idx) {
+void fp8_conversion_e5m2_t::prepare_f8_to_f16_vnni_masks(int zmm_permute_idx) {
     const uint64_t mask_even = 0xAAAAAAAAAAAAAAAA;
     host_->mov(reg64_aux_, mask_even);
     host_->kmovq(kmask_aux_, reg64_aux_);
@@ -188,7 +188,7 @@ void fp8_emulation_e5m2_t::prepare_f8_to_f16_vnni_masks(int zmm_permute_idx) {
     host_->vmovups(zmm_permute,
             host_->ptr[host_->rip + label_vnni_permute_index_table_]);
 }
-void fp8_emulation_e5m2_t::perform_f8_to_f16_vnni_conversion(
+void fp8_conversion_e5m2_t::perform_f8_to_f16_vnni_conversion(
         const Xbyak::Zmm &zmm_out1, const Xbyak::Zmm &zmm_out2,
         const Xbyak::Operand &op_in, int zmm_permute_idx) {
     const Xbyak::Zmm zmm_permute(zmm_permute_idx);
@@ -198,7 +198,7 @@ void fp8_emulation_e5m2_t::perform_f8_to_f16_vnni_conversion(
             zmm_out1 | kmask_aux_ | host_->T_z, zmm_out1); // 1302 -> 1_0_
 }
 
-void fp8_emulation_e5m2_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
+void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
         const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) {
     constexpr int zmm_permute_idx = 3;
     prepare_f8_to_f16_vnni_masks(zmm_permute_idx);
@@ -206,7 +206,7 @@ void fp8_emulation_e5m2_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
             zmm_out1, zmm_out2, op_in, zmm_permute_idx);
 }
 
-void fp8_emulation_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
+void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
         const Xbyak::Reg64 &reg_data_out) {
     const Xbyak::Zmm zmm_aux1(xmm_aux1_.getIdx());
@@ -229,7 +229,7 @@ void fp8_emulation_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
     }
 }
 
-void fp8_emulation_e5m2_t::vcvt_f8_to_f32(
+void fp8_conversion_e5m2_t::vcvt_f8_to_f32(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -246,7 +246,7 @@ void fp8_emulation_e5m2_t::vcvt_f8_to_f32(
     host_->vcvtph2psx(zmm_out, ymm_out);
 }
 
-void fp8_emulation_e4m3_t::vcvt_f8_to_f16(
+void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -282,7 +282,7 @@ void fp8_emulation_e4m3_t::vcvt_f8_to_f16(
     host_->vmovdqu16(xmm_out, zmm_aux2);
 }
 
-void fp8_emulation_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
+void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
         const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) {
     const Xbyak::Ymm ymm_out1(zmm_out1.getIdx());
     const Xbyak::Ymm ymm_out2(zmm_out2.getIdx());
@@ -301,7 +301,7 @@ void fp8_emulation_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
     vcvt_f8_to_f16(zmm_out2, ymm_out2);
 }
 
-void fp8_emulation_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
+void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
         const Xbyak::Reg64 &reg_data_out) {
     const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
@@ -333,7 +333,7 @@ void fp8_emulation_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
     }
 }
 
-void fp8_emulation_e4m3_t::vcvt_f8_to_f32(
+void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -348,7 +348,7 @@ void fp8_emulation_e4m3_t::vcvt_f8_to_f32(
     host_->vcvtph2psx(zmm_out, ymm_out);
 }
 
-void fp8_emulation_e5m2_t::vcvt_f32_to_f8(
+void fp8_conversion_e5m2_t::vcvt_f32_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -362,7 +362,7 @@ void fp8_emulation_e5m2_t::vcvt_f32_to_f8(
     vcvt_f16_to_f8(xmm_out, ymm_out);
 }
 
-void fp8_emulation_e5m2_t::vcvt_f16_to_f8(
+void fp8_conversion_e5m2_t::vcvt_f16_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -402,7 +402,7 @@ void fp8_emulation_e5m2_t::vcvt_f16_to_f8(
     host_->vpermb(xmm_out, xmm_aux2_, ymm_aux1);
 }
 
-void fp8_emulation_e4m3_t::vcvt_f32_to_f8(
+void fp8_conversion_e4m3_t::vcvt_f32_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -416,7 +416,7 @@ void fp8_emulation_e4m3_t::vcvt_f32_to_f8(
     vcvt_f16_to_f8(xmm_out, ymm_out);
 }
 
-void fp8_emulation_e4m3_t::vcvt_f16_to_f8(
+void fp8_conversion_e4m3_t::vcvt_f16_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
@@ -467,7 +467,7 @@ void fp8_emulation_e4m3_t::vcvt_f16_to_f8(
     host_->vpermb(xmm_out, xmm_aux3_, ymm_out);
 }
 
-void fp8_emulation_e4m3_t::tabulate(const data_type_t dt,
+void fp8_conversion_e4m3_t::tabulate(const data_type_t dt,
         const Xbyak::Zmm &zmm_out, const Xbyak::Zmm &zmm_in,
         const Xbyak::Address &addr) {
     host_->vmovdqu64(zmm_out, addr);
@@ -491,17 +491,17 @@ jit_cvt_fp8_t::jit_cvt_fp8_t(f32_convert_mode_t mode)
         case f8_e5m2_to_f32:
         case f16_to_f8_e5m2:
         case f32_to_f8_e5m2:
-            safe_ptr_assign(fp8_emu_,
-                    new fp8_emulation_e5m2_t(this, xmm_aux1, xmm_aux2, xmm_aux3,
-                            kmask_aux, reg64_aux));
+            safe_ptr_assign(fp8_cvt_,
+                    new fp8_conversion_e5m2_t(this, xmm_aux1, xmm_aux2,
+                            xmm_aux3, kmask_aux, reg64_aux));
             break;
         case f8_e4m3_to_f16:
         case f8_e4m3_to_f32:
         case f16_to_f8_e4m3:
         case f32_to_f8_e4m3:
-            safe_ptr_assign(fp8_emu_,
-                    new fp8_emulation_e4m3_t(this, xmm_aux1, xmm_aux2, xmm_aux3,
-                            xmm_aux4, xmm_aux5, reg64_aux));
+            safe_ptr_assign(fp8_cvt_,
+                    new fp8_conversion_e4m3_t(this, xmm_aux1, xmm_aux2,
+                            xmm_aux3, xmm_aux4, xmm_aux5, reg64_aux));
             break;
         case f16_to_f32:
         case f32_to_f16: break;
@@ -518,26 +518,26 @@ void jit_cvt_fp8_t::generate() {
         case f8_e4m3_to_f32:
             movzx(reg64_aux, byte[reg64_inp]);
             vmovq(xmm_inp, reg64_aux);
-            fp8_emu_->vcvt_f8_to_f32(zmm_out, xmm_inp);
+            fp8_cvt_->vcvt_f8_to_f32(zmm_out, xmm_inp);
             vmovss(dword[reg64_out], xmm_out);
             break;
         case f8_e5m2_to_f16:
         case f8_e4m3_to_f16:
             movzx(reg64_aux, byte[reg64_inp]);
             vmovq(xmm_inp, reg64_aux);
-            fp8_emu_->vcvt_f8_to_f16(ymm_out, xmm_inp);
+            fp8_cvt_->vcvt_f8_to_f16(ymm_out, xmm_inp);
             vmovw(word[reg64_out], xmm_out);
             break;
         case f16_to_f8_e5m2:
         case f16_to_f8_e4m3:
             vmovw(xmm_inp, word[reg64_inp]);
-            fp8_emu_->vcvt_f16_to_f8(xmm_out, xmm_inp);
+            fp8_cvt_->vcvt_f16_to_f8(xmm_out, xmm_inp);
             vpextrb(byte[reg64_out], xmm_out, 0);
             break;
         case f32_to_f8_e5m2:
         case f32_to_f8_e4m3:
             vmovss(xmm_inp, dword[reg64_inp]);
-            fp8_emu_->vcvt_f32_to_f8(xmm_out, xmm_inp);
+            fp8_cvt_->vcvt_f32_to_f8(xmm_out, xmm_inp);
             vpextrb(byte[reg64_out], xmm_out, 0);
             break;
         case f16_to_f32:
@@ -561,7 +561,7 @@ void jit_cvt_fp8_t::generate() {
         case f16_to_f8_e5m2:
         case f16_to_f8_e4m3:
         case f32_to_f8_e5m2:
-        case f32_to_f8_e4m3: fp8_emu_->prepare_table(); break;
+        case f32_to_f8_e4m3: fp8_cvt_->prepare_table(); break;
         case f16_to_f32:
         case f32_to_f16: break;
         default: assert(!"Invalid mode!");

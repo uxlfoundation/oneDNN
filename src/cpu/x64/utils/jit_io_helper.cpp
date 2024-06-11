@@ -82,13 +82,13 @@ io_emu_fp8_conf_t::io_emu_fp8_conf_t(const Xbyak::Zmm &fp8_emu_reserv_1,
 io_emu_fp8_conf_t::io_emu_fp8_conf_t(int fp8_emu_reserv_1_idx,
         int fp8_emu_reserv_2_idx, int fp8_emu_reserv_3_idx,
         int fp8_emu_reserv_4_idx, int fp8_emu_reserv_5_idx,
-        int fp8_emu_kmask_aux_idx, const Xbyak::Reg64 &reg_tmp)
+        int fp8_cvt_kmask_aux_idx, const Xbyak::Reg64 &reg_tmp)
     : fp8_emu_reserv_1_(Xbyak::Zmm(fp8_emu_reserv_1_idx))
     , fp8_emu_reserv_2_(Xbyak::Zmm(fp8_emu_reserv_2_idx))
     , fp8_emu_reserv_3_(Xbyak::Zmm(fp8_emu_reserv_3_idx))
     , fp8_emu_reserv_4_(Xbyak::Zmm(fp8_emu_reserv_4_idx))
     , fp8_emu_reserv_5_(Xbyak::Zmm(fp8_emu_reserv_5_idx))
-    , kmask_aux_(Xbyak::Opmask(fp8_emu_kmask_aux_idx))
+    , kmask_aux_(Xbyak::Opmask(fp8_cvt_kmask_aux_idx))
     , reg_tmp_(reg_tmp) {}
 
 io_saturation_conf_t::io_saturation_conf_t(const int vreg_zero_saturation_idx,
@@ -149,14 +149,14 @@ jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
         assert(fp8_conf.has_value() && "Config for fp8 emulation is not set.");
         switch (data_type_) {
             case data_type::f8_e5m2:
-                fp8_emu_ = utils::make_unique<fp8_emulation_e5m2_t>(host_,
+                fp8_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(host_,
                         fp8_conf->fp8_emu_reserv_1_,
                         fp8_conf->fp8_emu_reserv_2_,
                         fp8_conf->fp8_emu_reserv_3_, fp8_conf->kmask_aux_,
                         fp8_conf->reg_tmp_);
                 break;
             case data_type::f8_e4m3:
-                fp8_emu_ = utils::make_unique<fp8_emulation_e4m3_t>(host_,
+                fp8_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(host_,
                         fp8_conf->fp8_emu_reserv_1_,
                         fp8_conf->fp8_emu_reserv_2_,
                         fp8_conf->fp8_emu_reserv_3_,
@@ -555,7 +555,7 @@ void jit_io_helper_t<Vmm>::init_saturate_f32() const {
 
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::prepare_table_fp8() {
-    if (fp8_emu_) fp8_emu_->prepare_table();
+    if (fp8_cvt_) fp8_cvt_->prepare_table();
 }
 
 template <typename Vmm>
@@ -694,9 +694,9 @@ void jit_io_helper_t<Vmm>::load_f16(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::load_f8(
         const Xbyak::Address &src_addr, const Vmm &dst_vmm) {
-    assert(fp8_supported_ && fp8_emu_
+    assert(fp8_supported_ && fp8_cvt_
             && "Unsupported data type or emulation not available.");
-    if (fp8_emu_) fp8_emu_->vcvt_f8_to_f32(dst_vmm, src_addr);
+    if (fp8_cvt_) fp8_cvt_->vcvt_f8_to_f32(dst_vmm, src_addr);
 }
 
 template <typename Vmm>
@@ -880,13 +880,13 @@ void jit_io_helper_t<Vmm>::store_f16(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::store_f8(
         const Vmm &src_vmm, const Xbyak::Address &dst_addr) {
-    assert(fp8_supported_ && fp8_emu_
+    assert(fp8_supported_ && fp8_cvt_
             && "Unsupported data type or emulation not available.");
 
     const Xbyak::Xmm lower_xmm = Xbyak::Xmm(src_vmm.getIdx());
 
-    if (fp8_emu_)
-        fp8_emu_->vcvt_f32_to_f8(
+    if (fp8_cvt_)
+        fp8_cvt_->vcvt_f32_to_f8(
                 lower_xmm | Xbyak::Opmask(src_vmm.getOpmaskIdx()), src_vmm);
 
     if (io_conf_.nt_stores_enabled_)
@@ -945,9 +945,9 @@ void jit_io_helper_t<Vmm>::convert_to_f32(const Vmm &dst_vmm,
             break;
         case data_type::f8_e5m2:
         case data_type::f8_e4m3:
-            assert(fp8_supported_ && fp8_emu_
+            assert(fp8_supported_ && fp8_cvt_
                     && "Unsupported data type or emulation not available.");
-            if (fp8_emu_) fp8_emu_->vcvt_f8_to_f32(dst_vmm, src_vmm);
+            if (fp8_cvt_) fp8_cvt_->vcvt_f8_to_f32(dst_vmm, src_vmm);
             break;
         case data_type::s8: {
             host_->uni_vpmovsxbd(dst_vmm, src_vmm);
@@ -997,10 +997,10 @@ void jit_io_helper_t<Vmm>::broadcast(
         }
         case data_type::f8_e4m3:
         case data_type::f8_e5m2:
-            assert(fp8_supported_ && fp8_emu_
+            assert(fp8_supported_ && fp8_cvt_
                     && "Unsupported data type or emulation not available.");
-            if (fp8_emu_)
-                fp8_emu_->vcvt_f8_to_f32(
+            if (fp8_cvt_)
+                fp8_cvt_->vcvt_f8_to_f32(
                         dst_vmm, host_->ptr_b[src_addr.getRegExp()]);
             break;
         case data_type::s8:

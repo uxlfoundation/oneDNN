@@ -1049,9 +1049,9 @@ conv_blocking_scheme_list_t get_blocking_schemes_fwd_dw(
 conv_blocking_scheme_list_t get_blocking_schemes_bwd_d_dw(
         const conv_config_t &cfg) {
     conv_blocking_scheme_list_t ret(conv_tune_level());
-    auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::iw});
-    bool m_is_mb = (m_iter_dim == pvars::mb);
-    bool m_is_iw = (m_iter_dim == pvars::iw);
+    auto m_iter_dim = select_iter_dim(cfg, {prb_dims::mb, prb_dims::iw});
+    bool m_is_mb = (m_iter_dim == prb_dims::mb);
+    bool m_is_iw = (m_iter_dim == prb_dims::iw);
     ret.add(m_is_mb, conv_schemes::bwd_d_dw_T_w_I_ng);
     ret.add(m_is_iw, conv_schemes::bwd_d_dw_T_w_I_wg);
     return ret;

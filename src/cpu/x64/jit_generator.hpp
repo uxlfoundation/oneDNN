@@ -2758,6 +2758,8 @@ public:
         return (jit_ker_) ? status::success : status::runtime_error;
     }
 
+    inline const cpu_isa_t max_cpu_isa() const noexcept { return max_cpu_isa_; }
+
 private:
     const cpu_isa_t max_cpu_isa_;
     const Xbyak::uint8 *getCode() {

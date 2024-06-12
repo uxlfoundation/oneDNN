@@ -153,6 +153,8 @@ foreach(driver ${all_drivers})
             inputs/${driver}/test_*_large$)
     file(GLOB test_files_gpu_ci RELATIVE ${driver_dir}
             inputs/${driver}/test_*_gpu_ci)
+    file(GLOB test_files_gpu_sim_ci RELATIVE ${driver_dir}
+            inputs/${driver}/test_*_gpu_sim_ci)
     file(GLOB test_files_gpu RELATIVE ${driver_dir} inputs/${driver}/test_*_gpu)
     file(GLOB test_files_ci RELATIVE ${driver_dir} inputs/${driver}/test_*_ci)
     file(GLOB test_files_smoke RELATIVE ${driver_dir} inputs/${driver}/test_*_smoke)
@@ -175,7 +177,7 @@ foreach(driver ${all_drivers})
 
         # gpu_ci files may happen if cpu coverage can not be used on gpu
         # Filter out gpu_ci inputs from ci
-        foreach(test_file ${test_files_gpu_ci})
+        foreach(test_file ${test_files_gpu_ci} ${test_files_gpu_sim_ci})
             string(REPLACE "${test_file}" "" test_files_ci "${test_files_ci}")
         endforeach()
 
@@ -186,6 +188,7 @@ foreach(driver ${all_drivers})
             else()
                 register_all_tests(gpu "${driver}" "${test_files_ci}")
             endif()
+            register_all_tests(gpu "${driver}" "${test_files_gpu_sim_ci}")
         endif()
         if(has_cpu)
             register_all_tests(cpu "${driver}" "${test_files_ci}")
@@ -197,7 +200,8 @@ foreach(driver ${all_drivers})
 
         ## Filter out gpu, large cpu and invalid inputs from cpu
         foreach(test_file ${test_files_large_cpu} ${test_files_gpu_ci}
-            ${test_files_gpu} ${test_files_ci} ${test_files_smoke})
+            ${test_files_gpu} ${test_files_ci} ${test_files_smoke}
+            ${test_files_gpu_sim_ci})
             string(REPLACE "${test_file}" "" test_files_cpu "${test_files_cpu}")
         endforeach()
         ## Then filter files with "all" suffix by exact name since there may

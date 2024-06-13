@@ -154,7 +154,7 @@ features on GPU:
 1. Post-sum with zero points
 */
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8s8x8_conv_add_post_ops_cpu)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8x8x8_conv_add_post_ops_cpu)
         .set_priority(10.6f)
         .set_engine_kind(engine_kind::cpu)
         .set_kind(partition_kind_t::quantized_convolution_post_ops)
@@ -201,7 +201,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8s8x8_conv_add_post_ops_cpu)
 #endif
 
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8s8x8_conv_add_post_ops_gpu)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8x8x8_conv_add_post_ops_gpu)
         .set_priority(10.6f)
         .set_engine_kind(engine_kind::gpu)
         .set_kind(partition_kind_t::quantized_convolution_post_ops)
@@ -246,6 +246,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8s8x8_conv_add_post_ops_gpu)
             return std::make_shared<quantized_conv>();
         });
 #endif
+
 /*
                     [quant_weight]*
         |                  |

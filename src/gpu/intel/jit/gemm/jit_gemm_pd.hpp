@@ -135,31 +135,12 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
             }
         }
         if (!src_scales->has_default_values()) {
-            const auto &mask = src_scales->mask_;
-            bool convert = (mask == 0);
-            if (src_scales->ndims_ > 1) {
-                convert |= (src_scales->group_dims_[1] >= d->k());
-                convert |= (src_scales->group_dims_[0] >= d->n());
-            }
-            if (convert) {
-                if (mask == 0) {
-                    dim_t dims = 1;
-                    CHECK(memory_desc_init_by_tag(src_scales_md, 1, &dims,
-                            src_scales->data_type_, format_tag::a));
-                } else if (src_scales->ndims_ > 1) {
-                    int n_group = src_scales->group_dims_[0];
-                    int k_group = src_scales->group_dims_[1];
-                    dim_t dims[] = {(mask & (d->batch() > 1 ? 2 : 1))
-                                    ? d->n() / n_group
-                                    : 1,
-                            d->k() / k_group};
-                    CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
-                            src_scales->data_type_, format_tag::ab));
-                } else {
-                    dim_t dims[] = {d->n(), 1};
-                    CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
-                            src_scales->data_type_, format_tag::ab));
-                }
+            ok = ok && (src_scales->mask_ == 0);
+            if (ok) {
+
+                dim_t dims = {1};
+                CHECK(memory_desc_init_by_tag(
+                        src_scales_md, 1, &dims, f32, format_tag::a));
 
                 auto status
                         = post_ops_.prepend_binary(binary_mul, &src_scales_md);

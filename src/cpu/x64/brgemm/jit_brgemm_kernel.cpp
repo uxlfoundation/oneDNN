@@ -2033,8 +2033,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
         bool last_bdb) {
     auto tdpbxxd = [this](const Tmm &x1, const Tmm &x2, const Tmm &x3) {
         using namespace data_type;
-
-        if (brg.is_fp8 && brg.is_fp8_via_convert()) {
+        if (brg.is_tf32) {
+            tmmultf32ps(x1, x2, x3);
+        } else if (brg.is_fp8 && brg.is_fp8_via_convert()) {
             tdpfp16ps(x1, x2, x3);
         } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
             tdpbf8ps(x1, x2, x3);

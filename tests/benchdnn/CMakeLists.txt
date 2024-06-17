@@ -82,7 +82,13 @@ function(register_benchdnn_test engine driver test_file)
 
     foreach(tm ${test_mode})
         string(REPLACE "test_" "test_benchdnn_mode${tm}_" target_name ${test_file})
-        set(cmd "--mode=${tm} ${mode_modifier} -v1 --engine=${engine} --${driver} --batch=${test_file}")
+        # Disable USM memory for simulation.
+        string(FIND ${test_file} "sim" sim_idx)
+        if( NOT ${sim_idx} EQUAL -1)
+            set(cmd "--mode=${tm} ${mode_modifier} -v1 --engine=${engine} --memory-kind=buffer --${driver} --batch=${test_file}")
+        else()
+            set(cmd "--mode=${tm} ${mode_modifier} -v1 --engine=${engine} --${driver} --batch=${test_file}")
+        endif()
         set(benchdnn_target ${target_name}_${engine})
 
         if(NOT WIN32 OR DNNL_BUILD_FOR_CI)

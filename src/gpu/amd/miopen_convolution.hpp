@@ -24,6 +24,7 @@
 #include "gpu/amd/miopen_convolution_impl.hpp"
 #include "gpu/amd/miopen_convolution_pd.hpp"
 #include "gpu/amd/sycl_hip_utils.hpp"
+#include "gpu/gpu_primitive.hpp"
 #include "xpu/sycl/memory_storage.hpp"
 
 #include <miopen/miopen.h>

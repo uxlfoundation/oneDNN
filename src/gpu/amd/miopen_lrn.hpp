@@ -22,7 +22,6 @@
 
 #include "common/c_types_map.hpp"
 #include "common/lrn_pd.hpp"
-#include "common/primitive.hpp"
 #include "gpu/amd/engine.hpp"
 #include "gpu/amd/miopen_lrn_impl.hpp"
 #include "gpu/amd/sycl_hip_utils.hpp"

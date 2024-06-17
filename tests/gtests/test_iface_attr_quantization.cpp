@@ -463,13 +463,7 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
                             gen_attr_with_zp(arg, (1 << 1) + (1 << 0))));
                     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_zp(
-                                    arg, (1 << 1) + (1 << 0), b_dt, {32, 1})));
-                } else if (arg == DNNL_ARG_SRC) {
-                    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_zp(arg, (1 << 1) + (1 << 0))));
-                    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_zp(
-                                    arg, (1 << 1) + (1 << 0), b_dt, {1, 32})));
+                                    arg, (1 << 1) + (1 << 0), b_dt, {3, 1})));
                 } else {
                     CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_zp(arg, (1 << 1) + (1 << 0))));
@@ -485,45 +479,33 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
                 CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
                         gen_attr_with_scales(arg, (1 << 1) + (1 << 0))));
                 if (b_dt == data_type::s8) {
-                    // Groups non divisible by 32 are not supported.
+                    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                            gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
+                                    data_type::f32, {3, 1})));
+                } else {
                     CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
                                     data_type::f32, {3, 1})));
-                    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
-                                    data_type::f32, {32, 1})));
-                } else {
-                    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
-                                    data_type::f32, {32, 1})));
                 }
             } else if (arg == DNNL_ARG_SRC) {
-                // Somehow GPU doeshave this support.
-                const bool is_cpu = get_test_engine_kind() == engine::kind::cpu;
-                if (is_cpu) {
-                    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_scales(arg, 1 << 1)));
-                }
+                CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                        gen_attr_with_scales(arg, 1 << 1)));
                 if (a_dt == data_type::u8) {
                     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_scales(
-                                    arg, 1 << 1, data_type::f32, {1, 32})));
-                    // Groups non divisible by 32 are not supported.
-                    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
-                                    data_type::f32, {1, 3})));
-                    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
-                                    data_type::f32, {1, 32})));
+                                    arg, 1 << 1, data_type::f32, {1, 3})));
                 } else {
                     CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_scales(
-                                    arg, 1 << 1, data_type::f32, {1, 32})));
-                    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
-                                    data_type::f32, {1, 32})));
+                                    arg, 1 << 1, data_type::f32, {1, 3})));
                 }
+            } else {
+                CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                        gen_attr_with_scales(arg, 1 << 1)));
             }
+            //scales: unsupported mask
+            CHECK_UNIMPL(matmul::primitive_desc(
+                    eng, a_md, b_md, c_md, gen_attr_with_scales(arg, 1 << 2)));
         }
     }
 }

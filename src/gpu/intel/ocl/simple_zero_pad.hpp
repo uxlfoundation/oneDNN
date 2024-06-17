@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 #ifndef GPU_INTEL_OCL_SIMPLE_ZERO_PAD_HPP
 #define GPU_INTEL_OCL_SIMPLE_ZERO_PAD_HPP
 
+#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_zero_pad_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/gpu_resource.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {

@@ -18,7 +18,7 @@
 #ifndef GPU_NVIDIA_CUDNN_MATMUL_HPP
 #define GPU_NVIDIA_CUDNN_MATMUL_HPP
 
-#include "common/primitive.hpp"
+#include "gpu/gpu_primitive.hpp"
 
 #include "gpu/gpu_matmul_pd.hpp"
 

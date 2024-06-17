@@ -23,6 +23,7 @@
 #include "common/c_types_map.hpp"
 #include "common/resampling_pd.hpp"
 #include "common/type_helpers.hpp"
+#include "gpu/gpu_primitive.hpp"
 
 #include "xpu/sycl/memory_storage.hpp"
 

@@ -20,7 +20,6 @@
 
 #include "common/binary_pd.hpp"
 #include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
 #include "gpu/amd/engine.hpp"
 #include "gpu/amd/miopen_binary_impl.hpp"
 #include "gpu/amd/sycl_hip_utils.hpp"

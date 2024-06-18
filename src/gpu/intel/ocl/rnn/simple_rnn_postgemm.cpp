@@ -23,7 +23,7 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-using namespace dnnl::impl::gpu::gpu_utils;
+using namespace dnnl::impl::gpu::intel::gpu_utils;
 using namespace rnn_utils;
 
 template <prop_kind_t aprop>

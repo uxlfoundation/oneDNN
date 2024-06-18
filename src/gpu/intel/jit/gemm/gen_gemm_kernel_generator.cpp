@@ -4362,9 +4362,6 @@ static Subregister findBlockReg(Type T, const RegisterBlock &block, int rr,
         stub("Requested out-of-bounds element.");
 
     int crosspack = block.crosspack;
-    if (Te.isInt4())
-        crosspack = div_up(crosspack, 2); // Effective byte crosspack
-
     int elFixed, elLD;
     if (block.colMajor) {
         int ccx = cc % crosspack;
@@ -4384,7 +4381,7 @@ static Subregister findBlockReg(Type T, const RegisterBlock &block, int rr,
     int subreg = el % ne;
 
     if (Te.isInt4()) {
-        if (subreg % 2) throw std::runtime_error("Invalid int4 offset.");
+        if (subreg % 2) stub("Invalid int4 offset.");
         subreg = div_up(subreg, 2); // Effective byte subreg
     }
 

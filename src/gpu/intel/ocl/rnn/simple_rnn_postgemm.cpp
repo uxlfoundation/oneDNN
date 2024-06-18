@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-using namespace dnnl::impl::gpu::gpu_utils;
+using namespace dnnl::impl::gpu::intel::gpu_utils;
 using namespace rnn_utils;
 
 template <prop_kind_t aprop>

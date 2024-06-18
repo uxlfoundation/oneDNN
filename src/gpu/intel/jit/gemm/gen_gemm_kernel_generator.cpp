@@ -3037,7 +3037,7 @@ bool gemm_kernel_generator_t<hw>::getBlockInfo(Type T,
             block.ld = roundup_pow2(transpose ? yblock : xblock);
             block.ebytes = Tblock.paddedSize();
             block.count = count;
-            block.extra = T.paddedSize();
+            block.extra = T.bits();
             auto bytes = align_up((block.colMajor ? cblock : rblock) / count,
                                  block.crosspack)
                     * block.ld * count * T;
@@ -4349,9 +4349,6 @@ static Subregister findBlockReg(Type T, const RegisterBlock &block, int rr,
         stub("Requested out-of-bounds element.");
 
     int crosspack = block.crosspack;
-    if (Te.isInt4())
-        crosspack = div_up(crosspack, 2); // Effective byte crosspack
-
     int elFixed, elLD;
     if (block.colMajor) {
         int ccx = cc % crosspack;
@@ -4371,7 +4368,7 @@ static Subregister findBlockReg(Type T, const RegisterBlock &block, int rr,
     int subreg = el % ne;
 
     if (Te.isInt4()) {
-        if (subreg % 2) throw std::runtime_error("Invalid int4 offset.");
+        if (subreg % 2) stub("Invalid int4 offset.");
         subreg = div_up(subreg, 2); // Effective byte subreg
     }
 
@@ -7039,9 +7036,7 @@ void gemm_kernel_generator_t<hw>::outerProduct(int h, int ha, int hb,
     if (strategy.systolic)
         outerProductSystolic(h, ha, hb, opCount, A_layout, B_layout, A_regs,
                 B_regs, problem, strategy, state);
-        return;
-    }
-    if (hw < HW::Gen12LP && isIGEMM(Ta, Tb, Tc)) {
+    else if (hw < HW::Gen12LP && isIGEMM(problem.Ta, problem.Tb, problem.Tc))
         outerProductGen9IGEMM(ha, hb, A_layout, B_layout, A_regs, B_regs,
                 problem, strategy, state);
     else
@@ -7056,7 +7051,7 @@ void gemm_kernel_generator_t<hw>::outerProductFMA(int h, int ha, int hb,
         const vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs,
         const GRFMultirange &B_regs, const GEMMProblem &problem,
         const GEMMStrategy &strategy, GEMMState &state) {
-    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
+    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc;
 
     bool mixedMode = ((Tc.real() == Type::f32)
             && (Ta.real() != Type::f32 || Tb.real() != Type::f32));
@@ -22814,11 +22809,9 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem) {
 
     // Safety checks for alignment.
     if (!legalAAlignment(problem, problem.A.alignment))
-        throw std::runtime_error(
-                "A alignment will be lost during m-parallelization");
+        stub("A alignment will be lost during m-parallelization");
     if (!legalBAlignment(problem, problem.B.alignment))
-        throw std::runtime_error(
-                "B alignment will be lost during n-parallelization");
+        stub("B alignment will be lost during n-parallelization");
 
     // Addressing preflight.
 
@@ -27679,8 +27672,9 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                     && (Ts_real.isInt4() || Td_real.isInt4()
                                             || (Ts_real.bits()
                                                     < Td_real.bits()))
-                                    && one_of(Td_real, Type::f16, Type::bf16,
-                                            Type::u16, Type::s16, Type::f32);
+                                    && one_of(Td_real, Type::u8, Type::s8,
+                                            Type::u16, Type::s16, Type::f16,
+                                            Type::bf16, Type::f32);
                             byteAlign |= allInt4;
                             if (Ts_real.isInt4()
                                     && (!byteAlign && Td_real != Ts_real))
@@ -27900,22 +27894,94 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                             auto doByteAlign = [&]() {
                                 allocTemp();
                                 if (Ts_real.isInt4()) {
-                                    int scrosspack_byte
-                                            = std::max(scrosspack / 2, 1);
                                     auto tmp0 = copyTemp[0].w(0);
                                     auto tmp1 = copyTemp[1].f(0);
-                                    const int n_bytes = nelems_real / 2;
-                                    if (Td == Type::u16) {
-                                        auto dreg1 = dreg;
+                                    int n_bytes = nelems_real;
+
+                                    int scrosspack_byte = scrosspack;
+                                    if (int4Zip) scrosspack_byte >>= 1;
+
+                                    auto dreg1 = dreg;
+                                    int effDCP = dcrosspack;
+                                    if (int4Zip) {
+                                        int delems1;
+                                        const RegisterBlock *dblockPtr1;
+                                        int di1 = sblock.offsetR + eoffR
+                                                + dOffR;
+                                        int dj1 = sblock.offsetC + eoffC
+                                                + dOffC;
+                                        (sblock.colMajor ? dj1 : di1)++;
+                                        dreg1 = findBlockReg(Td, layoutDst, di1,
+                                                dj1, dst, delems1, dblockPtr1,
+                                                qCX);
+                                        nelems_real *= 2;
+                                    } else {
                                         dreg1.setOffset(
                                                 dreg1.getOffset() + dcrosspack);
-                                        and_(n_bytes | modMov,
-                                                dreg(dcrosspack * 2),
-                                                sreg.ub()(scrosspack_byte),
-                                                0x0F);
-                                        shr(n_bytes | modMov,
-                                                dreg1(dcrosspack * 2),
-                                                sreg.ub()(scrosspack_byte), 4);
+                                        effDCP *= 2;
+                                        n_bytes /= 2;
+                                    }
+
+                                    if (Td.isInteger()) {
+                                        if (Ts_real.isSigned()) {
+                                            if (Td_real != Type::s8) stub();
+                                            if (effDCP > 1 && !int4Zip) {
+                                                shl(n_bytes | modMov,
+                                                        tmp0.w(0)(2),
+                                                        sreg.b()(
+                                                                scrosspack_byte),
+                                                        4);
+                                                mov(n_bytes | modMov,
+                                                        tmp0.w(1)(2),
+                                                        sreg.b()(
+                                                                scrosspack_byte));
+                                                asr(nelems_real | modMov,
+                                                        dreg(effDCP / 2),
+                                                        tmp0.b()(2), 4);
+                                            } else {
+                                                shl(n_bytes | modMov,
+                                                        dreg(effDCP),
+                                                        sreg.ub()(
+                                                                scrosspack_byte),
+                                                        4);
+                                                asr(n_bytes | modMov,
+                                                        dreg1(effDCP),
+                                                        sreg.b()(
+                                                                scrosspack_byte),
+                                                        4);
+                                                asr(n_bytes | modMov,
+                                                        dreg(effDCP),
+                                                        dreg.b()(effDCP), 4);
+                                            }
+                                        } else {
+                                            if (Td_real.size() == 1
+                                                    && effDCP >= 4) {
+                                                and_(n_bytes | modMov,
+                                                        tmp0.uw(0)(2),
+                                                        sreg.ub()(
+                                                                scrosspack_byte),
+                                                        0x0F);
+                                                shr(n_bytes | modMov,
+                                                        tmp0.uw(1)(2),
+                                                        sreg.ub()(
+                                                                scrosspack_byte),
+                                                        4);
+                                                mov(nelems_real | modMov,
+                                                        dreg(effDCP),
+                                                        tmp0.ub()(2));
+                                            } else {
+                                                and_(n_bytes | modMov,
+                                                        dreg(effDCP),
+                                                        sreg.ub()(
+                                                                scrosspack_byte),
+                                                        0x0F);
+                                                shr(n_bytes | modMov,
+                                                        dreg1(effDCP),
+                                                        sreg.ub()(
+                                                                scrosspack_byte),
+                                                        4);
+                                            }
+                                        }
                                     } else {
                                         if (scrosspack_byte > 2) {
                                             mov(n_bytes | modMov,
@@ -27952,13 +28018,30 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                     tmp1.f()(1));
                                             mov(nelems_real | modMov,
                                                     tmp1.w()(1), tmp1.w()(2));
-                                            mov(nelems_real | modMov,
-                                                    dreg.w()(dcrosspack),
-                                                    tmp1.w()(1));
-                                        } else
+                                            if (!int4Zip)
+                                                mov(nelems_real | modMov,
+                                                        dreg.w()(dcrosspack),
+                                                        tmp1.w()(1));
+                                            else {
+                                                mov(n_bytes | modMov,
+                                                        dreg.w()(effDCP),
+                                                        tmp1.w(0)(2));
+                                                mov(n_bytes | modMov,
+                                                        dreg1.w()(effDCP),
+                                                        tmp1.w(1)(2));
+                                            }
+                                        } else if (!int4Zip)
                                             mov(nelems_real | modMov,
                                                     dreg.d()(dcrosspack),
                                                     tmp1.d()(1));
+                                        else {
+                                            mov(n_bytes | modMov,
+                                                    dreg.d()(effDCP),
+                                                    tmp1.d(0)(2));
+                                            mov(n_bytes | modMov,
+                                                    dreg1.d()(effDCP),
+                                                    tmp1.d(1)(2));
+                                        }
                                     }
                                 } else {
                                     auto tmp0 = copyTemp[0].w(0);
@@ -27979,66 +28062,39 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                             auto doBfHfCvt = [&]() {
                                 if (Ts_real == Type::bf16) {
                                     if (scrosspack != 1) {
-                                        mov(nelems_real,
-                                                copyTemp[0].sub(0,
-                                                        ngen::DataType::uw)(2),
+                                        mov(nelems_real, copyTemp[0].uw(0)(2),
                                                 sreg.uw()(scrosspack));
-                                        shl(nelems_real,
-                                                copyTemp[0].sub(0,
-                                                        ngen::DataType::ud)(1),
-                                                copyTemp[0].sub(0,
-                                                        ngen::DataType::uw)(2),
-                                                16);
-                                        mov(nelems_real,
-                                                copyTemp[0].sub(0,
-                                                        ngen::DataType::hf)(2),
-                                                copyTemp[0].sub(0,
-                                                        ngen::DataType::f)(1));
+                                        shl(nelems_real, copyTemp[0].ud(0)(1),
+                                                copyTemp[0].uw(0)(2), 16);
+                                        mov(nelems_real, copyTemp[0].hf(0)(2),
+                                                copyTemp[0].f(0)(1));
                                         emov(nelems_real | mmodMov,
-                                                dreg.reinterpret(
-                                                        0, ngen::DataType::uw)(
-                                                        dcrosspack),
-                                                copyTemp[0].sub(0,
-                                                        ngen::DataType::uw)(2),
-                                                strategy, state);
+                                                dreg.uw(0)(dcrosspack),
+                                                copyTemp[0].uw(0)(2), strategy,
+                                                state);
                                     } else {
                                         shl(nelems_real,
-                                                copyTemp[0].sub(
-                                                        sreg.getOffset(),
-                                                        ngen::DataType::ud)(
+                                                copyTemp[0].ud(
+                                                        sreg.getOffset())(
                                                         scrosspack),
                                                 sreg.uw()(scrosspack), 16);
                                         emov(nelems_real | mmodMov,
                                                 dregConverted,
-                                                copyTemp[0].sub(
-                                                        sreg.getOffset(),
-                                                        ngen::DataType::f)(
+                                                copyTemp[0].f(sreg.getOffset())(
                                                         scrosspack),
                                                 strategy, state);
                                     }
                                 } else {
-                                    mov(nelems_real,
-                                            copyTemp[0].sub(
-                                                    0, ngen::DataType::uw)(2),
+                                    mov(nelems_real, copyTemp[0].uw(0)(2),
                                             sreg.uw()(scrosspack));
-                                    mov(nelems_real,
-                                            copyTemp[0].sub(
-                                                    0, ngen::DataType::f)(1),
-                                            copyTemp[0].sub(
-                                                    0, ngen::DataType::hf)(2));
-                                    shr(nelems_real,
-                                            copyTemp[0].sub(
-                                                    0, ngen::DataType::uw)(2),
-                                            copyTemp[0].sub(
-                                                    0, ngen::DataType::ud)(1),
-                                            16);
+                                    mov(nelems_real, copyTemp[0].f(0)(1),
+                                            copyTemp[0].hf(0)(2));
+                                    shr(nelems_real, copyTemp[0].uw(0)(2),
+                                            copyTemp[0].ud(0)(1), 16);
                                     emov(nelems_real | mmodMov,
-                                            dreg.reinterpret(
-                                                    0, ngen::DataType::uw)(
-                                                    dcrosspack),
-                                            copyTemp[0].sub(
-                                                    0, ngen::DataType::uw)(2),
-                                            strategy, state);
+                                            dreg.uw(0)(dcrosspack),
+                                            copyTemp[0].uw(0)(2), strategy,
+                                            state);
                                 }
                             };
 

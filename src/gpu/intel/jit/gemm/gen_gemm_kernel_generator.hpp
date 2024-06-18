@@ -68,16 +68,16 @@ public:
         f16 = 0x01000201,
         f32 = 0x01010402,
         f64 = 0x01020803,
-        u4 = 0x21840100,
-        s4 = 0x21850100,
-        u8 = 0x01840100,
-        s8 = 0x01850100,
-        u16 = 0x01860201,
-        s16 = 0x01870201,
-        u32 = 0x01880402,
-        s32 = 0x01890402,
-        u64 = 0x018A0803,
-        s64 = 0x018B0803,
+        u4 = 0x21120100,
+        s4 = 0x21130100,
+        u8 = 0x01140100,
+        s8 = 0x01150100,
+        u16 = 0x01160201,
+        s16 = 0x01170201,
+        u32 = 0x01180402,
+        s32 = 0x01190402,
+        u64 = 0x011A0803,
+        s64 = 0x011B0803,
         bf8 = 0x010E0100,
         hf8 = 0x010F0100,
         bf16 = 0x010C0201,
@@ -107,26 +107,6 @@ public:
     }
     constexpr bool isSigned() const {
         return (uint32_t(val) & 0x110000) != 0x100000;
-    }
-    constexpr Type asUnsigned() const {
-        return static_cast<_Type>(uint32_t(val) & ~(isInteger() ? 0x10000 : 0));
-    }
-    constexpr Type asSigned() const {
-        return static_cast<_Type>(uint32_t(val) | (isInteger() ? 0x10000 : 0));
-    }
-    constexpr int bits() const { return isInt4() ? 4 : (paddedSize() * 8); }
-    constexpr int paddedSize() const { return (uint32_t(val) >> 8) & 0xFF; }
-    int log2Size() const {
-        subByteCheck();
-        return uint32_t(val) & 0xFF;
-    }
-    int size() const {
-        subByteCheck();
-        return paddedSize();
-    }
-    constexpr int perByte() const { return isInt4() ? 2 : 1; }
-    void subByteCheck() const {
-        if (isInt4()) stub();
     }
     constexpr int bits() const { return isInt4() ? 4 : (paddedSize() * 8); }
     constexpr int paddedSize() const { return (uint32_t(val) >> 8) & 0xFF; }
@@ -179,13 +159,14 @@ public:
     }
 
     ngen::DataType ngen() const {
-        using namespace ngen;
-        static const DataType table[16] = {DataType::hf, DataType::f,
-                DataType::df, DataType::invalid, DataType::ub, DataType::b,
-                DataType::uw, DataType::w, DataType::ud, DataType::d,
-                DataType::uq, DataType::q, DataType::bf, DataType::tf32,
-                DataType::bf8, DataType::ub};
-        return table[(uint32_t(val) >> 16) & 0xF];
+        using DT = ngen::DataType;
+        auto none = DT::invalid;
+        auto hf8 = DT::ub;
+        static const DT table[32] = {DT::hf, DT::f, DT::df, none, none, none,
+                none, none, none, none, none, none, DT::bf, DT::tf32, DT::bf8,
+                hf8, none, none, DT::u4, DT::s4, DT::ub, DT::b, DT::uw, DT::w,
+                DT::ud, DT::d, DT::uq, DT::q, none, none, none, none};
+        return table[(uint32_t(val) >> 16) & 0x1F];
     }
 
     bool isSubsetOf(Type T) const;

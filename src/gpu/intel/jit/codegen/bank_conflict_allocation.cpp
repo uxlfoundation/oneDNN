@@ -266,7 +266,7 @@ struct reg_mask_t {
     IR_DEFINE_DUMP()
 
     static const int chunk_bits = 64;
-    static const int max_regs = 256;
+    static const int max_regs = 512;
     static const int max_nchunks = max_regs / chunk_bits;
 
     const hw_context_t *hw_ctx = nullptr;
@@ -645,6 +645,7 @@ reg_mask_t create_available_reg_mask(
 bank_conflict_allocation_t bank_conflict_allocation_t::create(
         reg_allocator_t &ra, int regs, const bank_conflict_attr_t &attr) {
     hw_context_t hw_ctx(ra.hardware(), regs);
+    ir_assert(regs <= reg_mask_t::max_regs);
 
     bool is_dpas = false;
     bool is_dp4a = false;

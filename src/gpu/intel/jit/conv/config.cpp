@@ -1005,6 +1005,9 @@ status_t init_vec_size(conv_config_t &cfg) {
 
 int default_regs(const conv_config_t &cfg) {
     if (!cfg.hw().large_grf_support()) return 128;
+#if XE3P
+    if (cfg.hw() == ngen::HW::Xe3p && cfg.is_dpas_or_dpasw_fma()) return 512;
+#endif
     if (cfg.is_dpas_or_dpasw_fma()) return 256;
     return 128;
 }

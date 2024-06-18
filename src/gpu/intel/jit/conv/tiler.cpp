@@ -867,8 +867,8 @@ private:
     }
 
     int max_m_iter() const {
-        const int max_dpas_m_iter = 64;
-        const int max_mad_m_iter = 32;
+        const int max_dpas_m_iter = 32;
+        const int max_mad_m_iter = 16;
         if (cfg_.is_dp_fma()) return max_dpas_m_iter;
         return max_mad_m_iter;
     }

@@ -235,8 +235,7 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             if (quant_enabled_ && src_scales.ndims_ > 1) src_scales_2d_ = true;
 
-            if (wei_decomp_
-                    && attr()->scales_.get(DNNL_ARG_SRC).mask_ == ((1 << 1)))
+            if (wei_decomp_ && attr()->scales_.get(DNNL_ARG_SRC).ndims_ > 1)
                 src_scales_2d_ = true;
 
             for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {

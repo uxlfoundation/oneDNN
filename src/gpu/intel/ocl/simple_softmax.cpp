@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/ref_softmax.hpp"
+#include "gpu/intel/ocl/simple_softmax.hpp"
 
 namespace dnnl {
 namespace impl {

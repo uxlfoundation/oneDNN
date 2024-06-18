@@ -196,7 +196,7 @@ public:
         , with_nd_range_(false)
         , require_dpas_(desc.with_dpas())
         , regs_(exec_cfg_.regs())
-        , ra_(hw, desc.kernel_name(), reg_allocator_t::warn_default)
+        , ra_(hw, desc.kernel_name())
         , emu_strategy(hw, exec_cfg_.hw().stepping_id()) {
         setStepping(exec_cfg_.hw().stepping_id());
         ra_.setRegisterCount(regs_);
@@ -215,9 +215,7 @@ public:
         , regs_((grf_mode == grf_mode_t::large)             ? 256
                           : (grf_mode == grf_mode_t::small) ? 128
                                                             : exec_cfg.regs())
-        , ra_(hw, kernel_name,
-                  grf_mode == grf_mode_t::any ? reg_allocator_t::warn_all
-                                              : reg_allocator_t::warn_default)
+        , ra_(hw, kernel_name)
         , emu_strategy(hw, exec_cfg.hw().stepping_id()) {
         setStepping(exec_cfg.hw().stepping_id());
         ra_.setRegisterCount(regs_);

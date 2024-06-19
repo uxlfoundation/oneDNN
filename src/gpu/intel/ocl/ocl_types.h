@@ -1480,16 +1480,6 @@
 #endif
 #endif
 
-#ifdef DST_SCALES_DATA_T
-#if DST_SCALES_DT_F16
-#define DST_SCALES_TO_REF(x) convert_float(x)
-#elif DST_SCALES_DT_BF16
-#define DST_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
-#else
-#define DST_SCALES_TO_REF(x) (x)
-#endif
-#endif
-
 #ifdef WEI_ZP_DATA_T
 #if WEI_ZP_DT_S8
 #define WEI_ZP_TO_REF(zp, off) convert_int_sat_rte(zp[off])

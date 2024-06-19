@@ -14973,8 +14973,8 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     bool slmDequantize2DB = dequantize2DB && slmB;
     dequantize2DA &= !slmDequantize2DA;
     dequantize2DB &= !slmDequantize2DB;
-    bool dequantRepack2DA = dequantize2DA && !state.lateScale2DA;
-    bool dequantRepack2DB = dequantize2DB && !state.lateScale2DB;
+    state.dequantRepack2DA = dequantize2DA && !state.lateScale2DA;
+    state.dequantRepack2DB = dequantize2DB && !state.lateScale2DB;
     if (slmDequantize2DA && state.lateScale2DA) {
         slmDequantize2DA = false;
         dequantize2DA = true;
@@ -15971,12 +15971,11 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto reqRepackA = every(ka_loadMain) | variants(A_copies);
     auto reqRepackARem = every(ka_loadRem) | variants(A_copies);
     bool convertA = (Ta != Ta_load) && (Ta.bits() == Ta_load.bits());
-    bool scheduleRepackA
-            = state.repackA || state.repackARem || convertA || dequantRepack2DA;
+    bool scheduleRepackA = state.repackA || state.repackARem || convertA;
 
     auto doRepackA = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
                              bool repackA, int ha) {
-        if (dequantRepack2DA)
+        if (state.dequantRepack2DA)
             gemm2DDequantizeAB(true, Ta_load, Ta, layout, state.Ar_layout, regs,
                     state.Ar_regs, ha, problem, strategy, state);
         else if (repackA)
@@ -16000,12 +15999,11 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto reqRepackB = every(kb_loadMain) | variants(B_copies);
     auto reqRepackBRem = every(kb_loadRem) | variants(B_copies);
     bool convertB = (Tb != Tb_load) && (Tb.bits() == Tb_load.bits());
-    bool scheduleRepackB
-            = state.repackB || state.repackBRem || convertB || dequantRepack2DB;
+    bool scheduleRepackB = state.repackB || state.repackBRem || convertB;
 
     auto doRepackB = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
                              bool repackB, int hb) {
-        if (dequantRepack2DB)
+        if (state.dequantRepack2DB)
             gemm2DDequantizeAB(false, Tb_load, Tb, layout, state.Br_layout,
                     regs, state.Br_regs, hb, problem, strategy, state);
         else if (repackB)
@@ -17410,10 +17408,12 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
             || !hasTiling(state.B_layout, tileK_B, tileN_B);
 
     state.repackA |= (Ta.bits() != Ta_ext.bits()
-                             || Ta.components() != Ta_ext.components())
+                             || Ta.components() != Ta_ext.components()
+                             || state.dequantRepack2DA)
             && !slmA;
     state.repackB |= (Tb.bits() != Tb_ext.bits()
-                             || Tb.components() != Tb_ext.components())
+                             || Tb.components() != Tb_ext.components()
+                             || state.dequantRepack2DB)
             && !slmB;
 
     if (crosspackA == 0) crosspackA = 1;
@@ -28608,7 +28608,6 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
     } /* phase loop */
 
     if (releaseEmuFlag) state.raVFlag.safeRelease(state.emulate.flag);
-
     if (saveF2.isValid()) {
         mov(1, f2, saveF2);
         state.ra.safeRelease(saveF2);

@@ -945,9 +945,6 @@
 #elif WEI_DT_HF8
 #define WEI_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
 #define REF_TO_WEI(x) cvt_hf_to_f8_e4m3(convert_half(x))
-#elif WEI_DT_F4_E2M1
-#define WEI_TO_REF(x) cvt_f4_e2m1_to_f32(x)
-#define REF_TO_WEI(x) cvt_f32_to_f4_e2m1(x)
 #elif WEI_DT_S8
 #define WEI_TO_REF(x) convert_int_sat_rte(x)
 #define REF_TO_WEI(x) convert_char_sat_rte(x)
@@ -955,8 +952,10 @@
 #define WEI_TO_REF(x) convert_int_sat_rte(x)
 #define REF_TO_WEI(x) convert_uchar_sat_rte(x)
 #elif WEI_DT_S4
+#define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 #define WEI_TO_REF(x) cvt_s4_to_s32(x)
 #elif WEI_DT_U4
+#define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 #define WEI_TO_REF(x) convert_int_sat_rte(x)
 #else
 #define WEI_TO_REF(x) (x)
@@ -1496,28 +1495,8 @@
 #endif
 #endif
 
-#ifdef DST_SCALES_DATA_T
-#if DST_SCALES_DT_HF8
-#define DST_SCALES_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
-#elif DST_SCALES_DT_BF8
-#define DST_SCALES_TO_REF(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif DST_SCALES_DT_F16
-#define DST_SCALES_TO_REF(x) convert_float(x)
-#elif DST_SCALES_DT_BF16
-#define DST_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
-#elif DST_SCALES_DT_E8M0
-#define DST_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
-#else
-#define DST_SCALES_TO_REF(x) (x)
-#endif
-#endif
-
 #ifdef WEI_SCALES_DATA_T
-#if WEI_SCALES_DT_HF8
-#define WEI_SCALES_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
-#elif WEI_SCALES_DT_BF8
-#define WEI_SCALES_TO_REF(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif WEI_SCALES_DT_F16
+#if WEI_SCALES_DT_F16
 #define WEI_SCALES_TO_REF(x) convert_float(x)
 #elif WEI_SCALES_DT_BF16
 #define WEI_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
@@ -1527,11 +1506,7 @@
 #endif
 
 #ifdef SRC_SCALES_DATA_T
-#if SRC_SCALES_DT_HF8
-#define SRC_SCALES_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
-#elif SRC_SCALES_DT_BF8
-#define SRC_SCALES_TO_REF(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif SRC_SCALES_DT_F16
+#if SRC_SCALES_DT_F16
 #define SRC_SCALES_TO_REF(x) convert_float(x)
 #elif SRC_SCALES_DT_BF16
 #define SRC_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
@@ -1551,20 +1526,6 @@
 #define WEI_ZP_TO_REF(zp, off) convert_int_sat_rte(GET_HALF_BYTE(zp, off))
 #else
 #define WEI_ZP_TO_REF(zp, off) (zp[off])
-#endif
-#endif
-
-#ifdef SRC_ZP_DATA_T
-#if SRC_ZP_DT_S8
-#define SRC_ZP_TO_REF(zp, off) convert_int_sat_rte(zp[off])
-#elif SRC_ZP_DT_U8
-#define SRC_ZP_TO_REF(zp, off) convert_int_sat_rte(zp[off])
-#elif SRC_ZP_DT_S4
-#define SRC_ZP_TO_REF(zp, off) cvt_s4_to_s32(GET_HALF_BYTE(zp, off))
-#elif SRC_ZP_DT_U4
-#define SRC_ZP_TO_REF(zp, off) convert_int_sat_rte(GET_HALF_BYTE(zp, off))
-#else
-#define SRC_ZP_TO_REF(zp, off) (zp[off])
 #endif
 #endif
 

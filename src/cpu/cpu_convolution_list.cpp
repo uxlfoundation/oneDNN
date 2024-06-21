@@ -82,41 +82,34 @@ namespace {
 using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::prop_kind;
 
-#define BRGEMM_FP8_FWD_CONVS(dtsrc, dtwei, dtdst) \
-    { \
-        {forward, dtsrc, dtwei, dtdst}, { \
-            CPU_INSTANCE_AMX( \
-                    brgemm_1x1_convolution_fwd_t<avx10_1_512_amx_fp16>) \
-            CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_1_512_amx_fp16>) \
-            CPU_INSTANCE(ref_convolution_fwd_t) nullptr, \
-        } \
-    }
-
-#define BRGEMM_FP8_BWD_D_CONVS(dtsrc, dtwei, dtdst) \
-    { \
-        {backward_data, dtsrc, dtwei, dtdst}, \
-                REG_BWD_D_PK({ \
-                        CPU_INSTANCE_AMX(brgemm_convolution_bwd_t< \
-                                avx10_1_512_amx_fp16>) \
-                                CPU_INSTANCE_AMX( \
-                                        brgemm_convolution_bwd_strided_t< \
-                                                avx10_1_512_amx_fp16>) \
-                                        CPU_INSTANCE( \
-                                                ref_convolution_bwd_data_t) nullptr, \
-                }) \
-    }
-
-#define BRGEMM_FP8_BWD_W_CONVS(dtsrc, dtwei, dtdst) \
-    { \
-        {backward_weights, dtsrc, dtwei, dtdst}, \
-                REG_BWD_PK({ \
-                        CPU_INSTANCE_AMX(brgemm_convolution_bwd_weights_t) \
-                                CPU_INSTANCE( \
-                                        ref_convolution_bwd_weights_t) nullptr, \
-                }) \
-    }
-
 // clang-format off
+#define BRGEMM_FP8_FWD_CONVS(dtsrc, dtwei, dtdst) { \
+    {forward, dtsrc, dtwei, dtdst}, { \
+        CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx10_2_512_amx_2>) \
+        CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_2_512_amx_2>) \
+        CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx10_1_512_amx_fp16>) \
+        CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_1_512_amx_fp16>) \
+        CPU_INSTANCE(ref_convolution_fwd_t) nullptr, \
+    } \
+}
+
+#define BRGEMM_FP8_BWD_D_CONVS(dtsrc, dtwei, dtdst) { \
+    {backward_data, dtsrc, dtwei, dtdst}, REG_BWD_D_PK({ \
+        CPU_INSTANCE_AMX(brgemm_convolution_bwd_t<avx10_2_512_amx_2>) \
+        CPU_INSTANCE_AMX(brgemm_convolution_bwd_t<avx10_1_512_amx_fp16>) \
+        CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx10_2_512_amx_2>) \
+        CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx10_1_512_amx_fp16>) \
+        CPU_INSTANCE(ref_convolution_bwd_data_t) nullptr, \
+    }) \
+}
+
+#define BRGEMM_FP8_BWD_W_CONVS(dtsrc, dtwei, dtdst) { \
+    {backward_weights, dtsrc, dtwei, dtdst}, REG_BWD_PK({ \
+        CPU_INSTANCE_AMX(brgemm_convolution_bwd_weights_t) \
+        CPU_INSTANCE(ref_convolution_bwd_weights_t) nullptr, \
+    }) \
+}
+
 const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     static const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> the_map = REG_CONV_P({
         // FWD fp

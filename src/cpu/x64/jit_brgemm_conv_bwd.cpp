@@ -180,6 +180,7 @@ template struct brgemm_convolution_bwd_t<avx512_core_bf16>;
 template struct brgemm_convolution_bwd_t<avx512_core_fp16>;
 template struct brgemm_convolution_bwd_t<avx512_core_amx>;
 template struct brgemm_convolution_bwd_t<avx512_core_amx_fp16>;
+template struct brgemm_convolution_bwd_t<avx10_2_512_amx_2>;
 
 } // namespace x64
 } // namespace cpu

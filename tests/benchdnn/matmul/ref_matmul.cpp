@@ -95,6 +95,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const int64_t wei_zp_group_k
             = !wei_zp_groups.empty() ? wei_zp_groups[0] : 1;
 
+    const bool wei_decompression = prb->weights_decompression();
     const bool apply_scales_in_ker
             = wei_decompression || wei_scale_per_k || src_scale_per_k;
 

@@ -92,6 +92,30 @@ typedef std::function<void(dnnl::stream &,
         const std::vector<dnnl::graph::tensor> &outputs)>
         perf_function_t;
 
+#ifdef DNNL_WITH_SYCL
+struct sycl_deletor {
+    sycl::context ctx_;
+    sycl_deletor() = delete;
+    sycl_deletor(const sycl::context &ctx) : ctx_(ctx) {}
+    void operator()(void *ptr) {
+        if (ptr) sycl::free(ptr, ctx_);
+    }
+};
+
+struct scratchpad_mm_mgr {
+    void *sycl_alloc_mm(
+            size_t size, size_t alignment, const void *dev, const void *ctx);
+    void sycl_free_mm(
+            void *ptr, const void *device, const void *context, void *event);
+
+private:
+    std::unordered_multimap<size_t, std::shared_ptr<void>> map_size_ptr_;
+    std::unordered_set<void *> free_ptr_;
+};
+
+sycl::queue &get_queue();
+#endif // DNNL_WITH_SYCL
+
 void compiled_partition_executor(dnnl::graph::compiled_partition &cp,
         dnnl::stream &stream, const std::vector<dnnl::graph::tensor> &inputs,
         const std::vector<dnnl::graph::tensor> &outputs);

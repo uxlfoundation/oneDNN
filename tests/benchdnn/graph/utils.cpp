@@ -19,14 +19,6 @@
 #include <vector>
 
 #include "cpu/platform.hpp"
-#ifdef DNNL_WITH_SYCL
-#include "dnnl_sycl.hpp"
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "oneapi/dnnl/dnnl_graph_ocl.hpp"
-#endif
-
 #include "utils.hpp"
 #include "utils/timer.hpp"
 
@@ -259,6 +251,91 @@ int measure_perf(timer::timer_t &t,
 
     return status;
 }
+
+#ifdef DNNL_WITH_SYCL
+void *scratchpad_mm_mgr::sycl_alloc_mm(
+        size_t size, size_t alignment, const void *dev, const void *ctx) {
+    // fake malloc for 0 size
+    if (size == 0) return nullptr;
+
+    void *ptr {nullptr};
+    bool need_alloc_new_mm = true;
+    // find alloc mm with same size
+    const auto cnt = map_size_ptr_.count(size);
+    if (cnt > 0) {
+        const auto Iter = map_size_ptr_.equal_range(size);
+        for (auto it = Iter.first; it != Iter.second; ++it) {
+            // check if same size mm is free
+            if (free_ptr_.find(it->second.get()) != free_ptr_.end()) {
+                ptr = it->second.get();
+                free_ptr_.erase(ptr);
+                need_alloc_new_mm = false;
+            }
+        }
+    }
+
+    if (need_alloc_new_mm) {
+        auto sh_ptr = std::shared_ptr<void> {
+                malloc_shared(size, *static_cast<const sycl::device *>(dev),
+                        *static_cast<const sycl::context *>(ctx)),
+                sycl_deletor {*static_cast<const sycl::context *>(ctx)}};
+        ptr = sh_ptr.get();
+        // record the map of mm size and its ptr for reuse
+        map_size_ptr_.emplace(std::make_pair(size, sh_ptr));
+    }
+    return ptr;
+}
+
+void scratchpad_mm_mgr::sycl_free_mm(
+        void *ptr, const void *device, const void *context, void *event) {
+    free_ptr_.insert(ptr);
+}
+
+static scratchpad_mm_mgr s_mm_mgr;
+
+void *test_sycl_malloc_wrapper(
+        size_t n, size_t alignment, const void *dev, const void *ctx) {
+    return malloc_device(n, *static_cast<const sycl::device *>(dev),
+            *static_cast<const sycl::context *>(ctx));
+}
+
+void test_sycl_free_wrapper(
+        void *ptr, const void *dev, const void *context, void *event) {
+    (void)(dev);
+    if (event) {
+        static_cast<sycl::event *>(const_cast<void *>(event))->wait();
+    }
+    free(ptr, *static_cast<const sycl::context *>(context));
+}
+
+void *sycl_malloc_wrapper(
+        size_t size, size_t alignment, const void *dev, const void *ctx) {
+    void *ptr = has_bench_mode_bit(mode_bit_t::corr) || is_cpu()
+            ? test_sycl_malloc_wrapper(size, alignment, dev, ctx)
+            : s_mm_mgr.sycl_alloc_mm(size, alignment, dev, ctx);
+
+    return ptr;
+}
+
+// perf mode, mem will be finally released in s_mm_mgr ~shared_ptr when
+// test finished.
+void sycl_free_wrapper(
+        void *ptr, const void *device, const void *context, void *event) {
+    if (has_bench_mode_bit(mode_bit_t::corr) || is_cpu()) {
+        test_sycl_free_wrapper(ptr, device, context, event);
+    } else {
+        s_mm_mgr.sycl_free_mm(ptr, device, context, event);
+    }
+}
+
+sycl::queue &get_queue() {
+    static dnnl::engine test_eng {::get_test_engine()};
+    static sycl::device dev {dnnl::sycl_interop::get_device(test_eng)};
+    static sycl::context ctx {dnnl::sycl_interop::get_context(test_eng)};
+    static sycl::queue q {ctx, dev, sycl::property::queue::in_order {}};
+    return q;
+}
+#endif // DNNL_WITH_SYCL
 
 dnnl::graph::op::kind opstr2kind(const std::string &kind) {
     const std::unordered_map<std::string, dnnl::graph::op::kind> op_map = {
@@ -576,47 +653,6 @@ dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind) {
         fprintf(stderr, "graph: ERROR: Unsupported opkind: `%d`, exiting...\n",
                 static_cast<int>(kind));
         SAFE_V(FAIL);
-    }
-    return dnnl_driver_t::others;
-}
-
-bool is_nxc_lt_arg(const std::string &kind, const int exec_arg) {
-    // Mapping from the op kind to a set that indicates which input arg needs
-    // reorder
-    static const std::unordered_map<std::string, std::unordered_set<int>>
-            input_arg_for_reorder = {
-                    {"AvgPool", {DNNL_ARG_SRC}},
-                    {"AvgPoolBackward", {DNNL_ARG_DIFF_DST}},
-                    {"BatchNormInference", {DNNL_ARG_SRC}},
-                    {"BatchNormForwardTraining", {DNNL_ARG_SRC}},
-                    {"BiasAddBackward", {DNNL_ARG_SRC}},
-                    {"Interpolate", {DNNL_ARG_SRC}},
-                    {"MaxPool", {DNNL_ARG_SRC}},
-                    {"Convolution", {DNNL_ARG_SRC}},
-                    {"ConvolutionBackwardData", {DNNL_ARG_DIFF_DST}},
-                    {"ConvTranspose", {DNNL_ARG_SRC}},
-                    {"ConvTransposeBackwardData", {DNNL_ARG_DIFF_DST}},
-                    {"BatchNormTrainingBackward",
-                            {DNNL_ARG_SRC, DNNL_ARG_DIFF_DST}},
-                    {"BiasAdd", {DNNL_ARG_SRC_0, DNNL_ARG_SRC_1}},
-                    {"InterpolateBackward", {DNNL_ARG_DIFF_DST}},
-                    {"MaxPoolBackward", {DNNL_ARG_SRC, DNNL_ARG_DIFF_DST}},
-                    {"ConvolutionBackwardWeights",
-                            {DNNL_ARG_SRC, DNNL_ARG_DIFF_DST}},
-                    {"ConvTransposeBackwardWeights",
-                            {DNNL_ARG_SRC, DNNL_ARG_DIFF_DST}},
-                    {"PReLU", {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS}},
-                    {"PReLUBackward",
-                            {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS,
-                                    DNNL_ARG_DIFF_DST}},
-            };
-
-    const auto iter = input_arg_for_reorder.find(kind);
-    if (iter != input_arg_for_reorder.end()) {
-        const auto &args_to_reorder = iter->second;
-        return args_to_reorder.find(exec_arg) != args_to_reorder.end();
-    } else {
-        return false;
     }
     return dnnl_driver_t::others;
 }

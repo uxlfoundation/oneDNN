@@ -186,6 +186,43 @@ private:
         // Note 3-4:
         return is_src_dst_layout_batch_fusable();
     }
+
+private:
+    mdw_t src_md_;
+    mdw_t weights_md_;
+    mdw_t dst_md_;
+
+    // TODO similar optimization is also possible for wei batch fusion.
+    bool can_fuse_src_batch_dims() const {
+        /* Note:
+            We can fuse src batch dims so that a single GeMM can be used if
+            0. always for batch = 1 case
+            1. src is not transposed
+            2. wei batch dims are all 1's
+            3. The strides in batch dims are trivial (allowing permutations).
+            4. src and dst layout are identical. Example:
+                src layout : {batch dim_idx permutations}xMxK
+                dst layout : {identical batch dim_idx perm}xMxN;
+
+            For example,
+            src_layout : aXdXcXbXmXk
+            wei_layout: 1X1X1X1xkxn or 1X1X1X1xnxk
+            dst_layout : aXdXcXbXmXn
+
+            A single GeMM call can be used instead with m = a*d*c*b*m
+        */
+        // Note 0:
+        if (batch() == 1) return true;
+
+        // Note 1:
+        if (transA() == 'T') return false;
+
+        // Note 2:
+        if (wei_batch() != 1) return false;
+
+        // Note 3-4:
+        return is_src_dst_layout_batch_fusable();
+    }
     dim_t get_batch_size(const mdw_t &tensor_md) const {
         int batch_dims = ndims() - 2;
         dim_t batch_size = 1;

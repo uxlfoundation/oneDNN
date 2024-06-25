@@ -2831,6 +2831,7 @@ struct jit_brgemm_matmul_copy_b_bf16_t : public jit_brgemm_matmul_copy_b_t,
         , src_stride(conf->copy_B_wei_stride)
         , tr_src_stride(conf_->LDB * k_blk_step * tr_typesize)
         , scales_N_stride(conf_->N * scales_typesize)
+        , is_src_int4(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , is_dynamic_stride(is_runtime_value(src_stride))
         , is_dynamic_N(conf->is_runtime_N)
         , req_cvtps2bf16(conf->is_bf32 || conf->is_bf16_with_int_wei)
@@ -2851,6 +2852,7 @@ private:
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize, tr_typesize, scales_typesize;
     const dim_t src_stride, tr_src_stride, scales_N_stride;
+    const bool is_src_int4;
     const bool is_dynamic_stride;
     const bool is_dynamic_N;
     const bool req_cvtps2bf16;
@@ -2890,6 +2892,10 @@ private:
     Vmm vmm_permw = Vmm(1);
     Vmm vmm_tmp = Vmm(1); // used only for avx2_vnni_2
     Vmm vmm_zp_b_shift = Vmm(2);
+    Vmm vmm_permd = Vmm(3);
+    Vmm vmm_int4_mask = Vmm(4);
+    Vmm vmm_sign_bit = Vmm(5);
+    Vmm vmm_sign_mask = Vmm(6);
 
     void kmovx(Opmask k, unsigned w) {
         if (!isa_has_masks(conf_->isa)) return;
@@ -2982,7 +2988,9 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(int nrows, int ncolumns) {
     }
 
     static constexpr int blk_sz = k_blk_step;
-    const int reserved_regs = req_zp_b_shift ? 3 : 2;
+    const int reserved_regs = !is_src_int4
+            ? (req_zp_b_shift ? 3 : 2)
+            : (conf_->orig_wei_dt == data_type::s4 ? 7 : 5);
     const int max_isa_regs = isa_num_vregs(conf_->isa);
     const int max_regs_available = max_isa_regs - reserved_regs;
     const int max_unroll = max_regs_available / blk_sz;
@@ -3014,10 +3022,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(int nrows, int ncolumns) {
             if (conf_->is_bf32)
                 uni_vmovups(src_load, load_addr);
             else if (conf_->is_bf16_with_int_wei) {
-                if (conf_->orig_wei_dt == data_type::s8)
-                    uni_vpmovsxbd(src_load, load_addr);
-                else
-                    uni_vpmovzxbd(src_load, load_addr);
+                load_int(src_reg, load_addr, is_tail);
                 if (req_zp_b_shift)
                     uni_vpsubd(src_load, src_load, vmm_zp_b_shift);
                 uni_vcvtdq2ps(src_load, src_load);

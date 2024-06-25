@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 * Copyright 2022 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -136,8 +136,8 @@ struct matmul_helper_t {
         utils::simultaneous_sort(src_strides, ou_dims, perm, batch_ndims,
                 [](stride_t a, stride_t b) { return a - b; });
 
-        dim_t src_stride = lda() * (transA() == 'N' ? M() : K());
-        dim_t dst_stride = ldc() * (transC() == 'N' ? M() : N());
+        dim_t src_stride = M() * lda();
+        dim_t dst_stride = M() * ldc();
 
         for (int i = 0; i < batch_ndims; ++i) {
             const dim_t dim_idx = perm[i];
@@ -149,43 +149,6 @@ struct matmul_helper_t {
         }
 
         return true;
-    }
-
-    // TODO: consolidate these functions with ones in simple_reorder.hpp, as they
-    // are copy-pasted, and address TODOs from there.
-    static status_t get_quant_md(memory_desc_t &md, const int ndims,
-            const dims_t in_dims, const int quant_mask, const dim_t g0,
-            const dim_t g1, const data_type_t dt) {
-        dims_t quant_dims {};
-        utils::copy_dims_with_mask(quant_dims, in_dims, ndims, quant_mask,
-                /* fill_with_ones = */ true);
-        if (ndims >= 2) {
-            quant_dims[ndims - 1] /= g1;
-            quant_dims[ndims - 2] /= g0;
-        }
-
-        CHECK(memory_desc_init_by_tag(
-                md, ndims, quant_dims, dt, get_abx_tag(ndims)));
-        return status::success;
-    }
-
-    static dim_t get_quant_off(const dims_t &input_idx, const int ndims,
-            const int quant_mask, const dim_t g0, const dim_t g1,
-            const memory_desc_t &quant_md) {
-        dims_t quant_idx {};
-        utils::array_copy(quant_idx, input_idx, ndims);
-        utils::apply_mask_on_dims(quant_idx, ndims, quant_mask);
-        // Note: an `idx` must divide by a group value as grouped quantization
-        // applies to consecutive points.
-        // Using quant dimensions in `l_dims_by_l_offset` will lead to wrapping
-        // around dimensions instead of applying consecutively.
-        if (ndims >= 2) {
-            quant_idx[ndims - 1] /= g1;
-            quant_idx[ndims - 2] /= g0;
-        }
-
-        const memory_desc_wrapper q_mdw(quant_md);
-        return q_mdw.off_v(quant_idx);
     }
 
 private:

@@ -199,9 +199,6 @@ struct brgemm_matmul_conf_t {
     bool is_src_batch_layout_trivial = false;
     bool is_wei_batch_layout_trivial = false;
     bool is_dst_batch_layout_trivial = false;
-    bool is_oscale_per_n = false;
-    bool is_oscale_per_k = false;
-    bool apply_scales_in_buffer_b = false;
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;
         const dim_t big_K_threshold = big_stride_threshold_in_bytes / a_dt_sz;
@@ -319,9 +316,11 @@ struct brgemm_matmul_conf_utils_t {
     inline cpu_isa_t get_isa() const { return isa_; }
 
     int get_default_n_block(format_tag_t matrix_b_tag) const;
-    status_t set_or_check_B_tag(
-            memory_desc_t &B_md, bool init_n_tag = true) const;
-    status_t update_and_check_B_tag(memory_desc_t &B_md, int n_blk_size) const;
+    status_t set_or_check_B_tag(memory_desc_t &B_md,
+            const dnnl::impl::cpu::matmul::matmul_helper_t &helper,
+            bool init_n_tag = true) const;
+    status_t update_and_check_B_tag(memory_desc_t &B_md, int n_blk_size,
+            const dnnl::impl::cpu::matmul::matmul_helper_t &helper) const;
     status_t set_or_check_tags(memory_desc_t &A_md, memory_desc_t &C_md,
             memory_desc_t &bias_md,
             const dnnl::impl::cpu::matmul::matmul_helper_t &helper) const;
@@ -367,6 +366,8 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         const brgemm_matmul_conf_t &bgmmc);
 
 int get_n_block_from_tag(format_tag_t matrix_b_tag);
+
+bool is_batch_layout_trivial(const memory_desc_wrapper &mdw, const dim_t batch);
 
 } // namespace matmul
 } // namespace x64

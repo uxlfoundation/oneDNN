@@ -14965,29 +14965,26 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto unrollKSLM = strategy.unrollKSLM;
     bool calcASums = problem.needsASums();
     bool calcBSums = problem.needsBSums();
+    bool readA = true, readB = true;
+
     bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
     bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D;
-    bool dequantize2DA = (ao2D || as2D);
-    bool dequantize2DB = (bo2D || bs2D);
+    bool as2DLate = as2D && state.lateScale2DA;
+    bool bs2DLate = bs2D && state.lateScale2DB;
+    as2D &= !as2DLate;
+    bs2D &= !bs2DLate;
+    bool dequantize2DA = ao2D || as2D;
+    bool dequantize2DB = bo2D || bs2D;
     bool slmDequantize2DA = dequantize2DA && slmA;
     bool slmDequantize2DB = dequantize2DB && slmB;
     dequantize2DA &= !slmDequantize2DA;
     dequantize2DB &= !slmDequantize2DB;
-    state.dequantRepack2DA = dequantize2DA && !state.lateScale2DA;
-    state.dequantRepack2DB = dequantize2DB && !state.lateScale2DB;
-    if (slmDequantize2DA && state.lateScale2DA) {
-        slmDequantize2DA = false;
-        dequantize2DA = true;
-    }
-    if (slmDequantize2DB && state.lateScale2DB) {
-        slmDequantize2DB = false;
-        dequantize2DB = true;
-    }
     int aqGroupK = problem.aqGroupK;
     int bqGroupK = problem.bqGroupK;
     int kaq_load = aqGroupK * state.kaq;
     int kbq_load = bqGroupK * state.kbq;
-    bool readA = true, readB = true;
+    int kaq_loadLate = aqGroupK * state.kaqLate;
+    int kbq_loadLate = bqGroupK * state.kbqLate;
 
     bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
     bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D;
@@ -15971,11 +15968,12 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto reqRepackA = every(ka_loadMain) | variants(A_copies);
     auto reqRepackARem = every(ka_loadRem) | variants(A_copies);
     bool convertA = (Ta != Ta_load) && (Ta.bits() == Ta_load.bits());
-    bool scheduleRepackA = state.repackA || state.repackARem || convertA;
+    bool scheduleRepackA
+            = state.repackA || state.repackARem || convertA || dequantize2DA;
 
     auto doRepackA = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
                              bool repackA, int ha) {
-        if (state.dequantRepack2DA)
+        if (dequantize2DA)
             gemm2DDequantizeAB(true, Ta_load, Ta, layout, state.Ar_layout, regs,
                     state.Ar_regs, ha, problem, strategy, state);
         else if (repackA)
@@ -15999,11 +15997,12 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     auto reqRepackB = every(kb_loadMain) | variants(B_copies);
     auto reqRepackBRem = every(kb_loadRem) | variants(B_copies);
     bool convertB = (Tb != Tb_load) && (Tb.bits() == Tb_load.bits());
-    bool scheduleRepackB = state.repackB || state.repackBRem || convertB;
+    bool scheduleRepackB
+            = state.repackB || state.repackBRem || convertB || dequantize2DB;
 
     auto doRepackB = [&](vector<RegisterBlock> &layout, GRFMultirange &regs,
                              bool repackB, int hb) {
-        if (state.dequantRepack2DB)
+        if (dequantize2DB)
             gemm2DDequantizeAB(false, Tb_load, Tb, layout, state.Br_layout,
                     regs, state.Br_regs, hb, problem, strategy, state);
         else if (repackB)

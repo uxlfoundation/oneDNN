@@ -18,6 +18,7 @@
 
 #include "common/dnnl_thread.hpp"
 #include "cpu/binary_injector_utils.hpp"
+#include "cpu/matmul/gemm_based_common.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
@@ -268,8 +269,9 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
             : nstl::min<int>(24, rnd_up(bgmmc.N, simd_w));
 }
 
-status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
-        memory_desc_t &B_md, bool init_n_tag) const {
+status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
+        const matmul_helper_t &helper, bool init_n_tag) const {
+    const memory_desc_wrapper B_d(&B_md);
     if (B_any_layout) {
         const int default_n_block = init_n_tag
                 ? get_default_n_block(format_tag::undef)
@@ -297,14 +299,25 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
                 : memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
                         transposed_tensor_layout_tag, acbd, adbc);
 
+        if (bgmmc.wei_tag == format_tag::undef) {
+            if (gemm_based::check_gemm_input_format(B_md)) {
+                // Note: Here we batch layout may not be accurately represented
+                // by the wei_tag string, due to all the permutations of the
+                // batch. Only the gemm dimensions "n, k" are accurately
+                // represented in the string representing transposed or not.
+                bgmmc.wei_tag = helper.transB() == 'N'
+                        ? plain_tensor_layout_tag
+                        : transposed_tensor_layout_tag;
+            }
+        }
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
     }
     return status::success;
 }
 
-status_t brgemm_matmul_conf_utils_t::update_and_check_B_tag(
-        memory_desc_t &B_md, int n_blk_size) const {
+status_t brgemm_matmul_conf_utils_t::update_and_check_B_tag(memory_desc_t &B_md,
+        int n_blk_size, const matmul_helper_t &helper) const {
     if (n_blk_fixed && n_blk_size != bgmmc.wei_n_blk)
         return status::unimplemented;
 
@@ -326,10 +339,11 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                 && bgmmc.isa == avx2_vnni_2;
         const bool is_int8_avx512_core
                 = this->is_int8() && is_superset(bgmmc.isa, avx512_core);
-        bgmmc.src_tag
+        const bool is_adbc_allowed
                 = (this->is_bf16() || this->is_f32() || this->is_bf32()
                           || this->is_f16() || this->is_bf16_with_int_wei())
-                        && !xf16_avx2_vnni_2
+                && !xf16_avx2_vnni_2;
+        bgmmc.src_tag = is_adbc_allowed
                 ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
                         transposed_tensor_layout_tag, acbd, adbc)
                 : is_int8_avx512_core
@@ -1316,7 +1330,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
-    VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md),
+    VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md, helper),
             VERBOSE_UNSUPPORTED_TAG);
     VCHECK_BG(attr.set_default_formats(&dst_md), VERBOSE_UNSUPPORTED_TAG);
     VCONDCHECK_BG(post_ops_ok(bgmmc, attr, dst_d), VERBOSE_UNSUPPORTED_POSTOP);
@@ -1356,7 +1370,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.wei_k_blk = data_type_vnni_simd_elems(bgmmc.wei_dt, bgmmc.isa);
 
-    VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md),
+    VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md, helper),
             VERBOSE_UNSUPPORTED_TAG);
 
     bgmmc.req_wei_vnni_downconvert = bm_conf_utils.wei_down_convert_to_vnni();
@@ -1742,14 +1756,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     } else if (bgmmc.blocked_B) {
         bgmmc.copy_B_wei_stride = (bgmmc.LDB * bgmmc.b_dt_sz) / int4_fac;
     } else {
-        const dim_t factor = bgmmc.is_int4_weights ? 2 : 1;
-        const auto b_stride_elems
-                = bgmmc.req_wei_vnni_downconvert ? bgmmc.LDB : bgmmc.N;
-        assert(IMPLICATION(bgmmc.is_int4_weights, b_stride_elems % 2 == 0));
         bgmmc.copy_B_wei_stride
-                = (bgmmc.is_runtime_N ? bgmmc.N
-                                      : b_stride_elems * bgmmc.b_dt_sz)
-                / factor;
+                = (wei_d.strides()[bgmmc.ndims - 2] * bgmmc.b_dt_sz) / int4_fac;
     }
 
     bgmmc.C_ptr_shift_b = dst_d.matches_one_of_tag(acbd)

@@ -5,4 +5,4 @@
 --alg=ACROSS,WITHIN
 --dir=FWD_D,BWD_D
 --tag=abx,axb
---batch=shapes_ci
+--batch=shapes_sim_ci

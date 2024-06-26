@@ -727,7 +727,16 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             }
 
             if (hw != ngen::HW::Gen9) {
-                plan(mov, esize | host->sat, t1(tmp_stride), s(src_stride));
+                int align_stride = src_stride;
+#if XE3P
+                if (hw >= ngen::HW::Xe3p && src_stride_bytes != 4) {
+                    align_stride = 2;
+                    auto t2 = tmp2.subregister(t1_offset, ngen::DataType::uw);
+                    plan(mov, esize, t2(align_stride), s.uw()(src_stride));
+                    s = t2.hf();
+                }
+#endif
+                plan(mov, esize | host->sat, t1(tmp_stride), s(align_stride));
             } else {
                 auto t1_f = tmp1.format(t1_offset, ngen::DataType::f, esize);
                 plan(mov, esize, t1_f, s(src_stride));

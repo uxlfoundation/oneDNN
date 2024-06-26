@@ -289,7 +289,7 @@ combined_reduce(
             float res = IS_FINAL ? finalize(REDUCTION_ALG, acc, DIV, POWER, EPS)
                                  : acc;
 #if WITH_POST_OP
-                float dst_val;
+            float dst_val;
 #if WITH_SUM
             dst_val = DST_TO_REF(load(dst + dst_off));
 #endif // WITH_SUM

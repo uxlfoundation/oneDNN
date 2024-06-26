@@ -510,6 +510,23 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         match_params[npatterns].selector.precisions[1] = "[FO]";
         npatterns++;
     }
+    if ((mode & mode_bf16x1)
+            && utils::one_of(Type::f32, problem_.Ta, problem_.Tb)
+            && (problem_.Ta.isInteger() || problem_.Tb.isInteger())) {
+        if (problem_.Ta.isInt8() || problem_.Ta.isInt4()) {
+            match_params[npatterns] = match_params[0];
+            match_params[npatterns].selector.precisions[0]
+                    = match_params[0].selector.precisions[0];
+            match_params[npatterns].selector.precisions[1] = "B";
+            npatterns++;
+        } else {
+            match_params[npatterns] = match_params[0];
+            match_params[npatterns].selector.precisions[0] = "B";
+            match_params[npatterns].selector.precisions[1]
+                    = match_params[0].selector.precisions[1];
+            npatterns++;
+        }
+    }
 
     EvaluateParams eval_params;
 

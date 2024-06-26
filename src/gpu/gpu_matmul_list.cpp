@@ -38,9 +38,7 @@ namespace {
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         GPU_INSTANCE_INTEL(intel::ocl::gemm_matmul_t)
-#if !DNNL_DISABLE_GPU_REF_KERNELS
         GPU_INSTANCE_INTEL(intel::ocl::ref_matmul_t)
-#endif
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_matmul_t)
         GPU_INSTANCE_AMD(amd::miopen_matmul_t)
         nullptr,

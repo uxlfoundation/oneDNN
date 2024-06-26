@@ -45,9 +45,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
     {{forward}, {
         GPU_INSTANCE_INTEL(intel::ocl::gemm_inner_product_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::convolution_inner_product_fwd_t)
-#if !DNNL_DISABLE_GPU_REF_KERNELS
         GPU_INSTANCE_INTEL(intel::ocl::ref_inner_product_fwd_t)
-#endif
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_conv_inner_product_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_gemm_inner_product_fwd_t)
@@ -56,10 +54,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
     {{backward}, REG_BWD_PK({
         GPU_INSTANCE_INTEL(intel::ocl::gemm_inner_product_bwd_data_t)
         GPU_INSTANCE_INTEL(intel::ocl::gemm_inner_product_bwd_weights_t)
-#if !DNNL_DISABLE_GPU_REF_KERNELS
         GPU_INSTANCE_INTEL(intel::ocl::ref_inner_product_bwd_data_t)
         GPU_INSTANCE_INTEL(intel::ocl::ref_inner_product_bwd_weights_t)
-#endif
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_bwd_data_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_bwd_weights_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_conv_inner_product_bwd_data_t)

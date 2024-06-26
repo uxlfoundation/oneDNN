@@ -803,6 +803,46 @@ public:
                     host_->sel(dst_operand.mod(), dst_operand.reg_data(),
                             bind.reg_data(), 0);
                 } else {
+#if XE3P
+                    const auto grf_size = ngen::GRF::bytes(hw);
+                    if (hw >= ngen::HW::Xe3p && bind.is_reg_buf_data()) {
+                        auto mod = dst_operand.mod();
+                        auto dst = dst_operand.reg_data();
+                        auto src = bind.reg_data();
+                        auto exec_size = mod.getExecSize();
+                        const auto dst_stride = dst.getHS();
+                        const auto dst_byte_offset = dst.getByteOffset();
+                        const auto dst_type_size = dst.getBytes();
+                        const auto dst_bytes = dst_type_size
+                                * ((exec_size - 1) * dst_stride + 1);
+                        const auto dst_end_byte = dst_byte_offset + dst_bytes;
+                        if (dst_end_byte > grf_size) { // Compressed instruction
+                            const auto tail_bytes = grf_size - dst_byte_offset;
+                            // Index where we cross the grf boundary.
+                            const auto cidx = 1
+                                    + (tail_bytes / dst_type_size - 1)
+                                            / dst_stride;
+                            const auto src_width = src.getWidth();
+                            const auto src_hs = src.getHS();
+                            const auto src_vs = src.getVS();
+                            const auto x = cidx % src_width;
+                            const auto y = cidx / src_width;
+                            const auto src_base = src.getBase()
+                                    + (src_hs * x + src_vs * y) / grf_size;
+                            const auto dst_base = dst.getBase();
+                            if (src_base == dst_base) {
+                                const auto src_type = src.getType();
+                                const int nregs = dst_bytes / grf_size;
+                                auto tmp = scope_.alloc_range(nregs);
+                                auto t = tmp.sub(hw, 0, src_type)(dst_stride);
+                                host_->emov(exec_size, t, src);
+                                host_->emov(mod, dst, t);
+                                scope_.safeRelease(tmp);
+                                return dst_operand;
+                            }
+                        }
+                    }
+#endif
                     host_->emov(dst_operand.mod(), dst_operand, bind);
                 }
                 return dst_operand;

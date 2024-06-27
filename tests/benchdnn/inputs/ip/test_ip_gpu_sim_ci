@@ -6,8 +6,8 @@
 ## Forward
 --dir=FWD_D
 --dt=f32,bf16,f16
---batch=shapes_ci_sim
+--batch=shapes_sim_ci
 ## Backward
 --dir=BWD_D,BWD_W
---batch=shapes_ci_sim
+--batch=shapes_sim_ci
 

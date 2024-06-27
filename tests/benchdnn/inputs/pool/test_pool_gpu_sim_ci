@@ -1,11 +1,11 @@
 --reset
 --mb=1
 
---alg=max,avg_np #,avg_p
+--alg=max,avg_np
 # Training
 --dt=f32,bf16,f16
 --dir=FWD_D,BWD_D
---batch=shapes_basic
+--batch=shapes_sim_ci
 
 # Inference
 --dir=FWD_I
@@ -13,4 +13,4 @@
 
 ## All inference configs
 --dt=f32,bf16,f16
---batch=shapes_basic
+--batch=shapes_sim_ci

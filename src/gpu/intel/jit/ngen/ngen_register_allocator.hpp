@@ -588,7 +588,7 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
 
 #if XE3P
         /* Preferentially use r511 for small allocations as it can't be used in sendgx. */
-        if (search_full_grf && freeSub[511]) {
+        if (search_full_grf && freeSub[511] == fullSubMask) {
             r_alloc = 511;
             o_alloc = 0;
             return true;

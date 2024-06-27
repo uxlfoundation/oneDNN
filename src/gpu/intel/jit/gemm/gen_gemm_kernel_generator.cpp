@@ -7795,12 +7795,6 @@ void gemm_kernel_generator_t<hw>::outerProductRepackC(int x0, int xr0, int nx,
     int ny = strategy.unroll[globalCM ? LoopN : LoopM];
     int nacc = AccumulatorRegister::count(hw, strategy.GRFs, Tc.real().ngen());
 
-    /*bool ARepackScale = !Ar_scaleLayout.empty();
-    bool BRepackScale = !Br_scaleLayout.empty();
-    auto bScaleLayout = BRepackScale ? Ar_scaleLayout : A_scaleLayout;
-    auto aScaleLayout = ARepackScale ? Br_scaleLayout : B_scaleLayout;
-    auto aScaleRegs = ARepackScale ? Br_scaleLayout : B_scaleLayout;
-    auto aScaleRegs = ARepackScale ? Br_scaleLayout : B_scaleLayout;*/
     struct WorkItem {
         Subregister C, Cr;
         int simd, iacc;

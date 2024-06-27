@@ -341,8 +341,8 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, const GEMMProblem &problem) {
         if (problem.batchDims > 1) *tagPtr++ = ReqBatchMultiDim;
     }
 
-    if (problem.aOffset != ABOffset::None) *tagPtr++ = ReqSumB;
-    if (problem.bOffset != ABOffset::None) *tagPtr++ = ReqSumA;
+    if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;
+    if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
 
     if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
 

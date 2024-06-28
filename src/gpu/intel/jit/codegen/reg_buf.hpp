@@ -21,6 +21,7 @@
 #include <unordered_set>
 
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
+#include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/grf_permutation.hpp"
 #include "gpu/intel/jit/ngen/ngen.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"

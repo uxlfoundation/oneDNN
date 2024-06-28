@@ -17401,12 +17401,10 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
             || !hasTiling(state.B_layout, tileK_B, tileN_B);
 
     state.repackA |= (Ta.bits() != Ta_ext.bits()
-                             || Ta.components() != Ta_ext.components()
-                             || state.dequantRepack2DA)
+                             || Ta.components() != Ta_ext.components())
             && !slmA;
     state.repackB |= (Tb.bits() != Tb_ext.bits()
-                             || Tb.components() != Tb_ext.components()
-                             || state.dequantRepack2DB)
+                             || Tb.components() != Tb_ext.components())
             && !slmB;
 
     if (crosspackA == 0) crosspackA = 1;

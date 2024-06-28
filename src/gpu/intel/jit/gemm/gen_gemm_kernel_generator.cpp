@@ -14001,9 +14001,9 @@ void gemm_kernel_generator_t<hw>::gemm2DDequantizeOperation(bool doA, Type T,
 
                 int ne, neq;
                 const RegisterBlock *qblock;
-                auto data = findBlockReg(To, block, ii0, jj0, regs, ne);
+                auto data = findBlockReg(T, block, ii0, jj0, regs, ne);
                 auto qdata = findBlockReg(
-                        T, qlayout, io0, jo0, qregs, neq, qblock);
+                        To, qlayout, io0, jo0, qregs, neq, qblock);
 
                 int strideq = 1;
                 if (broadcast)

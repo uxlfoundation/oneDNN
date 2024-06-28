@@ -105,6 +105,9 @@ public:
     constexpr bool isSigned() const {
         return (uint32_t(val) & 0x110000) != 0x100000;
     }
+    constexpr Type asSigned() const {
+        return static_cast<_Type>(uint32_t(val) | (isInteger() ? 0x10000 : 0));
+    }
     constexpr int bits() const { return isInt4() ? 4 : (paddedSize() * 8); }
     constexpr int paddedSize() const { return (uint32_t(val) >> 8) & 0xFF; }
     int log2Size() const {
@@ -1571,7 +1574,6 @@ struct GEMMState : public CommonState {
     bool copyC = false;
     bool useTempC = false;
     bool broadcast;
-    bool dequantRepack2DA = false, dequantRepack2DB = false;
     bool repackA = false, repackB = false;
     bool repackARem = false, repackBRem = false;
     int ka_repackRem, kb_repackRem;

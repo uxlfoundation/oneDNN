@@ -528,6 +528,32 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         }
     }
 
+    if ((mode & mode_f16x1)
+            && utils::everyone_is(Type::f32, problem_.Ta, problem_.Tb)) {
+        match_params[npatterns] = match_params[0];
+        match_params[npatterns].selector.precisions[0] = "[SH]";
+        match_params[npatterns].selector.precisions[1] = "[SH]";
+        npatterns++;
+    }
+
+    if ((mode & mode_f16x1)
+            && utils::one_of(Type::f32, problem_.Ta, problem_.Tb)
+            && (problem_.Ta.isInteger() || problem_.Tb.isInteger())) {
+        if (problem_.Ta.isInt8() || problem_.Ta.isInt4()) {
+            match_params[npatterns] = match_params[0];
+            match_params[npatterns].selector.precisions[0]
+                    = match_params[0].selector.precisions[0];
+            match_params[npatterns].selector.precisions[1] = "H";
+            npatterns++;
+        } else {
+            match_params[npatterns] = match_params[0];
+            match_params[npatterns].selector.precisions[0] = "H";
+            match_params[npatterns].selector.precisions[1]
+                    = match_params[0].selector.precisions[1];
+            npatterns++;
+        }
+    }
+
     EvaluateParams eval_params;
 
     eval_params.sizes = match_params[0].sizes;

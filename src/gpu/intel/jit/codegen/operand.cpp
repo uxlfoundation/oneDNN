@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,7 +42,6 @@ static std::string to_string(ngen::DataType type) {
         CASE(v);
         CASE(vf);
         CASE(bf8);
-        CASE(hf8);
         CASE(tf32);
         CASE(u4);
         CASE(s4);

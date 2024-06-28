@@ -1,1 +1,2 @@
 --reset --mb=1 --dt=f16,f32,bf16,f8_e5m2 --dir=fwd_d,bwd_d,bwd_w --batch=shapes_basic
+--reset --mb=1 --dt=f16,f32,bf16 --dir=fwd_d --attr-post-ops=tanh,logistic,swish,mish --batch=shapes_basic

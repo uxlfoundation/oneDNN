@@ -1,2 +1,4 @@
 --reset --dt=f8_e5m2,f16,bf16,f32 --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d
 --reset --dt=f8_e5m2,f16,bf16,f32 --stag=abc --wtag=abc --dtag=abc --batch=shapes_3d
+--reset --dt=f16,bf16,f32 --stag=ab --wtag=ab --dtag=ab --attr-post-ops=tanh,logistic,swish,mish --batch=shapes_2d
+--reset --dt=f16,bf16,f32 --stag=abc --wtag=abc --dtag=abc --attr-post-ops=tanh,logistic,swish,mish --batch=shapes_3d

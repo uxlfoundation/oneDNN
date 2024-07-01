@@ -15894,8 +15894,9 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         });
 
     // A/B repacking.
-    auto reqRepackA = every(ka_loadMain) | variants(A_copies);
-    auto reqRepackARem = every(ka_loadRem) | variants(A_copies);
+    auto reqRepackA = every(ka_repackMain) | variants(A_copies);
+    auto reqRepackARem
+            = every(std::min(ka_loadRem, ka_repackRem)) | variants(A_copies);
     bool convertA = (Ta != Ta_load) && (Ta.bits() == Ta_load.bits());
     bool scheduleRepackA
             = state.repackA || state.repackARem || convertA || dequantizeA;
@@ -15908,6 +15909,29 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
         vector<RegisterBlock> sublayout = layout;
         auto Ar_sublayout = state.Ar_layout;
         bool do_shift = true;
+        if (repackA) {
+            auto layout_copy = layout;
+            unlinkFromMemory(layout_copy);
+
+            if (!getSubblocks(Ta_load, sublayout, layout_copy, true, ha,
+                        ha + k_repack, false, {}, {}))
+                stub();
+            for (auto &l : Ar_sublayout) {
+                l.offsetC += ha;
+            }
+
+            // Int4 data is commonly expanded from partial registers as a 64
+            // byte register expands to 128 elements. To avoid emitting extra
+            // instructions, perform element-wise operations here.
+            bool can_dequantize = canDequantizeInt4(
+                    Ta_load, Ta, layout, state.Ar_layout, {}, {});
+            if (can_dequantize) {
+                if (ha == 0) { dequantizeInt4Shift(Ta_load, regs, strategy); }
+                do_shift = false;
+            }
+        } else if (dequantize2DA) {
+            stub("dequantize2DA is assumed to imply repackA");
+        }
 
         if (dequantizeA)
             gemmDequantizeAB(true, Ta_load, Ta, sublayout, Ar_sublayout, regs,
@@ -15925,11 +15949,11 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
                              [&](Iteration h) {
                                  doRepackA(state.A_layout, A_regs(h),
                                          state.repackA, h, ka_loadMain,
-                                         ka_loadMain);
+                                         ka_repackMain);
                              }},
                 {reqRepackARem, [&](Iteration h) {
                      doRepackA(state.A_layoutRem, A_regs(h), state.repackARem,
-                             h, ka_loadRem, state.ka_repackRem);
+                             h, ka_loadRem, ka_repackRem);
                  }}});
 
     auto reqRepackB = every(kb_loadMain) | variants(B_copies);

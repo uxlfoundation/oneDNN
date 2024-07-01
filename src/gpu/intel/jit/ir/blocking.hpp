@@ -86,6 +86,27 @@ public:
         iter_.parse(in);
     }
 
+    void stringify(std::ostream &out) const {
+        out << "simd=" << simd_;
+        out << " l=";
+        loop_.stringify(out);
+        out << " T=";
+        thread_group_.stringify(out);
+        out << " i=";
+        iter_.stringify(out);
+    }
+
+    void parse(std::istream &in) {
+        stream_match(in, "simd=");
+        simd_ = stream_parse<int>(in);
+        stream_match(in, "l=");
+        loop_.parse(in);
+        stream_match(in, "T=");
+        thread_group_.parse(in);
+        stream_match(in, "i=");
+        iter_.parse(in);
+    }
+
     size_t get_hash() const {
         return ir_utils::get_hash(loop_, thread_group_, iter_);
     }
@@ -483,6 +504,26 @@ public:
     bool is_empty() const { return blocking_.is_empty(); }
     const blocking_t &blocking() const { return blocking_; }
     void set_id(int id) { id_ = id; }
+
+    void stringify(std::ostream &out) const {
+        blocking_.stringify(out);
+        if (bufs_hint_ != -1) out << " bufs=" << bufs_hint_;
+    }
+
+    void parse(std::istream &in) {
+        // ID is always default in parsed keys.
+        id_ = -1;
+        blocking_.parse(in);
+
+        if (stream_try_match(in, "bufs=")) {
+            bufs_hint_ = stream_parse<int>(in);
+        }
+    }
+
+    bool operator==(const blocking_params_t &other) const {
+        return (id_ == other.id_) && (blocking_ == other.blocking_)
+                && (bufs_hint_ == other.bufs_hint_);
+    }
 
     void stringify(std::ostream &out) const {
         blocking_.stringify(out);

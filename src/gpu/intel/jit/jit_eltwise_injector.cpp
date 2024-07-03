@@ -55,7 +55,7 @@ int jit_eltwise_injector_f32<hw>::min_scratch_regs() {
 #if XE3P
                 return (hw != gpu_xe3p) ? 2 : 1;
 #else
-                return (use_tanh_compat()) ? 9 : 6;
+                return 2;
 #endif
             case eltwise_round: return 0;
             case eltwise_linear: return 0;
@@ -310,32 +310,6 @@ void jit_eltwise_injector_f32<hw>::tanh_compute_fwd(
 }
 
 template <gpu_gen_t hw>
-void jit_eltwise_injector_f32<hw>::tanh_compute_fwd_compat(
-        int simd, const ngen::GRF &r, int phase, int off, int batch) {
-    // This approximation of tanh(x) does not use the math.exp instruction
-    // that seems to be faulty on DG2-128; the exact formula is as follows:
-    // R = max(min(0.0519867*x*((x^2 + k)^2 + l)/((x^2 + m)^2 + n), 1), -1)
-    // Both absolute and relative errors are <7*10^-5 \forall x \in \mathbb R
-    auto k = scratch_[0].f(4);
-    auto l = scratch_[0].f(5);
-    auto m = scratch_[0].f(6);
-    auto n = scratch_[0].f(7);
-    auto a = scratch_[off + batch].f();
-    switch (phase) {
-        case 0: h->mad(simd, a, m, r, r); break;
-        case 1: h->mad(simd, a, n, a, a); break;
-        case 2: h->inv(simd, a, a); break;
-        case 3: h->mul(simd, a, a, r); break;
-        case 4: h->mad(simd, r, k, r, r); break;
-        case 5: h->mad(simd, r, l, r, r); break;
-        case 6: h->mul(simd, r, r, 0.0519867f); break; // 0.051986694f
-        case 7: h->mul(simd | sat, r, r, abs(a)); break;
-        case 8: h->csel(simd | ge | f0[0], r, r, -r, a); break;
-        default: assert(!"invalid phase");
-    }
-}
-
-template <gpu_gen_t hw>
 void jit_eltwise_injector_f32<hw>::round_compute_fwd(
         int simd, const ngen::GRF &r) {
     h->rnde(simd, r, r);
@@ -484,18 +458,6 @@ void jit_eltwise_injector_f32<hw>::tanh_prepare_fwd() {
 #if XE3P
     }
 #endif
-}
-
-template <gpu_gen_t hw>
-void jit_eltwise_injector_f32<hw>::tanh_prepare_fwd_compat() {
-    auto k = scratch_[0].f(4);
-    auto l = scratch_[0].f(5);
-    auto m = scratch_[0].f(6);
-    auto n = scratch_[0].f(7);
-    h->mov(1, k, 77.0954f); //  77.095392909578f
-    h->mov(1, l, -4435.55f); // -4435.54623970169f
-    h->mov(1, m, 17.06396f); //  17.06396485f
-    h->mov(1, n, -212.7724f); // -212.772646402036f
 }
 
 template <gpu_gen_t hw>
@@ -710,13 +672,8 @@ void jit_eltwise_injector_f32<hw>::mish_compute_fwd(
     // note tanh_compute_fwd_* clobbers scratch_[off] and scratch_[off + batch]
     if (phase < srelu_phases)
         soft_relu_compute_fwd_inner(simd, r, temp, temp2, phase, off, 1.f);
-    if (phase >= srelu_phases && phase < srelu_phases + tanh_phases) {
-        if (use_tanh_compat())
-            tanh_compute_fwd_compat(
-                    simd, temp2, phase - srelu_phases, off, batch);
-        else
-            tanh_compute_fwd(simd, temp2, phase - srelu_phases, off, batch);
-    }
+    if (phase >= srelu_phases && phase < srelu_phases + tanh_phases)
+        tanh_compute_fwd(simd, temp2, phase - srelu_phases, off, batch);
     if (phase == srelu_phases + tanh_phases) h->mul(simd, r, r, temp2);
     if (phase > srelu_phases + tanh_phases) assert(!"invalid phase");
 }
@@ -814,11 +771,7 @@ void jit_eltwise_injector_f32<hw>::compute(const int *grfs, int ngrf) {
                             break;
                         case eltwise_tanh:
                         case eltwise_tanh_use_dst_for_bwd:
-                            if (use_tanh_compat())
-                                tanh_compute_fwd_compat(
-                                        simd, base, phase, ii, batch);
-                            else
-                                tanh_compute_fwd(simd, base, phase, ii, batch);
+                            tanh_compute_fwd(simd, base, phase, ii, batch);
                             break;
                         case eltwise_round:
                             round_compute_fwd(simd, base);
@@ -896,12 +849,7 @@ void jit_eltwise_injector_f32<hw>::prepare() {
                 if (alpha_ == 0.f) relu_zero_ns_prepare_fwd();
                 break;
             case eltwise_mish:
-            case eltwise_tanh:
-                if (use_tanh_compat())
-                    tanh_prepare_fwd_compat();
-                else
-                    tanh_prepare_fwd();
-                break;
+            case eltwise_tanh: tanh_prepare_fwd(); break;
             default: break;
         }
     } else {

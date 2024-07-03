@@ -87,7 +87,6 @@ private:
     bool is_gpu(ngen::HW arg_hw, int arg_eu_count) const {
         return (hw == arg_hw) && (eu_count_ == arg_eu_count);
     }
-    bool use_tanh_compat() const { return false; }
 
     int max_batch_size();
     int phase_count(alg_kind_t alg);
@@ -97,7 +96,6 @@ private:
     void abs_prepare_bwd();
     void clip_prepare_bwd();
     void tanh_prepare_fwd();
-    void tanh_prepare_fwd_compat();
 
     void relu_zero_ns_compute_fwd(int simd, const ngen::GRF &r);
     void relu_compute_fwd(int simd, const ngen::GRF &r, int phase, int off);
@@ -124,8 +122,6 @@ private:
     void round_compute_fwd(int simd, const ngen::GRF &r);
     void swish_compute_fwd(int simd, const ngen::GRF &r, int phase, int off);
     void tanh_compute_fwd(
-            int simd, const ngen::GRF &r, int phase, int off, int batch);
-    void tanh_compute_fwd_compat(
             int simd, const ngen::GRF &r, int phase, int off, int batch);
     void linear_compute_fwd(int simd, const ngen::GRF &r, int phase);
     void clip_compute_fwd(

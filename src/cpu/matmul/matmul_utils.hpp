@@ -136,8 +136,8 @@ struct matmul_helper_t {
         utils::simultaneous_sort(src_strides, ou_dims, perm, batch_ndims,
                 [](stride_t a, stride_t b) { return a - b; });
 
-        dim_t src_stride = M() * lda();
-        dim_t dst_stride = M() * ldc();
+        dim_t src_stride = lda() * (transA() == 'N' ? M() : K());
+        dim_t dst_stride = ldc() * (transC() == 'N' ? M() : N());
 
         for (int i = 0; i < batch_ndims; ++i) {
             const dim_t dim_idx = perm[i];

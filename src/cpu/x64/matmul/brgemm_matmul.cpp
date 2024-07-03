@@ -749,7 +749,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
                     = brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k, n);
             p.src_ptr = (void *)B_data_ptr;
             p.bitmask_ptr
-                    = (void *)brgmm_ctx.get_data_B_bitmask_ptr(B_data_ptr);
+                    = (void *)brgmm_ctx.get_data_B_bitmask_ptr(b_idx, k, n);
             p.dst_ptr = (void *)brgmm_ctx.get_buf_B_ptr(ithr, gb, n_blk_idx);
             (*sparse_decompress_kernel_)(&p);
         }
@@ -1223,7 +1223,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return data_B_ptr_ + get_data_B_batch_off(b);
     }
 
-    const char *get_data_B_bitmask_ptr(const char *cur_data_B_ptr) const {
+    const char *get_data_B_bitmask_ptr(int b, int k, int n) const {
         assert(bgmmc_.packed_sparse_weights);
         const dim_t cur_data_B_off
                 = get_data_B_batch_off(b) + get_data_B_kn_off(k, n);

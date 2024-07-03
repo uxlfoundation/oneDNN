@@ -1,7 +1,6 @@
 /*******************************************************************************
 * Copyright 2022-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +36,6 @@ struct jit_brgemm_conv_comp_pad_call_s {
     size_t kd_l;
 };
 
-template <cpu_isa_t isa>
 struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_brgemm_conv_comp_pad_kernel_t)
@@ -87,7 +85,7 @@ protected:
 
     const int last_ic_block_ = 4;
     const int n_block2_ = 4;
-    const int m_block2_ = cpu_isa_traits<isa>::vlen / sizeof(int32_t);
+    const int m_block2_ = cpu_isa_traits<sve_512>::vlen / sizeof(int32_t);
     const int n_max_regs_ = 4;
 
     const Xbyak_aarch64::ZReg &vmm_tmp_1() const noexcept { return vmm_tmp; }

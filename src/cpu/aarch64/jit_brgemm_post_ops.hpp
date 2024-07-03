@@ -1,7 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -197,25 +196,7 @@ private:
     }
 
     void generate() override {
-        size_t simd_w_ = 0;
-        switch (brg_.isa_impl) {
-            case sve_512:
-                simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-                break;
-            case sve_256:
-                simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-                break;
-            default: {
-                assert(!"unsupported isa");
-                return;
-            }
-        }
         preamble();
-        if (simd_w_ != cpu_sveLen / sizeof(float)) {
-            set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
-            set_preg(k_full_mask.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
-        } else
-            ptrue(k_full_mask.b);
 
         int nb = utils::div_up(brg_.load_dim, brg_.ld_block);
         int nb_tail = brg_.load_dim % brg_.ld_block;
@@ -227,6 +208,7 @@ private:
             n_loop_tail = n_max_regs_;
         }
 
+        ptrue(k_full_mask.b);
         set_preg(k_tail_mask.s, nb_tail, X_TMP_0, X_TMP_1);
         pfalse(P_TMP_0.b);
         zip1(k_tail_mask.b, k_tail_mask.b, P_TMP_0.b);
@@ -281,7 +263,6 @@ struct brgemm_kernel_post_ops_t {
     void *ptr_dst_scales;
 };
 
-template <cpu_isa_t isa>
 struct jit_brgemm_kernel_post_ops : public jit_generator {
 
     jit_brgemm_kernel_post_ops(const jit_brgemm_conv_conf_t &ajcp,
@@ -318,7 +299,7 @@ struct jit_brgemm_kernel_post_ops : public jit_generator {
                     save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<isa>>(
+                    injector::jit_uni_postops_injector_t<sve_512>>(
                     this, attr.post_ops_, bsp, esp);
         }
 
@@ -351,7 +332,7 @@ private:
     data_type_t inp_dt_;
     data_type_t out_dt_;
     data_type_t bia_dt_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<sve_512>>
             postops_injector_;
 
     const bool with_binary_non_scalar_bcast_;
@@ -854,25 +835,7 @@ private:
     }
 
     void generate() override {
-        size_t simd_w_ = 0;
-        switch (brg.isa_impl) {
-            case sve_512:
-                simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-                break;
-            case sve_256:
-                simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-                break;
-            default: {
-                assert(!"unsupported isa");
-                return;
-            }
-        }
         preamble();
-        if (simd_w_ != cpu_sveLen / sizeof(float)) {
-            set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
-            set_preg(k_full_mask.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
-        } else
-            ptrue(k_full_mask.b);
 
         mov(x7, x0);
         mov(x6, x1);
@@ -895,6 +858,7 @@ private:
         int mb = brg.bcast_dim / m_block;
         int mb_tail = brg.bcast_dim % m_block;
 
+        ptrue(k_full_mask.b);
         set_preg(k_tail_mask.s, nb_tail, X_TMP_0, X_TMP_1);
 
         if (brg.alpha != 0) {

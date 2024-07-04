@@ -28,22 +28,112 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct reduction_helper_t {
-    reduction_helper_t(const convolution_pd_t *pd_) : pd_(pd_) {}
-    status_t reshape_activations(
-            memory_desc_t *o_md, const memory_desc_t *i_md, bool is_dst);
+struct ncsp_matmul_reduction_helper_t {
+    ncsp_matmul_reduction_helper_t(const convolution_pd_t *pd_) : pd_(pd_) {}
+    status_t reshape_activations(memory_desc_t *o_md, const memory_desc_t *i_md,
+            bool to_matmul, bool is_dst) {
+        dims_t reduce {};
+        const dim_t ndims_out = to_matmul ? 1 + pd_->with_groups() + 2
+                                          : pd_->with_groups() + pd_->ndims();
+        // convert between activations for convolution and matmul
+        // batch dimension is the same for convolution and matmul
+        // channel dimension of convolution is split into group and channels
+        // spatial dimensions of convolution are combined into one
+        // eg. {n, c, d, h, w} <-> {n, g, c/g, sp}
+        if (to_matmul) {
+            // conv to matmul: add batch, remove spatial
+            int d = 0;
+            reduce[d++] = pd_->MB(); // n
+            if (pd_->with_groups()) reduce[d++] = pd_->G(); // g
+            reduce[d++] = i_md->dims[1] / pd_->G(); // c/g
+            reduce[d++] = pd_->ID() * pd_->IH() * pd_->IW(); // sp
+        } else {
+            // matmul to conv: restore original dimensions
+            const memory_desc_t *a_md = is_dst ? pd_->invariant_dst_md()
+                                               : pd_->invariant_src_md();
+            for (int d = 0; d < pd_->ndims(); ++d)
+                reduce[d] = a_md->dims[d]; // n, c, d, h, w
+        }
+        return memory_desc_reshape(*o_md, *i_md, ndims_out, reduce);
+    }
 
-    status_t reshape_bias(memory_desc_t *o_md, const memory_desc_t *i_md);
+    status_t reshape_bias(memory_desc_t *o_md, const memory_desc_t *i_md) {
+        dims_t reduce {};
+        const dim_t ndims_out = 1 + pd_->with_groups() + 2;
+        // reshape bias from convolution to matmul
+        // for matmul, batch and spatial dimensions are always 1
+        // eg. {o} <-> {1, g, o/g, 1}
+        int d = 0;
+        reduce[d++] = 1; // b
+        if (pd_->with_groups()) reduce[d++] = pd_->G(); // g
+        reduce[d++] = i_md->dims[0] / pd_->G(); // o/g
+        reduce[d++] = 1; // sp
+        return memory_desc_reshape(*o_md, *i_md, ndims_out, reduce);
+    }
+
     status_t reshape_weights(
-            memory_desc_t *o_md, const memory_desc_t *i_md, bool to_matmul);
-    status_t reshape_for_transpose(memory_desc_t &o_md, memory_desc_t &i_md);
+            memory_desc_t *o_md, const memory_desc_t *i_md, bool to_matmul) {
+        dims_t reduce {};
+        // 1 (batch) + groups + 2 (c/g and sp) for matmul
+        // groups + convolution dims for convolution
+        const dim_t ndims_out = to_matmul ? 1 + pd_->with_groups() + 2
+                                          : pd_->with_groups() + pd_->ndims();
+        const dim_t ndims_ch = 2 + pd_->with_groups();
+        // this will never be the case for convolution reduction to matmul but
+        // adding in for compiler errors.
+        if (ndims_out > DNNL_MAX_NDIMS) return status::invalid_arguments;
+        // convert between weights for convolution and matmul
+        // for matmul, batch dimension b is always 1
+        // eg. {g, o, i, d, h, w} <-> {b, g, o, i}
+        if (to_matmul) {
+            // conv to matmul: add batch, remove spatial
+            reduce[0] = 1; // b
+            for (int d = 0; d < ndims_ch; ++d)
+                reduce[d + 1] = i_md->dims[d]; // g, oc, ic
+        } else {
+            // matmul to conv: remove batch, restore spatial
+            for (int d = 0; d < ndims_ch; ++d)
+                reduce[d] = i_md->dims[d + 1]; // g, o, i
+            for (int d = ndims_ch; d < ndims_out; ++d)
+                reduce[d] = 1; // d, h, w
+        }
+        return memory_desc_reshape(*o_md, *i_md, ndims_out, reduce);
+    }
+
+    status_t transpose(
+            memory_desc_t &transposed_md, memory_desc_t &to_be_tranposed_md) {
+        const int ndims = to_be_tranposed_md.ndims;
+        int *perm = new int[ndims];
+        for (int dim = 0; dim < ndims; dim++) {
+            if (dim == ndims - 2)
+                perm[dim] = dim + 1;
+            else if (dim == ndims - 1)
+                perm[dim] = dim - 1;
+            else
+                perm[dim] = dim;
+        }
+        return memory_desc_permute_axes(
+                transposed_md, to_be_tranposed_md, perm);
+    }
+
     // If convolution is 1x1, no padding, and single strides then dispatch
     // to matmul kernel. This is done because matmul supports transposed
     // layout and is more efficient than 1x1 convolutions due to not having
     // to dispatch an additional reorder kernel for src and dst. Adding
     // transposed support inside convolution brgemm kernels is preferable but it
     // will take time to implement.
-    bool is_gemm();
+    bool is_gemm() {
+        // 1x1
+        return utils::everyone_is(1, pd_->KD(), pd_->KH(), pd_->KW())
+                // no pre-padding
+                && utils::everyone_is(
+                        0, pd_->padFront(), pd_->padT(), pd_->padL())
+                // no post-padding
+                && utils::everyone_is(
+                        0, pd_->padBack(), pd_->padB(), pd_->padR())
+                // unit strides
+                && utils::everyone_is(1, pd_->KSD(), pd_->KSH(), pd_->KSW());
+    }
 
 private:
     const convolution_pd_t *pd_;
@@ -65,6 +155,8 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(name_.c_str(), jit_uni_ncsp_convolution_fwd_t);
 
         status_t init(engine_t *engine);
+        status_t init_convolution(engine_t *engine);
+        status_t init_matmul(engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> matmul_pd_;
         std::shared_ptr<primitive_desc_t> nspc_conv_pd_;
@@ -78,18 +170,27 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
         memory_desc_t nspc_src_md_;
         memory_desc_t nspc_dst_md_;
 
+
     private:
-        status_t init_convolution(engine_t *engine);
-        status_t init_matmul(engine_t *engine);
         const bool with_sum_;
-        reduction_helper_t reduce;
+        ncsp_matmul_reduction_helper_t reduce;
+        std::string name_ = "ncsp:tbd";
         bool is_matmul_;
-        std::string name_ = "jit_uni_ncsp_convolution:";
         void init_name() {
             std::string suffix = is_matmul_ ? "matmul" : "conv";
-            name_ += suffix + "+";
+            name_ = "jit_uni_ncsp_convolution:" + suffix + "+";
             name_.append(
                     is_matmul_ ? matmul_pd_->name() : nspc_conv_pd_->name());
+            if (!is_matmul_) {
+                name_.append("+src_reorder->");
+                name_.append(src_reorder_pd_->name());
+                if (with_sum_) {
+                    name_.append("+dst_pre_reorder->");
+                    name_.append(dst_pre_reorder_pd_->name());
+                }
+                name_.append("+dst_post_reorder->");
+                name_.append(dst_post_reorder_pd_->name());
+            }
         }
         void init_scratchpad();
     };
@@ -100,10 +201,10 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
-
-private:
     status_t execute_convolution(const exec_ctx_t &ctx) const;
     status_t execute_matmul(const exec_ctx_t &ctx) const;
+
+private:
     status_t reorder_activations(const exec_ctx_t &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const;
@@ -130,6 +231,7 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
                 name_.c_str(), jit_uni_ncsp_convolution_bwd_weights_t);
 
         status_t init(engine_t *engine);
+        status_t init_convolution(engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> nspc_conv_pd_;
         std::shared_ptr<primitive_desc_t> src_reorder_pd_;
@@ -138,13 +240,16 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
         memory_desc_t nspc_diff_dst_md_;
 
     private:
-        status_t init_convolution(engine_t *engine);
-        reduction_helper_t reduce;
+        ncsp_matmul_reduction_helper_t reduce;
         std::string name_;
         void init_scratchpad();
         void init_name() {
-            name_ = "jit_uni_ncsp_convolution:conv+";
+            name_ = "jit_uni_ncsp_convolution:conv->";
             name_.append(nspc_conv_pd_->name());
+            name_.append("+src_reorder->");
+            name_.append(src_reorder_pd_->name());
+            name_.append("+dst_reorder->");
+            name_.append(dst_reorder_pd_->name());
         }
     };
     jit_uni_ncsp_convolution_bwd_weights_t(const pd_t *cpd)
@@ -153,9 +258,9 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute_convolution(const exec_ctx_t &ctx) const;
 
 private:
-    status_t execute_convolution(const exec_ctx_t &ctx) const;
     status_t reorder_activations(const exec_ctx_t &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const;
@@ -180,6 +285,8 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
         DECLARE_COMMON_PD_T(name_.c_str(), jit_uni_ncsp_convolution_bwd_data_t);
 
         status_t init(engine_t *engine);
+        status_t init_convolution(engine_t *engine);
+        status_t init_matmul(engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> matmul_diff_src_pd_;
         std::shared_ptr<primitive_desc_t> nspc_conv_pd_;
@@ -192,17 +299,21 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
         memory_desc_t matmul_dst_md_;
 
     private:
-        status_t init_convolution(engine_t *engine);
-        status_t init_matmul(engine_t *engine);
-        reduction_helper_t reduce;
+        ncsp_matmul_reduction_helper_t reduce;
         bool is_matmul_ = false;
         std::string name_;
         void init_scratchpad();
         void init_name() {
             std::string suffix = is_matmul_ ? "matmul" : "conv";
-            name_ = "jit_uni_ncsp_convolution:" + suffix + "+";
+            name_ = "jit_uni_ncsp_convolution:" + suffix + "->";
             name_.append(is_matmul_ ? matmul_diff_src_pd_->name()
                                     : nspc_conv_pd_->name());
+            if (!is_matmul_) {
+                name_.append("+src_reorder->");
+                name_.append(src_reorder_pd_->name());
+                name_.append("+dst_reorder->");
+                name_.append(dst_reorder_pd_->name());
+            }
         }
     };
     jit_uni_ncsp_convolution_bwd_data_t(const pd_t *cpd) : primitive_t(cpd) {};
@@ -210,10 +321,10 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
-
-private:
     status_t execute_convolution(const exec_ctx_t &ctx) const;
     status_t execute_matmul(const exec_ctx_t &ctx) const;
+
+private:
     status_t reorder_activations(const exec_ctx_t &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const;

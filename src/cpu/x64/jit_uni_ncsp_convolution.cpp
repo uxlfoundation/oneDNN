@@ -15,17 +15,28 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
-#include "common/impl_list_item.hpp"
-#include "common/matmul_pd.hpp"
+#include "common/compiler_workarounds.hpp"
+#include "common/dnnl_thread.hpp"
+#include "common/nstl.hpp"
+#include "common/primitive_desc_iface.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "common/reorder.hpp"
 #include "common/stream.hpp"
-#include "common/tag_traits.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "common/verbose.hpp"
 
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/jit_uni_ncsp_convolution.hpp"
+
+#define VCHECK_CONV(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, convolution, (cond), \
+            status::unimplemented, "%s," msg, this->info(engine), \
+            ##__VA_ARGS__)
+
+#define VINFO_CONV(msg, ...) \
+    VINFO(primitive, create, check, convolution, "%s," msg, \
+            this->info(engine), ##__VA_ARGS__)
 
 namespace dnnl {
 namespace impl {
@@ -34,122 +45,46 @@ namespace x64 {
 
 using namespace dnnl::impl::utils;
 
-status_t reduction_helper_t::reshape_activations(
-        memory_desc_t *o_md, const memory_desc_t *i_md, bool is_dst) {
-    dims_t reduce {};
-    // convert between activations for convolution and matmul
-    // batch dimension is the same for convolution and matmul
-    // channel dimension of convolution is split into group and channels
-    // spatial dimensions of convolution are combined into one
-    // eg. {n, c, d, h, w} <-> {n, g, c/g, sp}
-    // conv to matmul: add batch, remove spatial
-    // ndims_out: 1 (batch) + with_groups() + 2 (c/g and sp)
-    int ndims_out = 0;
-    reduce[ndims_out++] = pd_->MB(); // n
-    if (pd_->with_groups()) reduce[ndims_out++] = pd_->G(); // g
-    reduce[ndims_out++] = i_md->dims[1] / pd_->G(); // c/g
-    reduce[ndims_out++] = pd_->ID() * pd_->IH() * pd_->IW(); // sp
-
-    return memory_desc_reshape(*o_md, *i_md, ndims_out, reduce);
-}
-
-status_t reduction_helper_t::reshape_bias(
-        memory_desc_t *o_md, const memory_desc_t *i_md) {
-    dims_t reduce {};
-    // reshape bias from convolution to matmul
-    // for matmul, batch and spatial dimensions are always 1
-    // eg. {o} <-> {1, g, o/g, 1}
-    // ndims_out: 1 (batch) + groups + 2 (c/g and sp) for matmul
-    int ndims_out = 0;
-    reduce[ndims_out++] = 1; // b
-    if (pd_->with_groups()) reduce[ndims_out++] = pd_->G(); // g
-    reduce[ndims_out++] = i_md->dims[0] / pd_->G(); // o/g
-    reduce[ndims_out++] = 1; // sp
-    return memory_desc_reshape(*o_md, *i_md, ndims_out, reduce);
-}
-
-status_t reduction_helper_t::reshape_weights(
-        memory_desc_t *o_md, const memory_desc_t *i_md, bool to_matmul) {
-    dims_t reduce {};
-    // 1 (batch) + groups + 2 (c/g and sp) for matmul
-    // groups + convolution dims for convolution
-    const dim_t ndims_out = to_matmul ? 1 + pd_->with_groups() + 2
-                                      : pd_->with_groups() + pd_->ndims();
-    const dim_t ndims_ch = 2 + pd_->with_groups();
-    // this will never be the case for convolution reduction to matmul but
-    // adding in for compiler errors.
-    if (ndims_out > DNNL_MAX_NDIMS) return status::invalid_arguments;
-    // convert between weights for convolution and matmul
-    // for matmul, batch dimension b is always 1
-    // eg. {g, o, i, d, h, w} <-> {b, g, o, i}
-    if (to_matmul) {
-        // conv to matmul: add batch, remove spatial
-        reduce[0] = 1; // b
-        for (int d = 0; d < ndims_ch; ++d)
-            reduce[d + 1] = i_md->dims[d]; // g, oc, ic
-    } else {
-        // matmul to conv: remove batch, restore spatial
-        for (int d = 0; d < ndims_ch; ++d)
-            reduce[d] = i_md->dims[d + 1]; // g, o, i
-        for (int d = ndims_ch; d < ndims_out; ++d)
-            reduce[d] = 1; // d, h, w
+namespace {
+format_tag_t get_ncsp_tag(int ndims) {
+    using namespace format_tag;
+    switch (ndims) {
+        case 3: return ncw;
+        case 4: return nchw;
+        case 5: return ncdhw;
+        default: assert("invalid ndims"); return undef;
     }
-    return memory_desc_reshape(*o_md, *i_md, ndims_out, reduce);
 }
-
-status_t reduction_helper_t::reshape_for_transpose(
-        memory_desc_t &o_md, memory_desc_t &i_md) {
-    const int ndims = i_md.ndims;
-    int *perm = new int[ndims];
-    for (int dim = 0; dim < ndims; dim++) {
-        if (dim == ndims - 2)
-            perm[dim] = dim + 1;
-        else if (dim == ndims - 1)
-            perm[dim] = dim - 1;
-        else
-            perm[dim] = dim;
+format_tag_t get_nspc_tag(int ndims) {
+    using namespace format_tag;
+    switch (ndims) {
+        case 3: return nwc;
+        case 4: return nhwc;
+        case 5: return ndhwc;
+        default: assert("invalid ndims"); return undef;
     }
-    return memory_desc_permute_axes(o_md, i_md, perm);
 }
-
-bool reduction_helper_t::is_gemm() {
-    // 1x1
-    return utils::everyone_is(1, pd_->KD(), pd_->KH(), pd_->KW())
-            // unit groups
-            && 1 == pd_->G()
-            // no pre-padding
-            && utils::everyone_is(0, pd_->padFront(), pd_->padT(), pd_->padL())
-            // no post-padding
-            && utils::everyone_is(0, pd_->padBack(), pd_->padB(), pd_->padR())
-            // unit strides
-            && utils::everyone_is(1, pd_->KSD(), pd_->KSH(), pd_->KSW());
-}
+} // namespace
 
 status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_convolution(
         engine_t *engine) {
-    format_tag_t nspc_tag = get_axb_tag(ndims());
+    // create a convolution descriptor with activations in nspc format
+    convolution_desc_t nspc_conv_d = convolution_desc_t();
+    format_tag_t nspc_tag = get_nspc_tag(ndims());
     nspc_src_md_ = *src_md();
     nspc_dst_md_ = *dst_md();
     CHECK(memory_desc_init_by_tag(nspc_src_md_, nspc_tag));
     CHECK(memory_desc_init_by_tag(nspc_dst_md_, nspc_tag));
 
-    CHECK(attr_.set_default_formats(&nspc_dst_md_));
-
-    // create a convolution descriptor with activations in nspc format
-    convolution_desc_t nspc_conv_d = convolution_desc_t();
     const convolution_desc_t *ncsp_conv_d = desc();
     CHECK(conv_desc_init(&nspc_conv_d, ncsp_conv_d->prop_kind,
             ncsp_conv_d->alg_kind, &nspc_src_md_, &ncsp_conv_d->weights_desc,
             &ncsp_conv_d->bias_desc, &nspc_dst_md_, ncsp_conv_d->strides,
             ncsp_conv_d->dilates, ncsp_conv_d->padding[0],
             ncsp_conv_d->padding[1]));
-    int skip_this_idx
-            = impl_list_item_t::find<jit_uni_ncsp_convolution_fwd_t::pd_t>(
-                    engine->get_implementation_list(
-                            reinterpret_cast<const op_desc_t *>(&nspc_conv_d)));
+
     primitive_desc_iterator_t it(engine,
-            reinterpret_cast<const op_desc_t *>(&nspc_conv_d), attr(), nullptr,
-            skip_this_idx);
+            reinterpret_cast<const op_desc_t *>(&nspc_conv_d), attr(), nullptr);
     if (!it.is_initialized()) return status::out_of_memory;
 
     if (++it == it.end()) return status::unimplemented;
@@ -171,7 +106,9 @@ status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_convolution(
 }
 
 status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_matmul(engine_t *engine) {
-    CHECK(reduce.reshape_activations(&matmul_dst_md_, dst_md(0), true));
+    const bool to_matmul = true;
+    CHECK(reduce.reshape_activations(
+            &matmul_dst_md_, dst_md(0), to_matmul, true));
 
     // initialize convolution bias as 1d plain tensor
     if (bias_md_.format_kind == format_kind::any)
@@ -181,24 +118,22 @@ status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_matmul(engine_t *engine) {
     // - conv src becomes matmul weights (ie matrix B)
     // - conv weights becomes matmul src (ie matrix A)
     // This allows to keep conv src and conv dst in ncsp layout.
-    CHECK(reduce.reshape_activations(&matmul_wei_md_, src_md(0), false));
-    CHECK(reduce.reshape_weights(&matmul_src_md_, weights_md(0), true));
+    CHECK(reduce.reshape_activations(
+            &matmul_wei_md_, src_md(0), to_matmul, false));
+    CHECK(reduce.reshape_weights(&matmul_src_md_, weights_md(0), to_matmul));
     if (with_bias()) CHECK(reduce.reshape_bias(&matmul_bia_md_, weights_md(1)));
-    //primitive_desc_iface_t *matmul_pdi;
+    primitive_desc_iface_t *matmul_pdi;
     primitive_attr_t _attr;
     post_ops_t _po;
     if (with_bias()) {
         CHECK(_po.append_binary(alg_kind::binary_add, &matmul_bia_md_));
         CHECK(_attr.set_post_ops(_po));
     }
-    matmul_desc_t matmul_d = matmul_desc_t();
-    CHECK(matmul_desc_init(&matmul_d, &matmul_src_md_, &matmul_wei_md_, nullptr,
-            &matmul_dst_md_));
-    primitive_desc_iterator_t it(
-            engine, (op_desc_t *)&matmul_d, &_attr, nullptr);
-    if (!it.is_initialized()) return status::out_of_memory;
-    if (++it == it.end()) return status::unimplemented;
-    matmul_pd_ = *it;
+    CHECK(dnnl_matmul_primitive_desc_create(&matmul_pdi, engine,
+            &matmul_src_md_, &matmul_wei_md_, nullptr, &matmul_dst_md_,
+            &_attr));
+    matmul_pd_ = matmul_pdi->impl();
+
     if (weights_md_.format_kind == format_kind::any)
         CHECK(reduce.reshape_weights(
                 &weights_md_, matmul_pd_->src_md(), false /*to_matmul*/));
@@ -210,23 +145,20 @@ status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init(engine_t *engine) {
     using namespace data_type;
     using namespace utils;
 
-    VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    // TODO: enable attributes (could be tricky for binary-like postops)
+    VCHECK_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
-    VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
+    VCHECK_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+
+    VCHECK_CONV(set_default_alg_kind(alg_kind::convolution_direct),
             VERBOSE_BAD_ALGORITHM);
 
-    VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
+    VCHECK_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
 
-    VDISPATCH_CONV(memory_desc_matches_tag(*src_md(), get_abx_tag(ndims())),
+    VCHECK_CONV(memory_desc_matches_tag(*src_md(), get_ncsp_tag(ndims())),
             VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_CONV(memory_desc_matches_tag(*dst_md(), get_abx_tag(ndims())),
+    VCHECK_CONV(memory_desc_matches_tag(*dst_md(), get_ncsp_tag(ndims())),
             VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_CONV(everyone_is(f32, src_md()->data_type, dst_md()->data_type,
-                           weights_md(0)->data_type),
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_CONV(IMPLICATION(with_bias(), weights_md(1)->data_type == f32),
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_CONV(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
 
     if (is_matmul_)
         CHECK(init_matmul(engine));
@@ -306,28 +238,28 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
 
     // initialize nspc src memory
     auto nspc_src_mem = scratchpad.get_memory_storage(key_conv_ncsp_src);
-    memory_t *nspc_src = new memory_t(
-            engine, &(pd()->nspc_src_md_), std::move(nspc_src_mem));
+    memory_t nspc_src(engine, &(pd()->nspc_src_md_), std::move(nspc_src_mem));
 
     // initialize nspc dst memory
     auto nspc_dst_mem = scratchpad.get_memory_storage(key_conv_ncsp_dst);
-    memory_t *nspc_dst = new memory_t(
-            engine, &(pd()->nspc_dst_md_), std::move(nspc_dst_mem));
+    memory_t nspc_dst(engine, &(pd()->nspc_dst_md_), std::move(nspc_dst_mem));
 
     // reorder src from ncsp to nspc
     CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_SRC), {nspc_src, false}));
+            ctx.args().at(DNNL_ARG_SRC), {&nspc_src, false}));
 
     // maybe reorder dst from ncsp to nspc
     if (pd()->dst_pre_reorder_pd_)
         CHECK(reorder_activations(ctx, dst_pre_reorder_p_, engine,
-                ctx.args().at(DNNL_ARG_DST), {nspc_dst, false}));
+                ctx.args().at(DNNL_ARG_DST), {&nspc_dst, false}));
 
     // execute nspc convolution
     const auto &args = ctx.args();
-    exec_args_t conv_args = args; // copy args to include postops mem.
-    conv_args[DNNL_ARG_DST] = {nspc_dst, false};
-    conv_args[DNNL_ARG_SRC] = {nspc_src, true};
+    exec_args_t conv_args;
+    conv_args[DNNL_ARG_DST] = {&nspc_dst, false};
+    conv_args[DNNL_ARG_SRC] = {&nspc_src, true};
+    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
+    if (pd()->with_bias()) conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS);
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
 
@@ -338,7 +270,7 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
 
     // reorder dst from nspc to ncsp
     CHECK(reorder_activations(ctx, dst_post_reorder_p_, engine,
-            {nspc_dst, false}, ctx.args().at(DNNL_ARG_DST)));
+            {&nspc_dst, false}, ctx.args().at(DNNL_ARG_DST)));
 
     return status::success;
 }
@@ -356,13 +288,13 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_matmul(
     void *conv_dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
     // init matmul src, weights, dst mems from conv weights, src, dst handles
-    memory_t *matmul_src = new memory_t(engine, &(pd()->matmul_src_md_),
+    memory_t matmul_src(engine, &(pd()->matmul_src_md_),
             memory_flags_t::use_runtime_ptr, conv_wei);
-    memory_t *matmul_wei = new memory_t(engine, &(pd()->matmul_wei_md_),
+    memory_t matmul_wei(engine, &(pd()->matmul_wei_md_),
             memory_flags_t::use_runtime_ptr, conv_src);
-    memory_t *matmul_bia = new memory_t(engine, &(pd()->matmul_bia_md_),
+    memory_t matmul_bia(engine, &(pd()->matmul_bia_md_),
             memory_flags_t::use_runtime_ptr, conv_bia);
-    memory_t *matmul_dst = new memory_t(engine, &(pd()->matmul_dst_md_),
+    memory_t matmul_dst(engine, &(pd()->matmul_dst_md_),
             memory_flags_t::use_runtime_ptr, conv_dst);
 
     // execute matmul
@@ -390,23 +322,19 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 }
 
 status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
-    VDISPATCH_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
-    VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
+    VCHECK_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VCHECK_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VCHECK_CONV(set_default_alg_kind(alg_kind::convolution_direct),
             VERBOSE_BAD_ALGORITHM);
-    VDISPATCH_CONV(is_bwd_w(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_CONV(memory_desc_matches_tag(*src_md(), get_abx_tag(ndims())),
+    VCHECK_CONV(is_bwd_w(), VERBOSE_BAD_PROPKIND);
+    VCHECK_CONV(memory_desc_matches_tag(*src_md(), get_ncsp_tag(ndims())),
             VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_CONV(
-            memory_desc_matches_tag(*diff_dst_md(), get_abx_tag(ndims())),
+    VCHECK_CONV(memory_desc_matches_tag(*diff_dst_md(), get_ncsp_tag(ndims())),
             VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_CONV(
-            everyone_is(data_type::f32, src_md()->data_type,
-                    diff_dst_md()->data_type, diff_weights_md(0)->data_type,
-                    with_bias() ? diff_weights_md(1)->data_type
-                                : data_type::f32),
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_CONV(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
+
+    if (one_of(data_type::bf16, diff_dst_md_.data_type, src_md_.data_type)
+            && !mayiuse(avx512_core_bf16))
+        return status::unimplemented;
 
     CHECK(init_convolution(engine));
     init_name();
@@ -417,28 +345,19 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
 
 status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init_convolution(
         engine_t *engine) {
-    format_tag_t nspc_tag = get_axb_tag(ndims());
+    format_tag_t nspc_tag = get_nspc_tag(ndims());
     nspc_src_md_ = *src_md();
     nspc_diff_dst_md_ = *diff_dst_md();
     CHECK(memory_desc_init_by_tag(nspc_src_md_, nspc_tag));
     CHECK(memory_desc_init_by_tag(nspc_diff_dst_md_, nspc_tag));
-    convolution_desc_t nspc_conv_d = convolution_desc_t();
     const convolution_desc_t *ncsp_conv_d = desc();
-    CHECK(conv_desc_init(&nspc_conv_d, ncsp_conv_d->prop_kind,
-            ncsp_conv_d->alg_kind, &nspc_src_md_,
-            &ncsp_conv_d->diff_weights_desc, &ncsp_conv_d->diff_bias_desc,
-            &nspc_diff_dst_md_, ncsp_conv_d->strides, ncsp_conv_d->dilates,
-            ncsp_conv_d->padding[0], ncsp_conv_d->padding[1]));
-    int skip_this_idx = impl_list_item_t::find<
-            jit_uni_ncsp_convolution_bwd_weights_t::pd_t>(
-            engine->get_implementation_list(
-                    reinterpret_cast<const op_desc_t *>(&nspc_conv_d)));
-    primitive_desc_iterator_t it(engine,
-            reinterpret_cast<const op_desc_t *>(&nspc_conv_d), attr(), nullptr,
-            skip_this_idx);
-    if (!it.is_initialized()) return status::out_of_memory;
-    if (++it == it.end()) return status::unimplemented;
-    nspc_conv_pd_ = *it;
+    primitive_desc_iface_t *conv_pdi;
+    CHECK(dnnl_convolution_backward_weights_primitive_desc_create(&conv_pdi,
+            engine, ncsp_conv_d->alg_kind, &nspc_src_md_, diff_weights_md(0),
+            diff_weights_md(1), &nspc_diff_dst_md_, ncsp_conv_d->strides,
+            ncsp_conv_d->dilates, ncsp_conv_d->padding[0],
+            ncsp_conv_d->padding[1], nullptr, attr()));
+    nspc_conv_pd_ = conv_pdi->impl();
     diff_weights_md_ = *nspc_conv_pd_->diff_weights_md(0);
     diff_bias_md_ = *nspc_conv_pd_->diff_weights_md(1);
     CHECK(reorder_primitive_desc_create(
@@ -501,24 +420,23 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute_convolution(
 
     // initialize nspc src memory
     auto nspc_src_mem = scratchpad.get_memory_storage(key_conv_ncsp_src);
-    memory_t *nspc_src = new memory_t(
-            engine, &(pd()->nspc_src_md_), std::move(nspc_src_mem));
+    memory_t nspc_src(engine, &(pd()->nspc_src_md_), std::move(nspc_src_mem));
 
     // initialize nspc dst memory
     auto nspc_diff_dst_mem
             = scratchpad.get_memory_storage(key_conv_ncsp_diff_dst);
-    memory_t *nspc_diff_dst_m_ = new memory_t(
+    memory_t nspc_diff_dst_m_(
             engine, &(pd()->nspc_diff_dst_md_), std::move(nspc_diff_dst_mem));
 
     CHECK(reorder_activations(ctx, dst_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst_m_, false}));
+            ctx.args().at(DNNL_ARG_DIFF_DST), {&nspc_diff_dst_m_, false}));
     CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_SRC), {nspc_src, false}));
+            ctx.args().at(DNNL_ARG_SRC), {&nspc_src, false}));
 
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DIFF_DST] = {nspc_diff_dst_m_, true};
-    conv_args[DNNL_ARG_SRC] = {nspc_src, true};
+    conv_args[DNNL_ARG_DIFF_DST] = {&nspc_diff_dst_m_, true};
+    conv_args[DNNL_ARG_SRC] = {&nspc_src, true};
     conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
     if (pd()->with_bias())
         conv_args[DNNL_ARG_DIFF_BIAS] = args.at(DNNL_ARG_DIFF_BIAS);
@@ -540,21 +458,15 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute(
 }
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
-    VDISPATCH_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
-    VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
+    VCHECK_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VCHECK_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VCHECK_CONV(set_default_alg_kind(alg_kind::convolution_direct),
             VERBOSE_BAD_ALGORITHM);
-    VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_CONV(
-            memory_desc_matches_tag(*diff_src_md(), get_abx_tag(ndims())),
+    VCHECK_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
+    VCHECK_CONV(memory_desc_matches_tag(*diff_src_md(), get_ncsp_tag(ndims())),
             VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_CONV(
-            memory_desc_matches_tag(*diff_dst_md(), get_abx_tag(ndims())),
+    VCHECK_CONV(memory_desc_matches_tag(*diff_dst_md(), get_ncsp_tag(ndims())),
             VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_CONV(everyone_is(data_type::f32, diff_src_md()->data_type,
-                           diff_dst_md()->data_type, weights_md(0)->data_type),
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_CONV(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
 
     if (one_of(data_type::bf16, diff_dst_md_.data_type, weights_md_.data_type)
             && !mayiuse(avx512_core_bf16))
@@ -572,31 +484,19 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init_convolution(
         engine_t *engine) {
-    format_tag_t nspc_tag = get_axb_tag(ndims());
+    format_tag_t nspc_tag = get_nspc_tag(ndims());
     nspc_diff_src_md_ = *diff_src_md();
     nspc_diff_dst_md_ = *diff_dst_md();
     CHECK(memory_desc_init_by_tag(nspc_diff_src_md_, nspc_tag));
     CHECK(memory_desc_init_by_tag(nspc_diff_dst_md_, nspc_tag));
-    convolution_desc_t nspc_conv_d = convolution_desc_t();
     const convolution_desc_t *ncsp_conv_d = desc();
-    CHECK(conv_desc_init(&nspc_conv_d, ncsp_conv_d->prop_kind,
-            ncsp_conv_d->alg_kind, &nspc_diff_src_md_,
-            &ncsp_conv_d->weights_desc, &ncsp_conv_d->bias_desc,
+    primitive_desc_iface_t *conv_pdi;
+
+    CHECK(dnnl_convolution_backward_data_primitive_desc_create(&conv_pdi,
+            engine, ncsp_conv_d->alg_kind, &nspc_diff_src_md_, weights_md(0),
             &nspc_diff_dst_md_, ncsp_conv_d->strides, ncsp_conv_d->dilates,
-            ncsp_conv_d->padding[0], ncsp_conv_d->padding[1]));
-    int skip_this_idx
-            = impl_list_item_t::find<jit_uni_ncsp_convolution_bwd_data_t::pd_t>(
-                    engine->get_implementation_list(
-                            reinterpret_cast<const op_desc_t *>(&nspc_conv_d)));
-    primitive_desc_iterator_t it(engine,
-            reinterpret_cast<const op_desc_t *>(&nspc_conv_d), attr(), nullptr,
-            skip_this_idx);
-    if (!it.is_initialized()) return status::out_of_memory;
-
-    if (++it == it.end()) return status::unimplemented;
-
-    nspc_conv_pd_ = *it;
-
+            ncsp_conv_d->padding[0], ncsp_conv_d->padding[1], nullptr, attr()));
+    nspc_conv_pd_ = conv_pdi->impl();
     CHECK(reorder_primitive_desc_create(
             src_reorder_pd_, engine, &nspc_diff_src_md_, diff_src_md()));
     CHECK(reorder_primitive_desc_create(
@@ -607,25 +507,23 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init_convolution(
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init_matmul(
         engine_t *engine) {
-    CHECK(reduce.reshape_activations(&matmul_wei_md_, diff_dst_md(0), true));
+    CHECK(reduce.reshape_activations(
+            &matmul_wei_md_, diff_dst_md(0), true, true));
     // initialize diff weights to plain format.
     CHECK(memory_desc_init_by_strides(weights_md_, weights_md_.ndims,
             weights_md_.dims, weights_md_.data_type, nullptr));
     // reshape weights to matmul format
     memory_desc_t weights_reshaped_md_;
     CHECK(reduce.reshape_weights(&weights_reshaped_md_, &weights_md_, true));
-    CHECK(reduce.reshape_for_transpose(matmul_src_md_, weights_reshaped_md_));
-    CHECK(reduce.reshape_activations(&matmul_dst_md_, diff_src_md(), false));
+    CHECK(reduce.transpose(matmul_src_md_, weights_reshaped_md_));
+    CHECK(reduce.reshape_activations(
+            &matmul_dst_md_, diff_src_md(), true, false));
     primitive_attr_t _attr;
-    matmul_desc_t matmul_d = matmul_desc_t();
-    CHECK(matmul_desc_init(&matmul_d, &matmul_src_md_, &matmul_wei_md_, nullptr,
-            &matmul_dst_md_));
-    primitive_desc_iterator_t it(
-            engine, (op_desc_t *)&matmul_d, &_attr, nullptr);
-    if (!it.is_initialized()) return status::out_of_memory;
-    if (++it == it.end()) return status::unimplemented;
-    matmul_diff_src_pd_ = *it;
-
+    primitive_desc_iface_t *matmul_pdi;
+    CHECK(dnnl_matmul_primitive_desc_create(&matmul_pdi, engine,
+            &matmul_src_md_, &matmul_wei_md_, nullptr, &matmul_dst_md_,
+            &_attr));
+    matmul_diff_src_pd_ = matmul_pdi->impl();
     return status::success;
 }
 
@@ -691,22 +589,22 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
     // initialize nspc src memory
     auto nspc_diff_src_mem
             = scratchpad.get_memory_storage(key_conv_ncsp_diff_src);
-    memory_t *nspc_diff_src_m_ = new memory_t(
+    memory_t nspc_diff_src_m_(
             engine, &(pd()->nspc_diff_src_md_), std::move(nspc_diff_src_mem));
 
     // initialize nspc dst memory
     auto nspc_diff_dst_mem
             = scratchpad.get_memory_storage(key_conv_ncsp_diff_dst);
-    memory_t *nspc_diff_dst_m_ = new memory_t(
+    memory_t nspc_diff_dst_m_(
             engine, &(pd()->nspc_diff_dst_md_), std::move(nspc_diff_dst_mem));
 
     CHECK(reorder_activations(ctx, dst_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst_m_, false}));
+            ctx.args().at(DNNL_ARG_DIFF_DST), {&nspc_diff_dst_m_, false}));
 
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DIFF_DST] = {nspc_diff_dst_m_, true};
-    conv_args[DNNL_ARG_DIFF_SRC] = {nspc_diff_src_m_, false};
+    conv_args[DNNL_ARG_DIFF_DST] = {&nspc_diff_dst_m_, true};
+    conv_args[DNNL_ARG_DIFF_SRC] = {&nspc_diff_src_m_, false};
     conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
@@ -718,7 +616,7 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
     CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            {nspc_diff_src_m_, false}, ctx.args().at(DNNL_ARG_DIFF_SRC)));
+            {&nspc_diff_src_m_, false}, ctx.args().at(DNNL_ARG_DIFF_SRC)));
 
     return status::success;
 }
@@ -733,17 +631,17 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_matmul(
             = const_cast<void *>(CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS));
     void *conv_diff_dst = CTX_OUT_MEM(void *, DNNL_ARG_DIFF_DST);
 
-    memory_t *matmul_src_m_ = new memory_t(engine, &(pd()->matmul_src_md_),
+    memory_t matmul_src_m_(engine, &(pd()->matmul_src_md_),
             memory_flags_t::use_runtime_ptr, conv_wei);
-    memory_t *matmul_wei_m_ = new memory_t(engine, &(pd()->matmul_wei_md_),
+    memory_t matmul_wei_m_(engine, &(pd()->matmul_wei_md_),
             memory_flags_t::use_runtime_ptr, conv_diff_dst);
-    memory_t *matmul_dst_m_ = new memory_t(engine, &(pd()->matmul_dst_md_),
+    memory_t matmul_dst_m_(engine, &(pd()->matmul_dst_md_),
             memory_flags_t::use_runtime_ptr, conv_diff_src);
 
     exec_args_t matmul_src_diff_args;
-    matmul_src_diff_args[DNNL_ARG_SRC] = {matmul_src_m_, true};
-    matmul_src_diff_args[DNNL_ARG_WEIGHTS] = {matmul_wei_m_, true};
-    matmul_src_diff_args[DNNL_ARG_DST] = {matmul_dst_m_, false};
+    matmul_src_diff_args[DNNL_ARG_SRC] = {&matmul_src_m_, true};
+    matmul_src_diff_args[DNNL_ARG_WEIGHTS] = {&matmul_wei_m_, true};
+    matmul_src_diff_args[DNNL_ARG_DST] = {&matmul_dst_m_, false};
 
     exec_ctx_t matmul_src_diff_ctx(ctx, std::move(matmul_src_diff_args));
 

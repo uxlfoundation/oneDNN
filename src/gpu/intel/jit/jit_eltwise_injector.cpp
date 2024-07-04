@@ -74,7 +74,12 @@ int jit_eltwise_injector_f32<hw>::min_scratch_regs() {
             case eltwise_square: return 0;
             case eltwise_linear: return 0;
             case eltwise_clip: return 1;
-            case eltwise_gelu_tanh: return 2;
+            case eltwise_gelu_tanh:
+#if XE3P
+                return (hw != gpu_xe3p) ? 2 : 1;
+#else
+                return 2;
+#endif
             default: assert(!"unsupported eltwise algorithm");
         }
     }
@@ -173,7 +178,7 @@ int jit_eltwise_injector_f32<hw>::phase_count(alg_kind_t alg) {
             case eltwise_tanh:
             case eltwise_tanh_use_dst_for_bwd:
 #if XE3P
-                return (hw != gpu_xe3p) ? 6 : 3;
+                return (hw != gpu_xe3p) ? 6 : 1;
 #else
                 return 6;
 #endif
@@ -197,7 +202,7 @@ int jit_eltwise_injector_f32<hw>::phase_count(alg_kind_t alg) {
             case eltwise_clip: return 4;
             case eltwise_gelu_tanh:
 #if XE3P
-                return (hw != gpu_xe3p) ? 14 : 10;
+                return (hw != gpu_xe3p) ? 14 : 8;
 #else
                 return 14;
 #endif
@@ -298,11 +303,8 @@ void jit_eltwise_injector_f32<hw>::tanh_compute_fwd(
         }
 #if XE3P
     } else {
-        auto a = scratch_[off].f();
         switch (phase) {
-            case 0: h->tanh(simd, a, r); break;
-            case 1: h->min_(simd, r, abs(r), 1.f); break;
-            case 2: h->mul(simd, r, r, a); break;
+            case 0: h->tanh(simd, r, r); break;
             default: assert(!"invalid phase");
         }
     }
@@ -509,12 +511,12 @@ void jit_eltwise_injector_f32<hw>::gelu_tanh_compute_bwd(
     const float k = 0.044715f;
     const float sqrt_2_over_pi = 0.7978845f; // sqrt(2/pi)
     auto a = scratch_[off].f();
-    auto b = scratch_[off + batch].f();
 #if XE3P
     if (hw != gpu_xe3p) {
 #endif
         const float log2e = 1.442695f; // log_2(e)
 
+        auto b = scratch_[off + batch].f();
         int msimd = simd;
         if (hw == gpu_xe_hp) msimd = 16;
 
@@ -543,11 +545,9 @@ void jit_eltwise_injector_f32<hw>::gelu_tanh_compute_bwd(
             case 2: h->mul(simd, a, a, r); break;
             case 3: h->mul(simd, a, a, sqrt_2_over_pi); break;
             case 4: h->tanh(simd, r, a); break;
-            case 5: h->min_(simd, b, abs(a), 1.f); break;
-            case 6: h->mul(simd, r, r, b); break;
-            case 7: h->mad(simd, a, a, a, -r); break;
-            case 8: h->mad(simd, r, half(0.5f), r, half(0.5f)); break;
-            case 9: h->mad(simd, r, r, r, a); break;
+            case 5: h->mad(simd, a, a, a, -r); break;
+            case 6: h->mad(simd, r, half(0.5f), r, half(0.5f)); break;
+            case 7: h->mad(simd, r, r, r, a); break;
             default: assert(!"invalid phase");
         }
     }

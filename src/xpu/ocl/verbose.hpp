@@ -19,8 +19,12 @@
 
 #include <cstdio>
 
+#include "xpu/ocl/engine_factory.hpp"
+#include "xpu/ocl/engine_impl.hpp"
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/ocl/ocl_engine.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -29,11 +33,6 @@ namespace ocl {
 
 void print_verbose_header() {
     xpu::ocl::engine_factory_t factory(engine_kind::gpu);
-
-    verbose_printf("info,gpu,engine,opencl device count:%zu %s\n",
-            factory.count(),
-            factory.count() == 0 ? "- no devices available." : "");
-
     for (size_t i = 0; i < factory.count(); ++i) {
         impl::engine_t *eng_ptr = nullptr;
         status_t status = factory.engine_create(&eng_ptr, i);
@@ -54,15 +53,15 @@ void print_verbose_header() {
                 = utils::downcast<gpu::intel::compute::compute_engine_t *>(
                         eng_ptr);
         auto *dev_info = compute_engine->device_info();
-        verbose_printf(
-                "info,gpu,engine,%d,name:%s,driver_version:%s,binary_kernels:%"
-                "s\n",
+        printf("onednn_verbose,info,gpu,engine,%d,name:%s,"
+               "driver_version:%s,binary_kernels:%s\n",
                 (int)i, s_name.c_str(), s_ver.c_str(),
                 dev_info->mayiuse_ngen_kernels() ? "enabled" : "disabled");
-#else
-        verbose_printf("info,gpu,engine,%d,name:%s,driver_version:%s\n", (int)i,
-                s_name.c_str(), s_ver.c_str());
+        return;
 #endif
+        printf("onednn_verbose,info,gpu,engine,%d,name:%s,"
+               "driver_version:%s\n",
+                (int)i, s_name.c_str(), s_ver.c_str());
         eng_ptr->release();
     }
 }

@@ -23,6 +23,7 @@
 #include "common/rw_mutex.hpp"
 #include "common/utils.hpp"
 
+#include "xpu/ocl/usm_utils.hpp"
 #include "xpu/stream_profiler.hpp"
 
 #include "xpu/ocl/context.hpp"

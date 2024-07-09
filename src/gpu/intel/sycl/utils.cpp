@@ -21,6 +21,7 @@
 
 #include "xpu/ocl/engine_factory.hpp"
 #include "xpu/ocl/utils.hpp"
+
 #include "xpu/sycl/compat.hpp"
 
 #include "xpu/sycl/compat.hpp"

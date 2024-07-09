@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,8 +32,8 @@ void *malloc_device(impl::engine_t *engine, size_t size);
 void *malloc_shared(impl::engine_t *engine, size_t size);
 
 void free(impl::engine_t *engine, void *ptr);
-status_t set_kernel_arg(impl::engine_t *engine, cl_kernel kernel, int arg_index,
-        const void *arg_value);
+status_t set_kernel_arg_usm(impl::engine_t *engine, cl_kernel kernel,
+        int arg_index, const void *arg_value);
 status_t memcpy(impl::stream_t *stream, void *dst, const void *src, size_t size,
         cl_uint num_events, const cl_event *events, cl_event *out_event);
 status_t memcpy(

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,10 +57,10 @@ void free(impl::engine_t *engine, void *ptr) {
     HANDLE_USM_CALL_V(engine, free(engine, ptr));
 }
 
-status_t set_kernel_arg(impl::engine_t *engine, cl_kernel kernel, int arg_index,
-        const void *arg_value) {
+status_t set_kernel_arg_usm(impl::engine_t *engine, cl_kernel kernel,
+        int arg_index, const void *arg_value) {
     HANDLE_USM_CALL(
-            engine, set_kernel_arg(engine, kernel, arg_index, arg_value));
+            engine, set_kernel_arg_usm(engine, kernel, arg_index, arg_value));
 }
 
 status_t memcpy(impl::stream_t *stream, void *dst, const void *src, size_t size,

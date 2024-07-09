@@ -36,6 +36,7 @@ namespace cpu {
 namespace x64 {
 
 using namespace dnnl::impl::utils;
+using namespace injector_utils;
 using namespace Xbyak;
 
 struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
@@ -148,17 +149,19 @@ private:
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
     std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
-    using reg64_t = const Xbyak::Reg64;
     enum {
         simd_w = 16,
         zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen,
     };
 
     // Register decomposition
-    const reg64_t param1 = abi_param1;
+    using reg64_t = const Xbyak::Reg64;
 
+    registry_scratchpad_t regscratchpad_ {*this, brg.isa_impl};
+
+    const reg64_t param1 = abi_param1;
     const reg64_t reg_iter_label = r9;
-    const reg64_t reg_iter_labels_list = rax;
+    const reg64_savable_t reg_iter_labels_list {regscratchpad_, rax, r16};
 
     const reg64_t reg_addr_batch = r13;
     const reg64_t reg_aux1_batch = rbp;
@@ -182,24 +185,15 @@ private:
     const reg64_t reg_tmp_gpr = rbx;
     const reg64_t reg_ptr_sum_scale = rbx;
 
-    const reg64_t reg_zp_comp_a = rbx;
-    const reg64_t reg_aux_zp_comp_a = rbx;
-    const reg64_t reg_zp_a_values = rbx;
-    const reg64_t reg_zp_comp_b = rbx;
-    const reg64_t reg_zp_c_values = rbx;
+    const reg64_savable_t reg_zp_comp_a {regscratchpad_, rbx, r17};
+    const reg64_savable_t reg_zp_a_values {regscratchpad_, rbx, r18};
+    const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r19};
+    const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r20};
     const reg64_t reg_ptr_sum_zp = rbx;
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
 
     const reg64_t reg_long_offt = r11;
-
-    constexpr static int abi_param1_offs_ = 0;
-    constexpr static int reg_zp_comp_a_offs_ = 8;
-    constexpr static int reg_zp_comp_b_offs_ = 16;
-    constexpr static int reg_zp_c_values_offs_ = 24;
-    constexpr static int reg_iter_labels_list_offs_ = 32;
-    constexpr static int reg_zp_a_values_offs_ = 40;
-    constexpr static int stack_space_needed_ = 48;
 
     bool are_post_ops_applicable_ = false;
     bool need_to_apply_alpha_beta_ = false;
@@ -853,9 +847,9 @@ void jit_brgemm_amx_uker_base_t::read_params() {
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         mov(reg_zp_comp_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
-        mov(ptr[rsp + reg_zp_comp_a_offs_], reg_zp_comp_a);
+        reg_zp_comp_a.save();
         mov(reg_zp_a_values, ptr[param1 + GET_OFF(zp_a_val)]);
-        mov(ptr[rsp + reg_zp_a_values_offs_], reg_zp_a_values);
+        reg_zp_a_values.save();
 
         if (brg.req_comp_pads_with_bcast)
             mov(reg_zp_comp_pad_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
@@ -863,12 +857,12 @@ void jit_brgemm_amx_uker_base_t::read_params() {
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
         mov(reg_zp_comp_b, ptr[param1 + GET_OFF(b_zp_compensations)]);
-        mov(ptr[rsp + reg_zp_comp_b_offs_], reg_zp_comp_b);
+        reg_zp_comp_b.save();
     }
 
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
         mov(reg_zp_c_values, ptr[param1 + GET_OFF(c_zp_values)]);
-        mov(ptr[rsp + reg_zp_c_values_offs_], reg_zp_c_values);
+        reg_zp_c_values.save();
     }
 }
 
@@ -1027,21 +1021,21 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         const auto zmm_zp_a_val = zmm_tmp_1();
-        mov(reg_zp_a_values, ptr[rsp + reg_zp_a_values_offs_]);
+        reg_zp_a_values.restore();
         vpbroadcastd(zmm_zp_a_val, reg_zp_a_values.cvt32());
         vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
-        mov(reg_aux_zp_comp_a, ptr[rsp + reg_zp_comp_a_offs_]);
+        reg_zp_comp_a.restore();
 
         const auto zp_comp_a_off = zp_comp_a_offset(bi.ldi->pos(ldb));
         const auto zp_comp_a_addr
-                = EVEX_compress_addr(reg_aux_zp_comp_a, zp_comp_a_off);
+                = EVEX_compress_addr(reg_zp_comp_a, zp_comp_a_off);
         cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_a_addr, true, false,
                 k_mask);
         vmulps(zmm_zp_comp_a, zmm_zp_comp_a, zmm_zp_a_val);
     }
 
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
-        mov(reg_zp_c_values, ptr[rsp + reg_zp_c_values_offs_]);
+        reg_zp_c_values.restore();
         if (brg.zp_type_c == brgemm_broadcast_t::per_tensor) {
             vcvtdq2ps(zmm_zp_c, EVEX_compress_addr(reg_zp_c_values, 0, true));
         }
@@ -1320,10 +1314,10 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
     auto zmm_masked = zmm | k_mask | T_z;
     const auto zmm_zp_a_val = zmm_tmp_1();
 
-    mov(reg_zp_a_values, ptr[rsp + reg_zp_a_values_offs_]);
+    reg_zp_a_values.restore();
     vpbroadcastd(zmm_zp_a_val, reg_zp_a_values.cvt32());
     vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
-    mov(reg_aux_zp_comp_a, ptr[rsp + reg_zp_comp_a_offs_]);
+    reg_zp_comp_a.restore();
     const auto comp_pad_offset
             = zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
     const auto zp_comp_pad_a_addr
@@ -1396,7 +1390,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        mov(reg_zp_comp_b, ptr[rsp + reg_zp_comp_b_offs_]);
+        reg_zp_comp_b.restore();
 
         auto zmm_zp_comp_b = zmm_tmp_1();
         for (auto bd = bd_start; bd < bd_finish; bd++) {
@@ -2393,10 +2387,10 @@ void jit_brgemm_amx_uker_base_t::bdb_loop_body(brgemm_iteration_t &bi) {
         } else {
             align(64);
             L(tloop.bdis[cidx].lstart);
-            mov(reg_iter_labels_list, ptr[rsp + reg_iter_labels_list_offs_]);
+            reg_iter_labels_list.restore();
             mov(reg_iter_label, ptr[reg_iter_labels_list]);
             add(reg_iter_labels_list, 8);
-            mov(ptr[rsp + reg_iter_labels_list_offs_], reg_iter_labels_list);
+            reg_iter_labels_list.save();
         }
     }
 
@@ -2416,7 +2410,7 @@ void jit_brgemm_amx_uker_base_t::bdb_loop(brgemm_iteration_t &bi) {
         lea(reg_iter_labels_list, ptr[rip + iteration_pointers]);
         // shift to load address for jmp for next iteration
         add(reg_iter_labels_list, 8);
-        mov(ptr[rsp + reg_iter_labels_list_offs_], reg_iter_labels_list);
+        reg_iter_labels_list.save();
     }
 
     for (auto &bdi : tloop.bdis) {
@@ -2690,7 +2684,7 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
 void jit_brgemm_amx_uker_base_t::generate() {
     preamble();
 
-    sub(rsp, stack_space_needed_);
+    sub(rsp, regscratchpad_.Size());
 
     const auto full_mask = size_t {0xffffffffffffffff};
     const auto tail_mask = size_t((1 << brg.ldb_tail) - 1);
@@ -2795,7 +2789,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
     }
     L(label_to_ret);
 
-    add(rsp, stack_space_needed_);
+    add(rsp, regscratchpad_.Size());
 
     postamble();
 

@@ -116,6 +116,151 @@ conditional_register_preserve_guard_t::conditional_register_preserve_guard_t(
                             vmm_to_preserve}
                     : register_preserve_guard_t {nullptr, {}, {}}} {};
 
+/*
+* Registry scratchpad code
+*/
+
+int registry_scratchpad_t::book(int size /*= DefaultRegSize*/) {
+    auto currentOffset = size_;
+    size_ += size;
+    return currentOffset;
+}
+
+void registry_scratchpad_t::saveReg(
+        const Xbyak::Reg64 &reg, int booking) const {
+    if (booking < 0) return;
+    jit_.mov(jit_.ptr[jit_.rsp + booking], reg);
+}
+
+void registry_scratchpad_t::restoreReg(
+        const Xbyak::Reg64 &reg, int booking) const {
+    if (booking < 0) return;
+    jit_.mov(reg, jit_.ptr[jit_.rsp + booking]);
+}
+
+void registry_scratchpad_t::restoreReg(
+        const Xbyak::Reg32 &reg, int booking) const {
+    if (booking < 0) return;
+    jit_.mov(reg, jit_.ptr[jit_.rsp + booking]);
+}
+
+void registry_scratchpad_t::leaToReg(
+        const Xbyak::Reg64 &reg, int booking) const {
+    if (booking < 0) return;
+    jit_.lea(reg, jit_.ptr[jit_.rsp + booking]);
+}
+
+Xbyak::Address registry_scratchpad_t::getPtr(int booking) const {
+    return jit_.ptr[jit_.rsp + booking];
+}
+
+reg64_savable_t::reg64_savable_t(
+        registry_scratchpad_t &regscratchpad, const Xbyak::Reg64 &reg)
+    : Xbyak::Reg64(reg)
+    , regscratchpad_(regscratchpad)
+    , booking_(regscratchpad_.book())
+    , storable_(true) {}
+
+reg64_savable_t::reg64_savable_t(registry_scratchpad_t &regscratchpad,
+        const Xbyak::Reg64 &reg, const Xbyak::Reg64 &ext_reg)
+    : Xbyak::Reg64(regscratchpad.ExtendedRegisters() ? ext_reg : reg)
+    , regscratchpad_(regscratchpad)
+    , storable_(!regscratchpad.ExtendedRegisters()) {
+    // We expect ext_reg from extended registers set
+    assert(16 <= ext_reg.getIdx() && ext_reg.getIdx() <= 31);
+    if (storable_) booking_ = regscratchpad_.book();
+}
+
+void reg64_savable_t::save() const {
+    regscratchpad_.saveReg(*this, booking_);
+}
+
+void reg64_savable_t::saveTo(const reg64_savable_t &regsavable) const {
+    if (regsavable.booking() >= 0)
+        regscratchpad_.saveReg(*this, regsavable.booking());
+    else
+        regscratchpad_.jit().mov(regsavable, *this);
+}
+
+void reg64_savable_t::restore() const {
+    regscratchpad_.restoreReg(*this, booking_);
+}
+
+void reg64_savable_t::lea() const {
+    regscratchpad_.leaToReg(*this, booking_);
+}
+
+void reg64_savable_t::restoreTo(const Xbyak::Reg64 &reg) const {
+    if (booking_ >= 0)
+        regscratchpad_.restoreReg(reg, booking_);
+    else
+        regscratchpad_.jit().mov(reg, *this);
+}
+
+void reg64_savable_t::restoreTo(const Xbyak::Reg32 &reg32) const {
+    if (booking_ >= 0)
+        regscratchpad_.restoreReg(reg32, booking_);
+    else
+        regscratchpad_.jit().mov(reg32, *this);
+}
+
+void reg64_savable_t::addTo(const Xbyak::Reg64 &reg) const {
+    if (booking_ >= 0)
+        regscratchpad_.jit().add(reg, getStoragePtr());
+    else
+        regscratchpad_.jit().add(reg, *this);
+}
+
+void reg64_savable_t::imulTo(const Xbyak::Reg64 &reg, int imm) const {
+    if (booking_ >= 0)
+        regscratchpad_.jit().imul(reg, getStoragePtr(), imm);
+    else
+        regscratchpad_.jit().imul(reg, *this, imm);
+}
+
+reg64_savable_guard_t::reg64_savable_guard_t(
+        std::initializer_list<reg64_savable_t> regs,
+        bool condition /*= true*/) {
+    if (!condition) return;
+
+    // Reserve space
+    regs_.reserve(regs.size());
+    for (const auto &reg : regs) {
+        if (std::find(regs_.begin(), regs_.end(), reg) == regs_.end()) {
+            regs_.push_back(reg);
+            reg.save();
+        }
+    }
+}
+
+reg64_savable_guard_t::reg64_savable_guard_t(std::initializer_list<
+        std::pair<std::initializer_list<reg64_savable_t>, bool>>
+                init_list) {
+    // Reserve space
+    size_t max_total_regs = 0;
+    for (const auto &pair : init_list) {
+        if (pair.second) max_total_regs += pair.first.size();
+    }
+    regs_.reserve(max_total_regs);
+
+    for (const auto &pair : init_list) {
+        if (pair.second) {
+            for (const auto &reg : pair.first) {
+                if (std::find(regs_.begin(), regs_.end(), reg) == regs_.end()) {
+                    regs_.push_back(reg);
+                    reg.save();
+                }
+            }
+        }
+    }
+}
+
+reg64_savable_guard_t::~reg64_savable_guard_t() {
+    // Restore in reverse order
+    for (auto it = regs_.rbegin(); it != regs_.rend(); ++it)
+        it->restore();
+}
+
 } // namespace injector_utils
 } // namespace x64
 } // namespace cpu

@@ -177,12 +177,15 @@ private:
 
     enum class compute_pad_kernel_t { s8s8_kernel, zero_point_kernel };
 
+    injector_utils::registry_scratchpad_t regscratchpad_ {*this, brg.isa_impl};
+
     using reg64_t = const Xbyak::Reg64;
     // Register decomposition
     const reg64_t param1 = abi_param1;
     const reg64_t reg_A = abi_not_param1;
     const reg64_t reg_B = r8;
-    const reg64_t reg_aux_batch_addr = r15;
+    const injector_utils::reg64_savable_t reg_aux_batch_addr {
+            regscratchpad_, r15};
     const reg64_t reg_BS = rsi;
 
     // loop variables
@@ -192,8 +195,10 @@ private:
     const reg64_t reg_aux_C = rdx;
     const reg64_t reg_aux_A = r10;
     const reg64_t reg_aux_B = abi_param1;
-    const reg64_t reg_aux1_A = reg_A; // brgemm_strd
-    const reg64_t reg_aux1_B = reg_B; // brgemm_strd
+    const injector_utils::reg64_savable_t reg_aux1_A {
+            regscratchpad_, abi_not_param1, r16}; // brgemm_strd
+    const injector_utils::reg64_savable_t reg_aux1_B {
+            regscratchpad_, r8, r17}; // brgemm_strd
     const reg64_t reg_a_offset = r9;
     const reg64_t reg_aux_N = r11;
 
@@ -203,17 +208,27 @@ private:
     const reg64_t reg_table_base = rax;
     const reg64_t reg_tmp = reg_table_base;
     const reg64_t reg_total_padding = reg_table_base;
-    const reg64_t reg_aux_bias = reg_table_base;
-    const reg64_t reg_aux_src_scales = reg_table_base;
-    const reg64_t reg_aux_wei_scales = reg_table_base;
-    const reg64_t reg_aux_dst_scales = reg_table_base;
-    const reg64_t reg_dst_zero_point = reg_table_base;
-    const reg64_t reg_src_zero_point = reg_table_base;
-    const reg64_t reg_zp_compensation = reg_aux_A_vpad_bottom;
-    const reg64_t reg_binary_params = abi_param1; // default for binary ops
-    const reg64_t reg_ptr_sum_scale = reg_aux_A_vpad_top;
-    const reg64_t reg_ptr_sum_zp = reg_aux_A_vpad_bottom;
-    const reg64_t reg_s8s8_comp = reg_aux_A_vpad_top;
+    const injector_utils::reg64_savable_t reg_aux_bias {regscratchpad_, rax};
+    const injector_utils::reg64_savable_t reg_aux_src_scales {
+            regscratchpad_, rax, r19};
+    const injector_utils::reg64_savable_t reg_aux_wei_scales {
+            regscratchpad_, rax, r19};
+    const injector_utils::reg64_savable_t reg_aux_dst_scales {
+            regscratchpad_, rax, r20};
+    const injector_utils::reg64_savable_t reg_dst_zero_point {
+            regscratchpad_, rax, r21};
+    const injector_utils::reg64_savable_t reg_src_zero_point {
+            regscratchpad_, rax};
+    const injector_utils::reg64_savable_t reg_zp_compensation {
+            regscratchpad_, rbp, r22};
+    const injector_utils::reg64_savable_t reg_binary_params {
+            regscratchpad_, abi_param1}; // default for binary ops
+    const injector_utils::reg64_savable_t reg_ptr_sum_scale {
+            regscratchpad_, r14, r24};
+    const injector_utils::reg64_savable_t reg_ptr_sum_zp {
+            regscratchpad_, rbp, r25};
+    const injector_utils::reg64_savable_t reg_s8s8_comp {
+            regscratchpad_, r14, r26};
 
     Xbyak::Opmask k_mask = Xbyak::Opmask(2);
     Xbyak::Opmask k_tail_mask = Xbyak::Opmask(3);
@@ -240,20 +255,6 @@ private:
             // weights and input height padding
 
     vmm_allocator_helper_t vmm_alloc;
-
-    constexpr static int reg_batch0_addr_offs_ = 0;
-    constexpr static int reg_bias_offs_ = 8;
-    constexpr static int reg_wei_scales_offs_ = 16;
-    constexpr static int reg_A_offs_ = 24; // brgemm_strd
-    constexpr static int reg_B_offs_ = 32; // brgemm_strd
-    constexpr static int abi_param1_offs_ = 40;
-    constexpr static int reg_dst_scales_offs_ = 48;
-    constexpr static int reg_s8s8_comp_offs_ = 56;
-    constexpr static int dst_zp_value_ = 64;
-    constexpr static int src_zp_value_ = 72;
-    constexpr static int zp_compensation_ = 80;
-    constexpr static int reg_src_scales_offs_ = 88;
-    constexpr static int stack_space_needed_ = 96;
 
     bool with_binary_non_scalar_bcast_ = false;
 

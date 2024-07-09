@@ -271,6 +271,7 @@ enum class ProductFamily : int {
     ARL,
     GenericXeHPC,
     PVC,
+    PVCVG,
 #ifdef PRERELEASE_HW
     RLT,
 #endif
@@ -333,6 +334,13 @@ static inline constexpr14 Core getCore(ProductFamily family)
     if (family >= ProductFamily::GenericGen10) return Core::Gen10;
     if (family >= ProductFamily::GenericGen9)  return Core::Gen9;
     return Core::Unknown;
+}
+
+static inline constexpr14 bool hasSystolic(ProductFamily family)
+{
+    if (family == ProductFamily::MTL) return false;
+    if (family == ProductFamily::PVCVG) return false;
+    return (family >= ProductFamily::GenericXeHP);
 }
 
 // Stepping IDs.

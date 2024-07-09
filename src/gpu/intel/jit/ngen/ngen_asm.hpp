@@ -398,7 +398,10 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
             SendgMessageDescriptor desc;
             desc.all = static_cast<uint64_t>(src[4].imm);
             int len = desc.dstLen(hw, mod.getExecSize(), static_cast<SharedFunction>(ext & 0xF));
-            region = DependencyRegion(hw, GRFRange(rd.getBase(), len));
+            if (len == -1)
+                region = DependencyRegion();
+            else
+                region = DependencyRegion(hw, GRFRange(rd.getBase(), len));
         } else
             region = DependencyRegion(hw, mod.getExecSize(), rd);
 #endif

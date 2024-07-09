@@ -93,7 +93,7 @@ public:
     inline int getArgumentSurface(const std::string &name) const;
     inline int getArgumentSurfaceIfExists(const std::string &name) const;
     inline GRF getLocalID(int dim) const;
-    inline RegData getSIMD1LocalID(int dim) const;
+    inline Subregister getSIMD1LocalID(int dim) const;
     inline Subregister getLocalSize(int dim) const;
 
     const std::string &getExternalName() const           { return kernelName; }
@@ -293,7 +293,7 @@ int InterfaceHandler::getArgumentSurface(const std::string &name) const
     return surface;
 }
 
-RegData InterfaceHandler::getSIMD1LocalID(int dim) const
+Subregister InterfaceHandler::getSIMD1LocalID(int dim) const
 {
 #ifdef NGEN_SAFE
     if (dim > needLocalID || simd != 1) throw unknown_argument_exception();

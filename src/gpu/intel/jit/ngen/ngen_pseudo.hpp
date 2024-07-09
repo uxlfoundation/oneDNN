@@ -501,6 +501,7 @@ void registerfence(const RegData &dst)
 void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
     registerfence(dst);
+
 #if XE3P
     if (useEfficient64Bit) {
         uint32_t desc = 0x1F;
@@ -530,7 +531,7 @@ void memfence(const InstructionModifier &mod, const RegData &dst = NullRegister(
 
 void memfence(FenceScopeLSC scope, FlushTypeLSC flushing, const RegData &dst = NullRegister(), const RegData &header = GRF(0))
 {
-    memfence(InstructionModifier(), dst, header);
+    memfence(InstructionModifier(), scope, flushing, dst, header);
 }
 
 void memfence(const RegData &dst = NullRegister(), const RegData &header = GRF(0))
@@ -651,7 +652,7 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
     }
 }
 
-void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127))
+void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inPrologue = true)
 {
     if (hardware >= HW::XeHP) {
         if (argGRFs > 0) {
@@ -665,7 +666,9 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127))
             if (useEfficient64Bit) {        /* to do: SIMD1 */
                 int offset = 0;
                 auto offsetRT = s0.uq(3);
-                auto addr = r4;
+                auto addr = inPrologue ? r4 : temp;
+                if (!inPrologue)
+                    mov<uint64_t>(1, addr, r0[7]);
                 mov(1, offsetRT, Immediate::uq(0));     /* relocation */
                 while (argGRFs > 0) {
                     int nload = std::min(utils::rounddown_pow2(argGRFs), 8);

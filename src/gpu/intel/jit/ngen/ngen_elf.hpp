@@ -100,7 +100,7 @@ protected:
     int getArgumentSurface(const std::string &name) const                { return interface_.getArgumentSurface(name); }
     int getArgumentSurfaceIfExists(const std::string &name) const        { return interface_.getArgumentSurfaceIfExists(name); }
     GRF getLocalID(int dim) const                                        { return interface_.getLocalID(dim); }
-    RegData getSIMD1LocalID(int dim) const                               { return interface_.getSIMD1LocalID(dim); }
+    Subregister getSIMD1LocalID(int dim) const                           { return interface_.getSIMD1LocalID(dim); }
     Subregister getLocalSize(int dim) const                              { return interface_.getLocalSize(dim); }
 
     void prologue()                                                      { interface_.generatePrologue(*this); }
@@ -320,7 +320,7 @@ template <typename... Targs> NGEN_NAMESPACE::Subregister getArgumentIfExists(Tar
 template <typename... Targs> int getArgumentSurface(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getArgumentSurface(std::forward<Targs>(args)...); } \
 template <typename... Targs> int getArgumentSurfaceIfExists(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getArgumentSurfaceIfExists(std::forward<Targs>(args)...); } \
 template <typename... Targs> NGEN_NAMESPACE::GRF getLocalID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getLocalID(std::forward<Targs>(args)...); } \
-template <typename... Targs> NGEN_NAMESPACE::RegData getSIMD1LocalID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD1LocalID(std::forward<Targs>(args)...); } \
+template <typename... Targs> NGEN_NAMESPACE::Subregister getSIMD1LocalID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD1LocalID(std::forward<Targs>(args)...); } \
 template <typename... Targs> NGEN_NAMESPACE::Subregister getLocalSize(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getLocalSize(std::forward<Targs>(args)...); } \
 void prologue() { NGEN_NAMESPACE::ELFCodeGenerator<hw>::prologue(); } \
 void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::epilogue(r0_info); }
@@ -331,7 +331,6 @@ void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()
 #define NGEN_FORWARD_ELF_EXTRA(hw) \
 template <typename... Targs> void setEfficient64Bit(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::setEfficient64Bit(std::forward<Targs>(args)...); }
 #endif
-
 
 template <HW hw>
 std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary()

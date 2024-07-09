@@ -92,8 +92,8 @@ struct BundleGroup {
 
     friend BundleGroup operator|(BundleGroup lhs, Bundle rhs) { lhs |= rhs; return lhs; }
     BundleGroup &operator|=(Bundle rhs) {
-        for (int rchunk = 0; rchunk < int(reg_masks.size()); rchunk++)
-            reg_masks[rchunk] |= rhs.regMask(hw, rchunk);
+        for (size_t rchunk = 0; rchunk < reg_masks.size(); rchunk++)
+            reg_masks[rchunk] |= rhs.reg_mask(hw, rchunk);
         return *this;
     }
 
@@ -169,6 +169,11 @@ public:
     inline int getRegisterCount() const { return regCount; }
     inline int countAllocedRegisters() const;
 
+    // Check availability.
+    inline bool isFree(GRF reg) const;
+    inline bool isFree(GRFRange range) const;
+    inline bool isFree(Subregister subreg) const;
+
 #ifdef NGEN_ENABLE_RA_DUMP
     inline void dump(std::ostream &str);
 #endif
@@ -231,10 +236,10 @@ int Bundle::firstReg(HW hw) const
     case HW::XeHPC:
     case HW::Xe2:
 #if XE3
-        case HW::Xe3:
+    case HW::Xe3:
 #endif
 #if XE3P
-        case HW::Xe3p:
+    case HW::Xe3p:
 #endif
         return (bundle0 << 1) | bank0;
     case HW::XeHP:
@@ -272,10 +277,10 @@ int Bundle::stride(HW hw) const
     case HW::Gen12LP:
     case HW::Xe2:
 #if XE3
-        case HW::Xe3:
+    case HW::Xe3:
 #endif
 #if XE3P
-        case HW::Xe3p:
+    case HW::Xe3p:
 #endif
         return 16;
     case HW::XeHP:
@@ -307,10 +312,10 @@ int64_t Bundle::regMask(HW hw, int offset) const
     case HW::Gen12LP:
     case HW::Xe2:
 #if XE3
-        case HW::Xe3:
+    case HW::Xe3:
 #endif
 #if XE3P
-        case HW::Xe3p:
+    case HW::Xe3p:
 #endif
         if (bundle_id != any)                           base_mask  = 0x0003000300030003;
         if (bank_id != any)                             base_mask &= 0x5555555555555555;
@@ -381,7 +386,6 @@ void RegisterAllocator::init()
     else if (hw < HW::Xe3p)
         setRegisterCount(256);
 #endif
-
 }
 
 void RegisterAllocator::claim(GRF reg)
@@ -485,6 +489,31 @@ void RegisterAllocator::release(FlagRegister flag)
     freeFlag |= (1 << flag.index());
     if (flag.getType() == DataType::ud)
         freeFlag |= (1 << (flag.index() + 1));
+}
+
+bool RegisterAllocator::isFree(GRF reg) const
+{
+    if (reg.isInvalid()) return true;
+    return freeSub[reg.getBase()] == fullSubMask;
+}
+
+bool RegisterAllocator::isFree(GRFRange range) const
+{
+    if (range.isInvalid()) return true;
+    for (int i = 0; i < range.getLen(); i++)
+        if (!isFree(range[i]))
+            return false;
+    return true;
+}
+
+bool RegisterAllocator::isFree(Subregister subreg) const
+{
+    if (subreg.isInvalid()) return true;
+    int r = subreg.getBase();
+    int dw = subreg.getDwords();
+    int o = (subreg.getByteOffset()) >> 2;
+    auto m = (1 << (o + dw)) - (1 << o);
+    return (~freeSub[r] & m) == 0;
 }
 
 // -------------------------------------------
@@ -597,7 +626,7 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
 
         for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
             int64_t free = search_full_grf ? freeWhole64[rchunk] : -1;
-            free &= bundle.regMask(hw, rchunk);
+            free &= bundle.reg_mask(hw, rchunk);
 
             while (free) {
                 int rr = utils::bsf(free);

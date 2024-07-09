@@ -182,7 +182,7 @@ public:
         auto result = SWSBInfo(pipe(op), dist());
         if (combined.mode) {
             bool src, dst;
-            if (op == Opcode::send || op == Opcode::sendc)
+            if (isSend(op))
                 src = dst = true;
             else if (op == Opcode::dpas) {
                 src = (combined.mode <= 2);
@@ -209,7 +209,7 @@ public:
     }
     constexpr14 Pipe pipe(Opcode op) const {
         if (combined.mode) {
-            if (op == Opcode::send || op == Opcode::sendc)
+            if (isSend(op))
                 return (combined.mode == 1) ? Pipe::A : (combined.mode == 2) ? Pipe::F : Pipe::I;
             if (op == Opcode::dpas)
                 return Pipe::Default;

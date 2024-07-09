@@ -217,7 +217,6 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::MTL) return NGEN_NAMESPACE::ProductFamily::MTL;
     if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
-    if (family > ProductFamily::PVC && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
 #ifdef PRERELEASE_HW
     if (family == ProductFamily::RLT) return NGEN_NAMESPACE::ProductFamily::RLT;
 #endif
@@ -281,41 +280,43 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
         };
     } version;
 
-    ngen::Product outProduct = {ngen::ProductFamily::Unknown, 0};
+    NGEN_NAMESPACE::Product outProduct = {NGEN_NAMESPACE::ProductFamily::Unknown, 0};
 
     version.raw = rawVersion;
     switch (version.architecture) {
-        case 9:  outProduct.family = ngen::ProductFamily::GenericGen9; break;
-        case 11: outProduct.family = ngen::ProductFamily::GenericGen11; break;
+        case 9:  outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen9; break;
+        case 11: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen11; break;
         case 12:
             if (version.release <= 10)
-                outProduct.family = ngen::ProductFamily::GenericGen12LP;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen12LP;
             else if (version.release == 50)
-                outProduct.family = ngen::ProductFamily::GenericXeHP;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXeHP;
             else if (version.release > 50 && version.release <= 59)
-                outProduct.family = ngen::ProductFamily::DG2;
-            else if (version.release >= 60 && version.release <= 61)
-                outProduct.family = ngen::ProductFamily::PVC;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::DG2;
+            else if (version.release == 60)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVC;
+            else if (version.release == 61)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVCVG;
 #ifdef PRERELEASE_HW
             else if (version.release == 65)
-                outProduct.family = ngen::ProductFamily::RLT;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::RLT;
 #endif
             else if (version.release >= 70 && version.release <= 71)
-                outProduct.family = ngen::ProductFamily::MTL;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::MTL;
             else if (version.release >= 73 && version.release <= 74)
-                outProduct.family = ngen::ProductFamily::ARL;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::ARL;
             break;
-        case 20: outProduct.family = ngen::ProductFamily::GenericXe2; break;
+        case 20: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe2; break;
 #if XE3
-        case 30: outProduct.family = ngen::ProductFamily::GenericXe3; break;
+        case 30: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3; break;
 #endif
 #if XE3P
-        case 35: outProduct.family = ngen::ProductFamily::GenericXe3p; break;
+        case 35: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3p; break;
 #endif
-        default: outProduct.family = ngen::ProductFamily::Unknown; break;
+        default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
     }
 
-    if (outProduct.family != ngen::ProductFamily::Unknown)
+    if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)
         outProduct.stepping = version.revision;
 
     return outProduct;
@@ -329,6 +330,6 @@ inline bool isBinaryEfficient64Bit(const std::vector<uint8_t> &binary, HW hw)
 #endif
 
 } /* namespace npack */
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 #endif /* header guard */

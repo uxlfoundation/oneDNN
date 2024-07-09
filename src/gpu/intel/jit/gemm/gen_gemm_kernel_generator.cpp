@@ -7890,7 +7890,6 @@ void gemm_kernel_generator_t<hw>::outerProductRepackC(int x0, int xr0, int nx,
                         }
                     }
                 }
-                }
             }
 
             if (coalesce)

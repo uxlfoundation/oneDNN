@@ -19,8 +19,12 @@
 
 #include <cstdio>
 
+#include "xpu/ocl/engine_factory.hpp"
+#include "xpu/ocl/engine_impl.hpp"
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/ocl/ocl_engine.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -49,15 +53,14 @@ void print_verbose_header() {
                 = utils::downcast<gpu::intel::compute::compute_engine_t *>(
                         eng_ptr);
         auto *dev_info = compute_engine->device_info();
-        verbose_printf(
-                "onednn_verbose,info,gpu,engine,%d,name:%s,driver_version:%s,"
-                "binary_kernels:%s\n",
+        printf("onednn_verbose,info,gpu,engine,%d,name:%s,"
+               "driver_version:%s,binary_kernels:%s\n",
                 (int)i, s_name.c_str(), s_ver.c_str(),
                 dev_info->mayiuse_ngen_kernels() ? "enabled" : "disabled");
         return;
 #endif
-        verbose_printf(
-                "onednn_verbose,info,gpu,engine,%d,name:%s,driver_version:%s\n",
+        printf("onednn_verbose,info,gpu,engine,%d,name:%s,"
+               "driver_version:%s\n",
                 (int)i, s_name.c_str(), s_ver.c_str());
         eng_ptr->release();
     }

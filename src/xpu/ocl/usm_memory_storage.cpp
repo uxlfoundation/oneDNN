@@ -17,8 +17,9 @@
 #include <CL/cl.h>
 
 #include "common/memory_map_manager.hpp"
-#include "gpu/intel/ocl/ocl_usm_memory_storage.hpp"
-#include "gpu/intel/ocl/ocl_usm_utils.hpp"
+
+#include "xpu/ocl/usm_memory_storage.hpp"
+#include "xpu/ocl/usm_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -42,7 +43,7 @@ status_t usm_memory_storage_t::map_data(
 
     if (!stream) CHECK(engine()->get_service_stream(stream));
 
-    void *host_ptr = usm::malloc_host(stream->engine(), size);
+    void *host_ptr = usm::malloc_host(engine(), size);
     if (!host_ptr) return status::out_of_memory;
 
     auto leak_guard = decltype(usm_ptr_)(

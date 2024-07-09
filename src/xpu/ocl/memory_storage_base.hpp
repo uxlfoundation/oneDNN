@@ -18,7 +18,8 @@
 #define XPU_OCL_MEMORY_STORAGE_BASE_HPP
 
 #include "common/memory_storage.hpp"
-#include "gpu/intel/ocl/ocl_c_types_map.hpp"
+
+#include "xpu/ocl/c_types_map.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,8 +30,8 @@ class memory_storage_base_t : public impl::memory_storage_t {
 public:
     // Explicitly define ctors due to a "circular dependencies" bug in ICC.
     memory_storage_base_t(
-            impl::engine_t *engine, const memory_storage_t *root_storage)
-        : impl::memory_storage_t(engine, root_storage) {}
+            impl::engine_t *engine, const memory_storage_t *parent_storage)
+        : impl::memory_storage_t(engine, parent_storage) {}
     memory_storage_base_t(impl::engine_t *engine)
         : memory_storage_base_t(engine, this) {}
 

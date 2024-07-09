@@ -55,22 +55,18 @@ public:
 #ifdef DNNL_WITH_SYCL
         assert(!"This interface is not for use with SYCL");
         return status::runtime_error;
-#else
+#endif
         status_t status;
         std::vector<cl_device_id> ocl_devices;
 
         status = xpu::ocl::get_devices(&ocl_devices, CL_DEVICE_TYPE_GPU);
-        VERROR_ENGINE(status == status::success, status,
-                VERBOSE_INVALID_ENGINE_KIND, "opencl", "gpu");
-
-        VERROR_ENGINE(ocl_devices.size() > 0, status::invalid_arguments,
-                "opencl gpu devices queried but not found");
+        VERROR_ENGINE(
+                status == status::success, status, "no ocl devices found");
 
         VERROR_ENGINE(index < ocl_devices.size(), status::invalid_arguments,
                 VERBOSE_INVALID_ENGINE_IDX, ocl_devices.size(), "ocl", index);
 
         return engine_create(engine, ocl_devices[index], nullptr, index);
-#endif
     }
 
     status_t engine_create(impl::engine_t **engine, cl_device_id device,
@@ -80,9 +76,8 @@ public:
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
         return gpu::intel::ocl::engine_create(
                 engine, engine_kind::gpu, device, context, index, cache_blob);
-#else
-        return status::runtime_error;
 #endif
+        return status::runtime_error;
     }
 };
 } // namespace ocl

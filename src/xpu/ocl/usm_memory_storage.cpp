@@ -17,8 +17,9 @@
 #include <CL/cl.h>
 
 #include "common/memory_map_manager.hpp"
-#include "gpu/intel/ocl/ocl_usm_memory_storage.hpp"
-#include "gpu/intel/ocl/ocl_usm_utils.hpp"
+
+#include "xpu/ocl/usm_memory_storage.hpp"
+#include "xpu/ocl/usm_utils.hpp"
 
 namespace dnnl {
 namespace impl {

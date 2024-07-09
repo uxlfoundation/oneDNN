@@ -16,10 +16,13 @@
 
 #include <CL/cl.h>
 
-#include "gpu/intel/ocl/ocl_buffer_memory_storage.hpp"
-#include "gpu/intel/ocl/ocl_engine.hpp"
-#include "gpu/intel/ocl/ocl_stream.hpp"
-#include "gpu/intel/ocl/ocl_usm_utils.hpp"
+#include "common/engine.hpp"
+#include "common/stream.hpp"
+
+#include "xpu/ocl/buffer_memory_storage.hpp"
+#include "xpu/ocl/engine_impl.hpp"
+#include "xpu/ocl/stream_impl.hpp"
+#include "xpu/ocl/usm_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -106,7 +109,10 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
     cl_int err;
     err = clGetMemObjectInfo(
             mem_object(), CL_MEM_FLAGS, sizeof(mem_flags), &mem_flags, nullptr);
-    gpu_assert(err == CL_SUCCESS);
+
+    // TODO: Generalize gpu_assert to make it available for use in the xpu
+    // space.
+    assert(err == CL_SUCCESS);
     if (err != CL_SUCCESS) return nullptr;
 
     const auto *ocl_engine_impl
@@ -118,13 +124,14 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
     assert(offset % ocl_engine_impl->get_buffer_alignment() == 0);
 
     cl_buffer_region buffer_region = {base_offset_ + offset, size};
-    ocl_wrapper_t<cl_mem> sub_buffer = clCreateSubBuffer(parent_mem_object(),
-            mem_flags, CL_BUFFER_CREATE_TYPE_REGION, &buffer_region, &err);
-    gpu_assert(err == CL_SUCCESS);
+    xpu::ocl::wrapper_t<cl_mem> sub_buffer
+            = clCreateSubBuffer(parent_mem_object(), mem_flags,
+                    CL_BUFFER_CREATE_TYPE_REGION, &buffer_region, &err);
+    assert(err == CL_SUCCESS);
     if (err != CL_SUCCESS) return nullptr;
 
     auto sub_storage
-            = new buffer_memory_storage_t(this->engine(), root_storage());
+            = new buffer_memory_storage_t(this->engine(), parent_storage());
     if (sub_storage) {
         sub_storage->init(memory_flags_t::use_runtime_ptr, size, sub_buffer);
         sub_storage->base_offset_ = base_offset_ + offset;
@@ -139,7 +146,7 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::clone() const {
 }
 
 cl_mem buffer_memory_storage_t::parent_mem_object() const {
-    return utils::downcast<const buffer_memory_storage_t *>(root_storage())
+    return utils::downcast<const buffer_memory_storage_t *>(parent_storage())
             ->mem_object();
 }
 

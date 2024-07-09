@@ -83,7 +83,7 @@ status_t ocl_gpu_engine_t::create_memory_storage(
     std::unique_ptr<memory_storage_t> _storage;
 
     if (flags & memory_flags_t::prefer_device_usm) {
-        _storage.reset(new xpu::ocl::usm_memory_storage_t(
+        _storage.reset(new ocl_usm_memory_storage_t(
                 this, xpu::ocl::usm::kind_t::device));
     } else
         _storage.reset(new xpu::ocl::buffer_memory_storage_t(this));

@@ -23,12 +23,12 @@
 #include "common/rw_mutex.hpp"
 #include "common/utils.hpp"
 
+#include "xpu/ocl/usm_utils.hpp"
 #include "xpu/stream_profiler.hpp"
 
 #include "gpu/intel/ocl/ocl_context.hpp"
 #include "gpu/intel/ocl/ocl_memory_storage.hpp"
 #include "gpu/intel/ocl/ocl_stream.hpp"
-#include "gpu/intel/ocl/ocl_usm_utils.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 
 namespace dnnl {
@@ -63,7 +63,8 @@ public:
 
     status_t set_usm_arg(
             impl::engine_t *engine, int arg_index, const void *arg_value) {
-        return usm::set_kernel_arg_usm(engine, kernel_, arg_index, arg_value);
+        return xpu::ocl::usm::set_kernel_arg_usm(
+                engine, kernel_, arg_index, arg_value);
     }
 
 private:

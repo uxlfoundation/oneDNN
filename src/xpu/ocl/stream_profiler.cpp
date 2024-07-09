@@ -16,21 +16,18 @@
 
 #include <CL/cl.h>
 
-#include <map>
+#include <unordered_map>
 #include <unordered_set>
-
-#include "gpu/intel/ocl/stream_profiler.hpp"
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/ocl/mdapi_utils.hpp"
-#include "gpu/intel/ocl/ocl_stream.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
 
-#include "xpu/ocl/context.hpp"
 #include "xpu/ocl/stream_profiler.hpp"
 
-#include "gpu/gpu_stream.hpp"
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/ocl/mdapi_utils.hpp"
+#include "gpu/intel/ocl/ocl_stream.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -48,7 +45,7 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
         return status::success;
     }
 
-    std::map<uint64_t, xpu::stream_profiler_t::entry_t> stamp2entry;
+    std::unordered_map<uint64_t, xpu::stream_profiler_t::entry_t> stamp2entry;
     for (auto &ev : events_) {
         auto &entry = stamp2entry[ev.stamp];
         const xpu::ocl::event_t &ocl_event
@@ -61,9 +58,11 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
                 CL_PROFILING_COMMAND_END, sizeof(end), &end, nullptr));
         entry.min_nsec = std::min(entry.min_nsec, beg);
         entry.max_nsec = std::max(entry.max_nsec, end);
-        const auto *gpu_stream
-                = utils::downcast<const gpu::stream_t *>(stream_);
-        entry.freq += gpu_stream->get_freq(*ev.event);
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+        const auto *ocl_stream
+                = static_cast<const gpu::intel::ocl::ocl_stream_t *>(stream_);
+        entry.freq += ocl_stream->mdapi_helper().get_freq(ocl_event[0]);
+#endif
         entry.kernel_count++;
     }
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);

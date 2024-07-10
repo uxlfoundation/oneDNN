@@ -134,34 +134,6 @@ inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
 }
 
 template <typename T>
-inline T min_value(data_type_t data_type) {
-    using namespace data_type;
-#define CASE(x) \
-    case x: \
-        return static_cast<T>(nstl::numeric_limits<prec_traits<x>::type>::min())
-    switch (data_type) {
-        CASE(f4_e3m0);
-        CASE(f4_e2m1);
-        CASE(e8m0);
-        CASE(f8_e5m2);
-        CASE(f8_e4m3);
-        CASE(f16);
-        CASE(bf16);
-        CASE(f32);
-        CASE(f64);
-        CASE(s32);
-        CASE(s8);
-        CASE(u8);
-        CASE(s4);
-        CASE(u4);
-        case data_type::undef:
-        default: assert(!"unknown data_type");
-    }
-    return static_cast<T>(0); /* not supposed to be reachable */
-#undef CASE
-}
-
-template <typename T>
 inline T max_value(data_type_t data_type) {
     using namespace data_type;
 #define CASE(x) \

@@ -22728,7 +22728,7 @@ static inline micro::StructuredType::Type microType(Type T) {
         CASE(u32)
         CASE(u16)
         CASE(u8)
-        default: throw std::runtime_error("Unsupported type");
+        default: stub("Unsupported type");
     }
 #undef CASE
 }

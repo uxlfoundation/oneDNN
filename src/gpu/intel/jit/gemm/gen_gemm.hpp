@@ -235,7 +235,7 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             if (quant_enabled_ && src_scales.ndims_ > 1) src_scales_2d_ = true;
 
-            if (wei_decomp_ && src_scales.ndims_ > 1) src_scales_2d_ = true;
+            if (quant_enabled_ && src_scales.ndims_ > 1) src_scales_2d_ = true;
 
             for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
                 auto mask = attr()->scales_.get(s).mask_;
@@ -374,7 +374,6 @@ struct gen_gemm_t : public gpu_gemm_t {
             // Global k-parallel kernels don't support post-ops or non-f32/s32
             //   accumulation unless fusion is enabled.
             if (kernel_desc_.driver_info()->kParallel()
-                    && !kernel_desc_.driver_info()->kParallelLocal()
                     && !kernel_desc_.driver_info()->fusedPostOps()) {
                 VDISPATCH_GEMM(!with_eltwise && !with_binary
                                 && utils::one_of(d->c_type(), f32, s32),

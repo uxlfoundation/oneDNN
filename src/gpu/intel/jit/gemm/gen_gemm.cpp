@@ -322,7 +322,7 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     size_t off_b0
             = types::bytes_to_elements(b_type, b.offset()) + pd()->dyn_offset_b;
     size_t off_c0
-            = c.offset() / types::data_type_size(c_type) + pd()->dyn_offset_c;
+            = types::bytes_to_elements(c_type, c.offset()) + pd()->dyn_offset_c;
     size_t off_aq0 = 0, off_bq0 = 0, off_co0 = 0;
 
     int32_t po_offsets0[GEMM_MAX_PO] = {0}, po_offsets[GEMM_MAX_PO] = {0};

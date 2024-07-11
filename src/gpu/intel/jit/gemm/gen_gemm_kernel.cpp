@@ -95,8 +95,10 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
 
         // Disable block 2D C remainders for small C to avoid simulator errors.
         strategy_.block2DCRemainder &= (m_ * problem_.Tc >= 64);
-        strategy_.block2DCRemainder &= !(utils::one_of(
-                Type::bf8, problem_.Ta, problem_.Tb, problem_.Tc));
+        strategy_.block2DCRemainder &= !(
+                utils::one_of(Type::bf8, problem_.Ta, problem_.Tb, problem_.Tc)
+                || utils::one_of(
+                        Type::hf8, problem_.Ta, problem_.Tb, problem_.Tc));
     }
 #endif
 

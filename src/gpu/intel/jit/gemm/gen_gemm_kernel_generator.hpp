@@ -167,7 +167,11 @@ public:
     ngen::DataType ngen() const {
         using DT = ngen::DataType;
         auto none = DT::invalid;
+#if XE3P
+        auto hf8 = DT::hf8;
+#else
         auto hf8 = DT::ub;
+#endif
         static const DT table[32] = {DT::hf, DT::f, DT::df, none, none, none,
                 none, none, none, none, none, none, DT::bf, DT::tf32, DT::bf8,
                 hf8, none, none, DT::u4, DT::s4, DT::ub, DT::b, DT::uw, DT::w,

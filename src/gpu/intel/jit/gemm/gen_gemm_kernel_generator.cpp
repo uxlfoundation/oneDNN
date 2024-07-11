@@ -374,6 +374,9 @@ static inline void movePipes(Subregister &s, bool sizeCanChange = true) {
     DataType type = s.getType();
 
     switch (type) {
+#if XE3P
+        case DataType::hf8:
+#endif
         case DataType::bf8: type = DataType::ub; break;
         case DataType::bf:
         case DataType::hf: type = DataType::uw; break;
@@ -401,6 +404,9 @@ static inline void moveToIntPipe(Subregister &s) {
     DataType type = s.getType();
 
     switch (type) {
+#if XE3P
+        case DataType::hf8:
+#endif
         case DataType::bf8: type = DataType::ub; break;
         case DataType::bf:
         case DataType::hf: type = DataType::uw; break;
@@ -417,6 +423,9 @@ static inline void moveToIntPipe(Subregister &s) {
 
 static inline Type sintType(Type T) {
     switch (T) {
+#if XE3P
+        case Type::hf8:
+#endif
         case Type::bf8:
         case Type::s8:
         case Type::u8: return Type::s8;
@@ -448,6 +457,9 @@ static inline DataType withSignedness(DataType dt, bool signedType) {
 // Move register region to integer pipe.
 static inline void moveToIntPipe(int esize, RegData &s) {
     switch (s.getType()) {
+#if XE3P
+        case DataType::hf8:
+#endif
         case DataType::bf8: s.setType(DataType::ub); break;
         case DataType::bf:
         case DataType::hf: s.setType(DataType::uw); break;
@@ -5128,7 +5140,7 @@ void gemm_kernel_generator_t<hw>::storeMatrixBlock(const GRF &src,
     if (block.descAssigned)
         send(mod, static_cast<SharedFunction>(block.sfid), null, addr, src,
                 a0.ud(1), a0.ud(0));
-    else if (astrategy.newDP)
+    else if (astrategy.newDP) {
         switch (implAccessType(atype, astrategy, block)) {
             case AccessType::Block:
             case AccessType::Scattered:
@@ -5157,7 +5169,7 @@ void gemm_kernel_generator_t<hw>::storeMatrixBlock(const GRF &src,
             }
             default: stub();
         }
-    else
+    } else
         switch (implAccessType(atype, astrategy, block)) {
             case AccessType::ChannelScattered: {
                 static const ChannelMask cmasks[4] = {ChannelMask::r,
@@ -10821,6 +10833,18 @@ void gemm_kernel_generator_t<hw>::convert(const GRFMultirange &range, Type Told,
             mov(ne, range[i].ub(0)(4), range[i].ub());
         return;
     }
+#if XE3P
+    if (hw >= HW::Xe3p && Told == Type::f32 && Tnew == Type::hf8) {
+        int ne = elementsPerGRF<uint32_t>(hw);
+        for (int i = 0; i < range.getLen(); i++)
+            mov(ne, range[i].hf(), range[i].f());
+        for (int i = 0; i < range.getLen(); i++)
+            mov(ne, range[i].hf8(), range[i].hf());
+        for (int i = 0; i < range.getLen(); i++)
+            mov(ne, range[i].ub(0)(4), range[i].ub());
+        return;
+    }
+#endif
 
     // Special path: s16->f16.
     if (Told == Type::s16 && Tnew == Type::f16) {
@@ -21122,10 +21146,7 @@ void gemm_kernel_generator_t<hw>::gemmAutoTypeConversions(
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
 
 #if XE3P
-    if (ngen::Core::Xe3p == hw) {
-        if (Ta == Type::hf8) Ta = Type::f16;
-        if (Tb == Type::hf8) Tb = Type::f16;
-    } else {
+    if (hw < HW::Xe3p) {
         if (Ta.isF8()) Ta = Type::f16;
         if (Tb.isF8()) Tb = Type::f16;
     }
@@ -27863,6 +27884,28 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                 copyTemp[0].ud());
                                     } else
                                         stub();
+#if XE3P
+                                } else if (Ts_real == Type::hf8
+                                        && hw >= HW::Xe3p) {
+                                    mov(nelems_real | modMov, copyTemp[0].ub(),
+                                            sreg.ub()(scrosspack));
+                                    mov(nelems_real | modMov, copyTemp[1].hf(),
+                                            copyTemp[0].hf8());
+                                    if (Td_real == Type::f16) {
+                                        mov(nelems_real | modMov,
+                                                dreg.uw()(dcrosspack),
+                                                copyTemp[1].uw());
+                                    } else if (Td_real == Type::f32) {
+                                        mov(nelems_real | modMov,
+                                                copyTemp[0].sub(
+                                                        0, Td_real.ngen())(1),
+                                                copyTemp[1].hf());
+                                        mov(nelems_real | modMov,
+                                                dreg.ud()(dcrosspack),
+                                                copyTemp[0].ud());
+                                    } else
+                                        stub();
+#endif
                                 } else if (Ts_real == Type::hf8) {
                                     if (!one_of(Td_real, Type::f16, Type::f32))
                                         stub();
@@ -27950,6 +27993,38 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                 tmp0.ub()(1));
                                     } else
                                         stub();
+#if XE3P
+                                } else if (Td_real == Type::hf8
+                                        && hw >= HW::Xe3p) {
+                                    auto tmp0 = copyTemp[0].sub(
+                                            0, Ts_real.ngen());
+                                    moveToIntPipe(tmp0);
+                                    moveToIntPipe(sreg);
+                                    mov(nelems_real | modMov, tmp0(1),
+                                            sreg(scrosspack));
+                                    if (Ts_real.ngen() == ngen::DataType::hf) {
+                                        auto tmp1 = copyTemp[1].hf8();
+                                        mov(nelems_real | modMov, tmp1,
+                                                tmp0.hf());
+                                        mov(nelems_real | modMov,
+                                                dreg.ub()(dcrosspack),
+                                                tmp1.ub());
+                                    } else if (Ts_real.ngen()
+                                            == ngen::DataType::f) {
+                                        auto tmp1 = copyTemp[1].sub(
+                                                0, ngen::DataType::hf);
+                                        movePipes(tmp0);
+                                        movePipes(sreg);
+                                        mov(nelems_real | modMov, tmp1(1),
+                                                tmp0(1));
+                                        mov(nelems_real | modMov, tmp0.hf8()(1),
+                                                tmp1(1));
+                                        mov(nelems_real | modMov,
+                                                dreg.ub()(dcrosspack),
+                                                tmp0.ub()(1));
+                                    } else
+                                        stub();
+#endif
                                 } else if (Td_real == Type::hf8) {
                                     auto tmp0 = copyTemp[0].sub(
                                             0, ngen::DataType::ub);

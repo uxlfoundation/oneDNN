@@ -712,25 +712,65 @@ def convert_zp_policy(value, prim_kind):
             6: "per_ocic",
             12: "per_ocic",
         }
-        acts = {
-            "eltwise_relu": "RELU",
-            "eltwise_logistic": "LOGISTIC",
-            "eltwise_tanh": "TANH",
-        }
-        all_flags = [
-            self._get_flag_from("alg", algs),
-            self._get_flag_from("direction", dirs),
-            self._get_flag_from("activation", acts),
-        ]
-        flags = self.entry.aux.get("flags")
-        if flags is not None:
-            all_flags.append(f"--flags={flags}")
-        return " ".join(flag for flag in all_flags if flag)
+    else:
+        masks = {0: "common", 2: "per_dim_1"}
+    mask = masks.get(int(value))
+    if mask:
+        return mask
+    # this is a workaround for tensors with mask more than 4
+    return "per_tensor"
 
-    @property
-    def dir(self):
-        dir = self._get_dir()
-        return f"--prop={dir}"
+
+def convert_post_ops(post_ops, prim_kind):
+    def convert_binary_post_op(post_op):
+        po = post_op["alg"] + ":" + post_op["dt"] + ":" + post_op["mask"]
+        if post_op["tag"] != None:
+            po += ":" + post_op["tag"]
+        return po
+
+    def convert_dw_post_op(post_op):
+        po = post_op["alg"] + ":" + post_op["ksp"] + ":" + post_op["dst_dt"]
+        return po
+
+    def convert_eltwise_post_op(post_op):
+        benchdnn_p_op = post_op["alg"]
+        alpha = post_op["alpha"]
+        beta = post_op["beta"]
+        scale = post_op["scale"]
+        if alpha != "1.0":
+            benchdnn_p_op += ":" + alpha
+            if beta != "0.0":
+                benchdnn_p_op += ":" + beta
+                if alpha != "1.0":
+                    benchdnn_p_op += ":" + scale
+        return benchdnn_p_op
+
+    def convert_sum_post_op(post_op):
+        benchdnn_p_op = post_op["alg"]
+        if post_op["scale"] != 1.0:
+            benchdnn_p_op += ":" + post_op["scale"]
+            if post_op["zp"] != 0:
+                benchdnn_p_op += ":" + post_op["zp"]
+                if post_op["dt"] != "":
+                    benchdnn_p_op += ":" + post_op["dt"]
+        return benchdnn_p_op
+
+    def convert_prelu_post_op(post_op):
+        benchdnn_p_op = post_op["alg"]
+        if post_op["mask"] != 0:
+            policy = convert_scale_policy(post_op["mask"], prim_kind)
+            benchdnn_p_op += ":" + policy
+        if post_op["has_scaleshift"] != "":
+            benchdnn_p_op += ":true"
+        return benchdnn_p_op
+
+    convert = {
+        "binary": convert_binary_post_op,
+        "dw": convert_dw_post_op,
+        "eltwise": convert_eltwise_post_op,
+        "sum": convert_sum_post_op,
+        "prelu": convert_prelu_post_op,
+    }
 
     @property
     def dts(self):

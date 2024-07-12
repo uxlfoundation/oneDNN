@@ -166,7 +166,6 @@ struct serialization_stream_t {
 
     const std::vector<uint8_t> &get_data() const { return data_; }
 
-private:
     static size_t hash_range(const uint8_t *v, size_t size) {
         size_t seed = 0;
         const uint8_t *end = v + size;

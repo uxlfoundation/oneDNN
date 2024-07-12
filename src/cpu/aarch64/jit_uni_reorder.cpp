@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2018-2023 Intel Corporation
-* Copyright 2020-2023 FUJITSU LIMITED
+* Copyright 2020-2024 FUJITSU LIMITED
 * Copyright 2022-2024 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -161,20 +161,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
     static bool applicable(const prb_t &p) {
         using namespace data_type;
 
-        bool bf16_ok
-                = (mayiuse_bf16() && (p.itype == bf16) && (p.otype == bf16)
-                          && !interim_f32_needed(p, false) && p.beta == 0.f)
-                || (p.itype != bf16 && p.otype != bf16)
-                || (p.itype == f32 && p.otype == bf16 && mayiuse_bf16()
-                        && p.beta == 0.f);
-
         bool ok = true && p.ndims > 0
-                && utils::one_of(p.itype, f32, bf16, s32, data_type::s8, u8)
+                && utils::one_of(p.itype, f32, s32, data_type::s8, u8)
                 && utils::one_of(p.otype, f32, bf16, s32, data_type::s8, u8)
                 && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
                 && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
                 && simple_impl_desc_init(p, nullptr) && prb_has_small_strides(p)
-                && bf16_ok;
+                && IMPLICATION(
+                        p.otype == bf16, p.itype == f32 && mayiuse_bf16());
 
         return ok;
     }
@@ -716,7 +710,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         const int load_tail_step
                 = !can_load_xmm && can_store_xmm ? ur_step : load_step;
 
-        const bool interim_f32 = interim_f32_needed(prb_, compensation_needed_);
+        const bool interim_f32 = interim_f32_needed();
 
         const bool need_saturation
                 = (utils::one_of(prb_.otype, u8, data_type::s8, s32)
@@ -1299,18 +1293,17 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         }
     }
 
-    static bool interim_f32_needed(const prb_t &prb, bool compensation_needed) {
+    bool interim_f32_needed() {
         using namespace data_type;
 
-        bool ret = utils::one_of(f32, prb.itype, prb.otype)
-                || prb.src_scale_type != scale_type_t::NONE
-                || prb.dst_scale_type != scale_type_t::NONE || prb.beta != 0.f
-                || ((prb.req_src_zp || prb.req_dst_zp)
-                                ? !(prb.itype == s32 && prb.otype == s32)
+        return utils::one_of(f32, prb_.itype, prb_.otype)
+                || prb_.src_scale_type != scale_type_t::NONE
+                || prb_.dst_scale_type != scale_type_t::NONE || prb_.beta != 0.f
+                || ((prb_.req_src_zp || prb_.req_dst_zp)
+                                ? !(prb_.itype == s32 && prb_.otype == s32)
                                 : false)
-                || (prb.itype != f32 && compensation_needed)
-                || prb.scale_adjust != 1.f;
-        return ret;
+                || (prb_.itype != f32 && compensation_needed_)
+                || prb_.scale_adjust != 1.f;
     }
 
     void process_unroll_generic(
@@ -1328,7 +1321,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
         int curr = 0; // will switch between 0 and 1
 
-        const bool interim_f32 = interim_f32_needed(prb_, compensation_needed_);
+        const bool interim_f32 = interim_f32_needed();
 
         if (prb_.req_src_zp) {
             add_imm(X_DEFAULT_ADDR, PARAM(src_zp), X_TMP_0);
@@ -2199,7 +2192,6 @@ struct jit_single_blk_kernel_t : public jit_generator {
 
     // Register allocation xmm0~11
     void gen_transpose_8x8() {
-        const uint64_t sveLen = get_sve_length();
         constexpr int lane = 8;
 
 #if 0
@@ -2240,25 +2232,22 @@ struct jit_single_blk_kernel_t : public jit_generator {
 
         /* 3rd turn */
         for (uint32_t i = 0; i < lane / 2; i++) {
-            mov(ZRegD {i}, ZRegD {lane / 2 + i});
-            mov(z_tmp_vec[lane / 2 + i].d, z_tmp_vec[i].d);
+            ext(ZRegB {lane / 2 + i}, ZRegB {lane / 2 + i}, 16);
         }
 
         /* 4th turn */
         for (uint32_t i = 0; i < lane / 2; i++) {
-            ZRegB z {lane / 2 + i};
-            ZRegB z_tmp = z_tmp_vec[lane / 2 + i].b;
-            /* Move bit 0-127 to 128-255. */
-            ext(z, z, 16);
-            /* Move bit 128-255 to 0-127. */
-            ext(z_tmp, z_tmp, sveLen - 16);
+            mov(ZRegD {i}, ZRegD {lane / 2 + i});
         }
 
         /* 5th turn */
         for (uint32_t i = 0; i < lane / 2; i++) {
-            ZRegS z0 {i};
+            ext(ZRegB {i}, z_tmp_vec[i].b, 16);
+        }
+
+        /* 6th turn */
+        for (uint32_t i = 0; i < lane / 2; i++) {
             ZRegS z1 {lane / 2 + i};
-            sel(z0, P_TMP, z0, z_tmp_vec[lane / 2 + i].s);
             sel(z1, P_TMP, z1, z_tmp_vec[i].s);
         }
     }
@@ -2338,8 +2327,8 @@ struct jit_single_blk_kernel_t : public jit_generator {
     }
 
     // tail can be 1 ~ 16, using sve2 for now
-    void gen_ker16x16_in_8x8(
-            int input_stride, int output_stride, int in_tail, int out_tail) {
+    void gen_ker16x16_in_8x8(int i_off, int o_off, int input_stride,
+            int output_stride, int in_tail, int out_tail) {
         constexpr auto lane = 16;
         constexpr auto sub_lane = lane / 2;
         auto tail = in_tail != lane ? in_tail : out_tail;

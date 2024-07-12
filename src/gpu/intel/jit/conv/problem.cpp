@@ -232,7 +232,8 @@ status_t conv_problem_t::init_acc_data_type() {
         acc_data_type = data_type::s32;
     } else if (utils::everyone_is(data_type::f16, a, b)
             || utils::everyone_is(data_type::bf16, a, b)
-            || utils::everyone_is(data_type::f8_e5m2, a, b)) {
+            || utils::everyone_is(data_type::f8_e5m2, a, b)
+            || utils::everyone_is(data_type::f8_e4m3, a, b)) {
         acc_data_type = data_type::f32;
     } else if (utils::everyone_is(data_type::tf32, a, b)) {
         acc_data_type = data_type::f32;

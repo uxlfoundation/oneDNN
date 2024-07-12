@@ -137,7 +137,6 @@ protected:
         return compute_blocks_;
     }
 
-private:
     void register_primitive(impl::primitive_t *primitive) {
         compute_blocks_.emplace_back(new compute_block_t(primitive));
     }

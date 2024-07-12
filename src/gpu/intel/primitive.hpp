@@ -46,6 +46,8 @@ struct primitive_t : public gpu::primitive_t {
 
         compute::kernel_t kernel() const { return kernel_; }
 
+        uint64_t get_hash() const { return kernel_.get_hash(); };
+
     private:
         bool empty_impl() const override { return !bool(kernel_); }
 
@@ -71,6 +73,23 @@ struct primitive_t : public gpu::primitive_t {
 
         compute::kernel_t kernel_;
     };
+
+    // This may need overridden when implementations perform dispatching via
+    // runtime parameters.
+    uint64_t get_id() const override {
+        size_t hash = 0;
+        for (auto &block : compute_blocks_) {
+            if (block->primitive()) {
+                auto id = block->primitive()->get_id();
+                if (id == 0) return 0;
+                hash = hash_combine(hash, id);
+            } else {
+                auto *b = utils::downcast<const compute_block_t *>(block.get());
+                hash = hash_combine(hash, b->get_hash());
+            }
+        }
+        return hash != 0 ? hash : 2147483647; // id is required to be non-zero
+    }
 
     status_t get_cache_blob_size(
             impl::engine_t *engine, size_t *size) const override {

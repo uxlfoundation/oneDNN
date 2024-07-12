@@ -232,15 +232,27 @@ public:
 
     status_t get_binary_size(
             const impl::engine_t *engine, size_t *binary_size) const {
+        if (impl_ == nullptr) {
+            binary_size = 0;
+            return status::success;
+        }
         return impl_->get_binary_size(engine, binary_size);
     }
 
     status_t get_binary(
             const impl::engine_t *engine, xpu::binary_t &binary) const {
+        if (impl_ == nullptr) {
+            binary = {};
+            return status::success;
+        }
         return impl_->get_binary(engine, binary);
     }
 
     status_t get_kernel_binary(xpu::binary_t &binary) const {
+        if (impl_ == nullptr) {
+            binary = {};
+            return status::success;
+        }
         return impl_->get_kernel_binary(binary);
     }
 
@@ -253,6 +265,13 @@ public:
     status_t dump() const {
         if (!gpu_utils::is_jit_dump_enabled()) return status::success;
         return impl_->dump();
+    }
+
+    size_t get_hash() const {
+        xpu::binary_t binary;
+        status_t status = get_kernel_binary(binary);
+        if (status != status::success) return 0;
+        return serialization_stream_t::get_hash(binary);
     }
 
     // A `tag` may be provided by the user to differentiate the source of the
@@ -271,13 +290,6 @@ public:
 
 private:
     std::shared_ptr<kernel_impl_t> impl_;
-
-    size_t get_hash() const {
-        xpu::binary_t binary;
-        status_t status = get_kernel_binary(binary);
-        if (status != status::success) return 0;
-        return serialization_stream_t::get_hash(binary);
-    }
 };
 
 class kernel_bundle_t {

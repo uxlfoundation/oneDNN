@@ -291,9 +291,8 @@ public:
     }
 
 private:
-    static constexpr int max_args = 512;
     static constexpr int storage_size = 2048;
-    static constexpr int storage_alginment = 8;
+    static constexpr int storage_alignment = 8;
 
     std::vector<kernel_arg_t> args_;
     typename std::aligned_storage<storage_size, storage_alignment>::type

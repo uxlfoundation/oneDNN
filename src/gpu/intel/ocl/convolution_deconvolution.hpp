@@ -94,8 +94,8 @@ struct convolution_deconvolution_fwd_t : public gpu_primitive_t {
 
         ~pd_t() = default;
 
-        DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_fwd_t);
-        status_t init_convolution(engine_t *engine) {
+        DECLARE_COMMON_PD_T(name_.c_str(), convolution_deconvolution_fwd_t);
+        status_t init_convolution(impl::engine_t *engine) {
             convolution_desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr(*attr());
@@ -190,7 +190,7 @@ struct convolution_deconvolution_fwd_t : public gpu_primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
 
     private:
-        std::string name_ = "ocl:ref:any";
+        std::string name_ = "conv:any";
 
         void init_name() {
             name_.append("+");
@@ -265,7 +265,8 @@ struct convolution_deconvolution_bwd_data_t : public gpu_primitive_t {
 
         ~pd_t() = default;
 
-        DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_data_t);
+        DECLARE_COMMON_PD_T(
+                name_.c_str(), convolution_deconvolution_bwd_data_t);
 
         status_t init_convolution(impl::engine_t *engine) {
             convolution_desc_t cd;
@@ -333,7 +334,7 @@ struct convolution_deconvolution_bwd_data_t : public gpu_primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
 
     private:
-        std::string name_ = "ocl:ref:any";
+        std::string name_ = "conv:any";
 
         void init_name() {
             name_.append("+");
@@ -384,7 +385,8 @@ struct convolution_deconvolution_bwd_weights_t : public gpu_primitive_t {
 
         ~pd_t() = default;
 
-        DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_weights_t);
+        DECLARE_COMMON_PD_T(
+                name_.c_str(), convolution_deconvolution_bwd_weights_t);
 
         status_t init_convolution(impl::engine_t *engine) {
             convolution_desc_t cd;
@@ -457,7 +459,7 @@ struct convolution_deconvolution_bwd_weights_t : public gpu_primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
 
     private:
-        std::string name_ = "ocl:ref:any";
+        std::string name_ = "conv:any";
 
         void init_name() {
             name_.append("+");
@@ -504,7 +506,7 @@ struct convolution_deconvolution_bwd_weights_t : public gpu_primitive_t {
         def_data_type(kernel_ctx, accum_data_type, "ACC");
 
         CHECK(create_kernel(
-                engine, &bias_kernel_, "deconv_backward_bias", kernel_ctx));
+                engine, &bias_kernel_, "ref_deconv_backward_bias", kernel_ctx));
         if (!bias_kernel_) return status::runtime_error;
 
         return status::success;

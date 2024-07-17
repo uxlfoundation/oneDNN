@@ -67,6 +67,32 @@ namespace intel {
 namespace ocl {
 namespace bn_utils {
 
+constexpr int aux_init_stage = 1;
+constexpr int aux_finalize_stage = 0;
+constexpr int aux_use_one_pass = 1;
+constexpr int aux_use_regular = 0;
+constexpr int aux_fwd = 1;
+constexpr int aux_bwd = 0;
+
+namespace kernel_id {
+constexpr size_t norm_fwd = 0;
+constexpr size_t calc_mean = 1;
+constexpr size_t calc_var = 2;
+constexpr size_t reduce_fwd_reg = 3;
+constexpr size_t calc_mean_var = 4;
+constexpr size_t reduce_fwd_1pass = 5;
+constexpr size_t reduce_aux = 6;
+constexpr size_t norm_bwd = 7;
+constexpr size_t calc_stat = 8;
+constexpr size_t reduce_stat = 9;
+constexpr size_t norm_fwd_buff = 10;
+constexpr size_t norm_bwd_buff = 11;
+constexpr size_t calc_mean_buff = 12;
+constexpr size_t calc_var_buff = 13;
+constexpr size_t calc_mean_var_buff = 14;
+constexpr size_t calc_stat_buff = 15;
+} // namespace kernel_id
+
 float get_ss_utilization(
         int max_ss, const compute::range_t &gws, const compute::range_t &lws);
 float get_thr_utilization(int eu_count, int threads_per_eu, int sg_size,

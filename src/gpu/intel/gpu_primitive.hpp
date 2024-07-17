@@ -20,12 +20,6 @@
 #include <cassert>
 #include "gpu/intel/compute/utils.hpp"
 
-#ifndef DISABLE_VERBOSE
-#include <iostream>
-#include <sstream>
-#include "common/verbose.hpp"
-#endif
-
 #include "common/cache_blob.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_primitive.hpp"
@@ -194,16 +188,18 @@ struct gpu_primitive_t : public gpu::primitive_t {
         auto global_range = nd_range.global_range();
         auto local_range = nd_range.local_range();
 
-        // Since the number of dimensions is hard-coded here,
-        // we need an additional sanity check
-        static_assert(compute::range_t::max_ndims == 3,
-                "Incorrect number of dims for nd_range_t");
+        // Convert global_range to an equivalent 3D nd_range_t
+        constexpr size_t range_ndims = 3;
+        assert(global_range.ndims() <= range_ndims);
+        auto gws = compute::range_t::one(range_ndims);
+        for (size_t i = 0; i < global_range.ndims(); i++) {
+            gws[i] = global_range[i];
+        }
 
         compute::range_t off_inc(UINT32_MAX, UINT32_MAX, UINT32_MAX);
-        if (local_range.has_value()) {
-            const auto &lws = local_range.value();
-            for (size_t i = 0; i < lws.ndims(); i++) {
-                off_inc[i] *= lws[i];
+        if (local_range) {
+            for (size_t i = 0; i < local_range.ndims(); i++) {
+                off_inc[i] *= local_range[i];
             }
         }
 
@@ -219,9 +215,9 @@ struct gpu_primitive_t : public gpu::primitive_t {
                 offset[0] += off_inc[0])
         {
             arg_list.set(offset_idx, offset_arg);
-            compute::range_t range;
-            for (size_t i = 0; i < global_range.ndims(); i++)
-                range[i] = std::min(off_inc[i], global_range[i] - offset[i]);
+            auto range = compute::range_t::empty(range_ndims);
+            for (size_t i = 0; i < range_ndims; i++)
+                range[i] = std::min(off_inc[i], gws[i] - offset[i]);
 
             CHECK(parallel_for(ctx, compute::nd_range_t(range, local_range),
                     kernel, arg_list));

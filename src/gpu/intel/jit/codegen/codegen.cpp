@@ -667,8 +667,8 @@ private:
                 || (hw == ngen::HW::XeHPG && send_func.is_atomic()
                         && send_func.type.kind() == type_kind_t::qword
                         && !with_atomic_fp64_)) {
-            send_atomic_add_emu(scope, send_func, mask_op, mod, mem_buf_rd,
-                    surf_bti, mem_off_op.reg_data(), rd);
+            send_atomic_add_emu(
+                    scope, send_func, mask_op, mod, mem_off_op.reg_data(), rd);
         } else {
             spec_impl.emit(host_, scope, mod, mem_off_op.reg_data(), rd);
         }
@@ -1269,7 +1269,8 @@ private:
         auto src0 = _src0;
         auto src1 = _src1;
         align_src_dst_offset(host_, scope_, mod, dst, src0, src1);
-        if (is_commutative_op(obj.op_kind) && !is_src1_ok(hw, dst, src0, src1)) {
+        if (is_commutative_op(obj.op_kind)
+                && !is_src1_ok(hw, dst, src0, src1)) {
             std::swap(src0, src1);
         }
         ir_assert(is_src1_ok(hw, dst, src0, src1));
@@ -1549,6 +1550,9 @@ private:
         auto t = tmp.format(0, w_type, obj.elems());
         reg_buf_data_t t_strided;
         bool align_with_dst = false;
+#if XE3P
+        if (hw == ngen::HW::Xe3p) align_with_dst = true;
+#endif
         if (align_with_dst) {
             int w_stride = dst_stride * (ngen::getBytes(dst.type()) / w_size);
             int tmp_strided_regs

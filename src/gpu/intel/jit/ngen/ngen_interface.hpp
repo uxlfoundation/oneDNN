@@ -72,6 +72,9 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
+#if XE3P
+                             , useEfficient64Bit(hw_ >= HW::Xe3p)
+#endif
                              , requestedInlineGRFs(defaultInlineGRFs(hw))
     {}
 
@@ -521,6 +524,9 @@ void InterfaceHandler::finalize()
 
 int InterfaceHandler::inlineGRFs() const
 {
+#if XE3P
+    if (useEfficient64Bit) return 1;
+#endif
     return requestedInlineGRFs;
 }
 
@@ -586,6 +592,9 @@ std::string InterfaceHandler::generateZeInfo() const
     std::stringstream md;
 
     const char *version = "1.8";
+#if XE3P
+    if (useEfficient64Bit) version = "1.35";
+#endif
 
     md << "version: " << version << "\n"
           "kernels: \n"

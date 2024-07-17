@@ -16,6 +16,7 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/gen9_softmax.hpp"
 #include "gpu/intel/ocl/ref_softmax.hpp"
 #include "gpu/intel/ocl/reusable_softmax.hpp"

@@ -16,10 +16,13 @@
 
 #include "gpu/intel/ocl/reduction/combined_reduction.hpp"
 #include "common/c_types_map.hpp"
+#include "common/utils.hpp"
 #include "gpu/intel/block_structure.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/reduction/reduction_utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -130,7 +133,7 @@ reduction_phase_conf_t::reduction_phase_conf_t(
     compute::range_t gws(
             gpu_utils::into<size_t>(num_subgroups * subgroup_size));
     compute::range_t lws(
-            gpu_utils::into<size_t>(threads_per_wg * subgroup_size));
+            gpu_utils::into<size_t>(slm_reductions * subgroup_size));
     nd_range = compute::nd_range_t(gws, lws);
 
     is_first = false;
@@ -366,9 +369,9 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.set_data_type(phase.src_type);
 
     kernel_ctx.define_int("SUBGROUP_SIZE", phase.subgroup_size);
-    if (!phase.nd_range.local_range().has_value()) return status::runtime_error;
-    kernel_ctx.define_int("LWS_SIZE",
-            static_cast<int64_t>(phase.nd_range.local_range().value()[0]));
+    const auto &lws = phase.nd_range.local_range();
+    if (!lws) return status::runtime_error;
+    kernel_ctx.define_int("LWS_SIZE", static_cast<int64_t>(lws[0]));
 
     kernel_ctx.define_int("DIV", conf.div);
     kernel_ctx.define_float("POWER", conf.power);

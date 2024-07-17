@@ -29,6 +29,7 @@
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/jit/jit_generator.hpp"
 #include "gpu/intel/jit/ngen/ngen.hpp"
 #include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"
@@ -65,6 +66,9 @@ struct ir_generator_t : public jit_generator_base {
                 REG_XEHPG_ISA(CASE(XeHPG));
                 REG_XEHPC_ISA(CASE(XeHPC));
                 REG_XE2_ISA(CASE(Xe2));
+#if XE3P
+                REG_XE3P_ISA(CASE(Xe3p));
+#endif
                 default: gpu_assert(false) << "Unexpected GPU architecture";
             }
 #undef CASE
@@ -945,6 +949,9 @@ public:
 
         // qot = (x * m) >> p
         bool use_mach = true;
+#if XE3P
+        if (hw == ngen::HW::Xe3p) use_mach = false;
+#endif
         if (use_mach) {
             auto acc = acc0.retype(div_type);
             mul(1, acc[0], _x, m & 0xFFFF);
@@ -955,7 +962,6 @@ public:
             emul(1, q_tmp[0], _x, m);
             eshr(1, q_tmp.uq(0), q_tmp.uq(0), p);
         }
-        if (!qot.isInvalid()) mov(mod, qot, _qot);
 
         if (!rem.isInvalid()) {
             // rem = x - qot * y
@@ -1132,9 +1138,9 @@ protected:
     int thread_group_size() const {
         ir_assert(with_nd_range_);
         int local_size = 1;
-        ir_assert(nd_range_.local_range().has_value());
+        ir_assert(nd_range_.local_range());
         for (int i = 0; i < (int)nd_range_.ndims(); i++) {
-            local_size *= (int)nd_range_.local_range().value()[i];
+            local_size *= (int)nd_range_.local_range()[i];
         }
         return ir_utils::safe_divide(local_size, exec_cfg_.simd());
     }

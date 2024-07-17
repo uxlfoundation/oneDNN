@@ -266,7 +266,11 @@ struct reg_mask_t {
     IR_DEFINE_DUMP()
 
     static const int chunk_bits = 64;
+#if XE3P
     static const int max_regs = 512;
+#else
+    static const int max_regs = 256;
+#endif
     static const int max_nchunks = max_regs / chunk_bits;
 
     const hw_context_t *hw_ctx = nullptr;

@@ -48,103 +48,10 @@ namespace sycl {
                 sycl_global_range, ::sycl::range<3>(1, 1, 1));
     }
 
-    if (lhs_be == backend_t::level0) { return compare_ze_devices(lhs, rhs); }
-
-#ifdef DNNL_SYCL_CUDA
-    if (lhs_be == backend_t::nvidia) {
-        return gpu::nvidia::compare_cuda_devices(lhs, rhs);
-    }
-#endif
-
-#ifdef DNNL_SYCL_HIP
-    if (lhs_be == backend_t::amd) {
-        return gpu::amd::compare_hip_devices(lhs, rhs);
-    }
-#endif
-    assert(!"not expected");
-    return false;
-}
-
-device_id_t sycl_device_id(const ::sycl::device &dev) {
-    if (is_host(dev))
-        return std::make_tuple(static_cast<int>(backend_t::host), 0, 0);
-
-    device_id_t device_id
-            = device_id_t {static_cast<int>(backend_t::unknown), 0, 0};
-    switch (get_sycl_backend(dev)) {
-        case backend_t::opencl: {
-            auto ocl_device = hrt::ocl::make_wrapper(
-                    compat::get_native<cl_device_id>(dev));
-            device_id = std::make_tuple(static_cast<int>(backend_t::opencl),
-                    reinterpret_cast<uint64_t>(ocl_device.get()), 0);
-            break;
-        }
-        case backend_t::level0: {
-            device_id = std::tuple_cat(
-                    std::make_tuple(static_cast<int>(backend_t::level0)),
-                    get_device_uuid(dev));
-            break;
-        }
-        case backend_t::unknown: assert(!"unknown backend"); break;
-        default: assert(!"unreachable");
-    }
-    assert(std::get<0>(device_id) != static_cast<int>(backend_t::unknown));
-    return device_id;
-}
-
-bool dev_ctx_consistency_check(
-        const ::sycl::device &dev, const ::sycl::context &ctx) {
-    auto ctx_devs = ctx.get_devices();
-
-    // Try to find the given device in the given context.
-    auto it = std::find_if(ctx_devs.begin(), ctx_devs.end(),
-            [&](const ::sycl::device &ctx_dev) {
-                return are_equal(ctx_dev, dev);
-            });
-    // If found.
-    if (it != ctx_devs.end()) return true;
-
-    // If not found and the given device is not a sub-device.
-    if (!is_subdevice(dev)) return false;
-
-    // Try to find a parent device of the given sub-device in the given
-    // context.
-    while (is_subdevice(dev)) {
-        auto parent_dev = get_parent_device(dev);
-        it = std::find_if(ctx_devs.begin(), ctx_devs.end(),
-                [&](const ::sycl::device &ctx_dev) {
-                    return are_equal(ctx_dev, parent_dev);
-                });
-        // If found.
-        if (it != ctx_devs.end()) return true;
-    }
-
-    return false;
-}
-
-status_t check_device(engine_kind_t eng_kind, const ::sycl::device &dev,
-        const ::sycl::context &ctx) {
-    // Check device and context consistency.
-    VERROR_ENGINE(dev_ctx_consistency_check(dev, ctx),
-            status::invalid_arguments, VERBOSE_DEVICE_CTX_MISMATCH);
-
-    // Check engine kind and device consistency.
-    VERROR_ENGINE(
-            !(eng_kind == engine_kind::cpu && !dev.is_cpu() && !is_host(dev)),
-            status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);
-    VERROR_ENGINE(!(eng_kind == engine_kind::gpu && !dev.is_gpu()),
-            status::invalid_arguments, VERBOSE_BAD_ENGINE_KIND);
-
-#if !defined(DNNL_SYCL_CUDA) && !defined(DNNL_SYCL_HIP)
-    // Check that platform is an Intel platform.
-    VERROR_ENGINE(!(!is_host(dev) && !is_intel_platform(dev.get_platform())),
-            status::invalid_arguments, VERBOSE_INVALID_PLATFORM, "sycl",
-            "intel",
-            dev.get_platform()
-                    .get_info<::sycl::info::platform::name>()
-                    .c_str());
-#endif
-    return status::success;
+    auto sycl_local_range = ::sycl::range<3>(
+            local_range.ndims() >= 3 ? local_range[2] : 1,
+            local_range.ndims() >= 2 ? local_range[1] : 1, local_range[0]);
+    return ::sycl::nd_range<3>(sycl_global_range, sycl_local_range);
 }
 
 struct uuid2ocl_dev_t {
@@ -304,7 +211,7 @@ status_t get_kernel_binary(
             CHECK(gpu::intel::sycl::func_zeModuleGetNativeBinary(
                     module, &module_binary_size, nullptr));
             module_binary.resize(module_binary_size);
-            CHECK(func_zeModuleGetNativeBinary(
+            CHECK(gpu::intel::sycl::func_zeModuleGetNativeBinary(
                     module, &module_binary_size, module_binary.data()));
             {
                 std::unique_ptr<gpu::intel::ocl::ocl_gpu_engine_t,

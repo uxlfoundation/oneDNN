@@ -33,6 +33,8 @@ std::vector<std::pair<ngen::HW, const char *>> hw_names = {
         MAKE_PAIR(XeHPG),
         MAKE_PAIR(XeHPC),
         MAKE_PAIR(Xe2),
+        MAKE_PAIR(Xe3),
+        MAKE_PAIR(Xe3p),
 #undef MAKE_PAIR
 };
 

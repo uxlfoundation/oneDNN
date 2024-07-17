@@ -68,6 +68,7 @@ AddressBase getAddressBase(char c) {
     }
 }
 
+#if XE3P
 CacheSettingsLSC getCaching(char l1, char l3) {
     if (l1 == 'd' && l3 == 'd') return CacheSettingsLSC::Default;
 
@@ -88,6 +89,7 @@ CacheSettingsLSC getCaching(char l1, char l3) {
         default: throw std::runtime_error("Unknown cache setting");
     }
 }
+#endif
 
 CacheSettingsLSC getCaching(char l1, char l2, char l3) {
     if (l3 == 'u' || l3 == 'i') return getCaching(l1, l2);
@@ -115,11 +117,14 @@ CacheSettingsLSC getCaching(char l1, char l2, char l3) {
 }
 
 CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw) {
+#if XE3P
     if (hw >= HW::Xe3p) {
         char l1, l2, l3;
         s >> l1 >> l2 >> l3;
         return getCaching(l1, l2, l3);
-    } else {
+    } else
+#endif
+    {
         char l1, l3;
         s >> l1 >> l3;
         return getCaching(l1, l3);
@@ -138,8 +143,6 @@ void getCaching(
 #if XE3P
     if (hw >= HW::Xe3p) cachingR = CacheSettingsLSC::L1C_L2C_L3C;
 #endif
-
-    if (hw >= HW::Xe3p) cachingR = CacheSettingsLSC::L1C_L2C_L3C;
 
     if (s.peek() == '{') {
         char eat;
@@ -240,7 +243,9 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
     strategy.A.cachingW = CacheSettingsLSC::Default;
     strategy.B.cachingW = CacheSettingsLSC::Default;
     strategy.CO.cachingR = CacheSettingsLSC::L1C_L3C;
+#if XE3P
     if (hw >= HW::Xe3p) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
+#endif
     strategy.A_prefetch.prefetch = true;
     strategy.B_prefetch.prefetch = true;
     strategy.C_prefetch.prefetch = true;
@@ -261,6 +266,9 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
 
     strategy.unroll[LoopK] = 1;
     strategy.checkAdd32 = !native64Bit(hw) || (hw == HW::XeHPC);
+#if XE3P
+    strategy.checkAdd32 &= (hw < HW::Xe3p);
+#endif
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block)
             || strategy.kParallel;
 
@@ -444,7 +452,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem,
             strategy.arbitrationMode
                     = ngen::ThreadArbitrationMode::RoundRobinOnStall;
         else if (mod == "l2d")
-            strategy.optAlignAB = GEMMStrategy::AlignBlock2D;
+            strategy.optAlignAB2D = true;
         else if (mod == "nq") {
             strategy.A.noExtraPad = strategy.A_prefetch.noExtraPad = true;
             strategy.B.noExtraPad = strategy.B_prefetch.noExtraPad = true;
@@ -578,7 +586,7 @@ void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy,
             && !isPacked(problem.C.layout);
 
     // Notify kernel generator to downgrade block 2D prefetches if block 2D cannot be used.
-    if (tags && strategy.optAlignAB != GEMMStrategy::AlignBlock2D) {
+    if (tags && !strategy.optAlignAB2D) {
         bool block2DA = false, block2DB = false;
         while (*tags) {
             block2DA |= (*tags == kcatalog::ReqBlock2DA);

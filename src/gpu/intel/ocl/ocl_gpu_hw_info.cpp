@@ -31,10 +31,18 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
+#if XE3P
+void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
+        cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
+        int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
+        bool &mayiuse_systolic, bool &mayiuse_ngen_kernels,
+        bool &is_efficient_64bit) {
+#else
 void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
         int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
         bool &mayiuse_systolic, bool &mayiuse_ngen_kernels) {
+#endif
     using namespace ngen;
     HW hw = HW::Unknown;
     Product product = {ProductFamily::Unknown, 0};
@@ -58,6 +66,10 @@ void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
     auto status
             = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
     if (status != status::success) mayiuse_ngen_kernels = false;
+#if XE3P
+    is_efficient_64bit = jit::jit_generator<HW::Unknown>::detectEfficient64Bit(
+            context, device, hw);
+#endif
 
     ip_version = 0;
     if (clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ip_version),

@@ -16,9 +16,9 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/bnorm/gen9_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
-#include "gpu/intel/ocl/bnorm/nhwc_reusable.hpp"
 #include "gpu/intel/ocl/bnorm/ref_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/reusable_bnorm.hpp"
 #include "gpu/intel/ocl/bnorm/simple_bnorm.hpp"
@@ -44,16 +44,6 @@ namespace gpu {
 
 namespace {
 using namespace dnnl::impl::prop_kind;
-
-#ifdef DNNL_DEV_MODE
-#define NHWC_REUSABLE_FWD_INSTANCE \
-    INSTANCE(intel::ocl::nhwc_reusable_batch_normalization_fwd_t)
-#define NHWC_REUSABLE_BWD_INSTANCE \
-    INSTANCE(intel::ocl::nhwc_reusable_batch_normalization_bwd_t)
-#else
-#define NHWC_REUSABLE_FWD_INSTANCE
-#define NHWC_REUSABLE_BWD_INSTANCE
-#endif
 
 // clang-format off
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>

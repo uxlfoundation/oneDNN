@@ -78,14 +78,25 @@ struct gen_gemm_t : public gpu_gemm_t {
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             eff_lda_ = d->lda();
             eff_ldb_ = d->ldb();
+            eff_transa_ = d->transa() == dnnl_trans;
+            eff_transb_ = d->transb() == dnnl_trans;
 
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
                     || (d->transa() == dnnl_trans));
-            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda);
+            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
+                    || d->transc() == dnnl_trans;
 
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
-                if (d->transa() == dnnl_notrans) eff_ldb_ = d->k();
+                std::swap(eff_transa_, eff_transb_);
+                eff_transa_ = !eff_transa_;
+                eff_transb_ = !eff_transb_;
+
+                // Do not use transposed B when it is unnecessary
+                if (eff_transb_ && eff_n() == 1) {
+                    eff_transb_ = false;
+                    eff_ldb_ = d->k();
+                }
             }
 
             // Pad leading dimensions in case of a single row/column.
@@ -133,12 +144,16 @@ struct gen_gemm_t : public gpu_gemm_t {
                 VDISPATCH_GEMM(utils::one_of(d->acc_type, bf16, f32),
                         VERBOSE_INCONSISTENT_DT, "a", "acc");
             } else if (!wei_decomp_) {
-                VDISPATCH_GEMM(
-                        utils::one_of(d->a_type(), f32, f16, f8_e5m2, f8_e4m3),
+                VDISPATCH_GEMM(utils::one_of(d->a_type(), f64, f32, f16,
+                                       f8_e5m2, f8_e4m3),
                         VERBOSE_UNSUPPORTED_DT);
                 VDISPATCH_GEMM(d->b_type() == d->a_type(),
                         VERBOSE_INCONSISTENT_DT, "a", "b");
                 VDISPATCH_GEMM(utils::one_of(d->acc_type, d->a_type(), f32),
+                        VERBOSE_UNSUPPORTED_DT);
+                VDISPATCH_GEMM(IMPLICATION(utils::one_of(f64, d->a_type(),
+                                                   d->b_type()),
+                                       dev_info_->has_native(f64)),
                         VERBOSE_UNSUPPORTED_DT);
                 VDISPATCH_GEMM(
                         IMPLICATION(utils::one_of(f8_e5m2, f8_e4m3, d->a_type(),
@@ -159,6 +174,10 @@ struct gen_gemm_t : public gpu_gemm_t {
                                            f16, f8_e5m2, f8_e4m3)
                                            && (d->bias_desc.ndims <= 6)
                                            && bias_cmask() < 8),
+                    VERBOSE_UNSUPPORTED_BIAS_CFG);
+            VDISPATCH_GEMM(
+                    IMPLICATION(with_bias(),
+                            (d->c_type() != f64 || d->bias_type() == f64)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
@@ -334,7 +353,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 #endif
 
-            status = kernel_desc_.select_kernel(arch_, stepping,
+            CHECK(kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, mode, batch_dims(),
                     eff_transa(), eff_transb(), eff_trans_bias(), swap_ab(),
                     ao_dims_, bo_dims_, wei_scales_2d_, src_scales_2d_,
@@ -350,8 +369,6 @@ struct gen_gemm_t : public gpu_gemm_t {
             //   accumulation unless fusion is enabled.
             if (kernel_desc_.driver_info()->kParallel()
                     && !kernel_desc_.driver_info()->fusedPostOps()) {
-                bool with_eltwise = (post_ops_.find(eltwise) != -1);
-
                 VDISPATCH_GEMM(!with_eltwise && !with_binary
                                 && utils::one_of(d->c_type(), f32, s32),
                         VERBOSE_UNSUPPORTED_POSTOP);

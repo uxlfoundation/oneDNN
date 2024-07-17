@@ -37,7 +37,12 @@ struct binary_kernel_vec_t {
             xpu::sycl::in_memory_arg_t &src0, xpu::sycl::in_memory_arg_t &src1,
             xpu::sycl::out_memory_arg_t &dst,
             xpu::sycl::in_memory_arg_t &src0_scale,
-            xpu::sycl::in_memory_arg_t &src1_scale, data_type_t scales_dt)
+            xpu::sycl::in_memory_arg_t &src1_scale, data_type_t scales_dt,
+            xpu::sycl::in_memory_arg_t &po1_src,
+            xpu::sycl::in_memory_arg_t &po2_src,
+            xpu::sycl::in_memory_arg_t &po3_src,
+            xpu::sycl::in_memory_arg_t &po4_src,
+            xpu::sycl::in_memory_arg_t &po5_src)
         : conf_(conf)
         , src0_(src0)
         , src1_(src1)

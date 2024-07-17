@@ -52,29 +52,32 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
                 clCreateContext(nullptr, 1, &ocl_dev, nullptr, nullptr, &err));
         OCL_CHECK(err);
 
+#if XE3P
+        gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper,
+                ocl_ctx_wrapper, ip_version_, gpu_arch_, gpu_product_family_,
+                stepping_id_, native_extensions_, mayiuse_systolic_,
+                mayiuse_ngen_kernels_, is_efficient_64bit_);
+#else
         gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev_wrapper,
                 ocl_ctx_wrapper, ip_version_, gpu_arch_, gpu_product_family_,
                 stepping_id_, native_extensions_, mayiuse_systolic_,
                 mayiuse_ngen_kernels_);
+#endif
     } else if (be == xpu::sycl::backend_t::level0) {
         // TODO: add support for L0 binary ngen check
         // XXX: query from ocl_engine for now
-        gpu::intel::ocl::ocl_engine_factory_t f(engine_kind::gpu);
+        std::unique_ptr<gpu::intel::ocl::ocl_gpu_engine_t, engine_deleter_t>
+                ocl_engine;
+        CHECK(gpu::intel::sycl::create_ocl_engine(&ocl_engine, sycl_engine));
 
-        engine_t *engine;
-        CHECK(f.engine_create(&engine, 0));
-
-        std::unique_ptr<gpu::intel::compute::compute_engine_t, engine_deleter_t>
-                compute_engine(utils::downcast<
-                        gpu::intel::compute::compute_engine_t *>(engine));
-
-        auto *dev_info = compute_engine->device_info();
+        auto *dev_info = ocl_engine->device_info();
         ip_version_ = dev_info->ip_version();
         gpu_arch_ = dev_info->gpu_arch();
         gpu_product_family_ = dev_info->gpu_product_family();
         stepping_id_ = dev_info->stepping_id();
         mayiuse_systolic_ = dev_info->mayiuse_systolic();
         mayiuse_ngen_kernels_ = dev_info->mayiuse_ngen_kernels();
+        is_efficient_64bit_ = dev_info->is_efficient_64bit();
     } else {
         assert(!"not_expected");
     }

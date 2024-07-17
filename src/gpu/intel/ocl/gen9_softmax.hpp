@@ -174,8 +174,8 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
         bool is_blocked = false;
         bool is_write_aligned = false;
         bool is_read_aligned = false;
-        compute::range_t gws;
-        compute::range_t lws;
+        compute::range_t gws = compute::range_t::empty(1);
+        compute::range_t lws = compute::range_t::empty(1);
         size_t group_size = 0;
         const int subgroup_size = 16;
         const int byte_alignment_read = 4;
@@ -314,8 +314,8 @@ struct gen9_softmax_bwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws;
-        compute::range_t lws;
+        compute::range_t gws = compute::range_t::empty(1);
+        compute::range_t lws = compute::range_t::empty(1);
         size_t group_size = 0;
         size_t batches = 0;
         bool is_nhwc = false;

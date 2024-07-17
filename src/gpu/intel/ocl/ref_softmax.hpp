@@ -118,9 +118,9 @@ struct ref_softmax_fwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws;
-        compute::range_t lws;
-        compute::range_t block;
+        compute::range_t gws = compute::range_t::one();
+        compute::range_t lws = compute::range_t::one();
+        compute::range_t block = compute::range_t::one();
         size_t group_size = 0;
         int subgroup_size = 16;
     };
@@ -270,9 +270,9 @@ struct ref_softmax_bwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        compute::range_t gws;
-        compute::range_t lws;
-        compute::range_t block;
+        compute::range_t gws = compute::range_t::one();
+        compute::range_t lws = compute::range_t::one();
+        compute::range_t block = compute::range_t::one();
         size_t group_size = 0;
     };
 

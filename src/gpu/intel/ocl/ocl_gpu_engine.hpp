@@ -22,6 +22,7 @@
 #include "gpu/gpu_impl_list.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/ocl/ocl_utils.hpp"
+#include "xpu/ocl/engine_impl.hpp"
 #include "xpu/utils.hpp"
 
 namespace dnnl {
@@ -114,6 +115,10 @@ public:
     }
 
 protected:
+    const xpu::ocl::engine_impl_t *impl() const {
+        return (const xpu::ocl::engine_impl_t *)engine_t::impl();
+    }
+
     status_t build_program_from_source(xpu::ocl::wrapper_t<cl_program> &program,
             const char *code_string,
             const compute::kernel_ctx_t &kernel_ctx) const;

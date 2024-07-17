@@ -28,6 +28,7 @@
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
+#include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/utils/ngen_proxy.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 

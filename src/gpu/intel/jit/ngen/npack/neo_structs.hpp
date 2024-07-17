@@ -45,10 +45,10 @@ enum class GfxCoreFamily : uint32_t {
     XeHPC = 0xC08,
     Xe2 = 0xC09,
 #if XE3
-    Xe3 = 0x1010,
+    Xe3 = 0x1E00,
 #endif
 #if XE3P
-    Xe3p = 0x1011,
+    Xe3p = 0x2300,
 #endif
 };
 

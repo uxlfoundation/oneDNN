@@ -94,8 +94,10 @@ enum HWTags : char {
     HWTagXeHPG = 'E',
     HWTagXeHPC = 'F',
     HWTagXe2 = 'G',
+#if XE3P
     HWTagXe3 = 'H',
     HWTagXe3p = 'I',
+#endif
 };
 
 struct Selector {

@@ -55,6 +55,9 @@ public:
         l3_cache_size_ = device_info->l3_cache_size();
         large_grf_support_ = compute_engine->mayiuse_large_grf_mode();
         systolic_support_ = device_info->mayiuse_systolic();
+#if XE3P
+        is_efficient_64bit_ = device_info->is_efficient_64bit();
+#endif
         with_atomic_fp64_
                 = device_info->mayiuse_float_atomic_add(data_type::f64);
 
@@ -78,6 +81,9 @@ public:
     int large_grf_support() const { return large_grf_support_; }
     int grf_size() const { return ngen::GRF::bytes(hw_); }
     int systolic_support() const { return systolic_support_; }
+#if XE3P
+    int is_efficient_64bit() const { return is_efficient_64bit_; }
+#endif
     size_t l3_cache_size() const { return l3_cache_size_; }
 
     int max_tg_size(int regs, int simd) const {
@@ -189,6 +195,9 @@ private:
     size_t l3_cache_size_ = 0;
     bool large_grf_support_ = false;
     bool systolic_support_ = false;
+#if XE3P
+    bool is_efficient_64bit_ = false;
+#endif
     bool with_atomic_fp64_ = false;
 };
 

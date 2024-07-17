@@ -27,6 +27,11 @@
 #include "gpu/intel/ocl/many_inputs_sum.hpp"
 #include "gpu/intel/ocl/multi_po_reorder_sum.hpp"
 #include "gpu/intel/ocl/simple_sum.hpp"
+#endif
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+#include "gpu/nvidia/cudnn_sum.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {

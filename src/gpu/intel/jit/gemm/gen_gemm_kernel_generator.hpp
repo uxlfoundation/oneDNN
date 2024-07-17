@@ -42,6 +42,9 @@
 
 #include "gpu/intel/jit/emulation.hpp"
 
+#include "gpu/intel/microkernels/entrance_agent.hpp"
+#include "gpu/intel/microkernels/package.hpp"
+
 #include <array>
 #include <complex>
 #include <cstdint>
@@ -763,7 +766,7 @@ struct CommonState {
     std::array<VirtualFlag, 8> activeVFlags;
     VirtualFlagAllocator raVFlag;
     TokenAllocator tokenAllocator;
-    std::vector<std::pair<uint16_t, int8_t>> tokenMap;
+    std::vector<std::pair<uint8_t, int8_t>> tokenMap;
     ngen::Subregister readFailures;
     ngen::Subregister fusedID;
     ngen::Subregister lsDescConstant[4];
@@ -1000,6 +1003,8 @@ struct GEMMProblem : public CommonProblem {
     bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D; }
     bool quantized2DB() const { return (boPtrDims == 2) || bScale2D; }
 
+    void transpose();
+
     /* Kernel cache helpers. */
     void serialize(serialized_data_t &s) const {
         s.append(Ta, Tb, Tc, Ts);
@@ -1108,9 +1113,9 @@ struct GEMMStrategyPOD : public CommonStrategy {
     uint8_t pad4[3] = {};
     int optAlignAB
             = 0; // Optional alignment for A/B. If > 0, create two versions of k loop, one for A/B aligned to this value, one not.
-    enum {
-        AlignBlock2D = 65536 //   Special optAlignAB value for block 2D loads.
-    };
+    bool optAlignAB2D
+            = false; //   If true, create two version of k loop, one for A/B aligned to block 2D requirements, one not.
+    uint8_t pad4b[3] = {};
     AccessType unalignedAccA,
             unalignedAccB; // Access types to use for A/B on unaligned path.
     uint8_t pad5[2] = {};
@@ -1552,6 +1557,7 @@ struct GEMMState : public CommonState {
     bool aoReuseA = false, boReuseB = false;
     Type Tao_int, Ta_scaleInt;
     Type Tbo_int, Tb_scaleInt;
+    Type Ta_scaleOp, Tb_scaleOp;
     MatrixAddressing Ai, Bi, Ao, Bo, tempC;
     MatrixAddressingStrategy Ai_strategy, Bi_strategy;
     MatrixAddressingStrategy Ao_strategy, Bo_strategy;
@@ -2720,12 +2726,12 @@ protected:
             const std::vector<RegisterBlock> &layoutOffset,
             const std::vector<RegisterBlock> &layoutScale, GRFMultirange src,
             GRFMultirange dst, GRFMultirange offset, GRFMultirange scale,
-            int offR, int offC, const GEMMProblem *problem,
+            Type Tscale, int offR, int offC, const GEMMProblem *problem,
             const CommonStrategy &strategy, CommonState &state);
-    void gemm2DDequantizeOperation(bool doA, Type T, BinaryOp op,
+    void gemm2DDequantizeOperation(bool doA, Type T, Type To, BinaryOp op,
             const std::vector<RegisterBlock> &layout,
-            const std::vector<RegisterBlock> &olayout,
-            const GRFMultirange &regs, const GRFMultirange &oregs, int hab,
+            const std::vector<RegisterBlock> &qlayout,
+            const GRFMultirange &regs, const GRFMultirange &qregs, int hq,
             const GEMMProblem &problem);
     void gemm2DDequantizeAB(bool doA, Type Tsrc, Type Tdst,
             const std::vector<RegisterBlock> &layoutSrc,

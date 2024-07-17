@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -294,6 +294,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, const GEMMProblem &problem) {
         case ngen::HW::XeHPG: selector.hw = kcatalog::HWTagXeHPG; break;
         case ngen::HW::XeHPC: selector.hw = kcatalog::HWTagXeHPC; break;
         case ngen::HW::Xe2: selector.hw = kcatalog::HWTagXe2; break;
+#if XE3P
+        case ngen::HW::Xe3p: selector.hw = kcatalog::HWTagXe3p; break;
+#endif
     }
 
     auto &C = problem.C;

@@ -48,6 +48,9 @@ constexpr gpu_gen_t gpu_xe_hp = ngen::HW::XeHP;
 constexpr gpu_gen_t gpu_xe_hpg = ngen::HW::XeHPG;
 constexpr gpu_gen_t gpu_xe_hpc = ngen::HW::XeHPC;
 constexpr gpu_gen_t gpu_xe2 = ngen::HW::Xe2;
+#if XE3
+constexpr gpu_gen_t gpu_xe3 = ngen::HW::Xe3;
+#endif
 #if XE3P
 constexpr gpu_gen_t gpu_xe3p = ngen::HW::Xe3p;
 #endif
@@ -196,7 +199,8 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
     kernel_t kernel;
 
     if (primitive->cache_blob()) {
-        status_t status = primitive->create_kernel(engine, &kernel, nullptr);
+        status_t status = primitive->create_kernel(
+                engine, &kernel, nullptr, register_kernel);
         if (status != status::success) return kernel_t();
         return kernel;
     }
@@ -219,6 +223,9 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         REG_XEHPG_ISA(CASE(gpu_xe_hpg));
         REG_XEHPC_ISA(CASE(gpu_xe_hpc));
         REG_XE2_ISA(CASE(gpu_xe2));
+#if XE3P
+        REG_XE3P_ISA(CASE(gpu_xe3p));
+#endif
         default: break;
     }
 #undef CASE
@@ -233,6 +240,12 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         case gpu_arch_t::xe_hpg: actual_arch = gpu_xe_hpg; break;
         case gpu_arch_t::xe_hpc: actual_arch = gpu_xe_hpc; break;
         case gpu_arch_t::xe2: actual_arch = gpu_xe2; break;
+#if XE3
+        case gpu_arch_t::xe3: actual_arch = gpu_xe3; break;
+#endif
+#if XE3P
+        case gpu_arch_t::xe3p: actual_arch = gpu_xe3p; break;
+#endif
         case gpu_arch_t::unknown: actual_arch = ngen::HW::Unknown; break;
     }
     ir_assert(actual_arch == arch)
@@ -240,9 +253,8 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
 #endif
 
     if (!jit_kernel) return kernel_t();
-
-    status_t status
-            = primitive->create_kernel(engine, &kernel, jit_kernel.get());
+    status_t status = primitive->create_kernel(
+            engine, &kernel, jit_kernel.get(), register_kernel);
     if (status != status::success) return kernel_t();
     return kernel;
 }

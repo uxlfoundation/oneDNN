@@ -71,14 +71,6 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     adjustStrategy(hw_, problem_, strategy_, tags);
     modifyStrategy(strategy_, aux_params_);
 
-    // Check for legal 2D quantization group size.
-    if (problem_.aoPtrDims == 2 || problem_.aScale2D)
-        if (problem_.aqGroupK % strategy_.aqGroupKGranularity())
-            return status::unimplemented;
-    if (problem_.boPtrDims == 2 || problem_.bScale2D)
-        if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
-            return status::unimplemented;
-
     if (hw_ == ngen::HW::Xe2) {
         // Temporary hack to use XeHPC register banking on Xe2, in order
         //   to successfully reuse XeHPC strategies.
@@ -94,6 +86,17 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
             problem_.A.setAlignment(nstl::max<int>(problem_.A.alignment, 16));
         if (block_2d_b && strategy_.legalBAlignment(problem_, 16))
             problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
+    }
+
+#if XE3P
+    if (hw_ == ngen::HW::Xe3p) {
+        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
+        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
+
+        // Disable block 2D C remainders for small C to avoid simulator errors.
+        strategy_.block2DCRemainder &= (m_ * problem_.Tc >= 64);
+        strategy_.block2DCRemainder &= !(utils::one_of(
+                Type::bf8, problem_.Ta, problem_.Tb, problem_.Tc));
     }
 #endif
 

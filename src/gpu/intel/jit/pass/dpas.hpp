@@ -1,6 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
-* Copyright 2020 Codeplay Software Limited
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,28 +14,29 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/ref_concat.hpp"
-#include "gpu/nvidia/sycl_cuda_engine.hpp"
+#ifndef GPU_INTEL_JIT_PASS_DPAS_HPP
+#define GPU_INTEL_JIT_PASS_DPAS_HPP
+
+#include "gpu/intel/jit/ir/ir.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace nvidia {
+namespace intel {
+namespace jit {
 
-namespace {
+// Adds {Atomic} modifier to dpas/dpasw instructions when applicable.
+stmt_t inject_dpas_atomic(const stmt_t &stmt);
 
-constexpr impl_list_item_t cuda_concat_impl_list[]
-        = {impl_list_item_t::concat_type_deduction_helper_t<
-                   gpu::intel::ocl::ref_concat_t::pd_t>(),
-                nullptr};
-} // namespace
+#if XE3P
+// Adds {Fwd} modifier to dpas/dpasw instructions when applicable.
+stmt_t inject_dpas_fwd(const stmt_t &stmt);
+#endif
 
-const impl_list_item_t *
-cuda_gpu_engine_impl_list_t::get_concat_implementation_list() {
-    return cuda_concat_impl_list;
-}
-
-} // namespace nvidia
+} // namespace jit
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

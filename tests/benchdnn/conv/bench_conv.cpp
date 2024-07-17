@@ -52,8 +52,8 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (const auto &i_mb : s.mb) {
-        const prb_t prb(s.desc, i_dir, i_dt, i_stag, i_wtag, i_dtag, i_alg,
-                i_attr, i_ctx_init, i_ctx_exe, i_mb);
+        const prb_t prb(s.desc, i_dir, i_dt, i_stag, i_wtag, i_dtag, i_strides,
+                i_alg, i_attr, i_ctx_init, i_ctx_exe, i_mb);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
         bool has_dw_po = i_attr.post_ops.convolution_index() >= 0;
@@ -146,7 +146,7 @@ int bench(int argc, char **argv) {
 
             SAFE(str2desc(&s.desc, argv[0]), CRIT);
 
-            SAFE(verify_input(s), WARN);
+            SAFE(verify_input(s, def), WARN);
             s.finalize();
             check_correctness(s, task_executor);
         }

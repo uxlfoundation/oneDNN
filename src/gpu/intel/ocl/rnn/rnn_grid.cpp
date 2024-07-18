@@ -29,11 +29,21 @@
 #include "gpu/intel/ocl/rnn/rnn_grid.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/dnnl_traits.hpp"
 #include "common/gemm_utils.hpp"
+#include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/intel/gemm/gpu_gemm.hpp"
 #include "gpu/intel/gpu_primitive_attr.hpp"
 #include "gpu/intel/utils.hpp"
+
+#define DPRINT(fmt, ...) \
+    do { \
+        if (get_verbose_dev_mode(verbose_t::debuginfo) >= 2) { \
+            printf(fmt, __VA_ARGS__); \
+            fflush(nullptr); \
+        } \
+    } while (0)
 
 namespace dnnl {
 namespace impl {
@@ -43,6 +53,7 @@ namespace ocl {
 
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
+using namespace dnnl::impl::math;
 using namespace prop_kind;
 using namespace alg_kind;
 using namespace rnn_utils;
@@ -81,7 +92,6 @@ static status_t init_ocl_conf(rnn_utils::ocl_conf_t &ocl_conf,
     ocl_conf.bia_dt = rnn.bias_data_type;
     ocl_conf.acc_dt = rnn.acc_data_type;
     ocl_conf.aux_dt = rnn.aux_data_type;
-    ocl_conf.ws_state_dt = rnn.src_data_type;
     ocl_conf.diff_dt = rnn.diff_data_type;
     ocl_conf.input_dt = rnn.input_data_type;
     ocl_conf.output_dt = rnn.output_data_type;
@@ -237,8 +247,8 @@ static status_t init_ocl_conf(rnn_utils::ocl_conf_t &ocl_conf,
 
         std::array<dim_t, 9> dhc_hw_threads = {1, 2, 3, 4, 5, 6, 7, 8, 16};
         std::array<dim_t, 3> mb_hw_threads = {1, 2, 4};
-        dim_t dhc_tg_best = 1;
-        dim_t mb_tg_best = 1;
+        int dhc_tg_best = 1;
+        int mb_tg_best = 1;
         double best_score = 0;
         for (auto b_thread : mb_hw_threads) {
             for (auto d_thread : dhc_hw_threads) {
@@ -297,8 +307,8 @@ static status_t init_ocl_conf(rnn_utils::ocl_conf_t &ocl_conf,
             }
         }
 
-        dim_t dhc_tg = dev_getenv("dhc_tg", into<int>(dhc_tg_best));
-        dim_t mb_tg = dev_getenv("mb_tg", into<int>(mb_tg_best));
+        int dhc_tg = dev_getenv("dhc_tg", dhc_tg_best);
+        int mb_tg = dev_getenv("mb_tg", mb_tg_best);
 
         int mb_tail = dev_getenv("mb_tail",
                 rnn.mb % (mb_tg * mb_thr) != 0
@@ -319,9 +329,9 @@ static status_t init_ocl_conf(rnn_utils::ocl_conf_t &ocl_conf,
         ocl_conf.cell_comp.mb_tail = mb_tail;
         ocl_conf.cell_comp.enable_iter_block = rnn.iter_loop != 1;
         ocl_conf.cell_comp.dhc_thr = dhc_thr;
-        ocl_conf.cell_comp.dhc_tg = into<int>(dhc_tg);
+        ocl_conf.cell_comp.dhc_tg = dhc_tg;
         ocl_conf.cell_comp.mb_thr = mb_thr;
-        ocl_conf.cell_comp.mb_tg = into<int>(mb_tg);
+        ocl_conf.cell_comp.mb_tg = mb_tg;
     }
 
     return status::success;
@@ -416,7 +426,7 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     } else
         kernel_ctx.set_data_type(data_type::f32);
 
-    def_data_type(kernel_ctx, ws_state_dt, "WS_STATE");
+    def_data_type(kernel_ctx, src_dt, "WS_STATE");
     def_data_type(kernel_ctx, src_dt, "SRC");
     def_data_type(kernel_ctx, src_c_dt, "SRC_C");
     def_data_type(kernel_ctx, wei_dt, "WEI_LAYER");
@@ -799,7 +809,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
             auto t = 0;
             CHECK(gemm_pd->query(query::preferred_gpu_threads_per_eu, 0, &t));
             if (t != ocl_conf.threads_per_eu)
-                verbose_printf("[WARNING] GEMM grf modes are inconsistent");
+                printf("[WARNING] GEMM grf modes are inconsistent");
         }
         return status::success;
     };
@@ -928,19 +938,6 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                         {rnn_conf.scratch_diff_states_ld, 1}, weights_type,
                         src_type, rnn_conf.acc_data_type, 0.0f),
                 "create_gemm_pd(gemm_layer_bwd_pd_)");
-        if (!rnn_conf.copy_diff_src_layer) {
-            if (rnn_conf.scratch_diff_states_ld != off.diff_src_layer[1])
-                VDISPATCH_RNN_SC(
-                        create_gemm_pd(gemm_layer_bwd_src_pd_, slc,
-                                layer_merged_size, n_gates * dhc,
-                                {rnn_conf.scratch_diff_gates_ld, 1},
-                                {off.weights_layer[4], off.weights_layer[2]},
-                                {off.diff_src_layer[1], 1}, weights_type,
-                                src_type, rnn_conf.acc_data_type, 0.0f),
-                        "create_gemm_pd(gemm_layer_bwd_src_pd_)");
-            else
-                gemm_layer_bwd_src_pd_ = gemm_layer_bwd_pd_;
-        }
         VDISPATCH_RNN_SC(
                 create_gemm_pd(gemm_diff_wei_layer_pd_, n_gates * dhc, slc,
                         layer_merged_size, {1, rnn_conf.states_ws_ld},
@@ -1028,12 +1025,6 @@ status_t _simple_rnn_common_t<aprop>::init(impl::engine_t *engine) {
                     && utils::everyone_is(status::success,
                             create_nested_primitive(gemm_layer_bwd_,
                                     pd()->gemm_layer_bwd_pd_, engine),
-                            (pd()->gemm_layer_bwd_src_pd_
-                                            ? create_nested_primitive(
-                                                    gemm_layer_bwd_src_,
-                                                    pd()->gemm_layer_bwd_src_pd_,
-                                                    engine)
-                                            : status::success),
                             create_nested_primitive(gemm_iter_bwd_,
                                     pd()->gemm_iter_bwd_pd_, engine),
                             create_nested_primitive(gemm_diff_wei_layer_,
@@ -1159,11 +1150,6 @@ gemm_sig((_simple_rnn_common_t<aprop>::gemm_primitive)) {
             init_gemm_nested_scratchpad(
                     gemm_layer_bwd_, rnn_utils::scratch_t::key_gemm_layer_bwd);
             CHECK(gpu_gemm(gemm_layer_bwd_)->execute(gemm_ctx));
-            break;
-        case gemm_layer_bwd_src:
-            init_gemm_nested_scratchpad(gemm_layer_bwd_src_,
-                    rnn_utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gpu_gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_iter:
             init_gemm_nested_scratchpad(gemm_diff_wei_iter_,
@@ -1304,8 +1290,9 @@ status_t _simple_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
     arg_list.append(pd()->off.bias);
 
     return parallel_for(ctx,
-            compute::nd_range_t({into<size_t>(dhc), into<size_t>(n_bias),
-                    into<size_t>(n_layer * n_dir)}),
+            compute::nd_range_t({gpu_utils::into<size_t>(dhc),
+                    gpu_utils::into<size_t>(n_bias),
+                    gpu_utils::into<size_t>(n_layer * n_dir)}),
             kernels_[kernel_id::bias_prepare], arg_list);
 }
 
@@ -1409,8 +1396,9 @@ status_t _simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
         arg_list.append(into<int32_t>(quantize));
         arg_list.append(unused_ld);
         return parallel_for(ctx,
-                compute::nd_range_t({into<size_t>(max_d), into<size_t>(batch),
-                        into<size_t>(n_layer * n_dir)}),
+                compute::nd_range_t({gpu_utils::into<size_t>(max_d),
+                        gpu_utils::into<size_t>(batch),
+                        gpu_utils::into<size_t>(n_layer * n_dir)}),
                 kernels_[kernel_id::copy_init_iter], arg_list);
     } else {
         compute::kernel_arg_list_t arg_list;
@@ -1434,8 +1422,9 @@ status_t _simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
         arg_list.append(into<int32_t>(scratch_diff_states_ld));
 
         return parallel_for(ctx,
-                compute::nd_range_t({into<size_t>(dhc), into<size_t>(batch),
-                        into<size_t>(n_layer * n_dir)}),
+                compute::nd_range_t({gpu_utils::into<size_t>(dhc),
+                        gpu_utils::into<size_t>(batch),
+                        gpu_utils::into<size_t>(n_layer * n_dir)}),
                 kernels_[kernel_id::copy_init_iter], arg_list);
     }
 }
@@ -1542,8 +1531,9 @@ status_t _simple_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
         arg_list.append(scale);
         arg_list.append(into<int32_t>(dequantize));
         return parallel_for(ctx,
-                compute::nd_range_t({into<size_t>(dhc), into<size_t>(batch),
-                        into<size_t>(n_layer * n_dir)}),
+                compute::nd_range_t({gpu_utils::into<size_t>(dhc),
+                        gpu_utils::into<size_t>(batch),
+                        gpu_utils::into<size_t>(n_layer * n_dir)}),
                 kernels_[kernel_id::copy_res_iter], arg_list);
     } else {
         dim_t max_d = std::max(dhc, sic);
@@ -1569,8 +1559,9 @@ status_t _simple_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
             arg_list.append(pd()->off.diff_src_iter_c);
 
         return parallel_for(ctx,
-                compute::nd_range_t({into<size_t>(max_d), into<size_t>(batch),
-                        into<size_t>(n_layer * n_dir)}),
+                compute::nd_range_t({gpu_utils::into<size_t>(max_d),
+                        gpu_utils::into<size_t>(batch),
+                        gpu_utils::into<size_t>(n_layer * n_dir)}),
                 kernels_[kernel_id::copy_res_iter], arg_list);
     }
 }
@@ -1584,6 +1575,8 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
     auto *compute_stream
             = utils::downcast<compute::compute_stream_t *>(ctx.stream());
 
+    auto rnn_pd = this->pd();
+
     const conf_t &rnn = this->pd()->rnn_conf;
 
     dim_t n_layer = rnn.n_layer;
@@ -1596,8 +1589,10 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
     dim_t slc = rnn.slc;
     dim_t sic = rnn.sic;
     dim_t dhc = rnn.dhc;
+    dim_t dlc = rnn.dlc;
 
     bool is_fwd = rnn.is_fwd;
+    bool is_vanilla_gru = rnn.is_vanilla_gru;
 
     auto &src_layer_native_ = CTX_IN_STORAGE(DNNL_ARG_SRC_LAYER);
     auto &src_iter_native_ = CTX_IN_STORAGE(DNNL_ARG_SRC_ITER);
@@ -1643,6 +1638,36 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
             wei_iter_native_, bias_native_, diff_src_layer_native_,
             diff_dst_layer_native_, diff_weights_layer_native_,
             diff_weights_iter_native_, rnn, pd()->off);
+
+    DPRINT("\n%s\n", "+++++++++++++++");
+    DPRINT(" aprop = %d\n", (int)aprop);
+    DPRINT("%s\n", "+++++++++++++++");
+    DPRINT("  n_layer         = %lld\n", into<long long>(n_layer));
+    DPRINT("  n_dir           = %lld\n", into<long long>(n_dir));
+    DPRINT("  n_iter          = %lld\n", into<long long>(n_iter));
+    DPRINT("  n_gates         = %lld\n", into<long long>(n_gates));
+    DPRINT("  n_bias          = %lld\n", into<long long>(n_bias));
+    DPRINT("  n_states        = %lld\n", into<long long>(n_states));
+    DPRINT("  n_weights_layer = %lld\n", into<long long>(rnn_pd->SLC()));
+    DPRINT("  n_weights_iter  = %lld\n", into<long long>(rnn_pd->SIC()));
+    DPRINT("  batch           = %lld\n", into<long long>(batch));
+    DPRINT("  slc             = %lld\n", into<long long>(slc));
+    DPRINT("  sic             = %lld\n", into<long long>(sic));
+    DPRINT("  dhc             = %lld\n", into<long long>(dhc));
+    DPRINT("  dlc             = %lld\n", into<long long>(dlc));
+    DPRINT("%s\n", "+++++++++++++++");
+    DPRINT("  is_fwd          = %s\n", is_fwd ? "yes" : "no");
+    DPRINT("  is_vanilla_gru  = %s\n", is_vanilla_gru ? "yes" : "no");
+    DPRINT("  use_workspace   = %s\n", rnn.use_workspace ? "yes" : "no");
+    DPRINT("%s\n", "+++++++++++++++");
+    DPRINT("  with_src_iter   = %s\n", rnn_pd->with_src_iter() ? "yes" : "no");
+    DPRINT("  with_src_iter_c = %s\n",
+            rnn_pd->with_src_iter_c() ? "yes" : "no");
+    DPRINT("  with_bias       = %s\n", rnn_pd->with_bias() ? "yes" : "no");
+    DPRINT("  with_dst_iter   = %s\n", rnn_pd->with_dst_iter() ? "yes" : "no");
+    DPRINT("  with_dst_iter_c = %s\n",
+            rnn_pd->with_dst_iter_c() ? "yes" : "no");
+    DPRINT("%s\n", "+++++++++++++++");
 
     // TODO: implement without copies
     bool is_lr = !one_of(rnn.exec_dir, r2l, r2l);

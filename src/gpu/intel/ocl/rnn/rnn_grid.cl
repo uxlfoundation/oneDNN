@@ -122,7 +122,7 @@ float activation_bwd(float s, float alpha, float cliping) {
 }
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-ref_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
+simple_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
         __global char *src_base, __global AUX_DATA_T *scratch_diff_states,
         int lr, int rl, int batch, int dhc, int slc, int n_iter, int n_layer,
         int n_dir, int n_states, int states_ws_ld, int scratch_diff_states_ld,
@@ -273,7 +273,7 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
 }
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-ref_rnn_copy_res_layer(
+simple_rnn_copy_res_layer(
         __global WS_STATE_DATA_T *src_base, __global char *dst_base,
         __global AUX_DATA_T *scratch_diff_states, int lr, int rl, int batch,
         int dhc, int slc, int n_iter, int n_layer, int n_dir, int n_states,
@@ -363,7 +363,7 @@ ref_rnn_copy_res_layer(
 #endif
 }
 
-__kernel void ref_rnn_copy_res_iter(
+__kernel void simple_rnn_copy_res_iter(
         __global WS_STATE_DATA_T *src_base, __global AUX_DATA_T *src_c_base,
         __global char *dst_base, __global char *dst_c_base,
         __global AUX_DATA_T *scratch_diff_states, int batch, int dhc, int sic,
@@ -428,11 +428,11 @@ __kernel void ref_rnn_copy_res_iter(
 #endif
 }
 
-__kernel void ref_rnn_bias_prepare(__global float *ws_bias,
-        __global float *scales, __global char *wei_layer,
-        __global char *wei_iter, __global BIAS_DATA_T *bias, int dhc,
-        int n_layer, int n_dir, float data_shift, float data_scale,
-        int wei_l_comp_off, int wei_i_comp_off, int64x4_t bias_strides) {
+__kernel void rnn_bias_prepare(__global float *ws_bias, __global float *scales,
+        __global char *wei_layer, __global char *wei_iter,
+        __global BIAS_DATA_T *bias, int dhc, int n_layer, int n_dir,
+        float data_shift, float data_scale, int wei_l_comp_off,
+        int wei_i_comp_off, int64x4_t bias_strides) {
 #if COPY_BIAS
 
     const int dhc_ = get_global_id(0);
@@ -577,7 +577,6 @@ float deq_w(ACC_DATA_T s, int gate, int j, __global float *scales,
 }
 
 // for int8 LSTM
-#if IS_INT8 && CELL_KIND == VANILLA_LSTM
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 simple_rnn_elemwise_fwd(int dir, int lay, int iter,
         __global ACC_DATA_T *scratch_gates_, dim_t scratch_gates_off,
@@ -632,7 +631,7 @@ simple_rnn_elemwise_fwd(int dir, int lay, int iter,
 #else
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-ref_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
+simple_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
         dim_t scratch_gates_off, __global BIAS_DATA_T *bias_, dim_t bias_off,
         float alpha, __global float *tm_scales,
         __global WS_STATE_DATA_T *h_states_t_l_, dim_t h_states_t_l_off,
@@ -1047,7 +1046,7 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
     }
 }
 #else
-__kernel void ref_rnn_elemwise_bwd() {}
+__kernel void simple_rnn_elemwise_bwd() {}
 #endif // !IS_FWD
 
 #if CELL_COMP_ENABLED
@@ -1385,7 +1384,7 @@ void cell_common(const_wei_layer_cell_t wei_layer,
 }
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
-ref_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
+simple_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
         dim_t wei_layer_off, int64x5_t wei_layer_strides_,
         __global const WEI_ITER_DATA_T *wei_iter_, dim_t wei_iter_off,
         int64x5_t wei_iter_strides_, __global const AUX_DATA_T *cell_layer_,
@@ -1494,5 +1493,5 @@ ref_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
 }
 
 #else
-__kernel void ref_rnn_cell_fwd() {}
+__kernel void simple_rnn_cell_fwd() {}
 #endif

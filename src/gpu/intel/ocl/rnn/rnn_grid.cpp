@@ -26,7 +26,7 @@
 // function
 // only the cell execution function should be impacted
 
-#include "gpu/intel/ocl/rnn/ref_rnn.hpp"
+#include "gpu/intel/ocl/rnn/rnn_grid.hpp"
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
@@ -128,10 +128,11 @@ static status_t init_ocl_conf(rnn_utils::ocl_conf_t &ocl_conf,
             return status::unimplemented;
     }
 
-    off.src_layer = gpu::get_outer_strides(src_layer_d);
-    ocl_conf.inner_layouts.src_layer = gpu::get_inner_layout(src_layer_d);
-    off.src_iter = gpu::get_outer_strides(src_iter_d);
-    ocl_conf.inner_layouts.src_iter = gpu::get_inner_layout(src_iter_d);
+    off.src_layer = gpu::intel::get_outer_strides(src_layer_d);
+    ocl_conf.inner_layouts.src_layer
+            = gpu::intel::get_inner_layout(src_layer_d);
+    off.src_iter = gpu::intel::get_outer_strides(src_iter_d);
+    ocl_conf.inner_layouts.src_iter = gpu::intel::get_inner_layout(src_iter_d);
     if (ocl_conf.with_src_iter_c) {
         off.src_iter_c = gpu::intel::get_outer_strides(src_iter_c_d);
         ocl_conf.inner_layouts.src_iter_c
@@ -808,7 +809,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
             auto t = 0;
             CHECK(gemm_pd->query(query::preferred_gpu_threads_per_eu, 0, &t));
             if (t != ocl_conf.threads_per_eu)
-                verbose_printf("[WARNING] GEMM grf modes are inconsistent");
+                printf("[WARNING] GEMM grf modes are inconsistent");
         }
         return status::success;
     };

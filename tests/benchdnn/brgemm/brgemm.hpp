@@ -78,8 +78,9 @@ struct settings_t : public base_settings_t {
 struct prb_t : public prb_vdims_t {
     prb_t(const prb_vdims_t &prb_vdims, const std::vector<dnnl_data_type_t> &dt,
             const std::string &stag, const std::string &wtag,
-            const std::string &dtag, const std::vector<int64_t> &ld,
-            dnnl_data_type_t bia_dt, float alpha, float beta, int batch_size,
+            const std::string &dtag, const vdims_t &strides,
+            const std::vector<int64_t> &ld, dnnl_data_type_t bia_dt,
+            float alpha, float beta, int batch_size,
             const std::string &brgemm_attr, const std::string &batch_kind,
             const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe)

@@ -385,7 +385,7 @@ struct brgemm_desc_t {
     // This function indicates when VNNI granularity packing is expected by the
     // kernel.
     //
-    // Note: used in benchdnn and ukernel only, not used inside the library.
+    // Note: used in benchdnn only, not used inside the library.
     // Note: for `bf32` (or brgattr.fpmath_mode_ == bf16) the function returns
     //   `true` because the data transformation to vnni layout is internal and
     //   transparent to the user.
@@ -394,32 +394,11 @@ struct brgemm_desc_t {
         switch (dt_b) {
             case f32: return false;
             // Note: `dt_a == f32` means implicit up-conversion of B to f32.
-            case f16:
-                return dt_a != f32
-                        && (is_f16_b_non_amx_vnni()
-                                || is_superset(isa_impl, avx512_core_amx_fp16)
-                                || is_superset(isa_impl, avx2_vnni_2));
+            case f16: return (isa_impl != avx512_core_fp16) && (dt_a != f32);
             // Note: `dt_a == f32` means implicit up-conversion of B to f32.
             case bf16: return dt_a != f32;
             default: return true;
         }
-    }
-
-    // This function indicates when the kernel would operate with the D pointer
-    // (`true`) and when not (`false`). It's important to distinguish these two
-    // cases due to the fact that kernel would ignore D pointer completely if
-    // no post-accumulation work is identified.
-    //
-    // Correspondent decisions are done in `store_accumulators` function.
-    // The function is used inside kernel generation and ukernel API.
-    // TODO: extend usage to primitives (each of them utilize their own copy
-    // of this definition).
-    bool are_post_ops_applicable() const {
-        const bool has_zero_points = !utils::everyone_is(
-                brgemm_broadcast_t::none, zp_type_a, zp_type_b, zp_type_c);
-        return dt_c != dt_d || with_eltwise || with_binary || with_scales
-                || with_bias || with_sum || req_s8s8_compensation
-                || has_zero_points || with_dst_scales;
     }
 
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }

@@ -257,24 +257,6 @@ bool layout_raw_tag_t::matches(const layout_raw_tag_t &other,
     return i0 == n0 && i1 == n1;
 }
 
-void layout_raw_tag_t::init_entries(const std::string &s) {
-    ir_assert(is_abx_tag(s)) << s;
-    std::array<bool, 'z' - 'a' + 1> is_blocked;
-    is_blocked.fill(false);
-    auto letter_blocks = parse_letter_blocks(s);
-    for (auto &p : letter_blocks) {
-        if (p.second != 0) is_blocked[std::tolower(p.first) - 'a'] = true;
-    }
-    for (auto &p : letter_blocks) {
-        char letter = std::tolower(p.first);
-        entries_.emplace_back();
-        auto &e = entries_.back();
-        e.letter = letter;
-        e.block = p.second;
-        e.is_blocked = is_blocked[letter - 'a'];
-    }
-}
-
 bool layout_raw_tag_t::has_x() const {
     for (auto &e : entries_)
         if (e.is_x()) return true;

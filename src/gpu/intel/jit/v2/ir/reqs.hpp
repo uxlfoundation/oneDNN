@@ -133,6 +133,8 @@ private:
         bool can_prove(const expr_t &expr_to_prove) const;
         void serialize(std::ostream &out) const;
         void deserialize(std::istream &in);
+        void stringify(std::ostream &out) const;
+        void parse(std::istream &in);
         std::string str() const;
         IR_DEFINE_DUMP()
     };

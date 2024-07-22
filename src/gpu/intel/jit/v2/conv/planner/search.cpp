@@ -350,8 +350,7 @@ public:
 
 private:
     std::vector<kernel_desc_t> gen_descs() const {
-        std::unordered_set<kernel_desc_t, ir_utils::hasher_t<kernel_desc_t>>
-                descs;
+        std::unordered_map<std::string, kernel_desc_t> descs;
         for (auto &s : get_tile_schemes(base_desc_.prop, base_desc_.is_dw)) {
             dim_tile_set_t tile_set(s);
             auto tiling_descs = tile_set.create_tiling_descs();

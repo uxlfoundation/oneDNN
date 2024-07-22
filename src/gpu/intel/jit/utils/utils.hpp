@@ -31,6 +31,7 @@
 #include "common/math_utils.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/jit/ngen/ngen.hpp"
 #include "gpu/intel/utils.hpp"
 
 #ifdef DNNL_DEV_MODE
@@ -1100,24 +1101,12 @@ void parse(const std::string &s, T &t) {
     parse(iss, t);
 }
 
-template <typename T>
-T parse(std::istream &in) {
-    T t;
-    parse(in, t);
-    return t;
+inline bool is_big_endian() {
+    uint32_t u = 0x01020304;
+    uint8_t a[4] = {};
+    std::memcpy(a, &u, sizeof(u));
+    return a[0] == 0x01;
 }
-
-template <typename T>
-T parse(const std::string &s) {
-    T t;
-    parse(s, t);
-    return t;
-}
-
-template <typename T>
-class parse_iface_t {
-public:
-    using base_type = T;
 
     struct entry_t {
         std::string name;
@@ -1427,16 +1416,6 @@ inline int max_unique_pad_states(int O, int I, int KD, int P, int S, bool lim) {
 } // namespace ir_utils
 
 template <typename T>
-T to_enum(const std::string &s) {
-    for (int id = 0; id < static_cast<int>(T::_max); id++) {
-        auto value = static_cast<T>(id);
-        if (to_string(value) == s) return value;
-    }
-    ir_error_not_expected() << s;
-    return T::_max;
-}
-
-template <typename T>
 T stream_parse(std::istream &in) {
     T t;
     in >> t;
@@ -1476,6 +1455,118 @@ inline bool stream_try_match(std::istream &in, const std::string &s) {
         in.seekg(pos);
     }
     return ok;
+}
+
+template <typename T>
+using enum_name_t = std::pair<T, const char *>;
+
+template <typename T>
+std::pair<T, const char *> make_enum_name(const T &value, const char *name) {
+    return std::make_pair(value, name);
+}
+
+template <typename E, size_t N>
+std::string to_string_impl(
+        E e, const std::array<enum_name_t<E>, N> &enum_names);
+
+template <typename E, size_t N>
+void to_enum_templ_impl(const std::string &s, E &e,
+        const std::array<enum_name_t<E>, N> &enum_names);
+
+template <typename E, size_t N>
+bool is_enum_name_templ_impl(
+        const std::string &s, const std::array<enum_name_t<E>, N> &enum_names);
+
+#define GPU_DEFINE_PARSE_ENUM(enum_type, enum_names) \
+    inline std::string to_string(enum_type e) { \
+        return to_string_impl(e, enum_names); \
+    } \
+    inline void to_enum_impl(const std::string &s, enum_type &e) { \
+        to_enum_templ_impl(s, e, enum_names); \
+    } \
+    inline bool is_enum_name_impl(const std::string &s, const enum_type *) { \
+        return is_enum_name_templ_impl(s, enum_names); \
+    }
+
+static auto hw_names = nstl::to_array({
+        make_enum_name(ngen::Core::Unknown, "unknown"),
+        make_enum_name(ngen::Core::Gen9, "gen9"),
+        make_enum_name(ngen::Core::Gen10, "gen10"),
+        make_enum_name(ngen::Core::Gen11, "gen11"),
+        make_enum_name(ngen::Core::XeLP, "xelp"),
+        make_enum_name(ngen::Core::XeHP, "xehp"),
+        make_enum_name(ngen::Core::XeHPG, "xehpg"),
+        make_enum_name(ngen::Core::XeHPC, "xehpc"),
+        make_enum_name(ngen::Core::Xe2, "xe2"),
+});
+GPU_DEFINE_PARSE_ENUM(ngen::HW, hw_names)
+
+static auto product_family_names = nstl::to_array({
+        make_enum_name(ngen::ProductFamily::Unknown, "unknown"),
+        make_enum_name(ngen::ProductFamily::GenericGen9, "gen9"),
+        make_enum_name(ngen::ProductFamily::GenericGen10, "gen10"),
+        make_enum_name(ngen::ProductFamily::GenericGen11, "gen11"),
+        make_enum_name(ngen::ProductFamily::GenericXeLP, "xelp"),
+        make_enum_name(ngen::ProductFamily::GenericXeHP, "xehp"),
+        make_enum_name(ngen::ProductFamily::GenericXeHPG, "xehpg"),
+        make_enum_name(ngen::ProductFamily::DG2, "dg2"),
+        make_enum_name(ngen::ProductFamily::MTL, "mtl"),
+        make_enum_name(ngen::ProductFamily::ARL, "arl"),
+        make_enum_name(ngen::ProductFamily::GenericXeHPC, "xehpc"),
+        make_enum_name(ngen::ProductFamily::PVC, "pvc"),
+        make_enum_name(ngen::ProductFamily::GenericXe2, "xe2"),
+});
+GPU_DEFINE_PARSE_ENUM(ngen::ProductFamily, product_family_names)
+
+static auto prop_kind_names = nstl::to_array({
+        make_enum_name(prop_kind::undef, "undef"),
+        make_enum_name(prop_kind::forward, "fwd"),
+        make_enum_name(prop_kind::backward_data, "bwd_d"),
+        make_enum_name(prop_kind::backward_weights, "bwd_w"),
+});
+GPU_DEFINE_PARSE_ENUM(prop_kind_t, prop_kind_names)
+
+template <typename E, size_t N>
+std::string to_string_impl(
+        E e, const std::array<enum_name_t<E>, N> &enum_names) {
+    for (auto &p : enum_names)
+        if (p.first == e) return p.second;
+    ir_error_not_expected();
+    return {};
+}
+
+template <typename E, size_t N>
+void to_enum_templ_impl(const std::string &s, E &e,
+        const std::array<enum_name_t<E>, N> &enum_names) {
+    for (auto &p : enum_names) {
+        if (p.second == s) {
+            e = p.first;
+            return;
+        }
+    }
+    ir_error_not_expected();
+}
+
+template <typename E>
+E to_enum(const std::string &s) {
+    E e;
+    to_enum_impl(s, e);
+    return e;
+}
+
+template <typename E, size_t N>
+bool is_enum_name_templ_impl(
+        const std::string &s, const std::array<enum_name_t<E>, N> &enum_names) {
+    for (auto &p : enum_names) {
+        if (p.second == s) return true;
+    }
+    return false;
+}
+
+template <typename E>
+bool is_enum_name(const std::string &s) {
+    E dummy;
+    return is_enum_name_impl(s, &dummy);
 }
 
 } // namespace jit

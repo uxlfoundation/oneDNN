@@ -198,7 +198,7 @@ public:
         oss << type.str();
         if (is_scattered()) oss << "x" << slots;
         if (is_2d()) oss << "." << block_2d_info.str();
-        if (!fill_buf) oss << ".nofill";
+        if (!zero_out) oss << ".nzo";
         if (cache_hint != send_cache_hint_t::undef)
             oss << "." << to_string(cache_hint);
         return oss.str();

@@ -29,11 +29,6 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-std::string to_string(ngen::HW hw);
-std::string to_string(ngen::ProductFamily family);
-ngen::HW str_to_ngen_hw(const std::string &s);
-ngen::ProductFamily str_to_ngen_product_family(const std::string &s);
-
 // Provides access to HW configuration which includes non-configurable
 // properties.
 class hw_t {

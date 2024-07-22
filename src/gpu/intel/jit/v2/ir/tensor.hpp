@@ -295,6 +295,16 @@ public:
         entries_ = to_entries(tag);
     }
 
+    void stringify(std::ostream &out) const {
+        jit::stringify(out, to_tag(collapse_x().entries()));
+    }
+
+    void parse(std::istream &in) {
+        auto tag = jit::parse<std::string>(in);
+        is_any_ = (tag == "any");
+        entries_ = to_entries(tag);
+    }
+
 private:
     void init_entries(const std::string &s);
     bool has_x() const;
@@ -339,6 +349,21 @@ public:
 #if __cplusplus >= 202002L
     bool operator==(const layout_tag_t &other) const = default;
 #endif
+
+    void stringify(std::ostream &out) const {
+        jit::stringify(out, raw_tag_);
+        out << ":";
+        jit::stringify(out, type_);
+    }
+
+    void parse(std::istream &in) {
+        desc_ = layout_desc_t();
+        auto s = stream_parse<std::string>(in);
+        auto parts = gpu_utils::split(s, ":");
+        ir_assert(parts.size() == 2);
+        jit::parse(parts[0], raw_tag_);
+        jit::parse(parts[1], type_);
+    }
 
     void stringify(std::ostream &out) const {
         jit::stringify(out, raw_tag_);

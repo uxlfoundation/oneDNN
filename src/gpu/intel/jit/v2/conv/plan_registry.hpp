@@ -21,8 +21,6 @@
 #include "gpu/intel/jit/v2/conv/kernel_desc.hpp"
 #include "gpu/intel/jit/v2/conv/model.hpp"
 
-#include <unordered_map>
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -48,7 +46,6 @@ public:
     plan_registry_t(const char **entries);
 
     void set(const kernel_desc_t &desc, const model_t &model) {
-        ir_assert(desc.is_finalized);
         entries_.emplace_back(desc, model);
     }
     int size() const { return (int)entries_.size(); }

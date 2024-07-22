@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/ref_binary.hpp"
+#include "gpu/intel/ocl/simple_binary.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {

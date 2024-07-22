@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,8 +66,6 @@ struct simple_binary_t : public gpu_primitive_t {
             VDISPATCH_BINARY(
                     !memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
-
-            VDISPATCH_BINARY(!is_ternary_op(), VERBOSE_BAD_ALGORITHM);
 
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
                                      check_scales_mask()),

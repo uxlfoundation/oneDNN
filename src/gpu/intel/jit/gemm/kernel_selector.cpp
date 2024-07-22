@@ -359,6 +359,7 @@ MatchParamsBase::MatchParamsBase(
         if (problem.batchDims > 1) *tagPtr++ = ReqBatchMultiDim;
     }
 
+    problem.autoTypeConversions(hw, systolicAvailable);
     if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;
     if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
 

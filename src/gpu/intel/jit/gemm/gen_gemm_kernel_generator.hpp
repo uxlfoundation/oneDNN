@@ -993,19 +993,28 @@ struct GEMMProblem : public CommonProblem {
     bool backward() const { return false; }
 
     bool needsASums() const {
-        return (bOffset == ABOffset::Calc && boPtrDims < 2 && !quantized2DB())
-                || sumA;
+        return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB());
     }
     bool needsBSums() const {
-        return (aOffset == ABOffset::Calc && aoPtrDims < 2 && !quantized2DA())
-                || sumB;
+        return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA());
     }
+
     bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
     bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
 
     bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D; }
     bool quantized2DB() const { return (boPtrDims == 2) || bScale2D; }
 
+    bool earlyDequantizeA() const {
+        return (aOffset == ABOffset::Calc && Tao.asSigned().isSubsetOf(Ta))
+                || (aScale2D && Ta_scale.isSubsetOf(Ta));
+    }
+    bool earlyDequantizeB() const {
+        return (bOffset == ABOffset::Calc && Tbo.asSigned().isSubsetOf(Tb))
+                || (bScale2D && Tb_scale.isSubsetOf(Tb));
+    }
+
+    inline void autoTypeConversions(ngen::HW hw, bool systolicAvailable);
     void transpose();
 
     /* Kernel cache helpers. */
@@ -2731,12 +2740,12 @@ protected:
             GRFMultirange dst, GRFMultirange offset, GRFMultirange scale,
             Type Tscale, int offR, int offC, const GEMMProblem *problem,
             const CommonStrategy &strategy, CommonState &state);
-    void gemm2DDequantizeOperation(bool doA, Type T, Type To, BinaryOp op,
+    void gemmDequantizeOperation(bool doA, Type T, Type To, BinaryOp op,
             const std::vector<RegisterBlock> &layout,
             const std::vector<RegisterBlock> &qlayout,
             const GRFMultirange &regs, const GRFMultirange &qregs, int hq,
             const GEMMProblem &problem);
-    void gemm2DDequantizeAB(bool doA, Type Tsrc, Type Tdst,
+    void gemmDequantizeAB(bool doA, Type Tsrc, Type Tdst,
             const std::vector<RegisterBlock> &layoutSrc,
             const std::vector<RegisterBlock> &layoutDst,
             const GRFMultirange &src, const GRFMultirange &dst, int hab,
@@ -3037,15 +3046,8 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable) {
     if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
 
-#if XE3P
-    if (hw < HW::Xe3p) {
-        if (Ta.isF8()) Ta = Type::f16;
-        if (Tb.isF8()) Tb = Type::f16;
-    }
-#else
     if (Ta.isF8()) Ta = Type::f16;
     if (Tb.isF8()) Tb = Type::f16;
-#endif
 
     if (hw > HW::Gen9 && !systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

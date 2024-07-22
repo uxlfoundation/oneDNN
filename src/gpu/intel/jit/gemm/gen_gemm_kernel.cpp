@@ -384,9 +384,9 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         }
     }
 
-    if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8() && ao_dims >= 2)
+    if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8() && ao_dims >= 0)
         problem_.Ta = Type::s8;
-    if (problem_.Tb_ext.isInt4() && problem_.Ta_ext.isInt8() && bo_dims >= 2)
+    if (problem_.Tb_ext.isInt4() && problem_.Ta_ext.isInt8() && bo_dims >= 0)
         problem_.Tb = Type::s8;
 
     if (problem_.Ta.isInteger()) problem_.Ts = Type::f32;
@@ -414,12 +414,6 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     int npatterns = 1;
 
     match_params[0] = MatchParams(hw_, has_systolic, problem_);
-
-#if XE3P
-    /* Reuse PVC strategies for legacy mode on Xe3p */
-    if (arch == arch_t::xe3p && !efficient_64b_)
-        match_params[0].selector.hw = kcatalog::HWTagXeHPC;
-#endif
 
     match_params[0].sizes.m = m;
     match_params[0].sizes.n = n;

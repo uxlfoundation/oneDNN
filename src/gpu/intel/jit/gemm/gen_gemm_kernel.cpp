@@ -392,9 +392,9 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         }
     }
 
-    if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8() && ao_dims >= 2)
+    if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8() && ao_dims >= 0)
         problem_.Ta = Type::s8;
-    if (problem_.Tb_ext.isInt4() && problem_.Ta_ext.isInt8() && bo_dims >= 2)
+    if (problem_.Tb_ext.isInt4() && problem_.Ta_ext.isInt8() && bo_dims >= 0)
         problem_.Tb = Type::s8;
 
     if (problem_.Ta.isInteger()) problem_.Ts = Type::f32;
@@ -421,7 +421,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     MatchParams match_params[3];
     int npatterns = 1;
 
-    match_params[0] = MatchParams(hw_, problem_);
+    match_params[0] = MatchParams(hw_, has_systolic, problem_);
 
 #if XE3P
     /* Reuse PVC strategies for legacy mode on Xe3p */
@@ -441,7 +441,6 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (can_2d_a) *tags++ = kcatalog::ReqBlock2DA;
     if (can_2d_b) *tags++ = kcatalog::ReqBlock2DB;
     if (can_2d_c) *tags++ = kcatalog::ReqBlock2DC;
-    if (has_systolic) *tags++ = kcatalog::ReqSystolic;
 
     if ((mode & mode_tf32)
             && utils::everyone_is(Type::f32, problem_.Ta, problem_.Tb)) {
@@ -679,7 +678,7 @@ status_t gen_gemm_xe_systolic_kernel_desc_t::select_kernel(
     }
 
     // Find it in the catalog.
-    MatchParams match_params(hw_, problem_);
+    MatchParams match_params(hw_, true, problem_);
 
     match_params.sizes.m = m;
     match_params.sizes.n = n;

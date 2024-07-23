@@ -108,8 +108,9 @@ void print_header(const filter_status_t &filter_status) noexcept {
             graph::utils::print_verbose_header();
 #endif
         } catch (...) {
-            printf("onednn_verbose,info,exception while printing verbose "
-                   "header\n");
+            verbose_printf(
+                    "onednn_verbose,info,exception while printing verbose "
+                    "header\n");
         }
 #ifdef DNNL_EXPERIMENTAL
         verbose_printf(

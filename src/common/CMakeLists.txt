@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2025 Intel Corporation
+# Copyright 2019-2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,9 +48,7 @@ if(NOT DNNL_CPU_RUNTIME STREQUAL "THREADPOOL")
     list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/stream_threadpool.cpp")
 endif()
 
-if(DNNL_EXPERIMENTAL_LOGGING)
-    include_directories(${CMAKE_CURRENT_LIST_DIR})
-else()
+if(NOT DNNL_EXPERIMENTAL_LOGGING)
     # avoid building and linking spdlog if logging support is not enabled
     list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/spdlog/*")
     list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/logging.cpp")

@@ -148,24 +148,6 @@ public:
     IR_DEFINE_DUMP()
 
 private:
-    pvar_map_t<char> letter_map_;
-    std::string canonical_;
-};
-
-class dim_mapper_t {
-public:
-    void set_dim(const pvar_t &dim, const expr_t &expr = expr_t(),
-            bool has_undeflow = false);
-    void set_layout_desc(const layout_desc_t &desc) { layout_desc_ = desc; }
-    bool is_empty() const { return map_.is_empty(); }
-    bool has(const pvar_t &dim) const { return map_.has(dim); }
-    const expr_t &expr(const pvar_t &dim) const;
-    bool has_underflow(const pvar_t &dim) const;
-    const layout_desc_t &layout_desc() const { return layout_desc_; }
-    std::string str() const;
-    IR_DEFINE_DUMP()
-
-private:
     struct map_data_t {
         std::string str() const {
             std::ostringstream oss;
@@ -295,16 +277,6 @@ public:
         entries_ = to_entries(tag);
     }
 
-    void stringify(std::ostream &out) const {
-        jit::stringify(out, to_tag(collapse_x().entries()));
-    }
-
-    void parse(std::istream &in) {
-        auto tag = jit::parse<std::string>(in);
-        is_any_ = (tag == "any");
-        entries_ = to_entries(tag);
-    }
-
 private:
     void init_entries(const std::string &s);
     bool has_x() const;
@@ -345,25 +317,6 @@ public:
             bool check_type = true) const;
     std::string str() const;
     IR_DEFINE_DUMP()
-
-#if __cplusplus >= 202002L
-    bool operator==(const layout_tag_t &other) const = default;
-#endif
-
-    void stringify(std::ostream &out) const {
-        jit::stringify(out, raw_tag_);
-        out << ":";
-        jit::stringify(out, type_);
-    }
-
-    void parse(std::istream &in) {
-        desc_ = layout_desc_t();
-        auto s = stream_parse<std::string>(in);
-        auto parts = gpu_utils::split(s, ":");
-        ir_assert(parts.size() == 2);
-        jit::parse(parts[0], raw_tag_);
-        jit::parse(parts[1], type_);
-    }
 
     void stringify(std::ostream &out) const {
         jit::stringify(out, raw_tag_);

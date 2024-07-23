@@ -87,16 +87,17 @@ static setting_t<uint32_t> verbose {0};
 void print_header(const filter_status_t &filter_status) noexcept {
     static std::atomic_flag version_printed = ATOMIC_FLAG_INIT;
     if (!version_printed.test_and_set()) {
-        verbose_printf("info,oneDNN v%d.%d.%d (commit %s)\n",
+        verbose_printf("onednn_verbose,info,oneDNN v%d.%d.%d (commit %s)\n",
                 dnnl_version()->major, dnnl_version()->minor,
                 dnnl_version()->patch, dnnl_version()->hash);
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-        verbose_printf("info,cpu,runtime:%s,nthr:%d\n",
+        verbose_printf("onednn_verbose,info,cpu,runtime:%s,nthr:%d\n",
                 dnnl_runtime2str(dnnl_version()->cpu_runtime),
                 dnnl_get_max_threads());
-        verbose_printf("info,cpu,isa:%s\n", cpu::platform::get_isa_info());
+        verbose_printf("onednn_verbose,info,cpu,isa:%s\n",
+                cpu::platform::get_isa_info());
 #endif
-        verbose_printf("info,gpu,runtime:%s\n",
+        verbose_printf("onednn_verbose,info,gpu,runtime:%s\n",
                 dnnl_runtime2str(dnnl_version()->gpu_runtime));
         // Printing the header generally requires iterating over devices/backends,
         // which may involve an allocation. Use a try/catch block in case
@@ -112,12 +113,16 @@ void print_header(const filter_status_t &filter_status) noexcept {
             graph::utils::print_verbose_header();
 #endif
         } catch (...) {
-            printf("onednn_verbose,info,exception while printing verbose "
-                   "header\n");
+            verbose_printf(
+                    "onednn_verbose,info,exception while printing verbose "
+                    "header\n");
         }
 #ifdef DNNL_EXPERIMENTAL
-        verbose_printf("info,experimental features are enabled\n");
-        verbose_printf("info,use batch_normalization stats one pass is %s\n",
+        verbose_printf(
+                "onednn_verbose,info,experimental features are enabled\n");
+        verbose_printf(
+                "onednn_verbose,info,use batch_normalization stats one pass is "
+                "%s\n",
                 experimental::use_bnorm_stats_one_pass() ? "enabled"
                                                          : "disabled");
         verbose_printf("info,GPU convolution v2 is %s\n",
@@ -126,39 +131,40 @@ void print_header(const filter_status_t &filter_status) noexcept {
 
 #ifdef DNNL_EXPERIMENTAL_SPARSE
         verbose_printf(
-                "info,experimental functionality for sparse domain is "
-                "enabled\n");
+                "onednn_verbose,info,experimental functionality for sparse "
+                "domain is enabled\n");
 #endif
 
+        verbose_printf("onednn_verbose,primitive,info,template:");
         verbose_printf(
-                "primitive,info,template:%soperation,engine,primitive,"
-                "implementation,prop_kind,memory_descriptors,attributes,"
-                "auxiliary,problem_desc,exec_time\n",
+                "%soperation,engine,primitive,implementation,prop_kind,memory_"
+                "descriptors,attributes,auxiliary,problem_desc,exec_time\n",
                 get_verbose_timestamp() ? "timestamp," : "");
 
 #ifdef DNNL_EXPERIMENTAL_LOGGING
         const log_manager_t &log_manager = log_manager_t::get_log_manager();
         if (log_manager.is_logger_enabled())
             verbose_printf(
-                    "info,experimental functionality for logging is enabled\n");
+                    "onednn_verbose,info,experimental functionality for "
+                    "logging is enabled\n");
 #endif
 
 #ifdef ONEDNN_BUILD_GRAPH
+        verbose_printf("onednn_verbose,graph,info,template:");
         verbose_printf(
-                "graph,info,template:%soperation,engine,partition_id,"
-                "partition_kind,op_names,data_formats,logical_tensors,fpmath_"
-                "mode,implementation,backend,exec_time\n",
+                "%soperation,engine,partition_id,partition_kind,op_names,data_"
+                "formats,logical_tensors,fpmath_mode,backend,exec_time\n",
                 get_verbose_timestamp() ? "timestamp," : "");
 #endif
         if (filter_status.status == filter_status_t::flags::valid)
             verbose_printf(
-                    "common,info,filter format is enabled, hit components: "
-                    "%s\n",
+                    "onednn_verbose,common,info,filter format is enabled, hit "
+                    "components: %s\n",
                     filter_status.components.c_str());
         else if (filter_status.status == filter_status_t::flags::invalid)
             verbose_printf(
-                    "common,error,filter format is ill-formed and is not "
-                    "applied, error: %s\n",
+                    "onednn_verbose,common,error,filter format is ill-formed "
+                    "and is not applied, error: %s\n",
                     filter_status.err_msg.c_str());
     }
 }

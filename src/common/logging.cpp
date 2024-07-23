@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -90,10 +90,12 @@ void log_manager_t::log(const char *msg, log_level_t log_level) const {
     }
 }
 
-void log_manager_t::set_log_level(const std::string &vmode_str) const {
+void log_manager_t::set_log_level(const std::string vmode_str) const {
+    const auto &dnnl_logger = spdlog::get(logger_name_);
+
     // The logging level is determined from the verbose mode
     // with the following order of decreasing priority:
-    // [trace, debug, info, warn, error, critical, off]
+    // [trace, debug, info, error, critical, off]
     spdlog::set_level(spdlog::level::off);
 
     if (vmode_str == "-1" || vmode_str == "all") {
@@ -104,8 +106,6 @@ void log_manager_t::set_log_level(const std::string &vmode_str) const {
             || vmode_str.find("profile") != std::string::npos
             || vmode_str.find("dispatch") != std::string::npos) {
         spdlog::set_level(spdlog::level::info);
-    } else if (vmode_str.find("warn") != std::string::npos) {
-        spdlog::set_level(spdlog::level::warn);
     } else if (vmode_str.find("check") != std::string::npos) {
         spdlog::set_level(spdlog::level::err);
     } else if (vmode_str.find("error") != std::string::npos) {

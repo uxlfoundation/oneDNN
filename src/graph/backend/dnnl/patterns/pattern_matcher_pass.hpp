@@ -126,8 +126,9 @@ public:
             // for each pattern. match it
             std::vector<std::vector<op_t *>> fusion_ops;
             if (get_verbose(verbose_t::create_dispatch, component_t::graph)) {
-                printf("onednn_verbose,graph,create:dispatch,pattern_"
-                       "matcher,%s,dnnl_backend\n",
+                verbose_printf(
+                        "onednn_verbose,graph,create:dispatch,pattern_matcher,"
+                        "%s,dnnl_backend\n",
                         get_pass_name().c_str());
             }
             pu.match(agraph, pgraph, fusion_ops);

@@ -1081,16 +1081,9 @@ void stringify(std::ostream &out, const T &t) {
     stringify_impl_t<T>::call(out, t);
 }
 
-template <typename T>
-std::string stringify(const T &t) {
-    std::ostringstream oss;
-    stringify_impl_t<T>::call(oss, t);
-    return oss.str();
-}
-
-template <typename T>
-void parse(std::istream &in, T &t) {
-    parse_impl_t<T>::call(in, t);
+inline bool str_to_bool(const std::string &s) {
+    if (utils::one_of(s, "1", "true", "True")) return true;
+    return false;
 }
 
 template <typename T>
@@ -1200,112 +1193,6 @@ inline bool is_big_endian() {
         }
         if (post_parse_func_) post_parse_func_(parent);
     }
-
-    void parse(const std::string &s, T &parent) const {
-        std::istringstream iss(s);
-        parse(iss, parent);
-    }
-
-    int size() const { return static_cast<int>(entries_.size()); }
-
-    std::string cmd_str(const T &parent) const {
-        std::ostringstream oss;
-        stringify(oss, parent, /*cli=*/true);
-        return oss.str();
-    }
-
-    void parse(const std::string &s, T *obj) {
-        bool is_help = (s.find("--help") != std::string::npos);
-        if (is_help) {
-            for (auto &a : args_) {
-                std::cout << "  ";
-                std::cout << std::left << std::setw(22) << a.key;
-                std::cout << a.help << std::endl;
-            }
-            exit(0);
-            return;
-        }
-        std::cout.flags(f);
-    }
-
-private:
-    int find_entry_index(const std::string name) const {
-        for (int i = 0; i < (int)entries_.size(); i++) {
-            if (entries_[i].matches_relaxed(name)) return i;
-        }
-        return -1;
-    }
-
-    void parse_relaxed(std::istream &in, T &parent) const {
-        std::vector<bool> seen(entries_.size());
-        while (true) {
-            std::string name;
-            std::string value;
-            if (!try_parse_key_value(in, name, value)) break;
-            auto idx = find_entry_index(name);
-            ir_assert(idx != -1);
-            if (seen[idx]) {
-                std::cout << "Error: argument set twice: " << name << std::endl;
-                ir_error_not_expected();
-                exit(1);
-            }
-            std::istringstream iss(value);
-            entries_[idx].parse(iss, parent);
-            seen[idx] = true;
-        }
-        for (size_t i = 0; i < entries_.size(); i++) {
-            if (entries_[i].required && !seen[i]) {
-                std::cout << "Error: missing required argument: "
-                          << entries_[i].name << std::endl;
-                ir_error_not_expected();
-                exit(1);
-            }
-        }
-    }
-
-    bool try_parse_key_value(
-            std::istream &in, std::string &key, std::string &value) const {
-        auto pos0 = in.tellg();
-        auto restore = [&]() {
-            in.clear();
-            in.seekg(pos0);
-        };
-        std::string s;
-        if (!(in >> s)) {
-            restore();
-            return false;
-        }
-        if (s == "--help") {
-            print_help();
-            exit(0);
-        }
-        auto eq_pos = s.find("=");
-        key = (eq_pos != std::string::npos) ? s.substr(0, eq_pos) : s;
-        if (find_entry_index(key) == -1) {
-            restore();
-            return false;
-        }
-        if (eq_pos != std::string::npos) {
-            value = s.substr(eq_pos + 1);
-        } else {
-            if (!(in >> value)) {
-                restore();
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // Whether to handle relaxed (command-line interface) style parse/stringify
-    // when the parameter order is not fixed.
-    // Default:  param=value and parameter order is fixed
-    // Relaxed: --param value and parameter order is flexible
-    bool relaxed_ = false;
-
-    std::vector<entry_t> entries_;
-    void (*pre_stringify_func_)(const T &) = nullptr;
-    void (*post_parse_func_)(T &) = nullptr;
-};
 
 inline std::vector<std::pair<std::string, int>> to_string_int_pairs(
         const std::string &s) {

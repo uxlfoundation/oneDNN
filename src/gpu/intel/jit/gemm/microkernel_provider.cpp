@@ -219,6 +219,9 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo,
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
+#if XE3
+        REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+#endif
 #if XE3P
         REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
 #endif

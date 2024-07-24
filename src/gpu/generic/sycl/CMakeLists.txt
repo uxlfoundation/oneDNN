@@ -27,6 +27,9 @@ add_definitions_with_host_compiler(-DPRERELEASE_HW)
 # XE3 macro is required to compile nGEN with XE3P support.
 add_definitions_with_host_compiler(-DXE3)
 add_definitions_with_host_compiler(-DXE3P)
+elseif(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_WITH_XE3)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+add_definitions_with_host_compiler(-DXE3)
 endif()
 
 if(DNNL_SYCL_CUDA)

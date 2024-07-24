@@ -408,3 +408,4 @@ option(DNNL_AARCH64_USE_ACL "Enables use of AArch64 optimised functions
 # ======================
 
 option(DNNL_WITH_XE3P "Enables support for prerelease Xe3p GPU platform" TRUE)
+option(DNNL_WITH_XE3 "Enables support for prerelease Xe3 GPU platform" TRUE)

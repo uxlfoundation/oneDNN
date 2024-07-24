@@ -28777,6 +28777,9 @@ REG_XEHP_ISA(template class gemm_kernel_generator_t<HW::XeHP>);
 REG_XEHPG_ISA(template class gemm_kernel_generator_t<HW::XeHPG>);
 REG_XEHPC_ISA(template class gemm_kernel_generator_t<HW::XeHPC>);
 REG_XE2_ISA(template class gemm_kernel_generator_t<HW::Xe2>);
+#if XE3
+REG_XE3_ISA(template class gemm_kernel_generator_t<HW::Xe3>);
+#endif
 #if XE3P
 REG_XE3P_ISA(template class gemm_kernel_generator_t<HW::Xe3p>);
 #endif

@@ -223,6 +223,9 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         REG_XEHPG_ISA(CASE(gpu_xe_hpg));
         REG_XEHPC_ISA(CASE(gpu_xe_hpc));
         REG_XE2_ISA(CASE(gpu_xe2));
+#if XE3
+        REG_XE3_ISA(CASE(gpu_xe3));
+#endif
 #if XE3P
         REG_XE3P_ISA(CASE(gpu_xe3p));
 #endif

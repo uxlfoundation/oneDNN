@@ -45,6 +45,10 @@ REG_XEHPG_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
 REG_XEHPC_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
         ir_kernel_t<ngen::HW::XeHPC> *host,
         const expr_binding_t &expr_binding));
+#if XE3
+REG_XE3_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
+        ir_kernel_t<ngen::HW::Xe3> *host, const expr_binding_t &expr_binding));
+#endif
 #if XE3P
 REG_XE3P_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
         ir_kernel_t<ngen::HW::Xe3p> *host, const expr_binding_t &expr_binding));

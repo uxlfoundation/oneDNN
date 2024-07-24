@@ -4102,6 +4102,27 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                         "rounding mode primitive attribute"));
     }
 
+    /// Returns the rounding mode attribute value
+    ///
+    /// @param arg Argument for which rounding mode query applies.
+    /// @returns The rounding mode applied to the specified argument.
+    rounding_mode get_rounding_mode(int arg) const {
+        dnnl_rounding_mode_t result;
+        error::wrap_c_api(dnnl_primitive_attr_get_rounding(get(), arg, &result),
+                "could not get rounding mode primitive attribute");
+        return rounding_mode(result);
+    }
+
+    /// Sets the rounding mode attribute value for a given argument
+    ///
+    /// @param arg Argument for which to set rounding mode.
+    /// @param mode Rounding mode to apply.
+    void set_rounding_mode(int arg, rounding_mode mode) {
+        error::wrap_c_api(dnnl_primitive_attr_set_rounding(
+                                  get(), arg, convert_to_c(mode)),
+                "could not set rounding mode primitive attribute");
+    }
+
     /// Returns the scratchpad mode.
     scratchpad_mode get_scratchpad_mode() const {
         dnnl_scratchpad_mode_t result;

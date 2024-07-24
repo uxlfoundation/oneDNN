@@ -747,11 +747,30 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
         }
     }
 
+    const auto &rm = attr->rounding_mode_;
+    if (!rm.has_default_values()) {
+        std::string delim = empty_delim;
+        ss << field_delim() << "attr-rounding-mode:";
+        for (const auto &e : rm.rounding_modes_map_) {
+            // TODO: add support for diff tensors in arg2str when
+            // support is added
+            if (!rm.has_default_values(e.first))
+                ss << delim << arg2str(e.first) << ":"
+                   << dnnl_rounding_mode2str(e.second);
+            delim = attr_delim;
+        }
+    }
+
     const bool deterministic = attr->deterministic_;
     if (deterministic) {
         ss << field_delim() << "attr-deterministic:" << deterministic;
     }
     if (attr->has_default_values()) return ss;
+
+    const runtime_scales_t &os = attr->output_scales_;
+    if (!os.has_default_values()) {
+        ss << field_delim() << "attr-oscale:" << os;
+    }
 
     const arg_scales_t &as = attr->scales_;
     if (!as.has_default_values()) {

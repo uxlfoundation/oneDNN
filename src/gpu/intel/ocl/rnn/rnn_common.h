@@ -44,6 +44,14 @@
 #error "Unimplemented AUX_DATA_T type"
 #endif
 
+#if NEED_BIAS_ATOMIC_REDUCE
+#define MAYBE_ATOMIC volatile __global
+#define DIFF_BIAS_DATA_T CONCAT2(atomic_, DIFF_DATA_T)
+#else
+#define MAYBE_ATOMIC __global
+#define DIFF_BIAS_DATA_T DIFF_DATA_T
+#endif
+
 #define OFFTYPE ulong
 #define TO_WS_STATE(x) TO_SRC(x)
 
@@ -129,11 +137,9 @@ int off_scratch_diff_states(int n_layer, int n_dir, int n_states, int n_iter,
             : n_states;
 
     int i3_size = n_iter + 1;
-    if (i0_size <= 1) {
-        if (i0_size <= 0) {
-            i3_size = 2;
-            i3 %= i3_size;
-        }
+    if (i0_size == 0) {
+        i3_size = 2;
+        i3 %= i3_size;
         return OFF5(i1, conf_.n_dir, i2, i2_size, i3, i3_size, i4, batch, i5,
                 scratch_diff_states_ld);
     }

@@ -311,9 +311,6 @@ public:
     DEF_KERNEL_METHOD_STR(conv_fwd_t)
 };
 
-using float_conv_fwd = conv_fwd_t</* quantized */ false>;
-using quantized_conv = conv_fwd_t</* quantized */ true>;
-
 #if BUILD_TRAINING
 struct conv_bwd_data_t : public conv_base_t {
 public:
@@ -335,6 +332,9 @@ public:
     DEF_KERNEL_METHOD_STR(conv_bwd_weights_t)
 };
 #endif
+
+using float_conv_fwd = conv_fwd_t</* quantized */ false>;
+using quantized_conv = conv_fwd_t</* quantized */ true>;
 
 } // namespace dnnl_impl
 } // namespace graph

@@ -2392,7 +2392,6 @@ typedef enum {
     dnnl_scratchpad_mode_user,
 } dnnl_scratchpad_mode_t;
 
-/// Rounding mode
 typedef enum {
     /// rounding mode dictated by the floating-point environment
     dnnl_rounding_mode_environment,
@@ -2637,6 +2636,10 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 #define DNNL_ARG_DIFF_SCALE 255
 /// A special mnemonic for shift argument of normalization primitives.
 #define DNNL_ARG_DIFF_SHIFT 256
+
+/// Rounding mode seed for stochastic rounding
+/// Single seed needed independently of how many arguments need stochastic rounding
+#define DNNL_ARG_ATTR_ROUNDING_SEED 508
 
 /// Dropout mask output buffer.
 #define DNNL_ARG_ATTR_DROPOUT_MASK 509

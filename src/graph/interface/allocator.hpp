@@ -137,7 +137,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void *allocate(size_t size, const cl_device_id dev, const cl_context ctx,
+    void *allocate(size_t size, cl_device_id dev, cl_context ctx,
             mem_attr_t attr = {}) const {
 #ifndef NDEBUG
         monitor_.lock_write();
@@ -170,7 +170,7 @@ public:
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     template <typename T>
-    T *allocate(size_t nelem, const cl_device_id dev, const cl_context ctx,
+    T *allocate(size_t nelem, cl_device_id dev, cl_context ctx,
             mem_attr_t attr = {}) {
         const size_t size = nelem * sizeof(T);
         void *buffer = allocate(size, dev, ctx, attr);
@@ -215,7 +215,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void deallocate(void *buffer, const cl_device_id dev, const cl_context ctx,
+    void deallocate(void *buffer, cl_device_id dev, cl_context ctx,
             cl_event deps) const {
         if (buffer) {
 #ifndef NDEBUG

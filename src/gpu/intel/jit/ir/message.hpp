@@ -187,7 +187,7 @@ public:
         return (op == other.op) && (address == other.address)
                 && (type == other.type) && (slots == other.slots)
                 && (slot_mask == other.slot_mask) && (is_lsc == other.is_lsc)
-                && (fill_buf == other.fill_buf)
+                && (zero_out == other.zero_out)
                 && (block_2d_info == other.block_2d_info)
                 && (cache_hint == other.cache_hint);
     }

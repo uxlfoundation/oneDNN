@@ -38,15 +38,6 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "graph/utils/ocl_check.hpp"
-#include "graph/utils/ocl_usm_utils.hpp"
-
-#include "xpu/ocl/usm_utils.hpp"
-
-#include "oneapi/dnnl/dnnl_ocl.hpp"
-#endif
-
 #include <graph/utils/utils.hpp>
 
 #include "graph/interface/backend.hpp"

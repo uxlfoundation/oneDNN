@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include "driver_info.hpp"
 #include "emulation.hpp"
 #include "problem.hpp"
-#include "type.hpp"
+#include "types.hpp"
 
 #include "internal/namespace_start.hxx"
 
@@ -81,12 +81,11 @@ struct MatrixAddressingStrategy {
     uint8_t newDP : 1;                          // Use new dataport messages? (XeHPG+)
     uint8_t dpasw : 1;                          // DPASW half layout?
     uint8_t noExtraPad : 1;                     // Avoid extra padding?
-    uint8_t noCoalesce : 1;                     // Disable address coalescing?
-    uint8_t pad0 : 7;
     ngen::CacheSettingsLSC cachingR             // Cache policies for LSC reads.
         = ngen::CacheSettingsLSC::Default;
     ngen::CacheSettingsLSC cachingW             // Cache policies for LSC writes.
         = ngen::CacheSettingsLSC::Default;
+                                    ZPAD(A, 1)
 
     MatrixAddressingStrategy() : padded(false)
                                , atomic(false)
@@ -95,13 +94,10 @@ struct MatrixAddressingStrategy {
                                , pfLoad(false)
                                , newDP(false)
                                , dpasw(false)
-                               , noExtraPad(false)
-                               , noCoalesce(false)
-                               , pad0(0) {}
+                               , noExtraPad(false) {}
 
     void preflight(ngen::HW hw);
     void forceA64();
-    void assignSurface(uint8_t index) { if (!base.isStateless()) base.setIndex(index); }
 
     ngen::GlobalAccessType getGlobalAccessType() const {
         return base.isStateless() ? ngen::GlobalAccessType::Stateless : ngen::GlobalAccessType::Surface;
@@ -135,7 +131,6 @@ enum class CoopSplit {
 enum class WalkOrder : uint8_t {
     HW2D,           // Rely on HW thread dispatch for ordering
     SimpleLinear,   // Simple 1D->2D mapping in column-major/row-major order
-    NestedLinear,   // Fixed-size blocks of WGs traversed in column/row-major order
     Hilbertlike,    // Cache-oblivious Hilbert curve-based order
     Boustrophedon,  // Cache-aware panel boustrophedon walk order
 };
@@ -202,9 +197,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     WGType forceWGUpdate = WGDynamic;            // Force work group update type.
                                     ZPAD(B, 3)
     int wgPadFactor = 1;                         // If > 1, pad workgroup with empty threads.
-    MatrixAddressingStrategy A, B, C;            // Strategies for accessing A/B/C.
-    MatrixAddressingStrategy AO, BO, CO;         // Strategies for accessing A/B/C offsets.
-    MatrixAddressingStrategy A_scale, B_scale;   // Strategies for accessing A/B scales.
+    MatrixAddressingStrategy A, B, C, CO;        // Strategies for accessing A/B/C/C offsets.
     int ka_load, kb_load;                        // How much of A/B is loaded at once, in k dimension
     int ka_load_masked = 0, kb_load_masked = 0;  // Same as above, when masking m/n (0 = default = same as ka/kb_load)
     bool loadBFirst = false;                     // If true, load B before A (default A then B).
@@ -234,12 +227,6 @@ struct GEMMStrategyPOD : public CommonStrategy {
     int prefetchA = 0, prefetchB = 0, prefetchC = 0;                // Prefetch distances, in units of unrollK.
     int prefetchAMasked = 0, prefetchBMasked = 0;                   // Same as above, when masking m/n.
     MatrixAddressingStrategy A_prefetch, B_prefetch, C_prefetch;    // Strategies for prefetching A/B/C.
-    bool l3PrefetchA = false;                    // Enable L3 prefetch for A?
-    bool l3PrefetchB = false;                    // Enable L3 prefetch for B?
-                                    ZPAD(HH, 2)
-    int prefetchABL3 = 0;                        // L3 prefetch distance for A/B.
-    int ka_prefetchL3 = 0, kb_prefetchL3 = 0;    // Chunk size for L3 prefetch of A/B.
-    MatrixAddressingStrategy AB_prefetchL3;      // Strategy for L3 prefetch of A/B.
     enum {
         CSeparate,                                   // C stored in its own bundle, A/B in the other bundle.
         ACB,                                         // A, then C, then B
@@ -263,9 +250,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool fusePostOps = false;                    //   Fuse post-operations into kernel? (kParallel/kParallelVariable, requires linear ordering)
     bool altFusedBeta = false;                   //   Enable alternate beta fusion implementation? (requires sequential dispatch)
     bool zeroTempC = false;                      //   Use pre-zeroed temporary C memory.
-    bool relaxedAccumulation = false;            //   Allow downconversion of partial contributions to Tc_ext.
-                                                 //     If false (default), only downconvert C at the end of the calculation.
-                                    ZPAD(K, 2)
+                                    ZPAD(K, 3)
     int kPadding = 32;                           //   Pad k dimension when load balancing (kParallel/kParallelVariable)
     bool doubleWA = false;                       // Use explicit double broadcast instructions? (Gen9 only)
                                     ZPAD(L, 3)
@@ -275,7 +260,6 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool block2DCRemainder = false;              // Generate block 2D C remainder path?
     bool block2DCFull = false;                   //   Use block 2D C remainder path even for full tiles?
     int cRepackPanel = 0;                        // Size of panels for repacking C (0 = automatic)
-    int repackC = 0;                             // Repack C every repackC k loops.
     bool cAccumulators = false;                  // Use accumulator registers for part of C (to save a few registers)?
     bool cLoadAhead = false;                     // Load C before doing FMAs?
     bool autoatomic = true;                      // Automatically use C atomics for beta = 1 kernels?
@@ -371,8 +355,6 @@ struct GEMMStrategy : public GEMMStrategyPOD
             return WGFixed;
         if (cooperativePF)
             return WGFixed;     /* until flexible cooperative PF enabled */
-        if (cWalkOrder == WalkOrder::NestedLinear)
-            return WGFixed;
         if (forceWGUpdate == WGShrinkable)
             return WGShrinkable;
         else

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -102,23 +102,6 @@ void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, Coo
 
     if (!ok)
         stub("Cooperative operation cannot be split evenly between threads.");
-}
-
-// Return the natural splitting (maximizing contiguous memory accesses) for matrix A.
-CoopSplit naturalSplitA(MatrixLayout layout)
-{
-    switch (layout) {
-        case MatrixLayout::Pr:
-        case MatrixLayout::Pc: return CoopSplit::Linear;
-        case MatrixLayout::N:  return CoopSplit::FullK;
-        case MatrixLayout::T:  return CoopSplit::MN;
-        default: stub();
-    }
-}
-
-CoopSplit naturalSplitB(MatrixLayout layout)
-{
-    return naturalSplitA(transposeLayout(layout));
 }
 
 #include "internal/namespace_end.hxx"

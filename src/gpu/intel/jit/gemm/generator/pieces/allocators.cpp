@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -99,25 +99,12 @@ FlagRegister VirtualFlagAllocator::assignPhysical(VirtualFlag vflag)
     return pflag.toPhysical();
 }
 
-bool VirtualFlagAllocator::lock(VirtualFlag vflag, bool allowAlreadyLocked) {
-    bool wasLocked = isLocked(vflag);
-    if (wasLocked && !allowAlreadyLocked) stub("Illegally locking an already-locked flag register");
-    locked |= mask(vflag);
-    return wasLocked;
-}
-
 bool VirtualFlagAllocator::canLock(int n) const
 {
     uint8_t unlocked = ~locked & ((1 << nflag) - 1);
     if (n == 2)
         unlocked = (unlocked & (unlocked >> 1)) & 0x55;
     return (unlocked != 0);
-}
-
-void VirtualFlagAllocator::freeUnlocked()
-{
-    uint8_t unlocked = ~locked & ((1 << nflag) - 1);
-    free &= ~unlocked;
 }
 
 TokenAllocator::TokenAllocator(HW hw, int grfCount)

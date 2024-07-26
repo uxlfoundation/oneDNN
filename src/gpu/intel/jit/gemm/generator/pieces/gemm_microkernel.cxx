@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,15 +40,8 @@ void BLASKernelGenerator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy 
 
     strategy.forceWGUpdate = WGFixed;
 
-    strategy.AO.base = A64;
-    strategy.BO.base = A64;
-    strategy.A_scale.base = A64;
-    strategy.B_scale.base = A64;
-
     state.isNested = true;
-
-    /* Leave some space for host kernel arguments */
-    state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r6 : r0-r8);
+    state.ra.claim(r0-r6);      /* Leave some space for host kernel arguments */
 
     state.fullK = state.inputs.k;
 
@@ -105,7 +98,10 @@ void BLASKernelGenerator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy 
     state.lid0 = (strategy.fusedLoop == LoopN) ? state.lidN : state.lidM;
     getFusedID(strategy.unroll[strategy.fusedLoop], problem, strategy, state);
 
-    gemmScaleInputs(problem, strategy, state);
+    emulConstant(1, state.inputs.lda, state.inputs.lda, problem.Ta_ext.size(), strategy, state);
+    emulConstant(1, state.inputs.ldb, state.inputs.ldb, problem.Tb_ext.size(), strategy, state);
+    if (!registerC)
+        emulConstant(1, state.inputs.ldc[0], state.inputs.ldc[0], problem.Tc_ext.size(), strategy, state);
 
     if (wgCheck || gemmtBarriers) {
         state.wgI0 = copySubregister(state.i0, state);
@@ -179,38 +175,7 @@ micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem
         Argument arg;
         arg.name = parg.name;
 
-        /* Map microkernel argument name to gemmstone internal name (iname) */
-        auto iname = arg.name;
-
-        if (transposeC) {
-            if (iname == "a") iname = "b";
-            else if (iname == "b") iname = "a";
-            else if (iname == "lda") iname = "ldb";
-            else if (iname == "ldb") iname = "lda";
-            else if (iname == "m") iname = "n";
-            else if (iname == "n") iname = "m";
-            else if (iname == "i0") iname = "j0";
-            else if (iname == "j0") iname = "i0";
-            else if (iname == "local_id_m") iname = "local_id_n";
-            else if (iname == "local_id_n") iname = "local_id_m";
-            else if (iname == "a_scale") iname = "b_scale";
-            else if (iname == "b_scale") iname = "a_scale";
-            else if (iname == "a_offset") iname = "b_offset";
-            else if (iname == "b_offset") iname = "a_offset";
-            else if (iname == "ldaq") iname = "ldbq";
-            else if (iname == "ldbq") iname = "ldaq";
-        }
-
-        if (iname == "a") iname = "A";
-        else if (iname == "b") iname = "B";
-        else if (iname == "slm") iname = "slm_base";
-        else if (iname == "a_offset") iname = "ao_ptr";
-        else if (iname == "b_offset") iname = "bo_ptr";
-        else if (iname == "a_scale") iname = "a_scale_ptr";
-        else if (iname == "b_scale") iname = "b_scale_ptr";
-
-        /* Locate argument registers */
-        if (iname == "c") {
+        if (arg.name == "c") {
             int tileM = strategy.unroll[LoopM];
             int tileN = strategy.unroll[LoopN];
             int blockM = outputCLayout[0].nr;
@@ -255,20 +220,32 @@ micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem
             arg.sizes.block[0] = blockM;
             arg.sizes.block[1] = blockN;
         } else {
-            auto reg = interface.getArgument(iname);
+            const char *aname = parg.name;
+            if (arg.name == "a") aname = "A";
+            if (arg.name == "b") aname = "B";
+            if (arg.name == "slm") aname = "slm_base";
+            auto reg = interface.getArgument(aname);
             arg.location.resize(1);
             arg.location[0].boffset = reg.getBase() * GRF::bytes(hw) + reg.getByteOffset();
             arg.location[0].blen = reg.getBytes();
         }
 
-        /* Provide actual argument types */
-        if (iname == "A") arg.actualType = microType(problem.Ta_ext);
-        if (iname == "B") arg.actualType = microType(problem.Tb_ext);
-        if (iname == "c") arg.actualType = microType(problem.Tc);
-        if (iname == "ao_ptr") arg.actualType = microType(problem.Tao);
-        if (iname == "bo_ptr") arg.actualType = microType(problem.Tbo);
-        if (iname == "a_scale_ptr") arg.actualType = microType(problem.Ta_scale);
-        if (iname == "b_scale_ptr") arg.actualType = microType(problem.Tb_scale);
+        if (arg.name == "a") arg.actualType = microType(problem.Ta_ext);
+        if (arg.name == "b") arg.actualType = microType(problem.Tb_ext);
+        if (arg.name == "c") arg.actualType = microType(problem.Tc);
+
+        if (transposeC) {
+            if (arg.name == "a") arg.name = "b";
+            else if (arg.name == "b") arg.name = "a";
+            else if (arg.name == "lda") arg.name = "ldb";
+            else if (arg.name == "ldb") arg.name = "lda";
+            else if (arg.name == "m") arg.name = "n";
+            else if (arg.name == "n") arg.name = "m";
+            else if (arg.name == "i0") arg.name = "j0";
+            else if (arg.name == "j0") arg.name = "i0";
+            else if (arg.name == "local_id_m") arg.name = "local_id_n";
+            else if (arg.name == "local_id_n") arg.name = "local_id_m";
+        }
 
         package.arguments.push_back(std::move(arg));
     }
@@ -306,8 +283,6 @@ static inline micro::StructuredType::Type microType(Type T)
         CASE(u32)
         CASE(u16)
         CASE(u8)
-        CASE(s4)
-        CASE(u4)
         default: stub("Unsupported type");
     }
 #undef CASE

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,7 +58,8 @@ size_t gemmPerKSLMSize(HW hw, const GEMMProblem &problem, const GEMMStrategy &st
         int mnThreads = strategy.wg[LoopM] * strategy.wg[LoopN];
         if (mnThreads <= 0) stub();
         int concurrentK = std::max(1, threadsPerEU(hw, strategy) * eusPerSubslice(hw) / mnThreads);
-        slmSize = rounddown_pow2(maxSLMPerWG(hw, strategy.GRFs) / concurrentK);
+        slmSize = rounddown_pow2(slmCapacity(hw) / concurrentK);
+        slmSize = std::min(slmSize, maxSLMPerWG(hw, strategy.GRFs));
         if (!problem.sumA && !problem.sumB) {
             auto singleTile = strategy.wg[LoopM] * strategy.wg[LoopN]
                             * align_up(strategy.unroll[LoopM] * strategy.unroll[LoopN] * problem.Tc, GRF::bytes(hw));
@@ -93,7 +94,6 @@ bool keepIJ0(const GEMMProblem &problem, const GEMMStrategy &strategy)
     if (problem.hasBinaryPostOp()) return true;
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0) return true;
     if (problem.aScale2D || problem.bScale2D) return true;
-    if (problem.earlyDequantizeA() ||  problem.earlyDequantizeB()) return true;
     return false;
 }
 

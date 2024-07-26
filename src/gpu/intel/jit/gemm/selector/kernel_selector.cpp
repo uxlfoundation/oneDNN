@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ inline bool tagMatch(const char *tref, const char *tpattern)
     for (auto c = tref; *c; c++) {
         // Lowercase tags -> must not match pattern
         // Uppercase tags -> must match pattern
-        int cu = *c & ~0x20;     // toupper(c)
+        int cu = *c & ~0x20;     // tolower(c)
         bool match = (std::strchr(tpattern, cu) != nullptr);
         bool wantMatch = (*c & 0x20) == 0;
         if (match != wantMatch)
@@ -200,7 +200,7 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
             }
             if (verbose) {
                 const auto &info = it->driverInfo;
-                verbose_printf("info,gpu,gemm,consider:%dx%d,%dx%dx%d,score:%f\n",
+                printf("onednn_verbose,info,gpu,gemm,consider:%dx%d,%dx%dx%d,score:%f\n",
                         info.unroll[LoopM], info.unroll[LoopN], info.wg[LoopM],
                         info.wg[LoopN], info.wg[LoopK], score);
             }
@@ -209,26 +209,12 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
 
     /* Temporarily reuse XeHPC strategies for Xe2 until more Xe2 strategies are
        in the catalog*/
-    const auto pattern_hw = patterns[0].selector.hw;
-    if (!bestEntry
-            && (one_of(pattern_hw, kcatalog::HWTagXe2,  kcatalog::HWTagXe3
-#if XE3P
-		       ,kcatalog::HWTagXe3p
-#endif
-		       ))) {
+    if (!bestEntry && patterns[0].selector.hw == kcatalog::HWTagXe2) {
         std::vector<MatchParams> override_patterns;
         override_patterns.reserve(npatterns);
-        auto tag = kcatalog::HWTagXeHPC;
-	switch (pattern_hw){
-	       default: break;
-	       case kcatalog::HWTagXe3: tag = kcatalog::HWTagXe2; break;
-#if XE3P
-	       case kcatalog::HWTagXe3p: tag = kcatalog::HWTagXe3; break;
-#endif
-		     }
-	for (int i = 0; i < npatterns; i++) {
+        for (int i = 0; i < npatterns; i++) {
             override_patterns.emplace_back(patterns[i]);
-            override_patterns.back().selector.hw = tag;
+            override_patterns.back().selector.hw = kcatalog::HWTagXeHPC;
         }
         return select(catalog, npatterns, override_patterns.data(), eparams, aux);
     }
@@ -268,7 +254,8 @@ const kcatalog::Entry *upper_bound(const kcatalog::Catalog &catalog, const kcata
     return upper_lower_bound<true>(catalog, selector);
 }
 
-MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem_)
+
+MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const GEMMProblem &problem_)
 {
     using namespace kcatalog;
 
@@ -276,14 +263,13 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
 
     switch (hw) {
         default: assert(!"Unknown architecture");
+        case ngen::HW::Gen9:    selector.hw = kcatalog::HWTagGen9;    break;
+        case ngen::HW::Gen11:   selector.hw = kcatalog::HWTagGen11;   break;
         case ngen::HW::Gen12LP: selector.hw = kcatalog::HWTagGen12LP; break;
+        case ngen::HW::XeHP:    selector.hw = kcatalog::HWTagXeHP;    break;
         case ngen::HW::XeHPG:   selector.hw = kcatalog::HWTagXeHPG;   break;
         case ngen::HW::XeHPC:   selector.hw = kcatalog::HWTagXeHPC;   break;
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
-        case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;     break;
-#if XE3P
-        case ngen::HW::Xe3p:     selector.hw = kcatalog::HWTagXe3p;     break;
-#endif
     }
 
     auto &C = problem.C;
@@ -343,26 +329,18 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if (systolicAvailable)
         *tagPtr++ = ReqSystolic;
 
-    if (isIntegrated) *tagPtr++ = ReqIntegrated;
-
     if (problem.batch != BatchMode::None) {
         *tagPtr++ = ReqBatch;
         if (problem.batchDims > 1)
             *tagPtr++ = ReqBatchMultiDim;
     }
 
-    if (problem.aoPtrDims > 0 || problem.boPtrDims > 0)
-        *tagPtr++ = ReqOffsetMultiDim;
-
     problem.autoTypeConversions(hw, systolicAvailable);
     if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;
     if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
 
-    if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
-    if (hw == ngen::HW::Xe3) *tagPtr++ = ReqXe2Block2D;
-#if XE3P
-    if (hw == ngen::HW::Xe3p) *tagPtr++ = ReqXe2Block2D;
-#endif
+    if (hw == ngen::HW::Xe2)
+        *tagPtr++ = ReqXe2Block2D;
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

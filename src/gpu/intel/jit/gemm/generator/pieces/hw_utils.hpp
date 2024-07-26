@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ static inline constexpr int elementsPerGRF(ngen::HW hw, Type T)
 
 static inline constexpr int elementsPerGRF(ngen::HW hw, ngen::DataType dt)
 {
-    return (ngen::GRF::bytes(hw) << 3) >> getLog2Bits(dt);
+    return (ngen::GRF::bytes(hw) >> getLog2Bytes(dt)) * elementsPerByte(dt);
 }
 
 static inline bool canSwizzle(ngen::HW hw, ngen::DataType dt)
@@ -71,9 +71,6 @@ static inline bool hasNativeAtomicAdd(ngen::HW hw, Type T, const MatrixAddressin
     bool floatAtomics = (astrategy.base.getModel() == ModelA64);
     if (astrategy.newDP)
         floatAtomics |= (astrategy.base.getModel() != ModelSLM);
-#if XE3P
-    if (hw >= HW::Xe3p) floatAtomics = true;
-#endif
 
     if (T.isInt4())
         return false;
@@ -81,10 +78,6 @@ static inline bool hasNativeAtomicAdd(ngen::HW hw, Type T, const MatrixAddressin
         return true;
     else if (T == Type::f32)
         return floatAtomics && (hw >= HW::XeHP);
-#if XE3P 
-    else if (T == Type::f16 || T == Type::bf16) 
-        return (hw >= HW::Xe3p); 
-#endif
     else if (T == Type::f64)
         return floatAtomics && (hw >= HW::XeHPC);
     else
@@ -101,11 +94,7 @@ static inline size_t slmCapacity(ngen::HW hw)
         case HW::XeHP:
         case HW::XeHPG:
         case HW::XeHPC:     return 131072;
-        case HW::Xe2:
-        case HW::Xe3:       return 131072;
-#if XE3P 
-        case HW::Xe3p:      return 393216;
-#endif
+        case HW::Xe2:       return 131072;
         default:
             return 0;
     }
@@ -114,7 +103,7 @@ static inline size_t slmCapacity(ngen::HW hw)
 static inline size_t maxSLMPerWG(ngen::HW hw, int grfCount)
 {
     auto slmMax = slmCapacity(hw);
-    if (hw <= ngen::HW::XeHPG)
+    if (hw <= ngen::HW::XeHPG && grfCount <= 128)
         slmMax = std::min<size_t>(slmMax, 65536);
     return slmMax;
 }
@@ -135,10 +124,6 @@ static inline int eusPerSubslice(ngen::HW hw)
         case HW::Gen11:
         case HW::XeHPC:
         case HW::Xe2:
-#if XE3P 
-        case HW::Xe3p:
-#endif
-        case HW::Xe3:
             return 8;
         case HW::Gen12LP:
         case HW::XeHP:
@@ -170,10 +155,7 @@ static inline int block2DMinAlignment(ngen::HW hw, const MatrixAddressing &atype
 {
     using namespace ngen;
     if (!isBlock2D(astrategy.accessType) && !asIfBlock2D) return 0;
-    if (hw == HW::Xe2 || hw == HW::Xe3) return 16;
-#if XE3P 
-    if (hw >= HW::Xe3p) return 4;
-#endif
+    if (hw == HW::Xe2) return 16;
     return (isTransposing(astrategy.accessType) || astrategy.prefetch) ? 4 : 8;
 }
 
@@ -181,9 +163,6 @@ static inline int block2DMinAlignment(ngen::HW hw, const MatrixAddressing &atype
 static inline int block2DBaseAlignment(ngen::HW hw, int stepping)
 {
     using namespace ngen;
-#if XE3P
-    if (hw >= HW::Xe3p) return 4;
-#endif
     if (hw == HW::XeHPC && stepping < SteppingPVCXTB4)
         return 128;
     return 64;

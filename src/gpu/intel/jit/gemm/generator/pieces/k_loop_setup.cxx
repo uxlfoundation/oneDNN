@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -103,12 +103,6 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
             if (state.tokenBarrierFence[q] >= 0)
                 state.modBarrierFence[q] = SBID(state.tokenBarrierFence[q]);
     }
-
-    // Update L3 prefetch enable flags.
-    if (strategy.l3PrefetchA)
-        mov(1, state.flagL3PFA, state.nextFlagL3PFA);
-    if (strategy.l3PrefetchB)
-        mov(1, state.flagL3PFB, state.nextFlagL3PFB);
 
     // Remainder load preparations.
     auto &ka_loadRem = state.ka_loadRem, &kb_loadRem = state.kb_loadRem;
@@ -380,7 +374,6 @@ void BLASKernelGenerator<hw>::kLoopTeardown(const GEMMProblem &problem, const GE
     safeReleaseRanges(state.Bo_regsRem, state);
     state.tokenAllocator.safeRelease(state.tokenBarrierFence[0]);
     state.tokenAllocator.safeRelease(state.tokenBarrierFence[1]);
-    gemmTeardownL3Prefetch(problem, strategy, state);
 }
 
 
@@ -536,11 +529,13 @@ void BLASKernelGenerator<hw>::gemmCalcKLoopBarrierCount(Subregister &count, cons
         count = state.ra.alloc_sub<uint32_t>();
 
     if (barrierFreq > 0) {
+        if (!is_zero_or_pow2(barrierFreq)) stub();
+
         bool maySkipSplitBarrier = strategy.splitBarrier && (cooldown > 0) && !state.splitBarrierAlways;
         if (maySkipSplitBarrier)
             cmp(1 | ge | state.flagAP, k, cooldown);
         add(1 | sat, count, k, barrierFreq - cooldown - unrollK);
-        divDown(count, count, barrierFreq, strategy, state);
+        shr(1, count, count, uint16_t(ilog2(barrierFreq)));
         if (strategy.splitBarrier) {
             maySkipSplitBarrier ? add(1 | state.flagAP, count, count, 1)
                                 : add(1,                count, count, 1);

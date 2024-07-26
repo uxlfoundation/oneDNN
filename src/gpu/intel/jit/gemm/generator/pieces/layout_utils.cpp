@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -215,9 +215,7 @@ bool tryAllocAddrRegs(vector<GRFRange> &addrRegs, const vector<RegisterBlock> &l
     GRFRange last;
     for (int l = 0; l < nblocks && ok; l++) {
         if (layout[l].offsetAddr == 0) {
-            auto count = addrGRFCount(atype, astrategy, layout[l]);
-            if (count < 1) continue;
-            last = state.ra.try_alloc_range(count, hint);
+            last = state.ra.try_alloc_range(addrGRFCount(atype, astrategy, layout[l]), hint);
             ok &= last.isValid();
         }
         addrRegs[l] = last;
@@ -251,10 +249,9 @@ void getLayoutDims(const vector<RegisterBlock> &layout, int &m, int &n)
     // For now all layouts are sorted so last block is in lower-right corner.
     if (layout.size() == 0)
         stub("Empty layout.");
-    auto &first = layout[0];
     auto &last = layout[layout.size() - 1];
-    m = last.offsetR + last.nr - first.offsetR;
-    n = last.offsetC + last.nc - first.offsetC;
+    m = last.offsetR + last.nr;
+    n = last.offsetC + last.nc;
 }
 
 bool hasFullCrosspack(const vector<RegisterBlock> &layout, int crosspack)
@@ -347,37 +344,36 @@ Subregister findBlockReg(Type T, const RegisterBlock &block, int rr, int cc, con
                          int &nelems, int cxComponent, int component)
 {
     auto Te = T;
+    const int ne = (1 << block.log2GRFBytes) / Te;
 
     if (rr < 0 || rr >= block.nr || cc < 0 || cc >= block.nc || component != block.component || !one_of(block.cxComponent, -1, cxComponent))
         stub("Requested out-of-bounds element.");
 
     int crosspack = block.crosspack;
-    int xx = block.colMajor ? rr : cc;
-    int yy = block.colMajor ? cc : rr;
-    int nx = block.colMajor ? block.nr : block.nc;
-    nelems = nx - xx;
-
-    int yyx = yy % crosspack;
-    yy -= yyx;
-
-    if (block.byteGlue) {
-        int xxx = xx & (T.perByte() - 1);
-        yyx = yyx * T.perByte() + xxx;
-        xx -= xxx;
-        nelems = 1;
+    int elFixed, elLD;
+    if (block.colMajor) {
+        int ccx = cc % crosspack;
+        elFixed = ccx + (rr * crosspack);
+        elLD = cc - ccx;
+        nelems = block.nr - rr;
+    } else {
+        int rrx = rr % crosspack;
+        elFixed = rrx + (cc * crosspack);
+        elLD = (rr - rrx);
+        nelems = block.nc - cc;
     }
-
-    int elFixed = yyx + (xx * crosspack);
-    int elLD = yy;
 
     int el = elFixed + elLD * block.ld;
     el += block.offsetBytes / Te;
+    int reg = el / ne;
+    int subreg = el % ne;
 
-    int consecutive;
-    auto result = regs.sub(block.log2GRFBytes, el, Te.ngen(), &consecutive);
+    if (Te.isInt4()) {
+        if (subreg % 2) stub("Invalid int4 offset.");
+        subreg = div_up(subreg, 2);         // Effective byte subreg
+    }
 
-    nelems = std::min(nelems, div_up(consecutive, crosspack));
-    return result;
+    return regs[reg].sub(subreg, Te.ngen());
 }
 
 Subregister findBlockReg(Type T, const vector<RegisterBlock> &layout, int r, int c, const GRFMultirange &regs,
@@ -395,34 +391,6 @@ Subregister findBlockReg(Type T, const vector<RegisterBlock> &layout, int r, int
     }
 
     stub("Could not find requested matrix element in layout.");
-}
-
-static RegisterRegion blockRegion(Type T, const Subregister &reg, const RegisterBlock &block,
-                                  int rr, int cc, int &nelems, int cxComponent, bool allow2D)
-{
-    auto cp = block.crosspack;
-
-    if (block.byteGlue && allow2D && T.bits() < 8) {
-        nelems = block.colMajor ? (block.nr - rr) : (block.nc - cc);
-        return reg(cp / T, 1 / T, 1);
-    } else
-        return reg(cp);
-}
-
-RegisterRegion findBlockRegion(Type T, const RegisterBlock &block, int rr, int cc,
-                               const GRFMultirange &regs, int &nelems,
-                               int cxComponent, int component, bool allow2D)
-{
-    auto reg = findBlockReg(T, block, rr, cc, regs, nelems, cxComponent, component);
-    return blockRegion(T, reg, block, rr, cc, nelems, cxComponent, allow2D);
-}
-
-RegisterRegion findBlockRegion(Type T, const std::vector<RegisterBlock> &layout, int r, int c,
-                               const GRFMultirange &regs, int &nelems, const RegisterBlock *&block,
-                               int cxComponent, int component, bool allow2D)
-{
-    auto reg = findBlockReg(T, layout, r, c, regs, nelems, block, cxComponent, component);
-    return blockRegion(T, reg, *block, r - block->offsetR, c - block->offsetC, nelems, cxComponent, allow2D);
 }
 
 int getAddr0Offset(const RegisterBlock &block, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
@@ -579,268 +547,6 @@ bool assignAllDescs(vector<RegisterBlock> &layout)
     }
 
     return true;
-}
-
-// Split 2D block array loads into multiple blocks.
-void postprocessLayout2D(vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
-{
-    if (!isBlock2D(astrategy.accessType)) return;
-
-    int maxCount = 1;
-    for (auto &block : layout)
-        maxCount = std::max(maxCount, int(block.count));
-    if (maxCount == 1) return;
-
-    vector<RegisterBlock> xlayout;
-    xlayout.reserve(layout.size() * maxCount);
-
-    for (auto &block : layout) {
-        bool cm = block.colMajor;
-        auto RegisterBlock::* nx      = cm ? &RegisterBlock::nr      : &RegisterBlock::nc;
-        auto RegisterBlock::* offsetX = cm ? &RegisterBlock::offsetR : &RegisterBlock::offsetC;
-
-        auto nblock = block;
-        nblock.*nx /= block.count;
-        nblock.ld /= block.count;
-
-        for (int i = 0; i < block.count; i++) {
-            xlayout.push_back(nblock);
-            nblock.*offsetX += nblock.*nx;
-            nblock.simdSize = 0;           // Blocks > 0 do not need loads.
-        }
-    }
-
-    std::swap(layout, xlayout);
-}
-
-// Split blocks that span multiple tiles. Requires each tile to be contained within a single block.
-void postprocessLayoutMultitile(Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
-{
-    if (!atype.tileR || !atype.tileC) return;
-    if (isLargeCrosspack(T, atype.crosspack)) return;
-
-    bool needToSplit = false;
-    for (const auto &block: layout)
-        needToSplit |= (block.colMajor ? (block.nr > atype.tileR) : (block.nc > atype.tileC));
-
-    if (!needToSplit) return;
-
-    vector<RegisterBlock> xlayout;
-    xlayout.reserve(layout.size());
-
-    for (const auto &block: layout) {
-        auto nx      = block.colMajor ? &RegisterBlock::nr      : &RegisterBlock::nc;
-        auto ny      = block.colMajor ? &RegisterBlock::nc      : &RegisterBlock::nr;
-        auto offsetX = block.colMajor ? &RegisterBlock::offsetR : &RegisterBlock::offsetC;
-        auto offsetY = block.colMajor ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
-        auto tileX   = block.colMajor ? atype.tileR             : atype.tileC;
-        auto tileY   = block.colMajor ? atype.tileC             : atype.tileR;
-
-        if (block.*nx == tileX) {
-            xlayout.push_back(block);
-            continue;
-        }
-
-        if (block.*nx % tileX || block.*offsetX % tileX || block.*ny % tileY || block.*offsetY % tileY) stub();
-        if (isTransposing(astrategy.accessType)) stub();
-
-        auto nblock = block;
-        nblock.*nx = tileX;
-        nblock.*ny = tileY;
-        nblock.ld = tileX;
-
-        for (int j = 0; j < block.*ny / tileY; j++) {
-            for (int i = 0; i < block.*nx / tileX; i++) {
-                nblock.*offsetX = block.*offsetX + i * tileX;
-                nblock.*offsetY = block.*offsetY + j * tileY;
-                xlayout.push_back(nblock);
-                nblock.simdSize = 0;
-            }
-        }
-    }
-
-    std::swap(layout, xlayout);
-}
-
-// Split large crosspack blocks into smaller pieces so that they can be transposed.
-void postprocessLayoutLargeCP(Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
-{
-    if (!isLargeCrosspack(T, atype.crosspack))
-        return;
-
-    bool haveLargeCP = false;
-    for (const auto &block: layout) {
-        haveLargeCP |= isLargeCrosspack(T, block.crosspack);
-        if (haveLargeCP) break;
-    }
-
-    if (!haveLargeCP) return;
-
-    vector<RegisterBlock> xlayout;
-    xlayout.reserve(layout.size());
-
-    for (const auto &block: layout) {
-        if (!isLargeCrosspack(T, block.crosspack))
-            xlayout.push_back(block);
-        else {
-            auto ny      = block.colMajor ? &RegisterBlock::nc      : &RegisterBlock::nr;
-            auto offsetY = block.colMajor ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
-
-            if (block.*ny % block.crosspack)
-                return;
-            int blocks = (block.*ny / block.crosspack);
-            auto nblock = block;
-            nblock.*ny = block.crosspack;
-            nblock.simplify(T);
-            for (int i = 0; i < blocks; i++) {
-                xlayout.push_back(nblock);
-                nblock.simdSize = 0;
-                nblock.*offsetY += nblock.*ny;
-            }
-        }
-    }
-
-    std::swap(layout, xlayout);
-}
-// Remove unneeded blocks from a dpasw src2 layout.
-void postprocessLayoutDPASW(vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
-{
-    if (!astrategy.dpasw)
-        return;
-
-    vector<RegisterBlock> nlayout;
-    nlayout.reserve(layout.size() / 2);
-
-    bool cm = isLayoutColMajor(layout);
-    auto tile = cm ? astrategy.tileC : astrategy.tileR;
-    auto offsetX = cm ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
-
-    for (const auto &block: layout)
-        if ((block.*offsetX % (2 * tile)) < tile)
-            nlayout.push_back(block);
-
-    layout = std::move(nlayout);
-}
-
-void postprocessLayout(Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
-{
-    postprocessLayout2D(layout, atype, astrategy);
-    postprocessLayoutMultitile(T, layout, atype, astrategy);
-    postprocessLayoutLargeCP(T, layout, atype, astrategy);
-    postprocessLayoutDPASW(layout, atype, astrategy);
-}
-
-void finalizeLayout(HW hw, Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
-{
-    int offsetBytes = 0;
-    for (auto &block : layout) {
-        if (block.isLoadBlock() || isBlock2D(astrategy.accessType))
-            offsetBytes = ngen::utils::alignup_pow2(offsetBytes, GRF::bytes(hw));
-        block.calcBytes(T, astrategy);
-        block.offsetBytes = offsetBytes;
-        offsetBytes += block.bytes;
-        block.simplify(T);
-    }
-}
-
-// Return maximum immediate address offset for a send message.
-int maxOffsetAddr(Type T, const MatrixAddressingStrategy &astrategy)
-{
-    switch (astrategy.base.getModel()) {
-        case ModelA64:
-        case ModelSLM: return 1 << 19;
-        case ModelA32:
-        case ModelBTS: return 1 << 11;
-        default: return 0;
-    }
-}
-
-// Identify and combine block address registers that differ only by constant offsets.
-void coalesceAddrs(HW hw, Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
-{
-    if (hw < HW::Xe2) return;
-    if (!astrategy.newDP) return;
-    if (layout.empty()) return;
-    if (astrategy.noCoalesce) return;
-
-    RegisterBlock *anchor = &layout[0];
-    int max = maxOffsetAddr(T, astrategy);
-
-    for (auto &block: layout) {
-        int dr = block.offsetR - anchor->offsetR;
-        int dc = block.offsetC - anchor->offsetC;
-
-        auto accessType = implAccessType(atype, astrategy, block);
-
-        if (isBlock2D(accessType)) {
-            if (block.nr == anchor->nr && block.nc == anchor->nc && block.count == anchor->count) {
-                int ox, oy;
-                switch (atype.layout) {
-                    case MatrixLayout::N: ox = dr; oy = dc; break;
-                    case MatrixLayout::T: ox = dc; oy = dr; break;
-                    default: return;
-                }
-                block.set2DOffset(ox * T / block.ebytes, oy);
-            } else {
-                // No match. Make this block the new anchor.
-                anchor = &block;
-            }
-        } else {
-            switch (atype.layout) {
-                case MatrixLayout::N: if (dc == 0) block.offsetAddr = dr; break;
-                case MatrixLayout::T: if (dr == 0) block.offsetAddr = dc; break;
-                case MatrixLayout::Pr:
-                case MatrixLayout::Pc:
-                    auto offsetX = (atype.layout == MatrixLayout::Pc) ? &RegisterBlock::offsetR
-                                                                      : &RegisterBlock::offsetC;
-                    if (block.*offsetX / atype.packSize == anchor->*offsetX / atype.packSize)
-                        block.offsetAddr = untile(T, atype, block);
-                    break;
-            }
-
-            block.offsetAddr *= T;
-            if (block.offsetAddr >= max || block.offsetAddr < -max)
-                block.offsetAddr = 0;
-            if (one_of(accessType, AccessType::Scattered, AccessType::ChannelScattered))
-                if (block.simdSize > anchor->simdSize)
-                    block.offsetAddr = 0;
-            if (block.offsetAddr & 0x3)
-                block.offsetAddr = 0;
-
-            if (block.offsetAddr == 0)
-                anchor = &block;
-        }
-    }
-}
-
-bool needsRemask(Type T, bool column, const RegisterBlock &block,
-                        const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, bool ignoreMasks = false)
-{
-    if (!ignoreMasks)
-        if (column ? !block.remainderC : !block.remainderR)
-            return false;
-
-    bool block2DRemask = isBlock2D(astrategy.accessType)
-                      && ((block.colMajor ^ isTransposing(astrategy.accessType)) != column);
-
-    int maskGranularity = block.ebytes;
-    if (block.ebytes >= 16)
-        maskGranularity = 4;
-    if (block2DRemask)
-        maskGranularity = std::max(maskGranularity, block2DWidthAlignment(T, block, atype, astrategy));
-    if (ignoreMasks && !(block2DRemask && astrategy.address2D))
-        maskGranularity = 256;
-
-    return (T.paddedSize() < maskGranularity);
-}
-
-bool needsRemask(Type T, bool column, const vector<RegisterBlock> &layout,
-                 const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, bool ignoreMasks)
-{
-    for (auto &block: layout)
-        if (needsRemask(T, column, block, atype, astrategy, ignoreMasks))
-            return true;
-    return false;
 }
 
 #include "internal/namespace_end.hxx"

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,10 +36,9 @@ bool allocateTokens(const vector<RegisterBlock> &layout, const GRFMultirange &re
         if (token < 0)
             success = false;
         else {
-            auto regKey = !regs.empty() ? regs[layout[l].offsetReg()]
-                                        : addrs[l];
-            if (regKey.isInvalid()) continue;
-            state.tokenMap.push_back(std::make_pair(regKey.getBase(), token));
+            auto regKey = !regs.empty() ? regs[layout[l].offsetReg()].getBase()
+                                        : addrs[l].getBase();
+            state.tokenMap.push_back(std::make_pair(regKey, token));
         }
     }
 

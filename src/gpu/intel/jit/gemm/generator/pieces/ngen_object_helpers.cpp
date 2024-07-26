@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,8 +29,7 @@ void movePipes(Subregister &s, bool sizeCanChange)
     DataType type = s.getType();
 
     switch (type) {
-        case DataType::bf8:
-        case DataType::hf8: type = DataType::ub; break;
+        case DataType::bf8: type = DataType::ub; break;
         case DataType::bf:
         case DataType::hf: type = DataType::uw; break;
         case DataType::tf32:
@@ -42,8 +41,7 @@ void movePipes(Subregister &s, bool sizeCanChange)
         case DataType::ud: type = DataType::f; break;
         case DataType::q:
         case DataType::uq: if (sizeCanChange) type = DataType::f; break;
-        default:
-            break;
+        default: break;
     }
 
     s = s.reinterpret(0, type);
@@ -54,8 +52,7 @@ void moveToIntPipe(Subregister &s)
     DataType type = s.getType();
 
     switch (type) {
-        case DataType::bf8:
-        case DataType::hf8: type = DataType::ub; break;
+        case DataType::bf8: type = DataType::ub; break;
         case DataType::bf:
         case DataType::hf: type = DataType::uw; break;
         case DataType::q:
@@ -63,8 +60,7 @@ void moveToIntPipe(Subregister &s)
         case DataType::f:
         case DataType::tf32:
         case DataType::df: type = DataType::ud; break;
-        default:
-            break;
+        default: break;
     }
 
     s = s.reinterpret(0, type);
@@ -73,8 +69,7 @@ void moveToIntPipe(Subregister &s)
 void moveToIntPipe(int esize, RegData &s)
 {
     switch (s.getType()) {
-        case DataType::bf8:
-        case DataType::hf8: s.setType(DataType::ub); break;
+        case DataType::bf8: s.setType(DataType::ub); break;
         case DataType::bf:
         case DataType::hf: s.setType(DataType::uw); break;
         case DataType::q:
@@ -85,8 +80,7 @@ void moveToIntPipe(int esize, RegData &s)
             s.setType(DataType::uq);
             EmulationImplementation::makeDWPair(s, esize);
             break;
-        default:
-            break;
+        default: break;
     }
 }
 

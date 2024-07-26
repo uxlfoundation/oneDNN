@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,22 +22,6 @@ using namespace ngen;
 
 #include "internal/namespace_start.hxx"
 
-
-Subregister SubregisterPair::getReg(int idx) const
-{
-    auto r = regs[idx & 1];
-    if (negative)
-        r = -r;
-    return r;
-}
-
-Subregister SubregisterPair::getRegAvoiding(HW hw, const RegData &rd) const
-{
-    if (Bundle::same_bank(hw, rd, regs[0]))
-        return getReg(1);
-    else
-        return getReg(0);
-}
 
 VirtualFlag CommonState::allocVFlag(ngen::HW hw, int n)
 {

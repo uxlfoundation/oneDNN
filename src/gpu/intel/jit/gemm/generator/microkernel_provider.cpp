@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-
-#define BINARY_OUTPUT
 
 #include "microkernel_provider.hpp"
 #include "generator.hpp"
@@ -55,12 +53,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     bool localA = protocol.options().localA;
     bool localB = protocol.options().localB;
     bool beta1 = protocol.options().addToC;
-    bool slmPtr = protocol.options().slmPtr;
-    bool scaleA = protocol.options().scaleA;
-    bool scaleB = protocol.options().scaleB;
-    bool offsetA = protocol.options().offsetA;
-    bool offsetB = protocol.options().offsetB;
-
     bool transC = !isColMajor(problem_.C.layout);
 
     auto problem = problem_;
@@ -75,26 +67,17 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         problem.transpose();
         std::swap(localA, localB);
         std::swap(sizes.m, sizes.n);
-        std::swap(scaleA, scaleB);
-        std::swap(offsetA, offsetB);
         for (auto &req: reqs)
             req.transpose();
     }
-
-    if (scaleA != problem.aScale2D || scaleB != problem.bScale2D)
-        stub("Protocol scales do not match problem description");
-    if (offsetA != (problem.aoPtrDims >= 0) || offsetB != (problem.boPtrDims >= 0))
-        stub("Protocol offsets do not match problem description");
 
     /* Get hardware information */
     auto product = npack::decodeHWIPVersion(hwInfo.gmdid);
     auto hw = getCore(product.family);
     auto stepping = hwInfo.gmdid & 0xFF;
 
-    bool isIntegrated = getPlatformType(product.family) == PlatformType::Integrated;
-
     /* Create catalog matcher */
-    MatchParams matchParams(hw, hwInfo.systolicAvailable, isIntegrated, problem);
+    MatchParams matchParams(hw, hwInfo.systolicAvailable, problem);
 
     matchParams.sizes = sizes;
     matchParams.stepping = stepping;
@@ -142,9 +125,9 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         adjustStrategy(hw, problem, strategy);
         modifyStrategy(strategy, auxParams);
 
-        /* Xe2/Xe3-XeHPC compatibility logic */
-        if (hw == ngen::HW::Xe2 || hw == ngen::HW::Xe3) {
-            // Use XeHPC register banking on Xe2/Xe3, in order
+        /* Xe2-XeHPC compatibility logic */
+        if (hw == ngen::HW::Xe2) {
+            // Use XeHPC register banking on Xe2, in order
             //   to successfully reuse XeHPC strategies.
             strategy.raHW = ngen::HW::XeHPC;
 
@@ -199,13 +182,8 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     interface.newArgument("h0", DataType::d);
     interface.newArgument("local_id_m", DataType::d);
     interface.newArgument("local_id_n", DataType::d);
-    if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
-    if (scaleA)            interface.newArgument("a_scale_ptr", ExternalArgumentType::GlobalPtr);
-    if (offsetA)           interface.newArgument("ao_ptr", ExternalArgumentType::GlobalPtr);
-    if (scaleA || offsetA) interface.newArgument("ldaq", DataType::d);
-    if (scaleB)            interface.newArgument("b_scale_ptr", ExternalArgumentType::GlobalPtr);
-    if (offsetB)           interface.newArgument("bo_ptr", ExternalArgumentType::GlobalPtr);
-    if (scaleB || offsetB) interface.newArgument("ldbq", DataType::d);
+    if (protocol.options().slmPtr)
+        interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
 
     /* Update problem from strategy */
     if (isPacked(problem.A.layout))
@@ -230,10 +208,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
-        REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-#if XE3P
-        REG_XE3_ISA(ARCH_DISPATCH(Xe3p))
-#endif
         default: throw std::runtime_error("Unsupported architecture");
     }
 #undef ARCH_DISPATCH
@@ -308,9 +282,6 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     s.B_prefetch = s.B;
     s.A_prefetch.prefetch = s.B_prefetch.prefetch = true;
 
-    s.AO.newDP = s.A_scale.newDP = true;
-    s.BO.newDP = s.B_scale.newDP = true;
-
     if (!localA && block2DA) {
         if (!isPacked(problem.A.layout))
             s.A_prefetch.accessType = AccessType::Block2D;
@@ -349,10 +320,8 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     if (localA && !localB)
         s.loadBFirst = true;
 
-    if (s.slmA || s.slmB) {
+    if (s.slmA || s.slmB)
         s.slmBuffers = 1;
-        s.unrollKSLM = std::max(int(s.slmA) * s.ka_load, int(s.slmB) * s.kb_load);
-    }
 
     adjustStrategy(hw, problem, strategy);
 

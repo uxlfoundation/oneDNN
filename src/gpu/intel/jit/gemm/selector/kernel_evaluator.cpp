@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -75,7 +75,6 @@ double evaluateW(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
     if (priority > maxPriority)
         /* no op */;        // Don't adjust very high values -- these are last resort kernels (lowest priority)
     else if (e.driverInfo.kParallel()) {
-        if (dp.threadCount == 0) return std::numeric_limits<double>::infinity();
         int wgCountK = std::max(1, int(dp.hwThreadCapacity / dp.threadCount));
         aux.k0 = alignUp(divUp(dp.sizes.k, wgCountK), e.driverInfo.unroll[LoopK]);
         if (aux.k0 < dp.sizes.k)
@@ -496,6 +495,8 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
     dp.threadCount *= (dp.wgCountK * p.sizes.batch);
 
     switch (e.selector.hw) {
+        case kcatalog::HWTagGen9:
+        case kcatalog::HWTagGen11:
         case kcatalog::HWTagGen12LP:
             dp.threadsPerEU = 7;
             break;
@@ -507,6 +508,7 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
     int ssCount;
     switch (e.selector.hw) {
         case kcatalog::HWTagGen12LP:
+        case kcatalog::HWTagXeHP:
         case kcatalog::HWTagXeHPG:
             ssCount = p.euCount >> 4;
             break;

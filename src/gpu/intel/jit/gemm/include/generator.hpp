@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,10 +40,9 @@
 #include "config.hpp"
 #include "internal/ngen_includes.hpp"
 
-#include "type.hpp"
+#include "types.hpp"
 #include "problem.hpp"
 #include "strategy.hpp"
-#include "generator/pieces/copy_plan.hpp"
 #include "generator/pieces/register_block.hpp"
 #include "generator/pieces/state.hpp"
 #include "emulation.hpp"
@@ -317,8 +316,8 @@ protected:
     void innerProductFMA(int h, int ha, int hb, int opCount, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void outerProductFMA(int h, int ha, int hb, int opCount, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void outerProductGen9IGEMM(int ha, int hb, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void outerProductSystolic(int h, int ha, int hb, int opCount, bool rem, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void outerProduct(int h, int ha, int hb, int opCount, bool rem, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void outerProductSystolic(int h, int ha, int hb, int opCount, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void outerProduct(int h, int ha, int hb, int opCount, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void setupTeardownAccumulateSumSystolic(bool setup, Type Tother, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void outerProductRepackC(int x0, int xr0, int nx, int h, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
@@ -386,28 +385,19 @@ protected:
     SubregisterPair lookupIncrement(const LDIncrements &increments, const SubregisterPair &base, int scale, const CommonStrategy &strategy, CommonState &state, bool *release = nullptr);
     void gemmFreeIncrements(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool doA = true, bool doB = true);
     void gemmCalcIncrements(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ka_load = 0, int kb_load = 0, bool doA = true, bool doB = true);
-    void gemmCalcQuantizationIncrements(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     ngen::Subregister gemmMNLinearID(const GEMMStrategy &strategy, GEMMState &state);
-    void gemmApplyWorkshareOffset(bool isA, ngen::Subregister &base, ngen::Subregister alias, Address2DParams &params2D, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, int r, int c, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmCalcWorkshareAOffset(ngen::Subregister &off, ngen::Subregister &offR, ngen::Subregister &offC, const MatrixAddressing &A, const MatrixAddressingStrategy &A_strategy, int ma, int ka, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmCalcWorkshareBOffset(ngen::Subregister &off, ngen::Subregister &offR, ngen::Subregister &offC, const MatrixAddressing &B, const MatrixAddressingStrategy &B_strategy, int kb, int nb, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     bool gemmPrepMaskedAB(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmSLMRemask(bool remaskA, bool remaskB, GRFMultirange &Ao_regs, GRFMultirange &Bo_regs, int kOffset, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     // quantization.cpp
-    bool gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
+    bool gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmRepack2DQuantizationData(Type Ts, Type Td, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmRepack2DOffsetData(Type Text, Type Ts, Type Td, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void dequantizeInt4Shift(Type Tsrc, GRFMultirange src, const CommonStrategy &strategy);
     void dequantizeInt4(bool doA, Type Tsrc, Type Tdst, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const std::vector<RegisterBlock> &layoutOffset, const std::vector<RegisterBlock> &layoutScale, GRFMultirange src, GRFMultirange dst, GRFMultirange offset, GRFMultirange scale, Type Tscale, int offR, int offC, const GEMMProblem *problem, const CommonStrategy &strategy, CommonState &state, bool s4Shift = true);
-    void gemmDequantizeOperation(bool doA, Type T, Type To, BinaryOp op, const std::vector<RegisterBlock> &layout, const std::vector<RegisterBlock> &qlayout, const GRFMultirange &regs, const GRFMultirange &qregs, int hq, const GEMMProblem &problem, CommonState &state);
+    void gemmDequantizeOperation(bool doA, Type T, Type To, BinaryOp op, const std::vector<RegisterBlock> &layout, const std::vector<RegisterBlock> &qlayout, const GRFMultirange &regs, const GRFMultirange &qregs, int hq, const GEMMProblem &problem);
     void gemmDequantizeAB(bool doA, Type Tsrc, Type Tdst, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int hab, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool s4Shift = true);
-
-    // l3_prefetch.cxx
-    void gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmWarmupL3Prefetch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmScheduleL3Prefetches(void *ls, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmScheduleL3PrefetchIncs(void *ls, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool allowDelay = true);
-    void gemmTeardownL3Prefetch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     // k_loop.cpp
     void gemmCalcKLoopBarrierCount(ngen::Subregister &count, const ngen::Subregister &k, int cooldown, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
@@ -446,12 +436,9 @@ protected:
     void gemmOOBExit(ngen::Label &target, const GEMMStrategy &strategy, GEMMState &state);
 
     // walk_orders.cpp
-    void gemmLinearOrder(const ngen::Subregister &groupIDMN, const ngen::Subregister &groupIDM, const ngen::Subregister &groupIDN, const ngen::Subregister &aLeader, const ngen::Subregister &bLeader, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmSimpleLinearOrder(const ngen::Subregister &groupIDMN, const ngen::Subregister &groupIDM, const ngen::Subregister &groupIDN, const ngen::Subregister &aLeader, const ngen::Subregister &bLeader, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmNestedLinearOrder(const ngen::Subregister &groupIDMN, const ngen::Subregister &groupIDM, const ngen::Subregister &groupIDN, const ngen::Subregister &aLeader, const ngen::Subregister &bLeader, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmHilbertlikeOrder(const ngen::Subregister &groupIDMN, const ngen::Subregister &groupIDM, const ngen::Subregister &groupIDN, const ngen::Subregister &aLeader, const ngen::Subregister &bLeader, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmBoustrophedonOrder(const ngen::Subregister &groupIDMN, const ngen::Subregister &groupIDM, const ngen::Subregister &groupIDN, const ngen::Subregister &aLeader, const ngen::Subregister &bLeader, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmReorderGlobalIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void gemmSimpleLinearOrder(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
+    void gemmHilbertlikeOrder(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
+    void gemmBoustrophedonOrder(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmReorderLocalIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     // atomic_fusions.cpp
@@ -469,12 +456,10 @@ protected:
     void gemmCheck32(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmGetBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmReleaseBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmOffsetAm(const ngen::Subregister &i, const ngen::Subregister &effA, const MatrixAddressing &globalA, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmOffsetAk(int h, const ngen::Subregister &effA, const MatrixAddressing &globalA, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmOffsetAk(const ngen::Subregister &h, const ngen::Subregister &effA, const MatrixAddressing &globalA, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmOffsetBk(int h, const ngen::Subregister &effB, const MatrixAddressing &globalB, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmOffsetBk(const ngen::Subregister &h, const ngen::Subregister &effB, const MatrixAddressing &globalB, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmOffsetBn(const ngen::Subregister &j, const ngen::Subregister &effB, const MatrixAddressing &globalB, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmFoldOffsets(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmRestoreOffsets(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmOffsetABC(bool initial, ngen::Subregister i0, ngen::Subregister j0, ngen::Subregister h0, ngen::Subregister i0p, ngen::Subregister j0p, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool doA = true, bool doB = true, bool doC = true, bool doBinary = false);
@@ -519,12 +504,9 @@ protected:
     void sysgemm2MultiplyChunkX48(const GEMMProblem &problem, const GEMMStrategy &strategy, int chunkA);
 
     // copy.cpp
-    friend struct CopyInstruction;
-    void copyRegisterBlock(Type Ts, Type Td, const RegisterBlock &blockSrc, const RegisterBlock &blockDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false);
-    void copyRegisters(Type Ts, Type Td, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
-    void copyRegisters(Type Ts, Type Td, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
-    void copyRegisters(Type Ts, Type Td, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const Scalar &alpha, const SubregisterPair &alpha_real, const SubregisterPair &alpha_imag, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
-    void copyExecute(CopyPlan &&plan, CommonState &state);
+    bool copyRegisterBlock(Type Ts, Type Td, const RegisterBlock &blockSrc, const RegisterBlock &blockDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false);
+    bool copyRegisters(Type Ts, Type Td, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
+    bool copyRegisters(Type Ts, Type Td, const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const Scalar &alpha, const SubregisterPair &alpha_real, const SubregisterPair &alpha_imag, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
     void overlappedCopy(const GRFMultirange &src, const GRFMultirange &dst, CommonState &state);
 
     // common.cpp

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #define GEMMSTONE_GUARD_STATE_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
+#include "types.hpp"
 #include "register_block.hpp"
 #include "allocators.hpp"
 #include "emulation.hpp"
@@ -223,8 +223,6 @@ struct GEMMState : public CommonState {
         std::vector<ngen::Subregister> binaryLDs;           // d
         std::vector<std::vector<ngen::Subregister>> binaryStrides;    // d
         std::vector<uint8_t> binarySurfaces;
-        ngen::Subregister sroundSeedPtr;                    // q
-        ngen::Subregister sroundSeed;                       // ud
     } inputs;
     Type Ta_load, Tb_load;                                  // Current type to be loaded into A/B_regs.
     Type Tacc;                                              // Current type in accumulator registers.
@@ -261,7 +259,6 @@ struct GEMMState : public CommonState {
     GRFMultirange Ao_regs, Bo_regs;                         // Outgoing data to copy to SLM.
     GRFMultirange Ao_regsRem, Bo_regsRem;
     GRFMultirange As_regs, Bs_regs;                         // A row sums/B column sums.
-    GRFMultirange Asr_regs, Bsr_regs;                       // A row sums/B column sums to be repacked.
     GRFMultirange Ap_regs, Bp_regs, Cp_regs;                // A/B/C prefetch registers.
     GRFMultirange A_offsetRegs, B_offsetRegs;               // A/B offsets (grouped).
     GRFMultirange A_scaleRegs, B_scaleRegs;                 // A/B scales (grouped).
@@ -270,7 +267,6 @@ struct GEMMState : public CommonState {
     std::vector<MaskAssignment> AB_masks, AB_masksCoop;
     ngen::GRFRange broadcast_regs;
     std::vector<ngen::GRFRange> tempMul_regs;
-    ngen::Subregister groupIDMN;                            // d
     ngen::Subregister i0, j0, h0;                           // d
     ngen::Subregister wgI0, wgJ0;                           // d
     ngen::Subregister threadK0, k0Rem, wgK;                 // ud
@@ -317,7 +313,7 @@ struct GEMMState : public CommonState {
     CoopSplit effCoopB = CoopSplit::K;
     ngen::Subregister kSLMA, kSLMB, kSLMStorage;            // w/w/ud
     bool kSLMCountUp = false;
-    int kaq = 0, kbq = 0, kaqStride, kbqStride, kaqLate = 0, kbqLate = 0;
+    int kaq, kbq, kaqStride, kbqStride, kaqLate, kbqLate;
     bool lateScale2DA = false, lateScale2DB = false;
     std::vector<RegisterBlock> A_layout, B_layout, C_layout;
     std::vector<RegisterBlock> A_layoutRem, B_layoutRem;
@@ -329,7 +325,6 @@ struct GEMMState : public CommonState {
     std::vector<RegisterBlock> Ai_layoutRem, Bi_layoutRem;
     std::vector<RegisterBlock> Ao_layout, Bo_layout;
     std::vector<RegisterBlock> As_layout, Bs_layout;
-    std::vector<RegisterBlock> Asr_layout, Bsr_layout;
     std::vector<RegisterBlock> Ap_layout, Bp_layout, Cp_layout;
     std::vector<RegisterBlock> Ap_layoutAlt, Bp_layoutAlt;
     std::vector<RegisterBlock> A_offsetLayout, B_offsetLayout;
@@ -343,8 +338,8 @@ struct GEMMState : public CommonState {
     Address2DParams Ai_params, Bi_params;
     Address2DParams Ap_params, Bp_params;
     int Ai_regCount = 0, Bi_regCount = 0;
-    bool aioShare = false, bioShare = false;
-    bool aioShareRem = false, bioShareRem = false;
+    bool aioShare, bioShare;
+    bool aioShareRem, bioShareRem;
     bool aoReuseA = false, boReuseB = false;
     Type Tao_int, Ta_scaleInt;
     Type Tbo_int, Tb_scaleInt;
@@ -352,6 +347,8 @@ struct GEMMState : public CommonState {
     MatrixAddressing Ai, Bi, Ao, Bo, tempC;
     MatrixAddressingStrategy Ai_strategy, Bi_strategy;
     MatrixAddressingStrategy Ao_strategy, Bo_strategy;
+    MatrixAddressingStrategy A_offsetStrategy, B_offsetStrategy;
+    MatrixAddressingStrategy A_scaleStrategy, B_scaleStrategy;
     MatrixAddressingStrategy Cext_strategy, tempCStrategy;
     ngen::FlagRegister panelMaskA, panelMaskB;
     int8_t tokenBarrierFence[2];
@@ -375,7 +372,6 @@ struct GEMMState : public CommonState {
     bool repackA = false, repackB = false;
     bool repackARem = false, repackBRem = false;
     int ka_repack, ka_repackRem, kb_repackRem;
-    int cRepackPeriod = 0;
     bool remActiveA, remActiveB, remActiveSLM;
     std::vector<MaskAssignment> kMasksA, kMasksB, kMasksAi, kMasksBi;
     int initSLMKOffset = 0;
@@ -386,11 +382,6 @@ struct GEMMState : public CommonState {
     ngen::GRF emulate64TempSave[2];
     bool simd32KMasks = false;
     int lastThresh = 0;
-    ngen::Subregister nextGroupIDM, nextGroupIDN;
-    ngen::Subregister nextFlagL3PFA, nextFlagL3PFB;
-    ngen::FlagRegister flagL3PFA, flagL3PFB;
-    std::vector<RegisterBlock> Apl3_layout, Bpl3_layout;
-    std::vector<ngen::GRFRange> Apl3_addrs, Bpl3_addrs;
 
     std::vector<ngen::Subregister> effBinary;
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -613,8 +613,6 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
         state.Bi_regs[q] = state.ra.alloc_range(state.Bi_regCount);
 
     // Allocate registers for A/B sums.
-    state.Asr_regs = state.ra.alloc_range(getRegCount(state.Asr_layout));
-    state.Bsr_regs = state.ra.alloc_range(getRegCount(state.Bsr_layout));
     state.As_regs = state.ra.alloc_range(getRegCount(state.As_layout));
     state.Bs_regs = state.ra.alloc_range(getRegCount(state.Bs_layout));
 

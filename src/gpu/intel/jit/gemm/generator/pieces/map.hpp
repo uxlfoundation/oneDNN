@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include "grf_multirange.hpp"
 #include "hw_utils.hpp"
 #include "register_block.hpp"
-#include "type.hpp"
+#include "types.hpp"
 #include "strategy.hpp"
 
 #include "internal/namespace_start.hxx"
@@ -155,8 +155,8 @@ static inline void map(ngen::HW hw, const GRFMultirange &regs, const std::vector
 
 // Variant that allow the type to be specified as a native Type, rather than an nGEN type.
 template <typename... Targs>
-static inline void map(ngen::HW hw, Type T, Targs &&...args) {
-    map(hw, T.ngen(), std::forward<Targs>(args)...);
+static inline void map(ngen::HW hw, Type T, Targs... args) {
+    map(hw, T.ngen(), args...);
 }
 
 static inline bool canDualGRF(ngen::HW hw, ngen::DataType dt, const CommonStrategy &strategy)

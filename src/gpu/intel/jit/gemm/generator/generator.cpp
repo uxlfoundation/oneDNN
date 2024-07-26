@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@
 #include "pieces/k_loop_setup.cxx"
 #include "pieces/k_loop.cxx"
 #include "pieces/layout_setup.cxx"
-#include "pieces/l3_prefetch.cxx"
 #include "pieces/masks.cxx"
 #include "pieces/math_helpers.cxx"
 #include "pieces/matrix_access.cxx"

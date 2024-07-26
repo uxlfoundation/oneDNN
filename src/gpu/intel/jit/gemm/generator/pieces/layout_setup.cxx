@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -62,7 +62,6 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
     // Set default parameters.
     block.colMajor = isColMajor(atype.layout);
     block.splitComplex = false;
-    block.byteGlue = false;
     block.cxComponent = RegisterBlock::Interleaved;
     block.crosspack = 1;
     block.rowMask = MaskInfo::None();
@@ -262,7 +261,7 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                 vymask.bitRep = consecutive;
                 vymask.maskRep = 1;
                 vymask.rsize = *yblock;
-                vymask.rshift = 0;
+                vymask.rdivide = 1;
             } else if (logicalSlots < slots) {
                 auto &fymask = block.colMajor ? block.rowMask.fixed : block.colMask.fixed;
                 fymask.isFixed = true;
@@ -274,12 +273,12 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
             //   (ditto for regular scattered float with new dataport messages.)
             //  Otherwise, fragment 2 is possible for DWord+ types but not implemented.
             if (remainderX) {
-                if (avoidFragment && (*xblock == 1 || block.count == 1)) {
+                if (avoidFragment && block.count == 1) {
                     vxmask.isFixed = false;
                     vxmask.bitRep = (block.simdSize > 16) ? 32 : 16;
                     vxmask.maskRep = 1;
                     vxmask.rsize = 1;
-                    vxmask.rshift = 0;
+                    vxmask.rdivide = 1;
                 } else if (allowDesc && (channelScattered || astrategy.newDP) && *xblock > 1 && !byte) {
                     fragment = std::min(*xblock, 4 * width / T);
                     if (block.colMajor)             // Clang can't handle the ternary operator equivalent of this.
@@ -447,7 +446,6 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                             stub();
                     }
                     block.crosspack = npack / T.perByte();
-                    block.byteGlue = (T.bits() < 8);
                     npack = T.perByte();
                     (effCM ? cblock : rblock) = 1;
                 }
@@ -482,7 +480,7 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                         vrmask.rsize = rblock;
                         vrmask.bitRep = std::max<int>(T.paddedSize() / maskGranularity, 1);
                         vrmask.maskRep = cblock;
-                        vrmask.rshift = ilog2(std::max<int>(maskGranularity / T, 1));
+                        vrmask.rdivide = std::max<int>(maskGranularity / T, 1);
                     }
                 } else {
                     if (avoidFragment) {
@@ -491,8 +489,8 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                         vrmask.isFixed = false;
                         vrmask.bitRep = 0;  /* will be filled in later */
                         vrmask.maskRep = 1;
+                        vrmask.rdivide = 1;
                         vrmask.rsize = 1;
-                        vrmask.rshift = 0;
                     } else {
                         // Fragment it. Could actually handle rowFragment = 2 by changing descriptor.
                         block.rowFragment = 1;
@@ -520,7 +518,7 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                         vcmask.rsize = cblock;
                         vcmask.bitRep = std::max<int>(T.paddedSize() / maskGranularity, 1);
                         vcmask.maskRep = rblock;
-                        vcmask.rshift = ilog2(std::max<int>(maskGranularity / T, 1));
+                        vcmask.rdivide = std::max<int>(maskGranularity / T, 1);
                     }
                 } else {
                     if (avoidFragment) {
@@ -529,8 +527,8 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                         vcmask.isFixed = false;
                         vcmask.bitRep = 0;
                         vcmask.maskRep = 1;
+                        vcmask.rdivide = 1;
                         vcmask.rsize = 1;
-                        vcmask.rshift = 0;
                     } else {
                         // Fragment it. Could actually handle colFragment = 2 by changing descriptor.
                         block.colFragment = 1;
@@ -611,9 +609,6 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                 } else {
                     Tblock = Type::u32;
                     maxW = 8;
-#if XE3P
-                    if (hw >= HW::Xe3p) maxW = 16;
-#endif
                 }
                 maxXBlock = std::min(maxXBlock, (maxW * Tblock) / T);
             } else if (vnni) {
@@ -660,17 +655,6 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                 count = std::max(count, 1);
             }
             xblock = std::min(xblock, maxXBlock * count);
-#if XE3P
-            // On Xe3p and later, large-height transpose messages effectively behave
-            //  like block arrays.
-            if (hw >= HW::Xe3p && transpose) {
-                int ychunk = (Tblock.size() == 4) ? 16 : 8;
-                if (yblock > ychunk) {
-                    count = yblock / ychunk;
-                    yblock = count * ychunk;
-                }
-            }
-#endif
 
             // Crosspack calculation.
             int crosspack = (transpose || vnni) ? std::max(1, 4 / T) : 1;
@@ -690,20 +674,6 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
             block.extra = T.bits();
             auto bytes = align_up((block.colMajor ? cblock : rblock) / count, block.crosspack) * block.ld * count * T;
             block.msgRegs = GRF::bytesToGRFs(hw, bytes);
-            if (vnni && (T.bits() < 8)) {
-                block.byteGlue = true;
-                block.crosspack /= T.perByte();
-            }
-
-            // Xe2: manually mask in the height dimension to work around slow LSC
-            //      out-of-bounds checks.
-            bool remainderH = memCM ? remainderC : remainderR;
-            if (hw >= HW::Xe2 && remainderH) {
-                auto &vymask = memCM ? block.colMask.variable : block.rowMask.variable;
-                vymask.isFixed = false;
-                vymask.bitRep = vymask.maskRep = vymask.rsize = 1;
-                vymask.rshift = 0;
-            }
             break;
         }
         case AccessType::CacheLine: {
@@ -743,8 +713,7 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                 auto &vxmask = block.colMajor ? block.rowMask.variable : block.colMask.variable;
                 vxmask.isFixed = false;
                 vxmask.bitRep = block.simdSize;
-                vxmask.maskRep = vxmask.rsize = 1;
-                vxmask.rshift = 0;
+                vxmask.maskRep = vxmask.rdivide = vxmask.rsize = 1;
             }
 
             if (remainderY) {
@@ -753,7 +722,7 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                 vymask.bitRep = xCacheLines;
                 vymask.maskRep = 1;
                 vymask.rsize = yblock;
-                vymask.rshift = 0;
+                vymask.rdivide = 1;
             }
             break;
         }
@@ -764,13 +733,13 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
     if (block.rowMask && !block.rowMask.fixed.isFixed) {
         if (vrmask.rsize == 0)
             vrmask.rsize = rblock;
-        vrmask.maskRep = std::min<int>(vrmask.maskRep, std::max<int>(1, (block.simdSize << vrmask.rshift) / (vrmask.bitRep * vrmask.rsize)));
+        vrmask.maskRep = std::min<int>(vrmask.maskRep, std::max<int>(1, vrmask.rdivide * block.simdSize / (vrmask.bitRep * vrmask.rsize)));
         block.noRowsOK = true;          // All-zero masks are always OK.
     }
     if (block.colMask && !block.colMask.fixed.isFixed) {
         if (vcmask.rsize == 0)
             vcmask.rsize = cblock;
-        vcmask.maskRep = std::min<int>(vcmask.maskRep, std::max<int>(1, (block.simdSize << vcmask.rshift) / (vcmask.bitRep * vcmask.rsize)));
+        vcmask.maskRep = std::min<int>(vcmask.maskRep, std::max<int>(1, vcmask.rdivide * block.simdSize / (vcmask.bitRep * vcmask.rsize)));
         block.noColsOK = true;
     }
 
@@ -816,6 +785,156 @@ bool BLASKernelGenerator<hw>::tryAddRemainder(Type T, RegisterBlock &block, bool
 
     block = blockNew;
     return true;
+}
+
+// Split 2D block array loads into multiple blocks.
+static inline void postprocessLayout2D(vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+{
+    if (!isBlock2D(astrategy.accessType)) return;
+
+    int maxCount = 1;
+    for (auto &block : layout)
+        maxCount = std::max(maxCount, int(block.count));
+    if (maxCount == 1) return;
+
+    vector<RegisterBlock> xlayout;
+    xlayout.reserve(layout.size() * maxCount);
+
+    for (auto &block : layout) {
+        bool cm = block.colMajor;
+        auto RegisterBlock::* nx      = cm ? &RegisterBlock::nr      : &RegisterBlock::nc;
+        auto RegisterBlock::* offsetX = cm ? &RegisterBlock::offsetR : &RegisterBlock::offsetC;
+
+        auto nblock = block;
+        nblock.*nx /= block.count;
+        nblock.ld /= block.count;
+
+        for (int i = 0; i < block.count; i++) {
+            xlayout.push_back(nblock);
+            nblock.*offsetX += nblock.*nx;
+            nblock.simdSize = 0;           // Blocks > 0 do not need loads.
+        }
+    }
+
+    std::swap(layout, xlayout);
+}
+
+// Split blocks that span multiple tiles. Requires each tile to be contained within a single block.
+static inline void postprocessLayoutMultitile(Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+{
+    if (!atype.tileR || !atype.tileC) return;
+    if (isLargeCrosspack(T, atype.crosspack)) return;
+
+    bool needToSplit = false;
+    for (const auto &block: layout)
+        needToSplit |= (block.colMajor ? (block.nr > atype.tileR) : (block.nc > atype.tileC));
+
+    if (!needToSplit) return;
+
+    vector<RegisterBlock> xlayout;
+    xlayout.reserve(layout.size());
+
+    for (const auto &block: layout) {
+        auto nx      = block.colMajor ? &RegisterBlock::nr      : &RegisterBlock::nc;
+        auto ny      = block.colMajor ? &RegisterBlock::nc      : &RegisterBlock::nr;
+        auto offsetX = block.colMajor ? &RegisterBlock::offsetR : &RegisterBlock::offsetC;
+        auto offsetY = block.colMajor ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
+        auto tileX   = block.colMajor ? atype.tileR             : atype.tileC;
+        auto tileY   = block.colMajor ? atype.tileC             : atype.tileR;
+
+        if (block.*nx == tileX) {
+            xlayout.push_back(block);
+            continue;
+        }
+
+        if (block.*nx % tileX || block.*offsetX % tileX || block.*ny % tileY || block.*offsetY % tileY) stub();
+        if (isTransposing(astrategy.accessType)) stub();
+
+        auto nblock = block;
+        nblock.*nx = tileX;
+        nblock.*ny = tileY;
+        nblock.ld = tileX;
+
+        for (int j = 0; j < block.*ny / tileY; j++) {
+            for (int i = 0; i < block.*nx / tileX; i++) {
+                nblock.*offsetX = block.*offsetX + i * tileX;
+                nblock.*offsetY = block.*offsetY + j * tileY;
+                xlayout.push_back(nblock);
+                nblock.simdSize = 0;
+            }
+        }
+    }
+
+    std::swap(layout, xlayout);
+}
+
+// Split large crosspack blocks into smaller pieces so that they can be transposed.
+static inline void postprocessLayoutLargeCP(Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+{
+    if (!isLargeCrosspack(T, atype.crosspack))
+        return;
+
+    bool haveLargeCP = false;
+    for (const auto &block: layout) {
+        haveLargeCP |= isLargeCrosspack(T, block.crosspack);
+        if (haveLargeCP) break;
+    }
+
+    if (!haveLargeCP) return;
+
+    vector<RegisterBlock> xlayout;
+    xlayout.reserve(layout.size());
+
+    for (const auto &block: layout) {
+        if (!isLargeCrosspack(T, block.crosspack))
+            xlayout.push_back(block);
+        else {
+            auto ny      = block.colMajor ? &RegisterBlock::nc      : &RegisterBlock::nr;
+            auto offsetY = block.colMajor ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
+
+            if (block.*ny % block.crosspack)
+                return;
+            int blocks = (block.*ny / block.crosspack);
+            auto nblock = block;
+            nblock.*ny = block.crosspack;
+            nblock.simplify(T);
+            for (int i = 0; i < blocks; i++) {
+                xlayout.push_back(nblock);
+                nblock.simdSize = 0;
+                nblock.*offsetY += nblock.*ny;
+            }
+        }
+    }
+
+    std::swap(layout, xlayout);
+}
+
+// Remove unneeded blocks from a dpasw src2 layout.
+static inline void postprocessLayoutDPASW(vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+{
+    if (!astrategy.dpasw)
+        return;
+
+    vector<RegisterBlock> nlayout;
+    nlayout.reserve(layout.size() / 2);
+
+    bool cm = isLayoutColMajor(layout);
+    auto tile = cm ? astrategy.tileC : astrategy.tileR;
+    auto offsetX = cm ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
+
+    for (const auto &block: layout)
+        if ((block.*offsetX % (2 * tile)) < tile)
+            nlayout.push_back(block);
+
+    layout = std::move(nlayout);
+}
+
+static inline void postprocessLayout(Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+{
+    postprocessLayout2D(layout, atype, astrategy);
+    postprocessLayoutMultitile(T, layout, atype, astrategy);
+    postprocessLayoutLargeCP(T, layout, atype, astrategy);
+    postprocessLayoutDPASW(layout, atype, astrategy);
 }
 
 // Add a submatrix to a register layout.
@@ -960,7 +1079,6 @@ bool BLASKernelGenerator<hw>::add1DBlockToRegLayout(Type T, vector<RegisterBlock
             block.component = 0;
             block.colMajor = colMajor;
             block.splitComplex = false;
-            block.byteGlue = false;
             block.cxComponent = RegisterBlock::Interleaved;
 
             if (first) {
@@ -1014,6 +1132,88 @@ bool BLASKernelGenerator<hw>::add1DBlockToRegLayout(Type T, vector<RegisterBlock
     }
 
     return true;
+}
+
+static void finalizeLayout(HW hw, Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+{
+    int offsetBytes = 0;
+    for (auto &block : layout) {
+        if (block.isLoadBlock() || isBlock2D(astrategy.accessType))
+            offsetBytes = ngen::utils::alignup_pow2(offsetBytes, GRF::bytes(hw));
+        block.calcBytes(T, astrategy);
+        block.offsetBytes = offsetBytes;
+        offsetBytes += block.bytes;
+        block.simplify(T);
+    }
+}
+
+// Return maximum immediate address offset for a send message.
+static inline int maxOffsetAddr(Type T, const MatrixAddressingStrategy &astrategy)
+{
+    switch (astrategy.base.getModel()) {
+        case ModelA64:
+        case ModelSLM: return 1 << 19;
+        case ModelA32:
+        case ModelBTS: return 1 << 11;
+        default: return 0;
+    }
+}
+
+// Identify and combine block address registers that differ only by constant offsets.
+void coalesceAddrs(HW hw, Type T, vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+{
+    if (hw < HW::Xe2) return;
+    if (!astrategy.newDP) return;
+    if (layout.empty()) return;
+
+    RegisterBlock *anchor = &layout[0];
+    int max = maxOffsetAddr(T, astrategy);
+
+    for (auto &block: layout) {
+        int dr = block.offsetR - anchor->offsetR;
+        int dc = block.offsetC - anchor->offsetC;
+
+        auto accessType = implAccessType(atype, astrategy, block);
+
+        if (isBlock2D(accessType)) {
+            if (block.nr == anchor->nr && block.nc == anchor->nc && block.count == anchor->count) {
+                int ox, oy;
+                switch (atype.layout) {
+                    case MatrixLayout::N: ox = dr; oy = dc; break;
+                    case MatrixLayout::T: ox = dc; oy = dr; break;
+                    default: return;
+                }
+                block.set2DOffset(ox * T / block.ebytes, oy);
+            } else {
+                // No match. Make this block the new anchor.
+                anchor = &block;
+            }
+        } else {
+            switch (atype.layout) {
+                case MatrixLayout::N: if (dc == 0) block.offsetAddr = dr; break;
+                case MatrixLayout::T: if (dr == 0) block.offsetAddr = dc; break;
+                case MatrixLayout::Pr:
+                case MatrixLayout::Pc:
+                    auto offsetX = (atype.layout == MatrixLayout::Pc) ? &RegisterBlock::offsetR
+                                                                      : &RegisterBlock::offsetC;
+                    if (block.*offsetX / atype.packSize == anchor->*offsetX / atype.packSize)
+                        block.offsetAddr = untile(T, atype, block);
+                    break;
+            }
+
+            block.offsetAddr *= T;
+            if (block.offsetAddr >= max || block.offsetAddr < -max)
+                block.offsetAddr = 0;
+            if (one_of(accessType, AccessType::Scattered, AccessType::ChannelScattered))
+                if (block.simdSize > anchor->simdSize)
+                    block.offsetAddr = 0;
+            if (block.offsetAddr & 0x3)
+                block.offsetAddr = 0;
+
+            if (block.offsetAddr == 0)
+                anchor = &block;
+        }
+    }
 }
 
 // Create a register layout for a matrix.
@@ -1103,7 +1303,6 @@ void BLASKernelGenerator<hw>::makeUnbackedRegLayout(Type T, vector<RegisterBlock
                     block.crosspack = crosspack;
                     block.offsetBytes = offsetBytes;
                     block.splitComplex = false;
-                    block.byteGlue = false;
                     block.cxComponent = qCX;
                     block.component = q;
                     block.remainderR = false;
@@ -1427,8 +1626,8 @@ void BLASKernelGenerator<hw>::adjustSubblockAddrs(Type T, const vector<RegisterB
                          : mov(1, subaddr[0].ud(3), newH);
                 }
             }
-	    if (subaddr.isValid())
-		updateBlock2DSizes(subaddr[0], subblock, block, atype);
+
+            updateBlock2DSizes(subaddr[0], subblock, block, atype);
         }
     }
 }

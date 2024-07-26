@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -909,11 +909,8 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
             return range;
         };
 
-        // Save some space for temporary allocations inside C update.
-        int saveRegs = 1;
-        if (Tc != Tc_ext)
-            saveRegs += 16;
-        auto save = chunkAlloc(saveRegs, 2, state);
+        // Save a little bit of space for temporary allocations inside C update.
+        auto save = state.ra.alloc_sub<uint64_t>();
 
         vector<RegisterBlock> sublayoutExt, sublayoutCopy, sublayoutAcc;
         size_t sublayoutCopySize = 0;
@@ -977,7 +974,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
         for (int l = listart; l < liend; l++)
             sublayoutAcc.push_back(layout[l]);
 
-        safeReleaseRanges(save, state);
+        state.ra.safeRelease(save);
 
         // Set up C addresses relative to prior blocks.
         // TODO: use inline address offsets instead of setupAddrRel for constant offsets.
@@ -995,9 +992,9 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
             // Atomic update.
             // Alpha scaling is done earlier; beta scaling isn't supported.
             if (!problem.alpha1() || !problem.beta1()) stub();
-            if (copyC)
-                copyRegisters(state.Tacc, Tc_ext, sublayoutAcc, sublayoutExt, C_accRange, C_extRange, strategy, state);
-            else if (state.Tacc != Tc_ext) {
+            if (copyC) {
+                if (!copyRegisters(state.Tacc, Tc_ext, sublayoutAcc, sublayoutExt, C_accRange, C_extRange, 0, 0, false, strategy, state)) stub();
+            } else if (state.Tacc != Tc_ext) {
                 if (state.Tacc.size() != Tc_ext.size()) stub();
                 for (auto &block: sublayoutAcc) {
                     auto C_acc = subrange(C_accRange, hw, state.Tacc, block);
@@ -1037,7 +1034,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
                     auto &sublayoutDst = loadOnly ? sublayoutAcc : sublayoutCopy;
                     auto &C_dstRange   = loadOnly ? C_accRange   : C_copyRange;
                     Tload = lateCConvert ? Ts : state.Tacc;
-                    copyRegisters(Tc_ext, Tload, sublayoutExt, sublayoutDst, C_extRange, C_dstRange, strategy, state);
+                    if (!copyRegisters(Tc_ext, Tload, sublayoutExt, sublayoutDst, C_extRange, C_dstRange, 0, 0, false, strategy, state)) stub();
                 }
             }
 
@@ -1127,7 +1124,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
             // Store updated data.
             if (op == COperation::UpdateStore) {
                 if (copyC)
-                    copyRegisters(state.Tacc, Tc_ext, sublayoutAcc, sublayoutExt, C_accRange, C_extRange, strategy, state);
+                    if (!copyRegisters(state.Tacc, Tc_ext, sublayoutAcc, sublayoutExt, C_accRange, C_extRange, 0, 0, false, strategy, state)) stub();
 
                 auto &sublayoutSrc = copyC ? sublayoutExt : sublayoutAcc;
                 auto &C_srcRange = copyC ? C_extRange : C_accRange;
@@ -1686,11 +1683,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
     bool nonuniformSubs = false;
 
     if (!uniform) {
-#if XE3P
-        static constexpr int maxGRFs = 512;
-#else
         static constexpr int maxGRFs = 256;
-#endif
         uint8_t baseIndices[maxGRFs] = {0};
         uint16_t offIndices[maxGRFs] = {0};
 
@@ -2126,18 +2119,6 @@ void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Typ
         return;
     }
 
-    // Special path: f32->hf8.
-    if (hw >= HW::Xe3 && Told == Type::f32 && Tnew == Type::hf8) {
-        int ne = elementsPerGRF<uint32_t>(hw);
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].hf(), range[i].f());
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].hf8(), range[i].hf());
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].ub(0)(4), range[i].ub());
-        return;
-    }
-
     // Special path: s16->f16.
     if (Told == Type::s16 && Tnew == Type::f16) {
         if (hw < HW::Gen11) stub();
@@ -2284,7 +2265,7 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
 
         loadMatrix(CO_regsLoad, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
         if (!share)
-            copyRegisters(Tco, Tc, CO_layout, Xs_layout, CO_regsLoad, CO_regsLoadConv, strategy, state);
+            copyRegisters(Tco, Tc, CO_layout, Xs_layout, CO_regsLoad, CO_regsLoadConv, 0, 0, false, strategy, state);
 
         auto &beta = problem.beta;
 
@@ -2306,7 +2287,7 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
     if (!loadOnly) {
         if (!share) {
             CO_regs = state.ra.alloc_range(getRegCount(CO_layout));
-            copyRegisters(Tc, Tco, Xs_layout, CO_layout, Xs_regs, CO_regs, strategy, state);
+            copyRegisters(Tc, Tco, Xs_layout, CO_layout, Xs_regs, CO_regs, 0, 0, false, strategy, state);
             releaseRanges(Xs_regs, state);
         }
 
@@ -2415,11 +2396,6 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
         }
         if (ok) break;
     }
-
-    if (sliceRegs > maxContig)
-        sliceRegs = align_down(sliceRegs, maxContig);
-    else if (sliceRegs < maxContig)
-        sliceRegs = rounddown_pow2(sliceRegs);
 
     // Allocate address and data registers, automatically shrinking sliceRegs if
     //  there are not enough registers.

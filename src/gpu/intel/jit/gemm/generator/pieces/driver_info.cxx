@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,9 +44,6 @@ CommonDriverInfo BLASKernelGenerator<hw>::driverInfo(GEMMProblem problem, const 
     info.wgExpand = (strategy.splitCopy ? 2 : 1) * strategy.wgPadFactor;
     if (strategy.cWalkOrder == WalkOrder::SimpleLinear) {
         info.loopOrder[0] = (info.loopOrder[0] == LoopN) ? LoopMNLinearNMK : LoopMNLinearMNK;
-        info.loopOrder[1] = LoopNone;
-    } else if (strategy.cWalkOrder == WalkOrder::NestedLinear) {
-        info.loopOrder[0] = (info.loopOrder[0] == LoopN) ? LoopMNNestedLinearNMK : LoopMNNestedLinearMNK;
         info.loopOrder[1] = LoopNone;
     } else if (strategy.cWalkOrder == WalkOrder::Hilbertlike) {
         info.loopOrder[0] = (info.loopOrder[0] == LoopN) ? LoopMNHilbertNMK : LoopMNHilbertMNK;

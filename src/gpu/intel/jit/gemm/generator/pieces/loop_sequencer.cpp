@@ -43,7 +43,7 @@ void LoopSequencer::schedule(std::vector<Item> list)
         for (auto &entry: list)
             xlist.push_back(CheckedItem(entry));
 
-        schedule_if(std::move(xlist));
+        schedule_if(xlist);
     }
 }
 
@@ -56,7 +56,7 @@ void LoopSequencer::schedule_if(std::vector<CheckedItem> list)
 {
     if (!list.empty()) {
         validate(list);
-        actions.push_back({std::move(list), NeverScheduled});
+        actions.push_back({list, NeverScheduled});
     }
 }
 
@@ -69,7 +69,7 @@ void LoopSequencer::swapLast2()
 
 void LoopSequencer::setCallback(CallbackType type, Callback cb)
 {
-    callbacks[static_cast<size_t>(type)] = std::move(cb);
+    callbacks[static_cast<size_t>(type)] = cb;
 }
 
 void LoopSequencer::setRemainderHandling(RemainderHandling handling)
@@ -142,12 +142,6 @@ int LoopSequencer::getCooldown() const
     return minCooldown;
 }
 
-int LoopSequencer::getLoopBias() const
-{
-    checkAnalyzed();
-    return minCooldown + unroll - 1;
-}
-
 /**************/
 /* Main logic */
 /**************/
@@ -192,7 +186,7 @@ void LoopSequencer::materialize(int minLoops, int maxLoops)
 
     bool unifyRemainder = (remainderHandling != RemainderHandling::Separate)
                        && (minCooldown >= unroll) && (unroll > 1);
-    int loopBias = getLoopBias();
+    int loopBias = minCooldown + unroll - 1;
 
     int labelShort, labelUnite;
 

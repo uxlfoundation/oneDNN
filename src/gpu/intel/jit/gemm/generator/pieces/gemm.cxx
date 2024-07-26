@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,23 +57,20 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     gemmInitState(problem, strategy, state);
 
     // Transfer surface indices to strategy AddressBases.
-    strategy.A.assignSurface(state.inputs.surfaceA);
-    strategy.B.assignSurface(state.inputs.surfaceB);
-    strategy.C.assignSurface(state.inputs.surfaceC[0]);
-
-    if (!strategy.C.base.isStateless() && state.C_count > 1) stub();
-    if (state.useTempC)
-        state.tempCStrategy.assignSurface(state.inputs.surfaceTempC);
-    if (problem.usesCO())
-        strategy.CO.assignSurface(state.inputs.surfaceCO);
+    if (!strategy.A.base.isStateless()) strategy.A.base.setIndex(state.inputs.surfaceA);
+    if (!strategy.B.base.isStateless()) strategy.B.base.setIndex(state.inputs.surfaceB);
+    if (!strategy.C.base.isStateless()) {
+        strategy.C.base.setIndex(state.inputs.surfaceC[0]);
+        if (state.C_count > 1) stub();
+        if (state.useTempC)
+            state.tempCStrategy.base.setIndex(state.inputs.surfaceTempC);
+    }
+    if (problem.usesCO() && !strategy.CO.base.isStateless())
+        strategy.CO.base.setIndex(state.inputs.surfaceCO);
 
     for (size_t i = 0; i < strategy.binary.size(); i++)
-        strategy.binary[i].assignSurface(state.inputs.binarySurfaces[i]);
-
-    strategy.AO.assignSurface(state.inputs.surfaceAO);
-    strategy.BO.assignSurface(state.inputs.surfaceBO);
-    strategy.A_scale.assignSurface(state.inputs.surfaceAScale);
-    strategy.B_scale.assignSurface(state.inputs.surfaceBScale);
+        if (!strategy.binary[i].base.isStateless())
+            strategy.binary[i].base.setIndex(state.inputs.binarySurfaces[i]);
 
     // Prologue.
     if (!inFusedGEMM)
@@ -143,24 +140,30 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     if (strategy.kParallelVariable)
         state.k0Rem = copySubregister(state.inputs.k0, state, getHint(HintType::LongTerm, strategy));
 
-    // L3 prefetch warmup.
-    if (strategy.prefetchABL3) {
-        gemmInitL3Prefetch(false, problem, strategy, state);
-        gemmWarmupL3Prefetch(problem, strategy, state);
-    }
-
     // Surface handling for quantization parameters.
     auto replace0 = [&](Subregister &s) {
-        if (s.isValid())
+        if (s.isValid()) {
             state.ra.release(s);
-        s = state.ra.alloc_sub<uint32_t>();
-        mov(1, s, 0);
+            s = state.ra.alloc_sub<uint32_t>();
+            mov(1, s, 0);
+        }
     };
 
-    if (!strategy.AO.base.isStateless() && problem.aoPtrDims == 2) replace0(state.inputs.aoPtr);
-    if (!strategy.A_scale.base.isStateless())                      replace0(state.inputs.aScalePtr);
-    if (!strategy.BO.base.isStateless() && problem.boPtrDims == 2) replace0(state.inputs.boPtr);
-    if (!strategy.B_scale.base.isStateless())                      replace0(state.inputs.bScalePtr);
+    state.A_offsetStrategy.base = A64;
+    state.B_offsetStrategy.base = A64;
+    state.A_scaleStrategy.base = A64;
+    state.B_scaleStrategy.base = A64;
+
+    if (problem.quantized2DA() && !strategy.A.base.isStateless()) {
+        if (problem.aoPtrDims == 2) replace0(state.inputs.aoPtr);
+        replace0(state.inputs.aScalePtr);
+        state.A_offsetStrategy.base = state.A_scaleStrategy.base = AddressBase::createBTS(0);
+    }
+    if (problem.quantized2DB() && !strategy.B.base.isStateless()) {
+        if (problem.boPtrDims == 2) replace0(state.inputs.boPtr);
+        replace0(state.inputs.bScalePtr);
+        state.B_offsetStrategy.base = state.B_scaleStrategy.base = AddressBase::createBTS(0);
+    }
 
     // A/B offset pointer handling.
     bool aOffset = (problem.aOffset != ABOffset::None);
@@ -205,14 +208,6 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     if (aoScalarLoad) loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
     if (boScalarLoad) loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
 
-    if (problem.cStochasticRound) {
-        state.inputs.sroundSeed = state.ra.alloc_sub(DataType::ud, getHint(HintType::LongTerm, strategy));
-        vector<Subregister> srcs;
-        srcs.push_back(state.inputs.sroundSeedPtr);
-        auto seedLoad = loadScalars(Type::u32, srcs, strategy, state);
-        mov(1, state.inputs.sroundSeed, seedLoad);
-    }
-
     // 2D scale address handling.
     if (problem.aScale2D && state.inputs.offsetAScale.isValid())
         eadd(1, state.inputs.aScalePtr, state.inputs.aScalePtr, state.inputs.offsetAScale, strategy, state);
@@ -222,18 +217,17 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     state.ra.safeRelease(state.inputs.offsetAScale);
     state.ra.safeRelease(state.inputs.offsetBScale);
 
-    if (problem.aqGroupK == 0) problem.aqGroupK = strategy.slmA ? strategy.unrollKSLM : strategy.ka_load;
-    if (problem.bqGroupK == 0) problem.bqGroupK = strategy.slmB ? strategy.unrollKSLM : strategy.kb_load;
-    if (problem.aqGroupM == 0) problem.aqGroupM = 1;
-    if (problem.bqGroupN == 0) problem.bqGroupN = 1;
+    if (problem.aqGroupK == 0) problem.aqGroupK = strategy.ka_load;
+    if (problem.bqGroupK == 0) problem.bqGroupK = strategy.kb_load;
 
     // Persistent thread preparation and re-entry.
     if (strategy.persistent) {
         if (!strategy.linearOrder()) stub();
         if (problem.batch != BatchMode::None) stub();       // need to wrangle groupIDK also
 
-        state.groupIDMN = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
-        mov(1, state.groupIDMN, state.inputs.groupIDMN);
+        auto newGroupIDMN = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+        mov(1, newGroupIDMN, state.inputs.groupIDMN);
+        state.inputs.groupIDMN = newGroupIDMN;
 
         if (state.effTempC == state.inputs.tempC)
             state.effTempC = state.ra.alloc_sub<uint64_t>(getHint(HintType::LongTerm, strategy));
@@ -262,7 +256,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
         // Check if we have reached the k-sliced region yet, and if so,
         //   if we need to do k-slicing computations.
         and_(1 | nz | f0[1], null.ud(), state.inputs.flags, FlagKSlicing);
-        add(1 | ge | f0[0], slicedGroupIdx, state.groupIDMN, -state.inputs.kParallelStart);
+        add(1 | ge | f0[0], slicedGroupIdx, state.inputs.groupIDMN, -state.inputs.kParallelStart);
         mov(1, state.h0, 0);
         mov(1 | lt | f1[1], temp, state.fullK);
         jmpi(1 | f0[1], lAlreadySliced);
@@ -298,7 +292,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
         or_(1, state.inputs.flags, state.inputs.flags, FlagKSlicing);
         divDown(slicedGroupIdx.ud(), temp, kpad, state.inputs.kRecip, f1[0], strategy, state);
         emad(1, state.h0, temp, -kpad, slicedGroupIdx.ud(), strategy, state);
-        eadd3(1, state.groupIDMN, groupCountMN, -slicedGroupIdx.ud(), -1);
+        eadd3(1, state.inputs.groupIDMN, groupCountMN, -slicedGroupIdx.ud(), -1);
         if (strategy.altFusedBeta)
             add(1 | gt | f0[1], temp3.d(), state.h0, -state.inputs.k0);
         add(1 | le | f1[1], temp.d(), state.fullK, -state.h0);
@@ -306,7 +300,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             eadd3(1 | ge | f1[0], temp2.d(), state.h0, state.inputs.k0, -kpad);
             cmp(1 | f0[1] | lt | f0[1], null.ud(), temp3.ud(), state.fullK);
         }
-        add(1, slicedGroupIdx, state.groupIDMN, -state.inputs.kParallelStart);
+        add(1, slicedGroupIdx, state.inputs.groupIDMN, -state.inputs.kParallelStart);
         if (strategy.altFusedBeta) {
             // Decide if we are responsible for beta scaling.
             // If within padded region (h0 >= k, f1.1), scale if f0.1:
@@ -322,7 +316,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
         // In the tail case, it's possible that we don't have a full k0 chunk
         //  of work to do. Bail if so.
         // If bias enabled, do it if h0 = 0.
-        cmp(1 | lt | f0[0], state.groupIDMN.d(), state.inputs.kParallelStart);
+        cmp(1 | lt | f0[0], state.inputs.groupIDMN.d(), state.inputs.kParallelStart);
         if (problem.cOffset == COffset::Pre)
             cmp(1 | gt | f0[1], state.h0, 0);
         min_(1, state.inputs.k, temp.d(), state.k0Rem);     /* temp holds k - h0 */
@@ -397,11 +391,16 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
 
     if (strategy.kParallel && (strategy.fuseBeta || strategy.fusePostOps)) {
         if (!strategy.linearOrder()) stub();
-        gemmFusedBetaPOInit(state.groupIDMN, problem, strategy, state);
+        gemmFusedBetaPOInit(state.inputs.groupIDMN, problem, strategy, state);
     }
 
     // Group ID remapping.
-    gemmReorderGlobalIDs(problem, strategy, state);
+    if (strategy.cWalkOrder == WalkOrder::SimpleLinear)
+        gemmSimpleLinearOrder(problem, strategy, state);
+    else if (strategy.cWalkOrder == WalkOrder::Hilbertlike)
+        gemmHilbertlikeOrder(problem, strategy, state);
+    else if (strategy.cWalkOrder == WalkOrder::Boustrophedon)
+        gemmBoustrophedonOrder(problem, strategy, state);
 
     // Batch handling.
     gemmGetBatchIDs(problem, strategy, state);
@@ -507,8 +506,6 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     if (strategy.linearOrder() || strategy.persistent) {
         state.ra.safeRelease(state.inputs.groupIDM);
         state.ra.safeRelease(state.inputs.groupIDN);
-        state.ra.claim(state.nextGroupIDM);
-        state.ra.claim(state.nextGroupIDN);
     }
 
     moveR0(strategy, state);
@@ -521,11 +518,13 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             // k <- floor(k / (chunk * k local size)) * chunk + min(k % (chunk * k local size), chunk)
             auto chunk = strategy.kInterleaveChunk;
             auto wgChunk = chunk * strategy.wg[LoopK];
+            if (!is_zero_or_pow2(wgChunk)) stub();
             auto temp1 = state.ra.alloc_sub<uint32_t>();
             auto temp2 = state.ra.alloc_sub<uint32_t>();
-            divDown(temp1, state.inputs.k.ud(), wgChunk, strategy, state);
-            emad(1, temp2, state.inputs.k.ud(), -temp1, wgChunk, strategy, state);
-            emul(1, temp1, temp1, chunk, strategy, state);
+
+            shr(1, temp1, state.inputs.k.ud(), ilog2(strategy.wg[LoopK]));
+            and_(1, temp2, state.inputs.k.ud(), wgChunk - 1);
+            and_(1, temp1, temp1, ~uint32_t(chunk - 1));
             min_(1, temp2, temp2, chunk);
             add(1, state.inputs.k.ud(), temp1, temp2);
 
@@ -618,7 +617,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             cmp(1 | gt | f1[0], state.k0Rem, 0);
             jmpi(1 | f0[0], lNotKSliced);
             add(1, state.inputs.groupIDMN, state.inputs.groupIDMN, -1);
-            alignDown(1 | nz | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
+            alignDown(1 | gt | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
             persistentRestore();
             jmpi(1 | f0[1], lReentry);
             jmpi(1, lLeavePersistentLoop);
@@ -630,8 +629,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             emul(1, state.inputs.groupCountMN, state.inputs.groupCountM, state.inputs.groupCountN, strategy, state);
         }
 
-        add(1, state.groupIDMN, state.groupIDMN, state.inputs.groupStride);
-        cmp(1 | lt | f0[0], state.groupIDMN, state.inputs.groupCountMN);
+        add(1, state.inputs.groupIDMN, state.inputs.groupIDMN, state.inputs.groupStride);
+        cmp(1 | lt | f0[0], state.inputs.groupIDMN, state.inputs.groupCountMN);
         state.ra.safeRelease(state.inputs.groupCountMN);
 
         persistentRestore();

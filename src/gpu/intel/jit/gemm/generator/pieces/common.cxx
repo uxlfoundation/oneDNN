@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -62,11 +62,11 @@ template <HW hw>
 void BLASKernelGenerator<hw>::epilogue(const CommonStrategy &strategy, CommonState &state)
 {
     auto r0_info = state.r0_info;
-    if (!getEfficient64Bit())
-        if (r0_info.getBase() < 112) {
-            mov<uint32_t>(r0DWords(hw), r127, r0_info);
-            r0_info = r127;
-        }
+
+    if (r0_info.getBase() < 112) {
+        mov<uint32_t>(r0DWords(hw), r127, r0_info);
+        r0_info = r127;
+    }
 
     if (strategy.finalFence) {
         memfence(r124, r0_info);
@@ -82,6 +82,22 @@ void BLASKernelGenerator<hw>::padding()
 {
     for (int q = 0; q < 8; q++)
         nop();
+}
+
+Subregister SubregisterPair::getReg(int idx) const
+{
+    auto r = regs[idx & 1];
+    if (negative)
+        r = -r;
+    return r;
+}
+
+Subregister SubregisterPair::getRegAvoiding(HW hw, const RegData &rd) const
+{
+    if (Bundle::same_bank(hw, rd, regs[0]))
+        return getReg(1);
+    else
+        return getReg(0);
 }
 
 // Create a copy of a SubregisterPair in the other bank.
@@ -437,7 +453,7 @@ GRFRange BLASKernelGenerator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister p
         vector<RegisterBlock> nlayout;
         makeUnbackedRegLayout(Tdst, nlayout, n, 1, true);
         auto nregs = state.ra.alloc_range(getRegCount(nlayout));
-        copyRegisters(Tsrc, Tdst, layout, nlayout, regs, nregs, strategy, state, false);
+        copyRegisters(Tsrc, Tdst, layout, nlayout, regs, nregs, 0, 0, false, strategy, state, false);
 
         state.ra.safeRelease(regs);
         regs = std::move(nregs);
@@ -451,10 +467,8 @@ GRFRange BLASKernelGenerator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister p
 template <HW hw>
 void BLASKernelGenerator<hw>::zeroMatrix(const GRFMultirange &r, const CommonStrategy &strategy)
 {
-    int i = 0;
     map<uint32_t>(hw, r, r, strategy, [&](int esize, GRF reg, GRF _) {
-        (i++ & 1) ? mov(esize, reg.f(), 0.f)
-                  : mov(esize, reg, 0);
+        mov(esize, reg, uint16_t(0));
     });
 }
 
@@ -667,8 +681,6 @@ void BLASKernelGenerator<hw>::initState(const CommonProblem &problem, const Comm
     interface.requireGRF(strategy.GRFs);
     state.ra.setRegisterCount(strategy.GRFs);
     state.tokenAllocator = TokenAllocator(hw, strategy.GRFs);
-
-    setEfficient64Bit(interface.getEfficient64Bit());
 
     if (problem.gtpinSupport)
         interface.requireScratch(128);

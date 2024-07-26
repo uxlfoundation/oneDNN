@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #ifndef GEMMSTONE_GUARD_INVERT_HPP
 #define GEMMSTONE_GUARD_INVERT_HPP
 
-#include "type.hpp"
+#include "types.hpp"
 
 #include "internal/namespace_start.hxx"
 

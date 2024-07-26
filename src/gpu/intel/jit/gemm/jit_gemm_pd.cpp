@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ status_t jit_gemm_pd_t::init_post_ops() {
     binary_srcs_.reserve(post_ops_.len() + 4);
 
     bool ok = true;
-    int prelu_count = 0;
+
     for (int i = 0; i < post_ops_.len(); i++) {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {
@@ -64,8 +64,6 @@ status_t jit_gemm_pd_t::init_post_ops() {
                 ok &= get_prelu_md(e.prelu.mask, dst_md()->dims, prelu_wei_md,
                               dst_md()->ndims)
                         == status::success;
-                prelu_count++;
-                ok &= prelu_count <= 1;
                 break;
             default: return status::unimplemented;
         }
@@ -113,24 +111,13 @@ status_t jit_gemm_pd_t::init_post_ops() {
     if (!src_scales->has_default_values()) {
         const auto &mask = src_scales->mask_;
         bool convert = (mask == 0);
-        if (src_scales->ndims_ > 1) {
+        if (src_scales->ndims_ > 1)
             convert |= (src_scales->group_dims_[1] >= d->k());
-            convert |= (src_scales->group_dims_[0] >= d->n());
-        }
         if (convert) {
             if (mask == 0) {
                 dim_t dims = 1;
                 CHECK(memory_desc_init_by_tag(src_scales_md, 1, &dims,
                         src_scales->data_type_, format_tag::a));
-            } else if (src_scales->ndims_ > 1) {
-                int n_group = src_scales->group_dims_[0];
-                int k_group = src_scales->group_dims_[1];
-                dim_t dims[]
-                        = {(mask & (d->batch() > 1 ? 2 : 1)) ? d->n() / n_group
-                                                             : 1,
-                                d->k() / k_group};
-                CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
-                        src_scales->data_type_, format_tag::ab));
             } else {
                 dim_t dims[] = {d->n(), 1};
                 CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
@@ -145,22 +132,17 @@ status_t jit_gemm_pd_t::init_post_ops() {
         }
     }
     if (!c_scales->has_default_values()) {
-        const auto &mask = c_scales->mask_;
-        bool convert = (mask == 0 || math::is_pow2(mask));
-        if (c_scales->ndims_ > 1)
-            convert |= (c_scales->group_dims_[0] >= d->m());
-        if (convert) {
-            ok = ok && (mask == 0 || mask == (1 << (d->c_desc.ndims - 1)));
-            dim_t dims = {(mask > 0) ? d->m() : 1};
-            CHECK(memory_desc_init_by_tag(c_scales_md, 1, &dims,
-                    c_scales->data_type_, format_tag::a));
+        ok = ok && (c_scales->mask_ == 0);
 
-            auto status = post_ops_.append_binary(binary_div, &c_scales_md);
-            if (status != status::success) return status;
+        dim_t dims = {1};
+        CHECK(memory_desc_init_by_tag(
+                c_scales_md, 1, &dims, f32, format_tag::a));
 
-            binary_srcs_.push_back(
-                    binary_src_t {binary_src_t::scales, DNNL_ARG_DST});
-        }
+        auto status = post_ops_.append_binary(binary_div, &c_scales_md);
+        if (status != status::success) return status;
+
+        binary_srcs_.push_back(
+                binary_src_t {binary_src_t::scales, DNNL_ARG_DST});
     }
 
     return status::success;

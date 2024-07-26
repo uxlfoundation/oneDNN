@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include <cstdint>
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
+#include "types.hpp"
 #include "allocators.hpp"
 
 #include "internal/namespace_start.hxx"
@@ -34,7 +34,7 @@ struct MaskInfo {
         struct {
             uint8_t isFixed : 1;  // = false (variable mask)
             uint8_t reverse : 1;  // True to reverse mask.
-            uint8_t rshift : 6;   // Power of 2 by which to divide index before forming mask. Fractions are rounded up.
+            uint8_t rdivide : 6;  // Amount by which to divide index before forming mask. Fractions are rounded up.
                                   // Note maskRep * bitRep * (rsize >> rshift) = # mask bits.
             uint8_t rsize;        // Maximum remainder value. (e.g. 16 if we need the last 4 bits of the index).
             uint8_t maskRep;      // # of repetitions of mask pattern.
@@ -77,8 +77,7 @@ struct RegisterBlock {
     uint16_t offsetR, offsetC;  // Row and column offset within matrix block.
     uint8_t colMajor : 1;       // Is this block column-major? (columns stored consecutively inside each register)
     uint8_t splitComplex : 1;   // True if complex data split into successive real and imaginary parts.
-    uint8_t byteGlue : 1;       // True if strided sub-byte data is unit stride within each byte.
-    uint8_t : 5;
+    uint8_t : 6;
     uint8_t crosspack;          // Crosspack for this block (1 if none).
     uint8_t component;          // Component # for this block.
     int8_t cxComponent;         // Complex component # for this block (-1 if not complex or interleaved).

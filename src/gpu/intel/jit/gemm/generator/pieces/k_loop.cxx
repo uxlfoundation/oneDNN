@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 #include "loop_sequencer.hpp"
 #include "remask.hpp"
 #include "state_utils.hpp"
-#include "quantization.hpp"
 
 using namespace ngen;
 using std::vector;
@@ -387,9 +386,6 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
         });
     }
 
-    // A/B L3 prefetch.
-    gemmScheduleL3Prefetches(&ls, problem, strategy, state);
-
     if (slmDequantize2DA && slmDequantize2DB && kaq_load != kbq_load) stub();
     int slmKQLoad = slmDequantize2DA ? kaq_load : kbq_load;
     slmKQLoad = std::max(slmKQLoad, unrollKSLM);
@@ -400,12 +396,12 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
                      | lookahead(lookaheadSLMStore + lookaheadSLMReload + unrollKSLM - 1);
     if (slmDequantize2D) ls.schedule(reqSLMLoadQ, [&](Iteration h) {
         if (slmDequantize2DA) {
-            if (ao2D) gemmALoad(state.A_offsetRegs, state.A_offsetLayout, state.A_offsetAddrs, problem.AO,      strategy.AO,      problem, strategy, state);
-            if (as2D) gemmALoad(state.A_scaleRegs,  state.A_scaleLayout,  state.A_scaleAddrs,  problem.A_scale, strategy.A_scale, problem, strategy, state);
+            if (ao2D) gemmALoad(state.A_offsetRegs, state.A_offsetLayout, state.A_offsetAddrs, problem.AO,      state.A_offsetStrategy, problem, strategy, state);
+            if (as2D) gemmALoad(state.A_scaleRegs,  state.A_scaleLayout,  state.A_scaleAddrs,  problem.A_scale, state.A_scaleStrategy,  problem, strategy, state);
         }
         if (slmDequantize2DB) {
-            if (bo2D) gemmBLoad(state.B_offsetRegs, state.B_offsetLayout, state.B_offsetAddrs, problem.BO,      strategy.BO,      problem, strategy, state);
-            if (bs2D) gemmBLoad(state.B_scaleRegs,  state.B_scaleLayout,  state.B_scaleAddrs,  problem.B_scale, strategy.B_scale, problem, strategy, state);
+            if (bo2D) gemmBLoad(state.B_offsetRegs, state.B_offsetLayout, state.B_offsetAddrs, problem.BO,      state.B_offsetStrategy, problem, strategy, state);
+            if (bs2D) gemmBLoad(state.B_scaleRegs,  state.B_scaleLayout,  state.B_scaleAddrs,  problem.B_scale, state.B_scaleStrategy,  problem, strategy, state);
         }
     });
 
@@ -662,24 +658,24 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
     // Quantization parameter address increment helpers.
     auto doIncAq = [&](Iteration h) {
         auto kaInc = kInc(h, state.kaqStride, problem.aqGroupK);
-        if (ao2D) incAddrK(problem.Tao,      state.A_offsetAddrs, true,  kaInc, state.ldao,     state.ldaoIncrements, state.A_offsetLayout, problem.AO,      strategy.AO,      strategy, state);
-        if (as2D) incAddrK(problem.Ta_scale, state.A_scaleAddrs,  true,  kaInc, state.ldaScale, state.ldasIncrements, state.A_scaleLayout,  problem.A_scale, strategy.A_scale, strategy, state);
+        if (ao2D) incAddrK(problem.Tao,      state.A_offsetAddrs, true,  kaInc, state.ldao,     state.ldaoIncrements, state.A_offsetLayout, problem.AO,      state.A_offsetStrategy, strategy, state);
+        if (as2D) incAddrK(problem.Ta_scale, state.A_scaleAddrs,  true,  kaInc, state.ldaScale, state.ldasIncrements, state.A_scaleLayout,  problem.A_scale, state.A_scaleStrategy,  strategy, state);
     };
 
     auto doIncBq = [&](Iteration h) {
         auto kbInc = kInc(h, state.kbqStride, problem.bqGroupK);
-        if (bo2D) incAddrK(problem.Tbo,      state.B_offsetAddrs, false, kbInc, state.ldbo,     state.ldboIncrements, state.B_offsetLayout, problem.BO,      strategy.BO,      strategy, state);
-        if (bs2D) incAddrK(problem.Tb_scale, state.B_scaleAddrs,  false, kbInc, state.ldbScale, state.ldbsIncrements, state.B_scaleLayout,  problem.B_scale, strategy.B_scale, strategy, state);
+        if (bo2D) incAddrK(problem.Tbo,      state.B_offsetAddrs, false, kbInc, state.ldbo,     state.ldboIncrements, state.B_offsetLayout, problem.BO,      state.B_offsetStrategy, strategy, state);
+        if (bs2D) incAddrK(problem.Tb_scale, state.B_scaleAddrs,  false, kbInc, state.ldbScale, state.ldbsIncrements, state.B_scaleLayout,  problem.B_scale, state.B_scaleStrategy,  strategy, state);
     };
 
     auto doIncAqLate = [&](Iteration h) {
         auto kaInc = kInc(h, state.kaqLate, problem.aqGroupK);
-        incAddrK(problem.Ta_scale, state.A_scaleAddrs, true, kaInc, state.ldaScale, state.ldasIncrements, state.A_scaleLayout, problem.A_scale, strategy.A_scale, strategy, state);
+        incAddrK(problem.Ta_scale, state.A_scaleAddrs, true, kaInc, state.ldaScale, state.ldasIncrements, state.A_scaleLayout, problem.A_scale, state.A_scaleStrategy, strategy, state);
     };
 
     auto doIncBqLate = [&](Iteration h) {
         auto kbInc = kInc(h, state.kbqLate, problem.bqGroupK);
-        incAddrK(problem.Tb_scale, state.B_scaleAddrs, false, kbInc, state.ldbScale, state.ldbsIncrements, state.B_scaleLayout, problem.B_scale, strategy.B_scale, strategy, state);
+        incAddrK(problem.Tb_scale, state.B_scaleAddrs, false, kbInc, state.ldbScale, state.ldbsIncrements, state.B_scaleLayout, problem.B_scale, state.B_scaleStrategy, strategy, state);
     };
 
     // SLM quantization parameter address increment.
@@ -730,9 +726,6 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
 
     if (strategy.prefetchA && strategy.prefetchB && loadBFirst)
         ls.swapLast2();
-
-    // A/B L3 prefetch address increments.
-    gemmScheduleL3PrefetchIncs(&ls, problem, strategy, state);
 
     // A/B quantization parameter address increment.
     auto reqIncAq = every(kaq_load);
@@ -960,27 +953,27 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
         ls.swapLast2();
 
     // A/B 2D quantization parameter loads.
-    auto reqLoadAq = every(kaq_load) | lookahead(ka_repackMain);
+    auto reqLoadAq = every(kaq_load) | lookahead(ka_loadMain);
     auto reqLoadBq = every(kbq_load) | lookahead(kb_loadMain);
-    auto reqLoadAqLate = every(kaq_loadLate) | lookahead(kaq_loadLate);
-    auto reqLoadBqLate = every(kbq_loadLate) | lookahead(kbq_loadLate);
+    auto reqLoadAqLate = every(kaq_loadLate) | lookahead(ka_loadMain);
+    auto reqLoadBqLate = every(kbq_loadLate) | lookahead(kb_loadMain);
 
     if (readA && dequantize2DA) ls.schedule(reqLoadAq, [&](Iteration h) {
-        if (ao2D) gemmALoad(state.A_offsetRegs, state.A_offsetLayout, state.A_offsetAddrs, problem.AO,      strategy.AO,      problem, strategy, state);
-        if (as2D) gemmALoad(state.A_scaleRegs,  state.A_scaleLayout,  state.A_scaleAddrs,  problem.A_scale, strategy.A_scale, problem, strategy, state);
+        if (ao2D) gemmALoad(state.A_offsetRegs, state.A_offsetLayout, state.A_offsetAddrs, problem.AO,      state.A_offsetStrategy, problem, strategy, state);
+        if (as2D) gemmALoad(state.A_scaleRegs,  state.A_scaleLayout,  state.A_scaleAddrs,  problem.A_scale, state.A_scaleStrategy,  problem, strategy, state);
     });
 
     if (readB && dequantize2DB) ls.schedule(reqLoadBq, [&](Iteration h) {
-        if (bo2D) gemmBLoad(state.B_offsetRegs, state.B_offsetLayout, state.B_offsetAddrs, problem.BO,      strategy.BO,      problem, strategy, state);
-        if (bs2D) gemmBLoad(state.B_scaleRegs,  state.B_scaleLayout,  state.B_scaleAddrs,  problem.B_scale, strategy.B_scale, problem, strategy, state);
+        if (bo2D) gemmBLoad(state.B_offsetRegs, state.B_offsetLayout, state.B_offsetAddrs, problem.BO,      state.B_offsetStrategy, problem, strategy, state);
+        if (bs2D) gemmBLoad(state.B_scaleRegs,  state.B_scaleLayout,  state.B_scaleAddrs,  problem.B_scale, state.B_scaleStrategy,  problem, strategy, state);
     });
 
     if (readA && as2DLate) ls.schedule(reqLoadAqLate, [&](Iteration h) {
-        gemmALoad(state.A_scaleRegs, state.A_scaleLayout, state.A_scaleAddrs, problem.A_scale, strategy.A_scale, problem, strategy, state);
+        gemmALoad(state.A_scaleRegs, state.A_scaleLayout, state.A_scaleAddrs, problem.A_scale, state.A_scaleStrategy, problem, strategy, state);
     });
 
     if (readB && bs2DLate) ls.schedule(reqLoadBqLate, [&](Iteration h) {
-        gemmBLoad(state.B_scaleRegs, state.B_scaleLayout, state.B_scaleAddrs, problem.B_scale, strategy.B_scale, problem, strategy, state);
+        gemmBLoad(state.B_scaleRegs, state.B_scaleLayout, state.B_scaleAddrs, problem.B_scale, state.B_scaleStrategy, problem, strategy, state);
     });
 
     // Outer product(s).
@@ -1010,7 +1003,7 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
         auto &regsA = Ar_regs(h);
         auto &regsB = Br_regs(h);
 
-            outerProduct(h, ha, hb, oc, opRemActive(h), layoutA, layoutB, regsA, regsB, problem, strategy, state);
+            outerProduct(h, ha, hb, oc, layoutA, layoutB, regsA, regsB, problem, strategy, state);
 
         if (calcASums && !slmASums && !state.systolicSumA) {
             int ka_sum = (curPhase == LoopSequencer::PhaseMainLoop) ? ka_sumMain : oc;
@@ -1059,7 +1052,7 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
             gemmDequantizeAB(true, Ta_ext, Ta, Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), 0, problem, strategy, state);
         else
         if (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy))
-            copyRegisters(Ta_ext, Ta, Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), strategy, state);
+            copyRegisters(Ta_ext, Ta, Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), 0, 0, false, strategy, state);
         else if (slmConvertA(h))
             convert(Ai_regs(h), Ta_ext, Ta, strategy, state);
 
@@ -1067,7 +1060,7 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
             gemmDequantizeAB(false, Tb_ext, Tb, Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), 0, problem, strategy, state);
         else
         if (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy))
-            copyRegisters(Tb_ext, Tb, Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), strategy, state);
+            copyRegisters(Tb_ext, Tb, Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), 0, 0, false, strategy, state);
         else if (slmConvertB(h))
             convert(Bi_regs(h), Tb_ext, Tb, strategy, state);
 
@@ -1244,7 +1237,7 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
 
     using CT = LoopSequencer::CallbackType;
 
-    Label lTop, lBottom, lNextTilePFL3;
+    Label lTop, lBottom;
     std::vector<Label> labels;
 
     ls.analyze();
@@ -1255,11 +1248,6 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
     Subregister outerK;
     if (barrierSubloop)
         outerK = state.ra.alloc_sub<uint32_t>();
-
-    // Prepare to peel loops for L3 prefetch, if needed.
-    Subregister l3PFPeelK;
-    if (strategy.prefetchABL3)
-        l3PFPeelK = state.ra.alloc_sub<uint32_t>();
 
     // Prepare to peel loops for C prefetch, if needed.
     int prefetchCPeelLoops = -1;
@@ -1292,16 +1280,7 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
         add(1, state.K, state.K, offset);
     });
     ls.setCallback(CT::LoopStart, [&](int unroll, int) {
-        if (strategy.prefetchABL3) {
-            int peel = strategy.prefetchABL3 - ls.getLoopBias();
-            if (peel < unroll) {
-                peel = unroll;
-                status << "Warning: L3 prefetch distance too short for k loop; extending" << status_stream::endl;
-            }
-            add(1 | le | state.flagAP, state.K, state.K, -peel);
-            mov(1, l3PFPeelK, peel);
-        } else
-            cmp(1 | le | state.flagAP, state.K, 0);
+        cmp(1 | le | state.flagAP, state.K, 0);
         if (prefetchCPeelLoops > 0) {
             min_(1, pfCPeelK, state.K, prefetchCPeelLoops * unrollK);
             add(1, state.K, state.K, -pfCPeelK);
@@ -1323,9 +1302,10 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
             sync.nop(SWSB(1));
         else if (hw >= HW::Gen12LP)
             sync.nop(SWSB(Pipe::A, 1));
-        jmpi(1 | state.flagAP, strategy.prefetchABL3 ? lNextTilePFL3 : lBottom);
+        jmpi(1 | state.flagAP, lBottom);
         mark(lTop);
         state.wipeActiveVFlags();
+
     });
     ls.setCallback(CT::LoopEnd, [&](int, int) {
         jmpi(1 | state.flagAP, lTop);
@@ -1357,18 +1337,6 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
             jmpi(1 | state.flagAP, lTop);
         }
         mark(lBottom);
-        if (strategy.prefetchABL3) {
-            Label lPeelDone;
-            cmp(1 | eq | state.flagAP, l3PFPeelK, 0);
-            jmpi(1 | state.flagAP, lPeelDone);
-            mark(lNextTilePFL3);
-            /* Start L3 prefetch for next tile */
-            gemmInitL3Prefetch(true, problem, strategy, state);
-            add(1 | le | state.flagAP, state.K, state.K, l3PFPeelK);
-            mov(1, l3PFPeelK, 0);
-            jmpi(1 | ~state.flagAP, lTop);
-            mark(lPeelDone);
-        }
         state.wipeActiveVFlags();
     });
     ls.setCallback(CT::JumpIfLT, [&](int thresh, int label) {
@@ -1415,8 +1383,6 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
             case LoopSequencer::PhaseShortLoop:
                 if (strategy.prefetchC > 0)
                     gemmPrefetchC(problem, strategy, state);
-                if (strategy.prefetchABL3)
-                    gemmInitL3Prefetch(true, problem, strategy, state);
                 status << "Short k loop" << status_stream::endl;
                 remActiveA = remActiveB = remActiveSLM = false;
                 resetForNewLoop();

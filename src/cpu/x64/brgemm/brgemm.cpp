@@ -483,9 +483,9 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::success;
     };
 
-    CHECK(init_zp_type(brg->zp_type_a, DNNL_ARG_SRC));
-    CHECK(init_zp_type(brg->zp_type_b, DNNL_ARG_WEIGHTS));
-    CHECK(init_zp_type(brg->zp_type_c, DNNL_ARG_DST));
+    init_zp_type(brg->zp_type_a, DNNL_ARG_SRC);
+    init_zp_type(brg->zp_type_b, DNNL_ARG_WEIGHTS);
+    init_zp_type(brg->zp_type_c, DNNL_ARG_DST);
 
     // Post-ops may use vector registers so brgemm/brdgmm blocking may need to
     // be updated

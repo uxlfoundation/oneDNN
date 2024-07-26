@@ -1,2 +1,5 @@
 --reset --mb=1 --dt=f16,f32,bf16,f8_e5m2,f8_e4m3 --dir=fwd_d,bwd_d,bwd_w --batch=shapes_basic
+--reset --mb=1 --dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16 --dir=fwd_d --batch=shapes_basic
+--reset --mb=1 --dt=f16:f8_e5m2:f8_e5m2,f32:f8_e4m3:f8_e4m3 --dir=bwd_d --batch=shapes_basic
+--reset --mb=1 --dt=f8_e5m2:f16:f8_e5m2,f8_e4m3:f32:f8_e4m3 --dir=bwd_w --batch=shapes_basic
 --reset --mb=1 --dt=f16,f32,bf16 --dir=fwd_d --attr-post-ops=tanh,logistic,swish,mish --batch=shapes_basic

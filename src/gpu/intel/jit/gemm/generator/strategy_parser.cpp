@@ -91,42 +91,8 @@ CacheSettingsLSC getCaching(char l1, char l3)
     }
 }
 
-#if XE3P
-CacheSettingsLSC getCaching(char l1, char l2, char l3) {
-    if (l3 == 'u' || l3 == 'i') return getCaching(l1, l2);
-
-    if (l3 == 'c' || l3 == 'b') {
-        bool l2cached = (l2 == 'c') || (l2 == 'b');
-        switch (l1) {
-            case 'u':
-                return l2cached ? CacheSettingsLSC::L1UC_L2C_L3C
-                                : CacheSettingsLSC::L1UC_L2UC_L3C;
-            case 't':
-            case 'c':
-                return l2cached ? CacheSettingsLSC::L1C_L2C_L3C
-                                : CacheSettingsLSC::L1C_L2UC_L3C;
-            case 's':
-                return l2cached ? CacheSettingsLSC::L1S_L2C_L3C
-                                : CacheSettingsLSC::L1S_L2UC_L3C;
-            case 'b':
-                if (!l2cached) return CacheSettingsLSC::L1WB_L2UC_L3WB;
-            default: break;
-        }
-    }
-
-    throw std::runtime_error("Unknown cache setting");
-}
-#endif
-
 CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
 {
-#if XE3P
-    if (hw >= HW::Xe3p) {
-        char l1, l2, l3;
-        s >> l1 >> l2 >> l3;
-        return getCaching(l1, l2, l3);
-    } else
-#endif
     {
         char l1, l3;
         s >> l1 >> l3;
@@ -144,10 +110,6 @@ void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy
 
     if (hw >= HW::XeHPC)
         cachingW = CacheSettingsLSC::L1UC_L3WB;
-#if XE3P
-    if (hw >= HW::Xe3p) 
-        cachingR = CacheSettingsLSC::L1C_L2C_L3C;
-#endif
 
     if (s.peek() == '{') {
         char eat;
@@ -182,9 +144,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     char eat, asA, asB, asC, accessA, accessB, accessC;
     char accessAUnaligned = '\0', accessBUnaligned = '\0';
     char accessAPrefetch = 's', accessBPrefetch = 's', accessCPrefetch = 's';
-
-    auto A64 = AddressBase::createA64(true);
-    auto BTS = AddressBase::createBTS(0);
 
     s >> std::ws >> asA >> accessA;
         if (s.peek() == '/') s >> eat >> accessAUnaligned;
@@ -234,7 +193,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     strategy.A.base = strategy.A_prefetch.base = getAddressBase(asA);
     strategy.B.base = strategy.B_prefetch.base = getAddressBase(asB);
     strategy.C.base = strategy.C_prefetch.base = getAddressBase(asC);
-    strategy.CO.base = (hw >= HW::XeHPG) ? A64 : BTS;
+    strategy.CO.base = (hw >= HW::XeHPG) ? AddressBase::createA64(true) : AddressBase::createBTS(0);
     strategy.A.newDP = bool(std::isupper(accessA));
     strategy.B.newDP = bool(std::isupper(accessB));
     strategy.C.newDP = bool(std::isupper(accessC));
@@ -247,9 +206,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     strategy.A.cachingW = CacheSettingsLSC::Default;
     strategy.B.cachingW = CacheSettingsLSC::Default;
     strategy.CO.cachingR = CacheSettingsLSC::L1C_L3C;
-#if XE3P
-    if (hw >= HW::Xe3p) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
-#endif
     strategy.A_prefetch.prefetch = true;
     strategy.B_prefetch.prefetch = true;
     strategy.C_prefetch.prefetch = true;
@@ -270,9 +226,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
 
     strategy.unroll[LoopK] = 1;
     strategy.checkAdd32 = !native64Bit(hw) || (hw == HW::XeHPC);
-#if XE3P
-    strategy.checkAdd32 &= (hw < HW::Xe3p);
-#endif
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block) || strategy.kParallel;
 
     while (!s.eof()) {
@@ -304,7 +257,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
             strategy.dpasw = true;
         else if (mod == "fs") {
             strategy.fixedSystolic = strategy.systolic = true;
-            strategy.CO.base = BTS;
+            strategy.CO.base = AddressBase::createBTS(0);
         } else if (mod == "ar")
             strategy.altCRemainder = true;
         else if (mod == "sr") {
@@ -405,7 +358,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
             strategy.C.atomic = true;
             strategy.CO.atomic = problem.sumA || problem.sumB;
             if (strategy.CO.atomic)
-                strategy.CO.base = A64;
+                strategy.CO.base = AddressBase::createA64(true);
         } else if (mod == "kr")
             strategy.kParallelLocal = true;
         else if (mod == "akr")
@@ -569,28 +522,9 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     size_t poCount = problem.postOps.len();
     strategy.binary.resize(poCount);
     for (auto &astrategy: strategy.binary) {
-        astrategy.base = (hw >= HW::XeHPC) ? A64 : BTS;
+        astrategy.base = (hw >= HW::XeHPC) ? AddressBase::createA64(true) : AddressBase::createBTS(0);
         astrategy.newDP = strategy.C.newDP;
     }
-
-    bool surfaceAq = (problem.quantized2DA() && !strategy.A.base.isStateless());
-    bool surfaceBq = (problem.quantized2DB() && !strategy.B.base.isStateless());
-
-    strategy.AO.base = strategy.A_scale.base = (surfaceAq ? BTS : A64);
-    strategy.BO.base = strategy.B_scale.base = (surfaceBq ? BTS : A64);
-
-    if (problem.aoPtrDims <= 2) strategy.AO.base = A64;
-    if (problem.boPtrDims <= 2) strategy.BO.base = A64;
-
-    // Use new LSC messages on Xe2+
-    if (hw >= ngen::HW::Xe2) {
-       strategy.A.newDP = strategy.A_prefetch.newDP = true;
-       strategy.B.newDP = strategy.B_prefetch.newDP = true;
-       strategy.C.newDP = strategy.C_prefetch.newDP = true;
-    }
-
-    strategy.AO.newDP = strategy.A_scale.newDP = strategy.A.newDP;
-    strategy.BO.newDP = strategy.B_scale.newDP = strategy.B.newDP;
 }
 
 void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, const char *tags)
@@ -914,7 +848,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     }
 
     if (strategy.optAlignAB > 0)    s << " l" << strategy.optAlignAB;
-    if (strategy.optAlignAB2D)      s << " l2d";
+    if (anyOptAlignAB)              s << " l2d";
 
     bool nq = false;
     for (auto &astrategy: {strategy.A, strategy.B, strategy.C, strategy.CO,

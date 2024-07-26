@@ -516,7 +516,7 @@ void BLASKernelGenerator<hw>::loadLoadStoreDescriptors(bool load, bool store, Re
             descLoad.parts.responseLen = 0;
 
             int underlyingSIMD = std::max<int>(block.simdSize, maxScatteredSIMD(hw, astrategy) >> 1);
-            int log2GRFs = ilog2((uint64_t)underlyingSIMD * block.ebytes) - GRF::log2Bytes(hw);
+            int log2GRFs = ilog2(underlyingSIMD * block.ebytes) - GRF::log2Bytes(hw);
             int log2Components = int(block.splitComplex);
 
             if (channel) mov(1, t2, 0x1000 << log2Components);
@@ -621,8 +621,6 @@ void BLASKernelGenerator<hw>::prepareSeriesRegisterBlockMasking(const vector<Reg
         for (int startPreload = start; startPreload < nblocks; startPreload++) {
             auto &block = layout[startPreload];
 
-            if (!block.isLoadBlock()) continue;
-
             bool plFlag[2];
             for (int i = 0; i <= 1; i++)
                 plFlag[i] = block.flag[i] && (block.flag[i] != state.blockEMask);
@@ -632,7 +630,7 @@ void BLASKernelGenerator<hw>::prepareSeriesRegisterBlockMasking(const vector<Reg
 
             auto &flag = block.flag[plFlag[0] ? 0 : 1];
             if (!state.raVFlag.canLock(flag.n)) break;
-            state.raVFlag.lock(getPhysicalFlag(flag, state), true);
+            state.raVFlag.lock(getPhysicalFlag(flag, state));
         }
     }
 }

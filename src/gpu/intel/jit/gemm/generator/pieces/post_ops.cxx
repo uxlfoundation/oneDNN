@@ -181,7 +181,7 @@ void BLASKernelGenerator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, cons
         int c = !column ? 1 : strategy.unroll[LoopN];
         makeUnbackedRegLayout(Tacc, repackLayout, r, c, !column);
         repackOffsets = state.ra.alloc_range(getRegCount(repackLayout));
-        copyRegisters(Tco, Tacc, CO_layout, repackLayout, offsets, repackOffsets, strategy, state);
+        copyRegisters(Tco, Tacc, CO_layout, repackLayout, offsets, repackOffsets, 0, 0, false, strategy, state);
         crosspack = 1;
         offsetsPtr = &repackOffsets;
 
@@ -455,7 +455,7 @@ void BLASKernelGenerator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, c
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    if (poMin >= poMax && !problem.cStochasticRound) return;
+    if (poMin >= poMax) return;
 
     Label lSkip;
     and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagNonfinalKBlock);
@@ -564,22 +564,6 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
             default: stub();
         }
     }
-    if(problem.cStochasticRound){
-        using Injector = jit_eltwise_injector_f32<hw>;
-        int euCount = 0; /* only used for a DG2 W/A for conv */
-        Injector injector{this, alg_kind::eltwise_stochastic_round, 0.0, 0.0, 1.0, 
-                          euCount, GRFRange(), problem.postOpFwd};
-        auto scratch = state.ra.try_alloc_range(injector.preferred_scratch_regs());
-        if (scratch.isInvalid())
-            scratch = state.ra.alloc_range(injector.min_scratch_regs());
-        if (scratch.isInvalid())
-            stub();
-        
-        injector.set_scratch(scratch);
-        injector.prepare();
-        injector.compute(C_grfs, C_ngrf, state.inputs.sroundSeed.getBase(), state.inputs.sroundSeed.getOffset(), problem.Tc_ext.ngen());
-    }
-        
 
     mark(lSkip);
 }

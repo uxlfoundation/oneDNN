@@ -24,7 +24,7 @@
 
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
-#include "type.hpp"
+#include "types.hpp"
 
 #include "internal/namespace_start.hxx"
 
@@ -68,7 +68,7 @@ struct MatrixAddressing {
     uint8_t padA[1] = {};
     uint16_t tileR = 0, tileC = 0;  // Tiling (0 if none) for packed layouts.
 
-    void setAlignment(int align) { alignment = static_cast<uint8_t>(sanitizeAlign(align)); }
+    void setAlignment(int align) { alignment = sanitizeAlign(align); }
     int defaultAlignment(Type T) const {
         return sanitizeAlign((isPacked(layout) ? (packSize * crosspack) : 1) * T);
     }
@@ -163,20 +163,17 @@ struct GEMMProblem : public CommonProblem {
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
     MatrixAddressing AO, BO, CO;                    // Addressing information for A/B/C offsets (if 2D).
     MatrixAddressing A_scale, B_scale;              // Addressing information for A/B/C scales (if 2D).
-    MatrixAddressing sroundSeed;                    // Seed value for stochastic rounding.
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     bool aScale2D = false, bScale2D = false;        // A/B 2D scaling.
-    int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
-    int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
+    int aqGroupK = 0, bqGroupK = 0;                 // Group size in k dimension for A/B quantization parameters (offsets and scales)
     COffset cOffset = COffset::None;                // C offset mode.
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
     bool postOpFwd = true;                          // Eltwise parameters
-    bool cStochasticRound = false;
 
     gpu_post_ops_t postOps;                         // Fused post operations to apply
     std::bitset<post_ops_t::post_ops_limit> binaryRow;      // Binary op broadcasts row data if false
@@ -237,17 +234,8 @@ struct GEMMProblem : public CommonProblem {
     bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D; }
     bool quantized2DB() const { return (boPtrDims == 2) || bScale2D; }
 
-    bool downconvertAScales() const { return Ta == Type::f16 && Ta_scale == Type::f32; }
-    bool downconvertBScales() const { return Tb == Type::f16 && Tb_scale == Type::f32; }
-
-    bool earlyDequantizeA() const {
-        return (aOffset == ABOffset::Calc && Tao.asSigned().isSubsetOf(Ta))
-            || (aScale2D && (Ta_scale.isSubsetOf(Ta) || downconvertAScales()));
-    }
-    bool earlyDequantizeB() const {
-        return (bOffset == ABOffset::Calc && Tbo.asSigned().isSubsetOf(Tb))
-            || (bScale2D && (Tb_scale.isSubsetOf(Tb) || downconvertBScales()));
-    }
+    bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && Tao.asSigned().isSubsetOf(Ta)) || (aScale2D && Ta_scale.isSubsetOf(Ta)); }
+    bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && Tbo.asSigned().isSubsetOf(Tb)) || (bScale2D && Tb_scale.isSubsetOf(Tb)); }
 
     Type Tc_compute() const {
         if (Ta.isInteger() && Tb.isInteger() && Tc == Type::f32)
@@ -258,9 +246,6 @@ struct GEMMProblem : public CommonProblem {
 
     inline void autoTypeConversions(ngen::HW hw, bool systolicAvailable);
     void transpose();
-
-    std::string toString() const;
-    std::string scalarsToString() const;
 
     /* Serialization for kernel cache. */
     void serialize(serialized_data_t &s) const
@@ -287,7 +272,6 @@ struct GEMMProblem : public CommonProblem {
         s.append(binaryCol);
         s.append(binaryBatch);
         s.append(binaryTrans);
-        s.append(cStochasticRound);
     }
 };
 
@@ -304,10 +288,8 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
 
-    if (hw < HW::Xe3p) {
         if (Ta.isF8()) Ta = Type::f16;
         if (Tb.isF8()) Tb = Type::f16;
-    }
 
     if (hw > HW::Gen9 && !systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

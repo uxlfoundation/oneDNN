@@ -229,11 +229,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
                         eadd(simd2, addr[2].uq(), addr[udStride].ud(0)(udStride), ptrShifted, strategy, state);
                     eadd(simd1, addr[0].uq(), addr[0].ud(0)(udStride), ptrShifted, strategy, state);
                 } else if (ptrShifted != 0) {
-#if XE3P
-                    if (consecutive > 1 || tblock > 1 || hw >= HW::Xe3p)
-#else
                     if (consecutive > 1 || tblock > 1)
-#endif
                     {
                         mulConstant<uint32_t>(simdSize, addr, iv, stride);
                         add<uint32_t>(simdSize, addr, addr, ptrShifted);
@@ -370,8 +366,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
                 if (T.paddedSize() < widthAlign)
                     or_(1, addr[0].ud(2), addr[0].ud(2), widthAlign - 1);
             } else if (remW.isInvalid() && remH.isInvalid())
-                emov(1, addr[0].uq(1), (((uint64_t)bw * (uint64_t)bcount * block.ebytes - 1)
-                        | ((uint64_t)bh * block.ebytes - 1) << 32), strategy, state);
+                emov(1, addr[0].uq(1), uint64_t(bw * bcount * block.ebytes - 1) | (uint64_t(bh * block.ebytes - 1) << 32), strategy, state);
             else {
                 if (remW.isValid() && multiX > 1) stub();
                 remW.isValid() ? addScaled(1, addr[0].ud(2), -1, remW.uw(), T, state, true)

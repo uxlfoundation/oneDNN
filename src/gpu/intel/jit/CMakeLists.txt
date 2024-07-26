@@ -16,6 +16,10 @@
 
 set(CMAKE_CXX_CLANG_TIDY "")
 
+if(DNNL_GPU_CONV_PLANNER)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
+
 set(DIRS "codegen;conv;ir;ngen;pass;pooling;reorder;utils;v2")
 
 file(GLOB SOURCES
@@ -43,6 +47,8 @@ else()
     endforeach()
 endif()
 
+add_subdirectory(gemm)
+
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel_jit)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
@@ -50,12 +56,6 @@ set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
 
 if(DNNL_EXPERIMENTAL)
     add_subdirectory(v2/conv/planner)
-endif()
-
-# Workaround for LTO bug in some GCC versions
-if(CMAKE_COMPILER_IS_GNUCC)
-    set_source_files_properties(gemm/loop_sequencer.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
-    set_source_files_properties(gemm/gen_gemm_kernel_generator.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
 endif()
 
 # Workaround for unordered_map related issues with DPC++ on Windows

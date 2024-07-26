@@ -19,7 +19,7 @@
 #define GEMMSTONE_GUARD_LAYOUT_UTILS_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
+#include "types.hpp"
 #include "problem.hpp"
 #include "strategy.hpp"
 #include "state.hpp"
@@ -127,16 +127,6 @@ ngen::Subregister findBlockReg(Type T, const std::vector<RegisterBlock> &layout,
                                const GRFMultirange &regs, int &nelems, const RegisterBlock *&block,
                                int cxComponent = -1, int component = 0);
 
-// Similar to findBlockReg, but returns the region associated with consecutive elements in the block.
-// If allow2D is true, the return value is allowed to be a true 2D region.
-//   Otherwise, the return region will always be a constant stride (1D) region.
-ngen::RegisterRegion findBlockRegion(Type T, const RegisterBlock &block, int rr, int cc,
-                                     const GRFMultirange &regs, int &nelems,
-                                     int cxComponent = -1, int component = 0, bool allow2D = false);
-ngen::RegisterRegion findBlockRegion(Type T, const std::vector<RegisterBlock> &layout, int r, int c,
-                                     const GRFMultirange &regs, int &nelems, const RegisterBlock *&block,
-                                     int cxComponent = -1, int component = 0, bool allow2D = false);
-
 // Find the subregister offset containing the first address of a header.
 int getAddr0Offset(const RegisterBlock &block, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy);
 
@@ -175,14 +165,7 @@ void assignUniformMask(std::vector<RegisterBlock> &layout, ngen::FlagRegister fl
 // Returns true if successful; false if not all blocks in layout are compatible.
 bool assignAllDescs(std::vector<RegisterBlock> &layout);
 
-void postprocessLayout(Type T, std::vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy);
 
-void finalizeLayout(ngen::HW hw, Type T, std::vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy);
-
-void coalesceAddrs(ngen::HW hw, Type T, std::vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy);
-
-bool needsRemask(Type T, bool column, const std::vector<RegisterBlock> &layout,
-                 const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, bool ignoreMasks);
 #include "internal/namespace_end.hxx"
 
 #endif /* header guard */

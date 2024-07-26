@@ -61,7 +61,6 @@ enum RestrictionTags : char {
     ReqBatchMultiDim = 'W',  ReqNoBatchMultiDim = 'w',
     ReqSumA = 'Q',           ReqNoSumA = 'q',
     ReqSumB = 'P',           ReqNoSumB = 'p',
-    ReqIntegrated = 'H',     ReqNoIntegrated = 'h',
     ReqSystolic = 'I',       ReqNoSystolic = 'i',
     ReqCustom1 = 'D',        ReqNoCustom1 = 'd',
     ReqXe2Block2D = 'G',     ReqNoXe2Block2D = 'g',
@@ -75,10 +74,6 @@ enum HWTags : char {
     HWTagXeHPG = 'E',
     HWTagXeHPC = 'F',
     HWTagXe2 = 'G',
-    HWTagXe3 = 'H',
-#if XE3P
-    HWTagXe3p = 'I',
-#endif
 };
 
 struct Selector {
@@ -207,6 +202,10 @@ struct Entry {
 };
 
 struct Catalog {
+    static constexpr int currentVersion() { return 1; }
+
+    int version             DEFAULT(currentVersion());
+    uint64_t revision       DEFAULT(0);
     int entryCount          DEFAULT(0);
 
     const Entry *entries;
@@ -214,24 +213,16 @@ struct Catalog {
 
 template <size_t n>
 struct FlatCatalog {
-    FlatCatalog(Entry (&&a)[n]) {
-        for(size_t i = 0; i < n; i++) {
-            entries[i] = std::move(a[i]);
-        }
-    }
-
+    int version;
+    uint64_t revision;
+    int entryCount;
     Entry entries[n];
 
     /* implicit */ operator Catalog() const {
-        Catalog catalog = {n, &entries[0]};
+        Catalog catalog = {version, revision, entryCount, &entries[0]};
         return catalog;
     }
 };
-
-template <std::size_t n>
-constexpr FlatCatalog<n> toFlatCatalog(Entry (&&a)[n]) {
-    return FlatCatalog<n>(std::move(a));
-}
 
 } /* namespace kcatalog */
 

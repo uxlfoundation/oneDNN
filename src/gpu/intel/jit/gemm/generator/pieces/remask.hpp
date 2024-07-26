@@ -18,7 +18,7 @@
 #ifndef GEMMSTONE_GUARD_REMASK_HPP
 #define GEMMSTONE_GUARD_REMASK_HPP
 
-#include "type.hpp"
+#include "types.hpp"
 #include "register_block.hpp"
 #include "strategy.hpp"
 

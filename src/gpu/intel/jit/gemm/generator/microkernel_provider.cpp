@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#define BINARY_OUTPUT
-
 #include "microkernel_provider.hpp"
 #include "generator.hpp"
 #include "kernel_selector.hpp"
@@ -55,12 +53,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     bool localA = protocol.options().localA;
     bool localB = protocol.options().localB;
     bool beta1 = protocol.options().addToC;
-    bool slmPtr = protocol.options().slmPtr;
-    bool scaleA = protocol.options().scaleA;
-    bool scaleB = protocol.options().scaleB;
-    bool offsetA = protocol.options().offsetA;
-    bool offsetB = protocol.options().offsetB;
-
     bool transC = !isColMajor(problem_.C.layout);
 
     auto problem = problem_;
@@ -79,20 +71,13 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
             req.transpose();
     }
 
-    if (scaleA != problem.aScale2D || scaleB != problem.bScale2D)
-        stub("Protocol scales do not match problem description");
-    if (offsetA != (problem.aoPtrDims >= 0) || offsetB != (problem.boPtrDims >= 0))
-        stub("Protocol offsets do not match problem description");
-
     /* Get hardware information */
     auto product = npack::decodeHWIPVersion(hwInfo.gmdid);
     auto hw = getCore(product.family);
     auto stepping = hwInfo.gmdid & 0xFF;
 
-    bool isIntegrated = getPlatformType(product.family) == PlatformType::Integrated;
-
     /* Create catalog matcher */
-    MatchParams matchParams(hw, hwInfo.systolicAvailable, isIntegrated, problem);
+    MatchParams matchParams(hw, hwInfo.systolicAvailable, problem);
 
     matchParams.sizes = sizes;
     matchParams.stepping = stepping;
@@ -140,9 +125,9 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         adjustStrategy(hw, problem, strategy);
         modifyStrategy(strategy, auxParams);
 
-        /* Xe2/Xe3-XeHPC compatibility logic */
-        if (hw == ngen::HW::Xe2 || hw == ngen::HW::Xe3) {
-            // Use XeHPC register banking on Xe2/Xe3, in order
+        /* Xe2-XeHPC compatibility logic */
+        if (hw == ngen::HW::Xe2) {
+            // Use XeHPC register banking on Xe2, in order
             //   to successfully reuse XeHPC strategies.
             strategy.raHW = ngen::HW::XeHPC;
 
@@ -197,13 +182,8 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     interface.newArgument("h0", DataType::d);
     interface.newArgument("local_id_m", DataType::d);
     interface.newArgument("local_id_n", DataType::d);
-    if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
-    if (scaleA)            interface.newArgument("a_scale", DataType::d);
-    if (offsetA)           interface.newArgument("a_offset", DataType::d);
-    if (scaleA || offsetA) interface.newArgument("ldaq", DataType::d);
-    if (scaleB)            interface.newArgument("b_scale", DataType::d);
-    if (offsetB)           interface.newArgument("b_offset", DataType::d);
-    if (scaleB || offsetB) interface.newArgument("ldbq", DataType::d);
+    if (protocol.options().slmPtr)
+        interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
 
     /* Update problem from strategy */
     if (isPacked(problem.A.layout))
@@ -228,10 +208,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
-        REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-#if XE3P
-        REG_XE3_ISA(ARCH_DISPATCH(Xe3p))
-#endif
         default: throw std::runtime_error("Unsupported architecture");
     }
 #undef ARCH_DISPATCH

@@ -758,10 +758,8 @@ void BLASKernelGenerator<hw>::gemmScaleInputs(const GEMMProblem &problem, const 
     scale(Tco, inputs.ldco);
 
     {
-        if (strategy.A.base.getModel() != ModelSLM)
-            scale(Ta_ext, inputs.offsetA);
-        if (strategy.B.base.getModel() != ModelSLM)
-            scale(Tb_ext, inputs.offsetB);
+        scale(Ta_ext, inputs.offsetA);
+        scale(Tb_ext, inputs.offsetB);
         for (int q = 0; q < state.C_count; q++)
             scale(Tc_ext, inputs.offsetC[q]);
         if (problem.usesCO())
@@ -1493,7 +1491,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
         // Repacked data can use significantly more registers than the loaded
         // data. Lazy repacking can reduce register utilization and improve load
         // pipelining at (in some cases) the expense of more work.
-        bool lazyRepack = state.Ta_load.isInt4() && one_of(Ta, Type::f16, Type::bf16, Type::f32);    // Other cases are unimplemented
+        bool lazyRepack = state.Ta_load.isInt4() && Ta == Type::f16;    // Other cases are unimplemented
         if (lazyRepack)
             state.ka_repack = std::min(state.ka_repack, strategy.kb_load);
         makeUnbackedRegLayout(Ta, state.Ar_layout, unrollM, state.ka_repack, isLayoutColMajor(state.A_layout), crosspackA, tileM_A, tileK_A, true, splitA);
@@ -1552,8 +1550,6 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
 
     for (bool isA : {true, false})
         gemmMake2DQuantizationLayouts(isA, problem, strategy, state);
-
-    gemmCalcQuantizationIncrements(problem, strategy, state);
 
     // Grab flag registers now for named barriers. TODO: unlock these.
     if (strategy.needsNamedBarriersM(problem))
@@ -1635,10 +1631,10 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     allocAddrRegs(state.Bi_addrs, state.Bi_layout, state.Bi, state.Bi_strategy, state);
     allocAddrRegs(state.Ao_addrs, state.Ao_layout, state.Ao, state.Ao_strategy, state);
     allocAddrRegs(state.Bo_addrs, state.Bo_layout, state.Bo, state.Bo_strategy, state);
-    allocAddrRegs(state.A_offsetAddrs, state.A_offsetLayout, problem.AO, strategy.AO, state);
-    allocAddrRegs(state.B_offsetAddrs, state.B_offsetLayout, problem.BO, strategy.BO, state);
-    allocAddrRegs(state.A_scaleAddrs, state.A_scaleLayout, problem.A_scale, strategy.A_scale, state);
-    allocAddrRegs(state.B_scaleAddrs, state.B_scaleLayout, problem.B_scale, strategy.B_scale, state);
+    allocAddrRegs(state.A_offsetAddrs, state.A_offsetLayout, problem.AO, state.A_offsetStrategy, state);
+    allocAddrRegs(state.B_offsetAddrs, state.B_offsetLayout, problem.BO, state.B_offsetStrategy, state);
+    allocAddrRegs(state.A_scaleAddrs, state.A_scaleLayout, problem.A_scale, state.A_scaleStrategy, state);
+    allocAddrRegs(state.B_scaleAddrs, state.B_scaleLayout, problem.B_scale, state.B_scaleStrategy, state);
 
     // Free up some C registers temporarily for use in address calculations.
     releaseRanges(state.C_regs, state);
@@ -1672,13 +1668,13 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     auto i0s = i0q, j0s = j0q;
     auto A_h0s = A_h0q, B_h0s = B_h0q;
 
-    if (slmA && (ao2D || aoTo2D || (as2D && !state.lateScale2DA))) {
+    if (slmA && (ao2D || (as2D && !state.lateScale2DA))) {
         if (state.ma_slm < unrollM) {
             if (state.ma_slm * strategy.wg[LoopN] != unrollM) stub();
             i0q = state.ra.alloc_sub<uint32_t>();
             emad(1, i0q, state.i0, state.lidN, state.ma_slm, strategy, state);
         }
-        if ((ao2D || (as2D && !state.lateScale2DA)) && state.ka_slm < strategy.unrollKSLM && problem.aqGroupK < strategy.unrollKSLM) {
+        if (state.ka_slm < strategy.unrollKSLM && problem.aqGroupK < strategy.unrollKSLM) {
             if (state.lateScale2DA)
                 A_h0s = copySubregister(A_h0q, state);
             if (A_h0q.isInvalid()) {
@@ -1688,13 +1684,13 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
             addScaled(1, A_h0q, A_h0q, state.lidN, state.ka_slm, problem.aqGroupK, state, true);
         }
     }
-    if (slmB && (bo2D || boTo2D || (bs2D && !state.lateScale2DB))) {
+    if (slmB && (bo2D || (bs2D && !state.lateScale2DB))) {
         if (state.nb_slm < unrollN) {
             if (state.nb_slm * strategy.wg[LoopM] != unrollN) stub();
             j0q = state.ra.alloc_sub<uint32_t>();
             emad(1, j0q, state.j0, state.lidM, state.nb_slm, strategy, state);
         }
-        if ((bo2D || (bs2D && !state.lateScale2DB)) && state.kb_slm < strategy.unrollKSLM && problem.bqGroupK < strategy.unrollKSLM) {
+        if (state.kb_slm < strategy.unrollKSLM && problem.bqGroupK < strategy.unrollKSLM) {
             if (state.lateScale2DB)
                 B_h0s = copySubregister(B_h0q, state);
             if (B_h0q.isInvalid()) {
@@ -1703,26 +1699,6 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
             }
             addScaled(1, B_h0q, B_h0q, state.lidM, state.kb_slm, problem.bqGroupK, state, true);
         }
-    }
-
-    if (problem.aqGroupM > 1 && (ao2D || as2D)) {
-        auto inI0Q = i0q, inI0S = i0s;
-        if (i0q == state.i0) i0q = state.ra.alloc_sub<uint32_t>();
-        divDown(i0q, inI0Q, problem.aqGroupM, strategy, state);
-        if (inI0S == inI0Q)
-            i0s = i0q;
-        else
-            divDown(i0s, i0s, problem.aqGroupM, strategy, state);
-    }
-
-    if (problem.bqGroupN > 1 && (bo2D || bs2D)) {
-        auto inJ0Q = j0q, inJ0S = j0s;
-        if (j0q == state.j0) j0q = state.ra.alloc_sub<uint32_t>();
-        divDown(j0q, inJ0Q, problem.bqGroupN, strategy, state);
-        if (inJ0S == inJ0Q)
-            j0s = j0q;
-        else
-            divDown(j0s, j0s, problem.bqGroupN, strategy, state);
     }
 
     auto setupQAddr = [&](Type T, vector<GRFRange> &addrs, const vector<RegisterBlock> &layout,
@@ -1740,25 +1716,27 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
 
     if (ao2D) {
         setupQAddr(Tao, state.A_offsetAddrs, state.A_offsetLayout, state.inputs.aoPtr,
-                   i0q, A_h0q, state.inputs.ldao, problem.AO, strategy.AO);
+                   i0q, A_h0q, state.inputs.ldao, problem.AO, state.A_offsetStrategy);
     }
     if (as2D) {
         if (!state.lateScale2DA)
             i0s = i0q, A_h0s = A_h0q;
         setupQAddr(Ta_scale, state.A_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
-                   i0s, A_h0s, state.inputs.ldaScale, problem.A_scale, strategy.A_scale);
+                   i0s, A_h0s, state.inputs.ldaScale, problem.A_scale, state.A_scaleStrategy);
     }
     if (bo2D) {
         setupQAddr(Tbo, state.B_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
-                   B_h0q, j0q, state.inputs.ldbo, problem.BO, strategy.BO);
+                   B_h0q, j0q, state.inputs.ldbo, problem.BO, state.B_offsetStrategy);
     }
     if (bs2D) {
         if (!state.lateScale2DB)
             j0s = j0q, B_h0s = B_h0q;
         setupQAddr(Tb_scale, state.B_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
-                   B_h0s, j0s, state.inputs.ldbScale, problem.B_scale, strategy.B_scale);
+                   B_h0s, j0s, state.inputs.ldbScale, problem.B_scale, state.B_scaleStrategy);
     }
 
+    if (i0q != state.i0) state.ra.safeRelease(i0q);
+    if (j0q != state.j0) state.ra.safeRelease(j0q);
     state.ra.safeRelease(A_h0q);
     state.ra.safeRelease(B_h0q);
     state.ra.safeRelease(A_h0s);
@@ -1766,13 +1744,12 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
 
     // Load and convert 0D/1D offsets for 2D dequantization.
     if (aoTo2D) {
-        if (!strategy.AO.base.isStateless()) stub();
         std::vector<RegisterBlock> A_offsetLayout;
         GRFRange aoLoad;
         if (problem.aoPtrDims == 1) {
             reclaimRanges(state.C_regs, state);
             auto aoBase = state.ra.alloc_sub<uint64_t>();
-            eaddScaled(1, aoBase, state.inputs.aoPtr, slmA ? i0q : state.i0, problem.Tao, strategy, state);
+            eaddScaled(1, aoBase, state.inputs.aoPtr, state.i0, problem.Tao, strategy, state);
             auto rem = slmA ? state.remaindersCoop[LoopM] : state.remainders[LoopM];
             auto r = slmA ? state.ma_slm : strategy.unroll[LoopM];
             aoLoad = loadVector(problem.Tao, problem.Tao, aoBase, r, rem, strategy, state);
@@ -1785,10 +1762,9 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
         }
         gemmRepack2DOffsetData(problem.Ta_ext, problem.Tao, state.Tao_int, A_offsetLayout, state.Ar_offsetLayout, aoLoad, state.Ar_offsetRegs, problem, strategy, state);
         state.ra.safeRelease(aoLoad);
-        if (!strategy.persistent) state.ra.safeRelease(state.inputs.aoPtr);
+        state.ra.safeRelease(state.inputs.aoPtr);
     }
     if (boTo2D) {
-        if (!strategy.BO.base.isStateless()) stub();
         std::vector<RegisterBlock> B_offsetLayout;
         GRFRange boLoad;
         if (problem.boPtrDims == 1) {
@@ -1796,7 +1772,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
             auto boBase = state.ra.alloc_sub<uint64_t>();
             auto rem = slmB ? state.remaindersCoop[LoopN] : state.remainders[LoopN];
             auto c = slmB ? state.nb_slm : strategy.unroll[LoopN];
-            eaddScaled(1, boBase, state.inputs.boPtr, slmB ? j0q : state.j0, Tbo, strategy, state);
+            eaddScaled(1, boBase, state.inputs.boPtr, state.j0, Tbo, strategy, state);
             boLoad = loadVector(problem.Tbo, problem.Tbo, boBase, c, rem, strategy, state);
             makeUnbackedRegLayout(problem.Tbo, B_offsetLayout, 1, c, false);
             state.ra.safeRelease(boBase);
@@ -1807,11 +1783,8 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
         }
         gemmRepack2DOffsetData(problem.Tb_ext, problem.Tbo, state.Tbo_int, B_offsetLayout, state.Br_offsetLayout, boLoad, state.Br_offsetRegs, problem, strategy, state);
         state.ra.safeRelease(boLoad);
-        if (!strategy.persistent) state.ra.safeRelease(state.inputs.boPtr);
+        state.ra.safeRelease(state.inputs.boPtr);
     }
-
-    if (i0q != state.i0) state.ra.safeRelease(i0q);
-    if (j0q != state.j0) state.ra.safeRelease(j0q);
 
     // Free unneeded registers after address setup.
     if (!state.isNested) {
@@ -2069,6 +2042,8 @@ void BLASKernelGenerator<hw>::gemmCalcIncrements(const GEMMProblem &problem, con
 {
     gemmFreeIncrements(problem, strategy, state, doA, doB);
 
+    bool doAq = doA, doBq = doB;
+
     doA &= (problem.A.layout == MatrixLayout::N);
     doB &= (problem.B.layout == MatrixLayout::T);
 
@@ -2100,11 +2075,7 @@ void BLASKernelGenerator<hw>::gemmCalcIncrements(const GEMMProblem &problem, con
         if (strategy.prefetchB && !strategy.B_prefetch.address2D)
             calcInterleavedIncrement(false, strategy.kb_pfStride);
     }
-}
 
-template <HW hw>
-void BLASKernelGenerator<hw>::gemmCalcQuantizationIncrements(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
-{
     bool ao2D = (problem.aoPtrDims == 2);
     bool bo2D = (problem.boPtrDims == 2);
     bool as2D = problem.aScale2D;
@@ -2124,13 +2095,13 @@ void BLASKernelGenerator<hw>::gemmCalcQuantizationIncrements(const GEMMProblem &
             calcIncrement(increments, base, inc, strategy, state);
     };
 
-    if (ao2D && problem.AO.layout == MatrixLayout::N)
+    if (doAq && ao2D && problem.AO.layout == MatrixLayout::N)
         calcInterleavedQIncrement(true,  state.ldao,     state.ldaoIncrements);
-    if (as2D && problem.A_scale.layout == MatrixLayout::N)
+    if (doAq && as2D && problem.A_scale.layout == MatrixLayout::N)
         calcInterleavedQIncrement(true,  state.ldaScale, state.ldasIncrements);
-    if (bo2D && problem.BO.layout == MatrixLayout::T)
+    if (doBq && bo2D && problem.BO.layout == MatrixLayout::T)
         calcInterleavedQIncrement(false, state.ldbo,     state.ldboIncrements);
-    if (bs2D && problem.B_scale.layout == MatrixLayout::T)
+    if (doBq && bs2D && problem.B_scale.layout == MatrixLayout::T)
         calcInterleavedQIncrement(false, state.ldbScale, state.ldbsIncrements);
 }
 
@@ -2226,11 +2197,6 @@ void BLASKernelGenerator<hw>::gemmAllocateTokens(const GEMMProblem &problem, con
         success &= allocateTokens(state.Bo_layout, state.Bo_regs, state);
     success &= allocateTokens(state.Ap_layout, state.Ap_regs, state, state.Ap_addrs);
     success &= allocateTokens(state.Bp_layout, state.Bp_regs, state, state.Bp_addrs);
-
-    success &= allocateTokens(state.A_offsetLayout, state.A_offsetRegs, state);
-    success &= allocateTokens(state.B_offsetLayout, state.B_offsetRegs, state);
-    success &= allocateTokens(state.A_scaleLayout, state.A_scaleRegs, state);
-    success &= allocateTokens(state.B_scaleLayout, state.B_scaleRegs, state);
 
     if (!success) {
         status << "Not enough tokens for k loop." << status_stream::endl;
@@ -2360,15 +2326,13 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
         state.inputs.surfaceBO = interface.getArgumentSurfaceIfExists("bo_ptr");
     }
     if (problem.aScale2D) {
-        state.inputs.aScalePtr = interface.getArgumentIfExists("a_scale_ptr");
+        state.inputs.aScalePtr = interface.getArgument("a_scale_ptr");
         state.inputs.surfaceAScale = interface.getArgumentSurfaceIfExists("a_scale_ptr");
     }
     if (problem.bScale2D) {
-        state.inputs.bScalePtr = interface.getArgumentIfExists("b_scale_ptr");
+        state.inputs.bScalePtr = interface.getArgument("b_scale_ptr");
         state.inputs.surfaceBScale = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
-    if (problem.cStochasticRound) 
-        state.inputs.sroundSeedPtr = interface.getArgument("sround_seed");
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
     state.inputs.offsetB = interface.getArgumentIfExists("offset_B");
     state.inputs.offsetC[0] = interface.getArgumentIfExists("offset_C");
@@ -2640,8 +2604,6 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
 
     if (state.inputs.flags.isValid())
         state.ra.claim(state.inputs.flags);
-    if (problem.cStochasticRound)
-        state.ra.claim(state.inputs.sroundSeedPtr);
     if (state.inputs.slmBase.isValid())
         state.ra.claim(state.inputs.slmBase);
 

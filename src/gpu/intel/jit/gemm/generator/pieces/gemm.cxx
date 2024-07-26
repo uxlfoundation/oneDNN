@@ -57,23 +57,20 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     gemmInitState(problem, strategy, state);
 
     // Transfer surface indices to strategy AddressBases.
-    strategy.A.assignSurface(state.inputs.surfaceA);
-    strategy.B.assignSurface(state.inputs.surfaceB);
-    strategy.C.assignSurface(state.inputs.surfaceC[0]);
-
-    if (!strategy.C.base.isStateless() && state.C_count > 1) stub();
-    if (state.useTempC)
-        state.tempCStrategy.assignSurface(state.inputs.surfaceTempC);
-    if (problem.usesCO())
-        strategy.CO.assignSurface(state.inputs.surfaceCO);
+    if (!strategy.A.base.isStateless()) strategy.A.base.setIndex(state.inputs.surfaceA);
+    if (!strategy.B.base.isStateless()) strategy.B.base.setIndex(state.inputs.surfaceB);
+    if (!strategy.C.base.isStateless()) {
+        strategy.C.base.setIndex(state.inputs.surfaceC[0]);
+        if (state.C_count > 1) stub();
+        if (state.useTempC)
+            state.tempCStrategy.base.setIndex(state.inputs.surfaceTempC);
+    }
+    if (problem.usesCO() && !strategy.CO.base.isStateless())
+        strategy.CO.base.setIndex(state.inputs.surfaceCO);
 
     for (size_t i = 0; i < strategy.binary.size(); i++)
-        strategy.binary[i].assignSurface(state.inputs.binarySurfaces[i]);
-
-    strategy.AO.assignSurface(state.inputs.surfaceAO);
-    strategy.BO.assignSurface(state.inputs.surfaceBO);
-    strategy.A_scale.assignSurface(state.inputs.surfaceAScale);
-    strategy.B_scale.assignSurface(state.inputs.surfaceBScale);
+        if (!strategy.binary[i].base.isStateless())
+            strategy.binary[i].base.setIndex(state.inputs.binarySurfaces[i]);
 
     // Prologue.
     if (!inFusedGEMM)
@@ -145,16 +142,28 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
 
     // Surface handling for quantization parameters.
     auto replace0 = [&](Subregister &s) {
-        if (s.isValid())
+        if (s.isValid()) {
             state.ra.release(s);
-        s = state.ra.alloc_sub<uint32_t>();
-        mov(1, s, 0);
+            s = state.ra.alloc_sub<uint32_t>();
+            mov(1, s, 0);
+        }
     };
 
-    if (!strategy.AO.base.isStateless() && problem.aoPtrDims == 2) replace0(state.inputs.aoPtr);
-    if (!strategy.A_scale.base.isStateless())                      replace0(state.inputs.aScalePtr);
-    if (!strategy.BO.base.isStateless() && problem.boPtrDims == 2) replace0(state.inputs.boPtr);
-    if (!strategy.B_scale.base.isStateless())                      replace0(state.inputs.bScalePtr);
+    state.A_offsetStrategy.base = A64;
+    state.B_offsetStrategy.base = A64;
+    state.A_scaleStrategy.base = A64;
+    state.B_scaleStrategy.base = A64;
+
+    if (problem.quantized2DA() && !strategy.A.base.isStateless()) {
+        if (problem.aoPtrDims == 2) replace0(state.inputs.aoPtr);
+        replace0(state.inputs.aScalePtr);
+        state.A_offsetStrategy.base = state.A_scaleStrategy.base = AddressBase::createBTS(0);
+    }
+    if (problem.quantized2DB() && !strategy.B.base.isStateless()) {
+        if (problem.boPtrDims == 2) replace0(state.inputs.boPtr);
+        replace0(state.inputs.bScalePtr);
+        state.B_offsetStrategy.base = state.B_scaleStrategy.base = AddressBase::createBTS(0);
+    }
 
     // A/B offset pointer handling.
     bool aOffset = (problem.aOffset != ABOffset::None);
@@ -199,14 +208,6 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     if (aoScalarLoad) loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
     if (boScalarLoad) loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
 
-    if (problem.cStochasticRound) {
-        state.inputs.sroundSeed = state.ra.alloc_sub(DataType::ud, getHint(HintType::LongTerm, strategy));
-        vector<Subregister> srcs;
-        srcs.push_back(state.inputs.sroundSeedPtr);
-        auto seedLoad = loadScalars(Type::u32, srcs, strategy, state);
-        mov(1, state.inputs.sroundSeed, seedLoad);
-    }
-
     // 2D scale address handling.
     if (problem.aScale2D && state.inputs.offsetAScale.isValid())
         eadd(1, state.inputs.aScalePtr, state.inputs.aScalePtr, state.inputs.offsetAScale, strategy, state);
@@ -216,10 +217,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     state.ra.safeRelease(state.inputs.offsetAScale);
     state.ra.safeRelease(state.inputs.offsetBScale);
 
-    if (problem.aqGroupK == 0) problem.aqGroupK = strategy.slmA ? strategy.unrollKSLM : strategy.ka_load;
-    if (problem.bqGroupK == 0) problem.bqGroupK = strategy.slmB ? strategy.unrollKSLM : strategy.kb_load;
-    if (problem.aqGroupM == 0) problem.aqGroupM = 1;
-    if (problem.bqGroupN == 0) problem.bqGroupN = 1;
+    if (problem.aqGroupK == 0) problem.aqGroupK = strategy.ka_load;
+    if (problem.bqGroupK == 0) problem.bqGroupK = strategy.kb_load;
 
     // Persistent thread preparation and re-entry.
     if (strategy.persistent) {
@@ -519,11 +518,13 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             // k <- floor(k / (chunk * k local size)) * chunk + min(k % (chunk * k local size), chunk)
             auto chunk = strategy.kInterleaveChunk;
             auto wgChunk = chunk * strategy.wg[LoopK];
+            if (!is_zero_or_pow2(wgChunk)) stub();
             auto temp1 = state.ra.alloc_sub<uint32_t>();
             auto temp2 = state.ra.alloc_sub<uint32_t>();
-            divDown(temp1, state.inputs.k.ud(), wgChunk, strategy, state);
-            emad(1, temp2, state.inputs.k.ud(), -temp1, wgChunk, strategy, state);
-            emul(1, temp1, temp1, chunk, strategy, state);
+
+            shr(1, temp1, state.inputs.k.ud(), ilog2(strategy.wg[LoopK]));
+            and_(1, temp2, state.inputs.k.ud(), wgChunk - 1);
+            and_(1, temp1, temp1, ~uint32_t(chunk - 1));
             min_(1, temp2, temp2, chunk);
             add(1, state.inputs.k.ud(), temp1, temp2);
 

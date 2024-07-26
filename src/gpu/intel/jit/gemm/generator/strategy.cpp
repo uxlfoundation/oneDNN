@@ -46,9 +46,6 @@ void CommonStrategy::preflight(HW hw, const CommonProblem &problem)
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW || emulate.emulate64_mul;
     if (moveR0 == MoveR0::Acc && emulateNeedsAcc)
         moveR0 = MoveR0::None;
-#if XE3P
-    if (hw >= HW::Xe3p) moveR0 = MoveR0::None;
-#endif
 
     spf &= !fused;
 }
@@ -221,7 +218,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         dpasw = true;
     }
 
-    dpasw &= systolic && fused;
+    dpasw &= fused;
 
     // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.
     // Priority: k chaining > extra C registers > r0 header storage.
@@ -329,14 +326,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
             if (!fusedM()) stub();
             B.dpasw = true;
             B.tileC = std::max(1, std::min(unroll[LoopN], params.rcountMax) / 2);
-            if (unroll[LoopN] % (2 * B.tileC))
-                stub("Cannot use dpasw for this n tile size");
         } else {
             if (!fusedN()) stub();
             A.dpasw = true;
             A.tileR = std::max(1, std::min(unroll[LoopM], params.rcountMax) / 2);
-            if (unroll[LoopM] % (2 * A.tileR))
-                stub("Cannot use dpasw for this m tile size");
         }
     }
 
@@ -418,14 +411,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (blocking[LoopM] <= 0) blocking[LoopM] = defaultMBlock;
     if (blocking[LoopN] <= 0) blocking[LoopN] = defaultNBlock;
     if (blocking[LoopK] <= 0) {
-        if (hw >= HW::XeHPG)
-            blocking[LoopK] = 16777216;     /* arbitrary large value */
-        else {
-            int points = 1;
-            if (slmA || (problem.A.layout != MatrixLayout::T)) points++;
-            if (slmB || (problem.B.layout != MatrixLayout::N)) points++;
-            blocking[LoopK] = std::min(2048, (2048 * points) / problem.Ta);
-        }
+        int points = 1;
+        if (slmA || (problem.A.layout != MatrixLayout::T)) points++;
+        if (slmB || (problem.B.layout != MatrixLayout::N)) points++;
+        blocking[LoopK] = std::min(2048, (2048 * points) / problem.Ta);
     }
 
     auto defaultBlockAltK = blocking[LoopK];

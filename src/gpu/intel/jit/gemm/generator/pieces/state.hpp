@@ -18,7 +18,7 @@
 #define GEMMSTONE_GUARD_STATE_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
+#include "types.hpp"
 #include "register_block.hpp"
 #include "allocators.hpp"
 #include "emulation.hpp"
@@ -223,8 +223,6 @@ struct GEMMState : public CommonState {
         std::vector<ngen::Subregister> binaryLDs;           // d
         std::vector<std::vector<ngen::Subregister>> binaryStrides;    // d
         std::vector<uint8_t> binarySurfaces;
-        ngen::Subregister sroundSeedPtr;                    // q
-        ngen::Subregister sroundSeed;                       // ud
     } inputs;
     Type Ta_load, Tb_load;                                  // Current type to be loaded into A/B_regs.
     Type Tacc;                                              // Current type in accumulator registers.
@@ -315,7 +313,7 @@ struct GEMMState : public CommonState {
     CoopSplit effCoopB = CoopSplit::K;
     ngen::Subregister kSLMA, kSLMB, kSLMStorage;            // w/w/ud
     bool kSLMCountUp = false;
-    int kaq = 0, kbq = 0, kaqStride, kbqStride, kaqLate = 0, kbqLate = 0;
+    int kaq, kbq, kaqStride, kbqStride, kaqLate, kbqLate;
     bool lateScale2DA = false, lateScale2DB = false;
     std::vector<RegisterBlock> A_layout, B_layout, C_layout;
     std::vector<RegisterBlock> A_layoutRem, B_layoutRem;
@@ -340,8 +338,8 @@ struct GEMMState : public CommonState {
     Address2DParams Ai_params, Bi_params;
     Address2DParams Ap_params, Bp_params;
     int Ai_regCount = 0, Bi_regCount = 0;
-    bool aioShare = false, bioShare = false;
-    bool aioShareRem = false, bioShareRem = false;
+    bool aioShare, bioShare;
+    bool aioShareRem, bioShareRem;
     bool aoReuseA = false, boReuseB = false;
     Type Tao_int, Ta_scaleInt;
     Type Tbo_int, Tb_scaleInt;
@@ -349,6 +347,8 @@ struct GEMMState : public CommonState {
     MatrixAddressing Ai, Bi, Ao, Bo, tempC;
     MatrixAddressingStrategy Ai_strategy, Bi_strategy;
     MatrixAddressingStrategy Ao_strategy, Bo_strategy;
+    MatrixAddressingStrategy A_offsetStrategy, B_offsetStrategy;
+    MatrixAddressingStrategy A_scaleStrategy, B_scaleStrategy;
     MatrixAddressingStrategy Cext_strategy, tempCStrategy;
     ngen::FlagRegister panelMaskA, panelMaskB;
     int8_t tokenBarrierFence[2];

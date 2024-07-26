@@ -16,12 +16,13 @@
 
 #ifndef GEMMSTONE_GUARD_UTILS_HPP
 #define GEMMSTONE_GUARD_UTILS_HPP
-#include "common/cpp_compat.hpp"
 
 #include <stdexcept>
 
-#ifdef __cpp_lib_source_location
+#if __cplusplus >= 202002L
+#if __has_include(<source_location>)
 #include <source_location>
+#endif
 #endif
 
 #include "common/math_utils.hpp"
@@ -93,7 +94,7 @@ public:
     hw_unsupported_exception() : std::runtime_error("Unsupported in hardware") {}
 };
 
-#if defined(__cpp_lib_source_location) && __cpp_lib_source_location >= 201907L
+#ifdef __cpp_lib_source_location
 [[noreturn]] static inline void stub(
                                      std::source_location where = std::source_location::current()) {
     throw stub_exception(where.file_name(), where.line());

@@ -27983,6 +27983,17 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                         mov(nelems_real | modMov,
                                                 dreg.ud()(dcrosspack),
                                                 copyTemp[0].ud());
+                                    } else if (Td_real == Type::bf16) {
+                                        mov(nelems_real | modMov,
+                                                copyTemp[0].f(),
+                                                copyTemp[1].hf());
+                                        mov(nelems_real | modMov,
+                                                copyTemp[1].sub(
+                                                        0, Td_real.ngen())(1),
+                                                copyTemp[0].f());
+                                        mov(nelems_real | modMov,
+                                                dreg.uw()(dcrosspack),
+                                                copyTemp[1].uw());
                                     } else
                                         stub();
 #if XE3P
@@ -28004,6 +28015,17 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                         mov(nelems_real | modMov,
                                                 dreg.ud()(dcrosspack),
                                                 copyTemp[0].ud());
+                                    } else if (Td_real == Type::bf16) {
+                                        mov(nelems_real | modMov,
+                                                copyTemp[0].f(),
+                                                copyTemp[1].hf());
+                                        mov(nelems_real | modMov,
+                                                copyTemp[1].sub(
+                                                        0, Td_real.ngen())(1),
+                                                copyTemp[0].f());
+                                        mov(nelems_real | modMov,
+                                                dreg.uw()(dcrosspack),
+                                                copyTemp[1].uw());
                                     } else
                                         stub();
 #endif

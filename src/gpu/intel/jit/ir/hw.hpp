@@ -126,6 +126,9 @@ public:
     bool operator>=(ngen::HW rhs) const { return hw_ >= rhs; }
     bool operator==(ngen::HW rhs) const { return hw_ == rhs; }
     bool operator!=(ngen::HW rhs) const { return hw_ != rhs; }
+#if __cplusplus >= 202002L
+    bool operator==(const hw_t &other) const = default;
+#endif
 
     bool operator==(const hw_t &other) const {
         if (hw_ != other.hw_) return false;

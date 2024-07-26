@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -185,7 +185,7 @@ protected:
         }
         const int64_t safe_digits = get_safe_digits();
         const int64_t safe_n_acc = (1LL << safe_digits) / max_value;
-        return safe_n_acc;
+        return std::max((int64_t)1L, safe_n_acc);
     }
 
     // Modification of ranges has to happen at construction stage.

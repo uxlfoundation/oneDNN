@@ -1,4 +1,19 @@
---reset --dt=f8_e5m2,f8_e4m3,f16,bf16,f32 --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d
---reset --dt=f8_e5m2,f8_e4m3,f16,bf16,f32 --stag=abc --wtag=abc --dtag=abc --batch=shapes_3d
+--reset --dt=f16,bf16,f32 --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d
+--reset --dt=f16,bf16,f32 --stag=abc --wtag=abc --dtag=abc --batch=shapes_3d
 --reset --dt=f16,bf16,f32 --stag=ab --wtag=ab --dtag=ab --attr-post-ops=tanh,logistic,swish,mish --batch=shapes_2d
 --reset --dt=f16,bf16,f32 --stag=abc --wtag=abc --dtag=abc --attr-post-ops=tanh,logistic,swish,mish --batch=shapes_3d
+
+# f8:f8:f16-32
+--reset --dt=f8_e5m2:f8_e4m3:f16,f8_e5m2:f8_e4m3:bf16,f8_e5m2:f8_e4m3:f32 --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d
+# f8
+--reset --dt=f8_e5m2:f8_e4m3:f8_e5m2,f8_e4m3:f8_e5m2:f8_e4m3,f8_e5m2,f8_e4m3 --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d
+--reset --dt=f8_e5m2:f8_e4m3:f8_e5m2,f8_e4m3:f8_e5m2:f8_e4m3,f8_e5m2,f8_e4m3 --stag=abc --wtag=abc --dtag=abc --batch=shapes_3d
+
+# Weights decomp:
+#f16-32:i4:f16-32
+--reset --dt=bf16:u4:bf16,f16:s4:f16,f32:u4:f32 --attr-fpmath=bf16:true --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d_sim
+#f16-32:i4:f8
+--reset --dt=bf16:u4:f8_e5m2,f16:s4:f8_e4m3,f32:u4:f8_e4m3 --attr-fpmath=f16:true --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d_sim
+#f8:i4:f16-32
+--reset --dt=f8_e4m3:u4:bf16,f8_e5m2:s4:f32 --attr-fpmath=bf16:true --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d_sim
+--reset --dt=f8_e5m2:s4:f16,f8_e4m3:u4:f32 --attr-fpmath=f16:true --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d_sim

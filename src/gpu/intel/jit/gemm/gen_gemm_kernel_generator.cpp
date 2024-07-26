@@ -6204,6 +6204,8 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
                 if (remW.isValid() && T.paddedSize() < widthAlign)
                     or_(1, addr[0].ud(2), addr[0].ud(2), widthAlign - 1);
             }
+            auto pitch = bw * bcount * block.ebytes;
+            if (pitch <= 64) printf("HERE\n");
 
             if (isPacked(atype.layout)) {
                 auto pitch = bw * bcount * block.ebytes;
@@ -14014,7 +14016,9 @@ bool canDequantizeInt4(Type Tsrc, Type Tdst,
         const vector<RegisterBlock> &layoutDst,
         const vector<RegisterBlock> layoutOffset,
         const vector<RegisterBlock> layoutScale) {
-    if (!Tsrc.isInt4() || !one_of(Tdst, Type::f16, Type::bf16, Type::f32))
+    if (!Tsrc.isInt4()
+            || !one_of(Tdst, Type::f16, Type::bf16, Type::f32, Type::bf8,
+                    Type::hf8))
         return false;
 
     if (layoutOffset.empty() || layoutScale.empty()) {
@@ -14047,6 +14051,7 @@ void gemm_kernel_generator_t<hw>::dequantizeInt4(bool doA, Type Tsrc, Type Tdst,
     getLayoutDims(layoutDst, md, nd);
 
     bool s4 = Tsrc.isSigned();
+    bool f8 = Tdst.isF8();
     bool f32 = (Tdst == Type::f32);
     bool bf16 = (Tdst == Type::bf16);
 
@@ -14056,7 +14061,7 @@ void gemm_kernel_generator_t<hw>::dequantizeInt4(bool doA, Type Tsrc, Type Tdst,
     const vector<RegisterBlock> *effLayoutDst = &layoutDst;
     GRFMultirange dstF16;
     const GRFMultirange *effDst = &dst;
-    if (f32 || bf16) {
+    if (f32 || bf16 || f8) {
         makeUnbackedRegLayout(
                 Type::f16, layoutDstF16, m, n, isLayoutColMajor(layoutDst), 1);
         dstF16 = chunkAlloc(getRegCount(layoutDstF16), 2, state);
@@ -14104,7 +14109,7 @@ void gemm_kernel_generator_t<hw>::dequantizeInt4(bool doA, Type Tsrc, Type Tdst,
     }
 
     // 6) Convert to Dst type if needed.
-    if (f32 || bf16) {
+    if (f32 || bf16 || f8) {
         copyRegisters(Type::f16, Tdst, layoutDstF16, layoutDst, dstF16, dst,
                 offR0, offC0, false, strategy, state);
         safeReleaseRanges(dstF16, state);
@@ -28095,12 +28100,13 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                     mov(nelems_real | modMov, tmp0(1),
                                             sreg(scrosspack));
                                     if (Ts_real.ngen() == ngen::DataType::hf) {
-                                        auto tmp1 = copyTemp[1].bf8();
-                                        mov(nelems_real | modMov, tmp1,
-                                                tmp0.hf());
+                                        auto tmp1 = copyTemp[1].sub(
+                                                0, ngen::DataType::bf8);
+                                        mov(nelems_real | modMov, tmp1(2),
+                                                tmp0.hf()(1));
                                         mov(nelems_real | modMov,
                                                 dreg.ub()(dcrosspack),
-                                                tmp1.ub());
+                                                tmp1.ub()(2));
                                     } else if (Ts_real.ngen()
                                             == ngen::DataType::f) {
                                         auto tmp1 = copyTemp[1].sub(
@@ -28126,12 +28132,13 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                     mov(nelems_real | modMov, tmp0(1),
                                             sreg(scrosspack));
                                     if (Ts_real.ngen() == ngen::DataType::hf) {
-                                        auto tmp1 = copyTemp[1].hf8();
-                                        mov(nelems_real | modMov, tmp1,
-                                                tmp0.hf());
+                                        auto tmp1 = copyTemp[1].sub(
+                                                0, ngen::DataType::hf8);
+                                        mov(nelems_real | modMov, tmp1(2),
+                                                tmp0.hf()(1));
                                         mov(nelems_real | modMov,
                                                 dreg.ub()(dcrosspack),
-                                                tmp1.ub());
+                                                tmp1.ub()(2));
                                     } else if (Ts_real.ngen()
                                             == ngen::DataType::f) {
                                         auto tmp1 = copyTemp[1].sub(
@@ -28309,17 +28316,17 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                         dreg(effDCP / 2),
                                                         tmp0.ub()(2));
                                             } else {
+                                                mov(n_bytes | modMov,
+                                                        tmp0.ub()(1),
+                                                        sreg.ub()(
+                                                                scrosspack_byte));
                                                 and_(n_bytes | modMov
                                                                 | writeCombine,
                                                         dreg(effDCP),
-                                                        sreg.ub()(
-                                                                scrosspack_byte),
-                                                        0x0F);
+                                                        tmp0.ub()(1), 0x0F);
                                                 shr(n_bytes | modMov,
                                                         dreg1(effDCP),
-                                                        sreg.ub()(
-                                                                scrosspack_byte),
-                                                        4);
+                                                        tmp0.ub()(1), 4);
                                             }
                                         }
                                     } else {

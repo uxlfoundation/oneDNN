@@ -449,6 +449,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool fpmath_tf32 = mode & mode_tf32;
     bool fpmath_bf16 = mode & mode_bf16x1;
     bool fpmath_f16 = mode & mode_f16x1;
+    bool fpmath_strict = !(fpmath_tf32 || fpmath_bf16 || fpmath_f16)
+            && (mode & mode_strict) && (mode & mode_w_decomp);
 
     if (fpmath_tf32
             && utils::everyone_is(Type::f32, problem_.Ta, problem_.Tb)) {
@@ -519,6 +521,20 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         match_params[npatterns] = match_params[0];
         match_params[npatterns].selector.precisions[1] = "[FO]";
         npatterns++;
+    }
+
+    if (fpmath_strict) {
+        if (problem_.Tb.isInt4() && !(fpmath_f16 || fpmath_bf16)) {
+            match_params[npatterns] = match_params[0];
+            match_params[npatterns].selector.precisions[1]
+                    = match_params[npatterns].selector.precisions[0];
+            npatterns++;
+        } else {
+            match_params[npatterns] = match_params[0];
+            match_params[npatterns].selector.precisions[0]
+                    = match_params[npatterns].selector.precisions[1];
+            npatterns++;
+        }
     }
 
     EvaluateParams eval_params;

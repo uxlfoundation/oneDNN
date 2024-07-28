@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ################################################################################
-# Copyright 2021-2025 Intel Corporation
+# Copyright 2021-2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,26 +44,57 @@ def convert_dir_benchdnn2verbose(dir):
         "BWD_D": "backward_data",
         "BWD_W": "backward_weights",
         "BWD_DW": "backward",
-    }
-    return mapping.get(dir, "undef")
+    }.get(dir)
 
 
-def filter_verbose(verbose: str, driver: str, filter_event: str):
-    found_cases: List[str] = []
-    tentative_cases: Dict[str, List[str]] = defaultdict(list)
-    for line in verbose.split("\n"):
-        if "__REPRO" in line:
-            # n: STATUS (Status message) __REPRO: repro
-            _, status_info, repro = map(str.strip, line.split(":", 2))
-            status_and_message = status_info.rsplit(None, 1)[0]
-            status = status_and_message.split("(", 1)[0].strip()
-            # workaround for nvim-treesitter indent bug: )
-            argname = "prop" if driver == "rnn" else "dir"
-            known_prop_kind: str = "undef"
-            for part in repro.split():
-                if part.startswith(f"--{argname}="):
-                    value = part[len(argname) + 3 :]
-                    known_prop_kind = convert_dir_benchdnn2verbose(value)
+def filter_verbose(benchdnn_verbose, driver):
+    v = ""
+    benchdnn_prop_kind = None
+
+    for test_case in benchdnn_verbose.split("__REPRO"):
+        verbose_lines = test_case.split("\n")
+        # `start` with `1` as there's a leftover from previous REPRO line.
+        for idx, l in enumerate(verbose_lines, start=1):
+            # Parse header
+            if l.find("create: ") != -1:
+                # detect prop kind in benchdnn log
+                dir = "--prop=" if driver == "rnn" else "--dir="
+                dir_start = l.find(dir)
+                if dir_start != -1:
+                    dir_end = l.find(" ", dir_start)
+                    benchdnn_prop_kind = convert_dir_benchdnn2verbose(
+                        l[dir_start + len(dir) : dir_end]
+                    )
+                else:
+                    benchdnn_prop_kind = None
+            else:
+                # detect driver
+                l_s = l.split(",")
+                d = benchdnn_gen.convert_driver(l_s[4]) if len(l_s) > 4 else ""
+                if len(l_s) > 4 and l_s[0] == "onednn_verbose" and d == driver:
+                    # filter out additional forward calls
+                    verbose_prop_kind = l_s[6]
+                    if (
+                        benchdnn_prop_kind != None
+                        and verbose_prop_kind != benchdnn_prop_kind
+                    ):
+                        continue
+                    # Filter out fill reorders. Only the last one is actual.
+                    # `len - 1` due to status piece left in `verbose_lines` as
+                    # a product of split by `__REPRO`.
+                    if d == "reorder" and idx != len(verbose_lines) - 1:
+                        continue
+                    # Filter out transform routine till it's properly supported.
+                    # Use impl name for that due to it's the only difference
+                    # between two ukernel calls.
+                    impl_name = l_s[5]
+                    if d == "brgemm" and impl_name == "pack_B":
+                        continue
+
+                    # found primitive creation for the test case
+                    # remove time
+                    l_wo_time = "".join(f + "," for f in l.split(",")[0:-1])[0:-1]
+                    v += l_wo_time + "\n"
                     break
 
             cases = tentative_cases[known_prop_kind]
@@ -122,10 +153,10 @@ def generate_verbose(path_to_benchdnn, engine, driver, batch):
 
     # Runtime dimension require execution verbose output.
     # BRGEMM driver through ukernel API supports verbose only at execution.
-    profile_mode = "create"
+    sub_env["ONEDNN_VERBOSE"] = "2"
     benchdnn_mode = "I"
-    if driver in ("matmul", "reorder", "brgemm"):
-        profile_mode = "exec"
+    if driver == "matmul" or driver == "reorder" or driver == "brgemm":
+        sub_env["ONEDNN_VERBOSE"] = "1"
         benchdnn_mode = "R"
     # Add extra noise (dispatch, etc.) to ensure it gets filtered out
     sub_env["ONEDNN_VERBOSE"] = f"dispatch,error,check,profile_{profile_mode}"

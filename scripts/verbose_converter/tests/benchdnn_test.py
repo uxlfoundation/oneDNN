@@ -41,28 +41,54 @@ def convert_dir_benchdnn2verbose(dir):
     }.get(dir)
 
 
-def filter_verbose(verbose: str, driver: str, filter_event: str):
-    found_entry = False
-    found_cases: List[str] = []
-    last_reorder: Optional[str] = None
-    known_prop_kind: Optional[str] = None
-    for line in verbose.split("\n"):
-        if "__REPRO" in line:
-            found_entry = False
-            # Adding reorders is deferred to here because we need to exclude all
-            # but the final one.
-            if driver == "reorder" and last_reorder is not None:
-                found_cases.append(last_reorder)
-                last_reorder = None
-        elif found_entry:
-            pass
-        elif "create: " in line:
-            # Detect prop kind in benchdnn log
-            argname = "prop" if driver == "rnn" else "dir"
-            for part in line.split():
-                if part.startswith(f"--{argname}="):
-                    value = part[len(argname) + 3 :]
-                    known_prop_kind = convert_dir_benchdnn2verbose(value)
+def filter_verbose(benchdnn_verbose, driver):
+    v = ""
+    benchdnn_prop_kind = None
+
+    for test_case in benchdnn_verbose.split("__REPRO"):
+        verbose_lines = test_case.split("\n")
+        # `start` with `1` as there's a leftover from previous REPRO line.
+        for idx, l in enumerate(verbose_lines, start=1):
+            # Parse header
+            if l.find("create: ") != -1:
+                # detect prop kind in benchdnn log
+                dir = "--prop=" if driver == "rnn" else "--dir="
+                dir_start = l.find(dir)
+                if dir_start != -1:
+                    dir_end = l.find(" ", dir_start)
+                    benchdnn_prop_kind = convert_dir_benchdnn2verbose(
+                        l[dir_start + len(dir) : dir_end]
+                    )
+                else:
+                    benchdnn_prop_kind = None
+            else:
+                # detect driver
+                l_s = l.split(",")
+                d = benchdnn_gen.convert_driver(l_s[4]) if len(l_s) > 4 else ""
+                if len(l_s) > 4 and l_s[0] == "onednn_verbose" and d == driver:
+                    # filter out additional forward calls
+                    verbose_prop_kind = l_s[6]
+                    if (
+                        benchdnn_prop_kind != None
+                        and verbose_prop_kind != benchdnn_prop_kind
+                    ):
+                        continue
+                    # Filter out fill reorders. Only the last one is actual.
+                    # `len - 1` due to status piece left in `verbose_lines` as
+                    # a product of split by `__REPRO`.
+                    if d == "reorder" and idx != len(verbose_lines) - 1:
+                        continue
+                    # Filter out transform routine till it's properly supported.
+                    # Use impl name for that due to it's the only difference
+                    # between two ukernel calls.
+                    impl_name = l_s[5]
+                    if d == "brgemm" and impl_name == "pack_B":
+                        continue
+
+                    # found primitive creation for the test case
+                    # remove time
+                    l_wo_time = "".join(f + "," for f in l.split(",")[0:-1])[0:-1]
+                    v += l_wo_time + "\n"
                     break
             else:
                 known_prop_kind = None
@@ -111,7 +137,7 @@ def generate_verbose(path_to_benchdnn, driver, batch):
     # BRGEMM driver through ukernel API supports verbose only at execution.
     sub_env["ONEDNN_VERBOSE"] = "2"
     benchdnn_mode = "I"
-    if driver in ("matmul", "reorder", "brgemm"):
+    if driver == "matmul" or driver == "reorder" or driver == "brgemm":
         sub_env["ONEDNN_VERBOSE"] = "1"
         benchdnn_mode = "R"
 

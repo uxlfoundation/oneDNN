@@ -17,87 +17,323 @@
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from . import ir
+def everyone_is(list, value="None"):
+    if [value == "None"]:
+        value = list[0]
+    return [e for e in list if e != value] == []
 
+
+primitives_with_algs = (
+    "binary",
+    "convolution",
+    "deconvolution",
+    "eltwise",
+    "lrn",
+    "pooling",
+    "reduction",
+    "resampling",
+    "rnn",
+)
+
+
+def alg_remove_primitive(alg):
+    for p in primitives_with_algs:
+        if alg.find(p) != -1:
+            alg = alg[(alg.find(p) + len(p) + 1) :]
+    return alg
+
+
+def convert_driver(prop_kind):
+    driver = {
+        "batch_normalization": "bnorm",
+        "binary": "binary",
+        "brgemm": "brgemm",
+        "concat": "concat",
+        "convolution": "conv",
+        "deconvolution": "deconv",
+        "eltwise": "eltwise",
+        "group_normalization": "gnorm",
+        "inner_product": "ip",
+        "layer_normalization": "lnorm",
+        "lrn": "lrn",
+        "matmul": "matmul",
+        "pooling": "pool",
+        "prelu": "prelu",
+        "reduction": "reduction",
+        "reorder": "reorder",
+        "resampling": "resampling",
+        "rnn": "rnn",
+        "shuffle": "shuffle",
+        "softmax": "softmax",
+        "sum": "sum",
+    }.get(prop_kind)
+    return driver
+
+
+def convert_engine(engine):
+    return f"--engine={engine}"
+
+
+def convert_dir(entry):
+    # get base direction
+    dir = {
+        "forward_training": "FWD_D",
+        "forward_inference": "FWD_I",
+        "backward_data": "BWD_D",
+        "backward_weights": "BWD_W",
+        "backward": "BWD_DW",
+    }.get(entry["prop_kind"])
+
+    if not dir:
+        return ""
+
+    found_bias = [
+        e for e in entry["mds"] if "bia" == e["arg"] and e["data_type"] != "undef"
+    ]
+    dir = "FWD_B" if "FWD" in dir and found_bias else dir
+    dir = "BWD_WB" if dir == "BWD_W" and found_bias else dir
+    if entry["prim_kind"] == "rnn":
+        return f"--prop={dir}"
+    else:
+        return f"--dir={dir}"
+
+
+def convert_aux(entry):
+    if entry.get("aux") != None:
+        alg = entry["aux"]["alg"] if entry["aux"].get("alg") != None else ""
+        pk = entry["prim_kind"]
+        if pk == "convolution":
+            str = ""
+            alg = alg_remove_primitive(alg)
+            algs = {"winograd": "WINO", "direct": "direct"}
+            alg = algs.get(alg)
+            if alg != None:
+                str = f"--alg={alg}"
+            return str
+        if pk == "eltwise":
+            alpha = entry["aux"]["alpha"]
+            beta = entry["aux"]["beta"]
+            alg += f" --alpha={alpha} --beta={beta}"
+            return f"--alg={alg}"
+        elif pk == "concat":
+            axis = entry["aux"]["axis"]
+            return f"--axis={axis}"
+        elif pk in [
+            "batch_normalization",
+            "layer_normalization",
+            "group_normalization",
+        ]:
+            flags = entry["aux"]["flags"]
+            return f"--flags={flags}"
+        elif pk == "lrn":
+            str = ""
+            alg = alg_remove_primitive(alg)
+            algs = {"across_channels": "ACROSS", "within_channel": "WITHIN"}
+            alg = algs.get(alg)
+            if alg != None:
+                str = f"--alg={alg}"
+            return str
+        elif pk == "reduction":
+            p = entry["aux"]["p"]
+            eps = entry["aux"]["eps"]
+            alg += f" --p={p} --eps={eps}"
+            return f"--alg={alg}"
+        elif pk == "rnn":
+            str = ""
+            algs = {
+                "vanilla_rnn": "VANILLA_RNN",
+                "vanilla_lstm": "VANILLA_LSTM",
+                "vanilla_gru": "VANILLA_GRU",
+                "vanilla_augru": "VANILLA_AUGRU",
+                "lbr_gru": "LBR_GRU",
+                "lbr_augru": "LBR_AUGRU",
+            }
+            alg = algs.get(alg)
+            if alg != None:
+                str += f"--alg={alg}"
+            ir_dir = entry["aux"]["direction"]
+            dirs = {
+                "unidirectional_left2right": "left2right",
+                "unidirectional_right2left": "right2left",
+                "bidirectional_sum": "sum",
+                "bidirectional_concat": "concat",
+            }
+            dir = dirs.get(ir_dir)
+            if dir is not None:
+                str += f" --direction={dir}"
+            ir_act = entry["aux"]["activation"]
+            acts = {
+                "eltwise_relu": "RELU",
+                "eltwise_logistic": "LOGISTIC",
+                "eltwise_tanh": "TANH",
+            }
+            act = acts.get(ir_act)
+            if act is not None:
+                str += f" --activation={act}"
+            flags = entry["aux"]["flags"]
+            if flags is not None:
+                str += f" --flags={flags}"
+            return str
+        elif pk == "shuffle":
+            axis = entry["aux"]["axis"]
+            group = entry["aux"]["group"]
+            return f"--axis={axis} --group={group}"
+        elif pk == "softmax":
+            axis = entry["aux"]["axis"]
+            return f"--alg={alg} --axis={axis}"
+        elif pk == "pooling":
+            return f"--alg={alg}"
+        elif pk == "matmul":
+            runtime_dims_masks = (
+                entry["aux"]["runtime_dims_masks"]
+                if entry["aux"].get("runtime_dims_masks") != None
+                else ""
+            )
+            return f"--runtime_dims_masks={runtime_dims_masks}"
+        elif pk == "reorder":
+            runtime_dim_mask = (
+                entry["aux"]["runtime-dim-mask"]
+                if entry["aux"].get("runtime-dim-mask") != None
+                else ""
+            )
+            return f"--runtime-dim-mask={runtime_dim_mask}"
+        elif pk == "brgemm":
+            bs = entry["aux"]["bs"] if entry["aux"].get("bs") != None else ""
+            beta = entry["aux"]["beta"] if entry["aux"].get("beta") != None else ""
+            return f"--bs={bs} --beta={beta}"
+        else:
+            alg = alg_remove_primitive(alg)
+            if alg != "":
+                return f"--alg={alg}"
+    return ""
+
+
+def convert_bias_mask(mds):
+    bia_mds = [md for md in mds if md["arg"] == "bia"]
+    if len(bia_mds) != 0:
+        bia_md = bia_mds[0]
+        flags = bia_md["flags"]["value"].split("_")
+        if len(flags) > 1:
+            mask = flags[1][4:]
+            return f"--bia_mask={mask}"
+    return ""
+
+
+def convert_dts(mds, prim_kind):
+    def convert_dts_common(mds):
+        dts = [md["data_type"] for md in mds if md["data_type"] != "undef"]
+        dt = dts[0]
+        return f"--dt={dt}"
+
+    def convert_dts_cfg_rnn(mds):
+        cfg = "--cfg="
+        args = ["src_iter", "src_iter_c", "src_layer", "dst_iter", "dst_layer", "bias"]
+        mds_strip = [md for md in mds if md["arg"] in args]
+        # ws is not part of cfg
+        mds_strip = [md for md in mds_strip if "ws" not in md["arg"]]
+        # bias is not part of cfg
+        mds_strip = [md for md in mds_strip if "bia" not in md["arg"]]
+        common_dt = everyone_is([md["data_type"] for md in mds_strip])
+        if common_dt and mds_strip[0]["data_type"] in ["f32", "f16"]:
+            cfg += mds_strip[0]["data_type"]
+        elif common_dt and mds_strip[0]["data_type"] == "bf16":
+            cfg += mds_strip[0]["data_type"]
+            # bias is part of cfg for bf16
+            bias_md = [md for md in mds if md["arg"] == "bias"][0]
+            bias_dt = bias_md["data_type"]
+            if bias_dt != mds_strip[0]["data_type"]:
+                cfg += bias_dt
+        else:
+            for arg in args:
+                for md in mds_strip:
+                    if md["arg"] == arg:
+                        # src iter is skipped if it is f32
+                        if arg == "src_iter_c" and md["data_type"] == "f16":
+                            continue
+                        cfg += md["data_type"]
+        return cfg
+
+    def convert_dts_all(mds):
+        dts = ""
+        md_args = ""
+        for md in mds:
+            md_arg = md["arg"][0]
+            if md_args.find(md_arg) == -1:
+                md_dt = md["data_type"]
+                dts += f" --{md_arg}dt={md_dt}"
+                md_args += md_arg
+        return dts
 
 def maybe_make_any_tag(md: ir.MemoryDescriptor):
     return "any" if "a" in md.properties else md.tag
 
 
-def attribute_flag(name: str):
-    def wrapper(converter: "Converter"):
-        attr = getattr(converter.entry.exts, name)
-        flag_name = name.replace("_", "-")
-        if attr is None:
-            return ""
-        return f"--attr-{flag_name}={attr!s}"
+    def convert_dts_multiple_src(mds):
+        src_dts = ""
+        dts = ""
+        first_src = True
+        for md in mds:
+            md_dt = md["data_type"]
+            md_arg = md["arg"]
+            if md_arg == "src":
+                if not first_src:
+                    src_dts += f":{md_dt}"
+                else:
+                    src_dts += f" --{md_arg[0]}dt={md_dt}"
+                    first_src = False
+            else:
+                if md_dt != "undef":
+                    dts += f" --{md_arg[0]}dt={md_dt}"
+        return src_dts + dts
 
-    return property(wrapper)
+    def convert_dts_with_bias(mds):
+        dt = convert_dts_multiple(mds)
+        mds_bias = [md for md in mds if "bia" in md["arg"]]
+        if len(mds_bias) != 0:
+            md_bias = mds_bias[0]
+            bias_dt = md_bias["data_type"]
+            dt += " " + f"--bia_dt={bias_dt}"
+        return dt
 
+    def convert_dts_with_ss(mds):
+        dt = convert_dts_multiple(mds)
+        mds_scale = [md for md in mds if "scale" in md["arg"]]
+        mds_shift = [md for md in mds if "shift" in md["arg"]]
 
-class ConverterMeta(type):
-    driver: str
+        if len(mds_scale) != 0:
+            md_scale = mds_scale[0]
+            scale_dt = md_scale["data_type"]
+            dt += " " + f"--ss_dt={scale_dt}"
+        elif len(mds_shift) != 0:
+            md_shift = mds_shift[0]
+            shift_dt = md_shift["data_type"]
+            dt += " " + f"--ss_dt={shift_dt}"
 
+        return dt
 
-class Converter(metaclass=ConverterMeta):
-    def __init__(self, entry: ir.Entry):
-        self.entry = entry
-
-    def _get_dir(self):
-        dirs = {
-            "forward_training": "FWD_D",
-            "forward_inference": "FWD_I",
-            "backward_data": "BWD_D",
-            "backward_weights": "BWD_W",
-            "backward": "BWD_DW",
-        }
-
-        if self.entry.prop_kind not in dirs:
-            return ""
-
-        dir = dirs[self.entry.prop_kind]
-        for md in self.entry.mds:
-            if md.arg != "bia" or md.data_type == "undef":
-                continue
-            if "FWD" in dir:
-                return "FWD_B"
-            if dir == "BWD_W":
-                return "BWD_WB"
-            break
-        return dir
-
-    def _get_alg(self):
-        return self.entry.aux.get("alg")
-
-    @staticmethod
-    def _get_policies():
-        return "common", "per_oc"
-
-    @staticmethod
-    def _get_policy_map():
-        return 0, 1, 1, 1
-
-    def policy(self, mask: int):
-        policies = self._get_policies()
-        policy_map = self._get_policy_map()
-
-        if mask >= len(policy_map) or policy_map[mask] >= len(policies):
-            return "per_tensor"
-        return policies[policy_map[mask]]
-
-    @property
-    def engine(self):
-        return f"--engine={self.entry.engine}"
-
-    @property
-    def dir(self):
-        if self._get_dir():
-            return f"--dir={self._get_dir()}"
-        return ""
-
-    @property
-    def bias_mask(self):
-        return ""
+    convert_dts = {
+        "batch_normalization": convert_dts_common,
+        "binary": convert_dts_multiple_src,
+        "brgemm": convert_dts_multiple,
+        "concat": convert_dts_all,
+        "convolution": convert_dts_multiple,
+        "deconvolution": convert_dts_multiple,
+        "eltwise": convert_dts_common,
+        "inner_product": convert_dts_multiple,
+        "group_normalization": convert_dts_multiple,
+        "layer_normalization": convert_dts_with_ss,
+        "lrn": convert_dts_common,
+        "matmul": convert_dts_with_bias,
+        "pooling": convert_dts_multiple,
+        "prelu": convert_dts_prelu,
+        "reduction": convert_dts_all,
+        "reorder": convert_dts_all,
+        "resampling": convert_dts_all,
+        "rnn": convert_dts_cfg_rnn,
+        "shuffle": convert_dts_common,
+        "softmax": convert_dts_all,
+        "sum": convert_dts_multiple_src,
+    }
 
     @property
     def dts(self):

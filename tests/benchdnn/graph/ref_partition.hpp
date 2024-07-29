@@ -78,6 +78,10 @@ private:
     bool need_unfusable_output_crop(
             const deserialized_op &op, dnnl_data_type_t &dt) const;
 
+    bool is_input_op(const deserialized_op &op) const;
+    bool is_output_op(const deserialized_op &op) const;
+    std::vector<size_t> get_in_out_lt_ids(const deserialized_op &op) const;
+
     const deserialized_graph *dg_;
     // Objects below are constructed.
     // OPs in the partition, which is Topo ordered

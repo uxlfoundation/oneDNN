@@ -579,7 +579,7 @@ expr_t layout_t::shift_in_bytes(const std::vector<int> &block_off) const {
 
 dim_t layout_t::offset_in_bytes(pvar_coord_t<dim_t> coord) const {
     ir_assert(has_const_sizes() && has_const_strides());
-    dim_t ret = to_cpp<dim_t>(base_);
+    int ret = to_cpp<int>(base_);
     for (int i = 0; i < nblocks(); i++) {
         auto &b = blocks_[i];
         dim_t &rem_dim = coord[b.dim];

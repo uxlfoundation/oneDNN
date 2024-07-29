@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -129,7 +129,7 @@ void graph_mem_manager_t::sycl_free_wrapper(
         void *ptr, const void *device, const void *context, void *event) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
     if (!has_bench_mode_bit(mode_bit_t::corr) && is_gpu())
-        mem_pool_.deallocate(ptr);
+        mem_pool_.deallocate(ptr, device, context, event);
     else
 #endif
         default_sycl_free(ptr, device, context, event);
@@ -162,7 +162,7 @@ void *graph_mem_manager_t::ocl_malloc_wrapper(size_t size, size_t alignment,
 
 void graph_mem_manager_t::ocl_free_wrapper(
         void *buf, cl_device_id device, cl_context context, cl_event event) {
-    mem_pool_.deallocate(buf);
+    mem_pool_.deallocate(buf, device, context, event);
 }
 
 void *ocl_allocator(size_t size, size_t alignment, cl_device_id device,

@@ -15,12 +15,12 @@
 *******************************************************************************/
 
 #include <algorithm>
-#include <iostream>
 #include <set>
 #include <vector>
 
 #include "cpu/platform.hpp"
-#include "memory_pool.hpp"
+
+#include "allocator.hpp"
 #include "utils.hpp"
 #include "utils/timer.hpp"
 
@@ -253,57 +253,6 @@ int measure_perf(timer::timer_t &t,
 
     return status;
 }
-
-#ifdef DNNL_WITH_SYCL
-
-simple_memory_pool_t &get_mem_pool() {
-    static simple_memory_pool_t mem_pool;
-    return mem_pool;
-}
-
-void *test_sycl_malloc_wrapper(
-        size_t n, size_t alignment, const void *dev, const void *ctx) {
-    return malloc_device(n, *static_cast<const sycl::device *>(dev),
-            *static_cast<const sycl::context *>(ctx));
-}
-
-void test_sycl_free_wrapper(
-        void *ptr, const void *dev, const void *context, void *event) {
-    (void)(dev);
-    if (event) {
-        static_cast<sycl::event *>(const_cast<void *>(event))->wait();
-    }
-    free(ptr, *static_cast<const sycl::context *>(context));
-}
-
-void *sycl_malloc_wrapper(
-        size_t size, size_t alignment, const void *dev, const void *ctx) {
-    void *ptr = has_bench_mode_bit(mode_bit_t::corr) || is_cpu()
-            ? test_sycl_malloc_wrapper(size, alignment, dev, ctx)
-            : get_mem_pool().allocate(size, alignment, dev, ctx);
-
-    return ptr;
-}
-
-// perf mode, mem will be finally released in mem_pool ~shared_ptr when
-// test finished.
-void sycl_free_wrapper(
-        void *ptr, const void *device, const void *context, void *event) {
-    if (has_bench_mode_bit(mode_bit_t::corr) || is_cpu()) {
-        test_sycl_free_wrapper(ptr, device, context, event);
-    } else {
-        get_mem_pool().deallocate(ptr, device, context, event);
-    }
-}
-
-sycl::queue &get_queue() {
-    static dnnl::engine test_eng {::get_test_engine()};
-    static sycl::device dev {dnnl::sycl_interop::get_device(test_eng)};
-    static sycl::context ctx {dnnl::sycl_interop::get_context(test_eng)};
-    static sycl::queue q {ctx, dev, sycl::property::queue::in_order {}};
-    return q;
-}
-#endif // DNNL_WITH_SYCL
 
 dnnl::graph::op::kind opstr2kind(const std::string &kind) {
     const std::unordered_map<std::string, dnnl::graph::op::kind> op_map = {

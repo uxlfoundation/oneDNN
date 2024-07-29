@@ -23,7 +23,6 @@
 #include "allocator.hpp"
 #include "dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
-#include "utils.hpp"
 
 extern dnnl_engine_kind_t engine_tgt_kind;
 

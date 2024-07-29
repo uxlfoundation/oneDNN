@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "cpu/platform.hpp"
+#include "memory_pool.hpp"
 #include "utils.hpp"
 #include "utils/timer.hpp"
 

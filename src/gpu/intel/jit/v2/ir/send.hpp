@@ -82,7 +82,7 @@ struct addr_t {
         for (int i = 1; i < slots; i++) {
             it.next(elems_per_slot);
             slot_incs[i] = simplify_rewrite(
-                    layout.offset_in_bytes(it.block_offset()));
+                    layout.shift_in_bytes(it.block_offset()));
         }
     }
 

@@ -388,10 +388,10 @@ public:
     pvar_map_t<expr_t> dim_sizes() const;
     int inner_block(const pvar_t &dim) const;
     int inner_stride() const;
-    expr_t stride(const pvar_t &dim, int dim_block_idx = 0) const;
+    expr_t stride(const prb_dim_t &dim, int dim_block_idx = 0) const;
     expr_t shift_in_bytes(const std::vector<int> &block_off) const;
-    dim_t offset_in_bytes(pvar_coord_t<dim_t> coord) const;
-    bool is_blocked_by(const pvar_t &dim, int block) const;
+    int offset_in_bytes(prb_coord_t<int> coord) const;
+    bool is_blocked_by(const prb_dim_t &dim, int block) const;
     bool is_blocked_by(const layout_t &other) const;
     void add_block(const pvar_t &dim, const expr_t &size,
             const expr_t &_stride = expr_t());

@@ -54,7 +54,8 @@ status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
     conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
-    conf.subbyte_pack = utils::one_of(dst_mdw.data_type(), u4, s4, f4_e2m1);
+    conf.subbyte_pack
+            = utils::one_of(dst_mdw.data_type(), data_type::u4, data_type::s4);
 
     dim_t blocks[MAX_NDIMS] = {1, 1, 0, 0, 0, 0};
     for (int i = 0; i < MAX_NDIMS; ++i) {
@@ -103,35 +104,6 @@ status_t ref_reorder_t::pd_t::init_kernel_ctx(
     def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
 
-    bool to_i4 = utils::one_of(dst_md()->data_type, s4, u4)
-            && !utils::one_of(src_md()->data_type, s4, u4);
-
-    if (to_i4) {
-        if (dst_md()->format_kind != format_kind::blocked)
-            return status::unimplemented;
-        auto &dst_blk = dst_md()->format_desc.blocking;
-
-        int dst_contig_dim = -1;
-        if (dst_blk.inner_nblks > 0) {
-            for (int i = dst_md()->ndims; i >= 0; i--)
-                if (dst_blk.inner_idxs[i] != 0) {
-                    dst_contig_dim = dst_blk.inner_idxs[i];
-                    break;
-                }
-        } else {
-            for (int i = 0; i < dst_md()->ndims; i++)
-                if (dst_blk.strides[i] == 1) dst_contig_dim = i;
-        }
-        // TODO: also check that innermost block or dimension has even size
-        if (dst_contig_dim < 0) return status::unimplemented;
-
-        dims_t d = {0};
-        d[dst_contig_dim] = 1;
-
-        const memory_desc_wrapper src_mdw(src_md());
-        kernel_ctx.define_int("SRC_S_CONTIG_D", src_mdw.off_v(d));
-    }
-
     return status::success;
 }
 
@@ -163,18 +135,33 @@ status_t ref_reorder_t::execute(const exec_ctx_t &ctx) const {
     if (conf.nelems == 0) return status::success;
 
     compute::kernel_arg_list_t arg_list;
-    arg_list.append(src);
-    arg_list.append(conf.subbyte_pack ? *tmp : dst);
+    arg_list.set(0, src);
+    arg_list.set(1, conf.subbyte_pack ? *tmp : dst);
+
+    arg_list.set(2, conf.src_quant.scales(ctx));
+    arg_list.set(3, conf.src_quant.zero_points(ctx));
+    arg_list.set(4, conf.dst_quant.scales(ctx));
+    arg_list.set(5, conf.dst_quant.zero_points(ctx));
 
     arg_list.append(conf.src_quant.scales(ctx));
     arg_list.append(conf.src_quant.zero_points(ctx));
     arg_list.append(conf.dst_quant.scales(ctx));
     arg_list.append(conf.dst_quant.zero_points(ctx));
 
-    arg_list.append(conf.sum_quant.scales());
-    arg_list.append(conf.sum_quant.zero_points());
+    auto nd_range = conf.dispatch.nd_range();
+    CHECK(large_parallel_for(ctx, nd_range, kernels_[0], arg_list, 8));
 
-    return large_parallel_for(ctx, nd_range, kernel_, arg_list, 8);
+    if (!conf.subbyte_pack) return status::success;
+
+    compute::kernel_arg_list_t repack_arg_list;
+    repack_arg_list.set(0, *tmp);
+    repack_arg_list.set(1, dst);
+    repack_arg_list.set(2, gpu_utils::into<dim_t>(conf.nelems));
+    repack_arg_list.set(3, 4);
+    compute::range_t repack_gws((conf.nelems * 4 + 7) / 8);
+    compute::nd_range_t repack_nd_range(repack_gws);
+    return large_parallel_for(
+            ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
 }
 
 } // namespace ocl

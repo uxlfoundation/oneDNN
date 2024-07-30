@@ -64,8 +64,7 @@ status_t init_layouts(const kernel_desc_t &desc, convolution_pd_t *pd) {
     maybe_init_layout(src_md, desc.src_tag.raw_tag(), false);
     maybe_init_layout(wei_md, desc.wei_tag.raw_tag(), !pd->with_groups());
     maybe_init_layout(dst_md, desc.dst_tag.raw_tag(), false);
-    maybe_init_layout(bia_md,
-            make_conv_layout_tag(tensor_kind_t::bia, "a").raw_tag(), false);
+    maybe_init_layout(bia_md, desc.bia_tag.raw_tag(), false);
     return status::success;
 }
 
@@ -82,9 +81,8 @@ public:
                 && !(pd->KSW() == 1 && pd->KSH() == 1 && pd->KSD() == 1))
             return false;
 
-        using sm = primitive_attr_t::skip_mask_t;
-        auto skip_mask = sm::post_ops | sm::sum_dt;
-        if (!pd->attr()->has_default_values(skip_mask)) return false;
+        if ((pd->is_bwd_d() || pd->is_fwd()) && pd->with_bias()) return false;
+        if (!pd->attr()->has_default_values()) return false;
         return true;
     }
 

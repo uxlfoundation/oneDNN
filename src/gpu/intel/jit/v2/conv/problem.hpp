@@ -68,15 +68,9 @@ public:
     void set_src_tag(const layout_tag_t &tag) { src_tag_ = tag; }
     void set_wei_tag(const layout_tag_t &tag) { wei_tag_ = tag; }
     void set_dst_tag(const layout_tag_t &tag) { dst_tag_ = tag; }
-    void set_bias_type(const type_t &bias_type) { bias_type_ = bias_type; }
-    void set_shape(const pvar_tile_t &shape) { shape_ = shape; }
-    bool with_bias_fwd() const {
-        return prop_ == prop_kind::forward && !bias_type_.is_undef();
-    }
-    bool with_bias_bwd_w() const {
-        return prop_ == prop_kind::backward_weights && !bias_type_.is_undef();
-    }
-    double ops() const;
+    void set_shape(const prb_tile_t &shape) { shape_ = shape; }
+    void set_bias(bool with_bias) { with_bias_ = with_bias; }
+    bool with_bias() const { return with_bias_; }
 
     void set_shape(const std::string &s);
     void normalize();
@@ -92,6 +86,7 @@ public:
 private:
     hw_t hw_;
     prop_kind_t prop_ = prop_kind::undef;
+    bool with_bias_ = false;
     layout_tag_t src_tag_;
     layout_tag_t wei_tag_;
     layout_tag_t dst_tag_;
@@ -99,6 +94,8 @@ private:
     pvar_tile_t shape_;
     std::array<int, 3> dhw_map_;
 };
+
+tensor_config_t get_tensor_config(prop_kind_t prop, bool with_bias);
 
 } // namespace conv
 } // namespace v2

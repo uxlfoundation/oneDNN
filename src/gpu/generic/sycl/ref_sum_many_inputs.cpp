@@ -62,13 +62,12 @@ status_t ref_sum_many_inputs_t::execute(const exec_ctx_t &ctx) const {
             r_args[DNNL_ARG_MULTIPLE_SRC + j + pass_in_dst]
                     = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + j + in_arg_offset);
         }
-
-        exec_ctx_t r_ctx(ctx, std::move(r_args));
-        CHECK(base_prims_[i]->execute(r_ctx));
-
         n_remaining -= args_handled;
         in_arg_offset += args_handled;
         i++;
+
+        exec_ctx_t r_ctx(ctx, std::move(r_args));
+        CHECK(base_prims_[i]->execute(r_ctx));
     }
     return status::success;
 }

@@ -17,7 +17,6 @@
 #include "gpu/generic/sycl/ref_sum.hpp"
 #include "gpu/generic/sycl/sum_kernels.hpp"
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
-#include "gpu/generic/sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -35,6 +34,9 @@ status_t ref_sum_t::pd_t::init_conf() {
     }
     conf_.dst_md = xpu::sycl::md_t(dst_md());
 
+    // XXX: should probably be tuned.
+    conf_.block_size = 16;
+    conf_.wg_size = 32;
     conf_.wk_size = memory_desc_wrapper(dst_md()).nelems();
     return status::success;
 }
@@ -66,14 +68,40 @@ status_t ref_sum_t::execute(const exec_ctx_t &ctx) const {
                 = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 6);
         auto src7_mem_arg
                 = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 7);
+        auto src8_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 8);
+        auto src9_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 9);
+        auto src10_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 10);
+        auto src11_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 11);
+        auto src12_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 12);
+        auto src13_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 13);
+        auto src14_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 14);
+        auto src15_mem_arg
+                = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MULTIPLE_SRC + 15);
 
         auto dst_mem_arg = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST);
 
         sum_kernel_vec_t sum_kernel(pd()->conf_, src0_mem_arg, src1_mem_arg,
                 src2_mem_arg, src3_mem_arg, src4_mem_arg, src5_mem_arg,
-                src6_mem_arg, src7_mem_arg, dst_mem_arg);
+                src6_mem_arg, src7_mem_arg, src8_mem_arg, src9_mem_arg,
+                src10_mem_arg, src11_mem_arg, src12_mem_arg, src13_mem_arg,
+                src14_mem_arg, src15_mem_arg, dst_mem_arg);
 
-        cgh.parallel_for(get_range(ctx, pd()->conf_.wk_size), sum_kernel);
+        const int block_size = pd()->conf_.block_size;
+        const int wg_size = pd()->conf_.wg_size;
+
+        const int t_work = pd()->conf_.wk_size;
+        const int wg_work = wg_size * block_size;
+        const int wg_cnt = utils::div_up(t_work, wg_work);
+
+        cgh.parallel_for(
+                ::sycl::nd_range<1>(wg_cnt * wg_size, wg_size), sum_kernel);
     });
 
     return status::success;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2023 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "common/stream.hpp"
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"
+#include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
 #include "gpu/gpu_sum_pd.hpp"
@@ -40,10 +41,11 @@ struct ref_sum_t : public gpu::generic::sycl::primitive_t {
         DECLARE_SUM_PD_T("dpcpp:ref:any", ref_sum_t);
 
         status_t init(impl::engine_t *engine) {
+            using namespace data_type;
             using namespace format_tag;
 
             const memory_desc_wrapper dst_d(dst_md());
-            if (!is_supported_type(dst_d.data_type()))
+            if (!utils::one_of(dst_d.data_type(), f32, bf16, f16, s8, u8))
                 return status::unimplemented;
             // Block formats are not yet supported
             // Dimensions can not be > 6
@@ -51,23 +53,14 @@ struct ref_sum_t : public gpu::generic::sycl::primitive_t {
                 return status::unimplemented;
 
             const int n = n_inputs();
-            const auto &scales = attr()->scales_;
             for (auto i = 0; i < n; ++i) {
                 const memory_desc_wrapper src_d(src_md(i));
-                if (!is_supported_type(src_d.data_type())) {
+                if (!utils::one_of(src_d.data_type(), f32, bf16, f16, s8, u8))
                     return status::unimplemented;
-                }
                 // Block formats are not yet supported
                 // Dimensions can not be > 6
-                if (!src_d.is_plain()
-                        || src_d.ndims() > xpu::sycl::md_t::max_dims) {
+                if (!src_d.is_plain() || src_d.ndims() > xpu::sycl::md_t::max_dims)
                     return status::unimplemented;
-                }
-                if (!attr()->scales_.has_default_values()
-                        && !is_supported_type(
-                                scales.get(DNNL_ARG_SRC + i).data_type_)) {
-                    return status::unimplemented;
-                }
             }
 
             const bool ok = set_default_params() == status::success

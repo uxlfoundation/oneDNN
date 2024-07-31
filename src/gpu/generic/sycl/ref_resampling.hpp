@@ -22,6 +22,7 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
+#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_resampling_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -54,6 +55,20 @@ struct ref_resampling_fwd_t : public gpu::generic::sycl::primitive_t {
                     && set_default_params() == status::success
                     && attr_.set_default_formats(dst_md(0)) == status::success
                     && (src_md(0)->format_desc.blocking.inner_nblks == 0)
+                    && (utils::everyone_is(
+                                s8, src_md(0)->data_type, dst_md(0)->data_type)
+                            || utils::everyone_is(u8, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(f32, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(bf16, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(f16, src_md(0)->data_type,
+                                    dst_md(0)->data_type)
+                            || utils::everyone_is(s32, src_md(0)->data_type,
+                                    dst_md(0)->data_type))
+                    && attr()->has_default_values(sm::post_ops)
+                    && attr_.set_default_formats(dst_md(0)) == status::success
                     && md_dims_in_range(src_md());
 
             if (!ok) { return status::unimplemented; }

@@ -18,6 +18,7 @@
 
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
+#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_lrn_pd.hpp"
 #include "xpu/sycl/types.hpp"
 

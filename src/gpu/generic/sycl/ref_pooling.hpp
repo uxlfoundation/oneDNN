@@ -24,6 +24,7 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
+#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_pooling_pd.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 #include "xpu/sycl/types.hpp"
@@ -65,7 +66,6 @@ struct ref_pooling_fwd_t : public gpu::generic::sycl::primitive_t {
                             src_md(0)->data_type != dst_md(0)->data_type,
                             desc()->prop_kind == forward_inference))
                     && attr()->has_default_values(sm::post_ops)
-                    && sycl_post_ops_t::post_ops_ok(attr(), true, false)
                     && attr_.set_default_formats(dst_md(0)) == status::success
                     && md_dims_in_range(src_md());
             if (!ok) return status::unimplemented;

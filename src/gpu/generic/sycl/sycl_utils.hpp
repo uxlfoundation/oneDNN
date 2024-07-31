@@ -19,7 +19,6 @@
 
 #include "common/memory_desc.hpp"
 #include "common/memory_desc_wrapper.hpp"
-#include "gpu/generic/sycl/stream.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,41 +33,6 @@ inline bool md_dims_in_range(const dnnl::impl::memory_desc_t *desc) {
     }
 
     return true;
-}
-
-inline ::sycl::nd_range<1> get_range(const exec_ctx_t &ctx, int work_amount) {
-    const auto *sycl_engine_impl
-            = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                    ctx.stream()->engine()->impl());
-    auto device = sycl_engine_impl->device();
-    int cu_cnt = device.get_info<::sycl::info::device::max_compute_units>();
-    // XXX: should probably be tuned.
-    int wg_size = 32;
-    int max_wgs_per_cu = 16;
-    int work_for_wg_cnt = utils::div_up(work_amount, wg_size);
-    int wg_cnt = std::min(cu_cnt * max_wgs_per_cu, work_for_wg_cnt);
-    return ::sycl::nd_range<1>(wg_cnt * wg_size, wg_size);
-}
-
-// copy from type_helpers.hpp, just without the assert
-inline size_t data_type_size(data_type_t data_type) {
-    using namespace data_type;
-    switch ((int)data_type) {
-        case f8_e5m2: return sizeof(prec_traits<f8_e5m2>::type);
-        case f8_e4m3: return sizeof(prec_traits<f8_e4m3>::type);
-        case f16: return sizeof(prec_traits<f16>::type);
-        case bf16: return sizeof(prec_traits<bf16>::type);
-        case tf32: // the tf32 type is an f32
-        case f32: return sizeof(prec_traits<f32>::type);
-        case f64: return sizeof(prec_traits<f64>::type);
-        case s32: return sizeof(prec_traits<s32>::type);
-        case s8: return sizeof(prec_traits<s8>::type);
-        case u8: return sizeof(prec_traits<u8>::type);
-        case s4: return sizeof(prec_traits<s4>::type);
-        case u4: return sizeof(prec_traits<u4>::type);
-        case boolean: return sizeof(prec_traits<boolean>::type);
-    }
-    return (size_t)-1; /* not supposed to be reachable */
 }
 
 } // namespace sycl

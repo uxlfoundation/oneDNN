@@ -22,6 +22,7 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
+#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_binary_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -53,10 +54,9 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
                     && check_formats(src0_d, src1_d, dst_d)
                     && attr()->has_default_values(
                             sm::scales_runtime | sm::post_ops)
-                    && IMPLICATION(
-                            !attr()->scales_.has_default_values(), scales_ok())
-                    && sycl_post_ops_t::post_ops_ok(attr())
-                    && md_dims_in_range(src_md(0))
+                    && IMPLICATION(!attr()->scales_.has_default_values(),
+                            check_scales_mask())
+                    && post_ops_ok() && md_dims_in_range(src_md(0))
                     && md_dims_in_range(src_md(1))
                     && md_dims_in_range(dst_md());
             if (!ok) return status::unimplemented;

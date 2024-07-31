@@ -116,12 +116,6 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
     rnn.wei_layer_type = weights_layer_d.data_type();
     rnn.wei_iter_type = weights_iter_d.data_type();
 
-    rnn.acc_data_type = acc_data_t;
-    rnn.acc_data_type_elsz = types::data_type_size(acc_data_t);
-
-    rnn.wei_layer_type = weights_layer_d.data_type();
-    rnn.wei_iter_type = weights_iter_d.data_type();
-
     rnn.n_layer = weights_layer_d.dims()[0];
     rnn.n_iter = src_layer_d.dims()[0];
     rnn.n_dir = weights_layer_d.dims()[1];

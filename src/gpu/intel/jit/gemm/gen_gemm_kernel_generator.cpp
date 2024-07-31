@@ -4381,11 +4381,6 @@ static Subregister findBlockReg(Type T, const RegisterBlock &block, int rr,
         subreg = div_up(subreg, 2); // Effective byte subreg
     }
 
-    if (Te.isInt4()) {
-        if (subreg % 2) stub("Invalid int4 offset.");
-        subreg = div_up(subreg, 2); // Effective byte subreg
-    }
-
     return regs[reg].sub(subreg, Te.ngen());
 }
 
@@ -5930,11 +5925,6 @@ static inline int block2DBaseAlignment(HW hw, int stepping) {
 #if XE3P
     if (hw >= HW::Xe3p) return 4;
 #endif
-    if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
-    return 64;
-}
-
-static inline int block2DBaseAlignment(HW hw, int stepping) {
     if (hw == HW::XeHPC && stepping < SteppingPVCXTB4) return 128;
     return 64;
 }
@@ -13788,13 +13778,6 @@ bool gemm_kernel_generator_t<hw>::gemmMake2DQuantizationLayouts(bool isA,
                 isA ? state.inputs.surfaceAScale : state.inputs.surfaceBScale);
     }
 
-    if (!X_offsetStrategy.base.isStateless()) {
-        X_offsetStrategy.base.setIndex(
-                isA ? state.inputs.surfaceAO : state.inputs.surfaceBO);
-        X_scaleStrategy.base.setIndex(
-                isA ? state.inputs.surfaceAScale : state.inputs.surfaceBScale);
-    }
-
     if (xo2D
             && !getRegLayout(Txo, X_offsetLayout, r, c, remR, remC, false,
                     AvoidFragment, tileR, tileC, XO, X_offsetStrategy))
@@ -13813,7 +13796,9 @@ bool gemm_kernel_generator_t<hw>::gemmMake2DQuantizationLayouts(bool isA,
                              : (state.Br_layout.empty() ? state.B_layout
                                                         : state.Br_layout));
     if (lsrc.empty()) stub();
-    int crosspack = lateScale ? 1 : lsrc[0].crosspack;
+    int crosspack = lsrc[0].crosspack;
+    if (int4SpecialPath && Tx == Type::bf16) crosspack = 1;
+    int cpo = div_up(crosspack, cpoDiv);
 
     auto makeQRepack
             = [&](Type Txq, Type Txq_int, vector<RegisterBlock> &repack,
@@ -14000,11 +13985,6 @@ void gemm_kernel_generator_t<hw>::gemmDequantizeOperation(bool doA, Type T,
                         break;
                     case BinaryOp::Mul:
                         mul(simd, data(1), data(1), qdata(strideq));
-                        break;
-                    case BinaryOp::ScaleSub:
-                        if (T != Type::f16) stub();
-                        mad(simd, data(1), -qdata(strideq), data(1),
-                                Immediate::hf(0x7800)); /* 0x7800 = 2^15 */
                         break;
                     case BinaryOp::ScaleSub:
                         if (T != Type::f16) stub();
@@ -14957,25 +14937,6 @@ void gemm_kernel_generator_t<hw>::kLoop(KLoop type, const GEMMProblem &problem,
     bool slmDequantizeB = dequantizeB && slmB;
     dequantizeA &= !slmDequantizeA;
     dequantizeB &= !slmDequantizeB;
-
-    bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
-    bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D;
-    bool as2DLate = as2D && state.lateScale2DA;
-    bool bs2DLate = bs2D && state.lateScale2DB;
-    as2D &= !as2DLate;
-    bs2D &= !bs2DLate;
-    bool dequantize2DA = ao2D || as2D;
-    bool dequantize2DB = bo2D || bs2D;
-    bool slmDequantize2DA = dequantize2DA && slmA;
-    bool slmDequantize2DB = dequantize2DB && slmB;
-    dequantize2DA &= !slmDequantize2DA;
-    dequantize2DB &= !slmDequantize2DB;
-    int aqGroupK = problem.aqGroupK;
-    int bqGroupK = problem.bqGroupK;
-    int kaq_load = aqGroupK * state.kaq;
-    int kbq_load = bqGroupK * state.kbq;
-    int kaq_loadLate = aqGroupK * state.kaqLate;
-    int kbq_loadLate = bqGroupK * state.kbqLate;
 
     bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
     bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D;
@@ -17815,34 +17776,6 @@ bool gemm_kernel_generator_t<hw>::gemmAccumulateCSetup(
         state.ra.safeRelease(state.inputs.boPtr);
     }
 
-    // Load and convert 0D offsets for 2D dequantization.
-    if (aoTo2D) {
-        if (problem.aoPtrDims == 1) stub();
-        auto aoLoad = loadScalars(
-                problem.Tao, {state.inputs.aoPtr}, strategy, state);
-        auto A_offsetLayout = state.Ar_offsetLayout;
-        A_offsetLayout[0].offsetBytes = aoLoad.getByteOffset();
-        gemmRepack2DOffsetData(problem.Ta_ext, problem.Tao, state.Tao_int,
-                A_offsetLayout, state.Ar_offsetLayout,
-                GRFRange(aoLoad.getBase(), 1), state.Ar_offsetRegs, problem,
-                strategy, state);
-        state.ra.safeRelease(aoLoad);
-        if (!strategy.persistent) state.ra.safeRelease(state.inputs.aoPtr);
-    }
-    if (boTo2D) {
-        if (problem.boPtrDims == 1) stub();
-        auto boLoad = loadScalars(
-                problem.Tbo, {state.inputs.boPtr}, strategy, state);
-        auto B_offsetLayout = state.Br_offsetLayout;
-        B_offsetLayout[0].offsetBytes = boLoad.getByteOffset();
-        gemmRepack2DOffsetData(problem.Tb_ext, problem.Tbo, state.Tbo_int,
-                B_offsetLayout, state.Br_offsetLayout,
-                GRFRange(boLoad.getBase(), 1), state.Br_offsetRegs, problem,
-                strategy, state);
-        state.ra.safeRelease(boLoad);
-        if (!strategy.persistent) state.ra.safeRelease(state.inputs.boPtr);
-    }
-
     // Free unneeded registers after address setup.
     if (!state.isNested) {
         if (strategy.A.address2D
@@ -19522,16 +19455,6 @@ void gemm_kernel_generator_t<hw>::gemmInitInterface(GEMMProblem &problem,
         state.inputs.boPtr = interface.getArgumentIfExists("bo_ptr");
         state.inputs.surfaceAO = interface.getArgumentSurfaceIfExists("ao_ptr");
         state.inputs.surfaceBO = interface.getArgumentSurfaceIfExists("bo_ptr");
-    }
-    if (problem.aScale2D) {
-        state.inputs.aScalePtr = interface.getArgument("a_scale_ptr");
-        state.inputs.surfaceAScale
-                = interface.getArgumentSurfaceIfExists("a_scale_ptr");
-    }
-    if (problem.bScale2D) {
-        state.inputs.bScalePtr = interface.getArgument("b_scale_ptr");
-        state.inputs.surfaceBScale
-                = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
     if (problem.aScale2D) {
         state.inputs.aScalePtr = interface.getArgument("a_scale_ptr");
@@ -21338,50 +21261,6 @@ Subregister gemm_kernel_generator_t<hw>::gemmCalcKPadding(
     shl(1, effKPad, state.inputs.k0, 1);
     min_(1, effKPad, effKPad, strategy.kPadding);
     return effKPad;
-}
-
-template <HW hw>
-void gemm_kernel_generator_t<hw>::gemmAutoTypeConversions(
-        GEMMProblem &problem, const GEMMStrategy &strategy) {
-    auto &Ta = problem.Ta, &Tb = problem.Tb, &Tc = problem.Tc;
-    auto &Ta_ext = problem.Ta_ext, &Tb_ext = problem.Tb_ext;
-
-    // Weights decompression
-    if ((Ta.isInt8() || Ta.isInt4()) && Tb.isFP() && Tc.isFP())
-        Ta = Tb.asSigned();
-    if ((Tb.isInt8() || Tb.isInt4()) && Ta.isFP() && Tc.isFP())
-        Tb = Ta.asSigned();
-
-    if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
-    if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
-
-#if XE3P
-    if (hw < HW::Xe3p) {
-        if (Ta.isF8()) Ta = Type::f16;
-        if (Tb.isF8()) Tb = Type::f16;
-    }
-#else
-    if (Ta.isF8()) Ta = Type::f16;
-    if (Tb.isF8()) Tb = Type::f16;
-#endif
-
-    if (Ta.isF8()) Ta = Type::f16;
-    if (Tb.isF8()) Tb = Type::f16;
-
-    if (hw > HW::Gen9 && !strategy.systolic && Tc == Type::f32) {
-        if (Ta == Type::f16) Ta = Type::f32;
-        if (Tb == Type::f16) Tb = Type::f32;
-    }
-
-    if (hw < HW::XeHP || (hw > HW::XeHP && !strategy.systolic)) {
-        if (Ta == Type::bf16) Ta = Type::f32;
-        if (Tb == Type::bf16) Tb = Type::f32;
-    }
-
-    if (hw == HW::Gen11) {
-        if (one_of(Ta, Type::s8, Type::u8)) Ta = Type::s16;
-        if (one_of(Tb, Type::s8, Type::u8)) Tb = Type::s16;
-    }
 }
 
 // GEMM kernel generation interface.

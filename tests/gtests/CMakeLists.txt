@@ -128,7 +128,7 @@ endif()
 
 if(NOT DNNL_USE_CLANG_SANITIZER)
     # Due to the following tests have long run-time, move them to Nightly set
-    if(DNNL_TEST_SET_COVERAGE GREATER DNNL_TEST_SET_CI AND NOT DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_SIM_CI)
+    if(DNNL_TEST_SET_COVERAGE GREATER DNNL_TEST_SET_CI)
         file(GLOB LARGE_PRIM_TEST_CASES_SRC
             test_ip_formats.cpp
             test_reorder_formats.cpp

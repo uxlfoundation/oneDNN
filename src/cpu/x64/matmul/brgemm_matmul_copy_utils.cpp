@@ -4408,11 +4408,6 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
         uni_vpbroadcastd(vmm_zp_b_val, ptr[reg_tmp]);
     }
 
-    if (req_zp_b_shift_) {
-        mov(reg_tmp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
-        uni_vpbroadcastd(vmm_zp_b_val, ptr[reg_tmp]);
-    }
-
     auto compute_K_loop = [&](const int ncolumns) {
         const int k_unroll = 8;
 

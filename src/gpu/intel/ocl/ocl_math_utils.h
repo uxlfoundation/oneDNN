@@ -20,8 +20,6 @@
 #include "gpu/intel/ocl/dispatch.h"
 #include "gpu/intel/ocl/ocl_utils.h"
 
-#include "gpu/intel/ocl/ocl_utils.h"
-
 // Due to JIT compilation and a lack of bitwise operations in implementations,
 // this warning has a high false-positive rate.
 #pragma clang diagnostic ignored "-Wconstant-logical-operand"

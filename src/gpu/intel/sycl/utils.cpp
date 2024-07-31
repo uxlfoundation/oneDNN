@@ -24,8 +24,6 @@
 
 #include "xpu/sycl/compat.hpp"
 
-#include "xpu/sycl/compat.hpp"
-
 #include <sycl/ext/oneapi/backend/level_zero.hpp>
 
 namespace dnnl {

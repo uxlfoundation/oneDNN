@@ -1099,32 +1099,44 @@ bool is_enum_name_templ_impl(
     }
 
 static auto hw_names = nstl::to_array({
-        make_enum_name(ngen::Core::Unknown, "unknown"),
-        make_enum_name(ngen::Core::Gen9, "gen9"),
-        make_enum_name(ngen::Core::Gen10, "gen10"),
-        make_enum_name(ngen::Core::Gen11, "gen11"),
-        make_enum_name(ngen::Core::XeLP, "xelp"),
-        make_enum_name(ngen::Core::XeHP, "xehp"),
-        make_enum_name(ngen::Core::XeHPG, "xehpg"),
-        make_enum_name(ngen::Core::XeHPC, "xehpc"),
-        make_enum_name(ngen::Core::Xe2, "xe2"),
+    make_enum_name(ngen::Core::Unknown, "unknown"),
+            make_enum_name(ngen::Core::Gen9, "gen9"),
+            make_enum_name(ngen::Core::Gen10, "gen10"),
+            make_enum_name(ngen::Core::Gen11, "gen11"),
+            make_enum_name(ngen::Core::XeLP, "xelp"),
+            make_enum_name(ngen::Core::XeHP, "xehp"),
+            make_enum_name(ngen::Core::XeHPG, "xehpg"),
+            make_enum_name(ngen::Core::XeHPC, "xehpc"),
+            make_enum_name(ngen::Core::Xe2, "xe2"),
+#if XE3
+            make_enum_name(ngen::Core::Xe3, "xe3"),
+#endif
+#if XE3P
+            make_enum_name(ngen::Core::Xe3p, "xe3p"),
+#endif
 });
 GPU_DEFINE_PARSE_ENUM(ngen::HW, hw_names)
 
 static auto product_family_names = nstl::to_array({
-        make_enum_name(ngen::ProductFamily::Unknown, "unknown"),
-        make_enum_name(ngen::ProductFamily::GenericGen9, "gen9"),
-        make_enum_name(ngen::ProductFamily::GenericGen10, "gen10"),
-        make_enum_name(ngen::ProductFamily::GenericGen11, "gen11"),
-        make_enum_name(ngen::ProductFamily::GenericXeLP, "xelp"),
-        make_enum_name(ngen::ProductFamily::GenericXeHP, "xehp"),
-        make_enum_name(ngen::ProductFamily::GenericXeHPG, "xehpg"),
-        make_enum_name(ngen::ProductFamily::DG2, "dg2"),
-        make_enum_name(ngen::ProductFamily::MTL, "mtl"),
-        make_enum_name(ngen::ProductFamily::ARL, "arl"),
-        make_enum_name(ngen::ProductFamily::GenericXeHPC, "xehpc"),
-        make_enum_name(ngen::ProductFamily::PVC, "pvc"),
-        make_enum_name(ngen::ProductFamily::GenericXe2, "xe2"),
+    make_enum_name(ngen::ProductFamily::Unknown, "unknown"),
+            make_enum_name(ngen::ProductFamily::GenericGen9, "gen9"),
+            make_enum_name(ngen::ProductFamily::GenericGen10, "gen10"),
+            make_enum_name(ngen::ProductFamily::GenericGen11, "gen11"),
+            make_enum_name(ngen::ProductFamily::GenericXeLP, "xelp"),
+            make_enum_name(ngen::ProductFamily::GenericXeHP, "xehp"),
+            make_enum_name(ngen::ProductFamily::GenericXeHPG, "xehpg"),
+            make_enum_name(ngen::ProductFamily::DG2, "dg2"),
+            make_enum_name(ngen::ProductFamily::MTL, "mtl"),
+            make_enum_name(ngen::ProductFamily::ARL, "arl"),
+            make_enum_name(ngen::ProductFamily::GenericXeHPC, "xehpc"),
+            make_enum_name(ngen::ProductFamily::PVC, "pvc"),
+            make_enum_name(ngen::ProductFamily::GenericXe2, "xe2"),
+#if XE3
+            make_enum_name(ngen::ProductFamily::GenericXe3, "xe3"),
+#endif
+#if XE3P
+            make_enum_name(ngen::ProductFamily::GenericXe3p, "xe3p"),
+#endif
 });
 GPU_DEFINE_PARSE_ENUM(ngen::ProductFamily, product_family_names)
 

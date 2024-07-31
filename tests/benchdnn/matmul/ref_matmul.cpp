@@ -99,10 +99,6 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const bool apply_scales_in_ker
             = wei_decompression || wei_scale_per_k || src_scale_per_k;
 
-    const bool wei_decompression = prb->weights_decompression();
-    const bool apply_scales_in_ker
-            = wei_decompression || wei_scale_per_k || src_scale_per_k;
-
     // Fast return if any dim is zero. Common logic doesn't apply because of
     // broadcast semantics.
     for (int d = 0; d < dst_m.ndims(); d++) {

@@ -433,20 +433,6 @@ void skip_unimplemented_graph_attribute(
     }
 }
 
-void skip_unimplemented_graph_attribute(
-        const dnnl::fpmath_mode &fpmath_mode, res_t *res) {
-    // Compiler backend only supports strict and bf16 for floating-point math
-    // mode
-    if (is_gc_backend()) {
-        if (fpmath_mode != dnnl::fpmath_mode::strict
-                && fpmath_mode != dnnl::fpmath_mode::bf16) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-    }
-}
-
 /// @brief check if the current partition is actually an End op
 /// @param parti the current partition
 /// @param end_op_ids a collection of End op's ids

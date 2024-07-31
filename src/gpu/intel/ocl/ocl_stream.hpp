@@ -26,10 +26,6 @@
 
 #include "xpu/ocl/context.hpp"
 #include "xpu/ocl/stream_impl.hpp"
-#include "xpu/stream_profiler.hpp"
-
-#include "xpu/ocl/context.hpp"
-#include "xpu/ocl/stream_impl.hpp"
 
 #include "gpu/intel/compute/compute_stream.hpp"
 #include "gpu/intel/ocl/mdapi_utils.hpp"

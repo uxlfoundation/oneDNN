@@ -233,8 +233,6 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (quant_enabled_ && wei_scales.ndims_ > 1) wei_scales_2d_ = true;
             if (quant_enabled_ && src_scales.ndims_ > 1) src_scales_2d_ = true;
 
-            if (quant_enabled_ && src_scales.ndims_ > 1) src_scales_2d_ = true;
-
             for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
                 auto mask = attr()->scales_.get(s).mask_;
                 VDISPATCH_GEMM(utils::one_of(mask, 0, 1 << 0, 1 << 1, 1 << 2)

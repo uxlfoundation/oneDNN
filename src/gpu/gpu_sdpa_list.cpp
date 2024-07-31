@@ -21,9 +21,6 @@
 #include "gpu/intel/ocl/micro_sdpa.hpp"
 #include "gpu/intel/ocl/ref_sdpa.hpp"
 
-#include "gpu/intel/ocl/micro_sdpa.hpp"
-#include "gpu/intel/ocl/ref_sdpa.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {

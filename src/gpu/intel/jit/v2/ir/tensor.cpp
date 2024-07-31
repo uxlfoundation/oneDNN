@@ -20,10 +20,6 @@
 
 #include "gpu/intel/jit/pass/simplify.hpp"
 
-#include <array>
-
-#include "gpu/intel/jit/pass/simplify.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {

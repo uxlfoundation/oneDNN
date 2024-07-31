@@ -145,37 +145,6 @@ void bind_kernel_grid(
     }
 }
 
-void bind_grid_idx(const conv_config_t &cfg, gemm_schedule_t &gemm_schedule,
-        const expr_t &var, bool is_tg) {
-    auto &grid_dims = is_tg ? get_thread_group_grid_conv_dims(cfg.prb())
-                            : get_kernel_grid_conv_dims(cfg.prb());
-    int grid_idx = -1;
-    for (auto &v : gemm_schedule.get_root_vars(var)) {
-        auto v_dim = prb_dim_t::from_name(v.as<var_t>().name);
-        for (int i = 0; i < 3; i++) {
-            if (grid_dims[i].has(v_dim)) {
-                ir_assert(grid_id == -1 || grid_id == i);
-                grid_id = i;
-            }
-        }
-    }
-    ir_assert(grid_id != -1);
-    gemm_schedule.bind(var, cfg.thread_group_grid().idx(grid_id));
-}
-
-void bind_kernel_grid(
-        gemm_schedule_t &gemm_schedule, const std::vector<expr_t> &vars) {
-    for (auto &v : vars) {
-        if (gemm_schedule.var_bound(v) == 1) continue;
-        auto root_vars = gemm_schedule.get_root_vars(v);
-        ir_assert((int)root_vars.size() == 1);
-        auto v_dim = prb_dim_t::from_name(root_vars[0].as<var_t>().name);
-        auto dummy_grid_var
-                = gemm_schedule.kernel_grid_walk_order().grid_var(v_dim);
-        gemm_schedule.bind(v, dummy_grid_var);
-    }
-}
-
 void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
         view_t &src_view, view_t &wei_view, view_t &dst_view) {
     auto &prb_ = cfg_.prb();

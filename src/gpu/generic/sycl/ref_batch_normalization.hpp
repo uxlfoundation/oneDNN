@@ -24,6 +24,7 @@
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
 #include "gpu/generic/sycl/sycl_q10n.hpp"
+#include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_batch_normalization_pd.hpp"
 #include "xpu/sycl/types.hpp"
 
@@ -58,24 +59,17 @@ struct ref_batch_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
                             || utils::everyone_is(f16, src_md()->data_type,
                                     dst_md()->data_type)
                             || utils::everyone_is(s8, src_md()->data_type,
-                                    dst_md()->data_type)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_BNORM(
-                    check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM((attr()->has_default_values()
-                                    || with_relu_post_op(is_training())),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_BNORM(
-                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_BNORM(memory_desc_wrapper(src_md(0))
-                            == memory_desc_wrapper(dst_md(0)),
-                    VERBOSE_INCONSISTENT_MDS, "src", "dst");
-            VDISPATCH_BNORM(md_dims_in_range(src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
-
-            VDISPATCH_BNORM(!(src_md(0)->data_type == s8 && !stats_is_src()),
-                    VERBOSE_UNSUPPORTED_DT);
-
+                                    dst_md()->data_type))
+                    && check_scale_shift_data_type()
+                    && (attr()->has_default_values()
+                            || with_relu_post_op(is_training()))
+                    && set_default_formats_common()
+                    && memory_desc_wrapper(src_md(0))
+                            == memory_desc_wrapper(dst_md(0))
+                    && md_dims_in_range(src_md());
+            if (!ok) return status::unimplemented;
+            if (src_md(0)->data_type == s8 && !stats_is_src())
+                return status::unimplemented;
             if (is_training() && (fuse_norm_relu() || fuse_norm_add_relu()))
                 init_default_ws(8);
             return init_conf();
@@ -129,20 +123,15 @@ struct ref_batch_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
                                     diff_src_md()->data_type)
                             || utils::everyone_is(f16, src_md()->data_type,
                                     diff_dst_md()->data_type,
-                                    diff_src_md()->data_type)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_BNORM(
-                    check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_BNORM(
-                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_BNORM(memory_desc_wrapper(diff_src_md())
-                            == memory_desc_wrapper(diff_dst_md()),
-                    VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
-            VDISPATCH_BNORM(md_dims_in_range(diff_src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "diff_src");
+                                    diff_src_md()->data_type))
+                    && check_scale_shift_data_type()
+                    && attr()->has_default_values()
+                    && set_default_formats_common()
+                    && memory_desc_wrapper(diff_src_md())
+                            == memory_desc_wrapper(diff_dst_md())
+                    && md_dims_in_range(diff_src_md());
 
+            if (!ok) return status::unimplemented;
             if (fuse_norm_relu() || fuse_norm_add_relu()) {
                 init_default_ws(8);
                 VDISPATCH_BNORM(compare_ws(hint_fwd_pd_), VERBOSE_WS_INIT);

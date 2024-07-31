@@ -172,18 +172,6 @@ status_t ref_batch_normalization_bwd_t::execute_backward(
         const exec_ctx_t &ctx) const {
 
     return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
-        auto data = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC);
-        auto diff_data = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC);
-        auto diff_src1 = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC_1);
-        auto scale = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SCALE);
-        auto diff_scale
-                = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SCALE); //added
-        auto diff_shift = CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SHIFT);
-        auto mean = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_MEAN);
-        auto var = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_VARIANCE);
-        auto dst = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DST);
-        auto diff_dst = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_DST);
-        auto ws = CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_WORKSPACE);
         const int block_size = pd()->conf_.block_size;
         const int wg_size = pd()->conf_.wg_size;
         int work_per_wg = wg_size * block_size;

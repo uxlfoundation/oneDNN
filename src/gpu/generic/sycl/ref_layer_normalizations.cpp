@@ -96,6 +96,8 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
         return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
             layer_normalization_fwd_kernel_vec_t layer_normalization_fwd_kernel(
                     pd()->conf_, cgh, ctx);
+            const int block_size = pd()->conf_.block_size;
+            const int wg_size = pd()->conf_.wg_size;
 
             cgh.parallel_for(get_range(ctx, pd()->conf_.wk_size),
                     layer_normalization_fwd_kernel);

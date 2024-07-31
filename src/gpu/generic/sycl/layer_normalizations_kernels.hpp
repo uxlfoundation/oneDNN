@@ -32,12 +32,8 @@ namespace sycl {
 
 struct layer_normalization_fwd_kernel_vec_t {
     layer_normalization_fwd_kernel_vec_t(
-            const sycl_layer_normalization_conf_t &conf,
-            xpu::sycl::in_memory_arg_t &data, xpu::sycl::in_memory_arg_t &scale,
-            xpu::sycl::in_memory_arg_t &shift, xpu::sycl::in_memory_arg_t &stat,
-            xpu::sycl::in_memory_arg_t &var, xpu::sycl::out_memory_arg_t &dst,
-            xpu::sycl::in_memory_arg_t &rt_scale,
-            xpu::sycl::in_memory_arg_t &dst_scale)
+            const sycl_layer_normalization_conf_t &conf, ::sycl::handler &cgh,
+            const exec_ctx_t &ctx)
         : conf_(conf)
         , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
         , scale_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SCALE))
@@ -130,13 +126,8 @@ private:
 
 struct layer_normalization_fwd_kernel_vec1_t {
     layer_normalization_fwd_kernel_vec1_t(
-            const sycl_layer_normalization_conf_t &conf,
-            xpu::sycl::in_memory_arg_t &data, xpu::sycl::in_memory_arg_t &scale,
-            xpu::sycl::in_memory_arg_t &shift, xpu::sycl::out_memory_arg_t &dst,
-            xpu::sycl::out_memory_arg_t &mean_out,
-            xpu::sycl::out_memory_arg_t &var_out,
-            xpu::sycl::in_memory_arg_t &rt_scale,
-            xpu::sycl::in_memory_arg_t &dst_scale)
+            const sycl_layer_normalization_conf_t &conf, ::sycl::handler &cgh,
+            const exec_ctx_t &ctx)
         : conf_(conf)
         , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
         , scale_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SCALE))
@@ -260,14 +251,8 @@ private:
 
 struct layer_normalization_bwd_kernel_vec_t {
     layer_normalization_bwd_kernel_vec_t(
-            const sycl_layer_normalization_conf_t &conf,
-            xpu::sycl::in_memory_arg_t &data,
-            xpu::sycl::out_memory_arg_t &diff_data,
-            xpu::sycl::in_memory_arg_t &scale,
-            xpu::sycl::out_memory_arg_t &diff_scale,
-            xpu::sycl::out_memory_arg_t &diff_shift,
-            xpu::sycl::in_memory_arg_t &stat, xpu::sycl::in_memory_arg_t &var,
-            xpu::sycl::in_memory_arg_t &diff_dst)
+            const sycl_layer_normalization_conf_t &conf, ::sycl::handler &cgh,
+            const exec_ctx_t &ctx)
         : conf_(conf)
         , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
         , diff_data_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC))
@@ -384,14 +369,8 @@ private:
 
 struct layer_normalization_bwd_kernel_vec2_t {
     layer_normalization_bwd_kernel_vec2_t(
-            const sycl_layer_normalization_conf_t &conf,
-            xpu::sycl::in_memory_arg_t &data,
-            xpu::sycl::out_memory_arg_t &diff_data,
-            xpu::sycl::in_memory_arg_t &scale,
-            xpu::sycl::out_memory_arg_t &diff_scale,
-            xpu::sycl::out_memory_arg_t &diff_shift,
-            xpu::sycl::in_memory_arg_t &stat, xpu::sycl::in_memory_arg_t &var,
-            xpu::sycl::in_memory_arg_t &diff_dst)
+            const sycl_layer_normalization_conf_t &conf, ::sycl::handler &cgh,
+            const exec_ctx_t &ctx)
         : conf_(conf)
         , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC))
         , diff_data_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC))

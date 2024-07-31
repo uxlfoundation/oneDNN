@@ -604,10 +604,13 @@ struct send_2d_params_t {
 
     bool is_empty() const { return !is_valid; }
 
+    bool is_prefetch() const { return send_op == send_op_t::prefetch; }
+
     bool is_store() const { return send_op == send_op_t::store; }
 
     int max_count() const {
-        return block_2d_max_count(is_store(), transpose, w, type.size());
+        return block_2d_max_count(
+                hw, is_prefetch(), is_store(), transpose, w, type.size());
     }
 
     // Reduce the number of messages by increasing count per
@@ -648,7 +651,7 @@ struct send_2d_params_t {
         return true;
     }
 
-    bool is_supported(const hw_t &hw) const {
+    bool is_supported() const {
         if (!block_2d_width_ok(W, type.size()))
             return fail_2d("Width is not supported.");
         if (!block_2d_height_ok(H)) return fail_2d("Height is not supported.");
@@ -784,6 +787,7 @@ struct send_2d_params_t {
     IR_DEFINE_DUMP()
 
     bool is_valid = false;
+    hw_t hw;
     send_op_t send_op = send_op_t::undef;
     type_t type;
     bool use_xy = true;
@@ -1675,6 +1679,7 @@ public:
             H /= h_vstride;
         }
 
+        params_.hw = info_.hw();
         params_.use_xy = use_xy;
         params_.transpose = hint.transpose;
         params_.vnni = hint.vnni;
@@ -1693,7 +1698,7 @@ public:
         params_.h_vstride = h_vstride;
 
         if (!params_.apply_vnni_factor(hint.vnni_permute_factor)) return false;
-        if (!params_.is_supported(info_.hw())) return false;
+        if (!params_.is_supported()) return false;
         if (!base_alignment_ok(vlayout, mod_info, h_tdim, h_vstride))
             return false;
         if (!x_alignment_ok(w_tdim, mod_info)) return false;

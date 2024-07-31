@@ -2044,11 +2044,54 @@ private:
         return plan_status_t::success;
     }
 
+#if XE3P
+    // Extends the view to cover 256 contiguous bytes for more efficient
+    // prefetching.
+    void maybe_extend_prefetch_thread_view_to_256_bytes(
+            view_t &thr_view) const {
+        auto thr_layout = thr_view.create_pseudo_vlayout();
+        auto &blocks = thr_layout.blocks();
+        if (blocks.size() <= 1) return;
+
+        auto &b0 = blocks[0];
+        auto &b1 = blocks[1];
+        auto inner_var = thr_view.vvars()[b0.dim_idx];
+        bool is_block_strided
+                = (b0.stride == stride_t(1)) && (b1.stride > b0.block);
+        int type_size = thr_layout.type().size();
+        int full_dim_size
+                = gemm_schedule_.a_view().vdims()[b0.dim_idx] * type_size;
+        bool size_ge_256b = (full_dim_size >= 256);
+        int b0_size = b0.block * type_size;
+        bool prefetch_lt_256b = (b0_size < 256);
+        bool is_inner_loop = gemm_schedule_.is_inner_loop(inner_var);
+        // Extend if the following conditions are satisfied:
+        // - The inner block (b0) is dense and smaller than 256 bytes
+        // - The original tensor has at least 256 bytes across b0 dimension
+        // - The inner block dimensions corresponds to the inner loop
+        //   dimension. We want to prefetch extra cache lines only if they are
+        //   going to be used by the next iterations.
+        if (is_block_strided && size_ge_256b && prefetch_lt_256b
+                && is_inner_loop) {
+            ir_assert(thr_view.vdims()[b0.dim_idx] == b0.block);
+            int factor = 256 / b0_size;
+            thr_view.set_vdim(inner_var, b0.block * factor,
+                    thr_view.vstart(b0.dim_idx),
+                    /*overwrite=*/true);
+        }
+    }
+#endif
+
     plan_status_t init_x_prefetch_plan(abc_kind_t abc, const view_t &tg_view,
             grid_info_t &grid, send_plan_t &prefetch) const {
         if (!use_prefetch(abc)) return plan_status_t::success;
         auto &tg = cfg_.thread_group_grid();
         auto thr_view = tg_view.split(tg, &grid);
+#if XE3P
+        if (cfg_.hw() == ngen::HW::Xe3p) {
+            maybe_extend_prefetch_thread_view_to_256_bytes(thr_view);
+        }
+#endif
         auto params = get_send_params(cfg_.exec_cfg(), send_op_t::prefetch,
                 send_address_t::a64, fma_kind_t::undef, abc, thr_view,
                 gemm_schedule_);

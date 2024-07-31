@@ -580,6 +580,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     // The data may be loaded in a wider data type to get a proper GRF layout.
     if (!hint.type.is_undef()) vlayout = vlayout.reinterpret(hint.type);
 
+    bool is_prefetch = (send_op_ == send_op_t::prefetch);
     bool is_store = (send_op_ == send_op_t::store);
     auto send_type = type_t::u(vlayout.type().size() * 8);
     auto blocks = vlayout.blocks();
@@ -647,8 +648,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     // Try to reduce the number of messages by increasing count per message.
     int try_count = count * 2;
-    int max_count
-            = block_2d_max_count(is_store, transpose, width, mem_type_.size());
+    int max_count = block_2d_max_count(send_params.hw, is_prefetch, is_store,
+            transpose, width, mem_type_.size());
     while (try_count <= max_count) {
         if (b0.block % (try_count * width) != 0) break;
         count = try_count;
@@ -847,8 +848,9 @@ bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
     int factor = 64 / surface_width_size;
     if (h % factor != 0) return false;
 
-    int max_count = block_2d_max_count(
-            send_op_ == send_op_t::store, transpose, w, send_type.size());
+    int max_count = block_2d_max_count(ir_ctx_->hw(),
+            send_op_ == send_op_t::prefetch, send_op_ == send_op_t::store,
+            transpose, w, send_type.size());
     if (factor > max_count) return false;
 
     vnni_permute_factor = factor;
@@ -1029,8 +1031,8 @@ stmt_t access_builder_t::create_send_stmt(
 
 static const int any_block = 0;
 
-send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &_type,
-        bool vnni, bool transpose, int w_tile, int h_tile,
+send_2d_hint_t get_send_2d_hint(const hw_t &hw, send_op_t send_op,
+        const type_t &_type, bool vnni, bool transpose, int w_tile, int h_tile,
         int w_blk = any_block, int h_blk = any_block) {
     auto type = _type;
 
@@ -1066,6 +1068,14 @@ send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &_type,
 
     int w_min = (transpose ? 1 : 4 / type.size());
     int w_max = (transpose ? 8 : (vnni ? 16 : 64 / type.size()));
+    int w_fixed_max = 0;
+#if XE3P
+    // Xe3p supports 256 bytes per width (the exact value) for prefetches only.
+    // Otherwise the width has to be <= 64 bytes.
+    if ((send_op == send_op_t::prefetch) && hw == ngen::HW::Xe3p) {
+        w_fixed_max = 256 / type.size();
+    }
+#endif
     int h_min = (vnni ? (4 / type.size()) : 1);
     int h_max = (is_load_or_prefetch ? 32 : 8);
 
@@ -1074,14 +1084,18 @@ send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &_type,
     if (h_blk != any_block && (h_blk < h_min || h_blk > h_max))
         return send_2d_hint_t();
 
-    auto find_block = [&](int dim, int min, int max) {
+    auto find_block = [&](int dim, int min, int max, int fixed_max = 0) {
+        if (fixed_max != 0 && dim > max && dim % fixed_max == 0) {
+            return fixed_max;
+        }
         for (int b = max; b >= min; b--) {
             if (dim % b == 0) return b;
         }
         return -1;
     };
 
-    if (w_blk == any_block) w_blk = find_block(w_tile, w_min, w_max);
+    if (w_blk == any_block)
+        w_blk = find_block(w_tile, w_min, w_max, w_fixed_max);
     if (h_blk == any_block) h_blk = find_block(h_tile, h_min, h_max);
     if (w_blk == -1 || h_blk == -1) return send_2d_hint_t();
 
@@ -1138,8 +1152,8 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
     auto &b1 = blocks[1];
 
     if (b0.block >= 128) return hint;
-    return get_send_2d_hint(
-            send_op, view.type(), false, false, b0.block, b1.block);
+    return get_send_2d_hint(exec_cfg.hw(), send_op, view.type(), false, false,
+            b0.block, b1.block);
 }
 
 send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
@@ -1175,12 +1189,15 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
         if (b0_blk != any_block && b0.block % b0_blk != 0) return hint;
         if (b1_blk != any_block && b1.block % b1_blk != 0) return hint;
         bool vnni = is_dpas_src1 && !transpose;
-        hint = get_send_2d_hint(send_op, view.type(), vnni, transpose, b0.block,
-                b1.block, b0_blk, b1_blk);
+        hint = get_send_2d_hint(exec_cfg.hw(), send_op, view.type(), vnni,
+                transpose, b0.block, b1.block, b0_blk, b1_blk);
     } else {
-        if (b0.block >= 128) return hint;
-        hint = get_send_2d_hint(
-                send_op, view.type(), false, false, b0.block, b1.block);
+        hint = get_send_2d_hint(exec_cfg.hw(), send_op, view.type(), false,
+                false, b0.block, b1.block);
+        if (!hint.enable) return send_2d_hint_t();
+        int msg_count = (b0.block / hint.width) * (b1.block / hint.height);
+        if (msg_count == 1 || b0.block < 128) return hint;
+        return send_2d_hint_t();
     }
 
     // XXX: Special VNNI permute hint to use with Xa16b:bf16 layout which can't

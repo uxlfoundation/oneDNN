@@ -17,11 +17,10 @@
 #ifndef GPU_SYCL_CONVOLUTION_KERNELS_HPP
 #define GPU_SYCL_CONVOLUTION_KERNELS_HPP
 
-#include "common/primitive_exec_types.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"
 #include "gpu/generic/sycl/sycl_post_ops.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-#include "xpu/sycl/memory_storage_base.hpp"
+#include "gpu/generic/sycl/sycl_q10n.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {
@@ -33,45 +32,41 @@ namespace sycl {
 struct convolution_kernel_fwd_t {
     static constexpr int max_supported_ndims = 6;
 
-    convolution_kernel_fwd_t(const sycl_convolution_fwd_conf_t &conf,
-            ::sycl::handler &cgh, const exec_ctx_t &ctx)
+    convolution_kernel_fwd_t(const sycl_convolution_conf_t &conf,
+            xpu::sycl::in_memory_arg_t &data,
+            xpu::sycl::in_memory_arg_t &weights,
+            xpu::sycl::in_memory_arg_t &bias, xpu::sycl::out_memory_arg_t &dst,
+            xpu::sycl::in_memory_arg_t &data_scale,
+            xpu::sycl::in_memory_arg_t &weights_scale,
+            xpu::sycl::in_memory_arg_t &dst_scale,
+            xpu::sycl::in_memory_arg_t &data_zeropoints,
+            xpu::sycl::in_memory_arg_t &dst_zeropoints,
+            data_type_t scales_data_dt, data_type_t scales_weights_dt,
+            data_type_t zeropoints_data_dt, data_type_t zeropoints_dst_dt)
         : conf_(conf)
-        , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC_0))
-        , weights_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_WEIGHTS))
-        , bias_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_BIAS))
-        , dst_(CTX_INOUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST))
-        , data_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0))
-        , weights_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS))
-        , dst_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
-        , data_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC_0))
-        , dst_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST))
-        , scales_data_dt_(conf_.do_scale_data
-                          ? ctx.memory_mdw(
-                                       DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0)
-                                    .data_type()
-                          : data_type_t::dnnl_f32)
-        , scales_weights_dt_(conf_.do_scale_weights
-                          ? ctx.memory_mdw(
-                                       DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)
-                                    .data_type()
-                          : data_type_t::dnnl_f32)
-        , zeropoints_data_dt_(conf_.use_data_zeropoints
-                          ? ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS
-                                       | DNNL_ARG_SRC_0)
-                                    .data_type()
-                          : data_type_t::dnnl_f32)
-        , zeropoints_dst_dt_(conf_.use_dst_zeropoints
-                          ? ctx.memory_mdw(
-                                       DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST)
-                                    .data_type()
-                          : data_type_t::dnnl_f32) {}
+        , data_(data)
+        , weights_(weights)
+        , bias_(bias)
+        , dst_(dst)
+        , data_scale_(data_scale)
+        , weights_scale_(weights_scale)
+        , dst_scale_(dst_scale)
+        , data_zeropoints_(data_zeropoints)
+        , dst_zeropoints_(dst_zeropoints)
+        , scales_data_dt_(scales_data_dt)
+        , scales_weights_dt_(scales_weights_dt)
+        , zeropoints_data_dt_(zeropoints_data_dt)
+        , zeropoints_dst_dt_(zeropoints_dst_dt) {}
 
     void operator()(::sycl::nd_item<1> item) const {
+        auto sg = item.get_sub_group();
+        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
+        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
+        size_t wi_offset_t = sg.get_local_id();
+        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
+
+        size_t base_idx = offset_t * conf_.block_size;
+
         const float sm_data = (conf_.do_scale_data
                         ? load_float_value(scales_data_dt_, data_scale_ptr(), 0)
                         : 1.f);
@@ -124,95 +119,106 @@ struct convolution_kernel_fwd_t {
         const int DH = conf_.dilation[1];
         const int DW = conf_.dilation[2];
 
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
-                idx += item.get_global_range(0)) {
-            for (int i = 0; i < max_supported_ndims; i++) {
-                off[i] = idx / dst_strides[i] % dst_dims[i];
-            }
+        for (int i = 0; i < conf_.block_size; i++) {
+            int idx = base_idx + i;
+            if (idx < conf_.wk_size) {
+                for (int i = 0; i < max_supported_ndims; i++) {
+                    off[i] = idx / dst_strides[i] % dst_dims[i];
+                }
 
-            const int n = off[0];
-            const int oc_tot = off[1];
-            const int oc = oc_tot % OC;
-            const int g = oc_tot / OC;
+                const int n = off[0];
+                const int oc_tot = off[1];
+                const int oc = oc_tot % OC;
+                const int g = oc_tot / OC;
 
-            const int od = off[2];
-            const int oh = off[3];
-            const int ow = off[4];
+                const int od = off[2];
+                const int oh = off[3];
+                const int ow = off[4];
 
-            float accumulator = 0;
-            for (int ic = 0; ic < IC; ++ic) {
-                for (int kd = 0; kd < KD; ++kd) {
-                    for (int kh = 0; kh < KH; ++kh) {
-                        for (int kw = 0; kw < KW; ++kw) {
-                            const int id = od * SD - PD + kd * (1 + DD);
-                            const int ih = oh * SH - PH + kh * (1 + DH);
-                            const int iw = ow * SW - PW + kw * (1 + DW);
+                float accumulator = 0;
+                for (int ic = 0; ic < IC; ++ic) {
+                    for (int kd = 0; kd < KD; ++kd) {
+                        for (int kh = 0; kh < KH; ++kh) {
+                            for (int kw = 0; kw < KW; ++kw) {
+                                const int id = od * SD - PD + kd * (1 + DD);
+                                const int ih = oh * SH - PH + kh * (1 + DH);
+                                const int iw = ow * SW - PW + kw * (1 + DW);
 
-                            if (id < 0 || id >= data_dims[2] || ih < 0
-                                    || ih >= data_dims[3] || iw < 0
-                                    || iw >= data_dims[4]) {
-                                continue;
+                                if (id < 0 || id >= data_dims[2] || ih < 0
+                                        || ih >= data_dims[3] || iw < 0
+                                        || iw >= data_dims[4]) {
+                                    continue;
+                                }
+
+                                dims_t off_data {n, g * IC + ic, id, ih, iw};
+                                const int data_idx = data_md().off_v(off_data);
+                                dims_t off_weights {g, oc, ic, kd, kh, kw};
+                                dims_t off_weights_no_groups {
+                                        oc, ic, kd, kh, kw};
+                                const int weights_idx = weights_md().off_v(
+                                        no_groups ? off_weights_no_groups
+                                                  : off_weights);
+
+                                auto data = load_float_value(
+                                        data_md().data_type(), data_ptr(),
+                                        data_idx);
+                                auto weight = load_float_value(
+                                        weights_md().data_type(), weights_ptr(),
+                                        weights_idx);
+
+                                if (conf_.use_data_zeropoints) {
+                                    int zpoint_idx = conf_.single_data_zeropoint
+                                            ? 0
+                                            : g * IC + ic;
+                                    auto data_zeropoint = load_float_value(
+                                            zeropoints_data_dt_,
+                                            data_zeropoint_ptr(), zpoint_idx);
+                                    data -= data_zeropoint;
+                                }
+                                accumulator += data * weight;
                             }
-
-                            dims_t off_data {n, g * IC + ic, id, ih, iw};
-                            const int data_idx = data_md().off_v(off_data);
-                            dims_t off_weights {g, oc, ic, kd, kh, kw};
-                            dims_t off_weights_no_groups {oc, ic, kd, kh, kw};
-                            const int weights_idx = weights_md().off_v(no_groups
-                                            ? off_weights_no_groups
-                                            : off_weights);
-
-                            auto data = load_float_value(data_md().data_type(),
-                                    data_ptr(), data_idx);
-                            auto weight
-                                    = load_float_value(weights_md().data_type(),
-                                            weights_ptr(), weights_idx);
-
-                            if (conf_.use_data_zeropoints) {
-                                int zpoint_idx = conf_.single_data_zeropoint
-                                        ? 0
-                                        : g * IC + ic;
-                                auto data_zeropoint = load_float_value(
-                                        zeropoints_data_dt_,
-                                        data_zeropoint_ptr(), zpoint_idx);
-                                data -= data_zeropoint;
-                            }
-                            accumulator += data * weight;
                         }
                     }
                 }
-            }
-            if (conf_.do_scale_data) { accumulator *= sm_data; }
-            if (conf_.do_scale_weights) {
-                if (!conf_.single_weight_scale) {
-                    sm_weights = load_float_value(
-                            scales_weights_dt_, weights_scale_ptr(), oc_tot);
+                if (conf_.do_scale_data) { accumulator *= sm_data; }
+                if (conf_.do_scale_weights) {
+                    if (!conf_.single_weight_scale) {
+                        sm_weights = load_float_value(scales_weights_dt_,
+                                weights_scale_ptr(), oc_tot);
+                    }
+                    accumulator *= sm_weights;
                 }
-                accumulator *= sm_weights;
-            }
 
-            if (conf_.has_bias) {
-                auto bias = load_float_value(conf_.bias_dt, bias_ptr(), oc_tot);
-                accumulator += bias;
-            }
+                if (bias_md().ndims() != 0) {
+                    auto bias = load_float_value(
+                            bias_md().data_type(), bias_ptr(), oc_tot);
+                    accumulator += bias;
+                }
 
-            accumulator = conf_.post_ops.apply(accumulator, dst_, idx);
+                auto dst = load_float_value(
+                        conf_.post_ops.sum_dt_ == dnnl_data_type_undef
+                                ? dst_md().data_type()
+                                : conf_.post_ops.sum_dt_,
+                        dst_ptr(), idx);
+                accumulator = conf_.post_ops.apply(accumulator, dst);
 
-            if (conf_.do_scale_dst) { accumulator /= sm_dst; }
-            if (conf_.use_dst_zeropoints) {
-                int zpoint_idx = conf_.single_dst_zeropoint ? 0 : oc_tot;
-                auto dst_zeropoint = load_float_value(
-                        zeropoints_dst_dt_, dst_zeropoint_ptr(), zpoint_idx);
-                accumulator += dst_zeropoint;
+                if (conf_.do_scale_dst) { accumulator /= sm_dst; }
+                if (conf_.use_dst_zeropoints) {
+                    int zpoint_idx = conf_.single_dst_zeropoint ? 0 : oc_tot;
+                    auto dst_zeropoint = load_float_value(zeropoints_dst_dt_,
+                            dst_zeropoint_ptr(), zpoint_idx);
+                    accumulator += dst_zeropoint;
+                }
+                store_float_value(
+                        dst_md().data_type(), accumulator, dst_ptr(), idx);
             }
-            store_float_value(
-                    dst_md().data_type(), accumulator, dst_ptr(), idx);
         }
     }
 
 private:
     const xpu::sycl::md_t &data_md() const { return conf_.data_md; }
     const xpu::sycl::md_t &weights_md() const { return conf_.weights_md; }
+    const xpu::sycl::md_t &bias_md() const { return conf_.bias_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
     void *data_ptr() const { return data_.get_pointer(); }
@@ -225,12 +231,12 @@ private:
     void *data_zeropoint_ptr() const { return data_zeropoints_.get_pointer(); }
     void *dst_zeropoint_ptr() const { return dst_zeropoints_.get_pointer(); }
 
-    sycl_convolution_fwd_conf_t conf_;
+    sycl_convolution_conf_t conf_;
 
     xpu::sycl::in_memory_arg_t data_;
     xpu::sycl::in_memory_arg_t weights_;
     xpu::sycl::in_memory_arg_t bias_;
-    xpu::sycl::inout_memory_arg_t dst_;
+    xpu::sycl::out_memory_arg_t dst_;
     xpu::sycl::in_memory_arg_t data_scale_;
     xpu::sycl::in_memory_arg_t weights_scale_;
     xpu::sycl::in_memory_arg_t dst_scale_;
@@ -245,43 +251,32 @@ private:
 struct convolution_kernel_bwd_data_t {
     static constexpr int max_supported_ndims = 6;
 
-    convolution_kernel_bwd_data_t(const sycl_convolution_bwd_data_conf_t &conf,
-            ::sycl::handler &cgh, const exec_ctx_t &ctx)
+    convolution_kernel_bwd_data_t(const sycl_convolution_conf_t &conf,
+            xpu::sycl::out_memory_arg_t &diff_data,
+            xpu::sycl::in_memory_arg_t &weights,
+            xpu::sycl::in_memory_arg_t &bias,
+            xpu::sycl::in_memory_arg_t &diff_dst,
+            xpu::sycl::in_memory_arg_t &data_scale,
+            xpu::sycl::in_memory_arg_t &weights_scale,
+            xpu::sycl::in_memory_arg_t &dst_scale,
+            xpu::sycl::in_memory_arg_t &data_zeropoints,
+            xpu::sycl::in_memory_arg_t &dst_zeropoints,
+            data_type_t scales_data_dt, data_type_t scales_weights_dt,
+            data_type_t zeropoints_data_dt, data_type_t zeropoints_dst_dt)
         : conf_(conf)
-        , diff_data_(CTX_INOUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_SRC))
-        , weights_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_WEIGHTS))
-        , bias_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_BIAS))
-        , diff_dst_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_DST))
-        , data_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0))
-        , weights_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS))
-        , dst_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
-        , data_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC_0))
-        , dst_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
-                  DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST))
-        , scales_data_dt_(conf_.do_scale_data
-                          ? ctx.memory_mdw(
-                                       DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0)
-                                    .data_type()
-                          : data_type_t::dnnl_f32)
-        , scales_weights_dt_(conf_.do_scale_weights
-                          ? ctx.memory_mdw(
-                                       DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)
-                                    .data_type()
-                          : data_type_t::dnnl_f32)
-        , zeropoints_data_dt_(conf_.use_data_zeropoints
-                          ? ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS
-                                       | DNNL_ARG_SRC_0)
-                                    .data_type()
-                          : data_type_t::dnnl_f32)
-        , zeropoints_dst_dt_(conf_.use_dst_zeropoints
-                          ? ctx.memory_mdw(
-                                       DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST)
-                                    .data_type()
-                          : data_type_t::dnnl_f32) {}
+        , diff_data_(diff_data)
+        , weights_(weights)
+        , bias_(bias)
+        , diff_dst_(diff_dst)
+        , data_scale_(data_scale)
+        , weights_scale_(weights_scale)
+        , dst_scale_(dst_scale)
+        , data_zeropoints_(data_zeropoints)
+        , dst_zeropoints_(dst_zeropoints)
+        , scales_data_dt_(scales_data_dt)
+        , scales_weights_dt_(scales_weights_dt)
+        , zeropoints_data_dt_(zeropoints_data_dt)
+        , zeropoints_dst_dt_(zeropoints_dst_dt) {}
 
     void operator()(::sycl::nd_item<1> item) const {
         const float sm_data = (conf_.do_scale_data
@@ -393,19 +388,14 @@ struct convolution_kernel_bwd_data_t {
                                     = load_float_value(weights_md().data_type(),
                                             weights_ptr(), weights_idx);
 
-                            if (conf_.use_data_zeropoints) {
-                                /* 
-                                Zeropoints are only used when this kernel is used to implement fwd pass of deconvolution.
-                                In that case diff_dst is actually data of deconvolution. So in that case data zeropoint goes with diff_dst.
-                                Done to be consistent with OpenCL backend, so both can use the same deconvolution implementation.
-                                */
-                                int zpoint_idx = conf_.single_data_zeropoint
+                            if (conf_.use_dst_zeropoints) {
+                                int zpoint_idx = conf_.single_dst_zeropoint
                                         ? 0
                                         : ic_tot;
-                                auto data_zeropoint = load_float_value(
-                                        zeropoints_data_dt_,
-                                        data_zeropoint_ptr(), zpoint_idx);
-                                diff_dst -= data_zeropoint;
+                                auto dst_zeropoint = load_float_value(
+                                        zeropoints_dst_dt_, dst_zeropoint_ptr(),
+                                        zpoint_idx);
+                                diff_dst -= dst_zeropoint;
                             }
                             accumulator += diff_dst * weight;
                         }
@@ -421,19 +411,25 @@ struct convolution_kernel_bwd_data_t {
                 accumulator *= sm_weights;
             }
 
-            if (conf_.has_bias) {
-                auto bias = load_float_value(conf_.bias_dt, bias_ptr(), ic_tot);
+            if (bias_md().ndims() != 0) {
+                auto bias = load_float_value(
+                        bias_md().data_type(), bias_ptr(), ic_tot);
                 accumulator += bias;
             }
 
-            accumulator = conf_.post_ops.apply(accumulator, diff_data_, idx);
+            auto diff_data = load_float_value(
+                    conf_.post_ops.sum_dt_ == dnnl_data_type_undef
+                            ? diff_data_md().data_type()
+                            : conf_.post_ops.sum_dt_,
+                    diff_data_ptr(), idx);
+            accumulator = conf_.post_ops.apply(accumulator, diff_data);
 
             if (conf_.do_scale_dst) { accumulator /= sm_dst; }
-            if (conf_.use_dst_zeropoints) {
-                int zpoint_idx = conf_.single_dst_zeropoint ? 0 : g * IC + ic;
-                auto dst_zeropoint = load_float_value(
-                        zeropoints_dst_dt_, dst_zeropoint_ptr(), zpoint_idx);
-                accumulator += dst_zeropoint;
+            if (conf_.use_data_zeropoints) {
+                int zpoint_idx = conf_.single_data_zeropoint ? 0 : g * IC + ic;
+                auto data_zeropoint = load_float_value(
+                        zeropoints_data_dt_, data_zeropoint_ptr(), zpoint_idx);
+                accumulator += data_zeropoint;
             }
             store_float_value(diff_data_md().data_type(), accumulator,
                     diff_data_ptr(), idx);
@@ -443,6 +439,7 @@ struct convolution_kernel_bwd_data_t {
 private:
     const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
     const xpu::sycl::md_t &weights_md() const { return conf_.weights_md; }
+    const xpu::sycl::md_t &bias_md() const { return conf_.bias_md; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
 
     void *diff_data_ptr() const { return diff_data_.get_pointer(); }
@@ -455,9 +452,9 @@ private:
     void *data_zeropoint_ptr() const { return data_zeropoints_.get_pointer(); }
     void *dst_zeropoint_ptr() const { return dst_zeropoints_.get_pointer(); }
 
-    sycl_convolution_bwd_data_conf_t conf_;
+    sycl_convolution_conf_t conf_;
 
-    xpu::sycl::inout_memory_arg_t diff_data_;
+    xpu::sycl::out_memory_arg_t diff_data_;
     xpu::sycl::in_memory_arg_t weights_;
     xpu::sycl::in_memory_arg_t bias_;
     xpu::sycl::in_memory_arg_t diff_dst_;
@@ -475,15 +472,16 @@ private:
 struct convolution_kernel_bwd_weights_t {
     static constexpr int max_supported_ndims = 6;
 
-    convolution_kernel_bwd_weights_t(
-            const sycl_convolution_bwd_weights_conf_t &conf,
-            ::sycl::handler &cgh, const exec_ctx_t &ctx, int data_arg,
-            int diff_dst_arg)
+    convolution_kernel_bwd_weights_t(const sycl_convolution_conf_t &conf,
+            xpu::sycl::in_memory_arg_t &data,
+            xpu::sycl::out_memory_arg_t &diff_weights,
+            xpu::sycl::out_memory_arg_t &diff_bias,
+            xpu::sycl::in_memory_arg_t &diff_dst)
         : conf_(conf)
-        , data_(CTX_IN_SYCL_KERNEL_MEMORY(data_arg))
-        , diff_weights_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_WEIGHTS))
-        , diff_bias_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_BIAS))
-        , diff_dst_(CTX_IN_SYCL_KERNEL_MEMORY(diff_dst_arg)) {}
+        , data_(data)
+        , diff_weights_(diff_weights)
+        , diff_bias_(diff_bias)
+        , diff_dst_(diff_dst) {}
 
     void operator()(::sycl::nd_item<1> item) const {
         dims_t data_dims, weights_dims, dst_dims, weights_strides, off;
@@ -550,35 +548,25 @@ struct convolution_kernel_bwd_weights_t {
                 kw = off[4];
             }
 
-            auto bias_backprop_lambda = [&](int D, int H, int W, int OC, int ic,
-                                                int oc, void *diff_ptr,
-                                                xpu::sycl::md_t diff_md) {
-                if (ic == 0 && kh == 0 && kw == 0 & kd == 0) {
-                    float accumulator_bias = 0;
-                    for (int n = 0; n < MB; ++n) {
-                        for (int od = 0; od < D; ++od) {
-                            for (int oh = 0; oh < H; ++oh) {
-                                for (int ow = 0; ow < W; ++ow) {
-                                    dims_t off_dst {n, g * OC + oc, od, oh, ow};
-                                    const int dst_idx = diff_md.off_v(off_dst);
-                                    auto diff_dst = load_float_value(
-                                            diff_md.data_type(), diff_ptr,
-                                            dst_idx);
-                                    accumulator_bias += diff_dst;
-                                }
+            if (ic == 0 && kh == 0 && kw == 0 & kd == 0) {
+                float accumulator_bias = 0;
+                for (int n = 0; n < MB; ++n) {
+                    for (int od = 0; od < OD; ++od) {
+                        for (int oh = 0; oh < OH; ++oh) {
+                            for (int ow = 0; ow < OW; ++ow) {
+                                dims_t off_dst {n, g * OC + oc, od, oh, ow};
+                                const int dst_idx
+                                        = diff_dst_md().off_v(off_dst);
+                                auto diff_dst = load_float_value(
+                                        diff_dst_md().data_type(),
+                                        diff_dst_ptr(), dst_idx);
+                                accumulator_bias += diff_dst;
                             }
                         }
                     }
-                    store_float_value(conf_.bias_dt, accumulator_bias,
-                            diff_bias_ptr(), g * OC + oc);
                 }
-            };
-            if (conf_.is_deconvolution) {
-                bias_backprop_lambda(
-                        ID, IH, IW, IC, oc, ic, data_ptr(), data_md());
-            } else {
-                bias_backprop_lambda(
-                        OD, OH, OW, OC, ic, oc, diff_dst_ptr(), diff_dst_md());
+                store_float_value(diff_bias_md().data_type(), accumulator_bias,
+                        diff_bias_ptr(), g * OC + oc);
             }
 
             float accumulator_weights = 0;
@@ -621,6 +609,7 @@ private:
     const xpu::sycl::md_t &diff_weights_md() const {
         return conf_.diff_weights_md;
     }
+    const xpu::sycl::md_t &diff_bias_md() const { return conf_.diff_bias_md; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
 
     void *data_ptr() const { return data_.get_pointer(); }
@@ -628,7 +617,7 @@ private:
     void *diff_bias_ptr() const { return diff_bias_.get_pointer(); }
     void *diff_dst_ptr() const { return diff_dst_.get_pointer(); }
 
-    sycl_convolution_bwd_weights_conf_t conf_;
+    sycl_convolution_conf_t conf_;
 
     xpu::sycl::in_memory_arg_t data_;
     xpu::sycl::out_memory_arg_t diff_weights_;

@@ -1460,10 +1460,10 @@ public:
         tdims_[tidx] = tdim;
     }
 
-    void set_vdim(
-            const expr_t &varg, dim_t vdim, const expr_t &vstart = expr_t(0)) {
+    void set_vdim(const expr_t &varg, dim_t vdim,
+            const expr_t &vstart = expr_t(0), bool overwrite = false) {
         int vidx = vvar_index(varg);
-        ir_assert(vstart_[vidx].is_empty());
+        if (!overwrite) ir_assert(vstart_[vidx].is_empty());
         vstart_[vidx] = vstart;
         vdims_[vidx] = vdim;
     }

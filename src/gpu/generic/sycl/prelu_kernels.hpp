@@ -184,8 +184,8 @@ struct prelu_bwd_kernel_vec_t {
         size_t ithr = item.get_global_id(0);
         switch (conf_.bcast_type) {
             case broadcasting_strategy_t::scalar:
-                calculate_scalar(data_mem, weights_mem, scratchpad_mem,
-                        diff_dst_mem, diff_data_mem, ithr);
+                calculate_scalar(data_ptr(), weights_ptr(), diff_weights_ptr(),
+                        diff_dst_ptr(), diff_data_ptr(), ithr);
                 break;
             case broadcasting_strategy_t::no_broadcast:
                 calculate_no_broadcast(data_mem, weights_mem, diff_weights_mem,
@@ -315,8 +315,10 @@ private:
             float diff_src_res = ::dnnl::impl::math::relu_bwd_use_dst(
                     diff_dst_val, src_val, weights_val);
             float diff_weight_res = src_val > 0 ? 0 : (diff_dst_val * src_val);
-            diff_src_mem.store(diff_src_res, data_off);
-            scratchpad_mem.store(diff_weight_res, data_off);
+            store_float_value(
+                    data_md().data_type(), diff_src_res, diff_src, data_off);
+            store_float_value(diff_weights_md().data_type(), diff_weight_res,
+                    scratchpad_ptr(), data_off);
 
             if (conf_.ndims == 1) {
                 utils::nd_iterator_step(off[0], dims_d[0]);

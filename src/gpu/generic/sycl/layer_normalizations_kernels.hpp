@@ -228,8 +228,12 @@ private:
                 float s = data_mem.load(src_off);
                 float d = sm * (s - v_mean) + sv;
 
-                float sr = conf_.src_def ? 1.f : rt_scale_mem.load(0);
-                float ds = conf_.dst_def ? 1.f : dst_scale_mem.load(0);
+                float sr = conf_.src_def ? 1.f
+                                         : load_float_value(conf_.scales_src_dt,
+                                                 rt_oscale_ptr(), 0);
+                float ds = conf_.dst_def ? 1.f
+                                         : load_float_value(conf_.scales_dst_dt,
+                                                 dst_oscale_ptr(), 0);
                 d = (d * sr * (1.f / ds));
 
                 dst_mem.store(d, d_off);

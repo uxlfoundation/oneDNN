@@ -51,7 +51,7 @@ struct enum_hash_t {
     }
 };
 
-class dnnl_backend : public backend_t {
+class dnnl_backend_t : public backend_t {
     friend class dnnl_partition_impl_t;
 
 public:

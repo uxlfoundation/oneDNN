@@ -2187,7 +2187,7 @@ TEST(test_subgraph_pass, CombineBinaryPostOpScales) {
 TEST(test_subgraph_pass_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     namespace utils = dnnl::graph::tests::unit::utils;
-    dnnl_impl::dnnl_backend::get_singleton();
+    dnnl_impl::dnnl_backend_t::get_singleton();
     graph::engine_t &engine = *get_engine();
     dnnl::engine p_engine = graph::dnnl_impl::make_dnnl_engine(engine);
 
@@ -2341,7 +2341,7 @@ TEST(test_subgraph_pass_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
 TEST(test_subgraph_pass_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     namespace utils = dnnl::graph::tests::unit::utils;
-    dnnl_impl::dnnl_backend::get_singleton();
+    dnnl_impl::dnnl_backend_t::get_singleton();
     graph::engine_t &engine = *get_engine();
     dnnl::engine p_engine = graph::dnnl_impl::make_dnnl_engine(engine);
 

@@ -27,11 +27,6 @@
 // required for dnnl::engine
 #include "oneapi/dnnl/dnnl.hpp"
 
-#ifdef DNNL_WITH_SYCL
-#include "graph/utils/sycl_check.hpp"
-#include "oneapi/dnnl/dnnl_sycl.hpp"
-#endif
-
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -98,10 +93,6 @@ struct kernel_base_t {
 
     virtual status_t prepare_inplace_pairs_impl() { return status::success; };
 
-    // A string identity used in verbose indicating which kernels is dispatched
-    // for a compiled partition.
-    virtual std::string str() const = 0;
-
     bool enabled_constant_cache() const;
 
     const std::vector<inplace_pair_t> &get_inplace_pairs() const;
@@ -113,13 +104,6 @@ protected:
 
 using kernel_ptr = std::shared_ptr<kernel_base_t>;
 using FCreateKernel = std::function<kernel_ptr(void)>;
-
-#define DEF_KERNEL_METHOD_STR(name) \
-    std::string str() const override { return #name; }
-
-#define DNNL_DISALLOW_COPY_AND_ASSIGN(T) \
-    T(const T &) = delete; \
-    T &operator=(const T &) = delete;
 
 } // namespace dnnl_impl
 } // namespace graph

@@ -106,7 +106,7 @@ std::shared_ptr<partition_impl_t> dnnl_partition_impl_t::clone() const {
 }
 
 const backend_t *dnnl_partition_impl_t::get_assigned_backend() const {
-    return &dnnl_backend_t::get_singleton();
+    return &dnnl_backend::get_singleton();
 }
 
 status_t dnnl_partition_impl_t::compile(
@@ -130,9 +130,7 @@ status_t dnnl_partition_impl_t::compile(
 
     // Dispatch to fake kernel if one of the output dimensions is zero.
     const std::vector<std::shared_ptr<op_t>> &fused_op = part->get_ops();
-    auto fpm = get_fpmath_mode();
-    auto agraph = graph_t(fused_op, get_engine_kind());
-    agraph.set_fpmath_mode(fpm.mode_, fpm.apply_to_int_);
+    auto agraph = graph_t(fused_op, get_engine_kind(), get_fpmath_mode());
     agraph.set_user_inputs_outputs(inputs, outputs);
     agraph.infer_shape();
     for (const auto &val : agraph.get_output_values()) {

@@ -1579,7 +1579,7 @@ TEST(test_pass_system, TestConvSumAndBinary) {
     }
 }
 
-TEST(test_pass, FuseBinarySumWithSupportBroadcast) {
+TEST(test_pass_pass, FuseBinarySumWithSupportBroadcast) {
     auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<std::pair<op_kind_t, partition_kind_t>> opkind_pair {
@@ -1622,7 +1622,7 @@ TEST(test_pass, FuseBinarySumWithSupportBroadcast) {
     }
 }
 
-TEST(test_pass, FailToFuseBinarySumWithUnsupportBroadcast) {
+TEST(test_pass_pass, FailToFuseBinarySumWithUnsupportBroadcast) {
     auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<std::pair<op_kind_t, partition_kind_t>> opkind_pair {
@@ -1675,7 +1675,7 @@ TEST(test_pass, FailToFuseBinarySumWithUnsupportBroadcast) {
     }
 }
 
-TEST(test_pass, FailToFuseBinarySumWithUnknownShape) {
+TEST(test_pass_pass, FailToFuseBinarySumWithUnknownShape) {
     auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<std::pair<op_kind_t, partition_kind_t>> opkind_pair {
@@ -5016,7 +5016,7 @@ TEST(test_pass_pass, TestPassFilterFunc) {
     ASSERT_EQ(agraph.num_ops(), 2U);
 
     auto &backend_ptr
-            = dnnl::impl::graph::dnnl_impl::dnnl_backend::get_singleton();
+            = dnnl::impl::graph::dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
     partition_policy_t policy = graph::partition_policy::debug;
@@ -8698,7 +8698,7 @@ TEST(test_pass_pass_system, Quantize) {
     ASSERT_EQ(agraph.finalize(), status::success);
 
     auto &backend_ptr
-            = dnnl::impl::graph::dnnl_impl::dnnl_backend::get_singleton();
+            = dnnl::impl::graph::dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
     pm.run_passes(agraph, "no_config");
@@ -10059,7 +10059,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulBiasGelu) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10247,7 +10247,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulGelu) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10434,7 +10434,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulBias) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10614,7 +10614,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16Matmul) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -10690,7 +10690,7 @@ TEST(test_pass_pass_system, QuantWeiMixBf16MatmulBiasTransposeReshapeQuantize) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
     const auto engine_kind = get_test_engine_kind();
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<bool> with_bias_typecasts {false, true};
     std::vector<int64_t> zps = {0};
@@ -10926,7 +10926,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBias) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -11208,7 +11208,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionBiasGelu) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -11309,7 +11309,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16ConvolutionAdd) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -11985,7 +11985,7 @@ TEST(test_pass_pass_system, FuseTypecaseQuantize) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -12040,7 +12040,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulAdd) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};
@@ -12151,7 +12151,7 @@ TEST(test_pass_pass_system, MixInt8AndBf16MatmulDiv) {
     SKIP_IF(!is_supported_dtype(data_type::bf16),
             "Skip bf16 tests for systems that do not support avx512_core.");
 
-    auto &backend_ptr = dnnl_impl::dnnl_backend::get_singleton();
+    auto &backend_ptr = dnnl_impl::dnnl_backend_t::get_singleton();
     auto pm = pass::pass_manager_t(backend_ptr.get_pass_registry());
     std::vector<int64_t> zps = {0};
     std::vector<float> scales = {3.1f};

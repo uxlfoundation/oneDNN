@@ -6204,8 +6204,6 @@ void gemm_kernel_generator_t<hw>::setupAddr(Type T, const GRFRange &addr,
                 if (remW.isValid() && T.paddedSize() < widthAlign)
                     or_(1, addr[0].ud(2), addr[0].ud(2), widthAlign - 1);
             }
-            auto pitch = bw * bcount * block.ebytes;
-            if (pitch <= 64) printf("HERE\n");
 
             if (isPacked(atype.layout)) {
                 auto pitch = bw * bcount * block.ebytes;
@@ -27879,7 +27877,8 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
 
                             bool src_f8 = Ts.isF8();
                             bool dst_f8 = Td.isF8();
-                            bool f8_align = src_f8 ^ dst_f8;
+                            bool f8_align = src_f8 ^ dst_f8
+                                    && !(Ts.isInt4() || Td.isInt4());
                             if (f8_align) allocTemp();
 
                             // Check if separate conversions are needed due to size changes.
@@ -27916,7 +27915,8 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                     < Td_real.bits()))
                                     && one_of(Td_real, Type::u8, Type::s8,
                                             Type::f16, Type::bf16, Type::u16,
-                                            Type::s16, Type::f32);
+                                            Type::s16, Type::f32, Type::bf8,
+                                            Type::hf8);
                             byteAlign |= allInt4;
                             if (Ts_real.isInt4()
                                     && (!byteAlign && Td_real != Ts_real))
@@ -28317,8 +28317,13 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
                                                         tmp0.ub()(2));
                                             } else {
                                                 mov(n_bytes | modMov,
-                                                        tmp0.ub()(1),
+                                                        tmp0.ub()(
+                                                                scrosspack_byte),
                                                         sreg.ub()(
+                                                                scrosspack_byte));
+                                                mov(n_bytes | modMov,
+                                                        tmp0.ub()(1),
+                                                        tmp0.ub()(
                                                                 scrosspack_byte));
                                                 and_(n_bytes | modMov
                                                                 | writeCombine,
@@ -28358,7 +28363,32 @@ bool gemm_kernel_generator_t<hw>::copyRegisters(Type Ts, Type Td,
 
                                         mov(nelems_real | modMov, tmp1(1),
                                                 tmp1.w()(2));
-                                        if (Td != Type::f32) {
+                                        if (Td.isF8()) {
+                                            mov(nelems_real | modMov,
+                                                    tmp1.reinterpret(0,
+                                                            ngen::DataType::hf)(
+                                                            2),
+                                                    tmp1.f()(1));
+                                            mov(nelems_real | modMov,
+                                                    tmp1.w()(1), tmp1.w()(2));
+                                            mov(nelems_real | modMov,
+                                                    tmp1.bf8()(2),
+                                                    tmp1.hf()(1));
+                                            mov(nelems_real | modMov,
+                                                    tmp1.ub()(1), tmp1.ub()(2));
+                                            if (!int4Zip)
+                                                mov(nelems_real | modMov,
+                                                        dreg.ub()(dcrosspack),
+                                                        tmp1.ub()(1));
+                                            else {
+                                                mov((n_bytes) | modMov,
+                                                        dreg.ub()(effDCP),
+                                                        tmp1.ub(0)(2));
+                                                mov((n_bytes) | modMov,
+                                                        dreg1.ub()(effDCP),
+                                                        tmp1.ub(1)(2));
+                                            }
+                                        } else if (Td != Type::f32) {
                                             mov(nelems_real | modMov,
                                                     tmp1.reinterpret(0,
                                                             Td_real.ngen())(2),

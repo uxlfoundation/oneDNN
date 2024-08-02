@@ -14,25 +14,15 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/gpu_impl_list.hpp"
-#include "gpu/intel/ocl/ref_concat.hpp"
-#include "gpu/nvidia/sycl_cuda_engine.hpp"
+#include "gpu/intel/jit/jit_generator.hpp"
+
+#include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace nvidia {
-
-namespace {
-
-// clang-format off
-constexpr impl_list_item_t cuda_concat_impl_list[] = {
-        GPU_CONCAT_INSTANCE_NVIDIA(gpu::intel::ocl::ref_concat_t)
-        nullptr
-};
-// clang-format on
-
-} // namespace
+namespace intel {
+namespace jit {
 
 void check_kernel_size(const std::string &kernel_name, size_t kernel_size,
         size_t icache_size) {

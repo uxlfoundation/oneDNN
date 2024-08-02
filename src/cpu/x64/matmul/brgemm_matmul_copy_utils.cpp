@@ -3313,8 +3313,7 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
         , jit_generator(jit_name())
-        , dt_in_(conf->isa == avx512_core_fp16 ? data_type::f16
-                                               : data_type::f32)
+        , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits<Vmm>::vlen / sizeof(float))
         , typesize_in_(types::data_type_size(dt_in_))
         , typesize_scale_(is_src_int4_ ? 2 : 1)

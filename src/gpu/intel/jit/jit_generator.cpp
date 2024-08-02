@@ -1,6 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
-* Copyright 2020 Codeplay Software Limited
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,25 +14,15 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/nvidia/cudnn_sum.hpp"
-#include "gpu/gpu_impl_list.hpp"
-#include "gpu/nvidia/sycl_cuda_engine.hpp"
+#include "gpu/intel/jit/jit_generator.hpp"
+
+#include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace nvidia {
-
-namespace {
-
-// clang-format off
-constexpr impl_list_item_t cuda_sum_impl_list[] = {
-        GPU_SUM_INSTANCE_NVIDIA(gpu::nvidia::cudnn_ref_sum_t)
-        nullptr
-};
-// clang-format on
-
-} // namespace
+namespace intel {
+namespace jit {
 
 void check_kernel_size(const std::string &kernel_name, size_t kernel_size,
         size_t icache_size) {

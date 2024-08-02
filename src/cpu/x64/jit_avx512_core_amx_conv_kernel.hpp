@@ -477,10 +477,11 @@ struct jit_avx512_core_amx_bwd_data_kernel_t : public jit_generator {
         , eltwise_injector_(nullptr)
         , bwd_data_copy_kernel_(nullptr) {
         if (jcp.with_eltwise)
-            eltwise_injector_ = new jit_uni_eltwise_injector<avx512_core>(
-                    this, jcp.eltwise);
-        bwd_data_copy_kernel_
-                = new jit_avx512_core_amx_bwd_data_copy_kernel_t(jcp);
+            eltwise_injector_
+                    = utils::make_unique<jit_uni_eltwise_injector<avx512_core>>(
+                            this, jcp.eltwise);
+        bwd_data_copy_kernel_ = utils::make_unique<
+                jit_avx512_core_amx_bwd_data_copy_kernel_t>(jcp);
     }
     status_t create_kernel() override {
         CHECK(jit_generator::create_kernel());
@@ -509,8 +510,9 @@ struct jit_avx512_core_amx_bwd_data_kernel_t : public jit_generator {
     }
 
 private:
-    jit_uni_eltwise_injector<avx512_core> *eltwise_injector_;
-    jit_avx512_core_amx_bwd_data_copy_kernel_t *bwd_data_copy_kernel_;
+    std::unique_ptr<jit_uni_eltwise_injector<avx512_core>> eltwise_injector_;
+    std::unique_ptr<jit_avx512_core_amx_bwd_data_copy_kernel_t>
+            bwd_data_copy_kernel_;
 
     int prv_width_ = 0;
     int row_count_ = 0;

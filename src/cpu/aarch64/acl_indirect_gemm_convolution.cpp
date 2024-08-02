@@ -25,8 +25,6 @@ namespace cpu {
 namespace aarch64 {
 
 namespace {
-using data_t = typename prec_traits<data_type::f32>::type;
-
 // Keys are anonymous. So deduce the type automagically.
 using conv_key_t = decltype(memory_tracking::names::key_gemm_tmp_buffer);
 
@@ -52,6 +50,13 @@ status_t acl_indirect_gemm_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     return execute_forward_conv_acl<acl_obj_t<Op>, pd_t, data_t>(
             ctx, acl_obj_.get(), pd(), indirect_conv_keys);
+}
+
+status_t acl_indirect_gemm_convolution_fwd_t::create_resource(
+        engine_t *engine, resource_mapper_t &mapper) const {
+
+    CHECK(pd()->post_ops.create_resource(engine, mapper));
+    return status::success;
 }
 
 status_t acl_indirect_gemm_convolution_fwd_t::pd_t::init_conf() {
@@ -96,13 +101,11 @@ status_t acl_indirect_gemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
 
     const bool is_fp16_ok = expect_data_types(f16, f16, f16, f16, undef)
             && attr()->has_default_values(smask_t::post_ops, f16);
-    const bool is_bf16_ok = expect_data_types(bf16, bf16, bf16, bf16, undef)
-            && attr_.post_ops_.len() == 0;
     const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, undef)
             && attr()->has_default_values(
                     smask_t::post_ops | smask_t::fpmath_mode, f32);
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
-            && utils::one_of(true, is_fp16_ok, is_bf16_ok, is_fp32_ok)
+            && utils::one_of(true, is_fp16_ok, is_fp32_ok)
             && !has_zero_dim_memory();
     if (!ok) return status::unimplemented;
 

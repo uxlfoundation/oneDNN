@@ -49,16 +49,11 @@ status_t softmax_fwd_t::compile_impl(const dnnl_partition_impl_t *part,
     pass_pipeline_t pipeline(vis);
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
     BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
-    BACKEND_DNNL_ADD_PASS(pipeline, replace_quant_data_with_binary_post_op);
-    BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
-    BACKEND_DNNL_ADD_PASS(pipeline, binary_broadcast_swap);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
     BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
-    BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
-
     pipeline.reset_visualize_arg(true, false);
 
     if (enabled_constant_cache()) {
@@ -263,7 +258,7 @@ status_t softmax_fwd_t::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
-    cl_event returned_event {};
+    cl_event returned_event;
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     // each thread's own local resource
@@ -466,7 +461,7 @@ status_t softmax_bwd_t::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
-    cl_event returned_event {};
+    cl_event returned_event;
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     // each thread's own local resource

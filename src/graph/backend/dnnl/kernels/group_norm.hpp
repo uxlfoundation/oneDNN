@@ -90,9 +90,6 @@ public:
             const std::vector<tensor_t> &outputs,
             const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
-
-    DEF_KERNEL_METHOD_STR(group_norm_fwd_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(group_norm_fwd_t)
 };
 
 } // namespace dnnl_impl

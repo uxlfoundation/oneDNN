@@ -26,11 +26,7 @@
 #include "graph/backend/dnnl/kernels/kernel_base.hpp"
 
 #include "graph/backend/dnnl/dnnl_partition_impl.hpp"
-#include "graph/backend/dnnl/op_executable.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
-#include "graph/backend/dnnl/thread_local_cache.hpp"
-
-#include "graph/backend/dnnl/passes/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -67,28 +63,7 @@ public:
     status_t ocl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
-            const std::vector<cl_event> &cl_deps,
-            cl_event *ret_event) override {
-
-        dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
-
-        if (ret_event) {
-            // Fast path: if only one event, return it.
-            if (cl_deps.size() == 1) {
-                *ret_event = cl_deps[0];
-            } else {
-                // Otherwise, gather all dependencies.
-                auto q = dnnl::ocl_interop::get_command_queue(p_stream);
-                auto err = clEnqueueMarkerWithWaitList(q,
-                        static_cast<cl_uint>(cl_deps.size()), cl_deps.data(),
-                        ret_event);
-                assert(err == CL_SUCCESS);
-                if (err != CL_SUCCESS) return status::runtime_error;
-            }
-        }
-
-        return status::success;
-    }
+            const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
 };
 

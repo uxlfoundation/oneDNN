@@ -53,15 +53,12 @@ status_t sdp_primitive_kernel_t::compile_impl(const dnnl_partition_impl_t *part,
                     p_engine_, part->get_fpmath_mode(), false, true);
     CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
-    CHECK(cfg_.initial_check(subgraph_, inputs));
-
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
         return this->memory_planner_.get_memory_info(val);
     });
     pass_pipeline_t pipeline = pass_pipeline_t(vis);
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
     BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
 
@@ -103,6 +100,14 @@ status_t sdp_primitive_kernel_t::compile_impl(const dnnl_partition_impl_t *part,
     CHECK(modify_subgraph());
     CHECK(cfg_.init(subgraph_, p_engine_, inputs, outputs));
 
+    // Successfully created the primitive. Rerun the passes again, modifying
+    //   the original ops.
+    subgraph_ = std::make_shared<subgraph_t>(
+            part->get_ops(), p_engine_, part->get_fpmath_mode(), false, true);
+    CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
+    CHECK(modify_subgraph());
+    CHECK(cfg_.locate_io(subgraph_, inputs, outputs));
+
     return status::success;
 }
 
@@ -127,7 +132,7 @@ void sdp_primitive_kernel_t::prepare_args_set(const execution_args_set_t *res,
 }
 
 status_t sdp_primitive_kernel_t::get_prim_exec_args(exec_args_t &args,
-        memory (&mem_storage)[6], const execution_args_set_t *res) const {
+        memory (&mem_storage)[6], const execution_args_set_t *res) {
     bool ok = res->find_value_mem_map(cfg_.q_.get(), mem_storage[0])
             && res->find_value_mem_map(cfg_.k_.get(), mem_storage[1])
             && res->find_value_mem_map(cfg_.v_.get(), mem_storage[2])

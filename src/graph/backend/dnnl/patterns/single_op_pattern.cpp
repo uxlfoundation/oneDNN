@@ -323,7 +323,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gn_pass)
                                     1>);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<groupnorm_fwd_t>();
+            return std::make_shared<group_norm_fwd_t>();
         });
 
 // if op is interpolate, need to filter out attrs not supported by dnnl

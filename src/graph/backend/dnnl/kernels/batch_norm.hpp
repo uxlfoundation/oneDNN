@@ -38,7 +38,7 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-struct batch_norm_fwd_t : public kernel_base_t {
+struct batchnorm_fwd_t : public kernel_base_t {
 private:
     allocator_t *g_alloc_ = nullptr;
 
@@ -49,12 +49,12 @@ private:
     constant_cache_t::key_t constant_key_ = 0;
 
 public:
-    batch_norm_fwd_t() {
+    batchnorm_fwd_t() {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.retain();
     }
 
-    ~batch_norm_fwd_t() override {
+    ~batchnorm_fwd_t() override {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
         res_cache.release();
@@ -88,13 +88,10 @@ public:
             const std::vector<tensor_t> &outputs,
             const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
-
-    DEF_KERNEL_METHOD_STR(batch_norm_fwd_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(batch_norm_fwd_t)
 };
 
 #if BUILD_TRAINING
-struct batch_norm_bwd_t : public kernel_base_t {
+struct batchnorm_bwd_t : public kernel_base_t {
 private:
     allocator_t *g_alloc_ = nullptr;
 
@@ -104,12 +101,12 @@ private:
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;
 
 public:
-    batch_norm_bwd_t() {
+    batchnorm_bwd_t() {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.retain();
     }
 
-    ~batch_norm_bwd_t() override {
+    ~batchnorm_bwd_t() override {
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
         res_cache.release();
@@ -143,9 +140,6 @@ public:
             const std::vector<tensor_t> &outputs,
             const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
-
-    DEF_KERNEL_METHOD_STR(batch_norm_bwd_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(batch_norm_bwd_t)
 };
 #endif // BUILD_TRAINING
 

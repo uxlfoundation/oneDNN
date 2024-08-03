@@ -162,9 +162,6 @@ public:
         return status::unimplemented;
     }
 #endif
-
-    DEF_KERNEL_METHOD_STR(mqa_decomp_kernel_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(mqa_decomp_kernel_t)
 };
 
 } // namespace dnnl_impl

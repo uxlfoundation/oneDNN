@@ -74,11 +74,10 @@ public:
     sdp_decomp_config_t() = default;
 
     // SDP input dimension
-    dim_t batch_size, num_head_q, num_head_kv, seq_len_q, seq_len_kv,
-            size_per_head;
+    memory::dim batch_size, num_head, seq_len_q, size_per_head;
 
     // SDP input and output strides
-    dims src1_strides, wei1_strides, wei2_strides, dst_strides,
+    memory::dims src1_strides, wei1_strides, wei2_strides, dst_strides,
             post_add_strides;
 
     // Thread nums during the workflow
@@ -123,7 +122,7 @@ public:
     // shared memory
     memory sub_max_src1_src2, sub_max_dst1_wei2;
 
-    bool has_scale = false, has_attention_mask = false, has_select = false;
+    bool attention_mask = false, has_select = false;
     // Used to record the ops from select
     std::vector<op_ptr> select_op;
     std::vector<int> select_outop_index;
@@ -167,7 +166,7 @@ private:
     impl::status_t record_sdp_ops(
             std::shared_ptr<subgraph_t> &sg, bool is_quantize);
 
-    void memory_planning(registry_t &sdp_registry);
+    void memory_planning(registry_t &sdp_registry, dnnl::engine p_engine);
 
     impl::status_t prepare_sdp_scales_zps(const fusion_info_mgr_t &mgr,
             std::shared_ptr<op_t> &op, int index,

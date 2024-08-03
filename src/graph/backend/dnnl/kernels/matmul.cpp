@@ -40,8 +40,8 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
     g_alloc_
             = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
-    subgraph_ = std::make_shared<subgraph_t>(
-            part->get_ops(), p_engine_, part->get_fpmath_mode(), true, true);
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
+            part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
@@ -319,7 +319,7 @@ status_t matmul_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
-    cl_event returned_event {};
+    cl_event returned_event;
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     // each thread's own local resource

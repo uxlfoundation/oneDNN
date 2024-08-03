@@ -181,9 +181,6 @@ public:
         return status::unimplemented;
     }
 #endif
-
-    DEF_KERNEL_METHOD_STR(sdp_decomp_kernel_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_decomp_kernel_t)
 };
 
 } // namespace dnnl_impl

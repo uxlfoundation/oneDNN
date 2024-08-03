@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -142,7 +142,7 @@ private:
 
     status_t record_mqa_ops(std::shared_ptr<subgraph_t> &sg);
 
-    void memory_planning(registry_t &mqa_registry);
+    void memory_planning(registry_t &mqa_registry, dnnl::engine p_engine);
 
     template <typename attr_dt, typename target_dt>
     target_dt get_attr_value(

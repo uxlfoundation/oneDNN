@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -181,9 +181,6 @@ public:
         return status::unimplemented;
     }
 #endif
-
-    DEF_KERNEL_METHOD_STR(sdp_decomp_kernel_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_decomp_kernel_t)
 };
 
 } // namespace dnnl_impl

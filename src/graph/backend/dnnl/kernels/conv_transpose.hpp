@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,8 +47,6 @@ public:
             const std::vector<logical_tensor_t> &outputs) override;
 
     status_t prepare_inplace_pairs_impl() override;
-
-    DEF_KERNEL_METHOD_STR(conv_transpose_fwd_t)
 };
 
 using float_convtranspose_fwd = conv_transpose_fwd_t</* quantized */ false>;
@@ -61,8 +59,6 @@ public:
             const engine_t *g_engine,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
-
-    DEF_KERNEL_METHOD_STR(conv_transpose_bwd_data_t)
 };
 
 struct conv_transpose_bwd_weights_t : public conv_base_t {
@@ -71,8 +67,6 @@ public:
             const engine_t *g_engine,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
-
-    DEF_KERNEL_METHOD_STR(conv_transpose_bwd_weights_t)
 };
 #endif
 

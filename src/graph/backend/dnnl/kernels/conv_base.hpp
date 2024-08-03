@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ protected:
 
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;
 
-    size_t const_md_hash_ = 0;
+    constant_cache_t::key_t constant_key_ = 0;
 
 public:
     conv_base_t() {
@@ -85,8 +85,6 @@ public:
             const std::vector<cl_event> &ocl_deps,
             cl_event *ocl_event) override;
 #endif
-
-    DNNL_DISALLOW_COPY_AND_ASSIGN(conv_base_t)
 };
 
 } // namespace dnnl_impl

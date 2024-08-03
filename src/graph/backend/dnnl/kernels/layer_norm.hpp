@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ private:
 
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;
 
-    size_t const_md_hash_ = 0;
+    constant_cache_t::key_t constant_key_ = 0;
 
 public:
     layer_norm_fwd_t() {
@@ -89,9 +89,6 @@ public:
             const std::vector<tensor_t> &outputs,
             const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
-
-    DEF_KERNEL_METHOD_STR(layer_norm_fwd_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(layer_norm_fwd_t)
 };
 
 #if BUILD_TRAINING
@@ -149,9 +146,6 @@ public:
         inplace_pairs_ = memory_planner_.get_subgraph_inplace_pairs();
         return status::success;
     }
-
-    DEF_KERNEL_METHOD_STR(layer_norm_bwd_t)
-    DNNL_DISALLOW_COPY_AND_ASSIGN(layer_norm_bwd_t)
 };
 #endif
 

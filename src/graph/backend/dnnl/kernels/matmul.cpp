@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
     g_alloc_
             = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
-    subgraph_ = std::make_shared<subgraph_t>(
-            part->get_ops(), p_engine_, part->get_fpmath_mode(), true, true);
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
+            part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
@@ -61,8 +61,6 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_add);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_mul_scales);
-        BACKEND_DNNL_ADD_PASS(
-                pipeline, insert_permute_for_dynamic_mul_scale_sub_zp);
         BACKEND_DNNL_ADD_PASS(pipeline, convert_bias_to_f32);
     }
 
@@ -145,7 +143,7 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
         return this->memory_planner_.get_exec_args_set().clone();
     };
 
-    const_md_hash_ = generate_constant_md_hash(part->id(),
+    constant_key_ = generate_constant_cache_key(part->id(),
             memory_planner_.get_exec_args_set().get_persistent_mem_desc_list());
 
     return status::success;
@@ -193,11 +191,9 @@ status_t matmul_t<quantized>::execute_impl(const stream_t *g_stream,
 
     constant_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
-        const size_t encoded_key
-                = encode_constant_cache_key(inputs, const_md_hash_);
         std::promise<constant_cache_t::cached_t> c_promise;
         constant_cache_t::value_t cached_value
-                = dnnl_constant_cache_get_or_add(p_engine_, encoded_key,
+                = dnnl_constant_cache_get_or_add(p_engine_, constant_key_,
                         memory_planner_.total_internal_persistent_size(),
                         c_promise.get_future());
         bool is_from_cache = cached_value.valid();
@@ -265,11 +261,9 @@ status_t matmul_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
 
     constant_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
-        const size_t encoded_key
-                = encode_constant_cache_key(inputs, const_md_hash_);
         std::promise<constant_cache_t::cached_t> c_promise;
         constant_cache_t::value_t cached_value
-                = dnnl_constant_cache_get_or_add(p_engine_, encoded_key,
+                = dnnl_constant_cache_get_or_add(p_engine_, constant_key_,
                         memory_planner_.total_internal_persistent_size(),
                         c_promise.get_future());
         bool is_from_cache = cached_value.valid();
@@ -325,7 +319,7 @@ status_t matmul_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
-    cl_event returned_event {};
+    cl_event returned_event;
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     // each thread's own local resource
@@ -343,11 +337,9 @@ status_t matmul_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
 
     constant_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
-        const size_t encoded_key
-                = encode_constant_cache_key(inputs, const_md_hash_);
         std::promise<constant_cache_t::cached_t> c_promise;
         constant_cache_t::value_t cached_value
-                = dnnl_constant_cache_get_or_add(p_engine_, encoded_key,
+                = dnnl_constant_cache_get_or_add(p_engine_, constant_key_,
                         memory_planner_.total_internal_persistent_size(),
                         c_promise.get_future());
         bool is_from_cache = cached_value.valid();

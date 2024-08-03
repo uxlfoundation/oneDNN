@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,12 +38,6 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     seq_len = src1_user_dims[1];
     size_per_head = src1_user_dims[2];
     num_head = wei1_user_dims[2] / seq_len;
-
-    //  Check batch size compatibility.
-    dims wei2_user_dims = ltw(inputs[graph_inport[3]]).vdims();
-    if (batch_size != wei1_user_dims[0] || batch_size != wei2_user_dims[0]) {
-        return false;
-    }
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
@@ -301,7 +295,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     ////////////////////////////////////////////////////////////////////////
 
     // memory planing for buffer sharing
-    memory_planning(mqa_registry);
+    memory_planning(mqa_registry, p_engine);
     return status::success;
 }
 
@@ -364,6 +358,7 @@ status_t mqa_decomp_config_t::record_input_offset(
 }
 
 status_t mqa_decomp_config_t::record_mqa_ops(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
     op_ptr reorder1, reorder2, matmul1, softmax, matmul2;
     for (const auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
@@ -380,7 +375,8 @@ status_t mqa_decomp_config_t::record_mqa_ops(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
-void mqa_decomp_config_t::memory_planning(registry_t &mqa_registry) {
+void mqa_decomp_config_t::memory_planning(
+        registry_t &mqa_registry, dnnl::engine p_engine) {
     // Registry is used to do the memory planning for mqa decomposition
     // algorithm. We reused some internal memory to reduce the memory
     // footprint for better cache hit. And here the key in registar of each
@@ -409,11 +405,12 @@ void mqa_decomp_config_t::memory_planning(registry_t &mqa_registry) {
 
 dnnl::primitive_attr mqa_decomp_config_t::make_primitive_attr(
         std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr) {
+    fusion_info_t fusion_info;
     dnnl::primitive_attr attr;
     if (op && op->has_attr(op_attr::fusion_info_key)
             && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
         int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+        fusion_info = mgr.get_info(key);
         attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     if (op && op->get_kind() == op_kind::dnnl_reorder) {

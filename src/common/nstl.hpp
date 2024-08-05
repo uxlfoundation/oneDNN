@@ -158,22 +158,6 @@ template <>
 struct numeric_limits<uint8_t> : public std::numeric_limits<uint8_t> {};
 
 template <>
-struct numeric_limits<float4_e2m1_t> {
-    static constexpr float4_e2m1_t lowest() { return float4_e2m1_t(0xf, true); }
-    // Min normal is equal to the value 1.0
-    static constexpr float4_e2m1_t min() { return float4_e2m1_t(0x2, true); }
-    // Max normal is equal to the value 6.0
-    static constexpr float4_e2m1_t max() { return float4_e2m1_t(0x7, true); }
-
-    static constexpr int bias = 0x1;
-    static constexpr int digits = 2; // 1+1 implicit bits
-
-    static constexpr float4_e2m1_t epsilon() {
-        return float4_e2m1_t(0x2, true);
-    }
-};
-
-template <>
 struct numeric_limits<float8_e8m0_t> {
     static constexpr float8_e8m0_t lowest() {
         return float8_e8m0_t(0x00, true);

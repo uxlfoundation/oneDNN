@@ -42,12 +42,12 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
-    assert(IMPLICATION(has_dst_scale, dst_scales.nelems() == 1));
-    float dst_scale = has_dst_scale ? 1.f / dst_scales.get_elem(0) : 1.f;
     const int src_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_SRC, dnnl_matmul, src_m.ndims());
     const int wei_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims());
+    const int dst_scale_mask = prb->attr.scales.get_mask(
+            DNNL_ARG_DST, dnnl_matmul, dst_m.ndims());
 
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_zp
@@ -85,6 +85,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const int64_t wei_scale_stride_n = wei_scale_per_n ? 1 : 0;
     const int64_t wei_scale_stride_k
             = wei_scale_per_k ? wei_scale_per_n ? N : 1 : 0;
+
+    const auto dst_scale_groups = prb->attr.scales.get(DNNL_ARG_DST).groups;
 
     const bool wei_zp_per_n = wei_zp_mask & (1 << (wei_m.ndims() - 1));
     const bool wei_zp_per_k = wei_zp_mask & (1 << (wei_m.ndims() - 2));
@@ -160,12 +162,16 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
         float wei_scale = 1.f;
         float src_scale = 1.f;
+        float dst_scale = 1.f;
         if (!apply_scales_in_ker) {
             assert(IMPLICATION(has_src_scale, src_scales.nelems() == 1));
             if (has_src_scale) { src_scale = src_scales.get_elem(0); }
             if (has_wei_scale) {
                 wei_scale = wei_scales.get_elem(wei_scale_mask > 0 ? n : 0);
             }
+        }
+        if (has_dst_scale) {
+            dst_scale = 1.f / dst_scales.get_elem(dst_scale_mask > 0 ? n : 0);
         }
 
         float tmp = ((float *)dst_tmp)[dst_off] * src_scale * wei_scale;

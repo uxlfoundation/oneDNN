@@ -75,13 +75,18 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
     int ndims_src = desc.src_desc.ndims;
     int ndims_wei = desc.weights_desc.ndims;
+    int ndims_dst = desc.dst_desc.ndims;
     assert(ndims_src >= 2);
     assert(ndims_wei >= 2);
+    assert(ndims_dst >= 2);
     int src_qmask_M = 1 << (ndims_src - 2);
     int src_qmask_K = 1 << (ndims_src - 1);
 
     int wei_qmask_K = 1 << (ndims_wei - 2);
     int wei_qmask_N = 1 << (ndims_wei - 1);
+
+    int dst_qmask_K = 1 << (ndims_dst - 2);
+    int dst_qmask_N = 1 << (ndims_dst - 1);
 
     // Check scales
     if (!attr->scales_.has_default_values()) {
@@ -95,7 +100,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                                      src_qmask_M + src_qmask_K)
                         && utils::one_of(mask_wei, 0, wei_qmask_N,
                                 wei_qmask_N + wei_qmask_K)
-                        && mask_dst == 0,
+                        && (engine->kind() == engine_kind::gpu ? utils::one_of(
+                                    mask_dst, 0, dst_qmask_N,
+                                    dst_qmask_N + dst_qmask_K)
+                                                               : mask_dst == 0),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
         // Check dependency between scales.
         // Source scales groups are supported for int8 source and must divide

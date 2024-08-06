@@ -634,7 +634,7 @@ protected:
 
         postamble();
 
-        if (postops_injector_)
+        if (with_eltwise_ && postops_injector_)
             postops_injector_->prepare_table(/* generate = */ true);
     }
 };

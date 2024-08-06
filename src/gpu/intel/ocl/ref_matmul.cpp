@@ -109,6 +109,17 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             ? src_scale_group_k < K ? src_scale_ngroups_k : 1
             : 0;
 
+    const int dst_scale_mask = attr_scales.get(DNNL_ARG_DST).mask_;
+    const bool dst_scale_per_n = dst_scale_mask & pd()->dst_qmask_N();
+    const bool dst_scale_per_k = dst_scale_mask & pd()->dst_qmask_M();
+    const auto dst_scale_group_ndim = attr_scales.get(DNNL_ARG_DST).ndims_;
+    const auto dst_scale_group_m = dst_scale_group_ndim > 0
+            ? attr_scales.get(DNNL_ARG_DST).group_dims_[0]
+            : (dst_scale_per_k ? 1 : M);
+    const dim_t dst_scale_stride_n = dst_scale_per_n ? 1 : 0;
+    const dim_t dst_scale_stride_m
+            = dst_scale_group_m < M ? dst_scale_per_n ? N : 1 : 0;
+
     const auto &attr_zps = pd()->attr()->zero_points_;
     int wei_zp_mask = 0;
     attr_zps.get(DNNL_ARG_WEIGHTS, &wei_zp_mask);
@@ -129,65 +140,70 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto group_K = K / ngroups_k;
 
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, a);
-    arg_list.set(1, b);
-    arg_list.set(2, c);
-    arg_list.set(3, bias);
-    arg_list.set(4, a0);
-    arg_list.set(5, b0);
-    arg_list.set(6, wei_zp_stride_n);
-    arg_list.set(7, wei_zp_stride_k);
-    arg_list.set(8, wei_zp_group_k);
-    arg_list.set(9, c0);
-    arg_list.set(10, src_scales);
-    arg_list.set(11, src_scale_stride_k);
-    arg_list.set(12, src_scale_stride_m);
-    arg_list.set(13, src_scale_group_k);
-    arg_list.set(14, wei_scales);
-    arg_list.set(15, wei_scale_stride_n);
-    arg_list.set(16, wei_scale_stride_k);
-    arg_list.set(17, wei_scale_group_k);
-    arg_list.set(18, dst_scales);
-    arg_list.set(19, group_K);
-    arg_list.set(20, K);
-    arg_list.set(21, N);
-    arg_list.set(22, M);
-    arg_list.set(23, D0);
-    arg_list.set(24, D1);
-    arg_list.set(25, D2);
-    arg_list.set(26, bia_stride[5]);
-    arg_list.set(27, bia_stride[4]);
-    arg_list.set(28, bia_stride[3]);
-    arg_list.set(29, bia_stride[2]);
-    arg_list.set(30, bia_stride[1]);
-    arg_list.set(31, bia_stride[0]);
-    arg_list.set(32, a_stride[5]);
-    arg_list.set(33, a_stride[4]);
-    arg_list.set(34, a_stride[3]);
-    arg_list.set(35, a_stride[2]);
-    arg_list.set(36, a_stride[1]);
-    arg_list.set(37, a_stride[0]);
-    arg_list.set(38, b_stride[5]);
-    arg_list.set(39, b_stride[4]);
-    arg_list.set(40, b_stride[3]);
-    arg_list.set(41, b_stride[2]);
-    arg_list.set(42, b_stride[1]);
-    arg_list.set(43, b_stride[0]);
-    arg_list.set(44, c_stride[5]);
-    arg_list.set(45, c_stride[4]);
-    arg_list.set(46, c_stride[3]);
-    arg_list.set(47, c_stride[2]);
-    arg_list.set(48, c_stride[1]);
-    arg_list.set(49, c_stride[0]);
+    int arg_idx = 0;
+    arg_list.set(arg_idx++, a);
+    arg_list.set(arg_idx++, b);
+    arg_list.set(arg_idx++, c);
+    arg_list.set(arg_idx++, bias);
+    arg_list.set(arg_idx++, a0);
+    arg_list.set(arg_idx++, b0);
+    arg_list.set(arg_idx++, wei_zp_stride_n);
+    arg_list.set(arg_idx++, wei_zp_stride_k);
+    arg_list.set(arg_idx++, wei_zp_group_k);
+    arg_list.set(arg_idx++, c0);
+    arg_list.set(arg_idx++, src_scales);
+    arg_list.set(arg_idx++, src_scale_stride_k);
+    arg_list.set(arg_idx++, src_scale_stride_m);
+    arg_list.set(arg_idx++, src_scale_group_k);
+    arg_list.set(arg_idx++, wei_scales);
+    arg_list.set(arg_idx++, wei_scale_stride_n);
+    arg_list.set(arg_idx++, wei_scale_stride_k);
+    arg_list.set(arg_idx++, wei_scale_group_k);
+    arg_list.set(arg_idx++, dst_scales);
+    arg_list.set(arg_idx++, dst_scale_stride_n);
+    arg_list.set(arg_idx++, dst_scale_stride_m);
+    arg_list.set(arg_idx++, dst_scale_group_m);
+    arg_list.set(arg_idx++, group_K);
+    arg_list.set(arg_idx++, K);
+    arg_list.set(arg_idx++, N);
+    arg_list.set(arg_idx++, M);
+    arg_list.set(arg_idx++, D0);
+    arg_list.set(arg_idx++, D1);
+    arg_list.set(arg_idx++, D2);
+    arg_list.set(arg_idx++, bia_stride[5]);
+    arg_list.set(arg_idx++, bia_stride[4]);
+    arg_list.set(arg_idx++, bia_stride[3]);
+    arg_list.set(arg_idx++, bia_stride[2]);
+    arg_list.set(arg_idx++, bia_stride[1]);
+    arg_list.set(arg_idx++, bia_stride[0]);
+    arg_list.set(arg_idx++, a_stride[5]);
+    arg_list.set(arg_idx++, a_stride[4]);
+    arg_list.set(arg_idx++, a_stride[3]);
+    arg_list.set(arg_idx++, a_stride[2]);
+    arg_list.set(arg_idx++, a_stride[1]);
+    arg_list.set(arg_idx++, a_stride[0]);
+    arg_list.set(arg_idx++, b_stride[5]);
+    arg_list.set(arg_idx++, b_stride[4]);
+    arg_list.set(arg_idx++, b_stride[3]);
+    arg_list.set(arg_idx++, b_stride[2]);
+    arg_list.set(arg_idx++, b_stride[1]);
+    arg_list.set(arg_idx++, b_stride[0]);
+    arg_list.set(arg_idx++, c_stride[5]);
+    arg_list.set(arg_idx++, c_stride[4]);
+    arg_list.set(arg_idx++, c_stride[3]);
+    arg_list.set(arg_idx++, c_stride[2]);
+    arg_list.set(arg_idx++, c_stride[1]);
+    arg_list.set(arg_idx++, c_stride[0]);
 
     const bool dropout = !pd()->attr()->dropout_.has_default_values();
     if (dropout) {
-        arg_list.set(50, CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
-        arg_list.set(51, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED));
-        arg_list.set(52, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY));
+        arg_list.set(arg_idx++, CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
+        arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED));
+        arg_list.set(
+                arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY));
     }
     append_post_ops_to_arg_list(
-            ctx, arg_list, 50 + 3 * dropout, pd()->attr()->post_ops_);
+            ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
 
     compute::range_t gws = {1, (size_t)N, (size_t)(D0 * D1 * D2 * D3)};
     auto nd_range = compute::nd_range_t(gws);

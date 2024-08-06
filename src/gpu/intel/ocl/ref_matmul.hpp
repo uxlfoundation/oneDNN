@@ -78,9 +78,8 @@ struct ref_matmul_t : public gpu_primitive_t {
             const bool is_f16 = src_dt_ == f16
                     && utils::one_of(wei_dt_, f16, s8, u8, s4, u4)
                     && utils::one_of(dst_dt_, u8, s8, f16);
-            const bool is_f8
-                    = (utils::everyone_is(f8_e5m2, src_dt_, wei_dt_)
-                              || utils::everyone_is(f8_e4m3, src_dt_, wei_dt_))
+            const bool is_f8 = utils::one_of(src_dt_, f8_e5m2, f8_e4m3)
+                    && utils::one_of(wei_dt_, f8_e5m2, f8_e4m3, u8, s8, u4, s4)
                     && utils::one_of(dst_dt_, f32, bf16, f16, src_dt_);
             const bool is_bf16 = src_dt_ == bf16
                     && utils::one_of(wei_dt_, bf16, s8, u8, s4, u4)
@@ -198,6 +197,9 @@ struct ref_matmul_t : public gpu_primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get(DNNL_ARG_SRC).data_type_,
                 "SRC_SCALES");
+        def_data_type(kernel_ctx,
+                pd()->attr()->scales_.get(DNNL_ARG_DST).data_type_,
+                "DST_SCALES");
         CHECK(create_kernel(engine, &kernel_, "ref_matmul", kernel_ctx));
         if (!kernel_) return status::runtime_error;
         return status::success;

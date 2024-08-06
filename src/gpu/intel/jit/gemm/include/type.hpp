@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 #include "internal/utils.hpp"
 
 #include "internal/namespace_start.hxx"
-
 
 // Enum-like class for data types.
 class Type {
@@ -100,22 +99,23 @@ public:
     constexpr Type baseType() const { return *this; }
 
     template <typename U> constexpr friend int operator*(U a, Type t) {
-        return t.isInt4() ? int((unsigned(a) + 1) >> 1) : int(a * (U(1) << t.log2Size()));
+        return t.isInt4() ? int((a + 1) >> 1) : int(a << t.log2Size());
     }
     template <typename U> constexpr friend int operator*(Type t, U a) { return a * t; }
     template <typename U>           friend int operator*=(U &a, Type t) { a = a * t; return a; }
     template <typename U> constexpr friend int operator/(U a, Type t) {
-        return t.isInt4() ? int(a * 2) : int(a / (U(1) << t.log2Size()));
+        return t.isInt4() ? int(a << 1) : int(a >> t.log2Size());
     }
 
     ngen::DataType ngen() const
     {
         using DT = ngen::DataType;
         auto none = DT::invalid;
+        auto hf8 = DT::ub;
         static const DT table[32] = {DT::hf,   DT::f,    DT::df,    none,
                                      none,     none,     none,      none,
                                      none,     none,     none,      none,
-                                     DT::bf,   DT::tf32, DT::bf8,   DT::hf8,
+                                     DT::bf,   DT::tf32, DT::bf8,   hf8,
                                      none,     none,     DT::u4,    DT::s4,
                                      DT::ub,   DT::b,    DT::uw,    DT::w,
                                      DT::ud,   DT::d,    DT::uq,    DT::q,
@@ -143,9 +143,8 @@ public:
 inline char typeToChar(Type T)
 {
     switch (T.baseType()) {
-        case Type::bf8:   return 'Q';
-        case Type::hf8:   return 'q';
         case Type::f16:   return 'H';
+        case Type::bf8:   return 'Q';
         case Type::f32:   return 'S';
         case Type::f64:   return 'D';
         case Type::u4:    return 'f';
@@ -167,9 +166,8 @@ inline char typeToChar(Type T)
 inline Type charToType(char c)
 {
     switch (c) {
-        case 'Q': return Type::bf8;
-        case 'q': return Type::hf8;
         case 'H': return Type::f16;
+        case 'Q': return Type::bf8;
         case 'S': return Type::f32;
         case 'D': return Type::f64;
         case 'f': return Type::u4;

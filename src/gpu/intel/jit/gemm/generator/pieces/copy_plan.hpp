@@ -97,7 +97,7 @@ struct CopyTemporary
 {
     friend class CopyPlan;
 
-    int bytes = 0, align = 0, offset = 0;
+    int bytes, align = 0, offset = 0;
     bool flag = false;
     int16_t cnumMin = 0x7FFF;
     int16_t cnumMax = -1;
@@ -141,7 +141,6 @@ public:
     inline void execute(Generator &g);
 
     int tempFlagBytes() const;
-    bool legalStrides() const;
 
 protected:
     ngen::HW hw;
@@ -183,7 +182,6 @@ protected:
     void planInt4Upconversion(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);
     void planEmulatedHFToHF8(CopyInstruction &i);
-    void planFP8SIMD1Mov(CopyInstruction &i);
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();
@@ -237,7 +235,7 @@ void CopyInstruction::execute(Generator &g)
                 g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen()); \
         }                                                                           \
         break;
-#define BFN_OP_CASE(o)                                                              \
+#define BFN_OP_CASE(o)                                                          \
     case ngen::Opcode::o:                                                           \
         if (src0.kind == CopyOperand::Immediate) {                                  \
             if (src2.kind == CopyOperand::Immediate)                                \

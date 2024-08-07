@@ -96,7 +96,7 @@ static bool isSubsetOf(DataType dt1, DataType dt2)
     if (dt1 == dt2) return true;
     if (isFP(dt1) && isInt(dt2)) return false;
     if (isW(dt1) && dt2 == DataType::tf32) return false;
-    if (is4(dt1) && (isB(dt2) || dt2 == DataType::hf8)) return true;
+    if (is4(dt1) && (isB(dt2) || dt2 == Type::ngen_hf8())) return true;
     if (dt1 == DataType::s4 && dt2 == DataType::bf8) return true;
     return getBytes(dt1) < getBytes(dt2);
 }
@@ -107,7 +107,7 @@ static bool isSubsetOf(DataType dt1, DataType dt2)
 /***********************/
 
 CopyOperand::CopyOperand(RegData rd)
-        : grf(rd.getBase()), offset(rd.getLogicalOffset()),
+        : grf(rd.getBase()), offset(rd.getOffset()),
           stride(rd.getHS()), type(rd.getType()), kind(GRF),
           overwrite(false), overwriteStride(false), neg(rd.getNeg())
 {
@@ -358,15 +358,6 @@ int CopyPlan::tempFlagBytes() const
     return bytes;
 }
 
-bool CopyPlan::legalStrides() const
-{
-    for(auto &i : insns){
-        if(i.dst.stride == 8)return false;
-    }
-    return true;
-
-}
-
 // Split an instruction into two.
 //   If sequenced is true (default), the two instructions depend on each other
 //   and should be spaced apart.
@@ -589,7 +580,6 @@ void CopyPlan::repositionDst(CopyInstruction &i, int stride, int offset)
     i1.moveToIntegerPipe();
 }
 
-
 // Pass to split 2D regioned instructions into 1D regions.
 void CopyPlan::split2DRegions()
 {
@@ -598,10 +588,10 @@ void CopyPlan::split2DRegions()
     for (auto &i: insns) {
         if (is2D(i.dst) || is2D(i.src1) || is2D(i.src2))
             stub("Unsupported 2D region");
-        if (is2D(i.src0)){
+        if (is2D(i.src0)) {
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.inW, vs = i.src0.inVS, hs = i.src0.stride;
-            bool splitH = (w * w >= i.simd || i.dst.stride * w >= 8);
+            bool splitH = (w * w >= i.simd);
             int nsplit = splitH ? (i.simd / w) : w;
             i.simd /= nsplit;
             i.src0.stride = splitH ? hs : vs;
@@ -743,12 +733,10 @@ void CopyPlan::planTypeConversions()
                 } else
                     planEmulatedHalveFloat(i);
             }
-        } else if (st == DataType::hf8 && dt == DataType::hf) {
-               if (hw < HW::Xe3)
-                    planEmulatedHF8ToHF(i);
-        } else if (st == DataType::hf && dt == DataType::hf8) {
-               if (hw < HW::Xe3)
-                   planEmulatedHFToHF8(i);
+        } else if (st == Type::ngen_hf8() && dt == DataType::hf) {
+                planEmulatedHF8ToHF(i);
+        } else if (st == DataType::hf && dt == Type::ngen_hf8()) {
+                planEmulatedHFToHF8(i);
         } else if (st != dt && (isFP8(st) || isFP8(dt))) {
             copyThrough(i, DataType::hf, 1);
             rerun = true;
@@ -1118,7 +1106,7 @@ void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
     // mul          t0:hf   t0:hf   2^(-15):hf      /* hf8 underflow */
     // and (ze)f1   null    ~t0:uw  0x7C00          /* nan/inf check */
     // add          t0:uw   t0:uw   -0x40           /* round */
-    // and (nz)f2   null    t0:uw   0x00FF
+    // and (nz)f2   null    t0:uw   0x3FF
     // shl          t0:uw   t0:uw   1               /* move to high byte */
     // (f2) add     t0:uw   t0:uw   0x100
     // (f1) mov     t0:uw   0x7F00
@@ -1155,7 +1143,7 @@ void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
     ie[4]->dst = CopyOperand();
     ie[4]->dst.type = DataType::uw;
     ie[4]->src0 = t0UW;
-    ie[4]->src1 = 0x00FF;
+    ie[4]->src1 = 0x3FF;
     ie[4]->cmod = ConditionModifier::nz;
     ie[4]->flag = newFlag(ie[4]->simd);
 
@@ -1270,7 +1258,6 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
-        if (simd0 == 2) simd0 = 1;
         if (simd0 < i.simd || splitting) {
             if (i.dst.offset >= i.dst.stride && i.dst.stride > 0) {   /* align dst to GRF boundary */
                 int remaining = div_up(bytesToElements(grf, i.dst.type) - i.dst.offset, i.dst.stride);
@@ -1325,31 +1312,6 @@ inline bool legalPackedBF(HW hw, const CopyOperand &op)
     return (op.stride == 1 && (op.offset & (align - 1)) == 0);
 }
 
-void   CopyPlan::planFP8SIMD1Mov(CopyInstruction &i){
-		/* Simd 1 not allowed, use following sequence instead:
-		   hf8->hf (analagous sequence will be generated for hf->hf8)
-		   mov(2, t_dst.hf, src<2,2,1>.hf8)
-		   mov(1, dst.uw, t_dst<1,1,1>.uw) */
-
-                auto dt = i.dst.type;
-                auto ie = splitMultiple<2>(i);
-                auto src = i.src0;
-                auto dst = i.dst;
-                auto t_dst = newTemp(dt, 2, 1);
-                t_dst.stride = 1;
-
-                ie[0]->op = Opcode::mov;
-                ie[0]->dst = t_dst;
-                ie[0]->src0 = src;
-                ie[0]->src0.stride = 1;
-                ie[0]->simd = 2;
-
-                ie[1]->op = Opcode::mov;
-                ie[1]->dst = dst;
-                ie[1]->src0 = t_dst;
-                ie[1]->moveToIntegerPipe();
-}
-
 // Pass to legalize regions.
 void CopyPlan::legalizeRegions()
 {
@@ -1366,19 +1328,15 @@ void CopyPlan::legalizeRegions()
         if (!i.dst) continue;
 
         /* Check for special packed conversion cases */
-        if (i.op == Opcode::mov && ((s0t == DataType::hf && isFP8(dt))
-                                 || (dt == DataType::hf && isFP8(s0t)))) {
-            // hf <-> bf8/hf8: src0/dst must be packed unit stride, zero offset
-            if (i.simd == 1 && i.src0.offset == 0 && i.src0.stride == 1){
-                planFP8SIMD1Mov(i);
-                rerun = true;
-	    } else if (i.src0.offset != 0 || i.src0.stride != 1) {
+        if (i.op == Opcode::mov && s0t == DataType::hf && dt == DataType::bf8) {
+            // hf -> bf8: src0/dst must be packed unit stride, zero offset
+            if (i.src0.offset != 0 || i.src0.stride != 1)
                 repositionSrc(i, 0, 1, 0);
-                rerun = true;
-            } else if (i.dst.offset != 0 || i.dst.stride != 1)
+            if (i.dst.offset != 0 || i.dst.stride != 1)
                 repositionDst(i, 1, 0);
+            if (i.simd == 1) hw_unsupported();
             continue;
-	}
+        }
 
         if (dt == DataType::bf || s0t == DataType::bf || s1t == DataType::bf) {
             // bf/f mixed mode: src/dst may be packed unit stride
@@ -1406,7 +1364,7 @@ void CopyPlan::legalizeRegions()
 
         /* Check destination stride against execution channels */
         int channelSize = 1;
-        for (auto &op: {i.dst, i.src0, i.src1, i.src2})
+        for (auto op: {i.dst, i.src0, i.src1, i.src2})
             if (op.kind == op.GRF)
                 channelSize = std::max(channelSize, getBytes(op.type));
 
@@ -1430,13 +1388,9 @@ void CopyPlan::legalizeRegions()
 
         /* For illegal dst, copy through temporary dst */
         if (doRestrideDst) {
-            if (i.simd == 1)
-                i.dst.stride = dstMinStride;
-            else {
-                restrideDst(i, dstMinStride, hfIntConvert);
-                rerun = true;
-                continue;
-            }
+            restrideDst(i, dstMinStride, hfIntConvert);
+            rerun = true;
+            continue;
         }
 
         /* Check for swizzling */

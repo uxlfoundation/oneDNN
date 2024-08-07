@@ -307,16 +307,6 @@ on Windows Server\* 2019 with
 on macOS 11 (Big Sur) with
 * Apple LLVM version 13.0
 
-AArch64 CPU engine was validated on Ubuntu 22.04 with
-* GNU Compiler Collection 10.0, 13.0
-* Clang\* 17.0
-* [Arm Compiler for Linux] 24.04
-* [Arm Compute Library (ACL)] built for armv8-a arch, latest stable version
-available at the time of release
-
-on macOS 14 (Sonoma) with
-* Apple LLVM version 15.0
-
 on Ubuntu 20.04 AArch64 with
 * GNU Compiler Collection 7.0, 8.0, 9.0, 10.0
 * Clang\* 9.0, 17.0

@@ -87,9 +87,8 @@ private:
 
         float eps = epsilon();
         const size_t s_off = conf_.stat_md.off_l(idx);
-        auto v_mean
-                = load_float_value(stat_md().data_type(), stat_ptr(), s_off);
-        auto v_variance = load_float_value(var_dt(), var_ptr(), s_off);
+        auto v_mean = stat_mem.load(s_off);
+        auto v_variance = var_mem.load(s_off);
         dim_t C = conf_.C;
 
         float sqrt_variance = sqrtf(v_variance + eps);
@@ -179,8 +178,8 @@ private:
         memory_tensor_t dst_mem(dst_, conf_.dst_md);
 
         if (conf_.zero_dims && conf_.calculate_stats && conf_.save_stats) {
-            store_float_value(stat_md().data_type(), 0, stat_out_ptr(), idx);
-            store_float_value(var_dt(), 0, var_out_ptr(), idx);
+            stat_out_mem.store(0, idx);
+            var_out_mem.store(0, idx);
         }
         float eps = epsilon();
         const size_t s_off = conf_.stat_md.off_l(idx);
@@ -219,12 +218,8 @@ private:
                 float s = data_mem.load(src_off);
                 float d = sm * (s - v_mean) + sv;
 
-                float sr = conf_.src_def ? 1.f
-                                         : load_float_value(conf_.scales_src_dt,
-                                                 rt_oscale_ptr(), 0);
-                float ds = conf_.dst_def ? 1.f
-                                         : load_float_value(conf_.scales_dst_dt,
-                                                 dst_oscale_ptr(), 0);
+                float sr = conf_.src_def ? 1.f : rt_scale_mem.load(0);
+                float ds = conf_.dst_def ? 1.f : dst_scale_mem.load(0);
                 d = (d * sr * (1.f / ds));
 
                 dst_mem.store(d, d_off);
@@ -232,9 +227,8 @@ private:
         }
 
         if (conf_.calculate_stats && conf_.save_stats) {
-            store_float_value(
-                    stat_md().data_type(), v_mean, stat_out_ptr(), s_off);
-            store_float_value(var_dt(), v_variance, var_out_ptr(), s_off);
+            stat_out_mem.store(v_mean, s_off);
+            var_out_mem.store(v_variance, s_off);
         }
     }
 
@@ -332,15 +326,11 @@ private:
                                diff_dst_off = diff_dst_md().off_l(index),
                                s_off = stat_md().off_l(n);
 
-                    float inv_sqrt_variance = 1.f
-                            / sqrtf(load_float_value(var_dt(), var_ptr(), s_off)
-                                    + eps); //stat
-                    float s = load_float_value(
-                            data_md().data_type(), data_ptr(), src_off);
-                    auto dd = load_float_value(diff_dst_md().data_type(),
-                            diff_dst_ptr(), diff_dst_off);
-                    auto stat_v = load_float_value(
-                            stat_md().data_type(), stat_ptr(), s_off);
+                    float inv_sqrt_variance
+                            = 1.f / sqrtf(var_mem.load(s_off) + eps); //stat
+                    float s = data_mem.load(src_off);
+                    auto dd = diff_dst_mem.load(diff_dst_off);
+                    auto stat_v = stat_mem.load(s_off);
                     diff_gamma += (s - stat_v) * dd * inv_sqrt_variance;
                     diff_beta += dd;
                 }

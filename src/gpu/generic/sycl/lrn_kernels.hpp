@@ -42,6 +42,13 @@ struct lrn_fwd_kernel_vec_t {
         memory_tensor_t src_mem(src_, conf_.src_md);
         memory_tensor_t dst_mem(dst_, conf_.dst_md);
 
+        auto sg = item.get_sub_group();
+        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
+        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
+        size_t wi_offset_t = sg.get_local_id();
+        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
+        size_t base_idx = offset_t * conf_.block_size;
+
         auto data_off = [&](dim_t &mb, dim_t &c, dim_t &d, dim_t &h, dim_t &w) {
             switch (tag_) {
                 case format_tag::nchw:
@@ -137,9 +144,6 @@ private:
     const xpu::sycl::md_t &src_md() const { return conf_.src_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
-    void *src_ptr() const { return src_.get_pointer(); }
-    void *dst_ptr() const { return dst_.get_pointer(); }
-
     sycl_lrn_conf_t conf_;
     xpu::sycl::in_memory_arg_t src_;
     xpu::sycl::out_memory_arg_t dst_;
@@ -159,6 +163,13 @@ struct lrn_bwd_kernel_vec_t {
         memory_tensor_t src_mem(src_, conf_.src_md);
         memory_tensor_t diff_src_mem(diff_src_, conf_.diff_src_md);
         memory_tensor_t diff_dst_mem(diff_dst_, conf_.diff_dst_md);
+
+        auto sg = item.get_sub_group();
+        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
+        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
+        size_t wi_offset_t = sg.get_local_id();
+        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
+        size_t base_idx = offset_t * conf_.block_size;
 
         auto data_off = [&](dim_t &mb, dim_t &c, dim_t &d, dim_t &h,
                                 dim_t &w) -> dim_t {
@@ -302,10 +313,6 @@ private:
     const xpu::sycl::md_t &src_md() const { return conf_.src_md; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
     const xpu::sycl::md_t &diff_src_md() const { return conf_.diff_src_md; }
-
-    void *src_ptr() const { return src_.get_pointer(); }
-    void *diff_dst_ptr() const { return diff_dst_.get_pointer(); }
-    void *diff_src_ptr() const { return diff_src_.get_pointer(); }
 
     sycl_lrn_conf_t conf_;
     xpu::sycl::in_memory_arg_t src_;

@@ -116,10 +116,6 @@ private:
     const xpu::sycl::md_t &weights_md() const { return conf_.weights_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
-    void *data_ptr() const { return data_.get_pointer(); }
-    void *weights_ptr() const { return weights_.get_pointer(); }
-    void *dst_ptr() const { return dst_.get_pointer(); }
-
     static dim_t offset(const xpu::sycl::md_t &mem, dims_t dims) {
         const int ndims = mem.ndims();
         switch (ndims) {
@@ -176,20 +172,19 @@ struct prelu_bwd_kernel_vec_t {
         memory_plain_t scratchpad_mem(
                 scratchpad_, conf_.weights_md.data_type());
 
-        size_t ithr = item.get_global_id(0);
+        size_t ithr = item.get_group(0) * conf_.wg_size + item.get_local_id();
         switch (conf_.bcast_type) {
             case broadcasting_strategy_t::scalar:
-                calculate_scalar(data_ptr(), weights_ptr(), diff_weights_ptr(),
-                        diff_dst_ptr(), diff_data_ptr(), ithr);
+                calculate_scalar(data_mem, weights_mem, scratchpad_mem,
+                        diff_dst_mem, diff_data_mem, ithr);
                 break;
             case broadcasting_strategy_t::no_broadcast:
                 calculate_no_broadcast(data_mem, weights_mem, diff_weights_mem,
                         diff_dst_mem, diff_data_mem, ithr);
                 break;
             default:
-                calculate_shared_axes(data_ptr(), weights_ptr(),
-                        diff_weights_ptr(), diff_dst_ptr(), diff_data_ptr(),
-                        ithr, item);
+                calculate_shared_axes(data_mem, weights_mem, diff_weights_mem,
+                        diff_dst_mem, diff_data_mem, ithr, item);
                 break;
         }
     }
@@ -225,18 +220,6 @@ private:
     const xpu::sycl::md_t &diff_data_md() const { return conf_.diff_data_md; }
     const xpu::sycl::md_t &diff_weights_md() const {
         return conf_.diff_weights_md;
-    }
-    const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
-
-    float *data_ptr() const { return (float *)(data_.get_pointer()); }
-    float *weights_ptr() const { return (float *)(weights_.get_pointer()); }
-    float *diff_data_ptr() const { return (float *)(diff_data_.get_pointer()); }
-    float *diff_weights_ptr() const {
-        return (float *)(diff_weights_.get_pointer());
-    }
-    float *diff_dst_ptr() const { return (float *)(diff_dst_.get_pointer()); }
-    float *scratchpad_ptr() const {
-        return (float *)(scratchpad_.get_pointer());
     }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
 
@@ -310,10 +293,8 @@ private:
             float diff_src_res = ::dnnl::impl::math::relu_bwd_use_dst(
                     diff_dst_val, src_val, weights_val);
             float diff_weight_res = src_val > 0 ? 0 : (diff_dst_val * src_val);
-            store_float_value(
-                    data_md().data_type(), diff_src_res, diff_src, data_off);
-            store_float_value(diff_weights_md().data_type(), diff_weight_res,
-                    scratchpad_ptr(), data_off);
+            diff_src_mem.store(diff_src_res, data_off);
+            scratchpad_mem.store(diff_weight_res, data_off);
 
             if (conf_.ndims == 1) {
                 utils::nd_iterator_step(off[0], dims_d[0]);

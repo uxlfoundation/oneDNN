@@ -51,6 +51,9 @@ struct resampling_kernel_fwd_vec_t {
                   DNNL_ARG_ATTR_MULTIPLE_POST_OP(4) | DNNL_ARG_SRC_1)) {}
 
     void operator()(::sycl::nd_item<1> item) const {
+        memory_tensor_t src_mem(src_, conf_.src_md);
+        memory_tensor_t dst_mem(dst_, conf_.dst_md);
+
         size_t ithr = item.get_group(0) * conf_.wg_size + item.get_local_id();
 
         const auto &src_ndims = conf_.src_md.ndims();
@@ -129,7 +132,9 @@ struct resampling_kernel_fwd_vec_t {
                 off[3] = ow;
                 off[4] = 0;
             }
-            dst = conf_.post_ops.apply(dst, dst_, data_p_off, po_args_, off);
+            auto dst_sum = dst_mem.load(data_p_off);
+
+            dst = conf_.post_ops.apply(dst, dst_sum, dst_arr);
             dst_mem.store(dst, data_p_off);
             utils::nd_iterator_step(mb, MB, c, C, od, OD, oh, OH, ow, OW);
         }
@@ -139,13 +144,11 @@ private:
     const xpu::sycl::md_t &src_md() const { return conf_.src_md; }
     const xpu::sycl::md_t &dst_md() const { return conf_.dst_md; }
 
-    void *src_ptr() const { return src_.get_pointer(); }
     void *src_1_ptr() const { return src_1_.get_pointer(); }
     void *src_2_ptr() const { return src_2_.get_pointer(); }
     void *src_3_ptr() const { return src_3_.get_pointer(); }
     void *src_4_ptr() const { return src_4_.get_pointer(); }
     void *src_5_ptr() const { return src_5_.get_pointer(); }
-    void *dst_ptr() const { return dst_.get_pointer(); }
 
     void *gen_ptr(xpu::sycl::in_memory_arg_t gen_) const {
         return gen_.get_pointer();
@@ -281,9 +284,6 @@ private:
     const xpu::sycl::md_t &diff_src_md() const { return conf_.diff_src_md; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
 
-    void *diff_src_ptr() const { return diff_src_.get_pointer(); }
-    void *diff_dst_ptr() const { return diff_dst_.get_pointer(); }
-
     static dim_t get_offset(const xpu::sycl::md_t &mdw, dim_t n, dim_t c,
             dim_t d, dim_t h, dim_t w) {
         switch (mdw.ndims()) {
@@ -365,9 +365,6 @@ struct resampling_kernel_bwd_vec1_t {
 private:
     const xpu::sycl::md_t &diff_src_md() const { return conf_.diff_src_md; }
     const xpu::sycl::md_t &diff_dst_md() const { return conf_.diff_dst_md; }
-
-    void *diff_src_ptr() const { return diff_src_.get_pointer(); }
-    void *diff_dst_ptr() const { return diff_dst_.get_pointer(); }
 
     static dim_t get_offset(const xpu::sycl::md_t &mdw, dim_t n, dim_t c,
             dim_t d, dim_t h, dim_t w) {

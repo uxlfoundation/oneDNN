@@ -314,13 +314,6 @@ on Ubuntu 20.04 AArch64 with
 * [Arm Compute Library (ACL)] built for armv8-a arch, latest stable version
 available at the time of release
 
-on Ubuntu 20.04 AArch64 with
-* GNU Compiler Collection 7.0, 8.0, 9.0, 10.0
-* Clang\* 9.0, 17.0
-* [Arm Compiler for Linux] 24.04
-* [Arm Compute Library (ACL)] built for armv8-a arch, latest stable version
-available at the time of release
-
 GPU engine was validated on Ubuntu\* 22.04 with
 * GNU Compiler Collection 7.2, 8.1, and 9.1
 * Clang 7.1, 8.0, 9.0

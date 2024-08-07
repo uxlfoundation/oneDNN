@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ struct CopyTemporary
 {
     friend class CopyPlan;
 
-    int bytes = 0, align = 0, offset = 0;
+    int bytes, align = 0, offset = 0;
     bool flag = false;
     int16_t cnumMin = 0x7FFF;
     int16_t cnumMax = -1;
@@ -182,7 +182,6 @@ protected:
     void planInt4Upconversion(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);
     void planEmulatedHFToHF8(CopyInstruction &i);
-    void planFP8SIMD1Mov(CopyInstruction &i);
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();

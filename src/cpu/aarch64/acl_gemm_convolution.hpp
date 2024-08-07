@@ -43,52 +43,31 @@ struct acl_gemm_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 "gemm:acl", acl_gemm_convolution_fwd_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine) {
-            using namespace data_type;
-            using smask_t = primitive_attr_t::skip_mask_t;
-
-            bool ok = is_fwd()
-                    && set_default_alg_kind(alg_kind::convolution_direct)
-                    && expect_data_types(
-                            src_type, wei_type, bia_type, dst_type, undef)
-                    && !has_zero_dim_memory()
-                    && attr()->has_default_values(
-                            smask_t::post_ops | smask_t::fpmath_mode, dst_type)
-                    && output_scales_mask_ok() && zero_points_ok();
-            if (!ok) return status::unimplemented;
-
-            CHECK(acl_convolution_utils::init_conf_gemm(acp_, src_md_,
-                    weights_md_, dst_md_, bias_md_, *desc(), *attr()));
-
-            CHECK(post_ops.init(
-                    engine, attr_.post_ops_, dst_md_, acp_.act_info));
-            acp_.use_dst_acc_for_sum = post_ops.has_sum();
-
-            if (acp_.use_dst_acc_for_sum) {
-                const memory_desc_wrapper dst_d(&dst_md_);
-                auto scratchpad = scratchpad_registry().registrar();
-                scratchpad.book(memory_tracking::names::key_generic_acc,
-                        dst_d.nelems(), dst_d.data_type_size());
-            }
-
-            return status::success;
-        }
+        status_t init(engine_t *engine);
 
         acl_conv_conf_t acp_;
         acl_post_ops_t post_ops;
+
+    protected:
+        bool output_scales_mask_ok() const;
+        bool zero_points_ok() const;
+
+    private:
+        status_t init_conf();
     };
 
-    // hot fix solution for stateless API which should be replaced soon.
-    // acl_gemm_convolution_fwd_t(const pd_t *apd)
-    //     : primitive_t(apd), acl_obj_(std::make_unique<acl_obj_t<Op>>()) {}
-    acl_gemm_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    acl_gemm_convolution_fwd_t(const pd_t *apd)
+        : primitive_t(apd), acl_obj_(std::make_unique<acl_obj_t<Op>>()) {}
 
     status_t init(engine_t *engine) override;
 
-    using src_data_t = typename prec_traits<src_type>::type;
-    using wei_data_t = typename prec_traits<wei_type>::type;
-    using dst_data_t = typename prec_traits<dst_type>::type;
-    using bia_data_t = typename prec_traits<bia_type>::type;
+    status_t create_resource(
+            engine_t *engine, resource_mapper_t &mapper) const override;
+
+    typedef typename prec_traits<src_type>::type src_data_t;
+    typedef typename prec_traits<wei_type>::type wei_data_t;
+    typedef typename prec_traits<dst_type>::type dst_data_t;
+    typedef typename prec_traits<bia_type>::type bia_data_t;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
@@ -101,10 +80,7 @@ private:
     std::unique_ptr<acl_obj_t<Op>> reinitialize_acl_obj() const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-
-    // commented due to hot fix solution for stateless API which should be replaced soon.
-    // std::unique_ptr<acl_obj_t<Op>> acl_obj_;
-
+    std::unique_ptr<acl_obj_t<Op>> acl_obj_;
 }; // acl_gemm_convolution_fwd_t
 
 } // namespace aarch64

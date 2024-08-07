@@ -68,11 +68,6 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
         memory_desc_t &bias_md, const convolution_desc_t &cd,
         const primitive_attr_t &attr);
 
-status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
-        memory_desc_t &weights_md, memory_desc_t &dst_md,
-        memory_desc_t &bias_md, const convolution_desc_t &cd,
-        const primitive_attr_t &attr);
-
 // Keys are anonymous with local linkage. So deduce the type automagically.
 using conv_key_t = decltype(memory_tracking::names::key_gemm_tmp_buffer);
 

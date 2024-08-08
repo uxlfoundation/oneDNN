@@ -156,6 +156,7 @@ struct attr_info_t {
         attr_info.with_src_scales = !src_scales.has_default_values();
         attr_info.with_src0_scale = !src_scales.has_default_values();
         attr_info.src_scales_mask = src_scales.mask_;
+        attr_info.src_scales_data_type = src_scales.data_type_;
 
         const auto &src1_scales = attr->scales_.get(DNNL_ARG_SRC_1);
         attr_info.with_src1_scale = !src1_scales.has_default_values();
@@ -164,10 +165,12 @@ struct attr_info_t {
         const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
         attr_info.with_wei_scales = !wei_scales.has_default_values();
         attr_info.wei_scales_mask = wei_scales.mask_;
+        attr_info.wei_scales_data_type = wei_scales.data_type_;
 
         const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
         attr_info.with_dst_scales = !dst_scales.has_default_values();
         attr_info.dst_scales_mask = dst_scales.mask_;
+        attr_info.dst_scales_data_type = dst_scales.data_type_;
 
         // zero points
         const auto &zp = attr->zero_points_;
@@ -214,6 +217,9 @@ struct attr_info_t {
     bool src_scales_mask;
     bool wei_scales_mask;
     bool dst_scales_mask;
+    data_type_t src_scales_data_type;
+    data_type_t wei_scales_data_type;
+    data_type_t dst_scales_data_type;
 
     bool with_src_zpoints;
     bool with_wei_zpoints;
@@ -1433,6 +1439,12 @@ inline status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
 
     def_binary_alg_kinds(kernel_ctx);
     def_eltwise_alg_kinds(kernel_ctx);
+    if (post_ops.len() == 0
+            && utils::one_of(data_type::bf16, attr_info.src_scales_data_type,
+                    attr_info.wei_scales_data_type,
+                    attr_info.dst_scales_data_type)) {
+        kernel_ctx.define_int("POST_OP_USING_BF16", 1);
+    }
 
     return def_post_ops_cfg(kernel_ctx, post_ops, dst_md);
 }

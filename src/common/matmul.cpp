@@ -55,13 +55,17 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
     const bool src_is_int8
             = utils::one_of(src_dt, data_type::s8, data_type::u8);
-    if (src_is_int8) attr_mask |= smask_t::zero_points_runtime;
+    const bool src_is_fp8
+            = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
+    if (src_is_int8 || src_is_fp8) attr_mask |= smask_t::zero_points_runtime;
 
     // Matmul supports zero points for floating point data types as part of
     // weights decompression.
+    const bool wei_is_fp8
+            = utils::one_of(wei_dt, data_type::f8_e5m2, data_type::f8_e4m3);
     const bool wei_is_int = utils::one_of(
             wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
-    if (wei_is_int) {
+    if (wei_is_int || wei_is_fp8) {
         attr_mask |= smask_t::zero_points_runtime_data_type;
         attr_mask |= smask_t::zero_points_runtime_groups;
         attr_mask |= smask_t::scales_runtime_data_type;
@@ -118,8 +122,9 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                 src_scale_group_k > 1 && wei_scale_group_k > 1,
                 (src_scale_group_k % wei_scale_group_k == 0)
                         || (wei_scale_group_k % src_scale_group_k == 0));
-        VCHECK_MATMUL_UNIMPL(IMPLICATION(src_scale_group_k > 1,
-                                     src_is_int8 && groups_are_divisible),
+        VCHECK_MATMUL_UNIMPL(
+                IMPLICATION(src_scale_group_k > 1,
+                        (src_is_int8 || src_is_fp8) && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 

@@ -53,6 +53,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             | smask_t::rounding_mode;
     // Matmul supports scales for floating point data types
     attr_mask |= smask_t::scales_runtime;
+    attr_mask |= smask_t::scales_runtime_data_type;
 
     const bool src_is_int8
             = utils::one_of(src_dt, data_type::s8, data_type::u8);
@@ -68,8 +69,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         attr_mask |= smask_t::scales_runtime_groups;
     }
 
-    // Matmul supports fpmath mode and accumulation mode
-    attr_mask |= smask_t::fpmath_mode | smask_t::accumulation_mode;
+    // Matmul supports fpmath mode
+    attr_mask |= smask_t::fpmath_mode;
 
     VCHECK_MATMUL_UNIMPL(attr->has_default_values(attr_mask, dst_dt),
             VERBOSE_UNSUPPORTED_ATTR);

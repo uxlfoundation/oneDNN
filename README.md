@@ -84,14 +84,14 @@ The library is optimized for the following CPUs:
 * Intel 64/AMD64 architecture
   * Intel Atom(R) processor (at least Intel SSE4.1 support is required)
   * Intel Core(TM) processor (at least Intel SSE4.1 support is required)
-  * Intel Core Ultra processors (formerly Meteor Lake)
   * Intel Xeon(R) processor E3, E5, and E7 family (formerly Sandy Bridge,
     Ivy Bridge, Haswell, and Broadwell)
   * Intel Xeon Scalable processor (formerly Skylake, Cascade Lake, Cooper
     Lake, Ice Lake, Sapphire Rapids, and Emerald Rapids)
   * Intel Xeon CPU Max Series (formerly Sapphire Rapids HBM)
-  * future Intel Xeon Scalable processors (code name Sierra Forest
-and Granite Rapids)
+  * Intel Core Ultra processors (formerly Meteor Lake, Arrow Lake,
+    and Lunar Lake)
+  * Intel Xeon 6 processors (formerly Sierra Forest and Granite Rapids)
 * AArch64 architecture
   * Arm Neoverse(TM) N1 and V1 processors
 

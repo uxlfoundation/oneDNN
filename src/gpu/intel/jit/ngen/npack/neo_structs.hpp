@@ -78,7 +78,7 @@ enum class ProductFamily : uint32_t {
 #endif
 };
 
-typedef struct
+struct SProgramBinaryHeader
 {
     uint32_t Magic; // = MAGIC_CL ("INTC")
     uint32_t Version;
@@ -87,9 +87,9 @@ typedef struct
     uint32_t NumberOfKernels;
     uint32_t SteppingId;
     uint32_t PatchListSize;
-} SProgramBinaryHeader;
+};
 
-typedef struct
+struct SKernelBinaryHeader
 {
     uint32_t CheckSum;
     uint32_t ShaderHashCode[2];
@@ -100,7 +100,25 @@ typedef struct
     uint32_t DynamicStateHeapSize;
     uint32_t SurfaceStateHeapSize;
     uint32_t KernelUnpaddedSize;
-} SKernelBinaryHeader;
+};
+
+struct SPatchItemHeader
+{
+    uint32_t Token;
+    uint32_t Size;
+};
+
+enum {
+    PatchTokenThreadPayload = 22
+};
+
+struct SPatchThreadPayload : SPatchItemHeader {
+    uint32_t _1[14];
+    uint32_t PassInlineData;
+    uint32_t _2[5];
+};
+
+static_assert(sizeof(SPatchThreadPayload) == 88, "Unexpected SPatchThreadPayload size");
 
 } /* namespace npack */
 } /* namespace NGEN_NAMESPACE */

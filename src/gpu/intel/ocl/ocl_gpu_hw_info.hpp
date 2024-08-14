@@ -31,6 +31,8 @@ namespace ocl {
 void *malloc_shared(
         cl_device_id dev, cl_context ctx, size_t size, size_t alignment = 0);
 
+xpu::runtime_version_t get_driver_version(cl_device_id device);
+
 void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
         int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,

@@ -738,13 +738,116 @@ class LayerNormalizationConverter(GroupNormalizationConverter):
             return f"{dts} {shift_flag}".strip()
         return dts
 
-    @property
-    def tags(self):
-        tags = super().tags
-        for md in self.entry.mds:
-            if md.arg == "stats":
-                tags = f"{tags} --stat_tag={maybe_make_any_tag(md)}"
-        return tags.strip()
+    def convert_tags_multiple_src(mds):
+        src_tags = ""
+        tags = ""
+        first_src = False
+        for md in mds:
+            md_tag = md["tag"]
+            md_arg = md["arg"]
+            if md_arg == "src":
+                if first_src:
+                    if "a" in md["properties"]:
+                        src_tags += f":any"
+                    else:
+                        src_tags += f":{md_tag}"
+                else:
+                    if "a" in md["properties"]:
+                        src_tags += f" --{md_arg[0]}tag=any"
+                    else:
+                        src_tags += f" --{md_arg[0]}tag={md_tag}"
+                    first_src = True
+            else:
+                if md_tag != "":
+                    if "a" in md["properties"]:
+                        tags += f" --{md_arg[0]}tag=any"
+                    else:
+                        tags += f" --{md_arg[0]}tag={md_tag}"
+        return src_tags + tags
+
+    def convert_tags_prelu(mds):
+        # FIXME: fix benchdnn input template
+        data_md = [md for md in mds if "data" in md["arg"]][0]
+        weights_md = [md for md in mds if "wei" in md["arg"]][0]
+
+        data_tag = data_md["tag"]
+        weights_tag = weights_md["tag"]
+
+        return f" --stag={data_tag}:{weights_tag}"
+
+    def convert_tags_rnn(mds):
+        tags = "--tag="
+        with_proj = ""
+        with_peep = ""
+        skip_colon = True
+
+        # Tags for backward are driven by diff tensors, query them instead of
+        # forward tensors. Latter will always have `any` format.
+        has_diff_tensors = False
+        for md in mds:
+            if md["arg"].find("diff") != -1:
+                has_diff_tensors = True
+
+        for md in mds:
+            md_arg = md["arg"]
+            md_tag = md["tag"]
+            if has_diff_tensors == True:
+                if md_arg in ["diff_src_layer", "diff_wei_layer", "diff_dst_layer"]:
+                    if not skip_colon:
+                        tags += f":"
+                    if "a" in md["properties"]:
+                        tags += f"any"
+                    else:
+                        tags += f"{md_tag}"
+                    skip_colon = False
+            else:
+                if md_arg in ["src_layer", "wei_layer", "dst_layer"]:
+                    if not skip_colon:
+                        tags += f":"
+                    if "a" in md["properties"]:
+                        tags += f"any"
+                    else:
+                        tags += f"{md_tag}"
+                    skip_colon = False
+
+            if md_arg == "wei_proj" and md_tag != "undef":
+                with_proj = " --with-projection=true"
+            if md_arg == "wei_peephole" and md_tag != "undef":
+                with_peep = " --with-peephole=true"
+
+        return tags + with_proj + with_peep
+
+    def convert_tags_lnorm(mds):
+        tag = convert_tags_multiple(mds)
+        stat_md = ""
+        for md in mds:
+            if md["arg"] == "stats":
+                stat_tag = md["tag"]
+
+        return f"{tag} --stat_tag={stat_tag}"
+
+    cvt_tags = {
+        "batch_normalization": convert_tags_common,
+        "binary": convert_tags_multiple_src,
+        "concat": convert_tags_multiple_src,
+        "convolution": convert_tags_all,
+        "deconvolution": convert_tags_all,
+        "eltwise": convert_tags_common,
+        "inner_product": convert_tags_all,
+        "group_normalization": convert_tags_multiple,
+        "layer_normalization": convert_tags_lnorm,
+        "lrn": convert_tags_common,
+        "matmul": convert_tags_and_strides,
+        "pooling": convert_tags_common,
+        "prelu": convert_tags_prelu,
+        "reduction": convert_tags_all,
+        "reorder": convert_tags_and_strides,
+        "resampling": convert_tags_common,
+        "rnn": convert_tags_rnn,
+        "shuffle": convert_tags_common,
+        "softmax": convert_tags_all,
+        "sum": convert_tags_multiple_src,
+    }
 
 
 class LRNConverter(AlgorithmMixin, Converter):

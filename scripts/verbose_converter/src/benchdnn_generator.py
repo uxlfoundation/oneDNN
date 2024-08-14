@@ -865,69 +865,31 @@ class ReorderConverter(StridesMixin, CommonDataTypeMixin, Converter):
             return f"--{prefix}flag=" + "+".join(flags)
         return ""
 
-    @staticmethod
-    def _get_policies():
-        return "common", "per_dim_0", "per_dim_1", "per_dim_01"
-
-    @staticmethod
-    def _get_policy_map():
-        return 0, 1, 2, 3
-
-    @property
-    def flags(self):
-        flags = {}
-        for md in self.entry.mds:
-            if "src" in md.arg and "src" not in flags:
-                flags["src"] = self._convert_flag("i", md)
-            elif "dst" in md.arg and "dst" not in flags:
-                flags["dst"] = self._convert_flag("o", md)
-
-            if "src" in flags and "dst" in flags:
-                break
-        iflag = flags.get("src", "")
-        oflag = flags.get("dst", "")
-        return f"{iflag} {oflag}".strip()
-
-    @property
-    def aux(self):
-        mask = self.entry.aux.get("runtime-dim-mask")
-        if mask:
-            return f"--runtime-dim-mask={mask}"
-        return ""
+    start_idx += len(type) + 1
+    end_symbol = ";"
+    if type == "post_ops":
+        start_idx += 1
+        end_symbol = "'"
+    end_idx = attrs.find(end_symbol, start_idx)
+    if type == "post_ops":
+        start_idx -= 1
+        end_idx += 1
+    return attrs[start_idx:end_idx]
 
 
-class ResamplingConverter(AlgorithmMixin, CommonDataTypeMixin, Converter):
-    driver: str = "resampling"
-
-
-class RNNConverter(AlgorithmMixin, Converter):
-    driver: str = "rnn"
-
-    @property
-    def flags(self):
-        for md in self.entry.mds:
-            if md.arg not in ("src_iter", "src_layer"):
-                continue
-            if md.strides == "":
-                continue
-            return "--trivial-strides=false"
-        return "--trivial-strides=true"
-
-    def _get_flag_from(self, flag_name, flag_values):
-        flag = self.entry.aux.get(flag_name)
-        if flag is None or flag not in flag_values:
-            return ""
-        return f"--{flag_name}={flag_values[flag]}"
-
-    @property
-    def aux(self):
-        algs = {
-            "vanilla_rnn": "VANILLA_RNN",
-            "vanilla_lstm": "VANILLA_LSTM",
-            "vanilla_gru": "VANILLA_GRU",
-            "vanilla_augru": "VANILLA_AUGRU",
-            "lbr_gru": "LBR_GRU",
-            "lbr_augru": "LBR_AUGRU",
+def convert_scale_policy(value, prim_kind):
+    if prim_kind == "reorder":
+        masks = {0: "common", 1: "per_dim_0", 2: "per_dim_1", 3: "per_dim_01"}
+    elif prim_kind == "matmul":
+        masks = {
+            0: "common",
+            1: "per_oc",
+            2: "per_oc",
+            3: "per_ocic",
+            4: "per_oc",
+            6: "per_ocic",
+            8: "per_oc",
+            12: "per_ocic",
         }
     else:
         masks = {0: "common", 1: "per_oc", 2: "per_oc", 3: "per_oc"}

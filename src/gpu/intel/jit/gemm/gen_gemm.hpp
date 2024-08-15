@@ -65,16 +65,23 @@ struct gen_gemm_t : public gpu_gemm_t {
             int stepping = dev_info_->stepping_id();
 
             const auto d = desc();
-            wei_decomp_ = (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2,
-                                   f8_e4m3)
-                                  && utils::one_of(d->a_type(), u8, s8, s4, u4)
-                                  && utils::one_of(d->b_type(), f16, f32, bf16,
-                                          f8_e5m2, f8_e4m3))
+            bool all_f8 = (utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
+                    && utils::one_of(d->b_type(), f8_e5m2, f8_e4m3)
+                    && utils::one_of(
+                            d->c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
+            bool wei_decomp
+                    = (utils::one_of(
+                               d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
+                              && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                              && utils::one_of(d->b_type(), f16, f32, bf16,
+                                      f8_e5m2, f8_e4m3))
                     && attr()->mayiconvert(d->a_type(), f32);
-            dy_quant_enabled_ = (utils::one_of(d->c_type(), f32, f16, bf16)
-                    && utils::one_of(d->a_type(), u8, s8, s4, u4)
-                    && utils::one_of(d->b_type(), u8, s8));
-            quant_enabled_ = wei_decomp_ || dy_quant_enabled_;
+            bool dy_quant_enabled
+                    = (utils::one_of(d->c_type(), f32, f16, bf16)
+                              && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                              && utils::one_of(d->b_type(), u8, s8))
+                    || all_f8;
+            bool quant_enabled = wei_decomp || dy_quant_enabled;
             CHECK(set_default_formats(false));
 
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
@@ -112,7 +119,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                 eff_ldb_ = utils::rnd_up(eff_ldb_, 16);
             }
 
-            if (quant_enabled_) {
+            if (quant_enabled) {
                 attr_skip_mask |= smask_t::fpmath_mode
                         | smask_t::scales_runtime_data_type
                         | smask_t::scales_runtime_groups
@@ -130,7 +137,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (utils::one_of(d->c_type(), s32, f16, f32, u8, s8)
                     && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
                 VDISPATCH_GEMM(
-                        (utils::one_of(d->b_type(), u8, s8) || wei_decomp_),
+                        (utils::one_of(d->b_type(), u8, s8) || wei_decomp),
                         VERBOSE_UNSUPPORTED_DT);
                 attr_skip_mask |= smask_t::zero_points_runtime;
 
@@ -145,7 +152,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                         VERBOSE_INCONSISTENT_DT, "a", "c");
                 VDISPATCH_GEMM(utils::one_of(d->acc_type, bf16, f32),
                         VERBOSE_INCONSISTENT_DT, "a", "acc");
-            } else if (!wei_decomp_) {
+            } else if (!wei_decomp) {
                 VDISPATCH_GEMM(utils::one_of(d->a_type(), f64, f32, f16,
                                        f8_e5m2, f8_e4m3),
                         VERBOSE_UNSUPPORTED_DT);
@@ -235,8 +242,8 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
             auto &src_scales = attr()->scales_.get(DNNL_ARG_SRC);
 
-            if (quant_enabled_ && wei_scales.ndims_ > 1) wei_scales_2d_ = true;
-            if (quant_enabled_ && src_scales.ndims_ > 1) src_scales_2d_ = true;
+            if (quant_enabled && wei_scales.ndims_ > 1) wei_scales_2d_ = true;
+            if (quant_enabled && src_scales.ndims_ > 1) src_scales_2d_ = true;
 
             for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
                 auto mask = attr()->scales_.get(s).mask_;
@@ -348,7 +355,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (attr()->deterministic_)
                 set_mode(mode, kernel_desc_t::mode_deterministic);
 
-            if (wei_decomp_) {
+            if (wei_decomp) {
                 acc_type = data_type::f32;
                 set_mode(mode, kernel_desc_t::mode_w_decomp);
             }
@@ -628,9 +635,6 @@ struct gen_gemm_t : public gpu_gemm_t {
         bool swap_ab_ = false;
         int ao_dims_ = -1, bo_dims_ = -1;
         bool a_zp_ = false, b_zp_ = false;
-        bool wei_decomp_ = false;
-        bool quant_enabled_ = false;
-        bool dy_quant_enabled_ = false;
         bool wei_scales_2d_ = false;
         bool src_scales_2d_ = false;
         bool src_po_sc_ = false;

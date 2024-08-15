@@ -770,7 +770,11 @@ class LayerNormalizationConverter(GroupNormalizationConverter):
         weights_md = [md for md in mds if "wei" in md["arg"]][0]
 
         data_tag = data_md["tag"]
+        if "a" in data_md["properties"]:
+            data_tag = "any"
         weights_tag = weights_md["tag"]
+        if "a" in weights_md["properties"]:
+            weights_tag = "any"
 
         return f" --stag={data_tag}:{weights_tag}"
 

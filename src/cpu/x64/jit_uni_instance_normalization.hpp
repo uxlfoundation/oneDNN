@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,8 +35,7 @@ struct jit_uni_instance_normalization_fwd_t : public primitive_t {
         using cpu_group_normalization_fwd_pd_t::
                 cpu_group_normalization_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                "jit_instance:uni", jit_uni_instance_normalization_fwd_t);
+        DECLARE_COMMON_PD_T("jit:uni", jit_uni_instance_normalization_fwd_t);
 
         status_t init(engine_t *engine);
 

@@ -81,7 +81,7 @@ namespace impl {
 // Versioning is used to communicate breaking verbose lines changes to
 // verbose_converter tool for maintaining compatibility smoother.
 // Numeration uses integers only and goes linearly from 0 to infinity.
-static constexpr char verbose_version[] = "v0";
+static constexpr char verbose_version[] = "v1";
 
 static setting_t<uint32_t> verbose {0};
 
@@ -1487,42 +1487,42 @@ std::string init_info_rnn(const engine_t *e, const pd_t *pd) {
                       pd->dst_md(1, true)->format_kind);
 
     if (!pd->is_fwd()) {
-        ss << " diff_src_layer_"
-           << md2fmt_str(pd->diff_src_md(0),
-                      pd->diff_src_md(0, true)->format_kind);
+        ss << " ";
+        ss << md2fmt_str("diff_src_layer", pd->diff_src_md(0),
+                pd->diff_src_md(0, true)->format_kind)
+           << " ";
         if (pd->with_src_iter())
-            ss << " diff_src_iter_"
-               << md2fmt_str(pd->diff_src_md(1),
-                          pd->diff_src_md(1, true)->format_kind);
-        ss << " diff_wei_layer_"
-           << md2fmt_str(pd->diff_weights_md(0),
-                      pd->diff_weights_md(0, true)->format_kind);
-        ss << " diff_wei_iter_"
-           << md2fmt_str(pd->diff_weights_md(1),
-                      pd->diff_weights_md(1, true)->format_kind);
+            ss << md2fmt_str("diff_src_iter", pd->diff_src_md(1),
+                    pd->diff_src_md(1, true)->format_kind)
+               << " ";
+        ss << md2fmt_str("diff_wei_layer", pd->diff_weights_md(0),
+                pd->diff_weights_md(0, true)->format_kind)
+           << " ";
+        ss << md2fmt_str("diff_wei_iter", pd->diff_weights_md(1),
+                pd->diff_weights_md(1, true)->format_kind)
+           << " ";
         if (pd->is_lstm_peephole())
-            ss << " diff_wei_peephole_"
-               << md2fmt_str(pd->diff_weights_md(2),
-                          pd->diff_weights_md(2, true)->format_kind);
+            ss << md2fmt_str("diff_wei_peephole", pd->diff_weights_md(2),
+                    pd->diff_weights_md(2, true)->format_kind)
+               << " ";
         if (pd->is_lstm_projection()) {
             auto proj_idx = 2 + pd->is_lstm_peephole();
-            ss << " diff_wei_proj_"
-               << md2fmt_str(pd->weights_md(proj_idx),
-                          pd->weights_md(proj_idx, true)->format_kind);
+            ss << md2fmt_str("diff_wei_proj", pd->weights_md(proj_idx),
+                    pd->weights_md(proj_idx, true)->format_kind)
+               << " ";
         }
         if (pd->with_bias()) {
             auto bias_idx
                     = 2 + pd->is_lstm_peephole() + pd->is_lstm_projection();
-            ss << " diff_bias_"
-               << md2fmt_str(pd->weights_md(bias_idx),
-                          pd->weights_md(bias_idx, true)->format_kind);
+            ss << md2fmt_str("diff_bias", pd->weights_md(bias_idx),
+                    pd->weights_md(bias_idx, true)->format_kind)
+               << " ";
         }
-        ss << " diff_dst_layer_"
-           << md2fmt_str(pd->diff_dst_md(0),
-                      pd->diff_dst_md(0, true)->format_kind);
+        ss << md2fmt_str("diff_dst_layer", pd->diff_dst_md(0),
+                pd->diff_dst_md(0, true)->format_kind);
         if (pd->with_dst_iter())
-            ss << " diff_dst_iter_"
-               << md2fmt_str(pd->diff_dst_md(1),
+            ss << " "
+               << md2fmt_str("diff_dst_iter", pd->diff_dst_md(1),
                           pd->diff_dst_md(1, true)->format_kind);
     }
 
@@ -1566,9 +1566,13 @@ std::string init_info_softmax(const engine_t *e, const pd_t *pd) {
     auto dst_md = pd->dst_md();
     auto diff_dst_md = pd->diff_dst_md();
 
-    ss << "src_" << md2fmt_str(src_md, pd->invariant_src_user_format_kind());
-    ss << " dst_" << dst_md;
-    if (!types::is_zero_md(diff_dst_md)) ss << " diff_dst_" << diff_dst_md;
+    ss << md2fmt_str("src", src_md, pd->invariant_src_user_format_kind())
+       << " ";
+    ss << md2fmt_str("dst", dst_md, pd->dst_md(0, true)->format_kind);
+    if (!types::is_zero_md(diff_dst_md)) {
+        ss << md2fmt_str(
+                "diff_dst", diff_dst_md, pd->diff_dst_md(0, true)->format_kind);
+    }
 
     ss << "," << pd->attr() << ",";
     ss << "alg:" << pd->alg_kind() << " axis:" << pd->axis() << ",";

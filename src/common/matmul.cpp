@@ -105,7 +105,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                         && utils::one_of(mask_wei, 0, wei_qmask_N,
                                 wei_qmask_N + wei_qmask_K)
                         && (engine->kind() == engine_kind::gpu ? utils::one_of(
-                                    mask_dst, 0, dst_qmask_N,
+                                    mask_dst, 0, dst_qmask_N, dst_qmask_K,
                                     dst_qmask_N + dst_qmask_K)
                                                                : mask_dst == 0),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);

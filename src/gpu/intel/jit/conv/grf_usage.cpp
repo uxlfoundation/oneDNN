@@ -264,7 +264,6 @@ private:
         ir_assert(is_buffer(buf));
         auto &name = buf.as<var_t>().name;
         if (name.find("zp_") == 0) return true;
-        if (name.find("src_zp") == 0) return true;
         if (name.find("x_reduce") == 0) return true;
         return false;
     }

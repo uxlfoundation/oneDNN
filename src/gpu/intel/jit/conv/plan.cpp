@@ -976,8 +976,7 @@ int fma_plan_t::bmnk_stop_idx(bmnk_kind_t bmnk, int subtile_idx) const {
 stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
         const std::string &a, const std::string &b, const std::string &c,
         int subtile_idx) const {
-    int c_buf_size
-            = into<int>(utils::rnd_up(c_layout.size(), ir_ctx.grf_size()));
+    int c_buf_size = utils::rnd_up(c_layout.size(), ir_ctx.grf_size());
     auto a_buf = buf_mgr.get(a);
     auto b_buf = buf_mgr.get(b);
     auto c_buf = buf_mgr.get(c, c_buf_size);
@@ -990,9 +989,9 @@ stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
     int k0 = bmnk_start_idx(bmnk_kind_t::k, subtile_idx);
     int k1 = bmnk_stop_idx(bmnk_kind_t::k, subtile_idx);
 
-    std::vector<dim_t> a_idx(3);
-    std::vector<dim_t> b_idx(3);
-    std::vector<dim_t> c_idx(3);
+    std::vector<int> a_idx(3);
+    std::vector<int> b_idx(3);
+    std::vector<int> c_idx(3);
 
     auto fma_funcs = create_fma_funcs(ir_ctx.hw());
 
@@ -1005,9 +1004,9 @@ stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
                 b_idx[2] = c_idx[2] = n;
                 for (int m = m0; m < m1; m += m_blk) {
                     a_idx[1] = c_idx[1] = m;
-                    dim_t a_off = a_layout.offset_in_bytes(a_idx);
-                    dim_t b_off = b_layout.offset_in_bytes(b_idx);
-                    dim_t c_off = c_layout.offset_in_bytes(c_idx);
+                    int a_off = a_layout.offset_in_bytes(a_idx);
+                    int b_off = b_layout.offset_in_bytes(b_idx);
+                    int c_off = c_layout.offset_in_bytes(c_idx);
                     a_off = a_off % a_buf_size();
                     b_off = b_off % b_buf_size();
                     stmt = stmt.append(create_fma_block(fma_funcs, a_buf[a_off],
@@ -1063,9 +1062,8 @@ std::vector<func_t> fma_plan_t::create_fma_funcs(const hw_t &hw) const {
             int sdepth = ir_utils::safe_divide(k_blk * a.type().size(), 4);
             for (int r = 0; r < block_rcount;) {
                 int rcount = std::min(max_rcount, block_rcount - r);
-                auto dpas = dpas_t::make(/*is_dpasw=*/false, simd,
-                        into<uint8_t>(sdepth), into<uint8_t>(rcount), c.type(),
-                        b.type(), a.type());
+                auto dpas = dpas_t::make(/*is_dpasw=*/false, simd, sdepth,
+                        rcount, c.type(), b.type(), a.type());
                 ret.push_back(dpas);
                 r += rcount;
             }
@@ -2534,13 +2532,11 @@ private:
                 std::vector<dim_t> {zp_g_dim, zp_ic_dim});
         view_t zp_view(zp_layout);
         // TODO: support non-scalar wei layouts
-        layout_t zp_wei_layout(
-                cfg_.zp_cfg().wei_zp_type, 0, std::vector<dim_t> {1, 1});
+        layout_t zp_wei_layout(type_t::s32(), 0, std::vector<dim_t> {1, 1});
         view_t zp_wei_view(zp_wei_layout);
 
-        plan.init(cfg_, x2r.a_load.send_params().hint_2d.enable, gemm_schedule_,
-                zp_view, zp_wei_view, x2r.a_layout, x2r.b_layout,
-                fma.c_prb_layout);
+        plan.init(cfg_, gemm_schedule_, zp_view, zp_wei_view, x2r.a_layout,
+                x2r.b_layout, fma.c_prb_layout);
         return plan_status_t::success;
     }
 

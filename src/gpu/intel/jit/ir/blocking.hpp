@@ -655,7 +655,7 @@ const tiler_params_t &tiler_params();
 class tile_to_vec_t {
 public:
     tile_to_vec_t() = default;
-    tile_to_vec_t(const std::vector<std::vector<pvar_tile_t>> &tiles,
+    tile_to_vec_t(const std::vector<std::vector<prb_tile_t>> &tiles,
             const std::vector<int> &ids = {});
 
     float dist(int id0, int id1) const {
@@ -664,7 +664,7 @@ public:
         float ret = 0;
         // Use L1 distance between coordinates.
         for (int i = 0; i < (int)v0.size(); i++) {
-            ret += float(std::abs(v0[i] - v1[i]));
+            ret += std::abs(v0[i] - v1[i]);
         }
         return ret;
     }

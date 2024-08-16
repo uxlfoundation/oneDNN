@@ -158,26 +158,19 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                 prop_kind::forward_training)) {
         const data_type_t src_dt = desc.src_desc.data_type;
         const data_type_t dst_dt = desc.dst_desc.data_type;
-        auto fwd_attr_mask = smask_t::post_ops | smask_t::sum_dt
-                | smask_t::fpmath_mode | smask_t::rounding_mode;
-        const bool is_gpu = engine->kind() == engine_kind::gpu;
 
-        const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8)
-                || (is_gpu
-                        && utils::one_of(dst_dt, data_type::s8, data_type::u8,
-                                data_type::s32));
-        const bool is_fp8 = is_gpu
-                && (utils::one_of(
-                            src_dt, data_type::f8_e5m2, data_type::f8_e4m3)
-                        || utils::one_of(dst_dt, data_type::f8_e5m2,
-                                data_type::f8_e4m3));
-        const bool enable_quantization = is_int8 || is_fp8;
-        if (enable_quantization)
+        auto fwd_attr_mask
+                = smask_t::post_ops | smask_t::sum_dt | smask_t::fpmath_mode;
+
+        bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8);
+        if (engine->kind() == engine_kind::gpu)
+            is_int8 = is_int8
+                    || utils::one_of(dst_dt, data_type::s8, data_type::u8,
+                            data_type::s32);
+        if (is_int8)
             fwd_attr_mask |= smask_t::scales_runtime
                     | smask_t::zero_points_runtime
-                    | smask_t::zero_points_runtime_data_type
-                    | smask_t::scales_runtime_groups
-                    | smask_t::scales_runtime_data_type;
+                    | smask_t::zero_points_runtime_data_type;
 
         VCHECK_CONV_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -205,7 +198,7 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
             zp.get(DNNL_ARG_DST, &mask_dst);
 
             VCHECK_CONV_UNIMPL((mask_src == 0 || mask_src == 1 << 1)
-                            && (mask_wei == 0 || mask_wei == 1 << 1)
+                            && (mask_wei == 0)
                             && (mask_dst == 0 || mask_dst == 1 << 1),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }

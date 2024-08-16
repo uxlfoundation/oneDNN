@@ -96,9 +96,6 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
                         int src_zp = has_src_zp ? src_zps.get_elem(
                                              src_zp_mask > 0 ? g * ICG + ic : 0)
                                                 : 0;
-                        int wei_zp = has_wei_zp ? wei_zps.get_elem(
-                                             wei_zp_mask > 0 ? g * ICG + ic : 0)
-                                                : 0;
                         const float s = src_loc[src_off];
                         const float w = wei_loc[wei_off];
                         const float d_tmp = (s - src_zp) * (w - wei_zp);
@@ -249,9 +246,6 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
             int src_zp = has_src_zp
                     ? src_zps.get_elem(src_zp_mask > 0 ? g * OCG + oc : 0)
                     : 0;
-            int wei_zp = has_wei_zp
-                    ? wei_zps.get_elem(wei_zp_mask > 0 ? g * OCG + oc : 0)
-                    : 0;
             float diff_dst_val
                     = (diff_dst_loc[diff_dst_off] - src_zp) * src_scale;
 
@@ -290,9 +284,6 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
                                 = ((oc * ICG * KD + kd) * KH + kh) * KW + kw;
                         int src_zp = has_src_zp ? src_zps.get_elem(
                                              src_zp_mask > 0 ? g * OCG + oc : 0)
-                                                : 0;
-                        int wei_zp = has_wei_zp ? wei_zps.get_elem(
-                                             wei_zp_mask > 0 ? g * OCG + oc : 0)
                                                 : 0;
                         float diff_dst_val
                                 = (diff_dst_loc[diff_dst_off] - src_zp)

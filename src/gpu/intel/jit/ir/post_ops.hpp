@@ -78,7 +78,14 @@ public:
                   pd && do_src_compensation && is_src_precalc_compatible(pd))
         , common_src_zero_point(0)
         , common_wei_zero_point(0)
-        , common_dst_zero_point(0) {}
+        , common_dst_zero_point(0) {
+        if (pd) {
+            auto &zp = pd->attr()->zero_points_;
+            src_zp_type = zp.get_data_type(DNNL_ARG_SRC);
+            wei_zp_type = zp.get_data_type(DNNL_ARG_WEIGHTS);
+            dst_zp_type = zp.get_data_type(DNNL_ARG_DST);
+        }
+    }
 
     bool with_zero_points() const {
         if (do_src_compensation) return true;

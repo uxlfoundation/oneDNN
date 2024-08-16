@@ -234,12 +234,13 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns,
        in the catalog*/
     if (!bestEntry
             && (patterns[0].selector.hw == kcatalog::HWTagXe2
+#if XE3
+                    || patterns[0].selector.hw == kcatalog::HWTagXe3
+#endif
 #if XE3P
                     || patterns[0].selector.hw == kcatalog::HWTagXe3p
-                    || patterns[0].selector.hw == kcatalog::HWTagXe3)) {
-#else
-                    )) {
 #endif
+                    )) {
         std::vector<MatchParams> override_patterns;
         override_patterns.reserve(npatterns);
         for (int i = 0; i < npatterns; i++) {
@@ -304,6 +305,9 @@ MatchParamsBase::MatchParamsBase(
         case ngen::HW::XeHPG: selector.hw = kcatalog::HWTagXeHPG; break;
         case ngen::HW::XeHPC: selector.hw = kcatalog::HWTagXeHPC; break;
         case ngen::HW::Xe2: selector.hw = kcatalog::HWTagXe2; break;
+#if XE3
+        case ngen::HW::Xe3: selector.hw = kcatalog::HWTagXe3; break;
+#endif
 #if XE3P
         case ngen::HW::Xe3p: selector.hw = kcatalog::HWTagXe3p; break;
 #endif
@@ -374,6 +378,9 @@ MatchParamsBase::MatchParamsBase(
     if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
 
     if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
+#if XE3
+    if (hw == ngen::HW::Xe3) *tagPtr++ = ReqXe2Block2D;
+#endif
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

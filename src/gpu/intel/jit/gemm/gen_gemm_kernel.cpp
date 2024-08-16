@@ -71,7 +71,11 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     adjustStrategy(hw_, problem_, strategy_, tags);
     modifyStrategy(strategy_, aux_params_);
 
+#if XE3
+    if (hw_ == ngen::HW::Xe2 || hw_ == ngen::HW::Xe3) {
+#else
     if (hw_ == ngen::HW::Xe2) {
+#endif
         // Temporary hack to use XeHPC register banking on Xe2, in order
         //   to successfully reuse XeHPC strategies.
         strategy_.raHW = ngen::HW::XeHPC;
@@ -312,7 +316,11 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool can_2d_c = (ldc * problem_.Tc <= 16777216);
 
     // Xe2 requires stronger alignment for block 2D.
+#if XE3
+    if (arch == arch_t::xe2 || arch == arch_t::xe3) {
+#else
     if (arch == arch_t::xe2) {
+#endif
         can_2d_a &= (align_a % 16 == 0);
         can_2d_b &= (align_b % 16 == 0);
         can_2d_c &= (align_c % 16 == 0);
@@ -593,9 +601,8 @@ status_t gen_gemm_xe_systolic_kernel_desc_t::select_kernel(
     k_ = k;
     eu_count_ = eu_count;
 
-    if (hw_ != HW::Xe2)
-        if (!utils::one_of(hw_, HW::XeHP, HW::XeHPG, HW::XeHPC))
-            return status::unimplemented;
+    if (!utils::one_of(hw_, HW::XeHP, HW::XeHPG, HW::XeHPC, HW::Xe2))
+        return status::unimplemented;
 
     bool xehpc = (hw_ >= HW::XeHPC);
 
@@ -712,6 +719,9 @@ void gen_gemm_xe_systolic_kernel_desc_t::choose_unrolls(
             break;
         case compute::gpu_arch_t::xe_hpc:
         case compute::gpu_arch_t::xe2:
+#if XE3
+        case compute::gpu_arch_t::xe3:
+#endif
             if (utils::one_of(a_type, f16, bf16)) {
                 if (unroll_m != 0)
                     unroll_n = (unroll_m > 16) ? 32 : 16;

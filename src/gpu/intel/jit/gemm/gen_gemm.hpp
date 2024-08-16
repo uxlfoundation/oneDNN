@@ -282,6 +282,9 @@ struct gen_gemm_t : public gpu_gemm_t {
             bool arch_ok = utils::one_of(arch_, arch_t::gen9, arch_t::gen11,
                     arch_t::xe_lp, arch_t::xe_hp, arch_t::xe_hpg,
                     arch_t::xe_hpc, arch_t::xe2);
+#if XE3
+            arch_ok |= (arch_ == arch_t::xe3);
+#endif
 #if XE3P
             arch_ok |= (arch_ == arch_t::xe3p);
 #endif

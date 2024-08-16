@@ -851,12 +851,9 @@ bool zero_points_ok(const conv_problem_t &prb) {
     if (attr->zero_points_.get(DNNL_ARG_DST, &mask_dst) != status::success)
         return false;
 
-    if (!attr->zero_points_.has_default_values(DNNL_ARG_WEIGHTS)) {
-        if (attr->zero_points_.get_data_type(DNNL_ARG_WEIGHTS) != s8)
-            return false;
-        if (prb.with_groups) return false;
-        if (mask_src != 0) return false; // zp_wei implies scalar zp_src
-    }
+    if (prb.with_groups
+            && !attr->zero_points_.has_default_values(DNNL_ARG_WEIGHTS))
+        return false;
 
     return IMPLICATION(!utils::one_of(input_type, s8, u8),
                    attr->zero_points_.has_default_values())

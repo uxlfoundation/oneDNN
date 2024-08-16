@@ -205,7 +205,7 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
             zp.get(DNNL_ARG_DST, &mask_dst);
 
             VCHECK_CONV_UNIMPL((mask_src == 0 || mask_src == 1 << 1)
-                            && (mask_wei == 0)
+                            && (mask_wei == 0 || mask_wei == 1 << 1)
                             && (mask_dst == 0 || mask_dst == 1 << 1),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }

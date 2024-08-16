@@ -33,6 +33,8 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
     const dnn_mem_t &src_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const dnn_mem_t &wei_zps
+            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const dnn_mem_t &dst_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
@@ -43,9 +45,13 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
             DNNL_ARG_WEIGHTS, dnnl_convolution, wei_m.ndims(), prb->has_groups);
 
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
+    const bool has_wei_zp
+            = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
     const int src_zp_mask = attr_t::get_default_mask(
             prb->attr.zero_points.get(DNNL_ARG_SRC).policy);
+    const int wei_zp_mask = attr_t::get_default_mask(
+            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy);
     const int dst_zp_mask = attr_t::get_default_mask(
             prb->attr.zero_points.get(DNNL_ARG_DST).policy);
 
@@ -88,9 +94,12 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
                         int src_zp = has_src_zp ? src_zps.get_elem(
                                              src_zp_mask > 0 ? g * ICG + ic : 0)
                                                 : 0;
+                        int wei_zp = has_wei_zp ? wei_zps.get_elem(
+                                             wei_zp_mask > 0 ? g * ICG + ic : 0)
+                                                : 0;
                         const float s = src_loc[src_off];
                         const float w = wei_loc[wei_off];
-                        const float d_tmp = ((s - src_zp) * src_scale) * w;
+                        const float d_tmp = (s - src_zp) * (w - wei_zp);
                         d += d_tmp;
                     }
                 }
@@ -151,6 +160,8 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
     const dnn_mem_t &src_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const dnn_mem_t &wei_zps
+            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const dnn_mem_t &dst_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
@@ -165,9 +176,13 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
             DNNL_ARG_WEIGHTS, dnnl_convolution, wei_m.ndims(), prb->has_groups);
 
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
+    const bool has_wei_zp
+            = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
     const int src_zp_mask = attr_t::get_default_mask(
             prb->attr.zero_points.get(DNNL_ARG_SRC).policy);
+    const int wei_zp_mask = attr_t::get_default_mask(
+            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy);
     const int dst_zp_mask = attr_t::get_default_mask(
             prb->attr.zero_points.get(DNNL_ARG_DST).policy);
 
@@ -228,6 +243,9 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
             int src_zp = has_src_zp
                     ? src_zps.get_elem(src_zp_mask > 0 ? g * OCG + oc : 0)
                     : 0;
+            int wei_zp = has_wei_zp
+                    ? wei_zps.get_elem(wei_zp_mask > 0 ? g * OCG + oc : 0)
+                    : 0;
             float diff_dst_val
                     = (diff_dst_loc[diff_dst_off] - src_zp) * src_scale;
 
@@ -235,7 +253,7 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
             if (has_wei_scale)
                 wei_scale = wei_scales.get_elem(
                         wei_scale_mask > 0 ? g * ICG + ic : 0);
-            float wei_val = wei_loc[wei_off] * wei_scale;
+            float wei_val = (wei_loc[wei_off] - wei_zp) * wei_scale;
             ds += diff_dst_val * wei_val;
         }
     };
@@ -267,6 +285,9 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
                         int src_zp = has_src_zp ? src_zps.get_elem(
                                              src_zp_mask > 0 ? g * OCG + oc : 0)
                                                 : 0;
+                        int wei_zp = has_wei_zp ? wei_zps.get_elem(
+                                             wei_zp_mask > 0 ? g * OCG + oc : 0)
+                                                : 0;
                         float diff_dst_val
                                 = (diff_dst_loc[diff_dst_off] - src_zp)
                                 * src_scale;
@@ -275,7 +296,7 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
                         if (has_wei_scale)
                             wei_scale = wei_scales.get_elem(
                                     wei_scale_mask > 0 ? g * ICG + ic : 0);
-                        float wei_val = wei_loc[wei_off] * wei_scale;
+                        float wei_val = (wei_loc[wei_off] - wei_zp) * wei_scale;
                         ds += diff_dst_val * wei_val;
                     }
                 }

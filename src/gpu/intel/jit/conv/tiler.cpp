@@ -1299,9 +1299,19 @@ public:
 
         params_generator_t params_gen(
                 tune_level, simd_size, chk, level_tile_sets);
-        params_distance_t dist(params_gen.params_vec(), convert);
+        std::vector<std::vector<prb_tile_t>> tiles;
+        for (auto &p : params_gen.params_vec()) {
+            auto &b = p.blocking();
+            std::vector<prb_tile_t> p_tiles;
+            p_tiles.push_back(convert(b.iter()));
+            p_tiles.push_back(convert(b.thread_group()));
+            p_tiles.push_back(convert(b.loop()));
+            tiles.push_back(std::move(p_tiles));
+        }
+        tile_to_vec_t tile_to_vec(tiles);
         auto ret = conv2tuner_.emplace(key,
-                conv_tuner_t(key, ops, std::move(params_gen), std::move(dist)));
+                conv_tuner_t(key, ops, std::move(params_gen),
+                        std::move(tile_to_vec)));
         return &ret.first->second;
     }
 

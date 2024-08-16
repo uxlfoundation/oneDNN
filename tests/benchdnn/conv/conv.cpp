@@ -392,8 +392,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                 = prb->get_dt(WEI) == dnnl_s8 || prb->get_dt(WEI) == dnnl_u8;
         const bool is_f16_dst = prb->get_dt(DST) == dnnl_f16;
         const bool is_x8x8f16 = is_int8_src && is_int8_wei && is_f16_dst;
+        const bool is_wei_zp = !prb->attr.zero_points.is_def(DNNL_ARG_WEIGHTS);
 
-        if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16) {
+        if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16
+                || is_wei_zp) {
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;

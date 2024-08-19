@@ -2192,6 +2192,7 @@ struct jit_single_blk_kernel_t : public jit_generator {
 
     // Register allocation xmm0~11
     void gen_transpose_8x8() {
+        const uint64_t sveLen = get_sve_length();
         constexpr int lane = 8;
 
 #if 0
@@ -2232,22 +2233,25 @@ struct jit_single_blk_kernel_t : public jit_generator {
 
         /* 3rd turn */
         for (uint32_t i = 0; i < lane / 2; i++) {
-            ext(ZRegB {lane / 2 + i}, ZRegB {lane / 2 + i}, 16);
+            mov(ZRegD {i}, ZRegD {lane / 2 + i});
+            mov(z_tmp_vec[lane / 2 + i].d, z_tmp_vec[i].d);
         }
 
         /* 4th turn */
         for (uint32_t i = 0; i < lane / 2; i++) {
-            mov(ZRegD {i}, ZRegD {lane / 2 + i});
+            ZRegB z {lane / 2 + i};
+            ZRegB z_tmp = z_tmp_vec[lane / 2 + i].b;
+            /* Move bit 0-127 to 128-255. */
+            ext(z, z, 16);
+            /* Move bit 128-255 to 0-127. */
+            ext(z_tmp, z_tmp, sveLen - 16);
         }
 
         /* 5th turn */
         for (uint32_t i = 0; i < lane / 2; i++) {
-            ext(ZRegB {i}, z_tmp_vec[i].b, 16);
-        }
-
-        /* 6th turn */
-        for (uint32_t i = 0; i < lane / 2; i++) {
+            ZRegS z0 {i};
             ZRegS z1 {lane / 2 + i};
+            sel(z0, P_TMP, z0, z_tmp_vec[lane / 2 + i].s);
             sel(z1, P_TMP, z1, z_tmp_vec[i].s);
         }
     }

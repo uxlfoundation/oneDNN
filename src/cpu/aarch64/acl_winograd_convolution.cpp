@@ -24,8 +24,6 @@ namespace cpu {
 namespace aarch64 {
 
 namespace {
-using data_t = prec_traits<data_type::f32>::type;
-
 // Keys are anonymous. So deduce the type automagically.
 using conv_key_t = decltype(memory_tracking::names::key_gemm_tmp_buffer);
 
@@ -78,15 +76,20 @@ status_t acl_wino_convolution_fwd_t::pd_t::init(engine_t *engine) {
             attr_.post_ops_, acp_.act_info, acp_.use_dst_acc_for_sum, dst_md_);
 }
 
-status_t acl_wino_convolution_fwd_t::init(engine_t *engine) {
-    // commented due to hot fix solution for stateless API which should be replaced soon.
-    //     auto acp = pd()->acp_;
-    //     acl_obj_->conv.configure(&acp.src_tensor_info, &acp.wei_tensor_info,
-    //             acp.with_bias ? &acp.bia_tensor_info : nullptr,
-    //             &acp.dst_tensor_info, acp.padstride_info, acp.act_info,
-    //             true); // to support 5x5, 7x7 filter shapes in addition to 3x3
+status_t acl_wino_convolution_fwd_t::create_resource(
+        engine_t *engine, resource_mapper_t &mapper) const {
+    CHECK(pd()->post_ops.create_resource(engine, mapper));
+    return status::success;
+}
 
-    //     acl_obj_->aux_mem_req = acl_obj_->conv.workspace();
+status_t acl_wino_convolution_fwd_t::init(engine_t *engine) {
+    auto acp = pd()->acp_;
+    acl_obj_->conv.configure(&acp.src_tensor_info, &acp.wei_tensor_info,
+            acp.with_bias ? &acp.bia_tensor_info : nullptr,
+            &acp.dst_tensor_info, acp.padstride_info, acp.act_info,
+            true); // to support 5x5, 7x7 filter shapes in addition to 3x3
+
+    acl_obj_->aux_mem_req = acl_obj_->conv.workspace();
     return status::success;
 }
 
@@ -110,8 +113,7 @@ status_t acl_wino_convolution_fwd_t::pd_t::init_conf() {
 
     const bool shape_ok
             // only unit strides allowed
-            = (acp_.padstride_info.stride()
-                      == std::pair<unsigned int, unsigned int> {1, 1})
+            = (acp_.padstride_info.stride() == std::pair<uint, uint> {1, 1})
             // Note: Compute Library supports arbitrary padding for wino kernels
             // but we only allow small padding to be consistent with oneDNN
             && (acp_.padstride_info.pad().first <= 1) // padding left/right
@@ -130,27 +132,10 @@ status_t acl_wino_convolution_fwd_t::pd_t::init_conf() {
     return status::success;
 }
 
-std::unique_ptr<acl_obj_t<acl_wino_convolution_fwd_t::Op>>
-acl_wino_convolution_fwd_t::reinitialize_acl_obj() const {
-    auto acp = pd()->acp_;
-    std::unique_ptr<acl_obj_t<Op>> acl_obj = std::make_unique<acl_obj_t<Op>>();
-    acl_obj->conv.configure(&acp.src_tensor_info, &acp.wei_tensor_info,
-            acp.with_bias ? &acp.bia_tensor_info : nullptr,
-            &acp.dst_tensor_info, acp.padstride_info, acp.act_info,
-            true); // to support 5x5, 7x7 filter shapes in addition to 3x3
-
-    acl_obj->aux_mem_req = acl_obj->conv.workspace();
-    return acl_obj;
-}
-
 status_t acl_wino_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
-    // Temporary hotfix: We're using a local acl_obj instance in this method
-    // instead of the class member acl_obj_. This hotfix is to bypass persistent aux mem requirements but is not the ideal solution.
-    // It should be refactored or removed in the future when a more permanent fix is implemented.
-    const auto acl_obj = reinitialize_acl_obj();
     return execute_forward_conv_acl<acl_obj_t<Op>, pd_t, data_t>(
-            ctx, acl_obj.get(), pd(), wino_conv_keys);
+            ctx, acl_obj_.get(), pd(), wino_conv_keys);
 }
 } // namespace aarch64
 } // namespace cpu

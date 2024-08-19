@@ -91,6 +91,9 @@ struct hw_context_t {
             case ngen::HW::XeHPG: return 8;
             case ngen::HW::Xe2:
             case ngen::HW::XeHPC:
+#if XE3
+            case ngen::HW::Xe3:
+#endif
 #if XE3P
             case ngen::HW::Xe3p:
 #endif

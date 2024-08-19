@@ -54,6 +54,9 @@ hw_t to_hw(ngen::HW hw) {
         case ngen::HW::XeHPG: return hw_t::xehpg;
         case ngen::HW::XeHPC: return hw_t::xehpc;
         case ngen::HW::Xe2: return hw_t::xehpc;
+#if XE3
+        case ngen::HW::Xe3: return hw_t::xehpc;
+#endif
 #if XE3P
         case ngen::HW::Xe3p: return hw_t::xehpc;
 #endif

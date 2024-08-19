@@ -205,6 +205,8 @@ enum {
     key_conv_ncsp_matmul_dst,
     key_conv_ncsp_diff_sp_sum,
     key_conv_padded_bias,
+    key_conv_permuted_inputs,
+    key_conv_permuted_outputs,
     key_conv_permuted_weights,
     key_conv_rtus_space,
     key_conv_store_wsp,

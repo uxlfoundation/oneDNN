@@ -74,7 +74,7 @@ macro(adjust_headers_priority targets)
     endif()
 endmacro()
 
-if(DNNL_SYCL_CUDA)
+macro(suppress_warnings_for_nvidia_target)
     # XXX: Suppress warning coming from SYCL headers:
     #   error: use of function template name with no prior declaration in
     #   function call with eplicit template arguments is a C++20 extension

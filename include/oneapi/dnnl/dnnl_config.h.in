@@ -94,6 +94,9 @@
 /// AMD vendor
 #define DNNL_VENDOR_AMD 4u
 
+/// Generic vendor
+#define DNNL_VENDOR_GENERIC 8u
+
 /// @} dnnl_api_service
 
 // oneDNN CPU threading runtime

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2025 Intel Corporation
+* Copyright 2018-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,6 +61,8 @@ struct dnnl_memory : public dnnl::impl::c_compatible {
             std::vector<std::unique_ptr<dnnl::impl::memory_storage_t>>
                     &&memory_storage);
 #endif
+
+    virtual ~dnnl_memory() = default;
 
     /** returns memory's engine */
     dnnl::impl::engine_t *engine() const { return engine_; }

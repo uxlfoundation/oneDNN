@@ -62,6 +62,8 @@ struct dnnl_memory : public dnnl::impl::c_compatible {
                     &&memory_storage);
 #endif
 
+    virtual ~dnnl_memory() = default;
+
     /** returns memory's engine */
     dnnl::impl::engine_t *engine() const { return engine_; }
     /** returns memory's description */

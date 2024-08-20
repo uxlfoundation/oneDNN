@@ -100,7 +100,7 @@ dnnl_memory::dnnl_memory(dnnl::impl::engine_t *engine,
         const dnnl::impl::memory_desc_t *md,
         std::vector<std::unique_ptr<dnnl::impl::memory_storage_t>>
                 &&memory_storages)
-    : engine_(engine), md_(*md), counter_(1) {
+    : engine_(engine), md_(*md) {
     memory_storages_ = std::move(memory_storages);
 }
 #endif

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,38 +44,28 @@ struct ref_deconvolution_bwd_weights_t
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
+            using sm = primitive_attr_t::skip_mask_t;
 
             const memory_desc_wrapper data_d(src_md());
             const memory_desc_wrapper diff_weights_d(diff_weights_md());
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
 
-            VDISPATCH_DECONVOLUTION(
-                    desc()->prop_kind == prop_kind::backward_weights,
-                    VERBOSE_BAD_PROPKIND);
-            VDISPATCH_DECONVOLUTION(
-                    check_convolution_work_amount(diff_weights_d, OC()),
-                    VERBOSE_IMPL_HEURISTIC_FAIL,
-                    "number of elements exceeds threshold");
-            VDISPATCH_DECONVOLUTION(md_dims_in_range(src_md()),
-                    VERBOSE_OUT_OF_RANGE_DIMS, "src");
-            VDISPATCH_DECONVOLUTION(
-                    set_default_formats(), VERBOSE_UNSUPPORTED_TAG_S);
-            VDISPATCH_DECONVOLUTION(check_convolution_data_types(
-                                            data_d, diff_weights_d, diff_dst_d),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_DECONVOLUTION(check_convolution_formats(
-                                            data_d, diff_weights_d, diff_dst_d),
-                    VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_DECONVOLUTION(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_DECONVOLUTION(
-                    desc()->alg_kind == alg_kind::deconvolution_direct,
-                    VERBOSE_BAD_ALGORITHM);
+            const bool ok = desc()->prop_kind == prop_kind::backward_weights
+                    && check_convolution_work_amount(diff_weights_d, OC())
+                    && md_dims_in_range(src_md()) && set_default_formats()
+                    && check_convolution_data_types(
+                            data_d, diff_weights_d, diff_dst_d)
+                    && check_convolution_formats(
+                            data_d, diff_weights_d, diff_dst_d)
+                    && attr()->has_default_values(sm::scales_runtime
+                            | sm::zero_points_runtime | sm::post_ops
+                            | sm::sum_dt);
+            if (!ok) return status::unimplemented;
 
             return init_conf();
         }
 
-        sycl_convolution_bwd_weights_conf_t conf_;
+        sycl_convolution_conf_t conf_;
 
     private:
         status_t init_conf();

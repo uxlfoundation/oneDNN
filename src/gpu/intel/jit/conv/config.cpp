@@ -951,7 +951,8 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
     auto attr_skip_mask = sm::fpmath_mode | sm::accumulation_mode;
     if (prb.is_fwd || prb.is_bwd_d) {
         attr_skip_mask |= sm::post_ops | sm::sum_dt | sm::zero_points_runtime
-                | sm::scales_runtime;
+                | sm::scales_runtime | sm::scales_runtime_groups
+                | sm::scales_runtime_data_type;
         if (!attr->has_default_values(attr_skip_mask)) return false;
     } else {
         if (!attr->has_default_values(attr_skip_mask)) return false;
@@ -965,7 +966,7 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
         return false;
 
     if (!attr->scales_.has_default_values())
-        if (!prb.is_s32_accumulator()) return false;
+        if (!prb.is_s32_accumulator() && !prb.is_fp8_conv()) return false;
     auto scale_args = get_scale_args();
     std::vector<int> scales(scale_args.size());
     for (int i = 0; i < (int)scale_args.size(); i++)
@@ -977,6 +978,8 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
         // deconvolution.
         if (arg == DNNL_ARG_WEIGHTS) {
             if (!utils::one_of(mask, 0, prb.with_groups ? 3 : 1)) return false;
+        } else if (arg == DNNL_ARG_DST) {
+            if (!utils::one_of(mask, 0, 2)) return false;
         } else {
             if (mask != 0) return false;
         }

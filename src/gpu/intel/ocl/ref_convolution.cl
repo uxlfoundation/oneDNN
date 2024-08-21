@@ -56,10 +56,16 @@ __kernel void ref_convolution_fwd(const __global SRC_DATA_T *src,
                     if (id < 0 || id >= ID || ih < 0 || ih >= IH || iw < 0
                             || iw >= IW)
                         continue;
-
+                    float src_scale = 1;
                     const uint src_off = SRC_OFF(n, g * IC + ic, id, ih, iw);
                     const uint wei_off = WEI_OFF(g, oc, ic, kd, kh, kw);
-                    d += SRC_TO_REF(src[src_off]) * WEI_TO_REF(wei[wei_off]);
+#if WITH_SRC_SCALES
+#if SRC_SCALES_MASK != 0
+                    src_scale = convert_float(src_scales[g * IC + ic]);
+#endif
+#endif
+                    d += SRC_TO_REF(src[src_off]) * WEI_TO_REF(wei[wei_off])
+                            * src_scale;
 #if WITH_SRC_ZPOINTS
                     const int src_zp
                             = src_zpoints[WITH_SRC_ZPOINTS_PER_IC ? g * IC + ic
@@ -70,7 +76,9 @@ __kernel void ref_convolution_fwd(const __global SRC_DATA_T *src,
     POST_OP_DATA_T tmp = d;
 
 #if WITH_SRC_SCALES
+#if SRC_SCALES_MASK == 0
     tmp *= src_scales[0];
+#endif
 #endif
 #if WITH_WEI_SCALES
 #if WEI_SCALES_MASK == 0
@@ -111,7 +119,11 @@ __kernel void ref_convolution_fwd(const __global SRC_DATA_T *src,
             g * OC + oc, 1, po_d2, 1, po_d3, 1, po_d4, 1, 0, 1);
 
 #if WITH_DST_SCALES
+#if DST_SCALES_MASK == 0
     tmp /= dst_scales[0];
+#else
+    tmp /= dst_scales[g * OC + oc];
+#endif
 #endif
 
 #if WITH_DST_ZPOINTS

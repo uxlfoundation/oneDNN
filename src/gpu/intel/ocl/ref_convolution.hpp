@@ -44,11 +44,15 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
 
             const auto attr_skip_mask
                     = primitive_attr_t::skip_mask_t::scales_runtime
+                    | primitive_attr_t::skip_mask_t::scales_runtime_groups
+                    | primitive_attr_t::skip_mask_t::scales_runtime_data_type
                     | primitive_attr_t::skip_mask_t::zero_points_runtime
                     | primitive_attr_t::skip_mask_t::post_ops
                     | primitive_attr_t::skip_mask_t::sum_dt;
 
             const bool is_int8 = utils::one_of(src_md_.data_type, s8, u8);
+            const bool is_fp8
+                    = utils::one_of(src_md_.data_type, f8_e5m2, f8_e4m3);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -94,8 +98,8 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_CONV(
-                    IMPLICATION(!attr()->scales_.has_default_values(), is_int8),
+            VDISPATCH_CONV(IMPLICATION(!attr()->scales_.has_default_values(),
+                                   is_int8 || is_fp8),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             VDISPATCH_CONV(zero_points_ok(attr()), VERBOSE_UNSUPPORTED_ZP_CFG);

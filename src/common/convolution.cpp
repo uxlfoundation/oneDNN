@@ -163,13 +163,19 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                 = smask_t::post_ops | smask_t::sum_dt | smask_t::fpmath_mode;
 
         bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8);
+        bool is_fp8
+                = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
+        bool enable_quantization = false;
         if (engine->kind() == engine_kind::gpu)
-            is_int8 = is_int8
+            enable_quantization = is_int8 || is_fp8
                     || utils::one_of(dst_dt, data_type::s8, data_type::u8,
-                            data_type::s32);
-        if (is_int8)
-            fwd_attr_mask
-                    |= smask_t::scales_runtime | smask_t::zero_points_runtime;
+                            data_type::s32, data_type::f8_e5m2,
+                            data_type::f8_e4m3);
+        if (enable_quantization)
+            fwd_attr_mask |= smask_t::scales_runtime
+                    | smask_t::zero_points_runtime
+                    | smask_t::scales_runtime_groups
+                    | smask_t::scales_runtime_data_type;
 
         VCHECK_CONV_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -182,8 +188,9 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
             const int mask_dst = sc.get(DNNL_ARG_DST).mask_;
             const bool with_groups
                     = desc.src_desc.ndims != desc.weights_desc.ndims;
-            VCHECK_CONV_UNIMPL(utils::everyone_is(0, mask_src, mask_dst)
-                            && utils::one_of(mask_wei, 0, with_groups ? 3 : 1),
+            VCHECK_CONV_UNIMPL(utils::one_of(mask_wei, 0, with_groups ? 3 : 1)
+                            && utils::one_of(mask_dst, 0, 2)
+                            && utils::one_of(mask_src, 0, 3),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 

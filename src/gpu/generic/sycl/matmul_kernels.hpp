@@ -83,7 +83,7 @@ struct matmul_kernel_fwd_t {
         }
 
         static void store_vec_helper(
-                inout_memory_tensor_t &output, Vec data, int offset) {
+                out_memory_tensor_t &output, Vec data, int offset) {
             data_type_t type = output.md().data_type();
             char *offset_ptr = static_cast<char *>(output.ptr())
                     + data_type_size(type) * offset;
@@ -189,7 +189,7 @@ struct matmul_kernel_fwd_t {
             }
         }
 
-        void store(inout_memory_tensor_t &output, int offset, int row_stride) {
+        void store(out_memory_tensor_t &output, int offset, int row_stride) {
             for (int row = 0; row < Rows; row++) {
                 for (int col = 0; col < Cols / vec_len; col++) {
                     store_vec_helper(output, data[row][col],
@@ -198,8 +198,8 @@ struct matmul_kernel_fwd_t {
             }
         }
 
-        void store_edge(inout_memory_tensor_t &output, int offset,
-                int row_stride, int rows, int cols) {
+        void store_edge(out_memory_tensor_t &output, int offset, int row_stride,
+                int rows, int cols) {
             for (int row = 0; row < rows; row++) {
                 int col;
                 for (col = 0; col < cols / vec_len; col++) {
@@ -215,7 +215,7 @@ struct matmul_kernel_fwd_t {
             }
         }
 
-        void store_generic(inout_memory_tensor_t &output, int offset,
+        void store_generic(out_memory_tensor_t &output, int offset,
                 int row_stride, bool transpose, bool is_edge_block, int rows,
                 int cols) {
             if (is_edge_block) {
@@ -293,7 +293,7 @@ struct matmul_kernel_fwd_t {
                     for (int vec_el = 0; vec_el < vec_len; vec_el++) {
                         int dst_off = offset + row * row_stride + col * vec_len
                                 + vec_el;
-                        int random
+                        uint random
                                 = ::dnnl::impl::math::philox4x32(dst_off, seed);
                         char dropout = random > threshold;
                         data[row][col][vec_el]
@@ -313,43 +313,14 @@ struct matmul_kernel_fwd_t {
                     for (int v_el = 0; v_el < vec_len; v_el++) {
                         off_po[dim1] += row;
                         off_po[dim1 + 1] += col * vec_len + v_el;
-                        data[row][col][v_el]
-                                = post_ops.apply(data[row][col][v_el],
-                                        prev_dst.data[row][col][v_el],
-                                        kernel->po_args_, off_po);
+                        ::sycl::vec<float, 16> binary_src_vals
+                                = kernel->post_op_src_val(off_po);
                         off_po[dim1] -= row;
                         off_po[dim1 + 1] -= col * vec_len + v_el;
+                        data[row][col][v_el] = post_ops.apply(
+                                data[row][col][v_el],
+                                prev_dst.data[row][col][v_el], binary_src_vals);
                     }
-                }
-            }
-        }
-
-        void apply_post_ops_edge(sycl_post_ops_t post_ops,
-                register_block<Rows, Cols> prev_dst, dims_t off_po, int dim1,
-                const matmul_kernel_fwd_t *kernel, int rows, int cols) {
-            for (int row = 0; row < rows; row++) {
-                int col;
-                for (col = 0; col < cols / vec_len; col++) {
-                    for (int v_el = 0; v_el < vec_len; v_el++) {
-                        off_po[dim1] += row;
-                        off_po[dim1 + 1] += col * vec_len + v_el;
-                        data[row][col][v_el]
-                                = post_ops.apply(data[row][col][v_el],
-                                        prev_dst.data[row][col][v_el],
-                                        kernel->po_args_, off_po);
-                        off_po[dim1] -= row;
-                        off_po[dim1 + 1] -= col * vec_len + v_el;
-                    }
-                }
-                int n_remaining = cols - col * vec_len;
-                for (int v_el = 0; v_el < n_remaining; v_el++) {
-                    off_po[dim1] += row;
-                    off_po[dim1 + 1] += col * vec_len + v_el;
-                    data[row][col][v_el] = post_ops.apply(data[row][col][v_el],
-                            prev_dst.data[row][col][v_el], kernel->po_args_,
-                            off_po);
-                    off_po[dim1] -= row;
-                    off_po[dim1 + 1] -= col * vec_len + v_el;
                 }
             }
         }
@@ -361,7 +332,7 @@ struct matmul_kernel_fwd_t {
         , data_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_SRC_0))
         , weights_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_WEIGHTS))
         , bias_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_BIAS))
-        , dst_(CTX_INOUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST))
+        , dst_(CTX_OUT_SYCL_KERNEL_MEMORY(DNNL_ARG_DST))
         , data_scale_(CTX_IN_SYCL_KERNEL_MEMORY(
                   DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0))
         , data_scales_dt_((conf_.do_scale_data)
@@ -407,7 +378,16 @@ struct matmul_kernel_fwd_t {
         , dropout_seed_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_ATTR_DROPOUT_SEED))
         , dropout_probability_(
                   CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_ATTR_DROPOUT_PROBABILITY))
-        , po_args_(cgh, ctx, conf_.post_ops) {}
+        , po1_src_(CTX_IN_SYCL_KERNEL_MEMORY(
+                  (DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1)))
+        , po2_src_(CTX_IN_SYCL_KERNEL_MEMORY(
+                  (DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1)))
+        , po3_src_(CTX_IN_SYCL_KERNEL_MEMORY(
+                  (DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1)))
+        , po4_src_(CTX_IN_SYCL_KERNEL_MEMORY(
+                  (DNNL_ARG_ATTR_MULTIPLE_POST_OP(3) | DNNL_ARG_SRC_1)))
+        , po5_src_(CTX_IN_SYCL_KERNEL_MEMORY(
+                  (DNNL_ARG_ATTR_MULTIPLE_POST_OP(4) | DNNL_ARG_SRC_1))) {}
 
     void operator()(::sycl::nd_item<1> item) const {
         using data_block_t = register_block<register_block_M, register_block_K>;
@@ -627,13 +607,8 @@ struct matmul_kernel_fwd_t {
             if (conf_.transpose_dst) {
                 std::swap(off_po[matmul_dim_1], off_po[matmul_dim_2]);
             }
-            if (is_dst_edge_block) {
-                dst_block.apply_post_ops_edge(conf_.post_ops, prev_dst, off_po,
-                        matmul_dim_1, this, remaining_m, remaining_n);
-            } else {
-                dst_block.apply_post_ops(
-                        conf_.post_ops, prev_dst, off_po, matmul_dim_1, this);
-            }
+            dst_block.apply_post_ops(
+                    conf_.post_ops, prev_dst, off_po, matmul_dim_1, this);
 
             if (conf_.do_scale_dst) {
                 dst_block.eltwise([=](float &el) { el /= dst_scale; });
@@ -648,12 +623,83 @@ struct matmul_kernel_fwd_t {
     }
 
 private:
+    inline ::sycl::vec<float, 16> post_op_src_val(dims_t data_off) const {
+        ::sycl::vec<float, 16> post_po_sr;
+        const auto maxPostPo = conf_.post_ops.get_post_op();
+
+        for (dim_t po_idx = 0; po_idx < maxPostPo; po_idx++) {
+            float res = 0.0f;
+            if (po_idx == 0)
+                res = get_post_op_val(po1_src_, po_idx, data_off);
+            else if (po_idx == 1)
+                res = get_post_op_val(po2_src_, po_idx, data_off);
+            else if (po_idx == 2)
+                res = get_post_op_val(po3_src_, po_idx, data_off);
+            else if (po_idx == 3)
+                res = get_post_op_val(po4_src_, po_idx, data_off);
+            else if (po_idx == 4)
+                res = get_post_op_val(po5_src_, po_idx, data_off);
+
+            post_po_sr[po_idx] = res;
+        }
+        return post_po_sr;
+    }
+
+    float get_post_op_val(const xpu::sycl::in_memory_arg_t &bin_src_op,
+            dim_t &idx, dims_t offset) const {
+        auto src1_desc = conf_.binary_src_arr[idx];
+
+        xpu::sycl::md_t::dim32_t ndims = conf_.dst_md.ndims();
+        xpu::sycl::md_t::dims32_t dst_dims;
+        for (int i = 0; i < ndims; i++) {
+            dst_dims[i] = conf_.dst_md.dims()[i];
+        }
+        if (conf_.transpose_dst) {
+            std::swap(dst_dims[ndims - 1], dst_dims[ndims - 2]);
+        }
+        const auto off
+                = get_matmul_src1_off(src1_desc, offset, dst_dims, ndims);
+
+        auto dst = load_float_value(
+                src1_desc.data_type(), bin_src_op.get_pointer(), off);
+        return dst;
+    }
+
+    dim_t get_matmul_src1_off(const xpu::sycl::md_t &src1_md, dims_t offset,
+            const xpu::sycl::md_t::dims32_t &dst_dims,
+            const xpu::sycl::md_t::dim32_t &dst_ndims) const {
+        const dim_t mask_matmul_po
+                = get_dims_mask(dst_dims, src1_md.dims(), dst_ndims);
+        return get_po_tensor_off(
+                src1_md, offset, dst_dims, dst_ndims, mask_matmul_po);
+    }
+
+    inline dim_t get_dims_mask(const xpu::sycl::md_t::dims32_t &dims1,
+            const xpu::sycl::md_t::dims32_t &dims2, const dim_t &ndims,
+            bool skip_dim_of_one = false) const {
+        dim_t mask = 0;
+        for (dim_t d = 0; d < ndims; ++d) {
+            // Disable mask_bit for dimensions of `1` by request.
+            dim_t mask_bit = skip_dim_of_one && dims1[d] == 1 ? 0 : (1 << d);
+            mask += dims1[d] == dims2[d] ? mask_bit : 0;
+        }
+        return mask;
+    }
+
+    inline dim_t get_po_tensor_off(const xpu::sycl::md_t &tensor_md,
+            dims_t offset, const xpu::sycl::md_t::dims32_t &dst_dims,
+            const dim_t &dst_ndims, const dim_t &mask) const {
+        dims_t offset_po {};
+        utils::copy_dims_with_mask(offset_po, offset, dst_ndims, mask);
+        return tensor_md.off_v(offset_po);
+    }
+
     sycl_matmul_conf_t conf_;
 
     xpu::sycl::in_memory_arg_t data_;
     xpu::sycl::in_memory_arg_t weights_;
     xpu::sycl::in_memory_arg_t bias_;
-    xpu::sycl::inout_memory_arg_t dst_;
+    xpu::sycl::out_memory_arg_t dst_;
     xpu::sycl::in_memory_arg_t data_scale_;
     data_type_t data_scales_dt_;
     xpu::sycl::in_memory_arg_t weights_scale_;
@@ -669,7 +715,11 @@ private:
     xpu::sycl::out_memory_arg_t dropout_mask_;
     xpu::sycl::in_memory_arg_t dropout_seed_;
     xpu::sycl::in_memory_arg_t dropout_probability_;
-    post_op_input_args po_args_;
+    xpu::sycl::in_memory_arg_t po1_src_;
+    xpu::sycl::in_memory_arg_t po2_src_;
+    xpu::sycl::in_memory_arg_t po3_src_;
+    xpu::sycl::in_memory_arg_t po4_src_;
+    xpu::sycl::in_memory_arg_t po5_src_;
 };
 
 } // namespace sycl

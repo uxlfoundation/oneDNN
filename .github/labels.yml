@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2024-2025 Intel Corporation
+# Copyright 2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,33 +40,6 @@ devops:
 documentation:
 - changed-files:
   - any-glob-to-any-file: ['**/*.md', 'doc/**']
-
-# Common code
-component:build:
-- changed-files:
-  - any-glob-to-any-file:
-    - 'cmake/**'
-    - 'CMakeLists.txt'
-
-component:examples:
-- changed-files:
-  - any-glob-to-any-file: 'examples/**'
-
-component:tests:
-- changed-files:
-  - any-glob-to-any-file: 'tests/**'
-
-component:api:
-- changed-files:
-  - any-glob-to-any-file: 'include/**'
-
-component:graph-api:
-- changed-files:
-  - any-glob-to-any-file:
-    - 'src/graph/**'
-    - 'tests/benchdnn/graph/**'
-    - 'tests/gtests/graph/**'
-    - 'doc/graph/**'
 
 # CPU Engine
 platform:cpu-aarch64:

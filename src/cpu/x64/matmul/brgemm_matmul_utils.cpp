@@ -371,7 +371,10 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                         transposed_tensor_layout_tag, acbd)
                 : memory_desc_matches_one_of_tag(
                         A_md, plain_tensor_layout_tag, acbd);
-        if (bgmmc.src_tag == format_tag::undef) {
+        if (bgmmc.src_tag == format_tag::undef
+                || (memory_desc_matches_tag(A_md, transposed_tensor_layout_tag)
+                        && memory_desc_matches_tag(
+                                A_md, plain_tensor_layout_tag))) {
             if (gemm_based::check_gemm_input_format(A_md)) {
                 // Note: Here we batch layout may not be accurately represented
                 // by the wei_tag string, due to all the permutations of the
@@ -703,7 +706,7 @@ struct matmul_avx512_blocking_params_t {
 
         bgmmc.use_buffer_c = is_buffer_c_required(
                 bgmmc.acc_dt, bgmmc.dst_dt, bgmmc.with_sum);
-        bgmmc.LDA = bgmmc.use_buffer_a
+        bgmmc.LDA = bgmmc.use_buffer_a || bgmmc.treat_transposed_A_as_plain
                 ? get_actual_lda(bgmmc.use_buffer_a, bgmmc.tr_a_dt_sz)
                 : bgmmc.A_strides[1] / bgmmc.a_dt_sz;
     }
@@ -2049,7 +2052,10 @@ void matmul_amx_blocking_params_t::update_configuration(
 }
 
 dim_t matmul_amx_blocking_params_t::get_actual_lda() {
-    if (!use_buffer_a) return A_strides[1 - transposed_A] / a_dt_sz;
+    if (!use_buffer_a)
+        return treat_transposed_A_as_plain
+                ? K
+                : A_strides[1 - transposed_A] / a_dt_sz;
 
     constexpr int bytes_in_cacheline = 64;
     const int elems_in_cacheline = bytes_in_cacheline / a_dt_sz;

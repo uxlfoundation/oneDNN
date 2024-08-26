@@ -1717,7 +1717,12 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         assert(arg > 0);
 
         auto &mem = args.find(arg);
-        SAFE_V(bool(mem) ? OK : FAIL);
+        if (!mem) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "Error: output memory was not found among arguments.");
+            res->state = FAILED;
+            return FAIL;
+        }
         // A memory used as reference for comparison, must be allocated on the
         // CPU engine.
         run1_mem_map.emplace(

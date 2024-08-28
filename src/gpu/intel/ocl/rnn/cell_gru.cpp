@@ -132,7 +132,7 @@ cell_execution_sig((_simple_rnn_common_t<aprop>::cell_execution_gru)) {
                 gemm_diff_wei_iter));
 
         CHECK(gemm_primitive(engine, ctx, {diff_gates, cell_scratch_diff_off2},
-                *scratch_cell, {diff_wei_iter, cell_diff_wei_iter_off2},
+                scratch_cell, {diff_wei_iter, cell_diff_wei_iter_off2},
                 gemm_diff_wei_iter_2));
 
         // 5. calculate diff states

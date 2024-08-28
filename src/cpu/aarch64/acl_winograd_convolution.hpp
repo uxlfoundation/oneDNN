@@ -50,12 +50,7 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
     acl_wino_convolution_fwd_t(const pd_t *apd)
         : primitive_t(apd), acl_obj_(std::make_unique<acl_obj_t<Op>>()) {}
 
-    status_t create_resource(
-            engine_t *engine, resource_mapper_t &mapper) const override;
-
     status_t init(engine_t *engine) override;
-
-    typedef typename prec_traits<data_type::f32>::type data_t;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);

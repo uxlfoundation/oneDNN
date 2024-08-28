@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2025 Intel Corporation
+* Copyright 2018-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,8 +66,6 @@ struct direct_copy_kernel_t
     static constexpr int simd_w_ = vlen_ / sizeof(float);
     static constexpr int unroll_12_ = 12;
     static constexpr int unroll_4_ = 4;
-
-    int get_max_unroll() const override { return unroll_12_; }
 
     void operator()(
             const void *src, void *dst, size_t work_amount) const override {
@@ -259,6 +257,7 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(
 
     VDISPATCH_REORDER(is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
     isa_ = get_max_cpu_isa();
 
     const auto src_dt = src_md()->data_type;
@@ -270,10 +269,6 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_REORDER(!dst_d.has_runtime_dims_or_strides(),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VDISPATCH_REORDER(
-            src_d.is_blocking_desc(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
-    VDISPATCH_REORDER(
-            dst_d.is_blocking_desc(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     // Note: io_helper has an implicit conversion to f32 which is incorrect for
     // s32->s32. Disabling it for now.
@@ -348,11 +343,7 @@ status_t jit_uni_reorder_direct_copy_t::execute(const exec_ctx_t &ctx) const {
     const auto nelems = src_d.nelems(true);
     const int simd_w = isa_max_vlen(pd()->isa_) / sizeof(float);
 
-    // If nelem is small, we do sequential copy and don't spawn threads
-    const dim_t thr_granularity = kernel_->get_max_unroll() * simd_w;
-    int nthr = nelems < thr_granularity ? 1 : 0;
-
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
         balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);

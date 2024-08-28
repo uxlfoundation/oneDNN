@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,7 +58,6 @@ struct jit_uni_reorder_direct_copy_t : public primitive_t {
                 const void *src, void *dst, size_t work_amount) const = 0;
         static kernel_base_t *create(const reorder_pd_t *pd, cpu_isa_t isa);
         virtual status_t create_kernel() = 0;
-        virtual int get_max_unroll() const = 0;
         virtual ~kernel_base_t() = default;
 
     protected:

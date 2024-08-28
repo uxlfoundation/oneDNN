@@ -399,16 +399,6 @@ enum class DataType : uint8_t {
     invalid = 0x60
 };
 
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, DataType type)
-{
-    static const char *names[32] = {"ud",   "d",   "uw", "w", "ub", "b", "df", "f", "uq", "q", "hf", "bf", "bf8", "uv", "v",  "vf",
-                                    "tf32", "",    "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
-    str << names[static_cast<uint8_t>(type) & 0x1F];
-    return str;
-}
-#endif
-
 static inline constexpr   int getLog2Bits(DataType type)               { return static_cast<int>(type) >> 5; }
 static inline constexpr14 int getLog2Bytes(DataType type)              { return std::max<int>(getLog2Bits(type) - 3, 0); }
 static inline constexpr14 int getLog2Dwords(DataType type)             { return std::max<int>(getLog2Bits(type) - 5, 0); }
@@ -515,22 +505,6 @@ enum class SyncFunction : uint8_t {
     bar   = 14,
     host  = 15
 };
-
-#if XE3P
-// Shuffle function codes.
-enum class ShuffleFunction : uint8_t {
-    idx4 = 0x6,
-};
-
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, ShuffleFunction func)
-{
-    static const char *names[16] = {"", "", "", "", "", "", "idx4", "", "", "", "", "", "", "", "", ""};
-    str << names[static_cast<uint8_t>(func) & 0xF];
-    return str;
-}
-#endif
-#endif
 
 // Shared function IDs (SFIDs).
 enum class SharedFunction : uint8_t {
@@ -652,11 +626,6 @@ public:
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
     constexpr bool isScalar() const { return false; }
-
-#ifdef NGEN_ASM
-    static const bool emptyOp = false;
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man);
-
 };
 
 static inline bool operator==(const RegData &r1, const RegData &r2);
@@ -682,7 +651,6 @@ protected:
         : base(base_), arf(arf_), off(off_), mods(0), type(static_cast<int>(type_)), indirect(indirect_), vs(vs_), width(width_), hs(hs_), _pad2(0), invalid(0) {}
 
 public:
-
     constexpr RegData()
         : base(0), arf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
 
@@ -737,7 +705,6 @@ public:
     friend inline bool operator!=(const RegData &r1, const RegData &r2);
 
     friend inline RegData abs(const RegData &r);
-
 };
 
 static_assert(sizeof(RegData) == 8, "RegData structure is not laid out correctly in memory.");
@@ -845,7 +812,6 @@ public:
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {
         rd.fixup(hw, execSize, execWidth, defaultType, srcN, arity);
     }
-
 };
 
 // Register regions.
@@ -1208,7 +1174,6 @@ public:
     constexpr14 RegData &getBase()        { return base; }
     constexpr RegData getBase()     const { return base; }
     constexpr uint8_t getMMENum()   const { return mmeNum; }
-
 };
 
 static inline ExtendedReg operator|(const RegData &base, const SpecialAccumulatorRegister &acc)
@@ -1493,7 +1458,6 @@ public:
 
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
-
 };
 
 static inline GRFRange operator-(const GRF &reg1, const GRF &reg2)
@@ -2227,7 +2191,6 @@ public:
             result.set(int32_t(int16_t(payload)));
         return result;
     }
-
 };
 
 // Compute ctrl field for bfn instruction.

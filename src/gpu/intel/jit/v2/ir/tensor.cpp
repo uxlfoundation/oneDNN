@@ -679,7 +679,7 @@ template <>
 struct try_div_mod<expr_t> {
     static bool call(const expr_t &a, int b, const var_range_info_t &range_info,
             expr_t &div, expr_t &mod) {
-        dim_t factor = linear_max_pow2_divisor(a);
+        int factor = linear_max_pow2_divisor(a);
         if (factor % b == 0) {
             div = linear_div(a, b);
             mod = expr_t(0);
@@ -687,14 +687,14 @@ struct try_div_mod<expr_t> {
         }
         auto _linear = to_linear(a);
         auto &linear = _linear.as<linear_t>();
-        dim_t c_factor = linear_max_pow2_divisor(linear.c);
+        int c_factor = linear_max_pow2_divisor(linear.c);
         if (c_factor % b != 0) return false;
         expr_t a_div = linear_div(linear.c, b);
         expr_t a_mod;
         for (int i = 0; i < linear.nargs(); i++) {
             auto &u = linear.u_vec[i];
             auto &v = linear.v_vec[i];
-            dim_t u_factor = linear_max_pow2_divisor(u);
+            int u_factor = linear_max_pow2_divisor(u);
             if (u_factor % b == 0) {
                 a_div += linear_div(u, b) * v;
                 continue;
@@ -711,7 +711,7 @@ struct try_div_mod<expr_t> {
 
 template <typename T>
 layout_t layout_t::map(const dim_mapper_t &dim_mapper,
-        const pvar_coord_t<T> &coord, const pvar_tile_t &tile,
+        const prb_coord_t<T> &coord, const prb_tile_t &tile,
         const var_range_info_t &var_range_info) const {
     auto idxs = coord;
     auto rem_sizes = tile;
@@ -773,10 +773,10 @@ layout_t layout_t::map(const dim_mapper_t &dim_mapper,
 }
 
 template layout_t layout_t::map<int>(const dim_mapper_t &dim_mapper,
-        const pvar_coord_t<int> &coord, const pvar_tile_t &tile,
+        const prb_coord_t<int> &coord, const prb_tile_t &tile,
         const var_range_info_t &var_range_info) const;
 template layout_t layout_t::map<expr_t>(const dim_mapper_t &dim_mapper,
-        const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
+        const prb_coord_t<expr_t> &coord, const prb_tile_t &tile,
         const var_range_info_t &var_range_info) const;
 
 pvar_coord_t<dim_t> layout_t::to_coord(
@@ -1239,8 +1239,9 @@ bool grid_splitter_t::is_empty() const {
     return true;
 }
 
-expr_t grid_splitter_t::pop(int size) {
+expr_t grid_splitter_t::pop(int _size) {
     expr_t cur = 0;
+    int size = _size;
     for (auto &idx : idxs_) {
         if (idx.size == 1) continue;
         if (size == 1) break;
@@ -1248,7 +1249,7 @@ expr_t grid_splitter_t::pop(int size) {
         cur += idx.pop(size);
     }
     ir_assert(size == 1);
-    return register_index(simplify_rewrite(cur));
+    return register_index(simplify_rewrite(cur), _size);
 }
 
 expr_t grid_splitter_t::index_t::pop(int &n) {
@@ -1269,17 +1270,18 @@ expr_t grid_splitter_t::index_t::pop(int &n) {
     return ret;
 }
 
-expr_t grid_splitter_t::register_index(const expr_t &expr) {
+expr_t grid_splitter_t::register_index(const expr_t &expr, int size) {
     if (expr.is<var_t>()) return expr;
     int idx = (int)virt_grid_idxs_.size();
     auto var
             = var_t::make(type_t::s32(), "virt_grid_idx" + std::to_string(idx));
     virt_grid_idxs_.emplace(var, expr);
+    var_range_info_.set_bound(var, size);
     return var;
 }
 
 view_t::view_t(const dim_mapper_t &dim_mapper, const layout_t &base_layout,
-        const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
+        const prb_coord_t<expr_t> &coord, const prb_tile_t &tile,
         const var_range_info_t &var_range_info)
     : dim_mapper_(dim_mapper)
     , base_layout_(base_layout)
@@ -1417,7 +1419,8 @@ view_t view_t::split(const dim_mapper_t &dim_mapper,
         inner_dims[b.dim] *= b.int_size();
     }
     ir_assert(grid_splitter.is_empty());
-    return view_t(dim_mapper, base_layout, split_coord, split_tile);
+    return view_t(dim_mapper, base_layout, split_coord, split_tile,
+            grid_splitter.var_range_info());
 }
 
 } // namespace v2

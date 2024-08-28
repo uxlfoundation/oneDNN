@@ -32,10 +32,6 @@
 #endif
 #endif
 
-#ifdef NGEN_ASM
-#include <ostream>
-#endif
-
 #ifdef NGEN_SAFE
 #include <stdexcept>
 #endif
@@ -368,20 +364,6 @@ enum class DataType : uint8_t {
     invalid = 0x60
 };
 
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, DataType type)
-{
-    static const char *names[32] = {"ud",   "d",   "uw", "w", "ub", "b", "df", "f", "uq", "q", "hf", "bf", "bf8", "uv", "v",  "vf",
-#if PRERELEASE_HW
-                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
-#else
-                                    "tf32", "",    "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
-#endif
-    str << names[static_cast<uint8_t>(type) & 0x1F];
-    return str;
-}
-#endif
-
 static inline constexpr   int getLog2Bits(DataType type)               { return static_cast<int>(type) >> 5; }
 static inline constexpr14 int getLog2Bytes(DataType type)              { return std::max<int>(getLog2Bits(type) - 3, 0); }
 static inline constexpr14 int getLog2Dwords(DataType type)             { return std::max<int>(getLog2Bits(type) - 5, 0); }
@@ -474,21 +456,6 @@ static inline int mathArgCount(HW hw, MathFunction func)
     return argCounts[static_cast<uint8_t>(func) & 0xF];
 }
 
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, MathFunction func)
-{
-#if XE3P
-    static const char *names[32] = {"", "inv", "log", "exp", "sqt", "rsqt", "sin", "cos", "", "fdiv", "pow",  "idiv", "iqot", "irem", "invm", "rsqtm",
-                                    "", "",    "",    "",    "",    "",     "",    "",    "", "tanh", "sigm", "",     "",     "",     "",     ""};
-    str << names[static_cast<uint8_t>(func) & 0x1F];
-#else
-    static const char *names[16] = {"", "inv", "log", "exp", "sqt", "rsqt", "sin", "cos", "", "fdiv", "pow", "idiv", "iqot", "irem", "invm", "rsqtm"};
-    str << names[static_cast<uint8_t>(func) & 0xF];
-#endif
-    return str;
-}
-#endif
-
 static inline bool hasIEEEMacro(HW hw) {
     if (hw == HW::Gen11) return false;
     if (hw == HW::Gen12LP) return false;
@@ -505,31 +472,6 @@ enum class SyncFunction : uint8_t {
     bar   = 14,
     host  = 15
 };
-
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, SyncFunction func)
-{
-    static const char *names[16] = {"nop", "", "allrd", "allwr", "", "", "", "", "", "", "", "", "flush", "", "bar", "host"};
-    str << names[static_cast<uint8_t>(func) & 0xF];
-    return str;
-}
-#endif
-
-#if XE3P
-// Shuffle function codes.
-enum class ShuffleFunction : uint8_t {
-    idx4 = 0x6,
-};
-
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, ShuffleFunction func)
-{
-    static const char *names[16] = {"", "", "", "", "", "", "idx4", "", "", "", "", "", "", "", "", ""};
-    str << names[static_cast<uint8_t>(func) & 0xF];
-    return str;
-}
-#endif
-#endif
 
 // Shared function IDs (SFIDs).
 enum class SharedFunction : uint8_t {
@@ -560,22 +502,6 @@ enum class SharedFunction : uint8_t {
     spawner = ts,
 };
 
-#ifdef NGEN_ASM
-static inline const char *getMnemonic(SharedFunction sfid, HW hw)
-{
-    static const char *names[16] = {
-        "null", ""    , "smpl", "gtwy", "dc2", "rc" , "urb", "ts" ,
-        "vme" , "dcro", "dc0" , "pixi", "dc1", "cre", ""   , ""   ,
-    };
-    static const char *namesLSC[16] = {
-        "null", "ugml", "smpl", "gtwy", "dc2", "rc" , "urb", "btd",
-        "rta" , "dcro", "dc0" , "pixi", "dc1", "tgm", "slm", "ugm",
-    };
-    const auto &table = (hw >= HW::XeHPG) ? namesLSC : names;
-    return table[static_cast<uint8_t>(sfid) & 0xF];
-}
-#endif
-
 // ARFs: high nybble of register # specifies type
 enum class ARFType : uint8_t {
     null = 0,
@@ -597,22 +523,6 @@ enum class ARFType : uint8_t {
     fc   = 13,
     dbg  = 15,
 };
-
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, ARFType type)
-{
-    static const char *names[32] = {"null", "a", "acc", "f", "ce", "msg", "sp", "sr", "cr", "n", "ip", "tdr", "tm", "fc", "", "dbg",
-#if XE3
-                                    ""    , "" , "",    "",  "",   "",    "s",  "",   "",   "",  "",   "",    "",   "",   "", ""};
-#else
-                                    ""    , "" , "",    "",  "",   "",    "",   "",   "",   "",  "",   "",    "",   "",   "", ""};
-#endif
-    str << names[static_cast<uint8_t>(type) & 0x1F];
-    return str;
-}
-
-enum class PrintDetail {base = 0, sub_no_type = 1, sub = 2, hs = 3, vs_hs = 4, full = 5};
-#endif
 
 // Invalid singleton class. Can be assigned to nGEN objects to invalidate them.
 static constexpr class Invalid {} invalid{};
@@ -685,16 +595,6 @@ public:
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
     constexpr bool isScalar() const { return false; }
-
-#ifdef NGEN_ASM
-    static const bool emptyOp = false;
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man);
-
-    friend inline bool operator==(const Label &r1, const Label &r2) {
-        return !std::memcmp(&r1, &r2, sizeof(Label));
-    }
-    friend inline bool operator!=(const Label &r1, const Label &r2) { return !(r1 == r2); }
-#endif
 };
 
 static inline bool operator==(const RegData &r1, const RegData &r2);
@@ -720,10 +620,6 @@ protected:
         : base(base_), arf(arf_), off(off_), mods(0), type(static_cast<int>(type_)), indirect(indirect_), vs(vs_), width(width_), hs(hs_), _pad2(0), invalid(0) {}
 
 public:
-#ifdef NGEN_ASM
-    static const bool emptyOp = false;
-#endif
-
     constexpr RegData()
         : base(0), arf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
 
@@ -778,10 +674,6 @@ public:
     friend inline bool operator!=(const RegData &r1, const RegData &r2);
 
     friend inline RegData abs(const RegData &r);
-
-#ifdef NGEN_ASM
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
-#endif
 };
 
 static_assert(sizeof(RegData) == 8, "RegData structure is not laid out correctly in memory.");
@@ -889,11 +781,6 @@ public:
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {
         rd.fixup(hw, execSize, execWidth, defaultType, srcN, arity);
     }
-
-#ifdef NGEN_ASM
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
-    static const bool emptyOp = false;
-#endif
 };
 
 // Register regions.
@@ -1269,11 +1156,6 @@ public:
     constexpr14 RegData &getBase()        { return base; }
     constexpr RegData getBase()     const { return base; }
     constexpr uint8_t getMMENum()   const { return mmeNum; }
-
-#ifdef NGEN_ASM
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
-    static const bool emptyOp = false;
-#endif
 };
 
 static inline ExtendedReg operator|(const RegData &base, const SpecialAccumulatorRegister &acc)
@@ -1567,11 +1449,6 @@ public:
 
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
-
-#ifdef NGEN_ASM
-    static const bool emptyOp = false;
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
-#endif
 };
 
 static inline GRFRange operator-(const GRF &reg1, const GRF &reg2)
@@ -1616,15 +1493,6 @@ enum class ConditionModifier {
     eo = 0xF
 };
 
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, ConditionModifier cmod)
-{
-    static const char *names[16] = {"", "eq", "ne", "gt", "ge", "lt", "le", "", "ov", "un", "", "", "", "", "", "eo"};
-    str << names[static_cast<uint8_t>(cmod) & 0xF];
-    return str;
-}
-#endif
-
 enum class ChannelMask {
     rgba = 0,
     gba = 1,
@@ -1665,14 +1533,6 @@ enum class PredCtrl {
     z = 4,
     w = 5,
 };
-
-#ifdef NGEN_ASM
-static const char *toText(PredCtrl ctrl, bool align16) {
-    const char *names[2][16] = {{"", "", "anyv", "allv", "any2h", "all2h", "any4h", "all4h", "any8h", "all8h", "any16h", "all16h", "any32h", "all32h", "any", "all"},
-                                {"", "", "x",    "y",    "z",     "w",     "",      "",      "",      "",      "",       "",       "",       "",       "",    ""}};
-    return names[align16][static_cast<int>(ctrl) & 0xF];
-}
-#endif
 
 enum class ThreadCtrl {
     Normal = 0,
@@ -1843,60 +1703,6 @@ static inline bool isBranch(Opcode op)
     return (static_cast<int>(op) >> 4) == 2;
 }
 
-#ifdef NGEN_ASM
-static const char *getMnemonic(Opcode op, HW hw)
-{
-    const char *names[0x80] = {
-        "illegal", "sync", "sel", "movi", "not", "and", "or", "xor",
-        "shr", "shl", "smov", "", "asr", "", "ror", "rol",
-        "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
-        "bfe", "bfi1", "bfi2", "", "", "", "", "",
-        "jmpi", "brd", "if", "brc", "else", "endif", "", "while",
-        "break", "cont", "halt", "calla", "call", "ret", "goto", "join",
-#if XE3P
-        "wait", "send", "sendc", "sendg", "sendgc", "sendgx", "", "",
-#elif XE3
-        "wait", "send", "sendc", "sendg", "sendgc", "", "", "",
-#else
-        "wait", "send", "sendc", "sends", "sendsc", "", "", "",
-#endif
-        "math", "", "", "", "", "", "", "",
-        "add", "mul", "avg", "frc", "rndu", "rndd", "rnde", "rndz",
-        "mac", "mach", "lzd", "fbh", "fbl", "cbit", "addc", "subb",
-#if XE3P
-        "shfl", "sada2", "add3", "macl", "srnd", "dph", "dp3", "dp2",
-        "dp4a", "dpas", "dpasw", "mad", "lrp", "madm", "", "mullh",
-#else
-        "sad2", "sada2", "add3", "macl", "srnd", "dph", "dp3", "dp2",
-        "dp4a", "dpas", "dpasw", "mad", "lrp", "madm", "", "",
-#endif
-        "nop", "mov", "sel", "movi", "not", "and", "or", "xor",
-        "shr", "shl", "smov", "bfn", "asr", "", "ror", "rol",
-        "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
-        "bfe", "bfi1", "bfi2", "", "", "", "nop", ""
-    };
-
-    const char *mnemonic = names[static_cast<int>(op) & 0x7F];
-
-    if (hw < HW::Gen12LP) switch (op) {
-#if XE3
-        case Opcode::sends:  mnemonic = "sends";  break;
-        case Opcode::sendsc: mnemonic = "sendsc"; break;
-#endif
-#if XE3P
-        case Opcode::sad2:   mnemonic = "sad2";   break;
-#endif
-        case Opcode::mov:    mnemonic = "mov";    break;
-        case Opcode::line:   mnemonic = "line";   break;
-        case Opcode::pln:    mnemonic = "pln";    break;
-        case Opcode::dp4:    mnemonic = "dp4";    break;
-        default: break;
-    }
-
-    return mnemonic;
-}
-#endif
-
 class AllPipes {};
 enum class Pipe : uint8_t {
     Default = 0,
@@ -1909,19 +1715,6 @@ enum class Pipe : uint8_t {
     S = 6, Scalar = S,
 #endif
 };
-
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, Pipe pipe)
-{
-#if XE3
-    static const char *names[8] = {"", "A", "F", "I", "L", "M", "S", ""};
-#else
-    static const char *names[8] = {"", "A", "F", "I", "L", "M", "", ""};
-#endif
-    str << names[static_cast<uint8_t>(pipe) & 7];
-    return str;
-}
-#endif
 
 class SWSBInfo
 {
@@ -2239,10 +2032,6 @@ protected:
 public:
     Immediate() : payload(0), type(DataType::invalid) {}
 
-#ifdef NGEN_ASM
-    static const bool emptyOp = false;
-#endif
-
     constexpr14 DataType getType()           const { return type; }
     explicit constexpr14 operator uint64_t() const { return payload; }
     constexpr14 int getMods()                const { return 0; }
@@ -2395,10 +2184,6 @@ public:
             result.set<int32_t>(int16_t(payload));
         return result;
     }
-
-#ifdef NGEN_ASM
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
-#endif
 };
 
 // Compute ctrl field for bfn instruction.

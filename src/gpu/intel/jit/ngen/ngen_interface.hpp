@@ -755,25 +755,6 @@ std::string InterfaceHandler::generateZeInfo() const
     return md.str();
 }
 
-#ifdef NGEN_ASM
-void InterfaceHandler::dumpAssignments(std::ostream &stream) const
-{
-    LabelManager manager;
-
-    for (auto &assignment : assignments) {
-        stream << "//  ";
-        if (assignment.reg.isValid())
-            assignment.reg.outputText(stream, PrintDetail::sub, manager);
-        else
-            stream << "(none)";
-        stream << '\t' << assignment.name;
-        if (assignment.surface != noSurface)
-            stream << "\t(BTI " << assignment.surface << ')';
-        stream << std::endl;
-    }
-}
-#endif
-
 } /* namespace NGEN_NAMESPACE */
 
 #endif /* header guard */

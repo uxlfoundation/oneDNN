@@ -390,16 +390,6 @@ enum class DataType : uint8_t {
     invalid = 0x60
 };
 
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, DataType type)
-{
-    static const char *names[32] = {"ud",   "d",   "uw", "w", "ub", "b", "df", "f", "uq", "q", "hf", "bf", "bf8", "uv", "v",  "vf",
-                                    "tf32", "",    "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
-    str << names[static_cast<uint8_t>(type) & 0x1F];
-    return str;
-}
-#endif
-
 static inline constexpr   int getLog2Bits(DataType type)               { return static_cast<int>(type) >> 5; }
 static inline constexpr14 int getLog2Bytes(DataType type)              { return std::max<int>(getLog2Bits(type) - 3, 0); }
 static inline constexpr14 int getLog2Dwords(DataType type)             { return std::max<int>(getLog2Bits(type) - 5, 0); }
@@ -505,22 +495,6 @@ enum class SyncFunction : uint8_t {
     bar   = 14,
     host  = 15
 };
-
-#if XE3P
-// Shuffle function codes.
-enum class ShuffleFunction : uint8_t {
-    idx4 = 0x6,
-};
-
-#ifdef NGEN_ASM
-static inline std::ostream &operator<<(std::ostream &str, ShuffleFunction func)
-{
-    static const char *names[16] = {"", "", "", "", "", "", "idx4", "", "", "", "", "", "", "", "", ""};
-    str << names[static_cast<uint8_t>(func) & 0xF];
-    return str;
-}
-#endif
-#endif
 
 // Shared function IDs (SFIDs).
 enum class SharedFunction : uint8_t {
@@ -642,16 +616,6 @@ public:
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
     constexpr bool isScalar() const { return false; }
-
-#ifdef NGEN_ASM
-    static const bool emptyOp = false;
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man);
-
-    friend inline bool operator==(const Label &r1, const Label &r2) {
-        return !std::memcmp(&r1, &r2, sizeof(Label));
-    }
-    friend inline bool operator!=(const Label &r1, const Label &r2) { return !(r1 == r2); }
-#endif
 };
 
 static inline bool operator==(const RegData &r1, const RegData &r2);
@@ -1484,11 +1448,6 @@ public:
 
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
-
-#ifdef NGEN_ASM
-    static const bool emptyOp = false;
-    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
-#endif
 };
 
 static inline GRFRange operator-(const GRF &reg1, const GRF &reg2)

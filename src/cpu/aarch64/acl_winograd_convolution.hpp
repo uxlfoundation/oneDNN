@@ -31,7 +31,9 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
     using Op = arm_compute::experimental::op::CpuWinogradConv2d;
 
     struct pd_t : public cpu_convolution_fwd_pd_t {
-        using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
+        pd_t(const convolution_desc_t *adesc, const primitive_attr_t *attr,
+                const typename pd_t::base_class *hint_fwd_pd)
+            : cpu_convolution_fwd_pd_t(adesc, attr, hint_fwd_pd), acp_() {}
 
         DECLARE_COMMON_PD_T(
                 "wino:acl", acl_wino_convolution_fwd_t, USE_GLOBAL_SCRATCHPAD);
@@ -48,12 +50,7 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
     acl_wino_convolution_fwd_t(const pd_t *apd)
         : primitive_t(apd), acl_obj_(std::make_unique<acl_obj_t<Op>>()) {}
 
-    status_t create_resource(
-            engine_t *engine, resource_mapper_t &mapper) const override;
-
     status_t init(engine_t *engine) override;
-
-    typedef typename prec_traits<data_type::f32>::type data_t;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);

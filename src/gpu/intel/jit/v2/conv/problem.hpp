@@ -71,6 +71,7 @@ public:
     void set_shape(const prb_tile_t &shape) { shape_ = shape; }
     void set_bias(bool with_bias) { with_bias_ = with_bias; }
     bool with_bias() const { return with_bias_; }
+    double ops() const;
 
     void set_shape(const std::string &s);
     void normalize();
@@ -80,8 +81,8 @@ public:
 
     IR_DEFINE_DUMP()
 
-    static pvar_tile_t default_shape();
-    static double ops(prop_kind_t prop, const pvar_tile_t &shape);
+    static prb_tile_t default_shape();
+    static double ops(prop_kind_t prop, const prb_tile_t &shape);
 
 private:
     hw_t hw_;
@@ -90,8 +91,7 @@ private:
     layout_tag_t src_tag_;
     layout_tag_t wei_tag_;
     layout_tag_t dst_tag_;
-    type_t bias_type_;
-    pvar_tile_t shape_;
+    prb_tile_t shape_;
     std::array<int, 3> dhw_map_;
 };
 

@@ -134,7 +134,7 @@ bool parse_graph_expected_n_partitions(
 }
 
 bool parse_graph_fpmath_mode(
-        std::vector<std::string> &fpmath_mode_vec, const char *str) {
+        std::vector<graph_fpmath_mode_t> &fpmath_mode_vec, const char *str) {
     std::string graph_attrs_str;
     if (!parse_string(graph_attrs_str, str, "attr-fpmath")) return false;
 
@@ -142,10 +142,34 @@ bool parse_graph_fpmath_mode(
     std::string mode;
     while (std::getline(ss, mode, ',')) {
         if (!mode.empty()) {
+            // override_json_value == false indicates that the fpmath mode is
+            // not from the cml knob.
             if (fpmath_mode_vec.size() == 1
-                    && fpmath_mode_vec.front() == "default")
+                    && !fpmath_mode_vec.front().override_json_value_)
                 fpmath_mode_vec.pop_back();
-            fpmath_mode_vec.emplace_back(mode);
+
+            size_t start_pos = 0;
+            auto subs = get_substr(mode, start_pos, ':');
+            if (start_pos != std::string::npos && start_pos >= mode.size()) {
+                BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                        "Error: dangling symbol at the end of input",
+                        mode.c_str());
+                SAFE_V(FAIL);
+            }
+
+            bool apply_to_int = false;
+            if (start_pos != std::string::npos) {
+                subs = get_substr(mode, start_pos, '\0');
+                if (start_pos != std::string::npos) {
+                    BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                            "Error: dangling symbol at the end of input",
+                            mode.c_str());
+                    SAFE_V(FAIL);
+                }
+                apply_to_int = str2bool(subs.c_str());
+            }
+            fpmath_mode_vec.emplace_back(
+                    mode, apply_to_int, /* override_json_value = */ true);
         }
     }
     return true;

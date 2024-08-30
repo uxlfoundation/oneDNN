@@ -232,8 +232,6 @@ std::string init_info_partition(const engine_t *engine,
 
     ss << "," << compiled_partition->get_pimpl()->str();
 
-    ss << "," << compiled_partition->get_pimpl()->str();
-
     ss << "," << partition.get_assigned_backend()->get_name();
 
     return ss.str();

@@ -1578,7 +1578,7 @@ private:
             t_strided = tmp_strided.format(0, w_type, obj.elems(), w_stride);
             host_->emov(obj.elems(), t_strided, t);
         } else {
-            t_strided = t;
+            t_strided = std::move(t);
         }
         if (factor != 1) {
             host_->emul(obj.elems(), d, t_strided, ngen::Immediate(factor));

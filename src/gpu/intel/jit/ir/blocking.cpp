@@ -386,11 +386,11 @@ tile_to_vec_t::tile_to_vec_t(const std::vector<std::vector<pvar_tile_t>> &tiles,
     vecs_.resize(max_id + 1);
     for (int i = 0; i < ntiles; i++) {
         std::vector<int> v;
-        for (int j = 0; j < nsubtiles; j++) {
-            auto vi = indexed_tiles[j].to_index(tiles[i][j]);
-            v.insert(v.end(), vi.begin(), vi.end());
-        }
-        vecs_[ids[i]] = std::move(v);
+        v.insert(v.end(), v0.begin(), v0.end());
+        v.insert(v.end(), v1.begin(), v1.end());
+        v.insert(v.end(), v2.begin(), v2.end());
+        if (p.id() >= int(dists_.size())) dists_.resize(p.id() + 1);
+        dists_[p.id()] = std::move(v);
     }
 }
 

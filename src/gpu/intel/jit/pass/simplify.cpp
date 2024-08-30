@@ -1261,7 +1261,7 @@ public:
         expr_t ret = reduce_v1(obj);
         if (!ret.is_empty()) return ret;
         ret = reduce_v2(obj);
-        return (!ret.is_empty()) ? ret : obj;
+        return (!ret.is_empty()) ? std::move(ret) : obj;
     }
 
     // Applies the following rules:
@@ -1643,7 +1643,7 @@ public:
         auto cset_old = cset_;
         cset_.add_constraint(obj.var == value);
         auto body = mutate(obj.body);
-        cset_ = cset_old;
+        cset_ = std::move(cset_old);
 
         return let_t::make(obj.var, value, body);
     }

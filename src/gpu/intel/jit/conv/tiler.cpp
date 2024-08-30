@@ -810,7 +810,7 @@ private:
                 blocks.emplace_back(level_t::iter, blk.iter_dim(d));
             if (blk.thread_group().has(d))
                 blocks.emplace_back(
-                        level_t::thread_group, blk.thread_group_dim(d));
+                        level_kind_t::thread_group, blk.thread_group_dim(d));
             if (!layout_dim_ok(prop, tensor_kind, layout, d, std::move(blocks)))
                 return false;
         }
@@ -1299,19 +1299,9 @@ public:
 
         params_generator_t params_gen(
                 tune_level, simd_size, chk, level_tile_sets);
-        std::vector<std::vector<pvar_tile_t>> tiles;
-        for (auto &p : params_gen.params_vec()) {
-            auto &b = p.blocking();
-            std::vector<pvar_tile_t> p_tiles;
-            p_tiles.push_back(convert(b.iter()));
-            p_tiles.push_back(convert(b.thread_group()));
-            p_tiles.push_back(convert(b.loop()));
-            tiles.push_back(std::move(p_tiles));
-        }
-        tile_to_vec_t tile_to_vec(tiles);
+        params_distance_t dist(params_gen.params_vec(), convert);
         auto ret = conv2tuner_.emplace(key,
-                conv_tuner_t(key, ops, std::move(params_gen),
-                        std::move(tile_to_vec)));
+                conv_tuner_t(key, ops, std::move(params_gen), std::move(dist)));
         return &ret.first->second;
     }
 

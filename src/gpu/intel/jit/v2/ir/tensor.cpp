@@ -284,62 +284,6 @@ void layout_raw_tag_t::expand_x(int ndims) {
 layout_raw_tag_t layout_raw_tag_t::collapse_x() const {
     if (has_x()) return *this;
     auto tag = to_tag(entries_);
-    for (dim_idx_t i = 2; i < ndims() - 1; i++) {
-        std::string x_expanded;
-        bool ok = true;
-        for (dim_idx_t j = i; j < ndims(); j++) {
-            for (auto &e : entries_) {
-                if (e.index() == j && e.is_blocked) {
-                    ok = false;
-                    break;
-                }
-            }
-            x_expanded += dim_idx::as_tag(j);
-        }
-        if (!ok) continue;
-        auto pos = tag.find(x_expanded);
-        if (pos == std::string::npos) continue;
-        tag.replace(pos, x_expanded.length(), "x");
-        return layout_raw_tag_t(tag);
-    }
-    return *this;
-}
-
-std::vector<layout_raw_tag_entry_t> layout_raw_tag_t::to_entries(
-        const std::string &tag) {
-    if (tag == "any") return {};
-    ir_assert(is_abx_tag(tag)) << tag;
-    std::array<bool, 'z' - 'a' + 1> is_blocked;
-    is_blocked.fill(false);
-    auto letter_blocks = parse_letter_blocks(tag);
-    for (auto &p : letter_blocks) {
-        if (p.second != 0) is_blocked[std::tolower(p.first) - 'a'] = true;
-    }
-    std::vector<layout_raw_tag_entry_t> entries;
-    for (auto &p : letter_blocks) {
-        char letter = static_cast<char>(std::tolower(p.first));
-        entries.emplace_back();
-        auto &e = entries.back();
-        e.letter = letter;
-        e.block = p.second;
-        e.is_blocked = is_blocked[letter - 'a'];
-    }
-    return entries;
-}
-
-std::string layout_raw_tag_t::to_tag(
-        const std::vector<layout_raw_tag_entry_t> &entries) {
-    std::string tag;
-    for (auto &e : entries) {
-        if (e.is_blocked) { tag += std::to_string(e.block); }
-        tag += e.letter;
-    }
-    return tag;
-}
-
-layout_raw_tag_t layout_raw_tag_t::collapse_x() const {
-    if (has_x()) return *this;
-    auto tag = to_tag(entries_);
     for (int i = 2; i < ndims() - 1; i++) {
         std::string x_expanded;
         bool ok = true;

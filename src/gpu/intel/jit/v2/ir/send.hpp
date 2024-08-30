@@ -752,7 +752,7 @@ public:
                         = init_view_.scatterize(cache_line_size, reqs.prover());
                 if (view.is_empty()) return send_plan_t();
                 params.kind = send_kind_t::scattered;
-                return try_build_1d(params, view, reqs);
+                return try_build_1d(params, view, std::move(reqs));
             }
             default: return try_build_1d(params, init_view_);
         }
@@ -830,10 +830,10 @@ private:
         auto &plan_1d = plan.get_1d();
         plan_1d = send_1d_plan_t(plan.hw);
         plan_1d.desc = desc;
-        plan_1d.addr = addr;
+        plan_1d.addr = std::move(addr);
         plan_1d.mask = mask_t(mask_desc, layout, slots, elems_per_slot);
-        plan_1d.reg_layout = reg_layout;
-        plan_1d.entry_tile = entry_tile;
+        plan_1d.reg_layout = std::move(reg_layout);
+        plan_1d.entry_tile = std::move(entry_tile);
         for (auto &d : params.skip_mask)
             plan_1d.mask.clear(d);
 
@@ -848,7 +848,7 @@ private:
             if (!plan_1d.add_entry(it, mask_desc, reg_off, reqs.prover()))
                 return send_plan_t();
         }
-        plan_1d.reqs = reqs;
+        plan_1d.reqs = std::move(reqs);
         plan_1d.reqs.simplify();
         return plan;
     }
@@ -881,8 +881,8 @@ private:
         plan_2d.mask.clear(plane.y_dim);
         for (auto &d : params.skip_mask)
             plan_2d.mask.clear(d);
-        plan_2d.reg_layout = reg_layout;
-        plan_2d.entry_tile = entry_tile;
+        plan_2d.reg_layout = std::move(reg_layout);
+        plan_2d.entry_tile = std::move(entry_tile);
 
         int reg_off = 0;
         for (int h = 0; h < plane.h; h += desc.h) {
@@ -895,7 +895,7 @@ private:
                 reg_off += entry_reg_size;
             }
         }
-        plan_2d.reqs = reqs;
+        plan_2d.reqs = std::move(reqs);
         plan_2d.reqs.simplify();
         return plan;
     }

@@ -2493,10 +2493,10 @@ private:
             return plan_status_t::invalid_c_layout;
         }
 
-        plan.a_layout = a_layout;
-        plan.b_layout = b_layout;
-        plan.c_layout = c_layout;
-        plan.c_prb_layout = c_prb_layout;
+        plan.a_layout = std::move(a_layout);
+        plan.b_layout = std::move(b_layout);
+        plan.c_layout = std::move(c_layout);
+        plan.c_prb_layout = std::move(c_prb_layout);
         plan.fma_kind = fma_kind;
         plan.b_blk = b_blk;
         plan.m_blk = m_blk;

@@ -255,7 +255,7 @@ public:
         imm_ = math::gcd(imm_, other.imm_);
         auto lhs = op_combine(op_kind_t::_mul, factors_);
         auto rhs = op_combine(op_kind_t::_mul, other.factors_);
-        int64_t const_factor = 1;
+        int const_factor = 1;
         auto common = find_common_factors(
                 {std::move(lhs), std::move(rhs)}, const_factor);
         ir_assert(const_factor == 1);

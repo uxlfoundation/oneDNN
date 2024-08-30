@@ -80,7 +80,7 @@ private:
         if (idx == layout.ndims()) {
             std::vector<expr_t> vargs;
             vargs.reserve(layout.ndims());
-            for (dim_idx_t i = 0; i < layout.ndims(); i++)
+            for (int i = 0; i < layout.ndims(); i++)
                 vargs.push_back(view.vstart(i) + args[i]);
             expr_t mask = full_mem_view_.vmask(vargs);
             auto off = layout.offset(args, /*ignore_offset=*/true);

@@ -88,19 +88,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             // This case requires scratchpad
             if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
         }
-        // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei)) {
-            ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
-            ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
-            ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);
-        }
-        // Implementation has limited support w.r.t. scales groups.
-        if (!asc.get(DNNL_ARG_WEIGHTS).has_default_values()) {
-            if (!asc.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-                // Only grouping over K is supported.
-                ok = ok && asc.get(DNNL_ARG_WEIGHTS).group_dims_[1] == 1;
-            }
-        }
+        // Impl suppports scales only for integer weights
+        ok = ok
+                && IMPLICATION(!attr()->scales_.has_default_values(),
+                        types::is_integral_dt(wei_dt));
         return ok;
     };
 

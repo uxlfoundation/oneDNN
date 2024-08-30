@@ -422,9 +422,8 @@ public:
         writer.write_keyvalue("engine_kind",
                 std::string(graph::utils::engine_kind2str(get_engine_kind())));
         writer.write_keyvalue("fpmath_mode",
-                std::string(graph::utils::fpmath_mode2str(fpmath.mode_)));
-        writer.write_keyvalue("fpmath_mode_apply_to_int",
-                std::string(fpmath.apply_to_int_ ? "true" : "false"));
+                std::string(graph::utils::fpmath_mode2str(
+                        get_fpmath_mode().mode_)));
         std::vector<size_t> inputs_id;
         inputs_id.reserve(get_input_values().size());
         for (const auto &val : get_input_values()) {

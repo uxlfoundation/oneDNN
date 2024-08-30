@@ -68,6 +68,7 @@ struct deserialized_op {
     std::string name_;
     std::string kind_;
     std::string fpmath_mode_;
+    std::string fpmath_mode_apply_to_int_;
 
     std::unordered_map<std::string, deserialized_attr> attrs_;
     std::vector<deserialized_lt> in_lts_;
@@ -131,10 +132,14 @@ struct deserialized_graph {
     std::string get_string() const;
 
     // Return the fpmath mode attribute
-    const std::string &get_fpmath_mode() const { return fpmath_mode_; }
+    const std::pair<std::string, bool> get_fpmath_mode() const {
+        return std::make_pair(
+                fpmath_mode_, str2bool(fpmath_mode_apply_to_int_.c_str()));
+    }
 
-    void set_fpmath_mode(const std::string &fpmath_mode) {
-        fpmath_mode_ = fpmath_mode;
+    void set_fpmath_mode(const graph_fpmath_mode_t &fpmath_mode) {
+        fpmath_mode_ = fpmath_mode.mode_;
+        fpmath_mode_apply_to_int_ = bool2str(fpmath_mode.apply_to_int_);
     }
 
 private:

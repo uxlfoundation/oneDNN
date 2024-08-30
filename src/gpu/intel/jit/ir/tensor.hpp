@@ -1447,8 +1447,7 @@ public:
         return tdims_[idx];
     }
 
-    void set_tdim(
-            dim_idx_t tidx, const expr_t &_texpr, const expr_t &mask = {}) {
+    void set_tdim(int tidx, const expr_t &_texpr, const expr_t &mask = {}) {
         ir_assert(tdims_[tidx].is_empty());
 
         auto texpr = simplify(_texpr);

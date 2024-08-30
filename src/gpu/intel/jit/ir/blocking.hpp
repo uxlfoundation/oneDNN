@@ -107,15 +107,15 @@ public:
     }
 
     // Returns the ratio of all operations (with padding) to "useful" operations
-    double get_efficiency(const pvar_tile_t &shape) const {
-        double ret = 1;
+    float get_efficiency(const prb_tile_t &shape) const {
+        float ret = 1;
         for (auto &d : shape) {
-            dim_t loop = loop_.get(d, 1);
-            dim_t tg = thread_group_.get(d, 1);
-            dim_t iter = iter_.get(d, 1);
-            dim_t size = shape[d];
-            dim_t size_padded = utils::rnd_up(size, loop * tg * iter);
-            if (size_padded != size) ret *= double(size) / size_padded;
+            int loop = loop_.get(d, 1);
+            int tg = thread_group_.get(d, 1);
+            int iter = iter_.get(d, 1);
+            int size = shape[d];
+            int size_padded = utils::rnd_up(size, loop * tg * iter);
+            if (size_padded != size) ret *= float(size) / size_padded;
         }
         return ret;
     }
@@ -705,7 +705,9 @@ private:
             dim_mappers_[d].add(value);
         }
 
-        void add(const pvar_tile_t &t) {
+        void add(prb_dim_t d, int value) { dim_mappers_[d.id()].add(value); }
+
+        void add(const prb_tile_t &t) {
             for (auto &d : t) {
                 add(d, t[d]);
             }

@@ -211,7 +211,7 @@ public:
         return pos != post_ops_.end();
     }
 
-    bool with_runtime_zero_points(bool is_input, size_t index) const {
+    bool with_runtime_zero_points(bool is_input, size_t indice) const {
         if (is_input) {
             if (input_zps_.find(index) == input_zps_.end()) return false;
             const op_t *zp_op

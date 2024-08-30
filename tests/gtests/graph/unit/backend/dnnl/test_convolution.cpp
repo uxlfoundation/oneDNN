@@ -4880,7 +4880,7 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionBiasGeluU8s8u8MixBf16) {
     }
 }
 
-TEST(test_convolution_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
+TEST(test_conv_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -5021,8 +5021,7 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
     }
 }
 
-TEST(test_convolution_execute_subgraph_int8,
-        ConvolutionBiasaddGeluU8s8u8MixBf16) {
+TEST(test_conv_execute_subgraph_int8, ConvolutionBiasaddGeluU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();

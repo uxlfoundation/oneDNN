@@ -202,8 +202,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                 && IMPLICATION(utils::one_of(f8_e5m2, p.itype, p.otype)
                                 || utils::one_of(f8_e4m3, p.itype, p.otype),
                         mayiuse(avx512_core_amx))
-                && IMPLICATION(!is_direct_copy(p), prb_has_small_strides(p))
-                && !prb_has_huge_prime_number(p);
+                && prb_has_small_strides(p) && !prb_has_huge_prime_number(p);
         return ok;
     }
 
@@ -573,105 +572,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         for (int off = 0; off < len; off += step_size) {
             step(off, i_off, o_off, i_off, o_off, step_size);
             tr8x8_avx2(i_off, o_off);
-        }
-
-        return true;
-    }
-
-    template <typename Vmm>
-    bool process_direct_copy(const int ndims, const int len_unroll) {
-        using namespace data_type;
-
-        static constexpr bool is_zmm = std::is_same<Vmm, Xbyak::Zmm>::value;
-        static constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
-        static constexpr int vlen = vreg_traits<Vmm>::vlen;
-        const int simd_w = vlen / sizeof(float);
-        const int len_tail = len_unroll % simd_w;
-        const bool is_i8 = utils::one_of(s8, prb_.itype, prb_.otype)
-                || utils::one_of(u8, prb_.itype, prb_.otype);
-
-        // TODO: make a standalone jit:direct_copy implementation.
-        const bool can_do = is_direct_copy(prb_)
-                // s8u8 with AVX should be used with XMM vreg.
-                && IMPLICATION(is_i8 && isa_ == avx, !is_ymm)
-                // Prime numbers greater than INT_MAX cause input address
-                // overflow and crash.
-                && !prb_has_huge_prime_number(prb_);
-        if (!can_do) return false;
-
-        const int tail_vmm_idx = 0;
-        const int max_unroll = is_zmm ? 16 : 8;
-
-        using data_types_t = std::unordered_set<data_type_t, std::hash<int>>;
-
-        auto io_init_saturate_f32 = [&](const data_types_t &store_data_types) {
-            if (!zmm_io_.empty())
-                zmm_io_.init_saturate_f32(store_data_types);
-            else if (!ymm_io_.empty())
-                ymm_io_.init_saturate_f32(store_data_types);
-            else {
-                assert(!xmm_io_.empty());
-                xmm_io_.init_saturate_f32(store_data_types);
-            }
-        };
-
-        auto io_load = [&](const Xbyak::Address &src_addr, const Vmm &vmm,
-                               const bool tail) {
-            if (!zmm_io_.empty())
-                zmm_io_[prb_.itype]->load(src_addr, Zmm(vmm.getIdx()), tail);
-            else if (!ymm_io_.empty())
-                ymm_io_[prb_.itype]->load(src_addr, Ymm(vmm.getIdx()), tail);
-            else {
-                assert(!xmm_io_.empty());
-                xmm_io_[prb_.itype]->load(src_addr, Xmm(vmm.getIdx()), tail);
-            }
-        };
-
-        auto io_store = [&](const Vmm &vmm, const Xbyak::Address &dst_addr,
-                                const bool tail) {
-            if (!zmm_io_.empty())
-                zmm_io_[prb_.otype]->store(Zmm(vmm.getIdx()), dst_addr, tail);
-            else if (!ymm_io_.empty())
-                ymm_io_[prb_.otype]->store(Ymm(vmm.getIdx()), dst_addr, tail);
-            else {
-                assert(!xmm_io_.empty());
-                xmm_io_[prb_.otype]->store(Xmm(vmm.getIdx()), dst_addr, tail);
-            }
-        };
-
-        auto io_prepare_tail_mask = [&]() {
-            if (!zmm_io_.empty())
-                zmm_io_.prepare_tail_mask();
-            else if (!ymm_io_.empty())
-                ymm_io_.prepare_tail_mask();
-            else {
-                assert(!xmm_io_.empty());
-                xmm_io_.prepare_tail_mask();
-            }
-        };
-
-        io_init_saturate_f32({prb_.otype});
-
-        int off = 0;
-        for (; off + len_tail < len_unroll;) {
-            int n_vregs_to_process_len_unroll = (len_unroll - off) / simd_w;
-            int unroll = nstl::min(max_unroll, n_vregs_to_process_len_unroll);
-
-            for (int ur = 0; ur < unroll; ++ur) {
-                const auto vmm = Vmm(ur);
-                io_load(i_addr(off + ur * simd_w), vmm, false);
-                io_store(vmm, o_addr(off + ur * simd_w), false);
-            }
-
-            off += unroll * simd_w;
-            assert(off <= len_unroll);
-        }
-
-        if (len_tail) {
-            io_prepare_tail_mask();
-            const auto vmm = Vmm(tail_vmm_idx + 1);
-            io_load(i_addr(off), vmm, true);
-            io_store(vmm, o_addr(off), true);
         }
 
         return true;
@@ -1666,86 +1566,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                         prb_.itype, data_type::f8_e5m2, data_type::f8_e4m3))
                 create_fp8_emu(prb_.itype);
         }
-
-        const bool can_do_direct_copy = is_direct_copy(prb_)
-                // Prime numbers greater than INT_MAX cause input address
-                // overflow and crash.
-                && !prb_has_huge_prime_number(prb_);
-
-        /* io_helper is used only in direct copy algorithm */
-        if (can_do_direct_copy) {
-            const int ndims = prb_.ndims;
-            int len_last_dim_unroll = 1;
-            int len_unroll = 1;
-
-            for (int d = 0; d < ndims; ++d) {
-                const auto &node = prb_.nodes[d];
-                if (len_unroll * node.n <= len_unroll_max) {
-                    len_unroll *= node.n;
-                } else {
-                    len_last_dim_unroll = len_unroll_max / len_unroll;
-                    while (node.n % len_last_dim_unroll)
-                        --len_last_dim_unroll;
-                    len_unroll *= len_last_dim_unroll;
-                    break;
-                }
-            }
-
-            const bool is_zmm = is_superset(isa_, avx512_core);
-            const bool is_i8
-                    = utils::one_of(data_type::s8, prb_.itype, prb_.otype)
-                    || utils::one_of(data_type::u8, prb_.itype, prb_.otype);
-            const int vlen = isa_max_vlen(isa_);
-            const int simd_w = vlen / sizeof(float);
-            const int tail_opmask_idx = 2;
-            const int tail_vmm_idx = 0;
-            // Unroll might be max of 16 for zmm or 8 otherwise so keep auxiliary
-            // registers indices higher than this number. Follow existing bf16_emu
-            // register numeration for that.
-            const int zero_idx
-                    = is_zmm ? bf16_emu_zmm_4_idx_ + 1 : xmm_zero_.getIdx();
-            const int saturation_ubound_idx
-                    = is_zmm ? zero_idx + 1 : xmm_saturation_ubound_.getIdx();
-            const int max_unroll = is_zmm ? 16 : 8;
-            MAYBE_UNUSED(max_unroll);
-            assert(zero_idx >= max_unroll);
-            assert(saturation_ubound_idx >= max_unroll);
-            assert(simd_w > 0);
-
-            io::io_conf_t io_conf;
-            io::io_tail_conf_t io_tail_conf(simd_w,
-                    simd_w > 0 ? len_unroll % simd_w : 0, tail_opmask_idx,
-                    tail_vmm_idx, reg_tmp_);
-            io::io_emu_bf16_conf_t io_bf16_conf(bf16_emu_zmm_1_idx_,
-                    bf16_emu_zmm_2_idx_, bf16_emu_zmm_3_idx_, reg_tmp_,
-                    bf16_emu_zmm_4_idx_);
-            io::io_emu_fp8_conf_t io_fp8_conf(fp8_emu_zmm_1_idx_,
-                    fp8_emu_zmm_2_idx_, fp8_emu_zmm_3_idx_, fp8_emu_zmm_4_idx_,
-                    fp8_emu_zmm_5_idx_, fp8_emu_kmask_aux_idx_,
-                    fp8_emu_scratch_);
-            io::io_saturation_conf_t io_saturation_conf(
-                    zero_idx, saturation_ubound_idx, reg_tmp_);
-
-            if (is_superset(isa_, avx512_core)) {
-                zmm_io_ = io::jit_io_multi_dt_helper_t<Zmm>(this, isa_,
-                        {prb_.itype, prb_.otype}, io_conf, io_tail_conf,
-                        io_bf16_conf, {{prb_.otype, io_saturation_conf}},
-                        utils::nullopt, io_fp8_conf);
-            } else if (
-                    is_superset(isa_,
-                            avx) /* s8u8 with AVX should be used with XMM vreg */
-                    && IMPLICATION(isa_ == avx, !is_i8)) {
-                ymm_io_ = io::jit_io_multi_dt_helper_t<Ymm>(this, isa_,
-                        {prb_.itype, prb_.otype}, io_conf, io_tail_conf,
-                        io_bf16_conf, {{prb_.otype, io_saturation_conf}},
-                        utils::nullopt, io_fp8_conf);
-            } else {
-                xmm_io_ = io::jit_io_multi_dt_helper_t<Xmm>(this, isa_,
-                        {prb_.itype, prb_.otype}, io_conf, io_tail_conf,
-                        io_bf16_conf, {{prb_.otype, io_saturation_conf}},
-                        utils::nullopt, io_fp8_conf);
-            }
-        }
     }
 
     void generate() override {
@@ -1834,9 +1654,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         if (is_fp8_itype || is_fp8_otype) {
             if (f8_e5m2_emu_) f8_e5m2_emu_->prepare_table();
             if (f8_e4m3_emu_) f8_e4m3_emu_->prepare_table();
-            if (is_superset(isa_, avx512_core_amx)) {
-                zmm_io_.prepare_table_fp8();
-            }
         }
     }
 
@@ -1911,11 +1728,6 @@ private:
     const Zmm fp8_emu_reserv_5_ = Zmm(fp8_emu_zmm_5_idx_);
     const Opmask fp8_emu_kmask_aux_ = Opmask(fp8_emu_kmask_aux_idx_);
     const Reg64 fp8_emu_scratch_ = bf16_emu_scratch_;
-
-    // TODO: parametrize the kernel with the Vmm argument.
-    io::jit_io_multi_dt_helper_t<Xmm> xmm_io_;
-    io::jit_io_multi_dt_helper_t<Ymm> ymm_io_;
-    io::jit_io_multi_dt_helper_t<Zmm> zmm_io_;
 };
 
 // Seperate class for no unroll/threading burden

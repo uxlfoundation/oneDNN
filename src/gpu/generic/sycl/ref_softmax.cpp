@@ -16,6 +16,7 @@
 
 #include "gpu/generic/sycl/ref_softmax.hpp"
 #include "gpu/generic/sycl/softmax_kernels.hpp"
+#include "gpu/generic/sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -55,14 +56,6 @@ status_t ref_sycl_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
-        const auto block_size = pd()->conf_.block_size;
-        const auto wg_size = pd()->conf_.wg_size;
-        const auto t_work = pd()->conf_.wk_size;
-        const auto wg_work = wg_size * block_size;
-        const auto wg_cnt = (t_work + wg_work - 1) / wg_work;
-        auto n_thr = wg_cnt * wg_size;
-        n_thr = n_thr < 1 ? 1 : n_thr;
-
         softmax_fwd_kernel_vec_t softmax_fwd_kernel_(pd()->conf_, cgh, ctx);
 
         cgh.parallel_for(
@@ -92,9 +85,6 @@ status_t ref_sycl_softmax_bwd_t::init(impl::engine_t *engine) {
 }
 
 status_t ref_sycl_softmax_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
-    return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
-        softmax_bwd_kernel_vec_t softmax_bwd_kernel(pd()->conf_, cgh, ctx);
-
     return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
         softmax_bwd_kernel_vec_t softmax_bwd_kernel(pd()->conf_, cgh, ctx);
 

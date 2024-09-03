@@ -16,6 +16,7 @@
 
 #include "gpu/generic/sycl/ref_lrn.hpp"
 #include "gpu/generic/sycl/lrn_kernels.hpp"
+#include "gpu/generic/sycl/sycl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -64,13 +65,6 @@ status_t ref_sycl_lrn_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     using namespace format_tag;
 
     return parallel_for(ctx, kernel_, [&](::sycl::handler &cgh) {
-        const auto block_size = pd()->conf_.block_size;
-        const auto wg_size = pd()->conf_.wg_size;
-        const auto t_work = pd()->conf_.wk_size;
-        const auto wg_work = wg_size * block_size;
-        const auto wg_cnt = (t_work + wg_work - 1) / wg_work;
-        auto n_thr = wg_cnt * wg_size;
-        n_thr = n_thr < 1 ? 1 : n_thr;
         const format_tag_t tag = pd()->dat_tag_;
 
         lrn_fwd_kernel_vec_t lrn_fwd_kernel_(pd()->conf_, cgh, ctx, tag);
@@ -121,16 +115,7 @@ status_t ref_sycl_lrn_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         const format_tag_t tag = pd()->dat_tag_;
         lrn_bwd_kernel_vec_t lrn_bwd_kernel_(pd()->conf_, cgh, ctx, tag);
 
-        lrn_bwd_kernel_vec_t lrn_bwd_kernel_(pd()->conf_, cgh, ctx, tag);
-
-        const int block_size = pd()->conf_.block_size;
-        const int wg_size = pd()->conf_.wg_size;
-        const int t_work = pd()->conf_.wk_size;
-        int wg_work = wg_size * block_size;
-        int wg_cnt = (t_work + wg_work - 1) / wg_work;
-        int wg_thr = wg_cnt * wg_size;
-        wg_thr = wg_thr < 1 ? 1 : wg_thr;
-        cgh.parallel_for(::sycl::nd_range<1>(wg_thr, wg_size), lrn_bwd_kernel_);
+        cgh.parallel_for(get_range(ctx, pd()->conf_.wk_size), lrn_bwd_kernel_);
     });
 }
 

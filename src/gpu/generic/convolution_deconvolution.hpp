@@ -19,11 +19,9 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "common/primitive_desc_iterator.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_deconvolution_pd.hpp"
-#include "gpu/gpu_primitive.hpp"
 
 namespace dnnl {
 namespace impl {

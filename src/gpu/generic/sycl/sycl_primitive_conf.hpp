@@ -73,8 +73,6 @@ struct sycl_convolution_conf_t {
 
     int ndims;
 
-    int block_size;
-    int wg_size;
     int wk_size;
     bool has_groups;
 
@@ -200,8 +198,6 @@ struct sycl_reorder_conf_t {
 
     int ndims;
 
-    int block_size;
-    int wg_size;
     int wk_size;
 
     sycl_post_ops_t post_ops;
@@ -403,8 +399,6 @@ struct sycl_sum_conf_t {
     xpu::sycl::md_t dst_md;
     float src_scales[DNNL_REF_SUM_MAX_NUM_TENSORS];
     int n;
-    int block_size;
-    int wg_size;
     int wk_size;
 };
 

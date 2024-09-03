@@ -172,7 +172,7 @@ struct prelu_bwd_kernel_vec_t {
         memory_plain_t scratchpad_mem(
                 scratchpad_, conf_.weights_md.data_type());
 
-        size_t ithr = item.get_group(0) * conf_.wg_size + item.get_local_id();
+        size_t ithr = item.get_global_id(0);
         switch (conf_.bcast_type) {
             case broadcasting_strategy_t::scalar:
                 calculate_scalar(data_mem, weights_mem, scratchpad_mem,

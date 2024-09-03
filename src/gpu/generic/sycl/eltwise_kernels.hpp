@@ -43,14 +43,6 @@ struct eltwise_fwd_kernel_vec_t {
         memory_tensor_t src_mem(src_, conf_.src_md);
         memory_tensor_t dst_mem(dst_, conf_.dst_md);
 
-        auto sg = item.get_sub_group();
-        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
-        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
-        size_t wi_offset_t = sg.get_local_id();
-        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
-
-        size_t base_idx = offset_t * conf_.block_size;
-
         auto operation = [&](dim_t &idx, dim_t &n, dim_t &c, dim_t &d, dim_t &h,
                                  dim_t &w) {
             dim_t src_offset = data_offset(src_mem.md(), n, c, d, h, w);
@@ -219,23 +211,14 @@ struct eltwise_bwd_kernel_vec_t {
         memory_tensor_t diff_src_mem(diff_src_, conf_.diff_src_md);
         memory_tensor_t diff_dst_mem(diff_dst_, conf_.diff_dst_md);
 
-        auto sg = item.get_sub_group();
-        size_t wg_offset_t = item.get_group(0) * conf_.wg_size;
-        size_t sg_offset_t = sg.get_group_id()[0] * sg.get_local_range()[0];
-        size_t wi_offset_t = sg.get_local_id();
-        size_t offset_t = wg_offset_t + sg_offset_t + wi_offset_t;
-        size_t base_idx = offset_t * conf_.block_size;
+        for (dim_t idx = item.get_global_id(0); idx < conf_.wk_size;
+                idx += item.get_global_range(0)) {
+            auto diff_src = diff_src_mem.load(idx);
+            auto src = src_mem.load(idx);
 
-        for (dim_t i = 0; i < conf_.block_size; i++) {
-            dim_t idx = base_idx + i;
-            if (idx < conf_.wk_size) {
-                auto diff_src = diff_src_mem.load(idx);
-                auto src = src_mem.load(idx);
-
-                auto dst = compute_alg_n(
-                        diff_src, src, conf_.alpha, conf_.beta, conf_.alg_kind);
-                diff_dst_mem.store(dst, idx);
-            }
+            auto dst = compute_alg_n(
+                    diff_src, src, conf_.alpha, conf_.beta, conf_.alg_kind);
+            diff_dst_mem.store(dst, idx);
         }
     }
 

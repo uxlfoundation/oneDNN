@@ -30,6 +30,10 @@
 #include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/jit_eltwise_injector.hpp"
 
+#define VDISPATCH_CHECK(pd, engine, cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, convolution, (cond), \
+            status::unimplemented, "%s," msg, pd->info(engine), ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -132,7 +136,7 @@ bool is_small_oc(const conv_problem_t &prb) {
 }
 
 status_t conv_problem_t::init(
-        const impl::engine_t *engine, const convolution_pd_t *conv_pd) {
+        impl::engine_t *engine, const convolution_pd_t *conv_pd) {
     using namespace compute;
 
     VDISPATCH_CHECK(conv_pd, engine, !conv_pd->has_zero_dim_memory(),
@@ -1147,13 +1151,11 @@ void init_bwd_d_optimize(conv_config_t &cfg) {
 }
 
 status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
-        const impl::engine_t *engine, convolution_pd_t *pd,
-        primitive_attr_t *attr) {
+        impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr) {
     hw_t hw(engine);
 
     VDISPATCH_CHECK(pd, engine, hw_ok(hw), VERBOSE_UNSUPPORTED_ISA);
-    VDISPATCH_CHECK(
-            pd, engine, data_types_ok(prb, hw, engine), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_CHECK(pd, engine, data_types_ok(prb, hw), VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CHECK(
             pd, engine, post_ops_ok(prb, hw), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_CHECK(
@@ -1168,7 +1170,7 @@ status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
     CHECK(init_fma_kind(cfg, pd, engine));
     CHECK(init_simd(cfg));
     CHECK(init_vec_size(cfg));
-    CHECK(init_tensor_layouts(cfg, pd));
+    CHECK(init_tensor_layouts(cfg, pd, engine));
 
     CHECK(attr->set_default_formats(&prb.c_md()));
 

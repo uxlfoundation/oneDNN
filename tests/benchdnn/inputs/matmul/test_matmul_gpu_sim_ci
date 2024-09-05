@@ -21,3 +21,7 @@
 #f8:i4:f8
 --reset --dt=f8_e4m3:u4:f8_e4m3,f8_e5m2:s4:f8_e5m2,f8_e4m3:u4:f8_e5m2 --attr-fpmath=strict:true --stag=ab --wtag=ab --dtag=ab --batch=shapes_2d_sim
 
+# post-ops
+--reset
+--batch=test_matmul_gpu_sim_fp8_mixed
+

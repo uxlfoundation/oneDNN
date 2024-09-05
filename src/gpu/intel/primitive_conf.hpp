@@ -1013,6 +1013,7 @@ inline void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
     const char *bf16_name = with_punning ? "ushort" : "bf16";
     const char *bf8_name = with_punning ? "uchar" : "f8_e5m2";
     const char *hf8_name = with_punning ? "uchar" : "f8_e4m3";
+    const char *e8m0_name = with_punning ? "uchar" : "e8m0";
     const char *u4_name = with_punning ? "uchar" : "u4";
     const char *s4_name = with_punning ? "uchar" : "s4";
 
@@ -1052,6 +1053,10 @@ inline void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         case data_type::f8_e5m2:
             kernel_ctx.add_option(utils::format(
                     "-D%s_DATA_T=%s -D%s_DT_BF8", str, bf8_name, str));
+            break;
+        case data_type::e8m0:
+            kernel_ctx.add_option(utils::format(
+                    "-D%s_DATA_T=%s -D%s_DT_E8M0", str, e8m0_name, str));
             break;
         case data_type::s4:
             kernel_ctx.add_option(utils::format(

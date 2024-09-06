@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,14 +30,6 @@ const impl_list_map_t &regular_fp4_impl_list_map() {
         }},
         {{f4_e2m1, data_type::undef, 0}, {
             REG_SR(f4_e2m1, any, f32, any, fmt_order::any, spec::reference)
-            nullptr,
-        }},
-        {{f32, f4_e3m0, 0}, {
-            REG_SR(f32, any, f4_e3m0, any, fmt_order::any, spec::reference)
-            nullptr,
-        }},
-        {{f4_e3m0, data_type::undef, 0}, {
-            REG_SR(f4_e3m0, any, f32, any, fmt_order::any, spec::reference)
             nullptr,
         }},
     });

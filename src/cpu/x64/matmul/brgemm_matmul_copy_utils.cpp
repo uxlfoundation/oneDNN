@@ -3553,6 +3553,7 @@ struct jit_brgemm_matmul_copy_b_transposed_t
                   conf_->has_zero_point_a || conf_->s8s8_compensation_required)
         , is_bf32_(conf->is_bf32)
         , is_bf16_with_int_wei_(conf->is_bf16_with_int_wei)
+        , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , req_cvtps2bf16_(conf->is_bf32 || conf->is_bf16_with_int_wei)
         , req_zp_comp_(conf_->has_zero_point_a)
         , req_s8s8_comp_(conf_->s8s8_compensation_required)
@@ -3569,11 +3570,13 @@ struct jit_brgemm_matmul_copy_b_transposed_t
                   - (avx512_core_dot_product_
                                   ? 8
                                   : (do_compute_compensation_       ? 6
+                                                  : is_src_int4_    ? 2
                                                   : req_zp_b_shift_ ? 1
                                                                     : 0)))
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_)
         , scales_K_stride_(conf_->K * scales_typesize_)
+        , typesize_scale_(is_src_int4_ ? 2 : 1)
         , is_dynamic_N_(conf->is_runtime_N) {}
 
     void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
@@ -3601,6 +3604,7 @@ private:
     const bool do_compute_compensation_;
     const bool is_bf32_;
     const bool is_bf16_with_int_wei_;
+    const bool is_src_int4_;
     const bool req_cvtps2bf16_;
     const bool req_zp_comp_;
     const bool req_s8s8_comp_;
@@ -3610,7 +3614,7 @@ private:
     const bool use_fp16_instructions_;
     const int max_tmp_idx;
 
-    const dim_t src_stride_, tr_src_stride_, scales_K_stride_;
+    const dim_t src_stride_, tr_src_stride_, scales_K_stride_, typesize_scale_;
     const bool is_dynamic_N_;
 
     opmask_t k3333 = k1;
@@ -3655,6 +3659,7 @@ private:
     Vmm vmm_dot_product_temp = Vmm(max_vmm_regs_ - 8);
 
     Vmm vmm_zp_b_val = Vmm(max_vmm_regs_ - 1);
+    Vmm vmm_permd = Vmm(max_vmm_regs_ - 2);
 
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
@@ -3698,10 +3703,7 @@ private:
     }
 
     void init_tail_mask(const int columns_tail, const bool use_int4_mask);
-    void maybe_apply_scales(
-            const Vmm vmm_in, const size_t offset, const bool is_tail);
-    void maybe_apply_zp_b_shift(const Vmm vmm_in, const bool is_tail);
-    void load_int(const Vmm vmm_in, const dim_t offset, const int i,
+    void load_int(const Vmm vmm_in, const Xbyak::Operand &op,
             const int columns_tail, bool is_tail);
     void copy_row_x_col(int nrows, int ncolumns);
     void compute_K_loop(bool is_N_tail, int curr_K_tail, bool is_first_K_iter,
@@ -3729,23 +3731,16 @@ private:
 };
 
 template <typename Vmm>
-void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::maybe_apply_scales(
-        const Vmm vmm_in, const size_t offset, const bool is_tail) {
-    if (!req_apply_scales_) return;
-
-    const auto vmm = maybe_mask(vmm_in, is_tail);
-    const auto scales_addr = EVEX_compress_addr(reg_scales, offset);
-    vmulps(vmm, vmm, scales_addr);
-}
-
-    const int columns_tail = ncolumns
-            % (req_cvtps2bf16_ ? req_cvt_bf16_k_blk_step_ : k_blk_step_);
+void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::init_tail_mask(
+        const int columns_tail, const bool use_int4_mask) {
+    assert(IMPLICATION(is_src_int4_, use_int4_mask));
     if (columns_tail > 0) {
         const int dt_step = req_cvtps2bf16_ || conf_->isa == avx512_core_fp16
                 ? 1
                 : typesize_;
-        const auto tail_mask
-                = size_t(((size_t)1 << dt_step * columns_tail) - 1);
+        const auto tail_mask = use_int4_mask
+                ? size_t(((size_t)1 << (dt_step * columns_tail) / 2) - 1)
+                : size_t(((size_t)1 << dt_step * columns_tail) - 1);
         if (req_cvtps2bf16_)
             kmovw(kTail, tail_mask);
         else
@@ -3755,54 +3750,21 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::maybe_apply_scales(
 
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::load_int(const Vmm vmm_in,
-        const dim_t offset, const int i, int columns_tail, bool is_tail) {
+        const Xbyak::Operand &op, int columns_tail, bool is_tail) {
     const auto vmm = maybe_mask(vmm_in, is_tail);
     const auto vmm_lower = Vmm_lower_t(vmm.getIdx());
-    const auto xmm_in = Xmm(vmm_in.getIdx());
-    const auto addr = EVEX_compress_addr(reg_src, offset);
-    MAYBE_UNUSED(xmm_in);
     MAYBE_UNUSED(vmm_lower);
     if (is_src_int4_) init_tail_mask(columns_tail, true);
 
-    // Two additional operations are needed for int4 when i * src_stride_ % 2 != 0.
-    // The maximum data size for a bitwise shift is 8 bytes (quadwords).
-    // If the loaded data size is smaller than 8, we can directly perform a right
-    // shift to eliminate the unnecessary half-byte at the front.
-    // If the loaded data size is 8, we need two registers to handle the
-    // unnecessary half-byte at the front and back, respectively.
-    const bool need_preload_int4 = is_src_int4_ && (i * src_stride_) % 2 != 0;
-    const auto max_shift_sz = 8;
-    if (need_preload_int4) {
-        const auto load_sz = is_tail ? columns_tail
-                : req_cvtps2xf16_    ? req_cvt_bf16_k_blk_step_ / 2
-                                     : k_blk_step_ / 2;
-        assert(load_sz <= max_shift_sz);
-        if (load_sz < max_shift_sz) {
-            load_bytes(xmm_in, addr, div_up(columns_tail, 2));
-            vpsrlq(xmm_in, xmm_in, 4);
-        } else {
-            const auto xmm_tmp = Xmm(tmp_vmm(3).getIdx());
-            load_bytes(xmm_in, addr, load_sz);
-            load_bytes(
-                    xmm_tmp, EVEX_compress_addr(reg_src, offset + 1), load_sz);
-            vpsrlq(xmm_in, xmm_in, 4);
-            vpsllq(xmm_tmp, xmm_tmp, 4);
-            vpord(xmm_in, xmm_in, xmm_tmp);
-        }
-    }
-
     switch (conf_->orig_wei_dt) {
-        case data_type::s8: uni_vpmovsxbd(vmm, addr); break;
-        case data_type::u8: uni_vpmovzxbd(vmm, addr); break;
+        case data_type::s8: uni_vpmovsxbd(vmm, op); break;
+        case data_type::u8: uni_vpmovzxbd(vmm, op); break;
         // For int4, we see two int4 as one int8 and extend them int32
         // low half stores in lower bytes of vmm and high half in higher
         // bytes of vmm, then permute them into correct order
         // Finally, we process the extend bytes for s4/u4 accordingly
         case data_type::s4:
-            if (need_preload_int4)
-                uni_vpmovsxbd(maybe_mask(vmm_lower, is_tail), xmm_in);
-            else
-                uni_vpmovsxbd(maybe_mask(vmm_lower, is_tail), addr);
+            uni_vpmovsxbd(maybe_mask(vmm_lower, is_tail), op);
             copy_half_int4(vmm_in, vmm_lower);
             vpermd(vmm_in, vmm_permd, vmm_in);
             uni_vpslld(vmm_in | k5555, vmm_in, 28);
@@ -3810,10 +3772,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::load_int(const Vmm vmm_in,
             vpsrad(vmm_in | kAAAA, vmm_in, 4);
             break;
         case data_type::u4:
-            if (need_preload_int4)
-                uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), xmm_in);
-            else
-                uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), addr);
+            uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
             copy_half_int4(vmm_in, vmm_lower);
             vpermd(vmm_in, vmm_permd, vmm_in);
             uni_vpslld(vmm_in | k5555, vmm_in, 28);
@@ -3834,7 +3793,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
     if (!nrows) return;
 
     const int columns_tail = ncolumns
-            % (req_cvtps2xf16_ ? req_cvt_bf16_k_blk_step_ : k_blk_step_);
+            % (req_cvtps2bf16_ ? req_cvt_bf16_k_blk_step_ : k_blk_step_);
     init_tail_mask(columns_tail, false);
 
     auto load2bf16 = [this, nrows, columns_tail, ncolumns](
@@ -3866,10 +3825,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         if (is_bf32_)
             vmovups(zmm_src, addr);
         else if (is_bf16_with_int_wei_) {
-            if (conf_->orig_wei_dt == data_type::s8)
-                vpmovsxbd(zmm_src, addr);
-            else
-                vpmovzxbd(zmm_src, addr);
+            load_int(src_reg, addr, columns_tail,
+                    columns_tail > 0 && ncolumns < req_cvt_bf16_k_blk_step_);
             if (req_zp_b_shift_) vpsubd(zmm_src, zmm_src, vmm_zp_b_val);
             vcvtdq2ps(zmm_src, zmm_src);
             if (req_apply_scales_) {
@@ -3886,16 +3843,17 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             auto zmm_src_next = columns_tail > 0 ? src_reg_next | kTail | T_z
                                                  : src_reg_next;
             const auto next_addr = EVEX_compress_addr(reg_src,
-                    i * src_stride_ + req_cvt_bf16_k_blk_step_ * typesize_);
+                    i * src_stride_
+                            + (req_cvt_bf16_k_blk_step_ * typesize_)
+                                    / typesize_scale_);
             if (is_bf32_)
                 vmovups(zmm_src_next, next_addr);
             else if (is_bf16_with_int_wei_) {
-                if (conf_->orig_wei_dt == data_type::s8)
-                    vpmovsxbd(zmm_src_next, next_addr);
-                else
-                    vpmovzxbd(zmm_src_next, next_addr);
+                load_int(src_reg_next, next_addr, columns_tail,
+                        columns_tail > 0);
                 if (req_zp_b_shift_)
                     vpsubd(zmm_src_next, zmm_src_next, vmm_zp_b_val);
+
                 vcvtdq2ps(zmm_src_next, zmm_src_next);
                 if (req_apply_scales_) {
                     const auto scales_next_addr = EVEX_compress_addr(reg_scales,
@@ -3966,7 +3924,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         // If compensation compute is required - use tmp(0) ... tmp(7)
         // to not spoil reserved registers' values
         const int tmp_corr_idx
-                = (do_compute_compensation_ || req_zp_b_shift_) * base_idx;
+                = (is_src_int4_ || do_compute_compensation_ || req_zp_b_shift_)
+                * base_idx;
 
         // swap 1
         if (req_cvtps2bf16_) {
@@ -4431,13 +4390,16 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t : public jit_brgemm_matmul_copy_b_t,
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , scales_typesize_(sizeof(float))
-        , src_stride_(conf->LDB * k_blk_step * typesize_)
+        , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
+        , typesize_scale_(is_src_int4_ ? 2 : 1)
+        , src_stride_((conf->LDB * k_blk_step * typesize_) / typesize_scale_)
         , tr_src_stride_(conf_->LDB * k_blk_step * tr_typesize_)
         , scales_N_stride_(conf->N * scales_typesize_)
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_apply_scales_(conf_->apply_scales_in_buffer_b)
         , reserved_regs_(req_apply_scales_  ? 5
+                          : is_src_int4_    ? 2
                           : req_zp_b_shift_ ? 1
                                             : 0) {}
 
@@ -4448,18 +4410,22 @@ private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
+    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
     using zmm = const Xbyak::Zmm;
     using ymm = const Xbyak::Ymm;
 
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize_, tr_typesize_, scales_typesize_;
-    const dim_t src_stride_, tr_src_stride_, scales_N_stride_;
+    const bool is_src_int4_;
+    const dim_t typesize_scale_, src_stride_, tr_src_stride_, scales_N_stride_;
     const bool req_zp_b_shift_;
     const bool req_apply_scales_;
     const int reserved_regs_;
 
     opmask_t kTail = k7;
     opmask_t kFFFF = k6;
+    opmask_t kAAAA = k5;
+    opmask_t k5555 = k4;
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
@@ -4468,13 +4434,17 @@ private:
     reg64_t reg_N_blk = r9;
     reg64_t reg_scales = r10;
     reg64_t reg_tmp = r11;
+    reg32_t regw_tmp = r11d;
 
     Vmm vmm_zp_b_val = Vmm(0);
-    Vmm vmm_scales0 = Vmm(1);
-    Vmm vmm_scales1 = Vmm(2);
-    Vmm vmm_permd = Vmm(3);
+    Vmm vmm_permd = Vmm(1);
+    Vmm vmm_scales0 = Vmm(2);
+    Vmm vmm_scales1 = Vmm(3);
     Vmm vmm_tmp = Vmm(4);
 
+    void copy_half_int4(const Zmm &zmm, const Ymm &ymm_half) {
+        vinserti64x4(zmm, zmm, ymm_half, 1);
+    }
     Vmm maybe_mask(Vmm vmm, bool is_tail) {
         if (isa_has_masks(conf_->isa)) {
             return is_tail ? vmm | kTail | T_z : vmm | kFFFF | T_z;
@@ -4494,6 +4464,7 @@ private:
     }
 
     void init_masks();
+    void load_int(const Vmm vmm_in, const Xbyak::Operand &op);
     void get_scales(const int blk, const int k, const int n,
             const bool is_n_tail, const bool is_k_tail);
     void copy_block(const int nrows, const int ncolumns);
@@ -4510,6 +4481,44 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
 
         mov(reg_tmp, reinterpret_cast<size_t>(bf16_vnni_permute));
         vmovdqa32(vmm_permd, ptr[reg_tmp]);
+
+        mov(regw_tmp, 0x5555);
+        kmovw(k5555, regw_tmp);
+        mov(regw_tmp, 0xaaaa);
+        kmovw(kAAAA, regw_tmp);
+    }
+}
+
+template <typename Vmm>
+void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::load_int(
+        const Vmm vmm_in, const Xbyak::Operand &op) {
+    const auto vmm_lower = Vmm_lower_t(vmm_in.getIdx());
+    MAYBE_UNUSED(vmm_lower);
+
+    switch (conf_->orig_wei_dt) {
+        case data_type::s8: uni_vpmovsxbd(vmm_in, op); break;
+        case data_type::u8: uni_vpmovzxbd(vmm_in, op); break;
+        // For int4, we see two int4 as one int8 and extend them int32
+        // low half stores in lower bytes of vmm and high half in higher
+        // bytes of vmm, then permute them into correct order
+        // Finally, we process the extend bytes for s4/u4 accordingly
+        case data_type::s4:
+            uni_vpmovsxbd(vmm_lower, op);
+            copy_half_int4(vmm_in, vmm_lower);
+            vpermd(vmm_in, vmm_permd, vmm_in);
+            uni_vpslld(vmm_in | k5555, vmm_in, 28);
+            vpsrad(vmm_in | k5555, vmm_in, 28);
+            vpsrad(vmm_in | kAAAA, vmm_in, 4);
+            break;
+        case data_type::u4:
+            uni_vpmovzxbd(vmm_lower, op);
+            copy_half_int4(vmm_in, vmm_lower);
+            vpermd(vmm_in, vmm_permd, vmm_in);
+            uni_vpslld(vmm_in | k5555, vmm_in, 28);
+            vpsrld(vmm_in | k5555, vmm_in, 28);
+            vpsrld(vmm_in | kAAAA, vmm_in, 4);
+            break;
+        default: assert(!"unsupported data type");
     }
 }
 
@@ -4555,17 +4564,13 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const int k_blk = k / k_blk_step;
         const auto src_vmm0 = get_vmm(blk, 0);
         const auto src_vmm1 = get_vmm(blk, 1);
-        const dim_t offset = k_blk * src_stride_ + n * k_blk_step * typesize_;
-        const auto stride = n_blk_step * typesize_;
+        const dim_t offset = k_blk * src_stride_
+                + (n * k_blk_step * typesize_) / typesize_scale_;
+        const auto stride = (n_blk_step * typesize_) / typesize_scale_;
         auto load_addr0 = maybe_EVEX_compress_addr(reg_src, offset);
         auto load_addr1 = maybe_EVEX_compress_addr(reg_src, offset + stride);
-        if (conf_->orig_wei_dt == data_type::s8) {
-            vpmovsxbd(src_vmm0, load_addr0);
-            vpmovsxbd(src_vmm1, load_addr1);
-        } else {
-            vpmovzxbd(src_vmm0, load_addr0);
-            vpmovzxbd(src_vmm1, load_addr1);
-        }
+        load_int(src_vmm0, load_addr0);
+        load_int(src_vmm1, load_addr1);
         if (req_zp_b_shift_) {
             vpsubd(src_vmm0, src_vmm0, vmm_zp_b_val);
             vpsubd(src_vmm1, src_vmm1, vmm_zp_b_val);

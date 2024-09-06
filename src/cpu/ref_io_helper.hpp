@@ -93,6 +93,12 @@ inline float load_float_value(data_type_t dt, const void *ptr, dim_t idx) {
             uint4_t val(nibble_pair.get(idx % 2));
             return static_cast<float>(val);
         }
+        case f4_e2m1: {
+            const nibble2_t nibble_pair
+                    = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];
+            float4_e2m1_t val(nibble_pair.get(idx % 2), true);
+            return static_cast<float>(val);
+        }
         default: assert(!"bad data_type");
     }
 

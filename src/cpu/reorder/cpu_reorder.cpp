@@ -25,6 +25,7 @@ namespace cpu {
 static const std::map<reorder_impl_key_t, const void *> &
 regular_impl_list_map() {
     static const std::map<reorder_impl_key_t, const void *> the_map = {
+            {{f32, f4_e2m1, 0}, &regular_fp4_impl_list_map()},
             {{f32, e8m0, 0}, &regular_f32_fp8_impl_list_map()},
             {{f32, f8_e5m2, 0}, &regular_f32_fp8_impl_list_map()},
             {{f32, f8_e4m3, 0}, &regular_f32_fp8_impl_list_map()},

@@ -91,7 +91,7 @@ if(DNNL_SYCL_CUDA)
     find_package(cublasLt REQUIRED)
     find_package(cuDNN REQUIRED)
 
-    adjust_headers_priority("cuBLAS::cuBLAS;cuDNN::cuDNN")
+    adjust_headers_priority("cuBLAS::cuBLAS;cuDNN::cuDNN;cublasLt::cublasLt")
     add_definitions_with_host_compiler("-DCUDA_NO_HALF")
 
     list(APPEND EXTRA_SHARED_LIBS cuBLAS::cuBLAS cuDNN::cuDNN)

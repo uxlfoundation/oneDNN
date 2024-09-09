@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2024 Intel Corporation
-* Copyright 2020 Codeplay Software Limited
+* Copyright 2020-2024 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -233,12 +233,6 @@ inline bool is_md_col32(const memory_desc_wrapper &md) {
         }
     }
     return false;
-}
-
-template <typename T,
-        typename = typename std::enable_if<std::is_integral_v<T>>::type>
-T ceildiv(T n, T d) {
-    return (n + d - 1) / d;
 }
 
 class cublas_error : virtual public std::runtime_error {

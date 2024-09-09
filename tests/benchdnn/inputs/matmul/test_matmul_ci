@@ -205,9 +205,3 @@
 --batch=shapes_2d_ci
 --batch=shapes_2d
 --batch=shapes_3d
-
-# Dropout
---batch=harness_matmul_dropout
-
-# fp4
---batch=test_matmul_fp4

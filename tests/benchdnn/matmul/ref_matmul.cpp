@@ -182,8 +182,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
         const auto dst_off = dst_off_f(prb, mb, m, n);
         if (prb->bia_dt != dnnl_data_type_undef) {
-            const auto bia_idx = dst_m.get_idx(dst_off, bias_broadcast_mask);
-            dst += bia_m.get_elem(bia_idx);
+            int64_t bia_off = dst_m.get_idx(dst_off, bias_broadcast_mask);
+            float *bia_ptr = (float *)bia_m;
+            tmp += bia_ptr[bia_off];
         }
 
         const auto v_po_vals

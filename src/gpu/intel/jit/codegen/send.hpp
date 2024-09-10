@@ -140,7 +140,7 @@ private:
             host->load(mod, data, spec, base, addr);
         } else if (send_.is_atomic()) {
             atomic_helper_t<DataSpecT>::call(
-                    host, ngen::AtomicOp::fadd, mod, spec, base, addr, data);
+                    host, to_atomic_op(send_.op), mod, spec, base, addr, data);
         } else if (send_.is_store()) {
             host->store(mod, spec, base, addr, data);
         } else {
@@ -202,7 +202,7 @@ private:
             } else if (send_.is_store()) {
                 host->store.ugm(mod, *lsc_spec, host->A64, header, data);
             } else if (send_.is_atomic()) {
-                host->atomic.ugm(ngen::AtomicOp::fadd, mod, *lsc_spec,
+                host->atomic.ugm(to_atomic_op(send_.op), mod, *lsc_spec,
                         to_address_base(send_.address), header, data);
             }
         } else {
@@ -272,6 +272,17 @@ private:
             default: ir_error_not_expected();
         }
         return ngen::AddressBase();
+    }
+
+    static ngen::AtomicOp to_atomic_op(send_op_t op) {
+        switch (op) {
+            case send_op_t::atomic_fadd: return ngen::AtomicOp::fadd;
+#if XE3P
+            case send_op_t::atomic_bfadd: return ngen::AtomicOp::bfadd;
+#endif
+            default: ir_error_not_expected() << "Unexpected op: " << op;
+        }
+        return ngen::AtomicOp::fadd;
     }
 
     const send_t &send_;

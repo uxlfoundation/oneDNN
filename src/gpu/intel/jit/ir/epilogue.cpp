@@ -372,7 +372,8 @@ public:
         ir_assert(needs_store());
 
         auto write = make_access_builder(*ir_ctx_, mem_view(), mem_buf(),
-                reg_buf(), send_op_t::atomic_fadd, send_address_t::a64);
+                reg_buf(), atomic_send_op(mem_view().type()),
+                send_address_t::a64);
         ir_assert(write.reg_layout() == reg_layout());
 
         return write.stmt();
@@ -941,7 +942,7 @@ private:
 
         // S_y -> GMEM.
         auto send_op = gemm_schedule_.with_kernel_grid_k_slicing()
-                ? send_op_t::atomic_fadd
+                ? atomic_send_op(c_mem_tile_view.type())
                 : send_op_t::store;
         auto offset = c_mem_tile_view.tlayout().offset_in_bytes();
         const int cache_line_size = 64;

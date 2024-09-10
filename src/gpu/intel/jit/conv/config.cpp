@@ -719,6 +719,19 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     if (dst_abx && !dst_matches) user_dst_tag = "abx";
 }
 
+type_t output_type(const hw_t &hw, prop_kind_t prop_kind,
+        const primitive_attr_t *attr, data_type_t tensor_dt) {
+    if (prop_kind != prop_kind::backward_weights) return type_t(tensor_dt);
+#if XE3P
+    if (hw.to_ngen() == ngen::HW::Xe3p
+            && utils::one_of(attr->acc_mode_, accumulation_mode::relaxed,
+                    accumulation_mode::any)
+            && tensor_dt == data_type::bf16)
+        return type_t(tensor_dt);
+#endif
+    return type_t::f32();
+}
+
 status_t init_tensor_layouts(
         conv_config_t &cfg, convolution_pd_t *pd, impl::engine_t *engine) {
     const auto &prb = cfg.prb();
@@ -801,14 +814,10 @@ status_t init_tensor_layouts(
                                                 : user_dst_layout;
     auto bia_layout = user_bia_layout;
 
-    if (prb.is_bwd_w) {
-        if (utils::one_of(prb.wei_data_type, data_type::bf16, data_type::f16,
-                    data_type::f8_e5m2, data_type::f8_e4m3))
-            wei_layout = wei_layout.retype(type_t::f32());
-        if (utils::one_of(prb.bia_data_type, data_type::bf16, data_type::f16,
-                    data_type::f8_e5m2, data_type::f8_e4m3))
-            bia_layout = bia_layout.retype(type_t::f32());
-    }
+    wei_layout = wei_layout.retype(output_type(
+            cfg.hw(), prb.prop_kind(), pd->attr(), prb.wei_data_type));
+    bia_layout = bia_layout.retype(output_type(
+            cfg.hw(), prb.prop_kind(), pd->attr(), prb.bia_data_type));
 
     src.set_compute_unnormalized(src_layout, src_tag);
     src.set_user_unnormalized(user_src_layout, user_src_tag);
@@ -891,6 +900,23 @@ bool data_types_ok(const conv_problem_t &prb, const hw_t &hw) {
         if (prb.with_bias) { ok &= utils::one_of(bia, src, data_type::f32); }
         return ok;
     }
+    auto *pd = prb.conv_pd;
+    auto *attr = pd->attr();
+    switch (attr->acc_mode_) {
+        case accumulation_mode::strict:
+        case accumulation_mode::relaxed:
+        case accumulation_mode::any: break;
+        case accumulation_mode::f32:
+            if (prb.acc_data_type != data_type::f32) return false;
+            break;
+        case accumulation_mode::s32:
+            if (prb.acc_data_type != data_type::s32) return false;
+            break;
+        case accumulation_mode::f16:
+            if (prb.acc_data_type != data_type::f16) return false;
+            break;
+        default: ir_error_not_expected(); return false;
+    }
     return false;
 }
 
@@ -922,7 +948,7 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
     if (prb.is_f64_conv() && !attr->has_default_values()) return false;
 
     using sm = primitive_attr_t::skip_mask_t;
-    auto attr_skip_mask = sm::fpmath_mode;
+    auto attr_skip_mask = sm::fpmath_mode | sm::accumulation_mode;
     if (prb.is_fwd || prb.is_bwd_d) {
         attr_skip_mask |= sm::post_ops | sm::sum_dt | sm::zero_points_runtime
                 | sm::scales_runtime;

@@ -47,6 +47,9 @@ GPU_DEFINE_PARSE_ENUM(send_kind_t, send_kind_names)
 enum class send_op_t {
     undef,
     atomic_fadd,
+#if XE3P
+    atomic_bfadd,
+#endif
     atomic_cmpwr,
     load,
     load_2d,
@@ -57,6 +60,8 @@ enum class send_op_t {
 };
 
 std::ostream &operator<<(std::ostream &out, const send_op_t value);
+bool is_atomic(send_op_t op);
+send_op_t atomic_send_op(const type_t &type);
 
 // Send address model.
 enum class send_address_t {
@@ -222,7 +227,7 @@ public:
         return call({mem_buf, mem_off, reg_buf, mask, x, y});
     }
 
-    bool is_atomic() const { return op == send_op_t::atomic_fadd; }
+    bool is_atomic() const { return jit::is_atomic(op); }
     bool is_load() const { return op == send_op_t::load; }
     bool is_load_2d() const { return op == send_op_t::load_2d; }
     bool is_prefetch() const { return op == send_op_t::prefetch; }

@@ -1074,9 +1074,9 @@ struct send_group_t {
         if (hw >= ngen::HW::XeHPC) return type;
 
         bool is_slm = (send_params.send_address == send_address_t::slm);
-        bool is_atomic = (send_params.send_op == send_op_t::atomic_fadd);
         if (!is_slm && type == type_t::oword(16)) return type_t::hword(8);
-        if (is_atomic && type.size() == 4) return type_t::dword();
+        if (is_atomic(send_params.send_op) && type.size() == 4)
+            return type_t::dword();
         if (type.size() <= 4) return type_t::byte(type.size());
         if (type.size() == 8) return type_t::qword();
 
@@ -1273,9 +1273,8 @@ public:
 
     int init_scattered_params(const send_params_t &send_params, int inner_bytes,
             int total_bytes) const {
-        // atomic_fadd messages imply direct type match
-        if (send_params.send_op == send_op_t::atomic_fadd)
-            return send_params.mem_type.size();
+        // atomic  messages imply direct type match
+        if (is_atomic(send_params.send_op)) return send_params.mem_type.size();
 
         const bool is_hw_xelp_or_below = (hw() <= ngen::HW::XeLP);
         const bool is_slm = (send_params.send_address == send_address_t::slm);
@@ -1366,7 +1365,7 @@ private:
 
     bool can_use_block(int inner_idx, int inner_bytes, int total_bytes,
             const send_params_t &send_params) const {
-        if (send_params.send_op == send_op_t::atomic_fadd) return false;
+        if (is_atomic(send_params.send_op)) return false;
 
         const auto align = (hw_ < ngen::HW::XeHPC)
                 ? std::min(32, ir_utils::max_pow2_divisor(inner_bytes))

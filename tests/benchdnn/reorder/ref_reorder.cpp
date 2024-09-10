@@ -81,8 +81,7 @@ void compute_ref(
 
         float src_scale = 1.f, dst_scale = 1.f;
         if (has_src_scale) {
-            int64_t src_mask_idx = src.get_idx(
-                    idx, src_scale_mask, src.ndims(), src_scale_groups);
+            int64_t src_mask_idx = src.get_idx(idx, src_scale_mask);
             src_scale = src_scales.get_elem(src_mask_idx);
         }
         if (has_dst_scale) {

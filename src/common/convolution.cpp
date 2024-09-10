@@ -213,7 +213,7 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_POSTOP);
         }
     } else {
-        auto bwd_attr_mask = smask_t::fpmath_mode;
+        auto bwd_attr_mask = smask_t::fpmath_mode | smask_t::accumulation_mode;
         VCHECK_CONV_UNIMPL(attr->has_default_values(bwd_attr_mask),
                 VERBOSE_UNSUPPORTED_ATTR);
     }

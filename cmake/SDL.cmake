@@ -35,6 +35,9 @@ macro(sdl_gnu_common_ccxx_flags var)
     if(DNNL_TARGET_ARCH STREQUAL "X64")
         append(${var} "-fcf-protection=full")
     endif()
+    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0))
+        append(${var} "-fcf-protection=full")
+    endif()
 endmacro()
 
 # GCC might be very paranoid for partial structure initialization, e.g.
@@ -81,13 +84,13 @@ if(UNIX)
         append(ONEDNN_SDL_LINKER_FLAGS "-Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now")
     endif()
 elseif(WIN32)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
         append(ONEDNN_SDL_COMPILER_FLAGS "/GS /Gy /guard:cf /DYNAMICBASE /sdl")
         append(ONEDNN_SDL_LINKER_FLAGS "/NXCOMPAT /LTCG")
     elseif(CMAKE_BASE_NAME STREQUAL "icx")
         append(ONEDNN_SDL_COMPILER_FLAGS "/GS /Gy /guard:cf /Wformat /Wformat-security")
         append(ONEDNN_SDL_LINKER_FLAGS "/link /NXCOMPAT")
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         append(ONEDNN_SDL_COMPILER_FLAGS "-Wformat -Wformat-security")
         if(UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "RELEASE")
             append(ONEDNN_SDL_COMPILER_FLAGS "-D_FORTIFY_SOURCE=2")
@@ -109,32 +112,13 @@ elseif(WIN32)
         if(CMAKE_BASE_NAME STREQUAL "icx")
             # add ICX-style linker flags
             append(ONEDNN_SDL_LINKER_FLAGS "/link /DEPENDENTLOADFLAG:0x2000")
-        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
             # add Clang-style linker flags
             append(ONEDNN_SDL_LINKER_FLAGS "-Xlinker /DEPENDENTLOADFLAG:0x2000")
         else()
             # Default to MSVC-style definition
             append(ONEDNN_SDL_LINKER_FLAGS "/DEPENDENTLOADFLAG:0x2000")
         endif()
-    endif()
-elseif(MSVC AND ${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
-    set(CMAKE_CCXX_FLAGS "/guard:cf")
-    endif()
-
-# For a Windows build, a malicious DLL can be injected because of the 
-# uncontrolled search order for load-time linked libraries defined for a 
-# Windows setting. The following cmake flags change the search order so that 
-# DLLs are loaded from the current working directory only if it is under a path 
-# in the Safe Load List.
-if(WIN32 AND NOT MINGW)
-    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-        # add Clang++ specific flags
-        append(CMAKE_EXE_LINKER_FLAGS "-Xlinker /DEPENDENTLOADFLAG:0x2000")
-        append(CMAKE_SHARED_LINKER_FLAGS "-Xlinker /DEPENDENTLOADFLAG:0x2000")
-    else()
-        # Default to MSVC-style definition
-        append(CMAKE_EXE_LINKER_FLAGS "/DEPENDENTLOADFLAG:0x2000")
-        append(CMAKE_SHARED_LINKER_FLAGS "/DEPENDENTLOADFLAG:0x2000")
     endif()
 endif()
 

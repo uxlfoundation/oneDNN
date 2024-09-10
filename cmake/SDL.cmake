@@ -39,6 +39,9 @@ macro(sdl_gnu_common_ccxx_flags var gnu_version)
             append(${var} "-fcf-protection=full")
         endif()
     endif()
+    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0))
+        append(${var} "-fcf-protection=full")
+    endif()
 endmacro()
 
 # GCC might be very paranoid for partial structure initialization, e.g.
@@ -65,7 +68,7 @@ if(UNIX)
         append(ONEDNN_SDL_COMPILER_FLAGS "-D_FORTIFY_SOURCE=2")
     endif()
     if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-        sdl_gnu_common_ccxx_flags(ONEDNN_SDL_COMPILER_FLAGS CMAKE_CXX_COMPILER_VERSION)
+        sdl_gnu_common_ccxx_flags(ONEDNN_SDL_COMPILER_FLAGS)
         sdl_gnu_src_ccxx_flags(CMAKE_SRC_CCXX_FLAGS)
         sdl_gnu_example_ccxx_flags(CMAKE_EXAMPLE_CCXX_FLAGS)
     elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
@@ -120,25 +123,6 @@ elseif(WIN32)
             # Default to MSVC-style definition
             append(ONEDNN_SDL_LINKER_FLAGS "/DEPENDENTLOADFLAG:0x2000")
         endif()
-    endif()
-elseif(MSVC AND ${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
-    set(CMAKE_CCXX_FLAGS "/guard:cf")
-    endif()
-
-# For a Windows build, a malicious DLL can be injected because of the 
-# uncontrolled search order for load-time linked libraries defined for a 
-# Windows setting. The following cmake flags change the search order so that 
-# DLLs are loaded from the current working directory only if it is under a path 
-# in the Safe Load List.
-if(WIN32 AND NOT MINGW)
-    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-        # add Clang++ specific flags
-        append(CMAKE_EXE_LINKER_FLAGS "-Xlinker /DEPENDENTLOADFLAG:0x2000")
-        append(CMAKE_SHARED_LINKER_FLAGS "-Xlinker /DEPENDENTLOADFLAG:0x2000")
-    else()
-        # Default to MSVC-style definition
-        append(CMAKE_EXE_LINKER_FLAGS "/DEPENDENTLOADFLAG:0x2000")
-        append(CMAKE_SHARED_LINKER_FLAGS "/DEPENDENTLOADFLAG:0x2000")
     endif()
 endif()
 

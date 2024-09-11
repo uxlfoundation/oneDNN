@@ -405,16 +405,14 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
     bool is_any_sparse = false;
     std::vector<bool> nnz_mask;
 #ifdef DNNL_EXPERIMENTAL_SPARSE
-    const auto sparse_encoding = prb->sparse_options.get_encoding(kind);
-    const bool is_sparse_csr_coo
-            = sparse_encoding == dnnl_csr || sparse_encoding == dnnl_coo;
-    is_sparse_packed = sparse_encoding == dnnl_packed;
-    is_any_sparse = sparse_encoding != sparse_options_t::def_encoding;
+    auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
+    auto wei_encoding = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
-    if (is_sparse_csr_coo) {
-        return fill_sparse_data(
-                kind, prb, mem_dt, mem_fp, res, sparse_encoding);
-    }
+    if ((kind == SRC && (src_encoding == dnnl_csr || src_encoding == dnnl_coo))
+            || (kind == WEI
+                    && (wei_encoding == dnnl_csr || wei_encoding == dnnl_coo)))
+        return fill_sparse_data(kind, prb, mem_dt, mem_fp, res,
+                kind == SRC ? src_encoding : wei_encoding);
 
     if (is_sparse_packed) {
         nnz_mask.resize(nelems, false);

@@ -103,6 +103,10 @@ public:
         return device_info_->get_cache_blob(size, cache_blob);
     }
 
+    status_t create_program(xpu::ocl::wrapper_t<cl_program> &program,
+            const std::vector<const char *> &kernel_names,
+            const compute::kernel_ctx_t &kernel_ctx) const;
+
     DECLARE_COMMON_OCL_ENGINE_FUNCTIONS();
 
 protected:

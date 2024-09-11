@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -122,9 +122,8 @@ struct ref_sparse_matmul_t : public primitive_t {
 
             if (sparse_mem_encoding == sparse_encoding::coo) {
                 auto scratchpad = scratchpad_registry().registrar();
-                const bool is_wei_sparse = wei_d.is_sparse_desc();
                 const auto ptr_size
-                        = src_d.dims()[static_cast<int>(is_wei_sparse)] + 1;
+                        = src_d.dims()[(int)wei_d.is_sparse_desc()] + 1;
                 scratchpad.template book<int32_t>(
                         key_matmul_sparse_tmp_ptr, ptr_size);
             }

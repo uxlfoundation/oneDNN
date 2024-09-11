@@ -56,12 +56,11 @@ of buffers. The order of the buffers in the vector matters and should correspond
 the buffers' indices.
 
 oneDNN also introduces a new format kind dnnl::memory::format_kind::sparse.
-Sparse encoding (a.k.a. sparse format) is an enumeration type that specifies
-how data is encoded. Currently, oneDNN supports Compressed Sparse Row (CSR),
-Sorted Co-ordinate (COO) Sparse Format, and PACKED sparse encodings
-(dnnl::memory::sparse_encoding::csr, dnnl::memory::sparse_encoding::coo,
-dnnl::memory::sparse_encoding::packed) for CPU engine, and, only sorted
-COO (Co-ordinate Sparse Format) for GPU engine.
+Sparse encoding (a.k.a. sparse format) is an
+enumeration type that specifies how data is encoded. Currently, oneDNN
+supports CSR (Compressed Sparse Row), Sorted COO (Co-ordinate Sparse Format) and 
+PACKED sparse encodings (dnnl::memory::sparse_encoding::csr, 
+dnnl::memory::sparse_encoding::coo, dnnl::memory::sparse_encoding::packed).
 
 The memory descriptor has dedicated static member functions for creating memory
 descriptors for different sparse encodings.
@@ -74,8 +73,8 @@ Each encoding defines the number and meaning of the buffers.
 | Sorted COO      | 0 - values, 1 to *ndims* - indices (*ndims* - number of tensor dimensions) |
 | PACKED          | The meaning and content are unspecified                                    |
 
-The pseudocode below demonstrates how to create a memory object
-for the CSR and COO sparse encodings and use the new API to work with the
+The pseudo-code below demonstrates how to create a memory object
+for CSR and COO sparse encodings and use the new API to work with the
 underlying handles.
 
 ###### CSR Encoding:
@@ -204,22 +203,18 @@ For the case above, the number of non-zero elements for the source tensor is
 calculated as max(4 * 1000000 * (1 - 0.99), 1).
 
 ###### COO encoding
-Supported only for the CPU and GPU engines. Only one of the input tensors can
-be sparse. The output tensor is always dense.
+Only one of the input tensors is allowed to be sparse. The
+output tensor is always dense.
 
-The following data type combinations are supported:
+The following data types combinations are supported:
 
 | Values (src, weight, dst)   | Indices  |
 |:----------------------------|:---------|
 | f16, f16, f16               | s32      |
 | f32, f32, f32               | s32      |
 
-The following format tags are supported for dense weights tensor:
-
-* ab
-* ba
-
-The following format tags are supported for dense destination tensor:
+The following format tags are supported for dense input/output
+tensors:
 
 * ab
 

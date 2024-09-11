@@ -66,6 +66,7 @@ dnnl_sparse_encoding_t str2sparse_encoding(const char *str) {
         return CONCAT2(dnnl_, _case); \
 } while (0)
     CASE(csr);
+    CASE(coo);
     CASE(packed);
     CASE(coo);
 #undef CASE

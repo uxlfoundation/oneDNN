@@ -205,9 +205,19 @@ struct runtime_scales_t : public c_compatible {
     bool operator==(const dropout_t &rhs) const {
         return user_dropout_desc_ == rhs.user_dropout_desc_;
     }
-    status_t set_default_formats(const memory_desc_t *dst_md);
-    dnnl::impl::memory_desc_t dropout_desc_;
-    dnnl::impl::memory_desc_t user_dropout_desc_;
+
+    bool has_default_values() const { return *this == default_runtime_scale(); }
+
+    bool has_default_groups() const { return 0 == ndims_; }
+    bool has_default_data_type() const { return data_type_ == data_type::f32; }
+
+    // TODO: replace with `-1` to remove `is_set_`.
+    // Hide `mask_` under `private:` to force interface usage.
+    int mask_ = 0;
+    bool is_set_ = false;
+    int ndims_ = 0;
+    dims_t group_dims_ = {};
+    data_type_t data_type_ = data_type::f32;
 };
 
 struct rnd_mode_t : public c_compatible {
@@ -282,8 +292,6 @@ struct rnd_mode_t : public c_compatible {
         return status::success;
     }
 
-    bool defined() const { return has_default_values(); }
-
     status_t copy_from(const arg_scales_t &other) {
         for (auto it = other.scales_.begin(); it != other.scales_.end(); ++it) {
             // Find an entry that can match the arguments without constructing a
@@ -320,7 +328,6 @@ struct zero_points_t : public c_compatible {
 
     // arg-specific checks
     bool common(int arg) const { return get_mask(arg) == 0; }
-    bool defined(int arg) const { return has_default_values(arg); }
     bool has_default_values(int arg) const {
         return is_set(arg) == false && has_default_data_type(arg);
     }
@@ -332,7 +339,6 @@ struct zero_points_t : public c_compatible {
     }
     // same checks but for all supported arguments at once
     bool common() const { return check_all(&zero_points_t::common); }
-    bool defined() const { return has_default_values(); }
     bool has_default_values() const {
         return check_all(&zero_points_t::has_default_values);
     }

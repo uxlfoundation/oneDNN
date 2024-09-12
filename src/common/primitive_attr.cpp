@@ -189,9 +189,6 @@ bool primitive_attr_t::defined(dnnl_primitive_attr::skip_mask_t mask) const {
 #define CHECK_ARG(x) ok = ok && (x)
 #define CHECK_MASK(mask_name, mask_field) \
     CHECK_ARG(IMPLICATION((bool)(~mask & (mask_name)), (mask_field).defined()))
-    CHECK_MASK(smask_t::scales, scales_);
-    CHECK_MASK(smask_t::zero_points, zero_points_);
-    CHECK_MASK(smask_t::post_ops, post_ops_);
     CHECK_MASK(smask_t::rnn_data_qparams, rnn_data_qparams_);
     CHECK_MASK(smask_t::rnn_weights_qparams, rnn_weights_qparams_);
     CHECK_MASK(smask_t::rnn_weights_projection_qparams,

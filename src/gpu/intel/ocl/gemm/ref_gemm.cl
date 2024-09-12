@@ -82,9 +82,6 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
     long off_bias = mb * b_strides[0] + m * b_strides[1] + n * b_strides[2];
     temp += BIA_TO_REF(bias[off_bias]);
 #endif
-#if WITH_SCALES
-    temp *= scales[scale_stride * n];
-#endif
 #if WITH_SUM
     temp += (POST_OP_DATA_T)(beta * C_TO_REF(c[off_c]));
 #endif

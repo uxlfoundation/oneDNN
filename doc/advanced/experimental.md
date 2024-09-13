@@ -56,11 +56,12 @@ of buffers. The order of the buffers in the vector matters and should correspond
 the buffers' indices.
 
 oneDNN also introduces a new format kind dnnl::memory::format_kind::sparse.
-Sparse encoding (a.k.a. sparse format) is an
-enumeration type that specifies how data is encoded. Currently, oneDNN
-supports Compressed Sparse Row (CSR), Sorted Co-ordinate (COO) Sparse 
-Format, and PACKED sparse encodings (dnnl::memory::sparse_encoding::csr, 
-dnnl::memory::sparse_encoding::coo, dnnl::memory::sparse_encoding::packed).
+Sparse encoding (a.k.a. sparse format) is an enumeration type that specifies
+how data is encoded. Currently, oneDNN supports Compressed Sparse Row (CSR),
+Sorted Co-ordinate (COO) Sparse Format, and PACKED sparse encodings
+(dnnl::memory::sparse_encoding::csr, dnnl::memory::sparse_encoding::coo,
+dnnl::memory::sparse_encoding::packed) for CPU engine, and, only sorted
+COO (Co-ordinate Sparse Format) for GPU engine.
 
 The memory descriptor has dedicated static member functions for creating memory
 descriptors for different sparse encodings.
@@ -264,18 +265,7 @@ destination tensor should also work for the sparse one.
 * The interoperability API to get/set data handles is not supported. Use the
 runtime agnostic API to do that.
 * Sparse memory and memory descriptor can only be used with the Matrix
-Multiplication and Reorder primitives.
-
-### ONEDNN_EXPERIMENTAL_UKERNEL
-
-This option enables a new set of CPU-only APIs to support block-level
-functionalities. By composing these low-level, sequential operations, users can
-implement their own custom operations/fusions, and tailor blocking/threading
-logic to their applications.
-
-More details on this API are available in the [Microkernel APIs
-section](@ref dev_guide_ukernel_basic_concepts).
-
+Multiplication and Reorder primitives
 
 ### ONEDNN_EXPERIMENTAL_UKERNEL
 

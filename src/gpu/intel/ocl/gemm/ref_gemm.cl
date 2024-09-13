@@ -62,15 +62,10 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
             c0_mask, MB, M, N, &c0_strides[0], &c0_strides[1], &c0_strides[2]);
 #endif
 
-    long stride_a_m = transa ? lda : 1;
-    long stride_a_k = transa ? 1 : lda;
-    long stride_b_k = transb ? ldb : 1;
-    long stride_b_n = transb ? 1 : ldb;
-
     ACC_DATA_T acc = 0;
     for (long k = 0; k < K; ++k) {
-        long off_a = mb * stride_a_mb + m * stride_a_m + k * stride_a_k;
-        long off_b = mb * stride_b_mb + k * stride_b_k + n * stride_b_n;
+        long off_a = mb * stride_a + (transa ? m * lda + k : k * lda + m);
+        long off_b = mb * stride_b + (transb ? k * ldb + n : n * ldb + k);
         acc += TO_ACC(A_TO_REF(a[off_a]) - ATTR_A0)
                 * TO_ACC(B_TO_REF(b[off_b]) - ATTR_B0);
     }
@@ -81,6 +76,9 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
 #if WITH_BIAS
     long off_bias = mb * b_strides[0] + m * b_strides[1] + n * b_strides[2];
     temp += BIA_TO_REF(bias[off_bias]);
+#endif
+#if WITH_SCALES
+    temp *= scales[scale_stride * n];
 #endif
 #if WITH_SUM
     temp += (POST_OP_DATA_T)(beta * C_TO_REF(c[off_c]));

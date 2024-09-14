@@ -423,36 +423,9 @@ status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute(
     for (size_t i = 0; i < num_outputs; ++i) {
         outs.emplace_back(**(outputs + i));
     }
-#ifndef NDEBUG
+
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        allocator_t *alloc = reinterpret_cast<allocator_t *>(
-                compiled_partition->get_engine()->get_allocator());
-        allocator_t::monitor_t &monitor = alloc->get_monitor();
-        monitor.reset_peak_temp_memory();
-        stream->wait();
-        double start_ms = dnnl::impl::get_msec();
-        if (deps != nullptr) {
-            std::vector<cl_event> ocl_deps(deps, deps + ndeps);
-            CHECK(compiled_partition->execute_ocl(
-                    stream, ins, outs, ocl_deps, ocl_event));
-        } else {
-            CHECK(compiled_partition->execute_ocl(
-                    stream, ins, outs, {}, ocl_event));
-        }
-        stream->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
-        VFORMAT(start_ms, graph, exec, VERBOSE_profile, "%s,%g,%zu,%s,%zu,%zu",
-                compiled_partition->info(), duration_ms, alloc->id(),
-                utils::thread_id_to_str(std::this_thread::get_id()).c_str(),
-                monitor.get_total_persist_memory(),
-                monitor.get_peak_temp_memory());
-    } else if (get_verbose(dnnl::impl::verbose_t::exec_profile,
-                       dnnl::impl::component_t::graph)) {
-#else
-    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
-                dnnl::impl::component_t::graph)) {
-#endif
         stream->wait();
         double start_ms = dnnl::impl::get_msec();
         if (deps != nullptr) {

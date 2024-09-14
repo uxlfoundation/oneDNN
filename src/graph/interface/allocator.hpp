@@ -111,6 +111,12 @@ public:
             type_ = type;
             alignment_ = alignment;
         }
+
+        /// Copy constructor
+        mem_attr_t(const mem_attr_t &other) = default;
+
+        /// Assign operator
+        mem_attr_t &operator=(const mem_attr_t &other) = default;
     };
 
     void *allocate(size_t size, mem_attr_t attr = {}) const {
@@ -132,21 +138,6 @@ public:
     void *allocate(size_t size, cl_device_id dev, cl_context ctx,
             mem_attr_t attr = {}) const {
         void *buffer = ocl_malloc_(size, attr.alignment_, dev, ctx);
-        return buffer;
-    }
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void *allocate(size_t size, cl_device_id dev, cl_context ctx,
-            mem_attr_t attr = {}) const {
-#ifndef NDEBUG
-        monitor_.lock_write();
-        void *buffer = ocl_malloc_(size, attr.alignment_, dev, ctx);
-        monitor_.record_allocate(buffer, size, attr.type_);
-        monitor_.unlock_write();
-#else
-        void *buffer = ocl_malloc_(size, attr.alignment_, dev, ctx);
-#endif
         return buffer;
     }
 #endif
@@ -179,17 +170,6 @@ public:
 #endif
 
     void deallocate(void *buffer) const {
-        if (buffer) {
-#ifndef NDEBUG
-            monitor_.lock_write();
-            monitor_.record_deallocate(buffer);
-            host_free_(buffer);
-            monitor_.unlock_write();
-#else
-            host_free_(buffer);
-#endif
-
-    void deallocate(void *buffer) const {
         if (buffer) { host_free_(buffer); }
     }
 
@@ -214,25 +194,6 @@ public:
     }
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void deallocate(void *buffer, cl_device_id dev, cl_context ctx,
-            cl_event deps) const {
-        if (buffer) {
-#ifndef NDEBUG
-            monitor_.lock_write();
-            monitor_.record_deallocate(buffer);
-            ocl_free_(buffer, dev, ctx, deps);
-            monitor_.unlock_write();
-#else
-            ocl_free_(buffer, dev, ctx, deps);
-#endif
-            buffer = nullptr;
-        }
-    }
-#endif
-
-    monitor_t &get_monitor() { return monitor_; }
-
 private:
     dnnl_graph_host_allocate_f host_malloc_ {
             dnnl::impl::graph::utils::cpu_allocator_t::malloc};
@@ -253,8 +214,6 @@ private:
     dnnl_graph_ocl_deallocate_f ocl_free_ {
             dnnl::impl::graph::utils::ocl_allocator_t::free};
 #endif
-
-    mutable monitor_t monitor_;
 };
 
 #endif

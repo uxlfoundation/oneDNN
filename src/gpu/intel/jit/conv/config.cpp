@@ -721,7 +721,10 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
 
 type_t output_type(const hw_t &hw, prop_kind_t prop_kind,
         const primitive_attr_t *attr, data_type_t tensor_dt) {
-    if (prop_kind != prop_kind::backward_weights) return type_t(tensor_dt);
+    if (prop_kind != prop_kind::backward_weights) {
+        if (tensor_dt == data_type::undef) return type_t();
+        return type_t(tensor_dt);
+    }
 #if XE3P
     if (hw.to_ngen() == ngen::HW::Xe3p
             && utils::one_of(attr->acc_mode_, accumulation_mode::relaxed,

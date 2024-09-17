@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -241,9 +241,11 @@ inline memory_kind get_memory_kind(const memory &amemory) {
 #ifdef DNNL_EXPERIMENTAL_SPARSE
 /// Creates a memory object with multiple handles.
 ///
+/// @param memory Output memory object.
 /// @param memory_desc Memory descriptor.
-/// @param aengine Engine to use.
-/// @param kind Memory allocation kind to specify the type of handles.
+/// @param engine Engine to use.
+/// @param memory_kind Memory allocation kind to specify the type of handles.
+/// @param nhandles Number of handles.
 /// @param handles Handles of the memory buffers to use as underlying storages.
 ///     For each element of the @p handles array the following applies:
 ///     - A USM pointer to the user-allocated buffer. In this case the library
@@ -276,7 +278,7 @@ inline memory make_memory(const memory::desc &memory_desc,
             dnnl_ocl_interop_memory_create_v2(&c_memory, memory_desc.get(),
                     aengine.get(), convert_to_c(kind), (int)handles.size(),
                     handles.data()),
-            err_message_list::init_error("memory"));
+            "could not create a memory");
     return memory(c_memory);
 }
 

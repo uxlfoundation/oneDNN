@@ -227,6 +227,15 @@ ngen::CacheSettingsLSC get_cache_settings(const send_t &send, const hw_t &hw) {
                         ret = ngen::CacheSettingsLSC::L1C_L3C;
                     }
                     break;
+#if XE3P
+                case ngen::HW::Xe3p:
+                    if (is_store) {
+                        ret = ngen::CacheSettingsLSC::L1UC_L2UC_L3WB;
+                    } else if (is_load || is_prefetch) {
+                        ret = ngen::CacheSettingsLSC::L1C_L2C_L3C;
+                    }
+                    break;
+#endif
                 default: break;
             }
             break;

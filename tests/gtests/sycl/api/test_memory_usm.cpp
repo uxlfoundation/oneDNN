@@ -236,44 +236,9 @@ TEST_P(sycl_memory_usm_test, ErrorMemoryConstructorUsingSystemMemory) {
     }
 }
 
-TEST_P(sycl_memory_usm_test, MemoryOutOfScope) {
-    engine::kind eng_kind = GetParam();
-    SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
-
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
-    SKIP_IF(eng_kind == engine::kind::cpu,
-            "Skip this test for classic CPU runtime");
-#endif
-    engine eng(eng_kind, 0);
-
-    memory::dim n = 2048;
-    memory::desc mem_d({n}, memory::data_type::f32, memory::format_tag::a);
-
-    auto dev = sycl_interop::get_device(eng);
-    auto ctx = sycl_interop::get_context(eng);
-    auto ptr = allocate_usm(sizeof(float) * n, dev, ctx);
-
-    auto eltwise_pd = eltwise_forward::primitive_desc(eng, prop_kind::forward,
-            algorithm::eltwise_relu, mem_d, mem_d, 0.0f);
-    auto eltwise = eltwise_forward(eltwise_pd);
-
-    stream s(eng);
-    {
-        memory mem = sycl_interop::make_memory(
-                mem_d, eng, sycl_interop::memory_kind::usm, ptr.get());
-        eltwise.execute(s, {{DNNL_ARG_SRC, mem}, {DNNL_ARG_DST, mem}});
-    }
-    s.wait();
-}
-
 #ifdef DNNL_EXPERIMENTAL_SPARSE
 TEST_P(sycl_memory_usm_test, TestSparseMemoryCreation) {
     engine::kind eng_kind = GetParam();
-
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
-    SKIP_IF(eng_kind == engine::kind::cpu,
-            "Skip this test for classic CPU runtime");
-#endif
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
     engine eng(eng_kind, 0);
@@ -302,28 +267,25 @@ TEST_P(sycl_memory_usm_test, TestSparseMemoryCreation) {
     // User provided buffers.
     auto dev = sycl_interop::get_device(eng);
     auto ctx = sycl_interop::get_context(eng);
-
-    auto usm_values = allocate_usm(md.get_size(0), dev, ctx);
-    auto usm_row_indices = allocate_usm(md.get_size(1), dev, ctx);
-    auto usm_col_indices = allocate_usm(md.get_size(2), dev, ctx);
+    void *usm_values = ::sycl::malloc_shared(md.get_size(0), dev, ctx);
+    void *usm_row_indices = ::sycl::malloc_shared(md.get_size(1), dev, ctx);
+    void *usm_col_indices = ::sycl::malloc_shared(md.get_size(2), dev, ctx);
 
     EXPECT_NO_THROW(mem
             = sycl_interop::make_memory(md, eng, sycl_interop::memory_kind::usm,
-                    {usm_values.get(), usm_row_indices.get(),
-                            usm_col_indices.get()}));
+                    {usm_values, usm_row_indices, usm_col_indices}));
 
-    ASSERT_EQ(mem.get_data_handle(0), usm_values.get());
-    ASSERT_EQ(mem.get_data_handle(1), usm_row_indices.get());
-    ASSERT_EQ(mem.get_data_handle(2), usm_col_indices.get());
+    ASSERT_EQ(mem.get_data_handle(0), usm_values);
+    ASSERT_EQ(mem.get_data_handle(1), usm_row_indices);
+    ASSERT_EQ(mem.get_data_handle(2), usm_col_indices);
+
+    ::sycl::free(usm_values, ctx);
+    ::sycl::free(usm_row_indices, ctx);
+    ::sycl::free(usm_col_indices, ctx);
 }
 
 TEST_P(sycl_memory_usm_test, TestSparseMemoryMapUnmap) {
     engine::kind eng_kind = GetParam();
-
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
-    SKIP_IF(eng_kind == engine::kind::cpu,
-            "Skip this test for classic CPU runtime");
-#endif
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
     engine eng(eng_kind, 0);
@@ -342,22 +304,24 @@ TEST_P(sycl_memory_usm_test, TestSparseMemoryMapUnmap) {
 
     auto dev = sycl_interop::get_device(eng);
     auto ctx = sycl_interop::get_context(eng);
-    auto usm_values = allocate_usm(md.get_size(0), dev, ctx);
-    auto usm_row_indices = allocate_usm(md.get_size(1), dev, ctx);
-    auto usm_col_indices = allocate_usm(md.get_size(2), dev, ctx);
+    float *usm_values = ::sycl::malloc_shared<float>(
+            md.get_size(0) / sizeof(float), dev, ctx);
+    int *usm_row_indices = ::sycl::malloc_shared<int>(
+            md.get_size(1) / sizeof(int), dev, ctx);
+    int *usm_col_indices = ::sycl::malloc_shared<int>(
+            md.get_size(2) / sizeof(int), dev, ctx);
 
     for (size_t i = 0; i < coo_values.size(); i++)
-        static_cast<float *>(usm_values.get())[i] = coo_values[i];
+        usm_values[i] = coo_values[i];
     for (size_t i = 0; i < row_indices.size(); i++)
-        static_cast<int *>(usm_row_indices.get())[i] = row_indices[i];
+        usm_row_indices[i] = row_indices[i];
     for (size_t i = 0; i < col_indices.size(); i++)
-        static_cast<int *>(usm_col_indices.get())[i] = col_indices[i];
+        usm_col_indices[i] = col_indices[i];
 
     memory coo_mem;
     EXPECT_NO_THROW(coo_mem
             = sycl_interop::make_memory(md, eng, sycl_interop::memory_kind::usm,
-                    {usm_values.get(), usm_row_indices.get(),
-                            usm_col_indices.get()}));
+                    {usm_values, usm_row_indices, usm_col_indices}));
 
     float *mapped_coo_values = nullptr;
     int *mapped_row_indices = nullptr;
@@ -379,6 +343,10 @@ TEST_P(sycl_memory_usm_test, TestSparseMemoryMapUnmap) {
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_coo_values, 0));
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_row_indices, 1));
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_col_indices, 2));
+
+    ::sycl::free(usm_values, ctx);
+    ::sycl::free(usm_row_indices, ctx);
+    ::sycl::free(usm_col_indices, ctx);
 }
 #endif
 

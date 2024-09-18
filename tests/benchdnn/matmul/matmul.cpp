@@ -641,18 +641,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-    if (is_sycl_engine(get_test_engine()) && !prb->sparse_options.is_def()) {
-        BENCHDNN_PRINT(2,
-                "[INVALID][%s:%d]: oneDNN doesn't provide SYCL "
-                "interoperability API for creating a sparse memory therefore "
-                "all SYCL cases must be skipped.\n",
-                __FILE__, __LINE__);
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-
     if (!prb->attr.zero_points.is_def()
             && (prb->wei_dt() != dnnl_s8 && prb->wei_dt() != dnnl_u8
                     && prb->wei_dt() != dnnl_s4 && prb->wei_dt() != dnnl_u4)) {

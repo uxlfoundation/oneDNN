@@ -180,8 +180,8 @@ This option enables the matmul primitive that can work with
 sparse input tensors.
 
 ###### CSR encoding
-Only one of the input tensors can be sparse. The
-output tensor is always dense.
+Supported only for the CPU engine. Only one of the input tensors can be sparse.
+The output tensor is always dense.
 
 The following data type combinations are supported:
 
@@ -204,8 +204,8 @@ For the case above, the number of non-zero elements for the source tensor is
 calculated as max(4 * 1000000 * (1 - 0.99), 1).
 
 ###### COO encoding
-Only one of the input tensors can be sparse. The
-output tensor is always dense.
+Supported only for the CPU and GPU engines. Only one of the input tensors can
+be sparse. The output tensor is always dense.
 
 The following data type combinations are supported:
 
@@ -214,8 +214,12 @@ The following data type combinations are supported:
 | f16, f16, f16               | s32      |
 | f32, f32, f32               | s32      |
 
-The following format tags are supported for dense input/output
-tensors:
+The following format tags are supported for dense weights tensor:
+
+* ab
+* ba
+
+The following format tags are supported for dense destination tensor:
 
 * ab
 
@@ -265,7 +269,7 @@ destination tensor should also work for the sparse one.
 * The interoperability API to get/set data handles is not supported. Use the
 runtime agnostic API to do that.
 * Sparse memory and memory descriptor can only be used with the Matrix
-Multiplication and Reorder primitives
+Multiplication and Reorder primitives.
 
 ### ONEDNN_EXPERIMENTAL_UKERNEL
 

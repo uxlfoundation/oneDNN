@@ -225,18 +225,19 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryCreation) {
     EXPECT_NO_THROW(mem
             = ocl_interop::make_memory(md, eng, ocl_interop::memory_kind::usm));
     // User provided buffers.
-    void *ocl_values = usm::malloc_shared(eng.get(), md.get_size(0));
+    auto ocl_values = allocate_usm(md.get_size(0), eng);
     ASSERT_NE(ocl_values, nullptr);
 
-    void *ocl_row_indices = usm::malloc_shared(eng.get(), md.get_size(1));
+    auto ocl_row_indices = allocate_usm(md.get_size(1), eng);
     ASSERT_NE(ocl_row_indices, nullptr);
 
-    void *ocl_col_indices = usm::malloc_shared(eng.get(), md.get_size(2));
+    auto ocl_col_indices = allocate_usm(md.get_size(2), eng);
     ASSERT_NE(ocl_col_indices, nullptr);
 
     EXPECT_NO_THROW(mem
             = ocl_interop::make_memory(md, eng, ocl_interop::memory_kind::usm,
-                    {ocl_values, ocl_row_indices, ocl_col_indices}));
+                    {ocl_values.get(), ocl_row_indices.get(),
+                            ocl_col_indices.get()}));
 
     ASSERT_NO_THROW(mem.set_data_handle(nullptr, 0));
     ASSERT_NO_THROW(mem.set_data_handle(nullptr, 1));
@@ -245,10 +246,6 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryCreation) {
     ASSERT_EQ(mem.get_data_handle(0), nullptr);
     ASSERT_EQ(mem.get_data_handle(1), nullptr);
     ASSERT_EQ(mem.get_data_handle(2), nullptr);
-
-    usm::free(eng.get(), ocl_values);
-    usm::free(eng.get(), ocl_row_indices);
-    usm::free(eng.get(), ocl_col_indices);
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryMapUnmap) {
@@ -267,25 +264,28 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryMapUnmap) {
     std::vector<int> col_indices = {0, 1};
 
     // User provided buffers.
-    void *ocl_values = usm::malloc_shared(eng.get(), md.get_size(0));
+    auto ocl_values = allocate_usm(md.get_size(0), eng);
     ASSERT_NE(ocl_values, nullptr);
 
-    void *ocl_row_indices = usm::malloc_shared(eng.get(), md.get_size(1));
+    auto ocl_row_indices = allocate_usm(md.get_size(1), eng);
     ASSERT_NE(ocl_row_indices, nullptr);
 
-    void *ocl_col_indices = usm::malloc_shared(eng.get(), md.get_size(2));
+    auto ocl_col_indices = allocate_usm(md.get_size(2), eng);
     ASSERT_NE(ocl_col_indices, nullptr);
 
     auto s = stream(eng);
-    usm::memcpy(s.get(), ocl_values, coo_values.data(), md.get_size(0));
-    usm::memcpy(s.get(), ocl_row_indices, row_indices.data(), md.get_size(1));
-    usm::memcpy(s.get(), ocl_col_indices, col_indices.data(), md.get_size(2));
+    usm::memcpy(s.get(), ocl_values.get(), coo_values.data(), md.get_size(0));
+    usm::memcpy(
+            s.get(), ocl_row_indices.get(), row_indices.data(), md.get_size(1));
+    usm::memcpy(
+            s.get(), ocl_col_indices.get(), col_indices.data(), md.get_size(2));
     s.wait();
 
     memory coo_mem;
     EXPECT_NO_THROW(coo_mem
             = ocl_interop::make_memory(md, eng, ocl_interop::memory_kind::usm,
-                    {ocl_values, ocl_row_indices, ocl_col_indices}));
+                    {ocl_values.get(), ocl_row_indices.get(),
+                            ocl_col_indices.get()}));
 
     float *mapped_coo_values = nullptr;
     int *mapped_row_indices = nullptr;
@@ -307,10 +307,6 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryMapUnmap) {
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_coo_values, 0));
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_row_indices, 1));
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_col_indices, 2));
-
-    usm::free(eng.get(), ocl_values);
-    usm::free(eng.get(), ocl_row_indices);
-    usm::free(eng.get(), ocl_col_indices);
 }
 #endif
 

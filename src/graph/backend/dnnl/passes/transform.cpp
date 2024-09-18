@@ -3629,7 +3629,7 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
                 if (axis < 0) axis += ltw(in_lt).ndims();
             }
         } else {
-            return impl::status::success;
+            break;
         }
 
         std::vector<int> axes = dnnl_impl::utils::fmap(order,
@@ -3653,6 +3653,7 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
         const auto &strides = expected_in_md.get_strides();
         out_val->set_strides(strides);
     }
+    rewriter.run();
     return impl::status::success;
 }
 
@@ -3716,7 +3717,7 @@ impl::status_t fuse_dst_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
         // Special check to avoid low matmul performance with adbc layout.
         // TODO: remove this once the performance is improved.
         if (get_format_tag(expected_out_md) == dnnl::memory::format_tag::adbc) {
-            return impl::status::success;
+            break;
         }
         const auto &strides = expected_out_md.get_strides();
         in_val->set_strides(strides);

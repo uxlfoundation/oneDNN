@@ -599,5 +599,16 @@ void serialize(serialization_stream_t &sstream, const sdpa_desc_t &desc) {
     sstream.append(desc.softmax_alg);
 }
 
+void serialize(serialization_stream_t &sstream, const gated_mlp_desc_t &desc) {
+    // Kind
+    sstream.append(desc.primitive_kind);
+    serialize(sstream, desc.src_desc);
+    serialize(sstream, desc.W_gate_desc);
+    serialize(sstream, desc.W_up_desc);
+    serialize(sstream, desc.W_down_desc);
+    serialize(sstream, desc.dst_desc);
+    //STF:TODO: zp + scale  activation?
+}
+
 } // namespace impl
 } // namespace dnnl

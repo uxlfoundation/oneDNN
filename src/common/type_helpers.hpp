@@ -1032,6 +1032,19 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
     return ret;
 }
 
+inline bool operator==(const gated_mlp_desc_t &lhs, const gated_mlp_desc_t &rhs) {
+    bool ret = COMPARE_DESC_MEMBERS(primitive_kind)
+            //&& COMPARE_DESC_MEMBERS(q_desc)
+            //&& COMPARE_DESC_MEMBERS(k_desc)
+            //&& COMPARE_DESC_MEMBERS(v_desc)
+            //&& COMPARE_DESC_MEMBERS(dst_desc)
+            //&& COMPARE_DESC_MEMBERS(attn_mask_desc)
+            //&& COMPARE_DESC_MEMBERS(scale_dt)
+            //&& COMPARE_DESC_MEMBERS(invert_scale);
+            ; //STF:TODO
+    return ret;
+}
+
 // clang-format on
 
 #undef COMPARE_DESC_MEMBERS

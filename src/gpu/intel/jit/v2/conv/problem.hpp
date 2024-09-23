@@ -38,25 +38,12 @@ public:
     const layout_tag_t &src_tag() const { return src_tag_; }
     const layout_tag_t &wei_tag() const { return wei_tag_; }
     const layout_tag_t &dst_tag() const { return dst_tag_; }
-    const type_t &bias_type() const { return bias_type_; }
-    const layout_tag_t &layout_tag(tensor_kind_t kind) const {
-        switch (kind) {
-            case tensor_kind_t::a:
-                return pick_a(prop_, src_tag_, wei_tag_, dst_tag_);
-            case tensor_kind_t::b:
-                return pick_b(prop_, src_tag_, wei_tag_, dst_tag_);
-            case tensor_kind_t::c:
-                return pick_c(prop_, src_tag_, wei_tag_, dst_tag_);
-            default: ir_error_not_expected();
-        }
-        return src_tag_;
-    }
     const pvar_tile_t &shape() const { return shape_; }
-    pvar_map_t<dim_t> vars() const;
+
     bool is_depthwise() const {
-        dim_t g = shape_.at(pvars::g);
-        dim_t ic = shape_.at(pvars::ic);
-        dim_t oc = shape_.at(pvars::oc);
+        int g = shape_.at(pvars::g);
+        int ic = shape_.at(pvars::ic);
+        int oc = shape_.at(pvars::oc);
         return (g > 1) && (ic == 1) && (oc == 1);
     }
     const type_t &out_type() const;
@@ -68,7 +55,7 @@ public:
     void set_src_tag(const layout_tag_t &tag) { src_tag_ = tag; }
     void set_wei_tag(const layout_tag_t &tag) { wei_tag_ = tag; }
     void set_dst_tag(const layout_tag_t &tag) { dst_tag_ = tag; }
-    void set_shape(const prb_tile_t &shape) { shape_ = shape; }
+    void set_shape(const pvar_tile_t &shape) { shape_ = shape; }
     void set_bias(bool with_bias) { with_bias_ = with_bias; }
     bool with_bias() const { return with_bias_; }
     double ops() const;
@@ -81,8 +68,8 @@ public:
 
     IR_DEFINE_DUMP()
 
-    static prb_tile_t default_shape();
-    static double ops(prop_kind_t prop, const prb_tile_t &shape);
+    static pvar_tile_t default_shape();
+    static double ops(prop_kind_t prop, const pvar_tile_t &shape);
 
 private:
     hw_t hw_;
@@ -91,7 +78,7 @@ private:
     layout_tag_t src_tag_;
     layout_tag_t wei_tag_;
     layout_tag_t dst_tag_;
-    prb_tile_t shape_;
+    pvar_tile_t shape_;
     std::array<int, 3> dhw_map_;
 };
 

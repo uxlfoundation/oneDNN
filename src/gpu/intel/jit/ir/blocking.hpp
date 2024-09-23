@@ -20,6 +20,8 @@
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
+#include <set>
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -33,16 +35,16 @@ public:
     const pvar_tile_t &thread_group() const { return thread_group_; }
     const pvar_tile_t &iter() const { return iter_; }
 
-    dim_t loop_dim(const pvar_t &d) const { return loop_[d]; }
-    dim_t thread_group_dim(const pvar_t &d) const { return thread_group_[d]; }
-    dim_t iter_dim(const pvar_t &d) const { return iter_[d]; }
+    int loop_dim(const pvar_t &d) const { return loop_[d]; }
+    int thread_group_dim(const pvar_t &d) const { return thread_group_[d]; }
+    int iter_dim(const pvar_t &d) const { return iter_[d]; }
 
     void set_simd(int simd) { simd_ = simd; }
-    void set_loop(const pvar_t &d, dim_t value) { loop_[d] = value; }
-    void set_thread_group(const pvar_t &d, dim_t value) {
+    void set_loop(const pvar_t &d, int value) { loop_[d] = value; }
+    void set_thread_group(const pvar_t &d, int value) {
         thread_group_[d] = value;
     }
-    void set_iter(const pvar_t &d, dim_t value) { iter_[d] = value; }
+    void set_iter(const pvar_t &d, int value) { iter_[d] = value; }
 
     bool is_empty() const {
         return loop_.is_empty() && thread_group_.is_empty() && iter_.is_empty();
@@ -107,7 +109,7 @@ public:
     }
 
     // Returns the ratio of all operations (with padding) to "useful" operations
-    float get_efficiency(const prb_tile_t &shape) const {
+    float get_efficiency(const pvar_tile_t &shape) const {
         float ret = 1;
         for (auto &d : shape) {
             int loop = loop_.get(d, 1);
@@ -241,30 +243,38 @@ enum class level_t {
 
 class level_tile_t {
 public:
-    bool has(level_t level) const {
+    bool has(level_t level) const { return (*this)[level] != 0; }
+
+    const int &operator[](level_t level) const {
         switch (level) {
-            case level_t::loop: return loop != 0;
-            case level_t::thread_group: return thread_group != 0;
-            case level_t::iter: return iter != 0;
+            case level_t::loop: return loop_;
+            case level_t::thread_group: return thread_group_;
+            case level_t::iter: return iter_;
             default: ir_error_not_expected();
         }
-        return false;
+        return loop_;
+    }
+
+    int &operator[](level_t level) {
+        auto *this_const = const_cast<const level_tile_t *>(this);
+        return const_cast<int &>(this_const->operator[](level));
     }
 
     std::string str() const {
-        if (utils::everyone_is(0, loop, thread_group, iter)) return "x";
+        if (utils::everyone_is(0, loop_, thread_group_, iter_)) return "x";
         std::ostringstream oss;
-        if (loop != 0) oss << "l" << loop;
-        if (thread_group != 0) oss << "T" << thread_group;
-        if (iter != 0) oss << "i" << iter;
+        if (loop_ != 0) oss << "l" << loop_;
+        if (thread_group_ != 0) oss << "T" << thread_group_;
+        if (iter_ != 0) oss << "i" << iter_;
         return oss.str();
     }
 
     IR_DEFINE_DUMP()
 
-    dim_t loop = 0;
-    int thread_group = 0;
-    int iter = 0;
+private:
+    int loop_ = 0;
+    int thread_group_ = 0;
+    int iter_ = 0;
 };
 
 void get_level_tiles(
@@ -655,7 +665,7 @@ const tiler_params_t &tiler_params();
 class tile_to_vec_t {
 public:
     tile_to_vec_t() = default;
-    tile_to_vec_t(const std::vector<std::vector<prb_tile_t>> &tiles,
+    tile_to_vec_t(const std::vector<std::vector<pvar_tile_t>> &tiles,
             const std::vector<int> &ids = {});
 
     float dist(int id0, int id1) const {
@@ -695,19 +705,17 @@ private:
             }
 
             pvar_t dim_;
-            std::map<dim_t, dim_idx_t> values_;
+            std::map<int, int> values_;
         };
 
-        void add(const pvar_t &d, dim_t value) {
+        void add(const pvar_t &d, int value) {
             if (dim_mappers_.count(d) == 0) {
                 dim_mappers_[d] = indexed_dim_t(d);
             }
             dim_mappers_[d].add(value);
         }
 
-        void add(prb_dim_t d, int value) { dim_mappers_[d.id()].add(value); }
-
-        void add(const prb_tile_t &t) {
+        void add(const pvar_tile_t &t) {
             for (auto &d : t) {
                 add(d, t[d]);
             }
@@ -718,12 +726,12 @@ private:
                 if (!kv.second.is_empty()) kv.second.finalize();
         }
 
-        dim_idx_t to_index(const pvar_t &d, dim_t value) const {
+        int to_index(const pvar_t &d, int value) const {
             return dim_mappers_.at(d).to_index(value);
         }
 
-        std::vector<dim_idx_t> to_index(const pvar_tile_t &t) const {
-            std::vector<dim_idx_t> ret;
+        std::vector<int> to_index(const pvar_tile_t &t) const {
+            std::vector<int> ret;
             for (auto &kv : dim_mappers_) {
                 auto &m = kv.second;
                 if (m.is_empty()) continue;

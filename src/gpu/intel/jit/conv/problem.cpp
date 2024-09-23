@@ -93,18 +93,18 @@ bool is_conv_index(const pvar_t &dim, prop_kind_t prop) {
 
 const std::vector<pvar_t> &conv_layout_dims(
         tensor_kind_t tensor_kind, bool src_dst_with_group) {
-    static const std::vector<prb_dim_t> src_dims({prb_dims::mb, prb_dims::ic,
-            prb_dims::id, prb_dims::ih, prb_dims::iw});
-    static const std::vector<prb_dim_t> src_g_dims({prb_dims::mb, prb_dims::g,
-            prb_dims::ic, prb_dims::id, prb_dims::ih, prb_dims::iw});
-    static const std::vector<prb_dim_t> wei_dims({prb_dims::g, prb_dims::oc,
-            prb_dims::ic, prb_dims::kd, prb_dims::kh, prb_dims::kw});
-    static const std::vector<prb_dim_t> dst_dims({prb_dims::mb, prb_dims::oc,
-            prb_dims::od, prb_dims::oh, prb_dims::ow});
-    static const std::vector<prb_dim_t> dst_g_dims({prb_dims::mb, prb_dims::g,
-            prb_dims::oc, prb_dims::od, prb_dims::oh, prb_dims::ow});
-    static const std::vector<prb_dim_t> bia_g_dims({prb_dims::g, prb_dims::oc});
-    static const std::vector<prb_dim_t> bia_dims({prb_dims::oc});
+    static const std::vector<pvar_t> src_dims(
+            {pvars::mb, pvars::ic, pvars::id, pvars::ih, pvars::iw});
+    static const std::vector<pvar_t> src_g_dims(
+            {pvars::mb, pvars::g, pvars::ic, pvars::id, pvars::ih, pvars::iw});
+    static const std::vector<pvar_t> wei_dims(
+            {pvars::g, pvars::oc, pvars::ic, pvars::kd, pvars::kh, pvars::kw});
+    static const std::vector<pvar_t> dst_dims(
+            {pvars::mb, pvars::oc, pvars::od, pvars::oh, pvars::ow});
+    static const std::vector<pvar_t> dst_g_dims(
+            {pvars::mb, pvars::g, pvars::oc, pvars::od, pvars::oh, pvars::ow});
+    static const std::vector<pvar_t> bia_g_dims({pvars::g, pvars::oc});
+    static const std::vector<pvar_t> bia_dims({pvars::oc});
     switch (tensor_kind) {
         case tensor_kind_t::src:
             return src_dst_with_group ? src_g_dims : src_dims;
@@ -370,7 +370,7 @@ void normalize_conv_shape(int &id, int &od, int &kd, int &sd, int &dd, int &pd,
     if (!has_dim[0]) dhw_map[0] = dhw_map[1];
 }
 
-prb_dim_t to_gemm(const prb_dim_t &d, prop_kind_t prop, bool is_transpose) {
+pvar_t to_gemm(const pvar_t &d, prop_kind_t prop, bool is_transpose) {
     const bool is_fwd = (prop == prop_kind::forward);
     const bool is_bwd_d = (prop == prop_kind::backward_data);
     const bool is_bwd_w = (prop == prop_kind::backward_weights);

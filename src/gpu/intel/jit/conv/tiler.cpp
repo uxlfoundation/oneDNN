@@ -194,16 +194,16 @@ void get_level_tiles(dim_t size0, dim_t size1, const x2_tile_info_t &info,
                 level_tile_t t0;
                 level_tile_t t1;
                 if (any(info.flags & tile_flags_t::loop)) {
-                    t0.loop = loop.first;
-                    t1.loop = loop.second;
+                    t0[level_t::loop] = loop.first;
+                    t1[level_t::loop] = loop.second;
                 }
                 if (any(info.flags & tile_flags_t::thread_group)) {
-                    t0.thread_group = tg.first;
-                    t1.thread_group = tg.second;
+                    t0[level_t::thread_group] = tg.first;
+                    t1[level_t::thread_group] = tg.second;
                 }
                 if (any(info.flags & tile_flags_t::iter)) {
-                    t0.iter = iter.first;
-                    t1.iter = iter.second;
+                    t0[level_t::iter] = iter.first;
+                    t1[level_t::iter] = iter.second;
                 }
                 ret0.push_back(t0);
                 ret1.push_back(t1);
@@ -352,7 +352,7 @@ private:
         if (prb.is_bwd_w) {
             struct loop_dim_t {
                 pvar_t dim;
-                dim_t size = 0;
+                int size = 0;
 
                 static loop_dim_t *find(
                         const pvar_t &dim, std::vector<loop_dim_t> &dims) {
@@ -424,8 +424,8 @@ int inner_block(const conv_config_t &cfg, const pvar_t &dim) {
 
 dim_t inner_stride(const conv_config_t &cfg, tensor_kind_t tensor_kind,
         const pvar_t &dim) {
-    dim_idx_t dim_idx = tensor_conv_dim_index(dim, tensor_kind);
-    ir_assert(dim_idx != dim_idx::invalid);
+    int dim_idx = tensor_conv_dim_index(dim, tensor_kind);
+    ir_assert(dim_idx != -1);
     auto &layout = compute_layout(cfg, tensor_kind);
     for (auto &b : layout.blocks()) {
         if (b.dim_idx == dim_idx) return (dim_t)b.stride;
@@ -496,14 +496,14 @@ int slm_usage_bytes_for_params(
     auto &prb = cfg.prb();
     auto tg = to_gemm(params.blocking().thread_group(), prb);
     auto iter = to_gemm(params.blocking().iter(), prb);
-    dim_t b_tg = tg.get(pvars::b, 1);
-    dim_t m_tg = tg.get(pvars::m, 1);
-    dim_t n_tg = tg.get(pvars::n, 1);
-    dim_t k_tg = tg.get(pvars::k, 1);
-    dim_t b_iter = iter.get(pvars::b, 1);
-    dim_t m_iter = iter.get(pvars::m, 1);
-    dim_t n_iter = iter.get(pvars::n, 1);
-    dim_t k_iter = iter.get(pvars::k, 1);
+    int b_tg = tg.get(pvars::b, 1);
+    int m_tg = tg.get(pvars::m, 1);
+    int n_tg = tg.get(pvars::n, 1);
+    int k_tg = tg.get(pvars::k, 1);
+    int b_iter = iter.get(pvars::b, 1);
+    int m_iter = iter.get(pvars::m, 1);
+    int n_iter = iter.get(pvars::n, 1);
+    int k_iter = iter.get(pvars::k, 1);
     return slm_usage_bytes(
             cfg, b_tg, m_tg, n_tg, k_tg, b_iter, m_iter, n_iter, k_iter);
 }
@@ -739,16 +739,16 @@ private:
         switch (cfg_.bwd_d_optimize_kind()) {
             case bwd_d_optimize_kind_t::none: return true;
             case bwd_d_optimize_kind_t::skip_out_of_bound_w: {
-                dim_t iw_iter = ctx.blk.iter().get(pvars::iw, 1);
-                dim_t iw_tg = ctx.blk.thread_group().get(pvars::iw, 1);
+                int iw_iter = ctx.blk.iter().get(pvars::iw, 1);
+                int iw_tg = ctx.blk.thread_group().get(pvars::iw, 1);
                 if (iw_iter != 1 || iw_tg != 1) return false;
                 return true;
             }
             case bwd_d_optimize_kind_t::skip_strided_dh: return true;
             case bwd_d_optimize_kind_t::skip_strided_dhw: {
-                dim_t iw_iter = ctx.blk.iter().get(pvars::iw, 1);
+                int iw_iter = ctx.blk.iter().get(pvars::iw, 1);
                 if (iw_iter > 1) return false;
-                dim_t iw_tg = ctx.blk.thread_group().get(pvars::iw, 1);
+                int iw_tg = ctx.blk.thread_group().get(pvars::iw, 1);
                 if (!math::is_pow2(iw_tg)) return false;
                 if ((prb.iw / prb.sw) % iw_tg != 0) return false;
                 return true;
@@ -810,7 +810,7 @@ private:
                 blocks.emplace_back(level_t::iter, blk.iter_dim(d));
             if (blk.thread_group().has(d))
                 blocks.emplace_back(
-                        level_kind_t::thread_group, blk.thread_group_dim(d));
+                        level_t::thread_group, blk.thread_group_dim(d));
             if (!layout_dim_ok(prop, tensor_kind, layout, d, std::move(blocks)))
                 return false;
         }
@@ -835,10 +835,10 @@ private:
     bool check_k_slicing_utilization_ok(const context_t &ctx) const {
         if (!is_enabled(check_kind_t::check_k_slicing_utilization)) return true;
 
-        dim_t b = padded_gemm_shape_.get(pvars::b, 1);
-        dim_t m = padded_gemm_shape_.get(pvars::m, 1);
-        dim_t n = padded_gemm_shape_.get(pvars::n, 1);
-        dim_t k = padded_gemm_shape_.get(pvars::k, 1);
+        int b = padded_gemm_shape_.get(pvars::b, 1);
+        int m = padded_gemm_shape_.get(pvars::m, 1);
+        int n = padded_gemm_shape_.get(pvars::n, 1);
+        int k = padded_gemm_shape_.get(pvars::k, 1);
 
         int64_t nthr = 1;
         nthr *= utils::div_up(b, ctx.b_iter);
@@ -850,9 +850,9 @@ private:
         return true;
     }
 
-    bool check_global_reduction_ok(const context_t &ctx) const {
-        if (!is_enabled(check_kind_t::check_global_reduction)) return true;
-        dim_t k = padded_gemm_shape_.get(pvars::k, 1);
+    bool check_deterministic_ok(const context_t &ctx) const {
+        if (!is_enabled(check_kind_t::check_deterministic)) return true;
+        int k = padded_gemm_shape_.get(pvars::k, 1);
         return ctx.k_loop * ctx.k_iter >= k;
     }
 
@@ -981,7 +981,7 @@ conv_blocking_scheme_t bwd_w_T_io_I_ikow("l:[mb,oh,ow],T:[oc,ic],i:[ic,kw,oc,ow]
 // clang-format on
 
 double get_iter_dim_score(
-        const pvar_t &dim, const conv_config_t &cfg, dim_t dim_size) {
+        const pvar_t &dim, const conv_config_t &cfg, int dim_size) {
     auto &prb = cfg.prb();
     if (utils::one_of(dim, pvars::ow, pvars::iw)) {
         if (prb.ksp > 1 || dim_size % 16 != 0) return 16 - 1;
@@ -1049,9 +1049,9 @@ conv_blocking_scheme_list_t get_blocking_schemes_fwd_dw(
 conv_blocking_scheme_list_t get_blocking_schemes_bwd_d_dw(
         const conv_config_t &cfg) {
     conv_blocking_scheme_list_t ret(conv_tune_level());
-    auto m_iter_dim = select_iter_dim(cfg, {prb_dims::mb, prb_dims::iw});
-    bool m_is_mb = (m_iter_dim == prb_dims::mb);
-    bool m_is_iw = (m_iter_dim == prb_dims::iw);
+    auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::iw});
+    bool m_is_mb = (m_iter_dim == pvars::mb);
+    bool m_is_iw = (m_iter_dim == pvars::iw);
     ret.add(m_is_mb, conv_schemes::bwd_d_dw_T_w_I_ng);
     ret.add(m_is_iw, conv_schemes::bwd_d_dw_T_w_I_wg);
     return ret;
@@ -1168,11 +1168,11 @@ dim_t grf_usage_bytes(
         const conv_config_t &cfg, const blocking_params_t &params) {
     auto &prb = cfg.prb();
     auto iter = to_gemm(params.blocking().iter(), prb);
-    dim_t b_iter = iter.get(pvars::b, 1);
-    dim_t m_iter = iter.get(pvars::m, 1);
-    dim_t n_iter = iter.get(pvars::n, 1);
-    dim_t k_iter = iter.get(pvars::k, 1);
-    dim_t abc_size = grf_usage_bytes(cfg.fma_kind(), b_iter, m_iter, n_iter,
+    int b_iter = iter.get(pvars::b, 1);
+    int m_iter = iter.get(pvars::m, 1);
+    int n_iter = iter.get(pvars::n, 1);
+    int k_iter = iter.get(pvars::k, 1);
+    int abc_size = grf_usage_bytes(cfg.fma_kind(), b_iter, m_iter, n_iter,
             k_iter, prb.a_data_type_size, prb.b_data_type_size,
             prb.acc_data_type_size);
     return abc_size;
@@ -1299,10 +1299,10 @@ public:
 
         params_generator_t params_gen(
                 tune_level, simd_size, chk, level_tile_sets);
-        std::vector<std::vector<prb_tile_t>> tiles;
+        std::vector<std::vector<pvar_tile_t>> tiles;
         for (auto &p : params_gen.params_vec()) {
             auto &b = p.blocking();
-            std::vector<prb_tile_t> p_tiles;
+            std::vector<pvar_tile_t> p_tiles;
             p_tiles.push_back(convert(b.iter()));
             p_tiles.push_back(convert(b.thread_group()));
             p_tiles.push_back(convert(b.loop()));

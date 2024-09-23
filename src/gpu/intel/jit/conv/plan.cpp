@@ -70,9 +70,9 @@ static dim_tile_t create_tile(gemm_schedule_t &gemm_schedule,
     dim_tile_t tile;
     auto &name = dim.as<var_t>().name;
     auto conv_dim = pvar_t(name);
-    dim_t loop_dim = cfg.loop_dim(conv_dim);
-    dim_t tg_dim = cfg.thread_group_dim(conv_dim);
-    dim_t iter_dim = cfg.iter_dim(conv_dim);
+    int loop_dim = cfg.loop_dim(conv_dim);
+    int tg_dim = cfg.thread_group_dim(conv_dim);
+    int iter_dim = cfg.iter_dim(conv_dim);
 
     std::vector<dim_t> dims = {1, loop_dim, tg_dim, iter_dim};
     dim_idx_t ndims = into<dim_idx_t>(dims.size());
@@ -120,7 +120,7 @@ void bind_thread_group_grid_idx(const conv_config_t &cfg,
     auto grid_dims = get_thread_group_grid_conv_dims(cfg);
     int grid_id = -1;
     for (auto &v : gemm_schedule.get_root_vars(var)) {
-        auto v_dim = prb_dim_t::from_name(v.as<var_t>().name);
+        auto v_dim = pvar_t(v.as<var_t>().name);
         for (int i = 0; i < 3; i++) {
             if (grid_dims[i].has(v_dim)) {
                 ir_assert(grid_id == -1 || grid_id == i);
@@ -138,7 +138,7 @@ void bind_kernel_grid(
         if (gemm_schedule.var_bound(v) == 1) continue;
         auto root_vars = gemm_schedule.get_root_vars(v);
         ir_assert((int)root_vars.size() == 1);
-        auto v_dim = prb_dim_t::from_name(root_vars[0].as<var_t>().name);
+        auto v_dim = pvar_t(root_vars[0].as<var_t>().name);
         auto dummy_grid_var
                 = gemm_schedule.kernel_grid_walk_order().grid_var(v_dim);
         gemm_schedule.bind(v, dummy_grid_var);
@@ -267,7 +267,7 @@ void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
     gemm_schedule.set_k_vars({ic, kd, kh, kw});
 
     gemm_schedule.for_each_var([&](const expr_t &var) {
-        dim_t bound = cfg_.padded_dim(pvar_t(var.as<var_t>().name));
+        int bound = cfg_.padded_dim(pvar_t(var.as<var_t>().name));
         gemm_schedule.set_var_bound(var, bound);
     });
 
@@ -346,10 +346,10 @@ void init_bwd_d(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
         // Apply mapping to iw to ensure each thread group has the same
         // stride condition when evaluating skip conditions.
         iw_mapping = [&](const expr_t &e) {
-            dim_t iw_tg_blk = cfg_.thread_group_dim(pvars::iw)
+            int iw_tg_blk = cfg_.thread_group_dim(pvars::iw)
                     * cfg_.iter_dim(pvars::iw);
-            dim_t iw_bound = utils::rnd_up(prb_.iw, iw_tg_blk);
-            dim_t iw_same_mod_blk = ir_utils::safe_divide(iw_bound, prb_.sw);
+            int iw_bound = utils::rnd_up(prb_.iw, iw_tg_blk);
+            int iw_same_mod_blk = ir_utils::safe_divide(iw_bound, prb_.sw);
             return (e % iw_same_mod_blk) * prb_.sw + (e / iw_same_mod_blk);
         };
     } else {
@@ -451,7 +451,7 @@ void init_bwd_d(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
     gemm_schedule.set_k_vars({oc, kd, kh, kw});
 
     gemm_schedule.for_each_var([&](const expr_t &var) {
-        dim_t bound = cfg_.padded_dim(pvar_t(var.as<var_t>().name));
+        int bound = cfg_.padded_dim(pvar_t(var.as<var_t>().name));
         gemm_schedule.set_var_bound(var, bound);
     });
 
@@ -643,7 +643,7 @@ void init_bwd_w(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
     gemm_schedule.set_k_vars({mb, od, oh, ow});
 
     gemm_schedule.for_each_var([&](const expr_t &var) {
-        dim_t bound = cfg_.padded_dim(pvar_t(var.as<var_t>().name));
+        int bound = cfg_.padded_dim(pvar_t(var.as<var_t>().name));
         gemm_schedule.set_var_bound(var, bound);
     });
 
@@ -2060,7 +2060,7 @@ private:
                 && cfg_.is_dp_fma())
             return false;
         bmnk_dim_helper_t h(cfg_);
-        dim_t k_tg = h.thread_group_dim(pvars::k);
+        int k_tg = h.thread_group_dim(pvars::k);
         if (k_tg != 1) return false;
         return true;
     }
@@ -2293,7 +2293,7 @@ private:
 
     plan_status_t verify_slm_k_slicing() const {
         bmnk_dim_helper_t h(cfg_);
-        dim_t k_tg = h.thread_group_dim(pvars::k);
+        int k_tg = h.thread_group_dim(pvars::k);
         if (k_tg == 1) return plan_status_t::success;
 
         auto l = plan_.fma.c_prb_layout;

@@ -235,7 +235,7 @@ struct send_hint_t {
     dim_t surface_width() const {
         dim_t val = 0;
         for (auto &s : strides_) {
-            if (is_w_dim(s.dim)) val = hint_[s.dim.id()] * s.stride;
+            if (is_w_dim(s.dim)) val = hint_.at(s.dim) * s.stride;
         }
         return val * type_size_;
     };

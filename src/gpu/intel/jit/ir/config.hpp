@@ -193,18 +193,18 @@ public:
 
     bool is_empty() const { return tile_.is_empty(); }
 
-    dim_t get(const pvar_t &pvar) const { return tile_.get(pvar, 1); }
+    int get(const pvar_t &pvar) const { return tile_.get(pvar, 1); }
 
-    dim_t operator()(const pvar_t &pvar) const { return get(pvar); }
+    int operator()(const pvar_t &pvar) const { return get(pvar); }
 
     void set_from_str(const std::string &s) override {
-        tile_ = prb_tile_t();
+        tile_ = pvar_tile_t();
         for (auto &kv : ir_utils::to_string_int_pairs(s)) {
-            tile_[prb_dim_t::from_name(kv.first)] = kv.second;
+            tile_[pvar_t(kv.first)] = kv.second;
         }
     }
 
-    void set(const pvar_t &pvar, dim_t size) { tile_[pvar] = size; }
+    void set(const pvar_t &pvar, int size) { tile_[pvar] = size; }
 
     void set(const value_t &value) { tile_ = value; }
 
@@ -412,36 +412,36 @@ public:
 #undef DECL_PARAM
 #undef DECL_PARAM2
 
-    dim_t iter_dim(const pvar_t &d) const { return iter_dims().get(d); }
+    int iter_dim(const pvar_t &d) const { return iter_dims().get(d); }
 
-    dim_t iter_dim(std::initializer_list<pvar_t> dims) const {
+    int iter_dim(std::initializer_list<pvar_t> dims) const {
         int ret = 1;
         for (auto &dim : dims)
             ret *= iter_dim(dim);
         return ret;
     }
 
-    dim_t loop_dim(const pvar_t &d) const { return loop_dims().get(d); }
+    int loop_dim(const pvar_t &d) const { return loop_dims().get(d); }
 
-    dim_t thread_group_dim(const pvar_t &d) const {
+    int thread_group_dim(const pvar_t &d) const {
         return thread_group_dims().get(d);
     }
 
-    dim_t padded_dim(const pvar_t &d) const { return padded_dims().get(d); }
+    int padded_dim(const pvar_t &d) const { return padded_dims().get(d); }
 
-    dim_t grid_dim(const pvar_t &dim) const {
+    int grid_dim(const pvar_t &dim) const {
         return ir_utils::safe_divide(padded_dim(dim),
                 loop_dim(dim) * thread_group_dim(dim) * iter_dim(dim));
     }
 
     pvar_tile_t dims() const { return shape(/* pad = */ false); }
-    dim_t dim(const pvar_t &d) const { return dims().get(d); }
+    int dim(const pvar_t &d) const { return dims().get(d); }
 
     int sort_key(const param_t *param) const override;
 
     void init_kernel_grid(const std::array<pvar_tile_t, 3> &grid) {
-        std::vector<dim_t> dims(grid.size(), 1);
-        for (dim_idx_t i = 0; i < grid.size(); i++) {
+        std::vector<int> dims(grid.size(), 1);
+        for (int i = 0; i < int(grid.size()); i++) {
             for (auto &d : grid[i]) {
                 dim_t tg_block
                         = loop_dim(d) * thread_group_dim(d) * iter_dim(d);
@@ -452,8 +452,8 @@ public:
     }
 
     void init_thread_group_grid(const std::array<pvar_tile_t, 3> &grid) {
-        std::vector<dim_t> dims(grid.size(), 1);
-        for (dim_idx_t i = 0; i < grid.size(); i++) {
+        std::vector<int> dims(grid.size(), 1);
+        for (int i = 0; i < int(grid.size()); i++) {
             for (auto &d : grid[i])
                 dims[i] *= thread_group_dim(d);
         }

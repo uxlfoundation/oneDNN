@@ -126,10 +126,12 @@ void get_level_tiles(
             auto loop_blocks = info.loop_blocks(loop_size, iter);
             for (dim_t loop : loop_blocks) {
                 level_tile_t t;
-                if (any(info.flags & tile_flags_t::loop)) t.loop = loop;
+                if (any(info.flags & tile_flags_t::loop))
+                    t[level_t::loop] = loop;
                 if (any(info.flags & tile_flags_t::thread_group))
-                    t.thread_group = tg;
-                if (any(info.flags & tile_flags_t::iter)) t.iter = iter;
+                    t[level_t::thread_group] = tg;
+                if (any(info.flags & tile_flags_t::iter))
+                    t[level_t::iter] = iter;
                 ret.push_back(t);
             }
         }
@@ -204,10 +206,10 @@ std::vector<blocking_t> level_tile_set_t::sample(int target,
 
 void level_tile_set_t::set(
         blocking_t &blk, const pvar_t &dim, const level_tile_t &tile) {
-    if (tile.has(level_t::loop)) blk.set_loop(dim, tile.loop);
+    if (tile.has(level_t::loop)) blk.set_loop(dim, tile[level_t::loop]);
     if (tile.has(level_t::thread_group))
-        blk.set_thread_group(dim, tile.thread_group);
-    if (tile.has(level_t::iter)) blk.set_iter(dim, tile.iter);
+        blk.set_thread_group(dim, tile[level_t::thread_group]);
+    if (tile.has(level_t::iter)) blk.set_iter(dim, tile[level_t::iter]);
 }
 
 void level_tile_set_t::product_impl(int idx, std::vector<int> &cur_idxs,
@@ -361,7 +363,7 @@ const tiler_params_t &tiler_params() {
     return params;
 }
 
-tile_to_vec_t::tile_to_vec_t(const std::vector<std::vector<prb_tile_t>> &tiles,
+tile_to_vec_t::tile_to_vec_t(const std::vector<std::vector<pvar_tile_t>> &tiles,
         const std::vector<int> &_ids) {
     if (tiles.empty()) return;
     int ntiles = (int)tiles.size();

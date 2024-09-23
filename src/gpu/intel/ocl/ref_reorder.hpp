@@ -42,6 +42,11 @@ struct ref_reorder_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
                 impl::engine_t *dst_engine) {
+            using namespace data_type;
+            using smask_t = dnnl_primitive_attr::skip_mask_t;
+            using compute::device_ext_t;
+            const auto sdt = src_md()->data_type;
+            const auto ddt = dst_md()->data_type;
 
             VDISPATCH_REORDER(
                     src_engine == dst_engine, VERBOSE_BAD_ENGINE_KIND);
@@ -50,11 +55,9 @@ struct ref_reorder_t : public gpu_primitive_t {
             VDISPATCH_REORDER(src_engine->kind() == engine_kind::gpu,
                     VERBOSE_BAD_ENGINE_KIND);
             VDISPATCH_REORDER(
-                    attr()->has_default_values(smask_t::scales_runtime_data_type
-                            | smask_t::scales_runtime_groups
-                            | smask_t::zero_points_runtime_data_type
-                            | smask_t::zero_points_runtime_groups
-                            | smask_t::post_ops | smask_t::rounding_mode)
+                    attr()->has_default_values(smask_t::scales_runtime
+                            | smask_t::zero_points_runtime | smask_t::post_ops
+                            | smask_t::rounding_mode)
                             && post_ops_ok(),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_REORDER(
@@ -70,10 +73,6 @@ struct ref_reorder_t : public gpu_primitive_t {
                                               .has_runtime_dims_or_strides()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-            using namespace data_type;
-            using compute::device_ext_t;
-            const auto sdt = src_md()->data_type;
-            const auto ddt = dst_md()->data_type;
             VDISPATCH_REORDER(
                     utils::one_of(sdt, f32, f16, bf16, f8_e5m2, f8_e4m3,
                             f4_e2m1, s32, s8, u8, s4, u4, f64),

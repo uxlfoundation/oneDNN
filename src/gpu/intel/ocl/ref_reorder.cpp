@@ -134,21 +134,23 @@ status_t ref_reorder_t::execute(const exec_ctx_t &ctx) const {
     if (conf.nelems == 0) return status::success;
 
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, src);
-    arg_list.set(1, conf.subbyte_pack ? *tmp : dst);
-
-    arg_list.set(2, conf.src_quant.scales(ctx));
-    arg_list.set(3, conf.src_quant.zero_points(ctx));
-    arg_list.set(4, conf.dst_quant.scales(ctx));
-    arg_list.set(5, conf.dst_quant.zero_points(ctx));
+    arg_list.append(src);
+    arg_list.append(conf.subbyte_pack ? *tmp : dst);
 
     arg_list.append(conf.src_quant.scales(ctx));
     arg_list.append(conf.src_quant.zero_points(ctx));
     arg_list.append(conf.dst_quant.scales(ctx));
     arg_list.append(conf.dst_quant.zero_points(ctx));
 
+    arg_list.append(conf.sum_quant.scales());
+    arg_list.append(conf.sum_quant.zero_points());
+
+    if (!pd()->attr()->rounding_mode_.has_default_values())
+        arg_list.append(CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED));
+
     auto nd_range = conf.dispatch.nd_range();
-    CHECK(large_parallel_for(ctx, nd_range, kernels_[0], arg_list, 8));
+    CHECK(large_parallel_for(
+            ctx, nd_range, kernels_[0], arg_list, arg_list.nargs()));
 
     if (!conf.subbyte_pack) return status::success;
 

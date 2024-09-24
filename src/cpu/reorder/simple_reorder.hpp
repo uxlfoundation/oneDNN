@@ -2257,7 +2257,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
         using smask_t = primitive_attr_t::skip_mask_t;
         smask_t skip_mask = smask_t::scales_runtime_data_type
-                | smask_t::scales_runtime_groups;
+                | smask_t::scales_runtime_groups
+                | smask_t::zero_points_runtime_data_type
+                | smask_t::zero_points_runtime_groups;
         VDISPATCH_REORDER_IC(
                 attr->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(
@@ -2292,8 +2294,11 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         //   groups.
         const auto &sc_src = pd->attr()->scales_.get(DNNL_ARG_SRC);
         const bool has_src_scales = !sc_src.has_default_values();
+        const auto &zps = pd->attr()->zero_points_;
+        const bool has_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
 
-        const bool need_second_pass = need_transform || has_src_scales;
+        const bool need_second_pass
+                = need_transform || has_src_scales || has_src_zps;
         wspace = need_second_pass ? wspace : output;
 
         // To avoid clashes between threads each byte (or 2 elements)
@@ -2338,13 +2343,31 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                     src_scales_d.data_type());
         }
 
+        int src_zps_mask = -1;
+        CHECK(zps.get(DNNL_ARG_SRC, &src_zps_mask));
+        // Applied to the pre-last dimension.
+        const auto src_zps_group0 = zps.get_groups_ndims(DNNL_ARG_SRC) > 0
+                ? zps.get_groups(DNNL_ARG_SRC)[0]
+                : 1;
+        // Applied to the last dimension.
+        const auto src_zps_group1 = zps.get_groups_ndims(DNNL_ARG_SRC) > 0
+                ? zps.get_groups(DNNL_ARG_SRC)[1]
+                : 1;
+        memory_desc_t src_zps_md {};
+        if (has_src_zps) {
+            get_quant_md(src_zps_md, ndims, input_d.dims(), src_zps_mask,
+                    src_zps_group0, src_zps_group1, src_zps_d.data_type());
+        }
+
         parallel_nd(input_d.nelems(), [&](dim_t idx) {
             // Must be per thread; when shared, race condition happens.
             dims_t input_idx {};
             float src_scale = 1.f;
-            if (has_src_scales) {
+            if (has_src_scales || has_src_zps) {
                 utils::l_dims_by_l_offset(
                         input_idx, idx, input_d.dims(), ndims);
+            }
+            if (has_src_scales) {
                 const dim_t src_scales_off = get_quant_off(input_idx, ndims,
                         src_scales_mask, src_scales_group0, src_scales_group1,
                         src_scales_md);
@@ -2356,9 +2379,18 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                                 src_scales, src_scales_off);
             }
 
+            int src_zp_val = 0; // Avoid clashing with the one defined for rest.
+            if (has_src_zps) {
+                const dim_t src_zps_off
+                        = get_quant_off(input_idx, ndims, src_zps_mask,
+                                src_zps_group0, src_zps_group1, src_zps_md);
+                src_zp_val = io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+            }
+
             const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
-            output[o_off] = src_scale * wspace[i_off];
+            output[o_off] = src_scale * (wspace[i_off] - src_zp_val);
         });
 
         return status::success;
@@ -2498,8 +2530,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
         using smask_t = primitive_attr_t::skip_mask_t;
         smask_t skip_mask = smask_t::scales_runtime_data_type
-                | smask_t::scales_runtime_groups | smask_t::zero_points_runtime
-                | smask_t::post_ops;
+                | smask_t::scales_runtime_groups
+                | smask_t::zero_points_runtime_data_type
+                | smask_t::zero_points_runtime_groups | smask_t::post_ops;
         VDISPATCH_REORDER_IC(
                 attr->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(simple_po_check(attr), VERBOSE_UNSUPPORTED_POSTOP);
@@ -2554,11 +2587,29 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                     1, 1, data_type::f32);
         }
 
+        const auto &zps = pd->attr()->zero_points_;
+        int src_zps_mask = -1;
+        CHECK(zps.get(DNNL_ARG_SRC, &src_zps_mask));
+        const bool has_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
+        // Applied to the pre-last dimension.
+        const auto src_zps_group0 = zps.get_groups_ndims(DNNL_ARG_SRC) > 0
+                ? zps.get_groups(DNNL_ARG_SRC)[0]
+                : 1;
+        // Applied to the last dimension.
+        const auto src_zps_group1 = zps.get_groups_ndims(DNNL_ARG_SRC) > 0
+                ? zps.get_groups(DNNL_ARG_SRC)[1]
+                : 1;
+        memory_desc_t src_zps_md {};
+        if (has_src_zps) {
+            get_quant_md(src_zps_md, ndims, input_d.dims(), src_zps_mask,
+                    src_zps_group0, src_zps_group1, src_zps_d.data_type());
+        }
+
         parallel_nd(input_d.nelems(), [&](dim_t idx) {
             // Must be per thread; when shared, race condition happens.
             dims_t input_idx {};
             float src_scale = 1.f;
-            if (has_src_scales || has_dst_scales) {
+            if (has_src_scales || has_dst_scales || has_src_zps) {
                 utils::l_dims_by_l_offset(
                         input_idx, idx, input_d.dims(), ndims);
             }
@@ -2581,9 +2632,18 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 dst_scale = dst_scales[dst_scales_off];
             }
 
+            int src_zp_val = 0; // Avoid clashing with the one defined for rest.
+            if (has_src_zps) {
+                const dim_t src_zps_off
+                        = get_quant_off(input_idx, ndims, src_zps_mask,
+                                src_zps_group0, src_zps_group1, src_zps_md);
+                src_zp_val = io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+            }
+
             const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
-            float d = src_scale * (input[i_off] - src_zp);
+            float d = src_scale * (input[i_off] - src_zp_val);
             if (beta) d += beta * output[o_off];
             d = d * dst_scale + dst_zp;
             output[o_off] = _qz_a1b0<data_type::f32, type_o>()(d);
@@ -2616,11 +2676,13 @@ struct simple_reorder_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            VDISPATCH_REORDER_IC(attr->has_default_values(
-                                         skip_mask_t::scales_runtime_data_type
-                                         | skip_mask_t::scales_runtime_groups
-                                         | skip_mask_t::zero_points_runtime
-                                         | skip_mask_t::post_ops),
+            VDISPATCH_REORDER_IC(
+                    attr->has_default_values(
+                            skip_mask_t::scales_runtime_data_type
+                            | skip_mask_t::scales_runtime_groups
+                            | skip_mask_t::zero_points_runtime_data_type
+                            | skip_mask_t::zero_points_runtime_groups
+                            | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto status = simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,

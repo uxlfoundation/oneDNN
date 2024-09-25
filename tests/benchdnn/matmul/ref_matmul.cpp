@@ -64,6 +64,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const auto &src_scale_groups = prb->attr.scales.get(DNNL_ARG_SRC).groups;
     const auto &wei_scale_groups
             = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
+    const auto &src_zp_groups = prb->attr.zero_points.get(DNNL_ARG_SRC).groups;
     const auto &wei_zp_groups
             = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
 
@@ -97,7 +98,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
             int src_zp = 0;
             if (has_src_zp) {
-                const auto src_zp_idx = src_m.get_idx(src_off, src_zp_mask);
+                const auto src_zp_idx = src_m.get_idx(
+                        src_off, src_zp_mask, src_m.ndims(), src_zp_groups);
                 src_zp = src_zps.get_elem(src_zp_idx);
             }
             int wei_zp = 0;

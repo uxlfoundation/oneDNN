@@ -571,6 +571,19 @@ void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy,
         const char *tags) {
     auto *gemmAStrategy = &strategy.A, *gemmBStrategy = &strategy.B;
 
+    // CacheLine prefetch not supported on Xe2+
+    if (strategy.A_prefetch.accessType == AccessType::CacheLine
+            && hw >= ngen::HW::Xe2)
+        strategy.A_prefetch.accessType = isBlock2D(strategy.A.accessType)
+                ? AccessType::Block2D
+                : AccessType::Block;
+
+    if (strategy.B_prefetch.accessType == AccessType::CacheLine
+            && hw >= ngen::HW::Xe2)
+        strategy.B_prefetch.accessType = isBlock2D(strategy.B.accessType)
+                ? AccessType::Block2D
+                : AccessType::Block;
+
     // 2D block accesses use 2D addressing where supported.
     strategy.A.address2D
             |= isBlock2D(strategy.A.accessType) && !isPacked(problem.A.layout);

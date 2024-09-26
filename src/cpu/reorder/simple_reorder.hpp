@@ -2159,9 +2159,9 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
-                        && tag_o == format_tag::any && type_i == dnnl_f32
-                        && utils::one_of(
-                                type_o, dnnl_s4, dnnl_u4, dnnl_f4_e2m1),
+                        && tag_o == format_tag::any && type_i == data_type::f32
+                        && utils::one_of(type_o, data_type::s4, data_type::u4,
+                                data_type::f4_e2m1),
                 spec::reference>::type> {
     static bool is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
@@ -2237,8 +2237,9 @@ template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
-                        && utils::one_of(type_i, dnnl_s4, dnnl_u4, dnnl_f4_e2m1)
-                        && type_o == dnnl_f32,
+                        && utils::one_of(type_i, data_type::s4, data_type::u4,
+                                data_type::f4_e2m1)
+                        && type_o == data_type::f32,
                 spec::reference>::type> {
     static bool is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
@@ -2420,10 +2421,10 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any
                         // u4/s4 requires a special implementation
-                        && !utils::one_of(
-                                type_i, dnnl_s4, dnnl_u4, dnnl_f4_e2m1)
-                        && !utils::one_of(
-                                type_o, dnnl_s4, dnnl_u4, dnnl_f4_e2m1),
+                        && !utils::one_of(type_i, data_type::s4, data_type::u4,
+                                data_type::f4_e2m1)
+                        && !utils::one_of(type_o, data_type::s4, data_type::u4,
+                                data_type::f4_e2m1),
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
@@ -2463,7 +2464,14 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 output_d.is_blocking_desc() && !output_d.is_additional_buffer(),
                 VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
-        return status::success;
+        using skip_mask_t = primitive_attr_t::skip_mask_t;
+        return input_d.is_blocking_desc() && output_d.is_blocking_desc()
+                && !output_d.is_additional_buffer()
+                && !input_d.is_additional_buffer()
+                && attr->has_default_values(skip_mask_t::scales_runtime
+                        | skip_mask_t::zero_points_runtime
+                        | skip_mask_t::post_ops)
+                && simple_po_check(attr);
     }
 
     GET_SCRATCHPAD_SIZE_ZERO();
@@ -2579,28 +2587,17 @@ struct simple_reorder_t : public primitive_t {
                 const primitive_attr_t *attr, engine_t *src_engine,
                 const memory_desc_t *src_md, engine_t *dst_engine,
                 const memory_desc_t *dst_md) {
-            // Since `type_i` and `type_o` are templated arguments, no need
-            // to put them under verbose_dispatch logic.
-            bool ok = src_md->data_type == type_i
-                    && dst_md->data_type == type_o;
-            if (!ok) return status::invalid_arguments;
-
-            VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            VDISPATCH_REORDER_IC(
-                    attr->has_default_values(
-                            skip_mask_t::scales_runtime_data_type
-                            | skip_mask_t::scales_runtime_groups
-                            | skip_mask_t::zero_points_runtime_data_type
-                            | skip_mask_t::zero_points_runtime_groups
-                            | skip_mask_t::post_ops),
-                    VERBOSE_UNSUPPORTED_ATTR);
-
-            auto status = simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
-                    spec>::is_applicable(src_md, dst_md, attr);
-            if (status != status::success) return status;
+            bool args_ok = impl::is_dense_format_kind({src_md, dst_md})
+                    && src_md->data_type == type_i
+                    && dst_md->data_type == type_o
+                    && attr->has_default_values(skip_mask_t::scales_runtime
+                            | skip_mask_t::zero_points
+                            | skip_mask_t::zero_points_runtime
+                            | skip_mask_t::post_ops)
+                    && simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+                            spec>::is_applicable(src_md, dst_md, attr);
+            if (!args_ok) return status::invalid_arguments;
 
             int mask = -1;
             bool is_set = false;

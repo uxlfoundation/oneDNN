@@ -1012,14 +1012,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 "zero-points compensation configuration is not supported");
         VDISPATCH_REORDER_IC(D_mask == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        return simple_attr_check(attr, true, false)
-                && input_d.matches_tag(tag_i) && output_d.matches_tag(tag_o)
-                && mask_ok(req_comp, output_d.extra().compensation_mask)
-                && mask_ok(req_asymmetric_comp,
-                        output_d.extra().asymm_compensation_mask)
-                && one_of(input_d.data_type(), f32, s8, bf16, f16, f8_e5m2,
-                        f8_e4m3)
-                && output_d.data_type() == s8 && D_mask == 1;
+        return status::success;
     }
 
     GET_SCRATCHPAD_SIZE_ZERO();
@@ -2163,10 +2156,19 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                         && utils::one_of(type_o, data_type::s4, data_type::u4,
                                 data_type::f4_e2m1),
                 spec::reference>::type> {
-    static bool is_applicable(const memory_desc_wrapper &input_d,
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
-        return !input_d.has_runtime_dims_or_strides() && input_d.is_dense()
-                && output_d.is_dense() && simple_attr_check(attr, false, true);
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER_IC(
+                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+
+        return status::success;
     }
 
     static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
@@ -2241,10 +2243,19 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                                 data_type::f4_e2m1)
                         && type_o == data_type::f32,
                 spec::reference>::type> {
-    static bool is_applicable(const memory_desc_wrapper &input_d,
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
-        return !input_d.has_runtime_dims_or_strides() && input_d.is_dense()
-                && output_d.is_dense() && simple_attr_check(attr, false, true);
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER_IC(
+                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+
+        return status::success;
     }
 
     static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
@@ -2465,13 +2476,20 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         using skip_mask_t = primitive_attr_t::skip_mask_t;
-        return input_d.is_blocking_desc() && output_d.is_blocking_desc()
-                && !output_d.is_additional_buffer()
-                && !input_d.is_additional_buffer()
-                && attr->has_default_values(skip_mask_t::scales_runtime
+        VDISPATCH_REORDER_IC(
+                attr->has_default_values(skip_mask_t::scales_runtime
                         | skip_mask_t::zero_points_runtime
-                        | skip_mask_t::post_ops)
-                && simple_po_check(attr);
+                        | skip_mask_t::post_ops),
+                VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER_IC(simple_po_check(attr), VERBOSE_UNSUPPORTED_POSTOP);
+        VDISPATCH_REORDER_IC(
+                input_d.is_blocking_desc() && !input_d.is_additional_buffer(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_blocking_desc() && !output_d.is_additional_buffer(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+
+        return status::success;
     }
 
     GET_SCRATCHPAD_SIZE_ZERO();
@@ -2587,17 +2605,25 @@ struct simple_reorder_t : public primitive_t {
                 const primitive_attr_t *attr, engine_t *src_engine,
                 const memory_desc_t *src_md, engine_t *dst_engine,
                 const memory_desc_t *dst_md) {
+            // Since `type_i` and `type_o` are templated arguments, no need
+            // to put them under verbose_dispatch logic.
+            bool ok = src_md->data_type == type_i
+                    && dst_md->data_type == type_o;
+            if (!ok) return status::invalid_arguments;
+
+            VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
+                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            bool args_ok = impl::is_dense_format_kind({src_md, dst_md})
-                    && src_md->data_type == type_i
-                    && dst_md->data_type == type_o
-                    && attr->has_default_values(skip_mask_t::scales_runtime
-                            | skip_mask_t::zero_points
+            VDISPATCH_REORDER_IC(
+                    attr->has_default_values(skip_mask_t::scales_runtime
                             | skip_mask_t::zero_points_runtime
-                            | skip_mask_t::post_ops)
-                    && simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
-                            spec>::is_applicable(src_md, dst_md, attr);
-            if (!args_ok) return status::invalid_arguments;
+                            | skip_mask_t::post_ops),
+                    VERBOSE_UNSUPPORTED_ATTR);
+
+            auto status = simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+                    spec>::is_applicable(src_md, dst_md, attr);
+            if (status != status::success) return status;
 
             int mask = -1;
             bool is_set = false;

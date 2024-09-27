@@ -183,6 +183,7 @@ private:
     std::map<std::string, float> float_var_map_;
     std::set<std::string> option_set_;
     std::unordered_map<std::string, std::string> custom_headers_;
+    bool use_int32_offset_ = true;
 };
 
 template <>

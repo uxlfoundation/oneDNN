@@ -50,9 +50,6 @@
 KERNEL_ATTR
 __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
         __global DST_DATA_T *dst POST_OP_ARGS) {
-
-    if (GWS_OVERFLOW) return;
-
     const off_t mb = GWS_GET_MB();
     const off_t oc = GWS_GET_OC();
     const off_t od = GWS_GET_OD();
@@ -199,9 +196,6 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
 KERNEL_ATTR
 __kernel void ref_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
         __global DST_DATA_T *diff_dst) {
-
-    if (GWS_OVERFLOW) return;
-
     const off_t mb = GWS_GET_MB();
     const off_t oc = GWS_GET_OC();
     const off_t id = GWS_GET_ID();

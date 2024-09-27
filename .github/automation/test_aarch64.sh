@@ -62,23 +62,9 @@ if [[ "$OS" == "Linux" ]]; then
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_conv_smoke_cpu"
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_deconv_smoke_cpu"
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_matmul_smoke_cpu"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-gqa-cpp"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-mqa-cpp"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-sdpa-cpp"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-sdpa-stacked-qkv-cpp"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_large_partition_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_sdp_decomp_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_mqa_decomp_cpu"
     elif [[ "$CMAKE_BUILD_TYPE" == "Release" ]]; then
         SKIPPED_TEST_FAILURES="cpu-primitives-deconvolution-cpp"
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_smoke_cpu"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-gqa-cpp"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-mqa-cpp"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-sdpa-cpp"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-sdpa-stacked-qkv-cpp"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_large_partition_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_sdp_decomp_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_mqa_decomp_cpu"
     fi
 elif [[ "$OS" == "Darwin" ]]; then
     if [[ "$CMAKE_BUILD_TYPE" == "Debug" ]]; then
@@ -86,14 +72,10 @@ elif [[ "$OS" == "Darwin" ]]; then
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_smoke_cpu"
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_brgemm_smoke_cpu"
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_brgemm_ci_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_sdp_decomp_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_mqa_decomp_cpu"
     elif [[ "$CMAKE_BUILD_TYPE" == "Release" ]]; then
         SKIPPED_TEST_FAILURES="cpu-primitives-deconvolution-cpp"
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_smoke_cpu"
         SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_ci_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_sdp_decomp_cpu"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_mqa_decomp_cpu"
     fi
 fi
 
@@ -103,7 +85,7 @@ if [[ "$OS" == "Darwin" ]]; then
 elif [[ "$OS" == "Linux" ]]; then
     if [[ "$ONEDNN_THREADING" == "OMP" ]]; then
         # OMP is already multi-threaded. Let's not oversubscribe.
-        CTEST_MP=-j3
+        CTEST_MP=-j2
     elif [[ "$ONEDNN_THREADING" == "SEQ" ]]; then
         CTEST_MP=$MP
     fi

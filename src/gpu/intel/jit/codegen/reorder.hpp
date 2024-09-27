@@ -265,7 +265,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     bool dst_q = ngen_is_qw(dst_type);
     bool dst_f = (dst_type == ngen::DataType::f);
     bool dst_bf8 = (dst_type == ngen::DataType::bf8);
-#if XE3P
+#if XE3
     bool dst_hf8 = (dst_type == ngen::DataType::hf8);
 #else
     bool dst_hf8 = (dst_type == ngen_hf8());
@@ -281,7 +281,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     bool src_hf = (src_type == ngen::DataType::hf);
     bool src_bf = (src_type == ngen::DataType::bf);
     bool src_bf8 = (src_type == ngen::DataType::bf8);
-#if XE3P
+#if XE3
     bool src_hf8 = (src_type == ngen::DataType::hf8);
 #else
     bool src_hf8 = (src_type == ngen_hf8());
@@ -293,7 +293,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     op_plan_t plan = grf_size;
     ngen_register_scope_t lex_scope {scope.register_allocator()};
 
-#if !XE3P
+#if !XE3
     // Workaround for hf8 size since its a placeholder type undefined in ngen.
     if (src_hf8) src_stride_bytes = src_stride;
     if (dst_hf8) dst_stride_bytes = dst_stride;
@@ -456,9 +456,9 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     }
 
     // x <-> bf8
-    if ((src_bf8 || dst_bf8)
-#if XE3P
-            || (hw >= ngen::HW::Xe3p && (src_hf8 || dst_hf8))) {
+    if (((src_bf8 || dst_bf8) && hw >= ngen::HW::XeHPC)
+#if XE3
+            || (hw >= ngen::HW::Xe3 && (src_hf8 || dst_hf8))) {
 #endif
         int step = get_step();
         ngen::DataType src_raw
@@ -737,8 +737,8 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
 
             if (hw != ngen::HW::Gen9) {
                 int align_stride = src_stride;
-#if XE3P
-                if (hw >= ngen::HW::Xe3p && src_stride_bytes != 4) {
+#if XE3
+                if (hw >= ngen::HW::Xe3 && src_stride_bytes != 4) {
                     align_stride = 2;
                     auto t2 = tmp2.subregister(t1_offset, ngen::DataType::uw);
                     plan(mov, esize, t2(align_stride), s.uw()(src_stride));
@@ -1206,8 +1206,8 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     int dst_byte_off = dst.byte_offset();
 
     // If src is aligned with dst, return.
-#if XE3P
-    if (scope.hw() < ngen::Core::Xe3p && (is_xf || is_bf_to_f)
+#if XE3
+    if (scope.hw() < ngen::Core::Xe3 && (is_xf || is_bf_to_f)
             && src_off == dst_off)
         return;
 #else
@@ -1222,8 +1222,8 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     int grf_size = ngen::GRF::bytes(scope.hw());
     int src_size = std::max(src_type_size * esize * src_stride, src_type_size);
 
-#if XE3P
-    if (is_bf_to_f && scope.hw() == ngen::Core::Xe3p) {
+#if XE3
+    if (is_bf_to_f && scope.hw() >= ngen::Core::Xe3) {
         new_stride = 2;
         new_src_byte_off = 2;
     }

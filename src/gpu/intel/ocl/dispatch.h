@@ -23,8 +23,6 @@
 #define GWS_GET_THREAD_ID(index) get_global_id(index)
 #endif
 
-#define GWS_OVERFLOW (GWS0_OVERFLOW || GWS1_OVERFLOW || GWS2_OVERFLOW)
-
 #ifdef GWS_WITH_RUNTIME_PARAMS
 
 // Shortcut accessors for special cases.

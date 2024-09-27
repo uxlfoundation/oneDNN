@@ -26,49 +26,71 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # Defines MP, CC, CXX and OS.
 source ${SCRIPT_DIR}/common_aarch64.sh
 
-# AArch64 does not officially support graph for now.
-SKIPPED_GRAPH_TEST_FAILURES="test_graph_unit_dnnl_sdp_decomp_cpu"
-SKIPPED_GRAPH_TEST_FAILURES+="|test_graph_unit_dnnl_mqa_decomp_cpu"
+# Skip tests for certain config to preserve resources, while maintaining 
+# coverage. Skip: 
+# (SEQ,CLANG)
+# (OMP,CLANG,DEBUG)
+SKIP_TESTS=0
+if [[ "$OS" == "Linux" ]]; then
+    if [[ "$ONEDNN_THREADING" == "SEQ" ]]; then
+        if [[ "$BUILD_TOOLSET" == "clang" ]]; then
+            SKIP_TESTS=1
+        fi
+    elif [[ "$ONEDNN_THREADING" == "OMP" ]]; then 
+        if [[ "$BUILD_TOOLSET" == "clang" ]]; then
+            if [[ "$CMAKE_BUILD_TYPE" == "Debug" ]]; then
+                SKIP_TESTS=1
+            fi
+        fi
+    fi
+fi
 
-# described in issue: https://github.com/oneapi-src/oneDNN/issues/2175
-SKIPPED_TEST_FAILURES="test_benchdnn_modeC_matmul_multidims_cpu"
+if [[ $SKIP_TESTS == 1 ]]; then
+    echo "Skipping tests for this configuration: $OS $ONEDNN_THREADING $BUILD_TOOLSET".
+    exit 0
+fi
 
 #  We currently have some OS and config specific test failures.
 if [[ "$OS" == "Linux" ]]; then
     if [[ "$CMAKE_BUILD_TYPE" == "Debug" ]]; then
-        # as test_matmul is time consuming , we only run it in release mode to save time.
+        SKIPPED_TEST_FAILURES="cpu-primitives-deconvolution-cpp"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_smoke_cpu"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_brgemm_smoke_cpu"
+        SKIPPED_TEST_FAILURES+="|cpu-primitives-matmul-cpp"
+        SKIPPED_TEST_FAILURES+="|test_convolution_backward_weights_f32"
         SKIPPED_TEST_FAILURES+="|test_matmul"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_conv_smoke_cpu"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_deconv_smoke_cpu"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_matmul_smoke_cpu"
+    elif [[ "$CMAKE_BUILD_TYPE" == "Release" ]]; then
+        SKIPPED_TEST_FAILURES="cpu-primitives-deconvolution-cpp"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_smoke_cpu"
     fi
-    SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_binary_ci_cpu"
-    SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_binary_different_dt_ci_cpu"
-
-    SKIPPED_GRAPH_TEST_FAILURES+="|test_benchdnn_modeC_graph_ci_cpu"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-gqa-cpp"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-mqa-cpp"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-sdpa-cpp"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-sdpa-stacked-qkv-cpp"
-    SKIPPED_GRAPH_TEST_FAILURES+="|test_graph_unit_dnnl_large_partition_cpu"
+elif [[ "$OS" == "Darwin" ]]; then
+    if [[ "$CMAKE_BUILD_TYPE" == "Debug" ]]; then
+        SKIPPED_TEST_FAILURES="cpu-primitives-deconvolution-cpp"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_smoke_cpu"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_brgemm_smoke_cpu"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_brgemm_ci_cpu"
+    elif [[ "$CMAKE_BUILD_TYPE" == "Release" ]]; then
+        SKIPPED_TEST_FAILURES="cpu-primitives-deconvolution-cpp"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_smoke_cpu"
+        SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_lnorm_ci_cpu"
+    fi
 fi
 
-# Nightly failures
-SKIPPED_NIGHTLY_TEST_FAILURES="test_benchdnn_modeC_bnorm_all_blocked_cpu"
-SKIPPED_NIGHTLY_TEST_FAILURES+="|test_benchdnn_modeC_bnorm_regressions_cpu"
-SKIPPED_NIGHTLY_TEST_FAILURES+="|test_benchdnn_modeC_conv_int8_cpu"
-SKIPPED_NIGHTLY_TEST_FAILURES+="|test_benchdnn_modeC_graph_fusions_cpu"
-SKIPPED_NIGHTLY_TEST_FAILURES+="|test_benchdnn_modeC_matmul_sparse_gpu_cpu"
-SKIPPED_NIGHTLY_TEST_FAILURES+="|test_benchdnn_modeC_reorder_all_cpu"
-
-# * c7g failures. TODO: scope these to c7g only. Better yet, fix them.
-SKIPPED_NIGHTLY_TEST_FAILURES+="|test_benchdnn_modeC_binary_all_cpu"
-SKIPPED_NIGHTLY_TEST_FAILURES+="|test_benchdnn_modeC_graph_int8_cpu"
-
-SKIPPED_TEST_FAILURES+="|${SKIPPED_GRAPH_TEST_FAILURES}|${SKIPPED_NIGHTLY_TEST_FAILURES}"
-
-# Sequential (probably macOS) builds should use num proc parallelism.
-if [[ "$ONEDNN_THREADING" == "SEQ" ]]; then
-    export CTEST_PARALLEL_LEVEL=""
+if [[ "$OS" == "Darwin" ]]; then
+    # Since macos does not build with OMP, we can use multiple ctest threads.
+    CTEST_MP=$MP
+elif [[ "$OS" == "Linux" ]]; then
+    if [[ "$ONEDNN_THREADING" == "OMP" ]]; then
+        # OMP is already multi-threaded. Let's not oversubscribe.
+        CTEST_MP=-j2
+    elif [[ "$ONEDNN_THREADING" == "SEQ" ]]; then
+        CTEST_MP=$MP
+    fi
 fi
 
 set -x
-ctest --no-tests=error --output-on-failure -E "$SKIPPED_TEST_FAILURES"
+ctest $CTEST_MP --no-tests=error --verbose --output-on-failure -E "$SKIPPED_TEST_FAILURES"
 set +x

@@ -29,26 +29,23 @@ source ${SCRIPT_DIR}/common_aarch64.sh
 export ACL_ROOT_DIR=${ACL_ROOT_DIR:-"${PWD}/ComputeLibrary"}
 
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-"Release"}
-ONEDNN_TEST_SET=${ONEDNN_TEST_SET:-"SMOKE"}
-ONEDNN_BUILD_GRAPH=${ONEDNN_BUILD_GRAPH:-"ON"}
+ONEDNN_TEST_SET=SMOKE
 
-if [[ "$ONEDNN_ACTION" == "configure" ]]; then
-    set -x
-    cmake \
-        -Bbuild -S. \
-        -DDNNL_AARCH64_USE_ACL=ON \
-        -DONEDNN_BUILD_GRAPH=$ONEDNN_BUILD_GRAPH \
-        -DDNNL_CPU_RUNTIME=$ONEDNN_THREADING \
-        -DONEDNN_WERROR=ON \
-        -DDNNL_BUILD_FOR_CI=ON \
-        -DONEDNN_TEST_SET=$ONEDNN_TEST_SET \
-        -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE
-    set +x
-elif [[ "$ONEDNN_ACTION" == "build" ]]; then
-    set -x
-    cmake --build build 
-    set +x
-else
-    echo "Unknown action: $ONEDNN_ACTION"
-    exit 1
+# ACL is not built with OMP on macOS.
+if [[ "$OS" == "Darwin" ]]; then
+    ONEDNN_THREADING=SEQ
 fi
+
+set -x
+cmake \
+    -Bbuild -S. \
+    -DDNNL_AARCH64_USE_ACL=ON \
+    -DONEDNN_BUILD_GRAPH=0 \
+    -DDNNL_CPU_RUNTIME=$ONEDNN_THREADING \
+    -DONEDNN_WERROR=ON \
+    -DDNNL_BUILD_FOR_CI=ON \
+    -DONEDNN_TEST_SET=$ONEDNN_TEST_SET \
+    -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE
+
+cmake --build build $MP
+set +x

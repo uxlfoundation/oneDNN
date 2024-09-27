@@ -38,8 +38,20 @@ public:
     const layout_tag_t &src_tag() const { return src_tag_; }
     const layout_tag_t &wei_tag() const { return wei_tag_; }
     const layout_tag_t &dst_tag() const { return dst_tag_; }
+    const layout_tag_t &layout_tag(tensor_kind_t kind) const {
+        switch (kind) {
+            case tensor_kind_t::a:
+                return pick_a(prop_, src_tag_, wei_tag_, dst_tag_);
+            case tensor_kind_t::b:
+                return pick_b(prop_, src_tag_, wei_tag_, dst_tag_);
+            case tensor_kind_t::c:
+                return pick_c(prop_, src_tag_, wei_tag_, dst_tag_);
+            default: ir_error_not_expected();
+        }
+        return src_tag_;
+    }
     const pvar_tile_t &shape() const { return shape_; }
-
+    pvar_map_t<int> vars() const;
     bool is_depthwise() const {
         int g = shape_.at(pvars::g);
         int ic = shape_.at(pvars::ic);

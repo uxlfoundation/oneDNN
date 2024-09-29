@@ -55,15 +55,9 @@ bool key_t::operator==(const key_t &rhs) const {
         && pd_iterator_offset_ == rhs.pd_iterator_offset_
         && impl_nthr_ == rhs.impl_nthr_
         && skip_idx_ == rhs.skip_idx_
-        && (*attr_) == (*rhs.attr_)
-        && std::equal(
-            hint_mds_.begin(), hint_mds_.end(), rhs.hint_mds_.begin());
+        && (*attr_) == (*rhs.attr_);
 
-    if (!ret) {
-        // ANCHOR: HASHING_DEBUGINFO_16.
-        VDEBUGINFO(16, primitive, hashing, "operator==,ret=%d", ret);
-        return ret;
-    }
+    if (!ret) return false;
 
 #define CASE(pkind) \
     case primitive_kind::pkind: \
@@ -77,8 +71,8 @@ bool key_t::operator==(const key_t &rhs) const {
             CASE(concat)
             // Use a custom comparison function that ignores alg_kind.
             case primitive_kind::convolution:
-                ret = compare_conv_opdesc(*op_desc_t::to_desc<convolution_desc_t>(op_desc_),
-                *op_desc_t::to_desc<convolution_desc_t>(rhs.op_desc_));
+                ret = compare_conv_opdesc(cast_to_desc<convolution_desc_t>(op_desc_),
+                cast_to_desc<convolution_desc_t>(rhs.op_desc_));
             break;
             CASE(deconvolution)
             CASE(eltwise)

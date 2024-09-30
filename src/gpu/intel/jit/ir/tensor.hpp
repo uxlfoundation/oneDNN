@@ -149,11 +149,11 @@ private:
 class grid_info_t {
 public:
     grid_info_t() = default;
-    grid_info_t(dim_idx_t ndims) : dims_(ndims), offs_(ndims), idxs_(ndims) {}
+    grid_info_t(int ndims) : dims_(ndims), offs_(ndims), idxs_(ndims) {}
     grid_info_t(const std::vector<dim_t> &dims, const std::vector<expr_t> &idxs)
         : grid_info_t(dims, {}, idxs) {}
     grid_info_t(const std::vector<dim_t> &dims, const std::string &prefix)
-        : grid_info_t(dims, make_idxs(prefix, into<dim_idx_t>(dims.size()))) {}
+        : grid_info_t(dims, make_idxs(prefix, (int)dims.size())) {}
     grid_info_t(const std::vector<dim_t> &dims, const std::vector<dim_t> &offs,
             const std::vector<expr_t> &idxs)
         : dims_(dims), offs_(offs), idxs_(idxs) {
@@ -174,35 +174,35 @@ public:
 
     bool is_empty() const { return dims_.empty(); }
 
-    dim_t &dim(dim_idx_t dim_idx) { return dims_[dim_idx]; }
-    dim_t &off(dim_idx_t dim_idx) { return offs_[dim_idx]; }
-    expr_t &idx(dim_idx_t dim_idx) { return idxs_[dim_idx]; }
-    dim_idx_t dim_idx(const expr_t &idx_var) const {
-        for (dim_idx_t i = 0; i < ndims(); i++) {
+    dim_t &dim(int dim_idx) { return dims_[dim_idx]; }
+    dim_t &off(int dim_idx) { return offs_[dim_idx]; }
+    expr_t &idx(int dim_idx) { return idxs_[dim_idx]; }
+    int dim_idx(const expr_t &idx_var) const {
+        for (int i = 0; i < ndims(); i++) {
             if (idx(i).is_same(idx_var)) return i;
         }
         ir_error_not_expected() << "Index not found: " << idx_var;
         return -1;
     }
 
-    const dim_t &dim(dim_idx_t dim_idx) const { return dims_[dim_idx]; }
+    const dim_t &dim(int dim_idx) const { return dims_[dim_idx]; }
     const dim_t &dim(const expr_t &idx_var) const {
         return dims_[dim_idx(idx_var)];
     }
-    const dim_t &off(dim_idx_t dim_idx) const { return offs_[dim_idx]; }
-    const expr_t &idx(dim_idx_t dim_idx) const { return idxs_[dim_idx]; }
+    const dim_t &off(int dim_idx) const { return offs_[dim_idx]; }
+    const expr_t &idx(int dim_idx) const { return idxs_[dim_idx]; }
 
-    dim_t &operator[](dim_idx_t dim_idx) { return dim(dim_idx); }
-    const dim_t &operator[](dim_idx_t dim_idx) const { return dim(dim_idx); }
+    dim_t &operator[](int dim_idx) { return dim(dim_idx); }
+    const dim_t &operator[](int dim_idx) const { return dim(dim_idx); }
 
-    dim_idx_t ndims() const { return into<dim_idx_t>(dims_.size()); }
+    int ndims() const { return int(dims_.size()); }
     dim_t elems() const {
         return utils::array_product(dims_.data(), dims_.size());
     }
 
-    grid_info_t sub_grid(std::initializer_list<dim_idx_t> old_dim_idxs) const {
-        grid_info_t ret(into<dim_idx_t>(old_dim_idxs.size()));
-        dim_idx_t new_dim_idx = 0;
+    grid_info_t sub_grid(std::initializer_list<dim_t> old_dim_idxs) const {
+        grid_info_t ret(int(old_dim_idxs.size()));
+        int new_dim_idx = 0;
         for (auto old_dim_idx : old_dim_idxs) {
             ret.dim(new_dim_idx) = dim(old_dim_idx);
             ret.off(new_dim_idx) = off(old_dim_idx);

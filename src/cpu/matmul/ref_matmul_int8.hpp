@@ -48,14 +48,21 @@ struct ref_matmul_int8_t : public primitive_t {
             const auto bia_type = weights_md(1)->data_type;
             const auto dst_type = dst_md(0)->data_type;
 
-            bool ok = is_dense_format_kind() && utils::one_of(src_type, s8, u8)
-                    && utils::one_of(wei_type, s8, u8, s4, u4)
-                    && IMPLICATION(with_bias(),
-                            utils::one_of(
-                                    bia_type, f32, bf16, f16, s32, s8, u8))
-                    && utils::one_of(dst_type, f32, bf16, f16, s32, s8, u8)
-                    && attr()->has_default_values(
-                            smask_t::scales_runtime_data_type
+            VDISPATCH_MATMUL(
+                    is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(
+                    utils::one_of(src_type, s8, u8), VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(utils::one_of(wei_type, s8, u8, s4, u4),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(IMPLICATION(with_bias(),
+                                     utils::one_of(bia_type, f32, bf16, f16,
+                                             s32, s8, u8)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(
+                    utils::one_of(dst_type, f32, bf16, f16, s32, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(
+                    attr()->has_default_values(smask_t::scales_runtime_data_type
                                     | smask_t::scales_runtime_groups
                                     | smask_t::zero_points_runtime_data_type
                                     | smask_t::zero_points_runtime_groups

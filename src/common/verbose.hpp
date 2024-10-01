@@ -78,7 +78,7 @@ struct const_expr_value {
         std::string stamp_; \
         if (dnnl::impl::get_verbose_timestamp()) \
             stamp_ = std::to_string(stamp) + ","; \
-        dnnl::impl::verbose_printf( \
+        dnnl::impl::verbose_printf(flagkind, \
                 "%s" CONCAT2(VERBOSE_, apitype) "," CONCAT2( \
                         VERBOSE_, logtype) "%s," msg "\n", \
                 stamp_.c_str(), logsubtype, ##__VA_ARGS__); \
@@ -117,8 +117,8 @@ struct const_expr_value {
 #define VERROR(apitype, component, msg, ...) \
     do { \
         if (dnnl::impl::get_verbose(verbose_t::error)) { \
-            VFORMAT(get_msec(), apitype, error, "", #component "," msg, \
-                    ##__VA_ARGS__); \
+            VFORMAT(get_msec(), verbose_t::error, apitype, error, "", \
+                    #component "," msg, ##__VA_ARGS__); \
         } \
     } while (0)
 
@@ -128,8 +128,8 @@ struct const_expr_value {
     do { \
         if (dnnl::impl::get_verbose_dev_mode(verbose_t::debuginfo) \
                 >= (level)) { \
-            VFORMAT(get_msec(), apitype, debuginfo, "", #component "," msg, \
-                    ##__VA_ARGS__); \
+            VFORMAT(get_msec(), verbose_t::debuginfo, apitype, debuginfo, "", \
+                    #component "," msg, ##__VA_ARGS__); \
         } \
     } while (0)
 
@@ -138,7 +138,10 @@ struct const_expr_value {
 // responsibility of the caller to check those (it should happen
 // anyway to condition collecting stamp/duration)
 #define VPROF(stamp, apitype, logtype, logsubtype, info, duration) \
-    { VFORMAT(stamp, apitype, logtype, logsubtype, "%s,%g", info, duration); }
+    { \
+        VFORMAT(stamp, dnnl::impl::verbose_t::exec_profile, apitype, logtype, \
+                logsubtype, "%s,%g", info, duration); \
+    }
 
 struct verbose_t {
     enum flag_kind : uint32_t {
@@ -280,6 +283,10 @@ inline std::string format_verbose_string(
 
 // processes fixed strings for logging and printing
 inline void verbose_printf(const char *fmt_str) {
+    // by default, verbose_t::create_check is passed to the logger
+    // so that it prints at spdlog log_level_t::info when no verbose flag
+    // is specified. This is useful for printing headers, format fields, etc.
+    // which do not correspond to a specific verbose kind.
     verbose_printf_impl(fmt_str, verbose_t::create_check);
 }
 
@@ -294,6 +301,10 @@ inline void verbose_printf(verbose_t::flag_kind kind, const char *fmt_str) {
 template <typename... str_args>
 inline void verbose_printf(const char *fmt_str, str_args... args) {
     std::string msg = format_verbose_string(fmt_str, args...);
+    // by default, verbose_t::create_check is passed to the logger
+    // so that it prints at spdlog log_level_t::info when no verbose flag
+    // is specified. This is useful for printing headers, format fields, etc.
+    // which do not correspond to a specific verbose kind.
     verbose_printf_impl(msg.c_str(), verbose_t::create_check);
 }
 

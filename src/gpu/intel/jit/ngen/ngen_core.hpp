@@ -246,9 +246,6 @@ enum class Core {
     Gen12p8 = XeHPC,    /* Deprecated -- will be removed in the future */
     Xe2,
     Xe3,
-#if XE3P
-    Xe3p,
-#endif
 };
 
 typedef Core HW;
@@ -272,9 +269,6 @@ enum class ProductFamily : int {
     PVC,
     GenericXe2,
     GenericXe3,
-#if XE3P
-    GenericXe3p,
-#endif
 };
 
 struct Product {
@@ -333,18 +327,12 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
         case HW::XeHPC: return ProductFamily::GenericXeHPC;
         case HW::Xe2:   return ProductFamily::GenericXe2;
         case HW::Xe3:   return ProductFamily::GenericXe3;
-#if XE3P
-        case HW::Xe3p:  return ProductFamily::GenericXe3p;
-#endif
         default:        return ProductFamily::Unknown;
     }
 }
 
 static inline constexpr14 Core getCore(ProductFamily family)
 {
-#if XE3P
-    if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
-#endif
     if (family >= ProductFamily::GenericXe3)   return Core::Xe3;
     if (family >= ProductFamily::GenericXe2)   return Core::Xe2;
     if (family >= ProductFamily::GenericXeHPC) return Core::XeHPC;
@@ -383,6 +371,7 @@ enum class DataType : uint8_t {
     vf = 0xAF,
     bf8 = 0x6C,
     tf32 = 0xB0,
+    hf8 = 0x71,
     u4 = 0x5C,
     s4 = 0x5D,
     u2 = 0x3E,
@@ -3196,22 +3185,6 @@ static inline void encodeAtomicDescriptors(HW hw, MessageDescriptor &desc, Exten
     if (dst.isNull())
         desc.parts.responseLen = 0;
 }
-
-#if XE3P
-/********************************************************************/
-/* New send encoding and decoding.                                  */
-/********************************************************************/
-enum GatewayOpcode {
-    eot = 0,
-    bar = 4,
-    nbar = 5,
-    save_bar = 8,
-    restore_bar = 9,
-    eotr = 10,
-    restore_btd_stack = 11,
-    sip_bar = 12,
-};
-
 } /* namespace NGEN_NAMESPACE */
 
 union SendgMessageDescriptor {

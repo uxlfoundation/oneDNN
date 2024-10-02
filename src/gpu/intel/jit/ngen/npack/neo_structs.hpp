@@ -44,12 +44,7 @@ enum class GfxCoreFamily : uint32_t {
     XeHPG = 0xC07,
     XeHPC = 0xC08,
     Xe2 = 0xC09,
-#if XE3
     Xe3 = 0x1E00,
-#endif
-#if XE3P
-    Xe3p = 0x2300,
-#endif
 };
 
 enum class ProductFamily : uint32_t {
@@ -70,12 +65,7 @@ enum class ProductFamily : uint32_t {
 #endif
     LNL = 1275,
     LNL_M = 1276,
-#if XE3
     PTL = 1300,
-#endif
-#if XE3P
-    FCS = 1350,
-#endif
 };
 
 struct SProgramBinaryHeader

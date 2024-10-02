@@ -32,17 +32,8 @@ template <> struct EncodingTag12Dispatch<HW::XeHPC> { using tag = EncodingTagXeH
 template <> struct Instruction12Dispatch<HW::XeHPC> { using type = InstructionXeHPC; };
 template <> struct EncodingTag12Dispatch<HW::Xe2>   { using tag = EncodingTagXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
-#if XE3
 template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
-#endif
-#if XE3P
-struct EncodingTagXe3p : public EncodingTagXeHPC {};
-struct InstructionXe3p;
-
-template <> struct EncodingTag12Dispatch<HW::Xe3p>  { using tag = EncodingTagXe3p; };
-template <> struct Instruction12Dispatch<HW::Xe3p>  { using type = InstructionXe3p; };
-#endif
 
 class SWSBInfo12
 {
@@ -215,11 +206,7 @@ public:
                 return Pipe::Default;
             return (combined.mode == 3) ? Pipe::A : Pipe::Default;
         } else if (!scoreboard.sb) {
-#if XE3
             const Pipe table[8] = {Pipe::Default, Pipe::A, Pipe::F, Pipe::I, Pipe::L, Pipe::M, Pipe::S, Pipe::A};
-#else
-            const Pipe table[8] = {Pipe::Default, Pipe::A, Pipe::F, Pipe::I, Pipe::L, Pipe::M, Pipe::A, Pipe::A};
-#endif
             return table[pipeline.pipe];
         } else
             return Pipe::Default;
@@ -600,28 +587,12 @@ struct InstructionXeHPC : public Instruction12 {
     bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const {
         return Instruction12::getOperandRegion<EncodingTagXeHPC>(region, opNum);
     }
-
-#if XE3
-    bool isSendg() const {
-        if (opcode() == Opcode::sendg || opcode() == Opcode::sendgc) return true;
-#if XE3P
-        if (opcode() == Opcode::sendgx) return true;
-#endif
-        return false;
-    }
-#endif
-
+ 
     bool eot() const {
-#if XE3
-        if (isSendg()) return sendg.eot;
-#endif
         return Instruction12::eot();
     }
 
     bool atomic() const {
-#if XE3
-        if (isSendg()) return false;    /* no atomic field */
-#endif
         return Instruction12::atomic();
     }
 };
@@ -644,11 +615,7 @@ static_assert(sizeof(InstructionXe3p) == 16, "Internal error: InstructionXe3p ha
 static inline unsigned getTypecode12(DataType type)
 {
     static const uint8_t conversionTable[32] = {2,6,1,5,0,4,11,10,3,7,9,13,8,0,4,8,
-#ifdef PRERELEASE_HW
                                                 14,12,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
-#else
-                                                14,2,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
-#endif
     return conversionTable[static_cast<unsigned>(type) & 0x1F];
 }
 
@@ -1085,11 +1052,7 @@ static inline DataType decodeRegTypecode12(unsigned dt)
         DataType::ub,      DataType::uw,      DataType::ud,      DataType::uq,
         DataType::b,       DataType::w,       DataType::d,       DataType::q,
         DataType::bf8,     DataType::hf,      DataType::f,       DataType::df,
-#ifdef PRERELEASE_HW
         DataType::hf8,     DataType::bf,      DataType::tf32,    DataType::invalid,
-#else
-        DataType::invalid, DataType::bf,      DataType::tf32,    DataType::invalid,
-#endif
     };
     return conversionTable[dt & 0xF];
 }
@@ -1101,11 +1064,9 @@ static inline int decodeDPASTypecodeBytes12(unsigned dt)
 
 inline ARFType normalizeARFType(ARFType type, HW hw)
 {
-#if XE3
-    if (hw >= HW::Xe3 && type == ARFType::sp)
+   if (hw >= HW::Xe3 && type == ARFType::sp)
         type = ARFType::s;
-#endif
-    return type;
+   return type;
 }
 
 template <typename Tag>
@@ -1227,7 +1188,6 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
         case Opcode::send:
         case Opcode::sendc: {
             int base = 0, len = 0;
-#if XE3
             if (send.src0RegFile == RegFileARF && hw >= HW::Xe3) switch (opNum) {
                 case 0:
                     region = DependencyRegion(hw);
@@ -1241,7 +1201,6 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 }
                 default: break;
             }
-#endif
             switch (opNum) {
                 case -1:
                     if (send.dstRegFile == RegFileARF) return false;

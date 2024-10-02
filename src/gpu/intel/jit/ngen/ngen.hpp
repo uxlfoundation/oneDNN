@@ -1753,7 +1753,8 @@ using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L3UC; using NGEN_NAMESPACE::
 using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L3UC; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L3C; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1IAR_L3C; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L3WB; \
 using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WT_L3UC; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WT_L3WB; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L3WB; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WB_L3WB; \
 using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1C_L3CC; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L3CC;
-#define NGEN_FORWARD_REGISTERS_EXTRA1(hw)
+#define NGEN_FORWARD_REGISTERS_EXTRA1(hw) \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::s0;
 #define NGEN_FORWARD_REGISTERS_EXTRA2(hw)
 #define NGEN_FORWARD_REGISTERS_EXTRA3(hw)
 #define NGEN_FORWARD_REGISTERS(hw) NGEN_FORWARD_REGISTERS_BASE(hw) NGEN_FORWARD_REGISTERS_EXTRA1(hw) NGEN_FORWARD_REGISTERS_EXTRA2(hw) NGEN_FORWARD_REGISTERS_EXTRA3(hw)
@@ -2406,12 +2407,10 @@ BinaryCodeGenerator<hw>::opSend(Opcode op, const InstructionModifier &mod, Share
     InstructionModifier emod = mod | defaultModifier;
 
     auto src0 = src0_;
-#if XE3
     bool src0Indirect = (hw >= HW::Xe3 && src0.isIndirect());
     if (src0Indirect)
         src0 = src0.getIndirectReg();
-#endif
-
+ 
     encodeCommon12(i, op, emod, dst, tag);
 
     i.send.fusionCtrl = emod.isSerialized();
@@ -2432,17 +2431,8 @@ BinaryCodeGenerator<hw>::opSend(Opcode op, const InstructionModifier &mod, Share
     encodeSendDesc(i, desc);
     encodeSendExDesc(i, exdesc, mod, src1Length, hw);
 
-#if XE3
     if (src0Indirect)
         i.send.exDesc6_10 = src0.getOffset() >> 1;
-#endif
-
-#if XE3P
-#ifdef NGEN_SAFE
-    if (getHighBit(dst) || getHighBit(src0) || getHighBit(src1))
-        throw limited_to_256_grf_exception();
-#endif
-#endif
 
     db(i);
 }

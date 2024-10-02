@@ -175,9 +175,7 @@ void _workaround_() {
 
     (void) ce0.getBase();
     (void) sp.getBase();
-#if XE3
     (void) s0.getBase();
-#endif
     (void) sr0.getBase();
     (void) sr1.getBase();
     (void) cr0.getBase();

@@ -34,13 +34,6 @@ template <> struct EncodingTag12Dispatch<HW::Xe2>   { using tag = EncodingTagXeH
 template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
 template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
-#if XE3P
-struct EncodingTagXe3p : public EncodingTagXeHPC {};
-struct InstructionXe3p;
-
-template <> struct EncodingTag12Dispatch<HW::Xe3p>  { using tag = EncodingTagXe3p; };
-template <> struct Instruction12Dispatch<HW::Xe3p>  { using type = InstructionXe3p; };
-#endif
 
 class SWSBInfo12
 {
@@ -594,24 +587,12 @@ struct InstructionXeHPC : public Instruction12 {
     bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const {
         return Instruction12::getOperandRegion<EncodingTagXeHPC>(region, opNum);
     }
-
-#if XE3P
-    bool isSendg() const {
-        return (opcode() == Opcode::sendg || opcode() == Opcode::sendgc || opcode() == Opcode::sendgx);
-    }
-#endif
-
+ 
     bool eot() const {
-#if XE3P
-        if (isSendg()) return sendg.eot;
-#endif
         return Instruction12::eot();
     }
 
     bool atomic() const {
-#if XE3P
-        if (isSendg()) return false;    /* no atomic field */
-#endif
         return Instruction12::atomic();
     }
 };
@@ -1083,9 +1064,9 @@ static inline int decodeDPASTypecodeBytes12(unsigned dt)
 
 inline ARFType normalizeARFType(ARFType type, HW hw)
 {
-    if (hw >= HW::Xe3 && type == ARFType::sp)
+   if (hw >= HW::Xe3 && type == ARFType::sp)
         type = ARFType::s;
-    return type;
+   return type;
 }
 
 template <typename Tag>

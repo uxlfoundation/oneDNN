@@ -210,9 +210,6 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
         case HW::XeHPC:   return GfxCoreFamily::XeHPC;
         case HW::Xe2:     return GfxCoreFamily::Xe2;
         case HW::Xe3:     return GfxCoreFamily::Xe3;
-#if XE3P
-        case HW::Xe3p:    return GfxCoreFamily::Xe3p;
-#endif
         default:          return GfxCoreFamily::Unknown;
     }
 }
@@ -229,6 +226,7 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
+    if (family >= ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
 
@@ -301,9 +299,6 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
             break;
         case 20: outProduct.family = ngen::ProductFamily::GenericXe2; break;
         case 30: outProduct.family = ngen::ProductFamily::GenericXe3; break;
-#if XE3P
-        case 35: outProduct.family = ngen::ProductFamily::GenericXe3p; break;
-#endif
         default: outProduct.family = ngen::ProductFamily::Unknown; break;
     }
 

@@ -570,7 +570,7 @@ inline bool contains(const DependencyRegion &dep1, const DependencyRegion &dep2)
 // Check if an ARF type needs SWSB tracking.
 inline bool trackableARF(ARFType type)
 {
-    return (type == ARFType::acc || type == ARFType::a || type == ARFType::s);
+  return (type == ARFType::acc || type == ARFType::a || type == ARFType::s);
 }
 
 // Distance in an in-order pipe after which a dependency can be ignored.
@@ -1139,7 +1139,7 @@ void DependencyTable<consumer>::dump() const
                         if (i > NPipes)
                             std::cerr << '?';
                         else
-                            std::cerr << "AFILMSCO"[i % (NPipes + 1)];
+                           std::cerr << "AFILMSCO"[i % (NPipes + 1)];
                         break;
                 }
                 std::cerr << ":\t";

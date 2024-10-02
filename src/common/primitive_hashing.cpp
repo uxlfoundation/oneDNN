@@ -98,9 +98,10 @@ bool key_t::operator==(const key_t &rhs) const {
 #undef CASE
     // clang-format on
 
-    // ANCHOR: HASHING_DEBUGINFO_16.
-    VDEBUGINFO(16, primitive, hashing, "operator==,ret=%d", ret);
-    return ret;
+    if (!ret) return false;
+
+    return std::equal(
+            hint_mds_.begin(), hint_mds_.end(), rhs.hint_mds_.begin());
 }
 
 // Combine hash of each memory_desc_t data member

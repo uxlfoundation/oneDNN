@@ -41,64 +41,28 @@ def convert_dir_benchdnn2verbose(dir):
     }.get(dir)
 
 
-def filter_verbose(benchdnn_verbose, driver):
-    v = ""
-    benchdnn_prop_kind = None
-
-    for test_case in benchdnn_verbose.split("__REPRO"):
-        verbose_lines = test_case.split("\n")
-        # `start` with `1` as there's a leftover from previous REPRO line.
-        for idx, l in enumerate(verbose_lines, start=1):
-            # Parse header
-            if l.find("create: ") != -1:
-                # detect prop kind in benchdnn log
-                dir = "--prop=" if driver == "rnn" else "--dir="
-                dir_start = l.find(dir)
-                if dir_start != -1:
-                    dir_end = l.find(" ", dir_start)
-                    benchdnn_prop_kind = convert_dir_benchdnn2verbose(
-                        l[dir_start + len(dir) : dir_end]
-                    )
-                else:
-                    benchdnn_prop_kind = None
-            else:
-                # detect driver
-                l_s = l.split(",")
-                primitive_idx = 5
-                d = (
-                    benchdnn_gen.convert_driver(l_s[primitive_idx])
-                    if len(l_s) > primitive_idx
-                    else ""
-                )
-                if (
-                    len(l_s) > primitive_idx
-                    and l_s[0] == "onednn_verbose"
-                    and d == driver
-                ):
-                    # filter out additional forward calls, it's located in two
-                    # positions after primitive_kind.
-                    verbose_prop_kind = l_s[primitive_idx + 2]
-                    if (
-                        benchdnn_prop_kind != None
-                        and verbose_prop_kind != benchdnn_prop_kind
-                    ):
-                        continue
-                    # Filter out fill reorders. Only the last one is actual.
-                    # `len - 1` due to status piece left in `verbose_lines` as
-                    # a product of split by `__REPRO`.
-                    if d == "reorder" and idx != len(verbose_lines) - 1:
-                        continue
-                    # Filter out transform routine till it's properly supported.
-                    # Use impl name for that due to it's the only difference
-                    # between two ukernel calls.
-                    impl_name = l_s[5]
-                    if d == "brgemm" and impl_name == "pack_B":
-                        continue
-
-                    # found primitive creation for the test case
-                    # remove time
-                    l_wo_time = "".join(f + "," for f in l.split(",")[0:-1])[0:-1]
-                    v += l_wo_time + "\n"
+def filter_verbose(verbose: str, driver: str, filter_event: str):
+    found_entry = False
+    found_cases: List[str] = []
+    last_reorder: Optional[str] = None
+    known_prop_kind: Optional[str] = None
+    for line in verbose.split("\n"):
+        if "__REPRO" in line:
+            found_entry = False
+            # Adding reorders is deferred to here because we need to exclude all
+            # but the final one.
+            if driver == "reorder" and last_reorder is not None:
+                found_cases.append(last_reorder)
+                last_reorder = None
+        elif found_entry:
+            pass
+        elif "create: " in line:
+            # Detect prop kind in benchdnn log
+            argname = "prop" if driver == "rnn" else "dir"
+            for part in line.split():
+                if part.startswith(f"--{argname}="):
+                    value = part[len(argname) + 3 :]
+                    known_prop_kind = convert_dir_benchdnn2verbose(value)
                     break
             else:
                 known_prop_kind = None
@@ -147,7 +111,7 @@ def generate_verbose(path_to_benchdnn, driver, batch):
     # BRGEMM driver through ukernel API supports verbose only at execution.
     sub_env["ONEDNN_VERBOSE"] = "2"
     benchdnn_mode = "I"
-    if driver == "matmul" or driver == "reorder" or driver == "brgemm":
+    if driver in ("matmul", "reorder", "brgemm"):
         sub_env["ONEDNN_VERBOSE"] = "1"
         benchdnn_mode = "R"
 
@@ -220,48 +184,9 @@ def compare(driver, ref_v, comp_v):
             if driver in line:
                 yield line
 
-    def without_impl(verbose_line):
-        parts = verbose_line.split(",")
-        return ",".join(parts[:6] + parts[7:])
-
-    def find_named_entry(name, entries):
-        for entry in entries:
-            entry_name, *entry_args = entry.split(":")
-            if entry_name == name:
-                return entry_args
-        return None
-
-    def is_ambiguous(r, c):
-        # TODO: Handle cases with non-unique md tags
-        #  * multiple size-1 dimensions with the same stride
-        #  * multiple dimensions with 0 stride
-        if driver != "matmul":
-            return False
-        # XXX: In matmul cases with runtime dims that resolve to ones, the bias
-        # memory descriptor will potentially have the wrong mask printed in the
-        # verbose line. We do not maintain enough information to always print
-        # the correct mask, but the reference and computed verbose lines will
-        # match, up to implementation name.
-        parts = r.split(",")
-        mds = parts[8].split()
-        aux = parts[10].split()
-        shapes = parts[11].split(":", 1)
-        wei, act = list(map(lambda x: list(map(int, x.split("x"))), shapes))
-        if find_named_entry("bia", mds) is None:
-            return False
-        rt_dim_mask = find_named_entry("runtime_dims_masks", aux)
-        if rt_dim_mask is None:
-            return False
-        wei_mask, act_mask = list(map(int, rt_dim_mask))
-        if wei[-2] == 1 and wei_mask & (1 << (len(wei) - 2)):
-            return without_impl(r) == without_impl(c)
-        if act[-1] == 1 and act_mask & (1 << (len(act) - 1)):
-            return without_impl(r) == without_impl(c)
-        return False
-
     file_map = {"reference": ref_v, "computed": comp_v}
     for r, c in zip(filter_lines(ref_v), filter_lines(comp_v)):
-        if r == c or is_ambiguous(r, c):
+        if r == c:
             continue
         for log_type, content in file_map.items():
             with open(f"{driver}.{log_type}.log", "w") as fd:

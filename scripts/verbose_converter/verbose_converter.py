@@ -17,6 +17,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from argparse import RawTextHelpFormatter
 from typing import IO, Dict, Iterable, List
@@ -24,27 +25,14 @@ from typing import IO, Dict, Iterable, List
 from src.benchdnn_generator import InputGenerator  # type: ignore
 from src.breakdown_generator import BreakdownGenerator  # type: ignore
 from src.dnnl_parser import LogParser  # type: ignore
-from src.utils import check_version  # type: ignore
+from src.utils import check_version, dedent  # type: ignore
 
 logger = logging.getLogger("verbose_converter")
 logger.setLevel(logging.CRITICAL + 10)  # off
 
-def convert(
-    verbose_level,
-    parser,
-    input,
-    action,
-    generator,
-    split_output,
-    agg_keys,
-    events=["create", "exec"],
-):
-    status = utils.check_version()
-    if status != utils.status.get("SUCCESS"):
-        return status
 
 def one_line(multiline: str):
-    return " ".join(map(str.strip, multiline.split("\n")))
+    return dedent(multiline).replace(os.sep, " ")
 
 
 class ConverterError(RuntimeError):
@@ -54,6 +42,8 @@ class ConverterError(RuntimeError):
 def generate(generator, parser: LogParser, *args):
     return generator.generate(parser.get_data(), *args)
 
+logger = logging.getLogger("verbose_converter")
+logger.setLevel(logging.CRITICAL + 10)  # off
 
 def convert(
     parser: str,
@@ -73,7 +63,7 @@ def convert(
     else:
         raise ConverterError("Unsupported parser")
 
-    logger.print(f"Processing input ...", "INFO")
+    logger.info("Processing input ...")
     log_parser.process(events)
 
     if action == "dumpIR":
@@ -175,7 +165,11 @@ def main() -> int:
         "--events",
         nargs="+",
         default=event_opts,
-        help=f"events to parse (default: create and exec).\nValues: {event_opts}.",
+        help=one_line(
+            f"""
+             events to parse (default: create and exec). Values: {event_opts}.
+             """
+        ),
     )
     args = args_parser.parse_args()
 
@@ -206,46 +200,51 @@ def main() -> int:
         try:
             input_data = open(args.input, "r").readlines()
         except BaseException as e:
-            print(f"Error while reading input: {e}")
+            logger.error(f"While reading input: {e!s}")
+            return 1
 
-    output = None
-
-    event_sets = args.events if args.generator == 'breakdown' else [args.events]
+    event_sets = (
+        [[e] for e in args.events]
+        if args.generator == "breakdown"
+        else [args.events]
+    )
+    verbose_level = [logging.WARN, logging.INFO][args.verbose_level]
+    logger.setLevel(verbose_level)
 
     for events in event_sets:
-        status, output = convert(
-            verbose_level=args.verbose_level,
-            parser=args.parser,
-            input=input_data,
-            action=args.action,
-            generator=args.generator,
-            split_output=args.split,
-            agg_keys=args.aggregate,
-            events=events
-        )
+        try:
+            output = convert(
+                parser=args.parser,
+                input=input_data,
+                action=args.action,
+                generator=args.generator,
+                split_output=args.split,
+                agg_keys=args.aggregate,
+                events=events,
+            )
+        except ConverterError as e:
+            logger.error(str(e))
+            return 1
 
-        if status != utils.status.get("SUCCESS"):
-            return status
-
-        if output != None:
+        for key, value in output.items():
+            fd: IO
+            filename = args.output
+            if args.split:
+                filename += f".{key}"
             if args.output != "stdout":
-                if output != None:
-                    for key, value in output.items():
-                        filename = args.output
-                        if args.split == True:
-                            filename += "." + key
-                        of = open(filename, "w")
-                    if args.generator == "breakdown":
-                        print(f"Event: {events}", file=of)
-                    print(value, end="", file=of)
+                fd = open(filename, "w")
             else:
-                if args.generator == "breakdown":
-                    print(f"Event: {events}")
-                for key, value in output.items():
-                    if args.split == False:
-                        print(f"{value}")
-                    else:
-                        print(f"--{key}\n{value}")
+                fd = sys.stdout
+            if args.generator == "breakdown":
+                fd.write(f"Event: {events[0]}\n")
+                fd.write(f"{value}\n")
+            else:
+                if args.split:
+                    fd.write(f"--{key}\n")
+                fd.write(f"{value}\n")
+            if args.output != "stdout":
+                fd.close()
+    return 0
 
 
 if __name__ == "__main__":

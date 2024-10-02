@@ -20,8 +20,7 @@ import os
 import subprocess
 import sys
 from argparse import RawTextHelpFormatter
-from collections import defaultdict
-from typing import Dict, List
+from typing import List, Optional
 
 
 class TestingException(RuntimeError):
@@ -29,11 +28,6 @@ class TestingException(RuntimeError):
         from src.utils import dedent  # type: ignore[import-not-found]
 
         super().__init__(dedent(msg))
-
-
-class FailedCase(TestingException):
-    def __init__(self, status: str, repro: str):
-        super().__init__(f"Failed case: {status}: {repro}")
 
 
 def convert_dir_benchdnn2verbose(dir):
@@ -47,65 +41,65 @@ def convert_dir_benchdnn2verbose(dir):
     }.get(dir)
 
 
-def filter_verbose(benchdnn_verbose, driver):
-    v = ""
-    benchdnn_prop_kind = None
-
-    for test_case in benchdnn_verbose.split("__REPRO"):
-        verbose_lines = test_case.split("\n")
-        # `start` with `1` as there's a leftover from previous REPRO line.
-        for idx, l in enumerate(verbose_lines, start=1):
-            # Parse header
-            if l.find("create: ") != -1:
-                # detect prop kind in benchdnn log
-                dir = "--prop=" if driver == "rnn" else "--dir="
-                dir_start = l.find(dir)
-                if dir_start != -1:
-                    dir_end = l.find(" ", dir_start)
-                    benchdnn_prop_kind = convert_dir_benchdnn2verbose(
-                        l[dir_start + len(dir) : dir_end]
-                    )
-                else:
-                    benchdnn_prop_kind = None
-            else:
-                # detect driver
-                l_s = l.split(",")
-                primitive_idx = 5
-                d = (
-                    benchdnn_gen.convert_driver(l_s[primitive_idx])
-                    if len(l_s) > primitive_idx
-                    else ""
-                )
-                if (
-                    len(l_s) > primitive_idx
-                    and l_s[0] == "onednn_verbose"
-                    and d == driver
-                ):
-                    # filter out additional forward calls, it's located in two
-                    # positions after primitive_kind.
-                    verbose_prop_kind = l_s[primitive_idx + 2]
-                    if (
-                        benchdnn_prop_kind != None
-                        and verbose_prop_kind != benchdnn_prop_kind
-                    ):
-                        continue
-                    # Filter out fill reorders. Only the last one is actual.
-                    # `len - 1` due to status piece left in `verbose_lines` as
-                    # a product of split by `__REPRO`.
-                    if d == "reorder" and idx != len(verbose_lines) - 1:
-                        continue
-                    # Filter out transform routine till it's properly supported.
-                    # Use impl name for that due to it's the only difference
-                    # between two ukernel calls.
-                    impl_name = l_s[5]
-                    if d == "brgemm" and impl_name == "pack_B":
-                        continue
-
-                    # found primitive creation for the test case
-                    # remove time
-                    l_wo_time = "".join(f + "," for f in l.split(",")[0:-1])[0:-1]
-                    v += l_wo_time + "\n"
+def filter_verbose(verbose: str, driver: str, filter_event: str):
+    found_entry = False
+    found_cases: List[str] = []
+    last_reorder: Optional[str] = None
+    known_prop_kind: Optional[str] = None
+    for line in verbose.split("\n"):
+        if "__REPRO" in line:
+            found_entry = False
+            # Adding reorders is deferred to here because we need to exclude all
+            # but the final one.
+            if driver == "reorder" and last_reorder is not None:
+                found_cases.append(last_reorder)
+                last_reorder = None
+        elif found_entry:
+            pass
+        elif "create: " in line:
+            # Detect prop kind in benchdnn log
+            argname = "prop" if driver == "rnn" else "dir"
+            for part in line.split():
+                if part.startswith(f"--{argname}="):
+                    value = part[len(argname) + 3 :]
+                    known_prop_kind = convert_dir_benchdnn2verbose(value)
                     break
+            else:
+                known_prop_kind = None
+        elif line.startswith("onednn_verbose,"):
+            # Detect driver
+            parts = line.split(",")
+            try:
+                component = parts[2]
+                event, *_ = parts[3].split(":", 1)
+                primitive = parts[5]
+                impl_name = parts[6]
+                prop_kind = parts[7]
+            except IndexError:
+                continue
+            if component != "primitive" or event not in filter_event:
+                continue
+            if get_driver(primitive) != driver:
+                continue
+            # Filter out additional forward calls.
+            if known_prop_kind is not None and prop_kind != known_prop_kind:
+                continue
+            # Filter out transform routine till it's properly supported. Use
+            # impl name for that due to it's the only difference between two
+            # ukernel calls.
+            if driver == "brgemm" and impl_name == "pack_B":
+                continue
+            # Remove primitive creation time
+            without_time = ",".join(parts[:-1])
+            # Filter out fill reorders. Only the last one is real.
+            if driver == "reorder":
+                last_reorder = without_time
+                continue
+            found_entry = True  # Skip to next __REPRO line
+            found_cases.append(without_time)
+    if driver == "reorder" and last_reorder is not None:
+        found_cases.append(last_reorder)
+    return "\n".join(found_cases)
 
             cases = tentative_cases[known_prop_kind]
             tentative_cases.clear()
@@ -165,7 +159,7 @@ def generate_verbose(path_to_benchdnn, engine, driver, batch):
     # BRGEMM driver through ukernel API supports verbose only at execution.
     sub_env["ONEDNN_VERBOSE"] = "2"
     benchdnn_mode = "I"
-    if driver == "matmul" or driver == "reorder" or driver == "brgemm":
+    if driver in ("matmul", "reorder", "brgemm"):
         sub_env["ONEDNN_VERBOSE"] = "1"
         benchdnn_mode = "R"
     # Add extra noise (dispatch, etc.) to ensure it gets filtered out
@@ -176,6 +170,7 @@ def generate_verbose(path_to_benchdnn, engine, driver, batch):
         f"--engine={engine}",
         f"--{driver}",
         f"--mode={benchdnn_mode}",
+        "-v1",
         f"--batch={batch}",
     ]
     try:
@@ -240,56 +235,9 @@ def compare(driver, ref_v, comp_v):
             if driver in line:
                 yield line
 
-    def without_impl(verbose_line):
-        parts = verbose_line.split(",")
-        return ",".join(parts[:6] + parts[7:])
-
-    def find_named_entry(name, entries):
-        for entry in entries:
-            entry_name, *entry_args = entry.split(":")
-            if entry_name == name:
-                return entry_args
-        return None
-
-    def accept_results(r, c):
-        if r == c:
-            return True
-
-        # TODO: Handle cases with non-unique md tags
-        #  * multiple size-1 dimensions with the same stride
-        #  * multiple dimensions with 0 stride
-        if driver == "matmul":
-            # In matmul cases with runtime dims that resolve to ones, the bias
-            # memory descriptor will potentially have the wrong mask printed in
-            # the verbose line. We do not maintain enough information to always
-            # print the correct mask, but the reference and computed verbose
-            # lines will match, up to implementation name.
-            parts = r.split(",")
-            mds = parts[8].split()
-            aux = parts[10].split()
-            shapes = parts[11].split(":", 1)
-            wei, act = list(map(lambda x: list(map(int, x.split("x"))), shapes))
-            if find_named_entry("bia", mds) is None:
-                return False
-            rt_dim_mask = find_named_entry("runtime_dims_masks", aux)
-            if rt_dim_mask is None:
-                return False
-            wei_mask, act_mask = list(map(int, rt_dim_mask))
-            if wei[-2] == 1 and wei_mask & (1 << (len(wei) - 2)):
-                return without_impl(r) == without_impl(c)
-            if act[-1] == 1 and act_mask & (1 << (len(act) - 1)):
-                return without_impl(r) == without_impl(c)
-        elif driver == "sum":
-            # There is no information in a sum verbose line about scales, so if
-            # dispatch depends on particular scale values, the implementation
-            # may change with default scales. In this case, we check that the
-            # rest of the verbose line is the same.
-            return without_impl(r) == without_impl(c)
-        return False
-
     file_map = {"reference": ref_v, "computed": comp_v}
     for r, c in zip(filter_lines(ref_v), filter_lines(comp_v)):
-        if accept_results(r, c):
+        if r == c:
             continue
         for log_type, content in file_map.items():
             with open(f"{driver}.{log_type}.log", "w") as fd:
@@ -303,20 +251,15 @@ def compare(driver, ref_v, comp_v):
         )
 
 
-def test(path_to_benchdnn, engine, driver, batch):
-    ref_verbose = generate_verbose(path_to_benchdnn, engine, driver, batch)
+def test(path_to_benchdnn, driver, batch):
+    ref_verbose = generate_verbose(path_to_benchdnn, driver, batch)
     # XXX: Maybe generate batch and run benchdnn for each verbose line
     # separately to detect error on case level and not on batch level?
     # The reason behind testing on batch level is that ref_verbose generator
     # might introduce multiple verbose lines for single line in batch file
     com_batch = generate_batch(ref_verbose, driver)
-    com_verbose = generate_verbose(path_to_benchdnn, engine, driver, com_batch)
+    com_verbose = generate_verbose(path_to_benchdnn, driver, com_batch)
     compare(driver, ref_verbose, com_verbose)
-    # XXX: Maybe run an additional loop
-    #    ref -> ref verbose -> com 1 -> com 1 verbose -> com 2 -> com 2 verbose
-    # Comparing com 1 and com 2 verbose instead would address the special cases
-    # in accept_results. We can even compare just the cases where ref and com 1
-    # don't match.
 
 
 def main():
@@ -362,9 +305,9 @@ def main():
             driver, batch = case.split(",")
             batch = batch.split("\n", 1)[0]
             batch_file_path = f"{args.inputs_path}/{driver}/{batch}"
-            test_info = f"BENCHDNN TEST: {args.engine}, {driver}, {batch}"
+            test_info = f"BENCHDNN TEST: {driver}, {batch}"
             try:
-                test(args.benchdnn_path, args.engine, driver, batch_file_path)
+                test(args.benchdnn_path, driver, batch_file_path)
             except Exception as e:
                 print(f"{test_info}: FAILED {e!s}")
                 failed = True
@@ -383,6 +326,11 @@ def get_driver(primitive: str):
     else:
         return converter.driver
 
+
+# Add parent dir to sys.path to make verbose_converter visible for test
+current_dir = os.path.dirname(os.path.realpath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
 
 # Add parent dir to sys.path to make verbose_converter visible for test
 current_dir = os.path.dirname(os.path.realpath(__file__))

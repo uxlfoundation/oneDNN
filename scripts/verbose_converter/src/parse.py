@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright 2024-2025 Intel Corporation
+# Copyright 2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Set,
     Tuple,
 )
 
@@ -145,10 +144,6 @@ class ParseError(ValueError):
     pass
 
 
-class InvalidEntryError(ParseError):
-    pass
-
-
 class ParserImpl:
     default_template = (
         "operation,engine,primitive,implementation,prop_kind,"
@@ -267,7 +262,7 @@ class ParserImpl:
             name, args = spec.read_str(), ""
             if spec.read_literal(":"):
                 args = spec.buf
-            if name == "attr-acc-mode":
+            if name == "attr-acc":
                 parsed[name] = self.parse_acc_mode(args)
             elif name == "attr-deterministic":
                 parsed[name] = self.parse_deterministic(args)
@@ -275,7 +270,6 @@ class ParserImpl:
                 parsed[name] = self.parse_dropout(args)
             elif name == "attr-fpmath":
                 parsed[name] = self.parse_fpmath_mode(args)
-            # Kept for compatibility with v2.7 and below.
             elif name == "attr-oscale":
                 parsed[name] = self.parse_oscale(args)
             elif name == "attr-post-ops":
@@ -472,17 +466,17 @@ class ParserImpl:
 
     def dnnl_to_ir(self):
         return {
-            "operation": ("operation", self.parse_operation, True),
-            "engine": ("engine", self.parse_engine, True),
-            "primitive": ("prim_kind", self.parse_prim_kind, True),
-            "implementation": ("impl", self.parse_impl, True),
-            "prop_kind": ("prop_kind", self.parse_prop_kind, True),
-            "memory_descriptors": ("mds", self.parse_mds, True),
-            "attributes": ("exts", self.parse_attrs, True),
-            "auxiliary": ("aux", self.parse_aux, True),
-            "problem_desc": ("shapes", self.parse_shapes, True),
-            "exec_time": ("time", self.parse_time, False),
-            "timestamp": ("timestamp", self.parse_timestamp, False),
+            "operation": ("operation", self.parse_operation),
+            "engine": ("engine", self.parse_engine),
+            "primitive": ("prim_kind", self.parse_prim_kind),
+            "implementation": ("impl", self.parse_impl),
+            "prop_kind": ("prop_kind", self.parse_prop_kind),
+            "memory_descriptors": ("mds", self.parse_mds),
+            "attributes": ("exts", self.parse_attrs),
+            "auxiliary": ("aux", self.parse_aux),
+            "problem_desc": ("shapes", self.parse_shapes),
+            "exec_time": ("time", self.parse_time),
+            "timestamp": ("timestamp", self.parse_timestamp),
         }
 
     def parse(self, line: str, template: Optional[str]):
@@ -492,28 +486,23 @@ class ParserImpl:
         fields = template.rstrip().split(",")
         values = line.rstrip().split(",")
         mapping = self.dnnl_to_ir()
-        min_fields = sum((mapping[field][2] for field in fields))
-        max_fields = len(fields)
-        if len(values) < min_fields:
-            raise InvalidEntryError("parse error: too few fields to parse")
-        if len(values) > max_fields:
-            raise InvalidEntryError("parse error: too many fields to parse")
-        mapped = dict(zip(fields, values))
-        for field, (key, parse, reqd) in mapping.items():
-            if field not in mapped:
-                if not reqd:
-                    continue
-                raise InvalidEntryError(f"parse error: missing {field} field")
-            value = mapped[field]
+        for field, value in zip(fields, values):
+            if field not in mapping:
+                continue
+            key, parse = mapping[field]
             try:
                 entry[key] = parse(value)
-            except (ParseError, ValueError) as e:
-                raise ParseError(f"parse error: {field}: {value} ({e!s})")
+            except ParseError:
+                raise ParseError(f"parsing entry error: {field}: {value}")
+            except ValueError as e:
+                raise ParseError(f"parse error: {line} ({str(e)})")
         return entry
 
 
 def register(*, version: int):
     def registrar(impl: type):
+        if version in ParserImpl._version_map:
+            raise ParseError(f"Competing parsers for version {version}")
         ParserImpl._version_map[version] = impl
         return impl
 
@@ -542,14 +531,15 @@ class V1ParserImpl(ParserImpl):
 
 class Parser:
     _parser_impls: Dict[int, ParserImpl] = {}
-    _default_events = "exec", "create", "create_nested"
 
     def __init__(
         self,
         input: Iterable[str],
-        events: Iterable[str] = _default_events,
+        events: Optional[Iterable[str]] = None,
         error_handler: ContextManager = nullcontext(),
     ):
+        if events is None:
+            events = "exec", "create"
         self.input = input
         self.events = set(events)
         self.error_handler = error_handler
@@ -557,45 +547,30 @@ class Parser:
     def _fix_template(self, template) -> Optional[str]:
         return template
 
-    @staticmethod
-    def _parse_leading_fields(input: Iterable[str]):
-        MARKER = "onednn_verbose"
-        for line in map(str.rstrip, input):
-            if not line.startswith(f"{MARKER},"):
+    def __iter__(self) -> Iterator[Tuple[str, ir.Entry]]:
+        template = None
+        for line in map(str.rstrip, self.input):
+            if not line.startswith("onednn_verbose,"):
                 continue
-            try:
-                _, operation, args = line.split(",", 2)
-            except ValueError:
-                continue
+            without_marker = line.split(",", 1)[1]
+            operation, args = without_marker.split(",", 1)
             version = 0
-            if operation.startswith("v"):
+            if operation[0] == "v":
                 try:
                     version = int(operation[1:])
+                    operation, args = args.split(",", 1)
                 except ValueError:
                     pass
-                else:
-                    operation, args = args.split(",", 1)
             timestamp = None
             try:
                 timestamp = float(operation)
+                operation, args = args.split(",", 1)
             except ValueError:
                 pass
-            else:
-                operation, args = args.split(",", 1)
-            component = "primitive"
-            if operation in ("graph", "primitive", "ukernel"):
-                component = operation
-                operation, args = args.split(",", 1)
-            yield line, version, timestamp, component, operation, args
-
-    def __iter__(self) -> Iterator[Tuple[str, ir.Entry]]:
-        template = None
-        cache: Dict[str, dict] = {}
-        errors: Set[str] = set()
-        parsed = self._parse_leading_fields(self.input)
-        for line, version, timestamp, component, operation, args in parsed:
-            if component == "graph":
+            if operation == "graph":
                 continue
+            if operation == "primitive" or operation == "ukernel":
+                operation, args = args.split(",", 1)
             event = operation.split(":", 1)[0]
             if event == "info":
                 for marker in ("template", "prim_template"):
@@ -603,45 +578,22 @@ class Parser:
                         continue
                     fixed_template = self._fix_template(args[len(marker) + 1 :])
                     if fixed_template is not None:
-                        break
-                else:
-                    continue
-                first_component, rest = fixed_template.split(",", 1)
-                # Timestamp is usually out of order with respect to the
-                # template because of missing component for "graph",
-                # "primitive", "ukernel", etc.
-                if first_component == "timestamp":
-                    fixed_template = rest
-                if template != fixed_template:
-                    template = fixed_template
-                    cache.clear()
-                continue
-            if event not in self.events:
-                continue
-            leading_args, last_arg = args.rsplit(",", 1)
-            try:
-                time = float(last_arg)
-            except ValueError:
-                time = 0.0
-                leading_args = args
-            key = f"v{version},{component},{operation},{leading_args}"
-            if key in errors:
-                continue
-            success = False
-            with self.error_handler:
-                if key in cache:
-                    params = dict(cache[key])
-                    params.update(time=time, timestamp=timestamp)
-                else:
-                    new_line = f"{operation},{args}"
-                    params = self.parse(new_line, template, version)
-                    cache[key] = dict(params)
-                    if timestamp is not None:
-                        params.update(timestamp=timestamp)
-                yield line, ir.Entry(version=version, **params)
-                success = True
-            if not success:
-                errors.add(key)
+                        template = fixed_template
+                        first_component, rest = template.split(",", 1)
+                        # Timestamp is usually out of order with respect to the
+                        # template because of missing component for "graph",
+                        # "primitive", "ukernel", etc.
+                        if first_component == "timestamp":
+                            template = rest
+            elif event in self.events:
+                with self.error_handler:
+                    parsed = self.parse(
+                        f"{operation},{args}",
+                        template,
+                        version,
+                        timestamp,
+                    )
+                    yield line, parsed
 
     def items(self) -> Iterable[Tuple[int, Tuple[str, ir.Entry]]]:
         yield from enumerate(self)
@@ -654,6 +606,15 @@ class Parser:
             Parser._parser_impls[version] = ParserImpl._version_map[version]()
         return Parser._parser_impls[version]
 
-    def parse(self, line: str, template: Optional[str], version: int = 0):
+    def parse(
+        self,
+        line: str,
+        template: Optional[str],
+        version: int = 0,
+        timestamp: Optional[float] = None,
+    ):
         impl = self._get_impl(version)
-        return impl.parse(line, template)
+        entry = impl.parse(line, template)
+        if timestamp is not None:
+            entry.update(timestamp=timestamp)
+        return ir.Entry(**entry, version=version)

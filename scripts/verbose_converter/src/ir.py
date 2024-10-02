@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright 2024-2025 Intel Corporation
+# Copyright 2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 ################################################################################
 
 import enum
-import string
 from abc import abstractmethod
 from collections.abc import MutableMapping
 from dataclasses import MISSING, dataclass, fields
@@ -146,13 +145,14 @@ class MemoryDescriptor(Mapping):
         return self._format(self.tag, str)
 
     def __hash_str__(self):
+        dims = "abcdefghijkl"
         tag = self.tag
         if "a" not in self.properties:
             return self._format(tag, hash_str)
-        for i, c in enumerate(tag):
-            if not c.isalpha():
-                return self._format(string.ascii_lowercase[:i], hash_str)
-        return self._format(string.ascii_lowercase[: len(tag)], hash_str)
+        for i, c in enumerate(self.tag):
+            if c.lower() not in dims:
+                return self._format(dims[:i], hash_str)
+        return self._format(tag, hash_str)
 
 
 @dataclass(eq=False)
@@ -319,7 +319,7 @@ class RoundingMode(CompositeAttribute, enum.Enum):
 
 
 Attribute = Union[
-    str,  # acc-mode, etc
+    str,  # acc, etc
     FPMathMode,
     Dropout,
     List[PostOp],
@@ -371,7 +371,7 @@ class Attributes(Mapping):
     def __len__(self):
         return len(self._attributes)
 
-    acc_mode = attribute_accessor("acc-mode")
+    acc = attribute_accessor("acc")
     deterministic = attribute_accessor("deterministic")
     dropout = attribute_accessor("dropout")
     fpmath = attribute_accessor("fpmath")

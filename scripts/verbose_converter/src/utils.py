@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright 2021-2025 Intel Corporation
+# Copyright 2021-2024 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,5 @@ def check_version():
 
 def dedent(multiline):
     lines = multiline.split("\n")
-    if len(lines) == 1:
-        return lines[0].strip()
     indent = min(len(line) - len(line.lstrip()) for line in lines[1:])
     return (lines[0] + "\n".join(line[indent:] for line in lines[1:])).strip()

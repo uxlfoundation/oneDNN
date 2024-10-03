@@ -131,7 +131,7 @@ private:
 // Note: keep for RNN quantization
 struct rnn_create_time_scales_t : public c_compatible {
     rnn_create_time_scales_t() : count_(1), mask_(0), scales_(scales_buf_) {
-        set_single_scale(1.);
+        set_single_scale(1.f);
     }
 
     ~rnn_create_time_scales_t() { cleanup(); }

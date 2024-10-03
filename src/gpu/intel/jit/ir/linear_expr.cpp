@@ -255,7 +255,7 @@ public:
         imm_ = math::gcd(imm_, other.imm_);
         auto lhs = op_combine(op_kind_t::_mul, factors_);
         auto rhs = op_combine(op_kind_t::_mul, other.factors_);
-        int const_factor = 1;
+        int64_t const_factor = 1;
         auto common = find_common_factors(
                 {std::move(lhs), std::move(rhs)}, const_factor);
         ir_assert(const_factor == 1);
@@ -294,8 +294,7 @@ public:
         return coef.to_expr();
     }
 
-    static std::vector<expr_t> div(
-            const std::vector<expr_t> &v, int64_t factor) {
+    static std::vector<expr_t> div(const std::vector<expr_t> &v, int64_t factor) {
         std::vector<expr_t> ret;
         ret.reserve(v.size());
         for (auto &e : v)
@@ -369,7 +368,7 @@ expr_t linear_div(const expr_t &e, int64_t factor) {
     return linear_t::to_expr(c, u_vec, v_vec);
 }
 
-expr_t simplify_linear_mod_reduce(const expr_t &e, int factor) {
+expr_t simplify_linear_mod_reduce(const expr_t &e, int64_t factor) {
     if (factor == 1) return 0;
     if (is_const(e)) return to_cpp<int64_t>(e) % factor;
     if (e.is<const_var_t>()) return e;
@@ -391,7 +390,7 @@ expr_t simplify_linear_mod_reduce(const expr_t &e, int factor) {
     return e;
 }
 
-expr_t simplify_linear_mod(const expr_t &e, int factor) {
+expr_t simplify_linear_mod(const expr_t &e, int64_t factor) {
     ir_assert(factor > 0);
     if (factor == 1) return 0;
     auto _linear = to_linear(e);

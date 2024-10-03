@@ -67,7 +67,6 @@ dnnl_sparse_encoding_t str2sparse_encoding(const char *str) {
         return CONCAT2(dnnl_, _case); \
 } while (0)
     CASE(csr);
-    CASE(coo);
     CASE(packed);
     CASE(coo);
 #undef CASE
@@ -906,7 +905,6 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(AcdeB4b8a4b);
     CASE(Ab4a);
     CASE(Ab8a);
-    CASE(Ab32a);
     CASE(BA4b4a);
     CASE(BA8b4a);
     CASE(BA2a24b);
@@ -922,6 +920,13 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(bcad);
     CASE(cabd);
     CASE(dabc);
+    CASE(Ab32a);
+    CASE(aCBd8b8c);
+    CASE(aCBde8b8c);
+    CASE(BAc8a8b);
+    CASE(BAcd8a8b);
+    CASE(BAcde8a8b);
+    CASE(aCBdef8b8c);
     CASE(x);
     CASE(nc);
     CASE(cn);

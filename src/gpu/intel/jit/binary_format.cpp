@@ -196,18 +196,10 @@ public:
                     kernel = binary_format_kernel_t<HW::Xe2>::make_kernel(
                             engine, skip_check);
                     break;
-#if XE3
                 case compute::gpu_arch_t::xe3:
                     kernel = binary_format_kernel_t<HW::Xe3>::make_kernel(
                             engine, skip_check);
                     break;
-#endif
-#if XE3P
-                case compute::gpu_arch_t::xe3p:
-                    kernel = binary_format_kernel_t<HW::Xe3p>::make_kernel(
-                            engine, skip_check);
-                    break;
-#endif
                 case compute::gpu_arch_t::unknown: kernel = nullptr; break;
             }
         }

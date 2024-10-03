@@ -48,9 +48,6 @@ constexpr gpu_gen_t gpu_xe_hpg = ngen::HW::XeHPG;
 constexpr gpu_gen_t gpu_xe_hpc = ngen::HW::XeHPC;
 constexpr gpu_gen_t gpu_xe2 = ngen::HW::Xe2;
 constexpr gpu_gen_t gpu_xe3 = ngen::HW::Xe3;
-#if XE3P
-constexpr gpu_gen_t gpu_xe3p = ngen::HW::Xe3p;
-#endif
 
 // nGEN jit generator
 //
@@ -218,6 +215,7 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         REG_XEHPG_ISA(CASE(gpu_xe_hpg));
         REG_XEHPC_ISA(CASE(gpu_xe_hpc));
         REG_XE2_ISA(CASE(gpu_xe2));
+        REG_XE3_ISA(CASE(gpu_xe3));
         default: break;
     }
 #undef CASE

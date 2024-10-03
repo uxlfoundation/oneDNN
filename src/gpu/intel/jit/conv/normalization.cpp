@@ -46,8 +46,8 @@ layout_t remove_size_1_dimension(const layout_t &layout, dim_idx_t dim_idx) {
 }
 
 layout_t split_dimension(
-        const layout_t &_layout, dim_idx_t dim_idx, int outer_block) {
-    int rem_inner_block
+        const layout_t &_layout, dim_idx_t dim_idx, dim_t outer_block) {
+    dim_t rem_inner_block
             = ir_utils::safe_divide(_layout.dim(dim_idx), outer_block);
     auto layout = insert_dimension(_layout, dim_idx);
     std::vector<block_t> new_blocks;
@@ -175,14 +175,15 @@ void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
 // this method only gets called when ZP precompute is in order;
 // in all other cases ZPs are applied ad-hoc, without a post-op
 view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
-    auto map_o2k = [](view_t &v, int idx, int O, int I, int KD, int P, int S) {
+    auto map_o2k = [](view_t &v, dim_idx_t idx, dim_t O, dim_t I, dim_t KD,
+                           dim_t P, dim_t S) {
         const bool needs_right_bound = ((O - 1) * S + (KD - P) >= I);
         expr_t o = v.vvars()[idx];
         if (KD >= I) {
             o = o * S;
         } else {
             expr_t l, r;
-            int32_t off = P;
+            dim_t off = P;
             if (P > 0) l = binary_op_t::make(op_kind_t::_min, o * S - P, 0);
             if (needs_right_bound) {
                 r = binary_op_t::make(op_kind_t::_max, o * S + (KD - P), I);
@@ -193,7 +194,7 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
             o = (off != 0) ? o + off : o;
         }
         const auto &x = view_t::placeholder_var();
-        int32_t L = ir_utils::max_unique_pad_states(O, I, KD, P, S, true);
+        dim_t L = ir_utils::max_unique_pad_states(O, I, KD, P, S, true);
         bool mask = L < ir_utils::max_unique_pad_states(O, I, KD, P, S, false);
         v.set_vdim(v.vvars()[idx], (needs_right_bound) ? O : 1);
         v.set_tdim(idx, o, (mask) ? x < L : expr_t());

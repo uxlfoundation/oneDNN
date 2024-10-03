@@ -201,8 +201,10 @@ struct layout_raw_tag_entry_t {
     std::string str() const {
         std::ostringstream oss;
         if (block != 0) oss << block;
-        oss << std::string(
-                1, (is_blocked && block == 0 ? std::toupper(letter) : letter));
+        oss << std::string(1,
+                (is_blocked && block == 0
+                                ? static_cast<char>(std::toupper(letter))
+                                : letter));
         return oss.str();
     }
 
@@ -223,7 +225,7 @@ public:
     static layout_raw_tag_t any() { return layout_raw_tag_t("any"); }
 
     layout_raw_tag_t() = default;
-    explicit layout_raw_tag_t(const std::string &tag, int ndims = 0)
+    explicit layout_raw_tag_t(const std::string &tag, dim_idx_t ndims = 0)
         : is_any_(tag == "any"), entries_(to_entries(tag)) {
         expand_x(ndims);
     }
@@ -268,7 +270,7 @@ public:
 private:
     void init_entries(const std::string &s);
     bool has_x() const;
-    void expand_x(int ndims);
+    void expand_x(dim_idx_t ndims);
     layout_raw_tag_t collapse_x() const;
     std::vector<bool> skip_mask(
             const layout_desc_t &desc, const pvar_tile_t &sizes) const;
@@ -378,7 +380,7 @@ public:
     int inner_stride() const;
     expr_t stride(const pvar_t &dim, int dim_block_idx = 0) const;
     expr_t shift_in_bytes(const std::vector<int> &block_off) const;
-    int offset_in_bytes(pvar_coord_t<int> coord) const;
+    dim_t offset_in_bytes(pvar_coord_t<dim_t> coord) const;
     bool is_blocked_by(const pvar_t &dim, int block) const;
     bool is_blocked_by(const layout_t &other) const;
     void add_block(const pvar_t &dim, const expr_t &size,
@@ -408,9 +410,9 @@ public:
         return map(mapper, pvar_coord_t<T>(), tile);
     }
 
-    pvar_coord_t<int> to_coord(const std::vector<int> &block_idx) const;
+    pvar_coord_t<dim_t> to_coord(const std::vector<int> &block_idx) const;
     int to_linear_index(
-            const pvar_tile_t &tile, const pvar_coord_t<int> &coord) const;
+            const pvar_tile_t &tile, const pvar_coord_t<dim_t> &coord) const;
     std::string blocks_str() const;
     std::string str() const;
     std::string str_with_size(const hw_t &hw) const;
@@ -429,7 +431,7 @@ private:
 };
 
 void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
-        const std::function<void(const pvar_coord_t<int> &)> &func);
+        const std::function<void(const pvar_coord_t<dim_t> &)> &func);
 
 class block_iterator_t {
 public:
@@ -512,7 +514,7 @@ public:
     bool has_next(int elems) const { return offset_ + elems < total_elems_; }
     void next(int elems);
     int offset(const pvar_t &dim) const;
-    pvar_coord_t<int> coord() const;
+    pvar_coord_t<dim_t> coord() const;
     std::string str() const;
     IR_DEFINE_DUMP()
 
@@ -544,7 +546,7 @@ public:
 
     pvar_t dim;
     expr_t bound;
-    int block = 0;
+    dim_t block = 0;
     bool has_underflow = false;
 
     expr_t base;
@@ -598,7 +600,7 @@ struct plane_t {
 // Helper class for layout splitting across a grid.
 class grid_splitter_t {
 public:
-    void add(const expr_t &idx, int size);
+    void add(const expr_t &idx, dim_t size);
     int size() const {
         int ret = 1;
         for (auto &idx : idxs_)
@@ -629,9 +631,9 @@ public:
 private:
     struct index_t {
         expr_t expr;
-        int size = 0;
+        dim_t size = 0;
 
-        index_t(const expr_t &expr, int size) : expr(expr), size(size) {}
+        index_t(const expr_t &expr, dim_t size) : expr(expr), size(size) {}
         expr_t pop(int &n);
     };
 

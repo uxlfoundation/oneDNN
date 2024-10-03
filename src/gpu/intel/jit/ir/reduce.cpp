@@ -76,7 +76,7 @@ stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
         const expr_t &src_buf, const expr_t &dst_buf) {
     ir_assert(src.ndims() == dst.ndims());
     uint32_t reduction_mask = 0;
-    for (int i = 0; i < src.ndims(); i++) {
+    for (dim_idx_t i = 0; i < src.ndims(); i++) {
         if (dst.dims()[i] != 1 || src.dims()[i] == 1) {
             reduction_mask |= (1 << i);
         }

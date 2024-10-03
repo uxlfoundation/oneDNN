@@ -179,11 +179,11 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     const auto &kg = cfg.kernel_grid();
     const auto &tg = cfg.thread_group_grid();
     const auto &dims_grid = cfg.dims_padded();
-    std::vector<int> padded_dims(dims_grid.ndims());
+    std::vector<dim_t> padded_dims(dims_grid.ndims());
     for (int i = 0; i < int(padded_dims.size()); i++)
         padded_dims[i] = dims_grid[i];
     ir_assert(padded_dims.size() == 5);
-    std::vector<int> dims {padded_dims[0], int(src_layout.dim(1)),
+    std::vector<dim_t> dims {padded_dims[0], int(src_layout.dim(1)),
             padded_dims[2], padded_dims[3], padded_dims[4]};
 
     // Source.

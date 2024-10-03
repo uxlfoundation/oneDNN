@@ -1029,7 +1029,7 @@ struct send_group_t {
                 auto type = fixup_type(p.type, send_params);
                 auto f = send_t::make_2d(hw, to_2d(send_params.send_op), type,
                         into<int>(p.W), into<int>(p.H), into<int>(p.P), p.w,
-                        p.h, p.c, p.vnni, p.transpose, fill_buf,
+                        p.h, p.c, p.vnni, p.transpose, zero_out,
                         send_params.cache_hint);
                 ret.push_back(f);
             }
@@ -1654,12 +1654,6 @@ public:
         int c = 1;
         dim_t w_rcount = ir_utils::safe_divide(lw.w_dim(), w);
         dim_t h_rcount = ir_utils::safe_divide(lw.h_dim(), h);
-
-        // block is 1D; fallback to block/scattered message
-        if (w == 1 || h == 1) return fail_2d("No benefit from 2D message");
-
-        // block is 1D; fallback to block/scattered message
-        if (w == 1 || h == 1) return fail_2d("No benefit from 2D message");
 
         // block is 1D; fallback to block/scattered message
         if (w == 1 || h == 1) return fail_2d("No benefit from 2D message");

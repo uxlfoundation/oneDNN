@@ -221,10 +221,10 @@ private:
     void init_transpose(const hw_t &hw);
 };
 
-void normalize_conv_shape(int &id, int &od, int &kd, int &sd, int &dd, int &pd,
-        int &ih, int &oh, int &kh, int &sh, int &dh, int &ph, int &iw, int &ow,
-        int &kw, int &sw, int &dw, int &pw, bool can_flatten_spatial,
-        std::array<int, 3> &dhw_map);
+void normalize_conv_shape(dim_t &id, dim_t &od, dim_t &kd, dim_t &sd, dim_t &dd,
+        dim_t &pd, dim_t &ih, dim_t &oh, dim_t &kh, dim_t &sh, dim_t &dh,
+        dim_t &ph, dim_t &iw, dim_t &ow, dim_t &kw, dim_t &sw, dim_t &dw,
+        dim_t &pw, bool can_flatten_spatial, std::array<int, 3> &dhw_map);
 bool is_small_ic(const conv_problem_t &prb);
 
 class conv_arg_helper_t {

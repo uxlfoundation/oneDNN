@@ -1283,13 +1283,13 @@ void get_layout_and_dims(tensor_kind_t ab_kind, const conv_config_t &cfg,
             break;
         default: ir_error_not_expected();
     }
-    ir_assert(layout.ndims() == (int)dims.size());
+    ir_assert(layout.ndims() == dims.size());
 }
 
 // Calculates the size of the range for spatial dimensions within a tile.
 // For example, consider forward convolution with stride of 2 and tile ow8kw3.
 // After mapping (iw = ow * SW + kw), "iw" range is [0, 16] of size 17.
-int map_spatial(
+dim_t map_spatial(
         const conv_config_t &cfg, const pvar_t &dim, const pvar_tile_t &tile) {
     auto &prb = cfg.prb();
     bool is_isp = utils::one_of(dim, pvars::id, pvars::ih, pvars::iw);
@@ -1297,30 +1297,30 @@ int map_spatial(
     const pvar_t isp_dims[] = {pvars::id, pvars::ih, pvars::iw};
     const pvar_t ksp_dims[] = {pvars::kd, pvars::kh, pvars::kw};
     const pvar_t osp_dims[] = {pvars::od, pvars::oh, pvars::ow};
-    int isp[] = {prb.id, prb.ih, prb.iw};
-    int osp[] = {prb.od, prb.oh, prb.ow};
-    int padding[] = {prb.pd, prb.ph, prb.pw};
-    int stride[] = {prb.sd, prb.sh, prb.sw};
-    int dilation[] = {prb.dd, prb.dh, prb.dw};
+    dim_t isp[] = {prb.id, prb.ih, prb.iw};
+    dim_t osp[] = {prb.od, prb.oh, prb.ow};
+    dim_t padding[] = {prb.pd, prb.ph, prb.pw};
+    dim_t stride[] = {prb.sd, prb.sh, prb.sw};
+    dim_t dilation[] = {prb.dd, prb.dh, prb.dw};
     int idx = dim.spatial_index();
     ir_assert(idx != -1);
-    int O = tile.get(osp_dims[idx], 1);
-    int I = tile.get(isp_dims[idx], 1);
-    int K = tile.get(ksp_dims[idx], 1);
-    int P = padding[idx];
-    int S = stride[idx];
-    int D = dilation[idx];
+    dim_t O = tile.get(osp_dims[idx], 1);
+    dim_t I = tile.get(isp_dims[idx], 1);
+    dim_t K = tile.get(ksp_dims[idx], 1);
+    dim_t P = padding[idx];
+    dim_t S = stride[idx];
+    dim_t D = dilation[idx];
     if (is_isp) {
         // Source tensor, map ox, kx to ix.
         ir_assert(prb.is_fwd || prb.is_bwd_w);
-        int i_min = -P;
-        int i_max = (O - 1) * S - P + (K - 1) * (1 + D);
+        dim_t i_min = -P;
+        dim_t i_max = (O - 1) * S - P + (K - 1) * (1 + D);
         return std::min(isp[idx], i_max - i_min + 1);
     }
     // Destination tensor, map ix, kx to ox.
     ir_assert(is_osp && prb.is_bwd_d);
-    int os_min = P - (K - 1) * (1 + D);
-    int os_max = (I - 1) + P;
+    dim_t os_min = P - (K - 1) * (1 + D);
+    dim_t os_max = (I - 1) + P;
     return std::min(osp[idx], utils::div_up(os_max - os_min + 1, S));
 }
 
@@ -1339,7 +1339,7 @@ size_t get_memory_footprint(const tensor_kind_t &ab_kind,
     get_layout_and_dims(ab_kind, cfg, layout, dims);
     dim_t elems = 1;
     pvar_tile_t tile;
-    for (int i = 0; i < layout.ndims(); i++) {
+    for (dim_idx_t i = 0; i < layout.ndims(); i++) {
         auto &d = dims[i];
         dim_t d_size
                 = (needs_spatial_mapping(cfg, d) ? map_spatial(cfg, d, _tile)
@@ -1372,7 +1372,7 @@ size_t get_memory_footprint(const conv_config_t &cfg,
 pvar_tile_t get_grid_tile(const conv_config_t &cfg) {
     pvar_tile_t grid_tile;
     for (auto &d : conv_index_dims(cfg.prb().prop_kind())) {
-        int size = cfg.grid_dim(d);
+        dim_t size = cfg.grid_dim(d);
         if (size == 1) continue;
         grid_tile[d] = size;
     }
@@ -1451,8 +1451,8 @@ class mn_walker_t {
 public:
     struct entry_t {
         pvar_t dim;
-        int size = 1;
-        int tile_size = 1;
+        dim_t size = 1;
+        dim_t tile_size = 1;
         char mn_kind = ' ';
 
         bool has_next() const { return size < tile_size; }
@@ -1521,10 +1521,10 @@ walk_order_t compute_walk_order(const conv_config_t &cfg) {
     int tg_size = 1;
     pvar_tile_t inner;
     for (auto &d : conv_index_dims(cfg.prb().prop_kind())) {
-        int iter = cfg.iter_dim(d);
-        int tg = cfg.thread_group_dim(d);
-        int loop = cfg.loop_dim(d);
-        int size = iter * tg * loop;
+        dim_t iter = cfg.iter_dim(d);
+        dim_t tg = cfg.thread_group_dim(d);
+        dim_t loop = cfg.loop_dim(d);
+        dim_t size = iter * tg * loop;
         if (size == 1) continue;
         inner[d] = size;
         tg_size *= tg;
@@ -1556,7 +1556,7 @@ walk_order_t compute_walk_order(const conv_config_t &cfg) {
 
     // If the kernel does not require multiple waves then no L3 blocking is not
     // applied.
-    float max_tgs_per_wave = conv_config_t::get_max_threadgroups_per_wave(
+    int max_tgs_per_wave = conv_config_t::get_max_threadgroups_per_wave(
             cfg.exec_cfg(), tg_size);
     if (grid_tile.elems() <= max_tgs_per_wave) return default_walk_order;
 
@@ -1588,7 +1588,7 @@ walk_order_t compute_walk_order(const conv_config_t &cfg) {
                     break;
                 case 1:
                 case 2:
-                    int rem = utils::div_up(
+                    dim_t rem = utils::div_up(
                             grid_tile[b.dim], grid_inner.get(b.dim, 1));
                     if (rem == 1) continue;
                     auto bmnk = to_gemm(b.dim, prb);
@@ -1953,11 +1953,11 @@ const conv_plan_t &conv_config_t::plan() const {
 bool conv_config_t::can_skip_wei_zero_out() const {
     if (!prb().is_bwd_w) return true;
     bmnk_dim_helper_t h(*this);
-    int k_iter_dim = h.iter_dim(pvars::k);
-    int k_loop_dim = h.loop_dim(pvars::k);
-    int k_tg_dim = h.thread_group_dim(pvars::k);
-    int k_tg_block = k_iter_dim * k_loop_dim * k_tg_dim;
-    int k_padded = padded_dim(pvars::mb) * padded_dim(pvars::od)
+    dim_t k_iter_dim = h.iter_dim(pvars::k);
+    dim_t k_loop_dim = h.loop_dim(pvars::k);
+    dim_t k_tg_dim = h.thread_group_dim(pvars::k);
+    dim_t k_tg_block = k_iter_dim * k_loop_dim * k_tg_dim;
+    dim_t k_padded = padded_dim(pvars::mb) * padded_dim(pvars::od)
             * padded_dim(pvars::oh) * padded_dim(pvars::ow);
     return k_tg_block >= k_padded;
 }

@@ -2063,7 +2063,9 @@ public:
     }
 
     int register_alloc_size(int grf_size) const {
-        return (kind == alloc_kind_t::grf) ? utils::rnd_up(size, grf_size) : 0;
+        return (kind == alloc_kind_t::grf)
+                ? into<int>(utils::rnd_up(size, grf_size))
+                : 0;
     }
 
     IR_DECLARE_TRAVERSERS()

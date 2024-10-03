@@ -80,7 +80,7 @@ private:
         if (idx == layout.ndims()) {
             std::vector<expr_t> vargs;
             vargs.reserve(layout.ndims());
-            for (int i = 0; i < layout.ndims(); i++)
+            for (dim_idx_t i = 0; i < layout.ndims(); i++)
                 vargs.push_back(view.vstart(i) + args[i]);
             expr_t mask = full_mem_view_.vmask(vargs);
             auto off = layout.offset(args, /*ignore_offset=*/true);
@@ -518,16 +518,8 @@ public:
                     << "Only supported form is lhs = eltwise(lhs).";
             dim_t lhs_size = lhs_tensor.reg_layout().size();
             dim_t lhs_elems = lhs_size / int(sizeof(float));
-            auto &eltwise_func = post_op_.eltwise().as<eltwise_t>();
-            if (eltwise_func.alg_kind == alg_kind::eltwise_stochastic_round) {
-
-                return post_op_.eltwise().call(
-                        {expr_t(lhs_elems), lhs_tensor.reg_buf(),
-                                (*args.at(eltwise_func.seed)).reg_buf()});
-            } else {
-                return post_op_.eltwise().call(
-                        {expr_t(lhs_elems), lhs_tensor.reg_buf()});
-            }
+            return post_op_.eltwise().call(
+                    {expr_t(lhs_elems), lhs_tensor.reg_buf()});
         }
 
         int inner_dim_idx = -1;

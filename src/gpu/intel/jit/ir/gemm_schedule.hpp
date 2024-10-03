@@ -962,7 +962,7 @@ private:
     }
 
     dim_t bound_var_to_dim(const expr_t &v) const {
-        for (int i = 0; i < kernel_grid_.ndims(); i++) {
+        for (dim_idx_t i = 0; i < kernel_grid_.ndims(); i++) {
             if (kernel_grid_.idx(i).is_same(v)) return kernel_grid_.dim(i);
         }
         for (dim_idx_t i = 0; i < tg_grid_.ndims(); i++) {

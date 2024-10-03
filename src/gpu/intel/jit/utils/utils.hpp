@@ -815,12 +815,15 @@ inline std::vector<std::pair<std::string, int>> to_string_int_pairs(
     return ret;
 }
 
-template <typename E, size_t N>
-void to_enum_templ_impl(const std::string &s, E &e,
-        const std::array<enum_name_t<E>, N> &enum_names) {
-    for (auto &p : enum_names) {
-        if (p.second == s) {
-            e = p.first;
+// Adapted version of magicgu function from Hacker's Delight 10-15.
+inline void idiv_magicgu(uint32_t d, uint32_t &m, uint32_t &p) {
+    uint32_t s32_max = std::numeric_limits<int32_t>::max();
+    ir_assert(d != 0 && d <= s32_max);
+    uint64_t nc = (s32_max / d) * d - 1;
+    for (p = 32; p < 64; p++) {
+        uint64_t _2p = 1LL << p;
+        if (_2p > nc * (d - 1 - (_2p - 1) % d)) {
+            m = into<uint32_t>((_2p + d - 1 - (_2p - 1) % d) / d);
             return;
         }
     }
@@ -886,10 +889,11 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
 
 // Calculate how many unique filter padding states a conv dimension can produce
 // (see conv_post_op_view_mapper_t for more context)
-inline int max_unique_pad_states(int O, int I, int KD, int P, int S, bool lim) {
-    int retn = 1;
+inline dim_t max_unique_pad_states(
+        dim_t O, dim_t I, dim_t KD, dim_t P, dim_t S, bool lim) {
+    dim_t retn = 1;
     if (I > KD) {
-        retn += std::min((O - 1) * S - P, 0)
+        retn += std::min((O - 1) * S - P, dim_t(0))
                 + std::max((O - 1) * S + (KD - P), I) + (P - I);
     } else { // I <= KD, no two states are the same
         retn += (O - 1) * S;

@@ -193,9 +193,9 @@ public:
 
     bool is_empty() const { return tile_.is_empty(); }
 
-    int get(const pvar_t &pvar) const { return tile_.get(pvar, 1); }
+    dim_t get(const pvar_t &pvar) const { return tile_.get(pvar, 1); }
 
-    int operator()(const pvar_t &pvar) const { return get(pvar); }
+    dim_t operator()(const pvar_t &pvar) const { return get(pvar); }
 
     void set_from_str(const std::string &s) override {
         tile_ = pvar_tile_t();
@@ -204,7 +204,7 @@ public:
         }
     }
 
-    void set(const pvar_t &pvar, int size) { tile_[pvar] = size; }
+    void set(const pvar_t &pvar, dim_t size) { tile_[pvar] = size; }
 
     void set(const value_t &value) { tile_ = value; }
 
@@ -346,7 +346,7 @@ public:
     }
 
     static int get_max_threadgroups_per_wave(
-            const exec_config_t &exec_cfg, int tg_elems) {
+            const exec_config_t &exec_cfg, dim_t tg_elems) {
         auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw().to_ngen());
         int threads_per_eu = compute::device_info_t::threads_per_eu(
                 arch, exec_cfg.regs() > 128);
@@ -366,17 +366,20 @@ public:
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
         int subslice_count = exec_cfg.hw().eu_count() / eus_per_subslice;
 
-        int min_wg_per_subslice_wave = std::max(eus_per_subslice / tg_elems, 1);
-        int min_wg_per_wave = subslice_count * min_wg_per_subslice_wave;
-        return (100.f * kg_elems) / utils::rnd_up(kg_elems, min_wg_per_wave);
+        dim_t min_wg_per_subslice_wave
+                = std::max<dim_t>(eus_per_subslice / tg_elems, 1);
+        dim_t min_wg_per_wave = subslice_count * min_wg_per_subslice_wave;
+        return (100.f * float(kg_elems))
+                / float(utils::rnd_up(kg_elems, min_wg_per_wave));
     }
 
     // Return wave utilization as a percentage. If this value is low, memory
     // latency may be an issue due to limited use of SMT to hide the latency.
     static float get_wave_utilization(
-            const exec_config_t &exec_cfg, int kg_elems, int tg_elems) {
+            const exec_config_t &exec_cfg, dim_t kg_elems, dim_t tg_elems) {
         int tgs_per_wave = get_max_threadgroups_per_wave(exec_cfg, tg_elems);
-        return (100.f * kg_elems) / utils::rnd_up(kg_elems, tgs_per_wave);
+        return (100.f * float(kg_elems))
+                / float(utils::rnd_up(kg_elems, tgs_per_wave));
     }
 
 #define DECL_PARAM(name) \
@@ -412,36 +415,36 @@ public:
 #undef DECL_PARAM
 #undef DECL_PARAM2
 
-    int iter_dim(const pvar_t &d) const { return iter_dims().get(d); }
+    dim_t iter_dim(const pvar_t &d) const { return iter_dims().get(d); }
 
-    int iter_dim(std::initializer_list<pvar_t> dims) const {
+    dim_t iter_dim(std::initializer_list<pvar_t> dims) const {
         int ret = 1;
         for (auto &dim : dims)
             ret *= iter_dim(dim);
         return ret;
     }
 
-    int loop_dim(const pvar_t &d) const { return loop_dims().get(d); }
+    dim_t loop_dim(const pvar_t &d) const { return loop_dims().get(d); }
 
-    int thread_group_dim(const pvar_t &d) const {
+    dim_t thread_group_dim(const pvar_t &d) const {
         return thread_group_dims().get(d);
     }
 
-    int padded_dim(const pvar_t &d) const { return padded_dims().get(d); }
+    dim_t padded_dim(const pvar_t &d) const { return padded_dims().get(d); }
 
-    int grid_dim(const pvar_t &dim) const {
+    dim_t grid_dim(const pvar_t &dim) const {
         return ir_utils::safe_divide(padded_dim(dim),
                 loop_dim(dim) * thread_group_dim(dim) * iter_dim(dim));
     }
 
     pvar_tile_t dims() const { return shape(/* pad = */ false); }
-    int dim(const pvar_t &d) const { return dims().get(d); }
+    dim_t dim(const pvar_t &d) const { return dims().get(d); }
 
     int sort_key(const param_t *param) const override;
 
     void init_kernel_grid(const std::array<pvar_tile_t, 3> &grid) {
         std::vector<dim_t> dims(grid.size(), 1);
-        for (int i = 0; i < int(grid.size()); i++) {
+        for (dim_idx_t i = 0; i < grid.size(); i++) {
             for (auto &d : grid[i]) {
                 dim_t tg_block
                         = loop_dim(d) * thread_group_dim(d) * iter_dim(d);
@@ -453,7 +456,7 @@ public:
 
     void init_thread_group_grid(const std::array<pvar_tile_t, 3> &grid) {
         std::vector<dim_t> dims(grid.size(), 1);
-        for (int i = 0; i < int(grid.size()); i++) {
+        for (dim_idx_t i = 0; i < grid.size(); i++) {
             for (auto &d : grid[i])
                 dims[i] *= thread_group_dim(d);
         }

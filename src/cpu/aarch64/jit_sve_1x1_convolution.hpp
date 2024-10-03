@@ -369,8 +369,11 @@ template <impl::data_type_t diff_dst_type,
         cpu_isa_t isa_ = isa_undef>
 struct jit_sve_1x1_convolution_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
-        using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
-
+        pd_t(const convolution_desc_t *adesc, const primitive_attr_t *attr,
+                const convolution_fwd_pd_t *hint_fwd_pd)
+            : cpu_convolution_bwd_data_pd_t(adesc, attr, hint_fwd_pd)
+            , jcp_()
+            , rtus_() {}
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_1x1:", isa_, ""),
                 jit_sve_1x1_convolution_bwd_data_t);
 
@@ -547,9 +550,9 @@ struct jit_sve_1x1_convolution_bwd_weights_t : public primitive_t {
         }
 
         // TODO (Roma): structs conf header cleanup
-        jit_1x1_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
+        jit_1x1_conv_conf_t jcp_;
         typename cpu_reducer_t<data_type::f32, isa_>::conf_t reducer_bia_conf_;
-        reduce_to_unit_stride_t rtus_ = utils::zero<decltype(rtus_)>();
+        reduce_to_unit_stride_t rtus_;
 
     protected:
         bool set_default_formats() {

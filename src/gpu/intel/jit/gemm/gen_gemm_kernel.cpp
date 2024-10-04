@@ -99,10 +99,9 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
             aux_params_.k0 = utils::rnd_up(aux_params_.k0, problem_.bqGroupK);
     }
 
-    if (hw_ == ngen::HW::Xe2) {
-#endif
-        // Temporary hack to use XeHPC register banking on Xe2, in order
-        //   to successfully reuse XeHPC strategies.
+    if (hw_ == ngen::HW::Xe2 || hw_ == ngen::HW::Xe3) {
+        // Use XeHPC register banking on Xe2/Xe3, in order
+        // to successfully reuse XeHPC strategies.
         strategy_.raHW = ngen::HW::XeHPC;
 
         // Bump up alignments to 16 bytes for block 2D if available.
@@ -280,12 +279,7 @@ void gen_gemm_kernel_desc_t::update_driver_info() {
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
-#if XE3
         REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-#endif
-#if XE3P
-        REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
-#endif
         default:
             assert(!"Unsupported architecture");
             driver_info_ = entry_->driverInfo;
@@ -389,11 +383,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool can_2d_c = (ldc * problem_.Tc <= 16777216);
 
     // Xe2 requires stronger alignment for block 2D.
-#if XE3
-    if (arch == arch_t::xe2 || arch == arch_t::xe3) {
-#else
-    if (arch == arch_t::xe2) {
-#endif
+    if (arch == compute::gpu_arch_t::xe2 || arch == compute::gpu_arch_t::xe3) {
         can_2d_a &= (align_a % 16 == 0);
         can_2d_b &= (align_b % 16 == 0);
         can_2d_c &= (align_c % 16 == 0);
@@ -777,9 +767,7 @@ void gen_gemm_xe_systolic_kernel_desc_t::choose_unrolls(
             break;
         case compute::gpu_arch_t::xe_hpc:
         case compute::gpu_arch_t::xe2:
-#if XE3
         case compute::gpu_arch_t::xe3:
-#endif
             if (utils::one_of(a_type, f16, bf16)) {
                 if (unroll_m != 0)
                     unroll_n = (unroll_m > 16) ? 32 : 16;

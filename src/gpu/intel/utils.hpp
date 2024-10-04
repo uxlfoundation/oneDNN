@@ -238,6 +238,15 @@ struct device_id_hash_t {
 };
 
 } // namespace gpu_utils
+
+template <typename out_type, typename in_type>
+inline out_type into(in_type in) {
+    gpu_assert(gpu_utils::validate_into<out_type>(in))
+            << "Value " << in << " cannot be converted into type "
+            << typeid(out_type).name();
+    return static_cast<out_type>(in);
+}
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

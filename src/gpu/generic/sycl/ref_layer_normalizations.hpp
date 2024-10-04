@@ -59,6 +59,8 @@ struct ref_layer_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
                     && is_supported_type(stat_md()->data_type)
                     && check_scale_shift_data_type({f32, bf16, f16})
                     && attr()->has_default_values(sm::scales_runtime)
+                    && IMPLICATION(
+                            !attr()->scales_.has_default_values(), scales_ok())
                     && attr_scales_ok() && set_default_formats_common()
                     && md_dims_in_range(src_md());
             if (!ok) return status::unimplemented;

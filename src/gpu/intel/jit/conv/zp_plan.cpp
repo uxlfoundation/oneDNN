@@ -200,7 +200,7 @@ private:
     public:
         split_t() = default;
         split_t(const layout_t &c, const bmnk_mapper_t &mapper, abc_kind_t abc,
-                int factor, int simd_dim_idx, int simd) {
+                int factor, dim_idx_t simd_dim_idx, int simd) {
             ir_assert(factor > 1);
             bmnk_kind_t split_mn
                     = (abc == abc_kind_t::a ? bmnk_kind_t::m : bmnk_kind_t::n);
@@ -216,9 +216,9 @@ private:
             if (dim % factor != 0) return;
             dim_t subtile_dim = dim / factor;
             dim_t cur_dim = 1;
-            int cur_idx = -1;
+            dim_idx_t cur_idx = static_cast<dim_idx_t>(-1);
             for (auto &b : mn_blocks) {
-                if (cur_idx == -1) {
+                if (cur_idx == static_cast<dim_idx_t>(-1)) {
                     cur_idx = b.dim_idx;
                 } else if (b.dim_idx != cur_idx) {
                     return;
@@ -337,7 +337,7 @@ public:
         kw_var = simd_bcast(kw_var);
 
         bool small_ic = is_small(data_type_, ic);
-        int kw_idx = 5; // TODO: support non-forward kw!
+        dim_idx_t kw_idx = 5; // TODO: support non-forward kw!
 
         std::vector<dim_t> tile_dim(b_layout_.ndims(), 1);
         for (auto &b : b_layout_.blocks()) {
@@ -769,20 +769,6 @@ private:
         auto mad = mad_t::make(
                 hw, comp_type, simd_, zp_type, zp_stride, wei_type, wei_stride);
         return ret.append(mad.call({comp, comp, real_zp, wei}));
-    }
-
-    stmt_t maybe_typecast_zp_src(buffer_manager_t &buf_mgr, type_t &type,
-            expr_t &zp, int size) const {
-        auto real_type = type_t::s32();
-        stmt_t ret;
-        if (type != real_type) {
-            auto src_zp = load_t::make(type.with_elems(size), zp, 0);
-            zp = buf_mgr.get("zp_src_s32", real_type.size() * size);
-            ret = store_t::make(
-                    zp, 0, cast(src_zp, real_type.with_elems(size)));
-            type = real_type;
-        }
-        return ret;
     }
 
     dim_idx_t g_idx_ = -1;

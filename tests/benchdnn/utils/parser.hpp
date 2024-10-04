@@ -294,8 +294,6 @@ bool parse_driver_shared_settings(S &s, const S &def, const char *str) {
             || parse_ctx_init(s.ctx_init, def.ctx_init, str)
             || parse_ctx_exe(s.ctx_exe, def.ctx_exe, str)
             || parse_test_pattern_match(s.pattern, str)
-            || parse_impl(s.impl_filter, def.impl_filter, str)
-            || parse_skip_impl(s.impl_filter, def.impl_filter, str)
             || parse_perf_template(s.perf_template, s.perf_template_def,
                     s.perf_template_csv(), str)
             || parse_reset(s, str) || parse_help(str);

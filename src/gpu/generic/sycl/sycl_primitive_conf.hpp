@@ -96,7 +96,6 @@ struct sycl_eltwise_conf_t {
     dim_t h;
     dim_t w;
     dim_t wk_size;
-    dim_t post_po_len;
     sycl_post_ops_t post_ops;
 };
 
@@ -110,8 +109,6 @@ struct sycl_matmul_conf_t {
     bool transpose_dst;
     bool transpose_weights;
     bool transpose_bias;
-    dim_t post_po_len;
-    xpu::sycl::md_t binary_src_arr[sycl::sycl_post_ops_t::max_post_ops];
     sycl_post_ops_t post_ops;
     int wk_size;
 
@@ -319,7 +316,6 @@ struct sycl_softmax_conf_t {
     alg_kind_t alg_kind;
     dim_t wk_size;
 
-    int po_len;
     dim_t axis;
     dim_t axis_size;
     dim_t inner_size;

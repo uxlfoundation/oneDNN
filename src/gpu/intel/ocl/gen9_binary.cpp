@@ -250,7 +250,7 @@ status_t gen9_binary_t::pd_t::init_conf(impl::engine_t *engine) {
 
         if (rem && !all_dims_broadcast) { return status::unimplemented; }
 
-        int rounded_last_dim = utils::rnd_up(last_dim, subgroup_size);
+        dim_t rounded_last_dim = utils::rnd_up(last_dim, subgroup_size);
 
         dim_t mixed_dim = 1;
         for (int i = 0; i < (ndims - 1); ++i) {

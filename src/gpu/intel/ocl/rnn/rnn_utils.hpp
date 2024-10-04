@@ -646,17 +646,17 @@ struct workspace_t : public data_helper_t {
                              conf.ws_grid_comp_offset, conf.ws_grid_comp_size)
                                                 : nullptr) {
         if (gates_) {
-            const int n_b = conf_.mb;
-            const int n_tb = conf_.n_iter * n_b;
-            const int n_dtb = conf_.n_dir * n_tb;
+            const dim_t n_b = conf_.mb;
+            const dim_t n_tb = conf_.n_iter * n_b;
+            const dim_t n_dtb = conf_.n_dir * n_tb;
             gates_strides_
                     = {n_dtb * conf_.gates_ws_ld, n_tb * conf_.gates_ws_ld,
                             n_b * conf_.gates_ws_ld, conf_.gates_ws_ld};
         }
         if (states_) {
-            const int n_b = conf_.mb;
-            const int n_tb = (conf_.n_iter + 1) * n_b;
-            const int n_dtb = conf_.n_dir * n_tb;
+            const dim_t n_b = conf_.mb;
+            const dim_t n_tb = (conf_.n_iter + 1) * n_b;
+            const dim_t n_dtb = conf_.n_dir * n_tb;
             states_strides_
                     = {n_dtb * conf_.states_ws_ld, n_tb * conf_.states_ws_ld,
                             n_b * conf_.states_ws_ld, conf_.states_ws_ld};

@@ -205,7 +205,7 @@ struct relative_md_t {
         rmd.broadcast_mask = ~0;
         uint16_t mask_bit = 1;
         for (int i = ndims - 1; i >= 0; i--) {
-            if (ndim_normalizer.dim(i, md) > 1) rmd.broadcast_mask &= ~mask_bit;
+            if (dims[i] > 1) rmd.broadcast_mask &= ~mask_bit;
             mask_bit = static_cast<uint16_t>(mask_bit << 1);
         }
 

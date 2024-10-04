@@ -161,9 +161,8 @@ struct relative_md_t {
     static constexpr int to_md_idx(idx_t idx, int ndims) {
         return ndims - 1 - idx.as_int();
     }
-    static idx_t from_md_idx(
-            int idx, int ndims, const ndim_normalizer_t &ndim_normalizer) {
-        return {into<int8_t>(ndims - 1 - ndim_normalizer.dim_idx(idx))};
+    static idx_t from_md_idx(int idx, int ndims) {
+        return {into<int8_t>(ndims - 1 - idx)};
     }
 
     // A compressed representation of the inner block. This cannot represent all
@@ -198,8 +197,7 @@ struct relative_md_t {
         gpu_assert(layout.size() <= blocking_t::max_dims);
 
         for (size_t i = 0; i < layout.size(); i++) {
-            rmd.inner_layout.idxs[i]
-                    = from_md_idx(layout[i].dim_idx, ndims, ndim_normalizer);
+            rmd.inner_layout.idxs[i] = from_md_idx(layout[i].dim_idx, ndims);
             rmd.inner_layout.blocks[i] = into<uint8_t>(layout[i].block);
         }
 

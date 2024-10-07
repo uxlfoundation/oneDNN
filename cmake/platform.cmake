@@ -247,11 +247,6 @@ elseif(UNIX OR MINGW)
         append(CMAKE_CCXX_FLAGS "-Wsign-compare")
     endif()
 
-    # Generating frame pointers for easier performance profiling
-    if(DNNL_TARGET_ARCH STREQUAL "X64")
-        append(CMAKE_CCXX_FLAGS "-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
-    endif()
-
     platform_unix_and_mingw_common_ccxx_flags(CMAKE_CCXX_FLAGS)
     platform_unix_and_mingw_common_cxx_flags(CMAKE_CXX_FLAGS)
     platform_unix_and_mingw_noexcept_ccxx_flags(CMAKE_CMAKE_CCXX_NOEXCEPT_FLAGS)

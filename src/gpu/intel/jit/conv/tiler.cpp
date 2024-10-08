@@ -1271,6 +1271,8 @@ public:
 
     int cur_index() const { return params_gen_.cur_index(); }
 
+    int cur_index() const { return params_gen_.cur_index(); }
+
     void print_all() const { params_gen_.print_all(); }
 
     static const primitive_info_t &get_primitive_info(
@@ -1462,6 +1464,16 @@ public:
     bool is_valid() const {
         if (is_tuning_mode()) return tuner_->is_valid();
         return params_gen_.is_valid();
+    }
+
+    int cur_index() const {
+        if (is_tuning_mode()) return tuner_->cur_index();
+        return params_gen_.cur_index();
+    }
+
+    void set_cur_index(int idx) {
+        ir_assert(!is_tuning_mode());
+        return params_gen_.set_cur_index(idx);
     }
 
     void set_params(conv_config_t &cfg) {
@@ -1658,6 +1670,14 @@ int32_t conv_tiler_t::cur_version() const {
 
 void conv_tiler_t::set_cur_version(int32_t version) {
     impl_->set_cur_version(version);
+}
+
+int conv_tiler_t::cur_index() const {
+    return impl_->cur_index();
+}
+
+void conv_tiler_t::set_cur_index(int idx) {
+    impl_->set_cur_index(idx);
 }
 
 void conv_tiler_t::set_params(conv_config_t &cfg) {

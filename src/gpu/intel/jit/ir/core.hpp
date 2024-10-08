@@ -2450,7 +2450,9 @@ class stmt_seq_t : public stmt_impl_t {
 public:
     IR_DECL_STMT_TYPE_ID(stmt_seq_t)
 
-    static stmt_t make(const std::vector<stmt_t> &vec);
+    static stmt_t make(const std::vector<stmt_t> &vec) {
+        return stmt_t(new stmt_seq_t(vec));
+    }
 
     static stmt_t make(const stmt_t &head, const stmt_t &tail) {
         return head.append(tail);
@@ -2474,37 +2476,24 @@ private:
         : stmt_impl_t(_type_info()), vec(vec) {}
 };
 
-// While loop statement with a condition.
-// C++ equivalent:
-//    while (cond) {
-//        body;
-//    }
-class while_t : public stmt_impl_t {
-public:
-    IR_DECL_STMT_TYPE_ID(while_t)
-
-    static stmt_t make(const expr_t &cond, const stmt_t &body = {}) {
-        return stmt_t(new while_t(cond, body));
+inline stmt_t stmt_t::append(const stmt_t &s) const {
+    if (is_empty()) return s;
+    if (s.is_empty()) return *this;
+    auto *seq1 = this->as_ptr<stmt_seq_t>();
+    auto *seq2 = s.as_ptr<stmt_seq_t>();
+    std::vector<stmt_t> vec;
+    if (seq1) {
+        vec.insert(vec.end(), seq1->vec.begin(), seq1->vec.end());
+    } else {
+        vec.push_back(*this);
     }
-
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
-        return cond.is_equal(other.cond) && body.is_equal(other.body);
+    if (seq2) {
+        vec.insert(vec.end(), seq2->vec.begin(), seq2->vec.end());
+    } else {
+        vec.push_back(s);
     }
-
-    size_t get_hash() const override { return ir_utils::get_hash(cond, body); }
-
-    IR_DECLARE_TRAVERSERS()
-
-    expr_t cond;
-    stmt_t body;
-
-private:
-    while_t(const expr_t &cond, const stmt_t &body)
-        : stmt_impl_t(_type_info()), cond(cond), body(body) {}
-};
+    return stmt_seq_t::make(vec);
+}
 
 // Function call attribute.
 class func_call_attr_impl_t : public object_impl_t {

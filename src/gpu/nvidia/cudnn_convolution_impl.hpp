@@ -518,7 +518,7 @@ public:
         }
     }
 
-    void execute_f32_sum(cudnnHandle_t handle, void *y, void *y_fp32_data,
+    void execute_f32_dst_sum(cudnnHandle_t handle, void *y, void *y_fp32_data,
             float alpha_, float beta_) const {
         float alpha1 = 0.0f;
         float alpha2 = alpha_;
@@ -526,6 +526,14 @@ public:
         CUDNN_EXECUTE_FUNC(cudnnOpTensor, handle, op_tensor_desc, &alpha1,
                 descs[io::y], y, &alpha2, descs[io::y], y, &beta, y_fp32_desc,
                 y_fp32_data);
+    }
+
+    void execute_f32_src_sum(cudnnHandle_t handle, void *x, void *y,
+            float alpha_, float beta_) const {
+        float alpha = alpha_;
+        float beta = beta_;
+        CUDNN_EXECUTE_FUNC_V(cudnnAddTensor, handle, &alpha, descs[io::y], x,
+                &beta, y_fp32_desc, y);
     }
 
     void execute_eltwise(cudnnHandle_t handle, void *src, void *dst) const {
@@ -560,7 +568,7 @@ public:
         }
 
         float *y_fp32_data = nullptr;
-        if (y_f32_is_required()) { y_fp32_data = (float *)args[11]; }
+        if (y_f32_is_required()) { y_fp32_data = (float *)args[10]; }
 
         bool fused = conv_bias || conv_bias_eltwise;
 
@@ -580,7 +588,8 @@ public:
             }
         }
 
-        auto &y_desc = y_f32_is_required() ? y_fp32_desc : descs[io::y];
+        auto &y_desc = (y_f32_is_required() || use_temp_dst_) ? y_fp32_desc
+                                                              : descs[io::y];
         void *y_data = y_f32_is_required() ? y_fp32_data : output;
 
         if (fused) {
@@ -622,7 +631,7 @@ public:
                                 handle, y, post_op_scratch, sum_scale, 1.0f);
                     } else if (last_op) {
                         if (y_f32_is_required()) {
-                            execute_f32_sum(
+                            execute_f32_dst_sum(
                                     handle, y, y_fp32_data, 1.0f, sum_scale);
                         } else {
                             execute_sum(handle, post_op_scratch, y, 1.0f,
@@ -685,7 +694,7 @@ public:
         // The scratchpad size will need to be modified in
         // cases where the dst_scaling is used and the output
         // uses s8 values.
-        if (use_scales_dst_) {
+        if (use_scales_dst_ || use_temp_dst_) {
             CHECK(create_and_set_tensor_descriptor(&y_fp32_desc,
                     CUDNN_DATA_FLOAT, ndims[y], dims[y], strides[y]));
             CHECK(CUDNN_EXECUTE_FUNC_S(cudnnGetConvolutionForwardWorkspaceSize,

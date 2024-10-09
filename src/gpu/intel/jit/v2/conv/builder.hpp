@@ -17,10 +17,9 @@
 #ifndef GPU_INTEL_JIT_V2_CONV_BUILDER_HPP
 #define GPU_INTEL_JIT_V2_CONV_BUILDER_HPP
 
-#include "gpu/intel/jit/v2/conv/bench_data.hpp"
+#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/v2/conv/kernel_desc.hpp"
-
-#include "oneapi/dnnl/dnnl.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -28,23 +27,10 @@ namespace gpu {
 namespace intel {
 namespace jit {
 namespace v2 {
-
-class var_manager_t;
-
 namespace conv {
 
-class bench_manager_t {
-public:
-    bench_manager_t() : engine_(engine::kind::gpu, 0) {}
-    const engine &get_engine() const { return engine_; }
-    ~bench_manager_t();
-
-private:
-    engine engine_;
-};
-
-bench_data_t bench(
-        const bench_manager_t &bench_mger, const kernel_desc_t &kernel_desc);
+stmt_t build_ir(const kernel_desc_t &desc, const kernel_info_t &kernel_info,
+        const grid_context_t &grid_ctx);
 
 } // namespace conv
 } // namespace v2

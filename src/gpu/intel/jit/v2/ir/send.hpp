@@ -927,6 +927,7 @@ private:
 
 inline send_plan_t create_send_plan(const send_params_t &params,
         const view_t &view, bool allow_fail = false) {
+    ir_assert(params.max_entry_reg_size > 0);
     send_plan_builder_t spb(params, view);
     auto plan = spb.build();
     if (!plan) {

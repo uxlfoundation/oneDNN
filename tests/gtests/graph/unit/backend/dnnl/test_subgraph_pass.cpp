@@ -69,10 +69,6 @@ TEST(test_subgraph_pass, Kind2Str) {
             "Dnnl_add_zps");
 }
 
-TEST(test_subgraph_pass, LargerPartitionKernelCreator) {
-    ASSERT_NO_THROW(graph::dnnl_impl::large_partition_kernel_creator());
-}
-
 TEST(test_subgraph_pass, LowerDownToInt8Conv) {
     /*
         | (u8/s8)  | (s8)
@@ -1297,7 +1293,7 @@ TEST(test_subgraph_pass, MemoryPlanning) {
     ASSERT_TRUE(mem_offkeys.empty());
 }
 
-TEST(test_subgraph_pass_subgraph_pass, FusePostOpsForConvDepthwise_CPU) {
+TEST(test_subgraph_pass, FusePostOpsForConvDepthwise_CPU) {
     /*   conv
           |
          conv (depthwise)
@@ -1368,7 +1364,7 @@ TEST(test_subgraph_pass_subgraph_pass, FusePostOpsForConvDepthwise_CPU) {
     ASSERT_EQ(subgraph->num_ops(), 2U);
 }
 
-TEST(test_subgraph_pass_subgraph_pass, FailToFusePostOpsForConvDepthwise_CPU) {
+TEST(test_subgraph_pass, FailToFusePostOpsForConvDepthwise_CPU) {
     /*   conv
           |
          conv (depthwise)
@@ -2184,7 +2180,7 @@ TEST(test_subgraph_pass, CombineBinaryPostOpScales) {
     ASSERT_EQ(subgraph->num_ops(), 2U);
 }
 
-TEST(test_subgraph_pass_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
+TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     namespace utils = dnnl::graph::tests::unit::utils;
     dnnl_impl::dnnl_backend_t::get_singleton();
@@ -2340,7 +2336,7 @@ TEST(test_subgraph_pass_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
     ASSERT_EQ(post_ops.size(), 1U);
 }
 
-TEST(test_subgraph_pass_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
+TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     namespace utils = dnnl::graph::tests::unit::utils;
     dnnl_impl::dnnl_backend_t::get_singleton();

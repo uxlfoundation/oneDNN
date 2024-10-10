@@ -29,7 +29,7 @@
 using namespace dnnl::impl::graph;
 using namespace dnnl::graph::tests::unit::utils;
 
-TEST(test_op_schema_op_schema, InferSqueezeOutputShape) {
+TEST(test_op_schema, InferSqueezeOutputShape) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
     const op_kind_t kind = dnnl_impl::op_kind::dnnl_squeeze;
@@ -61,7 +61,7 @@ TEST(test_op_schema_op_schema, InferSqueezeOutputShape) {
     }
 }
 
-TEST(test_op_schema_op_schema, InferUnsqueezeOutputShape) {
+TEST(test_op_schema, InferUnsqueezeOutputShape) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
     const op_kind_t kind = dnnl_impl::op_kind::dnnl_unsqueeze;
@@ -95,7 +95,7 @@ TEST(test_op_schema_op_schema, InferUnsqueezeOutputShape) {
     }
 }
 
-TEST(test_op_schema_op_schema, InferUnsqueezeOutputShapeBasedOnAxes) {
+TEST(test_op_schema, InferUnsqueezeOutputShapeBasedOnAxes) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
     const op_kind_t kind = dnnl_impl::op_kind::dnnl_unsqueeze;

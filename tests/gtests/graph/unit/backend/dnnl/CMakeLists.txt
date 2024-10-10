@@ -34,21 +34,15 @@ FILE(GLOB DNNL_COMMON_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/test_layout_propagator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_logical_tensor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_memory_planning.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_op_executable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_op_schema.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_partition.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_scratchpad.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_subgraph_pass.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_thread_local_cache.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_select.cpp
 )
 
 # op compile/execution need test on both CPU and GPU
 FILE(GLOB DNNL_OP_EXECUTION_TEST_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_common.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_constant_cache.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_scratchpad.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_subgraph_pass.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_op_executable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_select.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_batch_norm.cpp
@@ -93,11 +87,11 @@ foreach(TEST_FILE ${DNNL_COMMON_TEST_SOURCES})
     get_filename_component(file_name ${TEST_FILE} NAME_WE)
     string(REPLACE "_cpu" "" file_name ${file_name})
     string(REPLACE "test_" "test_graph_unit_dnnl_" test_suite_name ${file_name})
-    register_graph_test_suite(${test_suite_name}_cpu "${file_name}*")
+    register_graph_test_suite(${test_suite_name}_cpu "${file_name}_*")
 endforeach()
 
 foreach(TEST_FILE ${DNNL_OP_EXECUTION_TEST_SOURCES})
     get_filename_component(file_name ${TEST_FILE} NAME_WE)
     string(REPLACE "test_" "test_graph_unit_dnnl_" test_suite_name ${file_name})
-    register_graph_test_suite(${test_suite_name} "${file_name}*")
+    register_graph_test_suite(${test_suite_name} "${file_name}_*")
 endforeach()

@@ -49,7 +49,7 @@ void maybe_init_layout(
         tag.remove_dim('a');
         non_spatial_ndims--;
     }
-    while (tag.ndims() > into<dim_idx_t>(md.ndims)) {
+    while (tag.ndims() > md.ndims) {
         tag.remove_dim(dim_idx::as_tag(non_spatial_ndims));
     }
     jit::layout_t layout(md, tag.str(), /*do_normalize=*/false);

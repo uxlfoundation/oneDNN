@@ -294,7 +294,7 @@ layout_raw_tag_t layout_raw_tag_t::collapse_x() const {
                     break;
                 }
             }
-            x_expanded += 'a' + j;
+            x_expanded += dim_idx::as_tag(j);
         }
         if (!ok) continue;
         auto pos = tag.find(x_expanded);

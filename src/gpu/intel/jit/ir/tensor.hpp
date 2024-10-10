@@ -980,8 +980,7 @@ public:
         if (block == 1) return true;
         if (blocks().empty()) return false;
         auto &b = blocks().back();
-        if (dim_idx != static_cast<dim_idx_t>(-1) && b.dim_idx != dim_idx)
-            return false;
+        if (dim_idx != dim_idx::invalid && b.dim_idx != dim_idx) return false;
         if (b.block % block != 0) return false;
         return true;
     }

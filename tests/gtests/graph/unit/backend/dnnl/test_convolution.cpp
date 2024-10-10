@@ -950,7 +950,7 @@ TEST(test_convolution_execute, Convolution3DNxcOix) {
     }
 }
 
-TEST(test_conv_execute, ConvolutionF16F16F16_GPU) {
+TEST(test_convolution_execute, ConvolutionF16F16F16_GPU) {
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *eng = get_engine();
@@ -2671,7 +2671,7 @@ TEST(test_convolution_execute, ConvAddEltwise) {
     }
 }
 
-TEST(test_conv_execute_subgraph_fp32, ConvDepthwise_CPU) {
+TEST(test_convolution_execute_subgraph_fp32, ConvDepthwise_CPU) {
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -3388,7 +3388,7 @@ TEST(test_convolution_execute_subgraph_int8, Conv2dSumRelu) {
     }
 }
 
-TEST(test_conv_execute_subgraph_int8,
+TEST(test_convolution_execute_subgraph_int8,
         Conv2dSumReluWithDifferentSrc1AndDstType_GPU) {
     using dims = graph::dnnl_impl::dims;
 
@@ -4880,7 +4880,7 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionBiasGeluU8s8u8MixBf16) {
     }
 }
 
-TEST(test_conv_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
+TEST(test_convolution_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -5021,7 +5021,8 @@ TEST(test_conv_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
     }
 }
 
-TEST(test_conv_execute_subgraph_int8, ConvolutionBiasaddGeluU8s8u8MixBf16) {
+TEST(test_convolution_execute_subgraph_int8,
+        ConvolutionBiasaddGeluU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -5221,7 +5222,7 @@ TEST(test_conv_execute_subgraph_int8, ConvolutionBiasaddGeluU8s8u8MixBf16) {
     }
 }
 
-TEST(test_conv_execute_subgraph_int8, ConvolutionSwishU8s8u8MixBf16) {
+TEST(test_convolution_execute_subgraph_int8, ConvolutionSwishU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
 
@@ -5337,7 +5338,7 @@ TEST(test_conv_execute_subgraph_int8, ConvolutionSwishU8s8u8MixBf16) {
     ASSERT_EQ(part->get_ops().size(), 10U);
 }
 
-TEST(test_conv_execute_subgraph_int8, ConvolutionSumU8s8u8MixBf16) {
+TEST(test_convolution_execute_subgraph_int8, ConvolutionSumU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
 
@@ -5522,7 +5523,7 @@ TEST(test_conv_execute_subgraph_int8, ConvolutionSumU8s8u8MixBf16) {
     }
 }
 
-TEST(test_conv_execute_subgraph_int8,
+TEST(test_convolution_execute_subgraph_int8,
         ConvolutionBinaryAddFailToFuseAsConvSumU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
@@ -5685,7 +5686,7 @@ TEST(test_conv_execute_subgraph_int8,
     }
 }
 
-TEST(test_conv_execute_subgraph_int8, ConvolutionAddU8s8u8MixBf16) {
+TEST(test_convolution_execute_subgraph_int8, ConvolutionAddU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
 * Copyright 2022, 2024 Arm Ltd. and affiliates
 *
@@ -47,6 +47,7 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     static const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> the_map = REG_DECONV_P({
         {{forward}, {
+            CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx10_2_512_amx_2>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx_fp16>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(jit_avx512_core_amx_deconvolution_fwd_t)

@@ -492,6 +492,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
         cold_cache[j] = cold_cache_t(dnnl_args[j], v_stream[j]);
         if (use_profiling) reset_gpu_profiling(v_stream[j]);
+        cold_cache[j] = cold_cache_t(dnnl_args[j], v_stream[j]);
     }
 
     bool is_first_loop = true;

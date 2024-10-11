@@ -275,7 +275,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type, false,
             false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB, jcp_.LDC,
-            vbrgM, vN, vK, strides_ptr));
+            vbrgM, vN, vK, strides_ptr, jcp_.is_bf32, jcp_.is_tf32));
     brgattr.use_uker = jcp_.use_uker;
     brgattr.use_interleave_stores = jcp_.use_interleave_stores;
     brgattr.hint_prefetching = jcp_.hint_prefetching;
@@ -951,6 +951,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         ajcp.nb_ic_int = 1;
         ajcp.is_nspc = true;
         ajcp.is_bf32 = jcp.is_bf32;
+        ajcp.is_tf32 = jcp.is_tf32;
         ajcp.typesize_in = jcp.src_dsz;
         ajcp.ic_block_int = jcp.amx_w;
 

@@ -50,3 +50,11 @@
 --attr-post-ops=
 --attr-zero-points=,src:common:31+dst:common:15
 --batch=shapes_ci
+# BF32 and TF32
+--reset
+--dir=FWD_D
+--dt=f32
+--stag=any,axb
+--dtag=any,axb
+--attr-fpmath=bf32,tf32
+--batch=shapes_ci

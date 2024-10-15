@@ -653,25 +653,6 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     // Use plain tag for output to avoid extra reorders.
     if (src_output) src_tag = user_src_tag;
     if (dst_output) dst_tag = user_dst_tag;
-    if (user_src_req == "user") src_tag = user_src_tag = "user";
-    if (user_wei_req == "user") wei_tag = user_wei_tag = "user";
-    if (user_dst_req == "user") dst_tag = user_dst_tag = "user";
-}
-
-type_t output_type(const hw_t &hw, prop_kind_t prop_kind,
-        const primitive_attr_t *attr, data_type_t tensor_dt) {
-    if (prop_kind != prop_kind::backward_weights) {
-        if (tensor_dt == data_type::undef) return type_t();
-        return type_t(tensor_dt);
-    }
-#if XE3P
-    if (hw.to_ngen() == ngen::HW::Xe3p
-            && utils::one_of(attr->acc_mode_, accumulation_mode::relaxed,
-                    accumulation_mode::any)
-            && tensor_dt == data_type::bf16)
-        return type_t(tensor_dt);
-#endif
-    return type_t::f32();
 }
 
 status_t init_tensor_layouts(

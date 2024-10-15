@@ -83,9 +83,9 @@ struct settings_t : public base_settings_t {
 struct prb_t : public desc_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
-        : prb_t(s.desc, s.mb[0], s.dir[0], s.dt[0], s.tag[0], s.flags[0],
-                s.inplace[0], s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
-                s.check_alg) {
+        : prb_t(s.desc, s.dir[0], s.dt[0], s.tag[0], s.flags[0], s.check_alg,
+                s.mb[0], s.inplace[0], s.attributes.front(), s.ctx_init[0],
+                s.ctx_exe[0]) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
@@ -93,8 +93,7 @@ struct prb_t : public desc_t {
             const std::vector<dnnl_data_type_t> &dt,
             const std::vector<std::string> &tag, flags_t flags,
             check_alg_t check_alg, int64_t mb, bool inplace, const attr_t &attr,
-            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
-            const impl_filter_t &impl_filter)
+            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe)
         : desc_t(desc)
         , dir(dir)
         , dt(dt)
@@ -105,8 +104,7 @@ struct prb_t : public desc_t {
         , inplace(inplace)
         , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
 
         if (mb) this->mb = mb;
         // Broadcast data types if needed
@@ -134,7 +132,6 @@ struct prb_t : public desc_t {
     bool inplace;
     attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
 
     bool use_stats() const { return flags & GLOB_STATS; }
     bool use_sc() const { return flags & USE_SCALE; }

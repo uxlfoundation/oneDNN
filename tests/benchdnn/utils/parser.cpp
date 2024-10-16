@@ -387,6 +387,30 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     return v;
 }
 
+bool parse_impl_filter(impl_filter_t &impl_filter,
+        const impl_filter_t &def_impl_filter, bool use_impl, const char *str,
+        const std::string &option_name, const std::string &help) {
+    const auto chars2chars = [](const char *str) { return str; };
+    const auto str2impl_filter = [&](const char *str) {
+        std::vector<std::string> v, def;
+        parse_vector_str(v, def, chars2chars, str);
+
+        // Remove all quotes from input string since they affect the search.
+        for_(auto &e : v)
+        for (auto c : {'"', '\''}) {
+            size_t start_pos = 0;
+            while (start_pos != eol) {
+                start_pos = e.find_first_of(c, start_pos);
+                if (start_pos != eol) e.erase(start_pos, 1);
+            }
+        }
+
+        return impl_filter_t(v, use_impl);
+    };
+    return parse_single_value_option(impl_filter, def_impl_filter,
+            str2impl_filter, str, option_name, help);
+}
+
 } // namespace parser_utils
 
 // vector types
@@ -1376,8 +1400,8 @@ bool parse_bench_settings(const char *str) {
             || parse_fix_times_per_prb(str) || parse_max_ms_per_prb(str)
             || parse_num_streams(str) || parse_repeats_per_prb(str)
             || parse_mem_check(str) || parse_memory_kind(str) || parse_mode(str)
-            || parse_mode_modifier(str) || parse_skip_impl(str)
-            || parse_start(str) || parse_stream_kind(str) || parse_verbose(str);
+            || parse_mode_modifier(str) || parse_start(str)
+            || parse_stream_kind(str) || parse_verbose(str);
 
     // Last condition makes this help message to be triggered once driver_name
     // is already known.

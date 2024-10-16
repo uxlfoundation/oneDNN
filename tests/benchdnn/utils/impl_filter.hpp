@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,8 +34,6 @@ private:
     std::vector<std::string> impl_names_;
     bool use_impl_; // `true` to `--impl`, `false` to `--skip-impl`.
 };
-
-extern impl_filter_t global_impl_filter;
 
 // Fixed filter to remove running reference impls for prim_ref support.
 const impl_filter_t &get_prim_ref_impl_filter();

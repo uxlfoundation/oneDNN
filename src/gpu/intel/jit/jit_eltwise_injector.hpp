@@ -21,6 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/jit_generator.hpp"
 
 namespace dnnl {
@@ -68,8 +69,7 @@ struct jit_eltwise_injector_f32 {
 
     void prepare();
     void compute(const ngen::GRF &reg) { compute(reg - reg); }
-    void compute(const ngen::GRFRange &regs, int seed = -1, int seed_off = -1,
-            ngen::DataType = ngen::DataType::invalid);
+    void compute(const ngen::GRFRange &regs);
     void compute(const int *grfs, int ngrf, int seed = -1, int seed_off = -1,
             ngen::DataType = ngen::DataType::invalid);
 

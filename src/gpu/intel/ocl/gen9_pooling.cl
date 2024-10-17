@@ -40,9 +40,6 @@ inline void write_vect_c_block_int(int idx, __global int *ptr, off_t c,
 KERNEL_ATTR
 __kernel void gen9_pooling_fwd(__global DATA_T *src, __global int *ws,
         __global DATA_T *dst, const dim_t batch_id POST_OP_ARGS) {
-
-    if (GWS_OVERFLOW) return;
-
     const off_t mb0 = MB_BLOCK_SIZE * batch_id + GWS_GET_MB();
 #if UNROLL_MB_COUNT > 1
     const off_t mb1 = mb0 + MB / 2;
@@ -171,8 +168,8 @@ __kernel void gen9_pooling_fwd(__global DATA_T *src, __global int *ws,
     const off_t id_end = min(od * SD - PD + KD, ID);
     const off_t ih_end = min(oh * SH - PH + KH, IH);
     const off_t iw_end = min(ow * SW - PW + KW, IW);
-    const int num_summands = (int)(ih_end - ih_start) * (int)(iw_end - iw_start)
-            * (int)(id_end - id_start);
+    const off_t num_summands
+            = (ih_end - ih_start) * (iw_end - iw_start) * (id_end - id_start);
     D0 = D0 / num_summands;
     D1 = D1 / num_summands;
 #endif // ALG_AVG_NP
@@ -282,8 +279,6 @@ KERNEL_ATTR
 __kernel void gen9_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
         __global DATA_T *diff_dst) {
 
-    if (GWS_OVERFLOW) return;
-
     const off_t mb0 = GWS_GET_MB();
 #if UNROLL_MB_COUNT > 1
     off_t mb[UNROLL_MB_COUNT];
@@ -320,19 +315,19 @@ __kernel void gen9_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
 #if UNROLL_MB_COUNT > 1
     VECT_FLOAT_T S[UNROLL_MB_COUNT] = {0};
 #endif
-    for (int kd = 0; kd < KD; kd++) {
+    for (off_t kd = 0; kd < KD; kd++) {
         off_t od = (id + PD - kd);
         if (od % SD != 0) continue;
         od /= SD;
         if (od < 0 || od >= OD) continue;
 
-        for (int kh = 0; kh < KH; kh++) {
+        for (off_t kh = 0; kh < KH; kh++) {
             off_t oh = (ih + PH - kh);
             if (oh % SH != 0) continue;
             oh /= SH;
             if (oh < 0 || oh >= OH) continue;
 
-            for (int kw = 0; kw < KW; kw++) {
+            for (off_t kw = 0; kw < KW; kw++) {
                 off_t ow = (iw + PW - kw);
                 if (ow % SW != 0) continue;
                 ow /= SW;
@@ -400,8 +395,8 @@ __kernel void gen9_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
                 const off_t id_end = min(id - kd + KD, ID);
                 const off_t ih_end = min(ih - kh + KH, IH);
                 const off_t iw_end = min(iw - kw + KW, IW);
-                const int num_summands = (int)(ih_end - ih_start)
-                        * (int)(iw_end - iw_start) * (int)(id_end - id_start);
+                const off_t num_summands = (ih_end - ih_start)
+                        * (iw_end - iw_start) * (id_end - id_start);
                 D0 /= num_summands;
                 D1 /= num_summands;
 #if UNROLL_MB_COUNT > 1

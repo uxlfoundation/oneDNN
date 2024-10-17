@@ -237,9 +237,6 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns,
 #if XE3
                     || patterns[0].selector.hw == kcatalog::HWTagXe3
 #endif
-#if XE3P
-                    || patterns[0].selector.hw == kcatalog::HWTagXe3p
-#endif
                     )) {
         std::vector<MatchParams> override_patterns;
         override_patterns.reserve(npatterns);

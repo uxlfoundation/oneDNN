@@ -287,7 +287,7 @@ static inline bool operator>=(const Product &p1, const Product &p2) { return !(p
 static inline bool operator<=(const Product &p1, const Product &p2) { return !(p2 < p1); }
 
 static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
-    switch (family) {
+    switch(family) {
         // Guaranteed integrated
         case ProductFamily::GenericGen9:
         case ProductFamily::GenericGen10:
@@ -306,10 +306,6 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericXeHPC:
         case ProductFamily::DG2:
         case ProductFamily::PVC:
-#if XE3P
-        case ProductFamily::GenericXe3p:
-#endif
-        case ProductFamily::PVCVG:
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
             return PlatformType::Unknown;

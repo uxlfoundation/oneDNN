@@ -305,9 +305,6 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericXeHPC:
         case ProductFamily::DG2:
         case ProductFamily::PVC:
-#if XE3P
-        case ProductFamily::GenericXe3p:
-#endif
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
             return PlatformType::Unknown;

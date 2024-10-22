@@ -344,7 +344,7 @@ std::string case_to_str(const std::string &json_file,
         const std::map<size_t, std::string> &in_shapes,
         const std::map<size_t, std::string> &op_attrs,
         const std::string &fpmath_mode, const size_t expected_n_partitions,
-        const int64_t mb) {
+        const int64_t mb, const dnnl_data_type_t dt) {
     std::stringstream s;
     dump_global_params(s);
 

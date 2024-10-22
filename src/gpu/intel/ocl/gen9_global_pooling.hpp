@@ -59,7 +59,8 @@ struct gen9_global_pooling_fwd_t : public gpu_primitive_t {
             VDISPATCH_POOLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
-            CHECK(init_conf(engine));
+            VDISPATCH_POOLING_SC(init_conf(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "pooling");
 
             bool is_training = desc_.prop_kind == forward_training;
             if (desc()->alg_kind == pooling_max && is_training) {
@@ -70,8 +71,6 @@ struct gen9_global_pooling_fwd_t : public gpu_primitive_t {
                 init_default_ws(s32);
             }
 
-            VDISPATCH_POOLING_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "pooling");
             VDISPATCH_POOLING_SC(init_reduction(engine), "init_reduction()");
             init_scratchpad();
             return status::success;
@@ -194,7 +193,8 @@ struct gen9_global_pooling_bwd_t : public gpu_primitive_t {
             VDISPATCH_POOLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
-            CHECK(init_conf(engine));
+            VDISPATCH_POOLING_SC(init_conf(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "pooling");
 
             if (desc()->alg_kind == pooling_max) {
                 // Required for storing spatial offsets into workspace for
@@ -205,9 +205,6 @@ struct gen9_global_pooling_bwd_t : public gpu_primitive_t {
                 VDISPATCH_POOLING(
                         compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
             }
-
-            VDISPATCH_POOLING_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "pooling");
             return status::success;
         }
 

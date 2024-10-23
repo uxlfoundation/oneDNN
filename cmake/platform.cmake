@@ -464,3 +464,6 @@ endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0.0)
     append(CMAKE_CCXX_FLAGS "-Wno-unknown-warning-option")
 endif()
+
+append(CMAKE_C_FLAGS "${CMAKE_CCXX_FLAGS}")
+append(CMAKE_CXX_FLAGS "${CMAKE_CCXX_FLAGS}")

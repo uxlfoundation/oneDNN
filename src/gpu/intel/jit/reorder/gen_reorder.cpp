@@ -43,7 +43,6 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     const auto dst_dt = dst_md()->data_type;
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
-    zero_points_config_t zp_cfg(this);
     using namespace data_type;
 
     auto post_ops_ok = [&]() {
@@ -61,9 +60,6 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     auto scales_ok = [&]() {
         return (attr()->scales_.get(DNNL_ARG_SRC).mask_ == 0)
                 && (attr()->scales_.get(DNNL_ARG_DST).mask_ == 0);
-    };
-    auto is_bf16_or_f32_or_f8 = [](data_type_t dt) {
-        return utils::one_of(dt, bf16, f32, f8_e5m2, f8_e4m3);
     };
     auto is_bf16_or_f32_or_f8 = [](data_type_t dt) {
         return utils::one_of(dt, bf16, f32, f8_e5m2, f8_e4m3);

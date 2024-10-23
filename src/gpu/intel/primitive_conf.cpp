@@ -105,7 +105,6 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     attr_info.with_src_scales = !src_scales.has_default_values();
     attr_info.with_src0_scale = !src_scales.has_default_values();
     attr_info.src_scales_mask = src_scales.mask_;
-    attr_info.src_scales_data_type = src_scales.data_type_;
 
     const auto &src1_scales = attr->scales_.get(DNNL_ARG_SRC_1);
     attr_info.with_src1_scale = !src1_scales.has_default_values();
@@ -114,12 +113,10 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
     attr_info.with_wei_scales = !wei_scales.has_default_values();
     attr_info.wei_scales_mask = wei_scales.mask_;
-    attr_info.wei_scales_data_type = wei_scales.data_type_;
 
     const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
     attr_info.with_dst_scales = !dst_scales.has_default_values();
-    attr_info.dst_scales_mask = dst_scales.mask_;
-    attr_info.dst_scales_data_type = dst_scales.data_type_;
+    gpu_assert(dst_scales.mask_ == 0);
 
     // zero points
     const auto &zp = attr->zero_points_;
@@ -136,10 +133,6 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     attr_info.with_per_oc_dst_zpoints = attr_info.with_dst_zpoints
             && !zp.has_default_values(DNNL_ARG_DST) && !zp.common(DNNL_ARG_DST);
 
-    // Rounding mode.
-    attr_info.with_dst_sround = attr->rounding_mode_.get(DNNL_ARG_DST)
-            == rounding_mode::stochastic;
-
     attr_info.initialized = true;
     return attr_info;
 }
@@ -150,23 +143,13 @@ void quantization_t::define_macros(
         kernel_ctx.define_int("WITH_" + name + "_SCALE", 1);
         kernel_ctx.define_int(name + "_SCALE_MASK", scale_mask());
         kernel_ctx.define_int(name + "_NUM_SCALES", num_scales());
-        kernel_ctx.define_int(name + "_SCALE_GROUP", scale_group());
-        kernel_ctx.define_int(name + "_SCALE_GROUP_DIM", scale_group_dim());
     }
-    // Unconditionally as this defines types in kernels.
-    // Note: consistent with ocl_types.hpp
-    def_data_type(kernel_ctx, scale_dt(), name + "_SCALES");
 
     if (with_zp()) {
         kernel_ctx.define_int("WITH_" + name + "_ZPOINT", 1);
         kernel_ctx.define_int(name + "_ZPOINT_MASK", zp_mask());
         kernel_ctx.define_int(name + "_NUM_ZPOINTS", num_zps());
-        kernel_ctx.define_int(name + "_ZPOINT_GROUP", zp_group());
-        kernel_ctx.define_int(name + "_ZPOINT_GROUP_DIM", zp_group_dim());
     }
-    // Unconditionally as this defines types in kernels.
-    // Note: consistent with ocl_types.hpp
-    def_data_type(kernel_ctx, zp_dt(), name + "_ZP");
 }
 
 void sum_quantization_t::define_macros(
@@ -456,10 +439,6 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
                     << "Unexpected data type " << dnnl_dt2str(dt);
             break;
     }
-}
-void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
-        const std::string &str, bool with_punning) {
-    return def_data_type(kernel_ctx, dt, str.c_str(), with_punning);
 }
 
 void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
@@ -828,10 +807,6 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("WITH_DST_SCALES", attr_info.with_dst_scales);
     kernel_ctx.define_int("SRC_SCALES_MASK", attr_info.src_scales_mask);
     kernel_ctx.define_int("WEI_SCALES_MASK", attr_info.wei_scales_mask);
-    kernel_ctx.define_int("DST_SCALES_MASK", attr_info.dst_scales_mask);
-    def_data_type(kernel_ctx, attr_info.src_scales_data_type, "SRC_SCALES");
-    def_data_type(kernel_ctx, attr_info.wei_scales_data_type, "WEI_SCALES");
-    def_data_type(kernel_ctx, attr_info.dst_scales_data_type, "DST_SCALES");
 
     kernel_ctx.define_int("WITH_SRC_ZPOINTS", attr_info.with_src_zpoints);
     kernel_ctx.define_int("WITH_WEI_ZPOINTS", attr_info.with_wei_zpoints);
@@ -847,12 +822,6 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
 
     def_binary_alg_kinds(kernel_ctx);
     def_eltwise_alg_kinds(kernel_ctx);
-    if (post_ops.len() == 0
-            && utils::one_of(data_type::bf16, attr_info.src_scales_data_type,
-                    attr_info.wei_scales_data_type,
-                    attr_info.dst_scales_data_type)) {
-        kernel_ctx.define_int("POST_OP_USING_BF16", 1);
-    }
 
     return def_post_ops_cfg(kernel_ctx, post_ops, dst_md);
 }

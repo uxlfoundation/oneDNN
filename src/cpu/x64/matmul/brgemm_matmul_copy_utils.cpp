@@ -954,8 +954,9 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_f32(
         const auto addr = is_dynamic_src_ld
                 ? ptr[i % 2 == 0 ? reg_aux_src0 : reg_aux_src1]
                 : EVEX_compress_addr(src, i * src_stride);
-        if (i < nrows) {
-            if (use_fp16_instructions_)
+        if (i < nrows)
+            if (conf_->isa == avx512_core_fp16
+                    && conf_->src_dt == data_type::f16)
                 vcvtph2psx(src_zmm(i) | kTail | T_z, addr);
             else
                 vmovups(src_zmm(i) | kTail | T_z, addr);

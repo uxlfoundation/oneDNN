@@ -453,9 +453,9 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
     # Check if the RVV Intrinsics can be compiled with the current toolchain and flags
     include(CheckCXXSourceCompiles)
     check_cxx_source_compiles("#include <riscv_vector.h>
-                               int main() {
+                               int main() { 
                                 size_t size = 64;
-                                return vsetvl_e32m2(size);
+                                return vsetvl_e32m2(size); 
                                };"
                                CAN_COMPILE_RVV_INTRINSICS
     )

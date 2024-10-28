@@ -108,23 +108,18 @@ struct ndim_normalizer_t {
     int ndims(const memory_desc_t &md) const { return md.ndims + bcast_ndims; }
 
     int dim_idx(int md_idx) const {
+        if (bcast_ndims == 0) return 0;
         return (md_idx < insert_idx) ? md_idx : md_idx + bcast_ndims;
     }
 
     dim_t dim(int idx, const memory_desc_t &md) const {
         auto &dims = md.dims;
-        return (idx < insert_idx)
-                ? dims[idx]
-                : (idx < insert_idx + bcast_ndims ? 1
-                                                  : dims[idx - bcast_ndims]);
+        return (idx < insert_idx) ? dims[idx] : dims[idx - bcast_ndims];
     }
 
     dim_t stride(int idx, const memory_desc_t &md) const {
         auto &strides = md.format_desc.blocking.strides;
-        return (idx < insert_idx)
-                ? strides[idx]
-                : (idx < insert_idx + bcast_ndims ? 0
-                                                  : strides[idx - bcast_ndims]);
+        return (idx < insert_idx) ? strides[idx] : strides[idx - bcast_ndims];
     }
 
     // Position to insert broadcast dimensions, dimensions
@@ -161,8 +156,9 @@ struct relative_md_t {
     static constexpr int to_md_idx(idx_t idx, int ndims) {
         return ndims - 1 - idx.as_int();
     }
-    static idx_t from_md_idx(int idx, int ndims) {
-        return {into<int8_t>(ndims - 1 - idx)};
+    static idx_t from_md_idx(
+            int idx, int ndims, const ndim_normalizer_t &ndim_normalizer) {
+        return {into<int8_t>(ndims - 1 - ndim_normalizer.dim_idx(idx))};
     }
 
     // A compressed representation of the inner block. This cannot represent all
@@ -197,7 +193,8 @@ struct relative_md_t {
         gpu_assert(layout.size() <= blocking_t::max_dims);
 
         for (size_t i = 0; i < layout.size(); i++) {
-            rmd.inner_layout.idxs[i] = from_md_idx(layout[i].dim_idx, ndims);
+            rmd.inner_layout.idxs[i]
+                    = from_md_idx(layout[i].dim_idx, ndims, ndim_normalizer);
             rmd.inner_layout.blocks[i] = into<uint8_t>(layout[i].block);
         }
 
@@ -205,7 +202,7 @@ struct relative_md_t {
         rmd.broadcast_mask = ~0;
         uint16_t mask_bit = 1;
         for (int i = ndims - 1; i >= 0; i--) {
-            if (dims[i] > 1) rmd.broadcast_mask &= ~mask_bit;
+            if (ndim_normalizer.dim(i, md) > 1) rmd.broadcast_mask &= ~mask_bit;
             mask_bit = static_cast<uint16_t>(mask_bit << 1);
         }
 

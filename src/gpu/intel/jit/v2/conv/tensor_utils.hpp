@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,8 +34,8 @@ layout_desc_t make_conv_algo_layout_desc(
         prop_kind_t prop, tensor_kind_t tensor_kind);
 layout_tag_t make_conv_layout_tag(
         tensor_kind_t tensor_kind, const std::string &s);
-layout_tag_t make_conv_layout_tag(tensor_kind_t tensor_kind,
-        dim_idx_t conv_ndims, const memory_desc_t &md);
+layout_tag_t make_conv_layout_tag(
+        tensor_kind_t tensor_kind, dim_idx_t conv_ndims, const memory_desc_t &md);
 layout_t make_conv_layout(tensor_kind_t tensor_kind, const layout_tag_t &_tag,
         bool is_dw, const prb_reqs_t &reqs, uint32_t mask = 0xFFFFFFFF);
 
@@ -58,15 +58,15 @@ private:
 
     dim_mapper_t init_src_mapper() const;
     dim_mapper_t init_wei_mapper() const;
+    dim_mapper_t init_bia_mapper() const;
     dim_mapper_t init_dst_mapper() const;
-    dim_mapper_t init_bias_mapper() const;
 
     prop_kind_t prop_ = prop_kind::undef;
     prb_reqs_t reqs_;
     dim_mapper_t src_mapper_;
     dim_mapper_t wei_mapper_;
     dim_mapper_t dst_mapper_;
-    dim_mapper_t bias_mapper_;
+    dim_mapper_t bia_mapper_;
 };
 
 dim_mapper_t extend_mapper(

@@ -653,6 +653,10 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     // Use plain tag for output to avoid extra reorders.
     if (src_output) src_tag = user_src_tag;
     if (dst_output) dst_tag = user_dst_tag;
+
+    if (user_src_req == "user") src_tag = user_src_tag = "user";
+    if (user_wei_req == "user") wei_tag = user_wei_tag = "user";
+    if (user_dst_req == "user") dst_tag = user_dst_tag = "user";
 }
 
 status_t init_tensor_layouts(

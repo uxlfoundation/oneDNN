@@ -1807,9 +1807,7 @@ void pd_info_t::init(engine_t *engine, const primitive_desc_t *pd) {
             CASE(shuffle);
             CASE(softmax);
             CASE(sum);
-            case primitive_kind::sdpa:
-              str_ = "sdpa, unknown info";
-              break;
+            CASE(sdpa);
             case primitive_kind::zero_pad:
               str_ = "zero_pad, unknown info";
               break;

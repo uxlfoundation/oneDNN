@@ -1271,8 +1271,6 @@ public:
 
     int cur_index() const { return params_gen_.cur_index(); }
 
-    int cur_index() const { return params_gen_.cur_index(); }
-
     void print_all() const { params_gen_.print_all(); }
 
     static const primitive_info_t &get_primitive_info(
@@ -1466,18 +1464,7 @@ public:
         return params_gen_.is_valid();
     }
 
-    int cur_index() const {
-        if (is_tuning_mode()) return tuner_->cur_index();
-        return params_gen_.cur_index();
-    }
-
-    void set_cur_index(int idx) {
-        ir_assert(!is_tuning_mode());
-        return params_gen_.set_cur_index(idx);
-    }
-
-    void set_params(conv_config_t &cfg) {
-        init_regs(cfg);
+    void move_next(const conv_config_t &cfg) {
         if (is_tuning_mode()) {
             tuner_->move_next();
             return;
@@ -1509,9 +1496,9 @@ public:
         if (is_tuning_mode()) {
             tuner_->set_params(cfg);
         } else {
-            if (!try_small_grf_) params_gen_.move_next();
             params_gen_.set_params(cfg);
-            maybe_try_small_grf(cfg);
+            if (grf_mode_policy_ == grf_mode_policy_t::try_small_grf)
+                maybe_try_small_grf(cfg);
         }
     }
 
@@ -1610,6 +1597,8 @@ private:
     }
 
     void maybe_try_small_grf(conv_config_t &cfg) {
+        if (cfg.regs() == 128 || cfg.exec_cfg_param().is_overridden("regs"))
+            return;
         auto try_cfg = cfg;
         init_walk_order(try_cfg);
         init_kernel_grid(try_cfg);
@@ -1622,14 +1611,7 @@ private:
                         try_cfg.exec_cfg(), kg_elems, tg_elems));
         int wave_util = static_cast<int>(conv_config_t::get_wave_utilization(
                 cfg.exec_cfg(), kg_elems, tg_elems));
-        if (wave_util > 90 && new_wave_util >= wave_util && !try_small_grf_
-                && cfg.regs() > 128
-                && !cfg.exec_cfg_param().is_overridden("regs")) {
-            cfg.set_regs(128);
-            try_small_grf_ = true;
-        } else {
-            try_small_grf_ = false;
-        }
+        if (wave_util > 90 && new_wave_util >= wave_util) cfg.set_regs(128);
     }
 
     void print_info(double init_time_ms) {
@@ -1643,7 +1625,7 @@ private:
     params_generator_t params_gen_;
     conv_tuner_t *tuner_ = nullptr;
     int grf_usage_limit_ = 0;
-    bool try_small_grf_ = false;
+    grf_mode_policy_t grf_mode_policy_ = grf_mode_policy_t::try_small_grf;
 };
 
 conv_tiler_t::conv_tiler_t(const conv_config_t &cfg)
@@ -1671,14 +1653,6 @@ int32_t conv_tiler_t::cur_version() const {
 
 void conv_tiler_t::set_cur_version(int32_t version) {
     impl_->set_cur_version(version);
-}
-
-int conv_tiler_t::cur_index() const {
-    return impl_->cur_index();
-}
-
-void conv_tiler_t::set_cur_index(int idx) {
-    impl_->set_cur_index(idx);
 }
 
 void conv_tiler_t::set_params(conv_config_t &cfg) {

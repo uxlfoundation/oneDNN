@@ -246,7 +246,7 @@ inline memory make_memory(const memory::desc &memory_desc,
             dnnl_sycl_interop_memory_create_v2(&c_memory, memory_desc.get(),
                     aengine.get(), convert_to_c(kind), (int)handles.size(),
                     handles.data()),
-            "could not create a memory");
+            err_message_list::init_error("memory"));
     return memory(c_memory);
 }
 

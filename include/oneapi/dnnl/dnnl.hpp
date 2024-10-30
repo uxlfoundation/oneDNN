@@ -2878,38 +2878,6 @@ struct memory : public handle<dnnl_memory_t> {
             return desc {md};
         }
 
-        /// Function for creating a memory descriptor for COO sparse encodings.
-        ///
-        /// The created memory descriptor will describe a memory object that
-        /// contains n+1 buffers for an n-dimensional tensor.
-        /// The buffers have the following meaning and assigned numbers (index):
-        ///  - 0: values
-        ///  - 1: indices for dimension 0
-        ///  - 2: indices for dimension 1 ...
-        ///  - n: indices for dimension n-1
-        ///
-        /// @param adims Tensor dimensions.
-        /// @param adata_type Data precision/type.
-        /// @param nnz Number of non-zero entries.
-        /// @param index_dt Data type of indices.
-        /// @param allow_empty A flag signifying whether construction is
-        ///     allowed to fail without throwing an exception. In this case a
-        ///     zero memory descriptor will be constructed. This flag is
-        ///     optional and defaults to false.
-        static desc coo(const dims &adims, data_type adata_type, dim nnz,
-                data_type index_dt, bool allow_empty = false) {
-            validate_dims(adims);
-            dnnl_memory_desc_t md = nullptr;
-            dnnl_status_t status = dnnl_memory_desc_create_with_coo_encoding(
-                    &md, (int)adims.size(), adims.data(),
-                    convert_to_c(adata_type), nnz, convert_to_c(index_dt));
-            if (!allow_empty)
-                error::wrap_c_api(status,
-                        "could not create a memory descriptor for COO sparse "
-                        "encoding");
-            return desc {md};
-        }
-
         /// Function for creating a memory descriptor for packed sparse
         /// encoding.
         ///
@@ -2958,7 +2926,8 @@ struct memory : public handle<dnnl_memory_t> {
             dnnl_memory_desc_t md = nullptr;
             error::wrap_c_api(
                     dnnl_memory_desc_create_with_blob(&md, blob.data()),
-                    "could not create a memory descriptor from blob");
+                    err_message_list::init_error(
+                            "memory descriptor from blob"));
             reset(md);
         }
 
@@ -3257,12 +3226,14 @@ struct memory : public handle<dnnl_memory_t> {
             size_t size;
             dnnl_status_t status
                     = dnnl_memory_desc_get_blob(nullptr, &size, get());
-            error::wrap_c_api(
-                    status, "could not get memory descriptor blob size");
+            error::wrap_c_api(status,
+                    err_message_list::desc_query(
+                            "blob size", "memory descriptor"));
 
             std::vector<uint8_t> out_blob(size);
             status = dnnl_memory_desc_get_blob(out_blob.data(), &size, get());
-            error::wrap_c_api(status, "could not get memory descriptor blob");
+            error::wrap_c_api(status,
+                    err_message_list::get_failure("memory descriptor blob"));
             return out_blob;
         }
 
@@ -3976,7 +3947,8 @@ struct post_ops : public handle<dnnl_post_ops_t> {
     /// @param mask Weights mask of prelu post-op.
     void get_params_prelu(int index, int &mask) const {
         error::wrap_c_api(dnnl_post_ops_get_params_prelu(get(), index, &mask),
-                "could not get parameters of a binary post-op");
+                err_message_list::get_failure(
+                        "parameters of a binary post-op"));
     }
 };
 
@@ -4017,10 +3989,11 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     void get_dropout(memory::desc &mask_desc) const {
         const_dnnl_memory_desc_t cdesc;
         error::wrap_c_api(dnnl_primitive_attr_get_dropout(get(), &cdesc),
-                "could not get parameters of a dropout attribute");
+                err_message_list::get_failure(
+                        "parameters of a dropout attribute"));
         dnnl_memory_desc_t cloned_md = nullptr;
         error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md, cdesc),
-                "could not clone a memory descriptor");
+                err_message_list::clone_error("memory descriptor"));
         mask_desc = memory::desc(cloned_md);
     }
 
@@ -4030,7 +4003,7 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     void set_dropout(const memory::desc &mask_desc) {
         error::wrap_c_api(
                 dnnl_primitive_attr_set_dropout(get(), mask_desc.get()),
-                "could not set dropout primitive attribute");
+                err_message_list::set_failure("dropout primitive attribute"));
     }
 
     /// Returns the fpmath mode
@@ -4128,27 +4101,6 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                                   get(), arg, convert_to_c(mode)),
                 err_message_list::set_failure(
                         "rounding mode primitive attribute"));
-    }
-
-    /// Returns the rounding mode attribute value
-    ///
-    /// @param arg Argument for which rounding mode query applies.
-    /// @returns The rounding mode applied to the specified argument.
-    rounding_mode get_rounding_mode(int arg) const {
-        dnnl_rounding_mode_t result;
-        error::wrap_c_api(dnnl_primitive_attr_get_rounding(get(), arg, &result),
-                "could not get rounding mode primitive attribute");
-        return rounding_mode(result);
-    }
-
-    /// Sets the rounding mode attribute value for a given argument
-    ///
-    /// @param arg Argument for which to set rounding mode.
-    /// @param mode Rounding mode to apply.
-    void set_rounding_mode(int arg, rounding_mode mode) {
-        error::wrap_c_api(dnnl_primitive_attr_set_rounding(
-                                  get(), arg, convert_to_c(mode)),
-                "could not set rounding mode primitive attribute");
     }
 
     /// Returns the scratchpad mode.
@@ -4898,13 +4850,6 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
         return id;
     }
 
-    std::string get_error_creation_message(const char *prim) const {
-        return "could not create a primitive descriptor for a "
-                + std::string(prim) + " primitive. Run workload with "
-                "environment variable ONEDNN_VERBOSE=all to get additional " 
-                "diagnostic information.";
-    }
-
 protected:
     /// Returns a float value.
     /// @param what The value to query.
@@ -5142,9 +5087,10 @@ struct reorder : public primitive {
             dnnl_status_t status = dnnl_reorder_primitive_desc_create(&result,
                     src_md.get(), src_engine.get(), dst_md.get(),
                     dst_engine.get(), attr.get());
-            if (!allow_empty)
+            if (!allow_empty) {
                 error::wrap_c_api(
-                        status, get_error_creation_message("reorder").c_str());
+                        status, err_message_list::pd_creation("reorder"));
+            }
             reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
         }
 
@@ -5169,9 +5115,10 @@ struct reorder : public primitive {
             dnnl_status_t status = dnnl_reorder_primitive_desc_create(&result,
                     src_md.get(), src.get_engine().get(), dst_md.get(),
                     dst.get_engine().get(), attr.get());
-            if (!allow_empty)
+            if (!allow_empty) {
                 error::wrap_c_api(
-                        status, get_error_creation_message("reorder").c_str());
+                        status, err_message_list::pd_creation("reorder"));
+            }
             reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
         }
 
@@ -5293,9 +5240,10 @@ struct concat : public primitive {
             dnnl_status_t status = dnnl_concat_primitive_desc_create(&result,
                     aengine.get(), dst.get(), (int)c_srcs.size(),
                     concat_dimension, c_srcs.data(), attr.get());
-            if (!allow_empty)
+            if (!allow_empty) {
                 error::wrap_c_api(
-                        status, get_error_creation_message("concat").c_str());
+                        status, err_message_list::pd_creation("concat"));
+            }
             reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
         }
 
@@ -5326,9 +5274,10 @@ struct concat : public primitive {
             dnnl_status_t status = dnnl_concat_primitive_desc_create(&result,
                     aengine.get(), nullptr, (int)c_api_srcs.size(),
                     concat_dimension, c_api_srcs.data(), attr.get());
-            if (!allow_empty)
+            if (!allow_empty) {
                 error::wrap_c_api(
-                        status, get_error_creation_message("concat").c_str());
+                        status, err_message_list::pd_creation("concat"));
+            }
             reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
         }
 
@@ -5407,9 +5356,9 @@ struct sum : public primitive {
             dnnl_status_t status = dnnl_sum_primitive_desc_create(&result,
                     aengine.get(), dst.get(), (int)c_api_srcs.size(),
                     scales.data(), c_api_srcs.data(), attr.get());
-            if (!allow_empty)
-                error::wrap_c_api(
-                        status, get_error_creation_message("sum").c_str());
+            if (!allow_empty) {
+                error::wrap_c_api(status, err_message_list::pd_creation("sum"));
+            }
             reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
         }
 
@@ -5441,9 +5390,9 @@ struct sum : public primitive {
             dnnl_status_t status = dnnl_sum_primitive_desc_create(&result,
                     aengine.get(), nullptr, (int)c_api_srcs.size(),
                     scales.data(), c_api_srcs.data(), attr.get());
-            if (!allow_empty)
-                error::wrap_c_api(
-                        status, get_error_creation_message("sum").c_str());
+            if (!allow_empty) {
+                error::wrap_c_api(status, err_message_list::pd_creation("sum"));
+            }
             reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
         }
 
@@ -5783,9 +5732,9 @@ struct convolution_forward : public primitive {
                             &padding_l[0], &padding_r[0], attr.get());
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "convolution forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "convolution forward propagation"));
+            }
             reset(pd);
         }
     };
@@ -5976,9 +5925,9 @@ struct convolution_backward_data : public primitive {
                             hint_fwd_pd.get(), attr.get());
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "convolution backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "convolution backward propagation"));
+            }
             reset(pd);
         }
     };
@@ -6283,8 +6232,9 @@ struct convolution_backward_weights : public primitive {
                             &padding_r[0], hint_fwd_pd.get(), attr.get());
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message("convolution weights update")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "convolution weights update"));
+            }
             reset(pd);
         }
     };
@@ -6579,9 +6529,9 @@ struct deconvolution_forward : public primitive {
                             &padding_l[0], &padding_r[0], attr.get());
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "deconvolution forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "deconvolution forward propagation"));
+            }
             reset(pd);
         }
     };
@@ -6770,9 +6720,9 @@ struct deconvolution_backward_data : public primitive {
                             hint_fwd_pd.get(), attr.get());
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "deconvolution backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "deconvolution backward propagation"));
+            }
             reset(pd);
         }
     };
@@ -7070,9 +7020,9 @@ struct deconvolution_backward_weights : public primitive {
                             &padding_r[0], hint_fwd_pd.get(), attr.get());
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "deconvolution weights update")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "deconvolution weights update"));
+            }
             reset(pd);
         }
     };
@@ -7150,8 +7100,9 @@ struct lrn_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message("lrn forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "lrn forward propagation"));
+            }
             reset(pd);
         }
 
@@ -7257,8 +7208,9 @@ struct lrn_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message("lrn backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "lrn backward propagation"));
+            }
             reset(pd);
         }
 
@@ -7470,9 +7422,9 @@ struct eltwise_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "eltwise forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "eltwise forward propagation"));
+            }
             reset(pd);
         }
     };
@@ -7648,9 +7600,9 @@ struct eltwise_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "eltwise backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "eltwise backward propagation"));
+            }
             reset(pd);
         }
     };
@@ -7722,9 +7674,9 @@ struct softmax_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "softmax forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "softmax forward propagation"));
+            }
             reset(pd);
         }
 
@@ -7814,9 +7766,9 @@ struct softmax_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "softmax backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "softmax backward propagation"));
+            }
             reset(pd);
         }
 
@@ -7933,9 +7885,9 @@ struct batch_normalization_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "batch normalization forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "batch normalization forward propagation"));
+            }
             reset(pd);
         }
 
@@ -8062,9 +8014,9 @@ struct batch_normalization_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "batch normalization backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "batch normalization backward propagation"));
+            }
             reset(pd);
         }
 
@@ -8208,9 +8160,9 @@ struct group_normalization_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "group normalization forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "group normalization forward propagation"));
+            }
             reset(pd);
         }
 
@@ -8341,9 +8293,9 @@ struct group_normalization_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "group normalization backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "group normalization backward propagation"));
+            }
             reset(pd);
         }
 
@@ -8648,9 +8600,9 @@ struct layer_normalization_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "layer normalization forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "layer normalization forward propagation"));
+            }
             reset(pd);
         }
     };
@@ -8918,9 +8870,9 @@ struct layer_normalization_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "layer normalization backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "layer normalization backward propagation"));
+            }
             reset(pd);
         }
     };
@@ -9059,9 +9011,9 @@ struct inner_product_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "inner product forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "inner product forward propagation"));
+            }
             reset(pd);
         }
     };
@@ -9127,9 +9079,9 @@ struct inner_product_backward_data : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "inner product backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "inner product backward propagation"));
+            }
             reset(pd);
         }
 
@@ -9289,9 +9241,9 @@ struct inner_product_backward_weights : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "inner product weights gradient")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "inner product weights gradient"));
+            }
             reset(pd);
         }
     };
@@ -9592,7 +9544,7 @@ protected:
                         weights_iter_desc.get(), bias_desc.get(),
                         dst_layer_desc.get(), dst_iter_desc.get(),
                         convert_to_c(flags), alpha, beta, attr.get());
-                msg = get_error_creation_message(
+                msg = err_message_list::pd_creation(
                         "vanilla RNN forward propagation");
                 break;
             case algorithm::vanilla_lstm:
@@ -9606,7 +9558,7 @@ protected:
                         dst_layer_desc.get(), dst_iter_desc.get(),
                         optional_arg(dst_iter_c_desc), convert_to_c(flags),
                         attr.get());
-                msg = get_error_creation_message("LSTM forward propagation");
+                msg = err_message_list::pd_creation("LSTM forward propagation");
                 break;
             case algorithm::vanilla_gru:
                 status = dnnl_gru_forward_primitive_desc_create(&pd,
@@ -9616,7 +9568,7 @@ protected:
                         weights_iter_desc.get(), bias_desc.get(),
                         dst_layer_desc.get(), dst_iter_desc.get(),
                         convert_to_c(flags), attr.get());
-                msg = get_error_creation_message("GRU forward propagation");
+                msg = err_message_list::pd_creation("GRU forward propagation");
                 break;
             case algorithm::lbr_gru:
                 status = dnnl_lbr_gru_forward_primitive_desc_create(&pd,
@@ -9626,7 +9578,8 @@ protected:
                         weights_iter_desc.get(), bias_desc.get(),
                         dst_layer_desc.get(), dst_iter_desc.get(),
                         convert_to_c(flags), attr.get());
-                msg = get_error_creation_message("LBR GRU forward propagation");
+                msg = err_message_list::pd_creation(
+                        "LBR GRU forward propagation");
                 break;
             case algorithm::vanilla_augru:
                 status = dnnl_augru_forward_primitive_desc_create(&pd,
@@ -9636,7 +9589,8 @@ protected:
                         weights_layer_desc.get(), weights_iter_desc.get(),
                         bias_desc.get(), dst_layer_desc.get(),
                         dst_iter_desc.get(), convert_to_c(flags), attr.get());
-                msg = get_error_creation_message("AUGRU forward propagation");
+                msg = err_message_list::pd_creation(
+                        "AUGRU forward propagation");
                 break;
             case algorithm::lbr_augru:
                 status = dnnl_lbr_augru_forward_primitive_desc_create(&pd,
@@ -9646,13 +9600,13 @@ protected:
                         weights_layer_desc.get(), weights_iter_desc.get(),
                         bias_desc.get(), dst_layer_desc.get(),
                         dst_iter_desc.get(), convert_to_c(flags), attr.get());
-                msg = get_error_creation_message(
+                msg = err_message_list::pd_creation(
                         "LBR AUGRU forward propagation");
                 break;
             default: status = dnnl_unimplemented;
         }
 
-        if (!allow_empty) error::wrap_c_api(status, msg.c_str());
+        if (!allow_empty) { error::wrap_c_api(status, msg); }
         reset(pd);
     }
 
@@ -9705,7 +9659,7 @@ protected:
                         diff_dst_layer_desc.get(), diff_dst_iter_desc.get(),
                         convert_to_c(flags), alpha, beta, hint_fwd_pd.get(),
                         attr.get());
-                msg = get_error_creation_message(
+                msg = err_message_list::pd_creation(
                         "vanilla RNN backward propagation");
                 break;
             case algorithm::vanilla_lstm:
@@ -9728,7 +9682,8 @@ protected:
                         diff_dst_iter_desc.get(),
                         optional_arg(diff_dst_iter_c_desc), convert_to_c(flags),
                         hint_fwd_pd.get(), attr.get());
-                msg = get_error_creation_message("LSTM backward propagation");
+                msg = err_message_list::pd_creation(
+                        "LSTM backward propagation");
                 break;
             case algorithm::vanilla_gru:
                 status = dnnl_gru_backward_primitive_desc_create(&pd,
@@ -9742,7 +9697,7 @@ protected:
                         diff_weights_iter_desc.get(), diff_bias_desc.get(),
                         diff_dst_layer_desc.get(), diff_dst_iter_desc.get(),
                         convert_to_c(flags), hint_fwd_pd.get(), attr.get());
-                msg = get_error_creation_message("GRU backward propagation");
+                msg = err_message_list::pd_creation("GRU backward propagation");
                 break;
             case algorithm::lbr_gru:
                 status = dnnl_lbr_gru_backward_primitive_desc_create(&pd,
@@ -9756,7 +9711,7 @@ protected:
                         diff_weights_iter_desc.get(), diff_bias_desc.get(),
                         diff_dst_layer_desc.get(), diff_dst_iter_desc.get(),
                         convert_to_c(flags), hint_fwd_pd.get(), attr.get());
-                msg = get_error_creation_message(
+                msg = err_message_list::pd_creation(
                         "LBR GRU backward propagation");
                 break;
             case algorithm::vanilla_augru:
@@ -9773,7 +9728,8 @@ protected:
                         diff_weights_iter_desc.get(), diff_bias_desc.get(),
                         diff_dst_layer_desc.get(), diff_dst_iter_desc.get(),
                         convert_to_c(flags), hint_fwd_pd.get(), attr.get());
-                msg = get_error_creation_message("AUGRU backward propagation");
+                msg = err_message_list::pd_creation(
+                        "AUGRU backward propagation");
                 break;
             case algorithm::lbr_augru:
                 status = dnnl_lbr_augru_backward_primitive_desc_create(&pd,
@@ -9789,12 +9745,12 @@ protected:
                         diff_weights_iter_desc.get(), diff_bias_desc.get(),
                         diff_dst_layer_desc.get(), diff_dst_iter_desc.get(),
                         convert_to_c(flags), hint_fwd_pd.get(), attr.get());
-                msg = get_error_creation_message(
+                msg = err_message_list::pd_creation(
                         "LBR AUGRU backward propagation");
                 break;
             default: status = dnnl_unimplemented;
         }
-        if (!allow_empty) error::wrap_c_api(status, msg.c_str());
+        if (!allow_empty) { error::wrap_c_api(status, msg); }
         reset(pd);
     }
 };
@@ -12528,9 +12484,9 @@ struct shuffle_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "shuffle forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "shuffle forward propagation"));
+            }
             reset(pd);
         }
 
@@ -12616,9 +12572,9 @@ struct shuffle_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "shuffle backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "shuffle backward propagation"));
+            }
             reset(pd);
         }
 
@@ -12709,7 +12665,8 @@ struct binary : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message("binary operation").c_str());
+                        err_message_list::pd_creation("binary operation"));
+            }
             reset(pd);
         }
 
@@ -12846,9 +12803,10 @@ struct matmul : public primitive {
                     aengine.get(), src_desc.get(), weights_desc.get(),
                     optional_arg(bias_desc), dst_desc.get(), attr.get());
 
-            if (!allow_empty)
+            if (!allow_empty) {
                 error::wrap_c_api(
-                        status, get_error_creation_message("matmul").c_str());
+                        status, err_message_list::pd_creation("matmul"));
+            }
             reset(pd);
         }
     };
@@ -13010,9 +12968,9 @@ struct resampling_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "resampling forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "resampling forward propagation"));
+            }
             reset(pd);
         }
     };
@@ -13135,9 +13093,9 @@ struct resampling_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message(
-                                "resampling backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "resampling backward propagation"));
+            }
             reset(pd);
         }
     };
@@ -13473,8 +13431,9 @@ struct prelu_forward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message("prelu forward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "prelu forward propagation"));
+            }
             reset(pd);
         }
 
@@ -13558,8 +13517,9 @@ struct prelu_backward : public primitive {
 
             if (!allow_empty) {
                 error::wrap_c_api(status,
-                        get_error_creation_message("prelu backward propagation")
-                                .c_str());
+                        err_message_list::pd_creation(
+                                "prelu backward propagation"));
+            }
             reset(pd);
         }
 
@@ -13656,9 +13616,10 @@ struct reduction : public primitive {
                     aengine.get(), convert_to_c(aalgorithm), src_desc.get(),
                     dst_desc.get(), p, eps, attr.get());
 
-            if (!allow_empty)
-                error::wrap_c_api(status,
-                        get_error_creation_message("reduction").c_str());
+            if (!allow_empty) {
+                error::wrap_c_api(
+                        status, err_message_list::pd_creation("reduction"));
+            }
             reset(pd);
         }
 

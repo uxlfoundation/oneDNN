@@ -187,7 +187,7 @@ public:
         return (op == other.op) && (address == other.address)
                 && (type == other.type) && (slots == other.slots)
                 && (slot_mask == other.slot_mask) && (is_lsc == other.is_lsc)
-                && (zero_out == other.zero_out)
+                && (fill_buf == other.fill_buf)
                 && (block_2d_info == other.block_2d_info)
                 && (cache_hint == other.cache_hint);
     }
@@ -198,7 +198,7 @@ public:
         oss << type.str();
         if (is_scattered()) oss << "x" << slots;
         if (is_2d()) oss << "." << block_2d_info.str();
-        if (!zero_out) oss << ".nzo";
+        if (!fill_buf) oss << ".nofill";
         if (cache_hint != send_cache_hint_t::undef)
             oss << "." << to_string(cache_hint);
         return oss.str();

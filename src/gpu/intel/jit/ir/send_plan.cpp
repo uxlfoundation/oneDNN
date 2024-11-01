@@ -1029,7 +1029,7 @@ struct send_group_t {
                 auto type = fixup_type(p.type, send_params);
                 auto f = send_t::make_2d(hw, to_2d(send_params.send_op), type,
                         into<int>(p.W), into<int>(p.H), into<int>(p.P), p.w,
-                        p.h, p.c, p.vnni, p.transpose, zero_out,
+                        p.h, p.c, p.vnni, p.transpose, fill_buf,
                         send_params.cache_hint);
                 ret.push_back(f);
             }

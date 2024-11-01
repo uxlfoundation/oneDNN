@@ -312,9 +312,6 @@ public:
 
     stmt_t create_stmt(const expr_t &wei_buf, const expr_t &dpas_buf,
             const gemm_schedule_t &gemm_schedule, int subtile_idx) {
-        auto simd_bcast = [&](const expr_t &e) {
-            return shuffle_t::make_broadcast(e, simd_);
-        };
         if (subtile_idx > 0) return stmt_t();
 
         ir_assert(zp_layout_.blocks().empty());
@@ -373,6 +370,10 @@ public:
     IR_DEFINE_DUMP()
 
 private:
+    expr_t simd_bcast(const expr_t &e) const {
+        return shuffle_t::make_broadcast(e, simd_);
+    }
+
     layout_t zp_layout_;
     layout_t b_layout_;
     type_t data_type_;
@@ -476,9 +477,6 @@ public:
             const expr_t &wei_buf, const expr_t &comp_buf,
             const expr_t &src_buf, const gemm_schedule_t &gemm_schedule,
             int subtile_idx) const {
-        auto simd_bcast = [&](const expr_t &e) {
-            return shuffle_t::make_broadcast(e, simd_);
-        };
         if (split_factor_ == 1 && subtile_idx > 0) return stmt_t();
         stmt_t stmt, comp_buf_fill;
         int ck_blk = 1;
@@ -769,6 +767,20 @@ private:
         auto mad = mad_t::make(
                 hw, comp_type, simd_, zp_type, zp_stride, wei_type, wei_stride);
         return ret.append(mad.call({comp, comp, real_zp, wei}));
+    }
+
+    stmt_t maybe_typecast_zp_src(buffer_manager_t &buf_mgr, type_t &type,
+            expr_t &zp, int size) const {
+        auto real_type = type_t::s32();
+        stmt_t ret;
+        if (type != real_type) {
+            auto src_zp = load_t::make(type.with_elems(size), zp, 0);
+            zp = buf_mgr.get("zp_src_s32", real_type.size() * size);
+            ret = store_t::make(
+                    zp, 0, cast(src_zp, real_type.with_elems(size)));
+            type = real_type;
+        }
+        return ret;
     }
 
     dim_idx_t g_idx_ = -1;
@@ -1433,7 +1445,9 @@ private:
 };
 
 struct zp_plan_impl_t : public base_plan_t {
+    bool src_2d_loads = false;
     bool needs_precalc = false;
+    bool has_dpasw = false;
     split_dispatcher_t sd;
     send_plan_t load;
     zp_comp_init_plan_t comp_init;
@@ -1449,8 +1463,17 @@ struct zp_plan_impl_t : public base_plan_t {
         , comp_apply(hw)
         , wei_init(hw) {}
 
+    bool has_scalar_int8_src() const {
+        return has_zp_src() && (comp_init.zp_layout().elems() == 1)
+                && comp_init.zp_layout().type().is_s8()
+                && comp_init.src_layout().type().is_s8();
+    }
     bool has_zp_src() const { return load; }
     bool has_zp_wei() const { return wei_load; }
+    bool is_src_precomp_compatible() const {
+        return has_scalar_int8_src() && !has_zp_wei() && !src_2d_loads
+                && !has_dpasw;
+    }
     explicit operator bool() const { return has_zp_src() || has_zp_wei(); }
 
     bool can_split(abc_kind_t abc, int factor) const {
@@ -1467,7 +1490,9 @@ struct zp_plan_impl_t : public base_plan_t {
 
     int estimate_regs() const {
         int ret = 0;
-        if (has_zp_src()) {
+        if (is_src_precomp_compatible()) {
+            ret += comp_init.estimate_fill_regs();
+        } else if (has_zp_src()) {
             ret += comp_init.estimate_regs();
             ret += mask_init.estimate_regs();
         }
@@ -1499,6 +1524,8 @@ void zp_plan_t::init(const conv_config_t &cfg, bool src_2d_loads,
         const gemm_schedule_t &gemm_schedule, const view_t &zp_view,
         const view_t &zp_src_view, const layout_t &src_layout,
         const layout_t &wei_layout, const layout_t &dst_layout) {
+    impl->src_2d_loads = src_2d_loads;
+    impl->has_dpasw = cfg.fma_kind() == fma_kind_t::dpasw;
     impl->needs_precalc = cfg.zp_cfg().needs_src_precalc;
     bool do_src = cfg.zp_cfg().do_src_compensation && !impl->needs_precalc;
     bool do_wei = cfg.zp_cfg().do_wei_compensation;
@@ -1508,8 +1535,8 @@ void zp_plan_t::init(const conv_config_t &cfg, bool src_2d_loads,
         auto load_params = get_send_params(
                 cfg.exec_cfg(), send_op_t::load, send_address_t::a64, zp_view);
         impl_load = create_send_plan(cfg.exec_cfg(), zp_view, load_params);
-        impl->comp_init = zp_comp_init_plan_t(
-                cfg.hw(), cfg.prb().is_fwd, impl_load.reg_layout(), wei_layout);
+        impl->comp_init = zp_comp_init_plan_t(cfg.hw(), cfg.prb().is_fwd,
+                impl_load.reg_layout(), src_layout, wei_layout);
         impl->sd = split_dispatcher_t(impl->comp_init.comp_layout(), dst_layout,
                 cfg.hw(), cfg.prb().is_fwd, gemm_schedule.bmnk_mapper());
     }
@@ -1533,6 +1560,10 @@ void zp_plan_t::init(const conv_config_t &cfg, bool src_2d_loads,
 
 zp_plan_t::operator bool() const {
     return (bool)*impl;
+}
+
+bool zp_plan_t::is_src_precomp_compatible() const {
+    return impl->is_src_precomp_compatible();
 }
 
 bool zp_plan_t::has_zp_src() const {
@@ -1567,6 +1598,15 @@ int zp_plan_t::wei_reg_buf_size() const {
     return impl->wei_init.wei_reg_buf_size();
 }
 
+int zp_plan_t::src_reg_buf_size() const {
+    return impl->comp_init.fill_reg_buf_size();
+}
+
+stmt_t zp_plan_t::src_init_create_stmt(
+        const expr_t &src_buf, const expr_t &dpas_buf) const {
+    return impl->comp_init.create_fill_stmt(src_buf, dpas_buf);
+}
+
 stmt_t zp_plan_t::load_create_stmt(
         const expr_t &mem_buf, const expr_t &reg_buf, int subtile_idx) const {
     if (subtile_idx > 0) return stmt_t();
@@ -1577,13 +1617,6 @@ stmt_t zp_plan_t::wei_load_create_stmt(
         const expr_t &mem_buf, const expr_t &reg_buf, int subtile_idx) const {
     if (subtile_idx > 0) return stmt_t();
     return impl->wei_load.create_stmt(mem_buf, reg_buf, subtile_idx);
-}
-
-stmt_t zp_plan_t::wei_load_create_stmt(
-        const expr_t &mem_buf, const expr_t &reg_buf, int subtile_idx) const {
-    return subtile_idx > 0
-            ? stmt_t()
-            : impl->wei_load.create_stmt(mem_buf, reg_buf, subtile_idx);
 }
 
 stmt_t zp_plan_t::comp_init_create_stmt(buffer_manager_t &buf_mgr,

@@ -836,7 +836,7 @@ public:
     constexpr Subregister() : RegData() {}
     constexpr14 Subregister(RegData reg_, int offset_, DataType type_) {
         *static_cast<RegData *>(this) = reg_;
-        off = offset_;
+        off = offset_ >> log2ElementsPerByte(type_);
         type = static_cast<int>(type_);
         hs = vs = 0;
         width = 1;
@@ -1359,6 +1359,8 @@ inline Subregister Subregister::reinterpret(int offset, DataType type_) const
 {
     Subregister r = *this;
     r.setType(type_);
+
+    offset >>= log2ElementsPerByte(type_);
 
     int o = getOffset();
     int oldbytes = getBits(), newbytes = r.getBits();

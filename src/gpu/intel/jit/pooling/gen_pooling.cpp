@@ -20,14 +20,12 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-#include "common/verbose.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"
 #include "gpu/intel/jit/pooling/pooling_kernel.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {

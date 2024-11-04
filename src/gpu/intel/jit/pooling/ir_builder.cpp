@@ -31,8 +31,6 @@
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/utils/iterator.hpp"
-#include "gpu/intel/jit/utils/range.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {

@@ -22,27 +22,27 @@ if(ONEDNN_ENABLE_GRAPH_DUMP)
 endif()
 
 FILE(GLOB DNNL_COMMON_TEST_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_common.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_constant_cache.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_dnnl_infer_shape.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_fusion_info.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_graph.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_insert_ops.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_internal_attrs.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_layout_id.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_layout_propagator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_logical_tensor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_memory_planning.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_op_schema.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_partition.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_scratchpad.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_subgraph_pass.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_thread_local_cache.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_dnnl_utils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_dnnl_infer_shape_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_fusion_info_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_graph_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_insert_ops_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_internal_attrs_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_layout_id_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_layout_propagator_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_logical_tensor_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_memory_planning_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_op_schema_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_partition_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_thread_local_cache_cpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_dnnl_utils_cpu.cpp
 )
 
 # op compile/execution need test on both CPU and GPU
 FILE(GLOB DNNL_OP_EXECUTION_TEST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_common.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_constant_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_scratchpad.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_subgraph_pass.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_op_executable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_select.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_batch_norm.cpp

@@ -79,8 +79,6 @@ public:
             case alg_kind::eltwise_clip_v2_use_dst_for_bwd:
                 return "clip_v2_use_dst_for_bwd";
             case alg_kind::eltwise_round: return "round";
-            // Note: `eltwise_stochastic_round` is not a part of `enum` which
-            // forces `switch` to iterate over `int`, not `alg_kind_t`.
             case alg_kind::eltwise_stochastic_round: return "stochastic_round";
             default: ir_error_not_expected();
         }

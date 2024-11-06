@@ -518,8 +518,16 @@ public:
                     << "Only supported form is lhs = eltwise(lhs).";
             dim_t lhs_size = lhs_tensor.reg_layout().size();
             dim_t lhs_elems = lhs_size / int(sizeof(float));
-            return post_op_.eltwise().call(
-                    {expr_t(lhs_elems), lhs_tensor.reg_buf()});
+            auto &eltwise_func = post_op_.eltwise().as<eltwise_t>();
+            if (eltwise_func.alg_kind == alg_kind::eltwise_stochastic_round) {
+
+                return post_op_.eltwise().call(
+                        {expr_t(lhs_elems), lhs_tensor.reg_buf(),
+                                (*args.at(eltwise_func.seed)).reg_buf()});
+            } else {
+                return post_op_.eltwise().call(
+                        {expr_t(lhs_elems), lhs_tensor.reg_buf()});
+            }
         }
 
         int inner_dim_idx = -1;

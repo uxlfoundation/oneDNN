@@ -519,6 +519,12 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
                 if (dst_bf8 || dst_hf8) {
                     auto t1 = tmp1.subregister(0, ngen::DataType::hf);
                     auto t2 = tmp2.subregister(0, conv_src);
+                    if (s.getByteOffset() != 0) {
+                        plan(mov, esize,
+                                t2.reinterpret(0, src_raw)(conv_src_stride),
+                                s.reinterpret(0, src_raw)(conv_src_stride));
+                        s = t2;
+                    }
                     plan(mov, esize, t1.reinterpret(0, src_raw)(1),
                             s.reinterpret(0, src_raw)(conv_src_stride));
                     plan(mov, esize, t2.reinterpret(0, dst_type)(1),

@@ -16,10 +16,6 @@
 
 set(CMAKE_CXX_CLANG_TIDY "")
 
-if(DNNL_GPU_CONV_PLANNER)
-    set(CMAKE_CXX_STANDARD 17)
-endif()
-
 set(DIRS "codegen;conv;ir;ngen;pass;pooling;reorder;utils;v2")
 
 file(GLOB SOURCES

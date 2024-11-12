@@ -789,10 +789,6 @@ bool data_types_ok(
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
-    if (prb.is_f64_conv()
-            && (utils::one_of(hw.to_ngen(), ngen::HW::XeLP, ngen::HW::XeHPG)
-                    && !hw.has_fp64_atomic_support()))
-        return false;
     if (is_bf8
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
         return false;
@@ -1065,7 +1061,8 @@ status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
     hw_t hw(engine);
 
     VDISPATCH_CHECK(pd, engine, hw_ok(hw), VERBOSE_UNSUPPORTED_ISA);
-    VDISPATCH_CHECK(pd, engine, data_types_ok(prb, hw), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_CHECK(
+            pd, engine, data_types_ok(prb, hw, engine), VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CHECK(
             pd, engine, post_ops_ok(prb, hw), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_CHECK(

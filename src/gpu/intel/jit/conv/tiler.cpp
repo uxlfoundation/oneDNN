@@ -850,8 +850,8 @@ private:
         return true;
     }
 
-    bool check_deterministic_ok(const context_t &ctx) const {
-        if (!is_enabled(check_kind_t::check_deterministic)) return true;
+    bool check_global_reduction_ok(const context_t &ctx) const {
+        if (!is_enabled(check_kind_t::check_global_reduction)) return true;
         dim_t k = padded_gemm_shape_.get(pvars::k, 1);
         return ctx.k_loop * ctx.k_iter >= k;
     }

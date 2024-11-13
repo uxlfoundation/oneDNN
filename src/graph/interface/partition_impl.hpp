@@ -45,10 +45,6 @@
 #include <CL/cl.h>
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include <CL/cl.h>
-#endif
-
 namespace std {
 template <>
 struct hash<std::pair<size_t, size_t>> {

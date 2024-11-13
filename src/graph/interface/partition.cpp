@@ -48,10 +48,6 @@
 #include "graph/utils/ocl_check.hpp"
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "graph/utils/ocl_check.hpp"
-#endif
-
 using dnnl::impl::cache_state2str;
 using dnnl::impl::cache_state_t;
 using namespace dnnl::impl::graph;

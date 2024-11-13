@@ -28,10 +28,6 @@
 #include "graph/utils/ocl_check.hpp"
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "graph/utils/ocl_check.hpp"
-#endif
-
 namespace dnnl {
 namespace impl {
 namespace graph {

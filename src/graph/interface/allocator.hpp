@@ -33,11 +33,6 @@
 #include "oneapi/dnnl/dnnl_graph_ocl.h"
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "graph/utils/ocl_check.hpp"
-#include "oneapi/dnnl/dnnl_graph_ocl.h"
-#endif
-
 struct dnnl_graph_allocator {
 public:
     dnnl_graph_allocator() = default;

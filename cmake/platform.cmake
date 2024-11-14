@@ -476,7 +476,7 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
 endif()
 
 # Old compiler versions do not support warnings available on newer compilers.
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0.0)
+if(CMAKE_CXX_COMPILER_ID MATCHES "(Apple)?[Cc]lang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0.0)
     append(CMAKE_CCXX_FLAGS "-Wno-unknown-warning-option")
 endif()
 

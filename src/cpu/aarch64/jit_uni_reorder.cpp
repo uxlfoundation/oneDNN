@@ -166,6 +166,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                           && !interim_f32_needed(p, false) && p.beta == 0.f)
                 || (p.itype != bf16 && p.otype != bf16)
                 || (p.itype == f32 && p.otype == bf16 && mayiuse_bf16()
+                        && p.beta == 0.f)
+                || (p.itype == bf16 && p.otype == f32 && mayiuse_bf16()
                         && p.beta == 0.f);
 
         bool ok = true && p.ndims > 0

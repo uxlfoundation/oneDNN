@@ -93,11 +93,11 @@ public:
                     bool d_is_f = dst_type.is_f32();
                     bool native_bf = host->exec_cfg().hw().systolic_support();
 
-                    if (src_stride != 1 || s_is_hf || s_is_bf8
+                    if (src_stride != 1 || s_is_hf || s_is_fp8
                             || (s_is_bf && !native_bf)
                             || (s_is_bf && !s_half_grf_aligned)) {
                         auto tmp_type = src_type;
-                        if ((s_is_hf && d_is_f) || s_is_bf8
+                        if ((s_is_hf && d_is_f) || s_is_fp8
                                 || (s_is_bf && !native_bf)
                                 || ((d.offset() != 0 || !s_half_grf_aligned)
                                         && (s_is_bf))) {

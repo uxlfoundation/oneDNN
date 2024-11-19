@@ -25,3 +25,7 @@
 --reset
 --batch=test_matmul_gpu_sim_fp8_mixed
 
+# batch, mixed fp8
+--reset
+--dt=bf16:bf16:f8_e5m2 
+8x8x8x1x8:8x8x1x8x8

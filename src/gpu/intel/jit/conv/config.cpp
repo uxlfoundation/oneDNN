@@ -779,8 +779,8 @@ bool data_types_ok(
     auto wei = prb.wei_data_type;
     auto dst = prb.dst_data_type;
     auto bia = prb.bia_data_type;
-    bool is_bf8 = utils::one_of(data_type::f8_e5m2, src, wei, dst, bia);
-    bool is_hf8 = utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
+    bool is_fp8 = utils::one_of(data_type::f8_e5m2, src, wei, dst, bia)
+            || utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
     if (!prb.is_f64_accumulator()
             && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
@@ -789,11 +789,9 @@ bool data_types_ok(
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
-    if (is_bf8
+    if (is_fp8
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
         return false;
-    if (is_hf8) return false;
-#endif
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;
     if (prb.is_bwd_w) {

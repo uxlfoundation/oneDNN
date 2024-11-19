@@ -1280,7 +1280,7 @@ struct fma_context_t {
         if (a_type.is_f16() && b_type.is_f16() && c_type.is_f32()) {
             return layout.retype(type_t::f32()).make_dense();
         }
-        if (layout.type().is_bf8() || layout.type().is_hf8())
+        if (layout.type().is_fp8())
             return layout.make_dense().retype(type_t::f16());
 
         // mad with f16 requires aligned regioning for src1/src2.
@@ -1309,13 +1309,7 @@ struct fma_context_t {
         bool is_a = (abc == abc_kind_t::a);
         bool is_b = (abc == abc_kind_t::b);
         auto type = (is_a ? a_type : b_type);
-#if XE3P
-        int type_size = ((layout.type().is_bf8() && hw != ngen::HW::Xe3p)
-                        ? 2
-                        : type.size());
-#else
-        int type_size = (layout.type().is_bf8() ? 2 : type.size());
-#endif
+        int type_size = (layout.type().is_fp8() ? 2 : type.size());
         if (is_dpas) {
             int sdepth = 8;
             int dword_size = 4;
@@ -1340,14 +1334,7 @@ struct fma_context_t {
                     layout_t(type, 0, (int)bmnks.size(), blocks));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
-#if XE3P
-            if ((layout.type().is_bf8() || layout.type().is_hf8())
-                    && hw != ngen::HW::Xe3p)
-                return abc_layout.retype(type_t::f16());
-#else
-            if (layout.type().is_bf8() || layout.type().is_hf8())
-                return abc_layout.retype(type_t::f16());
-#endif
+            if (layout.type().is_fp8()) return abc_layout.retype(type_t::f16());
             return abc_layout;
         }
 

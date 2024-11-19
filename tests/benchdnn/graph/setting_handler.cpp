@@ -1676,6 +1676,12 @@ bool get_reorder_dt(const deserialized_op &base_op_ref, dnnl_data_type_t &sdt,
         dnnl_data_type_t &ddt) {
     sdt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
     ddt = convert_dt(base_op_ref.out_lts_.front().get_data_type());
+
+    const auto &op_kind = base_op_ref.kind_;
+    // As we always use f32 computation in the reference path, to link
+    // arguments correctly in the reference path, we need to always create
+    // dequantize ops with f32 output.
+    if (op_kind == "DynamicDequantize") { ddt = dnnl_f32; }
     return true;
 }
 

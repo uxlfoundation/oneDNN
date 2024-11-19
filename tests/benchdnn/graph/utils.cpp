@@ -1260,6 +1260,8 @@ dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt) {
         case graph_dt::boolean: return dnnl_u8;
         case graph_dt::f8_e5m2: return dnnl_f8_e5m2;
         case graph_dt::f8_e4m3: return dnnl_f8_e4m3;
+        case graph_dt::s4: return dnnl_s4;
+        case graph_dt::u4: return dnnl_u4;
         case graph_dt::undef:
         default: return dnnl_data_type_undef;
     }

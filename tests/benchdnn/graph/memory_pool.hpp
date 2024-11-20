@@ -119,7 +119,7 @@ public:
         if (need_alloc_new_mm) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
             auto sh_ptr = std::shared_ptr<void> {
-                    malloc_shared(size, *static_cast<const sycl::device *>(dev),
+                    malloc_device(size, *static_cast<const sycl::device *>(dev),
                             *static_cast<const sycl::context *>(ctx)),
                     sycl_deletor_t {*static_cast<const sycl::context *>(ctx)}};
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL

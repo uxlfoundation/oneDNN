@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -95,6 +95,26 @@ void *malloc_shared(
     if (size == 0) return nullptr;
     static ext_func_t<clSharedMemAllocINTEL_func_t> ext_func(
             "clSharedMemAllocINTEL");
+
+    cl_platform_id platform;
+    UNUSED_OCL_RESULT(clGetDeviceInfo(
+            dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
+
+    cl_int err;
+    void *p = ext_func(platform, ctx, dev, nullptr, size,
+            static_cast<cl_uint>(alignment), &err);
+    assert(dnnl::impl::utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
+            CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
+    return p;
+}
+
+void *malloc_device(
+        cl_device_id dev, cl_context ctx, size_t size, size_t alignment) {
+    using clDeviceMemAllocINTEL_func_t = void *(*)(cl_context, cl_device_id,
+            cl_ulong *, size_t, cl_uint, cl_int *);
+    if (size == 0) return nullptr;
+    static ext_func_t<clDeviceMemAllocINTEL_func_t> ext_func(
+            "clDeviceMemAllocINTEL");
 
     cl_platform_id platform;
     UNUSED_OCL_RESULT(clGetDeviceInfo(

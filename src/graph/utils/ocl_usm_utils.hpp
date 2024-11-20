@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,6 +28,9 @@ namespace utils {
 namespace ocl {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 void *malloc_shared(
+        cl_device_id dev, cl_context ctx, size_t size, size_t alignment = 0);
+
+void *malloc_device(
         cl_device_id dev, cl_context ctx, size_t size, size_t alignment = 0);
 
 void free(void *ptr, cl_device_id dev, cl_context ctx);

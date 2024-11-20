@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ namespace utils {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 void *ocl_allocator_t::malloc(
         size_t size, size_t alignment, cl_device_id dev, cl_context ctx) {
-    return ocl::malloc_shared(dev, ctx, size, alignment);
+    return ocl::malloc_device(dev, ctx, size, alignment);
 }
 
 void ocl_allocator_t::free(
@@ -43,7 +43,7 @@ void ocl_allocator_t::free(
 void *sycl_allocator_t::malloc(
         size_t size, size_t alignment, const void *dev, const void *ctx) {
     const size_t align = alignment == 0 ? DEFAULT_ALIGNMENT : alignment;
-    return ::sycl::aligned_alloc_shared(align, size,
+    return ::sycl::aligned_alloc_device(align, size,
             *static_cast<const ::sycl::device *>(dev),
             *static_cast<const ::sycl::context *>(ctx));
 }

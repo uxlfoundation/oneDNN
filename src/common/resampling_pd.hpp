@@ -96,10 +96,11 @@ protected:
     resampling_desc_t desc_;
     const resampling_fwd_pd_t *hint_fwd_pd_;
 
-    resampling_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+    resampling_pd_t(const resampling_desc_t *adesc,
+            const primitive_attr_t *attr,
             const resampling_fwd_pd_t *hint_fwd_pd)
         : primitive_desc_t(attr, base_pkind)
-        , desc_(*op_desc_t::to_desc<resampling_desc_t>(adesc))
+        , desc_(*adesc)
         , hint_fwd_pd_(hint_fwd_pd) {}
 
 private:
@@ -147,7 +148,8 @@ protected:
     memory_desc_t src_md_;
     memory_desc_t dst_md_;
 
-    resampling_fwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+    resampling_fwd_pd_t(const resampling_desc_t *adesc,
+            const primitive_attr_t *attr,
             const resampling_fwd_pd_t *hint_fwd_pd)
         : resampling_pd_t(adesc, attr, hint_fwd_pd)
         , src_md_(desc_.src_desc)
@@ -207,7 +209,8 @@ protected:
     memory_desc_t diff_src_md_;
     memory_desc_t diff_dst_md_;
 
-    resampling_bwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+    resampling_bwd_pd_t(const resampling_desc_t *adesc,
+            const primitive_attr_t *attr,
             const resampling_fwd_pd_t *hint_fwd_pd)
         : resampling_pd_t(adesc, attr, hint_fwd_pd)
         , diff_src_md_(desc_.diff_src_desc)

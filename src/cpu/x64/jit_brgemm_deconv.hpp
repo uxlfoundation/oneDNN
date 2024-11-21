@@ -79,9 +79,10 @@ struct brgemm_deconvolution_fwd_t : public primitive_t {
         bool has_strides_ = false;
 
     private:
-        std::string name_ = JIT_IMPL_NAME_HELPER("brg_deconv:", isa, "");
+        std::string name_;
 
         void init_name() {
+            name_ = JIT_IMPL_NAME_HELPER("brg_deconv:", isa, "");
             name_.append("+");
             name_.append(conv_pd_->name());
         }

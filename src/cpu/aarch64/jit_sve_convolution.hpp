@@ -212,7 +212,7 @@ struct jit_sve_convolution_bwd_weights_t : public primitive_t {
             return status;
         }
 
-        jit_conv_conf_t jcp_;
+        jit_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
         typename cpu_reducer_t<diff_weights_type, isa>::conf_t
                 reducer_bia_conf_;
 

@@ -43,7 +43,7 @@ struct acl_gemm_convolution_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine);
 
-        acl_conv_conf_t acp_;
+        acl_conv_conf_t acp_ = utils::zero<decltype(acp_)>();
         acl_post_ops_t post_ops;
     };
 

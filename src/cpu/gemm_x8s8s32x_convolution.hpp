@@ -173,7 +173,7 @@ struct gemm_x8s8s32x_convolution_bwd_data_t : public primitive_t {
 
         bool support_bias() const override { return true; }
 
-        conv_gemm_conf_t jcp_;
+        conv_gemm_conf_t jcp_ = utils::zero<decltype(jcp_)>();
     };
 
     gemm_x8s8s32x_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}

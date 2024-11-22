@@ -22,9 +22,12 @@
 #include "float16.hpp"
 #include "float4.hpp"
 #include "float8.hpp"
-#include "int4.hpp"
-
-#include <cstdint>
+#include "gemm_types.hpp"
+#include "nstl.hpp"
+#include "opdesc.hpp"
+#include "sdpa_types.hpp"
+#include "utils.hpp"
+#include "z_magic.hpp"
 
 namespace dnnl {
 namespace impl {

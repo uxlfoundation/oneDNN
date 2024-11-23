@@ -469,7 +469,6 @@ protected:
             const primitive_attr_t *attr, engine_t *engine,
             const primitive_desc_t *hint_fwd) {
         using namespace dnnl::impl::status;
-        using pd_op_desc_t = typename pkind_traits<pd_t::base_pkind>::desc_type;
         if (adesc->primitive_kind != pd_t::base_pkind) return invalid_arguments;
         assert(hint_fwd ? hint_fwd->kind() == pd_t::base_pkind : true);
         auto hint

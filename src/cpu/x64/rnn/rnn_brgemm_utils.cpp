@@ -1343,6 +1343,9 @@ static status_t init_kernels_diff_wei(rnn_diff_wei_brgemm_t &diff_wei,
     // TODO: provide unification of jit-based copy routines with implementation
     // independent interface
     matmul::brgemm_matmul_conf_t tmp_matmul_conf_for_reorder;
+    tmp_matmul_conf_for_reorder.is_thread_chunks_exec_order_horizontal = true;
+    tmp_matmul_conf_for_reorder.mem_advice
+            = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_undef;
     tmp_matmul_conf_for_reorder.isa = rnn.brgemm_isa;
     tmp_matmul_conf_for_reorder.wei_tag = format_tag::ab;
     tmp_matmul_conf_for_reorder.N = rnn.scratch_gates_ld;

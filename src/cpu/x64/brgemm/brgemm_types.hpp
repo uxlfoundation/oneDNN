@@ -89,6 +89,36 @@ typedef enum {
     brgemm_hint_nt_true,
 } brgemm_kernel_hint_nt_t;
 
+// memory advice feature heuristic is based on the performance tests done
+// on simulator and lets the tile loading snoop for other cores caches if
+// the A/B matrices are shared. thus, if already shared, no need to fetch
+// from lower level memories the assumption is that if we don't divide
+// the C matrix evenly on row chunks per thread, then it worth checking
+// mem advice as there will be sharing
+typedef enum {
+    brgemm_hint_mem_advice_undef = 0,
+
+    // only matrix A is read shared between threads. selected when
+    // there is sharing of data between threads over the A matrix
+    // when chunks are processed horizontally and the threads don't
+    // divide the A buffer w/o remainder in chunks. Thus, it is worth
+    // sharing between threads
+    // or when chunks are processed vertically and split between threads
+    brgemm_hint_mem_advice_A,
+
+    // only matrix B is read shared between threads. selected when
+    // there is sharing of data between threads over the A matrix
+    // when chunks are processed vertically and the threads don't
+    // divide the A buffer w/o remainder in chunks. Thus, it is worth
+    // sharing between threads.
+    // or when chunks are processed horizontally and split between threads
+    brgemm_hint_mem_advice_B,
+
+    // if both conditions above apply, it worth sharing on both A and B buffer
+    // between threads
+    brgemm_hint_mem_advice_A_B,
+} brgemm_kernel_hint_mem_advice_t;
+
 struct brgemm_prf_t {
     int dist0 {-1};
     int dist1 {-1};
@@ -183,6 +213,8 @@ struct DNNL_API brgemm_attr_t {
     int hint_bd_block2 {0};
     int hint_ld_block2 {0};
     bool hint_ununroll_bd_loop {false};
+
+    brgemm_kernel_hint_mem_advice_t mem_advice {brgemm_hint_mem_advice_undef};
 
     brgemm_kernel_hint_nt_t hint_load_nt_A {brgemm_hint_nt_undef};
     brgemm_kernel_hint_nt_t hint_load_nt_B {brgemm_hint_nt_undef};

@@ -46,6 +46,9 @@ void CommonStrategy::preflight(HW hw, const CommonProblem &problem)
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW || emulate.emulate64_mul;
     if (moveR0 == MoveR0::Acc && emulateNeedsAcc)
         moveR0 = MoveR0::None;
+#if XE3P
+    if (hw >= HW::Xe3p) moveR0 = MoveR0::None;
+#endif
 
     spf &= !fused;
 }

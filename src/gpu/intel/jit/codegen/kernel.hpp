@@ -72,6 +72,9 @@ struct ir_generator_t : public jit_generator_base {
                 REG_XEHPC_ISA(CASE(XeHPC));
                 REG_XE2_ISA(CASE(Xe2));
                 REG_XE3_ISA(CASE(Xe3));
+#if XE3P
+                REG_XE3P_ISA(CASE(Xe3p));
+#endif
                 default: gpu_assert(false) << "Unexpected GPU architecture";
             }
 #undef CASE
@@ -964,6 +967,9 @@ public:
 
         // qot = (x * m) >> p
         bool use_mach = true;
+#if XE3P
+        if (hw == ngen::HW::Xe3p) use_mach = false;
+#endif
         if (use_mach) {
             auto acc = acc0.retype(div_type);
             mul(1, acc[0], _x, m & 0xFFFF);

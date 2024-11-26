@@ -34,6 +34,9 @@ inline int block_2d_base_alignment(const hw_t &hw) {
             return (hw.stepping_id() <= 6) ? 128 : 64;
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return 64;
+#if XE3P
+        case ngen::HW::Xe3p: return 4;
+#endif
         default: ir_error_not_expected();
     }
     return 0;
@@ -61,6 +64,9 @@ inline int block_2d_pitch_alignment(const hw_t &hw) {
         case ngen::HW::XeHPC: return 8;
         case ngen::HW::Xe2: return 16;
         case ngen::HW::Xe3: return 16;
+#if XE3P
+        case ngen::HW::Xe3p: return 4;
+#endif
         default: ir_error_not_expected();
     }
     return 0;

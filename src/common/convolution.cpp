@@ -158,7 +158,6 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                 prop_kind::forward_training)) {
         const data_type_t src_dt = desc.src_desc.data_type;
         const data_type_t dst_dt = desc.dst_desc.data_type;
-
         auto fwd_attr_mask = smask_t::post_ops | smask_t::sum_dt
                 | smask_t::fpmath_mode | smask_t::rounding_mode;
 
@@ -169,11 +168,14 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
         if (engine->kind() == engine_kind::gpu)
             enable_quantization = enable_quantization || is_fp8
                     || utils::one_of(dst_dt, data_type::s8, data_type::u8,
-                            data_type::s32);
-        if (is_int8)
+                            data_type::s32, data_type::f8_e5m2,
+                            data_type::f8_e4m3);
+        if (enable_quantization)
             fwd_attr_mask |= smask_t::scales_runtime
                     | smask_t::zero_points_runtime
-                    | smask_t::zero_points_runtime_data_type;
+                    | smask_t::zero_points_runtime_data_type
+                    | smask_t::scales_runtime_groups
+                    | smask_t::scales_runtime_data_type;
 
         VCHECK_CONV_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);

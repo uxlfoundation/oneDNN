@@ -358,6 +358,15 @@ int CopyPlan::tempFlagBytes() const
     return bytes;
 }
 
+bool CopyPlan::legalStrides() const
+{
+    for(auto &i : insns){
+        if(i.dst.stride == 8)return false;
+    }
+    return true;
+
+}
+
 // Split an instruction into two.
 //   If sequenced is true (default), the two instructions depend on each other
 //   and should be spaced apart.
@@ -580,6 +589,7 @@ void CopyPlan::repositionDst(CopyInstruction &i, int stride, int offset)
     i1.moveToIntegerPipe();
 }
 
+
 // Pass to split 2D regioned instructions into 1D regions.
 void CopyPlan::split2DRegions()
 {
@@ -588,10 +598,10 @@ void CopyPlan::split2DRegions()
     for (auto &i: insns) {
         if (is2D(i.dst) || is2D(i.src1) || is2D(i.src2))
             stub("Unsupported 2D region");
-        if (is2D(i.src0)) {
+        if (is2D(i.src0)){
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.inW, vs = i.src0.inVS, hs = i.src0.stride;
-            bool splitH = (w * w >= i.simd);
+            bool splitH = (w * w >= i.simd || i.dst.stride * w >= 8);
             int nsplit = splitH ? (i.simd / w) : w;
             i.simd /= nsplit;
             i.src0.stride = splitH ? hs : vs;
@@ -1260,6 +1270,7 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
+        if (simd0 == 2) simd0 = 1;
         if (simd0 < i.simd || splitting) {
             if (i.dst.offset >= i.dst.stride && i.dst.stride > 0) {   /* align dst to GRF boundary */
                 int remaining = div_up(bytesToElements(grf, i.dst.type) - i.dst.offset, i.dst.stride);

@@ -374,8 +374,7 @@ public:
         ir_assert(needs_store());
 
         auto write = make_access_builder(*ir_ctx_, mem_view(), mem_buf(),
-                reg_buf(), atomic_send_op(mem_view().type()),
-                send_address_t::a64);
+                reg_buf(), send_op_t::atomic_fadd, send_address_t::a64);
         ir_assert(write.reg_layout() == reg_layout());
 
         return write.stmt();

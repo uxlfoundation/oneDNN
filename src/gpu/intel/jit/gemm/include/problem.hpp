@@ -163,7 +163,7 @@ struct GEMMProblem : public CommonProblem {
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
     MatrixAddressing AO, BO, CO;                    // Addressing information for A/B/C offsets (if 2D).
     MatrixAddressing A_scale, B_scale;              // Addressing information for A/B/C scales (if 2D).
-    MatrixAddressing sroundSeed;              // Addressing information for A/B/C scales (if 2D).
+    MatrixAddressing sroundSeed;                    // Seed value for stochastic rounding.
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
@@ -304,8 +304,10 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
 
+    if (hw < HW::Xe3p) {
         if (Ta.isF8()) Ta = Type::f16;
         if (Tb.isF8()) Tb = Type::f16;
+    }
 
     if (hw > HW::Gen9 && !systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

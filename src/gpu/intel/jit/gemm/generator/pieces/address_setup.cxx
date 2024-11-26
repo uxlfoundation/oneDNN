@@ -229,7 +229,11 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
                         eadd(simd2, addr[2].uq(), addr[udStride].ud(0)(udStride), ptrShifted, strategy, state);
                     eadd(simd1, addr[0].uq(), addr[0].ud(0)(udStride), ptrShifted, strategy, state);
                 } else if (ptrShifted != 0) {
+#if XE3P
+                    if (consecutive > 1 || tblock > 1 || hw >= HW::Xe3p)
+#else
                     if (consecutive > 1 || tblock > 1)
+#endif
                     {
                         mulConstant<uint32_t>(simdSize, addr, iv, stride);
                         add<uint32_t>(simdSize, addr, addr, ptrShifted);

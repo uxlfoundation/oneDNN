@@ -115,6 +115,27 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
         if (block_2d_b && strategy_.legalBAlignment(problem_, 16))
             problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
     }
+
+#if XE3P
+    if (hw_ == ngen::HW::Xe3p) {
+        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
+        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
+
+        // Disable block 2D C remainders for small C to avoid simulator errors.
+        strategy_.block2DCRemainder &= (m_ * problem_.Tc >= 64);
+        strategy_.block2DCRemainder &= !(
+                utils::one_of(Type::bf8, problem_.Ta, problem_.Tb, problem_.Tc)
+                || utils::one_of(
+                        Type::u4, problem_.Ta, problem_.Tb, problem_.Tc)
+                || utils::one_of(
+                        Type::s4, problem_.Ta, problem_.Tb, problem_.Tc)
+                || utils::one_of(
+                        Type::hf8, problem_.Ta, problem_.Tb, problem_.Tc));
+
+        // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
+        strategy_.namedBarriers[0] = 0;
+        strategy_.namedBarriers[1] = 0;
+    }
 #endif
 
     // Disable global k parallelization if it wouldn't be used.
@@ -281,6 +302,9 @@ void gen_gemm_kernel_desc_t::update_driver_info() {
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
         REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+#if XE3P
+        REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+#endif
         default:
             assert(!"Unsupported architecture");
             driver_info_ = entry_->driverInfo;
@@ -500,6 +524,11 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     std::vector<MatchParams> match_params;
 
     match_params.emplace_back(hw_, has_systolic, is_integrated, problem_);
+#if XE3P
+    /* Reuse PVC strategies for legacy mode on Xe3p */
+    if (arch == arch_t::xe3p && !efficient_64b_)
+        match_params[0].selector.hw = kcatalog::HWTagXeHPC;
+#endif
 
     match_params[0].sizes.m = m;
     match_params[0].sizes.n = n;
@@ -517,6 +546,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool fpmath_tf32 = mode & mode_tf32;
     bool fpmath_bf16 = mode & mode_bf16x1;
     bool fpmath_f16 = mode & mode_f16x1;
+    bool fpmath_strict = !(fpmath_tf32 || fpmath_bf16 || fpmath_f16)
+            && (mode & mode_strict) && (mode & mode_w_decomp);
 
     auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
         if (!has_mode) return;
@@ -559,6 +590,44 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         if (dt.isInt4()) return "[FO]";
         return nullptr;
     });
+
+    if (fpmath_bf16
+            && (utils::one_of(Type::f32, problem_.Ta, problem_.Tb)
+                    || (problem_.Ta.isF8() || problem_.Tb.isF8()))
+            && (problem_.Ta.isInteger() || problem_.Tb.isInteger())) {
+        if (problem_.Ta.isInt8() || problem_.Ta.isInt4()) {
+            match_params.emplace_back(match_params[0]);
+            match_params.back().selector.precisions[1] = "B";
+        } else {
+            match_params.emplace_back(match_params[0]);
+            match_params.back().selector.precisions[0] = "B";
+        }
+    }
+
+    if (fpmath_f16
+            && (utils::one_of(Type::f32, problem_.Ta, problem_.Tb)
+                    || (problem_.Ta.isF8() || problem_.Tb.isF8()))
+            && (problem_.Ta.isInteger() || problem_.Tb.isInteger())) {
+        if (problem_.Ta.isInt8() || problem_.Ta.isInt4()) {
+            match_params.emplace_back(match_params[0]);
+            match_params.back().selector.precisions[1] = "H";
+        } else {
+            match_params.emplace_back(match_params[0]);
+            match_params.back().selector.precisions[0] = "H";
+        }
+    }
+
+    if (fpmath_strict) {
+        if (problem_.Tb.isInt4() && !(fpmath_f16 || fpmath_bf16)) {
+            match_params.emplace_back(match_params[0]);
+            match_params.back().selector.precisions[1]
+                    = match_params.back().selector.precisions[0];
+        } else {
+            match_params.emplace_back(match_params[0]);
+            match_params.back().selector.precisions[0]
+                    = match_params.back().selector.precisions[1];
+        }
+    }
 
     EvaluateParams eval_params;
 
@@ -925,6 +994,9 @@ xpu::binary_t gen_gemm_kernel_t::get_binary(
             REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
             REG_XE2_ISA(ARCH_DISPATCH(Xe2))
             REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+#if XE3P
+            REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+#endif
             default: assert(!"Unsupported architecture"); break;
         }
     } catch (const std::runtime_error &err) {

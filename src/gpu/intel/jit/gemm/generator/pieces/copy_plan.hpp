@@ -141,6 +141,7 @@ public:
     inline void execute(Generator &g);
 
     int tempFlagBytes() const;
+    bool legalStrides() const;
 
 protected:
     ngen::HW hw;
@@ -236,7 +237,7 @@ void CopyInstruction::execute(Generator &g)
                 g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen()); \
         }                                                                           \
         break;
-#define BFN_OP_CASE(o)                                                          \
+#define BFN_OP_CASE(o)                                                              \
     case ngen::Opcode::o:                                                           \
         if (src0.kind == CopyOperand::Immediate) {                                  \
             if (src2.kind == CopyOperand::Immediate)                                \

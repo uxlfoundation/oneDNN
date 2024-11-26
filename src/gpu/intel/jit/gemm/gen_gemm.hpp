@@ -66,15 +66,21 @@ struct gen_gemm_t : public gpu_gemm_t {
             int stepping = dev_info_->stepping_id();
 
             const auto d = desc();
+            bool all_f8 = (utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
+                    && utils::one_of(d->b_type(), f8_e5m2, f8_e4m3)
+                    && utils::one_of(
+                            d->c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
             wei_decomp_ = (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2,
                                    f8_e4m3)
                                   && utils::one_of(d->a_type(), u8, s8, s4, u4)
                                   && utils::one_of(d->b_type(), f16, f32, bf16,
                                           f8_e5m2, f8_e4m3))
                     && attr()->mayiconvert(d->a_type(), f32);
-            dy_quant_enabled_ = (utils::one_of(d->c_type(), f32, f16, bf16)
-                    && utils::one_of(d->a_type(), u8, s8, s4, u4)
-                    && utils::one_of(d->b_type(), u8, s8));
+            dy_quant_enabled_
+                    = (utils::one_of(d->c_type(), f32, f16, bf16)
+                              && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                              && utils::one_of(d->b_type(), u8, s8))
+                    || all_f8;
             quant_enabled_ = wei_decomp_ || dy_quant_enabled_;
             CHECK(set_default_formats(false));
 
@@ -356,6 +362,9 @@ struct gen_gemm_t : public gpu_gemm_t {
             bool arch_ok = utils::one_of(arch_, arch_t::gen9, arch_t::gen11,
                     arch_t::xe_lp, arch_t::xe_hp, arch_t::xe_hpg,
                     arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
+#if XE3P
+            arch_ok |= (arch_ == arch_t::xe3p);
+#endif
 
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
             VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),
@@ -422,6 +431,8 @@ struct gen_gemm_t : public gpu_gemm_t {
                 set_mode(mode, kernel_desc_t::mode_bf16x1);
             if (attr()->mayiconvert(f32, f16))
                 set_mode(mode, kernel_desc_t::mode_f16x1);
+            if (attr()->mayiconvert(f32, f32))
+                set_mode(mode, kernel_desc_t::mode_strict);
             if (attr()->deterministic_)
                 set_mode(mode, kernel_desc_t::mode_deterministic);
 
@@ -434,6 +445,11 @@ struct gen_gemm_t : public gpu_gemm_t {
             gpu_post_ops_t gpu_post_ops;
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
+
+#if XE3P
+            if (arch_ == arch_t::xe3p)
+                kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
+#endif
 
             CHECK(kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,

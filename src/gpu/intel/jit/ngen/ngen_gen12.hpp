@@ -34,6 +34,13 @@ template <> struct EncodingTag12Dispatch<HW::Xe2>   { using tag = EncodingTagXeH
 template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
 template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
+#if XE3P
+struct EncodingTagXe3p : public EncodingTagXeHPC {};
+struct InstructionXe3p;
+
+template <> struct EncodingTag12Dispatch<HW::Xe3p>  { using tag = EncodingTagXe3p; };
+template <> struct Instruction12Dispatch<HW::Xe3p>  { using type = InstructionXe3p; };
+#endif
 
 class SWSBInfo12
 {
@@ -416,7 +423,7 @@ struct Instruction12 {
             unsigned : 32;
             unsigned : 32;
         } sendIndirect;
-#if XE3
+#if XE3P
         struct {
             unsigned : 32;
             //
@@ -566,6 +573,9 @@ struct Instruction12 {
     inline bool getSendDesc(MessageDescriptor &desc) const;
     inline bool getARFType(ARFType &arfType, int opNum, HW hw) const;
     inline int getFencedepJIP() const;
+#if XE3P
+    inline SendgMessageDescriptor getSendgDesc() const;
+#endif
 
     bool isMathMacro() const {
         if (opcode() != Opcode::math) return false;
@@ -587,12 +597,24 @@ struct InstructionXeHPC : public Instruction12 {
     bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const {
         return Instruction12::getOperandRegion<EncodingTagXeHPC>(region, opNum);
     }
- 
+
+#if XE3P
+    bool isSendg() const {
+        return (opcode() == Opcode::sendg || opcode() == Opcode::sendgc || opcode() == Opcode::sendgx);
+    }
+#endif
+
     bool eot() const {
+#if XE3P
+        if (isSendg()) return sendg.eot;
+#endif
         return Instruction12::eot();
     }
 
     bool atomic() const {
+#if XE3P
+        if (isSendg()) return false;    /* no atomic field */
+#endif
         return Instruction12::atomic();
     }
 };
@@ -847,40 +869,40 @@ static inline bool checkSrc1Scalar(Opcode op, ExtendedReg r, ExtendedReg dst, Ta
 
 static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag)
 {
-    Instruction12 i2;   /* separate variable to avoid gcc13 bug */
-    i2.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);
-    i2.common.swsb = SWSBInfo12(mod.getSWSB(), opcode).raw();
-    i2.common.execSize = mod.parts.eSizeField;
-    i2.common.execOffset = mod.parts.chanOff;
-    i2.common.flagReg = (mod.parts.flagRegNum << 1) | mod.parts.flagSubRegNum;
-    i2.common.predCtrl = mod.parts.predCtrl;
-    i2.common.predInv = mod.parts.predInv;
-    i2.common.cmptCtrl = mod.parts.cmptCtrl;
-    i2.common.debugCtrl = mod.parts.debugCtrl;
-    i2.common.maskCtrl = mod.parts.maskCtrl;
-    i2.common.atomicCtrl = mod.parts.threadCtrl;
-    i2.common.accWrCtrl = mod.parts.accWrCtrl;
-    i2.common.saturate = mod.parts.saturate;
-    i.common = i2.common;
+    i.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);
+    i.common.swsb = SWSBInfo12(mod.getSWSB(), opcode).raw();
+    i.common.execSize = mod.parts.eSizeField;
+    i.common.execOffset = mod.parts.chanOff;
+    i.common.flagReg = (mod.parts.flagRegNum << 1) | mod.parts.flagSubRegNum;
+    i.common.predCtrl = mod.parts.predCtrl;
+    i.common.predInv = mod.parts.predInv;
+    i.common.cmptCtrl = mod.parts.cmptCtrl;
+    i.common.debugCtrl = mod.parts.debugCtrl;
+    i.common.maskCtrl = mod.parts.maskCtrl;
+    i.common.atomicCtrl = mod.parts.threadCtrl;
+    i.common.accWrCtrl = mod.parts.accWrCtrl;
+    i.common.saturate = mod.parts.saturate;
 }
 
 static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTagXeHPC tag)
 {
-    Instruction12 i2;   /* separate variable to avoid gcc13 bug */
-    i2.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);
-    i2.commonXeHPC.swsb = SWSBInfoXeHPC(mod.getSWSB(), opcode).raw();
-    i2.commonXeHPC.execSize = mod.parts.eSizeField;
-    i2.commonXeHPC.flagReg = (mod.parts.flagRegNum1 << 2) | (mod.parts.flagRegNum << 1) | mod.parts.flagSubRegNum;
-    i2.commonXeHPC.execOffset = mod.parts.chanOff >> 1;
-    i2.commonXeHPC.predCtrl = mod.parts.predCtrl;
-    i2.common.predInv = mod.parts.predInv;
-    i2.common.cmptCtrl = mod.parts.cmptCtrl;
-    i2.common.debugCtrl = mod.parts.debugCtrl;
-    i2.common.maskCtrl = mod.parts.maskCtrl;
-    i2.common.atomicCtrl = mod.parts.threadCtrl;
-    i2.commonXeHPC.dstExt = (dst.isIndirect() ? dst.getOffset() : dst.getByteOffset()) & 1;
-    i2.common.saturate = mod.parts.saturate;
-    i.common = i2.common;
+    i.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);
+    i.commonXeHPC.swsb = SWSBInfoXeHPC(mod.getSWSB(), opcode).raw();
+    i.commonXeHPC.execSize = mod.parts.eSizeField;
+    i.commonXeHPC.flagReg = (mod.parts.flagRegNum1 << 2) | (mod.parts.flagRegNum << 1) | mod.parts.flagSubRegNum;
+    i.commonXeHPC.execOffset = mod.parts.chanOff >> 1;
+    i.commonXeHPC.predCtrl = mod.parts.predCtrl;
+    i.common.predInv = mod.parts.predInv;
+    i.common.cmptCtrl = mod.parts.cmptCtrl;
+    i.common.debugCtrl = mod.parts.debugCtrl;
+    i.common.maskCtrl = mod.parts.maskCtrl;
+    i.common.atomicCtrl = mod.parts.threadCtrl;
+    i.commonXeHPC.dstExt = (dst.isIndirect() ? dst.getOffset() : dst.getByteOffset()) & 1;
+#ifdef PRERELEASE_HW
+    if (opcode == Opcode::dpas)
+        i.common.accWrCtrl = mod.parts.accWrCtrl;   /* {Fwd} */
+#endif
+    i.common.saturate = mod.parts.saturate;
 }
 
 template <typename Tag>
@@ -1064,9 +1086,9 @@ static inline int decodeDPASTypecodeBytes12(unsigned dt)
 
 inline ARFType normalizeARFType(ARFType type, HW hw)
 {
-   if (hw >= HW::Xe3 && type == ARFType::sp)
+    if (hw >= HW::Xe3 && type == ARFType::sp)
         type = ARFType::s;
-   return type;
+    return type;
 }
 
 template <typename Tag>
@@ -1103,6 +1125,9 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     BinaryOperand12 o;
                     o.bits = binary.dst;
                     unsigned regNum = o.direct.regNum;
+#if XE3P
+                    if (xe3p) regNum |= (binaryXe3p.dstReg8 << 8);
+#endif
                     region = DependencyRegion(hw, 1, GRF(regNum));
                     return true;
                 }
@@ -1111,6 +1136,12 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     o0.bits = binary.src0;
                     o1.bits = binary.src1;
                     unsigned rn0 = o0.direct.regNum, rn1 = o1.direct.regNum;
+#if XE3P
+                    if (xe3p) {
+                        rn0 |= (binaryXe3p.src0Reg8 << 8);
+                        rn1 |= (binaryXe3p.src1Reg8 << 8);
+                    }
+#endif
                     region = DependencyRegion(hw, GRF(rn0)-GRF(rn1));
                     return true;
                 }
@@ -1130,25 +1161,21 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 case -1: {
                     int typebytes = decodeDPASTypecodeBytes12(ternary.dstType);
                     len = (rcount * typebytes + 3) >> 2;
-#ifdef PRERELEASE_HW
-                    if (typebytes == 8) len = rcount;
-#endif
-                    o.bits = ternary.dst;
 #if XE3P
+                    if (typebytes == 8) len = rcount;
                     regNum8 = ternaryXe3p.dstReg8;
 #endif
+                    o.bits = ternary.dst;
                     break;
                 }
                 case 0: {
                     int typebytes = decodeDPASTypecodeBytes12(ternary.src0Type);
                     len = (rcount * typebytes + 3) >> 2;
-#ifdef PRERELEASE_HW
-                    if (typebytes == 8) len = rcount;
-#endif
-                    o.bits = ternary.src0;
 #if XE3P
+                    if (typebytes == 8) len = rcount;
                     regNum8 = ternaryXe3p.src0Reg8;
 #endif
+                    o.bits = ternary.src0;
                     break;
                 }
                 case 1:
@@ -1166,11 +1193,9 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                         len = ((sr << 1) + sdepth * rcount * 4 + 63) >> 6;
                     else
                         len = (sr + sdepth * rcount * 4 + 31) >> 5;
-#ifdef PRERELEASE_HW
+#if XE3P
                     if (decodeDPASTypecodeBytes12(ternary.src2Type) == 8)
                         len = rcount;
-#endif
-#if XE3P
                     regNum8 = ternaryXe3p.src2Reg8;
 #endif
                     break;
@@ -1539,6 +1564,22 @@ int Instruction12::getFencedepJIP() const
     (void) getImm32(imm);
     return int32_t(imm) / sizeof(Instruction12);
 }
+
+#if XE3P
+SendgMessageDescriptor Instruction12::getSendgDesc() const
+{
+    SendgMessageDescriptor desc;
+    desc.all =  uint64_t(sendg.desc0_15)
+             | (uint64_t(sendg.desc16_27) << 16)
+             | (uint64_t(sendg.desc28_29) << 28)
+             | (uint64_t(sendg.desc30_31) << 30)
+             | (uint64_t(sendg.desc32_39) << 32)
+             | (uint64_t(sendg.desc40_41) << 40);
+    if (!sendg.ind1Present)
+        desc.all |= (uint64_t(sendg.ind1_desc42_46) << 42);
+    return desc;
+}
+#endif
 
 bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const
 {

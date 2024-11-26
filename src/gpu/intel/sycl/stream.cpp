@@ -26,14 +26,6 @@
 
 #include "gpu/intel/ocl/ocl_utils.hpp"
 
-#include "common/verbose.hpp"
-
-#include "xpu/sycl/stream_profiler.hpp"
-
-#include "gpu/intel/sycl/stream.hpp"
-
-#include "gpu/intel/ocl/ocl_utils.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {

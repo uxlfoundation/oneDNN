@@ -43,28 +43,6 @@ namespace autoswsb {
 /*******************/
 
 typedef uint8_t PipeMask;
-#if XE3
-enum {
-    PipeMaskNone = 0,
-    PipeMaskA = 1,      // All in-order pipes
-    PipeMaskF = 2,
-    PipeMaskI = 4,
-    PipeMaskL = 8,
-    PipeMaskM = 0x10,
-    PipeMaskS = 0x20,
-    PipeMaskC = 0x40,   // All instructions (in-order/out-of-order).
-    PipeMaskO = 0x80,   // All out-of-order pipes. Not a valid GeneralizedPipe.
-    PipeBitA = 0,
-    PipeBitF = 1,
-    PipeBitI = 2,
-    PipeBitL = 3,
-    PipeBitM = 4,
-    PipeBitS = 5,
-    PipeBitC = 6,
-    PipeBitO = 7,
-};
-static constexpr int NPipes = 7;
-#else
 enum {
     PipeMaskNone = 0,
     PipeMaskA = 1,      // All in-order pipes
@@ -369,11 +347,9 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
                 return GeneralizedPipe::Math();
             case Opcode::send:
             case Opcode::sendc:
-#if XE3
+#if XE3P
             case Opcode::sendg:
             case Opcode::sendgc:
-#endif
-#if XE3P
             case Opcode::sendgx:
 #endif
                 return GeneralizedPipe(insn.sfid());
@@ -593,7 +569,7 @@ inline bool contains(const DependencyRegion &dep1, const DependencyRegion &dep2)
 // Check if an ARF type needs SWSB tracking.
 inline bool trackableARF(ARFType type)
 {
-  return (type == ARFType::acc || type == ARFType::a || type == ARFType::s);
+    return (type == ARFType::acc || type == ARFType::a || type == ARFType::s);
 }
 
 // Distance in an in-order pipe after which a dependency can be ignored.
@@ -619,11 +595,9 @@ inline int estimateLatency(HW hw, const Instruction &insn)
         case Opcode::math: return (hw == HW::Gen12LP) ? 20 : 17;
         case Opcode::dpas:
         case Opcode::dpasw: return 20;   // need correct value
-#if XE3
+#if XE3P
         case Opcode::sendg:
         case Opcode::sendgc:
-#endif
-#if XE3P
         case Opcode::sendgx:
 #endif
         case Opcode::send:
@@ -1164,7 +1138,7 @@ void DependencyTable<consumer>::dump() const
                         if (i > NPipes)
                             std::cerr << '?';
                         else
-                           std::cerr << "AFILMSCO"[i % (NPipes + 1)];
+                            std::cerr << "AFILMSCO"[i % (NPipes + 1)];
                         break;
                 }
                 std::cerr << ":\t";
@@ -1336,6 +1310,13 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                     case Directive::ignoredep_src0: ignoreDeps[1] = true; break;
                     case Directive::ignoredep_src1: ignoreDeps[2] = true; break;
                     case Directive::ignoredep_src2: ignoreDeps[3] = true; break;
+                    case Directive::subdep_dst:
+#ifdef NGEN_SAFE
+                        if (!subDstRegion.empty())
+                            throw invalid_directive_exception();
+#endif
+                         insn.getOperandRegion(subDstRegion, 0);
+                         break;
                     case Directive::wrdep:
                         regions[1].hw = hw;
                         insn.getOperandRegion(regions[1], 0);

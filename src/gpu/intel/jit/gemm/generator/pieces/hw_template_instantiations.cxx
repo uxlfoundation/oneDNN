@@ -35,6 +35,10 @@ REG_XEHPC_ISA(template class BLASKernelGenerator<HW::XeHPC>);
 REG_XE2_ISA(template class BLASKernelGenerator<HW::Xe2>);
 #elif defined(DNNL_GPU_ISA_XE3)
 REG_XE3_ISA(template class BLASKernelGenerator<HW::Xe3>);
+#if XE3P
+#elif defined(DNNL_GPU_ISA_XE3P)
+REG_XE3P_ISA(template class BLASKernelGenerator<HW::Xe3p>);
+#endif
 #else
 // Default to instantiating all classes
 REG_GEN9_ISA(template class BLASKernelGenerator<HW::Gen9>);
@@ -45,4 +49,7 @@ REG_XEHPG_ISA(template class BLASKernelGenerator<HW::XeHPG>);
 REG_XEHPC_ISA(template class BLASKernelGenerator<HW::XeHPC>);
 REG_XE2_ISA(template class BLASKernelGenerator<HW::Xe2>);
 REG_XE3_ISA(template class BLASKernelGenerator<HW::Xe3>);
+#if XE3P
+REG_XE3P_ISA(template class BLASKernelGenerator<HW::Xe3p>);
+#endif
 #endif

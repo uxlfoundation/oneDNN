@@ -646,6 +646,22 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     if (dst_output) dst_tag = user_dst_tag;
 }
 
+type_t output_type(const hw_t &hw, prop_kind_t prop_kind,
+        const primitive_attr_t *attr, data_type_t tensor_dt) {
+    if (prop_kind != prop_kind::backward_weights) {
+        if (tensor_dt == data_type::undef) return type_t();
+        return type_t(tensor_dt);
+    }
+#if XE3P
+    if (hw.to_ngen() == ngen::HW::Xe3p
+            && utils::one_of(attr->acc_mode_, accumulation_mode::relaxed,
+                    accumulation_mode::any)
+            && tensor_dt == data_type::bf16)
+        return type_t(tensor_dt);
+#endif
+    return type_t::f32();
+}
+
 status_t init_tensor_layouts(
         conv_config_t &cfg, convolution_pd_t *pd, impl::engine_t *engine) {
     const auto &prb = cfg.prb();
@@ -728,10 +744,14 @@ status_t init_tensor_layouts(
                                                 : user_dst_layout;
     auto bia_layout = user_bia_layout;
 
-    wei_layout = wei_layout.retype(output_type(
-            cfg.hw(), prb.prop_kind(), pd->attr(), prb.wei_data_type));
-    bia_layout = bia_layout.retype(output_type(
-            cfg.hw(), prb.prop_kind(), pd->attr(), prb.bia_data_type));
+    if (prb.is_bwd_w) {
+        if (utils::one_of(prb.wei_data_type, data_type::bf16, data_type::f16,
+                    data_type::f8_e5m2, data_type::f8_e4m3))
+            wei_layout = wei_layout.retype(type_t::f32());
+        if (utils::one_of(prb.bia_data_type, data_type::bf16, data_type::f16,
+                    data_type::f8_e5m2, data_type::f8_e4m3))
+            bia_layout = bia_layout.retype(type_t::f32());
+    }
 
     src.set_compute_unnormalized(src_layout, src_tag);
     src.set_user_unnormalized(user_src_layout, user_src_tag);
@@ -785,9 +805,17 @@ bool data_types_ok(
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
-    if (is_bf8
+    if ((is_bf8 || is_hf8)
+#if XE3P
+            && !(utils::one_of(hw, ngen::HW::XeHPC, ngen::HW::Xe3p)
+                    && hw.systolic_support()))
+#else
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
+#endif
         return false;
+#if XE3P
+    if (is_hf8 && hw < ngen::HW::Xe3p) return false;
+#else
     if (is_hf8) return false;
 #endif
     if (prb.is_fwd) return true;
@@ -869,7 +897,8 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
     if (prb.is_fwd || prb.is_bwd_d) {
         attr_skip_mask |= sm::post_ops | sm::sum_dt | sm::zero_points_runtime
                 | sm::zero_points_runtime_data_type | sm::scales_runtime
-                | sm::rounding_mode;
+                | sm::rounding_mode | sm::scales_runtime_groups
+                | sm::scales_runtime_data_type;
         if (!attr->has_default_values(attr_skip_mask)) return false;
     } else {
         if (!attr->has_default_values(attr_skip_mask)) return false;

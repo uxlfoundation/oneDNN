@@ -2161,14 +2161,15 @@ private:
 
         auto &b0 = blocks[0];
         auto &b1 = blocks[1];
+        if (!b1.stride.is_fixed() || !b0.stride.is_fixed()) return;
         auto inner_var = thr_view.vvars()[b0.dim_idx];
         bool is_block_strided
                 = (b0.stride == stride_t(1)) && (b1.stride > b0.block);
         int type_size = thr_layout.type().size();
-        int full_dim_size
+        dim_t full_dim_size
                 = gemm_schedule_.a_view().vdims()[b0.dim_idx] * type_size;
         bool size_ge_256b = (full_dim_size >= 256);
-        int b0_size = b0.block * type_size;
+        dim_t b0_size = b0.block * type_size;
         bool prefetch_lt_256b = (b0_size < 256);
         bool is_inner_loop = gemm_schedule_.is_inner_loop(inner_var);
         // Extend if the following conditions are satisfied:

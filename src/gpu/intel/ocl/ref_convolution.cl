@@ -36,8 +36,7 @@
 #endif
 
 #if IS_FWD
-KERNEL_ATTR
-__kernel void ref_convolution_fwd(
+KERNEL_ATTR __kernel void ref_convolution_fwd(
         const __global SRC_DATA_T *src, const __global WEI_DATA_T *wei,
         const __global BIA_DATA_T *bias, __global DST_DATA_T *dst POST_OP_ARGS,
         const __global float *src_scales, const __global float *wei_scales,

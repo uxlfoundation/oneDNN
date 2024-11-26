@@ -77,6 +77,12 @@ struct gen_gemm_kernel_desc_t {
         return *entry_;
     };
 
+#if XE3P
+    void set_efficient_64b(bool efficient_64b) {
+        efficient_64b_ = efficient_64b;
+    }
+#endif
+
 protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
@@ -109,6 +115,7 @@ struct gen_gemm_nocopy_kernel_desc_t : public gen_gemm_kernel_desc_t {
         mode_bf16x1 = 0x2,
         mode_f16x1 = 0x4,
         mode_w_decomp = 0x8,
+        mode_strict = 0x10,
         mode_deterministic = 0x8000
     };
 

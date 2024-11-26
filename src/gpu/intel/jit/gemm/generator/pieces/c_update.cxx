@@ -1686,7 +1686,11 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
     bool nonuniformSubs = false;
 
     if (!uniform) {
+#if XE3P
+        static constexpr int maxGRFs = 512;
+#else
         static constexpr int maxGRFs = 256;
+#endif
         uint8_t baseIndices[maxGRFs] = {0};
         uint16_t offIndices[maxGRFs] = {0};
 
@@ -2121,7 +2125,7 @@ void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Typ
             mov(ne, range[i].ub(0)(4), range[i].ub());
         return;
     }
-
+    
     // Special path: f32->hf8.
     if (hw >= HW::Xe3 && Told == Type::f32 && Tnew == Type::hf8) {
         int ne = elementsPerGRF<uint32_t>(hw);

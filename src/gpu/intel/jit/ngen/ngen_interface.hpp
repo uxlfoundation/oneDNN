@@ -72,6 +72,9 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
+#if XE3P
+                             , useEfficient64Bit(hw_ >= HW::Xe3p)
+#endif
                              , requestedInlineGRFs(defaultInlineGRFs(hw))
     {}
 
@@ -90,7 +93,7 @@ public:
     inline int getArgumentSurface(const std::string &name) const;
     inline int getArgumentSurfaceIfExists(const std::string &name) const;
     inline GRF getLocalID(int dim) const;
-    inline Subregister getSIMD1LocalID(int dim) const;
+    inline RegData getSIMD1LocalID(int dim) const;
     inline Subregister getLocalSize(int dim) const;
 
     const std::string &getExternalName() const           { return kernelName; }
@@ -287,7 +290,7 @@ int InterfaceHandler::getArgumentSurface(const std::string &name) const
     return surface;
 }
 
-Subregister InterfaceHandler::getSIMD1LocalID(int dim) const
+RegData InterfaceHandler::getSIMD1LocalID(int dim) const
 {
 #ifdef NGEN_SAFE
     if (dim > needLocalID || simd != 1) throw unknown_argument_exception();
@@ -517,6 +520,9 @@ void InterfaceHandler::finalize()
 
 int InterfaceHandler::inlineGRFs() const
 {
+#if XE3P
+    if (useEfficient64Bit) return 1;
+#endif
     return requestedInlineGRFs;
 }
 
@@ -582,6 +588,9 @@ std::string InterfaceHandler::generateZeInfo() const
     std::stringstream md;
 
     const char *version = "1.8";
+#if XE3P
+    if (useEfficient64Bit) version = "1.35";
+#endif
 
     md << "version: " << version << "\n"
           "kernels: \n"

@@ -202,7 +202,7 @@ private:
             } else if (send_.is_store()) {
                 host->store.ugm(mod, *lsc_spec, host->A64, header, data);
             } else if (send_.is_atomic()) {
-                host->atomic.ugm(ngen::AtomicOp::fadd, mod, *lsc_spec,
+                host->atomic.ugm(to_atomic_op(send_.op), mod, *lsc_spec,
                         to_address_base(send_.address), header, data);
             }
         } else {

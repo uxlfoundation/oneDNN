@@ -286,7 +286,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
             brgattr.hint_innermost_loop = brgemm_innermost_undef;
             brgattr.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
-
+            brgattr.mem_advice = bgmmc_.mem_advice;
             if (bgmmc_.set_nt) {
                 brgattr.hint_load_nt_A = bgmmc_.is_a_nt ? brgemm_hint_nt_true
                                                         : brgemm_hint_nt_false;
@@ -435,7 +435,6 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
             = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
     const bool is_amx = is_superset(isa, avx512_core_amx);
     const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
-
     const int M_chunks = brgmm_ctx.get_M_chunks();
     const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
     const int M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
@@ -467,18 +466,28 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int m_chunks_per_thread = div_up(M_chunks, bgmmc.nthr_m);
         int n_chunks_per_thread = div_up(N_chunks, bgmmc.nthr_n);
         int batch_per_thread = div_up(bgmmc.batch, bgmmc.nthr_b);
-        nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
-                bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
-                m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
+        if (brgmm_ctx.is_chunks_horizontal_process_order())
+            nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
+                    bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
+                    m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
+        else
+            nd_iterator_init(start, bt, bgmmc.nthr_b, nt, bgmmc.nthr_n, mt,
+                    bgmmc.nthr_m, b_per_t, batch_per_thread, nc_per_t,
+                    n_chunks_per_thread, mc_per_t, m_chunks_per_thread);
         mc = mt * m_chunks_per_thread + mc_per_t;
         nc = nt * n_chunks_per_thread + nc_per_t;
         b = bt * batch_per_thread + b_per_t;
 
         auto advance_func = [&]() {
             ++start;
-            nd_iterator_step(bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
-                    bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
-                    m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
+            if (brgmm_ctx.is_chunks_horizontal_process_order())
+                nd_iterator_step(bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
+                        bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
+                        m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
+            else
+                nd_iterator_step(bt, bgmmc.nthr_b, nt, bgmmc.nthr_n, mt,
+                        bgmmc.nthr_m, b_per_t, batch_per_thread, nc_per_t,
+                        n_chunks_per_thread, mc_per_t, m_chunks_per_thread);
             mc = mt * m_chunks_per_thread + mc_per_t;
             nc = nt * n_chunks_per_thread + nc_per_t;
             b = bt * batch_per_thread + b_per_t;
@@ -489,6 +498,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int b_prev = -1;
         const char *a_batch_ptr = nullptr;
         const char *b_batch_ptr = nullptr;
+
         while (start < end) {
             if (mc >= M_chunks || nc >= N_chunks || b >= bgmmc.batch) {
                 advance_func();
@@ -552,6 +562,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
             }
             mc_prev = mc;
             b_prev = b;
+
             advance_func();
         }
         if (is_amx) { amx_tile_release(); }
@@ -1182,7 +1193,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         , data_A_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
         , data_B_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
         , data_C_ptr_(CTX_OUT_MEM(char *, DNNL_ARG_DST))
-        , data_reduce_ptr_(CTX_OUT_MEM(char *, DNNL_ARG_REDUCE)) {
+        , data_reduce_ptr_(CTX_OUT_MEM(char *, DNNL_ARG_REDUCE))
+        , is_thread_chunks_exec_order_horizontal_(true) {
 
         const memory_desc_wrapper weights_d(pd->weights_md(0));
         if (bgmmc_.packed_sparse_weights) {
@@ -1298,7 +1310,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         is_A_batch_layout_trivial_ = bgmmc_.is_src_batch_layout_trivial;
         is_B_batch_layout_trivial_ = bgmmc_.is_wei_batch_layout_trivial;
         is_C_batch_layout_trivial_ = bgmmc_.is_dst_batch_layout_trivial;
-
+        is_thread_chunks_exec_order_horizontal_
+                = bgmmc_.is_thread_chunks_exec_order_horizontal;
         K_ = bgmmc.K;
         K_chunks_ = bgmmc.K_chunks;
         K_chunk_tail_ = bgmmc.num_K_blocks % get_K_chunk_size();
@@ -2124,6 +2137,10 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
     dim_t get_LDD() const { return LDD_; }
 
+    bool is_chunks_horizontal_process_order() const {
+        return is_thread_chunks_exec_order_horizontal_;
+    }
+
     dim_t copy_B_wei_stride() const { return copy_B_wei_stride_; }
 
     bool packed_sparse_weights() const { return bgmmc_.packed_sparse_weights; }
@@ -2205,7 +2222,10 @@ private:
     int parallel_work_amount_;
     int parallel_work_amount_gemm_;
     int nthr_, nthr_k_, nthr_bmn_, num_threads_used_;
+    // Horizontal order means first process N (load) dim then M (bcast) dim.
+    bool is_thread_chunks_exec_order_horizontal_;
     int last_brgemm_batch_size_;
+
     dim_t M_;
     int M_chunks_;
     int M_chunk_tail_;

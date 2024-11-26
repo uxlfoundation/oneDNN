@@ -115,6 +115,7 @@ private:
     bool is_horizontal;
 
     size_t m_tmul, n_tmul, k_tmul;
+    void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
     bool set_blocking_parameters();
     bool is_horizontal_selected(bool horizontal_not_possible,
             bool vertical_not_possible, size_t best_m_v, size_t best_k_v,

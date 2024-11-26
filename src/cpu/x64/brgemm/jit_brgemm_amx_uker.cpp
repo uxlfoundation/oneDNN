@@ -1689,6 +1689,12 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     auto reg_base = is_A ? reg_A : reg_B;
     auto reg_stride = is_A ? reg_stride_lda : reg_stride_ldb;
 
+    const bool mem_advice_A = utils::one_of(brg.brgattr.mem_advice,
+            brgemm_hint_mem_advice_A, brgemm_hint_mem_advice_A_B);
+    const bool mem_advice_B = utils::one_of(brg.brgattr.mem_advice,
+            brgemm_hint_mem_advice_B, brgemm_hint_mem_advice_A_B);
+    bool has_mem_advice = is_A ? mem_advice_A : mem_advice_B;
+
     if (brg.is_input_convert()) {
         // try_load_nt is not supported in maybe_pre_process_data as there is
         // no guarantee that the data is cache line aligned.
@@ -1699,10 +1705,17 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     if (maybe_pre_process_k_tail(bi, xdb, t1, reg_base, offset, reg_stride, mk))
         return;
 
-    if (load_nt)
-        tileloaddt1(t1, ptr[reg_base + offset + reg_stride]);
-    else
-        tileloadd(t1, ptr[reg_base + offset + reg_stride]);
+    if (load_nt) {
+        if (has_mem_advice)
+            tileloaddrst1(t1, ptr[reg_base + offset + reg_stride]);
+        else
+            tileloaddt1(t1, ptr[reg_base + offset + reg_stride]);
+    } else {
+        if (has_mem_advice)
+            tileloaddrs(t1, ptr[reg_base + offset + reg_stride]);
+        else
+            tileloadd(t1, ptr[reg_base + offset + reg_stride]);
+    }
 }
 
 void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,

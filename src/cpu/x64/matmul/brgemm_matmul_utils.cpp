@@ -1159,6 +1159,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.s8s8_compensation_required = bgmmc.src_dt == s8 && !isa_has_s8s8(isa);
     bgmmc.ndims = dst_d.ndims();
 
+    bgmmc.is_thread_chunks_exec_order_horizontal = true;
+    bgmmc.mem_advice
+            = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_undef;
+
     const bool is_wei_any = weights_d.format_kind() == format_kind::any
             || weights_d.is_sparse_packed_desc();
     brgemm_matmul_conf_utils_t bm_conf_utils(bgmmc, isa, attr,
@@ -1535,6 +1539,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             = is_batch_layout_trivial(weights_d, bgmmc.batch);
     bgmmc.is_dst_batch_layout_trivial
             = is_batch_layout_trivial(dst_d, bgmmc.batch);
+
+    // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
     bgmmc.use_buffer_reduce
@@ -1569,6 +1575,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                               bgmmc.B_strides[2] % 2 == 0),
                 VERBOSE_BAD_DIM);
     }
+
+    // init mem advice heuristic based on bmn threads and excution scan order
+    if (is_superset(isa, avx10_1_512_amx)) mem_advice_init(bgmmc);
 
     // Dispatch small shapes to VNNI for better performance
     const bool runtime_dims
@@ -1690,6 +1699,10 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
     conf.src_zp_type = brgemm_broadcast_t::none;
     conf.has_zero_point_a = false;
     conf.has_zero_point_b = false;
+
+    conf.is_thread_chunks_exec_order_horizontal = true;
+    conf.mem_advice
+            = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_undef;
 
     return status::success;
 }

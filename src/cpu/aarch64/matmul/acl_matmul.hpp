@@ -61,6 +61,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<acl_matmul_obj_t> acl_obj_;
+    mutable std::mutex mtx_;
 }; // acl_matmul_t
 
 } // namespace matmul

@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/matmul/acl_matmul.hpp"
+#include <mutex>
 
 namespace dnnl {
 namespace impl {
@@ -170,38 +171,20 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
 
 template <bool IsFixedFormat>
 status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
+    status_t status = status::success;
+    auto src_base = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
+    auto wei_base = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
 
-status_t acl_matmul_t::init(engine_t *engine) {
-    auto amp_ = pd()->amp_;
-    // Configure transpose kernel for src and wei
-    if (amp_.is_transA && !amp_.do_transC) {
-        acl_obj_->transA.configure(&amp_.src_acc_info, &amp_.src_tensor_info);
-    }
-    if (amp_.is_transB && !amp_.do_transC) {
-        acl_obj_->transB.configure(&amp_.wei_acc_info, &amp_.wei_tensor_info);
-    }
-    if (amp_.do_transC) {
-        acl_obj_->transC.configure(&amp_.dst_acc_info, &amp_.dst_tensor_info);
-    }
-    // Configure GEMM
-    if (amp_.do_transC) {
-        acl_obj_->asm_gemm.configure(&amp_.wei_tensor_info,
-                &amp_.src_tensor_info, nullptr, &amp_.dst_acc_info,
-                amp_.gemm_info);
-    } else {
-        acl_obj_->asm_gemm.configure(&amp_.src_tensor_info,
-                &amp_.wei_tensor_info, nullptr, &amp_.dst_tensor_info,
-                amp_.gemm_info);
-    }
-    acl_obj_->aux_mem_req = acl_obj_->asm_gemm.workspace();
-    if (amp_.do_act) {
-        auto dst_info_to_use
-                = amp_.do_transC ? &amp_.dst_acc_info : &amp_.dst_tensor_info;
-        acl_obj_->act.configure(dst_info_to_use, dst_info_to_use,
-                amp_.gemm_info.activation_info());
-    }
+    const auto &amp = pd()->amp_;
 
-    auto amp = pd()->amp_;
+    std::unique_lock<std::mutex> locker {mtx_, std::defer_lock};
+
+    // Some of the underlying kernels used by ACL still require some state and
+    // are not safe to be called in parallel with different execution contexts.
+    // Eventually when all kernels are truly stateless, this guard can be
+    // removed.
+    if (!acl_obj_->asm_gemm.has_stateless_impl()) { locker.lock(); }
+
     bool is_transA = amp.is_transA;
     bool is_transB = amp.is_transB;
     bool do_transC = amp.do_transC;

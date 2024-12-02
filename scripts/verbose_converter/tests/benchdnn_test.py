@@ -290,14 +290,14 @@ def compare(driver, ref_v, comp_v):
         )
 
 
-def test(path_to_benchdnn, driver, batch):
-    ref_verbose = generate_verbose(path_to_benchdnn, driver, batch)
+def test(path_to_benchdnn, engine, driver, batch):
+    ref_verbose = generate_verbose(path_to_benchdnn, engine, driver, batch)
     # XXX: Maybe generate batch and run benchdnn for each verbose line
     # separately to detect error on case level and not on batch level?
     # The reason behind testing on batch level is that ref_verbose generator
     # might introduce multiple verbose lines for single line in batch file
     com_batch = generate_batch(ref_verbose, driver)
-    com_verbose = generate_verbose(path_to_benchdnn, driver, com_batch)
+    com_verbose = generate_verbose(path_to_benchdnn, engine, driver, com_batch)
     compare(driver, ref_verbose, com_verbose)
 
 
@@ -344,9 +344,9 @@ def main():
             driver, batch = case.split(",")
             batch = batch.split("\n", 1)[0]
             batch_file_path = f"{args.inputs_path}/{driver}/{batch}"
-            test_info = f"BENCHDNN TEST: {driver}, {batch}"
+            test_info = f"BENCHDNN TEST: {args.engine}, {driver}, {batch}"
             try:
-                test(args.benchdnn_path, driver, batch_file_path)
+                test(args.benchdnn_path, args.engine, driver, batch_file_path)
             except Exception as e:
                 print(f"{test_info}: FAILED {e!s}")
                 failed = True

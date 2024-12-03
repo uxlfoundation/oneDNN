@@ -128,9 +128,7 @@ public:
     void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
-#if XE3P
-    void setEfficient64Bit(bool def = true)              { useEfficient64Bit = def; }
-#endif
+    int32_t getSkipCrossThreadOffset() const                                { return offsetSkipCrossThread; }
 
     inline GRF getCrossthreadBase(bool effective = true) const;
     inline GRF getArgLoadBase() const;

@@ -163,6 +163,21 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                 | smask_t::fpmath_mode | smask_t::rounding_mode;
 
         bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8);
+        bool is_fp8
+                = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
+        bool enable_quantization = is_int8;
+        if (engine->kind() == engine_kind::gpu)
+            enable_quantization = enable_quantization || is_fp8
+                    || utils::one_of(dst_dt, data_type::s8, data_type::u8,
+                            data_type::s32, data_type::f8_e5m2,
+                            data_type::f8_e4m3);
+        if (enable_quantization)
+            fwd_attr_mask |= smask_t::scales_runtime
+                    | smask_t::zero_points_runtime
+                    | smask_t::zero_points_runtime_data_type
+                    | smask_t::scales_runtime_groups
+                    | smask_t::scales_runtime_data_type;
+
         if (engine->kind() == engine_kind::gpu)
             is_int8 = is_int8
                     || utils::one_of(dst_dt, data_type::s8, data_type::u8,

@@ -62,8 +62,9 @@ bool is_atomic(send_op_t op) {
     }
 }
 
-send_op_t atomic_send_op(const type_t &type) {
+send_op_t atomic_send_op(const type_t &type, bool has_atomic_fp64) {
     if (type == type_t::f32()) return send_op_t::atomic_fadd;
+    if (type == type_t::f64() && has_atomic_fp64) return send_op_t::atomic_fadd;
 #if XE3P
     if (type == type_t::bf16()) return send_op_t::atomic_bfadd;
 #endif

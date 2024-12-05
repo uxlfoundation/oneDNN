@@ -576,7 +576,8 @@ private:
                 = plan_.bia_view.create_sub_view(plan_.x_reduce_tile());
         auto r2g = make_access_builder(ir_ctx_, x_reduce_view, x_reduce_buf_,
                 x_reduce_buf,
-                use_atomic ? atomic_send_op(x_reduce_view.type())
+                use_atomic ? atomic_send_op(x_reduce_view.type(),
+                        ir_ctx_.hw().has_fp64_atomic_support())
                            : send_op_t::store,
                 send_address_t::a64);
         auto cond = get_x_reduce_store_condition();

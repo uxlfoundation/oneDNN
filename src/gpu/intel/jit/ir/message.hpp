@@ -61,7 +61,7 @@ enum class send_op_t {
 
 std::ostream &operator<<(std::ostream &out, const send_op_t value);
 bool is_atomic(send_op_t op);
-send_op_t atomic_send_op(const type_t &type);
+send_op_t atomic_send_op(const type_t &type, bool has_atomic_fp64);
 
 // Send address model.
 enum class send_address_t {

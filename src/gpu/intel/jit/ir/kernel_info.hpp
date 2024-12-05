@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -183,11 +183,6 @@ public:
                 ir_error_not_expected();
         }
         return vars;
-    }
-
-    void register_resource_arg(const expr_t &var) {
-        // TODO: Check key uniqueness.
-        register_arg(var, arg_kind_t::resource, nargs(), /*is_input=*/true);
     }
 
     void register_user_arg(const expr_t &var, int dnnl_arg, bool is_input) {

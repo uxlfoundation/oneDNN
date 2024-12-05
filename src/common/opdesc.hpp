@@ -80,11 +80,11 @@ struct reorder_desc_t : public op_desc_t {
 
     DECLARE_COMMON_OP_DESC_CLONE(reorder_desc_t);
 
-    const memory_desc_t *src_md;
-    const memory_desc_t *dst_md;
-    engine_kind_t src_engine_kind;
-    engine_kind_t dst_engine_kind;
-    bool is_cross_engine;
+    const memory_desc_t *src_md {};
+    const memory_desc_t *dst_md {};
+    engine_kind_t src_engine_kind {};
+    engine_kind_t dst_engine_kind {};
+    bool is_cross_engine {};
 };
 
 // A descriptor of a concat operation.
@@ -103,10 +103,10 @@ struct concat_desc_t : public op_desc_t {
 
     DECLARE_COMMON_OP_DESC_CLONE(concat_desc_t);
 
-    const memory_desc_t *dst_md;
-    dim_t n;
-    dim_t concat_dimension;
-    std::vector<const memory_desc_t *> src_mds;
+    const memory_desc_t *dst_md {};
+    dim_t n {};
+    dim_t concat_dimension {};
+    std::vector<const memory_desc_t *> src_mds {};
 };
 
 // A descriptor of a sum operation.
@@ -121,10 +121,10 @@ struct sum_desc_t : public op_desc_t {
 
     DECLARE_COMMON_OP_DESC_CLONE(sum_desc_t);
 
-    const memory_desc_t *dst_md;
-    dim_t n;
-    const float *scales;
-    std::vector<const memory_desc_t *> src_mds;
+    const memory_desc_t *dst_md {};
+    dim_t n {};
+    const float *scales {};
+    std::vector<const memory_desc_t *> src_mds {};
 };
 
 // A descriptor of a zero padding operation.
@@ -202,9 +202,9 @@ struct convolution_desc_t : public op_desc_t {
     // padding_r).
     dims_t padding[2] {};
     // The accumulator data type. Initialized automatically.
-    data_type_t accum_data_type;
+    data_type_t accum_data_type {};
     // For internal use only. To mark conv is used for deconv.
-    bool use_inversion;
+    bool use_inversion {};
 };
 
 // A descriptor of a deconvolution operation.
@@ -529,12 +529,10 @@ struct binary_desc_t : public op_desc_t {
 
     // The kind of the binary algorithm. Possible values:
     // #dnnl_binary_add, #dnnl_binary_mul, #dnnl_binary_max, #dnnl_binary_min,
-    // #dnnl_binary_div, #dnnl_binary_sub, #dnnl_binary_ge, #dnnl_binary_gt,
-    // #dnnl_binary_le, #dnnl_binary_lt, #dnnl_binary_eq, #dnnl_binary_ne,
-    // and #dnnl_binary_select
+    // #dnnl_binary_div and #dnnl_binary_sub.
     alg_kind_t alg_kind {};
     // Source memory descriptors.
-    memory_desc_t src_desc[3] {};
+    memory_desc_t src_desc[2] {};
     // Destination memory descriptor.
     memory_desc_t dst_desc {};
 };

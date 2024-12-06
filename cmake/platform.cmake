@@ -247,6 +247,11 @@ elseif(UNIX OR MINGW)
         append(CMAKE_CCXX_FLAGS "-Wsign-compare")
     endif()
 
+    # Generating frame pointers for easier performance profiling
+    if(DNNL_TARGET_ARCH STREQUAL "X64")
+        append(CMAKE_CCXX_FLAGS "-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
+    endif()
+
     platform_unix_and_mingw_common_ccxx_flags(CMAKE_CCXX_FLAGS)
     platform_unix_and_mingw_common_cxx_flags(CMAKE_CXX_FLAGS)
     platform_unix_and_mingw_noexcept_ccxx_flags(CMAKE_CMAKE_CCXX_NOEXCEPT_FLAGS)
@@ -453,9 +458,9 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
     # Check if the RVV Intrinsics can be compiled with the current toolchain and flags
     include(CheckCXXSourceCompiles)
     check_cxx_source_compiles("#include <riscv_vector.h>
-                               int main() { 
+                               int main() {
                                 size_t size = 64;
-                                return vsetvl_e32m2(size); 
+                                return vsetvl_e32m2(size);
                                };"
                                CAN_COMPILE_RVV_INTRINSICS
     )

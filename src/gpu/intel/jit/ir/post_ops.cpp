@@ -43,7 +43,6 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
         int src_scales_mask = 0;
         int wei_scales_mask = 0;
         int dst_scales_mask = 0;
-        type_t src_scales_type, wei_scales_type, dst_scales_type;
         for (int i = 0; i < (int)scale_args.size(); i++) {
             auto buf = kernel_info.find_arg(
                     scale_args[i].first, /*allow_empty=*/true);
@@ -77,8 +76,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
                     break;
                 case DNNL_ARG_DST: // Invert dst scales right after load.
                     ir_assert(utils::one_of(mask, 0, 2));
-                    dst_scales_type = sc_type;
-                    view = po_vm_.create_view(sc_type, mask);
+                    view = po_vm_.create_view(type_t::f32(), mask);
                     dst_scales = add_input_tensor(view, buf);
                     dst_scales_mask = mask;
                     break;

@@ -247,8 +247,6 @@ protected:
                 ok = ok && (mask == 0 || mask == (with_groups() ? 3 : 1));
             else if (arg == DNNL_ARG_DST)
                 ok = ok && (mask == 0 || mask == 2);
-            else if (arg == DNNL_ARG_SRC)
-                ok = ok && (mask == 0 || mask == 3);
             else
                 ok = ok && (mask == 0);
         }

@@ -42,7 +42,7 @@ public:
     reorder_kernel_t(const reorder_config_t &cfg,
             const std::string &kernel_name, const kernel_info_t &kernel_info,
             bool require_dpas, const primitive_desc_t *pd = nullptr)
-        : ir_kernel_t<hw>(kernel_name, cfg.exec_cfg(), kernel_info,
+        : ir_kernel_t<hw>(kernel_name, cfg.exec_cfg(),
                 kernel_info.nd_range().local_range(), require_dpas,
                 {GENERATOR_NAME, GENERATOR_LINE}) {
         const primitive_attr_t *attr = (pd) ? pd->attr() : nullptr;

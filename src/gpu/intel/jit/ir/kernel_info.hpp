@@ -26,6 +26,7 @@
 #include "common/primitive_exec_types.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
+#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -170,19 +171,6 @@ public:
         auto *arg = find_arg_impl(name);
         ir_assert(arg) << "Cannot find argument: " << name;
         arg->value = value;
-    }
-
-    std::map<std::string, expr_t> get_vars() const {
-        std::map<std::string, expr_t> vars;
-        for (auto &arg : args_) {
-            if (arg.var.is<var_t>())
-                vars[arg.var.as<var_t>().name] = arg.var;
-            else if (arg.var.is<const_var_t>())
-                vars[arg.var.as<const_var_t>().name] = arg.var;
-            else
-                ir_error_not_expected();
-        }
-        return vars;
     }
 
     void register_user_arg(const expr_t &var, int dnnl_arg, bool is_input) {
@@ -398,7 +386,7 @@ public:
         for (int i = 0; i < kernel_count(); i++) {
             auto &e = entries_[i];
             kernel_info_t info;
-            CHECK(e.params->init_dispatch_kernel_info(info, *e.desc));
+            e.desc->init_kernel_info(info, *e.params);
             std::vector<memory_storage_wrapper_t> storage_list;
             info.init_memory_storage_list(storage_list, ctx, primitive);
             compute::kernel_arg_list_t arg_list;
@@ -424,6 +412,58 @@ private:
     };
 
     std::vector<entry_t> entries_;
+};
+
+class var_manager_t {
+public:
+    var_manager_t(kernel_iface_t &kernel_iface) : kernel_iface_(kernel_iface) {}
+
+    std::vector<expr_t> ptr_args() const {
+        std::vector<expr_t> ret;
+        for (int i = 0; i < kernel_iface_.nargs(); i++) {
+            auto &var = kernel_iface_.arg_var(i);
+            if (var.type().is_ptr()) ret.push_back(var);
+        }
+        return ret;
+    }
+
+    expr_t get_arg(const std::string &name, bool allow_empty = false) const {
+        return kernel_iface_.find_arg(name, allow_empty);
+    }
+
+    expr_t get_grid_size(const std::string &name) {
+        return get_internal_arg(type_t::u32(), name + "_grid_size");
+    }
+
+    expr_t get_idiv_magic(const expr_t &value) {
+        std::string name;
+        if (auto *op = value.as_ptr<binary_op_t>()) {
+            if (op->op_kind == op_kind_t::_div_up) {
+                ir_assert(is_const(op->b))
+                        << "Expected constant denominator: " << value;
+                if (is_one(op->b)) return get_idiv_magic(op->a);
+                ir_assert(op->a.is<var_t>() || op->a.is<const_var_t>())
+                        << "Expected var/const var: " << op->a;
+                name = op->a.str();
+                name += "_divup_" + op->b.str();
+            }
+        } else {
+            ir_assert(value.is<var_t>() || value.is<const_var_t>())
+                    << "Expected var/const var: " << value;
+            name = value.str();
+        }
+        return get_internal_arg(type_t::u64(), name + "_magic");
+    }
+
+    expr_t get_internal_arg(const type_t &type, const std::string &name) {
+        if (kernel_iface_.has(name)) return kernel_iface_.find_arg(name);
+        auto var = var_t::make(type, name);
+        kernel_iface_.register_arg(var);
+        return var;
+    }
+
+private:
+    kernel_iface_t &kernel_iface_;
 };
 
 } // namespace jit

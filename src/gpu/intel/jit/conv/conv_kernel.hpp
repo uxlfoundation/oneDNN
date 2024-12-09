@@ -55,7 +55,7 @@ template <ngen::HW hw>
 conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
         const kernel_info_t &kernel_info, const compute::range_t &local_range,
         const layout_t &zp_dst)
-    : ir_kernel_t<hw>("gen_conv", cfg.exec_cfg(), kernel_info, local_range,
+    : ir_kernel_t<hw>("gen_conv", cfg.exec_cfg(), local_range,
             utils::one_of(cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw),
             {GENERATOR_NAME, GENERATOR_LINE})
     , prb_(cfg.prb())
@@ -88,7 +88,7 @@ conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
     // Bind "external" variables.
     expr_binding_t expr_binding(hw);
     bind_external_vars(body, cfg_.plan().gemm_schedule.kernel_grid_walk_order(),
-            builder.local_id(), expr_binding);
+            expr_binding);
     profile.stamp("Bind Variables");
 
 #ifdef DNNL_DEV_MODE

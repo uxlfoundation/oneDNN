@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,7 +47,9 @@ public:
     virtual exec_config_t exec_cfg(const impl::engine_t *engine) const = 0;
     virtual bool with_dpas() const = 0;
     virtual compute::range_t local_range() const = 0;
-    virtual status_t init_kernel_info(kernel_info_t &kernel_info) const = 0;
+    virtual void init_kernel_iface(kernel_iface_t &kernel_iface) const = 0;
+    virtual void init_kernel_info(kernel_info_t &kernel_info,
+            const kernel_params_base_t &params) const = 0;
     virtual status_t create_kernel(compute::kernel_t &kernel,
             gpu_primitive_t *primitive, impl::engine_t *engine) const = 0;
     virtual serialized_t serialize() const = 0;

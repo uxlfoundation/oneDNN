@@ -44,16 +44,15 @@ public:
 
 template <ngen::HW hw>
 kernel_t<hw>::kernel_t(
-        const kernel_desc_base_t &_desc, const kernel_info_t &kernel_info)
-    : ir_kernel_t<hw>(_desc, kernel_info, {GENERATOR_NAME, GENERATOR_LINE}) {
+        const kernel_desc_base_t &_desc, const impl::engine_t *engine)
+    : ir_kernel_t<hw>(_desc, engine, {GENERATOR_NAME, GENERATOR_LINE}) {
 
     auto &desc = static_cast<const kernel_desc_t &>(_desc);
 
     this->require_signal_header_ = true;
 
     // Build IR for the kernel.
-    var_manager_t var_mgr(kernel_iface());
-    stmt_t body = build_ir(exec_cfg(), desc, var_mgr);
+    stmt_t body = build_ir(desc, kernel_iface());
 
     alloc_manager_t alloc_mgr(body);
     setup_interface(body);

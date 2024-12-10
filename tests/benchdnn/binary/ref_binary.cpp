@@ -43,6 +43,11 @@ void compute_ref(
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const auto idx_A = dst.get_idx(i, broadcast_mask_A);
         const auto idx_B = dst.get_idx(i, broadcast_mask_B);
+
+        const bool c_val = prb->is_ternary_op()
+                ? static_cast<bool>(src2.get_elem(idx_A))
+                : false;
+
         float res = compute_binary(
                 prb->alg, scales[0] * A[idx_A], scales[1] * B[idx_B], c_val);
         float &dst_fp = dst_ptr[i];

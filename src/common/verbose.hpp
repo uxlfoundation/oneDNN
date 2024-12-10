@@ -118,7 +118,21 @@ struct const_expr_value {
     do { \
         if (dnnl::impl::get_verbose(verbose_t::error)) { \
             VFORMAT(get_msec(), verbose_t::error, apitype, error, "", \
-                    #component "," msg, ##__VA_ARGS__); \
+                    #component "," msg ",%s:%d", ##__VA_ARGS__, __FILENAME__, \
+                    __LINE__); \
+        } \
+    } while (0)
+
+// Special syntactic sugar for warnings, plus flush of the output stream
+// The difference between the warn and error verbose modes is that the
+// verbose error messages are only reserved for printing when an exception is
+// thrown or when a status check fails.
+#define VWARN(apitype, component, msg, ...) \
+    do { \
+        if (dnnl::impl::get_verbose(verbose_t::warn)) { \
+            VFORMAT(get_msec(), verbose_t::warn, apitype, warn, "", \
+                    #component "," msg ",%s:%d", ##__VA_ARGS__, __FILENAME__, \
+                    __LINE__); \
         } \
     } while (0)
 
@@ -247,6 +261,7 @@ get_verbose_to_log_level_map() {
                     {verbose_t::exec_profile, log_manager_t::info},
                     {verbose_t::exec_check, log_manager_t::error},
                     {verbose_t::error, log_manager_t::critical},
+                    {verbose_t::warn, log_manager_t::warn},
                     {verbose_t::none, log_manager_t::off},
             };
     return verbose_to_log_map;

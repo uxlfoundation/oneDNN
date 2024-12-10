@@ -120,7 +120,7 @@
 #define VERBOSE_IMPL_HEURISTIC_FAIL "heuristic fail: %s"
 #define VERBOSE_1x1CONV_HEURISTIC_FAIL "heuristic fail for 1x1 convolution: %s"
 #define VERBOSE_SCRATCHPAD_LIMIT "scratchpad memory limit exceeded"
-#define VERBOSE_PRIMITIVE_CREATION_FAIL "failed to create nested primitive %s"
+#define VERBOSE_PRIMITIVE_CREATION_FAIL "failed to create nested %s primitive"
 #define VERBOSE_DESC_CREATION_FAIL "failed to create %s descriptor"
 #define VERBOSE_SHAPE_RESTRICTION "failed shape restrictions"
 #define VERBOSE_INCOMPATIBLE_GEMM_FMT "incompatible gemm format"

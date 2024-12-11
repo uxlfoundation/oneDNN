@@ -123,13 +123,10 @@ private:
     };
 
     buffer_entry_t find_buf(const std::string &name) const;
-    kernel_info_t create_kernel_info(const kernel_desc_base_t &desc,
-            const std::unordered_map<std::string, std::string> &buf_map) const;
+    kernel_info_t create_kernel_info(const kernel_desc_base_t &desc) const;
     status_t add_kernel(primitive_exec_plan_t &exec_plan,
             const kernel_desc_base_t &desc, const kernel_params_base_t &params,
-            gpu_primitive_t *primitive, impl::engine_t *engine,
-            const std::unordered_map<std::string, std::string> &buf_map
-            = {}) const;
+            gpu_primitive_t *primitive, impl::engine_t *engine) const;
     status_t add_zero_out_kernel(primitive_exec_plan_t &exec_plan,
             const buffer_entry_t &buf, gpu_primitive_t *primitive,
             impl::engine_t *engine) const;

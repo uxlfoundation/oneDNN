@@ -611,6 +611,17 @@ void jit_brdgmm_kernel_base_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
 }
 
 template <typename Wmm>
+void jit_brdgmm_kernel_base_t<Wmm>::load_src_zp() {
+    mov(reg_src_zero_point, ptr[rsp + src_zp_value_]);
+    lea(reg_src_zero_point,
+            is_src_zp_bcast_
+                    ? ptr_b[reg_src_zero_point]
+                    : ptr[reg_src_zero_point + reg_aux_N * sizeof(int32_t)]);
+    if (!is_superset(brg.isa_impl, avx512_core) && is_src_zp_bcast_)
+        uni_vpbroadcastd(vmm_bcast(), ptr[reg_src_zero_point]);
+}
+
+template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
@@ -813,7 +824,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_b(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
-        compute_pad_kernel_t kernel_type, Vmm vmm_acc, Vmm vmmb) {
+        compute_pad_kernel_t kernel_type, Vmm vmm_acc, Vmm vmmb, int n,
+        bool is_tail_block) {
     switch (kernel_type) {
         case compute_pad_kernel_t::s8s8_kernel:
             vpdpbusd(vmm_acc, vmm_shift(), vmmb,

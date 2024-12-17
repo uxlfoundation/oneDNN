@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -149,7 +149,9 @@ private:
     static constexpr bool enable_debug_lines = false;
 #endif
 public:
-    jit_generator() = default;
+    jit_generator(const debug_config_t &debug_config)
+        : ngen::OpenCLCodeGenerator<hw>(0,
+                {debug_config.name, debug_config.line, enable_debug_lines}) {};
 
     const char *kernel_name() const override {
         return ngen::OpenCLCodeGenerator<hw>::getExternalName().c_str();

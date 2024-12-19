@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ class unsupported_argument_location_override : public std::runtime_error {
 public:
     unsupported_argument_location_override() : std::runtime_error("Argument register location is invalid") {}
 };
+
 #endif
 
 enum class ExternalArgumentType { Scalar, GlobalPtr, LocalPtr, Hidden };
@@ -90,7 +91,7 @@ public:
     inline int getArgumentSurface(const std::string &name) const;
     inline int getArgumentSurfaceIfExists(const std::string &name) const;
     inline GRF getLocalID(int dim) const;
-    inline RegData getSIMD1LocalID(int dim) const;
+    inline Subregister getSIMD1LocalID(int dim) const;
     inline Subregister getLocalSize(int dim) const;
 
     const std::string &getExternalName() const           { return kernelName; }
@@ -113,6 +114,7 @@ public:
     void requireLocalSize()                              { needLocalSize = true; }
     void requireNonuniformWGs()                          { needNonuniformWGs = true; }
     void requireNoPreemption()                           { needNoPreemption = true; }
+    void requirePartitionDim(int dim)                    { needPartitionDim = dim; }
     void requireScratch(size_t bytes = 1)                { scratchSize = bytes; }
     void requireSIMD(int simd_)                          { simd = simd_; }
     void requireSLM(size_t bytes)                        { slmSize = bytes; }
@@ -128,7 +130,7 @@ public:
     void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
-    int32_t getSkipCrossThreadOffset() const                                { return offsetSkipCrossThread; }
+    int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
 
     inline GRF getCrossthreadBase(bool effective = true) const;
     inline GRF getArgLoadBase() const;
@@ -178,6 +180,7 @@ protected:
     bool needLocalSize = false;
     bool needNonuniformWGs = false;
     bool needNoPreemption = false;
+    int needPartitionDim = -1;
     bool needHalf = false;
     bool needDouble = false;
     bool needStatelessWrites = true;
@@ -285,7 +288,7 @@ int InterfaceHandler::getArgumentSurface(const std::string &name) const
     return surface;
 }
 
-RegData InterfaceHandler::getSIMD1LocalID(int dim) const
+Subregister InterfaceHandler::getSIMD1LocalID(int dim) const
 {
 #ifdef NGEN_SAFE
     if (dim > needLocalID || simd != 1) throw unknown_argument_exception();

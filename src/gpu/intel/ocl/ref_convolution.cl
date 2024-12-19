@@ -40,9 +40,11 @@ KERNEL_ATTR
 __kernel void ref_convolution_fwd(
         const __global SRC_DATA_T *src, const __global WEI_DATA_T *wei,
         const __global BIA_DATA_T *bias, __global DST_DATA_T *dst POST_OP_ARGS,
-        const __global float *src_scales, const __global float *wei_scales,
-        const __global float *dst_scales, const __global int *src_zpoints,
-        const __global WEI_ZP_T *wei_zpoints, const __global int *dst_zpoints
+        const __global SRC_SCALES_DATA_T *src_scales,
+        const __global WEI_SCALES_DATA_T *wei_scales,
+        const __global DST_SCALES_DATA_T *dst_scales,
+        const __global int *src_zpoints, const __global WEI_ZP_T *wei_zpoints,
+        const __global int *dst_zpoints
 #if WITH_SROUND
         ,
         __global uint *sround_seed_buf

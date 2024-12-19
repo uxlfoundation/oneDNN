@@ -287,7 +287,7 @@ static inline bool operator>=(const Product &p1, const Product &p2) { return !(p
 static inline bool operator<=(const Product &p1, const Product &p2) { return !(p2 < p1); }
 
 static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
-    switch(family) {
+    switch (family) {
         // Guaranteed integrated
         case ProductFamily::GenericGen9:
         case ProductFamily::GenericGen10:
@@ -306,6 +306,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericXeHPC:
         case ProductFamily::DG2:
         case ProductFamily::PVC:
+        case ProductFamily::PVCVG:
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
             return PlatformType::Unknown;
@@ -455,10 +456,6 @@ enum class MathFunction : uint8_t {
     irem  = 0xD,
     invm  = 0xE,
     rsqtm = 0xF,
-#if XE3P
-    tanh  = 0x19,
-    sigm  = 0x1A,
-#endif
 
 };
 
@@ -611,6 +608,7 @@ public:
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
     constexpr bool isScalar() const { return false; }
+
 };
 
 static inline bool operator==(const RegData &r1, const RegData &r2);
@@ -636,6 +634,7 @@ protected:
         : base(base_), arf(arf_), off(off_), mods(0), type(static_cast<int>(type_)), indirect(indirect_), vs(vs_), width(width_), hs(hs_), _pad2(0), invalid(0) {}
 
 public:
+
     constexpr RegData()
         : base(0), arf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
 
@@ -691,6 +690,7 @@ public:
     friend inline bool operator!=(const RegData &r1, const RegData &r2);
 
     friend inline RegData abs(const RegData &r);
+
 };
 
 static_assert(sizeof(RegData) == 8, "RegData structure is not laid out correctly in memory.");
@@ -798,6 +798,7 @@ public:
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {
         rd.fixup(hw, execSize, execWidth, defaultType, srcN, arity);
     }
+
 };
 
 // Register regions.
@@ -935,7 +936,7 @@ public:
     constexpr14 Subregister tf32(int offset) const { return sub(offset, DataType::tf32); }
     constexpr14 Subregister  bf8(int offset) const { return sub(offset, DataType::bf8); }
     constexpr14 Subregister  hf8(int offset) const { return sub(offset, DataType::hf8); }
- 
+
     constexpr14 Register   uq() const { return retype(DataType::uq); }
     constexpr14 Register    q() const { return retype(DataType::q);  }
     constexpr14 Register   ud() const { return retype(DataType::ud); }
@@ -1160,6 +1161,7 @@ public:
     constexpr14 RegData &getBase()        { return base; }
     constexpr RegData getBase()     const { return base; }
     constexpr uint8_t getMMENum()   const { return mmeNum; }
+
 };
 
 static inline ExtendedReg operator|(const RegData &base, const SpecialAccumulatorRegister &acc)
@@ -1444,6 +1446,7 @@ public:
 
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
     constexpr DataType getType() const { return DataType::invalid; }
+
 };
 
 static inline GRFRange operator-(const GRF &reg1, const GRF &reg2)
@@ -2177,6 +2180,7 @@ public:
             result.set(int32_t(int16_t(payload)));
         return result;
     }
+
 };
 
 // Compute ctrl field for bfn instruction.
@@ -2487,14 +2491,7 @@ public:
 };
 
 class hdc_base {
-#if XE3P
 public:
-    template <Access access> inline void getDescriptor(HW hw, int esize, SharedFunction &sfid, AddressBase base, SendgMessageDescriptor &desc, int &addrLen, int &dataLen, const GRFDisp &addr) const {
-#ifdef NGEN_SAFE
-        throw unsupported_message();
-#endif
-    }
-#endif
 protected:
     void hwCheck(HW hw) const {
 #ifdef NGEN_SAFE

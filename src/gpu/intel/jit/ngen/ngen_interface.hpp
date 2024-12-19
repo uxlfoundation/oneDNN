@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ class unsupported_argument_location_override : public std::runtime_error {
 public:
     unsupported_argument_location_override() : std::runtime_error("Argument register location is invalid") {}
 };
+
 #endif
 
 enum class ExternalArgumentType { Scalar, GlobalPtr, LocalPtr, Hidden };
@@ -129,7 +130,7 @@ public:
     void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
-    int32_t getSkipCrossThreadOffset() const                                { return offsetSkipCrossThread; }
+    int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
 
     inline GRF getCrossthreadBase(bool effective = true) const;
     inline GRF getArgLoadBase() const;

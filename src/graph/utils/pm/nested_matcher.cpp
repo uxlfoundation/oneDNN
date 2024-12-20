@@ -688,6 +688,28 @@ bool match_pattern(op_t *first_op, const std::shared_ptr<pb_graph_t> &pattern,
     return true;
 }
 
+bool verify_global_in_map(match_context_t *ctx) {
+    pb_graph_t *graph = ctx->get_graph();
+    if (!graph) return true;
+
+    auto inner_cons = graph->get_inner_consumers();
+    if (inner_cons.empty()) return true;
+
+    for (size_t i = 0; i < inner_cons.size(); ++i) {
+        if (inner_cons[i].second.size() != ctx->in_port_map.count(i)) {
+            DEBUG(DEBUGINFO_PM,
+                    "expected graph input %zu consumers size: %zu, actual "
+                    "consumers size: %zu",
+                    i, inner_cons[i].second.size(), ctx->in_port_map.count(i));
+            VPATTERN_MATCHER(
+                    "matching failed: number of inputs check failed,%s:%i \n",
+                    __FILE__, __LINE__);
+            return false;
+        }
+    }
+    return true;
+}
+
 inline std::vector<op_t *> reorder_matched_list(
         const std::unordered_map<op_t *, pb_op_t *> &matched_op_map) {
     // split ops and pb_op_ts
@@ -816,11 +838,11 @@ void fill_local_in_map(match_context_t *local_ctx, pb_node_t *cur_node,
                 auto it = local_ctx->in_port_map.find(iport);
                 if (it != local_ctx->in_port_map.end()) {
                     if (it->second.first->get_input_value(it->second.second)
-                            != cur_op->get_input_value(con->second)) {
+                            != cur_op->get_input_value(cur_op_port)) {
                         return;
                     }
                 }
-                local_ctx->in_port_map.insert({iport, {cur_op, con->second}});
+                local_ctx->in_port_map.insert({iport, {cur_op, cur_op_port}});
             }
         }
     }

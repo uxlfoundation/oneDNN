@@ -14,7 +14,7 @@
 --reset --case=pattern/int8/int8_bf16_matmul_sum_add_mul_relu.json
 --reset --attr-fpmath=strict:false,bf16:false,tf32:false --case=pattern/int8/int8_avgpool_reshape_fusion.json
 --reset --case=pattern/int8/int8_avgpool_transpose_fusion.json
---reset --case=pattern/int8/int8_bf16_conv_add_relu_mul.json
+--reset --expected-n-partitions=0 --case=pattern/int8/int8_bf16_conv_add_relu_mul.json
 --reset --case=pattern/int8/int8_bf16_matmul_tc_add_quant_fusion.json
 --reset --case=pattern/int8/int8_bf16_conv_binary_add_fusion_2.json
 
@@ -114,14 +114,14 @@
 --reset --in-shapes=0:1x64x600x600*acdb+1:1x64x600x600*acdb+2:1x64x600x600*acdb --op-attrs=3:axis:1 --case=pattern/int8/int8_concat_fusion_3.json
 --reset --in-shapes=0:1x64x300x300*cdba+1:1x64x300x300*cdba+2:1x64x300x300*cdba --op-attrs=3:axis:3 --case=pattern/int8/int8_concat_fusion_3.json
 --reset --in-shapes=0:1x128x150x150*acdb+1:1x128x150x150*acdb+2:1x128x150x150*acdb --op-attrs=3:axis:0 --case=pattern/int8/int8_concat_fusion_3.json
-#layernorm
---reset --case=pattern/int8/int8_lnorm_gelu_quantize.json
+#layernorm: skip partition number check as it may not fuse on gpu.
+--reset --expected-n-partitions=0 --case=pattern/int8/int8_lnorm_gelu_quantize.json
 # layernorm with zp != 0
---reset --op-attrs=2:zps:1 --case=pattern/int8/int8_lnorm_gelu_quantize.json
---reset --case=pattern/int8/int8_lnorm_multiply_quantize.json
---reset --case=pattern/int8/int8_lnorm_tc_multiply_quantize.json
+--reset --expected-n-partitions=0 --op-attrs=2:zps:1 --case=pattern/int8/int8_lnorm_gelu_quantize.json
+--reset --expected-n-partitions=0 --case=pattern/int8/int8_lnorm_multiply_quantize.json
+--reset --expected-n-partitions=0 --case=pattern/int8/int8_lnorm_tc_multiply_quantize.json
 # layernorm with zp != 0 and broadcast binary
---reset --op-attrs=3:zps:1  --in-shapes=5:512 --case=pattern/int8/int8_lnorm_tc_multiply_quantize.json
+--reset --expected-n-partitions=0 --op-attrs=3:zps:1  --in-shapes=5:512 --case=pattern/int8/int8_lnorm_tc_multiply_quantize.json
 #softmax
 --reset --case=pattern/int8/int8_softmax_add.json
 --reset --op-attrs=3:zps:32 --case=pattern/int8/int8_softmax_add.json

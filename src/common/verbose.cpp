@@ -746,20 +746,6 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
         }
     }
 
-    const auto &rm = attr->rounding_mode_;
-    if (!rm.has_default_values()) {
-        std::string delim = empty_delim;
-        ss << field_delim() << "attr-rounding-mode:";
-        for (const auto &e : rm.rounding_modes_map_) {
-            // TODO: add support for diff tensors in arg2str when
-            // support is added
-            if (!rm.has_default_values(e.first))
-                ss << delim << arg2str(e.first) << ":"
-                   << dnnl_rounding_mode2str(e.second);
-            delim = attr_delim;
-        }
-    }
-
     const bool deterministic = attr->deterministic_;
     if (deterministic) {
         ss << field_delim() << "attr-deterministic:" << deterministic;
@@ -1584,8 +1570,9 @@ std::string init_info_softmax(const engine_t *e, const pd_t *pd) {
        << " ";
     ss << md2fmt_str("dst", dst_md, pd->dst_md(0, true)->format_kind);
     if (!types::is_zero_md(diff_dst_md)) {
-        ss << md2fmt_str(
-                "diff_dst", diff_dst_md, pd->diff_dst_md(0, true)->format_kind);
+        ss << " "
+           << md2fmt_str("diff_dst", diff_dst_md,
+                      pd->diff_dst_md(0, true)->format_kind);
     }
 
     ss << "," << pd->attr() << ",";

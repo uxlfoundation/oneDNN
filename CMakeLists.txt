@@ -16,7 +16,12 @@
 
 cmake_minimum_required(VERSION 3.13)
 
-# Install rules order
+# CMake minimum required version enables all policies introduced in minimum
+# version and earlier versions. Policies introduced in future versions
+# are handled individually in the section below.
+
+# CMake 3.14: Install rules from add_subdirectory() calls are interleaved
+# with those in caller.
 if(POLICY CMP0082)
     cmake_policy(SET CMP0082 NEW)
 endif()

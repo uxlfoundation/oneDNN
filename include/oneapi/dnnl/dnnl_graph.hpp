@@ -846,6 +846,8 @@ public:
         TanhBackward = dnnl_graph_op_tanh_backward,
         TypeCast = dnnl_graph_op_type_cast,
         Wildcard = dnnl_graph_op_wildcard,
+        GenIndex = dnnl_graph_op_gen_index,
+        GreaterEqual = dnnl_graph_op_greater_equal,
         // Sentinel
         LastSymbol = dnnl_graph_op_last_symbol,
     };

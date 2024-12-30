@@ -129,6 +129,7 @@ jobs:
           ACL_THREADING: ${{ matrix.config.threading }}
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
           CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
+          CMAKE_GENERATOR: Ninja
           GCC_VERSION: 13
 
       - name: Build ACL
@@ -170,6 +171,7 @@ jobs:
         env:
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
           CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
+          CTEST_PARALLEL_LEVEL: 6
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
           ONEDNN_THREADING: ${{ matrix.config.threading }}
   # This job adds a check named "CI AArch64" that represents overall

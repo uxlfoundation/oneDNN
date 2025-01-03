@@ -525,7 +525,7 @@ struct send_2d_desc_t {
         if (!prover.require(pitch_bytes <= (1 << 24))) return false;
         if (!prover.require(pitch_bytes % 8 == 0)) return false;
         if (!prover.require(base % base_align == 0)) return false;
-        if (!prover.require(plane.x % x_align == 0)) return false;
+        if (!prover.require(x_base % x_align == 0)) return false;
         return true;
     }
 
@@ -854,8 +854,8 @@ private:
         plan_2d = send_2d_plan_t(plan.hw);
         plan_2d.desc = desc;
         plan_2d.base = desc.base;
-        plan_2d.x_base = plane.x;
-        plan_2d.y_base = plane.y;
+        plan_2d.x_base = desc.x_base;
+        plan_2d.y_base = desc.y_base;
         plan_2d.mask = mask_t(view.mask_desc());
         plan_2d.mask.clear(plane.x_dim);
         plan_2d.mask.clear(plane.y_dim);

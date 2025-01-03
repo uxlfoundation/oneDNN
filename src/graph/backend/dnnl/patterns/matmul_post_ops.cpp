@@ -283,7 +283,7 @@ features on GPU:
 Note: This pattern also accepts fp32 as weight input
 */
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8s8x8_matmul_add_post_ops_gpu)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8x8x8_matmul_add_post_ops_gpu)
         .set_priority(10.f)
         .set_engine_kind(engine_kind::gpu)
         .set_kind(partition_kind_t::quantized_matmul_post_ops)

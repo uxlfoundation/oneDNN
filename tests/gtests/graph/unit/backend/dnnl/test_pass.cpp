@@ -8782,7 +8782,7 @@ TEST(test_pass, FuseToInt8MatmulAdd) {
 
     graph::pass::pass_base_ptr apass
             = get_pass(engine_kind == graph::engine_kind::gpu
-                            ? "x8s8x8_matmul_add_post_ops_gpu"
+                            ? "x8x8x8_matmul_add_post_ops_gpu"
                             : "x8x8x8_matmul_add_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
@@ -8877,7 +8877,7 @@ TEST(test_pass, FuseToInt8MatmulBiasAdd) {
 
     graph::pass::pass_base_ptr apass
             = get_pass(engine_kind == graph::engine_kind::gpu
-                            ? "x8s8x8_matmul_add_post_ops_gpu"
+                            ? "x8x8x8_matmul_add_post_ops_gpu"
                             : "x8x8x8_matmul_add_post_ops_cpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);

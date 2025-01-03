@@ -72,7 +72,8 @@ public:
     }
 
     virtual status_t create_kernel_from_binary(compute::kernel_t &kernel,
-            const xpu::binary_t &binary, const char *kernel_name) const = 0;
+            const xpu::binary_t &binary, const char *kernel_name,
+            const program_src_t &src) const = 0;
 
     virtual status_t create_kernels_from_cache_blob(
             const cache_blob_t &cache_blob,

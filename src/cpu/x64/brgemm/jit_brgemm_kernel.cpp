@@ -2214,7 +2214,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                             vpermw(vmm_load, f16_perm_odd_vreg_, vmm_load);
                         vcvtph2psx(vmm_load, Vmm_lower_t(vmm_load.getIdx()));
                     } else {
-                        vcvtph2psx(vmm_load, addr);
+                        uni_vcvtph2psx(vmm_load, addr);
                     }
                 } else if (brg.dt_b == data_type::bf16
                         && brg.isa_impl == avx2_vnni_2) {
@@ -2267,8 +2267,12 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                         else
                             vpermw(vmm_load, f16_perm_odd_vreg_, vmm_load);
                         vcvtph2psx(vmm_load, Vmm_lower_t(vmm_load.getIdx()));
+                    } else if (is_ld_tail
+                            && !is_superset(brg.isa_impl, avx512_core)) {
+                        load_bytes(vmm_load, addr, ldb_B_offset(0, true));
+                        vcvtph2ps(vmm_load, Xmm(vmm_load.getIdx()));
                     } else {
-                        vcvtph2psx(vmm_load, addr);
+                        uni_vcvtph2psx(vmm_load, addr);
                     }
                 } else if (is_ld_tail) {
                     if (is_superset(brg.isa_impl, avx512_core)) {

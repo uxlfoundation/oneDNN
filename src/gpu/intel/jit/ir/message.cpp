@@ -31,47 +31,6 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-std::ostream &operator<<(std::ostream &out, const send_op_t op) {
-    const char *s = nullptr;
-    switch (op) {
-        case send_op_t::atomic_fadd: s = "atomic_fadd"; break;
-#if XE3P
-        case send_op_t::atomic_bfadd: s = "atomic_bfadd"; break;
-#endif
-        case send_op_t::atomic_cmpwr: s = "atomic_cmpwr"; break;
-        case send_op_t::load: s = "load"; break;
-        case send_op_t::load_2d: s = "load_2d"; break;
-        case send_op_t::prefetch: s = "prefetch"; break;
-        case send_op_t::prefetch_2d: s = "prefetch_2d"; break;
-        case send_op_t::store: s = "store"; break;
-        case send_op_t::store_2d: s = "store_2d"; break;
-        case send_op_t::undef: s = "undef"; break;
-        default: ir_error_not_expected(); s = "unknown";
-    }
-
-    return out << s;
-}
-
-bool is_atomic(send_op_t op) {
-    switch (op) {
-        case send_op_t::atomic_fadd: return true;
-#if XE3P
-        case send_op_t::atomic_bfadd: return true;
-#endif
-        default: return false;
-    }
-}
-
-send_op_t atomic_send_op(const type_t &type, bool has_atomic_fp64) {
-    if (type == type_t::f32()) return send_op_t::atomic_fadd;
-    if (type == type_t::f64() && has_atomic_fp64) return send_op_t::atomic_fadd;
-#if XE3P
-    if (type == type_t::bf16()) return send_op_t::atomic_bfadd;
-#endif
-    ir_error_not_expected() << "Atomics are not supported for " << type;
-    return send_op_t::undef;
-}
-
 stmt_t send_t::create_offset_store(const expr_t &header_buf,
         const expr_t &mem_buf, const expr_t &_mem_off,
         bool is_signed_offset) const {

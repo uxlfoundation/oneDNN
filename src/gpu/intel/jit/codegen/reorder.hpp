@@ -1611,18 +1611,17 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     int dst_off = dst.offset();
     int src_byte_off = src.byte_offset();
     int dst_byte_off = dst.byte_offset();
+    int esize = mod.getExecSize();
+    int grf_size = ngen::GRF::bytes(scope.hw());
+    int grf_src = grf_size / src.hs();
+    int grf_dst = grf_size / dst.hs();
 
     // If src is aligned with dst, return.
-    if (scope.hw() < ngen::Core::Xe3 && (is_xf || is_bf_to_f)
-            && src_off == dst_off)
-        return;
-    if (!is_xf && src_byte_off == dst_byte_off) return;
+    if ((is_xf || is_bf_to_f) && src_off % grf_src == dst_off % grf_dst) return;
+    if (!is_xf && src_byte_off % grf_size == dst_byte_off % grf_size) return;
 
     int new_src_byte_off = (is_xf ? dst_off * src_type_size : dst_byte_off);
 
-    int esize = mod.getExecSize();
-    int new_stride = src_stride;
-    int grf_size = ngen::GRF::bytes(scope.hw());
     int src_size = std::max(src_type_size * esize * src_stride, src_type_size);
 
     if (is_bf_to_f && scope.hw() >= ngen::Core::Xe3) {

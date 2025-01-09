@@ -33,7 +33,8 @@ if(DNNL_GPU_VENDOR STREQUAL "INTEL")
     include_directories_with_host_compiler(${ONEDNN_NGEN_DIR})
 
 
-    include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/gemm/include)
+    set(ONEDNN_GEMMSTONE_DIR "${PROJECT_SOURCE_DIR}/third_party/gemmstone" CACHE PATH "Path to nGEN source code")
+    include_directories_with_host_compiler(${ONEDNN_GEMMSTONE_DIR}/include)
 
     add_subdirectory(intel)
 endif()

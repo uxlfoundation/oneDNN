@@ -1686,7 +1686,11 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
     bool nonuniformSubs = false;
 
     if (!uniform) {
+#if XE3P
+        static constexpr int maxGRFs = 512;
+#else
         static constexpr int maxGRFs = 256;
+#endif
         uint8_t baseIndices[maxGRFs] = {0};
         uint16_t offIndices[maxGRFs] = {0};
 

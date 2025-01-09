@@ -77,6 +77,12 @@ struct gen_gemm_kernel_desc_t {
         return *entry_;
     };
 
+#if XE3P
+    void set_efficient_64b(bool efficient_64b) {
+        efficient_64b_ = efficient_64b;
+    }
+#endif
+
 protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;

@@ -74,6 +74,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const int64_t MB = prb->mb;
     const int batch_ndims = dst_m.ndims() - 2;
 
+    const auto dst_scale_groups = prb->attr.scales.get(DNNL_ARG_DST).groups;
+
     // Fast return if any dim is zero. Common logic doesn't apply because of
     // broadcast semantics.
     for (int d = 0; d < dst_m.ndims(); d++) {

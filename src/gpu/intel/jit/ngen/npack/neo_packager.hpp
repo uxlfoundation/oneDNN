@@ -210,6 +210,9 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
         case HW::XeHPC:   return GfxCoreFamily::XeHPC;
         case HW::Xe2:     return GfxCoreFamily::Xe2;
         case HW::Xe3:     return GfxCoreFamily::Xe3;
+#if XE3P
+        case HW::Xe3p:    return GfxCoreFamily::Xe3p;
+#endif
         default:          return GfxCoreFamily::Unknown;
     }
 }
@@ -227,6 +230,9 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
     if (family >= ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
+#if XE3P
+    if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
+#endif
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
 
@@ -287,7 +293,7 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
             if (version.release <= 10)
                 outProduct.family = ngen::ProductFamily::GenericGen12LP;
             else if (version.release == 50)
-                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXeHP;
+                outProduct.family = ngen::ProductFamily::GenericXeHP;
             else if (version.release > 50 && version.release <= 59)
                 outProduct.family = ngen::ProductFamily::DG2;
             else if (version.release >= 60 && version.release <= 61)
@@ -295,10 +301,13 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
             else if (version.release >= 70 && version.release <= 71)
                 outProduct.family = ngen::ProductFamily::MTL;
             else if (version.release >= 73 && version.release <= 74)
-                outProduct.family = ngen::ProductFamily::ARL;
+                 outProduct.family = ngen::ProductFamily::ARL;
             break;
         case 20: outProduct.family = ngen::ProductFamily::GenericXe2; break;
         case 30: outProduct.family = ngen::ProductFamily::GenericXe3; break;
+#if XE3P
+        case 35: outProduct.family = ngen::ProductFamily::GenericXe3p; break;
+#endif
         default: outProduct.family = ngen::ProductFamily::Unknown; break;
     }
 

@@ -532,7 +532,12 @@ template <typename... Targs> NGEN_NAMESPACE::Subregister getLocalSize(Targs&&...
 void prologue() { NGEN_NAMESPACE::ELFCodeGenerator<hw>::prologue(); } \
 void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::epilogue(r0_info); }
 
+#if !XE3P
 #define NGEN_FORWARD_ELF_EXTRA(hw)
+#else
+#define NGEN_FORWARD_ELF_EXTRA(hw) \
+template <typename... Targs> void setEfficient64Bit(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::setEfficient64Bit(std::forward<Targs>(args)...); }
+#endif
 
 template <HW hw>
 std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary()

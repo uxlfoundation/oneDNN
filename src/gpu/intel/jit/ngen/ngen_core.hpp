@@ -246,6 +246,9 @@ enum class Core {
     Gen12p8 = XeHPC,    /* Deprecated -- will be removed in the future */
     Xe2,
     Xe3,
+#if XE3P
+    Xe3p,
+#endif
 };
 
 typedef Core HW;
@@ -270,6 +273,9 @@ enum class ProductFamily : int {
     PVCVG,
     GenericXe2,
     GenericXe3,
+#if XE3P
+    GenericXe3p,
+#endif
 };
 
 struct Product {
@@ -306,6 +312,9 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericXeHPC:
         case ProductFamily::DG2:
         case ProductFamily::PVC:
+#if XE3P
+        case ProductFamily::GenericXe3p:
+#endif
         case ProductFamily::PVCVG:
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
@@ -326,12 +335,18 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
         case HW::XeHPC: return ProductFamily::GenericXeHPC;
         case HW::Xe2:   return ProductFamily::GenericXe2;
         case HW::Xe3:   return ProductFamily::GenericXe3;
+#if XE3P
+        case HW::Xe3p:  return ProductFamily::GenericXe3p;
+#endif
         default:        return ProductFamily::Unknown;
     }
 }
 
 static inline constexpr14 Core getCore(ProductFamily family)
 {
+#if XE3P
+    if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
+#endif
     if (family >= ProductFamily::GenericXe3)   return Core::Xe3;
     if (family >= ProductFamily::GenericXe2)   return Core::Xe2;
     if (family >= ProductFamily::GenericXeHPC) return Core::XeHPC;
@@ -456,6 +471,10 @@ enum class MathFunction : uint8_t {
     irem  = 0xD,
     invm  = 0xE,
     rsqtm = 0xF,
+#if XE3P
+    tanh  = 0x19,
+    sigm  = 0x1A,
+#endif
 
 };
 
@@ -487,6 +506,22 @@ enum class SyncFunction : uint8_t {
     bar   = 14,
     host  = 15
 };
+
+#if XE3P
+// Shuffle function codes.
+enum class ShuffleFunction : uint8_t {
+    idx4 = 0x6,
+};
+
+#ifdef NGEN_ASM
+static inline std::ostream &operator<<(std::ostream &str, ShuffleFunction func)
+{
+    static const char *names[16] = {"", "", "", "", "", "", "idx4", "", "", "", "", "", "", "", "", ""};
+    str << names[static_cast<uint8_t>(func) & 0xF];
+    return str;
+}
+#endif
+#endif
 
 // Shared function IDs (SFIDs).
 enum class SharedFunction : uint8_t {
@@ -1308,6 +1343,19 @@ public:
 
     void clearDisp()                   { disp = 0; }
 
+#if XE3P
+    constexpr int     getScale() const { return scale; }
+
+    RegData getInd0() const {
+        if (ind0SubReg >= 0)
+            return ScalarRegister(0)[ind0SubReg];
+        else
+            return NullRegister();
+    }
+
+    GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset, scale, ind0SubReg); }
+    GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset, scale, ind0SubReg); }
+#else
     GRFDisp operator+(int offset) const { return GRFDisp(base, disp + offset); }
     GRFDisp operator-(int offset) const { return GRFDisp(base, disp - offset); }
 #endif
@@ -2491,7 +2539,14 @@ public:
 };
 
 class hdc_base {
+#if XE3P
 public:
+    template <Access access> inline void getDescriptor(HW hw, int esize, SharedFunction &sfid, AddressBase base, SendgMessageDescriptor &desc, int &addrLen, int &dataLen, const GRFDisp &addr) const {
+#ifdef NGEN_SAFE
+        throw unsupported_message();
+#endif
+    }
+#endif
 protected:
     void hwCheck(HW hw) const {
 #ifdef NGEN_SAFE
@@ -3189,7 +3244,23 @@ static inline void encodeAtomicDescriptors(HW hw, MessageDescriptor &desc, Exten
     if (dst.isNull())
         desc.parts.responseLen = 0;
 }
-} /* namespace NGEN_NAMESPACE */
+
+#if XE3P
+/********************************************************************/
+/* New send encoding and decoding.                                  */
+/********************************************************************/
+enum GatewayOpcode {
+    eot = 0,
+    bar = 4,
+    nbar = 5,
+    save_bar = 8,
+    restore_bar = 9,
+    eotr = 10,
+    restore_btd_stack = 11,
+    sip_bar = 12,
+};
+
+typedef Core HW;
 
 union SendgMessageDescriptor {
     uint64_t all;
@@ -3467,9 +3538,4 @@ static inline void encodeAtomicDescriptor(HW hw, SendgMessageDescriptor &desc, S
 #pragma clang diagnostic pop
 #endif
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif
-
 #endif /* header guard */
-

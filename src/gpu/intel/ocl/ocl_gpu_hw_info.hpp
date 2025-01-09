@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
 #define GPU_INTEL_OCL_OCL_GPU_HW_INFO_HPP
 
-#include "oneapi/dnnl/dnnl_config.h"
+#include <CL/cl.h>
 
 #include "common/c_types_map.hpp"
 #include "gpu/intel/compute/device_info.hpp"
@@ -27,16 +27,21 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace ocl {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-void *malloc_shared(
-        cl_device_id dev, cl_context ctx, size_t size, size_t alignment = 0);
 
 xpu::runtime_version_t get_driver_version(cl_device_id device);
 
+#if XE3P
+void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
+        cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
+        int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
+        bool &mayiuse_systolic, bool &mayiuse_ngen_kernels,
+        bool &is_efficient_64bit);
+#else
 void init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
         int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
         bool &mayiuse_systolic, bool &mayiuse_ngen_kernels);
+#endif
 
 } // namespace ocl
 } // namespace intel

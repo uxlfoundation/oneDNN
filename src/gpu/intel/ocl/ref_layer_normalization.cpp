@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ static status_t init_conf_common(lnorm_conf_t &conf,
     memory_desc_wrapper dst_mdw(
             pd->is_fwd() ? pd->dst_md() : pd->diff_dst_md());
 
-    dim_idx_t ndims = into<dim_idx_t>(src_mdw.ndims());
+    int ndims = src_mdw.ndims();
 
     conf.src_dt = src_mdw.data_type();
     conf.dst_dt = dst_mdw.data_type();
@@ -114,12 +114,12 @@ status_t ref_layer_normalization_fwd_t::pd_t::init_conf(
     return init_conf_common(conf, this, engine);
 }
 
-status_t simple_layer_normalization_fwd_t::pd_t::init_kernel_ctx(
+status_t ref_layer_normalization_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-status_t simple_layer_normalization_fwd_t::execute_forward(
+status_t ref_layer_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
@@ -162,7 +162,7 @@ status_t ref_layer_normalization_bwd_t::pd_t::init_conf(
     return init_conf_common(conf, this, engine);
 }
 
-status_t simple_layer_normalization_bwd_t::pd_t::init_kernel_ctx(
+status_t ref_layer_normalization_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
@@ -188,8 +188,6 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
 
     if (conf.use_scale || conf.use_shift) {
         compute::kernel_arg_list_t arg_list;
-        temp_reduce = ctx.get_scratchpad_grantor().get_memory_storage(
-                memory_tracking::names::key_lnorm_reduction);
         arg_list.set(0, src);
         arg_list.set(1, mean);
         arg_list.set(2, variance);

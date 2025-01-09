@@ -308,31 +308,6 @@ void ref_primitive_t::check_correctness(
         cmp.set_norm_validation_mode(true);
         cmp.compare(mem_fp_abx, mem_dt, attr, res);
     }
-
-    // No correspondent memory was found. Nothing to update.
-    if (arg == DNNL_ARG_UNDEF) return OK;
-
-    // Updating values.
-    const auto &mem = mems_.at(arg);
-    const auto &f32_vector = it_attr_scales->second.f32_vector_;
-    for (size_t i = 0; i < f32_vector.size(); i++) {
-        mem.set_elem(i, f32_vector[i]);
-    }
-
-    return OK;
-}
-
-dnnl_data_type_t ref_primitive_t::get_lt_dt(size_t id) const {
-    for (size_t i = 0; i < op_.in_lts_.size(); i++) {
-        if (op_.in_lts_[i].id_ == id)
-            return str2dt(op_.in_lts_[i].data_type_.c_str());
-    }
-    for (size_t i = 0; i < op_.out_lts_.size(); i++) {
-        if (op_.out_lts_[i].id_ == id)
-            return str2dt(op_.out_lts_[i].data_type_.c_str());
-    }
-    assert(!"id not found");
-    return dnnl_data_type_undef;
 }
 
 int ref_primitive_t::displace_scales() const {

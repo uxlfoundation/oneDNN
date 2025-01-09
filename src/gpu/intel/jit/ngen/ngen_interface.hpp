@@ -73,6 +73,9 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
+#if XE3P
+                             , useEfficient64Bit(hw_ >= HW::Xe3p)
+#endif
                              , requestedInlineGRFs(defaultInlineGRFs(hw))
     {}
 
@@ -130,6 +133,9 @@ public:
     void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
+#if XE3P
+    void setEfficient64Bit(bool def = true)              { useEfficient64Bit = def; }
+#endif
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
 
     inline GRF getCrossthreadBase(bool effective = true) const;
@@ -205,7 +211,6 @@ protected:
 
     static inline GlobalAccessType defaultGlobalAccess(HW hw);
     static inline int defaultInlineGRFs(HW hw);
-
 };
 
 using NEOInterfaceHandler = InterfaceHandler;   /* Deprecated -- do not use in new code. */
@@ -518,6 +523,9 @@ void InterfaceHandler::finalize()
 
 int InterfaceHandler::inlineGRFs() const
 {
+#if XE3P
+    if (useEfficient64Bit) return 1;
+#endif
     return requestedInlineGRFs;
 }
 
@@ -583,6 +591,9 @@ std::string InterfaceHandler::generateZeInfo() const
     std::stringstream md;
 
     const char *version = "1.8";
+#if XE3P
+    if (useEfficient64Bit) version = "1.35";
+#endif
 
     md << "version: " << version << "\n"
           "kernels: \n"

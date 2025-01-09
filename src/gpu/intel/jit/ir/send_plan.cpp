@@ -1658,6 +1658,9 @@ public:
         // block is 1D; fallback to block/scattered message
         if (w == 1 || h == 1) return fail_2d("No benefit from 2D message");
 
+        // block is 1D; fallback to block/scattered message
+        if (w == 1 || h == 1) return fail_2d("No benefit from 2D message");
+
         // Check v -> t strides.
         dim_t w_vstride = w_tdim.vstride_by_vidx(w_vidx);
         if (w_vstride != 1)
@@ -2299,9 +2302,8 @@ public:
         split_bounds_t bounds(reg_layout(), factor);
         if (bounds.is_empty()) return false;
         auto calls = find_objects<func_call_t>(access_.stmt());
-        for (auto &_c : calls) {
-            auto &c = _c.as<func_call_t>();
-            auto &send = c.func.as<send_t>();
+        for (auto &c : calls) {
+            auto &send = c.as<func_call_t>().func.as<send_t>();
             auto &reg_buf = send_t::arg_reg_buf(c);
             dim_t beg = get_offset(reg_buf);
             dim_t end = beg + send.payload_size();
@@ -2363,9 +2365,8 @@ private:
         if (bounds.factor() == 1) return stmt;
         auto ret = stmt;
         auto calls = find_objects<func_call_t>(stmt);
-        for (auto &_c : calls) {
-            auto &c = _c.as<func_call_t>();
-            auto &send = c.func.as<send_t>();
+        for (auto &c : calls) {
+            auto &send = c.as<func_call_t>().func.as<send_t>();
             auto &reg_buf = send_t::arg_reg_buf(c);
             auto reg_base = get_base(reg_buf);
             int reg_off = into<int>(get_offset(reg_buf));

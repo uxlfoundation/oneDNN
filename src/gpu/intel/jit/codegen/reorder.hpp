@@ -285,10 +285,6 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     op_plan_t plan = grf_size;
     ngen_register_scope_t lex_scope {scope.register_allocator()};
 
-    // Workaround for hf8 size since its a placeholder type undefined in ngen.
-    if (src_hf8) src_stride_bytes = src_stride;
-    if (dst_hf8) dst_stride_bytes = dst_stride;
-
     auto get_step = [&]() {
         int step = (width < 16 ? 8 : 16);
 
@@ -445,7 +441,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
         return;
     }
 
-    // native x <-> xf8
+    // x <-> bf8
     if (((src_bf8 || dst_bf8) && hw >= ngen::HW::XeHPC)
             || (hw >= ngen::HW::Xe3 && (src_hf8 || dst_hf8))) {
         int step = get_step();
@@ -693,263 +689,6 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
         return;
     }
 
-    if ((src_hf8 && dst_hf8) || (src_bf8 && dst_bf8)) {
-        int step = get_step();
-        const int step_nregs
-                = utils::div_up(step * ((int)sizeof(ngen::half)), grf_size);
-        auto tmp1 = lex_scope.alloc_reg_buf_data(step_nregs);
-        for (int i = 0; i < width; i += step) {
-            step = std::min(step, width - i);
-            step = utils::rnd_down_pow2(step);
-            int esize = step;
-            auto s = src.subregister(i, esize, src_stride);
-            auto d = dst.subregister(i, esize, 1);
-            if ((src_stride > 1 && s.getByteOffset() > 0)
-                    || (d.getByteOffset() > 0 && dst_stride != src_stride)) {
-                host->mov(esize,
-                        tmp1.subregister(0, ngen::DataType::ub)(src_stride),
-                        s.reinterpret(0, ngen::DataType::ub)(src_stride));
-
-                host->mov(esize, tmp1.subregister(0, ngen::DataType::ub)(1),
-                        tmp1.subregister(0, ngen::DataType::ub)(src_stride));
-
-                host->mov(esize,
-                        d.reinterpret(0, ngen::DataType::ub)(dst_stride),
-                        tmp1.subregister(0, ngen::DataType::ub)(1));
-            } else {
-                host->mov(esize,
-                        d.reinterpret(0, ngen::DataType::ub)(dst_stride),
-                        s.reinterpret(0, ngen::DataType::ub)(src_stride));
-            }
-        }
-        return;
-    }
-
-    // x <-> bf8
-    if (((src_bf8 || dst_bf8) && hw >= ngen::HW::XeHPC)
-            || (hw >= ngen::HW::Xe3 && (src_hf8 || dst_hf8))) {
-        int step = get_step();
-        ngen::DataType src_raw
-                = (src_bf8 || src_hf8) ? ngen::DataType::ub : ngen::DataType::w;
-        ngen::DataType dst_raw
-                = (dst_bf8 || dst_hf8) ? ngen::DataType::ub : ngen::DataType::w;
-        ngen::DataType conv_src
-                = (src_bf8 || src_hf8) ? src_type : ngen::DataType::hf;
-        ngen::DataType conv_dst
-                = (dst_bf8 || dst_hf8) ? dst_type : ngen::DataType::hf;
-        const int conv_dst_type_size = ngen::getBytes(conv_dst);
-        const int conv_src_type_size = ngen::getBytes(conv_src);
-        const bool do_pre_reorder = !(src_hf || src_bf8 || src_hf8);
-        const bool do_post_reorder = !(dst_hf || dst_bf8 || dst_hf8);
-        int conv_dst_stride = dst_stride;
-        int conv_src_stride = src_stride;
-        if (do_post_reorder) {
-            if (dst_type_size < conv_dst_type_size)
-                conv_dst_stride = conv_dst_type_size / dst_type_size;
-        }
-        if (do_pre_reorder) { conv_src_stride = 1; }
-        const int step_nregs
-                = utils::div_up(step * ((int)sizeof(ngen::half)), grf_size);
-        auto tmp1 = lex_scope.alloc_reg_buf_data(step_nregs);
-        auto tmp2 = lex_scope.alloc_reg_buf_data(step_nregs);
-        // Only conversion between hf and bf8 supported with mov so additional
-        // reorders generated when required.
-        if (do_pre_reorder) {
-            const int src_nregs = utils::div_up(
-                    width * conv_src_type_size * conv_src_stride, grf_size);
-            auto tmp_src = lex_scope.alloc_reg_buf_data(src_nregs).format(
-                    0, conv_src);
-            emit_reorder_1d_tile(hw, host, scope, width, src, src_stride,
-                    tmp_src, conv_src_stride);
-            src = std::move(tmp_src);
-        }
-        if (do_post_reorder) {
-            const int dst_nregs = utils::div_up(
-                    width * conv_dst_type_size * conv_dst_stride, grf_size);
-            auto tmp_dst = lex_scope.alloc_reg_buf_data(dst_nregs).format(
-                    0, conv_dst);
-            dst = std::move(tmp_dst);
-        }
-        const int conv_src_stride_bytes = conv_src_type_size * conv_src_stride;
-        const int conv_dst_stride_bytes = conv_dst_type_size * conv_dst_stride;
-        for (int i = 0; i < width; i += step) {
-            step = std::min(step, width - i);
-            step = utils::rnd_down_pow2(step);
-            int esize = step;
-
-            auto s = src.subregister(i, esize, conv_src_stride_bytes);
-            auto d = dst.subregister(i, esize, conv_dst_stride_bytes);
-            bool some_offset
-                    = (s.getByteOffset() != 0 || d.getByteOffset() != 0);
-            bool some_stride = (conv_dst_stride > 1 || conv_src_stride > 1);
-            assert((src_hf || dst_hf) || esize <= 16);
-            // Esize 1 disabled for hf <-> bf8.
-            // bcast to tmp reg, convert 2 vals, copy one to dst.
-            if (esize == 1) {
-                auto t1 = tmp1.subregister(0, ngen::DataType::hf);
-                auto t2 = tmp2.subregister(0, src_raw);
-                plan(mov, 2, t1.reinterpret(0, src_raw)(1),
-                        s.reinterpret(0, src_raw)(0));
-                plan(mov, 2, t2.reinterpret(0, conv_dst)(1),
-                        t1.reinterpret(0, conv_src)(1));
-                plan(mov, 1, d.reinterpret(0, dst_raw)(1),
-                        t2.reinterpret(0, dst_raw)(1));
-                // Conversion allowed only with 0 offset, matching stride.
-            } else if (some_stride || some_offset) {
-                if (dst_bf8 || dst_hf8) {
-                    auto t1 = tmp1.subregister(0, ngen::DataType::hf);
-                    auto t2 = tmp2.subregister(0, conv_src);
-                    plan(mov, esize, t1.reinterpret(0, src_raw)(1),
-                            s.reinterpret(0, src_raw)(conv_src_stride));
-                    plan(mov, esize, t2.reinterpret(0, dst_type)(1),
-                            t1.reinterpret(0, conv_src)(1));
-                    plan(mov, esize, d.reinterpret(0, dst_raw)(conv_dst_stride),
-                            t2.reinterpret(0, dst_raw)(1));
-                } else if (src_bf8 || src_hf8) {
-                    emit_reorder_1d_tile(hw, host, scope, step,
-                            src.format(i * conv_src_stride, src_raw),
-                            conv_src_stride, tmp1.format(0, src_raw), 1);
-                    auto t1 = tmp1.subregister(0, conv_src);
-                    auto t2 = tmp2.subregister(0, conv_dst);
-                    plan(mov, esize, t2(1), t1(1));
-                    plan(mov, esize, d.reinterpret(0, dst_raw)(conv_dst_stride),
-                            t2.reinterpret(0, dst_raw)(1));
-                }
-            } else {
-                plan(mov, esize, d(conv_dst_stride), s(conv_src_stride));
-            }
-        }
-        if (do_post_reorder) {
-            emit_reorder_1d_tile(hw, host, scope, width, dst, conv_dst_stride,
-                    _dst, dst_stride);
-        }
-        return;
-    }
-
-    // hf8 -> x
-    if (src_hf8) {
-        int step = get_step();
-        const int dst_stride_bytes = 2 * dst_stride;
-        const int step_nregs
-                = utils::div_up(step * ((int)sizeof(ngen::half)), grf_size);
-        const bool do_post_reorder = !dst_hf;
-        const bool do_pre_reorder = src_stride != 1;
-        if (do_post_reorder) {
-            const int dst_nregs
-                    = utils::div_up(width * 2 * dst_stride, grf_size);
-            auto tmp_dst = lex_scope.alloc_reg_buf_data(dst_nregs).format(
-                    0, ngen::DataType::hf);
-            dst = std::move(tmp_dst);
-        }
-        if (do_pre_reorder)
-            emit_reorder_1d_tile(
-                    hw, host, scope, width, src, src_stride, src, 1);
-        auto tmp1 = lex_scope.alloc_reg_buf_data(step_nregs);
-        auto tmp2 = lex_scope.alloc_reg_buf_data(step_nregs);
-        for (int i = 0; i < width; i += step) {
-            step = std::min(step, width - i);
-            step = utils::rnd_down_pow2(step);
-            int esize = step;
-            auto s = src.subregister(i, esize, 1);
-            auto d = dst.subregister(i, esize, dst_stride_bytes);
-            host->eshl(esize, tmp1.subregister(0, ngen::DataType::uw)(1),
-                    s.reinterpret(0, ngen::DataType::ub)(1), 8);
-            host->eshl(esize, tmp2.subregister(0, ngen::DataType::uw)(1),
-                    s.reinterpret(0, ngen::DataType::ub)(1), 7);
-            host->and_(esize, tmp2.subregister(0, ngen::DataType::uw)(1),
-                    tmp2.subregister(0, ngen::DataType::uw)(1), 0x3F80);
-            host->cmp(esize | host->eq | host->f0[0], host->null.uw(),
-                    tmp2.subregister(0, ngen::DataType::uw)(1), 0x3F80);
-            host->mul(esize, tmp2.subregister(0, ngen::DataType::hf)(1),
-                    tmp2.subregister(0, ngen::DataType::hf)(1),
-                    ngen::Immediate::hf(0x5c00));
-            host->mov(esize | host->f0[0],
-                    tmp2.subregister(0, ngen::DataType::uw)(1), 0x7C01);
-            host->csel(esize | host->gt,
-                    tmp2.subregister(0, ngen::DataType::hf)(1),
-                    tmp2.subregister(0, ngen::DataType::hf)(1),
-                    -tmp2.subregister(0, ngen::DataType::hf)(1),
-                    tmp1.subregister(0, ngen::DataType::hf)(1));
-            host->mov(esize, d.reinterpret(0, ngen::DataType::uw)(dst_stride),
-                    tmp2.subregister(0, ngen::DataType::uw)(1));
-        }
-        if (do_post_reorder) {
-            emit_reorder_1d_tile(
-                    hw, host, scope, width, dst, dst_stride, _dst, dst_stride);
-        }
-        return;
-    }
-
-    // x -> hf8
-    if (dst_hf8) {
-        int step = get_step();
-        const int step_nregs
-                = utils::div_up(step * ((int)sizeof(ngen::half)), grf_size);
-        auto tmp1 = lex_scope.alloc_reg_buf_data(step_nregs);
-        const bool do_pre_reorder = !src_hf;
-        if (do_pre_reorder) {
-            const int src_nregs = utils::div_up(width * 2, grf_size);
-            auto tmp_src = lex_scope.alloc_reg_buf_data(src_nregs).format(
-                    0, ngen::DataType::hf);
-            emit_reorder_1d_tile(
-                    hw, host, scope, width, src, src_stride, tmp_src, 1);
-            src = std::move(tmp_src);
-            src_type_size = 2;
-        } else {
-            emit_reorder_1d_tile(
-                    hw, host, scope, width, src, src_stride, src, 1);
-        }
-        src_stride = 1;
-        for (int i = 0; i < width; i += step) {
-            step = std::min(step, width - i);
-            step = utils::rnd_down_pow2(step);
-            int esize = step;
-
-            auto s = src.subregister(i, esize, src_type_size);
-            auto d = dst.subregister(i, esize, dst_stride);
-            // get sign bits
-            host->and_(esize | host->nz | host->f2[0], host->null.uw(),
-                    s.reinterpret(0, ngen::DataType::uw)(1), 0x8000);
-            // multiply by hf 128 to force overflow of exponent
-            host->mul(esize, s.reinterpret(0, ngen::DataType::hf)(1),
-                    s.reinterpret(0, ngen::DataType::hf)(1),
-                    ngen::Immediate::hf(0x5800));
-            // multiply by 2^(-15) to undo mul, preserving overflows,
-            // shift and underflow for hf8
-            host->mul(esize, s.reinterpret(0, ngen::DataType::hf)(1),
-                    s.reinterpret(0, ngen::DataType::hf)(1),
-                    ngen::Immediate::hf(0x0200));
-            // check for NaN, inf.
-            host->and_(esize | host->ze | host->f0[0], host->null.uw(),
-                    ~s.reinterpret(0, ngen::DataType::uw)(1), 0x7C00);
-            // round.
-            host->add(esize, s.reinterpret(0, ngen::DataType::uw)(1),
-                    s.reinterpret(0, ngen::DataType::uw)(1), -0x40);
-            // check for zero mantissa.
-            host->and_(esize | host->nz | host->f1[0], host->null.uw(),
-                    s.reinterpret(0, ngen::DataType::uw)(1), 0x00FF);
-            host->eshr(esize, s.reinterpret(0, ngen::DataType::uw)(1),
-                    s.reinterpret(0, ngen::DataType::uw)(1), 7);
-            host->add(esize | host->f1[0],
-                    s.reinterpret(0, ngen::DataType::uw)(1),
-                    s.reinterpret(0, ngen::DataType::uw)(1), 1);
-            host->mov(esize | host->f0[0],
-                    s.reinterpret(0, ngen::DataType::uw)(1), 0x7F);
-            // handle sign.
-            host->or_(esize | host->f2[0],
-                    s.reinterpret(0, ngen::DataType::uw)(1),
-                    s.reinterpret(0, ngen::DataType::uw)(1), 0x80);
-
-            host->mov(esize, tmp1.subregister(0, ngen::DataType::ub)(2),
-                    s.reinterpret(0, ngen::DataType::uw)(1));
-            host->mov(esize, tmp1.subregister(0, ngen::DataType::ub)(1),
-                    tmp1.subregister(0, ngen::DataType::ub)(2));
-            host->mov(esize, d.reinterpret(0, ngen::DataType::ub)(dst_stride),
-                    tmp1.subregister(0, ngen::DataType::ub)(1));
-        }
-        return;
-    }
-
     // hf8 -> x
     if (src_hf8) {
         int step = get_step();
@@ -1135,7 +874,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
                     plan(mov, esize, t2(align_stride), s.uw()(src_stride));
                     s = t2.hf();
                 }
-                plan(mov, esize | host->sat, t1(tmp_stride), s(align_stride));
+                plan(mov, esize | host->sat, t1(tmp_stride), s(src_stride));
             } else {
                 auto t1_f = tmp1.format(t1_offset, ngen::DataType::f, esize);
                 plan(mov, esize, t1_f, s(src_stride));

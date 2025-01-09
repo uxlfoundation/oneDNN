@@ -611,6 +611,9 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                 } else {
                     Tblock = Type::u32;
                     maxW = 8;
+#if XE3P
+                    if (hw >= HW::Xe3p) maxW = 16;
+#endif
                 }
                 maxXBlock = std::min(maxXBlock, (maxW * Tblock) / T);
             } else if (vnni) {
@@ -657,6 +660,17 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
                 count = std::max(count, 1);
             }
             xblock = std::min(xblock, maxXBlock * count);
+#if XE3P
+            // On Xe3p and later, large-height transpose messages effectively behave
+            //  like block arrays.
+            if (hw >= HW::Xe3p && transpose) {
+                int ychunk = (Tblock.size() == 4) ? 16 : 8;
+                if (yblock > ychunk) {
+                    count = yblock / ychunk;
+                    yblock = count * ychunk;
+                }
+            }
+#endif
 
             // Crosspack calculation.
             int crosspack = (transpose || vnni) ? std::max(1, 4 / T) : 1;

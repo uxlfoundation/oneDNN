@@ -736,63 +736,36 @@ inline bool str_to_bool(const std::string &s) {
     return false;
 }
 
-template <typename T>
-void parse(const std::string &s, T &t) {
-    std::istringstream iss(s);
-    parse(iss, t);
+inline int str_to_int(const std::string &s) {
+    return std::stoi(s);
 }
 
 class fast_random_t {
 public:
     fast_random_t(int32_t seed = 0) : seed_(seed) {}
 
-    void set_relaxed(bool value) { relaxed_ = value; }
-
-    template <typename Func>
-    void set_pre_stringify_func(const Func &func) {
-        pre_stringify_func_ = static_cast<void (*)(const T &)>(func);
+    int32_t operator()() {
+        seed_ = (1103515245U * seed_ + 12345U) & 0x7fffffff;
+        return seed_;
     }
 
-    template <typename Func>
-    void set_post_parse_func(const Func &func) {
-        post_parse_func_ = static_cast<void (*)(T &)>(func);
+    template <typename T>
+    int32_t rand_index(const std::vector<T> &v) {
+        return operator()() % (int)v.size();
     }
 
-    void stringify(std::ostream &out, const T &parent, bool cli = false) const {
-        if (pre_stringify_func_) pre_stringify_func_(parent);
-        bool is_first = true;
-        for (auto &e : entries_) {
-            std::ostringstream e_oss;
-            e.stringify(e_oss, parent);
-            if (!e.required && e_oss.str() == e._default) continue;
-            if (!is_first) out << " ";
-            if (!e.name.empty()) {
-                if (cli) {
-                    out << "--" << e.name << " ";
-                } else {
-                    out << e.name << "=";
-                }
-            }
-            out << e_oss.str();
-            is_first = false;
+    template <typename IteratorT>
+    void shuffle(IteratorT beg, IteratorT end) {
+        int n = (int)(end - beg);
+        for (int i = n - 1; i >= 1; i--) {
+            int j = operator()() % (i + 1);
+            std::swap(*(beg + i), *(beg + j));
         }
     }
 
-    void parse(std::istream &in, T &parent) const {
-        parent = T();
-        if (relaxed_) {
-            parse_relaxed(in, parent);
-        } else {
-            for (auto &e : entries_) {
-                if (!e.name.empty()) {
-                    stream_match(in, e.name);
-                    stream_match(in, "=");
-                }
-                e.parse(in, parent);
-            }
-        }
-        if (post_parse_func_) post_parse_func_(parent);
-    }
+private:
+    int32_t seed_;
+};
 
 inline std::vector<std::pair<std::string, int>> to_string_int_pairs(
         const std::string &s) {
@@ -831,61 +804,14 @@ inline void idiv_magicgu(uint32_t d, uint32_t &m, uint32_t &p) {
     ir_error_not_expected();
 }
 
-template <typename E>
-E to_enum(const std::string &s) {
-    E e;
-    to_enum_impl(s, e);
-    return e;
-}
-
-template <typename E, size_t N>
-bool is_enum_name_templ_impl(
-        const std::string &s, const std::array<enum_name_t<E>, N> &enum_names) {
-    for (auto &p : enum_names) {
-        if (p.second == s) return true;
+inline uint64_t idiv_magicgu_packed(uint32_t d) {
+    uint32_t m = 0, p = 0;
+    if (math::is_pow2(d)) {
+        p = math::ilog2q(d);
+    } else {
+        ir_utils::idiv_magicgu(d, m, p);
     }
-    return false;
-}
-
-template <typename E>
-bool is_enum_name(const std::string &s) {
-    E dummy;
-    return is_enum_name_impl(s, &dummy);
-}
-
-template <typename E>
-void parse_enum(std::istream &in, E &e) {
-    std::string name;
-    in >> name;
-    e = to_enum<E>(name);
-}
-
-void stringify_to_cpp_file(const std::string &file_name,
-        const std::string &var_name, const std::vector<std::string> &namespaces,
-        const std::vector<std::string> &lines);
-
-template <typename T>
-std::string serialize_to_hex(const T &t) {
-    std::ostringstream oss;
-    serialized_data_t s;
-    s.append(t);
-    for (uint8_t d : s.get_data()) {
-        oss << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
-            << (int)d;
-    }
-    return oss.str();
-}
-
-template <typename T>
-void deserialize_from_hex(T &t, const std::string &s_hex) {
-    std::vector<uint8_t> data;
-    for (size_t i = 0; i < s_hex.size(); i += 2) {
-        data.push_back(static_cast<uint8_t>(
-                std::stoi(s_hex.substr(i, 2), nullptr, 16)));
-    }
-    auto s = serialized_t::from_data(std::move(data));
-    deserializer_t d(s);
-    d.pop(t);
+    return m + (static_cast<uint64_t>(p) << 32);
 }
 
 // Calculate how many unique filter padding states a conv dimension can produce
@@ -988,6 +914,7 @@ static auto hw_names = nstl::to_array({
         make_enum_name(ngen::Core::XeHPC, "xehpc"),
         make_enum_name(ngen::Core::Xe2, "xe2"),
         make_enum_name(ngen::Core::Xe3, "xe3"),
+        make_enum_name(ngen::Core::Xe3p, "xe3p"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::HW, hw_names)
 
@@ -1006,6 +933,7 @@ static auto product_family_names = nstl::to_array({
         make_enum_name(ngen::ProductFamily::PVC, "pvc"),
         make_enum_name(ngen::ProductFamily::GenericXe2, "xe2"),
         make_enum_name(ngen::ProductFamily::GenericXe3, "xe3"),
+        make_enum_name(ngen::ProductFamily::GenericXe3p, "xe3p"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::ProductFamily, product_family_names)
 

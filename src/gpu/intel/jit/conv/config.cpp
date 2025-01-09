@@ -653,10 +653,25 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     // Use plain tag for output to avoid extra reorders.
     if (src_output) src_tag = user_src_tag;
     if (dst_output) dst_tag = user_dst_tag;
-
     if (user_src_req == "user") src_tag = user_src_tag = "user";
     if (user_wei_req == "user") wei_tag = user_wei_tag = "user";
     if (user_dst_req == "user") dst_tag = user_dst_tag = "user";
+}
+
+type_t output_type(const hw_t &hw, prop_kind_t prop_kind,
+        const primitive_attr_t *attr, data_type_t tensor_dt) {
+    if (prop_kind != prop_kind::backward_weights) {
+        if (tensor_dt == data_type::undef) return type_t();
+        return type_t(tensor_dt);
+    }
+#if XE3P
+    if (hw.to_ngen() == ngen::HW::Xe3p
+            && utils::one_of(attr->acc_mode_, accumulation_mode::relaxed,
+                    accumulation_mode::any)
+            && tensor_dt == data_type::bf16)
+        return type_t(tensor_dt);
+#endif
+    return type_t::f32();
 }
 
 status_t init_tensor_layouts(
@@ -803,7 +818,12 @@ bool data_types_ok(
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
     if (is_fp8
+#if XE3P
+            && !(utils::one_of(hw, ngen::HW::XeHPC, ngen::HW::Xe3p)
+                    && hw.systolic_support()))
+#else
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
+#endif
         return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;
@@ -823,23 +843,6 @@ bool data_types_ok(
 
         if (prb.with_bias) { ok &= utils::one_of(bia, src, data_type::f32); }
         return ok;
-    }
-    auto *pd = prb.conv_pd;
-    auto *attr = pd->attr();
-    switch (attr->acc_mode_) {
-        case accumulation_mode::strict:
-        case accumulation_mode::relaxed:
-        case accumulation_mode::any: break;
-        case accumulation_mode::f32:
-            if (prb.acc_data_type != data_type::f32) return false;
-            break;
-        case accumulation_mode::s32:
-            if (prb.acc_data_type != data_type::s32) return false;
-            break;
-        case accumulation_mode::f16:
-            if (prb.acc_data_type != data_type::f16) return false;
-            break;
-        default: ir_error_not_expected(); return false;
     }
     return false;
 }

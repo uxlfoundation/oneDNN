@@ -82,9 +82,6 @@ public:
     void set_unallocated() { allocated_ = false; }
     void set_allocated() { allocated_ = true; }
 
-    void set_unallocated() { allocated_ = false; }
-    void set_allocated() { allocated_ = true; }
-
     int size() const {
         return utils::rnd_up(
                 cse_expr_->cse_var.type().size(), reg_allocator_t::granularity);

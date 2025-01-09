@@ -257,7 +257,6 @@ const kcatalog::Entry *upper_bound(const kcatalog::Catalog &catalog, const kcata
     return upper_lower_bound<true>(catalog, selector);
 }
 
-
 MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem_)
 {
     using namespace kcatalog;
@@ -271,6 +270,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         case ngen::HW::XeHPC:   selector.hw = kcatalog::HWTagXeHPC;   break;
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
         case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;     break;
+#if XE3P
+        case ngen::HW::Xe3p:     selector.hw = kcatalog::HWTagXe3p;     break;
+#endif
     }
 
     auto &C = problem.C;
@@ -347,6 +349,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
 
     if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
     if (hw == ngen::HW::Xe3) *tagPtr++ = ReqXe2Block2D;
+#if XE3P
+    if (hw == ngen::HW::Xe3p) *tagPtr++ = ReqXe2Block2D;
+#endif
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

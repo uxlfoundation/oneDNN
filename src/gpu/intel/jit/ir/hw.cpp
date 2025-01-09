@@ -32,6 +32,9 @@ int hw_t::cache_line_size() const {
         case ngen::HW::XeHPG:
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
+#if XE3P
+        case ngen::HW::Xe3p:
+#endif
         case ngen::HW::Xe3: return 64;
         default: ir_error_not_expected();
     }

@@ -229,7 +229,7 @@ public:
         return call({mem_buf, mem_off, reg_buf, mask, x, y, pattern});
     }
 
-    bool is_atomic() const { return jit::is_atomic(op); }
+    bool is_atomic() const { return op == send_op_t::atomic_fadd; }
     bool is_load() const { return op == send_op_t::load; }
     bool is_load_2d() const { return op == send_op_t::load_2d; }
     bool is_prefetch() const { return op == send_op_t::prefetch; }

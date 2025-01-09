@@ -847,6 +847,12 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
 
     def_binary_alg_kinds(kernel_ctx);
     def_eltwise_alg_kinds(kernel_ctx);
+    if (post_ops.len() == 0
+            && utils::one_of(data_type::bf16, attr_info.src_scales_data_type,
+                    attr_info.wei_scales_data_type,
+                    attr_info.dst_scales_data_type)) {
+        kernel_ctx.define_int("POST_OP_USING_BF16", 1);
+    }
 
     return def_post_ops_cfg(kernel_ctx, post_ops, dst_md);
 }

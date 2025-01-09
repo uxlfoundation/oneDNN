@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -306,8 +306,10 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
 
+    if (hw < HW::Xe3p) {
         if (Ta.isF8()) Ta = Type::f16;
         if (Tb.isF8()) Tb = Type::f16;
+    }
 
     if (hw > HW::Gen9 && !systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

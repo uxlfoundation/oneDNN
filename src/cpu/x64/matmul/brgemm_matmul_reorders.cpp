@@ -262,8 +262,8 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(
 
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
-    const memory_desc_wrapper od(dst_md);
-    const auto vnni_granularity = data_type_vnni_granularity(od.data_type());
+    const memory_desc_wrapper id(src_md_), od(dst_md_);
+    const int ndims = id.ndims();
 
     const auto type_i = id.data_type();
     const auto type_o = od.data_type();

@@ -62,11 +62,11 @@ template <HW hw>
 void BLASKernelGenerator<hw>::epilogue(const CommonStrategy &strategy, CommonState &state)
 {
     auto r0_info = state.r0_info;
-
-    if (r0_info.getBase() < 112) {
-        mov<uint32_t>(r0DWords(hw), r127, r0_info);
-        r0_info = r127;
-    }
+    if (!getEfficient64Bit())
+        if (r0_info.getBase() < 112) {
+            mov<uint32_t>(r0DWords(hw), r127, r0_info);
+            r0_info = r127;
+        }
 
     if (strategy.finalFence) {
         memfence(r124, r0_info);
@@ -667,6 +667,8 @@ void BLASKernelGenerator<hw>::initState(const CommonProblem &problem, const Comm
     interface.requireGRF(strategy.GRFs);
     state.ra.setRegisterCount(strategy.GRFs);
     state.tokenAllocator = TokenAllocator(hw, strategy.GRFs);
+
+    setEfficient64Bit(interface.getEfficient64Bit());
 
     if (problem.gtpinSupport)
         interface.requireScratch(128);

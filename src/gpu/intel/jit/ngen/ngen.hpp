@@ -257,7 +257,7 @@ private:
     typename std::enable_if<hwGE(hw_, HW::Gen12LP)>::type opSends(Opcode op, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, RegData exdesc, D desc, SourceLocation loc);
 
 #if XE3P
-    void opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sfid, const RegData &dst, RegData src0, int src0Len, const RegData &src1, int src1Len, const RegData &ind0, const RegData &ind1, uint64_t desc);
+    void opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sfid, const RegData &dst, RegData src0, int src0Len, const RegData &src1, int src1Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc);
 #endif
 
     template <HW hw_ = hw>
@@ -284,6 +284,10 @@ private:
     typename std::enable_if<hwGE(hw_, HW::Gen12LP)>::type opJmpi(Opcode op, const InstructionModifier &mod, const RegData &dst, RegData src0, uint32_t jip, SourceLocation loc);
     void opJmpi(Opcode op, const InstructionModifier &mod, const RegData &dst, const RegData &src0, Label &jip, SourceLocation loc);
 
+#if XE3P
+    void opShfl(Opcode op, ShuffleFunction fc, DataType defaultType, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc);
+#endif
+
     void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod, SourceLocation loc);
     void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod, RegData src0, SourceLocation loc);
     void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod, const Immediate &src0, SourceLocation loc);
@@ -297,6 +301,9 @@ private:
 public:
     explicit BinaryCodeGenerator(Product product_, DebugConfig debugConfig = {})
         : product{product_}, debugLine(debugConfig), defaultModifier{}, labelManager{},
+#if XE3P
+                                                     shfl{this},
+#endif
 
                                                      sync{this}, load{this}, store{this}, atomic{this}
     {
@@ -751,18 +758,38 @@ protected:
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1, loc);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE3P
+#ifdef NGEN_SAFE
+        if (hardware >= HW::Xe3p) unsupported();
+#endif
+#endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1, loc);
     }
     template <typename DT = void>
@@ -916,6 +943,16 @@ protected:
             src1 = src1.forceInt32();
         opX(Opcode::mul, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
+#if XE3P
+    template <typename DT = void>
+    void mullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(Opcode::mullh, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void mullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, Immediate src1, SourceLocation loc = {}) {
+        opX(Opcode::mullh, getDataType<DT>(), mod, dst, src0, src1);
+    }
+#endif
     void nop(SourceLocation loc = {}) {
         opNop(isGen12 ? Opcode::nop_gen12 : Opcode::nop, loc);
     }
@@ -1146,86 +1183,86 @@ protected:
         opSends(Opcode::sendsc, mod, dst, src0, src1, exdesc, desc, loc);
     }
 #if XE3P
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc, loc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc);
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc, loc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc);
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, NullRegister(), NullRegister(), desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, NullRegister(), desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), NullRegister(), 0, ind0, ind1, desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), NullRegister(), NullRegister(), desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, NullRegister(), desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0.getLen(), src1, src1.getLen(), ind0, ind1, desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, NullRegister(), NullRegister(), desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, NullRegister(), desc, loc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc) {
-        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc);
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+        opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, NullRegister(), 0, ind0, ind1, desc, loc);
     }
 #endif
 
@@ -1300,19 +1337,18 @@ private:
 
         Shfl(BinaryCodeGenerator<hw> *parent_) : parent(*parent_) {}
 
-        void operator()(ShuffleFunction fc, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
-            parent.opShfl(Opcode::shfl, fc, DataType::invalid, mod, dst, src0, src1);
+        void operator()(ShuffleFunction fc, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+            parent.opShfl(Opcode::shfl, fc, DataType::invalid, mod, dst, src0, src1, loc);
         }
 
         template <typename DT = void>
-        void idx4(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1) {
-            parent.opShfl(Opcode::shfl, ShuffleFunction::idx4, getDataType<DT>(), mod, dst, src0, src1);
+        void idx4(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc) {
+            parent.opShfl(Opcode::shfl, ShuffleFunction::idx4, getDataType<DT>(), mod, dst, src0, src1, loc);
         }
     };
 public:
     Shfl shfl;
 #endif
-
 private:
     struct Sync {
         BinaryCodeGenerator<hw> &parent;
@@ -1621,8 +1657,19 @@ NGEN_FORWARD_OP_NAMES(hw) \
 NGEN_FORWARD_MIN_MAX(hw) \
 NGEN_FORWARD_REGISTERS(hw)
 
+#if !XE3P
 #define NGEN_FORWARD_EXTRA(hw)
 #define NGEN_FORWARD_EXTRA_ELF_OVERRIDES(hw)
+#else
+#define NGEN_FORWARD_EXTRA(hw) \
+template <typename... Targs> void sendg(Targs&&... args) { NGEN_NAMESPACE::BinaryCodeGenerator<hw>::sendg(std::forward<Targs>(args)...); } \
+template <typename... Targs> void sendgc(Targs&&... args) { NGEN_NAMESPACE::BinaryCodeGenerator<hw>::sendgc(std::forward<Targs>(args)...); } \
+template <typename... Targs> void sendgx(Targs&&... args) { NGEN_NAMESPACE::BinaryCodeGenerator<hw>::sendgx(std::forward<Targs>(args)...); } \
+bool getEfficient64Bit() { return NGEN_NAMESPACE::BinaryCodeGenerator<hw>::getEfficient64Bit(); }
+
+#define NGEN_FORWARD_EXTRA_ELF_OVERRIDES(hw) \
+template <typename... Targs> void setEfficient64Bit(Targs&&... args) { NGEN_NAMESPACE::BinaryCodeGenerator<hw>::setEfficient64Bit(std::forward<Targs>(args)...); }
+#endif
 
 #ifdef NGEN_NO_OP_NAMES
 #define NGEN_FORWARD_OP_NAMES(hw)
@@ -1773,8 +1820,86 @@ using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WT_L3UC; using NGEN_NAMESPACE::
 using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1C_L3CC; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L3CC;
 #define NGEN_FORWARD_REGISTERS_EXTRA1(hw) \
 using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::s0;
-#define NGEN_FORWARD_REGISTERS_EXTRA2(hw)
+#define NGEN_FORWARD_REGISTERS_EXTRA2(hw) 
+#if !XE3P
 #define NGEN_FORWARD_REGISTERS_EXTRA3(hw)
+#else
+#define NGEN_FORWARD_REGISTERS_EXTRA3(hw) \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::Fwd; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r256; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r257; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r258; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r259; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r260; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r261; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r262; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r263; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r264; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r265; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r266; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r267; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r268; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r269; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r270; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r271; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r272; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r273; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r274; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r275; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r276; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r277; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r278; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r279; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r280; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r281; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r282; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r283; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r284; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r285; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r286; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r287; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r288; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r289; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r290; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r291; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r292; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r293; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r294; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r295; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r296; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r297; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r298; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r299; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r300; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r301; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r302; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r303; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r304; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r305; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r306; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r307; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r308; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r309; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r310; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r311; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r312; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r313; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r314; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r315; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r316; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r317; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r318; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r319; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r320; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r321; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r322; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r323; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r324; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r325; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r326; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r327; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r328; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r329; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r330; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r331; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r332; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r333; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r334; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r335; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r336; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r337; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r338; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r339; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r340; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r341; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r342; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r343; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r344; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r345; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r346; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r347; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r348; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r349; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r350; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r351; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r352; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r353; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r354; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r355; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r356; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r357; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r358; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r359; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r360; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r361; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r362; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r363; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r364; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r365; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r366; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r367; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r368; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r369; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r370; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r371; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r372; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r373; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r374; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r375; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r376; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r377; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r378; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r379; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r380; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r381; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r382; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r383; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r384; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r385; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r386; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r387; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r388; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r389; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r390; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r391; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r392; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r393; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r394; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r395; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r396; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r397; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r398; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r399; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r400; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r401; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r402; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r403; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r404; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r405; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r406; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r407; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r408; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r409; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r410; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r411; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r412; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r413; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r414; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r415; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r416; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r417; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r418; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r419; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r420; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r421; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r422; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r423; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r424; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r425; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r426; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r427; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r428; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r429; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r430; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r431; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r432; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r433; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r434; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r435; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r436; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r437; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r438; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r439; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r440; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r441; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r442; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r443; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r444; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r445; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r446; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r447; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r448; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r449; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r450; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r451; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r452; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r453; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r454; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r455; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r456; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r457; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r458; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r459; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r460; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r461; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r462; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r463; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r464; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r465; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r466; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r467; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r468; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r469; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r470; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r471; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r472; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r473; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r474; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r475; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r476; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r477; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r478; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r479; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r480; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r481; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r482; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r483; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r484; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r485; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r486; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r487; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r488; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r489; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r490; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r491; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r492; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r493; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r494; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r495; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r496; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r497; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r498; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r499; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r500; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r501; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r502; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r503; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r504; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r505; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r506; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r507; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r508; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r509; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r510; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::r511; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::A64_A32U; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::A64_A32S; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::Overfetch; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L2UC_L3UC;    using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L2UC_L3C;  using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L2C_L3UC; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L2C_L3C;      using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1C_L2UC_L3UC;  using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1C_L2UC_L3C; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1C_L2C_L3UC;      using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1C_L2C_L3C;    using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L2UC_L3UC; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L2UC_L3C;      using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L2C_L3UC;   using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L2C_L3C; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1IAR_L2IAR_L3IAR; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L2UC_L3WB; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1UC_L2WB_L3UC; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WT_L2UC_L3UC;    using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WT_L2UC_L3WB; using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WT_L2WB_L3UC; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L2UC_L3WB;     using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L2WB_L3UC;  using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1S_L2WB_L3WB; \
+using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WB_L2WB_L3UC;    using NGEN_NAMESPACE::BinaryCodeGenerator<hw>::L1WB_L2UC_L3WB;
+#endif
 #define NGEN_FORWARD_REGISTERS(hw) NGEN_FORWARD_REGISTERS_BASE(hw) NGEN_FORWARD_REGISTERS_EXTRA1(hw) NGEN_FORWARD_REGISTERS_EXTRA2(hw) NGEN_FORWARD_REGISTERS_EXTRA3(hw)
 #endif
 
@@ -2197,6 +2322,13 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     i.binary.src1Imm = true;
     i.imm32.value = uint32_t(static_cast<uint64_t>(src1));
 
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        i.binaryXe3pImm.dstReg8 = getHighBit(dst);
+        i.binaryXe3pImm.src0Reg8 = getHighBit(src0);
+    }
+#endif
+
     db(i);
 }
 
@@ -2482,6 +2614,13 @@ BinaryCodeGenerator<hw>::opSend(Opcode op, const InstructionModifier &mod, Share
     if (src0Indirect)
         i.send.exDesc6_10 = src0.getOffset() >> 1;
 
+#if XE3P
+#ifdef NGEN_SAFE
+    if (getHighBit(dst) || getHighBit(src0) || getHighBit(src1))
+        throw limited_to_256_grf_exception();
+#endif
+#endif
+
     db(i);
 }
 
@@ -2633,8 +2772,10 @@ static inline unsigned encodeSendgxRegNum(RegData r)
 template <HW hw>
 void BinaryCodeGenerator<hw>::opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sfid,
                                       const RegData &dst, RegData src0, int src0Len, const RegData &src1, int src1Len,
-                                      const RegData &ind0, const RegData &ind1, uint64_t desc)
+                                      const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc)
 {
+    debugLine.add(rootStream.length(), loc);
+
     typename EncodingTag12Dispatch<hw>::tag tag;
     Instruction12 i{};
     InstructionModifier emod = mod | defaultModifier;
@@ -2947,12 +3088,13 @@ void BinaryCodeGenerator<hw>::opJmpi(Opcode op, const InstructionModifier &mod, 
 
 #if XE3P
 template <HW hw>
-void BinaryCodeGenerator<hw>::opShfl(Opcode op, ShuffleFunction fc, DataType defaultType, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1)
+void BinaryCodeGenerator<hw>::opShfl(Opcode op, ShuffleFunction fc, DataType defaultType, const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc)
 {
+    debugLine.add(rootStream.length(), loc);
     InstructionModifier mmod = mod;
 
     mmod.setCMod(static_cast<ConditionModifier>(fc));
-    opX(op, defaultType, mmod, dst, src0, src1);
+    opX(op, defaultType, mmod, dst, src0, src1, loc);
 }
 #endif
 

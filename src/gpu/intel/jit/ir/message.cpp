@@ -1188,8 +1188,8 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
     auto &b1 = blocks[1];
 
     if (b0.block >= 128) return hint;
-    return get_send_2d_hint(
-            send_op, view.type(), false, false, b0.block, b1.block);
+    return get_send_2d_hint(exec_cfg.hw(), send_op, view.type(), false, false,
+            b0.block, b1.block);
 }
 
 send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,

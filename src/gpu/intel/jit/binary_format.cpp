@@ -52,7 +52,7 @@ class binary_format_kernel_t : public jit_generator<hw> {
     NGEN_FORWARD_OPENCL(hw);
 
 public:
-    binary_format_kernel_t()
+    binary_format_kernel_t(const compute::compute_engine_t *engine)
         : jit_generator<hw>({GENERATOR_NAME, GENERATOR_LINE}) {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
@@ -71,6 +71,10 @@ public:
         requireSIMD((GRF::bytes(hw) == 64) ? 16 : 8);
         requireLocalID(3); // r1-r3
         requireLocalSize(); // r7.0-2:ud
+#if XE3P
+        if (hw == ngen::HW::Xe3p)
+            setEfficient64Bit(engine->device_info()->is_efficient_64bit());
+#endif
         finalizeInterface();
 
         Label doWrite;
@@ -162,7 +166,7 @@ public:
         *skip_check = false;
 
         if (hw != HW::Unknown) {
-            binary_format_kernel_t<hw> binary_format_kernel;
+            binary_format_kernel_t<hw> binary_format_kernel(engine);
 
             auto status = engine->create_kernel(&kernel, &binary_format_kernel);
 
@@ -202,6 +206,12 @@ public:
                     kernel = binary_format_kernel_t<HW::Xe3>::make_kernel(
                             engine, skip_check);
                     break;
+#if XE3P
+                case compute::gpu_arch_t::xe3p:
+                    kernel = binary_format_kernel_t<HW::Xe3p>::make_kernel(
+                            engine, skip_check);
+                    break;
+#endif
                 case compute::gpu_arch_t::unknown:
                     VWARN(common, runtime,
                             "unknown gpu platform - optimizations are disabled "

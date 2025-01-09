@@ -34,6 +34,13 @@ template <> struct EncodingTag12Dispatch<HW::Xe2>   { using tag = EncodingTagXeH
 template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
 template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
+#if XE3P
+struct EncodingTagXe3p : public EncodingTagXeHPC {};
+struct InstructionXe3p;
+
+template <> struct EncodingTag12Dispatch<HW::Xe3p>  { using tag = EncodingTagXe3p; };
+template <> struct Instruction12Dispatch<HW::Xe3p>  { using type = InstructionXe3p; };
+#endif
 
 class SWSBInfo12
 {
@@ -566,6 +573,9 @@ struct Instruction12 {
     inline bool getSendDesc(MessageDescriptor &desc) const;
     inline bool getARFType(ARFType &arfType, int opNum, HW hw) const;
     inline int getFencedepJIP() const;
+#if XE3P
+    inline SendgMessageDescriptor getSendgDesc() const;
+#endif
 
     bool isMathMacro() const {
         if (opcode() != Opcode::math) return false;
@@ -588,11 +598,23 @@ struct InstructionXeHPC : public Instruction12 {
         return Instruction12::getOperandRegion<EncodingTagXeHPC>(region, opNum);
     }
 
+#if XE3P
+    bool isSendg() const {
+        return (opcode() == Opcode::sendg || opcode() == Opcode::sendgc || opcode() == Opcode::sendgx);
+    }
+#endif
+
     bool eot() const {
+#if XE3P
+        if (isSendg()) return sendg.eot;
+#endif
         return Instruction12::eot();
     }
 
     bool atomic() const {
+#if XE3P
+        if (isSendg()) return false;    /* no atomic field */
+#endif
         return Instruction12::atomic();
     }
 };
@@ -1103,6 +1125,9 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     BinaryOperand12 o;
                     o.bits = binary.dst;
                     unsigned regNum = o.direct.regNum;
+#if XE3P
+                    if (xe3p) regNum |= (binaryXe3p.dstReg8 << 8);
+#endif
                     region = DependencyRegion(hw, 1, GRF(regNum));
                     return true;
                 }
@@ -1111,6 +1136,12 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     o0.bits = binary.src0;
                     o1.bits = binary.src1;
                     unsigned rn0 = o0.direct.regNum, rn1 = o1.direct.regNum;
+#if XE3P
+                    if (xe3p) {
+                        rn0 |= (binaryXe3p.src0Reg8 << 8);
+                        rn1 |= (binaryXe3p.src1Reg8 << 8);
+                    }
+#endif
                     region = DependencyRegion(hw, GRF(rn0)-GRF(rn1));
                     return true;
                 }
@@ -1533,6 +1564,22 @@ int Instruction12::getFencedepJIP() const
     (void) getImm32(imm);
     return int32_t(imm) / sizeof(Instruction12);
 }
+
+#if XE3P
+SendgMessageDescriptor Instruction12::getSendgDesc() const
+{
+    SendgMessageDescriptor desc;
+    desc.all =  uint64_t(sendg.desc0_15)
+             | (uint64_t(sendg.desc16_27) << 16)
+             | (uint64_t(sendg.desc28_29) << 28)
+             | (uint64_t(sendg.desc30_31) << 30)
+             | (uint64_t(sendg.desc32_39) << 32)
+             | (uint64_t(sendg.desc40_41) << 40);
+    if (!sendg.ind1Present)
+        desc.all |= (uint64_t(sendg.ind1_desc42_46) << 42);
+    return desc;
+}
+#endif
 
 bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const
 {

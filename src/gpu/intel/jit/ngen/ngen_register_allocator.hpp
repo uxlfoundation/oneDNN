@@ -241,6 +241,9 @@ int Bundle::firstReg(HW hw) const
     case HW::XeHPC:
     case HW::Xe2:
     case HW::Xe3:
+#if XE3P
+    case HW::Xe3p:
+#endif
         return (bundle0 << 1) | bank0;
     case HW::XeHP:
     case HW::XeHPG:
@@ -277,6 +280,9 @@ int Bundle::stride(HW hw) const
     case HW::Gen12LP:
     case HW::Xe2:
     case HW::Xe3:
+#if XE3P
+    case HW::Xe3p:
+#endif
         return 16;
     case HW::XeHP:
     case HW::XeHPG:
@@ -307,6 +313,9 @@ uint64_t Bundle::regMask(HW hw, int offset) const
     case HW::Gen12LP:
     case HW::Xe2:
     case HW::Xe3:
+#if XE3P
+    case HW::Xe3p:
+#endif
         if (bundle_id != any)                           base_mask  = 0x0003000300030003;
         if (bank_id != any)                             base_mask &= 0x5555555555555555;
         return base_mask << (bank0 + (bundle0 << 1));
@@ -337,6 +346,9 @@ Bundle Bundle::locate(HW hw, RegData reg)
         case HW::Gen12LP:
         case HW::Xe2:
         case HW::Xe3:
+#if XE3P
+        case HW::Xe3p:
+#endif
             return Bundle(base & 1, (base >> 1) & 7);
         case HW::XeHP:
         case HW::XeHPG:
@@ -367,6 +379,10 @@ void RegisterAllocator::init()
 
     if (hw < HW::XeHP)
         setRegisterCount(128);
+#if XE3P
+    else if (hw < HW::Xe3p)
+        setRegisterCount(256);
+#endif
 }
 
 void RegisterAllocator::claim(GRF reg)
@@ -595,6 +611,14 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
         auto alloc_pattern = alloc_patterns[(dwords - 1) & 3];
         uint64_t freeWhole64[sizeof(freeWhole) / sizeof(uint64_t)];
         std::memcpy(freeWhole64, freeWhole, sizeof(freeWhole));
+#if XE3P
+        /* Preferentially use r511 for small allocations as it can't be used in sendgx. */
+        if (search_full_grf && freeSub[511] == fullSubMask) {
+            r_alloc = 511;
+            o_alloc = 0;
+            return true;
+        }
+#endif
 
         for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
             uint64_t free = search_full_grf ? freeWhole64[rchunk] : -1;

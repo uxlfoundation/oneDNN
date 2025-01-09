@@ -350,11 +350,6 @@ template status_t acl_matmul_t::execute_forward<true>(
 template status_t acl_matmul_t::execute_forward<false>(
         const exec_ctx_t &ctx) const;
 
-template status_t acl_matmul_t::execute_forward<true>(
-        const exec_ctx_t &ctx) const;
-template status_t acl_matmul_t::execute_forward<false>(
-        const exec_ctx_t &ctx) const;
-
 } // namespace matmul
 } // namespace aarch64
 } // namespace cpu

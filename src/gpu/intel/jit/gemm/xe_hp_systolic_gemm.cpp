@@ -50,6 +50,10 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = compute_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
+    if (!utils::one_of(arch, arch_t::xe_hp, arch_t::xe_hpg, arch_t::xe_hpc,
+                arch_t::xe2))
+        return status::unimplemented;
+
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()

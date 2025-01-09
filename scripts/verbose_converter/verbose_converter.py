@@ -47,8 +47,6 @@ class ConverterError(RuntimeError):
 def generate(generator, parser: LogParser, *args):
     return generator.generate(parser.get_data(), *args)
 
-logger = logging.getLogger("verbose_converter")
-logger.setLevel(logging.CRITICAL + 10)  # off
 
 def convert(
     parser: str,

@@ -3463,7 +3463,6 @@ impl::status_t lift_up_quantize(std::shared_ptr<subgraph_t> &sg) {
         }
         rewriter.run();
     }
-    rewriter.run();
     return infer_shape(sg);
 }
 

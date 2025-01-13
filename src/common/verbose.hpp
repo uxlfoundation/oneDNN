@@ -175,6 +175,9 @@ struct verbose_t {
         // the upper 8 bits are reserved for devinfo levels
         debuginfo = 1 << 24,
         //
+        level1 = error | exec_profile | warn,
+        level2 = error | exec_profile | warn | create_profile,
+
         all = (uint32_t)-1,
     };
 
@@ -254,6 +257,8 @@ get_verbose_to_log_level_map() {
             verbose_to_log_map {
                     {verbose_t::all, log_manager_t::trace},
                     {verbose_t::debuginfo, log_manager_t::debug},
+                    {verbose_t::level1, log_manager_t::info},
+                    {verbose_t::level2, log_manager_t::info},
                     {verbose_t::create_dispatch, log_manager_t::info},
                     {verbose_t::create_check, log_manager_t::info},
                     {verbose_t::create_profile, log_manager_t::info},

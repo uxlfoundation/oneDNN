@@ -441,7 +441,7 @@ struct attr_t {
     dropout_t dropout;
     rounding_mode_t rounding_mode;
 
-    bool is_def(bool skip_fpmath = false) const;
+    bool is_def(bool skip_fpmath = false, bool skip_acc_mode = false) const;
 };
 
 struct isa_hints_t {

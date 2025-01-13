@@ -1013,7 +1013,7 @@ struct send_group_t {
                 cur_slots = std::min(cur_slots, slots - i);
                 uint32_t slot_mask = send_t::default_slot_mask;
                 if (!math::is_pow2(cur_slots)) {
-                    slot_mask = (1 << cur_slots) - 1;
+                    slot_mask = (1u << cur_slots) - 1;
                     cur_slots = utils::rnd_up_pow2(cur_slots);
                 }
                 type = fixup_type(type, send_params);

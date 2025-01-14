@@ -2424,6 +2424,19 @@ typedef enum {
     dnnl_rounding_mode_stochastic,
 } dnnl_rounding_mode_t;
 
+/// Quantization kind
+typedef enum {
+    /// used for unspecified quantization kind
+    dnnl_quantization_kind_undef,
+    /// static quantization mode: quantization parameter is computed
+    /// ahead of time and passed to oneDNN as an input.
+    dnnl_quantization_kind_static,
+    /// dynamic quantization mode following OCP MX spec: quantization
+    /// parameter is computed by oneDNN following the OCP MX spec
+    /// formula and written as an output.
+    dnnl_quantization_kind_dynamic_mx,
+} dnnl_quantization_kind_t;
+
 /// @struct dnnl_primitive_attr
 /// @brief An opaque structure for primitive descriptor attributes.
 ///

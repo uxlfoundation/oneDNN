@@ -213,6 +213,7 @@ def sanitize_value(v):
     v = v.split("dnnl_accumulation_mode_")[-1]
     v = v.split("dnnl_rounding_mode_")[-1]
     v = v.split("dnnl_scratchpad_mode_")[-1]
+    v = v.split("dnnl_quantization_mode_")[-1]
     v = v.split("dnnl_")[-1]
     return v
 

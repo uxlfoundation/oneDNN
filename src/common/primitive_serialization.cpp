@@ -187,6 +187,7 @@ void serialize(serialization_stream_t &sstream, const primitive_attr_t &attr) {
     // acc_mode
     sstream.append(attr.acc_mode_);
 
+    // scales
     if (!attr.scales_.has_default_values()) {
         sstream.append('s');
         attr.scales_.serialize(sstream);

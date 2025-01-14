@@ -57,7 +57,8 @@ struct quant_entry_t : public c_compatible {
         return set(mask, data_type, 0, {});
     }
     status_t set(int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims, bool is_host_scalar = false) {
+            const dims_t group_dims, bool is_host_scalar = false,
+            quantization_mode_t qmode = quantization_mode::static_sazp) {
         mask_ = mask;
         data_type_ = data_type;
         group_ndims_ = group_ndims;
@@ -65,11 +66,12 @@ struct quant_entry_t : public c_compatible {
             utils::array_copy(group_dims_, group_dims, group_ndims_);
         }
         is_host_scalar_ = is_host_scalar;
+        qmode_ = qmode;
         return status::success;
     }
     status_t set(const quant_entry_t &other) {
         return set(other.mask_, other.data_type_, other.group_ndims_,
-                other.group_dims_, other.is_host_scalar());
+                other.group_dims_, other.is_host_scalar(), other.qmode_);
     }
 
     quant_entry_t &operator=(const quant_entry_t &rhs) {
@@ -89,12 +91,16 @@ struct quant_entry_t : public c_compatible {
     dim_t get_group(int d) const {
         // If groups were not requested, return `1` for convenience.
         if (group_ndims_ == default_quant_entry().group_ndims_) return 1;
-        // But if they were, any out of bound access would return `0` and likely
+        // we allow negative indexes to address from last to first
+        if (d < 0) d += group_ndims_;
+        // Any out of bound access would return `0` and likely
         // lead to a division by zero which is fast to catch.
-        if (d >= group_ndims_) return 0;
+        if (d >= group_ndims_ || d < 0) return 0;
         return group_dims_[d];
     }
     bool is_host_scalar() const { return is_host_scalar_; }
+    quantization_mode_t get_quantization_mode() const { return qmode_; }
+    bool is_mx() const { return qmode_ == quantization_mode::dynamic_mx; }
 
     status_t get_md(memory_desc_t &out_md, const memory_desc_t &base_md) const {
         if (has_default_values()) {
@@ -137,6 +143,7 @@ struct quant_entry_t : public c_compatible {
                 && IMPLICATION(group_ndims_ > 0,
                         utils::array_cmp(
                                 group_dims_, rhs.group_dims_, group_ndims_))
+                && qmode_ == rhs.qmode_
                 && is_host_scalar_ == rhs.is_host_scalar_;
     }
 
@@ -157,6 +164,7 @@ private:
     int group_ndims_ = 0;
     dims_t group_dims_ {};
     bool is_host_scalar_ = false;
+    quantization_mode_t qmode_ = quantization_mode::undef;
 };
 
 std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e);
@@ -177,10 +185,11 @@ struct quant_entries_t : public c_compatible {
         return set(arg, mask, default_data_type_, 0, {});
     }
     status_t set(int arg, int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims, bool is_host_scalar = false) {
+            const dims_t group_dims, bool is_host_scalar = false,
+            quantization_mode_t qmode = quantization_mode::static_sazp) {
         if (!check_arg(arg)) return status::invalid_arguments;
-        CHECK(entries_[arg].set(
-                mask, data_type, group_ndims, group_dims, is_host_scalar));
+        CHECK(entries_[arg].set(mask, data_type, group_ndims, group_dims,
+                is_host_scalar, qmode));
         return status::success;
     }
     // Use this interface with `default_quant_entry` when need to remove a

@@ -211,6 +211,13 @@ const rounding_mode_t environment = dnnl_rounding_mode_environment;
 const rounding_mode_t stochastic = dnnl_rounding_mode_stochastic;
 } // namespace rounding_mode
 
+using quantization_mode_t = dnnl_quantization_mode_t;
+namespace quantization_mode {
+const quantization_mode_t undef = dnnl_quantization_mode_undef;
+const quantization_mode_t static_sazp = dnnl_quantization_mode_static_sazp;
+const quantization_mode_t dynamic_mx = dnnl_quantization_mode_dynamic_mx;
+} // namespace quantization_mode
+
 using sparse_encoding_t = dnnl_sparse_encoding_t;
 namespace sparse_encoding {
 const sparse_encoding_t undef = dnnl_sparse_encoding_undef;

@@ -577,16 +577,26 @@ status_t dnnl_primitive_attr_set_scales_mask(
 status_t dnnl_primitive_attr_set_scales(primitive_attr_t *attr, int arg,
         int mask, int group_ndims, const dims_t group_dims,
         data_type_t data_type) {
-    return dnnl_primitive_attr_set_scales_v2(
-            attr, arg, mask, group_ndims, group_dims, data_type, 0);
+    return dnnl_primitive_attr_set_scales_v3(attr, arg, mask, group_ndims,
+            group_dims, data_type, 0, quantization_mode::static_sazp);
 }
 
 status_t dnnl_primitive_attr_set_scales_v2(primitive_attr_t *attr, int arg,
         int mask, int group_ndims, const dims_t group_dims,
         data_type_t data_type, int is_on_host) {
+    return dnnl_primitive_attr_set_scales_v3(attr, arg, mask, group_ndims,
+            group_dims, data_type, is_on_host, quantization_mode::static_sazp);
+}
+
+status_t dnnl_primitive_attr_set_scales_v3(primitive_attr_t *attr, int arg,
+        int mask, int group_ndims, const dims_t group_dims,
+        data_type_t data_type, int is_on_host, quantization_mode_t qmode) {
     using namespace data_type;
     VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
     VCHECK_ATTR(arg >= 0, VERBOSE_BAD_PARAM, "arg");
+    VCHECK_ATTR(utils::one_of(qmode, quantization_mode::static_sazp,
+                        quantization_mode::dynamic_mx),
+            VERBOSE_BAD_PARAM, "qmode");
     VCHECK_ATTR(
             utils::one_of(data_type, f32, bf16, f16, e8m0, f8_e5m2, f8_e4m3),
             VERBOSE_INVALID_DATATYPE, "scales");
@@ -596,12 +606,12 @@ status_t dnnl_primitive_attr_set_scales_v2(primitive_attr_t *attr, int arg,
     if (is_on_host) { // only single value host-side scale is supported
         VCHECK_ATTR(mask == 0, VERBOSE_BAD_PARAM, "mask");
         VCHECK_ATTR(group_ndims == 0, VERBOSE_BAD_PARAM, "group_ndims");
-        return attr->scales_.set(arg, 0, data_type, 0, {}, true);
     } else {
         VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
         VCHECK_ATTR(group_ndims >= 0, VERBOSE_BAD_PARAM, "group_ndims");
-        return attr->scales_.set(arg, mask, data_type, group_ndims, group_dims);
     }
+    return attr->scales_.set(
+            arg, mask, data_type, group_ndims, group_dims, is_on_host, qmode);
 }
 
 status_t dnnl_primitive_attr_set_zero_points_mask(

@@ -320,6 +320,27 @@ inline dnnl_rounding_mode_t convert_to_c(rounding_mode mode) {
     return static_cast<dnnl_rounding_mode_t>(mode);
 }
 
+/// Quantization kind
+enum class quantization_mode {
+    /// used for unspecified quantization kind
+    undef = dnnl_quantization_mode_undef,
+    /// static quantization mode: quantization parameter is computed
+    /// ahead of time and passed to oneDNN as an input.
+    static_sazp = dnnl_quantization_mode_static_sazp,
+    /// dynamic quantization mode following OCP MX spec: quantization
+    /// parameter is computed by oneDNN following the OCP MX spec
+    /// formula and written as an output.
+    dynamic_mx = dnnl_quantization_mode_dynamic_mx,
+};
+
+/// Converts a quantization kind enum value from C++ API to C API type.
+///
+/// @param mode C++ API quantization kind enum value.
+/// @returns Corresponding C API quantization kind enum value.
+inline dnnl_quantization_mode_t convert_to_c(quantization_mode qmode) {
+    return static_cast<dnnl_quantization_mode_t>(qmode);
+}
+
 /// Propagation kind.
 enum class prop_kind {
     /// Undefined propagation kind.
@@ -4172,36 +4193,35 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                 "could not set scales primitive attribute");
     }
 
-    /// Sets scaling factors for primitive operations for a given memory
-    /// argument. The scaling factors must be passed at execution time
-    /// as an argument with index #DNNL_ARG_ATTR_SCALES | arg.
+    /// Sets primitive attributes scaling factors for a given memory
+    /// argument. The scaling factors must be passed at execution time as
+    /// an argument with index #DNNL_ARG_ATTR_SCALES | arg.
     ///
-    /// @note If `is_on_host` is true, sets a single host-side scalar scaling
-    /// factor for the specified memory argument. The scaling factor should be
-    /// passed as a host scalar memory object at execution time with index
-    /// #DNNL_ARG_ATTR_SCALES | arg.
-    ///
-    /// @sa dnnl_primitive_attr_set_scales_v2
+    /// @sa dnnl_primitive_attr_set_scales_v3
     ///
     /// @param arg Parameter argument index as passed to the
-    ///     primitive::execute() call.
-    /// @param mask Scales correspondence mask that defines the
-    ///     correspondence between the tensor dimensions and the @p
-    ///     scales vector. The set i-th bit indicates that a dedicated
-    ///     scale is used for each index along that dimension. Set the
-    ///     mask to 0 to use a common scale for the whole output tensor.
+    ///     primitive execute() call.
+    /// @param mask Scaling factors correspondence mask that defines the
+    ///     correspondence between the tensor dimensions and the @p scales array.
+    ///     The set i-th bit indicates that a dedicated scaling factor is used for
+    ///     each index along that dimension. Set the mask to 0 to use a common
+    ///     scaling factor for the whole tensor.
     /// @param groups Scaling factors correspondence groups that define the
     ///     correspondence between the tensor dimensions and the scales array.
-    ///     The set i-th dimension indicates a number of groups of scaling
-    ///     factors used for that logical dimension in a memory indicated by @p arg.
+    ///     The group dimensions should only be provided for each logical dimension
+    ///     that has correspondence mask @p mask set.
     /// @param data_type Scaling factors data_type.
     /// @param is_on_host Indicates whether the scaling factor is a host-side scalar.
+    /// @param qmode Quantization mode, can be #quantization_mode::static_sazp
+    ///     or #quantization_mode::dynamic_mx
     void set_scales(int arg, int mask, const memory::dims &groups,
             memory::data_type data_type = memory::data_type::f32,
-            bool is_on_host = false) {
-        error::wrap_c_api(dnnl_primitive_attr_set_scales_v2(get(), arg, mask,
+            bool is_on_host = false,
+            quantization_mode qmode = quantization_mode::static_sazp) {
+        error::wrap_c_api(dnnl_primitive_attr_set_scales_v3(get(), arg, mask,
                                   (int)groups.size(), groups.data(),
-                                  memory::convert_to_c(data_type), is_on_host),
+                                  memory::convert_to_c(data_type), is_on_host,
+                                  convert_to_c(qmode)),
                 "could not set scales primitive attribute");
     }
 
@@ -4220,8 +4240,9 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     /// @param data_type Scaling factors data_type.
     void set_host_scale(
             int arg, memory::data_type data_type = memory::data_type::f32) {
-        error::wrap_c_api(dnnl_primitive_attr_set_scales_v2(get(), arg, 0, 0,
-                                  nullptr, memory::convert_to_c(data_type), 1),
+        error::wrap_c_api(dnnl_primitive_attr_set_scales_v3(get(), arg, 0, 0,
+                                  nullptr, memory::convert_to_c(data_type), 1,
+                                  dnnl_quantization_mode_static_sazp),
                 "could not set scales primitive attribute");
     }
 

@@ -1,4 +1,6 @@
 --reset
+--impl=ref # Intentionally test reference impl coverage
+--check-ref-impl=
 
 --match=.*WnD.* # Use WnD problems only from shapes_ci
 --mb=2
@@ -12,6 +14,7 @@
 --dt=f32,bf16
 --attr-post-ops=,linear:2:1
 --batch=shapes_ci
+
 ## Backward
 --dir=BWD_D,BWD_WB
 --attr-post-ops=
@@ -21,7 +24,7 @@
 --dir=FWD_I
 --attr-post-ops=,linear:2:1
 
---dt=f16
+--dt=f16,f16:f16:s8,bf16:bf16:f32
 --batch=shapes_ci
 
 --dt=s8:s8:f32,u8:s8:f16

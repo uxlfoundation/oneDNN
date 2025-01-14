@@ -1899,6 +1899,14 @@ const char *dnnl_rounding_mode2str(dnnl_rounding_mode_t v) {
     return "unknown rounding_mode";
 }
 
+const char *dnnl_quantization_mode2str(dnnl_quantization_mode_t v) {
+    if (v == dnnl_quantization_mode_undef) return "undef";
+    if (v == dnnl_quantization_mode_static_sazp) return "static_sazp";
+    if (v == dnnl_quantization_mode_dynamic_mx) return "dynamic_mx";
+    assert(!"unknown quantization_mode");
+    return "unknown quantization_mode";
+}
+
 const char *dnnl_cpu_isa2str(dnnl_cpu_isa_t v) {
     if (v == dnnl_cpu_isa_default) return "cpu_isa_default";
     if (v == dnnl_cpu_isa_sse41) return "cpu_isa_sse41";

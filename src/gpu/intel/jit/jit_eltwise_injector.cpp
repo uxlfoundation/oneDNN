@@ -256,7 +256,7 @@ void jit_eltwise_injector_f32<hw>::soft_relu_compute_fwd_inner(int simd,
         case 1: h->add(simd, dest, input, -exp_overflow_bound); break;
         case 2: h->csel(simd | le | f0[0], dest, dest, temp, dest); break;
         case 3: h->mul(simd, temp, temp, log2e); break;
-        case 4: h->eexp(simd, temp, temp); break;
+        case 4: h->exp(simd, temp, temp); break;
         case 5: h->add(simd, temp, temp, 1.f); break;
         case 6: h->log(simd, temp, temp); break;
         case 7: h->mul(simd, temp, temp, reciproc_log2e); break;

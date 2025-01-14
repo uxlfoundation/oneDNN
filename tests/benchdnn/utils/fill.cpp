@@ -65,7 +65,7 @@ std::string fill_cfg_t::print_verbose() const {
     std::stringstream ss;
 
     ss << "[FILL_CFG]";
-    if (!name_.empty()) ss << " name:" << name_;
+    if (!name_.empty()) ss << " name:\'" << name_ << "\';";
 
     // Predefined set is mutually excluded with a range setting.
     if (!predefined_set_.empty()) {

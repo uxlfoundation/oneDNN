@@ -72,13 +72,12 @@ bool device_info_t::is_integrated() const {
 
 bool device_info_t::mayiuse_sub_group(int size) const {
     switch (gpu_arch()) {
-        case gpu_arch_t::xe3:
-#if XE3P
-        case gpu_arch_t::xe3p:
-#endif
-        case gpu_arch_t::xe2:
-        case gpu_arch_t::xe_hpc: return utils::one_of(size, 16, 32);
-        default: return utils::one_of(size, 8, 16, 32);
+        case gpu_arch_t::gen9:
+        case gpu_arch_t::gen11:
+        case gpu_arch_t::xe_lp:
+        case gpu_arch_t::xe_hp:
+        case gpu_arch_t::xe_hpg: return utils::one_of(size, 8, 16, 32);
+        default: return utils::one_of(size, 16, 32);
     }
 }
 

@@ -195,7 +195,7 @@ protected:
                 : pd_t(eng, p.aprop_kind, ip_src_desc, ip_weights_desc,
                         ip_dst_desc);
 
-        auto aa = allows_attr_t {false};
+        allows_attr_t aa {};
         aa.po_eltwise = true;
         aa.po_sum = true;
 #ifdef DNNL_SYCL_GENERIC

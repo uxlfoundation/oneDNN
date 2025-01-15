@@ -288,7 +288,7 @@ jit_pp_kernel_t<isa>::jit_pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
 
     if (this->do_bias()) compute_vreg_bias_shift_ = compute_vregs_per_iter_++;
 
-    if (!attr->scales_.get(DNNL_ARG_DST).has_default_values()) {
+    if (!attr->scales_.has_default_values(DNNL_ARG_DST)) {
         this->do_dst_scale_ = true;
         vreg_dst_scale = Vmm(idx_compute_vreg_start_++);
     }

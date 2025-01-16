@@ -33,12 +33,13 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-struct multi_po_reorder_binary : public gpu_primitive_t {
+struct multi_po_reorder_binary_t : public gpu_primitive_t {
     using gpu_primitive_t::gpu_primitive_t;
     struct pd_t : public gpu_binary_pd_t {
         using gpu_binary_pd_t::gpu_binary_pd_t;
 
-        DECLARE_COMMON_PD_T("multi_po_reorder_binary", multi_po_reorder_binary);
+        DECLARE_COMMON_PD_T(
+                "multi_po_reorder_binary", multi_po_reorder_binary_t);
 
         status_t init(impl::engine_t *engine) {
             if (attr()->scales_.get(DNNL_ARG_SRC_0).is_set_

@@ -99,7 +99,7 @@ private:
 
 namespace compute {
 template <>
-struct scalar_type_traits<stride_t> {
+struct scalar_type_traits_t<stride_t> {
     static const auto type = scalar_type_t::_long;
 };
 } // namespace compute

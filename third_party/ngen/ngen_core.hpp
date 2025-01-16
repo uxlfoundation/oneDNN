@@ -227,6 +227,10 @@ class r511_not_allowed_exception : public std::runtime_error {
 public:
     r511_not_allowed_exception() : std::runtime_error("r511 cannot be used here") {}
 };
+class invalid_address_mode_exception : public std::runtime_error {
+public:
+    invalid_address_mode_exception() : std::runtime_error("Invalid address mode") {}
+};
 #endif
 #endif
 

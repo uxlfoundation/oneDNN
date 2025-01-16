@@ -39,7 +39,7 @@ struct multi_po_reorder_sum : public gpu_primitive_t {
         using gpu_sum_pd_t::gpu_sum_pd_t;
 
         pd_t(const pd_t &rhs) = default;
-        ~pd_t() = default;
+        ~pd_t() override = default;
 
         DECLARE_SUM_PD_T("multi_po_reorder_sum", multi_po_reorder_sum);
 

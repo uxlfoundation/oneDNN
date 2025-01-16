@@ -175,7 +175,7 @@ struct xe_hp_systolic_gemm_t : public gpu_gemm_t {
 public:
     xe_hp_systolic_gemm_t(const pd_t *apd) : gpu_gemm_t(apd) {}
 
-    virtual status_t execute(const gemm_exec_ctx_t &ctx) const override;
+    status_t execute(const gemm_exec_ctx_t &ctx) const override;
 
 private:
     status_t init_compute(impl::engine_t *engine);

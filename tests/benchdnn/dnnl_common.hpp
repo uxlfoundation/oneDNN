@@ -655,6 +655,12 @@ bool check_md_consistency_with_tag(
 
 memory_kind_ext_t str2memory_kind(const char *str);
 
+enum class execution_mode_t { direct, graph };
+extern execution_mode_t execution_mode;
+
+const char *execution_mode2str(execution_mode_t mode);
+execution_mode_t str2execution_mode(const char *str);
+
 float reorder_rescale_factor();
 
 // The function converts a memory descriptor dims into a `dims_t` object under

@@ -1667,6 +1667,7 @@ enum class Directive {
     subdep_dst = 8,
     wrdep = 0x10,
     fencedep = 0x11,
+    pvcwarwa = 0x20,
 };
 
 static inline bool isSend(Opcode op)
@@ -2156,6 +2157,10 @@ public:
                          | (toVF(f3) << 24);
 
         return Immediate(payload, DataType::vf);
+    }
+
+    static Immediate zero(DataType dt) {
+        return Immediate(0, dt);
     }
 
     void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) const {

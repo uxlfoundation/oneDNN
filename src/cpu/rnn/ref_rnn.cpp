@@ -414,7 +414,7 @@ _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     VDISPATCH_RNN(
             !(rnn_.is_signed_int8_conf() && !is_superset(isa, avx512_core_amx)),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_RNN(!(rnn_.is_int8_conf() && !is_superset(isa, avx512_core_vnni)),
+    VDISPATCH_RNN(!(rnn_.is_int8_conf() && !is_superset(isa, avx2)),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_RNN(!(rnn_.is_f32_conf() && !is_superset(isa, avx2)),
             VERBOSE_ISA_DT_MISMATCH);

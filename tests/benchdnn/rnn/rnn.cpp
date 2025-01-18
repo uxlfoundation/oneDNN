@@ -780,7 +780,8 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
         }
 #endif
         // cpu backward only supports `any` or `abx` layouts for weights
-        if (IMPLICATION(prb.prop == dnnl_backward, prb.tag[1] != tag::abx)) {
+        if (prb.prop == dnnl_backward && prb.tag[1] != tag::abx
+                && prb.tag[1] != tag::any) {
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;

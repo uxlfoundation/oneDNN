@@ -502,8 +502,7 @@ struct uniform_send_idiom_t final {
                 });
         if (ret.size() && filtered_ret.size()
                 && ret[0].size() > filtered_ret[0].size())
-            ir_warning() << "Optimal send hint disabled: " << ret[0]
-                         << std::endl;
+            ir_warning() << "Optimal send hint disabled: " << ret[0];
 
         return filtered_ret;
     }

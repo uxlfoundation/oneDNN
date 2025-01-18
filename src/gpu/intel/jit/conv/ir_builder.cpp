@@ -765,7 +765,7 @@ void conv_ir_builder_t::build() {
     verify_buffer_access(stmt_, ir_ctx);
 #endif
 
-    ir_trace() << "Convolution kernel body:\n" << stmt_ << std::endl;
+    ir_trace() << "Convolution kernel body:\n" << stmt_;
     trace_perf();
 }
 

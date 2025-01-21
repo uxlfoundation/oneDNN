@@ -131,6 +131,10 @@ struct reduction_pd_t : public primitive_desc_t {
         }
     }
 
+    bool has_zero_dim_memory() const {
+        return memory_desc_wrapper(src_md()).has_zero_dim();
+    }
+
 protected:
     reduction_desc_t desc_;
 

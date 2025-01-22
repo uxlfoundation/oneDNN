@@ -209,15 +209,26 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
 
     /* Temporarily reuse XeHPC strategies for Xe2 until more Xe2 strategies are
        in the catalog*/
+    const auto pattern_hw = patterns[0].selector.hw;
     if (!bestEntry
-            && (patterns[0].selector.hw == kcatalog::HWTagXe2
-                    || patterns[0].selector.hw == kcatalog::HWTagXe3
-                    )) {
+            && (one_of(pattern_hw, kcatalog::HWTagXe2,  kcatalog::HWTagXe3
+#if XE3P
+		       ,kcatalog::HWTagXe3p
+#endif
+		       ))) {
         std::vector<MatchParams> override_patterns;
         override_patterns.reserve(npatterns);
-        for (int i = 0; i < npatterns; i++) {
+        auto tag = kcatalog::HWTagXeHPC;
+	switch (pattern_hw){
+	       default: break;
+	       case kcatalog::HWTagXe3: tag = kcatalog::HWTagXe2; break;
+#if XE3P
+	       case kcatalog::HWTagXe3p: tag = kcatalog::HWTagXe3; break;
+#endif
+		     }
+	for (int i = 0; i < npatterns; i++) {
             override_patterns.emplace_back(patterns[i]);
-            override_patterns.back().selector.hw = kcatalog::HWTagXeHPC;
+            override_patterns.back().selector.hw = tag;
         }
         return select(catalog, npatterns, override_patterns.data(), eparams, aux);
     }

@@ -19,6 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_desc.hpp"
+#include "common/primitive_attr_quant.hpp"
 #include "common/utils.hpp"
 
 #include <vector>
@@ -389,7 +390,13 @@ struct gated_mlp_desc_t : public op_desc_t {
     memory_desc_t dst_desc;
 
     //TODO: add enum for type of activation, swish relu sigmoid...
-    //TODO: zp + scale?
+    scales_t wts_gate_scales;
+    scales_t wts_up_scales;
+    scales_t wts_down_scales;
+
+    zero_points_t wts_gate_zero_points;
+    zero_points_t wts_up_zero_points;
+    zero_points_t wts_down_zero_points;
 };
 
 // A descriptor of a Group Normalization operation.

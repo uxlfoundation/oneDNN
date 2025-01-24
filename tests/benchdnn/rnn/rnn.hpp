@@ -432,6 +432,37 @@ struct prb_t : public desc_t {
         return 0;
     }
 
+    int ndims(rnn_data_kind_t kind) const {
+        switch (kind) {
+            case SRC_LAYER:
+            case DST_LAYER:
+            case AUGRU_ATTENTION:
+            case DIFF_SRC_LAYER:
+            case DIFF_DST_LAYER:
+            case DIFF_AUGRU_ATTENTION: return 3;
+            case SRC_ITER:
+            case SRC_ITER_C:
+            case WEIGHTS_PEEPHOLE:
+            case WEIGHTS_PROJECTION:
+            case BIAS:
+            case DST_ITER:
+            case DST_ITER_C:
+            case DIFF_SRC_ITER:
+            case DIFF_SRC_ITER_C:
+            case DIFF_WEIGHTS_PEEPHOLE:
+            case DIFF_WEIGHTS_PROJECTION:
+            case DIFF_BIAS:
+            case DIFF_DST_ITER:
+            case DIFF_DST_ITER_C: return 4;
+            case WEIGHTS_LAYER:
+            case WEIGHTS_ITER:
+            case DIFF_WEIGHTS_LAYER:
+            case DIFF_WEIGHTS_ITER: return 5;
+            default: assert(!"unknown data kind");
+        }
+        return 0;
+    }
+
     bool is_int8() const {
         return cfg[SRC_LAYER].dt == dnnl_u8 || cfg[SRC_LAYER].dt == dnnl_s8;
     }

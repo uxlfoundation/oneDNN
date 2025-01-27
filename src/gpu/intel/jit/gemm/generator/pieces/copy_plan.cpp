@@ -591,7 +591,7 @@ void CopyPlan::split2DRegions()
         if (is2D(i.src0)) {
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.inW, vs = i.src0.inVS, hs = i.src0.stride;
-            bool splitH = (w * w >= i.simd);
+            bool splitH = (w * w >= i.simd || i.dst.stride * w >= 8);
             int nsplit = splitH ? (i.simd / w) : w;
             i.simd /= nsplit;
             i.src0.stride = splitH ? hs : vs;
@@ -1260,6 +1260,7 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
+        if (simd0 == 2) simd0 = 1;
         if (simd0 < i.simd || splitting) {
             if (i.dst.offset >= i.dst.stride && i.dst.stride > 0) {   /* align dst to GRF boundary */
                 int remaining = div_up(bytesToElements(grf, i.dst.type) - i.dst.offset, i.dst.stride);

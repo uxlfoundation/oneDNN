@@ -2519,7 +2519,7 @@ TEST(test_utils_pattern_matcher, ShouldNotMatchIdenticalResblock) {
 
     graph_t agraph;
 
-    id_generator id_gen;
+    id_generator_t id_gen;
 
     int64_t ic = 8, oc = 8, ks = 1;
     std::vector<int64_t> src_shape {1, ic, 12, 12};
@@ -2826,7 +2826,7 @@ TEST(test_utils_pattern_matcher, RepConvReluWithMultiConsumers) {
     //     |                |
     graph::graph_t agraph;
 
-    id_generator id_gen;
+    id_generator_t id_gen;
 
     int64_t ic = 8, oc = 8, ks = 1;
     std::vector<int64_t> src_shape {1, ic, 12, 12};
@@ -2886,7 +2886,7 @@ TEST(test_utils_pattern_matcher, RepConvReluWithMultiConsumersCase2) {
     //     |                |
     graph::graph_t agraph;
 
-    id_generator id_gen;
+    id_generator_t id_gen;
 
     int64_t ic = 8, oc = 8, ks = 1;
     std::vector<int64_t> src_shape {1, ic, 12, 12};

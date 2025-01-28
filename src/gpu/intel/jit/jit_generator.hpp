@@ -158,9 +158,7 @@ private:
     static constexpr bool enable_debug_lines = false;
 #endif
 public:
-    jit_generator(const debug_config_t &debug_config)
-        : ngen::OpenCLCodeGenerator<hw>(0,
-                {debug_config.name, debug_config.line, enable_debug_lines}) {};
+    jit_generator() = default;
 
     const char *kernel_name() const override {
         return ngen::OpenCLCodeGenerator<hw>::getExternalName().c_str();

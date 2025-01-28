@@ -192,8 +192,7 @@ public:
 
     ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
             const debug_config_t &debug_config)
-        : jit_generator<hw>(debug_config)
-        , kernel_name_(desc.kernel_name())
+        : kernel_name_(desc.kernel_name())
         , exec_cfg_(desc.exec_cfg(engine))
         , local_range_(desc.local_range())
         , require_dpas_(desc.with_dpas())
@@ -208,8 +207,7 @@ public:
     ir_kernel_t(const std::string &kernel_name, const exec_config_t &exec_cfg,
             const compute::range_t &local_range, bool require_dpas,
             const debug_config_t &debug_config)
-        : jit_generator<hw>(debug_config)
-        , kernel_name_(kernel_name)
+        : kernel_name_(kernel_name)
         , exec_cfg_(exec_cfg)
         , local_range_(local_range)
         , require_dpas_(require_dpas)

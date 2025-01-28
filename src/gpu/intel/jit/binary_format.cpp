@@ -52,8 +52,7 @@ class binary_format_kernel_t : public jit_generator<hw> {
     NGEN_FORWARD_OPENCL(hw);
 
 public:
-    binary_format_kernel_t(const compute::compute_engine_t *engine)
-        : jit_generator<hw>({GENERATOR_NAME, GENERATOR_LINE}) {
+    binary_format_kernel_t(const compute::compute_engine_t *engine) {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
         auto high_half = [](uint64_t q) -> uint32_t { return q >> 32; };

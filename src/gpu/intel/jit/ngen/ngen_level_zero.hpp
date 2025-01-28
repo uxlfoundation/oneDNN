@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,13 +41,11 @@ template <HW hw>
 class LevelZeroCodeGenerator : public ELFCodeGenerator<hw>
 {
 public:
-    explicit LevelZeroCodeGenerator(Product product_, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(product_, debugConfig) {
+    explicit LevelZeroCodeGenerator(Product product_) : ELFCodeGenerator<hw>(product_) {
         this->interface_.setInlineGRFCount(0);
     }
 
-    explicit LevelZeroCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : LevelZeroCodeGenerator({genericProductFamily(hw), stepping_}, debugConfig) {}
-
-    explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0}, debugConfig) {}
+    explicit LevelZeroCodeGenerator(int stepping_ = 0) : LevelZeroCodeGenerator({genericProductFamily(hw), stepping_}) {}
 
     inline ze_module_handle_t getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
     static inline HW detectHW(ze_context_handle_t context, ze_device_handle_t device);

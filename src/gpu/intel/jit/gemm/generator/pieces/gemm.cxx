@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -616,7 +616,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             cmp(1 | gt | f1[0], state.k0Rem, 0);
             jmpi(1 | f0[0], lNotKSliced);
             add(1, state.inputs.groupIDMN, state.inputs.groupIDMN, -1);
-            alignDown(1 | gt | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
+            alignDown(1 | nz | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
             persistentRestore();
             jmpi(1 | f0[1], lReentry);
             jmpi(1, lLeavePersistentLoop);

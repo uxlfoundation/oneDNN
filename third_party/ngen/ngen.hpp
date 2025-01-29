@@ -887,6 +887,9 @@ protected:
     }
     template <typename DT = void>
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+#ifdef NGEN_SAFE
+        if (!src0.isIndirect()) throw invalid_address_mode_exception();
+#endif
         if (hardware >= HW::Gen10)
             movi<DT>(mod, dst, src0, null.ud(0)(1,1,0));
         else
@@ -896,6 +899,7 @@ protected:
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
         if (hardware < HW::Gen10) throw unsupported_instruction();
+        if (!src0.isIndirect()) throw invalid_address_mode_exception();
 #endif
         opX(isGen12 ? Opcode::movi_gen12 : Opcode::movi, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
@@ -2082,9 +2086,6 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     typename EncodingTag12Dispatch<hw>::tag tag;
     Instruction12 i{};
-#ifdef NGEN_SAFE
-    if (!src0.isIndirect())  throw invalid_address_mode_exception();
-#endif
 
     InstructionModifier emod = mod | defaultModifier;
     if (forceWE)

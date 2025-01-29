@@ -617,8 +617,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             and_(1 | ze | f0[0], null.ud(), state.inputs.flags, FlagKSlicing);
             cmp(1 | gt | f1[0], state.k0Rem, 0);
             jmpi(1 | f0[0], lNotKSliced);
-            add(1, state.groupIDMN, state.groupIDMN, -1);
-            alignDown(1 | gt | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
+            add(1, state.inputs.groupIDMN, state.inputs.groupIDMN, -1);
+            alignDown(1 | nz | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
             persistentRestore();
             jmpi(1 | f0[1], lReentry);
             jmpi(1, lLeavePersistentLoop);

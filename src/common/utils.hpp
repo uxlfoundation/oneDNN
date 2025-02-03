@@ -753,6 +753,7 @@ private:
     using std::ostringstream::imbue;
 };
 
+bool get_memory_dump();
 // Various getter for profiling info
 bool get_jit_dump();
 unsigned get_jit_profiling_flags();

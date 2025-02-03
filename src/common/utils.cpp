@@ -221,6 +221,15 @@ int32_t fetch_and_add(int32_t *dst, int32_t val) {
 #endif
 }
 
+static setting_t<bool> memory_dump {false};
+bool get_memory_dump() {
+    if (!memory_dump.initialized()) {
+        static bool val = getenv_int_user("MEMORY_DUMP", memory_dump.get());
+        memory_dump.set(val);
+    }
+    return memory_dump.get();
+}
+
 static setting_t<bool> jit_dump {false};
 bool get_jit_dump() {
     if (!jit_dump.initialized()) {

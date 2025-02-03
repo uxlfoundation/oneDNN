@@ -33,6 +33,7 @@
 #include "scratchpad_debug.hpp"
 #include "stack_checker.hpp"
 #include "stream.hpp"
+#include "type_helpers.hpp"
 #include "utils.hpp"
 
 using namespace dnnl::impl;
@@ -87,6 +88,55 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
     return safe_ptr_assign((*primitive_iface), p_iface.first);
 }
 
+size_t get_md_footprint(const memory_desc_t &md) {
+    dims_t pos;
+    for (int i = 0; i < md.ndims; i++) {
+        if (md.dims[i] == 0) return 0;
+        pos[i] = md.dims[i] - 1;
+    }
+    memory_desc_wrapper mdw(md);
+    int elems = (mdw.off_v(pos) + 1);
+    return types::elements_to_bytes(mdw.data_type(), elems);
+}
+
+status_t maybe_dump_memory_args(
+        const primitive_desc_iface_t *pd, const exec_ctx_t &ctx, bool after) {
+    if (!get_memory_dump()) return status::success;
+    ctx.stream()->wait();
+    static std::recursive_mutex m;
+    std::lock_guard<std::recursive_mutex> lock(m);
+    static int g_ctr = 0;
+    static std::vector<int> ctrs;
+    if (!after) ctrs.push_back(g_ctr++);
+    int ctr = ctrs.back();
+    if (after) ctrs.pop_back();
+    bool dump_input = !after;
+    std::string prefix = "dnnl_dump_mem.";
+    prefix += std::to_string(ctr);
+    prefix += (after ? ".after." : ".before.");
+    prefix += dnnl_engine_kind2str(ctx.stream()->engine()->kind());
+    prefix += ".";
+    prefix += prim_kind2str(pd->impl()->kind());
+    for (auto &kv : ctx.args()) {
+        bool is_input = kv.second.is_const;
+        if (is_input && !dump_input) continue;
+        auto &mem = kv.second.mem;
+        size_t size = get_md_footprint(*mem->md());
+        auto *storage = mem->memory_storage();
+        void *ptr;
+        CHECK(storage->map_data(&ptr, ctx.stream(), size));
+        std::ostringstream fname;
+        fname << prefix << "." << std::to_string(kv.first) << ".bin";
+        FILE *fp = fopen(fname.str().c_str(), "wb+");
+        if (fp) {
+            fwrite(ptr, size, 1, fp);
+            fclose(fp);
+        }
+        CHECK(storage->unmap_data(ptr, ctx.stream()));
+    }
+    return status::success;
+}
+
 status_t primitive_execute(
         const primitive_iface_t *primitive_iface, exec_ctx_t &ctx) {
     auto stream = ctx.stream();
@@ -97,6 +147,8 @@ status_t primitive_execute(
     if (enable_itt)
         itt::primitive_task_start(primitive_iface->pd()->impl()->kind());
 #endif
+
+    maybe_dump_memory_args(primitive_iface->pd(), ctx, false);
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
@@ -133,6 +185,8 @@ status_t primitive_execute(
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);
     }
+
+    maybe_dump_memory_args(primitive_iface->pd(), ctx, true);
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     if (enable_itt) itt::primitive_task_end();

@@ -687,6 +687,7 @@ int getenv_int_user(const char *name, int default_value = 0);
 // "DNNL_" (secondary) prefixes.
 std::string getenv_string_user(const char *name);
 
+bool get_memory_dump();
 // Various getter for profiling info
 bool get_jit_dump();
 unsigned get_jit_profiling_flags();

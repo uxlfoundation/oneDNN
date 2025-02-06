@@ -73,10 +73,12 @@
 // The API to do that was introduced in 2021.6.0. When using an older TBB
 // runtime the crash may still happen.
 inline void finalize() {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
 #ifdef DNNL_TBB_NEED_EXPLICIT_FINALIZE
     tbb::task_scheduler_handle handle
             = tbb::task_scheduler_handle {tbb::attach {}};
     tbb::finalize(handle, std::nothrow);
+#endif
 #endif
 }
 

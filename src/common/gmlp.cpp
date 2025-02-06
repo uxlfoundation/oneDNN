@@ -2,9 +2,12 @@
 #include "primitive_desc_iface.hpp"
 #include "gated_mlp_pd.hpp"
 #include "gated_mlp_utils.hpp"
+#include "oneapi/dnnl/experimental/dnnl_experimental.h"
+
+int bred_bred_bred(int aaa) { return aaa * 2; }
 
 dnnl_status_t dnnl_gmlp_primitive_desc_create(
-        dnnl_primitive_desc_t *primitive_desc_iface, dnnl_engine_t engine,
+        dnnl_primitive_desc **primitive_desc_iface, dnnl_engine *engine,
         const_dnnl_memory_desc_t src_desc, const_dnnl_memory_desc_t W_gate_desc,
         const_dnnl_memory_desc_t W_up_desc,
         const_dnnl_memory_desc_t W_down_desc, const_dnnl_memory_desc_t dst_desc,

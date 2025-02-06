@@ -43,7 +43,7 @@ namespace dnnl {
 namespace impl {
 
 struct quant_entry_t;
-const quant_entry_t &default_quant_entry();
+const quant_entry_t DNNL_API &default_quant_entry();
 
 struct quant_entry_t : public c_compatible {
     quant_entry_t() = default;

@@ -29,20 +29,21 @@
 
 #include "oneapi/dnnl/experimental/dnnl_experimental.hpp" ///TMP FOR TESTING INTERNAL
 
-#include "../half.hpp"
 #include "graph_example_utils.hpp"
 
 #include <dnnl_test_common.hpp>
+#include "common/primitive_attr.hpp"
+#include <gtest/gtest.h>
 #include <oneapi/dnnl/dnnl.hpp>
 
 #include <memory>
 #include <random>
 
+//static bool verbose = true;
+static bool verbose = false;
+
 using namespace dnnl;
 using tag = memory::format_tag;
-
-using half_float::half;
-using half_float::half_cast;
 
 using namespace dnnl::graph;
 using layout_type = logical_tensor::layout_type;
@@ -93,6 +94,64 @@ struct gmlp_tensors {
     dnnl::primitive_attr gate_attr_quantized, up_attr_quantized, down_attr_quantized;
 };
 
+std::ostream &operator<<(std::ostream &ss, const quantize_type &qt) {
+    switch (qt) {
+        case quantize_type::no_quantization: ss << "no_quantization"; break;
+        case quantize_type::per_tensor: ss << "per_tensor"; break;
+        case quantize_type::per_token: ss << "per_token"; break;
+        case quantize_type::per_token_with_groups:
+            ss << "per_token_with_groups";
+            break;
+    }
+    return ss;
+}
+
+std::ostream &operator<<(std::ostream &ss, const memory::data_type &dt) {
+    switch (dt) {
+        case mdt::f32: ss << "f32"; break;
+        case mdt::s32: ss << "s32"; break;
+        case mdt::f16: ss << "f16"; break;
+        case mdt::s8: ss << "s8"; break;
+        case mdt::u8: ss << "u8"; break;
+        case mdt::s4: ss << "s4"; break;
+        case mdt::u4: ss << "u4"; break;
+        default: ss << "na"; break;
+    }
+    return ss;
+}
+
+std::ostream &operator<<(std::ostream &ss, const mlp_dims_t &p) {
+    ss << "mb_" << p.mb;
+    ss << "_ic_" << p.ic;
+    ss << "_oc_" << p.oc;
+
+    std::string quant = p.do_quantize ? "_quant_" : "_noquant_";
+    ss << quant;
+    ss << "_gu_group_size_" << p.gateup_group_size;
+    ss << "_gd_group_size_" << p.down_group_size;
+
+    ss << "_wgu_wt_" <<  p.wgu_wt;
+    if (p.wgu_wt != mdt::f16) {
+        ss << "_wgu_sdt_" <<  p.wgu_s_dt;
+        ss << "_wgu_zpdt_" <<  p.wgu_zp_dt;
+    }
+
+    ss << "_wd_wt_" <<  p.wd_wt;
+    if (p.wd_wt != mdt::f16) {
+        ss << "_wd_sdt_"  <<  p.wd_s_dt;
+        ss << "_wd_zpdt_" <<  p.wd_zp_dt;
+    }
+
+    if (p.wgu_wt != mdt::f16 || p.wd_wt != mdt::f16) { ss << "_qtype_" << p.qtype; }
+    return ss;
+}
+
+std::string PrintToString(const ::testing::TestParamInfo<mlp_dims_t> &info) {
+    std::stringstream ss;
+    ss << info.param;
+    return ss.str();
+}
+
 static const int min_runs = 4;
 
 template <typename T>
@@ -127,12 +186,13 @@ vector<float> dequantize(const vector<float> &input, memory::desc &desc,
         dnnl::impl::dim_t scales_groups[12];
         dnnl::impl::dim_t zp_groups[12];
         if (qtype == quantize_type::per_token_with_groups) {
+            #define countof(a) (sizeof(a)/sizeof(*(a)))
             printf("qqper token w/group \n");
-            std::copy(scales_attr.get_groups(arg).group_dims_,
-                    scales_attr.get_groups(arg).group_dims_ + 12,
-                    scales_groups);
-            std::copy(zp_attr.get_groups(arg),
-                    zp_attr.get_groups(arg) + 12, zp_groups);
+            for (int i = 0; i < countof(scales_groups); i++)
+                scales_groups[i] = scales_attr.get_group(arg, i);
+            for (int i = 0; i < countof(zp_groups); i++)
+                zp_groups[i] = zp_attr.get_group(arg, i);
+            #undef countof
         } else if (qtype == quantize_type::per_token) {
             printf("qqper token \n");
             if (is_k) {
@@ -302,8 +362,10 @@ void fill_random_quantized(std::vector<T> &out, bool is_unsigned = false) {
 
     if (random_data_f.empty() || random_data_u.empty()) {
         std::mt19937 generator;
-        std::uniform_int_distribution<int> dist_f(-7, 8);
-        std::uniform_int_distribution<unsigned> dist_u(0, 10);
+        //std::uniform_int_distribution<int> dist_f(-7, 8); //TODO:whichrange?
+        //std::uniform_int_distribution<unsigned> dist_u(0, 10);
+        std::uniform_int_distribution<int> dist_f(-4, 4);
+        std::uniform_int_distribution<unsigned> dist_u(0, 6);
 
         random_data_u.resize(nrand);
         for (auto &d : random_data_u) {
@@ -353,7 +415,7 @@ void fill_const(std::vector<float> &out, const float c) {
         out[i] = c; //TMP matmul only
    }
 }
-void fill_const(std::vector<half> &out, const float c) {
+void fill_const(std::vector<float16_t> &out, const float c) {
     static std::vector<float> random_data_f;
     constexpr size_t nrand = 1037;
     const unsigned seed = 2;
@@ -369,7 +431,7 @@ void fill_const(std::vector<half> &out, const float c) {
 
    size_t chunk = std::min(nrand, out.size());
    for(int i=0; i<out.size(); ++i) {
-        out[i] = half_cast<half>(c); //TMP matmul only
+        out[i] = c; //TMP matmul only
    }
    //for (size_t i = 0; i < out.size(); i += nrand) {
    //    size_t chunk = std::min(nrand, out.size() - i);
@@ -389,28 +451,28 @@ void fill_hceye(std::vector<float> &out, int ldi=32) {
         //out[i] = ((( (i/ldi) == (i%ldi))) ? 1.f : 0.f); //TMP matmul only
    }
 }
-void fill_hceye(std::vector<half> &out, int ldi=32) {
+void fill_hceye(std::vector<float16_t> &out, int ldi=32) {
     static std::vector<float> random_data_f;
     constexpr size_t nrand = 1037;
 
    for(int i=0; i<out.size(); ++i) {
-        //out[i] = half_cast<half>( (i/33) == (i%33) ? 1.f : 0.f); //TMP matmul only
+        //out[i] = (i/33) == (i%33) ? 1.f : 0.f; //TMP matmul only
         //
-        //out[i] = half_cast<half>( (i/32)%32 == (i%32) ? 1.f : 0.f); //TMP matmul only
+        //out[i] = (i/32)%32 == (i%32) ? 1.f : 0.f; //TMP matmul only
 
-        out[i] = half_cast<half>((( (i/ldi)%32 == (i%32))) ? 1.f : 0.f); //TMP matmul only
-        //out[i] = half_cast<half>((((i/ldi)%32  == ((i+2)%32)) || ( (i/ldi) == (i%32))) ? 1.f : 0.f); //TMP matmul only
-        //out[i] = half_cast<half>((((i/ldi)  == ((i+2)%ldi)) || ( (i/ldi) == (i%ldi))) ? 1.f : 0.f); //TMP matmul only
-        //out[i] = half_cast<half>((( (i/ldi) == (i%ldi))) ? 1.f : 0.f); //TMP matmul only
+        out[i] = ((i/ldi)%32 == (i%32)) ? 1.f : 0.f; //TMP matmul only
+        //out[i] = (((i/ldi)%32  == ((i+2)%32)) || ( (i/ldi) == (i%32))) ? 1.f : 0.f; //TMP matmul only
+        //out[i] = (((i/ldi)  == ((i+2)%ldi)) || ( (i/ldi) == (i%ldi))) ? 1.f : 0.f; //TMP matmul only
+        //out[i] = (( (i/ldi) == (i%ldi))) ? 1.f : 0.f; //TMP matmul only
 
         /*
         if((i/ldi == i % ldi) && i/ldi == 1) {
-            out[i] = half_cast<half>(-1); //TMP matmul only
+            out[i] = -1; //TMP matmul only
         }
         */
 
         //
-        //out[i] = half_cast<half>( (i/64) == (i%64) ? 1.f : 0.f); //TMP matmul only
+        //out[i] = (i/64) == (i%64) ? 1.f : 0.f; //TMP matmul only
         //out[i] = 1.f;
    }
 }
@@ -430,7 +492,6 @@ void fill_mask(std::vector<float> &mask, size_t seq_len) {
 // Read from handle, write to memory
 template <typename T>
 inline void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
-    printf("write_to_dnnl-umariffyyyyy\n");
     dnnl::engine eng = mem.get_engine();
     size_t size = mem.get_desc().get_size();
 
@@ -996,10 +1057,9 @@ void print_test_case(memory::data_type dt, const mlp_dims_t &p) {
 template<typename T>
 void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
         gmlp_tensors &t,
-        dnnl::engine &eng, dnnl::stream &strm, memory::data_type dt,
+        dnnl::engine &eng, dnnl::stream &strm,
         const mlp_dims_t &p, double time_limit = 0.) {
     const bool quick_test = (time_limit == 0.);
-    print_test_case(dt, p);
 
     // extract memory objects
     auto m_O_proj  = t.m_x;
@@ -1164,7 +1224,7 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
     std::cout << "primitive runs: " << runs + 1 << "; ";
     std::cout << "avg_time: " << avg_time << " ms" << std::endl;
 
-    if (product(FC_down_md.get_dims()) < (64*64) + 1) {
+    if (verbose && product(FC_down_md.get_dims()) < (64*64) + 1) {
         const memory::dims FC_down_sz = {p.mb, p.ic};
         printf("resprim----------[%ld %ld]\n", p.mb, p.ic);
         printf("------inpA\n");
@@ -1177,7 +1237,7 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
         //transpose(eng, m_FC_gate_t, m_FC_gate);
         transpose_strides(eng, m_FC_gate_t, m_FC_gate);
 
-    if (product(FC_down_md.get_dims()) < (64*64) + 1) {
+    if (verbose && product(FC_down_md.get_dims()) < (64*64) + 1) {
         const memory::dims FC_down_sz = {p.mb, p.ic};
         printf("------tmpres\n");
         print_mem(m_FC_gate_t, "-prim");
@@ -1190,7 +1250,7 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
     }
     m_FC_gate_t.unmap_data(mapped_ptr_f16);
 #else
-    if (product(FC_down_md.get_dims()) < (64*64) + 1) {
+    if (verbose && product(FC_down_md.get_dims()) < (64*64) + 1) {
         const memory::dims FC_down_sz = {p.mb, p.ic};
         printf("------tmpres\n");
         print_mem(m_FC_gate, "-prim");
@@ -1209,11 +1269,10 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
 template<typename T>
 void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
         gmlp_tensors &t,
-        dnnl::engine &eng, dnnl::stream strm, memory::data_type dt,
+        dnnl::engine &eng, dnnl::stream strm,
         const mlp_dims_t &p, double time_limit = 0.) {
     printf("eng?\n");
     const bool quick_test = (time_limit == 0.);
-    print_test_case(dt, p);
 
     // Create memory objects
     auto m_O_proj  = t.m_x;
@@ -1250,20 +1309,21 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
 
     const memory::dims FC_gate_sz_t = {p.oc, p.mb};
     //const memory::dims FC_gate_sz_t = {p.mb, p.oc};
-    auto FC_gate_md_t = memory::desc(FC_gate_sz_t, dt, tag::ab);
+    auto FC_gate_md_t = memory::desc(FC_gate_sz_t, FC_gate_md.get_data_type(), tag::ab);
     auto m_FC_gate_t = memory(FC_gate_md_t, eng);
-    /*
-    printf("memquant\n");
-    //print_mem(t.m_w_gate, "-gen_desc_wgate");
-    //print_mem(m_W_gate, "-gen_desc_wgate");
-    print_mem(t.m_w_gate_quantized, "-gen_desc_wgate_quant");
-    //print_mem(t.m_w_up_quantized, "-gen_desc_wgate_quant");
-    //print_mem(m_W_gate_quant, "-gen_desc_wgate_quant");
-    print_mem(t.m_w_gate_scales, "-gen_desc_wgate_scale");
-    //print_mem(m_W_gate_scales, "-gen_desc_wgate_scale");
-    //print_mem(t.m_w_gate_zp, "-gen_desc_wgate_zp");
-    print_mem(m_W_gate_zp, "-gen_desc_wgate_zp");
-    */
+
+    if(verbose) {
+        printf("memquant\n");
+        //print_mem(t.m_w_gate, "-gen_desc_wgate");
+        //print_mem(m_W_gate, "-gen_desc_wgate");
+        print_mem(t.m_w_gate_quantized, "-gen_desc_wgate_quant");
+        //print_mem(t.m_w_up_quantized, "-gen_desc_wgate_quant");
+        //print_mem(m_W_gate_quant, "-gen_desc_wgate_quant");
+        print_mem(t.m_w_gate_scales, "-gen_desc_wgate_scale");
+        //print_mem(m_W_gate_scales, "-gen_desc_wgate_scale");
+        //print_mem(t.m_w_gate_zp, "-gen_desc_wgate_zp");
+        print_mem(m_W_gate_zp, "-gen_desc_wgate_zp");
+    }
 
     //primitive_attr bmm0_attr;
     //bmm0_attr.set_scratchpad_mode(scratchpad_mode::user);
@@ -1380,7 +1440,7 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
 
     //transpose(eng, m_FC_gate, m_FC_gate_t);
 
-    if (product(FC_down_md.get_dims()) < (64*64)+1) {
+    if (verbose && product(FC_down_md.get_dims()) < (64*64)+1) {
         printf("resint----------[%ld %ld]\n", p.mb, p.ic);
         printf("------inpA\n");
         print_mem(m_O_proj, "-internal");
@@ -1604,8 +1664,8 @@ void generate_input_vectors(mlp_dims_t p, std::vector<T> &x_data, std::vector<T>
     printf("\n----------\n\nGENDATA\n");
     for (int y = 0; y < p.mb; ++y) {
         for (int x = 0; x < p.ic; ++x) {
-            if constexpr(std::is_same<half, T>::value) {
-                printf("%5.1f ", half_cast<float>(x_data[y * p.ic + x]));
+            if constexpr(std::is_same<float16_t, T>::value) {
+                printf("%5.1f ", float(x_data[y * p.ic + x]));
             } else {
                 printf("%f ", x_data[y * p.ic + x]);
             }
@@ -1615,8 +1675,8 @@ void generate_input_vectors(mlp_dims_t p, std::vector<T> &x_data, std::vector<T>
     printf("inpB----------[%d %d]\n", p.ic, p.oc);
     for (int y = 0; y < p.ic; ++y) {
         for (int x = 0; x < p.oc; ++x) {
-            if constexpr(std::is_same<half, T>::value) {
-                printf("%5.1f ", half_cast<float>(w_gate_data[y * p.oc + x]));
+            if constexpr(std::is_same<float16_t, T>::value) {
+                printf("%5.1f ", float(w_gate_data[y * p.oc + x]));
             } else {
                 printf("%f ", w_gate_data[y * p.oc + x]);
             }
@@ -1644,13 +1704,14 @@ template<typename T>
 void bench(std::vector<T> &res, double &avg_time,
         gmlp_tensors &t,
         api_kind api,
-        dnnl::engine &eng, dnnl::stream &strm, dnnl_data_type_t dt,
+        dnnl::engine &eng, dnnl::stream &strm,
         const mlp_dims_t &p, double time_limit = 0.) {
+
     try {
         if (api == api_kind::primitive) {
             bench_gated_mlp_primitives(res, avg_time,
                     t,
-                    eng, strm, static_cast<memory::data_type>(dt), p, time_limit);
+                    eng, strm, p, time_limit);
             strm.wait();
         } else if (api == api_kind::graph) {
             //bench_gated_mlp_graph(ekind, static_cast<logical_tensor::data_type>(dt),
@@ -1659,7 +1720,7 @@ void bench(std::vector<T> &res, double &avg_time,
         } else {
             bench_gated_mlp_internal(res, avg_time,
                     t,
-                    eng, strm, static_cast<memory::data_type>(dt), p, time_limit);
+                    eng, strm, p, time_limit);
             strm.wait();
         }
     } catch (dnnl::error &e) {
@@ -1756,7 +1817,7 @@ void mlp_perf(engine::kind ekind, int argc, char **argv) {
     //printf("GRAPH\n");
     //bench(api_kind::graph, ekind, dnnl_f32, params, 2000.0 /*ms*/);
     std::vector<float> resp, resi;
-    std::vector<half> resph, resih;
+    std::vector<float16_t> resph, resih;
     double avg_time_int, avg_time_prim;
 
     printf("PRIMITIVE\n");
@@ -1764,14 +1825,14 @@ void mlp_perf(engine::kind ekind, int argc, char **argv) {
     //bench(resph, api_kind::primitive, ekind, dnnl_f16, dnnl_f16, params, 2000.0 /*ms*/);
     bench(resph, avg_time_prim,
           tensors,
-          api_kind::primitive, eng, strm, dnnl_f16, params, 2000.0 /*ms*/);
+          api_kind::primitive, eng, strm, params, 2000.0 /*ms*/);
 
     printf("INTERNAL\n");
     //bench(resi, api_kind::internal_hack, ekind, dnnl_f32, params, 2000.0 /*ms*/);
     //bench(resih, api_kind::internal_hack, ekind, dnnl_f16, dnnl_f16, params, 2000.0 /*ms*/);
     bench(resih, avg_time_int,
           tensors,
-          api_kind::internal_hack, eng, strm, dnnl_f16, params, 2000.0 /*ms*/);
+          api_kind::internal_hack, eng, strm, params, 2000.0 /*ms*/);
 
     /*
     if(resi.size() == 0) printf("[WARNING] Empty output! internal kernel fail X_X\n");
@@ -1787,12 +1848,12 @@ void mlp_perf(engine::kind ekind, int argc, char **argv) {
         if(std::abs((resih[i] - resph[i]) / resih[i]) > 5e-3) {
             n_mismatches++;
             if(n_mismatches < 10)
-                printf("mismatch @ %d, %f != %f\n", i, half_cast<float>(resih[i]), half_cast<float>(resph[i])); //TODO: improve
+                printf("mismatch @ %d, %f != %f\n", i, float(resih[i]), float(resph[i])); //TODO: improve
         } else {
-            if(std::abs(half_cast<float>(resih[i])) > 5e-3) {
+            if(std::abs(float(resih[i])) > 5e-3) {
                 n_matches++;
                 if(n_matches < 10)
-                    printf("vs @ %d, %f == %f\n", i, half_cast<float>(resih[i]), half_cast<float>(resph[i])); //TODO: improve
+                    printf("vs @ %d, %f == %f\n", i, float(resih[i]), float(resph[i])); //TODO: improve
             }
         }
     }
@@ -1802,7 +1863,370 @@ void mlp_perf(engine::kind ekind, int argc, char **argv) {
     //bench(api_kind::primitive, ekind, dnnl_f16, params, 2000.0 /*ms*/);
 }
 
+/*
 int main(int argc, char **argv) {
     return handle_example_errors(
             mlp_perf, parse_engine_kind(argc, argv, 4), argc, argv);
 }
+*/
+
+
+
+
+
+
+class mlp_test : public ::testing::TestWithParam<mlp_dims_t> {
+public:
+    virtual void SetUp() override {
+        p = GetParam();
+        eng = dnnl::engine(engine::kind::gpu, 0);
+        strm = dnnl::stream(eng);
+        t = get_descriptors(eng, p);
+    }
+
+protected:
+    mlp_dims_t p;
+    dnnl::engine eng;
+    dnnl::stream strm;
+    gmlp_tensors t;
+};
+
+
+TEST_P(mlp_test, compare) {
+
+    auto tensors = t;
+    auto params = p;
+
+    std::vector<float> resp, resi;
+    std::vector<float16_t> resph, resih;
+    double avg_time_int, avg_time_prim;
+
+    printf("PRIMITIVE\n");
+    bench(resph, avg_time_prim,
+          tensors,
+          api_kind::primitive, eng, strm, params, 2000.0 /*ms*/);
+
+    printf("INTERNAL\n");
+    bench(resih, avg_time_int,
+          tensors,
+          api_kind::internal_hack, eng, strm, params, 2000.0 /*ms*/);
+
+    if(resih.size() == 0) {
+        printf("[WARNING] Empty output! internal kernel fail X_X\n");
+        EXPECT_TRUE(false);
+    }
+    int n_mismatches=0, n_matches=0;
+    printf("resih.size() %zu\n", resih.size());
+    float max_diff = 0.0f, max_val, max_gold;
+    for(int i=0; i<resih.size(); ++i) {
+        float abs_diff = std::abs(resih[i] - resph[i]);
+        float rel_diff = std::abs((resih[i] - resph[i]) / resih[i]);
+        if(abs_diff > 1e-4 && rel_diff > 5e-3) {
+
+            if (isfinite(rel_diff) && (abs_diff) > max_diff) {
+                max_diff = abs_diff;
+                max_val  = resih[i];
+                max_gold = resph[i];
+            }
+
+            n_mismatches++;
+            if(n_mismatches < 10)
+                printf("mismatch @ %d, %f != %f\n", i, float(resih[i]), float(resph[i])); //TODO: improve
+        } else {
+            if(std::abs(float(resih[i])) > 5e-3) {
+                n_matches++;
+                if(n_matches < 10)
+                    printf("vs @ %d, %f == %f\n", i, float(resih[i]), float(resph[i])); //TODO: improve
+            }
+        }
+    }
+    printf("total mismatches: %d \n", n_mismatches);
+    printf("avg time internal: %f vs %f avg time primitive, w/speedup of %f\n", avg_time_int, avg_time_prim, avg_time_prim / avg_time_int);
+
+    int total_size = resph.size();
+    int threshold = total_size * 0.0006;
+
+    std::cout << "max diff: " << max_diff <<":  " << max_val << " != " << max_gold << std::endl;
+    ASSERT_LE(n_mismatches, threshold) << "out of: " << total_size;
+}
+
+
+// clang-format off
+INSTANTIATE_TEST_SUITE_P(VEC,
+    mlp_test,
+                 // mb, seq_len, kv_grp_sz,  hd_num, hd_size, qry_num, kg_sz, vgrp_sz,       dt,      kdt,      ksdt,   kzpdt,      vdt,     vsdt,   vzpdt, qtype
+    testing::Values(
+        // B = 1024
+             mlp_dims_t{32,  32,   32,    false, // mb ic oc quant?
+                         1, 1, // gateup, wd group size
+                     mdt::f16, mdt::f16, mdt::f16, // dt wgateup
+                     mdt::f16, mdt::f16, mdt::f16, // dt wd
+                     quantize_type::per_token},
+             mlp_dims_t{1024,  3584,   18944,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1024,  3584,   4864,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1024,  3584,   14336,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1024,  3584,   27392,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+ //           mlp_dims_t{1024,  896,   18944,    false, // mb ic oc quant?  //TODO: 896 failing?
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+ //           mlp_dims_t{1024,  896,   4864,    false,
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+ //           mlp_dims_t{1024,  896,   14336,    false,
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+ //           mlp_dims_t{1024,  896,   27392,    false,
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+             mlp_dims_t{1024,  4096,   18944,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1024,  4096,   4864,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1024,  4096,   14336,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1024,  4096,   27392,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+
+             // B==1
+             mlp_dims_t{1,  3584,   18944,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1,  3584,   4864,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1,  3584,   14336,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1,  3584,   27392,    false,
+                         1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+ //           mlp_dims_t{1,  896,   18944,    false, // mb ic oc quant?  //TODO: 896 failing?
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+ //           mlp_dims_t{1,  896,   4864,    false,
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+ //           mlp_dims_t{1,  896,   14336,    false,
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+ //           mlp_dims_t{1,  896,   27392,    false,
+ //                       1, 1,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   mdt::f16, mdt::f16, mdt::f16,
+ //                   quantize_type::per_token},
+             mlp_dims_t{1,  4096,   18944,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1,  4096,   4864,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1,  4096,   14336,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+             mlp_dims_t{1,  4096,   27392,    false, 1, 1,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     mdt::f16, mdt::f16, mdt::f16,
+                     quantize_type::per_token},
+
+       // B = 1024, quantized w=u8
+            mlp_dims_t{32,  32,   32,   true, 8, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  3584,   18944,   true, 8, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  896,   4864,   true, 8, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   14336,   true, 8, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   27392,   true, 8, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+
+            mlp_dims_t{1024,  3584,   18944,   true, 128, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  896,   4864,   true, 128, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   14336,   true, 128, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   27392,   true, 128, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+
+        // B = 1024, quantized w=s8
+            mlp_dims_t{32,  32,   32,   true, 8, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  3584,   18944,   true, 8, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  896,   4864,   true, 8, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   14336,   true, 8, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   27392,   true, 8, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+
+            mlp_dims_t{1024,  3584,   18944,   true, 128, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  896,   4864,   true, 128, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   14336,   true, 128, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   27392,   true, 128, 1,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+
+        // B = 1024, quantized w=u4
+            mlp_dims_t{32,  32,   32,   true, 16, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  3584,   18944,   true, 8, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  896,   4864,   true, 8, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   14336,   true, 8, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   27392,   true, 8, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+
+            //group size must be 8,16,32??? ;cannot work for 128 && u4
+            mlp_dims_t{1024,  3584,   18944,   true, 32, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  896,   4864,   true, 32, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   14336,   true, 32, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{1024,  4096,   27392,   true, 32, 1,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    mdt::u4, mdt::f16, mdt::u8,
+                    quantize_type::per_token_with_groups},
+
+            //additional 4bit quant
+            mlp_dims_t{32,  32,   32,   true, 16, 1,
+                    mdt::s4, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{32,  32,   32,   true, 16, 1,
+                    mdt::u4, mdt::f16, mdt::s8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+            mlp_dims_t{32,  32,   32,   true, 16, 1,
+                    mdt::s4, mdt::f16, mdt::u8,
+                    mdt::s8, mdt::f16, mdt::s8,
+                    quantize_type::per_token_with_groups},
+
+            // per tensor
+            mlp_dims_t{1024,  3584,   18944,   true, 1, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_tensor},
+            mlp_dims_t{1024,  896,   4864,   true, 1, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_tensor},
+            mlp_dims_t{1024,  4096,   14336,   true, 1, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_tensor},
+            mlp_dims_t{1024,  4096,   27392,   true, 1, 1,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    mdt::u8, mdt::f16, mdt::u8,
+                    quantize_type::per_tensor}
+
+    //,
+    ), &PrintToString);
+

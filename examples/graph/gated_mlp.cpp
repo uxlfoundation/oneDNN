@@ -29,18 +29,15 @@
 
 #include "oneapi/dnnl/experimental/dnnl_experimental.hpp" ///TMP FOR TESTING INTERNAL
 
-#include "../half.hpp"
+#include <dnnl_test_common.hpp>
 #include "graph_example_utils.hpp"
 
 using namespace dnnl;
-
-using half_float::half;
-using half_float::half_cast;
-
 using namespace dnnl::graph;
 using layout_type = logical_tensor::layout_type;
 using dim = logical_tensor::dim;
 using dims = logical_tensor::dims;
+using tag = memory::format_tag;
 
 struct mlp_dims_t {
     dim mb;
@@ -77,7 +74,7 @@ void fill_random(std::vector<T> &out) {
 }
 
 template<>
-void fill_random(std::vector<half> &out) {
+void fill_random(std::vector<float16_t> &out) {
     static std::vector<float> random_data_f;
     constexpr size_t nrand = 1037;
     const unsigned seed = 2;
@@ -93,19 +90,19 @@ void fill_random(std::vector<half> &out) {
 
    size_t chunk = std::min(nrand, out.size());
    for(int i=0; i<out.size(); ++i) {
-        out[i] = half_cast<half>(random_data_f[i%chunk]);
-        //out[i] = half_cast<half>(i); //TMP matmul only  <---------test
+        out[i] = random_data_f[i%chunk];
+        //out[i] = i; //TMP matmul only  <---------test
 
-        // out[i] = half_cast<half>(0); //TMP matmul only
+        // out[i] = 0; //TMP matmul only
                                      //
-        // out[i] = half_cast<half>( (i/32) + (i%32) ); //TMP matmul only
+        // out[i] = (i/32) + (i%32); //TMP matmul only
 
-        // out[i] = half_cast<half>( (i/64) + (i%64) ); //TMP matmul only
-        // out[i] = half_cast<half>( (i/33) + (i%33) ); //TMP matmul only
+        // out[i] = (i/64) + (i%64); //TMP matmul only
+        // out[i] = (i/33) + (i%33); //TMP matmul only
     }
 
-    //out[0] = half_cast<half>(1); //TMP matmul only
-    //out[65] = half_cast<half>(1); //TMP matmul only
+    //out[0] = 1; //TMP matmul only
+    //out[65] = 1; //TMP matmul only
 
     //for (size_t i = 0; i < out.size(); i += nrand) {
     //    size_t chunk = std::min(nrand, out.size() - i);
@@ -113,7 +110,7 @@ void fill_random(std::vector<half> &out) {
     //}
 }
 
-void fill_const(std::vector<half> &out, const float c) {
+void fill_const(std::vector<float16_t> &out, const float c) {
     static std::vector<float> random_data_f;
     constexpr size_t nrand = 1037;
     const unsigned seed = 2;
@@ -129,7 +126,7 @@ void fill_const(std::vector<half> &out, const float c) {
 
    size_t chunk = std::min(nrand, out.size());
    for(int i=0; i<out.size(); ++i) {
-        out[i] = half_cast<half>(c); //TMP matmul only
+        out[i] = c; //TMP matmul only
    }
    //for (size_t i = 0; i < out.size(); i += nrand) {
    //    size_t chunk = std::min(nrand, out.size() - i);
@@ -137,28 +134,28 @@ void fill_const(std::vector<half> &out, const float c) {
    //}
 }
 
-void fill_hceye(std::vector<half> &out, int ldi=32) {
+void fill_hceye(std::vector<float16_t> &out, int ldi=32) {
     static std::vector<float> random_data_f;
     constexpr size_t nrand = 1037;
 
    for(int i=0; i<out.size(); ++i) {
-        //out[i] = half_cast<half>( (i/33) == (i%33) ? 1.f : 0.f); //TMP matmul only
+        //out[i] = (i/33) == (i%33) ? 1.f : 0.f; //TMP matmul only
         //
-        //out[i] = half_cast<half>( (i/32)%32 == (i%32) ? 1.f : 0.f); //TMP matmul only
+        //out[i] = (i/32)%32 == (i%32) ? 1.f : 0.f; //TMP matmul only
 
-        out[i] = half_cast<half>((( (i/ldi)%32 == (i%32))) ? 1.f : 0.f); //TMP matmul only
-        //out[i] = half_cast<half>((((i/ldi)%32  == ((i+2)%32)) || ( (i/ldi) == (i%32))) ? 1.f : 0.f); //TMP matmul only
-        //out[i] = half_cast<half>((((i/ldi)  == ((i+2)%ldi)) || ( (i/ldi) == (i%ldi))) ? 1.f : 0.f); //TMP matmul only
-        //out[i] = half_cast<half>((( (i/ldi) == (i%ldi))) ? 1.f : 0.f); //TMP matmul only
+        out[i] = (( (i/ldi)%32 == (i%32))) ? 1.f : 0.f; //TMP matmul only
+        //out[i] = (((i/ldi)%32  == ((i+2)%32)) || ( (i/ldi) == (i%32))) ? 1.f : 0.f; //TMP matmul only
+        //out[i] = (((i/ldi)  == ((i+2)%ldi)) || ( (i/ldi) == (i%ldi))) ? 1.f : 0.f; //TMP matmul only
+        //out[i] = (( (i/ldi) == (i%ldi))) ? 1.f : 0.f; //TMP matmul only
 
         /*
         if((i/ldi == i % ldi) && i/ldi == 1) {
-            out[i] = half_cast<half>(-1); //TMP matmul only
+            out[i] = -1; //TMP matmul only
         }
         */
 
         //
-        //out[i] = half_cast<half>( (i/64) == (i%64) ? 1.f : 0.f); //TMP matmul only
+        //out[i] = (i/64) == (i%64) ? 1.f : 0.f; //TMP matmul only
         //out[i] = 1.f;
    }
 }
@@ -424,8 +421,8 @@ void bench_gated_mlp_primitives(std::vector<T> &res, engine::kind ekind, memory:
             //for (int x = 0; x < 33; ++x) {
         for (int y = 0; y < p.mb; ++y) {
             for (int x = 0; x < p.ic; ++x) {
-                if constexpr(std::is_same<half, T>::value) {
-                    printf("%5.1f ", half_cast<float>(a[y * p.ic + x]));
+                if constexpr(std::is_same<float16_t, T>::value) {
+                    printf("%5.1f ", float(a[y * p.ic + x]));
                 } else {
                     printf("%f ", a[y * p.ic + x]);
                 }
@@ -435,8 +432,8 @@ void bench_gated_mlp_primitives(std::vector<T> &res, engine::kind ekind, memory:
         printf("inpB----------[%d %d]\n", p.ic, p.oc);
         for (int y = 0; y < p.ic; ++y) {
             for (int x = 0; x < p.oc; ++x) {
-                if constexpr(std::is_same<half, T>::value) {
-                    printf("%5.1f ", half_cast<float>(b[y * p.oc + x]));
+                if constexpr(std::is_same<float16_t, T>::value) {
+                    printf("%5.1f ", float(b[y * p.oc + x]));
                 } else {
                     printf("%f ", b[y * p.oc + x]);
                 }
@@ -454,9 +451,9 @@ void bench_gated_mlp_primitives(std::vector<T> &res, engine::kind ekind, memory:
             for (int x = 0; x < p.mb; ++x) {
         //for (int y = 0; y < p.mb; ++y) {
             //for (int x = 0; x < p.oc; ++x) {
-                if constexpr(std::is_same<half, T>::value) {
-                    //printf("%5.1f ", half_cast<float>(res[y * p.oc + x]));
-                    printf("%5.1f ", half_cast<float>(res[y * p.mb + x]));
+                if constexpr(std::is_same<float16_t, T>::value) {
+                    //printf("%5.1f ", float(res[y * p.oc + x]));
+                    printf("%5.1f ", float(res[y * p.mb + x]));
                 } else {
                     printf("%f ", res[y * p.oc + x]);
                 }
@@ -629,8 +626,8 @@ void bench_gated_mlp_internal(std::vector<T> &res, engine::kind ekind, memory::d
             //for (int x = 0; x < 33; ++x) {
         for (int y = 0; y < p.mb; ++y) {
             for (int x = 0; x < p.ic; ++x) {
-                if constexpr(std::is_same<half, T>::value) {
-                    printf("%5.1f ", half_cast<float>(a[y * p.ic + x]));
+                if constexpr(std::is_same<float16_t, T>::value) {
+                    printf("%5.1f ", float(a[y * p.ic + x]));
                 } else {
                     printf("%f ", a[y * p.ic + x]);
                 }
@@ -640,8 +637,8 @@ void bench_gated_mlp_internal(std::vector<T> &res, engine::kind ekind, memory::d
         printf("inpB----------[%d %d]\n", p.ic, p.oc);
         for (int y = 0; y < p.ic; ++y) {
             for (int x = 0; x < p.oc; ++x) {
-                if constexpr(std::is_same<half, T>::value) {
-                    printf("%5.1f ", half_cast<float>(b[y * p.oc + x]));
+                if constexpr(std::is_same<float16_t, T>::value) {
+                    printf("%5.1f ", float(b[y * p.oc + x]));
                 } else {
                     printf("%f ", b[y * p.oc + x]);
                 }
@@ -667,9 +664,9 @@ void bench_gated_mlp_internal(std::vector<T> &res, engine::kind ekind, memory::d
 
         //for (int y = 0; y < p.mb; ++y) {
             //for (int x = 0; x < p.ic; ++x) {
-                if constexpr(std::is_same<half, T>::value) {
-                    //printf("%5.1f ", half_cast<float>(res[y * p.oc + x]));
-                    printf("%5.1f ", half_cast<float>(res[y * p.mb + x]));
+                if constexpr(std::is_same<float16_t, T>::value) {
+                    //printf("%5.1f ", float(res[y * p.oc + x]));
+                    printf("%5.1f ", float(res[y * p.mb + x]));
                 }else{
                     //printf("%f ", res[y * p.mb + x]);
                     printf("%f ", res[y * p.mb + x]);
@@ -922,7 +919,7 @@ void mlp_perf(engine::kind ekind, int argc, char **argv) {
     //printf("GRAPH\n");
     //bench(api_kind::graph, ekind, dnnl_f32, params, 2000.0 /*ms*/);
     std::vector<float> resp, resi;
-    std::vector<half> resph, resih;
+    std::vector<float16_t> resph, resih;
 
     printf("PRIMITIVE\n");
 //   //bench(resp, api_kind::primitive, ekind, dnnl_f32, params, 2000.0 /*ms*/);
@@ -946,12 +943,12 @@ void mlp_perf(engine::kind ekind, int argc, char **argv) {
         if(std::abs((resih[i] - resph[i]) / resih[i]) > 5e-2) {
             n_mismatches++;
             if(n_mismatches < 10)
-                printf("mismatch @ %d, %f != %f\n", i, half_cast<float>(resih[i]), half_cast<float>(resph[i])); //TODO: improve
+                printf("mismatch @ %d, %f != %f\n", i, float(resih[i]), float(resph[i])); //TODO: improve
         } else {
-            if(std::abs(half_cast<float>(resih[i])) > 5e-2) {
+            if(std::abs(float(resih[i])) > 5e-2) {
                 n_matches++;
                 if(n_matches < 10)
-                    printf("vs @ %d, %f == %f\n", i, half_cast<float>(resih[i]), half_cast<float>(resph[i])); //TODO: improve
+                    printf("vs @ %d, %f == %f\n", i, float(resih[i]), float(resph[i])); //TODO: improve
             }
         }
     }

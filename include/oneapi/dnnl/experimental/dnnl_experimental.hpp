@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <oneapi/dnnl/dnnl.hpp>
 #include <oneapi/dnnl/experimental/dnnl_experimental.h>
 
 namespace dnnl {
@@ -57,7 +58,6 @@ struct gmlp : public dnnl::primitive {
                 const primitive_attr &gate_attr = default_attr(),
                 const primitive_attr &up_attr = default_attr(),
                 const primitive_attr &down_attr = default_attr()) {
-
             dnnl_primitive_desc_t pd = nullptr;
             dnnl_status_t status
                     = dnnl_gmlp_primitive_desc_create(&pd, aengine.get(),

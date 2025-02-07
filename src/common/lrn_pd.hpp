@@ -99,8 +99,8 @@ protected:
 };
 
 struct lrn_fwd_pd_t : public lrn_pd_t {
-    typedef lrn_fwd_pd_t base_class;
-    typedef lrn_fwd_pd_t hint_class;
+    using base_class = lrn_fwd_pd_t;
+    using hint_class = lrn_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (arg == DNNL_ARG_SRC) return arg_usage_t::input;
@@ -158,8 +158,8 @@ protected:
 };
 
 struct lrn_bwd_pd_t : public lrn_pd_t {
-    typedef lrn_bwd_pd_t base_class;
-    typedef lrn_fwd_pd_t hint_class;
+    using base_class = lrn_bwd_pd_t;
+    using hint_class = lrn_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_DIFF_DST))

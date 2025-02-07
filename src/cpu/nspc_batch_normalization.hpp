@@ -109,7 +109,7 @@ struct nspc_batch_normalization_fwd_t : public primitive_t {
         }
     };
 
-    typedef typename prec_traits<d_type>::type data_t;
+    typedef typename prec_traits_t<d_type>::type data_t;
     typedef float acc_data_t;
 
     nspc_batch_normalization_fwd_t(const pd_t *apd) : primitive_t(apd) {}
@@ -200,7 +200,7 @@ struct nspc_batch_normalization_bwd_t : public primitive_t {
         }
     };
 
-    typedef typename prec_traits<d_type>::type data_t;
+    typedef typename prec_traits_t<d_type>::type data_t;
     typedef float acc_data_t;
 
     nspc_batch_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}

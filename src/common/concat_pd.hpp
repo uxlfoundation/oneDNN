@@ -43,7 +43,7 @@ struct concat_pd_t : public primitive_desc_t {
         return reinterpret_cast<const op_desc_t *>(this->desc());
     }
 
-    ~concat_pd_t() = default;
+    ~concat_pd_t() override = default;
 
     arg_usage_t arg_usage(int arg) const override {
         if (arg >= DNNL_ARG_MULTIPLE_SRC

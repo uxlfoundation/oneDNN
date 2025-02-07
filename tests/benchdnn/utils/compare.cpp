@@ -527,10 +527,6 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         }
     };
 
-    // parallel comparison to speed up the process
-    // TODO: to speed up the dump process, each thread should prepare its dump
-    // piece in a string object, then the master thread prints them in order.
-    // With this logic, the block of code below won't be needed.
     benchdnn_parallel_nd(nelems_pad, compare_point_values);
 
     int64_t n_errors = 0;

@@ -59,6 +59,7 @@ endmacro()
 
 macro(platform_unix_and_mingw_common_cxx_flags var)
     append(${var} "-fvisibility-inlines-hidden")
+    append(${var} "-ftrapv")
 endmacro()
 
 macro(platform_unix_and_mingw_noexcept_ccxx_flags var)

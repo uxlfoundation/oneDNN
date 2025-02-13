@@ -930,6 +930,10 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     }
                 }
             } break;
+            case DNNL_ARG_ATTR_DROPOUT_SEED: {
+                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine);
+                // No break to fall back into `default` call with initialization.
+            }
             default:
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),

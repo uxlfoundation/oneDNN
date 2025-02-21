@@ -691,6 +691,8 @@ status_t jit_uni_instance_normalization_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_GNORM(
             memory_desc_matches_one_of_tag(*dst_md(), ndhwc, nhwc, nwc, nc),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VDISPATCH_GNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto post_ops_ok = [&]() -> bool {
         const std::vector<injector::post_op_type> accepted_post_ops

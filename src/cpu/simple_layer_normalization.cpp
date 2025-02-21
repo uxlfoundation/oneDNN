@@ -63,6 +63,8 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     // plain format, last logical dim is last physical
     VDISPATCH_LNORM(src_d.blocking_desc().strides[ndims() - 1] == 1,
             VERBOSE_BLOCKING_FAIL, "bad stride value");
+    VDISPATCH_LNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(fill_compatible_stats_md(*src_md(), reordered_stat_md_));
 
@@ -264,6 +266,9 @@ status_t simple_layer_normalization_bwd_t::pd_t::init(engine_t *engine) {
     // plain format, last logical dim is last physical
     VDISPATCH_LNORM(src_d.blocking_desc().strides[ndims() - 1] == 1,
             VERBOSE_BLOCKING_FAIL, "bad stride value");
+    VDISPATCH_LNORM(impl::is_dense_format_kind(
+                            {src_md(), diff_src_md(), dst_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(fill_compatible_stats_md(*src_md(), reordered_stat_md_));
 

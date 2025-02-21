@@ -65,6 +65,10 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_SHUFFLE(axis() == 1, VERBOSE_BAD_AXIS);
     VDISPATCH_SHUFFLE(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_SHUFFLE(src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
+    VDISPATCH_SHUFFLE(
+            impl::is_dense_format_kind({is_fwd() ? src_md() : diff_src_md(),
+                    is_fwd() ? dst_md() : diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     conf_.isa = isa;
     if (isa == avx) conf_.isa = mayiuse(avx2) ? avx2 : avx;

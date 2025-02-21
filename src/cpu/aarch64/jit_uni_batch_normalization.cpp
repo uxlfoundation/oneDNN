@@ -2288,7 +2288,8 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && (attr()->has_default_values()
                     || with_relu_post_op(is_training()))
             && set_default_formats_common()
-            && memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md());
+            && memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md())
+            && impl::is_dense_format_kind({src_md(), dst_md()});
     if (!ok) return status::unimplemented;
 
     // BN+Add+Relu fusion is not currently implemented
@@ -2394,7 +2395,9 @@ status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(engine_t *engine) {
             && check_scale_shift_data_type() && attr()->has_default_values()
             && set_default_formats_common()
             && memory_desc_wrapper(diff_src_md())
-                    == memory_desc_wrapper(diff_dst_md());
+                    == memory_desc_wrapper(diff_dst_md())
+            && impl::is_dense_format_kind(
+                    {src_md(), diff_src_md(), dst_md(), diff_dst_md()});
     if (!ok) return status::unimplemented;
 
     // BN+Add+Relu fusion is not currently implemented

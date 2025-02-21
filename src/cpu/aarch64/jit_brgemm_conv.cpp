@@ -322,7 +322,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                     one_of(bias_md_.data_type, data_type::undef, f32, src_type))
             && attr()->has_default_values(skip_mask, dst_type)
             && attr()->post_ops_.check_sum_consistency(dst_type, is_int8)
-            && !has_zero_dim_memory() && zero_points_ok() && arg_scales_ok();
+            && !has_zero_dim_memory() && zero_points_ok() && arg_scales_ok()
+            && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
     if (!ok) return status::unimplemented;
 
     CHECK(brgemm_convolution_utils::init_conf(jcp_, isa, *desc(), src_md_,

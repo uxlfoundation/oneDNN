@@ -50,7 +50,8 @@ status_t acl_depthwise_convolution_fwd_t::pd_t::init(engine_t *engine) {
                     primitive_attr_t::skip_mask_t::post_ops, f32);
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && utils::one_of(true, is_fp16_ok, is_fp32_ok)
-            && !has_zero_dim_memory();
+            && !has_zero_dim_memory()
+            && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
     if (!ok) return status::unimplemented;
 
     if (weights_md_.ndims != 5) return status::unimplemented;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -75,6 +75,8 @@ status_t jit_uni_reduction_t::pd_t::init(engine_t *engine) {
             attr()->has_default_values(sm::post_ops), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_REDUCTION(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_REDUCTION(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     const auto src_mdw = memory_desc_wrapper(src_md());
     const auto dst_mdw = memory_desc_wrapper(dst_md());

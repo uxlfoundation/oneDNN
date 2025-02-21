@@ -176,6 +176,10 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_DECONVOLUTION(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_DECONVOLUTION(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_DECONVOLUTION(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_DECONVOLUTION(
+            impl::is_dense_format_kind({src_md(0), diff_weights_md(0),
+                    diff_weights_md(1), diff_dst_md(0), dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     convolution_desc_t conv_d = convolution_desc_t();
 

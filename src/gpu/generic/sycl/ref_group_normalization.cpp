@@ -48,6 +48,8 @@ status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
             "scale / shift data type must be data_type::f32");
     VDISPATCH_GNORM(
             sycl_post_ops_t::post_ops_ok(attr()), VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_GNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     const auto &dims = src_mdw.dims();
     const auto num_groups = desc()->groups;
@@ -126,6 +128,9 @@ status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_GNORM(utils::one_of(diff_dst_mdw.data_type(), f32, bf16, f16),
             VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_GNORM(impl::is_dense_format_kind(
+                            {src_md(), diff_src_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto device = utils::downcast<const impl::xpu::sycl::engine_impl_t *>(
             engine->impl())

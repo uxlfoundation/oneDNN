@@ -384,6 +384,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_CONV(arg_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(0), weights_md(0), dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(brgemm_convolution_utils::init_conf(jcp_, isa, *desc(), src_md_,
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));

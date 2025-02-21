@@ -164,6 +164,10 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper dst_d(&dst_md_);
     const memory_desc_wrapper bias_d(&bias_md_);
 
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),

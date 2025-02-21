@@ -49,6 +49,8 @@ status_t cross_engine_reorder_t::pd_t::init(impl::engine_t *engine,
             VERBOSE_BAD_ENGINE_KIND);
     VDISPATCH_REORDER(attr_ok(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_REORDER(extra_ok(true), VERBOSE_UNSUPPORTED_MD_FLAG, "extra_ok");
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     memory_desc_wrapper src_mdw(src_md());
     memory_desc_wrapper dst_mdw(dst_md());

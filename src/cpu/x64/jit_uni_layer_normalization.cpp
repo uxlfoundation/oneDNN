@@ -1232,6 +1232,8 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     // plain format, last logical dim is last physical
     VDISPATCH_LNORM(src_d.blocking_desc().strides[ndims() - 1] == 1,
             VERBOSE_BLOCKING_FAIL, "bad stride value");
+    VDISPATCH_LNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto post_ops_ok = [&]() -> bool {
         const std::vector<injector::post_op_type> accepted_post_ops

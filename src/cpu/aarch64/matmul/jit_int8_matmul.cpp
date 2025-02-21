@@ -636,6 +636,7 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
 
     VDISPATCH_MATMUL(
             no_runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     bool is_s8_wei = utils::everyone_is(s8, wei_type);
     bool is_u8 = utils::everyone_is(u8, src_type, wei_type);

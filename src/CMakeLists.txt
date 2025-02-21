@@ -76,10 +76,6 @@ if(DNNL_EXPERIMENTAL)
     message(STATUS "Experimental features are enabled")
 endif()
 
-if(DNNL_EXPERIMENTAL_SPARSE)
-    message(STATUS "Experimental functionality for sparse domain is enabled")
-endif()
-
 if(DNNL_EXPERIMENTAL_UKERNEL)
     if(DNNL_TARGET_ARCH STREQUAL "X64" OR DNNL_TARGET_ARCH STREQUAL "AARCH64")
         message(STATUS "Experimental functionality for ukernels is enabled")

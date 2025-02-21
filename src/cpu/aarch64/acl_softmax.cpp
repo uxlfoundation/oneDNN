@@ -34,7 +34,8 @@ status_t acl_softmax_fwd_t::pd_t::init(engine_t *engine) {
             && *src_md() == *dst_md()
             && utils::one_of(
                     src_md()->data_type, data_type::f32, data_type::f16)
-            && attr()->has_default_values();
+            && attr()->has_default_values()
+            && impl::is_dense_format_kind({src_md(), dst_md()});
     if (!ok) return status::unimplemented;
 
     // Get memory desc to find sizes and dims

@@ -40,6 +40,10 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper src_d(is_fwd() ? src_md() : diff_src_md());
     const memory_desc_wrapper dst_d(is_fwd() ? dst_md() : diff_dst_md());
 
+    if (!impl::is_dense_format_kind({is_fwd() ? src_md() : diff_src_md(),
+                is_fwd() ? dst_md() : diff_dst_md()}))
+        return status::unimplemented;
+
     conf_.data_type = src_d.data_type();
 
     const bool ok = is_superset(get_max_cpu_isa(), isa)

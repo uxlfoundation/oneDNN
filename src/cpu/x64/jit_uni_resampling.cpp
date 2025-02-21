@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -95,6 +95,8 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_RESAMPLING(memory_desc_matches_tag(*dst_md(), conf_.src_tag),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VDISPATCH_RESAMPLING(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     conf_.alg = desc()->alg_kind;
     conf_.c = C();

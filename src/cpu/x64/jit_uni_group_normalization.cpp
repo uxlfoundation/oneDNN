@@ -819,6 +819,8 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_GNORM(
             memory_desc_matches_one_of_tag(*dst_md(), ndhwc, nhwc, nwc, nc),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VDISPATCH_GNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // Instance Normalization is handled in a different implementation. This
     // implementation has some turns in the kernel that is done differently

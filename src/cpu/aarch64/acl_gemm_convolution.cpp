@@ -58,7 +58,8 @@ status_t acl_gemm_convolution_fwd_t<src_t, wei_t, dst_t, bia_t>::pd_t::init(
             && expect_data_types(src_t, wei_t, bia_t, dst_t, undef)
             && !has_zero_dim_memory()
             && attr()->has_default_values(
-                    smask_t::post_ops | smask_t::fpmath_mode, dst_t);
+                    smask_t::post_ops | smask_t::fpmath_mode, dst_t)
+            && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
     if (!ok) return status::unimplemented;
 
     if (weights_md_.ndims != 4) return status::unimplemented;

@@ -32,6 +32,9 @@ namespace aarch64 {
 status_t acl_binary_t::pd_t::init(engine_t *engine) {
     using namespace acl_utils;
 
+    if (!impl::is_dense_format_kind({src_md(0), src_md(1), dst_md()}))
+        return status::unimplemented;
+
     // Only support f16/f32/s32 for now
     data_type_t ddt = dst_md(0)->data_type;
     if (!utils::one_of(ddt, data_type::f16, data_type::f32, data_type::s32))

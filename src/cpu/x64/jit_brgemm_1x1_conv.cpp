@@ -52,6 +52,10 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const auto dst_type = dst_md(0)->data_type;
     const bool is_int8 = one_of(src_type, u8, s8);
 
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
             | skip_mask_t::zero_points | skip_mask_t::fpmath_mode;

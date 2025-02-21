@@ -1418,6 +1418,9 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::pd_t::init(
                     | skip_mask_t::post_ops | skip_mask_t::zero_points),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_DECONVOLUTION(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VDISPATCH_DECONVOLUTION(impl::is_dense_format_kind({src_md(0),
+                                    weights_md(0), weights_md(1), dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     CHECK(jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::init_conf(jcp_, *desc(),
             src_md_, weights_md_, dst_md_, with_bias(), bias_md_, attr_,

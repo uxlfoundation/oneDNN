@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 * Copyright 2024 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -190,6 +190,9 @@ status_t ref_inner_product_fwd_t::pd_t::init(impl::engine_t *engine) {
             "weight memory descriptor is not a plain memory format");
     VDISPATCH_INNER_PRODUCT(dst_wrapper.is_plain(),
             "destination memory descriptor is not a plain memory format");
+    VDISPATCH_INNER_PRODUCT(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // if anything contains a zero dimension, return success as this will be converted
     // to a no-op
@@ -340,6 +343,9 @@ status_t ref_inner_product_bwd_data_t::pd_t::init(impl::engine_t *engine) {
             src_wrapper.is_plain(), "Blocked memory format is not supported");
     VDISPATCH_INNER_PRODUCT(
             dst_wrapper.is_plain(), "Blocked memory format is not supported");
+    VDISPATCH_INNER_PRODUCT(impl::is_dense_format_kind({diff_src_md(),
+                                    weights_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     if (src_wrapper.has_zero_dim() || wei_wrapper.has_zero_dim()
             || dst_wrapper.has_zero_dim()) {
@@ -472,6 +478,9 @@ status_t ref_inner_product_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
             wei_wrapper.is_plain(), "blocked memory format is not supported");
     VDISPATCH_INNER_PRODUCT(
             dst_wrapper.is_plain(), "blocked memory format is not supported");
+    VDISPATCH_INNER_PRODUCT(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     format_tag_t wei_format_tag = format_tag::ab;
     format_tag_t dst_format_tag = format_tag::ab;

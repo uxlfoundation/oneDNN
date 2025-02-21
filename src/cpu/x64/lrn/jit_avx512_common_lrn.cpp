@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -55,6 +55,8 @@ status_t jit_avx512_common_lrn_fwd_t<d_type>::pd_t::init(engine_t *engine) {
     VDISPATCH_LRN(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_LRN(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_LRN(src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
+    VDISPATCH_LRN(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     const auto fmt_tag
             = src_d.matches_one_of_tag(format_tag::nhwc, format_tag::nChw16c);
@@ -120,6 +122,9 @@ status_t jit_avx512_common_lrn_bwd_t<d_type>::pd_t::init(engine_t *engine) {
             src_d == diff_dst_d, VERBOSE_INCONSISTENT_MDS, "src", "diff_dst");
     VDISPATCH_LRN(diff_dst_d == diff_src_d, VERBOSE_INCONSISTENT_MDS,
             "diff_src", "diff_dst");
+    VDISPATCH_LRN(impl::is_dense_format_kind(
+                          {src_md(), diff_src_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     const dims_t ws_dims = {MB(), C(), H(), 2 * W()};
     const auto fmt_tag

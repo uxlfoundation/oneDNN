@@ -51,6 +51,7 @@ status_t acl_lowp_matmul_sq_t::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(attr()->has_default_values(smask_t::scales
                              | smask_t::zero_points | smask_t::post_ops),
             "only scale, zero point and post-ops attrs supported");
+    VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     static const std::vector<int> supported_args {
             DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -191,6 +191,8 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
                     && src_d.dims()[1] >= 2 * VECTOR_LENGTH,
             "src has inconsistent dimensions with vector length");
     VDISPATCH_LRN(desc()->lrn_beta == 0.75, VERBOSE_BAD_PARAM, "lrn_beta");
+    VDISPATCH_LRN(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     dat_tag_ = memory_desc_matches_one_of_tag(
             *src_md(), nChw16c, nChw8c, nchw, nhwc);
@@ -375,6 +377,9 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
                           && src_d.dims()[1] >= 2 * VECTOR_LENGTH),
             "src has inconsistent dimensions with vector length");
     VDISPATCH_LRN(desc()->lrn_beta == 0.75, VERBOSE_BAD_PARAM, "lrn_beta");
+    VDISPATCH_LRN(impl::is_dense_format_kind(
+                          {src_md(), diff_src_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     dat_tag_ = memory_desc_matches_one_of_tag(
             *src_md(), nChw16c, nChw8c, nchw, nhwc);

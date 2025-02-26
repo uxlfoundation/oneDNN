@@ -58,6 +58,69 @@ inline pvar_tile_t to_shape(const convolution_pd_t *pd) {
     shape[pvars::pd] = pd->padFront();
     shape[pvars::ph] = pd->padT();
     shape[pvars::pw] = pd->padL();
+    memory_desc_wrapper mdw_src(pd->invariant_src_md());
+    memory_desc_wrapper mdw_wei(pd->invariant_wei_md());
+    memory_desc_wrapper mdw_dst(pd->invariant_dst_md());
+
+    bool src_strided = (mdw_src.is_plain() && !mdw_src.is_dense());
+    bool wei_strided = (mdw_wei.is_plain() && !mdw_wei.is_dense());
+    bool dst_strided = (mdw_dst.is_plain() && !mdw_dst.is_dense());
+    auto get_stride = [&](const memory_desc_t *md, int index,
+                              int non_spatial_ndims = 2) -> dim_t {
+        if (pd->ndims() > index) {
+            index = index >= non_spatial_ndims
+                    ? pd->ndims() - (index + 1 - non_spatial_ndims)
+                    : index;
+            if (md->dims[index] == 1) return 0;
+            return md->format_desc.blocking.strides[index];
+        }
+        return 0;
+    };
+    if (src_strided) {
+        shape[prb_stride(pvars::mb, tensor_kind_t::src)]
+                = get_stride(pd->invariant_src_md(), 0);
+        shape[prb_stride(pvars::ic, tensor_kind_t::src)]
+                = get_stride(pd->invariant_src_md(), 1);
+        shape[prb_stride(pvars::g, tensor_kind_t::src)]
+                = shape[prb_stride(pvars::ic, tensor_kind_t::src)]
+                * shape[pvars::ic];
+        shape[prb_stride(pvars::id, tensor_kind_t::src)]
+                = get_stride(pd->invariant_src_md(), 4);
+        shape[prb_stride(pvars::ih, tensor_kind_t::src)]
+                = get_stride(pd->invariant_src_md(), 3);
+        shape[prb_stride(pvars::iw, tensor_kind_t::src)]
+                = get_stride(pd->invariant_src_md(), 2);
+    }
+    if (wei_strided) {
+        shape[prb_stride(pvars::g, tensor_kind_t::wei)] = pd->with_groups()
+                ? get_stride(pd->invariant_wei_md(), 0, 3)
+                : 0;
+        shape[prb_stride(pvars::oc, tensor_kind_t::wei)]
+                = get_stride(pd->invariant_wei_md(), 1, 3);
+        shape[prb_stride(pvars::ic, tensor_kind_t::wei)]
+                = get_stride(pd->invariant_wei_md(), 2, 3);
+        shape[prb_stride(pvars::kd, tensor_kind_t::wei)]
+                = get_stride(pd->invariant_wei_md(), 5, 3);
+        shape[prb_stride(pvars::kh, tensor_kind_t::wei)]
+                = get_stride(pd->invariant_wei_md(), 4, 3);
+        shape[prb_stride(pvars::kw, tensor_kind_t::wei)]
+                = get_stride(pd->invariant_wei_md(), 3, 3);
+    }
+    if (dst_strided) {
+        shape[prb_stride(pvars::mb, tensor_kind_t::dst)]
+                = get_stride(pd->invariant_dst_md(), 0);
+        shape[prb_stride(pvars::oc, tensor_kind_t::dst)]
+                = get_stride(pd->invariant_dst_md(), 1);
+        shape[prb_stride(pvars::g, tensor_kind_t::dst)]
+                = shape[prb_stride(pvars::oc, tensor_kind_t::dst)]
+                * shape[pvars::oc];
+        shape[prb_stride(pvars::od, tensor_kind_t::dst)]
+                = get_stride(pd->invariant_dst_md(), 4);
+        shape[prb_stride(pvars::oh, tensor_kind_t::dst)]
+                = get_stride(pd->invariant_dst_md(), 3);
+        shape[prb_stride(pvars::ow, tensor_kind_t::dst)]
+                = get_stride(pd->invariant_dst_md(), 2);
+    }
     return shape;
 }
 

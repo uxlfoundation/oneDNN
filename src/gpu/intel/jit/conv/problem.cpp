@@ -47,6 +47,18 @@ const std::vector<pvar_t> &conv_dims() {
     return _conv_dims;
 }
 
+pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind) {
+
+    auto dims = conv_layout_dims(tensor_kind, true);
+    for (auto &d : dims) {
+        if (d == dim) {
+            auto str = to_string(tensor_kind) + "_";
+            return pvar_t(str + dim.str() + "_stride");
+        }
+    }
+    return pvar_t();
+}
+
 const std::vector<pvar_t> &conv_index_dims(prop_kind_t prop) {
     auto get_dims = [&](prop_kind_t prop) {
         std::vector<pvar_t> ret;

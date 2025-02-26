@@ -20,7 +20,6 @@
 #include <dnnl_test_common.hpp>
 #include <oneapi/dnnl/dnnl.hpp>
 
-#include <functional>
 #include <random>
 
 enum class quantize_type {
@@ -60,12 +59,13 @@ void transpose_strides(
 /// The function first transfers the data to the handle's data type then
 /// uses reorder to perform the conversion to the destination data type.
 template <typename T>
-void write_to_dnnl_memory(const T *handle, dnnl::memory &mem, dnnl::engine &eng,
-        dnnl::stream &s) {
+void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
+    dnnl::engine eng = mem.get_engine();
     size_t size = mem.get_desc().get_size();
 
     if (!handle) throw std::runtime_error("handle is nullptr.");
 
+    dnnl::stream s(eng);
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
         if (mem.get_desc().get_data_type() != dnnl_f32
                 && std::is_same<T, float>::value) {
@@ -73,17 +73,18 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem, dnnl::engine &eng,
                     {mem.get_desc().get_dims(), dnnl::memory::data_type::f32,
                             mem.get_desc().get_strides()},
                     eng);
-            write_to_dnnl_memory<float>(
-                    (const float *)handle, mem_f32_mem, eng, s);
+            write_to_dnnl_memory<float>((const float *)handle, mem_f32_mem);
             dnnl::reorder(mem_f32_mem, mem).execute(s, mem_f32_mem, mem);
+            s.wait();
         } else if (mem.get_desc().get_data_type() != dnnl_s32
                 && std::is_same<T, int>::value) {
             dnnl::memory mem_s32_mem(
                     {mem.get_desc().get_dims(), dnnl::memory::data_type::s32,
                             mem.get_desc().get_strides()},
                     eng);
-            write_to_dnnl_memory<int>((const int *)handle, mem_s32_mem, eng, s);
+            write_to_dnnl_memory<int>((const int *)handle, mem_s32_mem);
             dnnl::reorder(mem_s32_mem, mem).execute(s, mem_s32_mem, mem);
+            s.wait();
         } else if ((mem.get_desc().get_data_type() == dnnl_u8
                            || mem.get_desc().get_data_type() == dnnl_s8
                            || mem.get_desc().get_data_type() == dnnl_s4
@@ -94,15 +95,20 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem, dnnl::engine &eng,
                             mem.get_desc().get_strides()},
                     eng);
             write_to_dnnl_memory<unsigned>(
-                    (const unsigned *)handle, mem_u32_mem, eng, s);
+                    (const unsigned *)handle, mem_u32_mem);
             dnnl::reorder(mem_u32_mem, mem).execute(s, mem_u32_mem, mem);
-        } else {
             s.wait();
+        } else if ((mem.get_desc().get_data_type() == dnnl_f32
+                           && std::is_same<T, float>::value)
+                || (mem.get_desc().get_data_type() == dnnl_s32
+                        && std::is_same<T, int>::value)) {
             void *mapped_ptr = mem.map_data();
-            if (!mapped_ptr)
-                throw std::runtime_error(
-                        "Failed to map memory in write_to_dnnl_memory");
-            std::memcpy(mapped_ptr, handle, size);
+            if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);
+            mem.unmap_data(mapped_ptr);
+        } else {
+            // PC: this branch is identical to the one above
+            void *mapped_ptr = mem.map_data();
+            if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);
             mem.unmap_data(mapped_ptr);
         }
         return;
@@ -155,17 +161,6 @@ void fill_random_quantized(std::vector<T> &out, const dnnl::memory::desc &desc,
 }
 
 template <typename T>
-void fill_value(std::vector<T> &out, const dnnl::memory::desc &desc, T value) {
-    auto elems = product(desc.get_dims());
-    for (int i = 0; i < elems; i++) {
-        out[i] = value;
-    }
-}
-
-void dynamic_iterate_alldims(const std::vector<int64_t> &dims,
-        const std::function<void(std::vector<int64_t> idxs)> &fn);
-
-template <typename T>
 std::vector<float> dequantize(const std::vector<float> &input,
         dnnl::memory::desc &desc, dnnl::memory::desc &scale_md,
         const std::vector<T> &zero_points, const std::vector<float> &scales,
@@ -188,6 +183,7 @@ std::vector<float> dequantize(const std::vector<float> &input,
         auto zp_strides = scale_md.get_strides();
 
         size_t ndims = dims.size();
+        assert(ndims > 1); // TODO: will fail w/ndim == 1
         size_t lastdim = ndims - 1;
         size_t n2lastdim = lastdim - 1;
 
@@ -200,15 +196,16 @@ std::vector<float> dequantize(const std::vector<float> &input,
             }
         }
 
-        dynamic_iterate_alldims(dims, [&](std::vector<int64_t> idxs) {
+        std::vector<size_t> idxs(ndims, 0);
+        while (true) {
             size_t offset = 0;
             size_t scale_offset = 0;
             size_t zp_offset = 0;
 
             int group = 0;
 
-            for (size_t i = 0; i < ndims; ++i) {
-                if (groups[0] > 1) {
+            for(size_t i=0; i < ndims; ++i) {
+                if(groups[0] > 1) {
                     group = (i == n2lastdim) ? groups[0] : 1;
                     scale_offset += idxs[i] / group * scales_strides[i];
 
@@ -225,7 +222,17 @@ std::vector<float> dequantize(const std::vector<float> &input,
 
             out[offset] = (input[offset] - zero_points[zp_offset])
                     * scales[scale_offset];
-        });
+
+            int d = lastdim;
+            while (d >= 0) {
+                if (++idxs[d] < dims[d]) {
+                    break;
+                } else {
+                    idxs[d--] = 0;
+                }
+            }
+            if (d < 0) { break; }
+        }
     }
     return out;
 }
@@ -233,5 +240,6 @@ std::vector<float> dequantize(const std::vector<float> &input,
 std::ostream &operator<<(std::ostream &ss, const quantize_type &qt);
 
 std::ostream &operator<<(std::ostream &ss, const memory::data_type &dt);
+
 
 #endif

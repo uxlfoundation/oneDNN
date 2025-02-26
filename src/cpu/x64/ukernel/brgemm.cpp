@@ -131,13 +131,13 @@ status_t brgemm_t::finalize() {
 }
 
 status_t brgemm_t::get_B_pack_type(
-        pack_type_t *pack_type, data_type_t dt_a, data_type_t dt_b) {
+        pack_type_t *pack_type, data_type_t a_dt, data_type_t b_dt) {
     // Use a descriptor to obtain the ISA to have compatible values when the
     // user creates an object.
     brgemm_desc_t brg {};
-    brg.dt_a = dt_a;
-    brg.dt_b = dt_b;
-    auto status = init_kernel_datatype(&brg, dt_a, dt_b);
+    brg.dt_a = a_dt;
+    brg.dt_b = b_dt;
+    auto status = init_kernel_datatype(&brg, a_dt, b_dt);
     if (status != status::success) {
         VCHECK_BRGEMM_STATUS(status, false, "get_B_pack_type failed");
     }
@@ -147,7 +147,7 @@ status_t brgemm_t::get_B_pack_type(
                 status::unimplemented, false, "get_B_pack_type failed");
     }
     const bool has_vnni_layout = brgemm_desc_t::is_b_data_layout_vnni(
-            dt_a, dt_b, /* brgattr.b_is_vnni = */ false, brg.isa_impl);
+            a_dt, b_dt, /* brgattr.b_is_vnni = */ false, brg.isa_impl);
     *pack_type = has_vnni_layout ? pack_type::pack32 : pack_type::no_trans;
     return status::success;
 }
@@ -420,8 +420,8 @@ status_t dnnl_brgemm_finalize(brgemm_t *brgemm) {
 }
 
 status_t dnnl_brgemm_get_B_pack_type(
-        pack_type_t *pack_type, data_type_t dt_a, data_type_t dt_b) {
-    if (pack_type) { return brgemm_t::get_B_pack_type(pack_type, dt_a, dt_b); }
+        pack_type_t *pack_type, data_type_t a_dt, data_type_t b_dt) {
+    if (pack_type) { return brgemm_t::get_B_pack_type(pack_type, a_dt, b_dt); }
     return status::success;
 }
 

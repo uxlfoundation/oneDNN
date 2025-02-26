@@ -61,7 +61,7 @@ struct dnnl_brgemm : public dnnl::impl::c_compatible {
 
     static dnnl::impl::status_t get_B_pack_type(
             dnnl::impl::cpu::ukernel::pack_type_t *pack_type,
-            dnnl::impl::data_type_t dt_a, dnnl::impl::data_type_t dt_b);
+            dnnl::impl::data_type_t a_dt, dnnl::impl::data_type_t b_dt);
 
     size_t get_scratchpad_size() const;
 

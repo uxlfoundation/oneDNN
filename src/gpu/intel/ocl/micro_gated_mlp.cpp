@@ -151,7 +151,7 @@ status_t micro_gated_mlp_t::pd_t::init_microkernels(impl::engine_t *engine) {
 
     const memory_desc_wrapper W_gate_mdw(W_gate_md());
     auto ldgu = static_cast<int>(
-            gemm_desc_t::get_ld(*W_gate_md()) * W_gate_mdw.data_type_size()); //todo: /elems_per_byte??
+            gemm_desc_t::get_ld(*W_gate_md()) * W_gate_mdw.data_type_size()); // todo: / elems_per_byte??
     problem_wgu.A.setAlignment(gemmstone::alignmentForLD(ldgu));
     problem_wgu.B.setAlignment(64);
     problem_wgu.B.crosspack = 2;
@@ -210,7 +210,7 @@ status_t micro_gated_mlp_t::pd_t::init_microkernels(impl::engine_t *engine) {
     opts_wgu.scaleA = with_wts_gate_scales() && !wgu_common_scales;
     opts_wgu.offsetA = with_wts_gate_zp();
 
-    //opts_wgu.addToC = true; //addToC broken w/wg tile 32?
+    // opts_wgu.addToC = true; //addToC broken w/wg tile 32?
 
     //std::cout << "problemStr: " << problem.toString() << std::endl;
     /* Ask microkernel provider for microkernel */

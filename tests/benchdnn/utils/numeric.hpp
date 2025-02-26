@@ -36,5 +36,6 @@ float saturate_and_round(dnnl_data_type_t dt, float value);
 bool is_integral_dt(dnnl_data_type_t dt);
 float maybe_saturate(dnnl_data_type_t dt, float value);
 float round_to_nearest_representable(dnnl_data_type_t dt, float value);
+bool is_subbyte_type(const dnnl_data_type_t &type);
 
 #endif

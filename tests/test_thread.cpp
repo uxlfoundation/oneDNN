@@ -144,7 +144,10 @@ public:
                     fn(j, n);
             });
         }
-    };
+    }
+    void wait() override {
+        // Nothing to do, runtime is synchronous
+    }
 };
 
 } // namespace testing

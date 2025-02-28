@@ -132,7 +132,10 @@ public:
                     fn(j, n);
             });
         }
-    };
+    }
+    void wait() override {
+        // Nothing to do, runtime is synchronous
+    }
 };
 
 } // namespace testing
@@ -157,6 +160,7 @@ public:
         tbb::parallel_for(
                 0, n, [&](int i) { fn(i, n); }, tbb::static_partitioner());
     }
+    void wait() override {}
 };
 
 } // namespace testing
@@ -226,6 +230,8 @@ public:
             barrier_wait();
         }
     }
+
+    virtual void wait() {}
 
 private:
     int num_threads_;

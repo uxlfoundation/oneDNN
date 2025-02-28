@@ -1588,15 +1588,15 @@ private:
 
 template <typename ngen_generator_t>
 void convert_ir_to_ngen_impl(const stmt_t &body, ngen_generator_t *host,
-        const walk_order_t *kernel_grid_walk_order) {
+        const walk_order_t *thread_group_grid_walk_order) {
     expr_binding_t expr_binding(host->getHardware());
     host->comment("Prologue");
     host->generate_prologue();
 
     host->bind_external_vars(body, expr_binding);
-    if (kernel_grid_walk_order)
-        host->bind_kernel_grid_walk_order(
-                *kernel_grid_walk_order, expr_binding);
+    if (thread_group_grid_walk_order)
+        host->bind_thread_group_grid_walk_order(
+                *thread_group_grid_walk_order, expr_binding);
 
     host->comment("IR");
     ir_to_ngen_t<ngen_generator_t> visitor(host, expr_binding);

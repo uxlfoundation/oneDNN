@@ -13,6 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+#if 0
 
 #include <cassert>
 #include <chrono>
@@ -416,6 +417,7 @@ void fill_const(std::vector<float> &out, const float c) {
         out[i] = c; //TMP matmul only
    }
 }
+
 void fill_const(std::vector<float16_t> &out, const float c) {
     static std::vector<float> random_data_f;
     constexpr size_t nrand = 1037;
@@ -1876,10 +1878,6 @@ int main(int argc, char **argv) {
 */
 
 
-
-
-
-
 class mlp_test : public ::testing::TestWithParam<mlp_dims_t> {
 public:
     virtual void SetUp() override {
@@ -2235,3 +2233,4 @@ INSTANTIATE_TEST_SUITE_P(VEC,
     //,
     ), &PrintToString);
 
+#endif

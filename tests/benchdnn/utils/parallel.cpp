@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,30 +25,39 @@
 #define ACTIVATE_THREADPOOL
 #endif
 
+void synchronize() {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    dnnl::testing::get_threadpool()->wait();
+#endif
+}
+
 // Note: no need in deactivation as `scoped_activation` object will deactivate
 // it automatically at destruction.
-
 void benchdnn_parallel_nd(int64_t D0, const std::function<void(int64_t)> &f) {
     ACTIVATE_THREADPOOL;
     dnnl::impl::parallel_nd(D0, f);
+    synchronize();
 }
 
 void benchdnn_parallel_nd(int64_t D0, int64_t D1,
         const std::function<void(int64_t, int64_t)> &f) {
     ACTIVATE_THREADPOOL;
     dnnl::impl::parallel_nd(D0, D1, f);
+    synchronize();
 }
 
 void benchdnn_parallel_nd(int64_t D0, int64_t D1, int64_t D2,
         const std::function<void(int64_t, int64_t, int64_t)> &f) {
     ACTIVATE_THREADPOOL;
     dnnl::impl::parallel_nd(D0, D1, D2, f);
+    synchronize();
 }
 
 void benchdnn_parallel_nd(int64_t D0, int64_t D1, int64_t D2, int64_t D3,
         const std::function<void(int64_t, int64_t, int64_t, int64_t)> &f) {
     ACTIVATE_THREADPOOL;
     dnnl::impl::parallel_nd(D0, D1, D2, D3, f);
+    synchronize();
 }
 
 void benchdnn_parallel_nd(int64_t D0, int64_t D1, int64_t D2, int64_t D3,
@@ -57,6 +66,7 @@ void benchdnn_parallel_nd(int64_t D0, int64_t D1, int64_t D2, int64_t D3,
                 &f) {
     ACTIVATE_THREADPOOL;
     dnnl::impl::parallel_nd(D0, D1, D2, D3, D4, f);
+    synchronize();
 }
 
 void benchdnn_parallel_nd(int64_t D0, int64_t D1, int64_t D2, int64_t D3,
@@ -65,6 +75,7 @@ void benchdnn_parallel_nd(int64_t D0, int64_t D1, int64_t D2, int64_t D3,
                 int64_t, int64_t, int64_t, int64_t, int64_t, int64_t)> &f) {
     ACTIVATE_THREADPOOL;
     dnnl::impl::parallel_nd(D0, D1, D2, D3, D4, D5, f);
+    synchronize();
 }
 
 int benchdnn_get_max_threads() {

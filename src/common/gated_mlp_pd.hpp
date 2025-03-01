@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "common/c_types_map.hpp"
-#include "common/primitive_desc.hpp"
 #include "common/gated_mlp_utils.hpp"
+#include "common/primitive_desc.hpp"
 #include "common/utils.hpp"
 
 namespace dnnl {
@@ -53,15 +53,13 @@ struct gated_mlp_pd_t : public primitive_desc_t {
     }
 
     arg_usage_t arg_usage(int arg) const override {
-        if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WTS_GATE,
-                    DNNL_ARG_WTS_UP, DNNL_ARG_WTS_DOWN,
-                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_WTS_GATE,
+        if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WTS_GATE, DNNL_ARG_WTS_UP,
+                    DNNL_ARG_WTS_DOWN, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WTS_GATE,
                     DNNL_ARG_ATTR_SCALES | DNNL_ARG_WTS_UP,
                     DNNL_ARG_ATTR_SCALES | DNNL_ARG_WTS_DOWN,
                     DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WTS_GATE,
                     DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WTS_UP,
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WTS_DOWN
-                    ))
+                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WTS_DOWN))
             return arg_usage_t::input;
 
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
@@ -102,9 +100,7 @@ struct gated_mlp_pd_t : public primitive_desc_t {
     const memory_desc_t *W_up_md() const { return &desc_.W_up_desc; }
     const memory_desc_t *W_down_md() const { return &desc_.W_down_desc; }
 
-    int n_inputs() const override {
-        return 4 + int(0 /*with_attn_mask() TODO: add scale+zp?*/);
-    }
+    int n_inputs() const override { return 4; }
     int n_outputs() const override { return 1; }
 
     /// check scales enabled for each tensor
@@ -138,7 +134,6 @@ struct gated_mlp_pd_t : public primitive_desc_t {
     bool with_wts_down_zp() const {
         return (!desc()->wts_down_zero_points.has_default_values(DNNL_ARG_WTS_DOWN));
     }
-
 
     /// Scales data types for each tensor
     /// Returns the data type of the scales tensor for the wts_gate matmul

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,14 +27,11 @@
 namespace dnnl {
 namespace impl {
 
-//STF: TODO: add zp, scale + activation type
 static inline gated_mlp_desc_t create_gated_mlp_desc(
         const memory_desc_t *src_md, const memory_desc_t *W_gate_md,
         const memory_desc_t *W_up_md, const memory_desc_t *W_down_md,
-        const memory_desc_t *dst_md,
-        const primitive_attr_t *gate_attr,
-        const primitive_attr_t *up_attr,
-        const primitive_attr_t *down_attr) {
+        const memory_desc_t *dst_md, const primitive_attr_t *gate_attr,
+        const primitive_attr_t *up_attr, const primitive_attr_t *down_attr) {
 
     auto gated_mlp_desc = gated_mlp_desc_t();
     gated_mlp_desc.primitive_kind = primitive_kind::gated_mlp;
@@ -59,7 +56,6 @@ static inline gated_mlp_desc_t create_gated_mlp_desc(
     return gated_mlp_desc;
 }
 
-//STF: TODO: add zp, scale + activation type
 static inline status_t create_gated_mlp_pd(
         std::shared_ptr<primitive_desc_t> &gated_mlp_pd_, engine_t *engine,
         const memory_desc_t *src_md, const memory_desc_t *W_gate_md,
@@ -69,9 +65,8 @@ static inline status_t create_gated_mlp_pd(
         const primitive_attr_t *up_attr = nullptr,
         const primitive_attr_t *down_attr = nullptr) {
 
-    auto gated_mlp_desc = create_gated_mlp_desc(
-            src_md, W_gate_md, W_up_md, W_down_md, dst_md,
-            gate_attr, up_attr, down_attr);
+    auto gated_mlp_desc = create_gated_mlp_desc(src_md, W_gate_md, W_up_md,
+            W_down_md, dst_md, gate_attr, up_attr, down_attr);
 
     int ndims = dst_md->ndims;
 

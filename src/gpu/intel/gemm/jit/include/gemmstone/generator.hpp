@@ -80,10 +80,9 @@ protected:
     std::unique_ptr<Injector> postOpInjector;
 
     class status_stream {
-    public:
-        std::stringstream line;
     protected:
         char cc;
+        std::stringstream line;
         bool lineStart = true;
 
         Generator<hw> &parent;

@@ -129,7 +129,7 @@ static constexpr_reg InstructionModifier NoDDClr = InstructionModifier::createNo
 static constexpr_reg InstructionModifier NoDDChk = InstructionModifier::createNoDDChk();
 static constexpr_reg InstructionModifier AccWrEn = InstructionModifier::createAccWrCtrl();
 static constexpr_reg InstructionModifier NoSrcDepSet = AccWrEn;
-#ifdef PRERELEASE_HW
+#if XE3P
 static constexpr_reg InstructionModifier Fwd = InstructionModifier::createFwd();
 #endif
 static constexpr_reg InstructionModifier Breakpoint = InstructionModifier::createDebugCtrl();

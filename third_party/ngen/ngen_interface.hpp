@@ -54,6 +54,12 @@ public:
     unsupported_argument_location_override() : std::runtime_error("Argument register location is invalid") {}
 };
 
+#if XE3P
+class option_requires_zebin : public std::runtime_error {
+public:
+    option_requires_zebin() : std::runtime_error("Option requires zebin") {}
+};
+#endif
 #endif
 
 enum class ExternalArgumentType { Scalar, GlobalPtr, LocalPtr, Hidden };
@@ -73,6 +79,9 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
+#if XE3P
+                             , useEfficient64Bit(hw_ >= HW::Xe3p)
+#endif
                              , requestedInlineGRFs(defaultInlineGRFs(hw))
     {}
 
@@ -115,6 +124,9 @@ public:
     void requireNonuniformWGs()                          { needNonuniformWGs = true; }
     void requireNoPreemption()                           { needNoPreemption = true; }
     void requirePartitionDim(int dim)                    { needPartitionDim = dim; }
+#if XE3P
+    void requireQuantum(int wgs)                         { needQuantum = wgs; }
+#endif
     void requireScratch(size_t bytes = 1)                { scratchSize = bytes; }
     void requireSIMD(int simd_)                          { simd = simd_; }
     void requireSLM(size_t bytes)                        { slmSize = bytes; }
@@ -131,6 +143,9 @@ public:
     void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
     void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
+#if XE3P
+    void setEfficient64Bit(bool def = true)              { useEfficient64Bit = def; }
+#endif
 
     inline GRF getCrossthreadBase(bool effective = true) const;
     inline GRF getArgLoadBase() const;
@@ -139,12 +154,13 @@ public:
 
     template <typename CodeGenerator>
     inline void generatePrologue(CodeGenerator &generator, const GRF &temp = GRF(127)) const;
-#ifdef NGEN_ASM
-    inline void dumpAssignments(std::ostream &stream) const;
-#endif
 
     inline void generateDummyCL(std::ostream &stream) const;
     inline std::string generateZeInfo() const;
+
+#ifdef NGEN_ASM
+    inline void dumpAssignments(std::ostream &stream) const;
+#endif
 
     static constexpr int noSurface = 0x80;        // Returned by getArgumentSurfaceIfExists in case of no surface assignment
 
@@ -184,6 +200,9 @@ protected:
     bool needNonuniformWGs = false;
     bool needNoPreemption = false;
     int needPartitionDim = -1;
+#if XE3P
+    int needQuantum = 0;
+#endif
     bool needHalf = false;
     bool needDouble = false;
     bool needStatelessWrites = true;
@@ -332,6 +351,9 @@ void InterfaceHandler::generateDummyCL(std::ostream &stream) const
 #ifdef NGEN_SAFE
     if (!finalized) throw interface_not_finalized();
     if (hasArgLocOverride || !rearrangeArgs) throw unsupported_argument_location_override();
+#if XE3P
+    if (needQuantum) throw option_requires_zebin();
+#endif
 #endif
     const char *dpasDummy = "    int __builtin_IB_sub_group_idpas_s8_s8_8_1(int, int, int8) __attribute__((const));\n"
                             "    int z = __builtin_IB_sub_group_idpas_s8_s8_8_1(0, ____[0], 1);\n"
@@ -520,6 +542,9 @@ void InterfaceHandler::finalize()
 
 int InterfaceHandler::inlineGRFs() const
 {
+#if XE3P
+    if (useEfficient64Bit) return 1;
+#endif
     return requestedInlineGRFs;
 }
 
@@ -585,6 +610,10 @@ std::string InterfaceHandler::generateZeInfo() const
     std::stringstream md;
 
     const char *version = "1.8";
+#if XE3P
+    if (useEfficient64Bit) version = "1.35";
+    if (needQuantum) version = "1.48";
+#endif
 
     md << "version: " << version << "\n"
           "kernels: \n"
@@ -633,6 +662,23 @@ std::string InterfaceHandler::generateZeInfo() const
     }
     if (inlineGRFs() > 0)
         md << "      inline_data_payload_size: " << inlineGRFs() * GRF::bytes(hw) << "\n";
+#if XE3P
+    if (needQuantum) {
+        int encodedWO = 0;
+        if (walkOrder[0] == -1 && walkOrder[1] == -1)
+            encodedWO = 0;
+        else if (walkOrder[0] == 0 && walkOrder[1] == 1)
+            encodedWO = 0;
+        else if (walkOrder[0] == 1 && walkOrder[1] == 0)
+            encodedWO = 1;
+        else
+            throw std::runtime_error("Unsupported walk order");
+
+        md << "      quantum_size: " << needQuantum << "\n";
+        md << "      quantum_walk_order: " << encodedWO << "\n";
+        md << "      quantum_partition_dimension: " << std::max(needPartitionDim, 0) << "\n";
+    }
+#endif
     if (!assignments.empty()) {
         md << "\n"
               "    payload_arguments: \n";

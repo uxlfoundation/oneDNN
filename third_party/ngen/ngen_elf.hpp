@@ -31,10 +31,11 @@ class ELFCodeGenerator : public BinaryCodeGenerator<hw>
 public:
     inline std::vector<uint8_t> getBinary();
     static inline HW getBinaryArch(const std::vector<uint8_t> &binary);
-    static inline void getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Product &outProduct);
+    static inline Product getBinaryHWInfo(const std::vector<uint8_t> &binary);
 
     explicit ELFCodeGenerator(Product product_, DebugConfig debugConfig = {})  : BinaryCodeGenerator<hw>(product_, debugConfig) {}
     explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
+    explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
 
 protected:
     NEOInterfaceHandler interface_{hw};
@@ -532,7 +533,12 @@ template <typename... Targs> NGEN_NAMESPACE::Subregister getLocalSize(Targs&&...
 void prologue() { NGEN_NAMESPACE::ELFCodeGenerator<hw>::prologue(); } \
 void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::epilogue(r0_info); }
 
+#if !XE3P
 #define NGEN_FORWARD_ELF_EXTRA(hw)
+#else
+#define NGEN_FORWARD_ELF_EXTRA(hw) \
+template <typename... Targs> void setEfficient64Bit(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::setEfficient64Bit(std::forward<Targs>(args)...); }
+#endif
 
 template <HW hw>
 std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary()
@@ -609,20 +615,16 @@ std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary(const std::vector<uint8_t> 
 template <HW hw>
 inline HW ELFCodeGenerator<hw>::getBinaryArch(const std::vector<uint8_t> &binary)
 {
-    HW outHW;
-    Product outProduct;
-
-    getBinaryHWInfo(binary, outHW, outProduct);
-
-    return outHW;
+    return getCore(getBinaryHWInfo(binary).family);
 }
 
 template <HW hw>
-inline void ELFCodeGenerator<hw>::getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Product &outProduct)
+inline Product ELFCodeGenerator<hw>::getBinaryHWInfo(const std::vector<uint8_t> &binary)
 {
     using Note = typename ZebinELF::Note;
 
-    outHW = HW::Unknown;
+    Product outProduct;
+    HW hw_ = HW::Unknown;
     outProduct.family = ProductFamily::Unknown;
     outProduct.stepping = 0;
 
@@ -646,8 +648,8 @@ inline void ELFCodeGenerator<hw>::getBinaryHWInfo(const std::vector<uint8_t> &bi
                             break;
                         }
                         case Note::Type::GfxCoreFamily:
-                            if (outHW == HW::Unknown)
-                                outHW = npack::decodeGfxCoreFamily(static_cast<npack::GfxCoreFamily>(*actualPayload));
+                            if (hw_ == HW::Unknown)
+                                hw_ = npack::decodeGfxCoreFamily(static_cast<npack::GfxCoreFamily>(*actualPayload));
                             break;
                         case Note::Type::TargetMetadata: {
                             typename ZebinELF::TargetMetadata metadata;
@@ -665,18 +667,17 @@ inline void ELFCodeGenerator<hw>::getBinaryHWInfo(const std::vector<uint8_t> &bi
             }
         } else {
             if (zebinELF->fileHeader.flags.parts.useGfxCoreFamily)
-                outHW = npack::decodeGfxCoreFamily(static_cast<npack::GfxCoreFamily>(zebinELF->fileHeader.machine));
+                hw_ = npack::decodeGfxCoreFamily(static_cast<npack::GfxCoreFamily>(zebinELF->fileHeader.machine));
             else
                 outProduct.family = npack::decodeProductFamily(static_cast<npack::ProductFamily>(zebinELF->fileHeader.machine));
             outProduct.stepping = zebinELF->fileHeader.flags.parts.minHWRevision;
         }
     } else
-        npack::getBinaryHWInfo(binary, outHW, outProduct);
+        return npack::getBinaryHWInfo(binary);
 
-    if (outHW != HW::Unknown && outProduct.family == ProductFamily::Unknown)
-        outProduct.family = genericProductFamily(outHW);
-    else if (outHW == HW::Unknown && outProduct.family != ProductFamily::Unknown)
-        outHW = getCore(outProduct.family);
+    if (hw_ != HW::Unknown && outProduct.family == ProductFamily::Unknown)
+        outProduct.family = genericProductFamily(hw_);
+    return outProduct;
 }
 
 } /* namespace NGEN_NAMESPACE */

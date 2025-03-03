@@ -199,7 +199,7 @@ void _workaround_() {
     (void) NoDDChk.getAll();
     (void) AccWrEn.getAll();
     (void) NoSrcDepSet.getAll();
-#ifdef PRERELEASE_HW
+#if XE3P
     (void) Fwd.getAll();
 #endif
     (void) Breakpoint.getAll();

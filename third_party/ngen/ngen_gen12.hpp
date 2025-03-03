@@ -34,6 +34,13 @@ template <> struct EncodingTag12Dispatch<HW::Xe2>   { using tag = EncodingTagXeH
 template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
 template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
+#if XE3P
+struct EncodingTagXe3p : public EncodingTagXeHPC {};
+struct InstructionXe3p;
+
+template <> struct EncodingTag12Dispatch<HW::Xe3p>  { using tag = EncodingTagXe3p; };
+template <> struct Instruction12Dispatch<HW::Xe3p>  { using type = InstructionXe3p; };
+#endif
 
 class SWSBInfo12
 {
@@ -536,6 +543,30 @@ struct Instruction12 {
             unsigned src1Reg8 : 1;
             unsigned : 29;
         } sendgx;
+        struct {
+            unsigned : 32;
+            //
+            unsigned : 2;
+            unsigned src4RegFile : 1;
+            unsigned src3RegFile : 1;
+            unsigned : 7;
+            unsigned src4Reg0_3 : 4;
+            unsigned src3Reg0 : 1;
+            unsigned : 16;
+            //
+            unsigned src3Reg1_2 : 2;
+            unsigned : 26;
+            unsigned src3Reg3_6 : 4;
+            //
+            unsigned : 3;
+            unsigned src4SubReg3_5 : 3;
+            unsigned src3SubReg4_5 : 2;
+            unsigned : 8;
+            unsigned src3Reg7_8 : 2;
+            unsigned : 1;
+            unsigned src4Reg4_8 : 5;
+            unsigned : 8;
+        } bdpas;
 #endif
         uint64_t qword[2];
     };
@@ -566,6 +597,9 @@ struct Instruction12 {
     inline bool getSendDesc(MessageDescriptor &desc) const;
     inline bool getARFType(ARFType &arfType, int opNum, HW hw) const;
     inline int getFencedepJIP() const;
+#if XE3P
+    inline SendgMessageDescriptor getSendgDesc() const;
+#endif
 
     bool isMathMacro() const {
         if (opcode() != Opcode::math) return false;
@@ -588,11 +622,23 @@ struct InstructionXeHPC : public Instruction12 {
         return Instruction12::getOperandRegion<EncodingTagXeHPC>(region, opNum);
     }
 
+#if XE3P
+    bool isSendg() const {
+        return (opcode() == Opcode::sendg || opcode() == Opcode::sendgc || opcode() == Opcode::sendgx || opcode() == Opcode::sendgxc);
+    }
+#endif
+
     bool eot() const {
+#if XE3P
+        if (isSendg()) return sendg.eot;
+#endif
         return Instruction12::eot();
     }
 
     bool atomic() const {
+#if XE3P
+        if (isSendg()) return false;    /* no atomic field */
+#endif
         return Instruction12::atomic();
     }
 };
@@ -614,15 +660,25 @@ static_assert(sizeof(InstructionXe3p) == 16, "Internal error: InstructionXe3p ha
 
 static inline unsigned getTypecode12(DataType type)
 {
+#if XE3P
+    static const uint8_t conversionTable[32] = {2,6,1,5,0,4,11,10,3,7,9,13,8,0,4,8,
+                                                14,12,2,2,2,2,2,2,2,2,8,8,0,4,0,4};
+#else
     static const uint8_t conversionTable[32] = {2,6,1,5,0,4,11,10,3,7,9,13,8,0,4,8,
                                                 14,12,2,2,2,2,2,2,2,2,2,2,0,4,0,4};
+#endif
     return conversionTable[static_cast<unsigned>(type) & 0x1F];
 }
 
 static inline unsigned encodeSubBytePrecision12(DataType type)
 {
+#if XE3P
+    static const uint8_t conversionTable[32] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                                0,0,0,0,0,0,0,0,0,0,2,1,1,1,2,2};
+#else
     static const uint8_t conversionTable[32] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                                 0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,2};
+#endif
     return conversionTable[static_cast<unsigned>(type) & 0x1F];
 }
 
@@ -645,7 +701,7 @@ static inline constexpr14 BinaryOperand12 encodeBinaryOperand12(const RegData &r
         op.indirect.addrReg = rd.getIndirectOff();
         op.indirect.addrMode = 1;
         if (srcN >= 0)
-            op.indirect.vs = (rd.isVxIndirect()) ? 0xF : pow2Encode(rd.getVS());
+            op.indirect.vs = (rd.isVxIndirect()) ? 0xFFFF : pow2Encode(rd.getVS());
     } else {
         op.direct.regFile = getRegFile(rd);
         op.direct.subRegNum = rd.getByteOffset();
@@ -677,7 +733,7 @@ static inline constexpr14 BinaryOperand12 encodeBinaryOperand12(const RegData &r
         op.indirect.addrReg = rd.getIndirectOff();
         op.indirect.addrMode = 1;
         if (srcN >= 0) {
-            op.indirect.vs = (rd.isVxIndirect()) ? 0xF : pow2Encode(rd.getVS());
+            op.indirect.vs = (rd.isVxIndirect()) ? 0xFFFF : pow2Encode(rd.getVS());
             op.indirectXeHPC.addrOff0 = (rd.getOffset() & 1);
         }
     } else {
@@ -820,19 +876,22 @@ static inline bool checkSrc1Scalar(Opcode op, RegData r, RegData dst, Tag tag) {
 static inline bool checkSrc1Scalar(Opcode op, RegData r, RegData dst, EncodingTagXe3p tag)
 {
     switch (op) {
-        case Opcode::shfl:
-        case Opcode::dpas: return false;
+        case Opcode::bdpas:
+        case Opcode::dpas:
+        case Opcode::shfl: return false;
         default: break;
     }
     if (r.isScalar())
         return true;
 
 #ifdef NGEN_SAFE
-    int reqHS = dst.getHS() * dst.getBytes() / r.getBytes();
-    bool flat = (r.getHS() == reqHS && r.getVS() == r.getWidth() * reqHS)
-             || (r.getHS() == 0 && r.getWidth() == 1 && r.getVS() == reqHS);
-    if (!flat)
-        throw invalid_region_exception();
+    if (!r.isARF()) {
+        int reqHS = dst.getHS() * dst.getBytes() / r.getBytes();
+        bool flat = (r.getHS() == reqHS && r.getVS() == r.getWidth() * reqHS)
+                || (r.getHS() == 0 && r.getWidth() == 1 && r.getVS() == reqHS);
+        if (!flat)
+            throw invalid_region_exception();
+    }
 #endif
 
     return false;
@@ -879,6 +938,10 @@ static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const Instruc
     i2.common.maskCtrl = mod.parts.maskCtrl;
     i2.common.atomicCtrl = mod.parts.threadCtrl;
     i2.commonXeHPC.dstExt = (dst.isIndirect() ? dst.getOffset() : dst.getByteOffset()) & 1;
+#if XE3P
+    if (opcode == Opcode::dpas)
+        i2.common.accWrCtrl = mod.parts.accWrCtrl;   /* {Fwd} */
+#endif
     i2.common.saturate = mod.parts.saturate;
     i.common = i2.common;
 }
@@ -1040,6 +1103,33 @@ static inline unsigned getHighBit(ExtendedReg r) {
 static inline unsigned getHighBit(Immediate i) {
     return 0;
 }
+
+static inline uint8_t encodeDnsclCtrl(uint8_t mode, RoundingType rnd, RegData &dst, RegData &src0, RegData &src1)
+{
+    auto dt = dst.getType();
+    auto st = src0.getType();
+
+#ifdef NGEN_SAFE
+    if (dt != DataType::s4 && dt != DataType::e2m1 && dt != DataType::e3m0) throw invalid_type_exception();
+    if (st != DataType::hf && st != DataType::bf) throw invalid_type_exception();
+    if (st != src1.getType()) throw invalid_type_exception();
+#endif
+
+    dst.setOffset(dst.getByteOffset() >> 2);
+    src0.setOffset(src0.getByteOffset() >> 2);
+    src1.setOffset(src1.getByteOffset() >> 2);
+    dst.setType(DataType::ud);
+    src0.setType(DataType::ud);
+    src1.setType(DataType::ud);
+
+    mode <<= 4;
+    if (dt == DataType::e2m1)     mode |= 1;
+    if (dt == DataType::e3m0)     mode |= 2;
+    if (st == DataType::bf)       mode |= 4;
+    if (rnd == RoundingType::rne) mode |= 8;
+
+    return mode;
+}
 #endif
 
 /*********************/
@@ -1103,6 +1193,9 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     BinaryOperand12 o;
                     o.bits = binary.dst;
                     unsigned regNum = o.direct.regNum;
+#if XE3P
+                    if (xe3p) regNum |= (binaryXe3p.dstReg8 << 8);
+#endif
                     region = DependencyRegion(hw, 1, GRF(regNum));
                     return true;
                 }
@@ -1111,11 +1204,20 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     o0.bits = binary.src0;
                     o1.bits = binary.src1;
                     unsigned rn0 = o0.direct.regNum, rn1 = o1.direct.regNum;
+#if XE3P
+                    if (xe3p) {
+                        rn0 |= (binaryXe3p.src0Reg8 << 8);
+                        rn1 |= (binaryXe3p.src1Reg8 << 8);
+                    }
+#endif
                     region = DependencyRegion(hw, GRF(rn0)-GRF(rn1));
                     return true;
                 }
                 default: return false;
             }
+#if XE3P
+        case Opcode::bdpas:
+#endif
         case Opcode::dpas:
         case Opcode::dpasw: {
             unsigned sdepth = 1 << dpas.sdepth;
@@ -1131,7 +1233,6 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     int typebytes = decodeDPASTypecodeBytes12(ternary.dstType);
                     len = (rcount * typebytes + 3) >> 2;
 #if XE3P
-                    if (typebytes == 8) len = rcount;
                     regNum8 = ternaryXe3p.dstReg8;
 #endif
                     o.bits = ternary.dst;
@@ -1141,7 +1242,6 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     int typebytes = decodeDPASTypecodeBytes12(ternary.src0Type);
                     len = (rcount * typebytes + 3) >> 2;
 #if XE3P
-                    if (typebytes == 8) len = rcount;
                     regNum8 = ternaryXe3p.src0Reg8;
 #endif
                     o.bits = ternary.src0;
@@ -1158,6 +1258,10 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     if (op == Opcode::dpasw) rcount = (rcount + 1) >> 1;
                     o.bits = ternary.src2;
                     auto sr = o.direct.subRegNum;
+#if XE3P
+                    regNum8 = ternaryXe3p.src2Reg8;
+                    if (op == Opcode::bdpas) sr = 0;
+#endif
                     if (xeHPC)
                         len = ((sr << 1) + sdepth * rcount * 4 + 63) >> 6;
                     else
@@ -1261,7 +1365,8 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
             }
             return true;
         }
-        case Opcode::sendgx: {
+        case Opcode::sendgx:
+        case Opcode::sendgxc: {
             int regNum = 0, len = -1;
             switch (opNum) {
                 case -1: {
@@ -1294,6 +1399,9 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
         case Opcode::bfe_gen12:
         case Opcode::bfi2_gen12:
         case Opcode::csel_gen12:
+#if XE3P
+        case Opcode::dnscl:
+#endif
         case Opcode::mad:
         case Opcode::madm: {  // ternary
             TernaryOperand12 o;
@@ -1533,6 +1641,22 @@ int Instruction12::getFencedepJIP() const
     (void) getImm32(imm);
     return int32_t(imm) / sizeof(Instruction12);
 }
+
+#if XE3P
+SendgMessageDescriptor Instruction12::getSendgDesc() const
+{
+    SendgMessageDescriptor desc;
+    desc.all =  uint64_t(sendg.desc0_15)
+             | (uint64_t(sendg.desc16_27) << 16)
+             | (uint64_t(sendg.desc28_29) << 28)
+             | (uint64_t(sendg.desc30_31) << 30)
+             | (uint64_t(sendg.desc32_39) << 32)
+             | (uint64_t(sendg.desc40_41) << 40);
+    if (!sendg.ind1Present)
+        desc.all |= (uint64_t(sendg.ind1_desc42_46) << 42);
+    return desc;
+}
+#endif
 
 bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const
 {

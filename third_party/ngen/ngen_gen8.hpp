@@ -318,7 +318,7 @@ static inline constexpr14 BinaryOperand8 encodeBinaryOperand8(const RegData &rd)
         result.indirect1.addrMode = 1;
         result.indirect1.addrSubreg = rd.getIndirectOff();
         if (!dest) {
-            result.indirect1.vs = (rd.isVxIndirect()) ? 0xF :
+            result.indirect1.vs = (rd.isVxIndirect()) ? 0xFFFF :
                                     (rd.getVS() == 0) ? 0 :
                                                         (1 + utils::log2(rd.getVS()));
         }

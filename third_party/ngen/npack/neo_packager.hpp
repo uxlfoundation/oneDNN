@@ -149,9 +149,9 @@ inline void replaceKernel(std::vector<uint8_t> &binary, const std::vector<uint8_
     auto new_kheader = (SKernelBinaryHeader *)(((const unsigned char *)kheader - elf_binary) + new_elf);
     size_t new_end_xsum = before_kernel + kernel_padded_size + heap_plus_patches + patches_size;
 
+    new_kheader->CheckSum = neo_hash(new_elf + start_xsum, new_end_xsum - start_xsum);
     new_kheader->KernelHeapSize = uint32_t(kernel_padded_size);
     new_kheader->KernelUnpaddedSize = uint32_t(kernel_size);
-    new_kheader->PatchListSize += uint32_t(patches_size);
 
     // Disable inline data if requested.
     if (noInlineData) {
@@ -163,7 +163,7 @@ inline void replaceKernel(std::vector<uint8_t> &binary, const std::vector<uint8_
     }
 
     // Update checksum.
-    new_kheader->CheckSum = neo_hash(new_elf + start_xsum, new_end_xsum - start_xsum);
+    new_kheader->PatchListSize += uint32_t(patches_size);
 
     // Copy remainder of ELF.
     utils::copy_into(new_binary, new_end_xsum, binary, end_xsum, elf_size - end_xsum);
@@ -193,7 +193,6 @@ inline HW decodeGfxCoreFamily(GfxCoreFamily family)
         case GfxCoreFamily::XeHPG:    return HW::XeHPG;
         case GfxCoreFamily::XeHPC:    return HW::XeHPC;
         case GfxCoreFamily::Xe2:      return HW::Xe2;
-        case GfxCoreFamily::Xe3:      return HW::Xe3;
         default:                      return HW::Unknown;
     }
 }
@@ -210,6 +209,9 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
         case HW::XeHPC:   return GfxCoreFamily::XeHPC;
         case HW::Xe2:     return GfxCoreFamily::Xe2;
         case HW::Xe3:     return GfxCoreFamily::Xe3;
+#if XE3P
+        case HW::Xe3p:    return GfxCoreFamily::Xe3p;
+#endif
         default:          return GfxCoreFamily::Unknown;
     }
 }
@@ -225,8 +227,12 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::MTL) return NGEN_NAMESPACE::ProductFamily::MTL;
     if (family == ProductFamily::PVC) return NGEN_NAMESPACE::ProductFamily::PVC;
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
+    if (family == ProductFamily::BMG) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::GenericXe2;
-    if (family >= ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
+    if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
+#if XE3P
+    if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
+#endif
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
 
@@ -249,18 +255,22 @@ inline bool hasGatewayEOTSend(const std::vector<uint8_t> &binary)
     return false;
 }
 
-inline void getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Product &outProduct)
+inline Product getBinaryHWInfo(const std::vector<uint8_t> &binary)
 {
     const SProgramBinaryHeader *pheader = nullptr;
 
     findDeviceBinary(binary, nullptr, &pheader, nullptr);
-    outHW = decodeGfxCoreFamily(pheader->Device);
-    outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown;
-    outProduct.stepping = pheader->SteppingId;
+    HW hw = decodeGfxCoreFamily(pheader->Device);
 
     // XeHPG identifies with older runtimes as XeHP. Check whether EOT goes to TS (XeHP) or gateway (XeHPG).
-    if (outHW == HW::XeHP && hasGatewayEOTSend(binary))
-        outHW = HW::XeHPG;
+    if (hw == HW::XeHP && hasGatewayEOTSend(binary))
+        hw = HW::XeHPG;
+
+    Product ret;
+    ret.family = genericProductFamily(hw);
+    ret.stepping = pheader->SteppingId;
+
+    return ret;
 }
 
 inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
@@ -277,32 +287,37 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
         };
     } version;
 
-    ngen::Product outProduct = {ngen::ProductFamily::Unknown, 0};
+    NGEN_NAMESPACE::Product outProduct = {NGEN_NAMESPACE::ProductFamily::Unknown, 0};
 
     version.raw = rawVersion;
     switch (version.architecture) {
-        case 9:  outProduct.family = ngen::ProductFamily::GenericGen9; break;
-        case 11: outProduct.family = ngen::ProductFamily::GenericGen11; break;
+        case 9:  outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen9; break;
+        case 11: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen11; break;
         case 12:
             if (version.release <= 10)
-                outProduct.family = ngen::ProductFamily::GenericGen12LP;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen12LP;
             else if (version.release == 50)
-                outProduct.family = ngen::ProductFamily::GenericXeHP;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXeHP;
             else if (version.release > 50 && version.release <= 59)
-                outProduct.family = ngen::ProductFamily::DG2;
-            else if (version.release >= 60 && version.release <= 61)
-                outProduct.family = ngen::ProductFamily::PVC;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::DG2;
+            else if (version.release == 60)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVC;
+            else if (version.release == 61)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVCVG;
             else if (version.release >= 70 && version.release <= 71)
-                outProduct.family = ngen::ProductFamily::MTL;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::MTL;
             else if (version.release >= 73 && version.release <= 74)
-                 outProduct.family = ngen::ProductFamily::ARL;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::ARL;
             break;
-        case 20: outProduct.family = ngen::ProductFamily::GenericXe2; break;
-        case 30: outProduct.family = ngen::ProductFamily::GenericXe3; break;
-        default: outProduct.family = ngen::ProductFamily::Unknown; break;
+        case 20: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe2; break;
+        case 30: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3; break;
+#if XE3P
+        case 35: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3p; break;
+#endif
+        default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
     }
 
-    if (outProduct.family != ngen::ProductFamily::Unknown)
+    if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)
         outProduct.stepping = version.revision;
 
     return outProduct;
@@ -316,6 +331,6 @@ inline bool isBinaryEfficient64Bit(const std::vector<uint8_t> &binary, HW hw)
 #endif
 
 } /* namespace npack */
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 #endif /* header guard */

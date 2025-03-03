@@ -100,10 +100,7 @@ public:
 
     inline ze_module_handle_t getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
     static inline HW detectHW(ze_context_handle_t context, ze_device_handle_t device);
-    static void detectHWInfo(ze_context_handle_t context, ze_device_handle_t device, HW &outHW, Product &outProduct);
-
-    /* Deprecated. Use the Product-based API instead. */
-    static void detectHWInfo(ze_context_handle_t context, ze_device_handle_t device, HW &outHW, int &outStepping);
+    static inline Product detectHWInfo(ze_context_handle_t context, ze_device_handle_t device);
 };
 
 #define NGEN_FORWARD_LEVEL_ZERO(hw) NGEN_FORWARD_ELF(hw)
@@ -147,37 +144,19 @@ ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t con
 template <HW hw>
 HW LevelZeroCodeGenerator<hw>::detectHW(ze_context_handle_t context, ze_device_handle_t device)
 {
-    HW outHW;
-    int outStepping;
-
-    detectHWInfo(context, device, outHW, outStepping);
-
-    return outHW;
+    return getCore(detectHWInfo(context, device).family);
 }
 
 template <HW hw>
-void LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze_device_handle_t device, HW &outHW, int &outStepping)
-{
-    Product outProduct;
-    detectHWInfo(context, device, outHW, outProduct);
-    outStepping = outProduct.stepping;
-}
-
-template <HW hw>
-void LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze_device_handle_t device, HW &outHW, Product &outProduct)
+Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze_device_handle_t device)
 {
 #ifdef ZE_DEVICE_IP_VERSION_EXT_NAME
     // Try ZE_extension_device_ip_version first if available.
     ze_device_ip_version_ext_t vprop = {ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT, nullptr, 0};
-    auto dprop = ze_device_properties_t();
-    dprop.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
-    dprop.pNext = &vprop;
+    ze_device_properties_t dprop = {ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES, &vprop};
 
     if (call_zeDeviceGetProperties(device, &dprop) == ZE_RESULT_SUCCESS) {
-        outProduct = npack::decodeHWIPVersion(vprop.ipVersion);
-        outHW = getCore(outProduct.family);
-        if (outProduct.family != ProductFamily::Unknown)
-            return;
+        return npack::decodeHWIPVersion(vprop.ipVersion);
     }
 #endif
 
@@ -206,7 +185,7 @@ void LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze_de
     detail::handleL0(call_zeModuleGetNativeBinary(module, &binarySize, binary.data()));
     detail::handleL0(call_zeModuleDestroy(module));
 
-    ELFCodeGenerator<hw>::getBinaryHWInfo(binary, outHW, outProduct);
+    return ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
 }
 
 } /* namespace NGEN_NAMESPACE */

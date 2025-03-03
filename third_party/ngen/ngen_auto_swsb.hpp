@@ -353,6 +353,9 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
         if (!checkOOO)
             return GeneralizedPipe();
         switch (op) {
+#if XE3P
+            case Opcode::bdpas:
+#endif
             case Opcode::dpas:
             case Opcode::dpasw:
                 return GeneralizedPipe::Systolic();
@@ -365,6 +368,7 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
             case Opcode::sendg:
             case Opcode::sendgc:
             case Opcode::sendgx:
+            case Opcode::sendgxc:
 #endif
                 return GeneralizedPipe(insn.sfid());
         }
@@ -638,12 +642,16 @@ inline int estimateLatency(HW hw, const Instruction &insn)
     switch (insn.opcode()) {
         default:
         case Opcode::math: return (hw == HW::Gen12LP) ? 20 : 17;
+#if XE3P
+        case Opcode::bdpas:
+#endif
         case Opcode::dpas:
         case Opcode::dpasw: return 20;   // need correct value
 #if XE3P
         case Opcode::sendg:
         case Opcode::sendgc:
         case Opcode::sendgx:
+        case Opcode::sendgxc:
 #endif
         case Opcode::send:
         case Opcode::sendc: {

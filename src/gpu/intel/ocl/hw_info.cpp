@@ -58,7 +58,12 @@ xpu::runtime_version_t get_driver_version(cl_device_id device) {
 status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         cl_context context, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
         int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
+#if XE3P
+        bool &mayiuse_systolic, bool &mayiuse_ngen_kernels,
+        bool &is_efficient_64bit) {
+#else
         bool &mayiuse_systolic, bool &mayiuse_ngen_kernels) {
+#endif
     using namespace ngen;
     Product product
             = jit::generator_t<HW::Unknown>::detectHWInfo(context, device);
@@ -82,6 +87,10 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
                 "ngen fallback (gpu does not support binary format kernels)");
         mayiuse_ngen_kernels = false;
     }
+#if XE3P
+    is_efficient_64bit = jit::generator_t<HW::Unknown>::detectEfficient64Bit(
+            context, device, hw);
+#endif
 
     ip_version = 0;
     OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL,

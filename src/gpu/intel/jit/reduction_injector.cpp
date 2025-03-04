@@ -283,6 +283,9 @@ REG_XEHPG_ISA(template struct reduction_injector_f32_t<gpu_xe_hpg>);
 REG_XEHPC_ISA(template struct reduction_injector_f32_t<gpu_xe_hpc>);
 REG_XE2_ISA(template struct reduction_injector_f32_t<gpu_xe2>);
 REG_XE3_ISA(template struct reduction_injector_f32_t<gpu_xe3>);
+#if XE3P
+REG_XE3P_ISA(template struct reduction_injector_f32_t<gpu_xe3p>);
+#endif
 
 } // namespace jit
 } // namespace intel

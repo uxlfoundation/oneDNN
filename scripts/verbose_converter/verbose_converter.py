@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ################################################################################
-# Copyright 2020-2024 Intel Corporation
+# Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,14 +47,6 @@ class ConverterError(RuntimeError):
 def generate(generator, parser: LogParser, *args):
     return generator.generate(parser.get_data(), *args)
 
-default_events = "exec", "create"
-stream_handler = logging.StreamHandler(sys.stderr)
-fmt = logging.Formatter(fmt="{levelname}: {name}: {message}", style="{")
-# workaround for nvim-treesitter indent bug: }
-stream_handler.setFormatter(fmt)
-logger = logging.getLogger("verbose_converter")
-logger.setLevel(logging.CRITICAL + 10)  # off
-logger.addHandler(stream_handler)
 
 def convert(
     parser: str,

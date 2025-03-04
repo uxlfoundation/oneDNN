@@ -686,18 +686,6 @@ bool match_pattern(op_t *first_op, const std::shared_ptr<pb_graph_t> &pattern,
         }
     }
 
-    for (size_t i = 0; i < inner_cons.size(); ++i) {
-        if (inner_cons[i].second.size() != ctx->in_port_map.count(i)) {
-            DEBUG(DEBUGINFO_PM,
-                    "expected graph input %zu consumers size: %zu, actual "
-                    "consumers size: %zu",
-                    i, inner_cons[i].second.size(), ctx->in_port_map.count(i));
-            VPATTERN_MATCHER(
-                    "matching failed: number of inputs check failed,%s:%i \n",
-                    __FILE__, __LINE__);
-            return false;
-        }
-    }
     return true;
 }
 

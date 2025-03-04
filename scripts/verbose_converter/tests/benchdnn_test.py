@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ################################################################################
-# Copyright 2021-2024 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,54 +65,6 @@ def filter_verbose(verbose: str, driver: str, filter_event: str):
                     value = part[len(argname) + 3 :]
                     known_prop_kind = convert_dir_benchdnn2verbose(value)
                     break
-
-            cases = tentative_cases[known_prop_kind]
-            tentative_cases.clear()
-            if status == "SKIPPED":
-                continue
-            elif "FAILED" in status:
-                raise FailedCase(status, repro)
-            elif not cases:
-                continue
-            found_cases.append(cases[-1])
-        elif line.startswith("onednn_verbose,"):
-            # Detect driver
-            parts = line.split(",")
-            try:
-                float(parts[2])  # check for timestamp
-            except ValueError:
-                pass
-            else:
-                parts.pop(2)
-            try:
-                component = parts[2]
-                event, *_ = parts[3].split(":", 1)
-                primitive = parts[5]
-                impl_name = parts[6]
-                prop_kind = parts[7]
-            except IndexError:
-                continue
-            if component != "primitive" or event not in filter_event:
-                continue
-            if get_driver(primitive) != driver:
-                continue
-            # Filter out transform routine till it's properly supported. Use
-            # impl name for that due to it's the only difference between two
-            # ukernel calls.
-            if driver == "brgemm" and impl_name == "pack_B":
-                continue
-            # Remove primitive creation/run time
-            try:
-                float(parts[-1])
-            except ValueError:
-                continue
-            without_time = ",".join(parts[:-1])
-            # Filter out fill reorders. Only the last one is real.
-            tentative_cases[prop_kind].append(without_time)
-            if prop_kind != "undef":
-                # In case the reproducer uses the default prop kind
-                tentative_cases["undef"].append(without_time)
-    return "\n".join(found_cases)
 
             cases = tentative_cases[known_prop_kind]
             tentative_cases.clear()
@@ -390,11 +342,6 @@ def get_driver(primitive: str):
     else:
         return converter.driver
 
-
-# Add parent dir to sys.path to make verbose_converter visible for test
-current_dir = os.path.dirname(os.path.realpath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.append(parent_dir)
 
 # Add parent dir to sys.path to make verbose_converter visible for test
 current_dir = os.path.dirname(os.path.realpath(__file__))

@@ -121,12 +121,6 @@ struct ref_reorder_t : public gpu_primitive_t {
                                     || utils::one_of(data_type::s4, sdt, ddt)),
                             attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_REORDER(
-                    IMPLICATION(
-                            (utils::one_of(data_type::u4, sdt, ddt)
-                                    || utils::one_of(data_type::s4, sdt, ddt)),
-                            attr()->post_ops_.has_default_values()),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_REORDER_SC(init_conf(engine), "init_conf()");
             VDISPATCH_REORDER_SC(maybe_create_zp_precompute_conv_pd(dst_engine),

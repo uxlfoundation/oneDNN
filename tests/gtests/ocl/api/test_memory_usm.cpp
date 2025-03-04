@@ -206,7 +206,6 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, SharedMapUnmap) {
     test_usm_map_unmap(dnnl::impl::xpu::ocl::usm::malloc_shared,
             dnnl::impl::xpu::ocl::usm::free);
 }
-#endif
 
 #ifdef DNNL_EXPERIMENTAL_SPARSE
 HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryCreation) {

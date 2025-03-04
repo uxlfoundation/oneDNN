@@ -997,7 +997,6 @@ private:
         }
         return loop->var();
     }
-
     int loop_level(const expr_t &var) const {
         for (int i = 0; i < int(vars_.size()); i++) {
             if (vars_[i].is_same(var)) return i;

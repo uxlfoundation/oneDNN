@@ -605,27 +605,27 @@ struct send_2d_params_t {
 
     bool is_empty() const { return !is_valid; }
 
-    bool is_prefetch() const { return send_op == send_op_t::prefetch; }
-
     bool is_store() const { return send_op == send_op_t::store; }
 
-    int max_count() const {
+    bool is_prefetch() const { return send_op == send_op_t::prefetch; }
+
+    int max_count(const hw_t &hw) const {
         return block_2d_max_count(
                 hw, is_prefetch(), is_store(), transpose, w, type.size());
     }
 
     // Reduce the number of messages by increasing count per
     // message.
-    void try_promote_count() {
+    void try_promote_count(const hw_t &hw) {
         if (vnni_factor != 1) return;
-        while (c * 2 <= max_count()) {
+        while (c * 2 <= max_count(hw)) {
             if (w_rcount % 2 != 0) break;
             c *= 2;
             w_rcount /= 2;
         }
     }
 
-    bool apply_vnni_factor(int factor) {
+    bool apply_vnni_factor(int factor, const hw_t &hw) {
         if (factor == 0) return true;
         if (use_xy)
             return fail_2d(
@@ -640,7 +640,7 @@ struct send_2d_params_t {
         if (H % factor != 0)
             return fail_2d("Can't apply VNNI factor: invalid surface height.");
         if (c != 1) return fail_2d("Can't apply VNNI factor: invalid count.");
-        if (factor > max_count())
+        if (factor > max_count(hw))
             return fail_2d(
                     "Can't apply VNNI factor: factor exceeds max_count().");
         W *= factor;
@@ -652,7 +652,7 @@ struct send_2d_params_t {
         return true;
     }
 
-    bool is_supported() const {
+    bool is_supported(const hw_t &hw) const {
         if (!block_2d_width_ok(W, type.size()))
             return fail_2d("Width is not supported.");
         if (!block_2d_height_ok(H)) return fail_2d("Height is not supported.");
@@ -788,7 +788,6 @@ struct send_2d_params_t {
     IR_DEFINE_DUMP()
 
     bool is_valid = false;
-    hw_t hw;
     send_op_t send_op = send_op_t::undef;
     type_t type;
     bool use_xy = true;
@@ -1073,9 +1072,9 @@ struct send_group_t {
         if (hw >= ngen::HW::XeHPC) return type;
 
         bool is_slm = (send_params.send_address == send_address_t::slm);
+        bool is_atomic = (send_params.send_op == send_op_t::atomic_fadd);
         if (!is_slm && type == type_t::oword(16)) return type_t::hword(8);
-        if (is_atomic(send_params.send_op) && type.size() == 4)
-            return type_t::dword();
+        if (is_atomic && type.size() == 4) return type_t::dword();
         if (type.size() <= 4) return type_t::byte(type.size());
         if (type.size() == 8) return type_t::qword();
 
@@ -1677,7 +1676,6 @@ public:
             H /= h_vstride;
         }
 
-        params_.hw = info_.hw();
         params_.use_xy = use_xy;
         params_.transpose = hint.transpose;
         params_.vnni = hint.vnni;
@@ -1695,14 +1693,15 @@ public:
         params_.h_tidx = h_tidx;
         params_.h_vstride = into<int>(h_vstride);
 
-        if (!params_.apply_vnni_factor(hint.vnni_permute_factor)) return false;
-        if (!params_.is_supported()) return false;
+        if (!params_.apply_vnni_factor(hint.vnni_permute_factor, info_.hw()))
+            return false;
+        if (!params_.is_supported(info_.hw())) return false;
         if (!base_alignment_ok(vlayout, mod_info, h_tdim, h_vstride))
             return false;
         if (!x_alignment_ok(w_tdim, mod_info)) return false;
         if (!masks_ok()) return false;
 
-        params_.try_promote_count();
+        params_.try_promote_count(info_.hw());
         params_.is_valid = true;
         return true;
     }

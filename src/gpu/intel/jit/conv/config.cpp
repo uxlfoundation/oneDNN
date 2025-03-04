@@ -905,7 +905,12 @@ bool data_types_ok(
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
     if (is_fp8
+#if XE3P
+            && !(utils::one_of(hw, ngen::HW::XeHPC, ngen::HW::Xe3p)
+                    && hw.systolic_support()))
+#else
             && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
+#endif
         return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;

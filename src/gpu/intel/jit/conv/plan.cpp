@@ -1312,7 +1312,13 @@ struct fma_context_t {
         bool is_a = (abc == abc_kind_t::a);
         bool is_b = (abc == abc_kind_t::b);
         auto type = (is_a ? a_type : b_type);
+#if XE3P
+        int type_size = ((layout.type().is_fp8() && hw != ngen::HW::Xe3p)
+                        ? 2
+                        : type.size());
+#else
         int type_size = (layout.type().is_fp8() ? 2 : type.size());
+#endif
         if (is_dpas) {
             int sdepth = 8;
             int dword_size = 4;
@@ -1337,7 +1343,12 @@ struct fma_context_t {
                     layout_t(type, 0, (int)bmnks.size(), blocks));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
+#if XE3P
+            if (layout.type().is_fp8() && hw != ngen::HW::Xe3p)
+                return abc_layout.retype(type_t::f16());
+#else
             if (layout.type().is_fp8()) return abc_layout.retype(type_t::f16());
+#endif
             return abc_layout;
         }
 
@@ -2168,7 +2179,7 @@ private:
         //   going to be used by the next iterations.
         if (is_block_strided && size_ge_256b && prefetch_lt_256b
                 && is_inner_loop) {
-            ir_assert(thr_view.vdims()[b0.dim_idx] == b0.block);
+            gpu_assert(thr_view.vdims()[b0.dim_idx] == b0.block);
             int factor = 256 / b0_size;
             thr_view.set_vdim(inner_var, b0.block * factor,
                     thr_view.vstart(b0.dim_idx),

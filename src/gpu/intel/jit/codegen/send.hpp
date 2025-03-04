@@ -278,6 +278,9 @@ private:
         switch (op) {
             case send_op_t::atomic_add: return ngen::AtomicOp::add;
             case send_op_t::atomic_fadd: return ngen::AtomicOp::fadd;
+#if XE3P
+            case send_op_t::atomic_bfadd: return ngen::AtomicOp::bfadd;
+#endif
             case send_op_t::atomic_cmpwr: return ngen::AtomicOp::cmpwr;
             default: gpu_error_not_expected();
         }

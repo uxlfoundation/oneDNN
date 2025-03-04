@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2020-2024 Intel Corporation
+# Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,12 @@ file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     )
+
+if(DNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+add_definitions_with_host_compiler(-DXE3P)
+endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})

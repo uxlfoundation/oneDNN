@@ -210,15 +210,24 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
     /* Temporarily reuse XeHPC/Xe2 strategies for Xe2/Xe3 until more strategies are
        in the catalog*/
     if (!bestEntry
-            && (patterns[0].selector.hw == kcatalog::HWTagXe2
-                    || patterns[0].selector.hw == kcatalog::HWTagXe3
-                    )) {
+            && (one_of(patterns[0].selector.hw, kcatalog::HWTagXe2,  kcatalog::HWTagXe3
+#if XE3P
+		       ,kcatalog::HWTagXe3p
+#endif
+		       ))) {
         std::vector<MatchParams> override_patterns;
-        const bool isXe3 = patterns[0].selector.hw == kcatalog::HWTagXe3;
         override_patterns.reserve(npatterns);
+        auto tag = kcatalog::HWTagXeHPC;
+	    switch (patterns[0].selector.hw){
+	        default: break;
+	        case kcatalog::HWTagXe3: tag = kcatalog::HWTagXe2; break;
+#if XE3P
+	        case kcatalog::HWTagXe3p: tag = kcatalog::HWTagXe3; break;
+#endif
+		}
         for (int i = 0; i < npatterns; i++) {
             override_patterns.emplace_back(patterns[i]);
-            override_patterns.back().selector.hw = isXe3 ? kcatalog::HWTagXe2 : kcatalog::HWTagXeHPC;
+            override_patterns.back().selector.hw = tag;
         }
         return select(catalog, npatterns, override_patterns.data(), eparams, aux);
     }
@@ -272,6 +281,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         case ngen::HW::XeHPC:   selector.hw = kcatalog::HWTagXeHPC;   break;
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
         case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;     break;
+#if XE3P
+        case ngen::HW::Xe3p:     selector.hw = kcatalog::HWTagXe3p;     break;
+#endif
     }
 
     auto &C = problem.C;
@@ -348,6 +360,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
 
     if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
     if (hw == ngen::HW::Xe3) *tagPtr++ = ReqXe2Block2D;
+#if XE3P
+    if (hw == ngen::HW::Xe3p) *tagPtr++ = ReqXe2Block2D;
+#endif
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

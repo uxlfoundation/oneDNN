@@ -59,11 +59,14 @@ enum class send_op_t {
     store,
     store_2d,
 };
+bool is_atomic(send_op_t op);
+send_op_t atomic_send_op(const type_t &type, bool has_atomic_fp64);
 
 static auto send_op_names = nstl::to_array({
         make_enum_name(send_op_t::undef, "undef"),
         make_enum_name(send_op_t::atomic_add, "atomic_add"),
         make_enum_name(send_op_t::atomic_fadd, "atomic_fadd"),
+        make_enum_name(send_op_t::atomic_bfadd, "atomic_bfadd"),
         make_enum_name(send_op_t::atomic_cmpwr, "atomic_cmpwr"),
         make_enum_name(send_op_t::load, "load"),
         make_enum_name(send_op_t::load_2d, "load_2d"),
@@ -242,7 +245,7 @@ public:
 
     bool is_atomic() const {
         return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd,
-                send_op_t::atomic_cmpwr);
+                send_op_t::atomic_bfadd, send_op_t::atomic_cmpwr);
     }
     bool is_load() const { return op == send_op_t::load; }
     bool is_load_2d() const { return op == send_op_t::load_2d; }

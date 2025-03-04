@@ -49,7 +49,11 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
         compute::gpu_arch_t &gpu_arch, int &gpu_product_family,
         int &stepping_id, uint64_t &native_extensions, bool &mayiuse_systolic,
+#if XE3P
+        bool &mayiuse_ngen_kernels, bool &is_efficient_64bit);
+#else
         bool &mayiuse_ngen_kernels);
+#endif
 
 } // namespace sycl
 } // namespace intel

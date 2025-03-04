@@ -62,11 +62,11 @@ template <HW hw>
 void BLASKernelGenerator<hw>::epilogue(const CommonStrategy &strategy, CommonState &state)
 {
     auto r0_info = state.r0_info;
-
-    if (r0_info.getBase() < 112) {
-        mov<uint32_t>(r0DWords(hw), r127, r0_info);
-        r0_info = r127;
-    }
+    if (!getEfficient64Bit())
+        if (r0_info.getBase() < 112) {
+            mov<uint32_t>(r0DWords(hw), r127, r0_info);
+            r0_info = r127;
+        }
 
     if (strategy.finalFence) {
         memfence(r124, r0_info);
@@ -451,8 +451,10 @@ GRFRange BLASKernelGenerator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister p
 template <HW hw>
 void BLASKernelGenerator<hw>::zeroMatrix(const GRFMultirange &r, const CommonStrategy &strategy)
 {
+    int i = 0;
     map<uint32_t>(hw, r, r, strategy, [&](int esize, GRF reg, GRF _) {
-        mov(esize, reg, uint16_t(0));
+        (i++ & 1) ? mov(esize, reg.f(), 0.f)
+	          : mov(esize, reg, 0);
     });
 }
 
@@ -665,6 +667,8 @@ void BLASKernelGenerator<hw>::initState(const CommonProblem &problem, const Comm
     interface.requireGRF(strategy.GRFs);
     state.ra.setRegisterCount(strategy.GRFs);
     state.tokenAllocator = TokenAllocator(hw, strategy.GRFs);
+
+    setEfficient64Bit(interface.getEfficient64Bit());
 
     if (problem.gtpinSupport)
         interface.requireScratch(128);

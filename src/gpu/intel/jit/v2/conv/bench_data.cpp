@@ -16,13 +16,15 @@
 
 #include "gpu/intel/jit/v2/conv/bench_data.hpp"
 
-#include "gpu/intel/jit/utils/utils.hpp"
+#include <sstream>
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+namespace v2 {
+namespace conv {
 
 std::string bench_data_t::str() const {
     std::ostringstream oss;
@@ -32,6 +34,7 @@ std::string bench_data_t::str() const {
         oss << "bench," << prbs[i].csv_str() << "," << times[i].total << ","
             << gops_sec;
     }
+    return oss.str();
 }
 
 std::vector<int> bench_data_set_t::find_best_ids(int nbest) const {

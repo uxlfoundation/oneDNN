@@ -41,6 +41,9 @@ inline int block_2d_base_alignment(ngen::HW hw) {
         case ngen::HW::XeHPC: return 64;
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return 64;
+#if XE3P
+        case ngen::HW::Xe3p: return 4;
+#endif
         default: gpu_error_not_expected();
     }
     return 0;
@@ -72,6 +75,9 @@ inline int block_2d_pitch_alignment(ngen::HW hw) {
         case ngen::HW::XeHPC: return 8;
         case ngen::HW::Xe2: return 16;
         case ngen::HW::Xe3: return 16;
+#if XE3P
+        case ngen::HW::Xe3p: return 4;
+#endif
         default: gpu_error_not_expected();
     }
     return 0;
@@ -89,7 +95,7 @@ inline bool block_2d_pitch_ok(
     return true;
 }
 
-inline int block_2d_max_count(const hw_t &hw, bool is_prefetch, bool is_store,
+inline int block_2d_max_count(ngen::HW hw, bool is_prefetch, bool is_store,
         bool is_transpose, int block_width, int type_size) {
     if (is_store || is_transpose) return 1;
 #if XE3P

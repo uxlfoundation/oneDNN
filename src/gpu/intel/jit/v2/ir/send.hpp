@@ -38,6 +38,7 @@ static const int max_slot_size = 8;
 enum class send_op_t {
     undef,
     atomic_add,
+    atomic_bfadd,
     atomic_fadd,
     load,
     prefetch,
@@ -47,6 +48,7 @@ enum class send_op_t {
 static auto send_op_names = nstl::to_array({
         make_enum_name(send_op_t::undef, "undef"),
         make_enum_name(send_op_t::atomic_add, "atomic_add"),
+        make_enum_name(send_op_t::atomic_bfadd, "atomic_bfadd"),
         make_enum_name(send_op_t::atomic_fadd, "atomic_fadd"),
         make_enum_name(send_op_t::load, "load"),
         make_enum_name(send_op_t::prefetch, "prefetch"),
@@ -56,7 +58,8 @@ static auto send_op_names = nstl::to_array({
 GPU_DEFINE_PARSE_ENUM(send_op_t, send_op_names)
 
 inline bool is_atomic(send_op_t op) {
-    return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd);
+    return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd,
+            send_op_t::atomic_bfadd);
 }
 
 enum class send_address_t {

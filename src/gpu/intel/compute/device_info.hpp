@@ -45,7 +45,10 @@ enum class gpu_arch_t {
     xe_hpg,
     xe_hpc,
     xe2,
-    xe3
+    xe3,
+#if XE3P
+    xe3p,
+#endif
 };
 
 static inline std::string to_string(gpu_arch_t arch) {
@@ -59,6 +62,9 @@ static inline std::string to_string(gpu_arch_t arch) {
     CASE(xe_hpc);
     CASE(xe2);
     CASE(xe3);
+#if XE3P
+    CASE(xe3p);
+#endif
     return "unknown";
 #undef CASE
 }
@@ -75,6 +81,9 @@ static inline gpu_arch_t str2gpu_arch(const char *str) {
     CASE(xe_hpc);
     CASE(xe2);
     CASE(xe3);
+#if XE3P
+    CASE(xe3p);
+#endif
     return gpu_arch_t::unknown;
 #undef CASE
 }
@@ -285,6 +294,7 @@ protected:
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;
     bool mayiuse_system_memory_allocators_ = false;
+    bool is_efficient_64bit_ = false;
 
     std::string name_;
     xpu::runtime_version_t runtime_version_;

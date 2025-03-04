@@ -1266,11 +1266,6 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                         len = ((sr << 1) + sdepth * rcount * 4 + 63) >> 6;
                     else
                         len = (sr + sdepth * rcount * 4 + 31) >> 5;
-#if XE3P
-                    if (decodeDPASTypecodeBytes12(ternary.src2Type) == 8)
-                        len = rcount;
-                    regNum8 = ternaryXe3p.src2Reg8;
-#endif
                     break;
                 }
                 default: return false;

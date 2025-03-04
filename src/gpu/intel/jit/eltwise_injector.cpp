@@ -642,8 +642,14 @@ void eltwise_injector_f32_t<hw>::clip_prepare_bwd() {
 
 template <gpu_gen_t hw>
 void eltwise_injector_f32_t<hw>::tanh_prepare_fwd() {
-    auto one_half = scratch_[0].f(7);
-    h->mov(1, one_half, 0.5f);
+#if XE3P
+    if (hw != gpu_xe3p) {
+#endif
+        auto one_half = scratch_[0].f(7);
+        h->mov(1, one_half, 0.5f);
+#if XE3P
+    }
+#endif
 }
 
 template <gpu_gen_t hw>
@@ -704,18 +710,19 @@ void eltwise_injector_f32_t<hw>::clip_compute_bwd(
 template <gpu_gen_t hw>
 void eltwise_injector_f32_t<hw>::gelu_tanh_compute_bwd(
         int simd, const ngen::GRF &r, int phase, int off, int batch) {
+
     const float k = 0.044715f;
     const float sqrt_2_over_pi = 0.7978845f; // sqrt(2/pi)
+    const float log2e = 1.442695f; // log_2(e)
+
+    int msimd = simd;
+    if (hw == gpu_xe_hp) msimd = 16;
+
     auto a = scratch_[off].f();
 #if XE3P
     if (hw != gpu_xe3p) {
 #endif
-        const float log2e = 1.442695f; // log_2(e)
-
         auto b = scratch_[off + batch].f();
-        int msimd = simd;
-        if (hw == gpu_xe_hp) msimd = 16;
-
         switch (phase) {
             case 0: h->mul(simd, a, r, r); break;
             case 1: h->mul(simd, b, a, 3.0f * k); break;
@@ -1086,6 +1093,9 @@ REG_XEHPG_ISA(template struct eltwise_injector_f32_t<gpu_xe_hpg>);
 REG_XEHPC_ISA(template struct eltwise_injector_f32_t<gpu_xe_hpc>);
 REG_XE2_ISA(template struct eltwise_injector_f32_t<gpu_xe2>);
 REG_XE3_ISA(template struct eltwise_injector_f32_t<gpu_xe3>);
+#if XE3P
+REG_XE3P_ISA(template struct eltwise_injector_f32_t<gpu_xe3p>);
+#endif
 
 } // namespace jit
 } // namespace intel

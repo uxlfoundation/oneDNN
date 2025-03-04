@@ -32,6 +32,9 @@ if(DNNL_GPU_VENDOR STREQUAL "INTEL")
     include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/ngen/)
     include_directories_with_host_compiler(${ONEDNN_NGEN_DIR})
 
+
+    include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/gemm/include)
+
     add_subdirectory(intel)
 endif()
 

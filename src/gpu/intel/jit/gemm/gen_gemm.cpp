@@ -20,9 +20,9 @@
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
+#include "gemmstone/driver_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
-#include "gpu/intel/jit/gemm/include/driver_info.hpp"
 
 namespace dnnl {
 namespace impl {

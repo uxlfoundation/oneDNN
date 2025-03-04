@@ -24,17 +24,19 @@ namespace aarch64 {
 status_t acl_pooling_fwd_t::init(engine_t *engine) {
     auto asp = pd()->asp_;
 
-    auto op = std::make_unique<arm_compute::experimental::op::CpuPooling>();
+    auto op = std::make_unique<arm_compute::experimental::op::CpuPool2d>();
 
     pooling_op_ = std::move(op);
 
     // Configure pooling operation when workspace tensor is used, mem allocation happens
-    if(asp.use_ws){
-        pooling_op_->configure(&asp.src_info, &asp.dst_info, asp.pool_info, &asp.ws_info);
+    if (asp.use_ws) {
+        pooling_op_->configure(
+                &asp.src_info, &asp.dst_info, asp.pool_info, &asp.ws_info);
     }
     // Configure pooling operation when workspace tensor is not used, mem allocation happens
-    else{
-        pooling_op_->configure(&asp.src_info, &asp.dst_info, asp.pool_info, nullptr);
+    else {
+        pooling_op_->configure(
+                &asp.src_info, &asp.dst_info, asp.pool_info, nullptr);
     }
 
     return status::success;
@@ -60,11 +62,9 @@ status_t acl_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     arm_compute::Tensor scratch_tensor;
     void *scratchpad_base = ctx.get_scratchpad_grantor().get<void>(
-        memory_tracking::names::key_pool_reduction
-    );
+            memory_tracking::names::key_pool_reduction);
     scratch_tensor.allocator()->init(arm_compute::TensorInfo(
-        asp.dst_info.tensor_shape(), 1, arm_compute::DataType::F32
-    ));
+            asp.dst_info.tensor_shape(), 1, arm_compute::DataType::F32));
     scratch_tensor.allocator()->import_memory(scratchpad_base);
 
     arm_compute::Tensor ws_tensor;
@@ -76,9 +76,9 @@ status_t acl_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     }
     //for scratchpad based tensor
     arm_compute::ITensorPack run_pack {
-                            {arm_compute::TensorType::ACL_SRC_0, &src_tensor},
-                            {arm_compute::TensorType::ACL_DST_0, &dst_tensor},
-                            {arm_compute::TensorType::ACL_INT_0, &scratch_tensor}};
+            {arm_compute::TensorType::ACL_SRC_0, &src_tensor},
+            {arm_compute::TensorType::ACL_DST_0, &dst_tensor},
+            {arm_compute::TensorType::ACL_INT_0, &scratch_tensor}};
 
     if (asp.use_ws) {
         run_pack.add_tensor(arm_compute::TensorType::ACL_DST_1, &ws_tensor);

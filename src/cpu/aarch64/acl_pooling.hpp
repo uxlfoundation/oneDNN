@@ -23,7 +23,7 @@
 
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/runtime/IOperator.h"
-#include "arm_compute/runtime/experimental/operators/CpuPooling.h"
+#include "arm_compute/runtime/experimental/operators/CpuPool2d.h"
 
 namespace dnnl {
 namespace impl {
@@ -48,8 +48,7 @@ struct acl_pooling_fwd_t : public primitive_t {
             CHECK(init_scratchpad(scratchpad));
 
             // ACL supports forward propagation only
-            bool ok = set_default_params() == status::success
-                    && is_fwd()
+            bool ok = set_default_params() == status::success && is_fwd()
                     && utils::everyone_is(
                             src_md()->data_type, dst_md()->data_type)
                     && utils::one_of(
@@ -78,8 +77,7 @@ struct acl_pooling_fwd_t : public primitive_t {
 
             if (ws_init)
                 // ACL only supports U32/S32 no U8
-                init_default_ws(
-                        data_type::s32);
+                init_default_ws(data_type::s32);
             auto src_tag = memory_desc_matches_one_of_tag(
                     *src_md(), format_tag::nhwc, format_tag::nchw);
             auto dst_tag = memory_desc_matches_one_of_tag(
@@ -156,13 +154,15 @@ struct acl_pooling_fwd_t : public primitive_t {
                 // Return kernel indices instead of source indices.
                 asp_.pool_info.use_kernel_indices = true;
                 ACL_CHECK_VALID(
-                          arm_compute::experimental::op::CpuPooling::validate(
-                              &asp_.src_info, &asp_.dst_info, asp_.pool_info, &asp_.ws_info));
+                        arm_compute::experimental::op::CpuPool2d::validate(
+                                &asp_.src_info, &asp_.dst_info, asp_.pool_info,
+                                &asp_.ws_info));
             } else {
                 asp_.pool_info.use_kernel_indices = false;
-                  ACL_CHECK_VALID(
-                          arm_compute::experimental::op::CpuPooling::validate(
-                              &asp_.src_info, &asp_.dst_info, asp_.pool_info));
+                ACL_CHECK_VALID(
+                        arm_compute::experimental::op::CpuPool2d::validate(
+                                &asp_.src_info, &asp_.dst_info,
+                                asp_.pool_info));
             }
 
             return status::success;
@@ -234,22 +234,19 @@ struct acl_pooling_fwd_t : public primitive_t {
 
         acl_pooling_conf_t asp_;
 
-        status_t init_scratchpad(
-    memory_tracking::registrar_t &scratchpad) {
-                const memory_desc_wrapper dst_d(&dst_md_);
+        status_t init_scratchpad(memory_tracking::registrar_t &scratchpad) {
+            const memory_desc_wrapper dst_d(&dst_md_);
+            scratchpad.book(memory_tracking::names::key_pool_reduction,
+                    dst_d.nelems(), sizeof(float));
+            if (asp_.use_ws) {
                 scratchpad.book(
-                    memory_tracking::names::key_pool_reduction,
-                    dst_d.nelems(), sizeof(float)
-                );
-                if (asp_.use_ws) {
-                        scratchpad.book(
-                            memory_tracking::names::key_pool_ind_plain2blocked_cvt,
-                            dst_d.nelems(), sizeof(uint32_t));
-                    }
-                return status::success;
+                        memory_tracking::names::key_pool_ind_plain2blocked_cvt,
+                        dst_d.nelems(), sizeof(uint32_t));
             }
+            return status::success;
+        }
 
-    };  // pd_t
+    }; // pd_t
 
     // constructor
     acl_pooling_fwd_t(const pd_t *apd) : primitive_t(apd) {}
@@ -262,7 +259,7 @@ private:
     status_t init(engine_t *engine) override;
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<arm_compute::experimental::op::CpuPooling> pooling_op_;
+    std::unique_ptr<arm_compute::experimental::op::CpuPool2d> pooling_op_;
 }; // acl_pooling_fwd_t
 
 } // namespace aarch64

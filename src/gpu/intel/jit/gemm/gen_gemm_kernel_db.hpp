@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_GEMM_GEN_GEMM_KERNEL_DB_HPP
 #define GPU_INTEL_JIT_GEMM_GEN_GEMM_KERNEL_DB_HPP
 
-#include "gpu/intel/jit/gemm/include/kernel_catalog.hpp"
+#include "gemmstone/kernel_catalog.hpp"
 
 namespace dnnl {
 namespace impl {

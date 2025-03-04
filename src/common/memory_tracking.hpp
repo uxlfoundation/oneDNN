@@ -283,6 +283,7 @@ enum {
     key_pool_src_f32_accum,
     key_pool_src_plain2blocked_cvt,
     key_pool_reduction,
+    key_pool_wsp_buffer,
     key_precomputed_scales,
     key_prelu_reduction,
     key_reducer_space,

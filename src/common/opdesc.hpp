@@ -389,7 +389,8 @@ struct gated_mlp_desc_t : public op_desc_t {
     // Destination memory descriptor.
     memory_desc_t dst_desc;
 
-    //TODO: add enum for type of activation, swish relu sigmoid...
+    alg_kind_t activation;
+
     scales_t wts_gate_scales;
     scales_t wts_up_scales;
     scales_t wts_down_scales;

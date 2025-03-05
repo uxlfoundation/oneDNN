@@ -17,6 +17,7 @@
 #include "gpu/intel/ocl/rnn/rnn_utils.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/math_utils.hpp"
 #include "gpu/intel/ocl/rnn/rnn_grid.hpp"
 #include "gpu/intel/utils.hpp"
 
@@ -167,10 +168,9 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
         bool can_fuse_gemm = !rnn.is_int8
                 && rnn.wei_iter_type == rnn.wei_layer_type && rnn.is_fwd
                 && utils::one_of(rd.cell_kind, alg_kind::vanilla_rnn,
-                        alg_kind::vanilla_lstm);
+                        alg_kind::vanilla_lstm, alg_kind::lbr_gru);
         // Poor implementation performance if dhc % subgroup_size != 0
         bool tail_dhc = rnn.dhc % device_info.min_subgroup_size() != 0;
-
         // Since RNN cells may result in very small workloads the CPU overhead
         // to dispatch kernels may be significant. As such, if the work per eu
         // is too small, we need to fuse kernel operations to reduce CPU
@@ -183,7 +183,12 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
 
         // For large enough k dimension, parallelization in external gemm
         // kernels is more performant.
-        const dim_t k_limit = tail_dhc ? 50 : 160;
+        int eu_count = device_info.eu_count();
+        int ideal_k_block = math::lcm(
+                (int)eu_count, (int)device_info.min_subgroup_size());
+        int ideal_k_limit = math::lcm((int)ideal_k_block, (int)rnn.sic);
+        dim_t k_limit = tail_dhc ? 50 : 160;
+        k_limit = tail_dhc ? 50 : ideal_k_limit;
 
         // The fused gemm implementation assumes the dst channel dimension is
         // dense
@@ -200,7 +205,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
                           !rnn.merge_gemm_iter
                                   && rnn.dhc * rnn.sic * rnn.mb * rnn.n_gates
                                           < fuse_gemm_limit
-                                  && rnn.sic < k_limit
+                                  && rnn.sic <= k_limit
                                   && is_dense_dst_c(weights_layer_d))
                 && can_fuse_gemm;
         rnn.cell_fusion.gemm_layer
@@ -208,7 +213,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
                           rnn.cell_fusion.gemm_iter && !rnn.merge_gemm_layer
                                   && rnn.dhc * rnn.slc * rnn.mb * rnn.n_gates
                                           < fuse_gemm_limit
-                                  && rnn.slc < k_limit
+                                  && rnn.slc <= k_limit
                                   && is_dense_dst_c(weights_iter_d))
                 && can_fuse_gemm;
 

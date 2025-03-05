@@ -607,6 +607,7 @@ void serialize(serialization_stream_t &sstream, const gated_mlp_desc_t &desc) {
     serialize(sstream, desc.W_up_desc);
     serialize(sstream, desc.W_down_desc);
     serialize(sstream, desc.dst_desc);
+    sstream.append(desc.activation);
     desc.wts_gate_scales.serialize(sstream);
     desc.wts_gate_zero_points.serialize(sstream);
     desc.wts_up_scales.serialize(sstream);

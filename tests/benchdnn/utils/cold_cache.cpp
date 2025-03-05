@@ -278,18 +278,36 @@ int cold_cache_t::thrash_reorder(size_t mem_size, size_t granularity) const {
             = static_cast<dnnl_dim_t>(div_up(mem_size, sizeof(float)));
     const dnnl_dim_t stride = granularity / sizeof(float);
 
-    // Reduce the number of element by the the stride to keep the memory size
+    // Reduce the number of elements by the the stride to keep the memory size
     // as requested.
-    const dnnl_dims_t dims {div_up(nelems, stride)};
+    const dnnl_dim_t dim = div_up(nelems, stride);
+    const dnnl_dims_t dims {dim};
+    const dnnl_dims_t dims_half {dim / 2};
     const dnnl_dims_t strides {stride};
+    const dnnl_dims_t first_half_offset {0}, second_half_offset {dim / 2};
 
-    dnn_mem_t src_m(1, dims, dnnl_f32, strides, engine);
-    dnn_mem_t dst_m(1, dims, dnnl_f32, strides, engine);
+    dnn_mem_t buffer_m(1, dims, dnnl_f32, strides, engine);
+    dnnl_memory_desc_t first_half_md, second_half_md;
+    DNN_SAFE(dnnl_memory_desc_create_submemory(&first_half_md, buffer_m.md_,
+                     dims_half, first_half_offset),
+            WARN);
+    auto first_half_mdw = make_benchdnn_dnnl_wrapper(first_half_md);
+
+    DNN_SAFE(dnnl_memory_desc_create_submemory(&second_half_md, buffer_m.md_,
+                     dims_half, second_half_offset),
+            WARN);
+    auto second_half_mdw = make_benchdnn_dnnl_wrapper(second_half_md);
+
+    void *ptr = nullptr;
+    DNN_SAFE(dnnl_memory_get_data_handle(buffer_m.m_, &ptr), WARN);
+    dnn_mem_t::handle_info_t h(false, ptr);
+    dnn_mem_t src_m(first_half_md, engine, h);
+    dnn_mem_t dst_m(second_half_md, engine, h);
 
     dnnl_primitive_desc_t r_pd {};
     dnnl_primitive_attr_t attr {};
-    DNN_SAFE(dnnl_reorder_primitive_desc_create(
-                     &r_pd, src_m.md_, engine, dst_m.md_, engine, attr),
+    DNN_SAFE(dnnl_reorder_primitive_desc_create(&r_pd, first_half_md, engine,
+                     second_half_md, engine, attr),
             WARN);
     auto r_pd_w = make_benchdnn_dnnl_wrapper(r_pd);
 

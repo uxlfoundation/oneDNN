@@ -34,8 +34,12 @@
 
 struct dnn_mem_t {
     struct handle_info_t {
-        bool is_host_ptr;
-        void *ptr;
+        handle_info_t() = default;
+        handle_info_t(bool is_host_ptr, void *ptr)
+            : is_host_ptr(is_host_ptr), ptr(ptr) {}
+
+        bool is_host_ptr = false;
+        void *ptr = nullptr;
 
         bool is_allocate() const { return ptr == DNNL_MEMORY_ALLOCATE; }
 

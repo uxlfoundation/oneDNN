@@ -45,7 +45,7 @@ private:
     dnnl::impl::dim_t in_ld_, out_ld_;
     dnnl::impl::data_type_t in_dt_, out_dt_;
     // Save `strides_` for `execute` to get proper source offset.
-    dnnl::impl::dims_t strides_;
+    dnnl::impl::dims_t strides_ {};
 
     // A transform kernel.
     // Note: though it's a generic class for any kind of transformation, so far

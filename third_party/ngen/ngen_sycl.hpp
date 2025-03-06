@@ -33,6 +33,9 @@ public:
     static inline HW detectHW(const sycl::context &context, const sycl::device &device);
     static inline Product detectHWInfo(const sycl::context &context, const sycl::device &device);
 
+#if XE3P
+    static inline bool detectEfficient64Bit(const sycl::context &context, const sycl::device &device, HW inHW = HW::Unknown);
+#endif
     // Queue-based convenience APIs.
     sycl::kernel getKernel(sycl::queue &queue) {
         return getKernel(queue.get_context(), queue.get_device());

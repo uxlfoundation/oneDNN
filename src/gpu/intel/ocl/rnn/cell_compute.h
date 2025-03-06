@@ -121,9 +121,14 @@ typedef struct {
             __global float *tm_scales;
             float tm_cscale;
         } lstm;
+        struct {
+            __global WS_STATE_DATA_T *hidden_state_iter;
+            __global AUX_DATA_T *grid;
+            __global BIAS_DATA_T *bias;
+            __global float *tm_scales;
+        } lbr_gru;
     };
 } cell_ctx_t;
-
 typedef struct {
     cell_dim_t mb;
     cell_dim_t dhc;
@@ -131,6 +136,25 @@ typedef struct {
 
 #define NEED_SCRATCH_GATES \
     (!(CELL_COMPUTE_GEMM_LAYER && CELL_COMPUTE_GEMM_ITER))
+
+typedef enum {
+    copy_none = 0,
+    copy_gemm_layer = 1,
+    copy_gemm_iter = 2,
+    copy_all = 3
+} copy_scratch_memory;
+
+inline int checkCopyScratchMemory(
+        bool cell_compute_gemm_layer, bool cell_compute_gemm_iter) {
+    if (!cell_compute_gemm_layer & cell_compute_gemm_iter) {
+        return copy_gemm_layer;
+    }
+    if (cell_compute_gemm_layer & !cell_compute_gemm_iter) {
+        return copy_gemm_iter;
+    }
+    if (!cell_compute_gemm_layer & !cell_compute_gemm_iter) { return copy_all; }
+    return copy_none;
+}
 
 inline void __attribute__((overloadable))
 load(float *s, const __global float *data, bool is_valid) {

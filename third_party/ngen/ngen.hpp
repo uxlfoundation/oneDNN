@@ -90,6 +90,7 @@ class BinaryCodeGenerator
 
 public:
     static constexpr HW hardware = hw;
+    static constexpr HW getHardware() { return hardware; }
 
 protected:
     class InstructionStream {
@@ -1369,6 +1370,7 @@ void requireGRF(int grfs) { ns::requireGRF(grfs); }
 
 #define NGEN_FORWARD_NAMESPACE_NO_ELF_OVERRIDES(ns)            \
 using ns::isGen12; \
+constexpr NGEN_NAMESPACE::HW getHardware() const { return ns::getHardware(); } \
 NGEN_FORWARD_NAMESPACE_DT_OP(add, ns) \
 NGEN_FORWARD_NAMESPACE_DT_OP(addc, ns) \
 NGEN_FORWARD_NAMESPACE_DT_OP(add3, ns) \

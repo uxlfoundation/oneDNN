@@ -59,6 +59,9 @@ struct EmulationStrategy { // NOLINT(readability-identifier-naming)
             else
                 emulate64_mul = emulate64_logic = true;
         }
+#if XE3P
+        if (hw_ >= HW::Xe3p) emulateDWxDW = emulate64_mul = false;
+#endif
         emulate64_mul |= emulate64;
     }
 };
@@ -623,6 +626,7 @@ struct EmulationImplementation { // NOLINT(readability-identifier-naming)
         auto mulHiType = (s0Signed || s1Signed) ? DataType::d : DataType::ud;
 
         bool emulate64 = strategy.emulate64_mul;
+        bool emulateDWxDW = strategy.emulateDWxDW;
 
         if (s0Q) {
             if (s1Q || !dstQ) stub();
@@ -676,7 +680,8 @@ struct EmulationImplementation { // NOLINT(readability-identifier-naming)
         } else if (dstQ && s0W && s1D) {
             stub();
         } else if (dstQ && s0D
-                && ((s1W && !s1Immed) || ((s1W || s1D) && emulate64))) {
+                && (((s1W && !s1Immed) && emulateDWxDW)
+                        || ((s1W || s1D) && emulate64))) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
 
@@ -690,7 +695,16 @@ struct EmulationImplementation { // NOLINT(readability-identifier-naming)
                 g.mach(mod, dstLo, src0, int32_t(0), loc);
             g.mov(mod, dstHi, dstLo, loc);
             g.mov(mod, dstLo, acc, loc);
-        } else if (dstD && s0D && s1D && strategy.emulateDWxDW) {
+#if XE3P
+        } else if (dstQ && s0D && ((s1W && !s1Immed) && !emulateDWxDW)) {
+            RegData dstLo, dstHi;
+            splitToDW(dst, dstLo, dstHi);
+            if(dstLo.getBase() == src0.getBase() && src0.getOffset() == dstLo.getOffset())
+                stub();
+            g.mov(mod, dstLo, src1);
+            g.mul(mod, dst, src0, dstLo);
+#endif
+        } else if (dstD && s0D && s1D && emulateDWxDW) {
             int ne1 = ngen::GRF::bytes(g.hardware) >> 2;
 
             for (int r = 0; r < mod.getExecSize(); r += ne1) {

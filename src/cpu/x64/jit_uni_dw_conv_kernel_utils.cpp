@@ -576,13 +576,19 @@ status_t jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::init_conf(
             = !is_data_layout_nxc && one_of(isa, avx512_core, avx2);
     if (ok_to_pad_channels) { jcp.ngroups = rnd_up(jcp.ngroups, jcp.ch_block); }
 
-    bool args_ok = true
-            && IMPLICATION(!is_data_layout_nxc, jcp.ngroups % jcp.ch_block == 0)
-            && jcp.dilate_h == 0 && jcp.dilate_w == 0 && jcp.kw <= 3
-            && jcp.stride_w <= jcp.kw // no gaps in kernel
-            && jcp.oh == (jcp.ihp - jcp.kh) / jcp.stride_h + 1
-            && jcp.ow == (jcp.iwp - jcp.kw) / jcp.stride_w + 1;
-    VDISPATCH_CONV_IC(args_ok, VERBOSE_BAD_PARAM, "");
+    VDISPATCH_CONV_IC(
+            IMPLICATION(!is_data_layout_nxc, jcp.ngroups % jcp.ch_block == 0),
+            VERBOSE_BAD_PARAM, "number of groups doesn't divide channel block");
+    VDISPATCH_CONV_IC(jcp.dilate_h == 0, VERBOSE_BAD_PARAM, "dilate_h");
+    VDISPATCH_CONV_IC(jcp.dilate_w == 0, VERBOSE_BAD_PARAM, "dilate_w");
+    VDISPATCH_CONV_IC(jcp.kw <= 3, VERBOSE_BAD_PARAM, "kw > 3");
+    // No gaps in the kernel.
+    VDISPATCH_CONV_IC(
+            jcp.stride_w <= jcp.kw, VERBOSE_BAD_PARAM, "stride_w > kw");
+    VDISPATCH_CONV_IC(jcp.oh == (jcp.ihp - jcp.kh) / jcp.stride_h + 1,
+            VERBOSE_BAD_PARAM, "oh != (ihp - kh) / stride_h + 1");
+    VDISPATCH_CONV_IC(jcp.ow == (jcp.iwp - jcp.kw) / jcp.stride_w + 1,
+            VERBOSE_BAD_PARAM, "ow != (iwp - kw) / stride_w + 1");
 
     jcp.nb_ch = div_up(jcp.ngroups, jcp.ch_block);
 

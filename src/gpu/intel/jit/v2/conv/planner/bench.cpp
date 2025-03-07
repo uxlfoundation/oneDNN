@@ -220,6 +220,10 @@ std::string c_pd_name(dnnl_primitive_desc_t pd) {
     return std::string(res);
 }
 
+dim_t opp_pad(dim_t i, dim_t o, dim_t k, dim_t s, dim_t p, dim_t d) {
+    return (o - 1) * s - i + ((k - 1) * (d + 1) + 1) - p;
+}
+
 class bench_task_t : public bench_task_base_t {
 public:
     bench_task_t(const problem_t &prb) : prb_(prb) {
@@ -251,7 +255,10 @@ public:
 
             memory::dims strides = {1, sh, sw};
             memory::dims padding_l = {0, ph, pw};
-            memory::dims padding_r = {0, ph, pw};
+            memory::dims padding_r(3);
+            padding_r[0] = 0;
+            padding_r[1] = opp_pad(ih, oh, kh, sh, ph, 0);
+            padding_r[2] = opp_pad(iw, ow, kw, sw, pw, 0);
 
             switch (prb_.prop()) {
                 case prop_kind::forward_inference:
@@ -504,6 +511,10 @@ pvar_tile_t random_shape(
         s[pvars::oc] = oc();
         s[pvars::iw] = s[pvars::ow] = (ow.with_tile() ? ow() : iw());
     }
+    s[pvars::kw] = tile.get(pvars::kw, 1);
+    s[pvars::pw] = (s[pvars::kw] - 1) / 2;
+    s[pvars::kh] = tile.get(pvars::kh, 1);
+    s[pvars::ph] = (s[pvars::kh] - 1) / 2;
     for (auto &d : s) {
         dim_t value;
         if (params.reqs.get_value(d, value)) s[d] = value;

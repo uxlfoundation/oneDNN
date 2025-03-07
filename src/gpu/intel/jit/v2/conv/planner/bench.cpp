@@ -648,9 +648,8 @@ public:
         }
     }
 
-    bench_data_t bench(const kernel_desc_t &_kernel_desc) {
+    bench_data_t bench(const kernel_desc_t &kernel_desc) {
         if (tasks_.empty()) return bench_data_t();
-        const auto &kernel_desc = _kernel_desc;
         if (!create_conv_plan(kernel_desc, bench_mger_.hw())) return {};
         return planner::bench(bench_mger_, kernel_desc, tasks_, &mem_pool_);
     }

@@ -213,7 +213,7 @@ int estimate_grf_usage_bytes(const kernel_desc_t &desc) {
     dim_t a_elems = b_iter * m_iter * k_iter;
     dim_t b_elems = b_iter * k_iter * n_iter;
     dim_t c_elems = m_iter * n_iter;
-    auto iter_outer_dim
+    const auto &iter_outer_dim
             = (desc.iter_outer_tile.is_empty() ? pvar_t()
                                                : *desc.iter_outer_tile.begin());
     auto bmnk = to_gemm(iter_outer_dim, desc.prop);

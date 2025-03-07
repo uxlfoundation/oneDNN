@@ -1030,6 +1030,7 @@ private:
 
         // Create sub-tensors for post-ops.
         std::vector<post_op_tensor_t> sub_po_tensors;
+        sub_po_tensors.reserve(post_op_tensors_.size());
         for (auto &t : post_op_tensors_)
             sub_po_tensors.push_back(t.create_sub_tensor(tile));
 

@@ -597,25 +597,28 @@ public:
 
 private:
     struct context_t {
-        context_t(const blocking_t &blk, const conv_config_t &cfg) : blk(blk) {
-            auto &prb = cfg.prb();
-            auto gemm_iter = to_gemm(blk.iter(), prb);
-            auto gemm_loop = to_gemm(blk.loop(), prb);
-            auto gemm_tg = to_gemm(blk.thread_group(), prb);
-            b_iter = gemm_iter.get(pvars::b, 1);
-            m_iter = gemm_iter.get(pvars::m, 1);
-            n_iter = gemm_iter.get(pvars::n, 1);
-            k_iter = gemm_iter.get(pvars::k, 1);
-            k_loop = gemm_loop.get(pvars::k, 1);
-            b_tg = gemm_tg.get(pvars::b, 1);
-            m_tg = gemm_tg.get(pvars::m, 1);
-            n_tg = gemm_tg.get(pvars::n, 1);
-            k_tg = gemm_tg.get(pvars::k, 1);
-            dpas_2x_depth = get_dpas_2x_depth(blk, cfg);
-        }
+        context_t(const blocking_t &blk, const conv_config_t &cfg)
+            : context_t(blk, cfg, to_gemm(blk.iter(), cfg.prb()),
+                    to_gemm(blk.loop(), cfg.prb()),
+                    to_gemm(blk.thread_group(), cfg.prb())) {}
 
-        bool get_dpas_2x_depth(
-                const blocking_t &blk, const conv_config_t &cfg) const {
+        context_t(const blocking_t &blk, const conv_config_t &cfg,
+                const pvar_tile_t &iter, const pvar_tile_t &loop,
+                const pvar_tile_t &tg)
+            : blk(blk)
+            , b_iter(iter.get(pvars::b, 1))
+            , m_iter(iter.get(pvars::m, 1))
+            , n_iter(iter.get(pvars::n, 1))
+            , k_iter(iter.get(pvars::k, 1))
+            , k_loop(loop.get(pvars::k, 1))
+            , b_tg(tg.get(pvars::b, 1))
+            , m_tg(tg.get(pvars::m, 1))
+            , n_tg(tg.get(pvars::n, 1))
+            , k_tg(tg.get(pvars::k, 1))
+            , dpas_2x_depth(get_dpas_2x_depth(blk, cfg, m_iter * n_iter)) {}
+
+        static bool get_dpas_2x_depth(
+                const blocking_t &blk, const conv_config_t &cfg, dim_t mn) {
             if (!cfg.is_dp_fma() || cfg.regs() <= 128) return false;
 
             // Use 2x reduction when the reduction dimension is dense to avoid
@@ -625,7 +628,6 @@ private:
                     if (is_inner_non_blocked(cfg, d)) return true;
 
             // Use larger reduction when M/N are small.
-            dim_t mn = m_iter * n_iter;
             if (mn <= 128) return true;
 
             return false;

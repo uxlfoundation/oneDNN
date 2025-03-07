@@ -1263,17 +1263,16 @@ struct fma_layout_hint_t {
 };
 
 struct fma_context_t {
-    fma_context_t(const conv_config_t &cfg) {
-        hw = cfg.hw();
-        simd = cfg.simd();
-        vec_size = cfg.vec_size();
-        fma = cfg.fma_kind();
-        a_type = type_t(cfg.prb().a_data_type);
-        b_type = type_t(cfg.prb().b_data_type);
-        acc_type = get_accumulation_type(cfg, a_type, b_type);
-        is_src1_broadcast = !cfg.prb().is_dw;
-        ab_swap_transpose_ = cfg.prb().ab_swap_transpose;
-    }
+    fma_context_t(const conv_config_t &cfg)
+        : hw(cfg.hw())
+        , simd(cfg.simd())
+        , vec_size(cfg.vec_size())
+        , fma(cfg.fma_kind())
+        , a_type(cfg.prb().a_data_type)
+        , b_type(cfg.prb().b_data_type)
+        , acc_type(get_accumulation_type(cfg, a_type, b_type))
+        , is_src1_broadcast(!cfg.prb().is_dw)
+        , ab_swap_transpose_(cfg.prb().ab_swap_transpose) {}
 
     fma_layout_hint_t &layout_hint(abc_kind_t abc) {
         return (abc == abc_kind_t::a) ? a_layout_hint : b_layout_hint;

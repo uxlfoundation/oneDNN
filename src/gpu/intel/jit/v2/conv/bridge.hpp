@@ -105,7 +105,7 @@ inline jit::layout_t to_conv_layout(const layout_tag_t &_tag,
 inline jit::layout_t to_conv_layout(
         const layout_tag_t &_tag, const pvar_tile_t &shape) {
     int ndims = _tag.desc().ndims();
-    auto tag = _tag.raw_tag();
+    const auto &tag = _tag.raw_tag();
     std::vector<dim_t> dims(ndims);
     for (int i = 0; i < ndims; i++) {
         auto d = _tag.desc().prb_dim(i);

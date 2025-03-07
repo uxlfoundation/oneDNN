@@ -190,27 +190,26 @@ std::unique_ptr<T> make_unique(Args &&...args) {
     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 
-// NOLINTBEGIN(performance-unnecessary-value-param)
 template <typename T, typename P>
-constexpr bool everyone_is(T val, P item) {
+constexpr bool everyone_is(T &&val, P &&item) {
     return val == item;
 }
 template <typename T, typename P, typename... Args>
-constexpr bool everyone_is(T val, P item, Args... item_others) {
-    return val == item && everyone_is(val, item_others...);
+constexpr bool everyone_is(T &&val, P &&item, Args &&...item_others) {
+    return val == item
+            && everyone_is(
+                    std::forward<T>(val), std::forward<Args>(item_others)...);
 }
-// NOLINTEND(performance-unnecessary-value-param)
 
-// NOLINTBEGIN(performance-unnecessary-value-param)
 template <typename T, typename P>
-constexpr bool one_of(T val, P item) {
+constexpr bool one_of(T &&val, P &&item) {
     return val == item;
 }
 template <typename T, typename P, typename... Args>
-constexpr bool one_of(T val, P item, Args... item_others) {
-    return val == item || one_of(val, item_others...);
+constexpr bool one_of(T &&val, P &&item, Args &&...item_others) {
+    return val == item
+            || one_of(std::forward<T>(val), std::forward<Args>(item_others)...);
 }
-// NOLINTEND(performance-unnecessary-value-param)
 
 template <typename T, typename P>
 constexpr P map(T pat, P def) {

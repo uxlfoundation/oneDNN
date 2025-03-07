@@ -1497,12 +1497,12 @@ template <typename... Targs> void mark(Targs&&... args) { ns::mark(std::forward<
 template <typename... Targs> void comment(Targs&&... args) { ns::comment(std::forward<Targs>(args)...); } \
 template <typename... Targs> void setDefaultNoMask(Targs&&... args) { ns::setDefaultNoMask(std::forward<Targs>(args)...); } \
 template <typename... Targs> void setDefaultAutoSWSB(Targs&&... args) { ns::setDefaultAutoSWSB(std::forward<Targs>(args)...); } \
-bool getDefaultNoMask() { return ns::getDefaultNoMask(); } \
-bool getDefaultAutoSWSB() { return ns::getDefaultAutoSWSB(); } \
+bool getDefaultNoMask() const { return ns::getDefaultNoMask(); } \
+bool getDefaultAutoSWSB() const { return ns::getDefaultAutoSWSB(); } \
 using ns::product; \
-NGEN_NAMESPACE::Product getProduct() { return ns::getProduct(); } \
-NGEN_NAMESPACE::ProductFamily getProductFamily() { return ns::getProductFamily(); } \
-int getStepping() { return ns::getStepping(); } \
+NGEN_NAMESPACE::Product getProduct() const { return ns::getProduct(); } \
+NGEN_NAMESPACE::ProductFamily getProductFamily() const { return ns::getProductFamily(); } \
+int getStepping() const { return ns::getStepping(); } \
 void setProduct(NGEN_NAMESPACE::Product product_) { ns::setProduct(product_); } \
 void setProductFamily(NGEN_NAMESPACE::ProductFamily family_) { ns::setProductFamily(family_); } \
 void setStepping(int stepping_) { ns::setStepping(stepping_); } \

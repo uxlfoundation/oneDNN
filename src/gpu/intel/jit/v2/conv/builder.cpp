@@ -568,7 +568,6 @@ private:
                     auto e_r = load_t::make(
                             type_t::f32().with_elems(is_bcast ? 1 : elems),
                             rhs_buf, rhs_off);
-                    if (is_bcast) e_r = shuffle_t::make_broadcast(e_r, elems);
                     auto e_op = binary_op_t::make(
                             alg_kind_to_op_kind(alg), e_l, e_r);
                     if (e_op.type().is_bool()) {

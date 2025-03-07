@@ -51,9 +51,6 @@ stmt_t send_t::create_offset_store(const expr_t &header_buf,
     expr_t off;
     if (is_a64()) {
         off = cast(mem_buf, address_type());
-        if (mem_off.type().is_vector()) {
-            off = shuffle_t::make_broadcast(off, mem_off.type().elems());
-        }
         off += mem_off;
     } else {
         off = std::move(mem_off);
@@ -997,9 +994,7 @@ stmt_t access_builder_t::create_send_stmt(
     if (send.slots == 1 || !is_same_base) {
         off = shuffle_t::make(off_vec);
     } else {
-        off = shuffle_t::make_broadcast(off_base0, send.slots)
-                + shuffle_t::make_broadcast(off_const0, send.slots)
-                + shuffle_t::make(off_const_vec);
+        off = off_base0 + off_const0 + shuffle_t::make(off_const_vec);
     }
     bool allow_fail = send.is_prefetch();
     auto _mask = mem_walker.get_mask(

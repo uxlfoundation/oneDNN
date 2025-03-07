@@ -393,8 +393,7 @@ public:
         auto ret = (reg_buf_.type().is_ptr()
                         ? load_t::make(type.with_elems(elems), reg_buf_, off)
                         : reg_buf_);
-        if (elems != tile.elems())
-            ret = shuffle_t::make_broadcast(ret, into<int>(tile.elems()));
+        gpu_assert(elems == tile.elems() || elems == 1);
         return ret;
     }
 
@@ -474,34 +473,18 @@ private:
 // expression.
 class post_op_bcast_mutator_t : public ir_mutator_t {
 public:
-    post_op_bcast_mutator_t(
-            int elems, const object_map_t<object_t, object_t> &from2to)
-        : elems_(elems), from2to_(from2to) {}
-
-    object_t _mutate(const float_imm_t &obj) override {
-        return make_bcast(obj);
-    }
-
-    object_t _mutate(const int_imm_t &obj) override {
-        return make_bcast(float_imm_t::make(obj.value));
-    }
+    post_op_bcast_mutator_t(const object_map_t<object_t, object_t> &from2to)
+        : from2to_(from2to) {}
 
     object_t _mutate(const var_t &obj) override {
         auto it = from2to_.find(obj);
-        if (it != from2to_.end()) return make_bcast(it->second);
+        if (it != from2to_.end()) return it->second;
 
         gpu_error_not_expected() << "Unknown variable.";
         return obj;
     }
 
 private:
-    object_t make_bcast(const expr_t &e) const {
-        if (e.type().elems() == elems_) return e;
-        gpu_assert(e.type().elems() == 1);
-        return shuffle_t::make_broadcast(e, elems_);
-    }
-
-    int elems_;
     object_map_t<object_t, object_t> from2to_;
 };
 
@@ -622,7 +605,7 @@ private:
             auto te = t.load_expr(tile, dim_idx);
             sub_map.insert({t.op_var(), te});
         }
-        post_op_bcast_mutator_t bcast_mutator(into<int>(tile.elems()), sub_map);
+        post_op_bcast_mutator_t bcast_mutator(sub_map);
         return bcast_mutator.mutate(expr);
     }
 

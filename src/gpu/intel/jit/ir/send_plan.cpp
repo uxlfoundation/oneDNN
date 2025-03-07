@@ -230,10 +230,7 @@ expr_t add(const expr_t &a, int64_t b, int elems) {
 expr_t slice(const expr_t &e, int off, int elems) {
     if (e.is_empty()) return expr_t();
 
-    if (is_const(e) || is_var(e)) {
-        gpu_assert(off == 0 && elems == 1);
-        return e;
-    }
+    if (is_const(e) || is_var(e)) { return e; }
 
     if (auto *binary = e.as_ptr<binary_op_t>()) {
         auto a = slice(binary->a, off, elems);
@@ -242,8 +239,7 @@ expr_t slice(const expr_t &e, int off, int elems) {
     }
 
     if (auto *shuffle = e.as_ptr<shuffle_t>()) {
-        if (shuffle->is_broadcast())
-            return shuffle_t::make_broadcast(shuffle->vec[0], elems);
+        if (shuffle->is_broadcast()) return shuffle->vec[0];
         if (off + elems <= e.type().elems())
             return shuffle_t::make(*shuffle, off, off + elems);
         std::vector<expr_t> vec;
@@ -2126,8 +2122,7 @@ public:
     expr_t get_mask(const send_group_t &g, const expr_t &g_mask,
             const send_t &send, int slot_off) const {
         if (g_mask.is_empty()) return expr_t();
-        if (g.is_2d() || g.is_block())
-            return shuffle_t::make_broadcast(g_mask, send.nmasks());
+        if (g.is_2d() || g.is_block()) return g_mask;
         if (g.is_scattered()) return slice(g_mask, slot_off, send.slots);
         gpu_error_not_expected();
         return expr_t();

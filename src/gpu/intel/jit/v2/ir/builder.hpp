@@ -187,8 +187,8 @@ struct offset_t {
     bool operator==(const offset_t &other) const { return is_equal(other); }
 
     expr_t load() const {
-        if (buf.is_empty()) return make_broadcast(base);
-        return make_broadcast(load_t::make(type, buf, 0));
+        if (buf.is_empty()) return base;
+        return load_t::make(type, buf, 0);
     }
 
     stmt_t store(const expr_t &_value) const {
@@ -199,22 +199,15 @@ struct offset_t {
 
     stmt_t init_stmt() const {
         if (buf.is_empty() || !inline_init.is_empty()) return stmt_t();
-        auto base_bcast = shuffle_t::make_broadcast(base + shift, type.elems());
-        return store(base_bcast + shift_vec);
+        return store(base + shift + shift_vec);
     }
 
     stmt_t inc_stmt(int loop_idx) const {
         if (loop_incs.empty()) return stmt_t();
         auto inc = loop_incs[loop_idx];
         if (is_zero(inc)) return stmt_t();
-        inc = shuffle_t::make_broadcast(inc, type.elems());
         auto value = load_t::make(type, buf, 0) + inc;
         return store(value);
-    }
-
-    expr_t make_broadcast(const expr_t &e) const {
-        if (e.type().elems() == esize) return e;
-        return shuffle_t::make_broadcast(e, esize);
     }
 
     std::string str() const {
@@ -270,10 +263,9 @@ public:
         if (entries_.empty()) return expr_t();
         expr_t ret;
         for (auto &e : entries_) {
-            auto cmp = (e.off.load() < e.off.make_broadcast(e.bound));
+            auto cmp = (e.off.load() < e.bound);
             ret = (ret.is_empty() ? std::move(cmp) : (ret & cmp));
-            if (e.has_underflow)
-                ret &= (e.off.load() >= e.off.make_broadcast(0));
+            if (e.has_underflow) ret &= (e.off.load() >= 0);
         }
         return ret;
     }

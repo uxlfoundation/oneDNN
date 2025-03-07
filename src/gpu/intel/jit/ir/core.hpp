@@ -644,6 +644,8 @@ class ref_count_t {
 public:
     ref_count_t() : value_(0) {}
     ref_count_t(const ref_count_t &) = delete;
+    ref_count_t &operator=(const ref_count_t &) = delete;
+    ~ref_count_t() = default;
 
     uint32_t increment() { return ++value_; }
     uint32_t decrement() { return --value_; }
@@ -671,6 +673,7 @@ public:
     object_impl_t(type_info_t type_info) : type_info_(type_info) {};
 
     object_impl_t(const object_impl_t &) = delete;
+    object_impl_t &operator=(const object_impl_t &) = delete;
 
     virtual ~object_impl_t() = default;
 

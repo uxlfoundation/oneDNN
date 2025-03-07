@@ -2303,6 +2303,8 @@ public:
     }
 
     ir_send_plan_t(const ir_send_plan_t &) = delete;
+    ir_send_plan_t &operator=(const ir_send_plan_t &) = delete;
+    ~ir_send_plan_t() override = default;
 
     const send_params_t &send_params() const override { return send_params_; }
 

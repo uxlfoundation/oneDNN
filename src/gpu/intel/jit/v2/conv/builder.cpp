@@ -558,7 +558,7 @@ private:
         elems = (elems < 8 ? 1 : elems);
         pvar_tile_t tile;
         tile[lhs0.dim] = elems;
-        for_each(lhs.int_dim_sizes(), std::move(tile),
+        for_each(lhs.int_dim_sizes(), tile,
                 [&](const pvar_coord_t<dim_t> &coord) {
                     auto lhs_off = lhs.offset_in_bytes(coord);
                     auto rhs_off = rhs.offset_in_bytes(coord);

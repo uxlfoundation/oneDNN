@@ -114,7 +114,7 @@ struct reusable_ref_reduction_t : public gpu_primitive_t {
             compute::kernel_t kernel;
             CHECK(create_kernel(engine, kernel,
                     phase.conf.get_kernel_names()[0], phase.conf));
-            kernels_.push_back(kernel);
+            kernels_.push_back(std::move(kernel));
         }
         return status::success;
     }

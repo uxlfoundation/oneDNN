@@ -21,9 +21,11 @@
 #include "cpu/matmul/cpu_matmul_pd.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
 
+#include "arm_compute/core/CPP/CPPTypes.h"
 #include "arm_compute/runtime/NEON/functions/NEDequantizationLayer.h"
 #include "arm_compute/runtime/NEON/functions/NEGEMMLowpMatrixMultiplyCore.h"
 #include "arm_compute/runtime/NEON/functions/NEQuantizationLayer.h"
+
 #include "cpu/aarch64/acl_post_ops.hpp"
 #include "cpu/aarch64/acl_utils.hpp"
 

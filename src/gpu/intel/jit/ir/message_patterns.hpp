@@ -500,7 +500,7 @@ struct uniform_send_idiom_t final {
                 ret.begin(), ret.end(), [&](const hint_t &a, const hint_t &b) {
                     return a.size() > b.size();
                 });
-        if (ret.size() && filtered_ret.size()
+        if (!ret.empty() && !filtered_ret.empty()
                 && ret[0].size() > filtered_ret[0].size())
             gpu_warning() << "Optimal send hint disabled: " << ret[0];
 

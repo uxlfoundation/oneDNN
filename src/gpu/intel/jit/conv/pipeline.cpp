@@ -622,9 +622,9 @@ struct compute_params_t {
         : slm_bufs(slm_bufs)
         , gmem_bufs(gmem_bufs)
         , slm_buf_size(slm_buf_size)
-        , prefetch_bufs(prefetch_bufs) {
-        use_slm = (slm_buf_size > 0);
-        use_prefetch = (prefetch_bufs > 0);
+        , prefetch_bufs(prefetch_bufs)
+        , use_slm(slm_buf_size > 0)
+        , use_prefetch(prefetch_bufs > 0) {
         gpu_assert(!use_slm || !use_prefetch)
                 << "Can't have both SLM buffering and prefetch enabled.";
         if (use_slm) {

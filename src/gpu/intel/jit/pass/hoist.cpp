@@ -83,6 +83,7 @@ public:
         if (!obj.func.is<send_t>()) return ir_mutator_t::_mutate(obj);
 
         std::vector<expr_t> new_args;
+        new_args.reserve(obj.args.size());
         for (auto &e : obj.args) {
             new_args.push_back(hoist_expr(e));
         }
@@ -379,7 +380,7 @@ private:
         return loop_deps_.count(v) != 0;
     }
 
-    bool can_hoist(const expr_t &expr) {
+    bool can_hoist(const expr_t &expr) const {
         return expr.type().size() <= max_hoist_size_ - current_hoist_size_;
     }
 

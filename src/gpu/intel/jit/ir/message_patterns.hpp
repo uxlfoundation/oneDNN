@@ -56,7 +56,7 @@ struct stride_layout_t {
 
     struct stride_dim_t {
         stride_dim_t() = default;
-        stride_dim_t(dim_type_t dim, dim_t size, dim_t stride,
+        stride_dim_t(const dim_type_t &dim, dim_t size, dim_t stride,
                 bool can_overflow, bool is_complex)
             : dim(dim)
             , size(size)

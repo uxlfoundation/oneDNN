@@ -27,6 +27,8 @@
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/ref_io_helper.hpp"
 
+#include <iostream>
+#include <mutex>
 #include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/matmul/ref_matmul.hpp"
 
@@ -34,6 +36,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace matmul {
+
+std::mutex cout_mutex;
 
 status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     status_t status = status::success;
@@ -62,6 +66,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     const auto bia_d = ctx.memory_mdw(DNNL_ARG_BIAS, pd()->weights_md(1));
+    std::cout << "src_d.dims() = " << src_d.dims() << std::endl;
+    std::cout << "weights_d.dims() = " << weights_d.dims() << std::endl;
+    std::cout << "dst_d.dims() = " << dst_d.dims() << std::endl;
 
     const memory_desc_wrapper dropout_mask_d(
             pd()->attr()->dropout_.dropout_desc_);
@@ -79,6 +86,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t N = helper.N();
     const dim_t K = helper.K();
     const dim_t batch = helper.batch();
+    std::cout << "batch = " << batch << std::endl;
 
     // Weights decompression
     const bool with_wei_decompression
@@ -226,6 +234,18 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                     if (dst_rnd_mode == rounding_mode::stochastic)
                         d = math::stochastic_round_fwd(
                                 d, dst_off, rnd_seed[0], dst_d.data_type());
+                    //     {
+                    //         std::lock_guard<std::mutex> lock(cout_mutex);
+                    //         std::cout << "mb=" << mb << ", m=" << m << ", n=" << n
+                    //                   << ", l_offset=" << l_offset
+                    //                   << ", batch=" << batch << ", M=" << M
+                    //                   << ", N=" << N << std::endl;
+                    //         std::cout << "dst_d.data_type()=" << dst_d.data_type()
+                    //                   << std::endl;
+                    //         std::cout << "dst_off=" << dst_off << std::endl;
+                    //         std::cout << "d=" << d << std::endl;
+                    //         std::cout << "dst=" << dst << std::endl;
+                    //     }
                     io::store_float_value(dst_d.data_type(), d, dst, dst_off);
                     utils::dim_iterator(
                             dst_d.dims(), dst_dims_idx, batch_ndims);

@@ -1583,12 +1583,19 @@ expr_t simplify_64_bit_add(const expr_t &_e) {
     return e;
 }
 
+object_t const_fold(const object_t &obj);
+
 class stmt_simplifier_t : public ir_mutator_t {
 public:
     stmt_simplifier_t(const constraint_set_t &cset) : cset_(cset) {}
 
     object_t _mutate(const binary_op_t &obj) override {
         return simplify(obj, cset_);
+    }
+
+    object_t _mutate(const cast_t &obj) override {
+        // Simplify constant let_t which was inlined
+        return const_fold(obj);
     }
 
     object_t _mutate(const if_t &obj) override {
@@ -2290,8 +2297,17 @@ expr_t const_fold_non_recursive(const expr_t &e) {
     if (cast && !cast->saturate) {
         if (cast->expr.is<bool_imm_t>())
             return to_expr(to_cpp<bool>(cast->expr), cast->type);
-        if (cast->expr.is<int_imm_t>())
-            return to_expr(to_cpp<int64_t>(cast->expr), cast->type);
+        if (cast->expr.is<int_imm_t>() && cast->type.is_int()) {
+            auto ret = int_imm_t::make(to_cpp<int64_t>(cast->expr), cast->type);
+            return ret;
+        } else if (cast->expr.is<int_imm_t>() && cast->type.is_bool()) {
+            uint64_t all_mask = (1 << cast->type.elems()) - 1;
+            uint64_t mask = to_cpp<uint64_t>(cast->expr);
+            if ((mask & all_mask) == 0)
+                return shuffle_t::make_broadcast(false, cast->type.elems());
+            else if ((mask | all_mask) == mask)
+                return shuffle_t::make_broadcast(true, cast->type.elems());
+        }
         if (cast->expr.is<float_imm_t>())
             return to_expr(to_cpp<double>(cast->expr), cast->type);
     }

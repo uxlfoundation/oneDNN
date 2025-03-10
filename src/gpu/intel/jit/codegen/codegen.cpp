@@ -996,6 +996,15 @@ public:
 
         gpu_assert(from_type != to_type) << "Equal types are not expected.";
 
+        // Handle integer (down-)conversion, assume bitwise equality in this
+        // case. Examples: d <-> ud, d -> w, q -> d.
+        bool is_int_convert = from_type.is_scalar() && to_type.is_scalar()
+                && from_type.is_int() && to_type.is_int();
+        bool is_int_down_convert
+                = is_int_convert && from_type.size() >= to_type.size();
+        bool is_int_up_convert
+                = is_int_convert && from_type.size() < to_type.size();
+
         if (is_const(obj.expr) && !to_type.is_bool()) {
             if (obj.expr.type().is_bool()) {
                 bind(obj,
@@ -1004,6 +1013,10 @@ public:
             } else {
                 bind(obj, to_ngen(obj.expr, to_type));
             }
+            return;
+        } else if (is_int_down_convert) {
+            auto expr_op = eval(obj.expr);
+            bind(obj, expr_op.reinterpret(to_type));
             return;
         }
 
@@ -1014,20 +1027,6 @@ public:
                 && utils::one_of(
                         obj.expr.type(), type_t::u64(), type_t::byte_ptr())) {
             eval(obj.expr, dst_op);
-            bind(obj, dst_op);
-            return;
-        }
-
-        // Handle integer (down-)conversion, assume bitwise equality in this
-        // case. Examples: d <-> ud, d -> w, q -> d.
-        bool is_int_convert = from_type.is_scalar() && to_type.is_scalar()
-                && from_type.is_int() && to_type.is_int();
-        bool is_int_down_convert
-                = is_int_convert && from_type.size() >= to_type.size();
-        bool is_int_up_convert
-                = is_int_convert && from_type.size() < to_type.size();
-        if (is_int_down_convert) {
-            eval(obj.expr, dst_op.reinterpret(from_type));
             bind(obj, dst_op);
             return;
         }

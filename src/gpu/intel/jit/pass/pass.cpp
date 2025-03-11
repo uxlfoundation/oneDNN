@@ -127,7 +127,11 @@ private:
             return load_t::make(load->type.with_elems(end - beg), load->buf,
                     load->off + beg * stride, load->stride);
         }
-        gpu_error_not_expected();
+
+        if (e.type().is_scalar()) return e;
+
+        gpu_error_not_expected() << "Failed to split " << e << "into [" << beg
+                                 << ", " << end << ")";
         return expr_t();
     }
 

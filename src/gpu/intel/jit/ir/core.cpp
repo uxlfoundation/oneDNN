@@ -174,8 +174,10 @@ type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
 
 type_t common_int_type(const type_t &_a, const type_t &_b) {
     gpu_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
+    gpu_assert(_a.elems() == _b.elems() || _a.elems() == 1 || _b.elems() == 1)
+            << "Incompatible element count.";
 
-    int elems = _a.elems();
+    int elems = std::max(_a.elems(), _b.elems());
 
     // Promote to s32 first.
     type_t a = _a.size() < int(sizeof(int32_t)) ? type_t::s32() : _a;
@@ -202,9 +204,15 @@ type_t common_int_type(const type_t &_a, const type_t &_b) {
     return type_t::u(common_bits, elems);
 }
 
-type_t common_type(const type_t &a, const type_t &b) {
-    gpu_assert(a.elems() == b.elems())
-            << "Types must have the same number of components.";
+type_t common_type(const type_t &a_, const type_t &b_) {
+    gpu_assert(a_.elems() == b_.elems() || a_.is_scalar() || b_.is_scalar())
+            << "Types " << a_ << " and " << b_
+            << " have incompatible element sizes";
+
+    uint32_t elems = std::max(a_.elems(), b_.elems());
+    type_t a {a_.kind(), elems};
+    type_t b {b_.kind(), elems};
+
     if (a.is_undef() || b.is_undef()) return type_t::undef();
     if (a.is_fp() && !b.is_fp()) return a;
     if (!a.is_fp() && b.is_fp()) return b;
@@ -220,7 +228,7 @@ type_t common_type(const expr_t &a, const expr_t &b) {
 type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
         const expr_t &a_expr = expr_t(), const expr_t &b_expr = expr_t()) {
     if (a.is_undef() || b.is_undef()) return type_t::undef();
-    gpu_assert(a.elems() == b.elems())
+    gpu_assert(a.elems() == b.elems() || a.elems() == 1 || b.elems() == 1)
             << "Types must have the same number of components.";
     if (is_cmp_op(op_kind)) return type_t::_bool(a.elems());
     if (utils::one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {

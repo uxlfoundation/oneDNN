@@ -1973,11 +1973,17 @@ expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
         const expr_t &a, const expr_t &b) {
     if (!compute_type.is_scalar()) {
         int elems = compute_type.elems();
+        gpu_assert(a.type().elems() == elems || a.type().is_scalar())
+                << "a expr " << a << " has an unsupported number of elements";
+        gpu_assert(b.type().elems() == elems || b.type().is_scalar())
+                << "b expr " << b << " has an unsupported number of elements";
         auto scalar_type = compute_type.scalar();
         std::vector<expr_t> ret;
         ret.reserve(elems);
         for (int i = 0; i < elems; i++) {
-            ret.push_back(const_fold_binary(scalar_type, op_kind, a[i], b[i]));
+            ret.push_back(const_fold_binary(scalar_type, op_kind,
+                    a.type().is_scalar() ? a : a[i],
+                    b.type().is_scalar() ? b : b[i]));
         }
         return shuffle_t::make(ret);
     }

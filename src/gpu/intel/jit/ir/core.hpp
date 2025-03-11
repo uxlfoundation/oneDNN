@@ -1183,7 +1183,8 @@ private:
         : expr_impl_t(_type_info(), type), expr(expr), saturate(saturate) {
         if (!is_bool_vec_u16()) {
             gpu_assert(type.elems() == expr.type().elems())
-                    << "Number of elements must match.";
+                    << "Number of elements in " << expr
+                    << " does not match for output type " << type << ".";
         }
     }
 
@@ -2191,7 +2192,9 @@ private:
         gpu_assert(buf.type().is_ptr()) << buf;
         if (stride == value.type().scalar().size()) stride = default_stride;
         if (!mask.is_empty())
-            gpu_assert(mask.type() == type_t::_bool(value.type().elems()));
+            gpu_assert(mask.type() == type_t::_bool(value.type().elems()))
+                    << "Mask " << mask << " and value " << value
+                    << " have incompatible types";
     }
 };
 

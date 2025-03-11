@@ -1472,7 +1472,7 @@ const float *jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::adjust_oscales(
 
 template <cpu_isa_t isa>
 status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute(
-        const exec_ctx_t &ctx) const {
+        exec_ctx_t &ctx) const {
     const auto &_pd = pd();
     const auto &ndims = _pd->ndims();
     if (ndims == 3)

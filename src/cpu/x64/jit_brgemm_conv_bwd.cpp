@@ -158,7 +158,7 @@ status_t brgemm_convolution_bwd_t<isa>::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t brgemm_convolution_bwd_t<isa>::execute(exec_ctx_t &ctx) const {
     const auto &args = ctx.args();
     exec_args_t conv_args;
     conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC);

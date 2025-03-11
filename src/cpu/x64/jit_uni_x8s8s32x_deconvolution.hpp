@@ -202,7 +202,7 @@ struct jit_uni_x8s8s32x_deconvolution_fwd_t : public primitive_t {
     ~jit_uni_x8s8s32x_deconvolution_fwd_t() override;
 
     status_t init(engine_t *engine) override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(exec_ctx_t &ctx) const override;
 
 private:
     status_t execute_forward_1d(const exec_ctx_t &ctx) const;

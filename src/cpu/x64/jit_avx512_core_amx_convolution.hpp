@@ -137,7 +137,7 @@ struct jit_avx512_core_amx_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         const auto &_pd = pd();
         if (_pd->jcp_.is_depthwise)
             return status::unimplemented;
@@ -220,7 +220,7 @@ struct jit_avx512_core_amx_convolution_bwd_data_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         const auto &_pd = pd();
         if (_pd->jcp_.is_depthwise) {
             assert(!"_pd->jcp_.is_depthwise not implemented");
@@ -287,7 +287,7 @@ struct jit_avx512_core_amx_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         execute_backward_weights(ctx);
         return status::success;
     }

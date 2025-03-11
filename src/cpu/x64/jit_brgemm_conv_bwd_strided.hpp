@@ -108,7 +108,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
 
     ~brgemm_convolution_bwd_strided_t() override = default;
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(exec_ctx_t &ctx) const override;
 
 protected:
     status_t init(engine_t *engine) override;

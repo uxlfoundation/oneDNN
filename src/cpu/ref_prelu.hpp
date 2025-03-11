@@ -77,7 +77,7 @@ struct ref_prelu_fwd_t : public primitive_t {
 
     ref_prelu_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
     }
 
@@ -168,7 +168,7 @@ struct ref_prelu_bwd_t : public primitive_t {
 
     ref_prelu_bwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         return execute_backward(ctx);
     }
 

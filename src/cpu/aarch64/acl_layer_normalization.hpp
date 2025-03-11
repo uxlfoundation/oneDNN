@@ -43,7 +43,7 @@ struct acl_layer_normalization_fwd_t : public primitive_t {
 
     acl_layer_normalization_fwd_t(const pd_t *apd);
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
     }
     status_t init(engine_t *engine) override;

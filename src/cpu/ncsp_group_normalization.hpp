@@ -89,7 +89,7 @@ struct ncsp_group_normalization_fwd_t : public primitive_t {
         int nthr_; // To not exceed the limit in execute used for set up.
     };
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
     }
 

@@ -144,7 +144,7 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
         reorder_->execute(r_ctx);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         /* LN supports arbitrary layout for input/output statistics.
          * For best performance we compute LN with statistics in the same format
          * as data tensor (i.e. data in abcd, stats in abc) and user's
@@ -309,7 +309,7 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
         reorder_->execute(r_ctx);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         using namespace memory_tracking::names;
         /* LN supports arbitrary layout for input/output statistics.
          * For best performance we compute LN with statistics in the same format

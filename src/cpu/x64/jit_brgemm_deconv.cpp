@@ -281,7 +281,7 @@ status_t brgemm_deconvolution_fwd_t<isa>::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_deconvolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t brgemm_deconvolution_fwd_t<isa>::execute(exec_ctx_t &ctx) const {
     const auto &args = ctx.args();
     exec_args_t conv_args(args);
     if (pd()->has_strides_) {

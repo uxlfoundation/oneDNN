@@ -25,6 +25,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
+#include "common/primitive_exec_types.hpp"
 #include "common/stream.hpp"
 
 namespace dnnl {
@@ -60,7 +61,9 @@ struct cpu_stream_t : public stream_t {
         if (rc == status::success) threadpool_utils::activate_threadpool(tp);
     }
 
-    void after_exec_hook() override {
+    void after_exec_hook(std::unique_ptr<exec_ctx_t> &ctx) override {
+        exec_ctx_t *ctx_ptr = ctx.release();
+        parallel(1, [&, ctx_ptr] { delete ctx_ptr; });
         threadpool_utils::deactivate_threadpool();
     }
 #endif

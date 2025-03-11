@@ -82,7 +82,7 @@ struct ref_resampling_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         execute_forward(ctx);
         return status::success;
     }
@@ -126,7 +126,7 @@ struct ref_resampling_bwd_t : public primitive_t {
 
     ~ref_resampling_bwd_t() override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         execute_backward(ctx);
         return status::success;
     }

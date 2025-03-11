@@ -855,8 +855,7 @@ status_t jit_avx512_core_resampling_bwd_t::init(engine_t *engine) {
     return kernel_->create_kernel();
 }
 
-status_t jit_avx512_core_resampling_bwd_t::execute(
-        const exec_ctx_t &ctx) const {
+status_t jit_avx512_core_resampling_bwd_t::execute(exec_ctx_t &ctx) const {
 
     const auto diff_dst = CTX_IN_MEM(const unsigned char *, DNNL_ARG_DIFF_DST);
     auto diff_src = CTX_OUT_MEM(unsigned char *, DNNL_ARG_DIFF_SRC);

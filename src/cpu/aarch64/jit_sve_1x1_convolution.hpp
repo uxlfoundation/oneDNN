@@ -342,7 +342,7 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         execute_forward(ctx);
         return status::success;
     }
@@ -491,7 +491,7 @@ struct jit_sve_1x1_convolution_bwd_data_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         execute_backward_data(ctx);
         return status::success;
     }
@@ -640,7 +640,7 @@ struct jit_sve_1x1_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(exec_ctx_t &ctx) const override {
         execute_backward_weights(ctx);
         return status::success;
     }

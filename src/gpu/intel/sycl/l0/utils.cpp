@@ -323,7 +323,7 @@ status_t get_l0_device_enabled_systolic_intel(
 }
 
 status_t get_l0_device_enabled_native_float_atomics(
-        ze_device_handle_t device, uint64_t native_extensions) {
+        ze_device_handle_t device, uint64_t &native_extensions) {
     using namespace gpu::intel::compute;
 
     auto fltAtom = ze_float_atomic_ext_properties_t();

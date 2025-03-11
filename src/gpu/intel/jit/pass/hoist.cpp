@@ -45,10 +45,10 @@ public:
             return shuffle_t::make_broadcast(e, type.elems());
         };
         if (args.empty()) return cast(0, type);
-        auto ret = maybe_bcast(args[0]);
+        auto ret = args[0];
         for (int i = 1; i < (int)args.size(); i++)
-            ret += maybe_bcast(args[i]);
-        return ret;
+            ret += args[i];
+        return maybe_bcast(ret);
     }
 
 private:

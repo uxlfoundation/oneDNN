@@ -56,8 +56,7 @@ public:
 
         if (bcasts.size() <= 1) return new_obj;
 
-        int elems = obj.type.elems();
-        expr_t e = shuffle_t::make_broadcast(make_add(bcasts), elems);
+        expr_t e = make_add(bcasts);
         if (!non_bcasts.empty()) e = add(e, make_add(non_bcasts));
 
         gpu_assert(!e.is_empty());
@@ -202,14 +201,12 @@ public:
             }
 
             if (is_consts_bcast) {
-                const_shuffle = shuffle_t::make_broadcast(
-                        const_shuffle.as<shuffle_t>().vec[0], o.type.elems());
+                const_shuffle = const_shuffle.as<shuffle_t>().vec[0];
             }
         }
 
         expr_t e;
-        if (!is_bcast_empty)
-            e = add(e, shuffle_t::make_broadcast(vec_bcast, o.type.elems()));
+        if (!is_bcast_empty) e = add(e, vec_bcast);
         if (!is_off_empty) e = add(e, shuffle_t::make(vec_off, o.idx));
         e = add(e, const_shuffle);
 

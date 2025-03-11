@@ -39,7 +39,7 @@ public:
         std::vector<expr_t> new_args = obj.args;
         send_t::arg_mem_buf(new_args) = base;
         auto &mem_off = send_t::arg_mem_off(new_args);
-        mem_off += shuffle_t::make_broadcast(off, mem_off.type().elems());
+        mem_off += off;
         return obj.func.call(new_args, obj.attr);
     }
 };

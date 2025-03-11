@@ -184,8 +184,7 @@ private:
         stmt_t load_stmt;
         src.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
             expr_t off = (int)src.offset_in_bytes(start);
-            auto store = store_send.call({slm_base_,
-                    shuffle_t::make_broadcast(off0 + off, simd) + vec_off,
+            auto store = store_send.call({slm_base_, (off0 + off) + vec_off,
                     src_buf + off, expr_t()});
             auto load = load_send.call(
                     {slm_base_, off0 + off, dst_buf + off, expr_t()});

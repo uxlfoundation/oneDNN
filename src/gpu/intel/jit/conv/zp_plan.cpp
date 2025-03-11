@@ -331,7 +331,6 @@ public:
         expr_t kw_var, ic_var;
         dim_t kw = 0, ic = 0;
         get_kw_ic_from_b_view(gemm_schedule, kw_var, ic_var, kw, ic);
-        kw_var = simd_bcast(kw_var);
 
         bool small_ic = is_small(data_type_, ic);
         dim_idx_t kw_idx = 5; // TODO: support non-forward kw!
@@ -347,7 +346,7 @@ public:
                 dpas_type(data_type_), (size > 1) ? dpas_buf : wei_buf, 0));
         b_layout_.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
             auto off = b_layout_.offset_in_bytes(start);
-            auto mask = (small_ic) ? kw_var < simd_bcast(kw - start[kw_idx])
+            auto mask = (small_ic) ? simd_bcast(kw_var < kw - start[kw_idx])
                                    : expr_t();
             for (int i = 0; i < tile.elems(); i += sdepth_size)
                 stmt = stmt.append(store_t::make(dpas_buf, off + i, wei_load,
@@ -488,18 +487,16 @@ public:
         expr_t kw_var, ic_var;
         dim_t kw = 0, ic = 0;
         get_kw_ic_from_b_view(gemm_schedule, kw_var, ic_var, kw, ic);
-        kw_var = simd_bcast(kw_var);
 
         bool small_ic = is_small(wei_layout_.type(), ic);
         int kw_idx = 5; // TODO: support non-forward kw!
 
         auto load_mul = binary_op_t::make(op_kind_t::_max,
-                binary_op_t::make(op_kind_t::_min,
-                        simd_bcast(-ic_var) + simd_bcast(ic),
-                        simd_bcast(wei_layout_.dim(ck_idx_))),
-                simd_bcast(0));
-        auto load_wei = simd_bcast(load_t::make(
-                type_t::s16(), (src_buf.is_empty()) ? comp_buf : src_buf, 0));
+                binary_op_t::make(op_kind_t::_min, -ic_var + ic,
+                        wei_layout_.dim(ck_idx_)),
+                0);
+        auto load_wei = load_t::make(
+                type_t::s16(), (src_buf.is_empty()) ? comp_buf : src_buf, 0);
 
         comp_layout_.for_each_tile(
                 get_simd_tile(), [&](const std::vector<dim_t> &start) {
@@ -515,13 +512,13 @@ public:
                     stmt = stmt.append(create_zp_common_mul_stmt(zp_buf, comp));
 
                     // TODO: this implies that zp_wei and zp_src are scalar
-                    auto mask = kw_var < simd_bcast(kw - start[kw_idx]);
+                    auto mask = simd_bcast(kw_var < kw - start[kw_idx]);
                     mask = (!src_buf.is_empty())
-                            ? (small_ic) ? mask : simd_bcast(expr_t(bool(true)))
-                            : simd_bcast(expr_t(bool(false)));
-                    comp_buf_fill = comp_buf_fill.append(
-                            store_t::make(comp, 0, load_mul * load_wei,
-                                    store_t::default_stride, mask, true));
+                            ? (small_ic) ? mask : expr_t(true)
+                            : expr_t(false);
+                    comp_buf_fill = comp_buf_fill.append(store_t::make(comp, 0,
+                            simd_bcast(load_mul * load_wei),
+                            store_t::default_stride, mask, true));
                 });
         auto zp_1x4 = buf_mgr.get("zp_1x4");
         if (!zp_1x4.is_empty()) {
@@ -992,8 +989,6 @@ public:
             int simd_vidx) const {
         auto e_lhs = lhs_.to_expr(vstart, vstart_inc, vvars, simd_vidx);
         auto e_rhs = rhs_.to_expr(vstart, vstart_inc, vvars, simd_vidx);
-        e_lhs = shuffle_t::make_broadcast(e_lhs, simd);
-        e_rhs = shuffle_t::make_broadcast(e_rhs, simd);
         if (!lhs_.has_vidx(simd_vidx, vvars)) {
             return binary_op_t::make(op_, e_lhs, e_rhs);
         }
@@ -1318,9 +1313,8 @@ public:
                     auto mask = mask_buf[mask_off[kw]];
                     auto comp_load = load_t::make(
                             comp_type.with_elems(sd.simd()), comp, 0);
-                    auto mask_load = shuffle_t::make_broadcast(
-                            load_t::make(mask_type.with_elems(1), mask, 0),
-                            sd.simd());
+                    auto mask_load
+                            = load_t::make(mask_type.with_elems(1), mask, 0);
                     stmt = stmt.append(store_t::make(comp0, 0,
                             ternary_op_t::make(op_kind_t::_mad, comp0_load,
                                     comp_load, mask_load)));

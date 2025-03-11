@@ -402,39 +402,9 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(wei_zero_point, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
-    const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
-    const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
-    auto helper = std::make_shared<matmul_helper_t>(src_d, weights_d, dst_d);
-
+void brgemm_matmul_t<isa>::execute_body_internal(
+    const int ithr, const int nthr, std::shared_ptr<brg_matmul_exec_ctx_t> brgmm_ctx) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const bool has_wei_scales
-            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const bool wei_scale_per_k
-            = has_wei_scales && (wei_scale_mask & pd()->wei_qmask_K());
-    const bool wei_scale_per_n
-            = has_wei_scales && (wei_scale_mask & pd()->wei_qmask_N());
-    const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->K(),
-            pd()->N(), wei_scale_per_k, wei_scale_per_n, pd()->attr(),
-            jit_scale_precompute_.get(), 1.f, bgmmc.req_transpose_scales);
-
-    // allocate brgmm_ctx
-    const auto brgmm_ctx = std::make_shared<brg_matmul_exec_ctx_t>(ctx, pd(),
-            oscales, src_zero_point, wei_zero_point, dst_zero_point, dst_scales,
-            helper);
-    const int num_threads = brgmm_ctx->get_num_threads_for_parallelization();
-
-    parallel(num_threads, [&, brgmm_ctx](const int ithr, const int nthr) {
     const bool use_buffer_a
             = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
     const bool is_amx = is_superset(isa, avx512_core_amx);
@@ -468,7 +438,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int m_chunks_per_thread = div_up(M_chunks, bgmmc.nthr_m);
         int n_chunks_per_thread = div_up(N_chunks, bgmmc.nthr_n);
         int batch_per_thread = div_up(bgmmc.batch, bgmmc.nthr_b);
-        if (brgmm_ctx.is_chunks_horizontal_process_order())
+        if (brgmm_ctx->is_chunks_horizontal_process_order())
             nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                     bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
                     m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
@@ -482,7 +452,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
         auto advance_func = [&]() {
             ++start;
-            if (brgmm_ctx.is_chunks_horizontal_process_order())
+            if (brgmm_ctx->is_chunks_horizontal_process_order())
                 nd_iterator_step(bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                         bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
                         m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
@@ -545,14 +515,14 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
                             if (bgmmc.use_buffer_b && mb == m_start
                                     && !skip_copy_b)
-                                copy_b_chunk_in_buffer(brgmm_ctx, b_batch_ptr,
+                                copy_b_chunk_in_buffer(*brgmm_ctx, b_batch_ptr,
                                         ithr, b, nb, kb);
 
                             if (use_buffer_a && nb == n_start && !skip_copy_a)
                                 copy_a_chunk_in_buffer(
-                                        brgmm_ctx, a_batch_ptr, ithr, mb, kb);
+                                        *brgmm_ctx, a_batch_ptr, ithr, mb, kb);
 
-                            compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
+                            compute_kernel(*brgmm_ctx, a_batch_ptr, b_batch_ptr,
                                     ithr, b, mb, nb, kb,
                                     kc == kc_start && kb == kb_start,
                                     prev_ker_idx);
@@ -568,6 +538,46 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
             advance_func();
         }
         if (is_amx) { amx_tile_release(); }
+};
+
+// we can wrap execution context in shared_ptr, and use a custom
+// deleter that will submit to threadpool the freeing of it.
+
+template <cpu_isa_t isa>
+status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
+    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
+    DEFINE_ZERO_POINT_VALUE(wei_zero_point, DNNL_ARG_WEIGHTS);
+    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
+    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
+    const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
+    const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
+    const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
+    auto helper = std::make_shared<matmul_helper_t>(src_d, weights_d, dst_d);
+
+    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+    const bool has_wei_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
+    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
+    const bool wei_scale_per_k
+            = has_wei_scales && (wei_scale_mask & pd()->wei_qmask_K());
+    const bool wei_scale_per_n
+            = has_wei_scales && (wei_scale_mask & pd()->wei_qmask_N());
+    const float *oscales = scale_utils::precompute_scales(
+            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->K(),
+            pd()->N(), wei_scale_per_k, wei_scale_per_n, pd()->attr(),
+            jit_scale_precompute_.get(), 1.f, bgmmc.req_transpose_scales);
+
+    // allocate brgmm_ctx
+    const auto brgmm_ctx = std::make_shared<brg_matmul_exec_ctx_t>(ctx, pd(),
+            oscales, src_zero_point, wei_zero_point, dst_zero_point, dst_scales,
+            helper);
+    const int num_threads = brgmm_ctx->get_num_threads_for_parallelization();
+
+    parallel(num_threads, [this, brgmm_ctx](int ithr, int nthr) {
+        this->execute_body_internal(ithr, nthr, brgmm_ctx);
     });
 
     parallel(1, [&, brgmm_ctx](const int ithr, const int nthr) {

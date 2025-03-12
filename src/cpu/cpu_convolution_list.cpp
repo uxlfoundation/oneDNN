@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2025 Intel Corporation
 * Copyright 2020-2025 Arm Ltd. and affiliates
-* Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2020-2025 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,6 +60,7 @@ using namespace dnnl::impl::cpu::x64;
 #include "cpu/aarch64/jit_brdgmm_dw_conv.hpp"
 #include "cpu/aarch64/jit_brgemm_1x1_conv.hpp"
 #include "cpu/aarch64/jit_brgemm_conv.hpp"
+#include "cpu/aarch64/jit_brgemm_conv_bwd.hpp"
 #include "cpu/aarch64/jit_sve_1x1_convolution.hpp"
 #include "cpu/aarch64/jit_sve_512_x8s8s32x_convolution.hpp"
 #include "cpu/aarch64/jit_sve_convolution.hpp"
@@ -277,6 +278,8 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(jit_avx2_1x1_convolution_bwd_data_t)
             CPU_INSTANCE_SSE41(jit_sse41_dw_convolution_bwd_data_t)
             CPU_INSTANCE_AVX2(jit_avx2_convolution_bwd_data_t)
+            CPU_INSTANCE_AARCH64(brgemm_convolution_bwd_t<sve_512>)
+            CPU_INSTANCE_AARCH64(brgemm_convolution_bwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(jit_uni_dw_convolution_bwd_data_t<sve_512,data_type::f32>)
             CPU_INSTANCE_AARCH64(jit_sve_1x1_convolution_bwd_data_t<f32,f32,f32,sve_512>)
             CPU_INSTANCE_AARCH64(jit_sve_convolution_bwd_data_t<f32,f32,f32,sve_512>)

@@ -57,9 +57,9 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             // LIMITATIONS:
             // - runtime dims are not supported
-            auto attr_skip_mask = smask_t::scales | smask_t::post_ops
-                    | smask_t::fpmath_mode | smask_t::accumulation_mode
-                    | smask_t::rounding_mode;
+            auto attr_skip_mask = smask_t::scales_runtime_data_type
+                    | smask_t::post_ops | smask_t::fpmath_mode
+                    | smask_t::accumulation_mode | smask_t::rounding_mode;
             auto &attr_zps = attr()->zero_points_;
 
             dev_info_ = compute_engine->device_info();

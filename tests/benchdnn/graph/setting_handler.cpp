@@ -1625,7 +1625,6 @@ bool get_reduction_prb_vdims(
     }
 
     prb_vdims.vdims = {src_dims, dst_dims};
-    prb_vdims.dst_dims = src_dims;
     prb_vdims.ndims = static_cast<int>(src_dims.size());
     return true;
 }

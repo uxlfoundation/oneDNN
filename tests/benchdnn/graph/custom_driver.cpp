@@ -316,10 +316,48 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 int execute(const prb_t *prb, const args_t &args, res_t *res) {
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC_0);
-    const dnn_mem_t &indices = args.find(DNNL_ARG_SRC_1);
-    dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
-    auto seq_len = prb->seq_len;
+    const dnn_mem_t &block_table = args.find(DNNL_ARG_SRC_1);
+    const dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
+    const auto seq_len = prb->seq_len;
     // TODO: add implementation for paged_cache_load
+    const auto src_ndims = src.ndims();
+    const auto src_dims = src.dims();
+    const auto src_strides = src.strides();
+    const auto block_table_ndims = block_table.ndims();
+    const auto block_table_dims = block_table.dims();
+    const auto block_table_strides = block_table.strides();
+    const auto dst_ndims = dst.ndims();
+    const auto dst_dims = dst.dims();
+    const auto dst_strides = dst.strides();
+    const auto block_size = src_dims[2];
+    assert(src_ndims == 4);
+    assert(block_table_ndims == 2);
+    assert(dst_ndims == 4);
+    assert(seq_len / block_size < block_table_dims[1]);
+    benchdnn_parallel_nd(dst.nelems(), [&](int64_t index) {
+        size_t dst_offset = 0;
+        // src: [block_num, head_num, block_size, head_size]
+        // block_table: [batch_size, logical_block_num]
+        // dst: [batch_size, head_num, seq_len, head_size]
+        // dst [b, h, s, hs] = src [block_table[b, s/bs], h, s%bs, hs]
+        std::vector<int64_t> dst_idx(dst_ndims, 0);
+        // paged_cache_load ndims is 4
+        for (int i = 0; i < 4; i++) {
+            // calculate the idx on each dimension
+            dst_idx[i] = index % dst.dims()[i];
+            index /= dst.dims()[i];
+            dst_offset += dst_strides[i] * dst_idx[i];
+        }
+        const auto block_table_offset = dst_idx[0] * block_table_strides[0]
+                + dst_idx[1] / block_size * block_table_strides[1];
+        const auto block_id = block_table.get_elem(block_table_offset);
+        const auto src_offset = block_id * src_strides[0]
+                + dst_idx[1] * src_strides[1]
+                + dst_idx[2] % block_size * src_strides[2]
+                + dst_idx[3] * src_strides[3];
+        dst.set_elem(dst_offset, src.get_elem(src_offset));
+    });
+
     return OK;
 }
 } // namespace paged_cache_load

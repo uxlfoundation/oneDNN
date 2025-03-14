@@ -417,6 +417,7 @@ dnnl::graph::op::attr attrstr2kind(const std::string &attr_name) {
             {"mode", dnnl::graph::op::attr::mode},
             {"qtype", dnnl::graph::op::attr::qtype},
             {"rounding_type", dnnl::graph::op::attr::rounding_type},
+            {"seq_len", dnnl::graph::op::attr::seq_len},
     };
     const auto it = attr_map.find(attr_name);
     if (it != attr_map.end()) {

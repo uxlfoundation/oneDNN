@@ -815,6 +815,10 @@ void flex_rewrite::infer_output_shape(
                 gi[out0].clear();
                 seq_len = aop.attrs_["seq_len"].s64_value_;
                 // TODO: infer shape from inputs and attribute
+                gi[out0].push_back(gi[in1][0]);
+                gi[out0].push_back(gi[in0][1]);
+                gi[out0].push_back(seq_len);
+                gi[out0].push_back(gi[in0][3]);
                 break;
             // infer_prelu_bwd_output_shape
             case dnnl::graph::op::kind::PReLUBackward:

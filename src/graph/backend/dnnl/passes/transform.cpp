@@ -3636,10 +3636,19 @@ impl::status_t lift_up_post_add_for_matmul(std::shared_ptr<subgraph_t> &sg) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
         auto matmul_out = cur_op->get_output_value(0);
         if (matmul_out->get_consumers().size() != 1) continue;
-        auto &post_reshape = matmul_out->get_consumers()[0].get_op();
-        if (post_reshape.get_kind() != op_kind::dnnl_reshape) continue;
-        auto reshape_in = post_reshape.get_input_value(0);
-        auto reshape_out = post_reshape.get_output_value(0);
+        op_ptr post_op_temp = matmul_out->get_consumers()[0].get_op().shared_from_this();
+        if (!impl::utils::one_of(post_op_temp->get_kind(), op_kind::dnnl_binary,
+                    op_kind::dnnl_eltwise, op_kind::dnnl_reshape))
+            continue;
+
+        while (post_op_temp->get_kind() != op_kind::dnnl_reshape)
+            post_op_temp = post_op_temp->get_output_value(0)
+                                   ->get_consumers()[0]
+                                   .get_op().shared_from_this();
+
+        auto post_reshape = post_op_temp;
+        auto reshape_in = post_reshape->get_input_value(0);
+        auto reshape_out = post_reshape->get_output_value(0);
         if (reshape_out->get_consumers().size() != 1) continue;
         auto &post_transpose = reshape_out->get_consumers()[0].get_op();
         if (post_transpose.get_kind() != op_kind::dnnl_transpose) continue;
@@ -3651,25 +3660,19 @@ impl::status_t lift_up_post_add_for_matmul(std::shared_ptr<subgraph_t> &sg) {
             const auto alg_kind = static_cast<dnnl::algorithm>(
                     post_add.get_attr<int64_t>(op_attr::alg_kind));
             if (alg_kind != dnnl::algorithm::binary_add) continue;
-            int32_t add_ndims
-                    = post_add.get_input_value(0)->get_logical_tensor().ndims;
-            int32_t matmul_ndims
-                    = post_add.get_input_value(0)->get_logical_tensor().ndims;
-            // A little bit tricky here, it's only served for MQA case now.
-            if (add_ndims != 4 && matmul_ndims != 3) continue;
 
             auto add_in_val = post_add.get_input_value(0);
             auto add_out_val = post_add.get_output_value(0);
             auto &post_op = add_out_val->get_consumers()[0].get_op();
 
-            // move add after matmul
-            matmul_out->remove_consumer(post_reshape, 0);
-            post_add.connect_input(0, matmul_out);
+            // swap reshape+transpose and add
+            reshape_in->remove_consumer(*post_reshape, 0);
+            post_add.connect_input(0, reshape_in);
             logical_tensor_t new_lt = empty_logical_tensor_with_default_id();
             auto new_val = std::make_shared<value_t>(post_add, 0, new_lt, true);
             new_val->set_data_type(add_out_val->get_logical_tensor().data_type);
             post_add.connect_output(0, new_val);
-            post_reshape.connect_input(0, new_val);
+            post_reshape->connect_input(0, new_val);
             post_op.connect_input(0, add_in_val);
             add_out_val->remove_consumer(post_op, 0);
 

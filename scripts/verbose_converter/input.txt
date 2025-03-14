@@ -1,0 +1,1 @@
+onednn_verbose,v1,primitive,exec,cpu,matmul,ref:any,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,attr-scratchpad:user attr-post-ops:binary_mul:f32:6:abc+eltwise_tanh+binary_mul:f32:6:abc+binary_add:f32:6:acb,,1x31x256:1x256x31,39.9541

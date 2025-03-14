@@ -44,10 +44,12 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     num_head = wei1_user_dims[2] / seq_len;
 
     //  Check batch size compatibility.
-    dims wei2_user_dims = ltw(inputs[graph_inport[3]]).vdims();
-    if (batch_size != wei1_user_dims[0] || batch_size != wei2_user_dims[0]) {
-        return false;
-    }
+    dims wei2_user_dims = ltw(inputs[graph_inport[2]]).vdims();
+    VCHECK_MQA_DECOMP((batch_size == wei1_user_dims[0]
+                              && batch_size == wei2_user_dims[0]),
+            false,
+            "Batch size mismatch, batch_size: %lld, wei1: %lld, wei2: %lld",
+            batch_size, wei1_user_dims[0], wei2_user_dims[0]);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
@@ -145,14 +147,46 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, tag::abc);
     sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, tag::abc);
     dnnl::post_ops dnnl_pops;
-    auto mask_dt = static_cast<dnnl::memory::data_type>(
-            ltw(inputs[graph_inport[2]]).data_type());
-    sub_mm1_post_add_md
-            = memory::desc({1, seq_len, seq_len}, mask_dt, tag::acb);
+
     auto ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
-    auto alg
-            = static_cast<algorithm>(ori_dnnl_pops.get()->entry_[0].binary.alg);
-    dnnl_pops.append_binary(alg, sub_mm1_post_add_md);
+    std::vector<memory::desc> sub_mm1_post_md;
+    for (int i = 0; i < ori_dnnl_pops.get()->len(); i++) {
+        if (ori_dnnl_pops.get()->entry_[i].is_binary()) {
+            auto alg = static_cast<algorithm>(
+                    ori_dnnl_pops.get()->entry_[i].binary.alg);
+            const dnnl::impl::memory_desc_t &ori_desc
+                    = ori_dnnl_pops.get()->entry_[i].binary.user_src1_desc;
+            auto post_stride = ori_desc.format_desc.blocking.strides;
+            auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
+            dims post_stride_dims
+                    = dims(post_stride, post_stride + ori_desc.ndims);
+            memory::desc new_sub_md;
+            if (i < ori_dnnl_pops.get()->len() - 1)
+                new_sub_md = memory::desc(
+                        {1, seq_len, seq_len}, post_dt, post_stride_dims);
+            else
+                new_sub_md = memory::desc(
+                        {1, seq_len, seq_len}, post_dt, {seq_len*seq_len, 1, seq_len});
+            sub_mm1_post_md.emplace_back(new_sub_md);
+            dnnl_pops.append_binary(alg, new_sub_md);
+        }
+        if (ori_dnnl_pops.get()->entry_[i].is_eltwise()) {
+            auto alg = static_cast<algorithm>(
+                    ori_dnnl_pops.get()->entry_[i].eltwise.alg);
+            auto alpha = ori_dnnl_pops.get()->entry_[i].eltwise.alpha;
+            auto beta = ori_dnnl_pops.get()->entry_[i].eltwise.beta;
+            dnnl_pops.append_eltwise(alg, alpha, beta);
+        }
+    }
+
+    //     auto mask_dt = static_cast<dnnl::memory::data_type>(
+    //             ltw(inputs[graph_inport[2]]).data_type());
+    //     sub_mm1_post_add_md
+    //             = memory::desc({1, seq_len, seq_len}, mask_dt, tag::acb);
+    //     auto ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
+    //     auto alg
+    //             = static_cast<algorithm>(ori_dnnl_pops.get()->entry_[0].binary.alg);
+    //     dnnl_pops.append_binary(alg, sub_mm1_post_add_md);
     sub_matmul1_attr.set_post_ops(std::move(dnnl_pops));
     auto sub_mm1_pd = matmul::primitive_desc(p_engine, sub_mm1_src_md,
             sub_mm1_wei_md, sub_mm1_dst_md, sub_matmul1_attr);
@@ -259,7 +293,9 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     sub_mm1_wei = memory(sub_mm1_wei_md, p_engine, nullptr);
     sub_mm1_dst = memory(sub_mm1_dst_md, p_engine, nullptr);
     // sub_mm1_post_scale = memory(sub_mm1_post_scale_md, p_engine, nullptr);
-    sub_mm1_post_add = memory(sub_mm1_post_add_md, p_engine, nullptr);
+    for (size_t i = 0; i < sub_mm1_post_md.size(); i++) {
+        sub_mm1_post_mem.emplace_back(sub_mm1_post_md[i], p_engine, nullptr);
+    }
     // softmax
     sub_softmax_dst = memory(sub_softmax_dst_md, p_engine, nullptr);
     // reorder2
@@ -281,9 +317,14 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
 
     sub_mm1_args = {{DNNL_ARG_SRC, sub_mm1_src},
             {DNNL_ARG_WEIGHTS, sub_mm1_wei}, {DNNL_ARG_DST, sub_mm1_dst},
-            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                    sub_mm1_post_add},
             {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
+    int index = 0;
+    for (int i = 0; i < ori_dnnl_pops.get()->len(); i++) {
+        if (ori_dnnl_pops.get()->entry_[i].is_binary())
+            sub_mm1_args.insert(
+                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
+                            sub_mm1_post_mem[index++]});
+    }
 
     sub_softmax_args
             = {{DNNL_ARG_SRC, sub_mm1_dst}, {DNNL_ARG_DST, sub_softmax_dst},
@@ -333,40 +374,72 @@ status_t mqa_decomp_config_t::record_input_offset(
         // If the corresponding input is not found, return an invalid value
         return -1;
     };
-    op_ptr mm1, mm2, add;
+    using namespace graph::op_kind;
+    op_ptr mm1, mm2, add, mul1, mul2;
     for (const auto &cur_op : sg->get_ops()) {
         if (mm1 != nullptr && mm2 != nullptr) break;
         if (cur_op->get_kind() != graph::op_kind::MatMul) continue;
         auto post_op = get_post_op(cur_op);
         if (post_op != nullptr
-                && post_op->get_kind() == graph::op_kind::StaticReshape) {
-            auto val = post_op->get_output_value(0);
-            VCHECK_MQA_DECOMP(val->get_logical_tensor().ndims == 4,
-                    status::invalid_graph, "Currently only support 4d tensor");
-            mm1 = cur_op;
-            auto transpose = get_post_op(post_op);
-            if (transpose != nullptr
-                    && transpose->get_kind()
-                            == graph::op_kind::StaticTranspose) {
-                add = get_post_op(transpose);
+                && impl::utils::one_of(
+                        post_op->get_kind(), Multiply, Tanh, StaticReshape)) {
+            while (true) {
+                if (post_op->get_kind() == Multiply) {
+                    if (mul1 == nullptr)
+                        mul1 = post_op;
+                    else
+                        mul2 = post_op;
+                }
+                if (post_op->get_kind() == StaticReshape) {
+                    auto val = post_op->get_output_value(0);
+                    mm1 = cur_op;
+                    auto ppost_op = get_post_op(post_op);
+                    if (ppost_op != nullptr) {
+                        if (ppost_op->get_kind()
+                                == graph::op_kind::StaticTranspose)
+                            add = get_post_op(ppost_op);
+                        if (ppost_op->get_kind() == graph::op_kind::Add)
+                            add = ppost_op;
+                    }
+                    break;
+                }
+                post_op = get_post_op(post_op);
             }
         } else
             mm2 = cur_op;
     }
-    if (impl::utils::one_of(nullptr, mm1, mm2, add))
-        return status::invalid_graph;
+    VCHECK_MQA_DECOMP(!impl::utils::one_of(nullptr, mm1, mm2, add),
+            status::unimplemented, "Didn't found one of mm1,mm2,add op");
 
     int src1_id = find_graph_inport(mm1->get_input_value(0));
     graph_inport.emplace_back(src1_id);
     int wei1_id = find_graph_inport(mm1->get_input_value(1));
     graph_inport.emplace_back(wei1_id);
+
+    int src2_id = find_graph_inport(mm2->get_input_value(0));
+    graph_inport.emplace_back(src2_id);
+
+    // for scale and soft-capping op. The input order is uncertain.
+    if (mul1) {
+        int mul1_id = find_graph_inport(mul1->get_input_value(0));
+        if (mul1_id == -1)
+            mul1_id = find_graph_inport(mul1->get_input_value(1));
+        graph_inport.emplace_back(mul1_id);
+        has_scale = true;
+    }
+    if (mul2) {
+        int mul2_id = find_graph_inport(mul2->get_input_value(0));
+        if (mul2_id == -1)
+            mul2_id = find_graph_inport(mul2->get_input_value(1));
+        graph_inport.emplace_back(mul2_id);
+        has_soft_capping = true;
+    }
+
     // for scale and add op. The input order is uncertain.
     int add_id = find_graph_inport(add->get_input_value(0));
     if (add_id == -1) add_id = find_graph_inport(add->get_input_value(1));
     graph_inport.emplace_back(add_id);
 
-    int src2_id = find_graph_inport(mm2->get_input_value(0));
-    graph_inport.emplace_back(src2_id);
     return status::success;
 }
 

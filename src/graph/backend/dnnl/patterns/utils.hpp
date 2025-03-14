@@ -425,6 +425,32 @@ inline graph::utils::pm::repetition_t *optional_explicit_mask(
     return optional_mask;
 }
 
+inline graph::utils::pm::repetition_t *optional_transpose(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *input) {
+    auto graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto transpose = graph->append_op(graph::op_kind::StaticTranspose);
+    graph->create_input_port(0, transpose, 0);
+    graph->create_output_port(0, transpose, 0);
+    auto optional_transpose
+            = pgraph->append_optional(graph, {in_edge(0, input, 0)});
+    return optional_transpose;
+}
+
+inline graph::utils::pm::repetition_t *optional_soft_capping(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *input) {
+    auto graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto tanh = graph->append_op(graph::op_kind::Tanh);
+    auto multiply = graph->append_op(graph::op_kind::Multiply,
+            graph::utils::pm::in_edges_t {in_edge(0, tanh, 0)});
+    graph->create_input_port(0, tanh, 0);
+    graph->create_output_port(0, multiply, 0);
+    auto optional_soft_capping
+            = pgraph->append_optional(graph, {in_edge(0, input, 0)});
+    return optional_soft_capping;
+}
+
 inline bool check_inputs_xf16(op_t *op) {
     for (size_t i = 0; i < op->num_inputs(); ++i) {
         const logical_tensor_t &iport

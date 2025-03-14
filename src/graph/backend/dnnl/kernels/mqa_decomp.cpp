@@ -182,10 +182,9 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
             inputs[mqa_cfg_.graph_inport[0]].get_data_handle());
     char *wei1_user_pointer = static_cast<char *>(
             inputs[mqa_cfg_.graph_inport[1]].get_data_handle());
-    char *post_add_user_pointer = static_cast<char *>(
-            inputs[mqa_cfg_.graph_inport[2]].get_data_handle());
+
     char *src2_user_pointer = static_cast<char *>(
-            inputs[mqa_cfg_.graph_inport[3]].get_data_handle());
+            inputs[mqa_cfg_.graph_inport[2]].get_data_handle());
     char *dst2_user_pointer = static_cast<char *>(outputs[0].get_data_handle());
 
     // allocate the internal memory
@@ -210,8 +209,42 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
         auto &sub_wei1_user_tid
                 = res->mem_map[mqa_cfg_.sub_wei1_user.get()][tid];
 
+        // matmul1 post op index offset.
+        size_t start_index = 0;
+        const size_t sub_post_scale_offset = (bo * MBI * M1 * N1 + bi * N1)
+                * get_mem_dt_size(sub_src1_tid);
+        if (mqa_cfg_.has_scale) {
+            auto &sub_mm1_post_scale_tid
+                    = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
+                                  [tid];
+            sub_mm1_post_scale_tid.set_data_handle(
+                    static_cast<char *>(
+                            inputs[mqa_cfg_.graph_inport[start_index + 3]]
+                                    .get_data_handle())
+                    + sub_post_scale_offset);
+            start_index++;
+        }
+        if (mqa_cfg_.has_soft_capping) {
+            auto &sub_mm1_post_soft_cap_tid
+                    = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
+                                  [tid];
+            sub_mm1_post_soft_cap_tid.set_data_handle(
+                    static_cast<char *>(
+                            inputs[mqa_cfg_.graph_inport[start_index + 3]]
+                                    .get_data_handle())
+                    + sub_post_scale_offset);
+            start_index++;
+        }
         auto &sub_mm1_post_add_tid
-                = res->mem_map[mqa_cfg_.sub_mm1_post_add.get()][tid];
+                = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
+                              [tid];
+        const size_t sub_post_add_offset = (bo * MBI * M1 * N1 + bi * M1 * N1)
+                * get_mem_dt_size(sub_mm1_post_add_tid);
+        sub_mm1_post_add_tid.set_data_handle(
+                static_cast<char *>(
+                        inputs[mqa_cfg_.graph_inport[start_index + 3]]
+                                .get_data_handle())
+                + sub_post_add_offset);
 
         // reorder2:
         auto &sub_src2_user_tid
@@ -229,16 +262,12 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
                 * get_mem_dt_size(sub_wei1_user_tid);
         const size_t sub_src2_offset
                 = bo * M2 * K2 * get_mem_dt_size(sub_src2_user_tid);
-        const size_t sub_post_add_offset = (bo * MBI * M1 * N1 + bi * M1 * N1)
-                * get_mem_dt_size(sub_mm1_post_add_tid);
         const size_t sub_dst_user_offset = (bo * MBI * M2 * N2 + bi * N2)
                 * get_mem_dt_size(sub_dst_user_tid);
 
         sub_wei1_user_tid.set_data_handle(wei1_user_pointer + sub_wei1_offset);
         sub_src1_tid.set_data_handle(src1_user_pointer + sub_src1_offset);
         sub_src2_user_tid.set_data_handle(src2_user_pointer + sub_src2_offset);
-        sub_mm1_post_add_tid.set_data_handle(
-                post_add_user_pointer + sub_post_add_offset);
         sub_dst_user_tid.set_data_handle(
                 dst2_user_pointer + sub_dst_user_offset);
 

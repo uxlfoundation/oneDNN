@@ -237,19 +237,20 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_mqa_jax_fusion)
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
                     auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    auto opt_scale = optional_scale(pgraph, matmul_qk);
+                    auto opt_soft_capping
+                            = optional_soft_capping(pgraph, opt_scale);
                     auto reshape1
                             = pgraph->append_op(graph::op_kind::StaticReshape,
-                                    {in_edge(0, matmul_qk, 0)});
-                    auto transpose1
-                            = pgraph->append_op(graph::op_kind::StaticTranspose,
-                                    {in_edge(0, reshape1, 0)});
+                                    {in_edge(0, opt_soft_capping, 0)});
+                    auto transpose1 = optional_transpose(pgraph, reshape1);
+
                     auto post_add = pgraph->append_op(
                             graph::op_kind::Add, {in_edge(0, transpose1, 0)});
                     auto softmax = pgraph->append_op(
                             graph::op_kind::SoftMax, {in_edge(0, post_add, 0)});
-                    auto transpose2
-                            = pgraph->append_op(graph::op_kind::StaticTranspose,
-                                    {in_edge(0, softmax, 0)});
+
+                    auto transpose2 = optional_transpose(pgraph, softmax);
                     auto reshape2
                             = pgraph->append_op(graph::op_kind::StaticReshape,
                                     {in_edge(0, transpose2, 0)});

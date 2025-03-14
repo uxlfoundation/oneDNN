@@ -101,7 +101,9 @@ public:
     // reorder1
     memory sub_wei1_user;
     //mm1
-    memory sub_mm1_src, sub_mm1_wei, sub_mm1_dst, sub_mm1_post_add;
+    memory sub_mm1_src, sub_mm1_wei, sub_mm1_dst;
+    // sub_mm1_post_mem contains [post_scale, soft-capping, attn_mask...]
+    std::vector<memory> sub_mm1_post_mem;
     //softmax
     memory sub_softmax_dst;
     //reorder2
@@ -115,6 +117,7 @@ public:
     // shared memory
     memory sub_max_src1_src2, sub_max_dst1_dst2;
 
+    bool has_scale = false, has_soft_capping = false;
 private:
     // Used to record the ops contained in MQA
     std::vector<std::shared_ptr<op_t>> mqa_op;

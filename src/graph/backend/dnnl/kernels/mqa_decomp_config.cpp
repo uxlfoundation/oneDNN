@@ -38,18 +38,17 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     if (src1_user_dims.size() != 3 || wei1_user_dims.size() != 3) return false;
 
     // Initialize MQA input dimension according to the src of mm1
-    batch_size = src1_user_dims[0];
-    seq_len = src1_user_dims[1];
+    bs_head_kv = src1_user_dims[0];
+    seq_len_kv = src1_user_dims[1];
     size_per_head = src1_user_dims[2];
-    num_head = wei1_user_dims[2] / seq_len;
 
     //  Check batch size compatibility.
     dims wei2_user_dims = ltw(inputs[graph_inport[2]]).vdims();
-    VCHECK_MQA_DECOMP((batch_size == wei1_user_dims[0]
-                              && batch_size == wei2_user_dims[0]),
+    VCHECK_MQA_DECOMP((bs_head_kv == wei1_user_dims[0]
+                              && bs_head_kv == wei2_user_dims[0]),
             false,
             "Batch size mismatch, batch_size: %lld, wei1: %lld, wei2: %lld",
-            batch_size, wei1_user_dims[0], wei2_user_dims[0]);
+            bs_head_kv, wei1_user_dims[0], wei2_user_dims[0]);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
@@ -65,7 +64,7 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 #define RATIO 2
     // Initialize nthr with current threads num
     nthr = dnnl_get_current_num_threads();
-    return batch_size * num_head > RATIO * nthr;
+    return bs_head_kv * group > RATIO * nthr;
 #else
     return true;
 #endif
@@ -107,7 +106,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     sub_reorder0_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     // per-head: reorder src1 to dense, for first matmul
-    memory::dims sub_src1_dims = {1, seq_len, size_per_head};
+    memory::dims sub_src1_dims = {1, seq_len_kv, size_per_head};
     sub_src1_md
             = memory::desc(sub_src1_dims, dt_src_user, {1, size_per_head, 1});
     auto sub_src1_d_md = memory::desc(sub_src1_dims, dt_src_user, tag::abc);
@@ -122,13 +121,13 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     auto original_reorder1 = mqa_op[0];
     dnnl::primitive_attr sub_reorder1_attr
             = make_primitive_attr(original_reorder1, mgr);
-    memory::dims sub_wei1_dims = {1, size_per_head, seq_len};
+    memory::dims sub_wei1_dims = {1, size_per_head, seq_len_q};
 
     auto original_matmul1 = mqa_op[1];
     auto wei_md = make_dnnl_memory_desc(
             original_matmul1->get_input_value(1)->get_logical_tensor());
     sub_wei1_user_md = memory::desc(
-            sub_wei1_dims, dt_wei_user, {1, seq_len * num_head, 1});
+            sub_wei1_dims, dt_wei_user, {1, seq_len_q * group, group});
     // Flip the format to have `ba` weights MBI item in per thread loop.
     sub_wei1_md = memory::desc(sub_wei1_dims, dt_wei, tag::abc);
     auto sub_reorder1_pd = reorder::primitive_desc(p_engine, sub_wei1_user_md,
@@ -139,9 +138,9 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     // create first matmul primitive attr
     dnnl::primitive_attr sub_matmul1_attr
             = make_primitive_attr(original_matmul1, mgr);
-    memory::dims sub_mm1_src_dims = {1, seq_len, size_per_head};
-    memory::dims sub_mm1_wei_dims = {1, size_per_head, seq_len};
-    memory::dims sub_mm1_dst_dims = {1, seq_len, seq_len};
+    memory::dims sub_mm1_src_dims = {1, seq_len_kv, size_per_head};
+    memory::dims sub_mm1_wei_dims = {1, size_per_head, seq_len_q};
+    memory::dims sub_mm1_dst_dims = {1, seq_len_kv, seq_len_q};
 
     sub_mm1_src_md = memory::desc(sub_mm1_src_dims, dt_src_user, tag::abc);
     sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, tag::abc);
@@ -160,13 +159,14 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
             auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
             dims post_stride_dims
                     = dims(post_stride, post_stride + ori_desc.ndims);
+            post_stride_dims[2] = group;
             memory::desc new_sub_md;
             if (i < ori_dnnl_pops.get()->len() - 1)
                 new_sub_md = memory::desc(
-                        {1, seq_len, seq_len}, post_dt, post_stride_dims);
+                        {1, seq_len_kv, seq_len_q}, post_dt, post_stride_dims);
             else
-                new_sub_md = memory::desc(
-                        {1, seq_len, seq_len}, post_dt, {seq_len*seq_len, 1, seq_len});
+                new_sub_md = memory::desc({1, seq_len_kv, seq_len_q}, post_dt,
+                        {seq_len_kv * seq_len_q, 1, seq_len_kv});
             sub_mm1_post_md.emplace_back(new_sub_md);
             dnnl_pops.append_binary(alg, new_sub_md);
         }
@@ -213,9 +213,9 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     auto original_reorder2 = mqa_op[3];
     dnnl::primitive_attr sub_reorder2_attr
             = make_primitive_attr(original_reorder2, mgr);
-    memory::dims sub_src2_dims = {1, size_per_head, seq_len};
+    memory::dims sub_src2_dims = {1, size_per_head, seq_len_kv};
     sub_src2_user_md
-            = memory::desc(sub_src2_dims, dt_src_user, {1, seq_len, 1});
+            = memory::desc(sub_src2_dims, dt_src_user, {1, seq_len_kv, 1});
     // The format is `abc` due to performance of reorder to `acb` is low.
     auto sub_src2_md = memory::desc(sub_src2_dims, dt_src_user, tag::abc);
     auto sub_reorder2_pd = reorder::primitive_desc(p_engine, sub_src2_user_md,
@@ -227,9 +227,9 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     auto original_matmul2 = mqa_op[4];
     dnnl::primitive_attr sub_matmul2_attr
             = make_primitive_attr(original_matmul2, mgr);
-    memory::dims sub_mm2_src_dims = {1, size_per_head, seq_len};
-    memory::dims sub_mm2_wei_dims = {1, seq_len, seq_len};
-    memory::dims sub_mm2_dst_dims = {1, size_per_head, seq_len};
+    memory::dims sub_mm2_src_dims = {1, size_per_head, seq_len_kv};
+    memory::dims sub_mm2_wei_dims = {1, seq_len_kv, seq_len_q};
+    memory::dims sub_mm2_dst_dims = {1, size_per_head, seq_len_q};
     sub_mm2_src_md = memory::desc(sub_mm2_src_dims, dt_src_user, tag::abc);
     auto sub_mm2_wei_md = memory::desc(sub_mm2_wei_dims, dt_src_user, tag::abc);
     sub_mm2_dst_md = memory::desc(sub_mm2_dst_dims, dt_src_user, tag::abc);
@@ -240,10 +240,10 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     // per-head: reorder dst2 from dense to strided
     primitive_attr sub_reorder3_attr;
     sub_reorder3_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    memory::dims sub_dst_dims = {1, size_per_head, seq_len};
+    memory::dims sub_dst_dims = {1, size_per_head, seq_len_q};
     sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, tag::abc);
     sub_dst_user_md = memory::desc(
-            sub_dst_dims, dt_src_user, {1, seq_len * num_head, 1});
+            sub_dst_dims, dt_src_user, {1, seq_len_q * group, 1});
     auto sub_reorder3_pd = reorder::primitive_desc(
             p_engine, sub_dst_md, p_engine, sub_dst_user_md, sub_reorder3_attr);
     sub_reorder3.init(sub_reorder3_pd);
@@ -392,6 +392,9 @@ status_t mqa_decomp_config_t::record_input_offset(
                 }
                 if (post_op->get_kind() == StaticReshape) {
                     auto val = post_op->get_output_value(0);
+                    auto shape = post_op->get_attr<dims>(op_attr::shape);
+                    seq_len_q = shape[shape.size() - 2];
+                    group = shape[shape.size() - 1];
                     mm1 = cur_op;
                     auto ppost_op = get_post_op(post_op);
                     if (ppost_op != nullptr) {

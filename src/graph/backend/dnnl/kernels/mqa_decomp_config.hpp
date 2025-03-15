@@ -73,7 +73,10 @@ public:
     mqa_decomp_config_t() = default;
 
     // MQA input dimension
-    memory::dim batch_size, num_head, seq_len, size_per_head;
+    // For tensorflow pattern, batch_size*kv_num_head is always the first
+    // dimension, we use the batch_size represent the batch_size*kv_num_head
+    // group = q_head_num/kv_head_num
+    memory::dim bs_head_kv, group, seq_len_q, seq_len_kv, size_per_head;
 
     // Thread nums during the workflow
     int nthr;
@@ -118,6 +121,7 @@ public:
     memory sub_max_src1_src2, sub_max_dst1_dst2;
 
     bool has_scale = false, has_soft_capping = false;
+
 private:
     // Used to record the ops contained in MQA
     std::vector<std::shared_ptr<op_t>> mqa_op;

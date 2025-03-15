@@ -173,10 +173,10 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
     mqa_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    int MBO = mqa_cfg_.batch_size, MBI = mqa_cfg_.num_head,
-        M1 = mqa_cfg_.seq_len, K1 = mqa_cfg_.size_per_head,
-        N1 = mqa_cfg_.seq_len, M2 = mqa_cfg_.size_per_head,
-        K2 = mqa_cfg_.seq_len, N2 = mqa_cfg_.seq_len;
+    int MBO = mqa_cfg_.bs_head_kv, MBI = mqa_cfg_.group,
+        M1 = mqa_cfg_.seq_len_kv, K1 = mqa_cfg_.size_per_head,
+        N1 = mqa_cfg_.seq_len_q, M2 = mqa_cfg_.size_per_head,
+        K2 = mqa_cfg_.seq_len_kv, N2 = mqa_cfg_.seq_len_q;
 
     char *src1_user_pointer = static_cast<char *>(
             inputs[mqa_cfg_.graph_inport[0]].get_data_handle());
@@ -211,8 +211,8 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
 
         // matmul1 post op index offset.
         size_t start_index = 0;
-        const size_t sub_post_scale_offset = (bo * MBI * M1 * N1 + bi * N1)
-                * get_mem_dt_size(sub_src1_tid);
+        const size_t sub_post_scale_offset
+                = (bo * MBI * M1 * N1 + bi) * get_mem_dt_size(sub_src1_tid);
         if (mqa_cfg_.has_scale) {
             auto &sub_mm1_post_scale_tid
                     = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
@@ -258,7 +258,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
 
         const size_t sub_src1_offset
                 = bo * M1 * K1 * get_mem_dt_size(sub_src1_tid);
-        const size_t sub_wei1_offset = (bo * MBI * K1 * N1 + bi * N1)
+        const size_t sub_wei1_offset = (bo * MBI * K1 * N1 + bi)
                 * get_mem_dt_size(sub_wei1_user_tid);
         const size_t sub_src2_offset
                 = bo * M2 * K2 * get_mem_dt_size(sub_src2_user_tid);

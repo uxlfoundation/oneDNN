@@ -2405,6 +2405,26 @@ arg_indices_t genindex_executable_t::get_arg_indices(
     return arg_indices;
 }
 
+arg_indices_t sdpa_executable_t::get_arg_indices(
+        const op_t *op, fusion_info_mgr_t &mgr) {
+
+    arg_indices_t arg_indices;
+    size_t index = 0;
+    arg_indices.insert({DNNL_ARG_QUERIES, indices_t {input, index++}});
+    arg_indices.insert({DNNL_ARG_KEYS, indices_t {input, index++}});
+    arg_indices.insert({DNNL_ARG_VALUES, indices_t {input, index++}});
+    if (op->get_attr<bool>(dnnl::impl::graph::dnnl_impl::op_attr::with_scale)) {
+        arg_indices.insert({DNNL_ARG_SCALE, indices_t {input, index++}});
+    }
+    if (op->get_attr<bool>(dnnl::impl::graph::dnnl_impl::op_attr::with_mask)) {
+        arg_indices.insert({DNNL_ARG_ATTN_MASK, indices_t {input, index++}});
+    }
+    // add output args
+    arg_indices.insert({DNNL_ARG_DST, indices_t {output, 0}});
+    arg_indices.insert({DNNL_ARG_SCRATCHPAD, indices_t {output, 1}});
+    return arg_indices;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

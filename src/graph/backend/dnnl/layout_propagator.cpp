@@ -1580,6 +1580,11 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
             op->get_input_value(0)->get_logical_tensor());
     value_ptr dst_val = op->get_output_value(0);
     status_t status = fill_layout_info(dst_val, src_md);
+
+    // fill scratchpads dimensions and data type to scratchpad value_t
+    value_ptr scratchpad_val = op->get_output_value(1);
+    const memory::desc scratchpad_desc;
+    status = fill_layout_info(scratchpad_val, scratchpad_desc);
     return status;
 }
 

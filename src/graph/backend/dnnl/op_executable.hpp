@@ -2658,7 +2658,7 @@ struct sdpa_executable_t : public op_executable_t {
 
         auto scale_dt = impl::data_type::undef;
         size_t idx = 3;
-        with_scale_ = op->get_attr<int64_t>(
+        with_scale_ = op->get_attr<bool>(
                 dnnl::impl::graph::dnnl_impl::op_attr::with_scale);
         if (with_scale_)
             scale_dt = op->get_input_value(idx++)
@@ -2666,7 +2666,7 @@ struct sdpa_executable_t : public op_executable_t {
                                .data_type;
 
         dnnl::memory::desc md_mask;
-        with_mask_ = op->get_attr<int64_t>(
+        with_mask_ = op->get_attr<bool>(
                 dnnl::impl::graph::dnnl_impl::op_attr::with_mask);
         if (with_mask_)
             md_mask = make_dnnl_memory_desc(

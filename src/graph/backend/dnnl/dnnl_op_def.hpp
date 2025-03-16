@@ -1155,9 +1155,8 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                         (int64_t)-1)
                 .set_shape_inference_function(infer_dnnl_sdpa_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_sdpa)
-                //TODO(GX): Add a new executable for sdpa
-                .SET_EXECUTABLE_CREATOR(executable_creator<memory_reparser_t>)
-                .SET_ARG_INDICES_GETTER(memory_reparser_t))
+                .SET_EXECUTABLE_CREATOR(executable_creator<sdpa_executable_t>)
+                .SET_ARG_INDICES_GETTER(sdpa_executable_t))
 
 } // namespace dnnl_impl
 } // namespace graph

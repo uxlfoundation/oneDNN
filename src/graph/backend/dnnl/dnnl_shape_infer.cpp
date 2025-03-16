@@ -545,7 +545,7 @@ status_t infer_dnnl_binary_output_shape(op_t *n,
     }
 }
 
-//TODO(GX): revisit this function to correct logic
+//TODO(GX): revisit this function to correct logic, check if shape is given
 status_t infer_dnnl_sdpa_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {

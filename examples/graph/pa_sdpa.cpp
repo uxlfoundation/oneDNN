@@ -117,7 +117,9 @@ void print_test_case(logical_tensor::data_type dt, const pa_sdpa_dims_t &p) {
     std::cout << " mb = " << p.mb << ", seq_len = " << p.seq_len
               << ", head_num = " << p.head_num
               << ", head_size = " << p.head_size
-              << ", query_num = " << p.query_num;
+              << ", query_num = " << p.query_num
+              << ", block_num = " << p.block_num
+              << ", block_size = " << p.block_size;
     std::cout << "] " << std::flush;
 }
 
@@ -135,6 +137,8 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
 
     const auto seq_len = p.seq_len;
     const auto max_block_per_seq = (seq_len + p.block_size - 1) / p.block_size;
+    std::cout << "seq_len is " << seq_len << ", max_block_per_seq is "
+              << max_block_per_seq << std::endl;
     // Prepare input and output shapes to construct the sdpa graph.
     const dims qv_sz = {p.mb, p.head_num, p.query_num, p.head_size};
     const dims kv_cache_sz
@@ -312,7 +316,8 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
 void bad_args() {
     std::cerr << "Usage: graph-pa-sdpa-cpp [cpu|gpu]\n"
                  "       graph-pa-sdpa-cpp [cpu|gpu] <mb> <seq_len> "
-                 "<head_num> <head_size> <query_num>\n\n"
+                 "<head_num> <head_size> <query_num> <block_num> <block_size> "
+                 "\n\n"
                  "On CPU, it's recommended to test with numactl and memory "
                  "allocation tools like jemalloc or tcmalloc.\n\n";
     throw std::invalid_argument("Incorrect input arguments.");
@@ -346,7 +351,7 @@ void bench(engine::kind ekind, dnnl_data_type_t dt, const pa_sdpa_dims_t &p,
 
 void sdpa_perf(engine::kind ekind, int argc, char **argv) {
     // default testing parameters
-    pa_sdpa_dims_t params = {4, 8, 16, 64, 1, 256, 32};
+    pa_sdpa_dims_t params = {4, 33, 16, 64, 1, 256, 16};
 
     if (argc > 2) {
         int i = 2;

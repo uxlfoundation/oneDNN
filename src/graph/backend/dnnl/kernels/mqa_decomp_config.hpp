@@ -120,7 +120,7 @@ public:
     // shared memory
     memory sub_max_src1_src2, sub_max_dst1_dst2;
 
-    bool has_scale = false, has_soft_capping = false;
+    bool has_scale = false, has_soft_capping = false, trans_before_add = false;
 
 private:
     // Used to record the ops contained in MQA

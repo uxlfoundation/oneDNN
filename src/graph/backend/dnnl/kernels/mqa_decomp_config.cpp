@@ -164,9 +164,16 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
             if (i < ori_dnnl_pops.get()->len() - 1)
                 new_sub_md = memory::desc(
                         {1, seq_len_kv, seq_len_q}, post_dt, post_stride_dims);
-            else
-                new_sub_md = memory::desc({1, seq_len_kv, seq_len_q}, post_dt,
-                        {seq_len_kv * seq_len_q, 1, seq_len_kv});
+            else {
+                if (trans_before_add)
+                    new_sub_md = memory::desc({1, seq_len_kv, seq_len_q},
+                            post_dt, {seq_len_kv * seq_len_q, 1, seq_len_kv});
+                else
+                    new_sub_md = memory::desc({1, seq_len_kv, seq_len_q},
+                            post_dt,
+                            {seq_len_kv * seq_len_q, group * seq_len_q, group});
+            }
+
             sub_mm1_post_md.emplace_back(new_sub_md);
             dnnl_pops.append_binary(alg, new_sub_md);
         }
@@ -399,8 +406,11 @@ status_t mqa_decomp_config_t::record_input_offset(
                     auto ppost_op = get_post_op(post_op);
                     if (ppost_op != nullptr) {
                         if (ppost_op->get_kind()
-                                == graph::op_kind::StaticTranspose)
+                                == graph::op_kind::StaticTranspose) {
                             add = get_post_op(ppost_op);
+                            trans_before_add = true;
+                        }
+
                         if (ppost_op->get_kind() == graph::op_kind::Add)
                             add = ppost_op;
                     }

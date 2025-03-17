@@ -3636,7 +3636,8 @@ impl::status_t lift_up_post_add_for_matmul(std::shared_ptr<subgraph_t> &sg) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
         auto matmul_out = cur_op->get_output_value(0);
         if (matmul_out->get_consumers().size() != 1) continue;
-        op_ptr post_op_temp = matmul_out->get_consumers()[0].get_op().shared_from_this();
+        op_ptr post_op_temp
+                = matmul_out->get_consumers()[0].get_op().shared_from_this();
         if (!impl::utils::one_of(post_op_temp->get_kind(), op_kind::dnnl_binary,
                     op_kind::dnnl_eltwise, op_kind::dnnl_reshape))
             continue;
@@ -3644,59 +3645,74 @@ impl::status_t lift_up_post_add_for_matmul(std::shared_ptr<subgraph_t> &sg) {
         while (post_op_temp->get_kind() != op_kind::dnnl_reshape)
             post_op_temp = post_op_temp->get_output_value(0)
                                    ->get_consumers()[0]
-                                   .get_op().shared_from_this();
+                                   .get_op()
+                                   .shared_from_this();
 
         auto post_reshape = post_op_temp;
         auto reshape_in = post_reshape->get_input_value(0);
         auto reshape_out = post_reshape->get_output_value(0);
         if (reshape_out->get_consumers().size() != 1) continue;
-        auto &post_transpose = reshape_out->get_consumers()[0].get_op();
-        if (post_transpose.get_kind() != op_kind::dnnl_transpose) continue;
-        auto transpose_out = post_transpose.get_output_value(0);
-        if (transpose_out->get_consumers().size() != 1) continue;
-        auto &post_add = transpose_out->get_consumers()[0].get_op();
 
-        if (post_add.get_kind() == op_kind::dnnl_binary) {
+        post_op_temp
+                = reshape_out->get_consumers()[0].get_op().shared_from_this();
+        bool trans_before_add = false;
+        op_ptr post_transpose = nullptr;
+        if (post_op_temp->get_kind() == op_kind::dnnl_transpose) {
+            post_transpose = post_op_temp;
+            auto transpose_out = post_op_temp->get_output_value(0);
+            if (transpose_out->get_consumers().size() != 1) continue;
+            post_op_temp = transpose_out->get_consumers()[0]
+                                   .get_op()
+                                   .shared_from_this();
+            trans_before_add = true;
+        }
+
+        if (post_op_temp->get_kind() == op_kind::dnnl_binary) {
             const auto alg_kind = static_cast<dnnl::algorithm>(
-                    post_add.get_attr<int64_t>(op_attr::alg_kind));
+                    post_op_temp->get_attr<int64_t>(op_attr::alg_kind));
             if (alg_kind != dnnl::algorithm::binary_add) continue;
 
-            auto add_in_val = post_add.get_input_value(0);
-            auto add_out_val = post_add.get_output_value(0);
+            op_ptr post_add = post_op_temp;
+            auto add_in_val = post_add->get_input_value(0);
+            auto add_out_val = post_add->get_output_value(0);
             auto &post_op = add_out_val->get_consumers()[0].get_op();
 
             // swap reshape+transpose and add
             reshape_in->remove_consumer(*post_reshape, 0);
-            post_add.connect_input(0, reshape_in);
+            post_add->connect_input(0, reshape_in);
             logical_tensor_t new_lt = empty_logical_tensor_with_default_id();
-            auto new_val = std::make_shared<value_t>(post_add, 0, new_lt, true);
+            auto new_val
+                    = std::make_shared<value_t>(*post_add, 0, new_lt, true);
             new_val->set_data_type(add_out_val->get_logical_tensor().data_type);
-            post_add.connect_output(0, new_val);
+            post_add->connect_output(0, new_val);
             post_reshape->connect_input(0, new_val);
+
+            add_in_val->remove_consumer(*post_add, 0);
             post_op.connect_input(0, add_in_val);
             add_out_val->remove_consumer(post_op, 0);
 
-            // insert transpose op before src1 of post-add
-            auto transpose_op = std::make_shared<op_t>(op_kind::dnnl_transpose);
-            std::vector<int64_t> order
-                    = post_transpose.get_attr<std::vector<int64_t>>(
-                            op_attr::order);
-            std::vector<int64_t> reverse_order(order.size());
-            for (size_t i = 0; i < order.size(); i++) {
-                reverse_order[order[i]] = i;
+            if (trans_before_add) {
+                // insert transpose op before src1 of post-add
+                auto transpose_op
+                        = std::make_shared<op_t>(op_kind::dnnl_transpose);
+                std::vector<int64_t> order
+                        = post_transpose->get_attr<std::vector<int64_t>>(
+                                op_attr::order);
+                std::vector<int64_t> reverse_order(order.size());
+                for (size_t i = 0; i < order.size(); i++) {
+                    reverse_order[order[i]] = i;
+                }
+                transpose_op->set_attr<std::vector<int64_t>>(
+                        op_attr::order, reverse_order);
+                rewriter.insert_op_before(transpose_op, post_add, 1, 0, 0);
             }
-            transpose_op->set_attr<std::vector<int64_t>>(
-                    op_attr::order, reverse_order);
-            rewriter.insert_op_before(
-                    transpose_op, post_add.shared_from_this(), 1, 0, 0);
             // insert reshape op before src1 of post-add
             auto reshape_op = std::make_shared<op_t>(op_kind::dnnl_reshape);
             std::vector<int64_t> shape
                     = ltw(reshape_in->get_logical_tensor()).vdims();
             reshape_op->set_attr<std::vector<int64_t>>(op_attr::shape, shape);
             reshape_op->set_attr<bool>(op_attr::special_zero, false);
-            rewriter.insert_op_before(
-                    reshape_op, post_add.shared_from_this(), 1, 0, 0);
+            rewriter.insert_op_before(reshape_op, post_add, 1, 0, 0);
         }
     }
     rewriter.run();

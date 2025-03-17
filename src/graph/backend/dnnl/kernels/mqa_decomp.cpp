@@ -238,8 +238,14 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
         auto &sub_mm1_post_add_tid
                 = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
                               [tid];
-        const size_t sub_post_add_offset = (bo * MBI * M1 * N1 + bi * M1 * N1)
-                * get_mem_dt_size(sub_mm1_post_add_tid);
+        size_t sub_post_add_offset = 0;
+        if (mqa_cfg_.trans_before_add)
+            sub_post_add_offset = (bo * MBI * M1 * N1 + bi * M1 * N1)
+                    * get_mem_dt_size(sub_mm1_post_add_tid);
+        else
+            sub_post_add_offset = (bo * MBI * M1 * N1 + bi)
+                    * get_mem_dt_size(sub_mm1_post_add_tid);
+
         sub_mm1_post_add_tid.set_data_handle(
                 static_cast<char *>(
                         inputs[mqa_cfg_.graph_inport[start_index + 3]]

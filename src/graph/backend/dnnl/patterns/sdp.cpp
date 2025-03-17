@@ -262,6 +262,38 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_mqa_jax_fusion)
                     mqa_base_t<false, memory::data_type::f32>>();
         });
 
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_jax_fusion2)
+        .set_priority(21.0f)
+        .set_kind(partition_kind_t::sdp)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    auto opt_scale = optional_scale(pgraph, matmul_qk);
+                    auto opt_soft_capping
+                            = optional_soft_capping(pgraph, opt_scale);
+                    auto reshape1
+                            = pgraph->append_op(graph::op_kind::StaticReshape,
+                                    {in_edge(0, opt_soft_capping, 0)});
+
+                    auto post_add = pgraph->append_op(
+                            graph::op_kind::Add, {in_edge(0, reshape1, 0)});
+                    auto transpose1 = optional_transpose(pgraph, post_add);
+
+                    auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
+                            {in_edge(0, transpose1, 0)});
+
+                    auto transpose2 = optional_transpose(pgraph, softmax);
+                    auto reshape2
+                            = pgraph->append_op(graph::op_kind::StaticReshape,
+                                    {in_edge(0, transpose2, 0)});
+                    pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(1, reshape2, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<
+                    mqa_base_t<false, memory::data_type::f32>>();
+        });
+
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, int8_sdp_fusion)
         .set_priority(22.0f)
         .set_kind(partition_kind_t::quantized_sdp)

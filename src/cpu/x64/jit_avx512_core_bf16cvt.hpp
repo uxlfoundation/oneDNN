@@ -288,6 +288,7 @@ private:
 // it is required for quick implementation of 1x1 bf16 bwd_w jit kernel
 // w/o using permw instruction inside
 // TODO: consider modification/replacement for outer transformation jit kernel
+//NOLINTNEXTLINE(readability-identifier-naming)
 struct jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_bf16_reorder_s16c_to_S16c2s)
 

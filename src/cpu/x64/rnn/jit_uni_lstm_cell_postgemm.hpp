@@ -162,7 +162,6 @@ protected:
         }
     }
 
-protected:
     const bool avx2_available_ = is_superset(isa, avx2);
 
 private:

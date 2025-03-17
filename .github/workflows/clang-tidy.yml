@@ -37,13 +37,16 @@ jobs:
     steps:
       - name: Checkout oneDNN
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Install clang
         run: |
+          echo "-------------STATUS-----------------"
+          git status
+          echo "-------------BUILD SCRIPT-----------------"
+          cat .github/automation/x64/build_linters.sh
+          echo "-------------WORKFLOW FILE-----------------"
+          cat .github/workflows/clang-tidy.yml
+          echo "-------------END-----------------"
           sudo apt-get update
           sudo apt-get install -y clang libomp-dev ocl-icd-libopencl1 ocl-icd-opencl-dev
 

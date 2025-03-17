@@ -354,7 +354,7 @@ bool DNNL_API is_available();
 
 namespace {
 
-static inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
+inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     using namespace Xbyak::util;
 
     unsigned cpu_isa_mask = x64::get_max_cpu_isa_mask(soft);
@@ -418,23 +418,23 @@ static inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     return false;
 }
 
-static inline bool isa_has_int8_vnni(cpu_isa_t isa) {
+inline bool isa_has_int8_vnni(cpu_isa_t isa) {
     return is_superset(isa, avx512_core_vnni) || is_superset(isa, avx2_vnni);
 }
 
-static inline bool isa_has_s8s8(cpu_isa_t isa) {
+inline bool isa_has_s8s8(cpu_isa_t isa) {
     return is_superset(isa, amx_int8) || is_superset(isa, avx2_vnni_2);
 }
 
-static inline bool isa_has_bf16(cpu_isa_t isa) {
+inline bool isa_has_bf16(cpu_isa_t isa) {
     return is_superset(isa, avx512_core_bf16);
 }
 
-static inline bool isa_has_masks(cpu_isa_t isa) {
+inline bool isa_has_masks(cpu_isa_t isa) {
     return is_superset(isa, avx512_core);
 }
 
-static inline int isa_max_vlen(cpu_isa_t isa) {
+inline int isa_max_vlen(cpu_isa_t isa) {
     const bool is_avx512 = is_superset(isa, avx512_core);
     const bool is_avx = is_superset(isa, avx);
     const bool is_sse41 = is_superset(isa, sse41);
@@ -450,7 +450,7 @@ static inline int isa_max_vlen(cpu_isa_t isa) {
         return cpu_isa_traits<sse41>::vlen;
 }
 
-static inline int isa_num_vregs(cpu_isa_t isa) {
+inline int isa_num_vregs(cpu_isa_t isa) {
     const bool is_avx512 = is_superset(isa, avx512_core);
     const bool is_avx = is_superset(isa, avx);
     const bool is_sse41 = is_superset(isa, sse41);

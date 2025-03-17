@@ -26,8 +26,8 @@ int main() {
 
     std::vector<int64_t> dot1_in1_shape {8, 31, 256};
     std::vector<int64_t> dot1_in2_shape {8, 256, 62};
-    std::vector<int64_t> dot1_out_shape {
-            8, 31, 62}; // also multiply 2nd operand shape
+    std::vector<int64_t> dot1_out_shape {8, 31, 62};
+    std::vector<int64_t> scale_sz = {1};
     logical_tensor lt_dot1_in1 {lt_id++, logical_tensor::data_type::f32,
             dot1_in1_shape, logical_tensor::layout_type::strided};
     logical_tensor lt_dot1_in2 {lt_id++, logical_tensor::data_type::f32,
@@ -39,7 +39,7 @@ int main() {
     matmul_1_op.add_output(lt_dot1_out);
 
     logical_tensor lt_mul1_in2 {lt_id++, logical_tensor::data_type::f32,
-            dot1_out_shape, logical_tensor::layout_type::strided};
+            scale_sz, logical_tensor::layout_type::strided};
     logical_tensor lt_mul1_out {lt_id++, logical_tensor::data_type::f32,
             dot1_out_shape, logical_tensor::layout_type::strided};
     op mul_1_op(op_id++, op::kind::Multiply, "multiply_1");
@@ -53,7 +53,7 @@ int main() {
     tanh_op.add_output(lt_tanh_out);
 
     logical_tensor lt_mul2_in2 {lt_id++, logical_tensor::data_type::f32,
-            dot1_out_shape, logical_tensor::layout_type::strided};
+            scale_sz, logical_tensor::layout_type::strided};
     logical_tensor lt_mul2_out {lt_id++, logical_tensor::data_type::f32,
             dot1_out_shape, logical_tensor::layout_type::strided};
     op mul_2_op(op_id++, op::kind::Multiply, "multiply_2");

@@ -159,11 +159,9 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
             auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
             dims post_stride_dims
                     = dims(post_stride, post_stride + ori_desc.ndims);
-            post_stride_dims[2] = group;
             memory::desc new_sub_md;
             if (i < ori_dnnl_pops.get()->len() - 1)
-                new_sub_md = memory::desc(
-                        {1, seq_len_kv, seq_len_q}, post_dt, post_stride_dims);
+                new_sub_md = memory::desc({1, 1, 1}, post_dt, post_stride_dims);
             else {
                 if (trans_before_add)
                     sub_mm1_post_add_md

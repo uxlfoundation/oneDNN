@@ -217,28 +217,22 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
 
         // matmul1 post op index offset.
         size_t start_index = 0;
-        const size_t sub_post_scale_offset
-                = (bo * MBI * M1 * N1 + bi) * get_mem_dt_size(sub_src1_tid);
         if (mqa_cfg_.has_scale) {
             auto &sub_mm1_post_scale_tid
                     = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
                                   [tid];
-            sub_mm1_post_scale_tid.set_data_handle(
-                    static_cast<char *>(
-                            inputs[mqa_cfg_.graph_inport[start_index + 3]]
-                                    .get_data_handle())
-                    + sub_post_scale_offset);
+            sub_mm1_post_scale_tid.set_data_handle(static_cast<char *>(
+                    inputs[mqa_cfg_.graph_inport[start_index + 3]]
+                            .get_data_handle()));
             start_index++;
         }
         if (mqa_cfg_.has_soft_capping) {
             auto &sub_mm1_post_soft_cap_tid
                     = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
                                   [tid];
-            sub_mm1_post_soft_cap_tid.set_data_handle(
-                    static_cast<char *>(
-                            inputs[mqa_cfg_.graph_inport[start_index + 3]]
-                                    .get_data_handle())
-                    + sub_post_scale_offset);
+            sub_mm1_post_soft_cap_tid.set_data_handle(static_cast<char *>(
+                    inputs[mqa_cfg_.graph_inport[start_index + 3]]
+                            .get_data_handle()));
             start_index++;
         }
         auto &sub_mm1_post_add_tid

@@ -150,11 +150,11 @@ struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
 
 protected:
     static constexpr int unroll_factor_ = 4;
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
                                                  : zword;
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
         const void *src;
@@ -764,11 +764,11 @@ struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator {
     }
 
 protected:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
                                                  : zword;
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
         const void *src;
@@ -962,11 +962,11 @@ struct jit_diff_data_base_kernel_t : diff_data_kernel_t, public jit_generator {
 
 protected:
     static constexpr int unroll_factor_ = 4;
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
                                                  : zword;
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
         const void *src;

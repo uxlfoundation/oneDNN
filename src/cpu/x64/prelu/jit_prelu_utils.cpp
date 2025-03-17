@@ -47,34 +47,34 @@ cpu_isa_t get_supported_isa() {
 
 static int get_vlen(const cpu_isa_t &isa) noexcept {
     if (isa == avx512_core_fp16)
-        return cpu_isa_traits<avx512_core_fp16>::vlen;
+        return cpu_isa_traits_t<avx512_core_fp16>::vlen;
     else if (isa == avx512_core_bf16)
-        return cpu_isa_traits<avx512_core_bf16>::vlen;
+        return cpu_isa_traits_t<avx512_core_bf16>::vlen;
     else if (isa == avx512_core)
-        return cpu_isa_traits<avx512_core>::vlen;
+        return cpu_isa_traits_t<avx512_core>::vlen;
     else if (isa == avx2_vnni_2)
-        return cpu_isa_traits<avx2_vnni_2>::vlen;
+        return cpu_isa_traits_t<avx2_vnni_2>::vlen;
     else if (isa == avx2)
-        return cpu_isa_traits<avx2>::vlen;
+        return cpu_isa_traits_t<avx2>::vlen;
     else if (isa == avx)
-        return cpu_isa_traits<avx>::vlen;
-    return cpu_isa_traits<sse41>::vlen;
+        return cpu_isa_traits_t<avx>::vlen;
+    return cpu_isa_traits_t<sse41>::vlen;
 }
 
 int get_n_vregs(const cpu_isa_t &isa) noexcept {
     if (isa == avx512_core_fp16)
-        return cpu_isa_traits<avx512_core_fp16>::n_vregs;
+        return cpu_isa_traits_t<avx512_core_fp16>::n_vregs;
     else if (isa == avx512_core_bf16)
-        return cpu_isa_traits<avx512_core_bf16>::n_vregs;
+        return cpu_isa_traits_t<avx512_core_bf16>::n_vregs;
     else if (isa == avx512_core)
-        return cpu_isa_traits<avx512_core>::n_vregs;
+        return cpu_isa_traits_t<avx512_core>::n_vregs;
     else if (isa == avx2_vnni_2)
-        return cpu_isa_traits<avx2_vnni_2>::n_vregs;
+        return cpu_isa_traits_t<avx2_vnni_2>::n_vregs;
     else if (isa == avx2)
-        return cpu_isa_traits<avx2>::n_vregs;
+        return cpu_isa_traits_t<avx2>::n_vregs;
     else if (isa == avx)
-        return cpu_isa_traits<avx>::n_vregs;
-    return cpu_isa_traits<sse41>::n_vregs;
+        return cpu_isa_traits_t<avx>::n_vregs;
+    return cpu_isa_traits_t<sse41>::n_vregs;
 }
 
 bool is_s8u8(const std::set<data_type_t> &tensor_data_types) noexcept {

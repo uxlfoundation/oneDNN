@@ -80,15 +80,15 @@ int get_vector_length() {
         //dummy if
 #if __BUILD_GEMM_AVX512
     } else if (mayiuse(avx512_core)) {
-        v_bytes = cpu_isa_traits<avx512_core>::vlen;
+        v_bytes = cpu_isa_traits_t<avx512_core>::vlen;
 #endif
 #if __BUILD_GEMM_AVX2
     } else if (mayiuse(avx)) {
-        v_bytes = cpu_isa_traits<avx>::vlen;
+        v_bytes = cpu_isa_traits_t<avx>::vlen;
 #endif
 #if __BUILD_GEMM_SSE41
     } else if (mayiuse(sse41)) {
-        v_bytes = cpu_isa_traits<sse41>::vlen;
+        v_bytes = cpu_isa_traits_t<sse41>::vlen;
 #endif
     } else {
         assert(!"not supposed to be reached.");

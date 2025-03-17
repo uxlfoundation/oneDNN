@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2023 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,7 +45,8 @@ struct jit_sse41_1x1_conv_kernel_f32 : public jit_generator {
     const primitive_attr_t &attr_;
 
 private:
-    static constexpr auto simd_w_ = cpu_isa_traits<sse41>::vlen / sizeof(float);
+    static constexpr auto simd_w_
+            = cpu_isa_traits_t<sse41>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     using xmm_t = const Xbyak::Xmm;
 

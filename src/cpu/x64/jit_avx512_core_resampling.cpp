@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -752,7 +752,7 @@ private:
     }
 
     static constexpr std::size_t simd_w() {
-        return cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+        return cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     }
 
     Zmm zmm_src = Zmm(1);

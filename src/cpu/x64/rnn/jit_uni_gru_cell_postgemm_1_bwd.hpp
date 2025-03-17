@@ -42,8 +42,8 @@ struct jit_uni_gru_cell_postgemm_part1_bwd : public jit_uni_rnn_postgemm {
 
 protected:
     // register size in bytes
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits<isa>::vlen;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
+    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
     const size_t vlen_scratch
             = vlen / (sizeof(float) / types::data_type_size(scratch_data_t));
     static constexpr size_t hstate_dt_size = sizeof(float);
@@ -197,14 +197,14 @@ protected:
 
         // Reduce diff attention into XMM size. Otherwise accumulation
         // using XMM will zero high part of YMM/ZMM.
-        if (vlen >= cpu_isa_traits<avx512_core>::vlen) {
+        if (vlen >= cpu_isa_traits_t<avx512_core>::vlen) {
             Zmm diff_attn_acc(dattn_acc_idx);
             Ymm diff_attn_acc_high(tmp1_idx);
             Ymm diff_attn_acc_low(dattn_acc_idx);
             vextractf32x8(diff_attn_acc_high, diff_attn_acc, 1);
             vaddps(diff_attn_acc_low, diff_attn_acc_low, diff_attn_acc_high);
         }
-        if (vlen >= cpu_isa_traits<avx2>::vlen) {
+        if (vlen >= cpu_isa_traits_t<avx2>::vlen) {
             Ymm diff_attn_acc(dattn_acc_idx);
             Xmm diff_attn_acc_high(tmp1_idx);
             Xmm diff_attn_acc_low(dattn_acc_idx);

@@ -431,7 +431,7 @@ protected:
                 dshift_off_addr = ptr[qtable + 3 * vlen];
                 ymm_perm_mask_addr = ptr[qtable + 4 * vlen];
                 zmm_perm_mask_addr
-                        = ptr[qtable + 4 * vlen + cpu_isa_traits<avx>::vlen];
+                        = ptr[qtable + 4 * vlen + cpu_isa_traits_t<avx>::vlen];
                 break;
             }
             case data_type::f32: {

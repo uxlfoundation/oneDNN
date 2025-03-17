@@ -178,7 +178,7 @@ private:
     int compute_vreg_bias_shift_ = 0;
     int compute_vreg_prev_dst_shift_ = 0;
 
-    const size_t vlen = cpu_isa_traits<isa>::vlen / sizeof(float);
+    const size_t vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     static constexpr int reg64_size_ = sizeof(int64_t);
     static constexpr int reg_binary_post_op_oc_off_ = 0;
     static constexpr int reg_binary_post_op_offset_ = 1 * reg64_size_;

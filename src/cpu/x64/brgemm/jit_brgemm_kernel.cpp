@@ -136,7 +136,7 @@ private:
 
     enum matrix_kind_t { matrix_A, matrix_B };
     static constexpr int zmm_width_in_bytes_
-            = cpu_isa_traits<avx512_core>::vlen;
+            = cpu_isa_traits_t<avx512_core>::vlen;
     using Vmm =
             typename utils::conditional<std::is_same<Wmm, Xbyak::Tmm>::value,
                     Xbyak::Zmm, Wmm>::type;
@@ -1993,7 +1993,7 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool last_bdb,
             && brg.rdb_tail != 0 && last_bdb && is_rd_tail;
     if (!need_k_tail_processing) return false;
 
-    const auto zmm_width_in_bytes = cpu_isa_traits<avx512_core>::vlen;
+    const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
 
     auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
             + brg.get_convert_wsp_buffer_size();

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
 * Copyright 2022-2024 Arm Ltd. and affiliates
 *
@@ -258,9 +258,9 @@ unsigned get_max_threads_to_use() {
 int get_vector_register_size() {
 #if DNNL_X64
     using namespace x64;
-    if (mayiuse(avx512_core)) return cpu_isa_traits<avx512_core>::vlen;
-    if (mayiuse(avx)) return cpu_isa_traits<avx>::vlen;
-    if (mayiuse(sse41)) return cpu_isa_traits<sse41>::vlen;
+    if (mayiuse(avx512_core)) return cpu_isa_traits_t<avx512_core>::vlen;
+    if (mayiuse(avx)) return cpu_isa_traits_t<avx>::vlen;
+    if (mayiuse(sse41)) return cpu_isa_traits_t<sse41>::vlen;
 #elif DNNL_AARCH64
     using namespace aarch64;
     if (mayiuse(asimd)) return cpu_isa_traits<asimd>::vlen;

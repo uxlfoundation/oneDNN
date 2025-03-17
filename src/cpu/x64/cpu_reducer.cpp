@@ -145,7 +145,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
             this->paddd(x1, op);
     }
 
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
     const int typesize
             = sizeof(typename dnnl::impl::prec_traits_t<data_type>::type);
     Xbyak::Reg64 reg_dst = abi_param1;
@@ -205,7 +205,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
     }
 
     void loop_x() {
-        const int nloads[] = {cpu_isa_traits<isa>::n_vregs, 1, 1};
+        const int nloads[] = {cpu_isa_traits_t<isa>::n_vregs, 1, 1};
         const int nbranches = sizeof(nloads) / sizeof(nloads[0]);
 
         const int load_len[nbranches] = {vlen, vlen, typesize};

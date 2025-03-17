@@ -59,7 +59,7 @@ private:
     using Reg32 = Xbyak::Reg32;
     using Reg64 = Xbyak::Reg64;
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     int vmm_idx_upper_bound() const noexcept {
         return is_superset(isa, avx512_core) ? 31 : 15;

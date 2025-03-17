@@ -122,7 +122,7 @@ void jit_uni_deconv_zp_pad_str_kernel_t<isa, Vmm>::init() {
 
 template <cpu_isa_t isa, typename Vmm>
 Vmm jit_uni_deconv_zp_pad_str_kernel_t<isa, Vmm>::get_next_vmm() {
-    static constexpr int max_v_regs = cpu_isa_traits<isa>::n_vregs;
+    static constexpr int max_v_regs = cpu_isa_traits_t<isa>::n_vregs;
 
     const Vmm vmm {static_cast<int>(current_vmm_++)};
 

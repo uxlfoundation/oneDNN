@@ -191,7 +191,7 @@ status_t jit_avx512_core_bf16_sum_kernel_t::init_conf(
     for (/*continue*/; jsp.loop_unroll < max_unroll; jsp.loop_unroll++) {
         const int num_regs
                 = num_vregs_required(jsp.loop_unroll + 1, jsp.num_srcs);
-        if (num_regs > (cpu_isa_traits<avx512_core>::n_vregs
+        if (num_regs > (cpu_isa_traits_t<avx512_core>::n_vregs
                     - (isa_has_bf16(jsp.isa) ? 1 : 6)))
             break;
     }

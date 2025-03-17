@@ -88,8 +88,8 @@ struct jit_avx512_core_scale_precompute_t : public jit_generator {
 
 private:
     constexpr static int simd_w_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
-    using Vmm = typename cpu_isa_traits<avx512_core>::Vmm;
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
+    using Vmm = typename cpu_isa_traits_t<avx512_core>::Vmm;
 
     const primitive_attr_t *attr_;
     const bool with_wei_scales_;

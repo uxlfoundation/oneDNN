@@ -166,7 +166,7 @@ private:
     std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 
     using reducer_t = x64::jit_brgemm_kernel_diff_bias_t<
-            typename cpu_isa_traits<isa>::Vmm>;
+            typename cpu_isa_traits_t<isa>::Vmm>;
     std::unique_ptr<reducer_t> reducers_[2][2];
 };
 

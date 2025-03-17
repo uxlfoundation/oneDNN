@@ -103,7 +103,7 @@ struct jit_avx512_core_bf16_sum_kernel_t
     jit_avx512_core_bf16_sum_kernel_t(jit_sum_conf_t ajsp)
         : jit_uni_xf16_sum_kernel_t<Xbyak::Zmm>(
                 ajsp, utils::div_up(ajsp.num_srcs, 2))
-        , max_vregs_available(cpu_isa_traits<avx512_core>::n_vregs
+        , max_vregs_available(cpu_isa_traits_t<avx512_core>::n_vregs
                   - (isa_has_bf16(jsp.isa) ? 1 : 6))
         , bf16_emu_(nullptr) {
         if (!mayiuse(avx512_core_bf16))

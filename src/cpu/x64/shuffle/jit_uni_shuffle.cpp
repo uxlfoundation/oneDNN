@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
             blocked_format != format_tag::undef, VERBOSE_UNSUPPORTED_TAG);
 
     conf_.blk_size = src_d.blocking_desc().strides[ndims() - 1];
-    conf_.simd_w = cpu_isa_traits<isa>::vlen / sizeof(float);
+    conf_.simd_w = cpu_isa_traits_t<isa>::vlen / sizeof(float);
 
     const bool has_spatial = utils::one_of(ndims(), 3, 4, 5);
     const dim_t HW = H() * W();

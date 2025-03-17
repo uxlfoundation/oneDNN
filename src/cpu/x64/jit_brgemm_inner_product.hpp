@@ -631,8 +631,8 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
 
 private:
     struct thread_info_t;
-    using ker_diff_bias_t
-            = jit_brgemm_kernel_diff_bias_t<typename cpu_isa_traits<isa>::Vmm>;
+    using ker_diff_bias_t = jit_brgemm_kernel_diff_bias_t<
+            typename cpu_isa_traits_t<isa>::Vmm>;
     std::unique_ptr<ker_diff_bias_t> kernels_db_[2][2];
     std::unique_ptr<brgemm_kernel_t>
             brg_kernels_[brgemm_inner_product_utils::max_num_brg_kernels_ip];

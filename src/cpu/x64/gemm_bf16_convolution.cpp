@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -117,7 +117,7 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
 
     if (jcp_.with_bias) vreg_bias = Zmm(data_reg_base_idx_++);
 
-    vlen_ = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    vlen_ = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
 
     isa_ = mayiuse(avx512_core_bf16) ? avx512_core_bf16
                                      : bf16_emulation_t::get_isa();

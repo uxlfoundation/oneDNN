@@ -233,7 +233,7 @@ private:
 
     std::vector<std::unique_ptr<jit_brgemm_kernel_post_ops_base_t>> kernels_po_;
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     std::unique_ptr<jit_avx512_core_brgemm_conv_bwd_trans_kernel::
                     jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>>

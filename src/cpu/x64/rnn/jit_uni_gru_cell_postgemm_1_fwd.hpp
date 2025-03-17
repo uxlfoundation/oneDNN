@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ protected:
 
     // register size in bytes
     using Vmm = typename jit_uni_eltwise_injector<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits<isa>::vlen;
+    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr size_t qscale_dt_size = sizeof(float);
     const size_t vlen_dst
             = vlen / (sizeof(float) / types::data_type_size(src_data_t));

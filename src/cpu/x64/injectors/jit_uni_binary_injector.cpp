@@ -395,7 +395,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     const auto end_idx = *(vmm_idxs.rbegin());
 
     // Phase 1 Validate temporary vmm user hint
-    static constexpr int max_vmm_idx = cpu_isa_traits<isa>::n_vregs - 1;
+    static constexpr int max_vmm_idx = cpu_isa_traits_t<isa>::n_vregs - 1;
     auto &vmm_hint = rhs_arg_static_params_.rhs_dt_helper_vmm_idx;
     vmm_hint = adjust_temp_vmm_hint(vmm_hint, start_idx, end_idx, max_vmm_idx);
 
@@ -422,7 +422,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
             || rhs_arg_data_type != data_type::f32 || bcast_f32_non_avx512
             || should_preserve_vmm_tail || post_op.is_prelu();
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
-    const int simd_w = cpu_isa_traits<isa>::vlen
+    const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
     const bool use_offset_conversions
@@ -847,7 +847,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_base(
     // c = ((offset % strides[0]) / strides[1]) * strides[ndims - 1] + offset % blk_size
     // output = rax
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int simd_w = cpu_isa_traits<isa>::vlen
+    const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
     const auto rax = host_->rax;
@@ -1234,7 +1234,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_base(
     // mb_sp_off = offset - (c * stride_c) - (n * (C - 1)DHW) - c % blk_size
     // output = rax
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int simd_w = cpu_isa_traits<isa>::vlen
+    const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
 

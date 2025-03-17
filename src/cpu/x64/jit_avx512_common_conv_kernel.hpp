@@ -43,7 +43,7 @@ struct _jit_avx512_common_conv_fwd_kernel : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     enum {
         typesize = sizeof(float),

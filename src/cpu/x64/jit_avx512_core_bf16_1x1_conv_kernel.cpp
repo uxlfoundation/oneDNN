@@ -1193,7 +1193,7 @@ status_t jit_avx512_core_bf16_1x1_conv_kernel::init_conf(
         const memory_desc_wrapper &dst_d, primitive_attr_t &attr, int nthreads,
         bool reduce_src) {
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-    const int simd_w = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    const int simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     const int ndims = src_d.ndims();
 
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow

@@ -56,7 +56,7 @@ template <cpu_isa_t isa>
 int get_vlen(jit_memory_tag_kind_t tag_kind) {
     return isa == sse41 && tag_kind == jit_memory_tag_kind_t::blocked
             ? 32
-            : cpu_isa_traits<isa>::vlen;
+            : cpu_isa_traits_t<isa>::vlen;
 }
 
 template <cpu_isa_t isa>
@@ -95,7 +95,7 @@ std::tuple<dim_t, dim_t, dim_t> get_data_strides(
 #define PARAM_ADDR(x) (reg_param_ + offsetof(call_params_t, x))
 template <cpu_isa_t isa>
 struct jit_bnorm_process_tail_t {
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     jit_bnorm_process_tail_t(const batch_normalization_pd_t *pd,
             jit_generator *host, Reg64 reg_tmp, Reg64 reg_blk_has_tail,
@@ -109,7 +109,7 @@ struct jit_bnorm_process_tail_t {
         const memory_desc_wrapper data_d(pd->src_md());
         c_is_padded_ = pd->C() != data_d.padded_dims()[1];
 
-        const int vlen = isa == sse41 ? 32 : cpu_isa_traits<isa>::vlen;
+        const int vlen = isa == sse41 ? 32 : cpu_isa_traits_t<isa>::vlen;
         tail_ = pd->C() % (int)(vlen / sizeof(float));
     }
 
@@ -198,7 +198,7 @@ struct jit_bnorm_process_tail_t {
 
 template <cpu_isa_t isa>
 struct jit_bnorm_process_relu_t {
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     jit_bnorm_process_relu_t(const batch_normalization_pd_t *pd,
             jit_generator *host, Reg64 reg_off_dat, Reg64 reg_tmp,
@@ -369,7 +369,7 @@ struct jit_bnorm_process_relu_t {
 
 template <cpu_isa_t isa>
 struct helper_vmovups_data_t {
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     helper_vmovups_data_t(const batch_normalization_pd_t *pd,
             jit_generator *host, Zmm zmm_reserved_1, Zmm zmm_reserved_2,
@@ -464,7 +464,7 @@ private:
 template <cpu_isa_t isa>
 struct jit_bnorm_fwd_statistics_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_fwd_statistics_t)
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
@@ -855,7 +855,7 @@ struct jit_bnorm_fwd_var_t : jit_bnorm_fwd_statistics_t<isa> {
 template <cpu_isa_t isa>
 struct jit_bnorm_fwd_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_fwd_t)
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
@@ -1230,7 +1230,7 @@ struct jit_bnorm_fwd_t : public jit_generator {
 template <cpu_isa_t isa>
 struct jit_bnorm_bwd_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_bwd_t)
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword
@@ -1516,7 +1516,7 @@ struct jit_bnorm_bwd_t : public jit_generator {
 template <cpu_isa_t isa>
 struct jit_bnorm_bwd_diff_ss_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_bwd_diff_ss_t)
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     const AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                      ? yword

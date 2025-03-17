@@ -3681,7 +3681,7 @@ private:
 
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr cpu_isa_t isa_ = is_ymm_ ? avx2 : avx512_core;
-    static constexpr int max_vmm_regs_ = cpu_isa_traits<isa_>::n_vregs;
+    static constexpr int max_vmm_regs_ = cpu_isa_traits_t<isa_>::n_vregs;
     static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr int n_blk_step_ = is_ymm_ ? 8 : 16;
     static constexpr int req_cvt_bf16_k_blk_step_ = 16;

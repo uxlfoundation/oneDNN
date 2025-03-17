@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -255,7 +255,7 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
  * isa: sse41, avx, avx2, avx512 with core, bf16 extensions as well as data
  * types: f32, bf16, s32, u8, s8.
  */
-template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits<isa>::Vmm>
+template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits_t<isa>::Vmm>
 class jit_uni_binary_injector_t {
 public:
     jit_uni_binary_injector_t(

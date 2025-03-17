@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ struct _jit_avx512_core_x8s8s32x_1x1_conv_kernel : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     using Vmm_down_t =
             typename utils::conditional<std::is_same<Vmm, Xbyak::Zmm>::value,
                     Xbyak::Ymm, Xbyak::Xmm>::type;

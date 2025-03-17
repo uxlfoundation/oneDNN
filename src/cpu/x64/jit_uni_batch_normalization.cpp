@@ -245,7 +245,7 @@ struct jit_bnorm_t : public jit_generator {
             : (isa == avx2)                      ? yword
                                                  : zword;
 
-    const int vlen = isa == sse41 ? 32 : cpu_isa_traits<isa>::vlen;
+    const int vlen = isa == sse41 ? 32 : cpu_isa_traits_t<isa>::vlen;
 
     const batch_normalization_pd_t *pd_ = nullptr;
     const jit_bnorm_conf_t *jbp_ = nullptr;
@@ -2313,7 +2313,7 @@ struct driver_t : public c_compatible {
 private:
     enum {
         simd_w = isa == sse41 ? 8
-                              : cpu_isa_traits<isa>::vlen
+                              : cpu_isa_traits_t<isa>::vlen
                         / sizeof(acc_data_t) // BF16 will expand to FP32
     };
 
@@ -2420,7 +2420,7 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
             "bad padded dimensions for current isa");
 
     // Only IC % simd_w == 0 is supported for now
-    const int simd_w = cpu_isa_traits<isa>::vlen / sizeof(acc_data_t);
+    const int simd_w = cpu_isa_traits_t<isa>::vlen / sizeof(acc_data_t);
     VDISPATCH_BNORM(!(src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc)
                             && src_d.padded_dims()[1] % simd_w != 0),
             VERBOSE_UNSUPPORTED_PAD_FEATURE,

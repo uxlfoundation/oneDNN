@@ -146,7 +146,7 @@ private:
     using reg64_t = const Xbyak::Reg64;
     enum {
         simd_w = 16,
-        zmm_width_in_bytes = cpu_isa_traits<avx512_core>::vlen,
+        zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen,
     };
 
     // Register decomposition

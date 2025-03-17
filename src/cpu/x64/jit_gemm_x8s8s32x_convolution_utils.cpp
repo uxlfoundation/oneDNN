@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -160,7 +160,7 @@ jit_pp_ker_t::jit_pp_ker_t(
     , zmm_step_(1u)
     , bias_step_factor_(jcp_.with_bias ? zmm_step_++ : 0u)
     , sum_step_factor_(jcp_.with_sum ? zmm_step_++ : 0)
-    , max_unroll_((cpu_isa_traits<avx512_core>::n_vregs
+    , max_unroll_((cpu_isa_traits_t<avx512_core>::n_vregs
                           - number_of_reserved_zmm_regs_)
               / zmm_step_)
     , zp_pad_comp_helper_(jit_gemm_convolution_utils::padding_exists(jcp)
@@ -348,7 +348,7 @@ void jit_pp_ker_t::generate() {
     using namespace Xbyak;
     using namespace utils;
 
-    size_t vlen = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    size_t vlen = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     for (; vlen >= 1 && (jcp_.oc % vlen != 0); --vlen) {}
 
     preamble();

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -106,7 +106,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
     brgemm_convolution_bwd_strided_t(const pd_t *apd)
         : primitive_t(apd), bias_d(pd()->weights_md(1)) {}
 
-    ~brgemm_convolution_bwd_strided_t() = default;
+    ~brgemm_convolution_bwd_strided_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

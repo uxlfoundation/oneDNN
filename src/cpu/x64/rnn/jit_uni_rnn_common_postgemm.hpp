@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ struct jit_uni_rnn_postgemm : public jit_generator {
         , zmm_tail_k_mask(k3)
         , xf16_dq_reg_idx(tmp_vector_register_idx) {}
 
-    ~jit_uni_rnn_postgemm() {
+    ~jit_uni_rnn_postgemm() override {
         if (bf16_emu_) delete bf16_emu_;
     }
 

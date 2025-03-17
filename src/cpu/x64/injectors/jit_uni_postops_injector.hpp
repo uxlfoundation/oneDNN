@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -139,7 +139,7 @@ public:
             const eltwise_injector::static_params_t &eltwise_static_params,
             const lambda_jit_injectors_t &lambda_jit_injectors);
 
-    virtual ~jit_uni_postops_injector_t() = default;
+    ~jit_uni_postops_injector_t() override = default;
 
     // See `jit_uni_postops_injector_base_t::compute_vector_range(...)`
     void compute_vector_range(const injector_utils::vmm_index_set_t &vmm_idxs,

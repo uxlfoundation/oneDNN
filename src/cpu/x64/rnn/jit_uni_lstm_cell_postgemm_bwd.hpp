@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,7 +45,8 @@ struct jit_uni_lstm_cell_postgemm_bwd
                   // stage
                   src_data_t == data_type::bf16 && !mayiuse(avx512_core_bf16)) {
     }
-    ~jit_uni_lstm_cell_postgemm_bwd() = default;
+
+    ~jit_uni_lstm_cell_postgemm_bwd() override = default;
 
     status_t init(data_type_t sdt) override {
         CHECK(jit_uni_rnn_postgemm::init(src_data_t));

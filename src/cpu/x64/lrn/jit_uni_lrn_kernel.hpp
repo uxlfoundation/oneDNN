@@ -90,7 +90,7 @@ public:
     jit_uni_lrn_kernel_t(
             const within_config_t &J, const char *name = jit_name());
 
-    ~jit_uni_lrn_kernel_t();
+    ~jit_uni_lrn_kernel_t() override;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lrn_kernel_t);
     // TODO: why use double simd for sse41?
@@ -140,7 +140,7 @@ public:
             const nhwc_across_t &J, float A, float K, prop_kind_t pk);
     jit_uni_lrn_fwd_kernel_t(
             const nchw_across_t &J, float A, float K, prop_kind_t pk);
-    ~jit_uni_lrn_fwd_kernel_t();
+    ~jit_uni_lrn_fwd_kernel_t() override;
 
 private:
     using Base = jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<isa, d_type>>;

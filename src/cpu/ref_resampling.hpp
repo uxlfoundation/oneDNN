@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -67,7 +67,8 @@ struct ref_resampling_fwd_t : public primitive_t {
     };
 
     ref_resampling_fwd_t(const pd_t *apd);
-    ~ref_resampling_fwd_t();
+
+    ~ref_resampling_fwd_t() override;
 
     status_t init(engine_t *engine) override {
         ref_post_ops_
@@ -114,7 +115,8 @@ struct ref_resampling_bwd_t : public primitive_t {
     };
 
     ref_resampling_bwd_t(const pd_t *apd);
-    ~ref_resampling_bwd_t();
+
+    ~ref_resampling_bwd_t() override;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         execute_backward(ctx);

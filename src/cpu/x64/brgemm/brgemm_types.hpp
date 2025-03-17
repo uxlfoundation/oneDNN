@@ -206,7 +206,7 @@ struct DNNL_API brgemm_attr_t {
 };
 
 struct brgemm_desc_t {
-    brgemm_desc_t() {}
+    brgemm_desc_t() = default;
     brgemm_desc_t(const brgemm_desc_t &other);
     DNNL_API ~brgemm_desc_t();
 
@@ -572,8 +572,8 @@ struct jit_brdgmm_kernel_base_t;
 class jit_generator;
 
 struct brgemm_kernel_t {
-    brgemm_kernel_t() {};
-    virtual ~brgemm_kernel_t() {};
+    brgemm_kernel_t() = default;
+    virtual ~brgemm_kernel_t() = default;
     virtual status_t create_kernel() = 0;
     virtual void operator()(brgemm_kernel_params_t *) const = 0;
     virtual const jit_generator *get_jit_generator() const = 0;
@@ -589,12 +589,12 @@ struct jit_base_brgemm_kernel_t : public jit_generator {
 template <typename Vmm>
 struct brgemm_kernel_common_t : public brgemm_kernel_t {
     brgemm_kernel_common_t(const brgemm_desc_t &abrd);
-    ~brgemm_kernel_common_t();
+    ~brgemm_kernel_common_t() override;
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    virtual const jit_generator *get_jit_generator() const override;
-    virtual const brgemm_desc_t &get_brg() const override {
+    const jit_generator *get_jit_generator() const override;
+    const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
 
@@ -606,12 +606,12 @@ private:
 
 struct brgemm_amx_uker_t : public brgemm_kernel_t {
     brgemm_amx_uker_t(const brgemm_desc_t &abrd);
-    ~brgemm_amx_uker_t();
+    ~brgemm_amx_uker_t() override;
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    virtual const jit_generator *get_jit_generator() const override;
-    virtual const brgemm_desc_t &get_brg() const override {
+    const jit_generator *get_jit_generator() const override;
+    const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
 
@@ -624,12 +624,12 @@ private:
 template <typename Vmm>
 struct brdgmm_kernel_t : public brgemm_kernel_t {
     brdgmm_kernel_t(const brgemm_desc_t &abrd);
-    ~brdgmm_kernel_t();
+    ~brdgmm_kernel_t() override;
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    virtual const jit_generator *get_jit_generator() const override;
-    virtual const brgemm_desc_t &get_brg() const override {
+    const jit_generator *get_jit_generator() const override;
+    const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
 

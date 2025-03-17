@@ -52,7 +52,8 @@ struct jit_avx512_common_lrn_fwd_t : public primitive_t {
     };
 
     jit_avx512_common_lrn_fwd_t(const pd_t *apd);
-    ~jit_avx512_common_lrn_fwd_t();
+
+    ~jit_avx512_common_lrn_fwd_t() override;
 
     using data_t = typename prec_traits_t<d_type>::type;
 
@@ -91,7 +92,8 @@ struct jit_avx512_common_lrn_bwd_t : public primitive_t {
     };
 
     jit_avx512_common_lrn_bwd_t(const pd_t *apd);
-    ~jit_avx512_common_lrn_bwd_t();
+
+    ~jit_avx512_common_lrn_bwd_t() override;
 
     using data_t = typename prec_traits_t<d_type>::type;
 

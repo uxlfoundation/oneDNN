@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
 
     jit_uni_ncsp_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {};
 
-    ~jit_uni_ncsp_convolution_fwd_t() = default;
+    ~jit_uni_ncsp_convolution_fwd_t() override = default;
 
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
@@ -136,7 +136,8 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
     };
     jit_uni_ncsp_convolution_bwd_weights_t(const pd_t *cpd)
         : primitive_t(cpd) {};
-    ~jit_uni_ncsp_convolution_bwd_weights_t() = default;
+
+    ~jit_uni_ncsp_convolution_bwd_weights_t() override = default;
 
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
@@ -187,7 +188,8 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
         }
     };
     jit_uni_ncsp_convolution_bwd_data_t(const pd_t *cpd) : primitive_t(cpd) {};
-    ~jit_uni_ncsp_convolution_bwd_data_t() = default;
+
+    ~jit_uni_ncsp_convolution_bwd_data_t() override = default;
 
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;

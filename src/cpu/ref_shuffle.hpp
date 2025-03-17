@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ struct ref_shuffle_t : public primitive_t {
         return dnnl_success;
     }
 
-    ~ref_shuffle_t() { free(rev_transposed_); }
+    ~ref_shuffle_t() override { free(rev_transposed_); }
 
     status_t execute(const exec_ctx_t &ctx) const override {
         const memory_desc_wrapper src_d(

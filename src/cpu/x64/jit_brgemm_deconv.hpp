@@ -46,8 +46,6 @@ struct brgemm_deconvolution_fwd_t : public primitive_t {
             , has_strides_(other.has_strides_)
             , name_(other.name_) {}
 
-        ~pd_t() = default;
-
         DECLARE_COMMON_PD_T(name_.c_str(), brgemm_deconvolution_fwd_t);
 
         status_t init(engine_t *engine);
@@ -99,7 +97,7 @@ struct brgemm_deconvolution_fwd_t : public primitive_t {
 
     brgemm_deconvolution_fwd_t(const pd_t *apd) : primitive_t(apd) {};
 
-    ~brgemm_deconvolution_fwd_t() = default;
+    ~brgemm_deconvolution_fwd_t() override = default;
 
     status_t init(engine_t *engine) override;
 

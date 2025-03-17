@@ -177,7 +177,7 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
         return jit_generator::operator()(args);
     }
 
-    ~jit_brgemm_kernel_post_ops_t() = default;
+    ~jit_brgemm_kernel_post_ops_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops_t)
 

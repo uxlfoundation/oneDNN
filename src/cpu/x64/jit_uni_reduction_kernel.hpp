@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ struct jit_uni_reduction_kernel_base_t : public jit_generator {
         : jit_generator(jit_name(), conf.isa)
         , conf_(conf)
         , sum_scales_(conf_.sum_scales) {}
-    virtual ~jit_uni_reduction_kernel_base_t() = default;
+    ~jit_uni_reduction_kernel_base_t() override = default;
 
     virtual std::size_t get_simd_w() = 0;
 
@@ -54,7 +54,7 @@ struct jit_uni_reduction_kernel_t : public jit_uni_reduction_kernel_base_t {
     jit_uni_reduction_kernel_t(
             const jit_reduction_conf_t &conf, const memory_desc_t *dst_md);
 
-    virtual ~jit_uni_reduction_kernel_t() = default;
+    ~jit_uni_reduction_kernel_t() override = default;
 
     std::size_t get_simd_w() override { return simd_w_; }
 

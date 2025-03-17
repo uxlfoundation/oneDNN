@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -128,7 +128,8 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
     }
 
     jit_uni_layer_normalization_fwd_t(const pd_t *apd) : primitive_t(apd) {}
-    virtual ~jit_uni_layer_normalization_fwd_t() = default;
+
+    ~jit_uni_layer_normalization_fwd_t() override = default;
 
     void reorder_stat(const exec_ctx_t &ctx, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const {
@@ -292,7 +293,8 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
     }
 
     jit_uni_layer_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}
-    virtual ~jit_uni_layer_normalization_bwd_t() = default;
+
+    ~jit_uni_layer_normalization_bwd_t() override = default;
 
     void reorder_stat(const exec_ctx_t &ctx, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -185,7 +185,7 @@ struct kernel_t {
     virtual void operator()(const call_param_t *c) const = 0;
     virtual void operator()(const tail_call_param_t *c) const = 0;
     virtual status_t create_kernel() = 0;
-    virtual ~kernel_t() {}
+    virtual ~kernel_t() = default;
 
     /** inits kernel descriptor:
      *      desc            -- kernel descriptor (output)
@@ -297,7 +297,7 @@ struct jit_blk_reorder_t : public primitive_t {
     status_t execute(const exec_ctx_t &ctx) const override;
 
     jit_blk_reorder_t(const pd_t *apd);
-    ~jit_blk_reorder_t();
+    ~jit_blk_reorder_t() override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

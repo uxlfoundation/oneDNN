@@ -40,7 +40,8 @@ struct jit_uni_pool_kernel : public jit_generator {
     jit_uni_pool_kernel(
             const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md);
     jit_pool_conf_t jpp;
-    ~jit_uni_pool_kernel();
+
+    ~jit_uni_pool_kernel() override;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_pool_kernel)
 

@@ -59,7 +59,7 @@ struct jit_uni_xf16_sum_kernel_t : public jit_generator {
         , reg_src {r8, r9, r10, r11, r12, r13, r14, r15}
         , num_acc_iters(num_acc_iters) {}
 
-    ~jit_uni_xf16_sum_kernel_t() {}
+    ~jit_uni_xf16_sum_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_xf16_sum_kernel_t)
 
@@ -113,7 +113,7 @@ struct jit_avx512_core_bf16_sum_kernel_t
                     bf16_emu_reserved_5);
     }
 
-    ~jit_avx512_core_bf16_sum_kernel_t() = default;
+    ~jit_avx512_core_bf16_sum_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_bf16_sum_kernel_t)
 
@@ -204,7 +204,7 @@ struct jit_avx2_vnni_2_xf16_sum_kernel_t
     jit_avx2_vnni_2_xf16_sum_kernel_t(jit_sum_conf_t ajsp)
         : jit_uni_xf16_sum_kernel_t<Xbyak::Ymm>(ajsp, ajsp.num_srcs) {}
 
-    ~jit_avx2_vnni_2_xf16_sum_kernel_t() {}
+    ~jit_avx2_vnni_2_xf16_sum_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_vnni_2_xf16_sum_kernel_t)
 

@@ -43,11 +43,11 @@ static inline Xbyak::Ymm make_ymm(const Xbyak::Zmm &v) {
 
 namespace avx512_core_gemm_smalln_tn_f32 {
 
-struct xbyak_gemm_smalln_tn_t : public jit_generator {
+struct xbyak_gemm_smalln_tn_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_gemm_smalln_tn_xbyak_gemm)
 
     xbyak_gemm_smalln_tn_t(int N, float beta, float alpha)
-        : jit_generator(jit_name()), N(N), beta(beta), alpha(alpha) {}
+        : jit_generator_t(jit_name()), N(N), beta(beta), alpha(alpha) {}
 
     void generate() override {
         using namespace Xbyak;

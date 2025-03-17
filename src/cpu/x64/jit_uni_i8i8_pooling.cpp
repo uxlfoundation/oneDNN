@@ -66,7 +66,7 @@ struct jit_uni_i8i8_pool_call_params_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator {
+struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_i8i8_pooling_fwd_ker_t)
 
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
@@ -232,7 +232,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator {
 
     jit_uni_i8i8_pooling_fwd_ker_t(
             const jit_pool_conf_t &jpp_, const memory_desc_t *dst_md)
-        : jit_generator(jit_name(), isa)
+        : jit_generator_t(jit_name(), isa)
         , jpp(jpp_)
         , postops_injector_(nullptr) {
 

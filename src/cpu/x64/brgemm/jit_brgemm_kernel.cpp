@@ -2948,7 +2948,7 @@ void brgemm_kernel_common_t<Wmm>::operator()(
 }
 
 template <typename Wmm>
-const jit_generator *brgemm_kernel_common_t<Wmm>::get_jit_generator() const {
+const jit_generator_t *brgemm_kernel_common_t<Wmm>::get_jit_generator() const {
     return brgemm_kernel_;
 }
 

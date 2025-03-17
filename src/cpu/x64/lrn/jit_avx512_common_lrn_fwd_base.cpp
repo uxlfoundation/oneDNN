@@ -72,7 +72,7 @@ void jit_avx512_common_lrn_kernel_fwd_t<d_type>::load_tail(int tail_value,
         int tmp_load_to_stack_idx_tail) {
 
     // TODO: Investigate if this method can be simplified by using mask or
-    // jit_generator load utilities.
+    // jit_generator_t load utilities.
     static constexpr auto src_size = sizeof(data_t);
     auto tmp_xreg = this->xreg(0, tmp_load_to_stack_idx_tail);
 
@@ -111,7 +111,7 @@ void jit_avx512_common_lrn_kernel_fwd_t<d_type>::load_tail(int tail_value,
 template <>
 void jit_avx512_common_lrn_kernel_fwd_t<f16>::store_data(
         const Address addr, Zmm zr, Ymm yr) {
-    this->vcvtps2ph(addr, zr, jit_generator::_op_mxcsr);
+    this->vcvtps2ph(addr, zr, jit_generator_t::_op_mxcsr);
 }
 
 template <>
@@ -215,7 +215,7 @@ template <data_type_t d_type>
 jit_avx512_common_lrn_kernel_fwd_t<d_type>::jit_avx512_common_lrn_kernel_fwd_t(
         prop_kind_t prop_kind, float alpha, float beta, float k, int local_size,
         const char *name)
-    : jit_generator(name, avx512_core_bf16)
+    : jit_generator_t(name, avx512_core_bf16)
     , pk_(prop_kind)
     , alpha_(alpha)
     , beta_(beta)

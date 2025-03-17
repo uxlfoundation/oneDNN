@@ -28,7 +28,7 @@ namespace x64 {
 template <cpu_isa_t isa>
 struct jit_uni_lstm_cell_postgemm_t {
     jit_uni_lstm_cell_postgemm_t(
-            jit_generator *host, int tmp_id_begin, bool use_bf16_emu)
+            jit_generator_t *host, int tmp_id_begin, bool use_bf16_emu)
         : host_(host)
         , min_allowed_tmp_vmm_idx_(0)
         , max_allowed_tmp_vmm_idx_(cpu_isa_traits_t<isa>::n_vregs - 1
@@ -166,7 +166,7 @@ protected:
     const bool avx2_available_ = is_superset(isa, avx2);
 
 private:
-    jit_generator *host_;
+    jit_generator_t *host_;
     const int min_allowed_tmp_vmm_idx_;
     const int max_allowed_tmp_vmm_idx_;
     int tmp_id_first_;

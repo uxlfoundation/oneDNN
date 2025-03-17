@@ -21,7 +21,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-void jit_generator::transpose(const Xbyak::Reg64 &reg_src,
+void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
         const Xbyak::Reg64 &reg_dst, dim_t src_stride, dim_t dst_stride,
         int nrows, int ncolumns, data_type_t dt, Xbyak::Ymm &ymm_tmp,
         Xbyak::Ymm &ymm_mask, Xbyak::Xmm &xmm_upper_mask) {

@@ -242,7 +242,7 @@ private:
     std::unique_ptr<jit_avx512_core_brgemm_conv_bwd_copy_kernel::
                     jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>>
             copy_to_output_buffer_;
-    std::unique_ptr<jit_generator> comp_vpad_pbuffer_;
+    std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
     std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 
     size_t acc_dsz, bia_dsz, src_dsz, wei_dsz, dst_dsz;

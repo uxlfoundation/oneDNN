@@ -39,7 +39,7 @@ using namespace Xbyak;
 using namespace Xbyak::util;
 
 template <data_type_t d_type>
-class jit_avx512_common_lrn_kernel_bwd_t : public jit_generator {
+class jit_avx512_common_lrn_kernel_bwd_t : public jit_generator_t {
 public:
     jit_avx512_common_lrn_kernel_bwd_t(float alpha, float beta, int local_size,
             const char *name = jit_name());

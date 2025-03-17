@@ -32,7 +32,7 @@ namespace cpu {
 namespace x64 {
 
 template <typename Vmm>
-struct _jit_avx512_core_bf16_fwd_kernel : public jit_generator {
+struct _jit_avx512_core_bf16_fwd_kernel : public jit_generator_t {
     _jit_avx512_core_bf16_fwd_kernel(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
@@ -256,14 +256,14 @@ struct jit_avx512_core_bf16_fwd_kernel {
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_bf16_fwd_kernel);
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 template <typename Vmm>
-struct _jit_avx512_core_bf16_bwd_data_kernel : public jit_generator {
+struct _jit_avx512_core_bf16_bwd_data_kernel : public jit_generator_t {
 
     _jit_avx512_core_bf16_bwd_data_kernel(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_bf16)
+        : jit_generator_t(jit_name(), avx512_core_bf16)
         , jcp(ajcp)
         , bf16_emu_(nullptr) {
         if (!isa_has_bf16(jcp.isa))
@@ -469,14 +469,15 @@ struct jit_avx512_core_bf16_bwd_data_kernel {
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_bf16_bwd_data_kernel);
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
-struct jit_avx512_core_bf16_conv_bwd_weights_kernel_f32 : public jit_generator {
+struct jit_avx512_core_bf16_conv_bwd_weights_kernel_f32
+    : public jit_generator_t {
 
     jit_avx512_core_bf16_conv_bwd_weights_kernel_f32(
             const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_bf16)
+        : jit_generator_t(jit_name(), avx512_core_bf16)
         , jcp(ajcp)
         , bf16_emu_(nullptr) {
         if (!isa_has_bf16(jcp.isa)) {

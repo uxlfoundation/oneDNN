@@ -36,12 +36,12 @@ using namespace Xbyak;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_a_impl_t)
 
     jit_brgemm_matmul_copy_a_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize_(conf_->a_dt_sz)
         , tr_typesize_(conf_->tr_a_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(conf_->src_dt))
@@ -64,8 +64,10 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
                           : avx512_core_dot_product_ ? 27
                                                      : 29) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
@@ -184,10 +186,10 @@ void jit_brgemm_matmul_copy_a_impl_t<Zmm>::load_tail(
     const auto kmovx = [this](Opmask k, size_t q) {
         if (conf_->is_bf32) {
             mov(regq_tmp.cvt32(), q);
-            jit_generator::kmovw(k, regq_tmp.cvt32());
+            jit_generator_t::kmovw(k, regq_tmp.cvt32());
         } else {
             mov(regq_tmp, q);
-            jit_generator::kmovq(k, regq_tmp);
+            jit_generator_t::kmovq(k, regq_tmp);
         }
     };
 
@@ -423,7 +425,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_M_loop(
                     ptr[param1 + GET_OFF(zp_a_compensation_result_ptr)]);
             if (!is_ymm_) {
                 mov(regq_tmp, 1);
-                jit_generator::kmovw(kTail_comp, imm_addr64.cvt32());
+                jit_generator_t::kmovw(kTail_comp, imm_addr64.cvt32());
             }
         }
     }
@@ -527,12 +529,12 @@ template struct jit_brgemm_matmul_copy_a_impl_t<Ymm>;
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_a_transposed_impl_t
     : public jit_brgemm_matmul_copy_a_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_a_transposed_impl_t)
 
     jit_brgemm_matmul_copy_a_transposed_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf_->a_dt_sz)
         , tr_typesize(conf_->tr_a_dt_sz)
         , rows_step(16)
@@ -551,8 +553,10 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
                   && conf_->orig_src_dt == data_type::f16
                   && conf_->src_dt == data_type::f32) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
@@ -619,17 +623,17 @@ private:
 
     void vmovdqa64(Vmm v, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(v, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(v, ptr[imm_addr64]);
     }
 
     void vmovdqa32(Vmm v, const int32_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa32(v, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa32(v, ptr[imm_addr64]);
     }
 
     void kmovw(Opmask mask_reg, size_t mask) {
         mov(regw_tmp, mask);
-        jit_generator::kmovw(mask_reg, regw_tmp);
+        jit_generator_t::kmovw(mask_reg, regw_tmp);
     }
 
     void transpose_f32(reg64_t dst, reg64_t src, int nrows, int ncolumns);
@@ -667,9 +671,9 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
                   } else
                       mov(regw_tmp, w);
                   if (use_word_sz)
-                      jit_generator::kmovw(k, regw_tmp);
+                      jit_generator_t::kmovw(k, regw_tmp);
                   else
-                      jit_generator::kmovd(k, regw_tmp);
+                      jit_generator_t::kmovd(k, regw_tmp);
               };
 
     auto store = [this, dst](Zmm r, int i) {
@@ -874,7 +878,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
 
     const int A_rows = nstl::min(avx2_transpose_size, nrows);
     const int A_columns = nstl::min(avx2_transpose_size, ncolumns);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
             A_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
     if (rows_step <= 8) return;
@@ -885,7 +889,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     const int B_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
     add(reg_src, src_B_offset);
     add(reg_dst, dst_B_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
             B_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
 
@@ -895,7 +899,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
     add(reg_src, -src_B_offset + src_C_offset);
     add(reg_dst, -dst_B_offset + dst_C_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
             C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
 
@@ -907,7 +911,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     const int D_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
     add(reg_src, -src_C_offset + src_D_offset);
     add(reg_dst, -dst_C_offset + dst_D_offset);
-    jit_generator::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
+    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
             D_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
             xmm_upper_tail_mask);
     sub(reg_src, src_D_offset);
@@ -932,7 +936,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_f32(
             sub(regq_tmp, 1);
         } else
             mov(regw_tmp, q);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     };
 
     const int load_mask
@@ -1280,14 +1284,14 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
 
 struct jit_brgemm_matmul_copy_a_transposed_int8_impl_t
     : public jit_brgemm_matmul_copy_a_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             jit_brgemm_matmul_copy_a_transposed_int8_impl_t)
 
     jit_brgemm_matmul_copy_a_transposed_int8_impl_t(
             const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_stride_(conf_->copy_A_src_stride)
         , dst_stride_(conf_->LDA * conf_->tr_a_dt_sz)
         , m_loop_src_shift_(columns_step_ * conf_->a_dt_sz)
@@ -1302,8 +1306,10 @@ struct jit_brgemm_matmul_copy_a_transposed_int8_impl_t
         , last_m_block_tail_(conf_->M_tail % columns_step_)
         , do_compute_compensation_(conf_->has_zero_point_b) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     constexpr static int rows_step_ = 16;
@@ -1381,7 +1387,7 @@ private:
             sub(reg_tmp_, 1);
         } else
             mov(reg_tmp_, w);
-        jit_generator::kmovd(k, reg_tmp_.cvt32());
+        jit_generator_t::kmovd(k, reg_tmp_.cvt32());
     }
 
     void transpose_int8_vpermb(Reg64 dst, Reg64 src, int nrows, int ncolumns);
@@ -1965,7 +1971,7 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 
     auto kmovw = [this](Opmask k, unsigned w) {
         mov(reg_tmp_, w);
-        jit_generator::kmovw(k, reg_tmp_.cvt32());
+        jit_generator_t::kmovw(k, reg_tmp_.cvt32());
     };
 
     kmovw(kFFFF_, 0xffff);
@@ -1978,7 +1984,7 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 
     auto vmovdqa64 = [this](Zmm z, const int64_t *addr) {
         mov(reg_tmp_, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[reg_tmp_]);
+        jit_generator_t::vmovdqa64(z, ptr[reg_tmp_]);
     };
 
     if (has_vpermb_) {
@@ -2059,12 +2065,12 @@ template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_int8_t)
 
     jit_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_stride_(conf->copy_B_wei_stride)
         , tr_src_stride_(conf->LDB * k_blk_step_ * sizeof(int8_t))
         , is_amx_(mayiuse(avx512_core_amx))
@@ -2078,8 +2084,10 @@ struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
                           : avx512_core_dot_product_ ? 23
                                                      : 25) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 protected:
     using reg64_t = const Xbyak::Reg64;
@@ -2146,7 +2154,7 @@ protected:
 
     inline void vmovdqa64(Vmm vmm, const void *addr) {
         mov(reg_tmp, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(vmm, ptr[reg_tmp]);
+        jit_generator_t::vmovdqa64(vmm, ptr[reg_tmp]);
     }
 
     inline Vmm get_vmm(int blk, int idx) {
@@ -2196,7 +2204,7 @@ inline void jit_brgemm_matmul_copy_b_int8_t<Zmm>::kmovq(Opmask k, size_t q) {
         sub(reg_tmp, 1);
     } else
         mov(reg_tmp, q);
-    jit_generator::kmovq(k, reg_tmp);
+    jit_generator_t::kmovq(k, reg_tmp);
 }
 
 template struct jit_brgemm_matmul_copy_b_int8_t<Zmm>;
@@ -2859,12 +2867,12 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_bf16_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_bf16_t)
 
     jit_brgemm_matmul_copy_b_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf->b_dt_sz)
         , tr_typesize(conf->tr_b_dt_sz)
         , scales_typesize(sizeof(float))
@@ -2879,8 +2887,10 @@ struct jit_brgemm_matmul_copy_b_bf16_t : public jit_brgemm_matmul_copy_b_t,
         , req_apply_scales(conf->apply_scales_in_buffer_b)
         , typesize_scale(is_src_int4 ? 2 : 1) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
@@ -2947,9 +2957,9 @@ private:
         } else
             mov(regw_tmp, w);
         if (req_cvtps2bf16)
-            jit_generator::kmovw(k, regw_tmp);
+            jit_generator_t::kmovw(k, regw_tmp);
         else
-            jit_generator::kmovd(k, regw_tmp);
+            jit_generator_t::kmovd(k, regw_tmp);
     }
     void copy_half_int4(const Zmm &zmm, const Ymm &ymm_half) {
         vinserti64x4(zmm, zmm, ymm_half, 1);
@@ -3343,12 +3353,12 @@ template struct jit_brgemm_matmul_copy_b_bf16_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
-                                        public jit_generator {
+                                        public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_f32_t)
 
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
@@ -3362,8 +3372,10 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
         , tr_src_stride_(conf_->LDB * typesize_out_)
         , scales_N_stride_(conf_->N * scales_typesize_) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
@@ -3403,7 +3415,7 @@ private:
     inline void kmovw(Opmask k, unsigned w) {
         if (!isa_has_masks(conf_->isa)) return;
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     }
     void copy_half_int4(const Zmm &zmm, const Ymm &ymm_half) {
         vinserti64x4(zmm, zmm, ymm_half, 1);
@@ -3622,12 +3634,12 @@ template struct jit_brgemm_matmul_copy_b_f32_t<Ymm>;
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_transposed_t
     : public jit_brgemm_matmul_copy_b_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_transposed_t)
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize_(conf_->b_dt_sz)
         , tr_typesize_(conf_->tr_b_dt_sz)
         , scales_typesize_(sizeof(float))
@@ -3670,8 +3682,10 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , typesize_scale_(is_src_int4_ ? 2 : 1)
         , is_dynamic_N_(conf->is_runtime_N) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;
@@ -3755,12 +3769,12 @@ private:
 
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     };
 
     void kmovq(Opmask k, size_t q) {
         mov(regq_tmp, q);
-        jit_generator::kmovq(k, regq_tmp);
+        jit_generator_t::kmovq(k, regq_tmp);
     };
 
     Vmm src_vmm(int i) {
@@ -4547,12 +4561,12 @@ template struct jit_brgemm_matmul_copy_b_transposed_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_cvt_bf16_t : public jit_brgemm_matmul_copy_b_t,
-                                             public jit_generator {
+                                             public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_cvt_bf16_t)
 
     jit_brgemm_matmul_copy_b_cvt_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , scales_typesize_(sizeof(float))
@@ -4569,8 +4583,10 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t : public jit_brgemm_matmul_copy_b_t,
                           : req_zp_b_shift_ ? 1
                                             : 0) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak::Reg64;

@@ -31,12 +31,12 @@ namespace x64 {
 template <typename Vmm>
 struct direct_copy_kernel_t
     : public jit_uni_reorder_direct_copy_t::kernel_base_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(direct_copy_kernel_t)
 
     direct_copy_kernel_t(const reorder_pd_t *pd, cpu_isa_t isa)
         : jit_uni_reorder_direct_copy_t::kernel_base_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , isa_(isa)
         , src_dt_(pd_->src_md()->data_type)
         , dst_dt_(pd_->dst_md()->data_type) {
@@ -75,10 +75,12 @@ struct direct_copy_kernel_t
         args.src = src;
         args.dst = dst;
         args.work_amount = work_amount;
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     Address src_ptr(size_t offt = 0) { return ptr[reg_src + offt]; }
 

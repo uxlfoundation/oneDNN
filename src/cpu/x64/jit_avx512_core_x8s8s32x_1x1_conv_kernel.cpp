@@ -49,7 +49,7 @@ _jit_avx512_core_x8s8s32x_1x1_conv_kernel<Vmm>::
         _jit_avx512_core_x8s8s32x_1x1_conv_kernel(
                 const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
                 const memory_desc_t &dst_md)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp(ajcp)
     , attr_(attr)
     , postops_injector_(nullptr) {

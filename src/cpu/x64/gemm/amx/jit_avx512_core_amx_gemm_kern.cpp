@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -457,7 +457,7 @@ void jit_avx512_core_amx_gemm_kern::generate() {
 
 jit_avx512_core_amx_gemm_kern::jit_avx512_core_amx_gemm_kern(
         int typea, int typeb, int typec, int betaZero)
-    : jit_generator(jit_name(), avx512_core_amx)
+    : jit_generator_t(jit_name(), avx512_core_amx)
     , typea(typea)
     , typeb(typeb)
     , typec(typec)

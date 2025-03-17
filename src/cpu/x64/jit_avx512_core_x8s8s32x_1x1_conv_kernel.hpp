@@ -32,7 +32,7 @@ namespace cpu {
 namespace x64 {
 
 template <typename Vmm>
-struct _jit_avx512_core_x8s8s32x_1x1_conv_kernel : public jit_generator {
+struct _jit_avx512_core_x8s8s32x_1x1_conv_kernel : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_avx512_core_x8s8s32x_1x1_conv_fwd_ker_t)
     _jit_avx512_core_x8s8s32x_1x1_conv_kernel(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
@@ -194,7 +194,7 @@ struct jit_avx512_core_x8s8s32x_1x1_conv_kernel {
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_x8s8s32x_1x1_conv_kernel);
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

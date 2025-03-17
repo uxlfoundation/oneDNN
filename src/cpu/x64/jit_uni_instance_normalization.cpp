@@ -59,13 +59,13 @@ const bcast_set_t &get_supported_bcast_strategies() {
 
 template <cpu_isa_t isa>
 struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
-                  public jit_generator {
+                  public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             jit_uni_instance_normalization_fwd_t::kernel_t);
 
     kernel_t(const group_normalization_pd_t *pd)
         : jit_uni_instance_normalization_fwd_t::kernel_base_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , src_d_(pd->src_md())
         , dst_d_(pd->dst_md())
         , C_(pd->C())
@@ -102,7 +102,9 @@ struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
                 {{dst_d_.data_type(), io_saturation_conf}});
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
     void generate() override {
         const size_t c_src_size
                 = C_ * types::data_type_size(src_d_.data_type());
@@ -206,7 +208,7 @@ struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
         args.eps = eps_;
         args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec;
 
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
 protected:
@@ -374,12 +376,12 @@ template struct kernel_t<avx512_core>;
 template <cpu_isa_t isa>
 struct kernel_stat_t
     : public jit_uni_instance_normalization_fwd_t::kernel_stat_base_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             jit_uni_instance_normalization_fwd_t::kernel_stat_t);
 
     kernel_stat_t(const group_normalization_pd_t *pd, bool compute_var = false)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , src_d_(pd->src_md())
         , compute_var_(compute_var)
         , C_(pd->C())
@@ -404,7 +406,9 @@ struct kernel_stat_t
                 {src_d_.data_type(), f32 /* stats */}, io_conf, io_tail_conf,
                 io_bf16_conf);
     }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
     void generate() override {
         preamble();
 
@@ -461,7 +465,7 @@ struct kernel_stat_t
         args.block_size
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
 
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
     void operator()(const void *src, const float *mean, float *var,
@@ -473,7 +477,7 @@ struct kernel_stat_t
         args.block_size
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
 
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
 protected:

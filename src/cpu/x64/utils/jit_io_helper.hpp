@@ -156,7 +156,7 @@ public:
     friend class jit_io_multi_dt_helper_t<Vmm>;
 
     jit_io_helper_t() = default;
-    jit_io_helper_t(jit_generator *host, const cpu_isa_t &isa,
+    jit_io_helper_t(jit_generator_t *host, const cpu_isa_t &isa,
             const data_type_t &data_type, const io_conf_t &io_conf,
             const utils::optional_t<io_tail_conf_t> &tail_conf = utils::nullopt,
             const utils::optional_t<io_emu_bf16_conf_t> &bf16_conf
@@ -235,7 +235,7 @@ private:
     void convert_to_f32(const Vmm &dst_vmm, const Xbyak::Xmm &src_vmm,
             const data_type_t src_data_type);
 
-    jit_generator *host_;
+    jit_generator_t *host_;
     const cpu_isa_t isa_;
     const data_type_t data_type_;
     const bool bf16_supported_;
@@ -258,7 +258,7 @@ public:
     using saturation_map_t = std::map<data_type_t, io_saturation_conf_t>;
 
     jit_io_multi_dt_helper_t();
-    jit_io_multi_dt_helper_t(jit_generator *host, const cpu_isa_t &isa,
+    jit_io_multi_dt_helper_t(jit_generator_t *host, const cpu_isa_t &isa,
             const data_types_t &data_types, const io_conf_t &io_conf,
             const utils::optional_t<io_tail_conf_t> &tail_conf = utils::nullopt,
             const utils::optional_t<io_emu_bf16_conf_t> &bf16_conf

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2021 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_prelu_base_kernel_t : public jit_generator {
+class jit_prelu_base_kernel_t : public jit_generator_t {
 public:
     jit_prelu_base_kernel_t(const cpu_isa_t &isa, const int vlen,
             const prelu::bcast &bcast, const memory_desc_wrapper &tensor_md,

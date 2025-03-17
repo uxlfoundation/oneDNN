@@ -42,7 +42,7 @@ struct jit_brgemm_conv_comp_pad_call_s {
 // Variables with "ic" and "oc" are named from perspective of fwd
 // For bwd_d "ic" and "oc" are swapped
 template <typename Vmm>
-struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator {
+struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_brgemm_conv_comp_pad_kernel_t)
 
@@ -137,7 +137,7 @@ protected:
 };
 
 template <typename Vmm>
-struct jit_uni_brgemm_conv_relo_comp_pad_kernel_t : public jit_generator {
+struct jit_uni_brgemm_conv_relo_comp_pad_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_brgemm_conv_relo_comp_pad_kernel_t)
     using reg64_t = const Xbyak::Reg64;
 

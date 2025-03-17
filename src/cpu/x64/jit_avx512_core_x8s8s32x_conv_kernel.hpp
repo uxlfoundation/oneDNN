@@ -32,7 +32,7 @@ namespace cpu {
 namespace x64 {
 
 template <typename Vmm>
-struct _jit_avx512_core_x8s8s32x_fwd_kernel : public jit_generator {
+struct _jit_avx512_core_x8s8s32x_fwd_kernel : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_avx512_core_x8s8s32x_conv_fwd_ker_t)
 
     enum { STATE_FIRST_DST_LOAD = 0x1U };
@@ -283,7 +283,7 @@ struct jit_avx512_core_x8s8s32x_fwd_kernel {
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_x8s8s32x_fwd_kernel)
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

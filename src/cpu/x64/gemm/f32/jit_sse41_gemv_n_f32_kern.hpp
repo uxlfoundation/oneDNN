@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_sse41_gemv_n_f32_kern : public jit_generator {
+class jit_sse41_gemv_n_f32_kern : public jit_generator_t {
 public:
     jit_sse41_gemv_n_f32_kern();
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_gemv_n_f32_kern);

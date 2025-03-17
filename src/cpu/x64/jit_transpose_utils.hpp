@@ -75,12 +75,12 @@ struct jit_transpose4x16_src_t {
     bool tr_src_pf1;
 };
 
-struct jit_transpose4x16_src : public jit_generator {
+struct jit_transpose4x16_src : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_transpose4x16_src)
 
     jit_transpose4x16_src(const jit_1x1_conv_conf_t *aparams,
             jit_transpose4x16_src_t *tparams_)
-        : jit_generator(jit_name()), params(aparams), tparams(tparams_) {}
+        : jit_generator_t(jit_name()), params(aparams), tparams(tparams_) {}
 
     const jit_1x1_conv_conf_t *params;
     const jit_transpose4x16_src_t *tparams;
@@ -117,13 +117,13 @@ private:
     void generate() override;
 };
 
-struct jit_diff_wei_trans_to_vnni_t : public jit_generator {
+struct jit_diff_wei_trans_to_vnni_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_diff_wei_trans_to_vnni_t)
 
     jit_diff_wei_trans_to_vnni_t(const data_type_t dt, const int &kd,
             const int &kh, const int &kw, const int &ic_block,
             const int &oc_block, const int nb_ic)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , out_dt_(dt)
         , kd_(kd)
         , kh_(kh)
@@ -134,7 +134,9 @@ struct jit_diff_wei_trans_to_vnni_t : public jit_generator {
 
     ~jit_diff_wei_trans_to_vnni_t() override = default;
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     const data_type_t out_dt_;
     const int kd_, kh_, kw_;

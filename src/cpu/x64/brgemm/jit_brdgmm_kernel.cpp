@@ -1439,7 +1439,7 @@ void brdgmm_kernel_t<Wmm>::operator()(brgemm_kernel_params_t *params) const {
 }
 
 template <typename Wmm>
-const jit_generator *brdgmm_kernel_t<Wmm>::get_jit_generator() const {
+const jit_generator_t *brdgmm_kernel_t<Wmm>::get_jit_generator() const {
     return brgemm_kernel_;
 }
 

@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_amx_copy_kern : public jit_generator {
+class jit_avx512_core_amx_copy_kern : public jit_generator_t {
 public:
     jit_avx512_core_amx_copy_kern(bool is_a, bool is_trans, int isize);
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_copy_kern);

@@ -72,7 +72,7 @@ struct ur_w_blks_params_t {
 };
 
 template <typename Vmm>
-struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel : public jit_generator {
+struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_x8s8s32x_deconv_fwd_ker_t);
 
     jit_avx512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
@@ -241,7 +241,7 @@ struct _jit_avx512_core_x8s8s32x_deconv_fwd_kernel {
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(_jit_avx512_core_x8s8s32x_deconv_fwd_kernel);
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 struct jit_avx512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {

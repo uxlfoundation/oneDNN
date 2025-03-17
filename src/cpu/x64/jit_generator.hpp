@@ -60,7 +60,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-// TODO: move this to jit_generator class?
+// TODO: move this to jit_generator_t class?
 namespace {
 
 typedef enum {
@@ -144,9 +144,9 @@ constexpr Xbyak::Operand::Code abi_not_param_reg =
 
 #endif
 
-class jit_generator : public Xbyak::MmapAllocator,
-                      public Xbyak::CodeGenerator,
-                      public c_compatible {
+class jit_generator_t : public Xbyak::MmapAllocator,
+                        public Xbyak::CodeGenerator,
+                        public c_compatible {
 public:
     using c_compatible::operator new;
     using c_compatible::operator new[];
@@ -2700,17 +2700,17 @@ public:
             data_type_t dt,
             /*rest of vmms used only if there are tails*/ Xbyak::Ymm &ymm_tmp,
             Xbyak::Ymm &ymm_mask, Xbyak::Xmm &xmm_upper_mask);
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator_t);
 
     /* All uni_ instructions -- apart from uni_vzeroupper() -- will comply with
      * the max_cpu_isa argument */
-    jit_generator(const char *name, cpu_isa_t max_cpu_isa = get_max_cpu_isa())
+    jit_generator_t(const char *name, cpu_isa_t max_cpu_isa = get_max_cpu_isa())
         : Xbyak::MmapAllocator(name)
         , Xbyak::CodeGenerator(MAX_CODE_SIZE, Xbyak::AutoGrow,
                   /*allocator=*/this)
         , max_cpu_isa_(max_cpu_isa) {}
 
-    ~jit_generator() override = default;
+    ~jit_generator_t() override = default;
 
     virtual const char *name() const = 0;
     virtual const char *source_file() const = 0;

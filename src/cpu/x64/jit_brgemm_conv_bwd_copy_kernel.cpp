@@ -34,7 +34,7 @@ template <typename Vmm>
 jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>::
         jit_avx512_core_brgemm_conv_bwd_copy_kernel_t(
                 const jit_brgemm_conv_conf_t &ajcp)
-    : jit_generator(jit_name()), jcp(ajcp) {}
+    : jit_generator_t(jit_name()), jcp(ajcp) {}
 
 // use different vmovdqu32/16/8 due to case when tail mask used
 template <typename Vmm>

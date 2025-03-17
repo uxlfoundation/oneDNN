@@ -48,7 +48,7 @@ jit_uni_pool_kernel<isa>::~jit_uni_pool_kernel() = default;
 template <cpu_isa_t isa>
 jit_uni_pool_kernel<isa>::jit_uni_pool_kernel(
         const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md)
-    : jit_generator(jit_name(), isa), jpp(ajpp) {
+    : jit_generator_t(jit_name(), isa), jpp(ajpp) {
 
     bool has_f8_e5m2_binary_postops = false;
     bool has_f8_e4m3_binary_postops = false;

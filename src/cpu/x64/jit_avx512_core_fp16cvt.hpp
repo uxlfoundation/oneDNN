@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,18 +45,18 @@ struct jit_call_t {
 
 // performs element-by-element sum of inp and add float arrays and stores
 // result to float16 out array with downconversion
-struct jit_avx512_core_fp16_add_cvt_ps_to_f16_t : public jit_generator {
+struct jit_avx512_core_fp16_add_cvt_ps_to_f16_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_add_cvt_ps_to_f16)
 
     jit_avx512_core_fp16_add_cvt_ps_to_f16_t()
-        : jit_generator(jit_name()), simd_w_(16) {
+        : jit_generator_t(jit_name()), simd_w_(16) {
         create_kernel();
     }
 
     void generate() override;
 
     void operator()(f16_support::jit_call_t *params) const {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
         msan_unpoison(params->out, params->nelems * sizeof(float16_t));
     }
 

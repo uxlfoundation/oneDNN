@@ -34,7 +34,7 @@ template <typename Vmm>
 jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::
         jit_avx512_core_brgemm_conv_bwd_trans_kernel_t(
                 const jit_brgemm_conv_conf_t &ajcp, const char *name)
-    : jit_generator(name)
+    : jit_generator_t(name)
     , jcp(ajcp)
     , inp_dsz(jcp.src_dsz)
     , oc_block_sz(inp_dsz * jcp.oc_block)

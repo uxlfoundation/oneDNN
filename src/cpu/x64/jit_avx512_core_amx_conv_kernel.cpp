@@ -1063,7 +1063,7 @@ void jit_avx512_core_amx_copy_to_pbuffer_t::generate() {
 jit_avx512_core_amx_fwd_kernel_t::jit_avx512_core_amx_fwd_kernel_t(
         const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
-    : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp), attr_(attr) {
+    : jit_generator_t(jit_name(), avx512_core_amx), jcp(ajcp), attr_(attr) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
         using namespace binary_injector;
         const auto &rhs_addr_reg = bin_injector_helper_reg_1;
@@ -1103,7 +1103,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::create_kernel() {
             && IMPLICATION(jcp.is_relo, copy_to_wbuffer_);
     if (!allocation_ok) return status::out_of_memory;
 
-    CHECK(jit_generator::create_kernel());
+    CHECK(jit_generator_t::create_kernel());
     CHECK(copy_to_pbuffer_->create_kernel());
     if (jcp.is_relo) CHECK(copy_to_wbuffer_->create_kernel());
     if (jcp.req_zero_point_buffer) {

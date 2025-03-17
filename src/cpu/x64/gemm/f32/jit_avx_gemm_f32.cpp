@@ -58,11 +58,11 @@ namespace avx_gemm_f32 {
 using namespace gemm_utils;
 using namespace Xbyak;
 
-struct xbyak_gemm_t : public jit_generator {
+struct xbyak_gemm_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx_gemm_f32_xbyak_gemm)
     xbyak_gemm_t(char isTransA, char isTransB, float beta, bool hasBias = false)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , isTransA(isTransA)
         , isTransB(isTransB)
         , hasBias(hasBias)

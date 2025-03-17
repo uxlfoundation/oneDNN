@@ -26,7 +26,7 @@ namespace x64 {
 namespace gemm_x8s8s32x_convolution_utils {
 
 jit_gemm_x8s8s32x_zp_pad_comp_helper::jit_gemm_x8s8s32x_zp_pad_comp_helper(
-        jit_generator *host, const conv_gemm_conf_t &jcp,
+        jit_generator_t *host, const conv_gemm_conf_t &jcp,
         const Xbyak::Reg64 &reg_zp_pad_comp,
         const Xbyak::Reg64 &reg_zp_pad_comp_temp,
         const Xbyak::Reg8 &should_apply_zp_src_pad, const dim_t ndims)
@@ -88,7 +88,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::zp_src_comp_pad_operation(
     if (op) {
         Xbyak::Label end;
         host_->cmp(should_apply_zp_src_pad_, 0);
-        host_->je(end, jit_generator::T_NEAR);
+        host_->je(end, jit_generator_t::T_NEAR);
         op(reg_zp_pad_comp_);
         host_->L(end);
     }
@@ -195,7 +195,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::load_zp_src_comp_pad_addr_if_needed(
         const Xbyak::Address &g_oc_offset) {
     Xbyak::Label calc_zp_src_comp_pad_addr, end;
     host_->cmp(should_apply_zp_src_pad_, 0);
-    host_->je(end, jit_generator::T_NEAR);
+    host_->je(end, jit_generator_t::T_NEAR);
 
     host_->L(calc_zp_src_comp_pad_addr);
     {
@@ -251,20 +251,20 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::get_zp_pad_com_dim(
     host_->L(lower_bound);
     {
         host_->cmp(dim_under_lower_bound, 0);
-        host_->je(upper_bound, jit_generator::T_NEAR);
+        host_->je(upper_bound, jit_generator_t::T_NEAR);
         host_->mov(reg_zp_pad_comp_tmp_, out_point_dim);
         host_->mov(result, reg_zp_pad_comp_tmp_);
-        host_->jmp(end, jit_generator::T_NEAR);
+        host_->jmp(end, jit_generator_t::T_NEAR);
     }
     host_->L(upper_bound);
     {
         host_->cmp(dim_over_eq_upper_bound, 0);
-        host_->je(mid_point, jit_generator::T_NEAR);
+        host_->je(mid_point, jit_generator_t::T_NEAR);
         host_->mov(reg_zp_pad_comp_tmp_,
                 begin_pad + mid_pad + end_pad - out_dim_size);
         host_->add(reg_zp_pad_comp_tmp_, out_point_dim);
         host_->mov(result, reg_zp_pad_comp_tmp_);
-        host_->jmp(end, jit_generator::T_NEAR);
+        host_->jmp(end, jit_generator_t::T_NEAR);
     }
 
     host_->L(mid_point);
@@ -299,7 +299,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::next_point() {
     }
 
     host_->cmp(reg_w, w_size_addr_);
-    host_->jl(store_w, jit_generator::T_NEAR);
+    host_->jl(store_w, jit_generator_t::T_NEAR);
 
     if (with_zp_pad_com_h_) {
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ namespace x64 {
  * In such case, because of perf reasons, number of output columns is extended
  * to 2.
  */
-class jit_brgemm_transpose_single_row_t : public jit_generator {
+class jit_brgemm_transpose_single_row_t : public jit_generator_t {
 public:
     jit_brgemm_transpose_single_row_t(const int m_block);
 
@@ -46,7 +46,7 @@ public:
 
     void operator()(
             jit_brgemm_transpose_single_row_t::call_params_t *params) const {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
     }
 
 private:

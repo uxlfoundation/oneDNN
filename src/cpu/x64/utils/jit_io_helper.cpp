@@ -109,8 +109,9 @@ io_gather_conf_t::io_gather_conf_t(const std::size_t simd_w,
     , vmm_tmp_idx_(vmm_tmp_idx) {}
 
 template <typename Vmm>
-jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator *host, const cpu_isa_t &isa,
-        const data_type_t &data_type, const io_conf_t &io_conf,
+jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
+        const cpu_isa_t &isa, const data_type_t &data_type,
+        const io_conf_t &io_conf,
         const utils::optional_t<io_tail_conf_t> &tail_conf,
         const utils::optional_t<io_emu_bf16_conf_t> &bf16_conf,
         const utils::optional_t<io_saturation_conf_t> &saturation_conf,
@@ -244,7 +245,7 @@ void jit_io_helper_t<Vmm>::prepare_vmm_mask(
                 reinterpret_cast<size_t>(&mask_f32[7 - how_many_bits_to_set]));
         host_->uni_vmovups(mask, host_->ptr[reg_tmp]);
     } else if (how_many_bits_to_set == simd_w) {
-        host_->uni_vcmpps(mask, mask, mask, jit_generator::_cmp_eq_oq);
+        host_->uni_vcmpps(mask, mask, mask, jit_generator_t::_cmp_eq_oq);
     } else {
         assert(!"Can't set so many bits.");
     }
@@ -910,8 +911,8 @@ void jit_io_helper_t<Vmm>::store_i8(
         static constexpr bool is_zmm = std::is_same<Vmm, Xbyak::Zmm>::value;
 
         auto store_i8_fn = data_type_ == data_type::s8
-                ? std::bind(&jit_generator::vpmovsdb, host_, _1, _2)
-                : std::bind(&jit_generator::vpmovusdb, host_, _1, _2);
+                ? std::bind(&jit_generator_t::vpmovsdb, host_, _1, _2)
+                : std::bind(&jit_generator_t::vpmovusdb, host_, _1, _2);
 
         if (io_conf_.nt_stores_enabled_ && is_zmm) {
             Xbyak::Xmm src_xmm(src_vmm.getIdx());
@@ -1021,7 +1022,7 @@ template <typename Vmm>
 jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t() = default;
 
 template <typename Vmm>
-jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t(jit_generator *host,
+jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t(jit_generator_t *host,
         const cpu_isa_t &isa, const data_types_t &data_types,
         const io_conf_t &io_conf,
         const utils::optional_t<io_tail_conf_t> &tail_conf,

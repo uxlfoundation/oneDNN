@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ struct rnn_conf_t;
 }; // namespace rnn_utils
 namespace x64 {
 
-class jit_diff_weights_peephole_t : public jit_generator {
+class jit_diff_weights_peephole_t : public jit_generator_t {
 public:
     jit_diff_weights_peephole_t(
             const rnn_utils::rnn_conf_t &rnn, const dim_t dhc_block);
@@ -40,7 +40,7 @@ public:
     };
 
     void operator()(jit_diff_weights_peephole_t::call_params_t *params) const {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
     }
 
 private:

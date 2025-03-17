@@ -29,7 +29,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx2_kernel_sgemm_kern : public jit_generator {
+class jit_avx2_kernel_sgemm_kern : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_kernel_sgemm_kern);
     const int elt_size_ = 4;

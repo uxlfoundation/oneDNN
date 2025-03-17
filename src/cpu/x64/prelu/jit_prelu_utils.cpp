@@ -205,7 +205,7 @@ size_t get_block_tail_size(const memory_desc_t *mem) noexcept {
     return mem_d.padded_dims()[1] - mem_d.dims()[1];
 }
 
-void apply_zero_padding(jit_generator *host, const size_t tail_size,
+void apply_zero_padding(jit_generator_t *host, const size_t tail_size,
         const data_type_t dt, const size_t block_tail_size,
         const Xbyak::Reg64 &reg_dst, const Xbyak::Reg64 *reg_offset) noexcept {
     using namespace Xbyak;

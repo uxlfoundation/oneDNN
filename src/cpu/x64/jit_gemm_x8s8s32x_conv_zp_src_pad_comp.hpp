@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,12 +30,12 @@ struct conv_gemm_conf_t;
 
 namespace x64 {
 
-class jit_generator;
+class jit_generator_t;
 
 namespace gemm_x8s8s32x_convolution_utils {
 
 struct jit_gemm_x8s8s32x_zp_pad_comp_helper {
-    jit_gemm_x8s8s32x_zp_pad_comp_helper(jit_generator *host,
+    jit_gemm_x8s8s32x_zp_pad_comp_helper(jit_generator_t *host,
             const conv_gemm_conf_t &jcp, const Xbyak::Reg64 &reg_zp_pad_comp,
             const Xbyak::Reg64 &reg_zp_pad_comp_temp,
             const Xbyak::Reg8 &should_apply_zp_src_pad, const dim_t ndims);
@@ -84,7 +84,7 @@ private:
     void should_apply_zp_src_pad();
     void next_point();
 
-    jit_generator *const host_;
+    jit_generator_t *const host_;
     const conv_gemm_conf_t &jcp_;
     const Xbyak::Address w_addr_;
     const Xbyak::Address h_addr_;

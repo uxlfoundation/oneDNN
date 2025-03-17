@@ -32,7 +32,7 @@ namespace x64 {
 
 struct jit_resampling_args_t;
 
-struct jit_avx512_core_resampling_kernel_base_t : public jit_generator {
+struct jit_avx512_core_resampling_kernel_base_t : public jit_generator_t {
     jit_avx512_core_resampling_kernel_base_t(
             const resampling_pd_t *pd, const char *name);
     ~jit_avx512_core_resampling_kernel_base_t() override = default;

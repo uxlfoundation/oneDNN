@@ -268,7 +268,7 @@ rhs_arg_static_params_t::rhs_arg_static_params_t(
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_binary_injector_t<isa, Vmm>::jit_uni_binary_injector_t(
-        jit_generator *host, const static_params_t &static_params)
+        jit_generator_t *host, const static_params_t &static_params)
     : host_(host)
     , f8_e5m2_emu_(static_params.f8_e5m2_emu_)
     , f8_e4m3_emu_(static_params.f8_e4m3_emu_)
@@ -326,18 +326,18 @@ int jit_uni_binary_injector_t<isa, Vmm>::adjust_temp_vmm_hint(
 }
 
 template <typename Vmm>
-static void push_vmm(jit_generator *host, const Vmm &vmm) {
+static void push_vmm(jit_generator_t *host, const Vmm &vmm) {
     host->sub(host->rsp, vreg_traits_t<Vmm>::vlen);
     host->uni_vmovups(host->ptr[host->rsp], vmm);
 }
 
 template <typename Vmm>
-static void pop_vmm(jit_generator *host, const Vmm &vmm) {
+static void pop_vmm(jit_generator_t *host, const Vmm &vmm) {
     host->uni_vmovups(vmm, host->ptr[host->rsp]);
     host->add(host->rsp, vreg_traits_t<Vmm>::vlen);
 }
 
-static void push_opmask(jit_generator *host, const Xbyak::Opmask &k) {
+static void push_opmask(jit_generator_t *host, const Xbyak::Opmask &k) {
     static constexpr int k_mask_size = 8;
     host->sub(host->rsp, k_mask_size);
     if (mayiuse(avx512_core))
@@ -346,7 +346,7 @@ static void push_opmask(jit_generator *host, const Xbyak::Opmask &k) {
         host->kmovw(host->ptr[host->rsp], k);
 }
 
-static void pop_opmask(jit_generator *host, const Xbyak::Opmask &k) {
+static void pop_opmask(jit_generator_t *host, const Xbyak::Opmask &k) {
     static constexpr int k_mask_size = 8;
     if (mayiuse(avx512_core))
         host->kmovq(k, host->ptr[host->rsp]);
@@ -356,7 +356,7 @@ static void pop_opmask(jit_generator *host, const Xbyak::Opmask &k) {
 }
 
 template <typename Vmm>
-static void restore_stack(jit_generator *host, const Vmm &vmm) {
+static void restore_stack(jit_generator_t *host, const Vmm &vmm) {
     host->add(host->rsp, vreg_traits_t<Vmm>::vlen);
 }
 
@@ -2619,7 +2619,7 @@ struct helper_broadcast_s8u8_t {};
 
 template <typename Vmm>
 struct helper_broadcast_s8u8_t<avx, Vmm> {
-    static void execute_broadcast_s8u8_no_tail(jit_generator *host,
+    static void execute_broadcast_s8u8_no_tail(jit_generator_t *host,
             const int rhs_helper_reg_idx, const data_type_t &data_type,
             const Vmm &tmp_vmm, const Xbyak::Address &rhs_addr,
             const std::function<void()> &post_process) {
@@ -2756,7 +2756,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_with_opmask(
 
 static constexpr int xmm_size_elem = 4;
 
-static void load_tail_avx(jit_generator *host, std::size_t ymm_idx,
+static void load_tail_avx(jit_generator_t *host, std::size_t ymm_idx,
         std::size_t tail_size, const std::function<void()> &init_op,
         const std::function<void(int, bool)> &ymm_upper_half_op,
         const std::function<void(int)> &ymm_lower_half_op) {
@@ -2785,7 +2785,7 @@ static void load_tail_avx(jit_generator *host, std::size_t ymm_idx,
     }
 }
 
-static void load_tail_avx(jit_generator *host, std::size_t ymm_idx,
+static void load_tail_avx(jit_generator_t *host, std::size_t ymm_idx,
         std::size_t tail_size,
         const std::function<void(int, bool)> &ymm_upper_half_op,
         const std::function<void(int)> &ymm_lower_half_op) {
@@ -2798,7 +2798,7 @@ static Xbyak::uint8 MM_SHUFFLE(
     return (((z) << 6) | ((y) << 4) | ((x) << 2) | (w));
 }
 
-static void execute_broadcast_f32_tail_avx(jit_generator *host,
+static void execute_broadcast_f32_tail_avx(jit_generator_t *host,
         const Xbyak::Ymm &vmm, const Xbyak::Address &rhs_addr,
         std::size_t tail_size) {
 
@@ -2823,7 +2823,7 @@ static void execute_broadcast_f32_tail_avx(jit_generator *host,
             host, vmm_idx, tail_size, init_op, upper_half_op, lower_half_op);
 }
 
-static void execute_broadcast_f32_tail_avx(jit_generator *host,
+static void execute_broadcast_f32_tail_avx(jit_generator_t *host,
         const Xbyak::Xmm &vmm, const Xbyak::Address &rhs_addr,
         std::size_t tail_size) {
 
@@ -2843,7 +2843,7 @@ struct helper_bcast_tail_t {};
 
 template <typename Vmm>
 struct helper_bcast_tail_t<avx2, Vmm> {
-    static void execute_broadcast_tail_statically(jit_generator *host,
+    static void execute_broadcast_tail_statically(jit_generator_t *host,
             const size_t tail_size, const data_type_t &data_type,
             const Vmm &tmp_vmm, const Xbyak::Address &rhs_addr) {
         host->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
@@ -2866,7 +2866,7 @@ struct helper_bcast_tail_t<avx2, Vmm> {
 
 template <typename Vmm>
 struct helper_bcast_tail_t<avx2_vnni_2, Vmm> {
-    static void execute_broadcast_tail_statically(jit_generator *host,
+    static void execute_broadcast_tail_statically(jit_generator_t *host,
             const size_t tail_size, const data_type_t &data_type,
             const Vmm &tmp_vmm, const Xbyak::Address &rhs_addr,
             fp8_emulation_e5m2_t *f8_e5m2_emu,
@@ -3223,7 +3223,7 @@ struct helper_load_tail_t {};
 
 template <typename Vmm>
 struct helper_load_tail_t<avx2, Vmm> {
-    static void load_rhs_tail_statically(jit_generator *host,
+    static void load_rhs_tail_statically(jit_generator_t *host,
             const size_t tail_size, const Xbyak::Reg64 &rhs_addr_reg,
             const data_type_t &data_type, const Vmm &tmp_vmm,
             const Xbyak::Address &rhs_addr) {
@@ -3238,7 +3238,7 @@ struct helper_load_tail_t<avx2, Vmm> {
 
 template <typename Vmm>
 struct helper_load_tail_t<avx2_vnni_2, Vmm> {
-    static void load_rhs_tail_statically(jit_generator *host,
+    static void load_rhs_tail_statically(jit_generator_t *host,
             const size_t tail_size, const Xbyak::Reg64 &rhs_addr_reg,
             const data_type_t &data_type, const Vmm &tmp_vmm,
             const Xbyak::Address &rhs_addr) {
@@ -3449,22 +3449,22 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_binary(alg_kind_t binary_alg,
         case alg_kind::binary_div: host_->uni_vdivps(dst, lhs, rhs); break;
         case alg_kind::binary_sub: host_->uni_vsubps(dst, lhs, rhs); break;
         case alg_kind::binary_ge:
-            execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_nlt_us);
+            execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_nlt_us);
             break;
         case alg_kind::binary_gt:
-            execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_nle_us);
+            execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_nle_us);
             break;
         case alg_kind::binary_le:
-            execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_le_os);
+            execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_le_os);
             break;
         case alg_kind::binary_lt:
-            execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_lt_os);
+            execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_lt_os);
             break;
         case alg_kind::binary_eq:
-            execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_eq_oq);
+            execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_eq_oq);
             break;
         case alg_kind::binary_ne:
-            execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_neq_uq);
+            execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_neq_uq);
             break;
         default: assert(!"unsupported algorithm");
     }
@@ -3476,7 +3476,7 @@ struct helper_binary_t {};
 template <typename Vmm>
 struct helper_binary_t<avx, Vmm> {
     template <typename T, typename F>
-    static void execute_binary(jit_generator *host, F execute_cmp_binary,
+    static void execute_binary(jit_generator_t *host, F execute_cmp_binary,
             alg_kind_t binary_alg, const Vmm &dst, const Vmm &lhs,
             const T &rhs) {
         switch (binary_alg) {
@@ -3487,22 +3487,22 @@ struct helper_binary_t<avx, Vmm> {
             case alg_kind::binary_div: host->uni_vdivps(dst, lhs, rhs); break;
             case alg_kind::binary_sub: host->uni_vsubps(dst, lhs, rhs); break;
             case alg_kind::binary_ge:
-                execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_nlt_us);
+                execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_nlt_us);
                 break;
             case alg_kind::binary_gt:
-                execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_nle_us);
+                execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_nle_us);
                 break;
             case alg_kind::binary_le:
-                execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_le_os);
+                execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_le_os);
                 break;
             case alg_kind::binary_lt:
-                execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_lt_os);
+                execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_lt_os);
                 break;
             case alg_kind::binary_eq:
-                execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_eq_oq);
+                execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_eq_oq);
                 break;
             case alg_kind::binary_ne:
-                execute_cmp_binary(dst, lhs, rhs, jit_generator::_cmp_neq_uq);
+                execute_cmp_binary(dst, lhs, rhs, jit_generator_t::_cmp_neq_uq);
                 break;
             default: assert(!"unsupported algorithm");
         }
@@ -3550,7 +3550,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_prelu(
         Xbyak::Opmask aux_kmask = get_aux_kmask();
         host_->vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
         host_->vcmpps(aux_kmask | maybe_tail_kmask, dst_vmm, tmp_vmm,
-                jit_generator::_cmp_le_os);
+                jit_generator_t::_cmp_le_os);
         host_->vmulps(dst_vmm | aux_kmask, dst_vmm, rhs);
     } else if (is_superset(isa, avx)) {
         // Three operand version

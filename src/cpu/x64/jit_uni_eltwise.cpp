@@ -43,12 +43,12 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_kernel : public jit_generator {
+struct jit_uni_eltwise_kernel : public jit_generator_t {
     jit_uni_eltwise_kernel(
             const eltwise_pd_t *pd, const char *name, cpu_isa_t isa)
-        : jit_generator(name, isa), pd_(pd) {}
+        : jit_generator_t(name, isa), pd_(pd) {}
 
-    void operator()(jit_args_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_args_t *p) { jit_generator_t::operator()(p); }
 
 protected:
     const eltwise_pd_t *pd_;

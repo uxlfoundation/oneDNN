@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ namespace x64 {
 
 jit_brgemm_transpose_single_row_t::jit_brgemm_transpose_single_row_t(
         const int m_block)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , m_block_(m_block)
     , full_loop_iters_(m_block_ / (vmms_available_ * simd_w_))
     , tail_(m_block_ % simd_w_)

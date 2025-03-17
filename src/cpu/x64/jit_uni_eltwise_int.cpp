@@ -37,12 +37,12 @@ struct jit_args_int8_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_int_kernel : public jit_generator {
+struct jit_uni_eltwise_int_kernel : public jit_generator_t {
     jit_uni_eltwise_int_kernel(
             const eltwise_pd_t *pd, const cpu_isa_t isa, const char *name)
-        : jit_generator(name, isa), pd_(pd) {}
+        : jit_generator_t(name, isa), pd_(pd) {}
 
-    void operator()(jit_args_int8_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_args_int8_t *p) { jit_generator_t::operator()(p); }
 
 protected:
     data_type_t data_type() const { return pd_->src_md()->data_type; }

@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_amx_gemm_kern : public jit_generator {
+class jit_avx512_core_amx_gemm_kern : public jit_generator_t {
 public:
     jit_avx512_core_amx_gemm_kern(
             int typea, int typeb, int typec, int betaZero);

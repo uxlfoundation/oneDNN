@@ -53,8 +53,8 @@ struct bf16_emulation_t {
     using Xmm_t = const Xbyak::Xmm;
     using reg64_t = const Xbyak::Reg64;
 
-    bf16_emulation_t(jit_generator *host, Zmm_t one, Zmm_t even, Zmm_t selector,
-            reg64_t scratch, Zmm_t tr0, Zmm_t tr1)
+    bf16_emulation_t(jit_generator_t *host, Zmm_t one, Zmm_t even,
+            Zmm_t selector, reg64_t scratch, Zmm_t tr0, Zmm_t tr1)
         : host_(host)
         , one_(one)
         , even_(even)
@@ -63,8 +63,8 @@ struct bf16_emulation_t {
         , tr0_(tr0)
         , tr1_(tr1) {}
 
-    bf16_emulation_t(jit_generator *host, Zmm_t one, Zmm_t even, Zmm_t selector,
-            reg64_t scratch, Zmm_t tr0)
+    bf16_emulation_t(jit_generator_t *host, Zmm_t one, Zmm_t even,
+            Zmm_t selector, reg64_t scratch, Zmm_t tr0)
         : bf16_emulation_t(host, one, even, selector, scratch, tr0, tr0) {}
 
     void vdpbf16ps(Zmm_t &acc, Zmm_t wei, Zmm_t inp) {
@@ -151,7 +151,7 @@ public:
     static cpu_isa_t get_isa() { return avx512_core; }
 
 private:
-    jit_generator *const host_;
+    jit_generator_t *const host_;
     Zmm_t one_;
     Zmm_t even_;
     Zmm_t selector_;
@@ -175,11 +175,11 @@ private:
 
 // performs element-by-element sum of inp and add float arrays and stores
 // result to bfloat16 out array with downconversion
-struct jit_avx512_core_add_cvt_ps_to_bf16_t : public jit_generator {
+struct jit_avx512_core_add_cvt_ps_to_bf16_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_add_cvt_ps_to_bf16)
 
     jit_avx512_core_add_cvt_ps_to_bf16_t()
-        : jit_generator(jit_name()), simd_w_(16) {
+        : jit_generator_t(jit_name()), simd_w_(16) {
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(
                 this, one, even, selector, scratch, fp32_tmp, fp32_tmp);
 
@@ -253,7 +253,7 @@ struct jit_avx512_core_add_cvt_ps_to_bf16_t : public jit_generator {
     }
 
     void operator()(bf16_support::jit_call_t *params) const {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
         msan_unpoison(params->out, params->nelems * sizeof(bfloat16_t));
     }
 
@@ -288,14 +288,14 @@ private:
 // it is required for quick implementation of 1x1 bf16 bwd_w jit kernel
 // w/o using permw instruction inside
 // TODO: consider modification/replacement for outer transformation jit kernel
-struct jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t : public jit_generator {
+struct jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_bf16_reorder_s16c_to_S16c2s)
 
     jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t()
-        : jit_generator(jit_name()), simd_w_(16), in_stride_(16) {}
+        : jit_generator_t(jit_name()), simd_w_(16), in_stride_(16) {}
 
     jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t(int in_stride)
-        : jit_generator(jit_name()), simd_w_(16), in_stride_(in_stride) {}
+        : jit_generator_t(jit_name()), simd_w_(16), in_stride_(in_stride) {}
 
     ~jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t() override = default;
 
@@ -379,7 +379,7 @@ struct jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t : public jit_generator {
     }
 
     void operator()(bf16_support::jit_call_t *params) const {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
         msan_unpoison(params->out, params->nelems * sizeof(bfloat16_t));
     }
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ struct jit_brgemm_conv_bwd_copy_kernel_call_s {
 };
 
 template <typename Vmm>
-struct jit_avx512_core_brgemm_conv_bwd_copy_kernel_t : public jit_generator {
+struct jit_avx512_core_brgemm_conv_bwd_copy_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_brgemm_conv_bwd_copy_kernel_t)
 
     using reg64_t = const Xbyak::Reg64;

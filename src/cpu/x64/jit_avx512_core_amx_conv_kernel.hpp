@@ -89,16 +89,16 @@ private:
 
     void generate() override;
 
-    Xbyak::Zmm zmm_out(int i_ur, int i_oc) {
+    Xbyak::Zmm zmm_out(int i_ur, int i_oc) const {
         int idx = i_ur * jcp.nb_oc_blocking + i_oc;
         assert(idx < max_regs_ur);
         return Xbyak::Zmm(idx);
     }
-    int get_ow_start(int ki, int pad_l) {
+    int get_ow_start(int ki, int pad_l) const {
         return nstl::max(0,
                 utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
     }
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    int get_ow_end(int ur_w, int ki, int pad_r) const {
         int filter_overlap = pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
         return ur_w - nstl::max(0, utils::div_up(filter_overlap, jcp.stride_w));
     }
@@ -373,7 +373,7 @@ private:
             const int s_pad_output, const int e_pad_output);
     void cvt2ps(data_type_t type_in, const Xbyak::Zmm &ymm_in,
             const Xbyak::Operand &op, bool mask_flag = false);
-    Xbyak::Zmm zmm_out(const int idx) {
+    Xbyak::Zmm zmm_out(const int idx) const {
         const int upper_limit = jcp.src_dt == data_type::bf16
                 ? zmm_idx_limit_bf16
                 : zmm_idx_limit_int8;
@@ -578,7 +578,7 @@ private:
     int get_inp_tensor(int h) const;
     int get_wei_tensor(int i) const;
 
-    inline bool gaps_in_store() {
+    inline bool gaps_in_store() const {
         const int gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
         return gen_kd < jcp.stride_d || jcp.dilate_d > 0;
     }
@@ -697,32 +697,36 @@ private:
     static void balance(const jit_conv_conf_t &j, int &nthr, int &nthr_mb,
             int &nthr_g, int &nthr_oc_b, int &nthr_ic_b);
 
-    inline dim_t filter_w_to_src(int kw, int ow = 0, int pad_l = 0) {
+    inline dim_t filter_w_to_src(int kw, int ow = 0, int pad_l = 0) const {
         return static_cast<dim_t>(kw) * (jcp.dilate_w + 1) + ow - pad_l;
     }
-    inline dim_t filter_h_to_src(int kh) { return kh * (jcp.dilate_h + 1); }
-    inline dim_t filter_d_to_src(int kd) {
+    inline dim_t filter_h_to_src(int kh) const {
+        return kh * (jcp.dilate_h + 1);
+    }
+    inline dim_t filter_d_to_src(int kd) const {
         return static_cast<dim_t>(kd) * (jcp.dilate_d + 1) * jcp.ih;
     }
 
-    inline dim_t get_src_offset(dim_t ic_idx, dim_t w_idx, dim_t hd_idx = 0) {
+    inline dim_t get_src_offset(
+            dim_t ic_idx, dim_t w_idx, dim_t hd_idx = 0) const {
         return static_cast<dim_t>(jcp.typesize_in)
                 * (hd_idx * jcp.tr_iw * jcp.ic_block + jcp.tr_iw * ic_idx
                         + w_idx);
     }
 
-    inline dim_t get_ddst_offset(dim_t w_idx, dim_t hd_idx = 0) {
+    inline dim_t get_ddst_offset(dim_t w_idx, dim_t hd_idx = 0) const {
         int ow_per_oc = 2;
         dim_t w_off = w_idx / ow_per_oc * ow_per_oc * jcp.oc_block
                 + w_idx % ow_per_oc;
         return jcp.typesize_in * (w_off + jcp.tr_ow * jcp.oc_block * hd_idx);
     }
 
-    inline dim_t get_kernel_offset(int ic_idx, dim_t ksp_idx) {
+    inline dim_t get_kernel_offset(int ic_idx, dim_t ksp_idx) const {
         return jcp.typesize_out * jcp.oc_block
                 * (ksp_idx * jcp.ic_block + ic_idx);
     }
-    inline dim_t get_full_kernel_offset(int ocb, int icb, int kh, int kw) {
+    inline dim_t get_full_kernel_offset(
+            int ocb, int icb, int kh, int kw) const {
         return jcp.typesize_out
                 * (static_cast<dim_t>(ocb) * jcp.nb_ic * jcp.kd * jcp.kh
                                 * jcp.kw * jcp.ic_block * jcp.oc_block

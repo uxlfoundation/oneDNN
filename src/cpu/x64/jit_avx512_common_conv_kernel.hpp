@@ -471,11 +471,11 @@ private:
     inline void compute_od_loop_partial();
 
     inline void compute_loop();
-    inline bool is_src_layout_nxc() {
+    inline bool is_src_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
-    inline bool is_ddst_layout_nxc() {
+    inline bool is_ddst_layout_nxc() const {
         return utils::one_of(jcp.dst_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
@@ -494,7 +494,7 @@ private:
         return input_offset + typesize * local_input_offset;
     };
 
-    inline int get_iw_idx(int ow, int kw, int l_pad) {
+    inline int get_iw_idx(int ow, int kw, int l_pad) const {
         return ow * jcp.stride_w + kw * (jcp.dilate_w + 1) - l_pad;
     }
 

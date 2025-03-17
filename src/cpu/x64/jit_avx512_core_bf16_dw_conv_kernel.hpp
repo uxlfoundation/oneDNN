@@ -87,12 +87,12 @@ private:
 
     Xbyak::Zmm get_acc_reg(int idx);
 
-    int get_ow_start(int ki, int pad_l) {
+    int get_ow_start(int ki, int pad_l) const {
         return nstl::max(0,
                 utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
     }
 
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    int get_ow_end(int ur_w, int ki, int pad_r) const {
         return ur_w
                 - nstl::max(0,
                         utils::div_up(
@@ -100,12 +100,12 @@ private:
                                 jcp.stride_w));
     }
 
-    inline bool is_src_layout_nxc() {
+    inline bool is_src_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
 
-    inline bool is_dst_layout_nxc() {
+    inline bool is_dst_layout_nxc() const {
         return utils::one_of(jcp.dst_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
@@ -147,7 +147,7 @@ private:
     using reg64_t = const Xbyak::Reg64;
 
     const int acc_idx_start = 2;
-    inline int get_max_regs() { return isa_has_bf16(jcp.isa) ? 30 : 25; };
+    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; };
 
     Xbyak::Zmm zmm_ker_reg = Xbyak::Zmm(0);
     Xbyak::Zmm zmm_dst_reg = Xbyak::Zmm(1);
@@ -193,11 +193,11 @@ private:
     inline void store_dsrc(int ur_ch_blocks, int ur_str_w, bool is_last_ch);
 
     void generate() override;
-    inline bool is_dsrc_layout_nxc() {
+    inline bool is_dsrc_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
-    inline bool is_ddst_layout_nxc() {
+    inline bool is_ddst_layout_nxc() const {
         return utils::one_of(jcp.dst_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
@@ -317,15 +317,15 @@ private:
 
     void generate() override;
 
-    inline bool is_layout_nxc() {
+    inline bool is_layout_nxc() const {
         return utils::everyone_is(
                 true, is_src_layout_nxc(), is_ddst_layout_nxc());
     }
-    inline bool is_src_layout_nxc() {
+    inline bool is_src_layout_nxc() const {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }
-    inline bool is_ddst_layout_nxc() {
+    inline bool is_ddst_layout_nxc() const {
         return utils::one_of(jcp.dst_tag, format_tag::ndhwc, format_tag::nhwc,
                 format_tag::nwc);
     }

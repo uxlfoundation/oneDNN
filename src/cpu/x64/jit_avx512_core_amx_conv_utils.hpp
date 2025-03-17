@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ struct spatial_features_3d {
         , init_overflow_(0)
         , end_overflow_(0) {}
 
-    inline int get_init_overflow(const int in) {
+    inline int get_init_overflow(const int in) const {
         if (is_fast_path_)
             return nstl::max(0, filter_size_ - 1 - in - init_pad_);
         if (dilate_ != 1)
@@ -58,7 +58,7 @@ struct spatial_features_3d {
         return nstl::max(0, (filter_size_ - 1 - in - init_pad_) / stride_);
     }
 
-    inline int get_end_overflow(const int in) {
+    inline int get_end_overflow(const int in) const {
         if (is_fast_path_)
             return nstl::max(0, filter_size_ - input_size_ + in - end_pad_);
         if (dilate_ != 1)
@@ -97,13 +97,13 @@ struct spatial_features_3d {
                 : in + init_pad_ - end_overflow_ * dilate_;
     }
 
-    inline int get_filter_padding() {
+    inline int get_filter_padding() const {
         return filter_ - init_overflow_ - end_overflow_;
     }
 
-    inline int get_lower_offset() { return lower_offset_; }
+    inline int get_lower_offset() const { return lower_offset_; }
 
-    inline int get_output_offset() { return output_offset_; }
+    inline int get_output_offset() const { return output_offset_; }
 
 private:
     const int input_size_;

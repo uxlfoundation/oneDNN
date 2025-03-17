@@ -92,8 +92,8 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
         // using the first 7 vregs can be considered volatile during the call
         // to eltwise injector
         const bool save_state = is_fwd_ ? false : true;
-        eltwise_injector_.reset(new jit_uni_eltwise_injector<injector_isa>(this,
-                desc.alg_kind, desc.alpha, desc.beta, 1.f, data_type::f32,
+        eltwise_injector_.reset(new jit_uni_eltwise_injector_t<injector_isa>(
+                this, desc.alg_kind, desc.alpha, desc.beta, 1.f, data_type::f32,
                 save_state, reg_injector_table, injector_mask, is_fwd_,
                 pd_->use_dst()));
         io::io_conf_t io_conf;
@@ -261,7 +261,7 @@ private:
     Vmm vmm_src_odd = Vmm(8);
     Vmm vmm_diff_dst_even = vmm_diff_dst;
     Vmm vmm_diff_dst_odd = Vmm(9);
-    std::unique_ptr<jit_uni_eltwise_injector<injector_isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<injector_isa>> eltwise_injector_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 
     /* bf16 and fp8 support */

@@ -31,7 +31,7 @@ size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd) {
 #define CASE_ELTWISE_SUPERSET(_isa) \
     if (is_superset(isa, _isa)) { \
         res = nstl::max(res, \
-                jit_uni_eltwise_injector<_isa>::aux_vecs_count( \
+                jit_uni_eltwise_injector_t<_isa>::aux_vecs_count( \
                         post_op.eltwise.alg, is_fwd, post_op.eltwise.alpha)); \
         continue; \
     }
@@ -75,7 +75,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
             // moment. Once the use case show up, add the argument to the
             // top-level ctor and propagate its value.
             alg_to_eltwise_injector_.emplace(i,
-                    jit_uni_eltwise_injector<isa, Vmm>(host_, post_op.eltwise,
+                    jit_uni_eltwise_injector_t<isa, Vmm>(host_, post_op.eltwise,
                             data_type::f32, esp.save_state, esp.p_table_,
                             esp.k_mask_, esp.is_fwd, esp.use_dst,
                             esp.preserve_vmm, esp.preserve_p_table));

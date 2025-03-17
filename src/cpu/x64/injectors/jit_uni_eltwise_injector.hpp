@@ -76,7 +76,7 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg, data_type_t dt);
 } // namespace eltwise_injector
 
 template <cpu_isa_t isa, typename Wmm = typename cpu_isa_traits_t<isa>::Vmm>
-struct jit_uni_eltwise_injector {
+struct jit_uni_eltwise_injector_t {
     using Vmm = Wmm;
 
     // Arguments description:
@@ -91,7 +91,7 @@ struct jit_uni_eltwise_injector {
     //   - algorithm derivative.
     // use_dst - defines whether source or destination point is passed to alg
     //   code. Depends on algorithm. See `_use_dst_for_bwd` algs definition.
-    jit_uni_eltwise_injector(jit_generator *host, alg_kind_t alg, float alpha,
+    jit_uni_eltwise_injector_t(jit_generator *host, alg_kind_t alg, float alpha,
             float beta, float scale, data_type_t dt = data_type::f32,
             bool save_state = true,
             Xbyak::Reg64 p_table = Xbyak::Reg64(Xbyak::Operand::RAX),
@@ -117,14 +117,14 @@ struct jit_uni_eltwise_injector {
         register_table_entries();
     }
 
-    jit_uni_eltwise_injector(jit_generator *host,
+    jit_uni_eltwise_injector_t(jit_generator *host,
             const post_ops_t::entry_t::eltwise_t &eltwise,
             data_type_t dt = data_type::f32, bool save_state = true,
             Xbyak::Reg64 p_table = Xbyak::Reg64(Xbyak::Operand::RAX),
             Xbyak::Opmask k_mask = Xbyak::Opmask(1), bool is_fwd = true,
             bool use_dst = false, bool preserve_vmm = true,
             bool preserve_p_table = true)
-        : jit_uni_eltwise_injector(host, eltwise.alg, eltwise.alpha,
+        : jit_uni_eltwise_injector_t(host, eltwise.alg, eltwise.alpha,
                 eltwise.beta, eltwise.scale, dt, save_state, p_table, k_mask,
                 is_fwd, use_dst, preserve_vmm, preserve_p_table) {}
 

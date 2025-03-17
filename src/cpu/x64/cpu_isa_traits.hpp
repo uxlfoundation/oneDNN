@@ -230,7 +230,7 @@ struct vreg_traits_t<Xbyak::Xmm> {
 };
 
 template <cpu_isa_t>
-struct cpu_isa_traits {}; /* ::vlen -> 32 (for avx2) */
+struct cpu_isa_traits_t {}; /* ::vlen -> 32 (for avx2) */
 
 // pack struct so it can fit into a single 64-byte cache line
 #pragma pack(push, 1)
@@ -244,13 +244,13 @@ struct palette_config_t {
 #pragma pack(pop)
 
 template <>
-struct cpu_isa_traits<isa_all> {
+struct cpu_isa_traits_t<isa_all> {
     static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_default;
     static constexpr const char *user_option_env = "default";
 };
 
 template <>
-struct cpu_isa_traits<sse41> {
+struct cpu_isa_traits_t<sse41> {
     using Vmm = Xbyak::Xmm;
     static constexpr int vlen_shift = 4;
     static constexpr int vlen = vreg_traits_t<Vmm>::vlen;
@@ -260,7 +260,7 @@ struct cpu_isa_traits<sse41> {
 };
 
 template <>
-struct cpu_isa_traits<avx> {
+struct cpu_isa_traits_t<avx> {
     using Vmm = Xbyak::Ymm;
     static constexpr int vlen_shift = 5;
     static constexpr int vlen = vreg_traits_t<Vmm>::vlen;
@@ -270,25 +270,25 @@ struct cpu_isa_traits<avx> {
 };
 
 template <>
-struct cpu_isa_traits<avx2> : public cpu_isa_traits<avx> {
+struct cpu_isa_traits_t<avx2> : public cpu_isa_traits_t<avx> {
     static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx2;
     static constexpr const char *user_option_env = "avx2";
 };
 
 template <>
-struct cpu_isa_traits<avx2_vnni> : public cpu_isa_traits<avx2> {
+struct cpu_isa_traits_t<avx2_vnni> : public cpu_isa_traits_t<avx2> {
     static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx2_vnni;
     static constexpr const char *user_option_env = "avx2_vnni";
 };
 
 template <>
-struct cpu_isa_traits<avx2_vnni_2> : public cpu_isa_traits<avx2> {
+struct cpu_isa_traits_t<avx2_vnni_2> : public cpu_isa_traits_t<avx2> {
     static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx2_vnni_2;
     static constexpr const char *user_option_env = "avx2_vnni_2";
 };
 
 template <>
-struct cpu_isa_traits<avx512_core> {
+struct cpu_isa_traits_t<avx512_core> {
     using Vmm = Xbyak::Zmm;
     static constexpr int vlen_shift = 6;
     static constexpr int vlen = vreg_traits_t<Vmm>::vlen;
@@ -298,21 +298,23 @@ struct cpu_isa_traits<avx512_core> {
 };
 
 template <>
-struct cpu_isa_traits<avx512_core_vnni> : public cpu_isa_traits<avx512_core> {
+struct cpu_isa_traits_t<avx512_core_vnni>
+    : public cpu_isa_traits_t<avx512_core> {
     static constexpr dnnl_cpu_isa_t user_option_val
             = dnnl_cpu_isa_avx512_core_vnni;
     static constexpr const char *user_option_env = "avx512_core_vnni";
 };
 
 template <>
-struct cpu_isa_traits<avx512_core_bf16> : public cpu_isa_traits<avx512_core> {
+struct cpu_isa_traits_t<avx512_core_bf16>
+    : public cpu_isa_traits_t<avx512_core> {
     static constexpr dnnl_cpu_isa_t user_option_val
             = dnnl_cpu_isa_avx512_core_bf16;
     static constexpr const char *user_option_env = "avx512_core_bf16";
 };
 
 template <>
-struct cpu_isa_traits<avx10_1_512_amx> {
+struct cpu_isa_traits_t<avx10_1_512_amx> {
     using Vmm = Xbyak::Zmm;
     static constexpr int vlen = vreg_traits_t<Vmm>::vlen;
     static constexpr dnnl_cpu_isa_t user_option_val
@@ -321,13 +323,13 @@ struct cpu_isa_traits<avx10_1_512_amx> {
 };
 
 template <>
-struct cpu_isa_traits<avx10_1_512> : public cpu_isa_traits<avx512_core> {
+struct cpu_isa_traits_t<avx10_1_512> : public cpu_isa_traits_t<avx512_core> {
     static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx10_1_512;
     static constexpr const char *user_option_env = "avx10_1_512";
 };
 
 template <>
-struct cpu_isa_traits<avx10_1_512_amx_fp16> {
+struct cpu_isa_traits_t<avx10_1_512_amx_fp16> {
     using Vmm = Xbyak::Zmm;
     static constexpr dnnl_cpu_isa_t user_option_val
             = dnnl_cpu_isa_avx10_1_512_amx_fp16;
@@ -443,11 +445,11 @@ inline int isa_max_vlen(cpu_isa_t isa) {
     MAYBE_UNUSED(is_sse41);
 
     if (is_avx512)
-        return cpu_isa_traits<avx512_core>::vlen;
+        return cpu_isa_traits_t<avx512_core>::vlen;
     else if (is_avx)
-        return cpu_isa_traits<avx>::vlen;
+        return cpu_isa_traits_t<avx>::vlen;
     else
-        return cpu_isa_traits<sse41>::vlen;
+        return cpu_isa_traits_t<sse41>::vlen;
 }
 
 inline int isa_num_vregs(cpu_isa_t isa) {
@@ -459,11 +461,11 @@ inline int isa_num_vregs(cpu_isa_t isa) {
     MAYBE_UNUSED(is_sse41);
 
     if (is_avx512)
-        return cpu_isa_traits<avx512_core>::n_vregs;
+        return cpu_isa_traits_t<avx512_core>::n_vregs;
     else if (is_avx)
-        return cpu_isa_traits<avx>::n_vregs;
+        return cpu_isa_traits_t<avx>::n_vregs;
     else
-        return cpu_isa_traits<sse41>::n_vregs;
+        return cpu_isa_traits_t<sse41>::n_vregs;
 }
 
 } // namespace

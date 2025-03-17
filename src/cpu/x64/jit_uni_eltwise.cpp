@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -81,9 +81,9 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
 
     jit_uni_kernel_t(const eltwise_pd_t *pd)
         : jit_uni_eltwise_kernel(pd, jit_name(), isa)
-        , vlen_(is_bf16() || is_f16() ? cpu_isa_traits<isa>::vlen / 2
-                          : is_f8()   ? cpu_isa_traits<isa>::vlen / 4
-                                      : cpu_isa_traits<isa>::vlen)
+        , vlen_(is_bf16() || is_f16() ? cpu_isa_traits_t<isa>::vlen / 2
+                          : is_f8()   ? cpu_isa_traits_t<isa>::vlen / 4
+                                      : cpu_isa_traits_t<isa>::vlen)
         , simd_w_(vlen_ / dtype_size())
         , is_fwd_(pd_->is_fwd()) {
 
@@ -231,7 +231,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
     }
 
 private:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     static constexpr cpu_isa_t injector_isa
             = isa == avx512_core_amx ? avx512_core : isa;
 

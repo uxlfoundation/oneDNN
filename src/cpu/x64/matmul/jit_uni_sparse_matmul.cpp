@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ struct jit_uni_sparse_matmul_kernel_t : public sparse_matmul_kernel_t {
     using sparse_matmul_kernel_t::tail_size;
     using sparse_matmul_kernel_t::vlen;
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     Reg64 reg_param = abi_param1;
 
@@ -300,7 +300,7 @@ struct jit_uni_sparse_matmul_kernel_t : public sparse_matmul_kernel_t {
     }
 
     jit_uni_sparse_matmul_kernel_t(const matmul_pd_t *pd)
-        : sparse_matmul_kernel_t(cpu_isa_traits<isa>::vlen, pd) {}
+        : sparse_matmul_kernel_t(cpu_isa_traits_t<isa>::vlen, pd) {}
     ~jit_uni_sparse_matmul_kernel_t() override = default;
 };
 

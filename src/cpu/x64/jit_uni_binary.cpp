@@ -512,8 +512,8 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
         }
     }
 
-    const int vlen = is_avx512_core ? cpu_isa_traits<avx512_core>::vlen
-                                    : cpu_isa_traits<avx2>::vlen;
+    const int vlen = is_avx512_core ? cpu_isa_traits_t<avx512_core>::vlen
+                                    : cpu_isa_traits_t<avx2>::vlen;
     const bool postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
                     p, src0_d, supported_strategies);

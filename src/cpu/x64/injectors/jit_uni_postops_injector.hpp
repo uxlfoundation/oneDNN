@@ -112,7 +112,7 @@ public:
 
 // A parent isa-specific post-ops injector class. A specific instance is
 // assigned based on `cpu_isa_t isa` argument in the base class.
-template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits<isa>::Vmm>
+template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits_t<isa>::Vmm>
 class jit_uni_postops_injector_t : public jit_uni_postops_injector_base_t<Vmm> {
 public:
     /*

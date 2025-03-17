@@ -339,7 +339,7 @@ void jit_avx512_common_1x1_conv_kernel::reduce_loop(
         };
 
         Label unaligned_store, end_store;
-        test(aux_reg_output_data, cpu_isa_traits<avx512_core>::vlen - 1);
+        test(aux_reg_output_data, cpu_isa_traits_t<avx512_core>::vlen - 1);
         jnz(unaligned_store, T_NEAR);
         store_output(true);
         jmp(end_store, T_NEAR);
@@ -574,7 +574,7 @@ status_t jit_avx512_common_1x1_conv_kernel::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nthr = nthreads;
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-    const int simd_w = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    const int simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     const int ndims = src_d.ndims();
 
     jcp.prop_kind = cd.prop_kind;

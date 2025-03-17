@@ -69,7 +69,7 @@ protected:
     std::unique_ptr<injector_t> tanh_injector_;
 
     // register size in bytes
-    static constexpr size_t vlen_ = cpu_isa_traits<isa>::vlen;
+    static constexpr size_t vlen_ = cpu_isa_traits_t<isa>::vlen;
     static constexpr size_t qscale_dt_size = sizeof(float);
     static constexpr size_t weights_peephole_dt_size_ = sizeof(float);
     const size_t vlen_dst_

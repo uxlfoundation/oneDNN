@@ -54,12 +54,12 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                                     public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_dense_kernel_t)
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = is_superset(isa, avx512_core) ? zword
             : is_superset(isa, avx)                             ? yword
                                                                 : xword;
-    static constexpr auto vlen = cpu_isa_traits<isa>::vlen;
-    static constexpr auto n_vregs = cpu_isa_traits<isa>::n_vregs;
+    static constexpr auto vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr auto n_vregs = cpu_isa_traits_t<isa>::n_vregs;
     static constexpr auto simd_w_ = vlen / sizeof(float); // bf16 works on ymms
 
     const memory_desc_wrapper src_d_, dst_d_, diff_dst_d_;
@@ -1000,11 +1000,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                                       public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_strided_kernel_t)
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword = is_superset(isa, avx512_core) ? zword
             : is_superset(isa, avx)                             ? yword
                                                                 : xword;
-    static constexpr auto vlen = cpu_isa_traits<isa>::vlen;
+    static constexpr auto vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr auto simd_w_ = vlen / sizeof(float); // bf16 works on ymms
 
     const memory_desc_wrapper src_d_, dst_d_;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel {
     void generate() override {
         Reg64 param = abi_param1;
 
-        const size_t vlen = cpu_isa_traits<isa>::vlen;
+        const size_t vlen = cpu_isa_traits_t<isa>::vlen;
         const size_t simd_w = vlen / sizeof(float);
         const size_t loop_dec[] = {simd_w, 1};
         const size_t uf[] = {1, 1};
@@ -128,7 +128,7 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel {
     }
 
 private:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     using opmask_t = const Xbyak::Opmask;
 
     Reg64 reg_from = rax;

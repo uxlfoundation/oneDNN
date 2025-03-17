@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ cpu_isa_t init_max_cpu_isa() {
     if (!isa_val.empty()) {
 
 #define IF_HANDLE_CASE(cpu_isa) \
-    if (isa_val.compare(cpu_isa_traits<cpu_isa>::user_option_env) == 0) \
+    if (isa_val.compare(cpu_isa_traits_t<cpu_isa>::user_option_env) == 0) \
     max_cpu_isa_val = cpu_isa
 #define ELSEIF_HANDLE_CASE(cpu_isa) else IF_HANDLE_CASE(cpu_isa)
 
@@ -206,7 +206,9 @@ status_t set_max_cpu_isa(dnnl_cpu_isa_t isa) {
 
     cpu_isa_t isa_to_set = isa_undef;
 #define HANDLE_CASE(cpu_isa) \
-    case cpu_isa_traits<cpu_isa>::user_option_val: isa_to_set = cpu_isa; break;
+    case cpu_isa_traits_t<cpu_isa>::user_option_val: \
+        isa_to_set = cpu_isa; \
+        break;
     switch (isa) {
         HANDLE_CASE(isa_all);
         HANDLE_CASE(sse41);

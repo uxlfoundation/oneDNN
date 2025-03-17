@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ struct _jit_uni_x8s8s32x_fwd_kernel : public jit_generator {
 
 private:
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<isa>::vlen / sizeof(float);
+            = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
     enum {

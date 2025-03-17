@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,10 +41,10 @@ struct jit_uni_shuffle_kernel_t : public jit_generator {
 
     jit_uni_shuffle_kernel_t(const jit_shuffle_conf_t &conf);
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     constexpr int vmm_idx(int idx) const {
-        return (cpu_isa_traits<isa>::n_vregs - 1) - idx;
+        return (cpu_isa_traits_t<isa>::n_vregs - 1) - idx;
     }
 
     /*

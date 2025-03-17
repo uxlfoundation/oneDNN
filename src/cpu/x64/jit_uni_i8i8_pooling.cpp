@@ -69,7 +69,7 @@ template <cpu_isa_t isa>
 struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_i8i8_pooling_fwd_ker_t)
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     Xmm xreg(int idx) const { return Xmm(idx); }
     Ymm yreg(int idx) const { return Ymm(xreg(idx).getIdx()); }
     Vmm vreg(int idx) const { return Vmm(xreg(idx).getIdx()); }
@@ -238,7 +238,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator {
 
         if (jpp.with_postops) {
 
-            const int simd_w = cpu_isa_traits<isa>::vlen / sizeof(float);
+            const int simd_w = cpu_isa_traits_t<isa>::vlen / sizeof(float);
             const std::size_t c_tail_elems = jpp.c % simd_w;
             post_op_tail_opmask_idx_ = 0;
             if (c_tail_elems) {
@@ -318,7 +318,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_max_op(
             // Example:  idx=[31..0]
             //    vreg_src = [x,x,x,x,.....,x,-,-,-,-,-] ; x => byte data
             //    shift to transform vreg_src = [-,-,-,-,-,x,..,x,x,x,x,]
-            const uint8_t shift = cpu_isa_traits<avx2>::vlen - jpp.c_tail;
+            const uint8_t shift = cpu_isa_traits_t<avx2>::vlen - jpp.c_tail;
 
             if (jpp.safe_c_tail) {
 
@@ -427,10 +427,10 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_avg_op(
             //    vreg_src = [x,x,x,x,.....,x,-,-,-,-,-] ; x => byte data
             //    shift to transform vreg_src = [-,-,-,-,-,x,..,x,x,x,x,]
             // Re-purposing vreg_zeros here. Set it back to zero immmediately.
-            const int msk_gran
-                    = cpu_isa_traits<avx2>::vlen / data_type_size(avg_proc_dt);
+            const int msk_gran = cpu_isa_traits_t<avx2>::vlen
+                    / data_type_size(avg_proc_dt);
 
-            const uint8_t shift = cpu_isa_traits<avx2>::vlen
+            const uint8_t shift = cpu_isa_traits_t<avx2>::vlen
                     - (jpp.c_tail > (ll + 1) * msk_gran
                                     ? msk_gran
                                     : jpp.c_tail - (ll * msk_gran));
@@ -569,7 +569,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_max_op(
     int c_block = jpp.c_block;
 
     const uint64_t low_mask = (1ULL << (c_block / 2)) - 1;
-    const uint8_t shift = cpu_isa_traits<avx2>::vlen - jpp.c_tail;
+    const uint8_t shift = cpu_isa_traits_t<avx2>::vlen - jpp.c_tail;
 
     if (masked) {
         switch (jpp.src_dt) {
@@ -677,7 +677,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_avg_op(
 
         const int copy_range = masked
                 ? math::ilog2q(jpp.tail[ll] + 1)
-                : cpu_isa_traits<sse41>::vlen / data_type_size(avg_proc_dt);
+                : cpu_isa_traits_t<sse41>::vlen / data_type_size(avg_proc_dt);
         for (int i = 0; i < copy_range; i++)
             pextrb(ptr[reg_ptr_dst_i8 + offset + i], vr_dst, i);
     } else
@@ -736,7 +736,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_avg_op(
         // mmx_mask(ll) - ll-th mask of tail in non-zero-tail case
 
         const int msk_gran
-                = cpu_isa_traits<avx2>::vlen / data_type_size(avg_proc_dt);
+                = cpu_isa_traits_t<avx2>::vlen / data_type_size(avg_proc_dt);
 
         const int ll_end = (ll + 1) * msk_gran; // ((ll + 1) * 8)
 
@@ -1070,7 +1070,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::init_mask() {}
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::init_mask() {
     using namespace data_type;
-    using cpu_isa = cpu_isa_traits<avx2>;
+    using cpu_isa = cpu_isa_traits_t<avx2>;
 
     // AVX2 mask initialization: mask stored in Ymm-regs
     auto init = [&](uint64_t bit_mask, bool need_ymm_mask = true,
@@ -1324,7 +1324,7 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_conf(
     //     isa == sse41   : 16 bytes -> 16 for s8/u8, 4 for s32
     //     isa == avx2    : 32 bytes -> 32 for s8/u8, 8 for s32
     //     isa == avx512* : 64 bytes -> 64 for s8/u8, 16 for s32
-    int simd_w = cpu_isa_traits<isa>::vlen / data_type_size(jpp.src_dt);
+    int simd_w = cpu_isa_traits_t<isa>::vlen / data_type_size(jpp.src_dt);
 
     /* Verify that vlen-sized memory access happens within the tensor's
      * size, otherwise load/store will always spill outside the memory
@@ -1361,7 +1361,7 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_conf(
             // avg_proc_dt (s32) defines granularity (because u8/s8 processed as s32)
             // sse : 4, avx2 : 8, avx512 : 16
             const size_t msk_gran
-                    = cpu_isa_traits<isa>::vlen / data_type_size(avg_proc_dt);
+                    = cpu_isa_traits_t<isa>::vlen / data_type_size(avg_proc_dt);
             const size_t msk_msk = (1ULL << msk_gran) - 1;
             size_t m = tail_mask;
             for (size_t ll = 0; ll < max_num_ll; ll++) {
@@ -1452,11 +1452,11 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
      * boundary, if so, compute a safe memory access. */
     const auto src_safe_access = reinterpret_cast<char *>(
             reinterpret_cast<ptrdiff_t>(src_i8 + src_d.size() - 1)
-            - (cpu_isa_traits<isa>::vlen - 1));
+            - (cpu_isa_traits_t<isa>::vlen - 1));
 
     const auto dst_safe_access = reinterpret_cast<char *>(
             reinterpret_cast<ptrdiff_t>(dst_i8 + dst_d.size() - 1)
-            - (cpu_isa_traits<isa>::vlen - 1));
+            - (cpu_isa_traits_t<isa>::vlen - 1));
 
     parallel_nd(jpp.mb, jpp.od, jpp.oh, jpp.ow,
             [&](dim_t n, dim_t od, dim_t oh, dim_t ow) {

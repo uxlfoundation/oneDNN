@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,15 +31,15 @@ struct jit_uni_lstm_cell_postgemm_t {
             jit_generator *host, int tmp_id_begin, bool use_bf16_emu)
         : host_(host)
         , min_allowed_tmp_vmm_idx_(0)
-        , max_allowed_tmp_vmm_idx_(cpu_isa_traits<isa>::n_vregs - 1
+        , max_allowed_tmp_vmm_idx_(cpu_isa_traits_t<isa>::n_vregs - 1
                   - (is_superset(isa, avx512_core) && use_bf16_emu ? 4 : 0)) {
         reset_tmp_vmm_idx_range(tmp_id_begin, max_allowed_tmp_vmm_idx_);
     }
 
 protected:
     using injector_t = jit_uni_eltwise_injector<isa>;
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
-    const size_t vlen_ = cpu_isa_traits<isa>::vlen;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
+    const size_t vlen_ = cpu_isa_traits_t<isa>::vlen;
 
     Vmm get_next_tmp_vmm() {
         const Vmm vmm {current_tmp_id_++};

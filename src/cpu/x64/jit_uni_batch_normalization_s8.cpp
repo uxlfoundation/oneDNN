@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,10 +49,10 @@ struct jit_bnorm_base_t : public jit_generator {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_s8_t)
 
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const AddressFrame &vmmword
             = (isa == sse41) ? xword : ((isa == avx2) ? yword : zword);
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     const batch_normalization_pd_t *pd_;
 
@@ -82,7 +82,7 @@ struct jit_bnorm_base_t : public jit_generator {
     Vmm vmm_aux = Vmm(isa == avx512_core ? 28 : 10); // shared with 'veps'
     Vmm vmm_mask = Vmm(0); // used for AVX2 and SSE41
 
-    size_t simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
+    size_t simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     size_t c_in_xmm_ = (isa == sse41) ? 8 : 16;
     size_t chan_data_offt_;
     size_t num_c_blocks_;

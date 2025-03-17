@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -215,7 +215,7 @@ void fp8_emulation_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
 
     prepare_f8_to_f16_vnni_masks(zmm_permute_idx);
 
-    const auto zmm_width_in_bytes = cpu_isa_traits<avx512_core>::vlen;
+    const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
 
     for (int r = 0; r < num_rows; r += 2) {
         perform_f8_to_f16_vnni_conversion(
@@ -304,7 +304,7 @@ void fp8_emulation_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
 void fp8_emulation_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
         const Xbyak::Reg64 &reg_data_out) {
-    const auto zmm_width_in_bytes = cpu_isa_traits<avx512_core>::vlen;
+    const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
     const Xbyak::Zmm zmm_out1(xmm_aux4_.getIdx());
     const Xbyak::Zmm zmm_out2(xmm_aux5_.getIdx());
     const Xbyak::Ymm ymm_out1(zmm_out1.getIdx());

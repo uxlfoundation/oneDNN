@@ -35,7 +35,7 @@ using namespace alg_kind;
 #define GET_OFF(field) offsetof(jit_pool_call_s, field)
 
 constexpr int sse41_single_block_size
-        = cpu_isa_traits<sse41>::vlen / sizeof(float);
+        = cpu_isa_traits_t<sse41>::vlen / sizeof(float);
 
 static bcast_set_t get_supported_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
@@ -1303,7 +1303,7 @@ void jit_uni_pool_kernel<isa>::zero_diff_src(
         mov(aux_reg_zero_ih, reg_zero_ih);
         L(l_ih_loop);
         {
-            const auto vlen = cpu_isa_traits<isa>::vlen;
+            const auto vlen = cpu_isa_traits_t<isa>::vlen;
             const int step = c_off * dt_size;
 
             // TODO: maybe a big code generated here
@@ -1362,7 +1362,7 @@ void jit_uni_pool_kernel<isa>::generate() {
             ? jpp.f32_accum_block_size
             : output_c_off;
 
-    int vlen = cpu_isa_traits<isa>::vlen;
+    int vlen = cpu_isa_traits_t<isa>::vlen;
 
     const size_t input_dt_size
             = jpp.needs_f32_accum_for_bf16 ? sizeof(float) : jpp.dt_size;

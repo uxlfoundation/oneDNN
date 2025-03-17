@@ -70,8 +70,8 @@ protected:
     const bool is_dynamic_size_;
     const int tail_size_;
 
-    constexpr static int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    constexpr static int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     using Vmm_down_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const Vmm vmm_input = Vmm(0);
@@ -174,8 +174,8 @@ struct jit_uni_cvt_xf16_to_ps_t : public jit_generator {
 
 protected:
     constexpr static int elem_granularity = isa == avx2_vnni_2 ? 2 : 1;
-    constexpr static int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    constexpr static int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     using Vmm_down_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const impl::data_type_t input_dt_;

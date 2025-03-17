@@ -49,7 +49,7 @@ protected:
     std::queue<float> sum_scales_;
 };
 
-template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits<isa>::Vmm>
+template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits_t<isa>::Vmm>
 struct jit_uni_reduction_kernel_t : public jit_uni_reduction_kernel_base_t {
     jit_uni_reduction_kernel_t(
             const jit_reduction_conf_t &conf, const memory_desc_t *dst_md);

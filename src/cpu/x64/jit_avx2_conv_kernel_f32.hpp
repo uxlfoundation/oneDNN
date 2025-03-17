@@ -51,7 +51,7 @@ private:
             postops_injector_;
 
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<avx2>::vlen / sizeof(float);
+            = cpu_isa_traits_t<avx2>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     reg64_t reg_input = rax;
     reg64_t aux_reg_input = r8;

@@ -64,7 +64,7 @@ protected:
     std::unique_ptr<injector_t> tanh_injector_;
 
     // register size in bytes
-    static constexpr size_t vlen_ = cpu_isa_traits<isa>::vlen;
+    static constexpr size_t vlen_ = cpu_isa_traits_t<isa>::vlen;
     const size_t vlen_c_states_ = vlen_ / (sizeof(float) / cstate_dt_size_);
 
     static constexpr size_t diff_cstate_dt_size_ = sizeof(float);

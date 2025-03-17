@@ -75,7 +75,7 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg, data_type_t dt);
 
 } // namespace eltwise_injector
 
-template <cpu_isa_t isa, typename Wmm = typename cpu_isa_traits<isa>::Vmm>
+template <cpu_isa_t isa, typename Wmm = typename cpu_isa_traits_t<isa>::Vmm>
 struct jit_uni_eltwise_injector {
     using Vmm = Wmm;
 
@@ -182,7 +182,7 @@ private:
     static constexpr size_t vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr size_t preserved_vecs_max_ = 6;
     static constexpr size_t preserved_gprs_max_ = 5;
-    static constexpr size_t n_vregs_ = cpu_isa_traits<isa>::n_vregs;
+    static constexpr size_t n_vregs_ = cpu_isa_traits_t<isa>::n_vregs;
     static constexpr int n_mantissa_bits_ = 23;
 
     const size_t n_vregs_to_preserve_;

@@ -70,7 +70,7 @@ private:
     using c_oriented_generation_fn_t = std::function<void(const bool)>;
 
     constexpr int vmm_idx(int idx) const {
-        return (cpu_isa_traits<isa>::n_vregs - 1) - idx;
+        return (cpu_isa_traits_t<isa>::n_vregs - 1) - idx;
     }
 
     bool can_movntps_be_used() const;

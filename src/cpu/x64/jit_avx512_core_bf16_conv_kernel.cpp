@@ -911,7 +911,7 @@ status_t jit_avx512_core_bf16_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     const int regs = isa_has_bf16(jcp.isa) ? 31 /* expl_bcast case */ : 26;
     const bool ok_to_pad_channels = jcp.ngroups == 1 && !is_data_layout_nxc;
 
-    jcp.simd_w = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    jcp.simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
 
     const bool ok_to_try_lower_zmm = true
             && IMPLICATION(is_data_layout_nxc,
@@ -1632,7 +1632,7 @@ status_t jit_avx512_core_bf16_bwd_data_kernel::init_conf(jit_conv_conf_t &jcp,
 
     bool ok_to_pad_channels = jcp.ngroups == 1 && !is_data_layout_nxc;
 
-    jcp.simd_w = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    jcp.simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
 
     const bool ok_to_try_lower_zmm = true
             && IMPLICATION(is_data_layout_nxc,
@@ -3294,7 +3294,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::maybe_zero_kernel() {
     xor_(reg_tmp, reg_tmp);
     L(zeroing_loop);
     {
-        assert(get_kernel_offset(1, 0) == cpu_isa_traits<avx512_core>::vlen);
+        assert(get_kernel_offset(1, 0) == cpu_isa_traits_t<avx512_core>::vlen);
         for (int ic1 = 0; ic1 < jcp.ic_block; ic1++)
             vmovups(ptr[reg_kernel + reg_tmp + get_kernel_offset(ic1, 0)],
                     zero);
@@ -4137,7 +4137,7 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_conf(
         jit_conv_conf_t &jcp, const convolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &diff_weights_md,
         memory_desc_t &diff_bias_md, memory_desc_t &diff_dst_md, int nthreads) {
-    const int simd_w = cpu_isa_traits<avx512_core>::vlen / sizeof(float);
+    const int simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
 
     const memory_desc_wrapper src_d(&src_md);
     const memory_desc_wrapper diff_weights_d(&diff_weights_md);

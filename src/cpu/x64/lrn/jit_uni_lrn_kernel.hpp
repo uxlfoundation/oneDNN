@@ -95,11 +95,11 @@ public:
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lrn_kernel_t);
     // TODO: why use double simd for sse41?
     static constexpr int VECTOR_LENGTH
-            = (cpu_isa_traits<(isa > sse41 ? isa : avx2)>::vlen
+            = (cpu_isa_traits_t<(isa > sse41 ? isa : avx2)>::vlen
                     / sizeof(float));
 
 protected:
-    using Vmm = typename cpu_isa_traits<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     void load_constant(float constant, const Vmm &v_constant,
             const Xbyak::Xmm &x_constant);
@@ -119,7 +119,8 @@ protected:
     const Xbyak::Reg64 w_ = this->r10;
     const Xbyak::Reg64 imm_addr64_ = this->rbx;
     const Xbyak::Reg64 reg_tmp_ = this->rsi;
-    static constexpr size_t simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
+    static constexpr size_t simd_w_
+            = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     int single_pixel_offset_
             = VECTOR_LENGTH * sizeof(typename prec_traits_t<d_type>::type);
 

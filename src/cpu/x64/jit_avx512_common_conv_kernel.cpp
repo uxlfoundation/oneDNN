@@ -865,7 +865,7 @@ status_t jit_avx512_common_conv_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     bool ok_to_pad_channels = true && !is_data_layout_nxc && jcp.ngroups == 1
             && src_d.data_type() == data_type::f32;
 
-    const int full_simd_w = cpu_isa_traits<avx512_core>::vlen / typesize;
+    const int full_simd_w = cpu_isa_traits_t<avx512_core>::vlen / typesize;
     jcp.simd_w = full_simd_w;
     bool ok_to_try_lower_zmm = true
             && IMPLICATION(is_data_layout_nxc,
@@ -1938,7 +1938,7 @@ status_t jit_avx512_common_conv_bwd_data_kernel_f32::init_conf(
     bool ok_to_pad_channels = true && !is_data_layout_nxc && jcp.ngroups == 1
             && diff_src_d.data_type() == data_type::f32;
 
-    const int full_simd_w = cpu_isa_traits<avx512_core>::vlen / typesize;
+    const int full_simd_w = cpu_isa_traits_t<avx512_core>::vlen / typesize;
     jcp.simd_w = full_simd_w;
     bool ok_to_try_lower_zmm = true
             && IMPLICATION(is_data_layout_nxc,
@@ -3046,7 +3046,7 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32::maybe_zero_kernel() {
     L(zeroing_loop);
     {
         assert(jcp.oc_block * jcp.typesize_out
-                == cpu_isa_traits<avx512_core>::vlen);
+                == cpu_isa_traits_t<avx512_core>::vlen);
         for (int ic1 = 0; ic1 < jcp.ic_block; ic1++)
             vmovups(ptr[reg_kernel + reg_tmp
                             + ic1 * jcp.oc_block * jcp.typesize_out],
@@ -3917,7 +3917,7 @@ status_t jit_avx512_common_conv_bwd_weights_kernel_f32::init_conf(
 
     jcp = zero<decltype(jcp)>();
 
-    jcp.simd_w = cpu_isa_traits<avx512_core>::vlen / typesize;
+    jcp.simd_w = cpu_isa_traits_t<avx512_core>::vlen / typesize;
     jcp.nthr = jcp.aligned_threads = nthreads;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;

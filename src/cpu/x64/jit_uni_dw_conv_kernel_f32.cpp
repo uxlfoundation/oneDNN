@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ jit_uni_dw_conv_fwd_kernel_f32<isa>::jit_uni_dw_conv_fwd_kernel_f32(
         static constexpr size_t helper_vmm_idx = 31;
         static constexpr bool use_exact_tail_scalar_bcast = true;
         const size_t tail_size = jcp.oc_without_padding
-                % (cpu_isa_traits<isa>::vlen / sizeof(float));
+                % (cpu_isa_traits_t<isa>::vlen / sizeof(float));
         rhs_arg_static_params_t rhs_arg_static_params {helper_vmm_idx, r14, r15,
                 r12, preserve_gpr, preserve_vmm,
                 GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(dst_orig),
@@ -73,7 +73,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::load_src(
     const auto ch_blk = jcp.ch_block;
     const auto ocb_stride = dst_layout_nxc ? ch_blk : jcp.oh * jcp.ow * ch_blk;
     const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
-    const int vlen = cpu_isa_traits<isa>::vlen / sizeof(float);
+    const int vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     const int c_tail = jcp.oc % jcp.ch_block;
 
     const int repeats = max_repeats();
@@ -140,7 +140,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::apply_filter_unrolled(
     const auto icb_stride = src_layout_nxc
             ? ch_blk
             : (jcp.is_fused_conv ? 1 : jcp.ih) * jcp.iw * ch_blk;
-    const int vlen = cpu_isa_traits<isa>::vlen / sizeof(float);
+    const int vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
 
     auto get_input_spatial_index = [=](int oi, int ki) {
         return (ki * dilate_w + oi * stride_w - pad_l);
@@ -290,7 +290,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::apply_postops(
                     [&](const int r, const int ch, const int ow,
                             const bool mask_flag_blocked_layout) {
                         const int vlen
-                                = cpu_isa_traits<isa>::vlen / sizeof(float);
+                                = cpu_isa_traits_t<isa>::vlen / sizeof(float);
                         const bool is_tail_load = check_if_tail_load(
                                 is_ch_tail, c_tail, ch, ur_ch_blocks, vlen, r);
                         if ((ch + 1 == ur_ch_blocks) && is_ch_tail
@@ -408,7 +408,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::store_dst(
     const auto ch_blk = jcp.ch_block;
     const auto ocb_stride = dst_layout_nxc ? ch_blk : jcp.oh * jcp.ow * ch_blk;
     const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
-    const int vlen = cpu_isa_traits<isa>::vlen / sizeof(float);
+    const int vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     const int c_tail = jcp.oc_without_padding % jcp.ch_block;
 
     const int repeats = max_repeats();

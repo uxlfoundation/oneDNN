@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ private:
     const Xbyak::AddressFrame &vmmword = (isa == sse41) ? xword
             : (isa == avx2)                             ? yword
                                                         : zword;
-    const int vlen = cpu_isa_traits<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     // dw convolution
     reg64_t reg_input = r8;
@@ -137,7 +137,7 @@ private:
     using Vmm = typename utils::conditional3<isa == sse41, Xbyak::Xmm,
             isa == avx2, Xbyak::Ymm, Xbyak::Zmm>::type;
     const int reg_repeats_ = (isa == sse41) ? 2 : 1;
-    const int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
+    const int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
 
     inline Vmm get_ker_reg(int idx) { return Vmm(idx + 0); }
@@ -203,7 +203,7 @@ private:
     using Vmm = typename utils::conditional3<isa == sse41, Xbyak::Xmm,
             isa == avx2, Xbyak::Ymm, Xbyak::Zmm>::type;
 
-    const int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
+    const int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     const int reg_repeats_ = (isa == sse41) ? 2 : 1;
     const int req_aux_vmm = isa == sse41 ? 1 : 0; // used for FMA operand
 

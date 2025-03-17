@@ -44,7 +44,8 @@ struct jit_sse41_conv_fwd_kernel_f32 : public jit_generator {
     const primitive_attr_t &attr_;
 
 private:
-    static constexpr auto simd_w_ = cpu_isa_traits<sse41>::vlen / sizeof(float);
+    static constexpr auto simd_w_
+            = cpu_isa_traits_t<sse41>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
     reg64_t reg_input = rax;
     reg64_t aux_reg_input = r8;

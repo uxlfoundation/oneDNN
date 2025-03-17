@@ -1308,7 +1308,7 @@ void jit_uni_lrn_fwd_kernel_t<sse41, data_type::f32>::generate(
     const Xbyak::Xmm &xe_lo = this->xmm14;
     const Xbyak::Xmm &xe_hi = this->xmm15;
 
-    const int vlen = cpu_isa_traits<sse41>::vlen / sizeof(float);
+    const int vlen = cpu_isa_traits_t<sse41>::vlen / sizeof(float);
 
     bool compute_tail = J.tail != 0;
     bool load_lo = J.tail == 0 || J.tail > 4;

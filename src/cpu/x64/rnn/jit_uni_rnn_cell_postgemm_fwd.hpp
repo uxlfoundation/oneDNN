@@ -31,8 +31,8 @@ struct jit_uni_rnn_cell_postgemm_fwd : public jit_uni_rnn_postgemm {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_rnn_cell_postgemm_fwd)
 
     using injector_t = typename utils::conditional<isa == avx512_core,
-            jit_uni_eltwise_injector<avx512_core>,
-            jit_uni_eltwise_injector<isa>>::type;
+            jit_uni_eltwise_injector_t<avx512_core>,
+            jit_uni_eltwise_injector_t<isa>>::type;
 
     jit_uni_rnn_cell_postgemm_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
@@ -51,7 +51,7 @@ protected:
     std::unique_ptr<injector_t> injector_;
 
     // register size in bytes
-    using Vmm = typename jit_uni_eltwise_injector<isa>::Vmm;
+    using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
     static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr size_t cstate_dt_size = sizeof(float);
     static constexpr size_t qscale_dt_size = sizeof(float);

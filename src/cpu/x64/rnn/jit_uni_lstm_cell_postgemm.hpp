@@ -37,7 +37,7 @@ struct jit_uni_lstm_cell_postgemm_t {
     }
 
 protected:
-    using injector_t = jit_uni_eltwise_injector<isa>;
+    using injector_t = jit_uni_eltwise_injector_t<isa>;
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     const size_t vlen_ = cpu_isa_traits_t<isa>::vlen;
 

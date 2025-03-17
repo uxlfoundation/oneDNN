@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,9 +61,9 @@ public:
 
     std::size_t simd_w_ = 0;
     std::size_t tail_size_ = 0;
-    Xbyak::Opmask tail_opmask_ = Xbyak::Opmask();
+    Xbyak::Opmask tail_opmask_;
     int tail_vmm_mask_idx_ = 0;
-    Xbyak::Reg64 reg_tmp_ = Xbyak::Reg64();
+    Xbyak::Reg64 reg_tmp_;
 };
 
 class io_emu_bf16_conf_t {
@@ -124,7 +124,7 @@ public:
 
     int vreg_zero_saturation_idx_ = 0;
     int vreg_saturation_ubound_idx_ = 0;
-    Xbyak::Reg64 reg_tmp_ = Xbyak::Reg64();
+    Xbyak::Reg64 reg_tmp_;
 };
 
 class io_gather_conf_t {
@@ -138,10 +138,10 @@ public:
     io_gather_conf_t &operator=(const io_gather_conf_t &other) = default;
 
     std::size_t simd_w_ = 0;
-    Xbyak::Opmask full_opmask_ = Xbyak::Opmask();
+    Xbyak::Opmask full_opmask_;
     int full_vmm_mask_idx_ = 0;
-    Xbyak::Reg64 reg_tmp_ = Xbyak::Reg64();
-    Xbyak::Reg64 reg_tmp1_ = Xbyak::Reg64();
+    Xbyak::Reg64 reg_tmp_;
+    Xbyak::Reg64 reg_tmp1_;
     // It is needed, when io_helper use emulation for gather
     // and it is not needed for sse.
     utils::optional_t<int> vmm_tmp_idx_ = utils::nullopt;

@@ -609,7 +609,7 @@ struct jit_resampling_conf_t {
 
     cpu_isa_t isa = isa_undef;
 
-    post_ops_t post_ops = post_ops_t();
+    post_ops_t post_ops;
     bool with_postops = false;
     bool with_eltwise = false;
     bool with_binary = false;
@@ -944,7 +944,7 @@ struct jit_reduction_conf_t {
 
     bool is_saturation_needed = false;
 
-    post_ops_t post_ops = post_ops_t();
+    post_ops_t post_ops;
     bool with_postops = false;
     bool with_eltwise = false;
     bool with_binary = false;

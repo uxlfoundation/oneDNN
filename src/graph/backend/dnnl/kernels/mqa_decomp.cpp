@@ -132,6 +132,12 @@ void mqa_decomp_kernel_t<quantized, dt>::prepare_sub_args(
             var_grantor.get(
                     mqa_cfg_.mem_key_map[mqa_cfg_.sub_max_dst1_dst2.get()])
             + size_offset);
+
+    mem_map[mqa_cfg_.sub_mm1_post_mem.back().get()][id].set_data_handle(
+            var_grantor.get(
+                    mqa_cfg_.mem_key_map[mqa_cfg_.sub_mm1_post_mem.back()
+                                                 .get()])
+            + size_offset);
     // softmax
     mem_map[mqa_cfg_.sub_softmax_dst.get()][id].set_data_handle(
             var_grantor.get(
@@ -236,8 +242,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
             start_index++;
         }
         auto &sub_mm1_post_add_tid
-                = res->mem_map[mqa_cfg_.sub_mm1_post_mem[start_index].get()]
-                              [tid];
+                = res->mem_map[mqa_cfg_.sub_post_add_user.get()][tid];
         size_t sub_post_add_offset = 0;
         if (mqa_cfg_.trans_before_add)
             sub_post_add_offset = (bo * MBI * M1 * N1 + bi * M1 * N1)
@@ -288,6 +293,8 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
         // in parallel region - these primitives should use single thread.
         mqa_cfg_.sub_reorder0.execute(strm, res->sub_reorder0_args[tid]);
         mqa_cfg_.sub_reorder1.execute(strm, res->sub_reorder1_args[tid]);
+        mqa_cfg_.sub_post_add_reorder4.execute(
+                strm, res->sub_post_add_reorder4_args[tid]);
         mqa_cfg_.sub_mm1_prim.execute(strm, res->sub_mm1_args[tid]);
 
         mqa_cfg_.sub_softmax_prim.execute(strm, res->sub_softmax_args[tid]);

@@ -87,12 +87,13 @@ public:
 
     // Primitives that actually perform calculations
     primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim;
-    mqa_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3;
+    mqa_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3,
+            sub_post_add_reorder4;
 
     // Args used in the execution of primitives
     std::unordered_map<int, memory> sub_reorder0_args, sub_reorder1_args,
             sub_mm1_args, sub_softmax_args, sub_reorder2_args, sub_mm2_args,
-            sub_reorder3_args;
+            sub_reorder3_args, sub_post_add_reorder4_args;
 
     // A map from memory to registry key, used to record the internal memories
     // location inside of the whole buffer.
@@ -103,6 +104,8 @@ public:
     memory sub_src1;
     // reorder1
     memory sub_wei1_user;
+    // post add reorder4
+    memory sub_post_add_user;
     //mm1
     memory sub_mm1_src, sub_mm1_wei, sub_mm1_dst;
     // sub_mm1_post_mem contains [post_scale, soft-capping, attn_mask...]

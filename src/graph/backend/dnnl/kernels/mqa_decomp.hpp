@@ -116,6 +116,8 @@ public:
                     mqa_kernel->mqa_cfg_.sub_reorder0_args, sub_reorder0_args);
             args_ctor(
                     mqa_kernel->mqa_cfg_.sub_reorder1_args, sub_reorder1_args);
+            args_ctor(mqa_kernel->mqa_cfg_.sub_post_add_reorder4_args,
+                    sub_post_add_reorder4_args);
             args_ctor(mqa_kernel->mqa_cfg_.sub_mm1_args, sub_mm1_args);
             args_ctor(mqa_kernel->mqa_cfg_.sub_softmax_args, sub_softmax_args);
             args_ctor(
@@ -127,8 +129,9 @@ public:
         std::unordered_map<dnnl_memory_t, std::vector<memory>> mem_map;
         // execution args for each op in the subgraph
         std::vector<std::unordered_map<int, memory>> sub_reorder0_args,
-                sub_reorder1_args, sub_mm1_args, sub_softmax_args,
-                sub_reorder2_args, sub_mm2_args, sub_reorder3_args;
+                sub_reorder1_args, sub_post_add_reorder4_args, sub_mm1_args,
+                sub_softmax_args, sub_reorder2_args, sub_mm2_args,
+                sub_reorder3_args;
     };
 
     std::function<std::shared_ptr<mqa_args_set_t>()> resource_ctor_;

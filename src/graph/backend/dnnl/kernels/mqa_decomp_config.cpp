@@ -166,12 +166,23 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
                         {1, seq_len_kv, seq_len_q}, post_dt, post_stride_dims);
             else {
                 if (trans_before_add)
-                    new_sub_md = memory::desc({1, seq_len_kv, seq_len_q},
-                            post_dt, {seq_len_kv * seq_len_q, 1, seq_len_kv});
+                    sub_mm1_post_add_md
+                            = memory::desc({1, seq_len_kv, seq_len_q}, post_dt,
+                                    {seq_len_kv * seq_len_q, 1, seq_len_kv});
                 else
-                    new_sub_md = memory::desc({1, seq_len_kv, seq_len_q},
-                            post_dt,
+                    sub_mm1_post_add_md = memory::desc(
+                            {1, seq_len_kv, seq_len_q}, post_dt,
                             {seq_len_kv * seq_len_q, group * seq_len_q, group});
+                primitive_attr sub_reorder3_attr;
+                sub_reorder3_attr.set_scratchpad_mode(
+                        dnnl::scratchpad_mode::user);
+
+                new_sub_md = memory::desc(
+                        {1, seq_len_kv, seq_len_q}, post_dt, tag::abc);
+                auto sub_reorder4_pd
+                        = reorder::primitive_desc(p_engine, sub_mm1_post_add_md,
+                                p_engine, new_sub_md, sub_reorder3_attr);
+                sub_post_add_reorder4.init(sub_reorder4_pd);
             }
 
             sub_mm1_post_md.emplace_back(new_sub_md);
@@ -295,6 +306,8 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     sub_src1 = memory(sub_src1_md, p_engine, nullptr);
     // reorder1: 2d strided u8 -> 2d ba s8
     sub_wei1_user = memory(sub_wei1_user_md, p_engine, nullptr);
+    // post add reorder4: user layout -> abc layout
+    sub_post_add_user = memory(sub_mm1_post_add_md, p_engine, nullptr);
     // mm1
     sub_mm1_src = memory(sub_mm1_src_md, p_engine, nullptr);
     sub_mm1_wei = memory(sub_mm1_wei_md, p_engine, nullptr);
@@ -321,6 +334,10 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
 
     sub_reorder1_args = {{DNNL_ARG_SRC, sub_wei1_user},
             {DNNL_ARG_DST, sub_mm1_wei}, {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
+
+    sub_post_add_reorder4_args = {{DNNL_ARG_SRC, sub_post_add_user},
+            {DNNL_ARG_DST, sub_mm1_post_mem.back()},
+            {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
 
     sub_mm1_args = {{DNNL_ARG_SRC, sub_mm1_src},
             {DNNL_ARG_WEIGHTS, sub_mm1_wei}, {DNNL_ARG_DST, sub_mm1_dst},
@@ -492,6 +509,8 @@ void mqa_decomp_config_t::memory_planning(registry_t &mqa_registry) {
             sub_max_src1_src2.get_desc().get_size());
     temporary_registrar.book(
             mem_key_map[sub_mm1_wei.get()], sub_mm1_wei.get_desc().get_size());
+    temporary_registrar.book(mem_key_map[sub_mm1_post_mem.back().get()],
+            sub_mm1_post_mem.back().get_desc().get_size());
     temporary_registrar.book(mem_key_map[sub_max_dst1_dst2.get()],
             sub_max_dst1_dst2.get_desc().get_size());
     temporary_registrar.book(mem_key_map[sub_softmax_dst.get()],

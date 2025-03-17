@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-void jit_avx_kernel_b0_sgemm_kern::generate_part2(Xbyak::Label l2cf4,
+void jit_avx_kernel_b0_sgemm_kern_t::generate_part2(Xbyak::Label l2cf4,
         Xbyak::Label l2834, Xbyak::Label l2774, Xbyak::Label l259c) {
     std::vector<Xbyak::Label> labels(57);
     L(labels[56]);

@@ -24,10 +24,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx_kernel_b0_sgemm_kern::jit_avx_kernel_b0_sgemm_kern()
+jit_avx_kernel_b0_sgemm_kern_t::jit_avx_kernel_b0_sgemm_kern_t()
     : jit_generator_t(jit_name()) {}
 
-void jit_avx_kernel_b0_sgemm_kern::generate() {
+void jit_avx_kernel_b0_sgemm_kern_t::generate() {
     Xbyak::Label l259c;
     Xbyak::Label l2774;
     Xbyak::Label l2834;
@@ -52,7 +52,7 @@ void jit_avx_kernel_b0_sgemm_kern::generate() {
     postamble();
 }
 
-void jit_avx_kernel_b0_sgemm_kern::generate_part1(const Xbyak::Label &l2cf4,
+void jit_avx_kernel_b0_sgemm_kern_t::generate_part1(const Xbyak::Label &l2cf4,
         const Xbyak::Label &l2834, const Xbyak::Label &l2774,
         const Xbyak::Label &l259c) {
     std::vector<Xbyak::Label> labels(55);

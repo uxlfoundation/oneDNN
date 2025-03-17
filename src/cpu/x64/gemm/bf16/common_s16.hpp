@@ -24,68 +24,68 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_s16_48x8_copy_an_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_an_kern);
+class jit_avx512_core_s16_48x8_copy_an_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_an_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_48x8_copy_an_kern();
+    jit_avx512_core_s16_48x8_copy_an_kern_t();
 };
 
-class jit_avx512_core_s16_48x8_copy_at_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_at_kern);
+class jit_avx512_core_s16_48x8_copy_at_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_at_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_48x8_copy_at_kern();
+    jit_avx512_core_s16_48x8_copy_at_kern_t();
 };
 
-class jit_avx512_core_s16_48x8_copy_bn_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_bn_kern);
+class jit_avx512_core_s16_48x8_copy_bn_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_bn_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_48x8_copy_bn_kern();
+    jit_avx512_core_s16_48x8_copy_bn_kern_t();
 };
 
-class jit_avx512_core_s16_48x8_copy_bt_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_bt_kern);
+class jit_avx512_core_s16_48x8_copy_bt_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_48x8_copy_bt_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_48x8_copy_bt_kern();
+    jit_avx512_core_s16_48x8_copy_bt_kern_t();
 };
 
-class jit_avx512_core_s16_24x8_copy_an_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_an_kern);
+class jit_avx512_core_s16_24x8_copy_an_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_an_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_24x8_copy_an_kern();
+    jit_avx512_core_s16_24x8_copy_an_kern_t();
 };
 
-class jit_avx512_core_s16_24x8_copy_at_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_at_kern);
+class jit_avx512_core_s16_24x8_copy_at_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_at_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_24x8_copy_at_kern();
+    jit_avx512_core_s16_24x8_copy_at_kern_t();
 };
 
-class jit_avx512_core_s16_24x8_copy_bn_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_bn_kern);
+class jit_avx512_core_s16_24x8_copy_bn_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_bn_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_24x8_copy_bn_kern();
+    jit_avx512_core_s16_24x8_copy_bn_kern_t();
 };
 
-class jit_avx512_core_s16_24x8_copy_bt_kern : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_bt_kern);
+class jit_avx512_core_s16_24x8_copy_bt_kern_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_s16_24x8_copy_bt_kern_t);
     void generate() override;
 
 public:
-    jit_avx512_core_s16_24x8_copy_bt_kern();
+    jit_avx512_core_s16_24x8_copy_bt_kern_t();
 };
 
 } // namespace x64

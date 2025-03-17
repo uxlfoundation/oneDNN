@@ -49,7 +49,7 @@ static inline Zmm make_zmm(const Xmm &v) {
 
 // Perform length-2 dot product accumulations of bfloat16 in parallel.
 // Use vdpbf16ps if available, otherwise emulate.
-void jit_avx512_core_gemv_bf16bf16f32_kern::dot_product(
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::dot_product(
         const Xmm &dst, const Xmm &src1, const Xmm &src2) {
     if (bfloat16_)
         vdpbf16ps(dst, src1, src2);
@@ -58,7 +58,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::dot_product(
 }
 
 // Vector load for 16-bit values.
-void jit_avx512_core_gemv_bf16bf16f32_kern::v_load(
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::v_load(
         const Xbyak::Xmm &dst, const Xbyak::Address &src, int nelems) {
     if (nelems >= 32)
         vmovdqu16(dst, src);
@@ -82,7 +82,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::v_load(
         vmovdqu16(make_xmm(dst) | k1 | T_z, src);
 }
 
-void jit_avx512_core_gemv_bf16bf16f32_kern::y_load(
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::y_load(
         const Xbyak::Xmm &dst, const Xbyak::Address &src, int nelems) {
     if (nelems >= 16)
         vmovups(dst, src);
@@ -102,7 +102,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::y_load(
         vmovss(make_xmm(dst), src);
 }
 
-void jit_avx512_core_gemv_bf16bf16f32_kern::y_store(
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::y_store(
         const Xbyak::Address &dst, const Xbyak::Xmm &src, int nelems) {
     if (nelems >= 16)
         vmovups(dst, src);
@@ -122,7 +122,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::y_store(
         vmovss(dst, make_xmm(src));
 }
 
-void jit_avx512_core_gemv_bf16bf16f32_kern::kernel_loop_n(
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::kernel_loop_n(
         int unroll_m, int unroll_n, bool fetch, bool last) {
     int zmm_vecs = utils::div_up(unroll_m, 32);
 
@@ -203,7 +203,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::kernel_loop_n(
 }
 
 // Inner loop for A non-transposed.
-void jit_avx512_core_gemv_bf16bf16f32_kern::innerloop_n(int unroll_n) {
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::innerloop_n(int unroll_n) {
     mov(A1_, A_);
     if (unroll_n > 4) {
         lea(A2_, ptr[A1_ + LDA_ * 4]);
@@ -283,7 +283,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::innerloop_n(int unroll_n) {
     L_aligned(label_m_tail_end);
 }
 
-void jit_avx512_core_gemv_bf16bf16f32_kern::kernel_loop_t(
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::kernel_loop_t(
         int unroll_m, int unroll_n, bool fetch, bool last) {
 
     // Load x.
@@ -312,7 +312,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::kernel_loop_t(
 }
 
 // Inner loop for A transposed.
-void jit_avx512_core_gemv_bf16bf16f32_kern::innerloop_t(int unroll_n) {
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::innerloop_t(int unroll_n) {
     mov(A1_, A_);
     if (unroll_n > 4) {
         lea(A2_, ptr[A1_ + LDA_ * 4]);
@@ -431,7 +431,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::innerloop_t(int unroll_n) {
 }
 
 // Outer loop.
-void jit_avx512_core_gemv_bf16bf16f32_kern::outerloop(int unroll_y,
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::outerloop(int unroll_y,
         Label *&cur_outerloop_label, Label *&outerloop_end_label) {
 
     bool is_tail = unroll_y < UNROLL_N_;
@@ -464,7 +464,7 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::outerloop(int unroll_y,
     }
 }
 
-void jit_avx512_core_gemv_bf16bf16f32_kern::generate() {
+void jit_avx512_core_gemv_bf16bf16f32_kern_t::generate() {
     // Prologue
     preamble();
 
@@ -513,8 +513,8 @@ void jit_avx512_core_gemv_bf16bf16f32_kern::generate() {
 }
 
 // Function signature: gemv(*m, *n, *alpha, *a, *lda, *x, *incx, *y, *incy)
-jit_avx512_core_gemv_bf16bf16f32_kern::jit_avx512_core_gemv_bf16bf16f32_kern(
-        bool trans)
+jit_avx512_core_gemv_bf16bf16f32_kern_t::
+        jit_avx512_core_gemv_bf16bf16f32_kern_t(bool trans)
     : jit_generator_t(jit_name())
     , trans_(trans)
     , bfloat16_(mayiuse(avx512_core_bf16))
@@ -605,8 +605,8 @@ jit_avx512_core_gemv_bf16bf16f32_kern::jit_avx512_core_gemv_bf16bf16f32_kern(
                 this, one_, even_, selector_, gpr_, zmm_tmp0_, zmm_tmp1_);
 }
 
-jit_avx512_core_gemv_bf16bf16f32_kern::
-        ~jit_avx512_core_gemv_bf16bf16f32_kern() {
+jit_avx512_core_gemv_bf16bf16f32_kern_t::
+        ~jit_avx512_core_gemv_bf16bf16f32_kern_t() {
     delete bf16_emu_;
 }
 

@@ -46,7 +46,7 @@ static inline Zmm make_zmm(const Xmm &v) {
 }
 
 // Load from or store to C.
-void jit_avx512_core_gemm_bf16bf16f32_kern::c_load(
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::c_load(
         const Xbyak::Xmm &dst, const Xbyak::Address &src, int nelems) {
     switch (nelems) {
         case 1: vmovss(make_xmm(dst), src); break;
@@ -60,7 +60,7 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::c_load(
     }
 }
 
-void jit_avx512_core_gemm_bf16bf16f32_kern::c_store(
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::c_store(
         const Xbyak::Address &dst, const Xbyak::Xmm &src, int nelems) {
     switch (nelems) {
         case 1: vmovss(dst, make_xmm(src)); break;
@@ -76,7 +76,7 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::c_store(
 
 // Perform length-2 dot product accumulations of bfloat16 in parallel.
 // Use vdpbf16ps if available, otherwise emulate.
-void jit_avx512_core_gemm_bf16bf16f32_kern::dot_product(
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::dot_product(
         const Xmm &dst, const Xmm &src1, const Xmm &src2) {
     if (bfloat16_)
         vdpbf16ps(dst, src1, src2);
@@ -85,7 +85,7 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::dot_product(
 }
 
 // Inner kernel.
-void jit_avx512_core_gemm_bf16bf16f32_kern::kernel_loop(
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::kernel_loop(
         int unroll_m, int unroll_n, bool cfetch) {
     int um_vecs = utils::div_up(unroll_m, c_nelems_);
     Label label_kernel_loop;
@@ -147,7 +147,7 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::kernel_loop(
 }
 
 // k remainder loop for kernel.
-void jit_avx512_core_gemm_bf16bf16f32_kern::remainder_kernel(
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::remainder_kernel(
         int unroll_m, int unroll_n, int unroll_k, int bwidth) {
     int um_vecs = utils::div_up(unroll_m, c_nelems_);
 
@@ -181,7 +181,7 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::remainder_kernel(
 }
 
 // Inner loop.
-void jit_avx512_core_gemm_bf16bf16f32_kern::innerloop(
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::innerloop(
         int unroll_m, int unroll_n) {
     int um_vecs = utils::div_up(unroll_m, c_nelems_);
     int stage1 = unroll_n, stage2 = unroll_n;
@@ -311,7 +311,7 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::innerloop(
 }
 
 // Outer loop.
-void jit_avx512_core_gemm_bf16bf16f32_kern::outerloop(
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::outerloop(
         int unroll_x, int unroll_y, Label *&cur_outerloop_label) {
     Label label_m_loop, label_n_loop, label_n_remainder_loops[6];
 
@@ -375,7 +375,7 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::outerloop(
     align(16);
 }
 
-void jit_avx512_core_gemm_bf16bf16f32_kern::generate() {
+void jit_avx512_core_gemm_bf16bf16f32_kern_t::generate() {
     // Prologue
     preamble();
     sub(rsp, stack_alloc_size_);
@@ -423,8 +423,9 @@ void jit_avx512_core_gemm_bf16bf16f32_kern::generate() {
     postamble();
 }
 
-jit_avx512_core_gemm_bf16bf16f32_kern::jit_avx512_core_gemm_bf16bf16f32_kern(
-        bool beta_zero, bool alpha_one, bool use_zmm)
+jit_avx512_core_gemm_bf16bf16f32_kern_t::
+        jit_avx512_core_gemm_bf16bf16f32_kern_t(
+                bool beta_zero, bool alpha_one, bool use_zmm)
     : jit_generator_t(jit_name())
     , beta_zero_(beta_zero)
     , alpha_one_(alpha_one)
@@ -507,7 +508,8 @@ jit_avx512_core_gemm_bf16bf16f32_kern::jit_avx512_core_gemm_bf16bf16f32_kern(
                 this, one_, even_, selector_, scratch_, zmm_tmp0_, zmm_tmp1_);
 }
 
-jit_avx512_core_gemm_bf16bf16f32_kern::~jit_avx512_core_gemm_bf16bf16f32_kern()
+jit_avx512_core_gemm_bf16bf16f32_kern_t::
+        ~jit_avx512_core_gemm_bf16bf16f32_kern_t()
         = default;
 } // namespace x64
 } // namespace cpu

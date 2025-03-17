@@ -30,7 +30,7 @@ namespace x64 {
 using namespace Xbyak;
 
 // Load vector register data for x, y or A.
-void jit_sse41_gemv_t_f32_kern::v_load(
+void jit_sse41_gemv_t_f32_kern_t::v_load(
         const Xbyak::Xmm &dst, const Xbyak::Address &src, int nelems) {
     switch (nelems) {
         case 1: movss(dst, src); break;
@@ -43,7 +43,7 @@ void jit_sse41_gemv_t_f32_kern::v_load(
 }
 
 // Store vector register data for x, y or A.
-void jit_sse41_gemv_t_f32_kern::v_store(
+void jit_sse41_gemv_t_f32_kern_t::v_store(
         const Xbyak::Address &dst, const Xbyak::Xmm &src, int nelems) {
     switch (nelems) {
         case 1: movss(dst, src); break;
@@ -56,14 +56,14 @@ void jit_sse41_gemv_t_f32_kern::v_store(
 }
 
 // Perform Hadamard product of 2 vectors and accumulate.
-void jit_sse41_gemv_t_f32_kern::dot_product(
+void jit_sse41_gemv_t_f32_kern_t::dot_product(
         const Xmm &dst, const Xmm &src1, const Xmm &src2) {
     mulps(src2, src1);
     addps(dst, src2);
 }
 
 // Inner loop.
-void jit_sse41_gemv_t_f32_kern::innerloop(int unroll_m, int unroll_n) {
+void jit_sse41_gemv_t_f32_kern_t::innerloop(int unroll_m, int unroll_n) {
     if ((unroll_m > M_UNROLL_) || (unroll_n > N_UNROLL_) || (unroll_m < 0)
             || (unroll_n < 0))
         return;
@@ -104,7 +104,7 @@ void jit_sse41_gemv_t_f32_kern::innerloop(int unroll_m, int unroll_n) {
 }
 
 // Outer loop.
-void jit_sse41_gemv_t_f32_kern::outerloop(
+void jit_sse41_gemv_t_f32_kern_t::outerloop(
         int unroll_x, int unroll_y, Label *&cur_outerloop_label) {
     if ((unroll_x > M_UNROLL_) || (unroll_y > N_UNROLL_) || (unroll_y < 0)
             || unroll_x < 0)
@@ -230,7 +230,7 @@ void jit_sse41_gemv_t_f32_kern::outerloop(
     align(16);
 }
 
-void jit_sse41_gemv_t_f32_kern::generate() {
+void jit_sse41_gemv_t_f32_kern_t::generate() {
     // Prologue
     preamble();
 
@@ -272,7 +272,7 @@ void jit_sse41_gemv_t_f32_kern::generate() {
 }
 
 // Function signature: gemv(*m, *n, *alpha, *a, *lda, *x, *incx, *y, *incy)
-jit_sse41_gemv_t_f32_kern::jit_sse41_gemv_t_f32_kern()
+jit_sse41_gemv_t_f32_kern_t::jit_sse41_gemv_t_f32_kern_t()
     : jit_generator_t(jit_name())
     , LDA_(is_windows ? rdi : r8)
     , X_(is_windows ? rsi : r9)

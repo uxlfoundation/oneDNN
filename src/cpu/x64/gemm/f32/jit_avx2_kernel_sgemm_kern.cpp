@@ -27,14 +27,14 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-int jit_avx2_kernel_sgemm_kern::next_acc(int idx, int um, int un) const {
+int jit_avx2_kernel_sgemm_kern_t::next_acc(int idx, int um, int un) const {
     while (!(((idx / unroll_n_) < std::max(1, um / nelt_per_vecreg_))
             || ((idx % unroll_n_) < un)))
         idx++;
     return idx;
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchB_beforeBload(
+void jit_avx2_kernel_sgemm_kern_t::prefetchB_beforeBload(
         int um, int un, int k_idx, int n_idx) {
     if (!(mayiuse(avx512_core) && __BUILD_GEMM_AVX512)) {
         if ((n_idx == 0) && (k_idx == 0) && (un == unroll_n_) && (um != 16)) {
@@ -44,7 +44,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchB_beforeBload(
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchB_beforeFMA(
+void jit_avx2_kernel_sgemm_kern_t::prefetchB_beforeFMA(
         int um, int un, int k_idx, int n_idx, int m_idx) {
     if (!(mayiuse(avx512_core) && __BUILD_GEMM_AVX512)) {
         if ((um == 16) || (un < unroll_n_)) {
@@ -61,7 +61,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchB_beforeFMA(
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchA_afterFMA(
+void jit_avx2_kernel_sgemm_kern_t::prefetchA_afterFMA(
         int um, int un, int k_idx, int n_idx, int m_idx) {
     if (mayiuse(avx512_core) && __BUILD_GEMM_AVX512) {
         if ((um < unroll_m_) && (m_idx == 0)) {
@@ -85,7 +85,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchA_afterFMA(
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchA_afterBload(
+void jit_avx2_kernel_sgemm_kern_t::prefetchA_afterBload(
         int um, int un, int k_idx, int n_idx) {
     if (!(mayiuse(avx512_core) && __BUILD_GEMM_AVX512)) {
         if ((um == unroll_m_) && (un == 2)) {
@@ -109,7 +109,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchA_afterBload(
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchB_afterFMA(
+void jit_avx2_kernel_sgemm_kern_t::prefetchB_afterFMA(
         int k_idx, int n_idx, int m_idx) {
     if (mayiuse(avx512_core) && __BUILD_GEMM_AVX512) {
         if (((m_idx + (k_idx % (nb_zmm_a_ / unroll_m_reg_)) * unroll_m_reg_)
@@ -124,7 +124,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchB_afterFMA(
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchA_beforeFMA(
+void jit_avx2_kernel_sgemm_kern_t::prefetchA_beforeFMA(
         int um, int un, int k_idx, int n_idx, int m_idx) {
     if (!(mayiuse(avx512_core) && __BUILD_GEMM_AVX512)) {
         if ((um == unroll_m_) && (un == unroll_n_)) {
@@ -158,7 +158,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchA_beforeFMA(
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchC_afterBload(
+void jit_avx2_kernel_sgemm_kern_t::prefetchC_afterBload(
         int um, int un, int k_idx, int n_idx) {
     if (mayiuse(avx512_core) && __BUILD_GEMM_AVX512) {
         if (um == unroll_m_) {
@@ -172,7 +172,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchC_afterBload(
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::prefetchC_beforeKloop(int um) {
+void jit_avx2_kernel_sgemm_kern_t::prefetchC_beforeKloop(int um) {
     if (mayiuse(avx512_core) && __BUILD_GEMM_AVX512) {
         if (um < unroll_m_) {
             prefetchw(ptr[CO2_ + elt_size_ * 0]);
@@ -199,7 +199,7 @@ void jit_avx2_kernel_sgemm_kern::prefetchC_beforeKloop(int um) {
     }
 }
 
-void jit_avx2_kernel_sgemm_kern::generate() {
+void jit_avx2_kernel_sgemm_kern_t::generate() {
 
     int i, unroll_x, unroll_y, uy_bin, ux_bin;
     int C_off = is_windows ? 56 : 8;
@@ -435,7 +435,7 @@ void jit_avx2_kernel_sgemm_kern::generate() {
     postamble();
 }
 
-jit_avx2_kernel_sgemm_kern::jit_avx2_kernel_sgemm_kern(bool beta_zero)
+jit_avx2_kernel_sgemm_kern_t::jit_avx2_kernel_sgemm_kern_t(bool beta_zero)
     : jit_generator_t(jit_name()), beta_zero_(beta_zero) {}
 
 } // namespace x64

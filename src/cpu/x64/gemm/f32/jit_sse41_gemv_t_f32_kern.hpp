@@ -24,10 +24,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_sse41_gemv_t_f32_kern : public jit_generator_t {
+class jit_sse41_gemv_t_f32_kern_t : public jit_generator_t {
 public:
-    jit_sse41_gemv_t_f32_kern(void);
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_gemv_t_f32_kern);
+    jit_sse41_gemv_t_f32_kern_t(void);
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_gemv_t_f32_kern_t);
 
 protected:
     void v_load(const Xbyak::Xmm &dst, const Xbyak::Address &src, int nelems);

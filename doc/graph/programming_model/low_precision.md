@@ -52,7 +52,6 @@ Graph operations support bf16 and f16 data types.
 
 A TypeCast operation performing down conversion should be inserted clearly to
 indicate the use of low numeric precision. oneDNN Graph implementation fully
-honors the API-specified numeric precision and only performs the computation
-using the API-specified or higher numeric precision.
+honors the API-specified numeric precision.
 
 @img{bf16_programming.jpg,Figure 2: Overview of bf16 programming model.,80%,}

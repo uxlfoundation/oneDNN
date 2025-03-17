@@ -36,8 +36,8 @@ constructing an operation.
 
 SoftMax operation supports the following data type combinations.
 
-| Src  | Dst  |
-|:-----|:-----|
-| f32  | f32  |
-| bf16 | bf16 |
-| f16  | f16  |
+| Src  | Dst             |
+|:-----|:----------------|
+| f32  | f32, bf16, f16  |
+| bf16 | bf16            |
+| f16  | f16             |

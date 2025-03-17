@@ -61,8 +61,8 @@ constructing an operation.
 
 MatMul operation supports the following data type combinations.
 
-| Src  | Weights | Bias | Dst  |
-|:-----|:--------|:-----|:-----|
-| f32  | f32     | f32  | f32  |
-| bf16 | bf16    | bf16 | bf16 |
-| f16  | f16     | f16  | f16  |
+| Src  | Weights | Bias | Dst       |
+|:-----|:--------|:-----|:----------|
+| f32  | f32     | f32  | f32       |
+| bf16 | bf16    | bf16 | f32, bf16 |
+| f16  | f16     | f16  | f32, f16  |

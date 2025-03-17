@@ -1129,6 +1129,7 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     const double capacity_factor = 0.75;
     const double benchdnn_device_limit = capacity_factor * device_max_capacity;
     const double benchdnn_cpu_limit = capacity_factor * cpu_device_capacity;
+    const double benchdnn_combined_limit = 0.90 * cpu_device_capacity;
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 
     auto dir_c_str = [&res]() {
@@ -1203,7 +1204,7 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     size_t cpu_and_device_size
             = total_size_cpu + check_mem_size_args.total_size_device;
     bool fits_cpu_ram = cpu_and_device_size
-            <= (is_cpu() ? benchdnn_cpu_limit : cpu_device_capacity);
+            <= (is_cpu() ? benchdnn_cpu_limit : benchdnn_combined_limit);
 
     // Check combined size against CPU capacity as the simpler method to account
     // for integrated devices and mapping/unmapping memory.

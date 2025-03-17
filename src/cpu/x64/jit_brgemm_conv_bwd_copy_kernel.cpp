@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -87,7 +87,7 @@ template <typename Vmm>
 void jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>::generate() {
     preamble();
 
-    const auto VL = vreg_traits<Vmm>::vlen;
+    const auto VL = vreg_traits_t<Vmm>::vlen;
     const auto simd_w = VL / jcp.dst_dsz;
     const auto n_vec = jcp.ic_block / simd_w;
     const auto n_tail_vec = (jcp.ic % jcp.ic_block) / simd_w;

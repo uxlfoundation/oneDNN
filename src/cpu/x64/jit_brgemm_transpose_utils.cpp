@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -365,7 +365,7 @@ void jit_brgemm_trans_m_k_f32_t::init_masks(int tail_length) {
     } else if (tail_length) {
         lea(reg_tmp, ptr[rip + mask_label_]);
         vmovups(ymm_tail_mask, ptr[reg_tmp]);
-        vmovups(xmm_upper_tail_mask, ptr[reg_tmp + vreg_traits<Xmm>::vlen]);
+        vmovups(xmm_upper_tail_mask, ptr[reg_tmp + vreg_traits_t<Xmm>::vlen]);
     }
 }
 

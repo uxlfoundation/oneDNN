@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -179,7 +179,7 @@ private:
 
     const bool is_avx512_ = is_superset(isa, avx512_core);
 
-    static constexpr size_t vlen_ = vreg_traits<Vmm>::vlen;
+    static constexpr size_t vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr size_t preserved_vecs_max_ = 6;
     static constexpr size_t preserved_gprs_max_ = 5;
     static constexpr size_t n_vregs_ = cpu_isa_traits<isa>::n_vregs;

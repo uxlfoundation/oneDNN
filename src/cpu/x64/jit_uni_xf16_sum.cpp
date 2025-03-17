@@ -107,7 +107,7 @@ void jit_avx512_core_bf16_sum_kernel_t::tail_iteration() {
     cmp(reg_sz, 0);
     jle(exit_label, T_NEAR);
 
-    const int bf16_half_reg = vreg_traits<Zmm>::vlen / 4;
+    const int bf16_half_reg = vreg_traits_t<Zmm>::vlen / 4;
     mov(reg32_mask, 0xffff);
     cmp(reg_sz, bf16_half_reg);
     jge(mask_label, T_NEAR);
@@ -165,7 +165,7 @@ void jit_avx512_core_bf16_sum_kernel_t::tail_iteration() {
 
     for (int s = 0; s < jsp.num_srcs; s++)
         add(reg_src[s], bf16_half_reg * jsp.typesize_in);
-    add(reg_dst, (vreg_traits<Zmm>::vlen / 4) * jsp.typesize_out);
+    add(reg_dst, (vreg_traits_t<Zmm>::vlen / 4) * jsp.typesize_out);
 
     jmp(tail_label, T_NEAR);
 }
@@ -196,7 +196,7 @@ status_t jit_avx512_core_bf16_sum_kernel_t::init_conf(
             break;
     }
     if (jsp.loop_unroll == 0) return status::unimplemented;
-    jsp.size_blocking = (vreg_traits<Zmm>::vlen / 2) * jsp.loop_unroll;
+    jsp.size_blocking = (vreg_traits_t<Zmm>::vlen / 2) * jsp.loop_unroll;
 
     const memory_desc_wrapper o_d(&dst_d);
     jsp.is_bf16_dst = data_type::bf16 == o_d.data_type();
@@ -329,7 +329,7 @@ status_t jit_avx2_vnni_2_xf16_sum_kernel_t::init_conf(jit_sum_conf_t &jsp,
     jsp.isa = avx2_vnni_2;
     jsp.loop_unroll = 6;
     jsp.unroll_reg_count = 2 * num_srcs + 4;
-    jsp.size_blocking = (vreg_traits<Ymm>::vlen / 2) * jsp.loop_unroll;
+    jsp.size_blocking = (vreg_traits_t<Ymm>::vlen / 2) * jsp.loop_unroll;
 
     const memory_desc_wrapper i_d(&(src_d.front()));
     const memory_desc_wrapper o_d(&dst_d);
@@ -348,9 +348,9 @@ template <typename Vmm>
 void jit_uni_xf16_sum_kernel_t<Vmm>::loop_iteration(int current_unroll) {
     Label loop_label, loop_exit_label;
     const int num_compute_elements
-            = (vreg_traits<Vmm>::vlen / 2) * current_unroll;
-    dim_t src_shift = (vreg_traits<Vmm>::vlen / 2) * jsp.typesize_in;
-    dim_t dst_shift = (vreg_traits<Vmm>::vlen / 4) * jsp.typesize_out;
+            = (vreg_traits_t<Vmm>::vlen / 2) * current_unroll;
+    dim_t src_shift = (vreg_traits_t<Vmm>::vlen / 2) * jsp.typesize_in;
+    dim_t dst_shift = (vreg_traits_t<Vmm>::vlen / 4) * jsp.typesize_out;
     L(loop_label);
     cmp(reg_sz, num_compute_elements);
     jl(loop_exit_label, T_NEAR);

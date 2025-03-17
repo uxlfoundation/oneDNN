@@ -327,14 +327,14 @@ int jit_uni_binary_injector_t<isa, Vmm>::adjust_temp_vmm_hint(
 
 template <typename Vmm>
 static void push_vmm(jit_generator *host, const Vmm &vmm) {
-    host->sub(host->rsp, vreg_traits<Vmm>::vlen);
+    host->sub(host->rsp, vreg_traits_t<Vmm>::vlen);
     host->uni_vmovups(host->ptr[host->rsp], vmm);
 }
 
 template <typename Vmm>
 static void pop_vmm(jit_generator *host, const Vmm &vmm) {
     host->uni_vmovups(vmm, host->ptr[host->rsp]);
-    host->add(host->rsp, vreg_traits<Vmm>::vlen);
+    host->add(host->rsp, vreg_traits_t<Vmm>::vlen);
 }
 
 static void push_opmask(jit_generator *host, const Xbyak::Opmask &k) {
@@ -357,7 +357,7 @@ static void pop_opmask(jit_generator *host, const Xbyak::Opmask &k) {
 
 template <typename Vmm>
 static void restore_stack(jit_generator *host, const Vmm &vmm) {
-    host->add(host->rsp, vreg_traits<Vmm>::vlen);
+    host->add(host->rsp, vreg_traits_t<Vmm>::vlen);
 }
 
 template <cpu_isa_t isa, typename Vmm>
@@ -2874,7 +2874,7 @@ struct helper_bcast_tail_t<avx2_vnni_2, Vmm> {
         if (utils::one_of(data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3)) {
             const auto tmp_lower_vmm =
-                    typename vreg_traits<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
+                    typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
             host->load_bytes(tmp_lower_vmm, rhs_addr,
                     tail_size * types::data_type_size(data_type));
             if (data_type == data_type::bf16) {
@@ -3244,7 +3244,7 @@ struct helper_load_tail_t<avx2_vnni_2, Vmm> {
             const Xbyak::Address &rhs_addr) {
         if (utils::one_of(data_type, data_type::bf16, data_type::f16)) {
             const auto tmp_lower_vmm =
-                    typename vreg_traits<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
+                    typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
             host->load_bytes(tmp_lower_vmm, rhs_addr_reg, 0,
                     tail_size * sizeof(bfloat16_t));
             if (data_type == data_type::bf16) {

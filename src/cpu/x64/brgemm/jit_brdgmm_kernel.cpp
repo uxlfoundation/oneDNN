@@ -40,7 +40,7 @@ jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         const brgemm_desc_t &abrd)
     : jit_base_brgemm_kernel_t(jit_name(), abrd.isa_impl)
     , brg(abrd)
-    , simd_w_(vreg_traits<Vmm>::vlen / brg.typesize_C)
+    , simd_w_(vreg_traits_t<Vmm>::vlen / brg.typesize_C)
     , max_vmms_(isa_num_vregs(brg.isa_impl))
     , compute_dst_zp_(brg.zp_type_c != brgemm_broadcast_t::none)
     , compute_src_zp_(brg.zp_type_a != brgemm_broadcast_t::none)
@@ -238,8 +238,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::cvt2ps(data_type_t type_in,
         bool store) {
     const int tail_size = tail_length();
     const bool is_load_tail = op.isMEM() && mask_flag && tail_size > 0
-            && (tail_size
-                    < static_cast<int>(vreg_traits<Vmm>::vlen / sizeof(float)));
+            && (tail_size < static_cast<int>(
+                        vreg_traits_t<Vmm>::vlen / sizeof(float)));
     if (IMPLICATION(is_load_tail, isa_has_masks(brg.isa_impl))) {
         const Vmm vmm = maybe_mask(vmm_in, is_load_tail, store);
         switch (type_in) {

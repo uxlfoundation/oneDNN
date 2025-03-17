@@ -636,7 +636,7 @@ struct jit_bnorm_t : public jit_generator {
             } else if (is_f16_) {
                 auto src_reg = Vmm(src.getIdx());
                 auto dst_reg =
-                        typename vreg_traits<Vmm>::Vmm_lower_t(src.getIdx());
+                        typename vreg_traits_t<Vmm>::Vmm_lower_t(src.getIdx());
                 if (is_nt_store) {
                     if (mayiuse(avx512_core_fp16))
                         vcvtps2phx(dst_reg, src_reg);

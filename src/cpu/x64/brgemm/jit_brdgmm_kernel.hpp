@@ -168,7 +168,7 @@ private:
     using Vmm =
             typename utils::conditional<std::is_same<Wmm, Xbyak::Tmm>::value,
                     Xbyak::Zmm, Wmm>::type;
-    using Vmm_low_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_low_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;

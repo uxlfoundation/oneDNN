@@ -627,7 +627,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::cvt2ps(
         int tail_size, bool store, Xbyak::Opmask ktail_mask,
         bool skip_cvt2ps /*= false*/) {
     const bool is_tail = op.isMEM()
-            && tail_size != vreg_traits<Vmm>::vlen / sizeof(float)
+            && tail_size != vreg_traits_t<Vmm>::vlen / sizeof(float)
             // The current kernel is written such that tail_size = 0 implies
             // no tail and full vmm must be processed.
             && tail_size > 0;
@@ -983,7 +983,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
                 default: assert(!"unknown dst_dt");
             }
         } else {
-            const int simd_w = vreg_traits<Vmm>::vlen / sizeof(float);
+            const int simd_w = vreg_traits_t<Vmm>::vlen / sizeof(float);
             const int nelems = tail > 0 ? tail : simd_w;
             store_data(out_dt_, vmm, aux_reg_out, offset, nelems);
         }

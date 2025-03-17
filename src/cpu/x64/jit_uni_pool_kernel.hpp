@@ -35,7 +35,7 @@ namespace cpu {
 namespace x64 {
 
 template <cpu_isa_t isa>
-struct jit_uni_pool_kernel : public jit_generator {
+struct jit_uni_pool_kernel : public jit_generator_t {
 
     jit_uni_pool_kernel(
             const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md);

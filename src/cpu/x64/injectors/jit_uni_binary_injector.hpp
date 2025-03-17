@@ -161,7 +161,7 @@ private:
  *
  * @param param1 - register storing abi param1. At the moment of calling
  * compute_vector_range method can be different than the default one defined
- * inside jit_generator.
+ * inside jit_generator_t.
  * @param bcast_set_t supported_strategy_set - set allowing disabling particular
  * bcast strategies
  * @param rhs_arg_static_params - params related to all binary post-ops right-hand side
@@ -259,7 +259,7 @@ template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits_t<isa>::Vmm>
 class jit_uni_binary_injector_t {
 public:
     jit_uni_binary_injector_t(
-            jit_generator *host, const static_params_t &static_params);
+            jit_generator_t *host, const static_params_t &static_params);
 
     /*
      * Generates code of binary post_op injected to host primitive. Applied to
@@ -597,7 +597,7 @@ private:
     */
     Xbyak::Opmask get_aux_kmask() const;
 
-    jit_generator *host_;
+    jit_generator_t *host_;
     fp8_emulation_e5m2_t *f8_e5m2_emu_ {nullptr};
     fp8_emulation_e4m3_t *f8_e4m3_emu_ {nullptr};
     const rhs_arg_static_params_t rhs_arg_static_params_;

@@ -36,7 +36,7 @@ namespace x64 {
 using namespace Xbyak;
 
 template <cpu_isa_t isa>
-struct jit_uni_shuffle_kernel_t : public jit_generator {
+struct jit_uni_shuffle_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_shuffle_kernel_t)
 
     jit_uni_shuffle_kernel_t(const jit_shuffle_conf_t &conf);

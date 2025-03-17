@@ -30,7 +30,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx2_1x1_conv_kernel_f32 : public jit_generator {
+struct jit_avx2_1x1_conv_kernel_f32 : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_1x1_conv_kernel_f32)
 
     jit_avx2_1x1_conv_kernel_f32(const jit_1x1_conv_conf_t &ajcp,

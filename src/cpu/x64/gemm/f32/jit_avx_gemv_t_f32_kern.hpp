@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx_gemv_t_f32_kern : public jit_generator {
+class jit_avx_gemv_t_f32_kern : public jit_generator_t {
 public:
     jit_avx_gemv_t_f32_kern(void);
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx_gemv_t_f32_kern);

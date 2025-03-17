@@ -31,13 +31,15 @@ namespace x64 {
 namespace gemm_x8s8s32x_convolution_utils {
 using namespace dnnl::impl::cpu::gemm_x8s8s32x_convolution_utils;
 
-struct jit_pp_ker_t : pp_ker_t, public jit_generator {
+struct jit_pp_ker_t : pp_ker_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             gemm_x8s8s32x_convolution_utils::jit_pp_ker_t);
 
     jit_pp_ker_t(const convolution_pd_t *pd, const conv_gemm_conf_t &jcp);
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
     void operator()(void *void_dst, const acc_data_t *acc, const char *bias,
             const float *scales, float dst_scale, float sum_scale,
             float signed_scale, int g, size_t start, size_t end,
@@ -140,7 +142,7 @@ private:
 jit_pp_ker_t::jit_pp_ker_t(
         const convolution_pd_t *pd, const conv_gemm_conf_t &jcp)
     : pp_ker_t(pd, jcp)
-    , jit_generator(jit_name())
+    , jit_generator_t(jit_name())
     , number_of_reserved_zmm_regs_(0)
     , bias_data_type_size_(jcp.bias_data_type != data_type::undef
                       ? types::data_type_size(jcp.bias_data_type)
@@ -257,7 +259,7 @@ void jit_pp_ker_t::operator()(void *void_dst, const acc_data_t *acc,
                 = zp_src_pad_com_d.should_apply_pad_comp_d;
     }
 
-    jit_generator::operator()(&args);
+    jit_generator_t::operator()(&args);
 }
 
 Xbyak::Zmm jit_pp_ker_t::reserve_zmm() {

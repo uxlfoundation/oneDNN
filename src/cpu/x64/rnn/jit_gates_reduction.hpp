@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ namespace x64 {
  * scratch_blocked Oi32o(f32)/OI32o2i(bf16) (n_gates * rnn.dhc, mb)
  * diff_bias = o(n_gates * rnn.dhc)
  */
-class jit_gates_reduction_t : public jit_generator {
+class jit_gates_reduction_t : public jit_generator_t {
 public:
     jit_gates_reduction_t(const rnn_utils::rnn_conf_t &rnn, bool is_n_tail);
 
@@ -49,7 +49,7 @@ public:
     };
 
     void operator()(jit_gates_reduction_t::call_params_t *params) const {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
     }
 
 private:

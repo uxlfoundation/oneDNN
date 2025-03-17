@@ -569,20 +569,20 @@ struct jit_brgemm_kernel_t;
 struct jit_brgemm_amx_uker_base_t;
 template <typename Vmm>
 struct jit_brdgmm_kernel_base_t;
-class jit_generator;
+class jit_generator_t;
 
 struct brgemm_kernel_t {
     brgemm_kernel_t() = default;
     virtual ~brgemm_kernel_t() = default;
     virtual status_t create_kernel() = 0;
     virtual void operator()(brgemm_kernel_params_t *) const = 0;
-    virtual const jit_generator *get_jit_generator() const = 0;
+    virtual const jit_generator_t *get_jit_generator() const = 0;
     virtual const brgemm_desc_t &get_brg() const = 0;
 };
 
-struct jit_base_brgemm_kernel_t : public jit_generator {
+struct jit_base_brgemm_kernel_t : public jit_generator_t {
     jit_base_brgemm_kernel_t(const char *impl_name, cpu_isa_t isa_impl)
-        : jit_generator(impl_name, isa_impl) {}
+        : jit_generator_t(impl_name, isa_impl) {}
     virtual const brgemm_desc_t &get_brg() const = 0;
 };
 
@@ -593,7 +593,7 @@ struct brgemm_kernel_common_t : public brgemm_kernel_t {
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    const jit_generator *get_jit_generator() const override;
+    const jit_generator_t *get_jit_generator() const override;
     const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
@@ -610,7 +610,7 @@ struct brgemm_amx_uker_t : public brgemm_kernel_t {
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    const jit_generator *get_jit_generator() const override;
+    const jit_generator_t *get_jit_generator() const override;
     const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }
@@ -628,7 +628,7 @@ struct brdgmm_kernel_t : public brgemm_kernel_t {
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    const jit_generator *get_jit_generator() const override;
+    const jit_generator_t *get_jit_generator() const override;
     const brgemm_desc_t &get_brg() const override {
         return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
     }

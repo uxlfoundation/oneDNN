@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ namespace x64 {
 
 using namespace Xbyak;
 
-struct binary_kernel_t : public jit_generator {
+struct binary_kernel_t : public jit_generator_t {
     using op_t = binary_op_t;
     using bcast_t = binary_bcast_t;
 
@@ -47,7 +47,7 @@ struct binary_kernel_t : public jit_generator {
             bool tail_kernel = false);
     ~binary_kernel_t() override = default;
 
-    void operator()(jit_binary_call_s *p) { jit_generator::operator()(p); }
+    void operator()(jit_binary_call_s *p) { jit_generator_t::operator()(p); }
 
     size_t simd_w() const noexcept { return simd_w_; }
     size_t vlen() const noexcept { return vlen_; }

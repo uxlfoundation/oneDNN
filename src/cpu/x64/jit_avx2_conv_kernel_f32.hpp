@@ -30,7 +30,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx2_conv_fwd_kernel_f32 : public jit_generator {
+struct jit_avx2_conv_fwd_kernel_f32 : public jit_generator_t {
     jit_avx2_conv_fwd_kernel_f32(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
@@ -145,11 +145,11 @@ private:
     void generate() override;
 };
 
-struct jit_avx2_conv_bwd_data_kernel_f32 : public jit_generator {
+struct jit_avx2_conv_bwd_data_kernel_f32 : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_bwd_data_kernel_f32)
 
     jit_avx2_conv_bwd_data_kernel_f32(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp) {}
+        : jit_generator_t(jit_name()), jcp(ajcp) {}
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &diff_src_d,
@@ -256,11 +256,11 @@ private:
     }
 };
 
-struct jit_avx2_conv_bwd_weights_kernel_f32 : public jit_generator {
+struct jit_avx2_conv_bwd_weights_kernel_f32 : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_conv_bwd_weights_kernel_f32)
 
     jit_avx2_conv_bwd_weights_kernel_f32(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp) {}
+        : jit_generator_t(jit_name()), jcp(ajcp) {}
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &src_d,

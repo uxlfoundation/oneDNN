@@ -97,12 +97,12 @@ void reduce_balancer_t::balance() {
 using namespace Xbyak;
 
 template <impl::data_type_t data_type>
-struct reducer_2d_driver_t : public jit_generator {
+struct reducer_2d_driver_t : public jit_generator_t {
     using data_t = typename prec_traits_t<data_type>::type;
 
     reducer_2d_driver_t(int n_src, size_t src_ld, size_t src_step,
             size_t dst_step, bool nullify_dst, const char *name)
-        : jit_generator(name)
+        : jit_generator_t(name)
         , n_src_(n_src)
         , src_ld_(src_ld)
         , src_step_(src_step)
@@ -126,7 +126,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
 
     void operator()(
             data_t *dst, const data_t *srcs, size_t ny, size_t nx) override {
-        jit_generator::operator()(dst, srcs, ny, nx);
+        jit_generator_t::operator()(dst, srcs, ny, nx);
     }
 
     /* cpu specific part */

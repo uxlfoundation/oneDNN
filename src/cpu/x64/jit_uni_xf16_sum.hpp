@@ -52,9 +52,9 @@ struct jit_sum_call_t {
 };
 
 template <typename Vmm>
-struct jit_uni_xf16_sum_kernel_t : public jit_generator {
+struct jit_uni_xf16_sum_kernel_t : public jit_generator_t {
     jit_uni_xf16_sum_kernel_t(jit_sum_conf_t ajsp, unsigned int num_acc_iters)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , jsp(ajsp)
         , reg_src {r8, r9, r10, r11, r12, r13, r14, r15}
         , num_acc_iters(num_acc_iters) {}
@@ -328,7 +328,7 @@ struct jit_xf16_sum_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,12 +43,12 @@ struct jit_uni_deconv_zp_pad_str_call_params_t {
  *
  * output_format - dhwc
  */
-class jit_uni_deconv_zp_pad_str_kernel_base_t : public jit_generator {
+class jit_uni_deconv_zp_pad_str_kernel_base_t : public jit_generator_t {
 public:
     jit_uni_deconv_zp_pad_str_kernel_base_t(const jit_conv_conf_t &jcp);
 
     void operator()(const jit_uni_deconv_zp_pad_str_call_params_t *params) {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
     }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_deconv_zp_pad_str_kernel_base_t);

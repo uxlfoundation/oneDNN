@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_gemm_s8u8s32_kern : public jit_generator {
+class jit_avx512_core_gemm_s8u8s32_kern : public jit_generator_t {
 public:
     jit_avx512_core_gemm_s8u8s32_kern(
             bool beta_zero, bool enable_offset_c, bool enable_offset_r);

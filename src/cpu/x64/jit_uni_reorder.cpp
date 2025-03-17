@@ -90,17 +90,19 @@ bool prb_has_huge_prime_number(const prb_t &prb) {
 const size_t ker_prb_size_min = 64;
 
 /* kernel */
-struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
+struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_reorder_kernel_f32)
 
     void operator()(const call_param_t *c) const override {
-        jit_generator::operator()(c);
+        jit_generator_t::operator()(c);
     }
     void operator()(const tail_call_param_t *c) const override {
-        jit_generator::operator()(c);
+        jit_generator_t::operator()(c);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     enum class scale_arg_t { NONE, SRC, DST };
 
@@ -1523,7 +1525,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
     jit_uni_reorder_kernel_f32_t(const desc_t &desc)
         : kernel_t(desc)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , isa_(get_max_cpu_isa())
         , bf16_emu_(nullptr)
         , f8_e5m2_emu_(nullptr)
@@ -1731,7 +1733,7 @@ private:
 };
 
 // Seperate class for no unroll/threading burden
-struct jit_single_blk_kernel_t : public jit_generator {
+struct jit_single_blk_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_single_blk_kernel)
     static bool applicable(const prb_t &p) {
         using namespace data_type;
@@ -1777,7 +1779,7 @@ struct jit_single_blk_kernel_t : public jit_generator {
     }
 
     jit_single_blk_kernel_t(const tr::prb_t &prb)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , prb_(prb)
         , itype_sz_(data_type_size(prb_.itype))
         , otype_sz_(data_type_size(prb_.otype))

@@ -71,7 +71,7 @@ void cvt_acc_to_dst(const conv_gemm_conf_t &jcp, size_t g_start, size_t g_end,
 
 template <data_type_t dst_data_type>
 gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp_(pd->jcp_)
     , do_sum_(dst_data_type != data_type::f32 && jcp_.with_sum)
     , max_data_reg_idx_(31)
@@ -317,7 +317,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
     args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec;
     args.dst_orig = dst_orig;
     args.g_oc_offset = g_oc_offset;
-    jit_generator::operator()(&args);
+    jit_generator_t::operator()(&args);
 }
 
 // operator () specialized for ncsp format
@@ -343,7 +343,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
     args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec;
     args.dst_orig = dst_orig;
     args.g_oc_offset = g_oc_offset;
-    jit_generator::operator()(&args);
+    jit_generator_t::operator()(&args);
 }
 
 template <data_type_t dst_data_type>

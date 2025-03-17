@@ -36,7 +36,7 @@ namespace matmul {
 using namespace dnnl::impl::data_type;
 using namespace Xbyak;
 
-struct sparse_matmul_kernel_t : public jit_generator {
+struct sparse_matmul_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(sparse_matmul_kernel_t);
 
     struct call_params_t {
@@ -47,7 +47,7 @@ struct sparse_matmul_kernel_t : public jit_generator {
     };
 
     sparse_matmul_kernel_t(size_t vlen, const matmul_pd_t *pd)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , N_(pd->dst_md()->dims[1])
         , vlen_(vlen)
         , simd_w_(vlen_ / data_type_size())
@@ -57,7 +57,7 @@ struct sparse_matmul_kernel_t : public jit_generator {
     ~sparse_matmul_kernel_t() override = default;
 
     void operator()(const call_params_t *p) {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 
     size_t simd_w() const { return simd_w_; }

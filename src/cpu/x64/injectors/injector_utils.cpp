@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2021 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ static std::size_t calc_vmm_to_preserve_size_bytes(
             });
 }
 
-register_preserve_guard_t::register_preserve_guard_t(jit_generator *host,
+register_preserve_guard_t::register_preserve_guard_t(jit_generator_t *host,
         std::initializer_list<Xbyak::Reg64> reg64_to_preserve,
         std::initializer_list<Xbyak::Xmm> vmm_to_preserve)
     : host_(host)
@@ -108,7 +108,7 @@ size_t register_preserve_guard_t::stack_space_occupied() const {
 };
 
 conditional_register_preserve_guard_t::conditional_register_preserve_guard_t(
-        bool condition_to_be_met, jit_generator *host,
+        bool condition_to_be_met, jit_generator_t *host,
         std::initializer_list<Xbyak::Reg64> reg64_to_preserve,
         std::initializer_list<Xbyak::Xmm> vmm_to_preserve)
     : register_preserve_guard_t {condition_to_be_met

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ namespace cpu {
 namespace x64 {
 
 struct fp8_emulation_base_t {
-    fp8_emulation_base_t(jit_generator *host, const Xbyak::Xmm &xmm_aux1,
+    fp8_emulation_base_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
             const Xbyak::Reg64 reg64_aux)
         : host_(host)
@@ -68,7 +68,7 @@ struct fp8_emulation_base_t {
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in);
 
 protected:
-    jit_generator *const host_;
+    jit_generator_t *const host_;
     Xbyak::Label label_table_to_f8_;
     Xbyak::Label label_vnni_permute_index_table_;
     const Xbyak::Xmm xmm_aux1_;
@@ -102,7 +102,7 @@ protected:
 };
 
 struct fp8_emulation_e5m2_t : public fp8_emulation_base_t {
-    fp8_emulation_e5m2_t(jit_generator *host, const Xbyak::Xmm &xmm_aux1,
+    fp8_emulation_e5m2_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
             const Xbyak::Opmask kmask_aux_, const Xbyak::Reg64 reg64_aux)
         : fp8_emulation_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
@@ -136,7 +136,7 @@ private:
 };
 
 struct fp8_emulation_e4m3_t : public fp8_emulation_base_t {
-    fp8_emulation_e4m3_t(jit_generator *host, const Xbyak::Xmm &xmm_aux1,
+    fp8_emulation_e4m3_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
             const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
             const Xbyak::Xmm &xmm_aux4, const Xbyak::Xmm &xmm_aux5,
             const Xbyak::Reg64 reg64_aux)
@@ -187,7 +187,7 @@ enum f32_convert_mode_t {
     f32_to_f16,
 };
 
-struct jit_cvt_fp8_t : public jit_generator {
+struct jit_cvt_fp8_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_cvt_fp8_t)
 
     jit_cvt_fp8_t(f32_convert_mode_t mode);

@@ -98,7 +98,7 @@ struct jit_bnorm_process_tail_t {
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     jit_bnorm_process_tail_t(const batch_normalization_pd_t *pd,
-            jit_generator *host, Reg64 reg_tmp, Reg64 reg_blk_has_tail,
+            jit_generator_t *host, Reg64 reg_tmp, Reg64 reg_blk_has_tail,
             Reg64 reg_C, Vmm vtail_mask, Opmask ktail_mask)
         : h_(host)
         , reg_tmp_(reg_tmp)
@@ -113,7 +113,7 @@ struct jit_bnorm_process_tail_t {
         tail_ = pd->C() % (int)(vlen / sizeof(float));
     }
 
-    jit_generator *const h_;
+    jit_generator_t *const h_;
     const Reg64 reg_tmp_;
     const Reg64 reg_blk_has_tail_;
     const Reg64 reg_C_;
@@ -201,7 +201,7 @@ struct jit_bnorm_process_relu_t {
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     jit_bnorm_process_relu_t(const batch_normalization_pd_t *pd,
-            jit_generator *host, Reg64 reg_off_dat, Reg64 reg_tmp,
+            jit_generator_t *host, Reg64 reg_off_dat, Reg64 reg_tmp,
             Reg64 reg_ptr_ws, Vmm vzero, Vmm vstore_mask, Opmask kstore_mask,
             Vmm valpha, Vmm vmask, Reg64 reg_alpha)
         : h_(host)
@@ -225,12 +225,12 @@ struct jit_bnorm_process_relu_t {
                           : 0.f) {}
 
     jit_bnorm_process_relu_t(const batch_normalization_pd_t *pd,
-            jit_generator *host, Reg64 reg_off_dat, Reg64 reg_tmp,
+            jit_generator_t *host, Reg64 reg_off_dat, Reg64 reg_tmp,
             Reg64 reg_ptr_ws, Vmm vzero, Vmm vstore_mask, Opmask kstore_mask)
         : jit_bnorm_process_relu_t(pd, host, reg_off_dat, reg_tmp, reg_ptr_ws,
                 vzero, vstore_mask, kstore_mask, Vmm(), Vmm(), Reg64()) {}
 
-    jit_generator *const h_;
+    jit_generator_t *const h_;
     const Reg64 reg_off_dat_;
     const Reg64 reg_tmp_;
     const Reg64 reg_ptr_ws_;
@@ -302,7 +302,7 @@ struct jit_bnorm_process_relu_t {
     void fwd_process_relu_avx2(Vmm vdst, const int off = 0) {
         Reg64 reg_store_mask = reg_tmp_;
         h_->shr(reg_off_dat_, bit_shift_);
-        h_->vcmpps(vstore_mask_, vzero_, vdst, jit_generator::_cmp_lt_os);
+        h_->vcmpps(vstore_mask_, vzero_, vdst, jit_generator_t::_cmp_lt_os);
         h_->vmovmskps(reg_store_mask, vstore_mask_);
         h_->mov(h_->ptr[reg_ptr_ws_ + reg_off_dat_ + off],
                 reg_store_mask.cvt8());
@@ -312,7 +312,7 @@ struct jit_bnorm_process_relu_t {
 
     void fwd_process_relu_avx512_common(Vmm vdst, const int off = 0) {
         h_->shr(reg_off_dat_, bit_shift_);
-        h_->vcmpps(kstore_mask_, vzero_, vdst, jit_generator::_cmp_lt_os);
+        h_->vcmpps(kstore_mask_, vzero_, vdst, jit_generator_t::_cmp_lt_os);
         h_->kmovw(h_->ptr[reg_ptr_ws_ + reg_off_dat_ + off], kstore_mask_);
         h_->vblendmps(vdst | kstore_mask_, vzero_, vdst);
         h_->shl(reg_off_dat_, bit_shift_);
@@ -331,7 +331,7 @@ struct jit_bnorm_process_relu_t {
         const Xmm xmm_aux = Xmm(valpha.getIdx());
         h_->vmovq(xmm_aux, reg_alpha);
         h_->vbroadcastss(valpha, xmm_aux);
-        h_->vcmpps(kstore_mask_, vzero_, vmm_dst, jit_generator::_cmp_lt_os);
+        h_->vcmpps(kstore_mask_, vzero_, vmm_dst, jit_generator_t::_cmp_lt_os);
         h_->vmulps(valpha, vmm_dst, valpha);
         h_->vblendmps(vmm_dst | kstore_mask_, valpha, vmm_dst);
     }
@@ -341,7 +341,7 @@ struct jit_bnorm_process_relu_t {
         h_->uni_vpxor(vmask, vmask, vmask);
         h_->uni_vmovq(xmm_aux, reg_alpha);
         h_->uni_vbroadcastss(valpha, xmm_aux);
-        h_->uni_vcmpps(vmask, vmm_dst, vzero_, jit_generator::_cmp_lt_os);
+        h_->uni_vcmpps(vmask, vmm_dst, vzero_, jit_generator_t::_cmp_lt_os);
         h_->uni_vmulps(valpha, valpha, vmm_dst);
         h_->uni_vblendvps(
                 vmm_dst, vmm_dst, valpha, vmask); // swaped aux and dst
@@ -372,7 +372,7 @@ struct helper_vmovups_data_t {
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     helper_vmovups_data_t(const batch_normalization_pd_t *pd,
-            jit_generator *host, Zmm zmm_reserved_1, Zmm zmm_reserved_2,
+            jit_generator_t *host, Zmm zmm_reserved_1, Zmm zmm_reserved_2,
             Zmm zmm_reserved_3, Zmm zmm_reserved_4, Reg64 reg_tmp)
         : h_(host)
         , bf16_emu_(nullptr)
@@ -386,7 +386,7 @@ struct helper_vmovups_data_t {
         }
     }
 
-    jit_generator *const h_;
+    jit_generator_t *const h_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
     bool is_bf16_;
     bool is_f16_;
@@ -437,7 +437,7 @@ struct helper_vmovups_data_t {
             } else if (is_f16_) {
                 auto src_reg = Vmm(src.getIdx());
                 h_->vcvtps2ph(
-                        dst.getAddress(), src_reg, jit_generator::_op_mxcsr);
+                        dst.getAddress(), src_reg, jit_generator_t::_op_mxcsr);
             } else {
                 h_->uni_vmovups(dst.getAddress(), Vmm(src.getIdx()));
             }
@@ -462,7 +462,7 @@ private:
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_fwd_statistics_t : public jit_generator {
+struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_fwd_statistics_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
@@ -791,7 +791,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator {
 
     jit_bnorm_fwd_statistics_t(const batch_normalization_pd_t *pd,
             const jit_memory_tag_kind_t tag_kind)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , pd_(pd)
         , tag_kind_(tag_kind)
         , vlen(get_vlen<isa>(tag_kind))
@@ -853,7 +853,7 @@ struct jit_bnorm_fwd_var_t : jit_bnorm_fwd_statistics_t<isa> {
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_fwd_t : public jit_generator {
+struct jit_bnorm_fwd_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_fwd_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
@@ -1177,7 +1177,7 @@ struct jit_bnorm_fwd_t : public jit_generator {
 
     jit_bnorm_fwd_t(const batch_normalization_pd_t *pd,
             const jit_memory_tag_kind_t tag_kind)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , pd_(pd)
         , tag_kind_(tag_kind)
         , vlen(get_vlen<isa>(tag_kind))
@@ -1228,7 +1228,7 @@ struct jit_bnorm_fwd_t : public jit_generator {
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_bwd_t : public jit_generator {
+struct jit_bnorm_bwd_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_bwd_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
@@ -1465,7 +1465,7 @@ struct jit_bnorm_bwd_t : public jit_generator {
 
     jit_bnorm_bwd_t(const batch_normalization_pd_t *pd,
             const jit_memory_tag_kind_t tag_kind)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , pd_(pd)
         , tag_kind_(tag_kind)
         , vlen(get_vlen<isa>(tag_kind))
@@ -1514,7 +1514,7 @@ struct jit_bnorm_bwd_t : public jit_generator {
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_bwd_diff_ss_t : public jit_generator {
+struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_bwd_diff_ss_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
@@ -1863,7 +1863,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator {
 
     jit_bnorm_bwd_diff_ss_t(const batch_normalization_pd_t *pd,
             const jit_memory_tag_kind_t tag_kind)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , pd_(pd)
         , tag_kind_(tag_kind)
         , vlen(get_vlen<isa>(tag_kind))

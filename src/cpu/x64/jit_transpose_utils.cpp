@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,20 +34,22 @@ using namespace Xbyak;
 
 #define GET_OFF(x) offsetof(ctx_t, x)
 
-struct jit_trans_iw_ic_t : public jit_trans_src_t, public jit_generator {
+struct jit_trans_iw_ic_t : public jit_trans_src_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_trans_iw_ic_t)
     jit_trans_iw_ic_t(const jit_conv_conf_t *conf)
         : jit_trans_src_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf->src_dt == data_type::undef
                           ? 2
                           : types::data_type_size(conf->src_dt))
         , is_layout_nxc(utils::one_of(conf_->src_tag, format_tag::ndhwc,
                   format_tag::nhwc, format_tag::nwc)) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     int typesize = 0;
@@ -82,11 +84,11 @@ private:
 
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     }
     void kmovd(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     }
     Zmm src_zmm(int i) { return Zmm(i); }
     Ymm src_ymm(int i) {
@@ -99,12 +101,12 @@ private:
     }
     void vmovdqa64(Zmm z, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(z, ptr[imm_addr64]);
     }
 
     void vmovdqa32(Zmm z, const int32_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa32(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa32(z, ptr[imm_addr64]);
     }
 
     void transpose(int nrows, int l_pad, int r_pad, bool nontemporal_stores);
@@ -135,7 +137,7 @@ void jit_trans_iw_ic_t::transpose_2b(
 
     auto kmovd = [this](Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     };
     int l_pad_tail {0}, l_pad_rows {0};
     int r_pad_tail {0}, r_pad_rows {0};
@@ -680,11 +682,11 @@ void jit_trans_iw_ic_t::generate() {
     postamble();
 }
 
-struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator {
+struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_trans_ow_oc_t)
     jit_trans_ow_oc_t(const jit_conv_conf_t *conf)
         : jit_trans_dst_t(conf)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , typesize(conf->dst_dt == data_type::undef
                           ? 2
                           : types::data_type_size(conf->dst_dt))
@@ -694,9 +696,11 @@ struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator {
                           ? 2
                           : data_type_vnni_granularity(conf->dst_dt)) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     int typesize = 0;
@@ -725,15 +729,15 @@ private:
 
     void vmovdqa64(Zmm z, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(z, ptr[imm_addr64]);
     }
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     }
     void kmovd(Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovd(k, regw_tmp);
+        jit_generator_t::kmovd(k, regw_tmp);
     }
     Zmm src_zmm(int i) { return Zmm(i); }
     Ymm src_ymm(int i) {
@@ -1211,17 +1215,17 @@ void jit_transpose4x16_src::generate() {
 
     auto kmovw = [this](Opmask k, unsigned w) {
         mov(regw_tmp, w);
-        jit_generator::kmovw(k, regw_tmp);
+        jit_generator_t::kmovw(k, regw_tmp);
     };
 
     auto vmovdqa64 = [this](Zmm z, const int64_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa64(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa64(z, ptr[imm_addr64]);
     };
 
     auto vmovdqa32 = [this](Zmm z, const int32_t *addr) {
         mov(imm_addr64, reinterpret_cast<size_t>(addr));
-        jit_generator::vmovdqa32(z, ptr[imm_addr64]);
+        jit_generator_t::vmovdqa32(z, ptr[imm_addr64]);
     };
 
     kmovw(kF0, 0xf0); // 11110000

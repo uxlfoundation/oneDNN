@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ struct jit_brgemm_conv_bwd_trans_kernel_call_s {
 };
 
 template <typename Vmm>
-struct jit_avx512_core_brgemm_conv_bwd_trans_kernel_t : public jit_generator {
+struct jit_avx512_core_brgemm_conv_bwd_trans_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
             jit_avx512_core_brgemm_conv_bwd_trans_kernel_t)
 

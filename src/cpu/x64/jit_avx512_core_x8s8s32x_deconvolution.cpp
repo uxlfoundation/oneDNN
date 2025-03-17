@@ -43,7 +43,7 @@ template <typename Vmm>
 jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::
         jit_avx512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
                 const primitive_attr_t &attr, const memory_desc_t &dst_md)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp(ajcp)
     , attr_(attr)
     , postops_injector_(nullptr) {

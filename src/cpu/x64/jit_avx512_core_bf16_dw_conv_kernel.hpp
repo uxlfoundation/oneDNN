@@ -32,7 +32,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_dw_conv_fwd_kernel_bf16 : public jit_generator {
+struct jit_avx512_dw_conv_fwd_kernel_bf16 : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_fwd_kernel_bf16)
 
     jit_avx512_dw_conv_fwd_kernel_bf16(
@@ -127,11 +127,11 @@ private:
     void generate() override;
 };
 
-struct jit_avx512_dw_conv_bwd_data_kernel_bf16 : public jit_generator {
+struct jit_avx512_dw_conv_bwd_data_kernel_bf16 : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_data_kernel_bf16)
 
     jit_avx512_dw_conv_bwd_data_kernel_bf16(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
+        : jit_generator_t(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
 
         if (!isa_has_bf16(jcp.isa))
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
@@ -205,12 +205,12 @@ private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_data_kernel_bf16);
 };
 
-struct jit_avx512_dw_conv_bwd_weights_kernel_bf16 : public jit_generator {
+struct jit_avx512_dw_conv_bwd_weights_kernel_bf16 : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_weights_kernel_bf16)
 
     jit_avx512_dw_conv_bwd_weights_kernel_bf16(const jit_conv_conf_t &ajcp)
-        : jit_generator(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
+        : jit_generator_t(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
 
         if (!isa_has_bf16(jcp.isa))
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,

@@ -31,7 +31,7 @@ namespace cpu {
 namespace x64 {
 
 template <cpu_isa_t isa, typename Vmm>
-struct _jit_uni_x8s8s32x_fwd_kernel : public jit_generator {
+struct _jit_uni_x8s8s32x_fwd_kernel : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_uni_x8s8s32x_conv_fwd_ker_t_)
 
     _jit_uni_x8s8s32x_fwd_kernel(const jit_conv_conf_t &ajcp,
@@ -232,7 +232,7 @@ struct jit_uni_x8s8s32x_fwd_kernel {
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_fwd_kernel);
-    std::unique_ptr<jit_generator> kernel_;
+    std::unique_ptr<jit_generator_t> kernel_;
 };
 
 } // namespace x64

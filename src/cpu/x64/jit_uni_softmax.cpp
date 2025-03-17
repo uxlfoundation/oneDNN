@@ -51,7 +51,7 @@ using namespace data_type;
 
 template <cpu_isa_t isa>
 struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
-                                    public jit_generator {
+                                    public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_dense_kernel_t)
 
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
@@ -139,10 +139,12 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
     void operator()(const call_params_t *p) const override {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     bool is_data_type_xf16(data_type_t dt) {
         return utils::one_of(dt, bf16, f16);
@@ -949,7 +951,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
     jit_softmax_dense_kernel_t(const softmax_pd_t *pd)
         : jit_softmax_kernel_base_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , src_d_(pd_->invariant_src_md())
         , dst_d_(pd_->dst_md())
         , diff_dst_d_(pd_->diff_dst_md())
@@ -997,7 +999,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
 template <cpu_isa_t isa>
 struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
-                                      public jit_generator {
+                                      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_strided_kernel_t)
 
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
@@ -1076,10 +1078,12 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
     void operator()(const call_params_t *p) const override {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     void compute_predefined_variables() {
         // `axis_simd_full_` is actually `inner_simd_full_`.
@@ -1504,7 +1508,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
 
     jit_softmax_strided_kernel_t(const softmax_pd_t *pd)
         : jit_softmax_kernel_base_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , src_d_(pd_->invariant_src_md())
         , dst_d_(pd_->dst_md())
         // Note: must be aligned with pd_t::init()->init_scratchpad();

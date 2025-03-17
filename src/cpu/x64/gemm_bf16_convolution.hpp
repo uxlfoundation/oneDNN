@@ -131,7 +131,7 @@ private:
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    class pp_ker_t : public jit_generator {
+    class pp_ker_t : public jit_generator_t {
     public:
         DECLARE_CPU_JIT_AUX_FUNCTIONS(gemm_bf16_convolution_fwd_t::pp_kernel);
         pp_ker_t(const pd_t *pd);

@@ -30,7 +30,7 @@ namespace zp {
 
 jit_uni_deconv_zp_pad_str_kernel_base_t::
         jit_uni_deconv_zp_pad_str_kernel_base_t(const jit_conv_conf_t &jcp)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , jcp_(jcp)
     , tail_size_(jcp.is_depthwise ? jcp.ngroups % jcp.ch_block
                                   : jcp.oc_without_padding % jcp.oc_block) {}
@@ -155,7 +155,7 @@ void jit_uni_deconv_zp_pad_str_kernel_t<isa, Vmm>::compute_step(
 template <cpu_isa_t isa, typename Vmm,
         typename T = std::integral_constant<bool, (isa < avx512_core)>>
 struct helper_store_t {
-    static void store(jit_generator *gen, const Vmm &vmm,
+    static void store(jit_generator_t *gen, const Vmm &vmm,
             const Xbyak::Reg64 &reg_dst, const size_t size,
             const Xbyak::Opmask &opmask) {
         gen->store_bytes(vmm, reg_dst, 0, size);
@@ -165,7 +165,7 @@ struct helper_store_t {
 using isa_at_least_avx512_core = std::false_type;
 template <cpu_isa_t isa, typename Vmm>
 struct helper_store_t<isa, Vmm, isa_at_least_avx512_core> {
-    static void store(jit_generator *gen, const Vmm &vmm,
+    static void store(jit_generator_t *gen, const Vmm &vmm,
             const Xbyak::Reg64 &reg_dst, const size_t size,
             const Xbyak::Opmask &opmask) {
         using namespace Xbyak::util;

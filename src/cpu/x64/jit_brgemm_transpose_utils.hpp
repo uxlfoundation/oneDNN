@@ -44,7 +44,7 @@ struct jit_brgemm_trans_src_t {
     const jit_brgemm_primitive_conf_t *conf_;
 };
 
-struct jit_brgemm_copy_to_coarse_t : public jit_generator {
+struct jit_brgemm_copy_to_coarse_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_copy_to_coarse_t)
 
     struct ctx_t {
@@ -55,11 +55,13 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator {
         dim_t last_row_blk;
     };
 
-    void operator()(ctx_t *ctx) { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_brgemm_copy_to_coarse_t(const jit_brgemm_primitive_conf_t *conf)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , conf_(conf)
         , typesize_(sizeof(float) / data_type_vnni_granularity(conf_->wei_dt))
         , is_fwd_dir_(utils::one_of(conf_->prop_kind,
@@ -180,7 +182,7 @@ struct jit_brgemm_trans_wei_t {
     const jit_brgemm_primitive_conf_t *conf_;
 };
 
-struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator {
+struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator_t {
     struct cfg_t {
         data_type_t wei_dt {data_type_t::dnnl_data_type_undef};
         int out_oc_block {0};
@@ -202,7 +204,7 @@ struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator {
     using reg64_t = Xbyak::Reg64;
 
     jit_brgemm_relo_copy_to_wbuffer_t(const cfg_t &ajcp)
-        : jit_generator(jit_name(), avx512_core_amx), wjcp(ajcp) {}
+        : jit_generator_t(jit_name(), avx512_core_amx), wjcp(ajcp) {}
 
 private:
     cfg_t wjcp;

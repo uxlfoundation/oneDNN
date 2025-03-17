@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -486,7 +486,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::generate() {
 
 jit_avx512_core_gemm_s8u8s32_kern::jit_avx512_core_gemm_s8u8s32_kern(
         bool beta_zero, bool enable_offset_c, bool enable_offset_r)
-    : jit_generator(jit_name(),
+    : jit_generator_t(jit_name(),
             mayiuse(avx512_core_vnni) ? avx512_core_vnni : avx512_core)
     , beta_zero_(beta_zero)
     , enable_offset_c_(enable_offset_c)

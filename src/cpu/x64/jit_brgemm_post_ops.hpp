@@ -50,7 +50,7 @@ struct brgemm_kernel_diff_bias_t {
 };
 
 template <typename Vmm>
-struct jit_brgemm_kernel_diff_bias_t : public jit_generator {
+struct jit_brgemm_kernel_diff_bias_t : public jit_generator_t {
     jit_brgemm_kernel_diff_bias_t(const jit_brgemm_primitive_conf_t &ajbgp,
             const brgemm_desc_t &abrg);
 
@@ -159,7 +159,7 @@ struct jit_brgemm_kernel_post_ops_base_t {
 // Shouldn't be called directly on implementation side.
 template <typename Vmm>
 struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
-                                      public jit_generator {
+                                      public jit_generator_t {
 
     // TODO: the proper design should replace `brgemm_desc_t` argument and
     // introduce a dedicated struct with members properly initialized. This will
@@ -169,12 +169,12 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
             const brgemm_desc_t &abrg, const primitive_attr_t &aattr);
 
     // These two methods are required for a base class to work since it's not
-    // derived from the jit_generator.
+    // derived from the jit_generator_t.
     status_t generate_kernel() override {
-        return jit_generator::create_kernel();
+        return jit_generator_t::create_kernel();
     }
     void operator()(brgemm_kernel_post_ops_args_t *args) const override {
-        return jit_generator::operator()(args);
+        return jit_generator_t::operator()(args);
     }
 
     ~jit_brgemm_kernel_post_ops_t() override = default;

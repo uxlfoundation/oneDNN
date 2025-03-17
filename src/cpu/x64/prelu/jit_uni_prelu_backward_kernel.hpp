@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public:
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_prelu_backward_kernel_t)
 
     void operator()(jit_prelu_backward_kernel_t::call_params_t *params) {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
     }
 
 protected:

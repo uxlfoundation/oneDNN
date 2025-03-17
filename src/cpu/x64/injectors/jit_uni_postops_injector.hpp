@@ -65,12 +65,12 @@ public:
     // cases it's aligned with the former kernel ISA if such enum value is
     // instantiated for injectors. If not, uses the next available isa enum
     // value in compliance with same vector length.
-    static jit_uni_postops_injector_base_t *create(jit_generator *host,
+    static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
             cpu_isa_t isa, const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params);
 
-    static jit_uni_postops_injector_base_t *create(jit_generator *host,
+    static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
             cpu_isa_t isa, const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params);
 
@@ -126,15 +126,19 @@ public:
      * @param lambda_jit_injectors <optional> - allows user specify custom injector
      * function for given post-op type
      */
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const lambda_jit_injectors_t &lambda_jit_injectors);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params,
             const lambda_jit_injectors_t &lambda_jit_injectors);
@@ -171,7 +175,7 @@ public:
 
 private:
     post_ops_t post_ops_;
-    jit_generator *host_;
+    jit_generator_t *host_;
     // Key is a numerical order of a post-op in attributes.
     std::map<int, jit_uni_eltwise_injector_t<isa, Vmm>>
             alg_to_eltwise_injector_;

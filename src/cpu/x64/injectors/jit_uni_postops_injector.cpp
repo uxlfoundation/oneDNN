@@ -53,7 +53,7 @@ size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd) {
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
-        jit_generator *host, const post_ops_t &post_ops,
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params,
         const lambda_jit_injectors_t &lambda_jit_injectors)
@@ -100,14 +100,14 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
-        jit_generator *host, const post_ops_t &post_ops,
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
             eltwise_injector::static_params_t(), lambda_jit_injectors_t()) {}
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
-        jit_generator *host, const post_ops_t &post_ops,
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const lambda_jit_injectors_t &lambda_jit_injectors)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
@@ -115,7 +115,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
-        jit_generator *host, const post_ops_t &post_ops,
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
@@ -125,7 +125,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
 // Vmm that don't make any sense like sse41 + Zmm.
 template <>
 jit_uni_postops_injector_base_t<Xbyak::Zmm> *
-jit_uni_postops_injector_base_t<Xbyak::Zmm>::create(jit_generator *host,
+jit_uni_postops_injector_base_t<Xbyak::Zmm>::create(jit_generator_t *host,
         cpu_isa_t isa, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params) {
@@ -161,7 +161,7 @@ jit_uni_postops_injector_base_t<Xbyak::Zmm>::create(jit_generator *host,
 
 template <>
 jit_uni_postops_injector_base_t<Xbyak::Ymm> *
-jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator *host,
+jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator_t *host,
         cpu_isa_t isa, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params) {
@@ -201,7 +201,7 @@ jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator *host,
 
 template <>
 jit_uni_postops_injector_base_t<Xbyak::Xmm> *
-jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator *host,
+jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator_t *host,
         cpu_isa_t isa, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params) {
@@ -243,8 +243,8 @@ jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator *host,
 
 template <typename Vmm>
 jit_uni_postops_injector_base_t<Vmm> *
-jit_uni_postops_injector_base_t<Vmm>::create(jit_generator *host, cpu_isa_t isa,
-        const post_ops_t &post_ops,
+jit_uni_postops_injector_base_t<Vmm>::create(jit_generator_t *host,
+        cpu_isa_t isa, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params) {
     const eltwise_injector::static_params_t eltwise_static_params;
     return create(

@@ -84,7 +84,7 @@ class jit_uni_lrn_kernel_t; // primary template
 
 template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
         cpu_isa_t isa, data_type_t d_type>
-class jit_uni_lrn_kernel_t<Derived<isa, d_type>> : public jit_generator {
+class jit_uni_lrn_kernel_t<Derived<isa, d_type>> : public jit_generator_t {
 public:
     jit_uni_lrn_kernel_t(const char *name = jit_name());
     jit_uni_lrn_kernel_t(

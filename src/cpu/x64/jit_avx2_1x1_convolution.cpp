@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -129,7 +129,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
     const int nb_buffer = jcp.nb_load_blocking;
     auto jcp_dw = pd()->jcp_dw_;
     std::vector<data_t *> addrs;
-    jit_generator *dw_jit_ker = nullptr;
+    jit_generator_t *dw_jit_ker = nullptr;
 
     const bool is_src_layout_nxc = utils::one_of(
             jcp.src_tag, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);

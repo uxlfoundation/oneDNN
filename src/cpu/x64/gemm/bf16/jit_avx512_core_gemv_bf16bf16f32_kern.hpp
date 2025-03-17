@@ -25,7 +25,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_gemv_bf16bf16f32_kern : public jit_generator {
+class jit_avx512_core_gemv_bf16bf16f32_kern : public jit_generator_t {
 public:
     jit_avx512_core_gemv_bf16bf16f32_kern(bool trans);
     ~jit_avx512_core_gemv_bf16bf16f32_kern() override;

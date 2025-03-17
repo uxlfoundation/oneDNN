@@ -28,7 +28,7 @@ template <typename Vmm>
 dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
         jit_brgemm_kernel_diff_bias_t(const jit_brgemm_primitive_conf_t &ajbgp,
                 const brgemm_desc_t &abrg)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , brg_(abrg)
     , reduce_kind_(matmul_reduce_kind::undef)
     , ddst_dt_((ajbgp.isa == avx512_core_fp16 && ajbgp.use_buffer_b)
@@ -46,7 +46,7 @@ template <typename Vmm>
 dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
         jit_brgemm_kernel_diff_bias_t(const matmul::brgemm_matmul_conf_t &bgmmc,
                 const brgemm_desc_t &abrg)
-    : jit_generator(jit_name())
+    : jit_generator_t(jit_name())
     , brg_(abrg)
     , reduce_kind_(bgmmc.reduce_kind)
     // MatMul `src`.
@@ -503,7 +503,7 @@ template <typename Vmm>
 dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::jit_brgemm_kernel_post_ops_t(const brgemm_desc_t &abrg,
         const primitive_attr_t &aattr)
-    : jit_generator(jit_name(), abrg.isa_impl)
+    : jit_generator_t(jit_name(), abrg.isa_impl)
     , brg_(abrg)
     , attr_(aattr)
     , max_vregs_(isa_num_vregs(brg_.isa_impl))

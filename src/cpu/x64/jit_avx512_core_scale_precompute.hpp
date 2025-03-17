@@ -62,13 +62,13 @@ const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
         float scale_adjust_factor = 1.0f, bool req_transpose = false);
 } // namespace scale_utils
 
-struct jit_avx512_core_scale_precompute_t : public jit_generator {
+struct jit_avx512_core_scale_precompute_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_scale_precompute_t)
 
     jit_avx512_core_scale_precompute_t(
             const primitive_attr_t *attr, const float scale_adjust_factor = 1)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , attr_(attr)
         , with_wei_scales_(!attr_->scales_.has_default_values(DNNL_ARG_WEIGHTS))
         , wei_scales_dt_(with_wei_scales_
@@ -82,7 +82,7 @@ struct jit_avx512_core_scale_precompute_t : public jit_generator {
     void generate() override;
 
     void operator()(scale_utils::jit_call_t *params) const {
-        jit_generator::operator()(params);
+        jit_generator_t::operator()(params);
         msan_unpoison(params->scales_, params->nelems_ * sizeof(float));
     }
 

@@ -306,7 +306,7 @@ const Xbyak::Operand &jit_uni_prelu_backward_kernel_t<Vmm>::get_or_load_weights(
     return weights_vmm;
 }
 
-static void reduce(jit_generator *host, const Xbyak::Xmm &src,
+static void reduce(jit_generator_t *host, const Xbyak::Xmm &src,
         const Xbyak::Xmm &helper, const cpu_isa_t &isa) {
     UNUSED(helper);
     if (isa == sse41) {
@@ -318,7 +318,7 @@ static void reduce(jit_generator *host, const Xbyak::Xmm &src,
     }
 }
 
-static void reduce(jit_generator *host, const Xbyak::Ymm &src,
+static void reduce(jit_generator_t *host, const Xbyak::Ymm &src,
         const Xbyak::Ymm &helper, const cpu_isa_t &isa) {
     const Xbyak::Xmm xmm_helper {helper.getIdx()};
     const Xbyak::Xmm xmm_src {src.getIdx()};
@@ -328,7 +328,7 @@ static void reduce(jit_generator *host, const Xbyak::Ymm &src,
     reduce(host, xmm_src, xmm_helper, isa);
 }
 
-static void reduce(jit_generator *host, const Xbyak::Zmm &src,
+static void reduce(jit_generator_t *host, const Xbyak::Zmm &src,
         const Xbyak::Zmm &helper, const cpu_isa_t &isa) {
     const Xbyak::Ymm ymm_helper {helper.getIdx()};
     const Xbyak::Ymm ymm_src {src.getIdx()};

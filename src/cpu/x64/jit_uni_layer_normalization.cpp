@@ -78,7 +78,7 @@ static bcast_set_t get_supported_bcast_strategies(int ndims) {
 
 template <cpu_isa_t isa>
 struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_lnorm_stat_and_data_kernel_t);
 
     void operator()(const void *src, void *dst, const float *scale,
@@ -99,14 +99,16 @@ struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
         args.eps = eps_;
         args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec;
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_stat_and_data_base_kernel_t(const layer_normalization_pd_t *pd)
         : stat_and_data_kernel_t(pd)
-        , jit_generator(jit_name(), isa)
+        , jit_generator_t(jit_name(), isa)
         , src_d_(pd_->src_md())
         , dst_d_(pd_->dst_md())
         , simd_w_(vlen / sizeof(float))
@@ -708,7 +710,7 @@ stat_and_data_kernel_t *stat_and_data_kernel_t::create(
 }
 
 template <cpu_isa_t isa>
-struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator {
+struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_lnorm_diff_ss_kernel_t);
 
     void operator()(const void *src, const void *diff_dst, float *diff_scale,
@@ -733,14 +735,16 @@ struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator {
         args.inv_sqrtvar = inv_sqrtvar;
         args.block_size
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_diff_ss_kernel_t(const layer_normalization_pd_t *pd)
         : diff_ss_kernel_t(pd)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_d_(pd_->src_md())
         , d_dst_d_(pd_->diff_dst_md())
         , simd_w_(vlen / sizeof(float))
@@ -909,7 +913,8 @@ diff_ss_kernel_t *diff_ss_kernel_t::create(const layer_normalization_pd_t *pd) {
 }
 
 template <cpu_isa_t isa>
-struct jit_diff_data_base_kernel_t : diff_data_kernel_t, public jit_generator {
+struct jit_diff_data_base_kernel_t : diff_data_kernel_t,
+                                     public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_lnorm_diff_data_kernel_t);
 
     void operator()(const void *src, const void *diff_dst, void *diff_src,
@@ -924,14 +929,16 @@ struct jit_diff_data_base_kernel_t : diff_data_kernel_t, public jit_generator {
         args.inv_sqrtvar = inv_sqrtvar;
         args.block_size
                 = block_size * C_ * types::data_type_size(src_d_.data_type());
-        jit_generator::operator()(&args);
+        jit_generator_t::operator()(&args);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_diff_data_base_kernel_t(const layer_normalization_pd_t *pd)
         : diff_data_kernel_t(pd)
-        , jit_generator(jit_name())
+        , jit_generator_t(jit_name())
         , src_d_(pd_->src_md())
         , d_dst_d_(pd_->diff_dst_md())
         , d_src_d_(pd_->diff_src_md())

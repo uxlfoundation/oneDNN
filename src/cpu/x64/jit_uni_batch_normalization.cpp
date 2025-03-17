@@ -215,7 +215,7 @@ struct jit_bnorm_conf_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_t : public jit_generator {
+struct jit_bnorm_t : public jit_generator_t {
     struct call_params_t {
         // keep all sizes at 8 bytes -- jit code expects this
         size_t N_ithr, N_nthr;
@@ -2074,7 +2074,7 @@ struct jit_bnorm_t : public jit_generator {
     }
 
     jit_bnorm_t(const batch_normalization_pd_t *pd, const jit_bnorm_conf_t *jbp)
-        : jit_generator(jit_name())
+        : jit_generator_t(jit_name())
         , pd_(pd)
         , jbp_(jbp)
         , is_bf16_(pd_->src_md()->data_type == data_type::bf16)
@@ -2121,7 +2121,7 @@ struct jit_bnorm_t : public jit_generator {
         postamble();
     }
 
-    void operator()(const call_params_t *p) { jit_generator::operator()(p); }
+    void operator()(const call_params_t *p) { jit_generator_t::operator()(p); }
 
     ~jit_bnorm_t() override { delete bf16_emu_; }
 };

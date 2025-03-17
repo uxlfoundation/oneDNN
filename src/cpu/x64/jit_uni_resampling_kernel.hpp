@@ -34,11 +34,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_uni_resampling_kernel_base_t : public jit_generator {
+struct jit_uni_resampling_kernel_base_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_resampling)
 
     jit_uni_resampling_kernel_base_t(const jit_resampling_conf_t &conf)
-        : jit_generator(jit_name(), conf.isa)
+        : jit_generator_t(jit_name(), conf.isa)
         , conf_(conf)
         , sum_scales_(conf_.sum_scales) {}
 

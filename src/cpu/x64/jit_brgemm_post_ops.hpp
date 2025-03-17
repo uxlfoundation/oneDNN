@@ -113,7 +113,6 @@ private:
     void init_masks(int tail_length);
     void generate() override;
 
-private:
     void horizontal_sum(Xbyak::Xmm src);
     void horizontal_sum(Xbyak::Ymm src, Xbyak::Ymm workspace);
     void horizontal_sum(Xbyak::Zmm src, Xbyak::Zmm workspace);
@@ -283,7 +282,7 @@ private:
     }
 
     template <typename T>
-    const T maybe_mask(const T vmm_in, bool mask_flag, bool store,
+    T maybe_mask(const T vmm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) {
         assert(IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)));
         return mask_flag

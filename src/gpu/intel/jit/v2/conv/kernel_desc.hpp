@@ -292,6 +292,7 @@ public:
 
     prefetch_desc_t prefetch;
     extensions_t ext;
+    scales_t scales;
     gpu_post_ops_t post_ops;
 
     bool is_empty() const { return prop == prop_kind::undef; }
@@ -301,8 +302,8 @@ public:
     void set_defaults();
     bool can_fit(const problem_t &prb) const;
     void fit_to(const problem_t &prb);
-    status_t set_post_ops(const post_ops_t &post_ops,
-            const memory_desc_t *out_md, const convolution_pd_t *pd);
+    status_t set_attr(const convolution_pd_t *pd, const primitive_attr_t *attr,
+            const memory_desc_t *out_md);
     bool matches(const problem_t &prb) const;
     std::string cmd_str() const;
     std::string brief_str() const;
@@ -364,8 +365,8 @@ public:
             compute::kernel_t &kernel) const;
     status_t init_primitive_plan(primitive_init_plan_t &plan,
             const problem_t &prb, convolution_pd_t *pd) const;
-    serialized_t serialize() const override;
-    static kernel_desc_t deserialize(const serialized_t &s);
+    serialization_stream_t serialize() const override;
+    static kernel_desc_t deserialize(const serialization_stream_t &s);
     static void show_help();
 };
 
@@ -375,7 +376,9 @@ public:
     int key(const std::string &name) const;
     bool is_input(const std::string &name) const;
     bool is_output(const std::string &name) const;
+    std::string scales_name(int idx) const;
     std::string post_op_name(size_t idx) const;
+    int scales_key(int arg) const;
     int post_op_key(size_t idx) const;
 
 private:

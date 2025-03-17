@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,10 +57,10 @@ struct gemm_desc_t : public op_desc_t {
         return utils::make_unique<gemm_desc_t>(*this);
     }
 
-    memory_desc_t a_desc {};
-    memory_desc_t b_desc {};
-    memory_desc_t c_desc {};
-    memory_desc_t bias_desc {};
+    memory_desc_t a_desc;
+    memory_desc_t b_desc;
+    memory_desc_t c_desc;
+    memory_desc_t bias_desc;
     // Type for accumulating A*B.
     dnnl_data_type_t acc_type {};
     // Sum across k dimension in either A or B tensor
@@ -125,9 +125,11 @@ struct gemm_desc_t : public op_desc_t {
                 || md.dims[md.ndims - 2] == 1 || strides[md.ndims - 2] == 1);
         switch (get_trans(md)) {
             case transpose::trans:
-                return md.dims[md.ndims - 1] > 1 ? strides[md.ndims - 1] : 1;
+                return md.dims[md.ndims - 1] > 1 ? strides[md.ndims - 1]
+                                                 : md.dims[md.ndims - 2];
             default:
-                return md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2] : 1;
+                return md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2]
+                                                 : md.dims[md.ndims - 1];
         }
     }
     // Leading dimension of A.

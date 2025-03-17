@@ -112,7 +112,8 @@ public:
             return false;
         }
         using sm = primitive_attr_t::skip_mask_t;
-        auto skip_mask = sm::post_ops | sm::sum_dt;
+        auto skip_mask
+                = sm::post_ops | sm::sum_dt | sm::scales | sm::scales_data_type;
         if (!pd->attr()->has_default_values(skip_mask)) return false;
         return true;
     }
@@ -150,7 +151,7 @@ public:
         // Large buffer support is unimplemented.
         if (has_large_buffers(pd)) return status::unimplemented;
 
-        CHECK(_desc.set_post_ops(pd->attr()->post_ops_, out_md(pd), pd));
+        CHECK(_desc.set_attr(pd, pd->attr(), out_md(pd)));
         if (!create_conv_plan(_desc, prb)) {
             gpu_info() << "Cannot create kernel descriptor.\n";
             return status::runtime_error;
@@ -191,7 +192,7 @@ status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -204,7 +205,7 @@ status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -218,7 +219,7 @@ status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 

@@ -175,6 +175,7 @@ private:
     }
 };
 
+// NOLINTBEGIN(google-default-arguments)
 struct pooling_fwd_pd_t : public pooling_pd_t {
     using base_class = pooling_fwd_pd_t;
     using hint_class = pooling_fwd_pd_t;
@@ -184,8 +185,9 @@ struct pooling_fwd_pd_t : public pooling_pd_t {
 
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
-        if (arg == DNNL_ARG_WORKSPACE && (!types::is_zero_md(workspace_md())))
-            return arg_usage_t::output;
+        if (arg == DNNL_ARG_WORKSPACE)
+            return !types::is_zero_md(workspace_md()) ? arg_usage_t::output
+                                                      : arg_usage_t::unused;
 
         return primitive_desc_t::arg_usage(arg);
     }
@@ -244,7 +246,9 @@ protected:
                 dst_md_, src_md_.format_desc.blocking);
     }
 };
+// NOLINTEND(google-default-arguments)
 
+// NOLINTBEGIN(google-default-arguments)
 struct pooling_bwd_pd_t : public pooling_pd_t {
     using base_class = pooling_bwd_pd_t;
     using hint_class = pooling_fwd_pd_t;
@@ -254,8 +258,9 @@ struct pooling_bwd_pd_t : public pooling_pd_t {
 
         if (arg == DNNL_ARG_DIFF_SRC) return arg_usage_t::output;
 
-        if (arg == DNNL_ARG_WORKSPACE && (!types::is_zero_md(workspace_md())))
-            return arg_usage_t::input;
+        if (arg == DNNL_ARG_WORKSPACE)
+            return !types::is_zero_md(workspace_md()) ? arg_usage_t::input
+                                                      : arg_usage_t::unused;
 
         return primitive_desc_t::arg_usage(arg);
     }
@@ -337,6 +342,7 @@ protected:
 private:
     std::vector<memory_desc_t> hint_mds_;
 };
+// NOLINTEND(google-default-arguments)
 
 } // namespace impl
 } // namespace dnnl

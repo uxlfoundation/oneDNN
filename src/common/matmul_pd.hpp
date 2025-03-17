@@ -45,6 +45,7 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc);
 
+// NOLINTBEGIN(google-default-arguments)
 struct matmul_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::matmul;
 
@@ -60,9 +61,11 @@ struct matmul_pd_t : public primitive_desc_t {
         const bool input = utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS);
         if (input) return arg_usage_t::input;
 
-        if (arg == DNNL_ARG_BIAS && with_bias()) return arg_usage_t::input;
+        if (arg == DNNL_ARG_BIAS)
+            return with_bias() ? arg_usage_t::input : arg_usage_t::unused;
 
-        if (arg == DNNL_ARG_REDUCE && with_reduce()) return arg_usage_t::output;
+        if (arg == DNNL_ARG_REDUCE)
+            return with_reduce() ? arg_usage_t::output : arg_usage_t::unused;
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
         return primitive_desc_t::arg_usage(arg);
@@ -281,6 +284,7 @@ protected:
                 {&src_md_, &weights_md_, &bias_md_, &dst_md_, &reduce_md_});
     }
 };
+// NOLINTEND(google-default-arguments)
 
 } // namespace impl
 } // namespace dnnl

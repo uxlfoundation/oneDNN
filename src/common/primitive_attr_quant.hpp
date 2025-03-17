@@ -28,7 +28,7 @@
 // dependency between headers when it comes to inclusion of opdesc.hpp which
 // sdpa_desc_t is a part of.
 
-#include "common/serialization_stream.hpp"
+#include "common/serialization.hpp"
 #include "common/utils.hpp"
 
 #include <algorithm>
@@ -103,6 +103,8 @@ struct quant_entry_t : public c_compatible {
     size_t get_hash() const;
 
     void serialize(serialization_stream_t &sstream) const;
+
+    static quant_entry_t deserialize(deserializer_t &d);
 
     std::string get_verbose() const;
 
@@ -253,6 +255,8 @@ struct scales_t : public quant_entries_t {
         return quant_entries_t::has_default_data_type(arg);
     }
 
+    static scales_t deserialize(deserializer_t &d);
+
 private:
     static constexpr data_type_t default_data_type_ = data_type::f32;
 
@@ -299,6 +303,8 @@ struct zero_points_t : public quant_entries_t {
     bool has_default_data_type(int arg) const {
         return quant_entries_t::has_default_data_type(arg);
     }
+
+    static zero_points_t deserialize(deserializer_t &d);
 
 private:
     static constexpr data_type_t default_data_type_ = data_type::s32;

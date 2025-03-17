@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <fstream>
 #include <functional>
 #include <string>
@@ -206,6 +207,7 @@ static void *zmalloc_protect(size_t size) {
     // Protect one page right after the block of size bytes
     int err = mprotect(ptr_protect, page_sz, PROT_NONE);
     if (err != 0) {
+        printf("Error: mprotect returned \'%s\'.\n", strerror(errno));
         ::free(ptr_start);
         return nullptr;
     }
@@ -239,7 +241,10 @@ static void zfree_protect(void *ptr) {
 
 void *zmalloc(size_t size, size_t align) {
 #ifdef BENCHDNN_MEMORY_CHECK
-    if (has_bench_mode_bit(mode_bit_t::exec)) { return zmalloc_protect(size); }
+    if (has_bench_mode_bit(mode_bit_t::exec)
+            && !has_bench_mode_bit(mode_bit_t::perf)) {
+        return zmalloc_protect(size);
+    }
 #endif
 
     void *ptr;
@@ -264,7 +269,8 @@ void *zmalloc(size_t size, size_t align) {
 void zfree(void *ptr) {
     if (!ptr) return;
 #ifdef BENCHDNN_MEMORY_CHECK
-    if (has_bench_mode_bit(mode_bit_t::exec)) {
+    if (has_bench_mode_bit(mode_bit_t::exec)
+            && !has_bench_mode_bit(mode_bit_t::perf)) {
         zfree_protect(ptr);
         return;
     }

@@ -2337,9 +2337,9 @@ status_t decompose_select_to_binary_ops(std::shared_ptr<subgraph_t> &sg) {
         auto in_vals = op->get_input_values();
         auto out_vals = op->get_output_values();
 
-        auto src0 = in_vals[0];
-        auto src1 = in_vals[1];
-        auto cond = in_vals[2];
+        const auto &src0 = in_vals[0];
+        const auto &src1 = in_vals[1];
+        const auto &cond = in_vals[2];
         cond->set_data_type(dnnl::impl::data_type::u8);
 
         //TODO: This reorder can be removed once eltwise_clip support int8 input
@@ -3796,8 +3796,22 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
             break;
         }
 
-        std::vector<int> axes = dnnl_impl::utils::fmap(order,
-                [](int64_t index) { return static_cast<int32_t>(index); });
+        /// The order in spec op is used as:
+        /// for (i = 0; i < ndims(); i++)
+        ///     new_shape[i] = org_shape[order[i]];
+        ///
+        /// The axes for permute_axes function is used as:
+        /// for (i = 0; i < ndims(); i++)
+        ///     new_shape[axes[i]] = org_shape[i];
+        ///
+        /// So, we need to convert the order to axes
+        std::vector<int> axes(order.size(), -1);
+        for (size_t i = 0; i < order.size(); i++) {
+            size_t new_shape_idx = i;
+            size_t org_shape_idx = order[i];
+            axes[org_shape_idx] = static_cast<int>(new_shape_idx);
+        }
+
         // calculate the expected transposed layout by permuting the md
         auto expected_stride = get_dense_strides(ltw(in_lt).vdims());
         auto &consumer = transpose_op->get_output_value(0)

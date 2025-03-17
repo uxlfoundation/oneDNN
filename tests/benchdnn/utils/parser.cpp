@@ -30,7 +30,7 @@ const size_t eol = std::string::npos;
 std::stringstream help_ss;
 
 static const std::string benchdnn_url
-        = "https://github.com/oneapi-src/oneDNN/blob/master/tests/benchdnn";
+        = "https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn";
 static const std::string doc_url = benchdnn_url + "/doc/";
 
 namespace parser_utils {
@@ -103,13 +103,6 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 = attr_t::post_ops_t::str2kind(get_substr(subs, subs_pos, ':'));
         if (kind == attr_t::post_ops_t::kind_t::KIND_TOTAL) SAFE_V(FAIL);
 
-#define CATCH_DANGLING_SYMBOL \
-    if (subs_pos >= subs.size()) { \
-        BENCHDNN_PRINT(0, "%s \'%s\'\n", \
-                "Error: dangling symbol at the end of input", subs.c_str()); \
-        SAFE_V(FAIL); \
-    }
-
         v.entry.emplace_back(kind);
         if (subs_pos == std::string::npos) {
             if (kind != attr_t::post_ops_t::kind_t::DW) continue;
@@ -119,19 +112,16 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                     "and 'p' values.");
             SAFE_V(FAIL);
         }
-        CATCH_DANGLING_SYMBOL;
 
         auto &e = v.entry.back();
         if (e.is_sum_kind()) {
             e.sum.scale
                     = parser_utils::stof_safe(get_substr(subs, subs_pos, ':'));
             if (subs_pos == std::string::npos) continue;
-            CATCH_DANGLING_SYMBOL;
 
             auto zp_str = get_substr(subs, subs_pos, ':');
             e.sum.zero_point = parser_utils::stoll_safe(zp_str);
             if (subs_pos == std::string::npos) continue;
-            CATCH_DANGLING_SYMBOL;
 
             const auto dt_str = get_substr(subs, subs_pos, ':');
             e.sum.dt = str2dt(dt_str.c_str());
@@ -209,7 +199,6 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
             e.eltwise.alpha
                     = parser_utils::stof_safe(get_substr(subs, subs_pos, ':'));
             if (subs_pos == std::string::npos) continue;
-            CATCH_DANGLING_SYMBOL;
 
             e.eltwise.beta
                     = parser_utils::stof_safe(get_substr(subs, subs_pos, ':'));
@@ -224,7 +213,6 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 SAFE_V(FAIL);
             }
             if (subs_pos == std::string::npos) continue;
-            CATCH_DANGLING_SYMBOL;
 
             const auto mask_input_str = get_substr(subs, subs_pos, ':');
             // Check if `mask_input_str` consists of only digits.
@@ -254,7 +242,6 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 e.binary.mask_input = mask_input_t::policy;
             }
             if (subs_pos == std::string::npos) continue;
-            CATCH_DANGLING_SYMBOL;
 
             const auto tag_str = get_substr(subs, subs_pos, ':');
             e.binary.tag = tag_str;
@@ -274,7 +261,6 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
             }
         }
         if (subs_pos == std::string::npos) continue;
-        CATCH_DANGLING_SYMBOL;
     }
 
     return v;
@@ -296,22 +282,9 @@ attr_t::fpmath_mode_t parse_attr_fpmath_mode_func(const std::string &s) {
     auto subs = get_substr(s, start_pos, ':');
     v.mode = str2fpmath_mode(subs.c_str());
     if (start_pos == std::string::npos) return v;
-    if (start_pos >= s.size()) {
-        BENCHDNN_PRINT(0, "%s \'%s\'\n",
-                "Error: dangling symbol at the end of input", s.c_str());
-        SAFE_V(FAIL);
-    }
 
-    if (start_pos != std::string::npos) {
-        subs = get_substr(s, start_pos, '\0');
-        v.apply_to_int = str2bool(subs.c_str());
-
-        if (start_pos != std::string::npos) {
-            BENCHDNN_PRINT(0, "%s \'%s\'\n",
-                    "Error: dangling symbol at the end of input", s.c_str());
-            SAFE_V(FAIL);
-        }
-    }
+    subs = get_substr(s, start_pos, '\0');
+    v.apply_to_int = str2bool(subs.c_str());
 
     return v;
 }
@@ -341,7 +314,6 @@ attr_t::rounding_mode_t parse_attr_rounding_mode_func(const std::string &s) {
 }
 
 attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
-    const char *err = "Error: dangling symbol at the end of input";
     attr_t::dropout_t v;
     if (s.empty()) return v;
 
@@ -353,35 +325,16 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
         SAFE_V(FAIL);
     }
     if (start_pos == std::string::npos) return v;
-    if (start_pos >= s.size()) {
-        BENCHDNN_PRINT(0, "%s \'%s\'\n", err, s.c_str());
+
+    subs = get_substr(s, start_pos, ':');
+    v.seed = stoll_safe(subs);
+    if (start_pos == std::string::npos) return v;
+
+    v.tag = get_substr(s, start_pos, '\0');
+    if (check_tag(v.tag) != OK) {
+        BENCHDNN_PRINT(0, "%s \'%s\' %s\n", "Error: dropout mask tag",
+                v.tag.c_str(), "is not recognized.");
         SAFE_V(FAIL);
-    }
-
-    if (start_pos != std::string::npos) {
-        subs = get_substr(s, start_pos, ':');
-        v.seed = stoll_safe(subs);
-
-        if (start_pos == std::string::npos) return v;
-        if (start_pos >= s.size()) {
-            BENCHDNN_PRINT(0, "%s \'%s\'\n", err, s.c_str());
-            SAFE_V(FAIL);
-        }
-
-        if (start_pos != std::string::npos) {
-            v.tag = get_substr(s, start_pos, '\0');
-
-            if (check_tag(v.tag) != OK) {
-                BENCHDNN_PRINT(0, "%s \'%s\' %s\n", "Error: dropout mask tag",
-                        v.tag.c_str(), "is not recognized.");
-                SAFE_V(FAIL);
-            }
-
-            if (start_pos != std::string::npos) {
-                BENCHDNN_PRINT(0, "%s \'%s\'\n", err, s.c_str());
-                SAFE_V(FAIL);
-            }
-        }
     }
 
     return v;
@@ -596,8 +549,8 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
     static const std::string help
             = "ENCODING[+SPARSITY]:ENCODING[+SPARSITY]:ENCODING[+SPARSITY]\n   "
               "Specifies sparse encodings and sparsity.\n    More details at "
-              "https://github.com/oneapi-src/oneDNN/blob/master/tests/benchdnn/"
-              "doc/knobs_encoding.md\n";
+              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
+              "benchdnn/doc/knobs_encoding.md\n";
 
     std::vector<sparse_options_t> def {sparse_options_t()};
     auto parse_sparse_options_func = [](const std::string &s) {
@@ -641,8 +594,8 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
               "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    More details at "
-              "https://github.com/oneapi-src/oneDNN/blob/master/tests/benchdnn/"
-              "doc/knobs_attr.md\n";
+              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
+              "benchdnn/doc/knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
             str, option_name, help);
@@ -653,8 +606,8 @@ bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
     static const std::string help
             = "ARG:POLICY[:SCALE][+...]\n    Specifies input scales "
               "attribute.\n    More details at "
-              "https://github.com/oneapi-src/oneDNN/blob/master/tests/benchdnn/"
-              "doc/knobs_attr.md\n";
+              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
+              "benchdnn/doc/knobs_attr.md\n";
     return parse_subattr(scales, str, option_name, help);
 }
 
@@ -663,8 +616,8 @@ bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
     static const std::string help
             = "ARG:POLICY[:ZEROPOINT][+...]\n    Specifies zero-points "
               "attribute.\n    More details at "
-              "https://github.com/oneapi-src/oneDNN/blob/master/tests/benchdnn/"
-              "doc/knobs_attr.md\n";
+              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
+              "benchdnn/doc/knobs_attr.md\n";
     return parse_subattr(zp, str, option_name, help);
 }
 
@@ -1072,12 +1025,25 @@ static bool parse_engine(
               "`cpu` or `gpu`.\n    `INDEX` is an integer value specifying "
               "which engine to use if several were identified.\n";
 
+    // Note: this is a special case because index and engine kind are parsed
+    // into separate global objects instead of one under a common parsing
+    // function.
+    // TODO: fix this.
+    //
+    // Because of this fact, need to extract kind separated by `:`. `:` can be
+    // valid dangling for certain options in the command line (--strides=::).
+    // Thus, extract the kind allowing dangling. Verify, it's `--engine` option,
+    // and if yes, perform a safe check for dangling after.
     size_t start_pos = 0;
-    std::string kind_str = get_substr(str, start_pos, ':');
+    std::string kind_str = get_substr(str, start_pos, ':', true);
 
     if (!parse_single_value_option(engine_tgt_kind, dnnl_cpu, str2engine_kind,
                 kind_str.c_str(), option_name, help))
         return false;
+
+    // This is to catch a dangling `:` at the end of `--engine`.
+    start_pos = 0;
+    kind_str = get_substr(str, start_pos, ':');
 
     if (start_pos != std::string::npos) {
         std::string index_str(str + start_pos);
@@ -1495,7 +1461,7 @@ bool parse_bench_settings(const char *str) {
         help_ss << "= Global options: =\n";
         help_ss << "===================\n";
         help_ss << "(More technical details available at "
-                   "https://github.com/oneapi-src/oneDNN/blob/master/tests/"
+                   "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
                    "benchdnn/doc/knobs_common.md)\n\n";
         start_msg = true;
     }
@@ -1520,7 +1486,7 @@ bool parse_bench_settings(const char *str) {
         help_ss << "= Driver options: =\n";
         help_ss << "===================\n";
         help_ss << "(More technical details available at "
-                   "https://github.com/oneapi-src/oneDNN/blob/master/tests/"
+                   "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
                    "benchdnn/doc/driver_"
                 << driver_name << ".md)\n\n";
         end_msg = true;
@@ -1557,10 +1523,16 @@ int parse_last_argument() {
     return OK;
 }
 
-std::string get_substr(const std::string &s, size_t &start_pos, char delim) {
+std::string get_substr(const std::string &s, size_t &start_pos, char delim,
+        bool allow_dangling) {
     auto end_pos = s.find_first_of(delim, start_pos);
     auto sub = s.substr(start_pos, end_pos - start_pos);
     start_pos = end_pos + (end_pos != eol);
+    if (!allow_dangling && start_pos == s.size()) {
+        BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                "Error: dangling symbol at the end of input", s.c_str());
+        SAFE_V(FAIL);
+    }
     return sub;
 }
 

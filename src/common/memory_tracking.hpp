@@ -273,6 +273,7 @@ enum {
     key_pool_dst_plain2blocked_cvt,
     key_pool_ind_plain2blocked_cvt,
     key_pool_src_bf16cvt,
+    key_pool_src_f32_accum,
     key_pool_src_plain2blocked_cvt,
     key_pool_reduction,
     key_precomputed_scales,
@@ -428,14 +429,8 @@ struct registry_t {
     public:
         common_iterator_t(const void *base_ptr_,
                 const std::unordered_map<key_t, entry_t> &map,
-                bool is_begin = true) {
-            base_ptr = base_ptr_;
-            if (is_begin) {
-                iter = map.cbegin();
-            } else {
-                iter = map.cend();
-            }
-        }
+                bool is_begin = true)
+            : base_ptr(base_ptr_), iter(is_begin ? map.cbegin() : map.cend()) {}
         common_iterator_t &operator++(int) {
             iter++;
             return *this;

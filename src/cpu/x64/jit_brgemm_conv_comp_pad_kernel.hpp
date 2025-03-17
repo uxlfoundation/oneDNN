@@ -96,7 +96,7 @@ protected:
     Xbyak::Zmm zmm_int8_temp = Xbyak::Zmm(26);
 
     const int last_ic_block_ = 4;
-    const int m_block2_ = vreg_traits<Vmm>::vlen / sizeof(int32_t);
+    const int m_block2_ = vreg_traits_t<Vmm>::vlen / sizeof(int32_t);
     static constexpr int max_oc_block_ = 64;
     const int n_max_regs_ = max_oc_block_ / m_block2_;
 

@@ -5785,7 +5785,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             // and [P, O, N, M, L, K, J, I] -> [P, O, L, K, N, M, J, I]
             vpermq(yreg_bias_acc0, ptr[reg_bias + offset], 0xd8);
             vpermq(yreg_bias_acc1,
-                    ptr[reg_bias + offset + vreg_traits<Ymm>::vlen], 0xd8);
+                    ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen], 0xd8);
         } else if (one_of(jcp.ddst_dt, f8_e5m2, f8_e4m3)) {
             // the data is in plain format, transform while loading to
             // pseudo-vnni layout to 2 ymm registers conforming to calculations
@@ -5796,7 +5796,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             vpermd(yreg_bias_acc0, yreg_permute_to_vnni,
                     ptr[reg_bias + offset]);
             vpermd(yreg_bias_acc1, yreg_permute_to_vnni,
-                    ptr[reg_bias + offset + vreg_traits<Ymm>::vlen]);
+                    ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen]);
         } else {
             assert(!"non-supported type");
         }
@@ -5820,7 +5820,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             vpermq(yreg_bias_acc0, yreg_bias_acc0, 0xd8);
             vpermq(yreg_bias_acc1, yreg_bias_acc1, 0xd8);
             vmovups(ptr[reg_bias + offset], yreg_bias_acc0);
-            vmovups(ptr[reg_bias + offset + vreg_traits<Ymm>::vlen],
+            vmovups(ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen],
                     yreg_bias_acc1);
         } else if (one_of(jcp.ddst_dt, f8_e5m2, f8_e4m3)) {
             // transform to plain before storing.
@@ -5829,7 +5829,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias(
             vpermd(yreg_bias_acc0, yreg_permute_to_plain, yreg_bias_acc0);
             vpermd(yreg_bias_acc1, yreg_permute_to_plain, yreg_bias_acc1);
             vmovups(ptr[reg_bias + offset], yreg_bias_acc0);
-            vmovups(ptr[reg_bias + offset + vreg_traits<Ymm>::vlen],
+            vmovups(ptr[reg_bias + offset + vreg_traits_t<Ymm>::vlen],
                     yreg_bias_acc1);
         } else {
             assert(!"non-supported type");

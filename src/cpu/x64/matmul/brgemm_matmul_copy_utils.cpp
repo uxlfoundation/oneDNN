@@ -72,7 +72,7 @@ private:
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
 
-    static constexpr int vlen_ = vreg_traits<Vmm>::vlen;
+    static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr int num_comp_acc_ = is_ymm_ ? 7 : 8;
 
@@ -2089,7 +2089,7 @@ protected:
     static constexpr int k_blk_step_ = 4;
     static constexpr int n_blk_step_ = 64;
     static constexpr int blk_sz_ = 6;
-    static constexpr int simd_w_ = vreg_traits<Vmm>::vlen;
+    static constexpr int simd_w_ = vreg_traits_t<Vmm>::vlen;
 
     const dim_t src_stride_;
     const dim_t tr_src_stride_;
@@ -2888,7 +2888,7 @@ private:
     using opmask_t = const Xbyak::Opmask;
     using zmm = const Xbyak::Zmm;
     using ymm = const Xbyak::Ymm;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize, tr_typesize, scales_typesize;
@@ -3092,7 +3092,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         const auto store_addr
                 = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off);
         const auto store_addr_ymm1
-                = ptr[reg_tr_src + tr_src_off + vreg_traits<Vmm>::vlen];
+                = ptr[reg_tr_src + tr_src_off + vreg_traits_t<Vmm>::vlen];
         const int blk_idx = iter % max_unroll;
         const auto src_vmm0 = get_vmm(blk_idx, 0);
         const auto src_zmm0 = zmm(src_vmm0.getIdx());
@@ -3350,7 +3350,7 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
         : jit_brgemm_matmul_copy_b_t(conf)
         , jit_generator(jit_name())
         , dt_in_(conf->orig_wei_dt)
-        , simd_w_(vreg_traits<Vmm>::vlen / sizeof(float))
+        , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , req_zp_b_shift_(
                   conf->has_zero_point_b && conf->with_wei_decompression)
@@ -3369,7 +3369,7 @@ private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const data_type_t dt_in_;
     const int simd_w_;
@@ -3677,12 +3677,12 @@ private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr cpu_isa_t isa_ = is_ymm_ ? avx2 : avx512_core;
     static constexpr int max_vmm_regs_ = cpu_isa_traits<isa_>::n_vregs;
-    static constexpr int vlen_ = vreg_traits<Vmm>::vlen;
+    static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr int n_blk_step_ = is_ymm_ ? 8 : 16;
     static constexpr int req_cvt_bf16_k_blk_step_ = 16;
     static constexpr size_t comp_shift_ = vlen_;
@@ -4576,7 +4576,7 @@ private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using zmm = const Xbyak::Zmm;
     using ymm = const Xbyak::Ymm;
 

@@ -62,7 +62,7 @@ struct direct_copy_kernel_t
                 {{dst_dt_, io_saturation_conf}}, utils::nullopt, io_fp8_conf);
     }
 
-    static constexpr int vlen_ = vreg_traits<Vmm>::vlen;
+    static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr int simd_w_ = vlen_ / sizeof(float);
     static constexpr int unroll_12_ = 12;
     static constexpr int unroll_4_ = 4;

@@ -2639,7 +2639,7 @@ public:
                 load_bytes(
                         vmm, src_addr, sizeof(float16_t) * load_size, zero_vmm);
                 vcvtph2ps(vmm,
-                        typename vreg_traits<Vmm>::Vmm_lower_t(vmm.getIdx()));
+                        typename vreg_traits_t<Vmm>::Vmm_lower_t(vmm.getIdx()));
                 break;
             default: assert(!"unsupported source data type");
         }
@@ -2658,7 +2658,7 @@ public:
             const std::function<void(int)> &tail_process,
             const data_type_t data_type = data_type::f32) {
         const auto simd_w
-                = vreg_traits<Vmm>::vlen / types::data_type_size(data_type);
+                = vreg_traits_t<Vmm>::vlen / types::data_type_size(data_type);
 
         Xbyak::Label label_tbl, label_tbl_end;
         std::vector<Xbyak::Label> l_case(simd_w);

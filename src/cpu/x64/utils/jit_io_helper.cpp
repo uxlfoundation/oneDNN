@@ -278,7 +278,7 @@ void jit_io_helper_t<Vmm>::prepare_i8_data_to_store(const Vmm &i8_vmm) {
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::prepare_xf16_data_to_store(const Vmm &vmm) {
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(vmm.getIdx());
 
     if (data_type_ == data_type::bf16)
         host_->vcvtneps2bf16(cvt_lower_vmm, vmm, host_->get_encoding());
@@ -778,7 +778,7 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
         // TODO: Consider adding opmask to store xf16 data from Xmm.
         // This could allow to use store_bf16/store_f16 functions for isa >= avx512_core.
         const size_t xmm_length
-                = vreg_traits<Xbyak::Xmm>::vlen / sizeof(int32_t);
+                = vreg_traits_t<Xbyak::Xmm>::vlen / sizeof(int32_t);
         const size_t store_size = (tail ? tail_conf_->tail_size_ : xmm_length)
                 * types::data_type_size(data_type_);
         store_byte_by_byte(src_vmm, dst_addr, store_size);
@@ -817,7 +817,7 @@ void jit_io_helper_t<Vmm>::store_byte_by_byte(const Vmm &src_vmm,
     const bool is_xf16
             = utils::one_of(data_type_, data_type::bf16, data_type::f16);
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(src_vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(src_vmm.getIdx());
 
     if (is_i8) prepare_i8_data_to_store(src_vmm);
     if (is_xf16) prepare_xf16_data_to_store(src_vmm);
@@ -845,7 +845,7 @@ void jit_io_helper_t<Vmm>::store_bf16(
             && "Store operation for bf16 is not supported for Xmms.");
 
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(src_vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(src_vmm.getIdx());
 
     if (bf16_emu_)
         bf16_emu_->vcvtneps2bf16(cvt_lower_vmm, src_vmm);
@@ -866,7 +866,7 @@ void jit_io_helper_t<Vmm>::store_f16(
             && "Store operation for f16 is not supported for Xmms.");
 
     const auto &cvt_lower_vmm =
-            typename vreg_traits<Vmm>::Vmm_lower_t(src_vmm.getIdx());
+            typename vreg_traits_t<Vmm>::Vmm_lower_t(src_vmm.getIdx());
 
     host_->uni_vcvtps2phx(cvt_lower_vmm, src_vmm);
 

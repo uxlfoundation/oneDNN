@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ protected:
 
     constexpr static int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
     using Vmm = typename cpu_isa_traits<isa>::Vmm;
-    using Vmm_down_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_down_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const Vmm vmm_input = Vmm(0);
     const Vmm_down_t vmm_output = Vmm_down_t(1);
@@ -176,7 +176,7 @@ protected:
     constexpr static int elem_granularity = isa == avx2_vnni_2 ? 2 : 1;
     constexpr static int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
     using Vmm = typename cpu_isa_traits<isa>::Vmm;
-    using Vmm_down_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_down_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
 
     const impl::data_type_t input_dt_;
     const bool with_add_;

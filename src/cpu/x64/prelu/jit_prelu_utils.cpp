@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ int get_simd_w(const std::set<data_type_t> &tensor_data_types) noexcept {
     const auto &isa = prelu::get_supported_isa();
 
     return (isa == avx && is_s8u8(tensor_data_types))
-            ? vreg_traits<Xbyak::Xmm>::vlen / sizeof(float)
+            ? vreg_traits_t<Xbyak::Xmm>::vlen / sizeof(float)
             : prelu::get_vlen(isa) / sizeof(float);
 }
 

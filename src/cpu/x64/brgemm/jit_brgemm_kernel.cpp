@@ -140,7 +140,7 @@ private:
     using Vmm =
             typename utils::conditional<std::is_same<Wmm, Xbyak::Tmm>::value,
                     Xbyak::Zmm, Wmm>::type;
-    using Vmm_lower_t = typename vreg_traits<Vmm>::Vmm_lower_t;
+    using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
@@ -669,8 +669,8 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         const Xbyak::Operand &op, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask, dim_t tail_size) {
     Vmm vmm = vmm_in;
-    const bool has_tail
-            = op.isMEM() && tail_size != vreg_traits<Vmm>::vlen / sizeof(float);
+    const bool has_tail = op.isMEM()
+            && tail_size != vreg_traits_t<Vmm>::vlen / sizeof(float);
     if (IMPLICATION(has_tail, is_superset(brg.isa_impl, avx512_core))) {
         vmm = vmm_mask(vmm_in, mask_flag, store, ktail_mask);
     } else {
@@ -2862,7 +2862,7 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     postamble();
 
     align(32);
-    const dim_t simd = vreg_traits<Vmm>::vlen / sizeof(float);
+    const dim_t simd = vreg_traits_t<Vmm>::vlen / sizeof(float);
     if (!isa_has_masks(brg.isa_impl) && brg.ldb_tail > 0) {
         L(avx_tail_mask_);
         for (dim_t i = 0; i < brg.ldb_tail; ++i)

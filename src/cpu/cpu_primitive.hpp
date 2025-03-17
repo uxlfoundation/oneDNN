@@ -29,6 +29,9 @@
 
 #include "cpu/ref_io_helper.hpp"
 
+//NOLINTBEGIN(bugprone-macro-parentheses)
+// These macros are actual pieces of code, can't put certain pieces into `()`.
+// TODO: consider making them functions.
 #define DEFINE_ARG_SCALES_BUFFER_ATTR(attr, scales, arg) \
     alignas(16) float CONCAT2(scales, _buf16)[16] = {0}; \
     const float *scales {nullptr}; \
@@ -37,10 +40,11 @@
             utils::array_set(CONCAT2(scales, _buf16), 1.0f, 16); \
             scales = CONCAT2(scales, _buf16); \
         } else { \
-            scales = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | arg); \
+            scales = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | (arg)); \
             VCHECK_ATTR(scales != nullptr, \
-                    "Scales buffer for arg %d is missing", arg); \
-            const auto scales_d = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | arg); \
+                    "Scales buffer for arg %d is missing", (arg)); \
+            const auto scales_d \
+                    = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | (arg)); \
             VCHECK_ATTR( \
                     utils::one_of(scales_d.data_type(), data_type::f32, \
                             data_type::f16, data_type::bf16, data_type::e8m0), \
@@ -48,7 +52,7 @@
             if (scales_d.nelems() == 1) { \
                 const float s = cpu::io::load_float_value( \
                         scales_d.data_type(), scales, 0); \
-                if (utils::one_of(arg, DNNL_ARG_DST, \
+                if (utils::one_of((arg), DNNL_ARG_DST, \
                             DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST)) { \
                     utils::array_set(CONCAT2(scales, _buf16), 1.f / s, 16); \
                 } else { \
@@ -61,7 +65,7 @@
     MAYBE_UNUSED(scales);
 
 #define DEFINE_ARG_SCALES_BUFFER(scales, arg) \
-    DEFINE_ARG_SCALES_BUFFER_ATTR(pd()->attr(), scales, arg)
+    DEFINE_ARG_SCALES_BUFFER_ATTR(pd()->attr(), scales, (arg))
 
 #define DEFINE_ZERO_POINTS_BUFFER_ATTR(attr, zero_points_ptr, arg) \
     int32_t CONCAT2(default_zero_point_, arg) = 0; \
@@ -74,11 +78,11 @@
              * Accessing `zero_points_ptr` by index will lead to a crash for
              * datatypes different from s32. */ \
             zero_points_ptr = CTX_IN_MEM( \
-                    const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | arg); \
+                    const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | (arg)); \
             VCHECK_ATTR(zero_points_ptr != nullptr, \
-                    "Zero points buffer for arg %d is missing", arg); \
+                    "Zero points buffer for arg %d is missing", (arg)); \
             const auto zero_points_d \
-                    = ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | arg); \
+                    = ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | (arg)); \
             VCHECK_ATTR(utils::one_of(zero_points_d.data_type(), \
                                 data_type::s32, data_type::s8, data_type::u8, \
                                 data_type::s4, data_type::u4), \
@@ -131,5 +135,7 @@
 
 #define DEFINE_ZERO_POINT_VALUE(zero_point, mem_arg) \
     DEFINE_ZERO_POINT_VALUE_ATTR(pd()->attr(), zero_point, mem_arg)
+
+//NOLINTEND(bugprone-macro-parentheses)
 
 #endif // CPU_CPU_PRIMITIVE_HPP

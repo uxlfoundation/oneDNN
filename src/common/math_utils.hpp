@@ -543,18 +543,23 @@ inline float stochastic_round_fwd(
     if (dst_dt == data_type::undef) return NAN;
 
     using namespace dnnl::impl::types;
-    if (digits<uint32_t>(data_type::f32) < digits<uint32_t>(dst_dt)) {
+    uint32_t f32_digits = digits<uint32_t>(data_type::f32);
+    uint32_t dst_digits = digits<uint32_t>(dst_dt);
+    if (f32_digits < dst_digits) {
         assert(!"dst_dt is a bad data type");
         return NAN;
     }
 
-    uint32_t truncation_mask = 0xffffffff
-            << (digits<uint32_t>(data_type::f32) - digits<uint32_t>(dst_dt));
+    uint32_t truncation_mask = 0xffffffff << (f32_digits - dst_digits);
 
     // IMPORTANT: lsb of bias are used.
-    uint32_t rnd_bias = data_type_size(dst_dt) == 2 ? philox16x8(idx, seed)
+    uint32_t rnd_bias = data_type_size(dst_dt) == 1 ? philox16x8(idx, seed)
                                                     : philox8x16(idx, seed);
     rnd_bias = rnd_bias & ~truncation_mask;
+
+    // For f16->f8, align bias to f16 LSB in f32 precision
+    if (data_type_size(dst_dt) == 1)
+        rnd_bias <<= 13; // difference in f32 and f16 mantissa bits
 
     uint32_t s_u = utils::bit_cast<uint32_t>(s);
     uint32_t r_u = (s_u + rnd_bias) & truncation_mask;

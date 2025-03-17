@@ -122,7 +122,6 @@ meaning associated with any of tensors dimensions.
 
 2. **GPU**
    - Only tensors of 6 or fewer dimensions are supported.
-   - s32 data type is not supported.
 
 ## Performance Tips
 

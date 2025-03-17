@@ -57,12 +57,11 @@ std::vector<char> read_binary_data(std::string const &name) {
 }
 } // namespace helpers
 
-template <typename T>
 struct Layer {
-    explicit Layer(dnnl::engine &engine, dnnl::stream &stream)
+    explicit Layer(const dnnl::engine &engine, const dnnl::stream &stream)
         : engine_(engine), stream_(stream), out_mem_(), out_desc_() {}
 
-    Layer(dnnl::engine &engine, dnnl::stream &stream,
+    Layer(const dnnl::engine &engine, const dnnl::stream &stream,
             const dnnl::memory &out_mem, const dnnl::memory::desc &out_desc)
         : engine_(engine)
         , stream_(stream)
@@ -75,24 +74,23 @@ struct Layer {
 
     dnnl::memory &get_output_mem() { return out_mem_; }
 
-    dnnl::engine &engine_;
-    dnnl::stream &stream_;
+    const dnnl::engine &engine_;
+    const dnnl::stream &stream_;
 
 protected:
     dnnl::memory out_mem_;
     dnnl::memory::desc out_desc_;
 };
 
-template <typename T>
-struct ConvBiasLayer : public Layer<T> {
-    ConvBiasLayer(dnnl::engine &engine, dnnl::stream &stream,
+struct ConvBiasLayer : public Layer {
+    ConvBiasLayer(const dnnl::engine &engine, const dnnl::stream &stream,
             std::string const &filter_file, std::string const &bias_file,
             const int in_n, const int in_c, const int in_h, const int in_w,
             const int filt_f, const int filt_c, const int filt_h,
             const int filt_w,
             dnnl::memory::format_tag format = dnnl::memory::format_tag::nhwc,
             dnnl::memory::data_type data_type = dnnl::memory::data_type::f32)
-        : Layer<T>(engine, stream) {
+        : Layer(engine, stream) {
 
         dnnl::memory::dim oh, ow;
 
@@ -113,8 +111,6 @@ struct ConvBiasLayer : public Layer<T> {
         dnnl::memory::dims padding_dims_l = {0, 0};
         dnnl::memory::dims padding_dims_r = {0, 0};
         dnnl::memory::dims dilates = {0, 0};
-
-        const auto sycl_queue = dnnl::sycl_interop::get_queue(this->stream_);
 
         // Create memory descriptors
         conv_src_md = dnnl::memory::desc(
@@ -166,7 +162,6 @@ struct ConvBiasLayer : public Layer<T> {
     ~ConvBiasLayer() {}
 
 private:
-    size_t ws_size_;
     dnnl::memory conv_weights_mem;
     dnnl::memory conv_bias_mem;
     dnnl::memory::desc conv_src_md;
@@ -176,16 +171,15 @@ private:
     dnnl::convolution_forward::primitive_desc conv_pd_;
 };
 
-template <typename T>
-struct BatchNormLayer : public Layer<T> {
-    BatchNormLayer(dnnl::engine &engine, dnnl::stream &stream,
+struct BatchNormLayer : public Layer {
+    BatchNormLayer(const dnnl::engine &engine, const dnnl::stream &stream,
             std::string const &scale_file, std::string const &bias_file,
             std::string const &mean_file, std::string const &var_file,
             const int batch, const int channels, const int rows, const int cols,
             const bool add_relu = true,
             dnnl::memory::format_tag format = dnnl::memory::format_tag::nhwc,
             dnnl::memory::data_type data_type = dnnl::memory::data_type::f32)
-        : Layer<T>(engine, stream), _relu(add_relu) {
+        : Layer(engine, stream), _relu(add_relu) {
 
         // Configuring dimensions
         dnnl::memory::dims src_dims = {batch, channels, rows, cols};
@@ -267,13 +261,12 @@ private:
     float eps_ = 1.0e-5;
 };
 
-template <typename T>
-struct GlobalMaxPoolLayer : public Layer<T> {
-    GlobalMaxPoolLayer(dnnl::engine &engine, dnnl::stream &stream,
+struct GlobalMaxPoolLayer : public Layer {
+    GlobalMaxPoolLayer(const dnnl::engine &engine, const dnnl::stream &stream,
             const int batch, const int channels, const int rows, const int cols,
             dnnl::memory::format_tag format = dnnl::memory::format_tag::nhwc,
             dnnl::memory::data_type data_type = dnnl::memory::data_type::f32)
-        : Layer<T>(engine, stream) {
+        : Layer(engine, stream) {
 
         dnnl::memory::dims src_dims = {batch, channels, rows, cols};
 
@@ -313,13 +306,12 @@ private:
     dnnl::pooling_forward::primitive_desc pooling_pd;
 };
 
-template <typename T>
-struct FCLayer : public Layer<T> {
-    FCLayer(dnnl::engine &engine, dnnl::stream &stream,
+struct FCLayer : public Layer {
+    FCLayer(const dnnl::engine &engine, const dnnl::stream &stream,
             const std::string &weights_file, const std::string &bias_file,
             const int batch, const int in_channels, const int out_channels,
             dnnl::memory::data_type data_type = dnnl::memory::data_type::f32)
-        : Layer<T>(engine, stream) {
+        : Layer(engine, stream) {
 
         dnnl::memory::dims src_dims, dst_dims, weights_dims, bias_dims;
 
@@ -370,7 +362,6 @@ struct FCLayer : public Layer<T> {
     ~FCLayer() {}
 
 private:
-    int m_, k_, n_;
     dnnl::memory bias_mem;
     dnnl::memory weights_mem;
     dnnl::memory::desc src_md;
@@ -380,12 +371,12 @@ private:
     dnnl::matmul::primitive_desc matmul_pd;
 };
 
-template <typename T>
-struct MMLayer : public Layer<T> {
-    MMLayer(dnnl::engine &engine, dnnl::stream &stream, dnnl::memory &lhs_ptr,
-            const int batch, const int m, const int k, const int n,
+struct MMLayer : public Layer {
+    MMLayer(const dnnl::engine &engine, const dnnl::stream &stream,
+            const dnnl::memory &lhs_ptr, const int batch, const int m,
+            const int k, const int n,
             dnnl::memory::data_type data_type = dnnl::memory::data_type::f32)
-        : Layer<T>(engine, stream), src_mem(lhs_ptr) {
+        : Layer(engine, stream), src_mem(lhs_ptr) {
 
         dnnl::memory::dims src_dims = {batch, m, k};
         dnnl::memory::dims weights_dims = {batch, k, n};
@@ -426,14 +417,13 @@ private:
     dnnl::matmul::primitive_desc matmul_pd;
 };
 
-template <typename T>
-struct SumLayer : public Layer<T> {
-    SumLayer(dnnl::engine &engine, dnnl::stream &stream,
+struct SumLayer : public Layer {
+    SumLayer(const dnnl::engine &engine, const dnnl::stream &stream,
             std::string const &bias_file, const int batch, const int channels,
             const int rows, const int cols,
             dnnl::memory::format_tag format = dnnl::memory::format_tag::nhwc,
             dnnl::memory::data_type data_type = dnnl::memory::data_type::f32)
-        : Layer<T>(engine, stream) {
+        : Layer(engine, stream) {
 
         dnnl::memory::dims src_dims = {batch, channels, rows, cols};
         dnnl::memory::dims scale_dims = {batch, channels, rows, cols};
@@ -475,14 +465,14 @@ private:
     dnnl::memory bias_mem;
     dnnl::binary::primitive_desc sum_pd;
 };
-template <typename T>
-struct LogSoftMaxLayer : public Layer<T> {
-    LogSoftMaxLayer(dnnl::engine &engine, dnnl::stream &stream, const int batch,
-            const int channels, const int rows, const int cols,
+
+struct LogSoftMaxLayer : public Layer {
+    LogSoftMaxLayer(const dnnl::engine &engine, const dnnl::stream &stream,
+            const int batch, const int channels, const int rows, const int cols,
             dnnl::algorithm algo = dnnl::algorithm::softmax_log,
             dnnl::memory::format_tag format = dnnl::memory::format_tag::nhwc,
             dnnl::memory::data_type data_type = dnnl::memory::data_type::f32)
-        : Layer<T>(engine, stream) {
+        : Layer(engine, stream) {
 
         dnnl::memory::dims src_dst_dims = {batch, channels, rows, cols};
         src_md = dnnl::memory::desc(src_dst_dims, data_type, format);
@@ -519,7 +509,7 @@ private:
 
 template <typename T>
 struct Network {
-    void add_layer(std::unique_ptr<Layer<T>> layer) {
+    void add_layer(std::unique_ptr<Layer> layer) {
         layers.emplace_back(std::move(layer));
     }
 
@@ -547,69 +537,12 @@ struct Network {
         return output;
     }
 
-    std::vector<std::unique_ptr<Layer<T>>> layers;
+    std::vector<std::unique_ptr<Layer>> layers;
 };
 
-template <typename T>
-inline void add_conv_bias_layer(Network<T> &net, dnnl::engine &handle,
-        dnnl::stream &stream, std::string const &filter_file,
-        std::string const &bias_file, const int in_n, const int in_c,
-        const int in_h, const int in_w, const int filt_f, const int filt_c,
-        const int filt_h, const int filt_w) {
-    net.add_layer(std::make_unique<ConvBiasLayer<T>>(handle, stream,
-            filter_file, bias_file, in_n, in_c, in_h, in_w, filt_f, filt_c,
-            filt_h, filt_w));
-}
-
-template <typename T>
-inline void add_batchnorm_layer(Network<T> &net, dnnl::engine &handle,
-        dnnl::stream &stream, std::string const &scale_file,
-        std::string const &bias_file, std::string const &mean_file,
-        std::string const &var_file, const int n, const int c, const int h,
-        const int w, const bool add_relu = true) {
-    net.add_layer(std::make_unique<BatchNormLayer<T>>(handle, stream,
-            scale_file, bias_file, mean_file, var_file, n, c, h, w, add_relu));
-}
-
-template <typename T>
-inline void add_global_max_pool_layer(Network<T> &net, dnnl::engine &engine,
-        dnnl::stream &stream, const int n, const int c, const int h,
-        const int w) {
-    net.add_layer(std::make_unique<GlobalMaxPoolLayer<T>>(
-            engine, stream, n, c, h, w));
-}
-
-template <typename T>
-inline void add_fc_layer(Network<T> &net, dnnl::engine &engine,
-        dnnl::stream &stream, const std::string &weights_file,
-        const std::string &bias_file, const int batch, const int in_c,
-        const int out_c) {
-    net.add_layer(std::make_unique<FCLayer<T>>(
-            engine, stream, weights_file, bias_file, batch, in_c, out_c));
-}
-
-template <typename T>
-inline void add_mm_layer(Network<T> &net, dnnl::engine &engine,
-        dnnl::stream &stream, dnnl::memory lhs_ptr, const int batch,
-        const int m, const int k, const int n) {
-    net.add_layer(std::make_unique<MMLayer<T>>(
-            engine, stream, lhs_ptr, batch, m, k, n));
-}
-
-template <typename T>
-inline void add_logsoftmax_layer(Network<T> &net, dnnl::engine &engine,
-        dnnl::stream &stream, const int n, const int c, const int h,
-        const int w) {
-    net.add_layer(
-            std::make_unique<LogSoftMaxLayer<T>>(engine, stream, n, c, h, w));
-}
-
-template <typename T>
-inline void add_sum_layer(Network<T> &net, dnnl::engine &handle,
-        dnnl::stream &stream, std::string const &bias_file, const int n,
-        const int c, const int h, const int w) {
-    net.add_layer(std::make_unique<SumLayer<T>>(
-            handle, stream, bias_file, n, c, h, w));
+template <class LayerType, typename T, typename... Args>
+inline void add_layer(Network<T> &network, const Args &...args) {
+    network.add_layer(std::make_unique<LayerType>(args...));
 }
 
 template <typename T>
@@ -621,12 +554,13 @@ inline void add_conv_bias_bnorm_relu_block(Network<T> &net,
         std::string const &bn_var_file, const int in_n, const int in_c,
         const int in_h, const int in_w, const int out_c, const int filt_h,
         const int filt_w, bool add_relu = true) {
-    add_conv_bias_layer(net, engine, stream, file_directory + conv_filter_file,
-            file_directory + conv_bias_file, in_n, in_c, in_h, in_w, out_c,
-            in_c, filt_h, filt_w);
-    add_batchnorm_layer(net, engine, stream, file_directory + bn_scale_file,
-            file_directory + bn_bias_file, file_directory + bn_mean_file,
-            file_directory + bn_var_file, in_n, out_c, in_h, in_w, add_relu);
+    add_layer<ConvBiasLayer>(net, engine, stream,
+            file_directory + conv_filter_file, file_directory + conv_bias_file,
+            in_n, in_c, in_h, in_w, out_c, in_c, filt_h, filt_w);
+    add_layer<BatchNormLayer>(net, engine, stream,
+            file_directory + bn_scale_file, file_directory + bn_bias_file,
+            file_directory + bn_mean_file, file_directory + bn_var_file, in_n,
+            out_c, in_h, in_w, add_relu);
 }
 
 template <typename T>
@@ -636,11 +570,12 @@ inline void add_fc_bias_bnorm_relu_block(Network<T> &net, dnnl::engine &engine,
         std::string const &bn_scale_file, std::string const &bn_bias_file,
         std::string const &bn_mean_file, std::string const &bn_var_file,
         const int batch, const int in_c, const int out_c) {
-    add_fc_layer(net, engine, stream, file_directory + fc_filter_file,
+    add_layer<FCLayer>(net, engine, stream, file_directory + fc_filter_file,
             file_directory + fc_bias_file, batch, in_c, out_c);
-    add_batchnorm_layer(net, engine, stream, file_directory + bn_scale_file,
-            file_directory + bn_bias_file, file_directory + bn_mean_file,
-            file_directory + bn_var_file, batch, out_c, 1, 1);
+    add_layer<BatchNormLayer>(net, engine, stream,
+            file_directory + bn_scale_file, file_directory + bn_bias_file,
+            file_directory + bn_mean_file, file_directory + bn_var_file, batch,
+            out_c, 1, 1);
 }
 
 int main(int argc, char *argv[]) {
@@ -697,7 +632,7 @@ int main(int argc, char *argv[]) {
             "transform.input_transform.bn3.running_var.bin", 32, 128, 1024, 1,
             1024, 1, 1);
 
-    add_global_max_pool_layer(
+    add_layer<GlobalMaxPoolLayer>(
             input_transform_block, eng, stream, 32, 1024, 1024, 1);
 
     add_fc_bias_bnorm_relu_block(input_transform_block, eng, stream, data_dir,
@@ -716,15 +651,16 @@ int main(int argc, char *argv[]) {
             "transform.input_transform.bn5.running_mean.bin",
             "transform.input_transform.bn5.running_var.bin", 32, 512, 256);
 
-    add_fc_layer(input_transform_block, eng, stream,
+    add_layer<FCLayer>(input_transform_block, eng, stream,
             data_dir + "transform.input_transform.fc3.weight.bin",
             data_dir + "transform.input_transform.fc3.bias.bin", 32, 256, 9);
 
-    add_sum_layer(input_transform_block, eng, stream,
+    add_layer<SumLayer>(input_transform_block, eng, stream,
             data_dir + "transform.input_transform.id.bin", 1, 32 * 9, 1, 1);
 
     // Transform input
-    add_mm_layer(input_transform_block, eng, stream, in_mem, 32, 1024, 3, 3);
+    add_layer<MMLayer>(
+            input_transform_block, eng, stream, in_mem, 32, 1024, 3, 3);
 
     // Construct base transformation block
     add_conv_bias_bnorm_relu_block(base_transform_block, eng, stream, data_dir,
@@ -760,7 +696,7 @@ int main(int argc, char *argv[]) {
             "transform.feature_transform.bn3.running_var.bin", 32, 128, 1024, 1,
             1024, 1, 1);
 
-    add_global_max_pool_layer(
+    add_layer<GlobalMaxPoolLayer>(
             feature_transform_block, eng, stream, 32, 1024, 1024, 1);
 
     add_fc_bias_bnorm_relu_block(feature_transform_block, eng, stream, data_dir,
@@ -779,15 +715,15 @@ int main(int argc, char *argv[]) {
             "transform.feature_transform.bn5.running_mean.bin",
             "transform.feature_transform.bn5.running_var.bin", 32, 512, 256);
 
-    add_fc_layer(feature_transform_block, eng, stream,
+    add_layer<FCLayer>(feature_transform_block, eng, stream,
             data_dir + "transform.feature_transform.fc3.weight.bin",
             data_dir + "transform.feature_transform.fc3.bias.bin", 32, 256,
             4096);
 
-    add_sum_layer(feature_transform_block, eng, stream,
+    add_layer<SumLayer>(feature_transform_block, eng, stream,
             data_dir + "transform.feature_transform.id.bin", 1, 32 * 4096, 1,
             1);
-    add_mm_layer(feature_transform_block, eng, stream,
+    add_layer<MMLayer>(feature_transform_block, eng, stream,
             base_transform_block.get_output_mem(), 32, 1024, 64, 64);
 
     add_conv_bias_bnorm_relu_block(feature_transform_block, eng, stream,
@@ -802,7 +738,7 @@ int main(int argc, char *argv[]) {
             "transform.bn3.running_mean.bin", "transform.bn3.running_var.bin",
             32, 128, 1024, 1, 1024, 1, 1, false);
 
-    add_global_max_pool_layer(
+    add_layer<GlobalMaxPoolLayer>(
             feature_transform_block, eng, stream, 32, 1024, 1, 1024);
 
     add_fc_bias_bnorm_relu_block(feature_transform_block, eng, stream, data_dir,
@@ -813,11 +749,12 @@ int main(int argc, char *argv[]) {
             "fc2.weight.bin", "fc2.bias.bin", "bn2.weight.bin", "bn2.bias.bin",
             "bn2.running_mean.bin", "bn2.running_var.bin", 32, 512, 256);
 
-    add_fc_layer(feature_transform_block, eng, stream,
+    add_layer<FCLayer>(feature_transform_block, eng, stream,
             data_dir + "fc3.weight.bin", data_dir + "fc3.bias.bin", 32, 256,
             10);
 
-    add_logsoftmax_layer(feature_transform_block, eng, stream, 32, 10, 1, 1);
+    add_layer<LogSoftMaxLayer>(
+            feature_transform_block, eng, stream, 32, 10, 1, 1);
 
     input_transform_block.execute(in_mem);
     base_transform_block.execute(input_transform_block.get_output_mem());

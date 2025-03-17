@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-void jit_avx512_core_f32_copy_at_kern::generate_part2(Xbyak::Label l4000,
+void jit_avx512_core_f32_copy_at_kern_t::generate_part2(Xbyak::Label l4000,
         Xbyak::Label l2a5c, Xbyak::Label l22b8, Xbyak::Label l1f80) {
     std::vector<Xbyak::Label> labels(62);
     L(l1f80);

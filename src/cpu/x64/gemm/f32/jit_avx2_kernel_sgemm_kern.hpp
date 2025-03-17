@@ -29,9 +29,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx2_kernel_sgemm_kern : public jit_generator_t {
+class jit_avx2_kernel_sgemm_kern_t : public jit_generator_t {
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_kernel_sgemm_kern);
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_kernel_sgemm_kern_t);
     const int elt_size_ = 4;
     const int elt_size_bin_ = 2;
     int nelt_per_vecreg_ = mayiuse(avx512_core) && __BUILD_GEMM_AVX512 ? 16 : 8;
@@ -701,7 +701,7 @@ class jit_avx2_kernel_sgemm_kern : public jit_generator_t {
     }
 
 public:
-    jit_avx2_kernel_sgemm_kern(bool beta_zero);
+    jit_avx2_kernel_sgemm_kern_t(bool beta_zero);
 };
 } // namespace x64
 } // namespace cpu

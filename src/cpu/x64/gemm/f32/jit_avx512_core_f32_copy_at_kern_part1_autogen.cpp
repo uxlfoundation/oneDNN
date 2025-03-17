@@ -24,10 +24,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx512_core_f32_copy_at_kern::jit_avx512_core_f32_copy_at_kern()
+jit_avx512_core_f32_copy_at_kern_t::jit_avx512_core_f32_copy_at_kern_t()
     : jit_generator_t(jit_name()) {}
 
-void jit_avx512_core_f32_copy_at_kern::generate() {
+void jit_avx512_core_f32_copy_at_kern_t::generate() {
     Xbyak::Label l1f80;
     Xbyak::Label l22b8;
     Xbyak::Label l2a5c;
@@ -48,9 +48,9 @@ void jit_avx512_core_f32_copy_at_kern::generate() {
 
     postamble();
 }
-void jit_avx512_core_f32_copy_at_kern::generate_part1(const Xbyak::Label &l4000,
-        const Xbyak::Label &l2a5c, const Xbyak::Label &l22b8,
-        const Xbyak::Label &l1f80) {
+void jit_avx512_core_f32_copy_at_kern_t::generate_part1(
+        const Xbyak::Label &l4000, const Xbyak::Label &l2a5c,
+        const Xbyak::Label &l22b8, const Xbyak::Label &l1f80) {
     Xbyak::Label l1d30;
     Xbyak::Label l1d0c;
     Xbyak::Label l1cfc;

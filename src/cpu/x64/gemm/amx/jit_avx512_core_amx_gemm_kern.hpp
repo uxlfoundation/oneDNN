@@ -24,11 +24,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_amx_gemm_kern : public jit_generator_t {
+class jit_avx512_core_amx_gemm_kern_t : public jit_generator_t {
 public:
-    jit_avx512_core_amx_gemm_kern(
+    jit_avx512_core_amx_gemm_kern_t(
             int typea, int typeb, int typec, int betaZero);
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_gemm_kern);
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_gemm_kern_t);
 
 protected:
     void generate() override;

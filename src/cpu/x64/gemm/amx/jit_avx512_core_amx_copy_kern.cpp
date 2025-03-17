@@ -42,7 +42,7 @@ static inline Zmm make_zmm(const Xmm &v) {
     return Zmm(v.getIdx());
 }
 
-void jit_avx512_core_amx_copy_kern::transpose(int s, const Ymm &dst1,
+void jit_avx512_core_amx_copy_kern_t::transpose(int s, const Ymm &dst1,
         const Ymm &dst2, const Ymm &src1, const Ymm &src2) {
     switch (s) {
         case 32:
@@ -91,8 +91,9 @@ void jit_avx512_core_amx_copy_kern::transpose(int s, const Ymm &dst1,
     }
 }
 
-void jit_avx512_core_amx_copy_kern::amxtrans8(const Ymm &dst1, const Ymm &dst2,
-        const Ymm &src1, const Ymm &src2, const Ymm &src3, const Ymm &src4) {
+void jit_avx512_core_amx_copy_kern_t::amxtrans8(const Ymm &dst1,
+        const Ymm &dst2, const Ymm &src1, const Ymm &src2, const Ymm &src3,
+        const Ymm &src4) {
     vpunpcklbw(dst1, src1, src2);
     vpunpckhbw(dst2, src1, src2);
     vpunpcklbw(src1, src3, src4);
@@ -107,7 +108,7 @@ void jit_avx512_core_amx_copy_kern::amxtrans8(const Ymm &dst1, const Ymm &dst2,
     vshufi32x4(src4, dst1, dst2, 0x03);
 }
 
-void jit_avx512_core_amx_copy_kern::amxtrans16(
+void jit_avx512_core_amx_copy_kern_t::amxtrans16(
         const Ymm &dst1, const Ymm &dst2, const Ymm &src1, const Ymm &src2) {
     vpunpcklwd(dst1, src1, src2);
     vpunpckhwd(dst2, src1, src2);
@@ -117,7 +118,7 @@ void jit_avx512_core_amx_copy_kern::amxtrans16(
     vshufi32x4(src2, src2, src2, 0xd8);
 }
 
-void jit_avx512_core_amx_copy_kern::load(
+void jit_avx512_core_amx_copy_kern_t::load(
         const Xmm &dst, const Address &src, bool corner) {
     if (!corner && isize_ == 1)
         vmovdqu8(dst, src);
@@ -129,14 +130,15 @@ void jit_avx512_core_amx_copy_kern::load(
         vmovdqu16(dst | k1 | T_z, src);
 }
 
-void jit_avx512_core_amx_copy_kern::store(const Address &dst, const Xmm &src) {
+void jit_avx512_core_amx_copy_kern_t::store(
+        const Address &dst, const Xmm &src) {
     if (size_ == 1)
         vmovdqu8(dst, src);
     else
         vmovdqu16(dst, src);
 }
 
-void jit_avx512_core_amx_copy_kern::kernel_AN(
+void jit_avx512_core_amx_copy_kern_t::kernel_AN(
         int unroll_x, int unroll_y, int step, Reg64 A, Reg64 B, bool corner) {
     // Transpose data.
     int u[] = {32, 16, 8, 4};
@@ -170,7 +172,7 @@ void jit_avx512_core_amx_copy_kern::kernel_AN(
             }
 }
 
-void jit_avx512_core_amx_copy_kern::kernel_BN(
+void jit_avx512_core_amx_copy_kern_t::kernel_BN(
         int unroll_x, int unroll_y, int step, Reg64 A, Reg64 B, bool corner) {
     // Store data.
     for (int i = 0; i < 16; i++)
@@ -179,7 +181,7 @@ void jit_avx512_core_amx_copy_kern::kernel_BN(
                     src_[i]);
 }
 
-void jit_avx512_core_amx_copy_kern::kernel_AT(
+void jit_avx512_core_amx_copy_kern_t::kernel_AT(
         int unroll_x, int unroll_y, int step, Reg64 A, Reg64 B, bool corner) {
     Ymm v[16];
 
@@ -258,7 +260,7 @@ void jit_avx512_core_amx_copy_kern::kernel_AT(
     }
 }
 
-void jit_avx512_core_amx_copy_kern::kernel_BT(
+void jit_avx512_core_amx_copy_kern_t::kernel_BT(
         int unroll_x, int unroll_y, int step, Reg64 A, Reg64 B, bool corner) {
     // Transpose data.
     int u[] = {16, 8, 4, 2, 1};
@@ -297,7 +299,7 @@ void jit_avx512_core_amx_copy_kern::kernel_BT(
     L(store_end);
 }
 
-void jit_avx512_core_amx_copy_kern::kernel(
+void jit_avx512_core_amx_copy_kern_t::kernel(
         int unroll_x, int unroll_y, int step, Reg64 A, Reg64 B, bool corner) {
 
     // Load matrix.
@@ -326,7 +328,7 @@ void jit_avx512_core_amx_copy_kern::kernel(
         kernel_BT(unroll_x, unroll_y, step, A, B, corner);
 }
 
-void jit_avx512_core_amx_copy_kern::copy_m(int unroll_m, int unroll_n) {
+void jit_avx512_core_amx_copy_kern_t::copy_m(int unroll_m, int unroll_n) {
     if (is_trans_) {
         mov(B1_, B_);
         add(B_, unroll_m * unroll_n * size_);
@@ -378,7 +380,7 @@ void jit_avx512_core_amx_copy_kern::copy_m(int unroll_m, int unroll_n) {
     L_aligned(kernel_tail_end);
 }
 
-void jit_avx512_core_amx_copy_kern::copy_ns(int unroll_n, Label &epilogue) {
+void jit_avx512_core_amx_copy_kern_t::copy_ns(int unroll_n, Label &epilogue) {
     if (unroll_n > 0) {
         copy_ns(unroll_n - 1, epilogue);
 
@@ -393,7 +395,7 @@ void jit_avx512_core_amx_copy_kern::copy_ns(int unroll_n, Label &epilogue) {
     }
 }
 
-void jit_avx512_core_amx_copy_kern::copy_n(int unroll_n, Label &epilogue) {
+void jit_avx512_core_amx_copy_kern_t::copy_n(int unroll_n, Label &epilogue) {
 
     Label copy_m_loop, copy_m_end;
 
@@ -422,7 +424,7 @@ void jit_avx512_core_amx_copy_kern::copy_n(int unroll_n, Label &epilogue) {
     copy_ns(unroll_n - 1, epilogue);
 }
 
-void jit_avx512_core_amx_copy_kern::generate() {
+void jit_avx512_core_amx_copy_kern_t::generate() {
     // Prologue
     preamble();
     sub(rsp, stack_alloc_size_);
@@ -494,7 +496,7 @@ void jit_avx512_core_amx_copy_kern::generate() {
     postamble();
 }
 
-jit_avx512_core_amx_copy_kern::jit_avx512_core_amx_copy_kern(
+jit_avx512_core_amx_copy_kern_t::jit_avx512_core_amx_copy_kern_t(
         bool is_a, bool is_trans, int isize)
     : jit_generator_t(jit_name())
     , is_a_(is_a)

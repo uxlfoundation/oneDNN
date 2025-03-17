@@ -41,7 +41,7 @@ static inline Ymm make_ymm(const Xmm &v) {
 }
 
 // Load from or store to C.
-void jit_avx512_core_gemm_s8u8s32_kern::c_load(
+void jit_avx512_core_gemm_s8u8s32_kern_t::c_load(
         const Xbyak::Xmm &dst, const Xbyak::Address &src, int nelems) {
     switch (nelems) {
         case 1: vmovss(make_xmm(dst), src); break;
@@ -55,7 +55,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::c_load(
     }
 }
 
-void jit_avx512_core_gemm_s8u8s32_kern::c_store(
+void jit_avx512_core_gemm_s8u8s32_kern_t::c_store(
         const Xbyak::Address &dst, const Xbyak::Xmm &src, int nelems) {
     switch (nelems) {
         case 1: vmovss(dst, make_xmm(src)); break;
@@ -72,7 +72,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::c_store(
 // Perform length-4 dot product accumulations of unsigned and signed bytes
 //  in parallel.
 // Use vpdpbusd if VNNI available, otherwise emulate.
-void jit_avx512_core_gemm_s8u8s32_kern::dot_product(
+void jit_avx512_core_gemm_s8u8s32_kern_t::dot_product(
         const Xmm &dst, const Xmm &src1, const Xmm &src2) {
     if (vnni_)
         vpdpbusd(dst, src1, src2);
@@ -84,7 +84,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::dot_product(
 }
 
 // Inner kernel.
-void jit_avx512_core_gemm_s8u8s32_kern::kernel_loop(
+void jit_avx512_core_gemm_s8u8s32_kern_t::kernel_loop(
         int unroll_m, int unroll_n, bool cfetch) {
     int um_vecs = (unroll_m + 15) >> 4;
     Label label_kernel_loop;
@@ -145,7 +145,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::kernel_loop(
 }
 
 // k remainder loop for kernel.
-void jit_avx512_core_gemm_s8u8s32_kern::remainder_kernel(
+void jit_avx512_core_gemm_s8u8s32_kern_t::remainder_kernel(
         int unroll_m, int unroll_n, int unroll_k, int bwidth) {
     if ((unroll_m > IGEMM_UNROLL_M_) || (unroll_n > IGEMM_UNROLL_N_)
             || (unroll_m < 0) || (unroll_n < 0))
@@ -183,7 +183,8 @@ void jit_avx512_core_gemm_s8u8s32_kern::remainder_kernel(
 }
 
 // Inner loop.
-void jit_avx512_core_gemm_s8u8s32_kern::innerloop(int unroll_m, int unroll_n) {
+void jit_avx512_core_gemm_s8u8s32_kern_t::innerloop(
+        int unroll_m, int unroll_n) {
     if ((unroll_m > IGEMM_UNROLL_M_) || (unroll_n > IGEMM_UNROLL_N_)
             || (unroll_m < 0) || (unroll_n < 0))
         return;
@@ -345,7 +346,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::innerloop(int unroll_m, int unroll_n) {
 }
 
 // Outer loop.
-void jit_avx512_core_gemm_s8u8s32_kern::outerloop(
+void jit_avx512_core_gemm_s8u8s32_kern_t::outerloop(
         int unroll_x, int unroll_y, Label *&cur_outerloop_label) {
     Label label_m_loop, label_n_loop;
     std::vector<Label> label_n_remainder_loops(6);
@@ -422,7 +423,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::outerloop(
     align(16);
 }
 
-void jit_avx512_core_gemm_s8u8s32_kern::generate() {
+void jit_avx512_core_gemm_s8u8s32_kern_t::generate() {
     // Prologue
     preamble();
     sub(rsp, stack_alloc_size_);
@@ -484,7 +485,7 @@ void jit_avx512_core_gemm_s8u8s32_kern::generate() {
     postamble();
 }
 
-jit_avx512_core_gemm_s8u8s32_kern::jit_avx512_core_gemm_s8u8s32_kern(
+jit_avx512_core_gemm_s8u8s32_kern_t::jit_avx512_core_gemm_s8u8s32_kern_t(
         bool beta_zero, bool enable_offset_c, bool enable_offset_r)
     : jit_generator_t(jit_name(),
             mayiuse(avx512_core_vnni) ? avx512_core_vnni : avx512_core)

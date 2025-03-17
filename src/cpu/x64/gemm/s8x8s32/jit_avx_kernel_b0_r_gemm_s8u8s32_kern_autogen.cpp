@@ -23,10 +23,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx_kernel_b0_r_gemm_s8u8s32_kern::jit_avx_kernel_b0_r_gemm_s8u8s32_kern()
+jit_avx_kernel_b0_r_gemm_s8u8s32_kern_t::
+        jit_avx_kernel_b0_r_gemm_s8u8s32_kern_t()
     : jit_generator_t(jit_name()) {}
 
-void jit_avx_kernel_b0_r_gemm_s8u8s32_kern::generate() {
+void jit_avx_kernel_b0_r_gemm_s8u8s32_kern_t::generate() {
 
 #ifndef _WIN32
 

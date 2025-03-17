@@ -25,11 +25,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_gemv_bf16bf16f32_kern : public jit_generator_t {
+class jit_avx512_core_gemv_bf16bf16f32_kern_t : public jit_generator_t {
 public:
-    jit_avx512_core_gemv_bf16bf16f32_kern(bool trans);
-    ~jit_avx512_core_gemv_bf16bf16f32_kern() override;
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_gemv_bf16bf16f32_kern);
+    jit_avx512_core_gemv_bf16bf16f32_kern_t(bool trans);
+    ~jit_avx512_core_gemv_bf16bf16f32_kern_t() override;
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_gemv_bf16bf16f32_kern_t);
 
 protected:
     bool trans_;

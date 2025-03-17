@@ -23,10 +23,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx512_core_u8_copy_bn_kern::jit_avx512_core_u8_copy_bn_kern(bool s8_case)
+jit_avx512_core_u8_copy_bn_kern_t::jit_avx512_core_u8_copy_bn_kern_t(
+        bool s8_case)
     : jit_generator_t(jit_name()), s8_case(s8_case) {}
 
-void jit_avx512_core_u8_copy_bn_kern::generate() {
+void jit_avx512_core_u8_copy_bn_kern_t::generate() {
 
 #ifndef _WIN32
 #define M rdi

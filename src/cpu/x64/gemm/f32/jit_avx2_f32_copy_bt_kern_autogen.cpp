@@ -23,10 +23,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx2_f32_copy_bt_kern::jit_avx2_f32_copy_bt_kern()
+jit_avx2_f32_copy_bt_kern_t::jit_avx2_f32_copy_bt_kern_t()
     : jit_generator_t(jit_name()) {}
 
-void jit_avx2_f32_copy_bt_kern::generate() {
+void jit_avx2_f32_copy_bt_kern_t::generate() {
 
 #ifndef _WIN32
 #define M rdi

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2020 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ namespace x64 {
 
 using namespace Xbyak;
 
-void jit_avx512_core_gemv_s8x8s32_kern::vnni(
+void jit_avx512_core_gemv_s8x8s32_kern_t::vnni(
         Zmm acc, Zmm a, Zmm b, vnni_op_t op) {
     if (isa == avx512_core_vnni) {
         if (op == vnni_op_t::sub) vxorps(acc, acc, zmm_1_u1); // acc = -acc
@@ -56,7 +56,7 @@ void jit_avx512_core_gemv_s8x8s32_kern::vnni(
     }
 }
 
-void jit_avx512_core_gemv_s8x8s32_kern::n_loop_body(int nreg_acc, Reg64 A,
+void jit_avx512_core_gemv_s8x8s32_kern_t::n_loop_body(int nreg_acc, Reg64 A,
         Reg64 lda, Reg64 X, int use_mask, Opmask mask_n) {
     const int nreg_A = nreg_acc / 2 + (nreg_acc % 2);
 
@@ -100,7 +100,7 @@ void jit_avx512_core_gemv_s8x8s32_kern::n_loop_body(int nreg_acc, Reg64 A,
             vnni(zmm_acc(nreg_A + i), zmm_a(i), zmm_128_u8, vnni_op_t::sub);
 }
 
-void jit_avx512_core_gemv_s8x8s32_kern::shuffle_and_add(
+void jit_avx512_core_gemv_s8x8s32_kern_t::shuffle_and_add(
         Zmm dest, Zmm A, Zmm B, Zmm C, Zmm D) {
     vshufi32x4(dest, A, C, 0x44);
     vshufi32x4(A, A, C, 0xEE);
@@ -115,7 +115,7 @@ void jit_avx512_core_gemv_s8x8s32_kern::shuffle_and_add(
     vpaddd(dest, A, B); // dest = SAi|SBi|SCi|SDi
 }
 
-void jit_avx512_core_gemv_s8x8s32_kern::update_c(
+void jit_avx512_core_gemv_s8x8s32_kern_t::update_c(
         int nreg_acc, Reg64 Y, int use_mask, Opmask mask_m) {
     int l, i, k, j, last_it;
     Label store_label;
@@ -175,7 +175,7 @@ void jit_avx512_core_gemv_s8x8s32_kern::update_c(
     }
 }
 
-void jit_avx512_core_gemv_s8x8s32_kern::generate() {
+void jit_avx512_core_gemv_s8x8s32_kern_t::generate() {
 
     const int vec_len = 64; // bytes
 

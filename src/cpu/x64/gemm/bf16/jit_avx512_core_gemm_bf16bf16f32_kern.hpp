@@ -25,12 +25,12 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_avx512_core_gemm_bf16bf16f32_kern : public jit_generator_t {
+class jit_avx512_core_gemm_bf16bf16f32_kern_t : public jit_generator_t {
 public:
-    jit_avx512_core_gemm_bf16bf16f32_kern(
+    jit_avx512_core_gemm_bf16bf16f32_kern_t(
             bool beta_zero, bool alpha_one, bool use_zmm);
-    ~jit_avx512_core_gemm_bf16bf16f32_kern() override;
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_gemm_bf16bf16f32_kern);
+    ~jit_avx512_core_gemm_bf16bf16f32_kern_t() override;
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_gemm_bf16bf16f32_kern_t);
 
 protected:
     bool beta_zero_;
@@ -98,7 +98,7 @@ private:
     Xbyak::Zmm zmm_tmp0_;
     Xbyak::Zmm zmm_tmp1_;
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_gemm_bf16bf16f32_kern);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_gemm_bf16bf16f32_kern_t);
 };
 
 } // namespace x64

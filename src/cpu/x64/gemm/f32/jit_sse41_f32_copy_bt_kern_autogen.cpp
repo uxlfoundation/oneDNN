@@ -23,10 +23,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_sse41_f32_copy_bt_kern::jit_sse41_f32_copy_bt_kern()
+jit_sse41_f32_copy_bt_kern_t::jit_sse41_f32_copy_bt_kern_t()
     : jit_generator_t(jit_name()) {}
 
-void jit_sse41_f32_copy_bt_kern::generate() {
+void jit_sse41_f32_copy_bt_kern_t::generate() {
 
 #ifndef _WIN32
 #define M rdi

@@ -23,10 +23,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-jit_avx_kernel_sgemm_kern::jit_avx_kernel_sgemm_kern()
+jit_avx_kernel_sgemm_kern_t::jit_avx_kernel_sgemm_kern_t()
     : jit_generator_t(jit_name()) {}
 
-void jit_avx_kernel_sgemm_kern::generate() {
+void jit_avx_kernel_sgemm_kern_t::generate() {
     Xbyak::Label l1efc;
     Xbyak::Label l1f44;
     Xbyak::Label l1f48;
@@ -40,13 +40,13 @@ void jit_avx_kernel_sgemm_kern::generate() {
     mov(C, ptr[OLD_C]);
     mov(LDC, ptr[OLD_LDC]);
 
-    jit_avx_kernel_sgemm_kern::generate_part1(l1efc, l1f44, l1f48);
-    jit_avx_kernel_sgemm_kern::generate_part2(l1efc, l1f44, l1f48);
+    jit_avx_kernel_sgemm_kern_t::generate_part1(l1efc, l1f44, l1f48);
+    jit_avx_kernel_sgemm_kern_t::generate_part2(l1efc, l1f44, l1f48);
 
     postamble();
 }
 
-void jit_avx_kernel_sgemm_kern::generate_part1(const Xbyak::Label &l1efc,
+void jit_avx_kernel_sgemm_kern_t::generate_part1(const Xbyak::Label &l1efc,
         const Xbyak::Label &l1f44, const Xbyak::Label &l1f48) {
     std::vector<Xbyak::Label> labels(44);
 

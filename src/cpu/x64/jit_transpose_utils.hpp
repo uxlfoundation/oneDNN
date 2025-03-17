@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ struct jit_trans_src_t {
     virtual status_t create_kernel() = 0;
 
     jit_trans_src_t(const jit_conv_conf_t *conf) : conf_(conf) {}
-    virtual ~jit_trans_src_t() {}
+    virtual ~jit_trans_src_t() = default;
 
     const jit_conv_conf_t *conf_;
 };
@@ -61,7 +61,7 @@ struct jit_trans_dst_t {
     };
 
     jit_trans_dst_t(const jit_conv_conf_t *conf) : conf_(conf) {}
-    virtual ~jit_trans_dst_t() {}
+    virtual ~jit_trans_dst_t() = default;
 
     virtual void operator()(ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
@@ -132,7 +132,7 @@ struct jit_diff_wei_trans_to_vnni_t : public jit_generator {
         , oc_block_(oc_block)
         , nb_ic_(nb_ic) {}
 
-    ~jit_diff_wei_trans_to_vnni_t() {}
+    ~jit_diff_wei_trans_to_vnni_t() override = default;
 
     status_t create_kernel() override { return jit_generator::create_kernel(); }
 

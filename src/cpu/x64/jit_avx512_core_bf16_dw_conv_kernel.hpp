@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -138,7 +138,8 @@ struct jit_avx512_dw_conv_bwd_data_kernel_bf16 : public jit_generator {
                     bf16_emu_reserv_1, bf16_emu_reserv_2, bf16_emu_reserv_3,
                     bf16_emu_reserv_4, bf16_emu_reserv_5, bf16_emu_reserv_6);
     }
-    ~jit_avx512_dw_conv_bwd_data_kernel_bf16() = default;
+
+    ~jit_avx512_dw_conv_bwd_data_kernel_bf16() override = default;
 
     jit_conv_conf_t jcp;
 
@@ -216,7 +217,8 @@ struct jit_avx512_dw_conv_bwd_weights_kernel_bf16 : public jit_generator {
                     bf16_emu_reserv_1, bf16_emu_reserv_2, bf16_emu_reserv_3,
                     bf16_emu_reserv_4, bf16_emu_reserv_5, bf16_emu_reserv_6);
     }
-    ~jit_avx512_dw_conv_bwd_weights_kernel_bf16() = default;
+
+    ~jit_avx512_dw_conv_bwd_weights_kernel_bf16() override = default;
 
     jit_conv_conf_t jcp;
 

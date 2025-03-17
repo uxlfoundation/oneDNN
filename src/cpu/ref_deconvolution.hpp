@@ -102,8 +102,6 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             , dst_tag_(other.dst_tag_)
             , name_(other.name_) {}
 
-        ~pd_t() = default;
-
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_fwd_t);
 
         status_t init_convolution(engine_t *engine) {
@@ -335,8 +333,6 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
             , conv_pd_(other.conv_pd_->clone())
             , name_(other.name_) {}
 
-        ~pd_t() = default;
-
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_data_t);
 
         status_t init_convolution(engine_t *engine) {
@@ -445,8 +441,6 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
             , conv_pd_(other.conv_pd_->clone())
             , dst_tag_(other.dst_tag_)
             , name_(other.name_) {}
-
-        ~pd_t() = default;
 
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_weights_t);
 

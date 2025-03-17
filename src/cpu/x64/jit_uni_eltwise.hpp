@@ -52,7 +52,8 @@ struct jit_uni_eltwise_fwd_t : public primitive_t {
     };
 
     jit_uni_eltwise_fwd_t(const pd_t *apd);
-    virtual ~jit_uni_eltwise_fwd_t();
+
+    ~jit_uni_eltwise_fwd_t() override;
 
     using data_t = typename prec_traits_t<d_type>::type;
 
@@ -82,7 +83,8 @@ struct jit_uni_eltwise_bwd_t : public primitive_t {
     };
 
     jit_uni_eltwise_bwd_t(const pd_t *apd);
-    virtual ~jit_uni_eltwise_bwd_t();
+
+    ~jit_uni_eltwise_bwd_t() override;
 
     using data_t = typename prec_traits_t<d_type>::type;
 

@@ -172,7 +172,7 @@ struct _ref_rnn_common_t : public primitive_t {
         : primitive_t(apd), rnn_postgemm_(nullptr) {}
 
     status_t init(engine_t *engine) override;
-    virtual ~_ref_rnn_common_t() { delete rnn_postgemm_; }
+    ~_ref_rnn_common_t() override { delete rnn_postgemm_; }
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

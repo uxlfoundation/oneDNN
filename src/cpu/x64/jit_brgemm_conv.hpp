@@ -163,7 +163,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
     brgemm_convolution_fwd_t(const pd_t *apd);
 
-    ~brgemm_convolution_fwd_t() = default;
+    ~brgemm_convolution_fwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

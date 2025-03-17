@@ -52,7 +52,8 @@ struct jit_uni_batch_normalization_s8_fwd_t : public primitive_t {
     using data_t = int8_t;
 
     jit_uni_batch_normalization_s8_fwd_t(const pd_t *apd);
-    ~jit_uni_batch_normalization_s8_fwd_t();
+
+    ~jit_uni_batch_normalization_s8_fwd_t() override;
 
     status_t init(engine_t *engine) override;
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -488,7 +488,8 @@ struct jit_avx512_core_amx_bwd_data_kernel_t : public jit_generator {
         CHECK(bwd_data_copy_kernel_->create_kernel());
         return status::success;
     }
-    ~jit_avx512_core_amx_bwd_data_kernel_t() = default;
+
+    ~jit_avx512_core_amx_bwd_data_kernel_t() override = default;
 
     static bool post_ops_ok(const jit_conv_conf_t &jcp, primitive_attr_t &attr);
 
@@ -614,7 +615,7 @@ struct jit_avx512_core_amx_bwd_weights_kernel_t : public jit_generator {
     jit_avx512_core_amx_bwd_weights_kernel_t(const jit_conv_conf_t &ajcp)
         : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
-    ~jit_avx512_core_amx_bwd_weights_kernel_t() {}
+    ~jit_avx512_core_amx_bwd_weights_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_bwd_weights_kernel_t)
 
@@ -749,7 +750,7 @@ struct jit_avx512_core_amx_bwd_bias_kernel_t : public jit_generator {
     jit_avx512_core_amx_bwd_bias_kernel_t(const jit_conv_conf_t &ajcp)
         : jit_generator(jit_name(), avx512_core_amx), jcp(ajcp) {}
 
-    ~jit_avx512_core_amx_bwd_bias_kernel_t() {}
+    ~jit_avx512_core_amx_bwd_bias_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_amx_bwd_bias_kernel_t)
 

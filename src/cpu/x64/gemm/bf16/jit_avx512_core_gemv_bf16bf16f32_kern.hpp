@@ -28,7 +28,7 @@ namespace x64 {
 class jit_avx512_core_gemv_bf16bf16f32_kern : public jit_generator {
 public:
     jit_avx512_core_gemv_bf16bf16f32_kern(bool trans);
-    ~jit_avx512_core_gemv_bf16bf16f32_kern();
+    ~jit_avx512_core_gemv_bf16bf16f32_kern() override;
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_gemv_bf16bf16f32_kern);
 
 protected:

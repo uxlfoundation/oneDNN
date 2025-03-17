@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -204,7 +204,7 @@ struct jit_avx512_common_conv_fwd_kernel {
         return status::out_of_memory;
     }
 
-    ~jit_avx512_common_conv_fwd_kernel() {}
+    ~jit_avx512_common_conv_fwd_kernel() = default;
 
     enum { typesize = sizeof(float) };
 
@@ -374,7 +374,7 @@ struct jit_avx512_common_conv_bwd_data_kernel_f32 {
         return status::out_of_memory;
     }
 
-    ~jit_avx512_common_conv_bwd_data_kernel_f32() {}
+    ~jit_avx512_common_conv_bwd_data_kernel_f32() = default;
 
     enum { typesize = sizeof(float) };
 

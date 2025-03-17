@@ -109,7 +109,7 @@ struct ref_concat_t : public primitive_t {
         return status::success;
     }
 
-    ~ref_concat_t() = default;
+    ~ref_concat_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         using namespace memory_tracking::names;

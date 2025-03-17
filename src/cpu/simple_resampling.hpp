@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -103,7 +103,8 @@ struct simple_resampling_fwd_t : public primitive_t {
 
     simple_resampling_fwd_t(const pd_t *apd);
     status_t init(engine_t *engine) override;
-    ~simple_resampling_fwd_t() = default;
+
+    ~simple_resampling_fwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
@@ -149,7 +150,8 @@ struct simple_resampling_bwd_t : public primitive_t {
 
     simple_resampling_bwd_t(const pd_t *apd);
     status_t init(engine_t *engine) override;
-    ~simple_resampling_bwd_t() = default;
+
+    ~simple_resampling_bwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

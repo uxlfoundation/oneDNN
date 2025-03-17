@@ -253,20 +253,25 @@ protected:
                 && !mayiuse(avx512_core))
             return status::success;
 
+//NOLINTBEGIN(bugprone-macro-parentheses)
+// Can't put types into `()`:
+// error: expected type-specifier before ‘)’ token
 #define CREATE_WITH_DIR(k, ker_t) \
     do { \
         if (mayiuse(avx512_core)) \
-            k.reset(new ker_t<avx512_core, src_type, scratch_type>(rnn, pd_)); \
+            (k).reset( \
+                    new ker_t<avx512_core, src_type, scratch_type>(rnn, pd_)); \
         else if (mayiuse(avx2)) \
-            k.reset(new ker_t<avx2, src_type, scratch_type>(rnn, pd_)); \
+            (k).reset(new ker_t<avx2, src_type, scratch_type>(rnn, pd_)); \
         else \
-            k.reset(new ker_t<sse41, src_type, scratch_type>(rnn, pd_)); \
+            (k).reset(new ker_t<sse41, src_type, scratch_type>(rnn, pd_)); \
     } while (0)
 #define CREATE(k, ker_t) \
     do { \
-        if (jit_fwd) CREATE_WITH_DIR(k, CONCAT2(ker_t, _fwd)); \
-        if (jit_bwd) CREATE_WITH_DIR(k, CONCAT2(ker_t, _bwd)); \
+        if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd)); \
+        if (jit_bwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _bwd)); \
     } while (0)
+        //NOLINTEND(bugprone-macro-parentheses)
 
         if (pd_->cell_kind() == alg_kind::vanilla_lstm) {
             CREATE(rnn_postgemm_, jit_uni_lstm_cell_postgemm);

@@ -22,8 +22,8 @@
 #include "cpu/x64/jit_generator.hpp"
 
 #define PADD_BYTESIZE_ONPAGE(x, size) \
-    (((x) * (size) + PAGE_4K - 1) / PAGE_4K) * PAGE_4K
-#define NEXT_THR_STRIDE(x, size) (PADD_BYTESIZE_ONPAGE(x, size)) / size
+    ((((x) * (size) + PAGE_4K - 1) / PAGE_4K) * PAGE_4K)
+#define NEXT_THR_STRIDE(x, size) (PADD_BYTESIZE_ONPAGE(x, (size)) / (size))
 
 namespace dnnl {
 namespace impl {

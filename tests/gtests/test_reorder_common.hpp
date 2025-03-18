@@ -50,7 +50,7 @@ inline void check_reorder(const memory::desc &md_i, const memory::desc &md_o,
 }
 
 template <typename reorder_types>
-struct test_simple_params {
+struct test_simple_params_t {
     memory::format_tag fmt_i;
     memory::format_tag fmt_o;
     memory::dims dims;
@@ -60,7 +60,7 @@ struct test_simple_params {
 
 template <typename reorder_types>
 class reorder_simple_test
-    : public ::testing::TestWithParam<test_simple_params<reorder_types>> {
+    : public ::testing::TestWithParam<test_simple_params_t<reorder_types>> {
 protected:
 #ifdef DNNL_TEST_WITH_ENGINE_PARAM
     void Test() {
@@ -74,7 +74,7 @@ protected:
         SKIP_IF(unsupported_data_type(prec_o),
                 "Engine does not support this data type.");
 
-        test_simple_params<reorder_types> p
+        test_simple_params_t<reorder_types> p
                 = ::testing::TestWithParam<decltype(p)>::GetParam();
 
         SKIP_IF_CUDA(!((supported_format(p.fmt_i)
@@ -124,7 +124,7 @@ protected:
         SKIP_IF(unsupported_data_type(prec_o, eng_o),
                 "Engine does not support this data type.");
 
-        test_simple_params<reorder_types> p
+        test_simple_params_t<reorder_types> p
                 = ::testing::TestWithParam<decltype(p)>::GetParam();
 
 #ifdef DNNL_SYCL_CUDA
@@ -154,7 +154,7 @@ protected:
         using data_i_t = typename reorder_types::first_type;
         using data_o_t = typename reorder_types::second_type;
 
-        test_simple_params<reorder_types> p
+        test_simple_params_t<reorder_types> p
                 = ::testing::TestWithParam<decltype(p)>::GetParam();
 
         const size_t nelems = std::accumulate(p.dims.begin(), p.dims.end(),

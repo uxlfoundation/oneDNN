@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 * Copyright 2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,10 +32,10 @@ using f32_f32 = std::pair<float, float>;
 using s32_s32 = std::pair<int32_t, int32_t>;
 using s8_s8 = std::pair<int8_t, int8_t>;
 
-using cfg_bf16 = test_simple_params<f32_bf16>;
-using cfg_f32 = test_simple_params<f32_f32>;
-using cfg_s32 = test_simple_params<s32_s32>;
-using cfg_s8 = test_simple_params<s8_s8>;
+using cfg_bf16 = test_simple_params_t<f32_bf16>;
+using cfg_f32 = test_simple_params_t<f32_f32>;
+using cfg_s32 = test_simple_params_t<s32_s32>;
+using cfg_s8 = test_simple_params_t<s8_s8>;
 
 using reorder_simple_test_f32_bf16 = reorder_simple_test<f32_bf16>;
 using reorder_simple_test_f32_f32 = reorder_simple_test<f32_f32>;

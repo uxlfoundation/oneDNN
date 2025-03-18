@@ -1416,6 +1416,14 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                     = vmm_mask(vmm_lower, is_tail, true, k_mask);
             const Xmm xmm = Xmm(vmm.getIdx());
             const Xmm r_xmm = vmm_mask(xmm, is_tail, true, k_mask);
+            if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+                assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
+                auto vmm_perm = vmm_ubound();
+                vpermb(vmm, vmm_perm, vmm);
+                vmovdqu8(addr, r_xmm);
+                continue;
+            }
+
             switch (brg.dt_d) {
                 case data_type::f32:
                 case data_type::s32: uni_vmovups(addr, r_vmm); break;
@@ -1445,13 +1453,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                     } else
                         assert(!"Error, native conversion unsupported");
                     break;
-                case data_type::s8:
-                    if (dt_requires_saturation
-                            && isa_has_sat_cvt(brg.isa_impl, brg.dt_d))
-                        vpmovusdb(addr, r_vmm);
-                    else
-                        vpmovsdb(addr, r_vmm);
-                    break;
+                case data_type::s8: vpmovsdb(addr, r_vmm); break;
                 case data_type::u8: vpmovusdb(addr, r_vmm); break;
                 default: assert(!"unknown dst_dt");
             }

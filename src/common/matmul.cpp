@@ -355,21 +355,39 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             ? utils::get_dims_mask(dst_desc->dims, op_d.bias_desc.dims, ndims)
             : 0;
 
-    // TODO: requirement is for innermost dim to be multiple of 2 for
-    // the memory to be byte aligned.
+    using namespace data_type;
+    if (weights_desc->format_kind == format_kind::blocked
+            && utils::one_of(
+                    weights_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
+        const auto &wei_strides = weights_desc->format_desc.blocking.strides;
 
-    // s4/u4/f4 weights requires n to be multiple of 2 to be byte aligned
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_desc->data_type,
-                                      data_type::s4, data_type::u4,
-                                      data_type::f4_e2m1, data_type::f4_e3m0),
-                          weights_desc->dims[n_idx] % 2 == 0),
-            VERBOSE_BAD_DIM, "weights", n_idx);
-    // s4/u4/f4 src requires k to be multiple of 2 to be byte aligned
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(src_desc->data_type, data_type::s4,
-                                      data_type::u4, data_type::f4_e2m1,
-                                      data_type::f4_e3m0),
-                          src_desc->dims[k_idx_src] % 2 == 0),
-            VERBOSE_BAD_DIM, "src", n_idx);
+        int n_unit_strides = 0;
+        for (int d = 0; d < ndims; d++) {
+            if (wei_strides[d] == 1) {
+                n_unit_strides++;
+                VCHECK_MATMUL(
+                        n_unit_strides <= 1, VERBOSE_BAD_DIM, "weights", d);
+            }
+            VCHECK_MATMUL(
+                    IMPLICATION(wei_strides[d] > 1, wei_strides[d] % 2 == 0),
+                    VERBOSE_BAD_DIM, "weights", d);
+        }
+    }
+    if (src_desc->format_kind == format_kind::blocked
+            && utils::one_of(src_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
+        const auto &src_strides = src_desc->format_desc.blocking.strides;
+
+        int n_unit_strides = 0;
+        for (int d = 0; d < ndims; d++) {
+            if (src_strides[d] == 1) {
+                n_unit_strides++;
+                VCHECK_MATMUL(n_unit_strides <= 1, VERBOSE_BAD_DIM, "src", d);
+            }
+            VCHECK_MATMUL(
+                    IMPLICATION(src_strides[d] > 1, src_strides[d] % 2 == 0),
+                    VERBOSE_BAD_DIM, "src", d);
+        }
+    }
 
     // check if other dims match.
     for (int d = 0; d < ndims - 2; ++d) {

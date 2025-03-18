@@ -36,7 +36,7 @@ using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::cpu::x64::bf16_support;
 
-//a Below two stand-alone functions are moved out from execute_backward_data
+// Below two stand-alone functions are moved out from execute_backward_data
 // and execute_backward_weights to avoid warnings with gcc 6.x and 7.x compilers
 // "declared with greater visibility than the type of its field"
 // when one lambda function is delcared whithin the other one

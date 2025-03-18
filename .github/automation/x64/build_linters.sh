@@ -8,7 +8,6 @@ export CXX=clang++
 if [[ "$ONEDNN_ACTION" == "configure" ]]; then
     if [[ "$GITHUB_JOB" == "pr-clang-tidy" ]]; then
       set -x
-      echo "This is script from hmaciak/fix_clang_checkout"
       cmake \
           -Bbuild -S. \
           -DCMAKE_BUILD_TYPE=debug \

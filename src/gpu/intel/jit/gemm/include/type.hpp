@@ -118,9 +118,20 @@ public:
     }
 
     // Not a valid nGEN DataType; for gemmstone internal use only
+#if XE3P
+    static  constexpr  ngen::DataType ngen_f4_e2m1() { return  ngen::DataType::e2m1; }
+    static  constexpr  ngen::DataType ngen_f4_e3m0() { return  ngen::DataType::e3m0; }
+    static  constexpr  ngen::DataType ngen_f8_e8m0() { return  static_cast<ngen::DataType>(0x79); }
+#else
+    // Not a valid nGEN DataType; for gemmstone internal use only
     static  constexpr  ngen::DataType ngen_f4_e2m1() { return  static_cast<ngen::DataType>(0x5A);}
     static  constexpr  ngen::DataType ngen_f4_e3m0() { return  static_cast<ngen::DataType>(0x5B);}
-    static  constexpr  ngen::DataType ngen_f8_e8m0() { return  static_cast<ngen::DataType>(0x69);}
+    static  constexpr  ngen::DataType ngen_f8_e8m0() { return  static_cast<ngen::DataType>(0x79);}
+#endif
+
+
+
+
 
 
     ngen::DataType ngen() const

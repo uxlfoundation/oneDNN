@@ -638,7 +638,7 @@ template <cpu_isa_t isa, impl::data_type_t d_type>
 status_t jit_uni_pooling_fwd_t<isa, d_type>::init(engine_t *engine) {
 
     CHECK(safe_ptr_assign(kernel_,
-            new jit_uni_pool_kernel<isa>(
+            new jit_uni_pool_kernel_t<isa>(
                     pd()->jpp_, pd()->invariant_dst_md())));
 
     if (pd()->jpp_.tag_kind == jit_memory_tag_kind_t::ncsp)
@@ -1024,7 +1024,7 @@ status_t jit_uni_pooling_bwd_t<isa, d_type>::init_ncsp_trans_ctx() {
 template <cpu_isa_t isa, data_type_t d_type>
 status_t jit_uni_pooling_bwd_t<isa, d_type>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_,
-            new jit_uni_pool_kernel<isa>(
+            new jit_uni_pool_kernel_t<isa>(
                     pd()->jpp_, pd()->invariant_dst_md())));
     if (pd()->jpp_.tag_kind == jit_memory_tag_kind_t::ncsp)
         CHECK(init_ncsp_trans_ctx());

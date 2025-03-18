@@ -35,15 +35,15 @@ namespace cpu {
 namespace x64 {
 
 template <cpu_isa_t isa>
-struct jit_uni_pool_kernel : public jit_generator_t {
+struct jit_uni_pool_kernel_t : public jit_generator_t {
 
-    jit_uni_pool_kernel(
+    jit_uni_pool_kernel_t(
             const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md);
     jit_pool_conf_t jpp;
 
-    ~jit_uni_pool_kernel() override;
+    ~jit_uni_pool_kernel_t() override;
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_pool_kernel)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_pool_kernel_t)
 
     static status_t init_conf(jit_pool_conf_t &jpp, primitive_attr_t &attr,
             const pooling_pd_t *ppd);

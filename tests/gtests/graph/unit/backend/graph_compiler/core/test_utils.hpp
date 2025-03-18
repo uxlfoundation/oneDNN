@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2020-2024 Intel Corporation
+ * Copyright 2020-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -398,30 +398,30 @@ enum class data_type {
 };
 
 template <typename T>
-struct data_traits {};
+struct data_traits_t {};
 
 template <>
-struct data_traits<int32_t> {
+struct data_traits_t<int32_t> {
     static const auto dtype = data_type::s32;
 };
 
 template <>
-struct data_traits<bf16_t> {
+struct data_traits_t<bf16_t> {
     static const auto dtype = data_type::bf16;
 };
 
 template <>
-struct data_traits<uint8_t> {
+struct data_traits_t<uint8_t> {
     static const auto dtype = data_type::u8;
 };
 
 template <>
-struct data_traits<int8_t> {
+struct data_traits_t<int8_t> {
     static const auto dtype = data_type::s8;
 };
 
 template <>
-struct data_traits<float> {
+struct data_traits_t<float> {
     static const auto dtype = data_type::f32;
 };
 
@@ -457,8 +457,8 @@ static int compare_data_count(T *dst, T *ref, size_t size, float rtol = 1e-4f,
     std::atomic<int> count(0);
     parallel_nd(size, [&](size_t i) {
         // early stopping to avoid verbose outputs
-        if (data_traits<T>::dtype == data_type::f32
-                || data_traits<T>::dtype == data_type::bf16) {
+        if (data_traits_t<T>::dtype == data_type::f32
+                || data_traits_t<T>::dtype == data_type::bf16) {
             const float ref_f32 = static_cast<float>(ref[i]);
             const float dst_f32 = static_cast<float>(dst[i]);
             const float diff_f32 = dst_f32 - ref_f32;
@@ -611,9 +611,9 @@ template <typename T>
 inline void check_fp_data(std::vector<T> &dat, bool check_nan = true,
         bool check_inf = true, std::function<void()> on_error = nullptr) {
     ASSERT_NE(dat.size(), 0u) << "Data size is 0";
-    ASSERT_TRUE(data_traits<T>::dtype == data_type::f16
-            || data_traits<T>::dtype == data_type::bf16
-            || data_traits<T>::dtype == data_type::f32)
+    ASSERT_TRUE(data_traits_t<T>::dtype == data_type::f16
+            || data_traits_t<T>::dtype == data_type::bf16
+            || data_traits_t<T>::dtype == data_type::f32)
             << "Data must be floating point";
     check_fp_data(dat.data(), dat.size(), check_nan, check_inf, on_error);
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -112,7 +112,7 @@ template <typename data_t>
 void prepare_matrix(const test_memory &M_mem, int64_t off_beg, layout_t layout,
         int64_t R, int64_t C, int64_t LD, const mapper_t &mapper) {
     auto M = map_memory<data_t>(M_mem);
-    auto dt = data_traits<data_t>::data_type;
+    auto dt = data_traits_t<data_t>::data_type;
     bool is_fp = (false || dt == memory::data_type::f16
             || dt == memory::data_type::bf16 || dt == memory::data_type::f32);
     const data_t mean = (data_t)(is_fp ? 1.f : 4);
@@ -214,7 +214,7 @@ inline void get_matrix_size(
 template <typename T>
 inline memory::desc get_matrix_md(memory::dim n, memory::dim off) {
     return create_md(
-            {n + off}, data_traits<T>::data_type, memory::format_tag::x);
+            {n + off}, data_traits_t<T>::data_type, memory::format_tag::x);
 }
 
 template <typename a_dt, typename b_dt, typename c_dt>

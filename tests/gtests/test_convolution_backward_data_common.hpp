@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -106,11 +106,11 @@ protected:
                                         memory::format_tag::owi,
                                         memory::format_tag::ohwi,
                                         memory::format_tag::odhwi)))
-                        && data_traits<data_t_diff_src>::data_type
+                        && data_traits_t<data_t_diff_src>::data_type
                                 == memory::data_type::f32
-                        && data_traits<data_t_diff_dst>::data_type
+                        && data_traits_t<data_t_diff_dst>::data_type
                                 == memory::data_type::f32
-                        && data_traits<data_t_wei>::data_type
+                        && data_traits_t<data_t_wei>::data_type
                                 == memory::data_type::f32
                         && check_cuda_alg_format(p.formats.dst_format,
                                 p.formats.weights_format, p.aalgorithm)),
@@ -128,11 +128,11 @@ protected:
                                             memory::format_tag::owi,
                                             memory::format_tag::ohwi,
                                             memory::format_tag::odhwi)))
-                            && data_traits<data_t_diff_src>::data_type
+                            && data_traits_t<data_t_diff_src>::data_type
                                     == memory::data_type::f32
-                            && data_traits<data_t_diff_dst>::data_type
+                            && data_traits_t<data_t_diff_dst>::data_type
                                     == memory::data_type::f32
-                            && data_traits<data_t_wei>::data_type
+                            && data_traits_t<data_t_wei>::data_type
                                     == memory::data_type::f32
                             && check_hip_alg_format(p.formats.dst_format,
                                     p.formats.weights_format, p.aalgorithm)),
@@ -209,7 +209,7 @@ protected:
 
     template <typename dt>
     bool check_generic_dt() {
-        return impl::utils::one_of(data_traits<dt>::data_type,
+        return impl::utils::one_of(data_traits_t<dt>::data_type,
                 memory::data_type::f32, memory::data_type::bf16,
                 memory::data_type::f16, memory::data_type::s32,
                 memory::data_type::s8, memory::data_type::u8);
@@ -221,9 +221,9 @@ protected:
         ASSERT_EQ(p.aalgorithm, algorithm::convolution_direct);
         auto eng = get_test_engine();
         auto strm = stream(eng);
-        auto data_type_diff_src = data_traits<data_t_diff_src>::data_type;
-        auto data_type_diff_dst = data_traits<data_t_diff_dst>::data_type;
-        auto data_type_wei = data_traits<data_t_wei>::data_type;
+        auto data_type_diff_src = data_traits_t<data_t_diff_src>::data_type;
+        auto data_type_diff_dst = data_traits_t<data_t_diff_dst>::data_type;
+        auto data_type_wei = data_traits_t<data_t_wei>::data_type;
 
         test_convolution_sizes_t cd = p.sizes;
 

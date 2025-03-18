@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -115,9 +115,9 @@ class convolution_eltwise_test
     : public ::testing::TestWithParam<test_convolution_eltwise_params_t> {
 protected:
     virtual void SetUp() {
-        memory::data_type data_type_src = data_traits<data_t_src>::data_type;
-        memory::data_type data_type_dst = data_traits<data_t_dst>::data_type;
-        memory::data_type data_type_wei = data_traits<data_t_wei>::data_type;
+        memory::data_type data_type_src = data_traits_t<data_t_src>::data_type;
+        memory::data_type data_type_dst = data_traits_t<data_t_dst>::data_type;
+        memory::data_type data_type_wei = data_traits_t<data_t_wei>::data_type;
 
         SKIP_IF(unsupported_data_type(data_type_src),
                 "Engine does not support this data type.");
@@ -247,9 +247,9 @@ protected:
         float eltwise_alpha = p.eltwise_alpha;
         float eltwise_beta = p.eltwise_beta;
 
-        memory::data_type data_type_src = data_traits<data_t_src>::data_type;
-        memory::data_type data_type_dst = data_traits<data_t_dst>::data_type;
-        memory::data_type data_type_wei = data_traits<data_t_wei>::data_type;
+        memory::data_type data_type_src = data_traits_t<data_t_src>::data_type;
+        memory::data_type data_type_dst = data_traits_t<data_t_dst>::data_type;
+        memory::data_type data_type_wei = data_traits_t<data_t_wei>::data_type;
 
         test_convolution_sizes_t cd = p.sizes;
 

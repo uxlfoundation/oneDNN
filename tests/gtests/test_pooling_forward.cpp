@@ -223,7 +223,7 @@ protected:
     void SetUp() override {
         p = ::testing::TestWithParam<decltype(p)>::GetParam();
 
-        SKIP_IF(unsupported_data_type(data_traits<data_t>::data_type),
+        SKIP_IF(unsupported_data_type(data_traits_t<data_t>::data_type),
                 "Engine does not support this data type.");
         SKIP_IF_CUDA(!cuda_check_format_tags(p.src_format),
                 "Unsupported format tag");
@@ -233,7 +233,7 @@ protected:
                 !hip_check_format_tags(p.src_format), "Unsupported format tag");
         SKIP_IF_HIP(
                 !hip_check_format_tags(p.dst_format), "Unsupported format tag");
-        SKIP_IF_HIP(data_traits<data_t>::data_type == memory::data_type::s8,
+        SKIP_IF_HIP(data_traits_t<data_t>::data_type == memory::data_type::s8,
                 "Unsupported data type");
         SKIP_IF_GENERIC(!generic_check_format_tags(p.src_format),
                 "Unsupported format tag");
@@ -277,7 +277,7 @@ protected:
                 || p.aprop_kind == prop_kind::forward_inference);
         auto eng = get_test_engine();
         auto strm = make_stream(eng);
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
 
         test_pool_desc_t pd = p.test_pd;
         auto p_src_desc = (p.ndims == 5)

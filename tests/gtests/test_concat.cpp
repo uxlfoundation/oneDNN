@@ -108,7 +108,7 @@ protected:
     }
 
     void SetUp() override {
-        auto data_type = data_traits<data_t>::data_type;
+        auto data_type = data_traits_t<data_t>::data_type;
         SKIP_IF_HIP(true, "Concat operator is not supported");
         SKIP_IF(unsupported_data_type(data_type),
                 "Engine does not support this data type.");
@@ -153,7 +153,7 @@ protected:
 
         auto eng = get_test_engine();
         auto strm = make_stream(eng);
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
 
         std::vector<memory::desc> srcs_md;
         std::vector<memory> srcs;

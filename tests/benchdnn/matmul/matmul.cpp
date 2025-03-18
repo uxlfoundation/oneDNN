@@ -676,15 +676,41 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         }
     }
 
+    // Check int4 weights byte alignment if format is specified.
     if ((prb->wei_dt() == dnnl_s4 || prb->wei_dt() == dnnl_u4)
-            && (prb->n % 2)) {
-        BENCHDNN_PRINT(2,
-                "[INVALID][%s:%d]: Int4 Weights decompression requires OC "
-                "('%d') to be even.\n",
-                __FILE__, __LINE__, (int)prb->n);
-        res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
-        return;
+            && (!prb->strides[WEI].empty()
+                    || (prb->wtag != tag::any && prb->wtag != tag::undef))) {
+        const auto &weights_rt_dims = get_runtime_dims(
+                prb->weights_dims(), prb->weights_runtime_dim_mask());
+        const auto wei_md
+                = dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(),
+                        prb->wei_dt(), prb->wtag, prb->strides[STRIDES_WEI]);
+
+        const auto wei_strides = query_md_strides(wei_md);
+        int n_unit_strides = 0;
+        for (int d = 0; d < query_md_ndims(wei_md); d++) {
+            if (wei_strides[d] == 1) {
+                n_unit_strides++;
+                if (n_unit_strides > 1) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Int4 Weights decompression "
+                            "requires byte alignment for the tensor.\n",
+                            __FILE__, __LINE__);
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
+            }
+            if (wei_strides[d] > 1 && (wei_strides[d] % 2)) {
+                BENCHDNN_PRINT(2,
+                        "[INVALID][%s:%d]: Int4 Weights decompression requires "
+                        "byte alignment for the tensor.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::invalid_case;
+                return;
+            }
+        }
     }
 
     auto src_rt_mask = prb->src_runtime_dim_mask();

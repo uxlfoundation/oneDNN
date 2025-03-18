@@ -143,6 +143,8 @@ public:
         write_to_dnnl_tensor(raw_data.data(), ts_);
     }
 
+    tensor &get_tensor() { return ts_; }
+
     void *get_ptr() const { return ts_.get_data_handle(); }
 
     ~Surface() = default;
@@ -575,9 +577,18 @@ private:
 using ExecutionPlan = ExecutionPlan_v8;
 using ExecutionPlanBuilder = ExecutionPlanBuilder_v8;
 
+struct cpu_deletor_t {
+    cpu_deletor_t() = default;
+    void operator()(void *ptr) {
+        if (ptr) free(ptr);
+    }
+};
+
 static inline void onednnGraphExecute(const Handle &handle,
         ExecutionPlan const &executionPlan,
-        std::unordered_map<uint64_t, void *> const &data_ptrs) {
+        std::unordered_map<uint64_t, void *> const &data_ptrs,
+        std::vector<tensor> const &inputs_x,
+        std::vector<tensor> const &outputs_x) {
 
     auto eng = handle.get_engine();
 
@@ -589,14 +600,54 @@ static inline void onednnGraphExecute(const Handle &handle,
                                       ->get_output_ports();
 
     auto inputs_num = inputs.size();
-    auto query = inputs[Q_ID];
-    auto key = inputs[K_ID];
-    auto out = outputs[O_ID - inputs_num];
+    const lt &query = inputs[Q_ID];
+    const lt &key = inputs[K_ID];
+    const lt &out = outputs[O_ID - inputs_num];
 
-    auto ts_q = tensor(query, *eng, data_ptrs.at(query.get_id()));
-    auto ts_k = tensor(key, *eng, data_ptrs.at(key.get_id()));
-    auto ts_o = tensor(out, *eng, data_ptrs.at(out.get_id()));
+    // auto ts_q = tensor(query, *eng, data_ptrs.at(query.get_id()));
+    // auto ts_k = tensor(key, *eng, data_ptrs.at(key.get_id()));
+    // auto ts_o = tensor(out, *eng, data_ptrs.at(out.get_id()));
 
+    // executionPlan.get_compiled_partition()->execute(
+    //         *(handle.get_stream()), {ts_q, ts_k}, {ts_o});
+
+    int64_t b = 1; // batch size 2
+    int64_t h = 1; // head dim 12
+    int64_t s_q = 2048; // q tensor is padded to this seq length
+    int64_t s_kv = 2048; // k and v tensor is padded to this seq length
+    int64_t d = 128; // hidden dim
+
+    // memory allocation
+    // std::shared_ptr<void> data_buffer_q;
+    // data_buffer_q.reset(malloc(b * h * s_q * d), cpu_deletor_t {});
+    // dnnl::graph::tensor ts_q {query, *eng, data_buffer_q.get()};
+
+    // std::shared_ptr<void> data_buffer_k;
+    // data_buffer_k.reset(malloc(b * h * d * s_kv), cpu_deletor_t {});
+    // dnnl::graph::tensor ts_k {key, *eng, data_buffer_k.get()};
+
+    // std::shared_ptr<void> data_buffer_o;
+    // data_buffer_o.reset(malloc(b * s_q * h * d), cpu_deletor_t {});
+    // dnnl::graph::tensor ts_o {out, *eng, data_buffer_o.get()};
+
+    std::vector<float> raw_data_q(b * h * s_q * d);
+    //fill_random(raw_data_q);
+    //write_to_dnnl_tensor(raw_data_q.data(), ts_q);
+
+    dnnl::graph::tensor ts_q {query, *eng, raw_data_q.data()};
+
+    std::vector<float> raw_data_k(b * h * d * s_kv);
+    //fill_random(raw_data_k);
+    //write_to_dnnl_tensor(raw_data_k.data(), ts_k);
+    dnnl::graph::tensor ts_k {key, *eng, raw_data_k.data()};
+
+    std::vector<float> raw_data_o(b * s_q * h * d);
+    //fill_random(raw_data_o);
+    //write_to_dnnl_tensor(raw_data_o.data(), ts_o);
+    dnnl::graph::tensor ts_o {out, *eng, raw_data_o.data()};
+
+    // executionPlan.get_compiled_partition()->execute(
+    //         *(handle.get_stream()), inputs, outputs);
     executionPlan.get_compiled_partition()->execute(
             *(handle.get_stream()), {ts_q, ts_k}, {ts_o});
 }

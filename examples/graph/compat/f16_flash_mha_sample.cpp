@@ -129,10 +129,15 @@ static compat_0_x::Tensor createQKBMM(int64_t b, int64_t h, int64_t s_q,
     return sTensor;
 }
 
+// void run_f16_flash_attention_fprop(int64_t b, int64_t h, int64_t s_q,
+//         int64_t s_kv, int64_t d, MHA_Layout layout, void *devPtrQ,
+//         void *devPtrK, void *devPtrO, compat_0_x::DataType_t tensorType,
+//         compat_0_x::Handle &handle) {
+using tensor = compat_0_x::tensor;
 void run_f16_flash_attention_fprop(int64_t b, int64_t h, int64_t s_q,
-        int64_t s_kv, int64_t d, MHA_Layout layout, void *devPtrQ,
-        void *devPtrK, void *devPtrO, compat_0_x::DataType_t tensorType,
-        compat_0_x::Handle &handle) {
+        int64_t s_kv, int64_t d, MHA_Layout layout, const tensor &devPtrQ,
+        const tensor &devPtrK, const tensor &devPtrO,
+        compat_0_x::DataType_t tensorType, compat_0_x::Handle &handle) {
     std::vector<compat_0_x::Operation *> all_ops;
     std::vector<compat_0_x::Operation> ops;
     std::unordered_map<uint64_t, void *> data_ptrs;
@@ -161,11 +166,13 @@ void run_f16_flash_attention_fprop(int64_t b, int64_t h, int64_t s_q,
                         .setEngineConfig(std::move(filtered_configs[0]))
                         .build();
 
-    data_ptrs[Q_ID] = devPtrQ;
-    data_ptrs[K_ID] = devPtrK;
-    data_ptrs[O_ID] = devPtrO;
+    //     data_ptrs[Q_ID] = devPtrQ;
+    //     data_ptrs[K_ID] = devPtrK;
+    //     data_ptrs[O_ID] = devPtrO;
 
-    compat_0_x::onednnGraphExecute(handle, plan, data_ptrs);
+    // compat_0_x::onednnGraphExecute(handle, plan, data_ptrs);
+    compat_0_x::onednnGraphExecute(
+            handle, plan, data_ptrs, {devPtrQ, devPtrK}, {devPtrO});
     handle.synchronize();
 }
 
@@ -187,20 +194,30 @@ int main(void) {
               << ", q sequence length is " << s_q << ", kv sequence length is "
               << s_kv << ", hidden dim is " << d << std::endl;
 
-    void *devPtrQ = nullptr; // queries
-    void *devPtrK = nullptr; // keys
-    void *devPtrO = nullptr; // final output
+    //     void *devPtrQ = nullptr; // queries
+    //     void *devPtrK = nullptr; // keys
+    //     void *devPtrO = nullptr; // final output
 
     // prepare input/output memory
     const auto dt = dnnl::graph::logical_tensor::data_type::f32;
+    //     compat_0_x::Surface q_tensor(dt, b * h * s_q * d, &handle);
+    //     compat_0_x::Surface k_tensor(dt, b * h * d * s_kv, &handle);
+    //     compat_0_x::Surface o_tensor(dt, b * s_q * h * d, &handle);
+
+    //     devPtrQ = q_tensor.get_ptr();
+    //     devPtrK = k_tensor.get_ptr();
+    //     devPtrO = o_tensor.get_ptr();
+
+    //     run_f16_flash_attention_fprop(
+    //             b, h, s_q, s_kv, d, layout, devPtrQ, devPtrK, devPtrO, dt, handle);
+
     compat_0_x::Surface q_tensor(dt, b * h * s_q * d, &handle);
     compat_0_x::Surface k_tensor(dt, b * h * d * s_kv, &handle);
     compat_0_x::Surface o_tensor(dt, b * s_q * h * d, &handle);
 
-    devPtrQ = q_tensor.get_ptr();
-    std::cout << "devPtrQ: " << devPtrQ << std::endl;
-    devPtrK = k_tensor.get_ptr();
-    devPtrO = o_tensor.get_ptr();
+    const auto &devPtrQ = q_tensor.get_tensor();
+    const auto &devPtrK = k_tensor.get_tensor();
+    const auto &devPtrO = o_tensor.get_tensor();
 
     run_f16_flash_attention_fprop(
             b, h, s_q, s_kv, d, layout, devPtrQ, devPtrK, devPtrO, dt, handle);

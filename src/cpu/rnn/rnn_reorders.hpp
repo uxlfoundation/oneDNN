@@ -76,7 +76,7 @@ static inline void quantize_igo(int8_t *scratch_quantized,
             for (int go = 0; go < G * O; go++) {
                 const float s = scales[(mask == 0) ? 0 : go];
                 scratch_quantized[ldi * G * O + go]
-                        = q10n::qz_b0<in_data_t, int8_t>()(
+                        = q10n::qz_b0_t<in_data_t, int8_t>()(
                                 src[ldi * G * O + go], s);
             }
         }
@@ -100,7 +100,7 @@ static inline void quantize_goi(int8_t *scratch_quantized,
         PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < I; i++) {
             scratch_quantized[ld * I * G * O + i * G * O + go]
-                    = q10n::qz_b0<in_data_t, int8_t>()(
+                    = q10n::qz_b0_t<in_data_t, int8_t>()(
                             src[ld * G * O * I + go * I + i], s);
         }
     });
@@ -271,7 +271,7 @@ private:
                 PRAGMA_OMP_SIMD()
                 for (int j = 0; j < inner_dim; ++j) {
                     const float in = (float)i_[j] * scale + shift;
-                    o_[j] = q10n::qz_a1b0<float, out_data_t>()(in);
+                    o_[j] = q10n::qz_a1b0_t<float, out_data_t>()(in);
                 }
             }
         });
@@ -288,7 +288,8 @@ private:
         const size_t nelems = input_d.nelems();
         parallel_nd(nelems, [&](size_t i) {
             const float in = (float)input[input_d.off_l(i)] * scale + shift;
-            output[output_d.off_l(i)] = q10n::qz_a1b0<float, out_data_t>()(in);
+            output[output_d.off_l(i)]
+                    = q10n::qz_a1b0_t<float, out_data_t>()(in);
         });
         return status::success;
     }

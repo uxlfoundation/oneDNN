@@ -1423,7 +1423,7 @@ void copy_init_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     const auto maybe_q = [&](input_data_t f) {
         if (quantize) {
             float qf = f * data_scale + data_shift;
-            return q10n::qz_a1b0<float, src_data_t>()(qf);
+            return q10n::qz_a1b0_t<float, src_data_t>()(qf);
         } else
             return (src_data_t)f;
     };
@@ -1589,7 +1589,7 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
             PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dlc; s++) {
                 float val = (float)ss[s] + dd[s];
-                val = q10n::qz_a1b0<float, src_data_t>()(val);
+                val = q10n::qz_a1b0_t<float, src_data_t>()(val);
                 dd[s] = (dst_layer_dt)((val - 2 * shift) / scale);
             }
         } else if (rnn_u8u8_case

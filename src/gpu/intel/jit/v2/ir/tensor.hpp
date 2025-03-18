@@ -436,9 +436,9 @@ private:
     int stride_pad_ = 1;
 };
 
-void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
         const std::function<void(const pvar_coord_t<dim_t> &)> &func);
-void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
         const std::vector<pvar_t> &idx_order,
         const std::function<void(const pvar_coord_t<dim_t> &)> &func);
 

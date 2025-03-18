@@ -905,14 +905,15 @@ std::string layout_t::str_with_size(const hw_t &hw) const {
     return oss.str();
 }
 
-void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
         const std::function<void(const pvar_coord_t<dim_t> &)> &func) {
     for_each(base_tile, tile, {}, func);
 }
 
-void for_each(const pvar_tile_t &base_tile, pvar_tile_t tile,
+void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &_tile,
         const std::vector<pvar_t> &idx_order,
         const std::function<void(const pvar_coord_t<dim_t> &)> &func) {
+    auto tile = _tile;
     for (auto &d : tile) {
         gpu_assert(base_tile.has(d));
         gpu_assert(base_tile[d] % tile[d] == 0);
@@ -1210,8 +1211,8 @@ std::string mask_desc_t::str() const {
     return oss.str();
 }
 
-plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc) {
-    type = layout.type();
+plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc)
+    : type(layout.type()) {
     const block_t *w_block = nullptr;
     const block_t *h_block = nullptr;
     for (auto &b : layout.blocks()) {

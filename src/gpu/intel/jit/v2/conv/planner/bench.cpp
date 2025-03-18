@@ -226,22 +226,22 @@ dim_t opp_pad(dim_t i, dim_t o, dim_t k, dim_t s, dim_t p, dim_t d) {
 
 class bench_task_t : public bench_task_base_t {
 public:
-    bench_task_t(const problem_t &prb) : prb_(prb) {
-        g = prb.shape()[pvars::g];
-        mb = prb.shape()[pvars::mb];
-        oc = prb.shape()[pvars::oc];
-        ic = prb.shape()[pvars::ic];
-        ih = prb.shape()[pvars::ih];
-        iw = prb.shape()[pvars::iw];
-        oh = prb.shape()[pvars::oh];
-        ow = prb.shape()[pvars::ow];
-        kh = prb.shape()[pvars::kh];
-        kw = prb.shape()[pvars::kw];
-        sh = prb.shape()[pvars::sh];
-        sw = prb.shape()[pvars::sw];
-        ph = prb.shape()[pvars::ph];
-        pw = prb.shape()[pvars::pw];
-    }
+    bench_task_t(const problem_t &prb)
+        : prb_(prb)
+        , g(prb.shape()[pvars::g])
+        , mb(prb.shape()[pvars::mb])
+        , oc(prb.shape()[pvars::oc])
+        , ic(prb.shape()[pvars::ic])
+        , ih(prb.shape()[pvars::ih])
+        , iw(prb.shape()[pvars::iw])
+        , oh(prb.shape()[pvars::oh])
+        , ow(prb.shape()[pvars::ow])
+        , kh(prb.shape()[pvars::kh])
+        , kw(prb.shape()[pvars::kw])
+        , sh(prb.shape()[pvars::sh])
+        , sw(prb.shape()[pvars::sw])
+        , ph(prb.shape()[pvars::ph])
+        , pw(prb.shape()[pvars::pw]) {}
 
     const problem_t &prb() const { return prb_; }
 
@@ -420,7 +420,7 @@ private:
     }
 
     problem_t prb_;
-    memory::dim mb, g;
+    memory::dim g, mb;
     memory::dim oc, ic;
     memory::dim ih, iw;
     memory::dim oh, ow;
@@ -650,7 +650,7 @@ public:
 
     bench_data_t bench(const kernel_desc_t &_kernel_desc) {
         if (tasks_.empty()) return bench_data_t();
-        auto kernel_desc = _kernel_desc;
+        const auto &kernel_desc = _kernel_desc;
         if (!create_conv_plan(kernel_desc, bench_mger_.hw())) return {};
         return planner::bench(bench_mger_, kernel_desc, tasks_, &mem_pool_);
     }
@@ -670,8 +670,7 @@ bench_data_t bench_runner_t::bench(const kernel_desc_t &kernel_desc) {
 }
 
 bench_data_t bench(const bench_manager_t &bench_mger,
-        const kernel_desc_t &_kernel_desc, int nprbs) {
-    auto kernel_desc = _kernel_desc;
+        const kernel_desc_t &kernel_desc, int nprbs) {
     if (!create_conv_plan(kernel_desc, bench_mger.hw())) return {};
     bench_runner_t runner(bench_mger,
             bench_input_params_t(kernel_desc, bench_mger.hw(), nprbs));
@@ -683,7 +682,7 @@ bool try_create(
     bench_input_params_t params(kernel_desc, bench_mger.hw(), /*nprbs=*/1);
     bench_task_t task(generate_problems(params)[0]);
     auto engine = bench_mger.get_engine();
-    auto guard = debug_t::instance().make_kernel_desc_setter(kernel_desc);
+    auto guard = debug_t::make_kernel_desc_setter(kernel_desc);
     return task.init_primitive(engine);
 }
 

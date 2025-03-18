@@ -106,7 +106,7 @@ struct ref_matmul_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_MATMUL_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(post_ops_with_binary_ok(attr(), dst_dt_, 6),
+            VDISPATCH_MATMUL(post_ops_with_binary_ok(attr(), *dst_md(), 6),
                     VERBOSE_UNSUPPORTED_POSTOP);
             const memory_desc_wrapper dropout_md(attr_.dropout_.dropout_desc_);
             VDISPATCH_MATMUL(

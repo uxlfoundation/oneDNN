@@ -76,8 +76,8 @@ struct simple_binary_t : public gpu_primitive_t {
             VDISPATCH_BINARY(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            VDISPATCH_BINARY(post_ops_with_binary_ok(
-                                     attr(), dst_md()->data_type, MAX_NDIMS),
+            VDISPATCH_BINARY(
+                    post_ops_with_binary_ok(attr(), *dst_md(), MAX_NDIMS),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_BINARY_SC(attr_.set_default_formats(dst_md(0)),

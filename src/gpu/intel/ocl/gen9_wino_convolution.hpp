@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -78,7 +78,7 @@ struct gen9_wino_convolution_fwd_t : public gpu_primitive_t {
             VDISPATCH_CONV(
                     attr()->has_default_values(attr_skip_mask, dst_data_t),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_CONV(post_ops_with_binary_ok(attr(), dst_data_t),
+            VDISPATCH_CONV(post_ops_with_binary_ok(attr(), desc()->dst_desc),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_CONV_SC(init_conf(compute_engine),

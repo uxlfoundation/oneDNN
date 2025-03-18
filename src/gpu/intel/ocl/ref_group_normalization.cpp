@@ -85,8 +85,7 @@ status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
 
     // post-op related checks and adjustments
     VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_GNORM(
-            post_ops_with_binary_ok(attr(), dst_md()->data_type, MAX_NDIMS),
+    VDISPATCH_GNORM(post_ops_with_binary_ok(attr(), *dst_md(), MAX_NDIMS),
             VERBOSE_UNSUPPORTED_TAG);
     CHECK(attr_.set_default_formats(
             dst_md(0))); // can't use attr() due to it is const

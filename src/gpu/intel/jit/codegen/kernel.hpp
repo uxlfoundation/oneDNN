@@ -1079,6 +1079,20 @@ public:
                 *this, mod, dst, src0, src1, emu_strategy, emu_state);
     }
 
+    void esel(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
+            const ngen_operand_t &src0, const ngen_operand_t &src1) {
+        if (ngen_is_qw(dst.type())) {
+            auto neg_mod = mod;
+            neg_mod.setPredInv(!mod.isPredInv());
+            emov(mod, dst, src0);
+            emov(neg_mod, dst, src1);
+        } else if (src1.is_reg_data()) {
+            sel(mod, dst.reg_data(), src0.reg_data(), src1.reg_data());
+        } else {
+            sel(mod, dst.reg_data(), src0.reg_data(), src1.immediate());
+        }
+    }
+
 protected:
     // Helper RAII class allocating a temporary GRF buffer aligned at a
     // register boundary for instructions that require aligned operands.

@@ -91,6 +91,12 @@ float fwd_Xnary(bool is_binary, unsigned algorithm, float x, float y,
 
 #define FILL_BIN_ARG_SERIAL(idx, dest_ptr, x0, x0_s, x1, x1_s, x2, x2_s, x3, \
         x3_s, x4, x4_s, x5, x5_s) \
+    bool bcast0 = CONCAT3(PO_, idx, _BIN_ARG_D0) == 1; \
+    bool bcast1 = CONCAT3(PO_, idx, _BIN_ARG_D1) == 1; \
+    bool bcast2 = CONCAT3(PO_, idx, _BIN_ARG_D2) == 1; \
+    bool bcast3 = CONCAT3(PO_, idx, _BIN_ARG_D3) == 1; \
+    bool bcast4 = CONCAT3(PO_, idx, _BIN_ARG_D4) == 1; \
+    bool bcast5 = CONCAT3(PO_, idx, _BIN_ARG_D5) == 1; \
     unroll_for(typeof(x0 + x0_s) x0_idx = x0, bin_arg_offset = 0; \
                x0_idx < x0 + x0_s; ++x0_idx) { \
         unroll_for(typeof(x1 + x1_s) x1_idx = x1; x1_idx < x1 + x1_s; \
@@ -106,12 +112,9 @@ float fwd_Xnary(bool is_binary, unsigned algorithm, float x, float y,
                                    ++x5_idx, ++bin_arg_offset) { \
                             const auto bin_arg_glob_off = OFF_MD( \
                                     CONCAT3(PO_, idx, _BIN_ARG), \
-                                    x0_idx % CONCAT3(PO_, idx, _BIN_ARG_D0), \
-                                    x1_idx % CONCAT3(PO_, idx, _BIN_ARG_D1), \
-                                    x2_idx % CONCAT3(PO_, idx, _BIN_ARG_D2), \
-                                    x3_idx % CONCAT3(PO_, idx, _BIN_ARG_D3), \
-                                    x4_idx % CONCAT3(PO_, idx, _BIN_ARG_D4), \
-                                    x5_idx % CONCAT3(PO_, idx, _BIN_ARG_D5)); \
+                                    bcast0 ? 0 : x0_idx, bcast1 ? 0 : x1_idx, \
+                                    bcast2 ? 0 : x2_idx, bcast3 ? 0 : x3_idx, \
+                                    bcast4 ? 0 : x4_idx, bcast5 ? 0 : x5_idx); \
                             dest_ptr[bin_arg_offset] = into_float( \
                                     po_buf(idx)[bin_arg_glob_off]); \
                         } \

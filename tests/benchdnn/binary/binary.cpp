@@ -146,14 +146,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = skip_reason::case_not_supported;
             return;
         }
-
-        // gpu does not support s32
-        for (const auto &dt : dts)
-            if (dt == dnnl_s32) {
-                res->state = SKIPPED;
-                res->reason = skip_reason::data_type_not_supported;
-                return;
-            }
     }
 }
 

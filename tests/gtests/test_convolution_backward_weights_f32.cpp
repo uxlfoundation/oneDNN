@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2020 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 namespace dnnl {
 
 using convolution_test
-        = convolution_backward_weights_test<float, float, float, float>;
+        = convolution_backward_weights_test_t<float, float, float, float>;
 
 TEST_P(convolution_test, TestConvolution) {}
 

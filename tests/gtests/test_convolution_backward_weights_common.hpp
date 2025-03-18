@@ -118,7 +118,7 @@ void compute_ref_conv_bwd_weights(const test_convolution_sizes_t &c,
 
 template <typename data_t_src, typename data_t_diff_dst,
         typename data_t_diff_weights, typename data_t_diff_bias>
-class convolution_backward_weights_test
+class convolution_backward_weights_test_t
     : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
     virtual void SetUp() {

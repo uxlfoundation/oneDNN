@@ -93,7 +93,7 @@ private:
     std::vector<int64_t> mapper_;
 };
 
-struct test_gemm_data {
+struct test_gemm_data_t {
     std::shared_ptr<test_memory> a_mem;
     std::shared_ptr<test_memory> b_mem;
     std::shared_ptr<test_memory> c_mem;
@@ -203,7 +203,7 @@ void extend_matrix(const test_memory &M_mem, int64_t off, int64_t R, int64_t C,
 }
 
 inline void get_matrix_size(
-        const test_params &p, size_t &sizeA, size_t &sizeB, size_t &sizeC) {
+        const test_params_t &p, size_t &sizeA, size_t &sizeB, size_t &sizeC) {
     const bool tr_a = (p.transA == 'T' || p.transA == 't');
     const bool tr_b = (p.transB == 'T' || p.transB == 't');
     sizeA = tr_a ? p.lda * p.K : p.lda * p.M;
@@ -218,7 +218,7 @@ inline memory::desc get_matrix_md(memory::dim n, memory::dim off) {
 }
 
 template <typename a_dt, typename b_dt, typename c_dt>
-void fill_matrices(const test_params &p, const mapper_t &mapper_m,
+void fill_matrices(const test_params_t &p, const mapper_t &mapper_m,
         const mapper_t &mapper_n, const test_memory &a_mem,
         const test_memory &b_mem, const test_memory &c_mem,
         const test_memory &c_ref_mem, const test_memory &oc_mem) {
@@ -256,7 +256,7 @@ void fill_matrices(const test_params &p, const mapper_t &mapper_m,
 
 template <typename a_dt, typename b_dt, typename c_dt>
 void prepare_data_for_gemm_testing(
-        const test_params &p, test_gemm_data &gemm_data, engine &eng) {
+        const test_params_t &p, test_gemm_data_t &gemm_data, engine &eng) {
     size_t sizeA, sizeB, sizeC;
     get_matrix_size(p, sizeA, sizeB, sizeC);
 

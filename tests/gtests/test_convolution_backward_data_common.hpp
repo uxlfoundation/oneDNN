@@ -86,7 +86,7 @@ void compute_ref_conv_bwd_data(const test_convolution_sizes_t &c,
 
 template <typename data_t_diff_dst, typename data_t_wei, typename data_t_acc,
         typename data_t_diff_src>
-class convolution_backward_data_test
+class convolution_backward_data_test_t
     : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
     virtual void SetUp() {

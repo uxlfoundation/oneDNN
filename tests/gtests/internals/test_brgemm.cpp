@@ -29,7 +29,7 @@
 
 namespace dnnl {
 
-struct brgemm_params_t : test_params {
+struct brgemm_params_t : test_params_t {
     impl::data_type_t dt_a;
     impl::data_type_t dt_b;
     impl::cpu::x64::brgemm_batch_kind_t batch_kind;
@@ -279,7 +279,7 @@ private:
     }
 
     std::shared_ptr<engine> eng_;
-    test_gemm_data gemm_data_;
+    test_gemm_data_t gemm_data_;
     std::shared_ptr<test_memory> b_mem_reordered_;
 };
 

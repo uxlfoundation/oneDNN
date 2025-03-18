@@ -798,6 +798,7 @@ static void test_free(char *ptr) {
 }
 #undef TEST_MALLOC_OFFSET
 
+//NOLINTNEXTLINE(readability-identifier-naming)
 class test_memory {
 public:
     test_memory(const memory::desc &d, const dnnl::engine &e) {

@@ -111,7 +111,7 @@ void compute_ref_conv_eltwise_fwd(const test_convolution_sizes_t &c,
 
 template <typename data_t_src, typename data_t_wei, typename data_t_acc,
         typename data_t_dst>
-class convolution_eltwise_test
+class convolution_eltwise_test_t
     : public ::testing::TestWithParam<test_convolution_eltwise_params_t> {
 protected:
     virtual void SetUp() {

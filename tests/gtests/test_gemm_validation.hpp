@@ -24,8 +24,8 @@
 namespace dnnl {
 
 template <typename a_dt, typename b_dt, typename c_dt>
-struct ref_gemm {
-    static void call(const test_params &p, int64_t M, int64_t N,
+struct ref_gemm_t {
+    static void call(const test_params_t &p, int64_t M, int64_t N,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &) {
         auto a = map_memory<a_dt>(a_mem);
@@ -59,8 +59,8 @@ struct ref_gemm {
 };
 
 template <typename a_dt, typename b_dt>
-struct ref_gemm<a_dt, b_dt, int32_t> {
-    static void call(const test_params &p, int64_t M, int64_t N,
+struct ref_gemm_t<a_dt, b_dt, int32_t> {
+    static void call(const test_params_t &p, int64_t M, int64_t N,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &oc_mem) {
         auto A = map_memory<a_dt>(a_mem);
@@ -106,7 +106,7 @@ struct ref_gemm<a_dt, b_dt, int32_t> {
 };
 
 template <typename a_dt, typename c_dt>
-void compare(const test_params &p, const test_memory &c_mem,
+void compare(const test_params_t &p, const test_memory &c_mem,
         const test_memory &c_ref_mem) {
     using data_type = memory::data_type;
     auto c = map_memory<c_dt>(c_mem);
@@ -145,11 +145,11 @@ void compare(const test_params &p, const test_memory &c_mem,
 }
 
 template <typename a_dt, typename b_dt, typename c_dt>
-void validate(const test_params &p, test_gemm_data &gemm_data) {
+void validate(const test_params_t &p, test_gemm_data_t &gemm_data) {
     const int64_t M_test = gemm_data.mapper_m->dim_test();
     const int64_t N_test = gemm_data.mapper_n->dim_test();
 
-    ref_gemm<a_dt, b_dt, c_dt>::call(p, M_test, N_test, *gemm_data.a_mem,
+    ref_gemm_t<a_dt, b_dt, c_dt>::call(p, M_test, N_test, *gemm_data.a_mem,
             *gemm_data.b_mem, *gemm_data.c_ref_mem, *gemm_data.oc_mem);
     extend_matrix<c_dt>(*gemm_data.c_ref_mem, p.off.c, p.M, p.N, p.ldc,
             *gemm_data.mapper_m, *gemm_data.mapper_n);

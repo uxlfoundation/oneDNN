@@ -95,16 +95,16 @@ bool is_memory_kind_buffer(const test_memory &mem) {
  */
 
 template <typename a_dt, typename b_dt, typename c_dt>
-struct dnnl_gemm {
-    static dnnl_status_t call(test_params &p, const test_memory &a_mem,
+struct dnnl_gemm_t {
+    static dnnl_status_t call(test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem) {
         throw error(dnnl_runtime_error, "unknown gemm");
     }
 };
 
 template <>
-struct dnnl_gemm<float16_t, float16_t, float16_t> {
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+struct dnnl_gemm_t<float16_t, float16_t, float16_t> {
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &) {
         throw error(dnnl_runtime_error, "unknown gemm");
@@ -112,8 +112,8 @@ struct dnnl_gemm<float16_t, float16_t, float16_t> {
 };
 
 template <>
-struct dnnl_gemm<float, float, float> {
-    static dnnl_status_t call_packed(const test_params &p,
+struct dnnl_gemm_t<float, float, float> {
+    static dnnl_status_t call_packed(const test_params_t &p,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem) {
         /* Alas, the internal API still uses Fortran notation.
@@ -181,7 +181,7 @@ struct dnnl_gemm<float, float, float> {
         return status;
     }
 
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &) {
 
@@ -207,8 +207,8 @@ struct dnnl_gemm<float, float, float> {
 };
 
 template <>
-struct dnnl_gemm<int8_t, int8_t, int32_t> {
-    static dnnl_status_t call_packed(const test_params &p,
+struct dnnl_gemm_t<int8_t, int8_t, int32_t> {
+    static dnnl_status_t call_packed(const test_params_t &p,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &oc_mem) {
         /* Alas, the internal API still uses Fortran notation.
@@ -291,7 +291,7 @@ struct dnnl_gemm<int8_t, int8_t, int32_t> {
         return status;
     }
 
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &oc_mem) {
 
@@ -322,8 +322,8 @@ struct dnnl_gemm<int8_t, int8_t, int32_t> {
 };
 
 template <>
-struct dnnl_gemm<int8_t, uint8_t, int32_t> {
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+struct dnnl_gemm_t<int8_t, uint8_t, int32_t> {
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &oc_mem) {
         throw error(dnnl_runtime_error, "unknown gemm");
@@ -331,8 +331,8 @@ struct dnnl_gemm<int8_t, uint8_t, int32_t> {
 };
 
 template <>
-struct dnnl_gemm<uint8_t, uint8_t, int32_t> {
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+struct dnnl_gemm_t<uint8_t, uint8_t, int32_t> {
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &oc_mem) {
 
@@ -341,8 +341,8 @@ struct dnnl_gemm<uint8_t, uint8_t, int32_t> {
 };
 
 template <>
-struct dnnl_gemm<uint8_t, int8_t, int32_t> {
-    static dnnl_status_t call_packed(const test_params &p,
+struct dnnl_gemm_t<uint8_t, int8_t, int32_t> {
+    static dnnl_status_t call_packed(const test_params_t &p,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &oc_mem) {
         /* Alas, the internal API still uses Fortran notation.
@@ -425,7 +425,7 @@ struct dnnl_gemm<uint8_t, int8_t, int32_t> {
         return status;
     }
 
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &oc_mem) {
         assert(p.igemm_params.oa() >= 0);
@@ -457,8 +457,8 @@ struct dnnl_gemm<uint8_t, int8_t, int32_t> {
 };
 
 template <>
-struct dnnl_gemm<float16_t, float16_t, float> {
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+struct dnnl_gemm_t<float16_t, float16_t, float> {
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &) {
         return dnnl_unimplemented;
@@ -466,8 +466,8 @@ struct dnnl_gemm<float16_t, float16_t, float> {
 };
 
 template <>
-struct dnnl_gemm<bfloat16_t, bfloat16_t, float> {
-    static dnnl_status_t call_packed(const test_params &p,
+struct dnnl_gemm_t<bfloat16_t, bfloat16_t, float> {
+    static dnnl_status_t call_packed(const test_params_t &p,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem) {
         /* Alas, the internal API still uses Fortran notation.
@@ -535,7 +535,7 @@ struct dnnl_gemm<bfloat16_t, bfloat16_t, float> {
         return status;
     }
 
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &) {
         if (p.pack_params.pack_a || p.pack_params.pack_b)
@@ -550,8 +550,8 @@ struct dnnl_gemm<bfloat16_t, bfloat16_t, float> {
 };
 
 template <>
-struct dnnl_gemm<bfloat16_t, bfloat16_t, bfloat16_t> {
-    static dnnl_status_t call(const test_params &p, const test_memory &a_mem,
+struct dnnl_gemm_t<bfloat16_t, bfloat16_t, bfloat16_t> {
+    static dnnl_status_t call(const test_params_t &p, const test_memory &a_mem,
             const test_memory &b_mem, const test_memory &c_mem,
             const test_memory &) {
         return dnnl_unimplemented;
@@ -559,12 +559,12 @@ struct dnnl_gemm<bfloat16_t, bfloat16_t, bfloat16_t> {
 };
 
 template <typename a_dt, typename b_dt, typename c_dt>
-struct run_test_gemm {
-    static void call(const test_params &p) {
+struct run_test_gemm_t {
+    static void call(const test_params_t &p) {
         if (p.expect_to_fail) {
             engine eng = get_test_engine();
             test_memory zero_mem({}, eng);
-            auto status = dnnl_gemm<a_dt, b_dt, c_dt>::call(
+            auto status = dnnl_gemm_t<a_dt, b_dt, c_dt>::call(
                     p, zero_mem, zero_mem, zero_mem, zero_mem);
             if (status != dnnl_success)
                 throw error(status, "oneDNN gemm returned error");
@@ -572,10 +572,10 @@ struct run_test_gemm {
         }
 
         engine eng = get_test_engine();
-        test_gemm_data gemm_data;
+        test_gemm_data_t gemm_data;
         prepare_data_for_gemm_testing<a_dt, b_dt, c_dt>(p, gemm_data, eng);
 
-        auto status = dnnl_gemm<a_dt, b_dt, c_dt>::call(p, *gemm_data.a_mem,
+        auto status = dnnl_gemm_t<a_dt, b_dt, c_dt>::call(p, *gemm_data.a_mem,
                 *gemm_data.b_mem, *gemm_data.c_mem, *gemm_data.oc_mem);
 
         if (status == dnnl_success) {
@@ -588,10 +588,10 @@ struct run_test_gemm {
 };
 
 template <typename a_dt, typename b_dt, typename c_dt>
-class gemm_test_common : public ::testing::TestWithParam<test_params> {
+class gemm_test_common_t : public ::testing::TestWithParam<test_params_t> {
 protected:
     virtual void SetUp() {
-        const auto &p = ::testing::TestWithParam<test_params>::GetParam();
+        const auto &p = ::testing::TestWithParam<test_params_t>::GetParam();
 
         SKIP_IF(get_test_engine_kind() == engine::kind::gpu,
                 "GPU GEMM not implemented.");
@@ -661,24 +661,24 @@ protected:
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         if (get_test_engine_kind() == engine::kind::gpu) {
-            const auto &p = ::testing::TestWithParam<test_params>::GetParam();
+            const auto &p = ::testing::TestWithParam<test_params_t>::GetParam();
 
 #if defined(TEST_DNNL_DPCPP_BUFFER)
             // Test SYCL buffer interfaces
-            run_test_gemm<a_dt, b_dt, c_dt>::call(p);
+            run_test_gemm_t<a_dt, b_dt, c_dt>::call(p);
 #else
             // Test SYCL USM interfaces
             bool zero_off = (p.off.a == 0 && p.off.b == 0 && p.off.c == 0);
             SKIP_IF(!zero_off, "USM interfaces do not support offsets.");
 
-            run_test_gemm<a_dt, b_dt, c_dt>::call(p);
+            run_test_gemm_t<a_dt, b_dt, c_dt>::call(p);
 #endif
 
             return;
         }
 #endif
-        const auto &p = ::testing::TestWithParam<test_params>::GetParam();
-        run_test_gemm<a_dt, b_dt, c_dt>::call(p);
+        const auto &p = ::testing::TestWithParam<test_params_t>::GetParam();
+        run_test_gemm_t<a_dt, b_dt, c_dt>::call(p);
     }
 };
 } // namespace dnnl

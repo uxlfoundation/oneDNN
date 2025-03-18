@@ -19,6 +19,8 @@
 
 #include "dnnl.hpp"
 
+// NOLINTBEGIN(readability-identifier-naming)
+
 /// Creates a primitive descriptor for a scaled dot product attention primitive
 ///
 /// @param primitive_desc Output primitive descriptor.
@@ -88,4 +90,5 @@ struct sdpa : public dnnl::primitive {
 } // namespace impl
 } // namespace dnnl
 
+// NOLINTEND(readability-identifier-naming)
 #endif

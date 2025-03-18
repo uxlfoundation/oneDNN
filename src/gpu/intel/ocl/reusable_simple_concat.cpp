@@ -162,12 +162,14 @@ static status_t attempt_normalize_ip_concat2(
         normalization_t normalize) {
 
     using namespace utils;
+    using arch_t = compute::gpu_arch_t;
     const memory_desc_wrapper ref_dst_mdw = *pd->dst_md();
 
     const auto concat_dim = pd->concat_dim();
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
+    auto hw = device_info->gpu_arch();
 
     normalize.set_pessimistic_chunk_size();
 
@@ -227,17 +229,22 @@ static status_t attempt_normalize_ip_concat2(
         }
         stride *= blk;
     }
+    const bool is_integrated = device_info->is_integrated();
+    const size_t preferred_bytes_per_workitem
+            = (hw == arch_t::xe2 && is_integrated) ? 4 : 8;
 
     int max_simd = 1;
+    size_t bytes_per_workitem = preferred_bytes_per_workitem;
     for (int simd : {32, 16, 8, 1}) {
         if (simd > max_sg_size) continue;
         if (simd > 1 && !compute_engine->mayiuse_sub_group(simd)) continue;
         const dim_t total_elems = dst_bytes / data_type_size;
         if (simd > total_elems) continue;
 
-        const size_t min_bytes_per_workitem = 8;
+        bytes_per_workitem
+                = (data_type_size == 8) ? 8 : preferred_bytes_per_workitem;
         const dim_t elems_per_simd
-                = simd * (min_bytes_per_workitem / data_type_size);
+                = simd * (bytes_per_workitem / data_type_size);
         const bool simd_even_block_multiple
                 = ((elems_per_simd) % conf.blocks[0]) == 0;
         const bool simd_read_gte_blocksize = (elems_per_simd) >= conf.blocks[0];
@@ -266,8 +273,7 @@ static status_t attempt_normalize_ip_concat2(
     size_t concat2_inner_axis = dst_md.dims[axis::inner];
     size_t concat2_dtsize = static_cast<size_t>(data_type_size);
 
-    size_t min_bytes_per_workitem = 8;
-    size_t loads_per_thread = min_bytes_per_workitem / concat2_dtsize;
+    size_t loads_per_thread = bytes_per_workitem / concat2_dtsize;
 
     // heuristic for problem size too small
     size_t min_block_read_elements = conf.simd * loads_per_thread;
@@ -298,6 +304,7 @@ static status_t attempt_normalize_ip_concat2(
         rt_conf.inner_axis = concat2_inner_axis;
         conf.data_type_size = static_cast<int>(concat2_dtsize);
         conf.use_internal_padding_kernel = true;
+        conf.bytes_per_workitem = static_cast<int>(bytes_per_workitem);
 
         // TODO: compute::get_optimal_lws( // no emperical diff
         const compute::range_t lws = {static_cast<size_t>(conf.simd), 1, 1};
@@ -361,7 +368,7 @@ compute::kernel_ctx_t reusable_simple_concat_params_t::get_kernel_ctx() const {
     kernel_ctx.define_int("DATA_TYPE_SIZE", data_type_size);
 
     kernel_ctx.define_int("USE_LARGE_INDEX", use_large_index);
-    //kernel_ctx.define_int("INTERNAL_PADDING_CONCAT2_KERNEL", use_internal_padding_kernel);
+    kernel_ctx.define_int("BYTES_PER_WORKITEM", bytes_per_workitem);
     return kernel_ctx;
 }
 

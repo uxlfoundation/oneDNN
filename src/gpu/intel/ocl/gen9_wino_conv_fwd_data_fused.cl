@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2020-2025 Intel Corporation
  *
- * Licensed under the Apache License, Version 2.0f (the "License");
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -38,7 +38,13 @@
 
 #define WINO_D (WINO_M + WINO_R - 1)
 
-#define TO_TYPE(value) ((DATA_T)value)
+#if DT_FP64
+#define F_LIT(value) value
+#else
+#define F_LIT(value) value##f
+#endif
+
+#define TO_TYPE(value) ((DATA_T)(value))
 
 #define UTRANS_BLOCK VECT_DT_N
 #define UTRANS_DATA_T VECT_DATA_T
@@ -196,16 +202,20 @@ static inline int get_out_oc0(int lx, int ly) {
 static inline void wino_U_transform(
         UTRANS_DATA_T U[WINO_D], UTRANS_DATA_T wei[WINO_R]) {
     U[0] = wei[0];
-    U[1] = TO_TYPE(-2.0f / 9) * (wei[0] + wei[1] + wei[2]);
-    U[2] = TO_TYPE(2.0f / 9) * (-wei[0] + wei[1] - wei[2]);
-    U[3] = TO_TYPE(1.0f / 90) * wei[0] + TO_TYPE(2.0f / 90) * wei[1]
-            + TO_TYPE(4.0f / 90) * wei[2];
-    U[4] = TO_TYPE(1.0f / 90) * wei[0] - TO_TYPE(2.0f / 90) * wei[1]
-            + TO_TYPE(4.0f / 90) * wei[2];
-    U[5] = TO_TYPE(64.0f / 90) * wei[0] + TO_TYPE(32.0f / 90) * wei[1]
-            + TO_TYPE(16.0f / 90) * wei[2];
-    U[6] = TO_TYPE(64.0f / 90) * wei[0] - TO_TYPE(32.0f / 90) * wei[1]
-            + TO_TYPE(16.0f / 90) * wei[2];
+    U[1] = TO_TYPE(F_LIT(-2.) / F_LIT(9.)) * (wei[0] + wei[1] + wei[2]);
+    U[2] = TO_TYPE(F_LIT(2.) / F_LIT(9.)) * (-wei[0] + wei[1] - wei[2]);
+    U[3] = TO_TYPE(F_LIT(1.) / F_LIT(90.)) * wei[0]
+            + TO_TYPE(F_LIT(2.) / F_LIT(90.)) * wei[1]
+            + TO_TYPE(F_LIT(4.) / F_LIT(90.)) * wei[2];
+    U[4] = TO_TYPE(F_LIT(1.) / F_LIT(90.)) * wei[0]
+            - TO_TYPE(F_LIT(2.) / F_LIT(90.)) * wei[1]
+            + TO_TYPE(F_LIT(4.) / F_LIT(90.)) * wei[2];
+    U[5] = TO_TYPE(F_LIT(64.) / F_LIT(90.)) * wei[0]
+            + TO_TYPE(F_LIT(32.) / F_LIT(90.)) * wei[1]
+            + TO_TYPE(F_LIT(16.) / F_LIT(90.)) * wei[2];
+    U[6] = TO_TYPE(F_LIT(64.) / F_LIT(90.)) * wei[0]
+            - TO_TYPE(F_LIT(32.) / F_LIT(90.)) * wei[1]
+            + TO_TYPE(F_LIT(16.) / F_LIT(90.)) * wei[2];
     U[7] = wei[2];
 }
 
@@ -215,33 +225,33 @@ static inline void wino_U_transform(
 static inline void wino_V_transform(
         __local VTRANS_DATA_T *V, const VTRANS_DATA_T src[WINO_D]) {
     // Compute Winograd f6x3 data transform and store components in SLM.
-    V[V_off(0, 0, 0, VTRANS_BLOCK)] = src[0] - TO_TYPE(5.25f) * src[2]
-            + TO_TYPE(5.25f) * src[4] - src[6];
+    V[V_off(0, 0, 0, VTRANS_BLOCK)] = src[0] - TO_TYPE(F_LIT(5.25)) * src[2]
+            + TO_TYPE(F_LIT(5.25)) * src[4] - src[6];
 
-    VTRANS_DATA_T x0 = src[1] - TO_TYPE(4.25f) * src[3] + src[5];
-    VTRANS_DATA_T x1 = src[2] - TO_TYPE(4.25f) * src[4] + src[6];
+    VTRANS_DATA_T x0 = src[1] - TO_TYPE(F_LIT(4.25)) * src[3] + src[5];
+    VTRANS_DATA_T x1 = src[2] - TO_TYPE(F_LIT(4.25)) * src[4] + src[6];
 
     V[V_off(0, 1, 0, VTRANS_BLOCK)] = x1 + x0;
     V[V_off(0, 2, 0, VTRANS_BLOCK)] = x1 - x0;
 
-    VTRANS_DATA_T x2 = TO_TYPE(-5) * src[3] + src[1];
-    VTRANS_DATA_T x3 = TO_TYPE(4) * src[5] + x2;
-    VTRANS_DATA_T x4 = TO_TYPE(0.25f) * src[2] + src[6];
-    VTRANS_DATA_T x5 = TO_TYPE(-1.25f) * src[4] + x4;
+    VTRANS_DATA_T x2 = TO_TYPE(F_LIT(-5.)) * src[3] + src[1];
+    VTRANS_DATA_T x3 = TO_TYPE(F_LIT(4.)) * src[5] + x2;
+    VTRANS_DATA_T x4 = TO_TYPE(F_LIT(0.25)) * src[2] + src[6];
+    VTRANS_DATA_T x5 = TO_TYPE(F_LIT(-1.25)) * src[4] + x4;
 
-    V[V_off(0, 3, 0, VTRANS_BLOCK)] = TO_TYPE(0.5f) * x3 + x5;
-    V[V_off(0, 4, 0, VTRANS_BLOCK)] = TO_TYPE(-0.5f) * x3 + x5;
+    V[V_off(0, 3, 0, VTRANS_BLOCK)] = TO_TYPE(F_LIT(0.5)) * x3 + x5;
+    V[V_off(0, 4, 0, VTRANS_BLOCK)] = TO_TYPE(F_LIT(-0.5)) * x3 + x5;
 
-    VTRANS_DATA_T x6 = TO_TYPE(4) * src[1] + src[5];
-    VTRANS_DATA_T x7 = TO_TYPE(-5) * src[3] + x6;
-    VTRANS_DATA_T x8 = TO_TYPE(4) * src[2] + src[6];
-    VTRANS_DATA_T x9 = TO_TYPE(-5) * src[4] + x8;
+    VTRANS_DATA_T x6 = TO_TYPE(F_LIT(4.)) * src[1] + src[5];
+    VTRANS_DATA_T x7 = TO_TYPE(F_LIT(-5.)) * src[3] + x6;
+    VTRANS_DATA_T x8 = TO_TYPE(F_LIT(4.)) * src[2] + src[6];
+    VTRANS_DATA_T x9 = TO_TYPE(F_LIT(-5.)) * src[4] + x8;
 
-    V[V_off(0, 5, 0, VTRANS_BLOCK)] = TO_TYPE(+0.5f) * x7 + x9;
-    V[V_off(0, 6, 0, VTRANS_BLOCK)] = TO_TYPE(-0.5f) * x7 + x9;
+    V[V_off(0, 5, 0, VTRANS_BLOCK)] = TO_TYPE(F_LIT(+0.5)) * x7 + x9;
+    V[V_off(0, 6, 0, VTRANS_BLOCK)] = TO_TYPE(F_LIT(-0.5)) * x7 + x9;
 
-    V[V_off(0, 7, 0, VTRANS_BLOCK)] = -src[1] + TO_TYPE(5.25f) * src[3]
-            - TO_TYPE(5.25f) * src[5] + src[7];
+    V[V_off(0, 7, 0, VTRANS_BLOCK)] = -src[1] + TO_TYPE(F_LIT(5.25)) * src[3]
+            - TO_TYPE(F_LIT(5.25)) * src[5] + src[7];
 }
 static inline void wino_m_transform(
         OUT_BLOCK_DATA_T C[WINO_M], OUT_BLOCK_DATA_T M[WINO_D]) {
@@ -256,11 +266,11 @@ static inline void wino_m_transform(
     OUT_BLOCK_DATA_T x5 = M[5] - M[6];
 
     C[0] = M[0] + x0 + x2 + x4;
-    C[1] = x1 + TO_TYPE(2) * x3 + TO_TYPE(0.5f) * x5;
-    C[2] = x0 + TO_TYPE(4.f) * x2 + TO_TYPE(0.25f) * x4;
-    C[3] = x1 + TO_TYPE(8.f) * x3 + TO_TYPE(0.125f) * x5;
-    C[4] = x0 + TO_TYPE(16.f) * x2 + TO_TYPE(0.0625f) * x4;
-    C[5] = x1 + TO_TYPE(32.f) * x3 + TO_TYPE(0.03125f) * x5 + M[7];
+    C[1] = x1 + TO_TYPE(F_LIT(2.)) * x3 + TO_TYPE(F_LIT(0.5)) * x5;
+    C[2] = x0 + TO_TYPE(F_LIT(4.)) * x2 + TO_TYPE(F_LIT(0.25)) * x4;
+    C[3] = x1 + TO_TYPE(F_LIT(8.)) * x3 + TO_TYPE(F_LIT(0.125)) * x5;
+    C[4] = x0 + TO_TYPE(F_LIT(16.)) * x2 + TO_TYPE(F_LIT(0.0625)) * x4;
+    C[5] = x1 + TO_TYPE(F_LIT(32.)) * x3 + TO_TYPE(F_LIT(0.03125)) * x5 + M[7];
 }
 #elif WINO_M == 4
 static inline void wino_U_transform(
@@ -376,8 +386,8 @@ gen9_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
             = (WINO_IC_BLOCK * WINO_D * IW_INTERNAL_BLOCK) / VTRANS_BLOCK;
     __local VTRANS_DATA_T V[slm_size]; // 8 KB
 
-    const DATA_T scl = TO_TYPE(16);
-    const DATA_T sc = TO_TYPE(1) / scl;
+    const DATA_T scl = TO_TYPE(F_LIT(16.));
+    const DATA_T sc = TO_TYPE(F_LIT(1.)) / scl;
     const VTRANS_DATA_T scl_vec = (VTRANS_DATA_T)(sc, sc, sc, sc);
 
     const int ow0 = get_group_id(0) * OW_BLOCK;

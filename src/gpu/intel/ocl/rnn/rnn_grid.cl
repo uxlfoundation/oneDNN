@@ -18,11 +18,6 @@
 #include "gpu/intel/ocl/rnn/cell_kind_utility.h"
 #include "gpu/intel/ocl/rnn/rnn_common.h"
 
-#if DT_F64 == 1
-#define POST_OP_LITERAL(x) x
-#else
-#define POST_OP_LITERAL(x) x##f
-#endif
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 simple_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
@@ -751,13 +746,13 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
                 convert_float(bias[off_ker_bias(dhc, 0, j)]), alpha, tm_scales);
 #endif
 #if IS_TESTMODE
-        float tmp = = dH * activation_bwd(g, tm_scales[0], POST_OP_LITERAL(0.));
+        float tmp = = dH * activation_bwd(g, tm_scales[0], 0.0f);
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
                 = TO_SRC(tmp);
         diff_bias_acc[0] += tmp;
 #else
-        float tmp = dH * activation_bwd(g, alpha, POST_OP_LITERAL(0.));
+        float tmp = dH * activation_bwd(g, alpha, 0.0f);
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
                 = TO_SRC(tmp);

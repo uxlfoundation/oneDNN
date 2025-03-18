@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ using f32_f32 = std::pair<float, float>;
 
 using tag = memory::format_tag;
 
-using cfg_f32 = test_simple_params<f32_f32>;
+using cfg_f32 = test_simple_params_t<f32_f32>;
 
 using reorder_simple_test_f32_f32 = reorder_simple_test<f32_f32>;
 

@@ -92,8 +92,8 @@ struct gen9_binary_t : public gpu_primitive_t {
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_BINARY(post_ops_with_binary_ok(
-                                     attr(), dst_md()->data_type, MAX_NDIMS),
+            VDISPATCH_BINARY(
+                    post_ops_with_binary_ok(attr(), *dst_md(), MAX_NDIMS),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_BINARY_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);

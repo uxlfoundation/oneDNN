@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -73,8 +73,8 @@ struct ref_eltwise_fwd_t : public gpu_primitive_t {
             VDISPATCH_ELTWISE(memory_desc_wrapper(src_md())
                             == memory_desc_wrapper(dst_md()),
                     VERBOSE_INCONSISTENT_MDS, "src", "dst");
-            VDISPATCH_ELTWISE(post_ops_with_binary_ok(
-                                      attr(), dst_md()->data_type, MAX_NDIMS),
+            VDISPATCH_ELTWISE(
+                    post_ops_with_binary_ok(attr(), *dst_md(), MAX_NDIMS),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_ELTWISE_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);

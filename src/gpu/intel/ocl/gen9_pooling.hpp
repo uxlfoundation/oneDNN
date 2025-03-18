@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,8 +66,7 @@ struct gen9_pooling_fwd_t : public gpu_primitive_t {
                     IMPLICATION(utils::one_of(src_data_t, f16, s8, u8),
                             desc()->prop_kind == forward_inference),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_POOLING(
-                    post_ops_with_binary_ok(attr(), dst_md()->data_type),
+            VDISPATCH_POOLING(post_ops_with_binary_ok(attr(), *dst_md()),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_POOLING_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_TAG);

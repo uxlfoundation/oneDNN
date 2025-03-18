@@ -2084,7 +2084,15 @@ public:
             data_type_t idt, data_type_t odt, bool force_lbound = false) {
         using namespace data_type;
         if (!((idt == f32) && utils::one_of(odt, u8, s8, s32))) return;
-        if (!force_lbound && isa_has_sat_cvt(max_cpu_isa_, odt)) return;
+        if (!force_lbound && isa_has_sat_cvt(max_cpu_isa_, odt)) {
+            static constexpr char perm_data[] = {0, 4, 8, 12, 16, 20, 24, 28,
+                    32, 36, 40, 44, 48, 52, 56, 60};
+            auto xmm_permb = Xbyak::Xmm(vmm_ubound.getIdx());
+            uni_vpxor(vmm_ubound, vmm_ubound, vmm_ubound);
+            mov(reg_tmp, reinterpret_cast<size_t>(perm_data));
+            vmovups(xmm_permb, ptr[reg_tmp]);
+            return;
+        }
 
         assert(IMPLICATION(idt == u8 || force_lbound,
                 vmm_lbound.getIdx() != vmm_ubound.getIdx()));

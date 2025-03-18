@@ -40,7 +40,7 @@ struct jit_amx_tilecfg_t : public jit_generator {
     }
 
 private:
-    // Lazy initialization first checks if tile is configured on a core. If it
+    //a Lazy initialization first checks if tile is configured on a core. If it
     // is, and the palette loaded is same as palette provided by user, then the
     // tileload instruction is skipped.
     // According to measurements, the impact on performance is marginal compared

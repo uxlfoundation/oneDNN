@@ -413,6 +413,20 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
     density_args.n_acc = prb->k;
     const auto density = cfg.get_density(density_args);
 
+    const auto &e_zp_src = prb->attr.zero_points.get(DNNL_ARG_SRC);
+    const bool has_src_zp = !e_zp_src.is_def();
+    const int src_zp_mask = attr_t::get_default_mask(e_zp_src.policy);
+    // Apply src_zp for source tensor only.
+    int src_zp = kind == SRC && has_src_zp && src_zp_mask == 0 ? e_zp_src.value
+                                                               : 0;
+
+    const auto &e_zp_wei = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS);
+    const bool has_wei_zp = !e_zp_wei.is_def();
+    const int wei_zp_mask = attr_t::get_default_mask(e_zp_wei.policy);
+    // Apply wei_zp for weights tensor only.
+    int wei_zp = kind == WEI && has_wei_zp && wei_zp_mask == 0 ? e_zp_wei.value
+                                                               : 0;
+
     /* Do fixed partitioning to have same filling for any number of threads */
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
@@ -438,6 +452,7 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             float val = 0;
             while (val <= 0)
                 val = gen(int_seed);
+            val += src_zp + wei_zp; // Add zp so that it will be subtracted.
             mem_fp.set_elem(
                     0, round_to_nearest_representable(cfg.get_dt(kind), val));
             idx_start += 1;
@@ -453,6 +468,7 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
                 val *= is_one;
             } else {
                 val = is_one * gen(int_seed);
+                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
             }
             mem_fp.set_elem(
                     idx, round_to_nearest_representable(cfg.get_dt(kind), val));

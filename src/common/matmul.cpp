@@ -354,21 +354,40 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             ? utils::get_dims_mask(dst_desc->dims, op_d.bias_desc.dims, ndims)
             : 0;
 
-    // TODO: requirement is for innermost dim to be multiple of 2 for
-    // the memory to be byte aligned.
-
-    // s4/u4/f4 weights requires n to be multiple of 2 to be byte aligned
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(weights_desc->data_type,
-                                      data_type::s4, data_type::u4,
-                                      data_type::f4_e2m1, data_type::f4_e3m0),
-                          weights_desc->dims[n_idx] % 2 == 0),
-            VERBOSE_BAD_DIM, "weights", n_idx);
-    // s4/u4/f4 src requires k to be multiple of 2 to be byte aligned
-    VCHECK_MATMUL(IMPLICATION(utils::one_of(src_desc->data_type, data_type::s4,
-                                      data_type::u4, data_type::f4_e2m1,
-                                      data_type::f4_e3m0),
-                          src_desc->dims[k_idx_src] % 2 == 0),
-            VERBOSE_BAD_DIM, "src", n_idx);
+    using namespace data_type;
+    if (weights_desc->format_kind == format_kind::blocked
+            && utils::one_of(
+                    weights_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
+        const auto &wei_strides = weights_desc->format_desc.blocking.strides;
+        const auto stride_k = wei_strides[k_idx_wei];
+        const auto stride_n = wei_strides[n_idx];
+        // Check for byte alignment.
+        if (stride_k > stride_n) {
+            VCHECK_MATMUL(weights_desc->dims[n_idx] % 2 == 0, VERBOSE_BAD_DIM,
+                    "weights", n_idx);
+        } else if (stride_k < stride_n) {
+            VCHECK_MATMUL(weights_desc->dims[k_idx_wei] % 2 == 0,
+                    VERBOSE_BAD_DIM, "weights", k_idx_wei);
+        } else {
+            VCHECK_MATMUL(false, VERBOSE_UNSUPPORTED_MEM_STRIDE);
+        }
+    }
+    if (src_desc->format_kind == format_kind::blocked
+            && utils::one_of(src_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
+        const auto &src_strides = src_desc->format_desc.blocking.strides;
+        const auto stride_m = src_strides[m_idx];
+        const auto stride_k = src_strides[k_idx_src];
+        // Check for byte alignment.
+        if (stride_m > stride_k) {
+            VCHECK_MATMUL(src_desc->dims[k_idx_src] % 2 == 0, VERBOSE_BAD_DIM,
+                    "src", k_idx_src);
+        } else if (stride_m < stride_k) {
+            VCHECK_MATMUL(src_desc->dims[m_idx] % 2 == 0, VERBOSE_BAD_DIM,
+                    "src", m_idx);
+        } else {
+            VCHECK_MATMUL(false, VERBOSE_UNSUPPORTED_MEM_STRIDE);
+        }
+    }
 
     // check if other dims match.
     for (int d = 0; d < ndims - 2; ++d) {

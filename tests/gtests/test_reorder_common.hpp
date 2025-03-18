@@ -59,7 +59,7 @@ struct test_simple_params_t {
 };
 
 template <typename reorder_types>
-class reorder_simple_test
+class reorder_simple_test_t
     : public ::testing::TestWithParam<test_simple_params_t<reorder_types>> {
 protected:
 #ifdef DNNL_TEST_WITH_ENGINE_PARAM

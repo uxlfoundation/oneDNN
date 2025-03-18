@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -114,10 +114,8 @@ protected:
     virtual value_t get_or_add(const key_t &key, const value_t &value) = 0;
     virtual void remove_if_invalidated(const key_t &key) = 0;
     virtual void update_entry(const key_t &key, const object_t &p) = 0;
-    static utils::rw_mutex_t &rw_mutex() {
-        static utils::rw_mutex_t mutex;
-        return mutex;
-    }
+    utils::rw_mutex_t &rw_mutex() const { return rw_mutex_; }
+    mutable utils::rw_mutex_t rw_mutex_;
 };
 
 // The cache uses LRU replacement policy

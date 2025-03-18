@@ -590,7 +590,7 @@ struct run_test_gemm_t {
 template <typename a_dt, typename b_dt, typename c_dt>
 class gemm_test_common_t : public ::testing::TestWithParam<test_params_t> {
 protected:
-    virtual void SetUp() {
+    void SetUp() override {
         const auto &p = ::testing::TestWithParam<test_params_t>::GetParam();
 
         SKIP_IF(get_test_engine_kind() == engine::kind::gpu,

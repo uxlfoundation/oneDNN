@@ -89,7 +89,7 @@ template <typename data_t_diff_dst, typename data_t_wei, typename data_t_acc,
 class convolution_backward_data_test_t
     : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
-    virtual void SetUp() {
+    void SetUp() override {
         auto p = ::testing::TestWithParam<
                 test_convolution_params_t>::GetParam();
 

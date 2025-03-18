@@ -297,15 +297,15 @@ inline memory::dim right_padding(memory::dim i, memory::dim o, memory::dim k,
 
 template <typename data_t>
 struct acc_t {
-    typedef data_t type;
+    using type = data_t;
 };
 template <>
 struct acc_t<int8_t> {
-    typedef int type;
+    using type = int;
 };
 template <>
 struct acc_t<uint8_t> {
-    typedef int type;
+    using type = int;
 };
 
 // Smart pointer for map/unmap operations with unique_ptr semantics
@@ -314,9 +314,8 @@ struct mapped_ptr_t {
     using nonconst_type = typename std::remove_cv<T>::type;
 
     mapped_ptr_t(std::nullptr_t) : mem_(nullptr), ptr_(nullptr) {}
-    mapped_ptr_t(const memory *mem) : mem_(mem) {
-        ptr_ = mem->map_data<nonconst_type>();
-    }
+    mapped_ptr_t(const memory *mem)
+        : mem_(mem), ptr_(mem->map_data<nonconst_type>()) {}
     mapped_ptr_t(mapped_ptr_t &&other) : mem_(other.mem_), ptr_(other.ptr_) {
         other.mem_ = nullptr;
         other.ptr_ = nullptr;
@@ -368,12 +367,12 @@ void check_zero_tail(int set_zero_flag, const memory &src) {
 
     for (memory::dim i = 0; i < nelems; ++i) {
         memory::dim off = 0;
-        bool flag = 0;
+        bool flag = false;
         for (int j = 0; j < ndims; ++j) {
             off += idx[j] * str[j];
-            if (idx[j] >= dims[ndims - j - 1]) flag = 1;
+            if (idx[j] >= dims[ndims - j - 1]) flag = true;
         }
-        if (flag == 1) {
+        if (flag == true) {
             memory::dim blk_off = mdw.off_l(off, true);
             if (set_zero_flag) {
                 src_data[blk_off] = 0.0;
@@ -391,8 +390,8 @@ void check_zero_tail(int set_zero_flag, const memory &src) {
     }
 }
 
-inline memory::desc create_md(memory::dims dims, memory::data_type data_type,
-        memory::format_tag fmt_tag) {
+inline memory::desc create_md(const memory::dims &dims,
+        memory::data_type data_type, memory::format_tag fmt_tag) {
     return memory::desc(dims, data_type, fmt_tag);
 }
 
@@ -566,7 +565,8 @@ inline dnnl_status_t get_conv_impl_status(
         const_dnnl_primitive_desc_t pd, const char *match_str) {
     const char *conv_str = query_impl_info(pd);
 
-    if (strstr(conv_str, match_str) != NULL) return dnnl_status_t::dnnl_success;
+    if (strstr(conv_str, match_str) != nullptr)
+        return dnnl_status_t::dnnl_success;
     return dnnl_status_t::dnnl_unimplemented;
 };
 
@@ -608,7 +608,7 @@ struct test_convolution_attr_t {
 
         bool is_def() const { return policy != NONE; }
 
-        scale_t(float s, policy_t p = NONE) : scale(s) { policy = p; }
+        scale_t(float s, policy_t p = NONE) : policy(p), scale(s) {}
 
         policy_t policy;
         float scale;
@@ -632,7 +632,7 @@ struct test_convolution_attr_t {
 
     test_convolution_attr_t(
             float s, scale_t::policy_t p = scale_t::policy_t::NONE)
-        : src_scale(s, p), wei_scale(s, p), dst_scale(s, p), dnnl_attr() {}
+        : src_scale(s, p), wei_scale(s, p), dst_scale(s, p) {}
 
     test_convolution_attr_t() : test_convolution_attr_t(1.f) {}
 
@@ -785,7 +785,7 @@ static char *test_malloc(size_t size) {
 #else
     int rc = ::posix_memalign(&ptr, align, padded_size);
 #endif /* _WIN32 */
-    return rc == 0 ? (char *)ptr + TEST_MALLOC_OFFSET : 0;
+    return rc == 0 ? (char *)ptr + TEST_MALLOC_OFFSET : nullptr;
 }
 
 static void test_free(char *ptr) {
@@ -801,11 +801,11 @@ static void test_free(char *ptr) {
 //NOLINTNEXTLINE(readability-identifier-naming)
 class test_memory {
 public:
-    test_memory(const memory::desc &d, const dnnl::engine &e) {
+    test_memory(const memory::desc &d, const dnnl::engine &e)
+        : size_(d.get_size()) {
         bool is_cpu_native = (e.get_kind() == dnnl::engine::kind::cpu)
                 && DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL;
 
-        size_ = d.get_size();
         if (is_cpu_native) {
             data_.reset(test_malloc(size_), test_free);
             mem_ = test::make_memory(d, e, data_.get());
@@ -1091,10 +1091,9 @@ void test_bwd_pd_allow_empty(const pd_t &pd, const hint_pd_t &hint,
 
 // Note: requires a valid primitive descriptor!
 template <typename pd_t, typename hint_pd_t, typename... prim_params_t>
-void test_bwd_pd_constructors(const pd_t &pd, const hint_pd_t &hint,
+void test_bwd_pd_constructors(const pd_t &pd, const hint_pd_t &hint_pd,
         const allows_attr_t &aa, const prim_params_t &...prim_params) {
     auto test_pd = pd_t();
-    auto hint_pd = hint;
     auto eng = pd.get_engine();
     // ctor from C pd, should not throw
     ASSERT_NO_THROW(test_pd = pd_t(pd.get()));
@@ -1112,7 +1111,7 @@ void test_bwd_pd_constructors(const pd_t &pd, const hint_pd_t &hint,
     test_bwd_pd_allow_empty<pd_t>(test_pd, hint_pd, prim_params...);
 }
 
-inline dnnl::stream make_stream(dnnl::engine engine,
+inline dnnl::stream make_stream(const dnnl::engine &engine,
         dnnl::stream::flags flags = dnnl::stream::flags::default_flags) {
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
     if (engine.get_kind() == dnnl::engine::kind::cpu)

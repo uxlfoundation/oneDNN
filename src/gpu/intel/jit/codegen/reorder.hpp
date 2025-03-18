@@ -279,6 +279,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     bool src_hf8 = (src_type == ngen::DataType::hf8);
     bool src_df = (src_type == ngen::DataType::df);
     bool src_xf = src_bf || src_f || src_hf || src_df;
+    bool src_f4_e2m1 = (src_type == ngen_f4_e2m1());
     bool f_to_xf = (src_f && (dst_bf || dst_hf));
     bool native_bf16 = host->exec_cfg().hw().systolic_support();
     op_plan_t plan = grf_size;
@@ -333,6 +334,48 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     auto shl16 = [&](inst_mod_t mod, reg_data_t dst, reg_data_t src) {
         host->eshl(mod, dst, src, 16);
     };
+    auto mov = [&](inst_mod_t mod, reg_data_t dst, reg_data_t src) {
+        host->emov(mod, dst, src);
+    };
+
+    auto u4_lower = [&](inst_mod_t mod, reg_data_t dst, reg_data_t src) {
+        host->and_(mod, dst, src, 0xF);
+    };
+
+    auto u4_upper = [&](inst_mod_t mod, reg_data_t dst, reg_data_t src) {
+        host->shr(mod, dst, src, 4);
+    };
+
+    auto cvt_u4_to_uw = [&](inst_mod_t mod, reg_data_t dst, reg_data_t src) {
+        auto dhs = dst.getHS();
+        auto shs = src.getHS();
+        auto esize = mod.getExecSize();
+
+        auto s = src;
+        s.setOffset(src.getOffset() / 2);
+        s.setRegion((src.getVS() + 1) / 2, (dst.getWidth() + 1) / 2, shs);
+        s.setType(ngen::DataType::ub);
+
+        if (shs == 1 && esize > 1) {
+            auto half_esize = esize / 2;
+            auto d = dst;
+            d.setRegion(dst.getVS(), (dst.getWidth() + 1) / 2, dhs * 2);
+            plan(u4_lower, half_esize, d, s);
+            d.setOffset(d.getOffset() + dhs);
+            auto eoff = host->ExecutionOffset(half_esize);
+            plan(u4_upper, half_esize | eoff, d, s);
+        } else {
+            auto d = dst;
+            d.setType(ngen::DataType::uw);
+            d.setRegion(2 * d.getWidth(), d.getWidth(), 2);
+            if ((src.getOffset() & 1) == 0)
+                plan(u4_lower, esize, d, s);
+            else
+                plan(u4_upper, esize, d, s);
+            if (dst.getHS() == 1) plan(mov, esize, dst, d);
+        }
+    };
+
     auto cvt_f32_to_bf16 = [&](inst_mod_t mod, reg_data_t dst, reg_data_t src) {
         auto exec_size = mod.getExecSize();
         host->add(mod, src, src, -0x8000);
@@ -343,9 +386,75 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
         host->emov(mod, dst, src);
         host->add(mod | host->f0, dst, dst, 1);
     };
-    auto mov = [&](inst_mod_t mod, reg_data_t dst, reg_data_t src) {
-        host->emov(mod, dst, src);
-    };
+
+    if (src_f4_e2m1 && dst_hf) {
+        int step = get_step();
+        const int nregs = utils::div_up(4 * step, grf_size);
+        auto tmp = lex_scope.alloc_reg_buf_data(nregs).format(
+                0, 2 * width, 1, ngen::DataType::uw);
+        for (int i = 0; i < width; i += step) {
+            step = std::min(step, width - i);
+            step = utils::rnd_down_pow2(step);
+            int esize = step;
+            auto s = src.subregister(i, esize, src_stride);
+            auto d = dst.subregister(i, esize, dst_stride);
+            auto t = tmp.subregister(0, esize, 1, ngen::DataType::uw);
+            plan(cvt_u4_to_uw, esize, t(1), s(src_stride));
+            host->eshl(esize, d.uw()(dst_stride), t(1), 9);
+            host->eshl(esize, t(1), t(1), 12);
+            host->and_(esize, d.uw()(dst_stride), d.uw()(dst_stride), 0x0E00);
+            host->mul(esize, d(dst_stride), d(dst_stride),
+                    ngen::Immediate::hf(0x7400));
+            bfn0xCA(esize, d.uw()(dst_stride), d.uw()(dst_stride), t(1),
+                    0x8000);
+        }
+        return;
+    }
+
+    if (src_f4_e2m1 && (dst_f || dst_bf)) {
+        // shift = 0x7e800000:f = 2^126, used to shift a (positive) f32-aligned
+        // f4_e2m1 (i.e. the mantissa bit is at the highest mantissa bit
+        // position of an f32) to the equivalent f32.
+        constexpr float shift = 85070591730234615865843651857942052864.f;
+        int step = get_step();
+        const int nregs = utils::div_up(4 * step, grf_size);
+        auto tmp0 = lex_scope.alloc_reg_buf_data(nregs).format(
+                0, 2 * width, 1, ngen::DataType::uw);
+        reg_buf_data_t tmp1;
+        int tmp_stride = 1;
+        if (dst_bf)
+            auto tmp1 = lex_scope.alloc_reg_buf_data(nregs).format(
+                    0, width, 1, ngen::DataType::f);
+        for (int i = 0; i < width; i += step) {
+            step = std::min(step, width - i);
+            step = utils::rnd_down_pow2(step);
+            int esize = step;
+            auto s = src.subregister(i, esize, src_stride);
+            auto d = dst.subregister(i, esize, dst_stride);
+            ngen::Subregister t1;
+            if (dst_bf) {
+                t1 = tmp1.subregister(0, esize, 1);
+                std::swap(t1, d);
+                std::swap(tmp_stride, dst_stride);
+            }
+            auto t0 = tmp0.subregister(0, esize, 2);
+            plan(cvt_u4_to_uw, esize, t0(2), s(src_stride));
+            host->eshl(esize, d.ud()(dst_stride), t0(2), 22);
+            host->eshl(esize, t0(2), t0(2), 12);
+            host->and_(
+                    esize, d.ud()(dst_stride), d.ud()(dst_stride), 0x01C00000);
+            host->mul(esize, d(dst_stride), d(dst_stride),
+                    ngen::Immediate::f(shift));
+            bfn0xCA(esize, d.uw(1)(2 * dst_stride), d.uw(1)(2 * dst_stride),
+                    t0(2), 0x8000);
+            if (dst_bf) {
+                std::swap(tmp_stride, dst_stride);
+                std::swap(t1, d);
+                host->emov(esize, d.uw()(dst_stride), t1.uw(1)(2));
+            }
+        }
+        return;
+    }
 
     // bf16 -> f32:
     // - bf16 must be packed: use left shift instead.

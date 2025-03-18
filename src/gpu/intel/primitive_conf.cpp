@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/gpu_eltwise_pd.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -50,7 +51,7 @@ memory_desc_info_t memory_desc_info_t::create(const memory_desc_wrapper &mdw) {
     for (int d = 0; d < mdw.ndims(); ++d) {
         md_info.dims[d] = mdw.dims()[d];
         md_info.padded_dims[d] = mdw.padded_dims()[d];
-        md_info.strides[d][0] = blk.strides[d];
+        md_info.strides[d][0] = md_info.dims[d] == 1 ? 0 : blk.strides[d];
     }
 
     int levels[MAX_NDIMS] = {0};
@@ -492,8 +493,12 @@ void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
             dim_t stride = (d < md_info.ndims) ? md_info.strides[d][l] : 0;
             kernel_ctx.define_int(
                     utils::format("%s_B%d_%d", prefix, d, l), block);
-            kernel_ctx.define_int(
-                    utils::format("%s_S%d_%d", prefix, d, l), stride);
+            if (stride != DNNL_RUNTIME_DIM_VAL)
+                kernel_ctx.define_int(
+                        utils::format("%s_S%d_%d", prefix, d, l), stride);
+            else
+                kernel_ctx.add_option(utils::format(
+                        "%s_S%d_%d=invalid_stride", prefix, d, l));
         }
     }
 }

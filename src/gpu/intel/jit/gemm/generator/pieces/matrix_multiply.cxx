@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -529,6 +529,9 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
 
     for (int x = 0; x < nx; x += xinc) {
         Subregister A0, B0, C0;
+#if XE3P
+        RegData AS, BS, AS0, BS0;
+#endif
         int rcount = 0, ybase = 0, hhbase = 0;
 
         auto issueDPAS = [&](bool last) {
@@ -555,8 +558,15 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
             if (startRepackC && hhbase == 0)
                 srcC0 = null.retype(C0.getType());
 
-            useDPASW ? dpasw(mod, sdepth, rc, C0, srcC0, V0, N0)
-                     :  dpas(mod, sdepth, rc, C0, srcC0, V0, N0);
+#if XE3P
+            if (state.useBDPAS)
+                bdpas(mod, sdepth, rc, C0, srcC0, V0, N0, AS0, BS0);
+            else
+#endif
+            {
+                useDPASW ? dpasw(mod, sdepth, rc, C0, srcC0, V0, N0) :
+                            dpas(mod, sdepth, rc, C0, srcC0, V0, N0);
+            }
         };
 
         for (int oncomp = 0; oncomp < oncompCount; oncomp++, reverse = !reverse) {
@@ -574,6 +584,31 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
                 Subregister A, B, C;
 
                 const int cxCompA = -1, cxCompB = -1, cxCompC = -1, cBuffer = 0;
+#if XE3P
+                auto bdpasScaleArg = [&](const vector<RegisterBlock> &Xr_scaleLayout, Type Tx_scaleOp,
+                                         GRFMultirange Xr_scaleRegs, bool isA, int x, int k) {
+                    RegData XS;
+                    if (state.useBDPAS && !Xr_scaleLayout.empty()) {
+                        int neq;
+                        const RegisterBlock *qblock;
+
+                        int r, c, io0, jo0;
+                        getLayoutDims(Xr_scaleLayout, r, c);
+
+                        if (isA) {
+                            io0 = x;
+                            jo0 = (k / problem.aqGroupK) % c;
+                        } else {
+                            io0 = (k / problem.bqGroupK) % r;
+                            jo0 = x;
+                        }
+                        XS = findBlockReg(Tx_scaleOp, Xr_scaleLayout, io0, jo0, Xr_scaleRegs, neq, qblock);
+                    } else
+                        XS = NullRegister().setType(Type::ngen_f8_e8m0());
+
+                    return XS;
+                };
+#endif
 
                 if (y < ny) {
                     if (strategy.dpasw && (y % (2 * dpaswTile) >= dpaswTile))
@@ -588,6 +623,11 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
                         C = findBlockReg(Tc, state.Cr_layout, i % Cr_unrollM, j % Cr_unrollN, state.Cr_regs, nc, C_block, cxCompC);
                     else
                         C = findBlockReg(Tc, state.C_layout, i, j, state.C_regs[cBuffer], nc, C_block, cxCompC);
+
+#if XE3P
+                    AS = bdpasScaleArg(state.Ar_scaleLayout, state.Ta_scaleOp, state.Ar_scaleRegs, true,  i, h + hh);
+                    BS = bdpasScaleArg(state.Br_scaleLayout, state.Tb_scaleOp, state.Br_scaleRegs, false, j, h + hh);
+#endif
                 } else if (state.systolicSumA) {
                     A = findBlockReg(Ta, A_layout, x, hha, A_regs, na, A_block);
                     B = state.sysSumAll1s[0];
@@ -597,6 +637,10 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
                         C = findBlockReg(Tc, state.Asr_layout, x % Cr_unrollM, 0, state.Asr_regs, nc, C_block);
                     else
                         C = findBlockReg(Tc, state.As_layout, x, 0, state.As_regs, nc, C_block);
+#if XE3P
+                    AS = bdpasScaleArg(state.Ar_scaleLayout, state.Ta_scaleOp, state.Ar_scaleRegs, true, x, h + hh);
+                    BS = NullRegister().setType(Type::ngen_f8_e8m0());
+#endif
                 } else {
                     A = state.sysSumAll1s[0];
                     na = elementsPerGRF(hw, Ta);
@@ -606,6 +650,10 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
                         C = findBlockReg(Tc, state.Bsr_layout, 0, x % Cr_unrollN, state.Bsr_regs, nc, C_block);
                     else
                         C = findBlockReg(Tc, state.Bs_layout, 0, x, state.Bs_regs, nc, C_block);
+#if XE3P
+                    AS = NullRegister().setType(Type::ngen_f8_e8m0());
+                    BS = bdpasScaleArg(state.Br_scaleLayout, state.Tb_scaleOp, state.Br_scaleRegs, false, h + hh, x);
+#endif
                 }
 
                 int nv = globalCM ? na : nb;
@@ -642,6 +690,9 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
                 else {
                     if (strategy.dpasw && y < ny && rcount > 0 && rcount != dpaswTile) stub();
                     if (A0.isValid()) issueDPAS(false);
+#if XE3P
+                    AS0 = AS; BS0 = BS;
+#endif
                     A0 = A; B0 = B; C0 = C; rcount = 1;
                     A0.setType(Ta.ngen());
                     B0.setType(Tb.ngen());

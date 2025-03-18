@@ -315,6 +315,9 @@ struct GEMMState : public CommonState {
     ngen::GRF betaCheckReturn;
     ngen::Subregister statusFlagAddr;                        // uq
     bool systolicSumA = false, systolicSumB = false;
+#if XE3P    
+    bool useBDPAS = false;
+#endif
     bool lateKLoopCheck = false;
     bool splitBarrierAlways = false;
     int ka_loadRem, kb_loadRem;

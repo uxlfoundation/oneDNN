@@ -173,7 +173,7 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
     const off_t id = GWS_GET_ID();
     const off_t ih = GWS_GET_IH();
     const off_t iw = GWS_GET_IW();
-    ACC_DATA_T d = 0.0;
+    ACC_DATA_T d = 0.0f;
     for_(off_t oc = 0; oc < OC; ++oc)
     for_(off_t kd = 0; kd < KD; ++kd)
     for_(off_t kh = 0; kh < KH; ++kh)
@@ -280,7 +280,7 @@ __kernel void ref_convolution_bwd_weights(const __global SRC_DATA_T *src,
 
 #if WITH_BIAS
     if (ic == 0 && kh == 0 && kw == 0 & kd == 0) {
-        ACC_DATA_T d = 0.0;
+        ACC_DATA_T d = 0.0f;
         for (off_t n = 0; n < MB; ++n)
             for (off_t od = 0; od < OD; ++od)
                 for (off_t oh = 0; oh < OH; ++oh)
@@ -292,7 +292,7 @@ __kernel void ref_convolution_bwd_weights(const __global SRC_DATA_T *src,
     }
 #endif
 
-    ACC_DATA_T dw = 0.0;
+    ACC_DATA_T dw = 0.0f;
     for (off_t n = 0; n < MB; ++n)
         for (off_t od = 0; od < OD; ++od)
             for (off_t oh = 0; oh < OH; ++oh)

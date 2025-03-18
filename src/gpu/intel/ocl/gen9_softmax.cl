@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -187,7 +187,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = 1.0f / denom_;
 #endif
 
     for (int i = 0; i < num_buf; i++) {
@@ -267,7 +267,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = 1.0f / denom_;
 #endif
 
     dst += data_off;
@@ -377,7 +377,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = 1.0f / denom_;
 #endif
 
     dst += data_off;

@@ -97,11 +97,7 @@ struct brgemm_prf_t {
 };
 
 struct brgemm_batch_element_t {
-    brgemm_batch_element_t() {
-        ptr.A = ptr.B = nullptr;
-        vvpad.top = vvpad.bottom = 0;
-        has_s8s8_comp_batch_pad = 0;
-    }
+    brgemm_batch_element_t() { ptr.A = ptr.B = nullptr; }
     union {
         struct {
             const void *A;
@@ -113,14 +109,14 @@ struct brgemm_batch_element_t {
         } offset;
     };
     struct {
-        dim_t top;
-        dim_t bottom;
+        dim_t top = 0;
+        dim_t bottom = 0;
     } vvpad; // w.r.t. M dimension
 
     // Used to calculate compensation when batch padding is present.
     // Note: batch_pad represent the overlap between weights and the height
     // dimension w.r.t. convolution dimensions.
-    dim_t has_s8s8_comp_batch_pad;
+    dim_t has_s8s8_comp_batch_pad = 0;
 };
 
 struct DNNL_API brgemm_attr_t {

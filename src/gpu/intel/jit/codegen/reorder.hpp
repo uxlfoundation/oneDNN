@@ -284,10 +284,6 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     op_plan_t plan = grf_size;
     ngen_register_scope_t lex_scope {scope.register_allocator()};
 
-    // Workaround for hf8 size since its a placeholder type undefined in ngen.
-    if (src_hf8) src_stride_bytes = src_stride;
-    if (dst_hf8) dst_stride_bytes = dst_stride;
-
     auto get_step = [&]() {
         int step = (width < 16 ? 8 : 16);
 

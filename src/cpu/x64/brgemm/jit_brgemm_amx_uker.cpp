@@ -1423,6 +1423,13 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
     const Xbyak::Zmm r_zmm = vmm_mask(zmm, true, true, k_mask);
     const Xbyak::Ymm r_ymm = vmm_mask(ymm, true, true, k_mask);
     const Xbyak::Xmm r_xmm = vmm_mask(xmm, true, true, k_mask);
+    if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+        assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
+        auto zmm_perm = zmm_ubound;
+        vpermb(zmm, zmm_perm, zmm);
+        vmovdqu8(addr, r_xmm);
+        return;
+    }
 
     switch (brg.dt_d) {
         case data_type::f32:
@@ -1443,13 +1450,7 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
             f8_e4m3_emulator_->vcvt_f32_to_f8(xmm, zmm);
             vmovdqu8(addr, r_xmm);
             break;
-        case data_type::s8:
-            if (dt_requires_saturation_
-                    && isa_has_sat_cvt(brg.isa_impl, brg.dt_d))
-                vpmovusdb(addr, r_zmm);
-            else
-                vpmovsdb(addr, r_zmm);
-            break;
+        case data_type::s8: vpmovsdb(addr, r_zmm); break;
         case data_type::u8: vpmovusdb(addr, r_zmm); break;
         default: assert(!"unknown dst_dt");
     }

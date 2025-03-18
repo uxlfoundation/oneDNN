@@ -91,30 +91,24 @@ status_t sdp_primitive_v1_kernel_t<quantized>::compile_impl(
     BACKEND_DNNL_ADD_PASS(pipeline, memory_plan);
     BACKEND_DNNL_ADD_PASS(pipeline, compile_ops);
 
-    auto modify_subgraph = [&] {
-        // Run the added passes
-        CHECK(pipeline.run(subgraph_));
+    // Run the added passes
+    BACKEND_DNNL_CHECK(pipeline.run(subgraph_));
 
-        // fill information for inputs logical tensors
-        for (size_t i = 0; i < inputs.size(); i++) {
-            auto &in = const_cast<logical_tensor_t &>(inputs[i]);
-            in = subgraph_->ins_[i];
-        }
+    // fill information for inputs logical tensors
+    for (size_t i = 0; i < inputs.size(); i++) {
+        auto &in = const_cast<logical_tensor_t &>(inputs[i]);
+        in = subgraph_->ins_[i];
+    }
 
-        // fill information for outputs logical tensors
-        for (size_t i = 0; i < outputs.size(); i++) {
-            auto &out = const_cast<logical_tensor_t &>(outputs[i]);
-            out = subgraph_->outs_[i];
-        }
-
-        return status::success;
-    };
+    // fill information for outputs logical tensors
+    for (size_t i = 0; i < outputs.size(); i++) {
+        auto &out = const_cast<logical_tensor_t &>(outputs[i]);
+        out = subgraph_->outs_[i];
+    }
 
     resource_ctor_ = [this]() {
         return this->memory_planner_.get_exec_args_set().clone();
     };
-
-    CHECK(modify_subgraph());
 
     return status::success;
 }
@@ -152,7 +146,7 @@ status_t sdp_primitive_v1_kernel_t<quantized>::execute_impl(
 
     // Micro kernel doesn't use scratchpad memory, here we force-set size as
     // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(memory_planner_.total_internal_temporary_size(), p_engine_, *g_alloc_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -184,7 +178,7 @@ status_t sdp_primitive_v1_kernel_t<quantized>::sycl_execute_impl(
 
     // Micro kernel doesn't use scratchpad memory, here we force-set size as
     // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(memory_planner_.total_internal_temporary_size(), p_engine_, *g_alloc_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -222,7 +216,7 @@ status_t sdp_primitive_v1_kernel_t<quantized>::ocl_execute_impl(
 
     // Micro kernel doesn't use scratchpad memory, here we force-set size as
     // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(memory_planner_.total_internal_temporary_size(), p_engine_, *g_alloc_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {

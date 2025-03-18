@@ -4176,14 +4176,18 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         op_ptr walker = cur_op;
         bool valid_pattern = true;
         bool has_scale = false, has_mask = false, has_softmax = false;
-        while (walker) {
+        bool finished = false;
+        while (walker && !finished) {
             pattern_ops.push_back(walker);
             switch (walker->get_kind()) {
                 case op_kind::dnnl_matmul: {
                     if (pattern_ops.size() == 1) {
-                    } else {
-                        valid_pattern = (pattern_ops.size() >= 4);
-                    }
+                    } 
+                    // Finish pattern match process after second matmul
+                    else {
+                        valid_pattern = (pattern_ops.size() >= 3);
+                        finished = true;
+                }
                     break;
                 }
                 case op_kind::dnnl_binary: {
@@ -4219,8 +4223,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
             walker = out_val->get_consumers()[0].get_op().shared_from_this();
         }
 
-        if (valid_pattern
-                && pattern_ops.back()->get_kind() == op_kind::dnnl_matmul) {
+        if (valid_pattern && finished) {
             candidates = pattern_ops;
             break;
         }

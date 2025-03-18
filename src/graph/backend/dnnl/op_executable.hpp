@@ -2676,7 +2676,8 @@ struct sdpa_executable_t : public op_executable_t {
         attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
         attr.set_fpmath_mode(
                 static_cast<dnnl::fpmath_mode>(mgr.get_fpmath_mode().mode_));
-        is_invert_scale_ = op->get_attr<bool>(
+        if (op->has_attr(dnnl::impl::graph::dnnl_impl::op_attr::is_invert_scale))
+            is_invert_scale_ = op->get_attr<bool>(
                 dnnl::impl::graph::dnnl_impl::op_attr::is_invert_scale);
         is_causal_mask_ = op->get_attr<bool>(
                 dnnl::impl::graph::dnnl_impl::op_attr::with_causal);
@@ -2743,7 +2744,7 @@ struct sdpa_executable_t : public op_executable_t {
 
         exec_ctx_t ctx(stream.get(), std::move(exec_args));
         auto *sycl_stream = dnnl::impl::utils::downcast<
-                dnnl::impl::gpu::intel::sycl::stream_t *>(stream.get());
+                sycl::stream_t *>(stream.get());
         sycl_stream->before_exec_hook();
 
         if (!deps.empty()) sycl_stream->sycl_ctx().set_deps(deps);
@@ -2764,7 +2765,7 @@ struct sdpa_executable_t : public op_executable_t {
         memory_arg_t mem_arg_q = {(args.at(DNNL_ARG_QUERIES)).get(), true};
         memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
         memory_arg_t mem_arg_v = {(args.at(DNNL_ARG_VALUES)).get(), true};
-        memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_QUERIES)).get(), false};
+        memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_DST)).get(), false};
         memory_arg_t mem_arg_scale = {
                 with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
         memory_arg_t mem_arg_mask

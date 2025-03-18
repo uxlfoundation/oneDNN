@@ -1979,6 +1979,10 @@ void tdpbusd(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T
 void tdpbuud(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_0F38 | T_W0, 0x5e); }
 void tdpfp16ps(const Tmm &x1, const Tmm &x2, const Tmm &x3) { opVex(x1, &x3, x2, T_F2 | T_0F38 | T_W0, 0x5c); }
 void tdpbf16ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3 | T_0F38 | T_W0, 0x5c); }
+void tdpbf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_FP8 | T_W0, 0xfd); }
+void tdpbhf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F2 | T_FP8 | T_W0, 0xfd); }
+void tdphf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_66 | T_FP8 | T_W0, 0xfd); }
+void tdphbf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3 | T_FP8 | T_W0, 0xfd); }
 #else
 void jcxz(std::string label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }
 void jcxz(const Label& label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }
@@ -2235,6 +2239,7 @@ void vcvtbiasph2bf8(const Xmm& x1, const Xmm& x2, const Operand& op) { opCvt6(x1
 void vcvtbiasph2bf8s(const Xmm& x1, const Xmm& x2, const Operand& op) { opCvt6(x1, x2, op, T_MAP5|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x74); }
 void vcvtbiasph2hf8(const Xmm& x1, const Xmm& x2, const Operand& op) { opCvt6(x1, x2, op, T_MAP5|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x18); }
 void vcvtbiasph2hf8s(const Xmm& x1, const Xmm& x2, const Operand& op) { opCvt6(x1, x2, op, T_MAP5|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x1B); }
+void vcvt2ps2ph(const Xmm& x1, const Xmm& x2, const Operand& op)  { opAVX_X_X_XM(x1, x2, op, T_66|T_0F38|T_W0|T_YMM|T_MUST_EVEX, 0x67); }
 void vcvtdq2ph(const Xmm& x, const Operand& op) { checkCvt4(x, op); opCvt(x, op, T_N16|T_N_VL|T_MAP5|T_EW0|T_YMM|T_ER_Z|T_MUST_EVEX|T_B32, 0x5B); }
 void vcvthf82ph(const Xmm& x, const Operand& op) { checkCvt1(x, op); opVex(x, 0, op, T_MUST_EVEX | T_F2 | T_MAP5 | T_EW0 | T_YMM | T_N1, 0x1E); }
 void vcvtne2ph2bf8(const Xmm& x1, const Xmm& x2, const Operand& op) { opAVX_X_X_XM(x1, x2, op, T_N1|T_F2|T_0F38|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x74); }
@@ -2244,6 +2249,7 @@ void vcvtne2ph2hf8s(const Xmm& x1, const Xmm& x2, const Operand& op) { opAVX_X_X
 void vcvtne2ps2bf16(const Xmm& x1, const Xmm& x2, const Operand& op) { opAVX_X_X_XM(x1, x2, op, T_F2|T_0F38|T_EW0|T_YMM|T_SAE_Z|T_MUST_EVEX|T_B32, 0x72); }
 void vcvtnebf162ibs(const Xmm& x, const Operand& op) { opAVX_X_XM_IMM(x, op, T_F2|T_MAP5|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x69); }
 void vcvtnebf162iubs(const Xmm& x, const Operand& op) { opAVX_X_XM_IMM(x, op, T_F2|T_MAP5|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x6B); }
+void vcvtnehf82ph(const Xmm& x, const Operand& op) { checkCvt1(x, op); opVex(x, 0, op, T_N8|T_N_VL|T_F2|T_MAP5|T_EW0|T_YMM|T_MUST_EVEX, 0x1e); }
 void vcvtneph2bf8(const Xmm& x, const Operand& op) { opCvt2(x, op, T_F3|T_0F38|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x74); }
 void vcvtneph2bf8s(const Xmm& x, const Operand& op) { opCvt2(x, op, T_F3|T_MAP5|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x74); }
 void vcvtneph2hf8(const Xmm& x, const Operand& op) { opCvt2(x, op, T_F3|T_MAP5|T_EW0|T_YMM|T_MUST_EVEX|T_B16, 0x18); }

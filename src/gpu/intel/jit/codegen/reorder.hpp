@@ -1338,47 +1338,53 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
 // Reorder may require several steps, in this case a temporary buffer T is
 // allocated. For example: A -> T -> B or A -> B -> T -> B
 class reorder_2d_impl_t {
+    struct reorder_step_t;
+
 public:
     reorder_2d_impl_t(ngen::HW hw, tensor_t tile, const layout_t &src_layout,
             const layout_t &dst_layout)
-        : hw_(hw), src_(src_layout), dst_(dst_layout), tile_(std::move(tile)) {
-        gpu_assert(src_.type() == dst_.type());
-    }
+        : hw_(hw), tile_(std::move(tile)) {
+        gpu_assert(src_layout.type() == dst_layout.type());
 
-    const tensor_t &tile() const { return tile_; }
-
-    template <typename GeneratorT>
-    void emit(GeneratorT *host, ngen_register_scope_t &scope,
-            const reg_buf_data_t &src_rd, const reg_buf_data_t &dst_rd) {
         dim_idx_t a_idx, b_idx;
         int tile_a, tile_b;
         tile_to_2d_dims(tile_, a_idx, b_idx, tile_a, tile_b);
 
         // Convert src/dst to 2D layouts.
-        dim_assignment_t to_ab(src_.ndims(), 2);
+        dim_assignment_t to_ab(src_layout.ndims(), 2);
         to_ab.assign(a_idx, 0);
         to_ab.assign(b_idx, 1);
-        auto src_ab = to_ab.map(src_);
-        auto dst_ab = to_ab.map(dst_);
+        auto src_ab = to_ab.map(src_layout);
+        auto dst_ab = to_ab.map(dst_layout);
 
+        src_ = src_ab;
+        dst_ = dst_ab;
         // Find minimal cost reorder path between layouts.
-        auto path = find_min_cost_path(hw_, src_ab, dst_ab, tile_a, tile_b);
+        path_ = find_min_cost_path(hw_, src_ab, dst_ab, tile_a, tile_b);
+    }
+
+    const tensor_t &tile() const { return tile_; }
+    const std::vector<reorder_step_t> &path() const { return path_; }
+
+    template <typename GeneratorT>
+    void emit(GeneratorT *host, ngen_register_scope_t &scope,
+            const reg_buf_data_t &src_rd, const reg_buf_data_t &dst_rd) {
+        auto &orig_type = src_.type();
 
         // Allocate a temporary GRF buffer if needed.
         reg_buf_data_t tmp;
-        if (path.size() > 1) {
+        if (path_.size() > 1) {
             const int grf_size = ngen::GRF::bytes(hw_);
             tmp = scope.alloc_reg_buf_data(
-                    utils::div_up(dst_ab.size(), grf_size));
+                    utils::div_up(dst_.size(), grf_size));
         }
 
         // Iterate through found reorders.
-        auto *prev_layout = &src_ab;
+        auto *prev_layout = &src_;
         auto prev_rd = src_rd;
-        int path_len = int(path.size());
-        auto &orig_type = src_ab.type();
+        int path_len = int(path_.size());
         for (int i = 0; i < path_len; i++) {
-            auto &step = path[i];
+            auto &step = path_[i];
             auto &tile = step.tile;
             auto &type = step.type;
             auto *next_layout = &step.layout;
@@ -1774,11 +1780,10 @@ private:
     }
 
     ngen::HW hw_;
-
+    tensor_t tile_;
     layout_t src_;
     layout_t dst_;
-
-    tensor_t tile_;
+    std::vector<reorder_step_t> path_;
 };
 
 class reorder_impl_t {
@@ -1911,6 +1916,15 @@ private:
             scope.safeRelease(dummy);
 
             reorder_2d_impl_t r(hw_, tile, src_tile_layout, dst_tile_layout);
+            bool tile_ok = true;
+            for (auto &step : r.path())
+                if (step.tile.elems() < 2) {
+                    tile_ok = false;
+                    break;
+                }
+            // Skip any 2d reorder that attempts scalar moves
+            if (!tile_ok) continue;
+
             src_layout_.for_each_tile(
                     tile, [&](const std::vector<dim_t> &start) {
                         auto src_off = src_layout_.offset<dim_t>(start);

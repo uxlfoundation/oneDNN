@@ -390,7 +390,7 @@ private:
 
         // BMNK order (outer -> inner).
         std::vector<pvar_t> dim_order;
-        for (auto bmnk : {pvars::m, pvars::n, pvars::k, pvars::b}) {
+        for (const auto &bmnk : {pvars::m, pvars::n, pvars::k, pvars::b}) {
             for (auto &d : sizes) {
                 if (to_gemm(d, desc_.prop) != bmnk) continue;
                 dim_order.push_back(d);

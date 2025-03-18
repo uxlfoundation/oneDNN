@@ -703,15 +703,76 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         }
     }
 
-    if ((prb->wei_dt() == dnnl_s4 || prb->wei_dt() == dnnl_u4)
-            && (prb->n % 2)) {
-        BENCHDNN_PRINT(2,
-                "[INVALID][%s:%d]: Int4 Weights decompression requires OC "
-                "('%d') to be even.\n",
-                __FILE__, __LINE__, (int)prb->n);
-        res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
-        return;
+    if ((prb->wei_dt() == dnnl_s4 || prb->wei_dt() == dnnl_u4)) {
+        const bool has_wstrides = !prb->strides[WEI].empty();
+
+        const auto wtag = normalize_tag(prb->wtag, prb->ndims);
+        const bool has_wtag = wtag != tag::any && wtag != tag::undef;
+
+        if (has_wstrides) {
+            const int64_t stride_k
+                    = has_wstrides ? prb->strides[WEI][prb->ndims - 2] : 0;
+            const int64_t stride_n
+                    = has_wstrides ? prb->strides[WEI][prb->ndims - 1] : 0;
+
+            if (stride_k > stride_n) {
+                if (prb->n % 2) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Int4 Weights decompression "
+                            "requires N ('%lld') to be even for given "
+                            "strides.\n",
+                            __FILE__, __LINE__, static_cast<long long>(prb->n));
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
+            } else if (stride_n > stride_k) {
+                if (prb->k % 2) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Int4 Weights decompression "
+                            "requires K ('%lld') to be even for given "
+                            "strides.\n",
+                            __FILE__, __LINE__, static_cast<long long>(prb->k));
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
+            } else {
+                BENCHDNN_PRINT(
+                        0, "%s\n", "Error: unexpected strides for int4.");
+                SAFE_V(FAIL);
+            }
+        } else if (has_wtag) {
+            const auto last_letter = *wtag.rbegin();
+            const auto pre_last_letter = *(wtag.rbegin() + 1);
+
+            if (last_letter > pre_last_letter) {
+                if (prb->n % 2) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Int4 Weights decompression "
+                            "requires N ('%lld') to be even for tag %s.\n",
+                            __FILE__, __LINE__, static_cast<long long>(prb->n),
+                            wtag.c_str());
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
+            } else if (last_letter < pre_last_letter) {
+                if (prb->k % 2) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Int4 Weights decompression "
+                            "requires K ('%lld') to be even %s.\n",
+                            __FILE__, __LINE__, static_cast<long long>(prb->k),
+                            wtag.c_str());
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
+            } else {
+                BENCHDNN_PRINT(0, "Error: unexpected tag %s\n", wtag.c_str());
+                SAFE_V(FAIL);
+            }
+        }
     }
 
     auto src_rt_mask = prb->src_runtime_dim_mask();

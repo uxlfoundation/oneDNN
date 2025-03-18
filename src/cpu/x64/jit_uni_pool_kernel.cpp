@@ -164,7 +164,8 @@ template <cpu_isa_t isa>
 bool jit_uni_pool_kernel<isa>::has_large_buffers(const pooling_pd_t *ppd) {
     auto is_large = [](const memory_desc_t &md) {
         memory_desc_wrapper mdw(md);
-        return mdw.size() > std::numeric_limits<int32_t>::max();
+        return mdw.size()
+                > static_cast<size_t>(std::numeric_limits<int32_t>::max());
     };
 
     if (is_large(*ppd->invariant_src_md())) return true;
@@ -188,7 +189,7 @@ status_t jit_uni_pool_kernel<isa>::init_conf(
     const memory_desc_wrapper dst_d(
             ppd->is_fwd() ? ppd->dst_md() : ppd->diff_dst_md());
 
-    if (has_large_buffers(ppd)) return status::unimplemented;
+    VDISPATCH_POOLING_IC(!has_large_buffers(ppd), VERBOSE_SHAPE_RESTRICTION);
 
     const int ndims = src_d.ndims();
 

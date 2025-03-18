@@ -42,8 +42,8 @@ private:
 
 protected:
     void SetUp() override {
-        src_dt = data_traits<src_data_t>::data_type;
-        dst_dt = data_traits<dst_data_t>::data_type;
+        src_dt = data_traits_t<src_data_t>::data_type;
+        dst_dt = data_traits_t<dst_data_t>::data_type;
 
         p = ::testing::TestWithParam<reduction_test_params_t>::GetParam();
 

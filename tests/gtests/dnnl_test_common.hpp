@@ -215,39 +215,39 @@ inline bool unsupported_prop_kind(
 #endif
 
 template <typename data_t>
-struct data_traits {};
+struct data_traits_t {};
 template <>
-struct data_traits<float16_t> {
+struct data_traits_t<float16_t> {
     static const auto data_type = memory::data_type::f16;
 
     using uint_type = uint16_t;
 };
 template <>
-struct data_traits<bfloat16_t> {
+struct data_traits_t<bfloat16_t> {
     static const auto data_type = memory::data_type::bf16;
 
     using uint_type = uint16_t;
 };
 template <>
-struct data_traits<float> {
+struct data_traits_t<float> {
     static const auto data_type = memory::data_type::f32;
 
     using uint_type = uint32_t;
 };
 template <>
-struct data_traits<uint8_t> {
+struct data_traits_t<uint8_t> {
     static const auto data_type = memory::data_type::u8;
 
     using uint_type = uint8_t;
 };
 template <>
-struct data_traits<int8_t> {
+struct data_traits_t<int8_t> {
     static const auto data_type = memory::data_type::s8;
 
     using uint_type = uint8_t;
 };
 template <>
-struct data_traits<int32_t> {
+struct data_traits_t<int32_t> {
     static const auto data_type = memory::data_type::s32;
 
     using uint_type = uint32_t;
@@ -399,10 +399,10 @@ inline memory::desc create_md(memory::dims dims, memory::data_type data_type,
 template <typename data_t>
 static inline data_t set_value(
         memory::dim index, data_t mean, data_t deviation, double sparsity) {
-    if (data_traits<data_t>::data_type == memory::data_type::f16
-            || data_traits<data_t>::data_type == memory::data_type::bf16) {
+    if (data_traits_t<data_t>::data_type == memory::data_type::f16
+            || data_traits_t<data_t>::data_type == memory::data_type::bf16) {
         return data_t(set_value<float>(index, mean, deviation, sparsity));
-    } else if (data_traits<data_t>::data_type == memory::data_type::f32) {
+    } else if (data_traits_t<data_t>::data_type == memory::data_type::f32) {
         const memory::dim group_size = (memory::dim)(1. / sparsity);
         const memory::dim group = index / group_size;
         const memory::dim in_group = index % group_size;
@@ -410,10 +410,10 @@ static inline data_t set_value(
         return fill ? static_cast<data_t>(
                        mean + deviation * sinf(float(index % 37)))
                     : data_t {0};
-    } else if (data_traits<data_t>::data_type == memory::data_type::s32
-            || data_traits<data_t>::data_type == memory::data_type::s8) {
+    } else if (data_traits_t<data_t>::data_type == memory::data_type::s32
+            || data_traits_t<data_t>::data_type == memory::data_type::s8) {
         return data_t(index * 13 % 21 - 10);
-    } else if (data_traits<data_t>::data_type == memory::data_type::u8) {
+    } else if (data_traits_t<data_t>::data_type == memory::data_type::u8) {
         return data_t(index * 13 % 17);
     }
     assert(!"not expected");
@@ -501,11 +501,11 @@ static void compare_data(
         const memory &ref, const memory &dst, data_t threshold = (data_t)1e-4) {
     using data_type = memory::data_type;
 
-    ASSERT_TRUE(data_traits<data_t>::data_type == data_type::f32
-            || data_traits<data_t>::data_type == data_type::f16
-            || data_traits<data_t>::data_type == data_type::bf16
-            || data_traits<data_t>::data_type == data_type::s32
-            || data_traits<data_t>::data_type == data_type::s8);
+    ASSERT_TRUE(data_traits_t<data_t>::data_type == data_type::f32
+            || data_traits_t<data_t>::data_type == data_type::f16
+            || data_traits_t<data_t>::data_type == data_type::bf16
+            || data_traits_t<data_t>::data_type == data_type::s32
+            || data_traits_t<data_t>::data_type == data_type::s8);
 
     /* Note: size_t incompatible with MSVC++ */
     auto ref_desc = ref.get_desc();
@@ -537,9 +537,9 @@ static void compare_data(
         data_t ref = ref_data[mdw_ref.off_l(i, true)];
         data_t got = dst_data[mdw_dst.off_l(i, true)];
 
-        if (data_traits<data_t>::data_type == data_type::f32
-                || data_traits<data_t>::data_type == data_type::f16
-                || data_traits<data_t>::data_type == data_type::bf16) {
+        if (data_traits_t<data_t>::data_type == data_type::f32
+                || data_traits_t<data_t>::data_type == data_type::f16
+                || data_traits_t<data_t>::data_type == data_type::bf16) {
             const float threshold_f32 = static_cast<float>(threshold);
             const float ref_f32 = static_cast<float>(ref);
             const float got_f32 = static_cast<float>(got);

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -198,7 +198,7 @@ protected:
         //ASSERT_EQ(p.aalgorithm, algorithm::vanilla_lstm);
 
         // Initialize the data
-        memory::data_type prec = data_traits<data_t>::data_type;
+        memory::data_type prec = data_traits_t<data_t>::data_type;
         auto dims = p.sizes;
         auto t = dims.t, mb = dims.mb, l = dims.l, d = dims.d;
         auto slc = dims.slc, sic = dims.sic, dhc = dims.dhc, dic = dims.dic;

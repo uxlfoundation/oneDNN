@@ -272,7 +272,7 @@ protected:
             dst_dims.push_back(pd.ow);
         }
 
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
         src_desc = std::make_shared<memory::desc>(
                 src_dims, data_type, p.src_format);
         dst_desc = std::make_shared<memory::desc>(

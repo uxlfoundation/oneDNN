@@ -135,7 +135,7 @@ private:
 
 protected:
     void SetUp() override {
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
         SKIP_IF(unsupported_data_type(data_type),
                 "Engine does not support this data type.");
 
@@ -224,7 +224,7 @@ protected:
         strm = make_stream(eng);
 
         ASSERT_EQ(p.aalgorithm, algorithm::deconvolution_direct);
-        memory::data_type data_type = data_traits<data_t>::data_type;
+        memory::data_type data_type = data_traits_t<data_t>::data_type;
 
         test_convolution_sizes_t dd = p.sizes;
         with_bias = p.formats.bias_format != memory::format_tag::undef;

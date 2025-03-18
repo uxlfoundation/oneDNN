@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -605,10 +605,11 @@ protected:
         SKIP_IF(!zero_off && get_test_engine_kind() == engine::kind::cpu,
                 "CPU does not support non-zero offsets.");
 
-        SKIP_IF(unsupported_data_type(data_traits<a_dt>::data_type),
+        SKIP_IF(unsupported_data_type(data_traits_t<a_dt>::data_type),
                 "Engine does not support this data type.");
 
-        bool is_f16 = (data_traits<a_dt>::data_type == memory::data_type::f16);
+        bool is_f16
+                = (data_traits_t<a_dt>::data_type == memory::data_type::f16);
         SKIP_IF(is_f16 && get_test_engine_kind() == engine::kind::cpu,
                 "CPU does not support f16 data type.");
 
@@ -618,9 +619,9 @@ protected:
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         SKIP_IF(get_test_engine_kind() == engine::kind::gpu
-                        && (data_traits<a_dt>::data_type
+                        && (data_traits_t<a_dt>::data_type
                                         == memory::data_type::u8
-                                || data_traits<a_dt>::data_type
+                                || data_traits_t<a_dt>::data_type
                                         == memory::data_type::s8),
                 "SYCL GPU int GEMM not implemented.");
         SKIP_IF_CUDA(true, "Test not supported in CUDA backend");
@@ -628,9 +629,9 @@ protected:
 
 #if DNNL_X64
         bool is_bf16bf16f32 = true
-                && data_traits<a_dt>::data_type == memory::data_type::bf16
-                && data_traits<b_dt>::data_type == memory::data_type::bf16
-                && data_traits<c_dt>::data_type == memory::data_type::f32;
+                && data_traits_t<a_dt>::data_type == memory::data_type::bf16
+                && data_traits_t<b_dt>::data_type == memory::data_type::bf16
+                && data_traits_t<c_dt>::data_type == memory::data_type::f32;
 
         SKIP_IF(is_bf16bf16f32 && get_test_engine_kind() == engine::kind::cpu
                         && !dnnl::mayiuse(cpu_isa::avx512_core),
@@ -644,10 +645,10 @@ protected:
                         || p.igemm_params.ob() != 0)
                         && pack,
                 "Packed GEMM doesn't support alpha or non-zero offset{A,B}.");
-        SKIP_IF(data_traits<b_dt>::data_type == memory::data_type::u8
+        SKIP_IF(data_traits_t<b_dt>::data_type == memory::data_type::u8
                         && get_test_engine_kind() == engine::kind::cpu,
                 "CPU does not support s8u8s32 and u8u8s32 GEMM.");
-        SKIP_IF(data_traits<c_dt>::data_type == memory::data_type::bf16
+        SKIP_IF(data_traits_t<c_dt>::data_type == memory::data_type::bf16
                         && get_test_engine_kind() == engine::kind::cpu,
                 "CPU does not support bf16bf16bf16 GEMM.");
 

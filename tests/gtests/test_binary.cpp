@@ -42,10 +42,10 @@ private:
 
 protected:
     void SetUp() override {
-        src0_dt = data_traits<src0_data_t>::data_type;
-        src1_dt = data_traits<src1_data_t>::data_type;
-        src2_dt = data_traits<src2_data_t>::data_type;
-        dst_dt = data_traits<dst_data_t>::data_type;
+        src0_dt = data_traits_t<src0_data_t>::data_type;
+        src1_dt = data_traits_t<src1_data_t>::data_type;
+        src2_dt = data_traits_t<src2_data_t>::data_type;
+        dst_dt = data_traits_t<dst_data_t>::data_type;
 
         p = ::testing::TestWithParam<binary_test_params_t>::GetParam();
 

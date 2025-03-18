@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -116,9 +116,9 @@ class convolution_forward_test
     : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
     virtual void SetUp() {
-        memory::data_type data_type_src = data_traits<data_t_src>::data_type;
-        memory::data_type data_type_dst = data_traits<data_t_dst>::data_type;
-        memory::data_type data_type_wei = data_traits<data_t_wei>::data_type;
+        memory::data_type data_type_src = data_traits_t<data_t_src>::data_type;
+        memory::data_type data_type_dst = data_traits_t<data_t_dst>::data_type;
+        memory::data_type data_type_wei = data_traits_t<data_t_wei>::data_type;
 
         SKIP_IF(unsupported_data_type(data_type_src),
                 "Engine does not support this data type.");
@@ -220,9 +220,9 @@ protected:
         auto eng = get_test_engine();
         auto strm = stream(eng);
 
-        memory::data_type data_type_src = data_traits<data_t_src>::data_type;
-        memory::data_type data_type_dst = data_traits<data_t_dst>::data_type;
-        memory::data_type data_type_wei = data_traits<data_t_wei>::data_type;
+        memory::data_type data_type_src = data_traits_t<data_t_src>::data_type;
+        memory::data_type data_type_dst = data_traits_t<data_t_dst>::data_type;
+        memory::data_type data_type_wei = data_traits_t<data_t_wei>::data_type;
 
         test_convolution_sizes_t cd = p.sizes;
 

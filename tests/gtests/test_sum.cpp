@@ -156,8 +156,8 @@ protected:
     }
     void SetUp() override {
         SKIP_IF_HIP(true, "Sum operator is not supported by HIP");
-        src_data_type = data_traits<src_data_t>::data_type;
-        dst_data_type = data_traits<dst_data_t>::data_type;
+        src_data_type = data_traits_t<src_data_t>::data_type;
+        dst_data_type = data_traits_t<dst_data_t>::data_type;
         sum_test_params p
                 = ::testing::TestWithParam<sum_test_params>::GetParam();
         SKIP_IF(get_test_engine_kind() == engine::kind::gpu
@@ -245,7 +245,7 @@ protected:
             // Keep few mantissa digits for fp types to avoid round-off errors
             // With proper scalars the computations give exact results
             if (!std::is_integral<src_data_t>::value) {
-                using uint_type = typename data_traits<src_data_t>::uint_type;
+                using uint_type = typename data_traits_t<src_data_t>::uint_type;
                 int mant_digits
                         = dnnl::impl::nstl::numeric_limits<src_data_t>::digits;
                 int want_mant_digits = 3;

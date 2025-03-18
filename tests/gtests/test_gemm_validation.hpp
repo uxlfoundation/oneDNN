@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -118,15 +118,15 @@ void compare(const test_params &p, const test_memory &c_mem,
         c_dt got = c[p.off.c + i * p.ldc + j];
         c_dt diff = got - ref;
 
-        if (data_traits<a_dt>::data_type == data_type::f16) {
+        if (data_traits_t<a_dt>::data_type == data_type::f16) {
             const float eps = 1e-3 * p.K;
             float e = (std::abs(ref) > eps) ? diff / ref : float(diff);
             ASSERT_NEAR(e, 0.0, eps) << "Row: " << i << " Col: " << j;
-        } else if (data_traits<a_dt>::data_type == data_type::bf16) {
+        } else if (data_traits_t<a_dt>::data_type == data_type::bf16) {
             const float eps = 1e-2 * p.K;
             float e = (std::abs(ref) > eps) ? diff / ref : float(diff);
             ASSERT_NEAR(e, 0.0, eps) << "Row: " << i << " Col: " << j;
-        } else if (data_traits<a_dt>::data_type == data_type::f32) {
+        } else if (data_traits_t<a_dt>::data_type == data_type::f32) {
             c_dt e = (std::abs(ref) > 1e-4) ? c_dt(diff / ref) : diff;
             ASSERT_NEAR(e, 0.0, 1e-4) << "Row: " << i << " Col: " << j;
         } else {
@@ -134,9 +134,9 @@ void compare(const test_params &p, const test_memory &c_mem,
             c_dt eps = 0;
             if (p.alpha == 1.0f) {
                 eps = 1;
-            } else if (data_traits<a_dt>::data_type == data_type::u8) {
+            } else if (data_traits_t<a_dt>::data_type == data_type::u8) {
                 eps = p.K / 700 + 1;
-            } else if (data_traits<a_dt>::data_type == data_type::s8) {
+            } else if (data_traits_t<a_dt>::data_type == data_type::s8) {
                 eps = p.K / 350 + 1;
             }
             ASSERT_NEAR(diff, 0, eps) << "Row: " << i << " Col: " << j;

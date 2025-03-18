@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,8 +66,8 @@ protected:
     void Test() {
         using data_i_t = typename reorder_types::first_type;
         using data_o_t = typename reorder_types::second_type;
-        memory::data_type prec_i = data_traits<data_i_t>::data_type;
-        memory::data_type prec_o = data_traits<data_o_t>::data_type;
+        memory::data_type prec_i = data_traits_t<data_i_t>::data_type;
+        memory::data_type prec_o = data_traits_t<data_o_t>::data_type;
 
         SKIP_IF(unsupported_data_type(prec_i),
                 "Engine does not support this data type.");
@@ -116,8 +116,8 @@ protected:
     void Test(engine &eng_i, engine &eng_o) {
         using data_i_t = typename reorder_types::first_type;
         using data_o_t = typename reorder_types::second_type;
-        memory::data_type prec_i = data_traits<data_i_t>::data_type;
-        memory::data_type prec_o = data_traits<data_o_t>::data_type;
+        memory::data_type prec_i = data_traits_t<data_i_t>::data_type;
+        memory::data_type prec_o = data_traits_t<data_o_t>::data_type;
 
         SKIP_IF(unsupported_data_type(prec_i, eng_i),
                 "Engine does not support this data type.");
@@ -160,8 +160,8 @@ protected:
         const size_t nelems = std::accumulate(p.dims.begin(), p.dims.end(),
                 size_t(1), std::multiplies<size_t>());
 
-        memory::data_type prec_i = data_traits<data_i_t>::data_type;
-        memory::data_type prec_o = data_traits<data_o_t>::data_type;
+        memory::data_type prec_i = data_traits_t<data_i_t>::data_type;
+        memory::data_type prec_o = data_traits_t<data_o_t>::data_type;
         auto md_i = memory::desc(p.dims, prec_i, p.fmt_i);
         auto md_o = memory::desc(p.dims, prec_o, p.fmt_o);
 

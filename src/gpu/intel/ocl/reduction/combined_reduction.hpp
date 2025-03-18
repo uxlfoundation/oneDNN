@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,8 +60,7 @@ struct combined_reduction_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_REDUCTION(!memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
-            VDISPATCH_REDUCTION(
-                    post_ops_with_binary_ok(attr(), dst_md()->data_type, 5),
+            VDISPATCH_REDUCTION(post_ops_with_binary_ok(attr(), *dst_md(), 5),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_REDUCTION_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_TAG);

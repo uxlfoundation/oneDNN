@@ -115,7 +115,7 @@ template <typename data_t_src, typename data_t_wei, typename data_t_acc,
 class convolution_forward_test_t
     : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
-    virtual void SetUp() {
+    void SetUp() override {
         memory::data_type data_type_src = data_traits_t<data_t_src>::data_type;
         memory::data_type data_type_dst = data_traits_t<data_t_dst>::data_type;
         memory::data_type data_type_wei = data_traits_t<data_t_wei>::data_type;

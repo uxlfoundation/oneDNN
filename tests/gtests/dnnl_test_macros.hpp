@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -124,6 +124,7 @@
     } \
     void Testing()
 
+//NOLINTBEGIN(bugprone-macro-parentheses)
 // Wrapper around TEST from gtest, intended to catch exceptions thrown by a unit
 // test.
 #define HANDLE_EXCEPTIONS_FOR_TEST(test_fixture, test_name) \
@@ -192,5 +193,7 @@
 #define HANDLE_EXCEPTIONS_FOR_TEST_P(test_fixture, test_name) \
     TEST_P(test_fixture, test_name)
 #endif
+
+//NOLINTEND(bugprone-macro-parentheses)
 
 #endif

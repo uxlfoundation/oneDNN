@@ -53,12 +53,7 @@ static constexpr int N_test_max = 53;
  * a surjective function from {0, ..., dim-1} onto {0, ..., dim_test-1}.
  */
 struct mapper_t {
-    mapper_t(const mapper_t &other)
-        : dim_(other.dim_)
-        , dim_test_(other.dim_test_)
-        , gen_(other.gen_)
-        , gen_start_(other.gen_start_)
-        , mapper_(other.mapper_) {}
+    mapper_t(const mapper_t &other) = default;
 
     mapper_t(mapper_t &&other) noexcept
         : dim_(other.dim_)
@@ -260,19 +255,19 @@ void prepare_data_for_gemm_testing(
     size_t sizeA, sizeB, sizeC;
     get_matrix_size(p, sizeA, sizeB, sizeC);
 
-    gemm_data.a_mem.reset(
-            new test_memory(get_matrix_md<a_dt>(sizeA, p.off.a), eng));
-    gemm_data.b_mem.reset(
-            new test_memory(get_matrix_md<b_dt>(sizeB, p.off.b), eng));
-    gemm_data.c_mem.reset(
-            new test_memory(get_matrix_md<c_dt>(sizeC, p.off.c), eng));
-    gemm_data.c_ref_mem.reset(
-            new test_memory(get_matrix_md<c_dt>(sizeC, p.off.c), eng));
-    gemm_data.oc_mem.reset(
-            new test_memory(get_matrix_md<c_dt>(p.size_oc(), p.off.co), eng));
+    gemm_data.a_mem = std::make_shared<test_memory>(
+            get_matrix_md<a_dt>(sizeA, p.off.a), eng);
+    gemm_data.b_mem = std::make_shared<test_memory>(
+            get_matrix_md<b_dt>(sizeB, p.off.b), eng);
+    gemm_data.c_mem = std::make_shared<test_memory>(
+            get_matrix_md<c_dt>(sizeC, p.off.c), eng);
+    gemm_data.c_ref_mem = std::make_shared<test_memory>(
+            get_matrix_md<c_dt>(sizeC, p.off.c), eng);
+    gemm_data.oc_mem = std::make_shared<test_memory>(
+            get_matrix_md<c_dt>(p.size_oc(), p.off.co), eng);
 
-    gemm_data.mapper_m.reset(new mapper_t(p.M, M_test_max));
-    gemm_data.mapper_n.reset(new mapper_t(p.N, N_test_max));
+    gemm_data.mapper_m = std::make_shared<mapper_t>(p.M, M_test_max);
+    gemm_data.mapper_n = std::make_shared<mapper_t>(p.N, N_test_max);
 
     fill_matrices<a_dt, b_dt, c_dt>(p, *gemm_data.mapper_m, *gemm_data.mapper_n,
             *gemm_data.a_mem, *gemm_data.b_mem, *gemm_data.c_mem,

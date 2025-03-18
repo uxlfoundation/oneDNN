@@ -836,7 +836,7 @@ int layout_t::to_linear_index(
     std::vector<int> idx(nblocks());
     for (int i = 0; i < ntiles; i++) {
         auto i_coord = to_coord(idx);
-        if (i_coord == coord) return i;
+        if (i_coord.drop_defaults() == coord.drop_defaults()) return i;
         advance(idx, blocks_, tile_blocks);
     }
     gpu_error_not_expected();

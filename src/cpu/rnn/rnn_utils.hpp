@@ -316,7 +316,7 @@ struct rnn_conf_t {
     size_t weights_iter_comp_offset = 0, weights_iter_pack_size = 0;
     size_t weights_projection_comp_offset = 0, weights_projection_pack_size = 0;
 
-    bool copy_bias = 0;
+    bool copy_bias = false;
     int weights_layer_ld = 0, weights_layer_nld = 0;
     int diff_weights_layer_ld = 0, diff_weights_layer_nld = 0;
     int weights_iter_ld = 0, weights_iter_nld = 0;
@@ -347,9 +347,10 @@ struct rnn_conf_t {
     int dst_iter_c_ld_ = 0, dst_iter_c_nld_ = 0;
 
     int weights_iter_compensation_size = 0, weights_layer_compensation_size = 0;
-    bool is_fwd = 0, is_training = 0, is_lbr = 0, is_lstm_peephole = 0,
-         is_lstm_projection = 0, is_augru = 0, is_orig_gru = 0;
-    bool use_workspace = 0;
+    bool is_fwd = false, is_training = false, is_lbr = false,
+         is_lstm_peephole = false, is_lstm_projection = false, is_augru = false,
+         is_orig_gru = false;
+    bool use_workspace = false;
 
     // Size of workspace for each tensor in bytes
     // Notes:

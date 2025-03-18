@@ -63,10 +63,6 @@ namespace x64 {
 // TODO: move this to jit_generator_t class?
 namespace {
 
-typedef enum {
-    MAX_CODE_SIZE = 256 * 1024,
-} max_code_size_t;
-
 // TODO: move this somewhere else? Although this is only used by jit kernels
 // (Roma)
 inline int float2int(float x) {
@@ -2706,7 +2702,7 @@ public:
      * the max_cpu_isa argument */
     jit_generator_t(const char *name, cpu_isa_t max_cpu_isa = get_max_cpu_isa())
         : Xbyak::MmapAllocator(name)
-        , Xbyak::CodeGenerator(MAX_CODE_SIZE, Xbyak::AutoGrow,
+        , Xbyak::CodeGenerator(max_code_size, Xbyak::AutoGrow,
                   /*allocator=*/this)
         , max_cpu_isa_(max_cpu_isa) {}
 
@@ -2754,6 +2750,8 @@ private:
     static inline bool is_initialized() {
         return Xbyak::GetError() == Xbyak::ERR_NONE;
     }
+
+    static constexpr unsigned max_code_size = 256 * 1024;
 
 protected:
     virtual void generate() = 0;

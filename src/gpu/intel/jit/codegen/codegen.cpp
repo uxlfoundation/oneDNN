@@ -179,8 +179,7 @@ public:
         } else if (func.is<reorder_t>()) {
             auto arg_ops = eval(obj.args, scope);
             gpu_assert(obj.attr.is_empty()) << "Unexpected attribute.";
-            reorder(scope, func.as<reorder_t>(), reorder_t::arg_src_buf(obj),
-                    arg_ops);
+            reorder(scope, func.as<reorder_t>(), arg_ops);
         } else if (func.is<reduce_t>()) {
             auto arg_ops = eval(obj.args, scope);
             gpu_assert(obj.attr.is_empty()) << "Unexpected attribute.";
@@ -716,7 +715,6 @@ private:
     }
 
     void reorder(ngen_register_scope_t &scope, const reorder_t &reorder_func,
-            const expr_t &src_buf,
             const std::vector<ngen_operand_t> &args) const {
         auto &src_op = reorder_t::arg_src_buf(args);
         auto &dst_op = reorder_t::arg_dst_buf(args);

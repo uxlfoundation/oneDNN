@@ -1579,6 +1579,7 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     auto dst_md = make_dnnl_memory_desc(
             op->get_output_value(0)->get_logical_tensor());
     value_ptr dst_val = op->get_output_value(0);
+    dst_val->set_strides(get_dense_strides(dst_md.get_dims()));
     status_t status = fill_layout_info(dst_val, dst_md);
 
     // fill scratchpads dimensions and data type to scratchpad value_t

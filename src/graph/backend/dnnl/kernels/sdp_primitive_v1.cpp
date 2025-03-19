@@ -70,14 +70,13 @@ status_t sdp_primitive_v1_kernel_t<quantized>::compile_impl(
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_implicit_causal_mask);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
-    BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
 
     pipeline.reset_visualize_arg(true, false);
     BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_transpose_to_matmul);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_sdpa);
+    BACKEND_DNNL_ADD_PASS(pipeline, insert_reshape_for_sdpa);
 
     // TODO(GX):add fuse dst transpose to sdpa
     // BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_matmul);

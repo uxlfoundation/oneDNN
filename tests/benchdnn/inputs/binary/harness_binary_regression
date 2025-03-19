@@ -6,3 +6,6 @@
 
 # Mixed src1/post-op src broadcast
 --reset --attr-post-ops=add:f32:2 1x17:1x1
+
+# per_w broadcasting strategy
+--reset --attr-post-ops=mul:f32:per_dim_2+add:f32:per_dim_2 --alg=div 1x20x768:1x20x1

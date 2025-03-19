@@ -181,7 +181,7 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
                                 const xpu::ocl::buffer_memory_storage_t *>(
                                 ocl_mem_storage);
                         auto ocl_mem = m->mem_object();
-                        //printf("add arg %d global buffer\n", i);
+                        //printf("add arg %d buffer\n", i);
                         CHECK(kernel->set_arg(i, sizeof(cl_mem), &ocl_mem));
                         param_bytes += pointer_size;
                         break;
@@ -191,7 +191,7 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
                                 const xpu::ocl::usm_memory_storage_t *>(
                                 ocl_mem_storage);
                         auto *usm_ptr = m->usm_ptr();
-                        printf("Engine %p add arg %d local buffer %p\n", stream.engine(), i, usm_ptr);
+                        printf("Engine %p add arg %d usm ptr %p\n", stream.engine(), i, usm_ptr);
                         CHECK(kernel->set_usm_arg(stream.engine(), i, usm_ptr));
                         printf("Done adding usm arg\n");
                         param_bytes += pointer_size;

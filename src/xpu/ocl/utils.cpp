@@ -37,7 +37,7 @@ status_t convert_to_dnnl(cl_int cl_status) {
         case CL_SUCCESS: return status::success;
         case CL_MEM_OBJECT_ALLOCATION_FAILURE:
         case CL_OUT_OF_RESOURCES:
-        case CL_OUT_OF_HOST_MEMORY: return status::out_of_memory;
+        case CL_OUT_OF_HOST_MEMORY: { printf("Err: out of memory\n"); return status::out_of_memory;}
         case CL_DEVICE_NOT_FOUND:
         case CL_DEVICE_NOT_AVAILABLE:
         case CL_COMPILER_NOT_AVAILABLE:
@@ -55,7 +55,7 @@ status_t convert_to_dnnl(cl_int cl_status) {
         case CL_DEVICE_PARTITION_FAILED:
         case CL_KERNEL_ARG_INFO_NOT_AVAILABLE:
         case CL_INVALID_PLATFORM:
-        case CL_INVALID_DEVICE: return status::runtime_error;
+        case CL_INVALID_DEVICE:  { printf ("Err: runtime error\n"); return status::runtime_error;}
         case CL_INVALID_VALUE:
         case CL_INVALID_DEVICE_TYPE:
         case CL_INVALID_CONTEXT:
@@ -87,7 +87,7 @@ status_t convert_to_dnnl(cl_int cl_status) {
         case CL_INVALID_GL_OBJECT:
         case CL_INVALID_BUFFER_SIZE:
         case CL_INVALID_MIP_LEVEL:
-        case CL_INVALID_GLOBAL_WORK_SIZE: return status::invalid_arguments;
+        case CL_INVALID_GLOBAL_WORK_SIZE: {printf("Err Invalid argument \n"); return status::invalid_arguments;}
 
         default: return status::runtime_error;
     }

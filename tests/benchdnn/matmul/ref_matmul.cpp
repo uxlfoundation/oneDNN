@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
+
 #include "utils/parallel.hpp"
 
 #include "matmul/matmul.hpp"
@@ -39,15 +41,25 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
     const dnn_mem_t &dropout = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
 
+    const int64_t M = prb->m;
+    const int64_t N = prb->n;
+    const int64_t K = prb->k;
+    const int64_t MB = prb->mb;
+    const int batch_ndims = dst_m.ndims() - 2;
+
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
+
     const int src_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_SRC, dnnl_matmul, src_m.ndims());
     const int wei_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims());
     const int dst_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_DST, dnnl_matmul, dst_m.ndims());
+
+    const bool has_src_single_scale = has_src_scale && src_scale_mask == 0;
+    const bool has_wei_single_scale = has_wei_scale && wei_scale_mask == 0;
 
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_zp
@@ -61,6 +73,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const int dst_zp_mask = attr_t::get_default_mask(
             prb->attr.zero_points.get(DNNL_ARG_DST).policy);
 
+    const bool has_src_single_zp = has_src_zp && src_zp_mask == 0;
+    const bool has_wei_single_zp = has_wei_zp && wei_zp_mask == 0;
+
     const auto &src_scale_groups = prb->attr.scales.get(DNNL_ARG_SRC).groups;
     const auto &wei_scale_groups
             = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
@@ -68,11 +83,24 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const auto &wei_zp_groups
             = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
 
-    const int64_t M = prb->m;
-    const int64_t N = prb->n;
-    const int64_t K = prb->k;
-    const int64_t MB = prb->mb;
-    const int batch_ndims = dst_m.ndims() - 2;
+    const int64_t src_scale_group = !src_scale_groups.empty()
+            ? src_scale_groups[1]
+            : (src_scale_mask << (src_m.ndims() - 1)) > 0 ? 1
+                                                          : K;
+    const int64_t wei_scale_group = !wei_scale_groups.empty()
+            ? wei_scale_groups[0]
+            : ((wei_scale_mask << (wei_m.ndims() - 2)) % 2) > 0 ? 1
+                                                                : K;
+    const int64_t src_zp_group = !src_zp_groups.empty() ? src_zp_groups[1]
+            : (src_zp_mask << (src_m.ndims() - 1)) > 0  ? 1
+                                                        : K;
+    const int64_t wei_zp_group = !wei_zp_groups.empty()      ? wei_zp_groups[0]
+            : ((wei_zp_mask << (wei_m.ndims() - 2)) % 2) > 0 ? 1
+                                                             : K;
+
+    const auto smallest_k_group = std::min(
+            {src_scale_group, wei_scale_group, src_zp_group, wei_zp_group});
+    const auto n_k_groups = K / smallest_k_group;
 
     // Fast return if any dim is zero. Common logic doesn't apply because of
     // broadcast semantics.
@@ -87,45 +115,57 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(MB, M, N, [&](int64_t mb, int64_t m, int64_t n) {
         float dst = 0;
-        const int64_t src_mb
-                = dst_m.get_idx(mb, src_broadcast_mask, batch_ndims);
-        const int64_t wei_mb
-                = dst_m.get_idx(mb, wei_broadcast_mask, batch_ndims);
+        int64_t src_mb = 0;
+        int64_t wei_mb = 0;
+        if (MB > 1) {
+            src_mb = dst_m.get_idx(mb, src_broadcast_mask, batch_ndims);
+            wei_mb = dst_m.get_idx(mb, wei_broadcast_mask, batch_ndims);
+        }
 
-        for (int64_t k = 0; k < K; ++k) {
-            const auto src_off = src_off_f(prb, src_mb, m, k);
-            const auto wei_off = wei_off_f(prb, wei_mb, k, n);
+        int src_zp = has_src_single_zp ? src_zps.get_elem(0) : 0;
+        int wei_zp = has_wei_single_zp ? wei_zps.get_elem(0) : 0;
+        float src_scale = has_src_single_scale ? src_scales.get_elem(0) : 1.f;
+        float wei_scale = has_wei_single_scale ? wei_scales.get_elem(0) : 1.f;
 
-            int src_zp = 0;
-            if (has_src_zp) {
+        for (int64_t gK = 0; gK < n_k_groups; gK++) {
+            const auto src_gK_off
+                    = src_off_f(prb, src_mb, m, gK * smallest_k_group);
+            const auto wei_gK_off
+                    = wei_off_f(prb, wei_mb, gK * smallest_k_group, n);
+
+            if (has_src_zp && !has_src_single_zp) {
                 const auto src_zp_idx = src_m.get_idx(
-                        src_off, src_zp_mask, src_m.ndims(), src_zp_groups);
+                        src_gK_off, src_zp_mask, src_m.ndims(), src_zp_groups);
                 src_zp = src_zps.get_elem(src_zp_idx);
             }
-            int wei_zp = 0;
-            if (has_wei_zp) {
+            if (has_wei_zp && !has_wei_single_zp) {
                 const auto wei_zp_idx = wei_m.get_idx(
-                        wei_off, wei_zp_mask, wei_m.ndims(), wei_zp_groups);
+                        wei_gK_off, wei_zp_mask, wei_m.ndims(), wei_zp_groups);
                 wei_zp = wei_zps.get_elem(wei_zp_idx);
             }
 
-            float src_scale = 1.f;
-            if (has_src_scale) {
-                const auto src_scale_idx = src_m.get_idx(src_off,
+            if (has_src_scale && !has_src_single_scale) {
+                const auto src_scale_idx = src_m.get_idx(src_gK_off,
                         src_scale_mask, src_m.ndims(), src_scale_groups);
                 src_scale = src_scales.get_elem(src_scale_idx);
             }
-            float wei_scale = 1.f;
-            if (has_wei_scale) {
-                const auto wei_scale_idx = wei_m.get_idx(wei_off,
+            if (has_wei_scale && !has_wei_single_scale) {
+                const auto wei_scale_idx = wei_m.get_idx(wei_gK_off,
                         wei_scale_mask, wei_m.ndims(), wei_scale_groups);
                 wei_scale = wei_scales.get_elem(wei_scale_idx);
             }
 
-            auto s = src_scale * (src_m.get_elem(src_off) - src_zp);
-            auto w = wei_scale * (wei_m.get_elem(wei_off) - wei_zp);
+            for (int64_t k = 0; k < smallest_k_group; ++k) {
+                const auto src_off
+                        = src_off_f(prb, src_mb, m, gK * smallest_k_group + k);
+                const auto wei_off
+                        = wei_off_f(prb, wei_mb, gK * smallest_k_group + k, n);
 
-            dst += s * w;
+                auto s = src_scale * (src_m.get_elem(src_off) - src_zp);
+                auto w = wei_scale * (wei_m.get_elem(wei_off) - wei_zp);
+
+                dst += s * w;
+            }
         }
 
         const auto dst_off = dst_off_f(prb, mb, m, n);

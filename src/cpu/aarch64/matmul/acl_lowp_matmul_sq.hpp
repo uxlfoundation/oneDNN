@@ -25,6 +25,8 @@
 
 #include "cpu/aarch64/acl_post_ops.hpp"
 
+#include "arm_compute/core/CPP/CPPTypes.h"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {

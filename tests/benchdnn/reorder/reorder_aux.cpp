@@ -103,7 +103,8 @@ void prb_t::get_compensation_parameters(
         dims_t &comp_dims, int &mask, flag_bit_t flag) const {
     if (is_reorder_with_compensation(flag)) {
         for (const auto &i_oflag : oflag) {
-            if (i_oflag.first != flag) continue;
+            const bool has_flag_bit = (i_oflag.first & flag);
+            if (!has_flag_bit) continue;
 
             mask = i_oflag.second;
             for (int d = 0; d < ndims; ++d)

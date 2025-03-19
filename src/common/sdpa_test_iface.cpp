@@ -32,10 +32,11 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         bool invert_scale, dnnl_dim_t kv_head_number, bool causal_mask,
         const_dnnl_primitive_attr_t attr, const_dnnl_primitive_attr_t kq_attr,
         const_dnnl_primitive_attr_t vs_attr) {
-    if (auto err = sdpa_attr_check(query_desc, key_desc, value_desc, engine,
-                attr, kq_attr, vs_attr)) {
-        return err;
-    }
+    CHECK(sdpa_desc_check(query_desc, key_desc, value_desc, dst_desc, mask_desc,
+            engine, attr, kq_attr, vs_attr));
+    CHECK(sdpa_attr_check(
+            query_desc, key_desc, value_desc, engine, attr, kq_attr, vs_attr));
+
     dnnl::impl::sdpa_desc_t sdpa_desc = dnnl::impl::create_sdpa_desc(query_desc,
             key_desc, value_desc, dst_desc, mask_desc,
             (dnnl::impl::data_type_t)scale_dt, invert_scale, kv_head_number,

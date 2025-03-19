@@ -48,6 +48,35 @@ namespace impl {
     VCONDCHECK(primitive, create, check, sdpa, (cond), status::unimplemented, \
             msg, ##__VA_ARGS__);
 
+static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
+        const memory_desc_t *k_desc, const memory_desc_t *v_desc,
+        const memory_desc_t *dst_desc, const memory_desc_t *attn_mask_md,
+        const engine_t *engine, const primitive_attr_t *attr,
+        const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
+    int ndims = dst_desc->ndims;
+    int r = ndims - 2, c = ndims - 1;
+    VCHECK_SDPA_COND(utils::everyone_is(ndims, q_desc->ndims, k_desc->ndims,
+                             v_desc->ndims),
+            "number of dimensions have to match. expected: %d q: %d k: %d v: "
+            "%d",
+            ndims, q_desc->ndims, k_desc->ndims, v_desc->ndims);
+
+    VCHECK_SDPA_COND(q_desc->dims[c] == k_desc->dims[r],
+            "q_desc->dims[%d](%s) must match k_desc->dims[%d](%s)", c,
+            md2dim_str(q_desc).c_str(), r, md2dim_str(k_desc).c_str());
+    VCHECK_SDPA_COND(k_desc->dims[c] == v_desc->dims[r],
+            "k_desc->dims[%d](%s) must match v_desc->dims[%d](%s)", c,
+            md2dim_str(k_desc).c_str(), r, md2dim_str(v_desc).c_str());
+    VCHECK_SDPA_COND(dst_desc->dims[r] == q_desc->dims[r],
+            "dst_desc->dims[%d](%s) == q_desc->dims[%d](%s)", r,
+            md2dim_str(dst_desc).c_str(), r, md2dim_str(q_desc).c_str());
+    VCHECK_SDPA_COND(dst_desc->dims[c] == v_desc->dims[c],
+            "dst_desc->dims[%d](%s) == v_desc->dims[%d](%s)", c,
+            md2dim_str(dst_desc).c_str(), c, md2dim_str(v_desc).c_str());
+
+    return status::success;
+}
+
 static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
         const memory_desc_t *k_desc, const memory_desc_t *v_desc,
         const engine_t *engine, const primitive_attr_t *attr,
@@ -140,31 +169,12 @@ static inline status_t create_sdpa_pd(
         const primitive_attr_t *attr, const primitive_attr_t *kq_attr = nullptr,
         const primitive_attr_t *vs_attr = nullptr) {
     CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
+    CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
+            kq_attr, vs_attr));
 
     auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, attn_mask_md,
             scale_dt, invert_scale, kv_head_number, causal_mask, kq_attr,
             vs_attr);
-
-    int ndims = dst_md->ndims;
-    int r = ndims - 2, c = ndims - 1;
-    VCHECK_SDPA_COND(
-            utils::everyone_is(ndims, q_md->ndims, k_md->ndims, v_md->ndims),
-            "number of dimensions have to match. expected: %d q: %d k: %d v: "
-            "%d",
-            ndims, q_md->ndims, k_md->ndims, v_md->ndims);
-
-    VCHECK_SDPA_COND(q_md->dims[c] == k_md->dims[r],
-            "q_md->dims[%d](%s) must match k_md->dims[%d](%s)", c,
-            md2dim_str(q_md).c_str(), r, md2dim_str(k_md).c_str());
-    VCHECK_SDPA_COND(k_md->dims[c] == v_md->dims[r],
-            "k_md->dims[%d](%s) must match v_md->dims[%d](%s)", c,
-            md2dim_str(k_md).c_str(), r, md2dim_str(v_md).c_str());
-    VCHECK_SDPA_COND(dst_md->dims[r] == q_md->dims[r],
-            "dst_md->dims[%d](%s) == q_md->dims[%d](%s)", r,
-            md2dim_str(dst_md).c_str(), r, md2dim_str(q_md).c_str());
-    VCHECK_SDPA_COND(dst_md->dims[c] == v_md->dims[c],
-            "dst_md->dims[%d](%s) == v_md->dims[%d](%s)", c,
-            md2dim_str(dst_md).c_str(), c, md2dim_str(v_md).c_str());
 
     primitive_attr_t sdpa_attr = attr ? *attr : default_attr();
 

@@ -841,9 +841,24 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         } else
 #endif
         {
-            // Scratchpad memory relates to a primitive. If reference needs it,
-            // use switch below to define a memory desc for it.
-            if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+            if (exec_arg == DNNL_ARG_WEIGHTS) {
+                // Switch the format tag from "ab" to "ba" but to handle batched
+                // cases, use strides instead.
+                const auto ndims = mem.ndims();
+                const auto &dims = mem.dims();
+                dnnl_dims_t strides {};
+                dnnl_dim_t stride = 1;
+                for (int d = ndims - 2; d >= 0; d--) {
+                    strides[d] = stride * dims[d + 1];
+                    stride = strides[d];
+                }
+                strides[ndims - 2] = 1;
+                strides[ndims - 1] = dims[ndims - 2];
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine));
+            } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+                // Scratchpad memory relates to a primitive. If reference needs
+                // it, use switch below to define a memory desc for it.
                 ref_mem_map.emplace(exec_arg,
                         dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
             }

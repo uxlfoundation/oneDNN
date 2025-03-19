@@ -68,6 +68,18 @@ dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
     }
 }
 
+dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
+        const dnnl_dims_t strides, dnnl_engine_t engine) {
+    const int ndims = query_md_ndims(md);
+    if (ndims > 0) {
+        auto status = dnnl_memory_desc_create_with_strides(
+                &md_, ndims, query_md_dims(md), dt, strides);
+        (void)status;
+        assert(status == dnnl_success);
+        active_ = (initialize(engine) == OK);
+    }
+}
+
 dnn_mem_t::dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
         const std::string &tag, dnnl_engine_t engine) {
     if (ndims > 0) {

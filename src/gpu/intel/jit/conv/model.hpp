@@ -14,6 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#ifndef GPU_INTEL_JIT_CONV_MODEL_HPP
+#define GPU_INTEL_JIT_CONV_MODEL_HPP
+
 #include <functional>
 #include <iostream>
 #include <numeric>
@@ -1126,3 +1129,5 @@ private:
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

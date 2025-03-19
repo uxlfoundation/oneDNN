@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_INT8_MATMUL_UTILS_HPP
-#define CPU_AARCH64_JIT_INT8_MATMUL_UTILS_HPP
+#ifndef CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_UTILS_HPP
+#define CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_UTILS_HPP
 
 // #include "common/primitive.hpp"
 #include "cpu/aarch64/jit_generator.hpp"

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *******************************************************************************/
-#ifndef BACKEND_DNNL_OP_EXECUTABLE_HPP
-#define BACKEND_DNNL_OP_EXECUTABLE_HPP
+#ifndef GRAPH_BACKEND_DNNL_OP_EXECUTABLE_HPP
+#define GRAPH_BACKEND_DNNL_OP_EXECUTABLE_HPP
 
 #include <map>
 #include <memory>

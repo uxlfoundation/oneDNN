@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_PRELU_JIT_PRELU_FORWARD_KERNEL_HPP
-#define CPU_X64_PRELU_JIT_PRELU_FORWARD_KERNEL_HPP
+#ifndef CPU_X64_PRELU_JIT_UNI_PRELU_FORWARD_KERNEL_HPP
+#define CPU_X64_PRELU_JIT_UNI_PRELU_FORWARD_KERNEL_HPP
 
 #include <map>
 

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_BRDGMM_KERNEL_HPP
-#define CPU_X64_JIT_BRDGMM_KERNEL_HPP
+#ifndef CPU_X64_BRGEMM_JIT_BRDGMM_KERNEL_HPP
+#define CPU_X64_BRGEMM_JIT_BRDGMM_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"

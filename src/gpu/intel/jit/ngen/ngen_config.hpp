@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 // Default macro settings (if any) can be defined here.
-#ifndef NGEN_CONFIG_HPP
-#define NGEN_CONFIG_HPP
+#ifndef GPU_INTEL_JIT_NGEN_NGEN_CONFIG_HPP
+#define GPU_INTEL_JIT_NGEN_NGEN_CONFIG_HPP
 
 #include "common/bfloat16.hpp"
 #include "common/float16.hpp"

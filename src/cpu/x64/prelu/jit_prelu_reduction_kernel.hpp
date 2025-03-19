@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_PRELU_JIT_PRELU_REDUCTION_HPP
-#define CPU_X64_PRELU_JIT_PRELU_REDUCTION_HPP
+#ifndef CPU_X64_PRELU_JIT_PRELU_REDUCTION_KERNEL_HPP
+#define CPU_X64_PRELU_JIT_PRELU_REDUCTION_KERNEL_HPP
 
 #include <memory>
 

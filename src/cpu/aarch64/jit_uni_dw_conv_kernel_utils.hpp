@@ -594,4 +594,4 @@ template struct jit_uni_dw_conv_bwd_weights_kernel<sve_256, data_type::f32>;
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
-#endif /* CPU_X64_JIT_UNI_DW_CONV_KERNEL_UTILS_HPP */
+#endif // CPU_AARCH64_JIT_UNI_DW_CONV_KERNEL_UTILS_HPP

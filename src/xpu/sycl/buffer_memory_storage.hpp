@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef SYCL_BUFFER_MEMORY_STORAGE_HPP
-#define SYCL_BUFFER_MEMORY_STORAGE_HPP
+#ifndef XPU_SYCL_BUFFER_MEMORY_STORAGE_HPP
+#define XPU_SYCL_BUFFER_MEMORY_STORAGE_HPP
 
 #include <memory>
 
@@ -93,4 +93,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // SYCL_BUFFER_MEMORY_STORAGE_HPP
+#endif // XPU_SYCL_BUFFER_MEMORY_STORAGE_HPP

@@ -14,6 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#ifndef CPU_X64_JIT_AVX512_CORE_AMX_CONV_UTILS_HPP
+#define CPU_X64_JIT_AVX512_CORE_AMX_CONV_UTILS_HPP
+
 #include "common/dnnl_thread.hpp"
 #include "common/utils.hpp"
 
@@ -308,5 +311,7 @@ inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
+
+#endif
 
 // vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

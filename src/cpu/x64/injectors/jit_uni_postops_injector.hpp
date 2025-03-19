@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_X64_JIT_UNI_POSTOPS_INJECTOR_HPP
-#define CPU_X64_JIT_UNI_POSTOPS_INJECTOR_HPP
+#ifndef CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
+#define CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
 
 #include <functional>
 #include <map>

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_SYCL_REF_SUM_HPP
-#define GPU_SYCL_REF_SUM_HPP
+#ifndef GPU_GENERIC_SYCL_REF_SUM_HPP
+#define GPU_GENERIC_SYCL_REF_SUM_HPP
 
 #include "common/primitive.hpp"
 #include "common/stream.hpp"

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef COMMON_XPU_SYCL_COMPAT_HPP
-#define COMMON_XPU_SYCL_COMPAT_HPP
+#ifndef XPU_SYCL_COMPAT_HPP
+#define XPU_SYCL_COMPAT_HPP
 
 // This file contains a common SYCL compatibility layer. All vendor specific
 // SYCL code that requires compatbility must reside in the vendor directories.

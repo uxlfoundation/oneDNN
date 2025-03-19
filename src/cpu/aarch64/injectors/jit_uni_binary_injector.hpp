@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_UNI_BINARY_INJECTOR_HPP
-#define CPU_AARCH64_JIT_UNI_BINARY_INJECTOR_HPP
+#ifndef CPU_AARCH64_INJECTORS_JIT_UNI_BINARY_INJECTOR_HPP
+#define CPU_AARCH64_INJECTORS_JIT_UNI_BINARY_INJECTOR_HPP
 
 #include <array>
 #include <cassert>

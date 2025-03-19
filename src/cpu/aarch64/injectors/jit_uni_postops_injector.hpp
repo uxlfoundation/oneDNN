@@ -14,8 +14,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_AARCH64_JIT_UNI_POSTOPS_INJECTOR_HPP
-#define CPU_AARCH64_JIT_UNI_POSTOPS_INJECTOR_HPP
+#ifndef CPU_AARCH64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
+#define CPU_AARCH64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
 
 #include <functional>
 #include <map>

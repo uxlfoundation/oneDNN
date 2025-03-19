@@ -110,8 +110,10 @@ static status_t init_layouts_data(rnn_offsets_t &off,
                 || !utils::one_of(diff_dst_iter_d.data_type(),
                         rnn.diff_data_type, data_type::undef)
                 || !utils::one_of(diff_dst_iter_c_d.data_type(),
-                        rnn.diff_data_type, data_type::undef))
-            return status::unimplemented;
+                        rnn.diff_data_type, data_type::undef)){
+                                printf("Returning unimplemented from 114\n");
+                                return status::unimplemented;
+                        }
 
         off.diff_src_layer = gpu::intel::get_outer_strides(diff_src_layer_d);
         inner_layouts.diff_src_layer
@@ -492,6 +494,7 @@ template <>
 status_t _simple_rnn_common_t<prop_kind::backward>::pd_t::set_default_params() {
     using namespace format_tag;
     int arch_ld = is_xe_hpc ? 128 : 64;
+    printf("simple_rnn_common <backward> is_xe_hpc: %d\n", is_xe_hpc);
     if (src_layer_md_.format_kind == format_kind::any)
         CHECK(memory_desc_init_by_tag(src_layer_md_, tnc));
     if (weights_layer_md_.format_kind == format_kind::any) {
@@ -559,7 +562,7 @@ status_t _simple_rnn_common_t<prop_kind::backward>::pd_t::set_default_params() {
     if ((!types::is_zero_md(&diff_dst_iter_c_md_))
             && (diff_dst_iter_c_md_.format_kind == format_kind::any))
         CHECK(memory_desc_init_by_tag(diff_dst_iter_c_md_, ldnc));
-
+        printf("L#565 in simple_rnn_common<backward>\n");
     return status::success;
 }
 
@@ -886,6 +889,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                             src_type, rnn_conf.acc_data_type,
                             gemm_iter_bwd_beta),
                     "create_gemm_pd(gemm_iter_bwd_pd_)");
+                printf("creating gemm iter bwd pd_\n");
             VDISPATCH_RNN_SC(
                     create_gemm_pd(gemm_diff_wei_iter_pd_, n_gates * dhc, sic,
                             iter_merged_size, {1, rnn_conf.states_ws_ld},
@@ -895,6 +899,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                             weights_type, src_type, rnn_conf.acc_data_type,
                             1.0f),
                     "create_gemm_pd(gemm_diff_wei_iter_pd_)");
+                printf("creating gemm wei itr pd\n");
         }
         VDISPATCH_RNN_SC(
                 create_gemm_pd(gemm_layer_bwd_pd_, slc, layer_merged_size,
@@ -903,6 +908,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                         {rnn_conf.scratch_diff_states_ld, 1}, weights_type,
                         src_type, rnn_conf.acc_data_type, 0.0f),
                 "create_gemm_pd(gemm_layer_bwd_pd_)");
+                printf("creating gemm layer bwd\n");
         if (!rnn_conf.copy_diff_src_layer) {
             if (rnn_conf.scratch_diff_states_ld != off.diff_src_layer[1])
                 VDISPATCH_RNN_SC(
@@ -923,6 +929,7 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                         {off.diff_weights_layer[2], off.diff_weights_layer[4]},
                         weights_type, src_type, rnn_conf.acc_data_type, 1.0f),
                 "create_gemm_pd(gemm_diff_wei_layer_pd_)");
+                printf("creating gemm wei layer\n");
         if (!rnn_conf.copy_src_layer) {
             if (off.src_layer[1] != rnn_conf.states_ws_ld)
                 VDISPATCH_RNN_SC(create_gemm_pd(gemm_diff_wei_layer_src_pd_,
@@ -937,13 +944,15 @@ status_t _simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
             else
                 gemm_diff_wei_layer_src_pd_ = gemm_diff_wei_layer_pd_;
         }
+        printf("created all the gemms\n");
     }
 
     VDISPATCH_RNN_SC(init_ocl_conf(ocl_conf, this, rnn_conf, threads_per_eu,
                              device_info, this->off),
             "init_ocl_conf()");
-
+    printf("Done setting init ocl conf\n");
     init_scratchpad(rnn_conf.use_workspace ? 0 : workspace_size);
+    printf("Done setting scratch memory\n");
     return status::success;
 }
 
@@ -1095,7 +1104,7 @@ gemm_sig((_simple_rnn_common_t<aprop>::gemm_primitive)) {
     gemm_args.c = c.get();
 
     auto gemm_ctx = gemm_exec_ctx_t(ctx, gemm_args);
-
+     printf("Creating Gemm context\n");
     std::unique_ptr<nested_scratchpad_t> ns;
     const auto init_gemm_nested_scratchpad
             = [&](const std::shared_ptr<impl::primitive_t> &gemm, int key) {
@@ -1176,7 +1185,7 @@ grid_execution_sig((_simple_rnn_common_t<aprop>::linear_execution)) {
     dim_t n_layer = rnn.n_layer;
     dim_t n_dir = rnn.n_dir;
     dim_t n_iter = rnn.n_iter;
-
+    printf("In Grid Strategy function\n");
     if (aprop == prop_kind::backward && pd()->diff_weights_overwrite()) {
         compute::compute_stream_t *compute_stream
                 = utils::downcast<compute::compute_stream_t *>(ctx.stream());
@@ -1224,6 +1233,7 @@ grid_execution_sig((_simple_rnn_common_t<aprop>::linear_execution)) {
             }
 
             if (aprop == prop_kind::backward && rnn.merge_gemm_layer) {
+                printf("Grid call GEMM Layer for prop kind backwards\n");
                 auto grid_layer = (!rnn.copy_src_layer && lay == 0)
                         ? user_data.src_layer(dir, 0)
                         : workspace.states(lay - 1, dir, 0);
@@ -1246,6 +1256,7 @@ grid_execution_sig((_simple_rnn_common_t<aprop>::linear_execution)) {
             }
 
             if (aprop == prop_kind::backward && rnn.merge_gemm_iter) {
+                printf("Grid call GEMM iter for prop kind backwards\n");
                 CHECK(gemm_primitive(engine, ctx, *scratch.diff_gates(),
                         grid_iter, user_data.diff_wei_iter(lay, dir, true),
                         gemm_diff_wei_iter));
@@ -1281,7 +1292,7 @@ status_t _simple_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
     arg_list.append(into<int32_t>(pd()->off.weights_layer_comp_off));
     arg_list.append(into<int32_t>(pd()->off.weights_iter_comp_off));
     arg_list.append(pd()->off.bias);
-
+    printf("In Bias Prepare\n");
     return parallel_for(ctx,
             compute::nd_range_t({into<size_t>(dhc), into<size_t>(n_bias),
                     into<size_t>(n_layer * n_dir)}),
@@ -1301,6 +1312,7 @@ status_t _simple_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
     int32_t unused_ld = 0;
 
     if (aprop == prop_kind::forward) {
+        printf("Copy Init Layer forward\n");
         compute::kernel_arg_list_t arg_list;
         arg_list.append(ws_states);
         arg_list.append(input);
@@ -1323,6 +1335,7 @@ status_t _simple_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
                 compute::nd_range_t(get_nd_range({slc, batch, n_iter})),
                 kernels_[kernel_id::copy_init_layer], arg_list);
     } else {
+        printf("Copy Init Layer Backward\n");
         compute::kernel_arg_list_t arg_list;
         arg_list.append(memory_storage_t::empty_storage());
         arg_list.append(diff_dst_layer);
@@ -1362,6 +1375,7 @@ status_t _simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
 
     int32_t unused_ld = 0;
     if (aprop == prop_kind::forward) {
+        printf("In Copy Init Iter Forward\n");
         dim_t max_d = std::max(dhc, sic);
         compute::kernel_arg_list_t arg_list;
         arg_list.append(ws.states());
@@ -1391,7 +1405,10 @@ status_t _simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
                 compute::nd_range_t({into<size_t>(max_d), into<size_t>(batch),
                         into<size_t>(n_layer * n_dir)}),
                 kernels_[kernel_id::copy_init_iter], arg_list);
+        printf("Finished Copy Init Iter Forward\n");
+      
     } else {
+        printf("Copy Init Iter Backward\n");
         compute::kernel_arg_list_t arg_list;
         arg_list.append(memory_storage_t::empty_storage());
         arg_list.append(memory_storage_t::empty_storage());
@@ -1411,7 +1428,6 @@ status_t _simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
         if (pd()->ocl_conf.with_dst_iter_c)
             arg_list.append(pd()->off.diff_dst_iter_c);
         arg_list.append(into<int32_t>(scratch_diff_states_ld));
-
         return parallel_for(ctx,
                 compute::nd_range_t({into<size_t>(dhc), into<size_t>(batch),
                         into<size_t>(n_layer * n_dir)}),
@@ -1577,7 +1593,7 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
     dim_t dhc = rnn.dhc;
 
     bool is_fwd = rnn.is_fwd;
-
+    printf("Execute Begins ... is forward? %d\n", is_fwd);
     auto &src_layer_native_ = CTX_IN_STORAGE(DNNL_ARG_SRC_LAYER);
     auto &src_iter_native_ = CTX_IN_STORAGE(DNNL_ARG_SRC_ITER);
     auto &src_c_iter_native_ = CTX_IN_STORAGE(DNNL_ARG_SRC_ITER_C);
@@ -1622,7 +1638,7 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
             wei_iter_native_, bias_native_, diff_src_layer_native_,
             diff_dst_layer_native_, diff_weights_layer_native_,
             diff_weights_iter_native_, rnn, pd()->off);
-
+    
     // TODO: implement without copies
     bool is_lr = !one_of(rnn.exec_dir, r2l, r2l);
     bool is_rl = !one_of(rnn.exec_dir, l2r, l2r);
@@ -1641,7 +1657,7 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
 
     float shift = (pd()->attr()->rnn_data_qparams_.shift_);
     float scale = (pd()->attr()->rnn_data_qparams_.scale_);
-
+    
     if ((rnn.is_fwd && rnn.copy_src_layer)
             || (!rnn.is_fwd && rnn.copy_diff_dst_layer)) {
         CHECK(copy_init_layer(ctx, compute_stream, is_lr, is_rl, batch, dhc,
@@ -1657,16 +1673,17 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
             workspace, scratch.diff_states(), src_iter_native_,
             src_c_iter_native_, diff_dst_iter_native_, diff_dst_iter_c_native_,
             shift, scale, quantize));
-
+    printf("Done executing copy_init_iter\n");
     const memory_storage_t *tm_scales_buf = nullptr;
     if (pd()->rnn_conf.is_testmode && pd_->attr()->rnn_tparams_.scales_) {
         tm_scales_buf = &CTX_GPU_RES_STORAGE(TM_SCALES_);
     }
 
     // run the execution on the grid
+    printf("Run Grid for GEMM\n");
     CHECK((this->*grid_computation)(engine, ctx, user_data, workspace, scratch,
             diff_bias_native_, scales_buf, tm_scales_buf));
-
+     printf("~~ Done with Grid\n");
     // Finally we copy the results to the result buffers
 
     if (rnn.is_fwd || rnn.copy_diff_src_layer) {
@@ -1685,7 +1702,7 @@ status_t _simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
             scratch.diff_states(), dst_last_iter_native_,
             dst_last_iter_c_native_, diff_src_iter_native_,
             diff_src_iter_c_native_, workspace, shift, scale, dequantize_i));
-
+        printf("Done Copying results\n");
     return status::success;
 };
 // Fix for MSVS warning C4661.

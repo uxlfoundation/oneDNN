@@ -40,9 +40,9 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = {
-        GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::conv_gemm_t)
-        GPU_INSTANCE_INTEL(intel::jit::xe_hp_systolic_gemm_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gemm_with_post_ops_t)
+        //GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::conv_gemm_t)
+        //GPU_INSTANCE_INTEL(intel::jit::xe_hp_systolic_gemm_t)
+        //GPU_INSTANCE_INTEL(intel::ocl::gemm_with_post_ops_t)
         GPU_INSTANCE_INTEL(intel::jit::gen_gemm_t)
         GPU_INSTANCE_INTEL_REF(intel::ocl::ref_gemm_t)
         nullptr,

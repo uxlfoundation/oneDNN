@@ -132,6 +132,7 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
                 ? (quantize ? TO_WS_STATE(src[src_i_offset] * scale + shift)
                             : src[src_i_offset])
                 : TO_WS_STATE(0.0f);
+      //printf("s %d b %d lay %d dir %d\n", s, b, lay, dir);
     }
 #if WITH_SRC_ITER_C
     __global SRC_C_DATA_T *src_c = (__global SRC_C_DATA_T *)(src_c_base);

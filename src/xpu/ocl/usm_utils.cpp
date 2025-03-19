@@ -59,6 +59,7 @@ void free(impl::engine_t *engine, void *ptr) {
 
 status_t set_kernel_arg(impl::engine_t *engine, cl_kernel kernel, int arg_index,
         const void *arg_value) {
+    printf("Inside USM utils in src/xpu/ocl \n");
     HANDLE_USM_CALL(
             engine, set_kernel_arg(engine, kernel, arg_index, arg_value));
 }

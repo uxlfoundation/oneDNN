@@ -64,6 +64,7 @@ public:
 
     status_t set_usm_arg(
             impl::engine_t *engine, int arg_index, const void *arg_value) {
+                printf("inside set_usm_arg %p %p %d\n", engine, arg_value, arg_index);
         return xpu::ocl::usm::set_kernel_arg(
                 engine, kernel_, arg_index, arg_value);
     }
@@ -149,6 +150,7 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
     const size_t pointer_size
             = stream_ocl_device_info->device_address_bits() / 8;
     size_t param_bytes = 0;
+    printf("Getting arguments in parallel for\n");
     for (int i = 0; i < arg_list.nargs(); ++i) {
         auto &arg = arg_list.get(i);
         if (arg.is_global()) {
@@ -167,18 +169,19 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
                         = utils::downcast<ocl_gpu_engine_t *>(
                                 ocl_mem_storage->engine())
                                   ->context();
+                //printf("check stream context\n");
                 if (stream_ocl_ctx != memory_storage_ocl_ctx) {
                     MAYBE_REPORT_ERROR(
                             "mismatched OpenCL context for primitive/memory");
                     return status::invalid_arguments;
                 }
-
                 switch (ocl_mem_storage->memory_kind()) {
                     case xpu::ocl::memory_kind::buffer: {
                         auto *m = utils::downcast<
                                 const xpu::ocl::buffer_memory_storage_t *>(
                                 ocl_mem_storage);
                         auto ocl_mem = m->mem_object();
+                        //printf("add arg %d global buffer\n", i);
                         CHECK(kernel->set_arg(i, sizeof(cl_mem), &ocl_mem));
                         param_bytes += pointer_size;
                         break;
@@ -188,7 +191,9 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
                                 const xpu::ocl::usm_memory_storage_t *>(
                                 ocl_mem_storage);
                         auto *usm_ptr = m->usm_ptr();
+                        printf("Engine %p add arg %d local buffer %p\n", stream.engine(), i, usm_ptr);
                         CHECK(kernel->set_usm_arg(stream.engine(), i, usm_ptr));
+                        printf("Done adding usm arg\n");
                         param_bytes += pointer_size;
                         break;
                     }
@@ -205,19 +210,22 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
                 }
             }
         } else if (arg.is_local()) {
+            //printf("add arg local  %d\n", i);
             CHECK(kernel->set_arg(i, arg.size(), arg.value()));
             // Assuming local memory arguments contribute to
             // the CL_DEVICE_MAX_PARAMETER_SIZE limit as a pointer type
             param_bytes += pointer_size;
         } else if (arg.is_svm_pointer()) {
+            //printf("add arg svm %d\n", i);
             CHECK(kernel->set_svm_arg(i, arg.value()));
             param_bytes += pointer_size;
         } else {
+            //printf("add arg %d\n", i);
             CHECK(kernel->set_arg(i, arg.size(), arg.value()));
             param_bytes += arg.size();
         }
     }
-
+    printf("param bytes check\n");
     if (param_bytes > stream_ocl_device_info->max_kernel_param_size()) {
         MAYBE_REPORT_ERROR(
                 "parameter bytes requirements greater than device supports");
@@ -225,9 +233,11 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
     }
 
     cl_uint ndims = static_cast<cl_uint>(range.ndims());
+    printf("if range.is_zero with ndims %d\n", ndims);
     if (range.is_zero()) { return status::success; }
 
     xpu::ocl::wrapper_t<cl_event> event;
+
     if (ocl_stream->flags() & stream_flags::out_of_order) {
         const auto &event_wrappers = xpu::ocl::event_t::from(deps).events;
         std::vector<cl_event> events(
@@ -240,13 +250,21 @@ status_t ocl_gpu_kernel_t::parallel_for(impl::stream_t &stream,
                 range.local_range() ? range.local_range().data() : nullptr,
                 num_events, events_data, &event.unwrap());
         OCL_CHECK(err);
+        err = clFinish(queue);
+        OCL_CHECK(err);
         xpu::ocl::event_t::from(out_dep).events = {event};
     } else {
         bool save_event = save_events_ || stream.is_profiling_enabled();
+        printf("save_event %d\n", save_event);
+        printf("in order // range.local_range(): %zu, %zu, %zu\n", range.local_range().data()[0], range.local_range().data()[1], range.local_range().data()[2]);
+        printf("in order // range.global_range(): %zu, %zu, %zu\n", range.global_range().data()[0], range.global_range().data()[1], range.global_range().data()[2]);
         cl_int err = clEnqueueNDRangeKernel(queue, *kernel, ndims, nullptr,
                 range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr, 0,
                 nullptr, save_event ? &event.unwrap() : nullptr);
+        printf("err: %d\n", err);
+        OCL_CHECK(err);
+        err = clFinish(queue);
         OCL_CHECK(err);
     }
 

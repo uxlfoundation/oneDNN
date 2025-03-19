@@ -114,8 +114,10 @@ status_t set_kernel_arg(impl::engine_t *engine, cl_kernel kernel, int arg_index,
         const void *arg_value) {
     using clSetKernelArgMemPointerINTEL_func_t
             = cl_int (*)(cl_kernel, cl_uint, const void *);
+   printf("In src/gpu/intel/ocl/usm_utils.cpp set_kernel_arg\n");
     static xpu::ocl::ext_func_t<clSetKernelArgMemPointerINTEL_func_t> ext_func(
             "clSetKernelArgMemPointerINTEL");
+    printf("returing convert_to_dnnl function\n");
     return xpu::ocl::convert_to_dnnl(
             ext_func(engine, kernel, arg_index, arg_value));
 }

@@ -102,6 +102,7 @@ template elemwise_sig(simple_rnn_bwd_t::rnn_elemwise);
 
 template <prop_kind_t aprop>
 elemwise_sig((_simple_rnn_common_t<aprop>::lstm_elemwise)) {
+    printf("Executing lstm in postgemm\n");
     auto nd_range = get_nd_range({dhc,
             utils::div_up(
                     batch, aprop == prop_kind::forward ? 1 : bwd_batch_block)});
@@ -312,6 +313,7 @@ template elemwise_sig_gru_lbr(simple_rnn_bwd_t::gru_lbr_elemwise);
 
 template <prop_kind_t aprop>
 elemwise_sig_gru((_simple_rnn_common_t<aprop>::gru_elemwise)) {
+
     auto nd_range = get_nd_range({dhc,
             utils::div_up(
                     batch, aprop == prop_kind::forward ? 1 : bwd_batch_block)});

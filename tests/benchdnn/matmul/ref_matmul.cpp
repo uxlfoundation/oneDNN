@@ -22,6 +22,13 @@
 
 namespace matmul {
 
+int64_t wei_ab_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
+    return (mb * prb->k + k) * prb->n + n;
+}
+int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
+    return (mb * prb->n + n) * prb->k + k;
+}
+
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
@@ -130,8 +137,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         for (int64_t gK = 0; gK < n_k_groups; gK++) {
             const auto src_gK_off
                     = src_off_f(prb, src_mb, m, gK * smallest_k_group);
+            // Note: scales/zero-points are still always in `tag::abx` format.
             const auto wei_gK_off
-                    = wei_off_f(prb, wei_mb, gK * smallest_k_group, n);
+                    = wei_ab_off_f(prb, wei_mb, gK * smallest_k_group, n);
 
             if (has_src_zp && !has_src_single_zp) {
                 const auto src_zp_idx = src_m.get_idx(
@@ -158,8 +166,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             for (int64_t k = 0; k < smallest_k_group; ++k) {
                 const auto src_off
                         = src_off_f(prb, src_mb, m, gK * smallest_k_group + k);
-                const auto wei_off
-                        = wei_off_f(prb, wei_mb, gK * smallest_k_group + k, n);
+                const auto wei_off = wei_ba_off_f(
+                        prb, wei_mb, gK * smallest_k_group + k, n);
 
                 auto s = src_scale * (src_m.get_elem(src_off) - src_zp);
                 auto w = wei_scale * (wei_m.get_elem(wei_off) - wei_zp);
@@ -292,7 +300,7 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
 
                 for (int64_t k = row_start; k < row_end; k++) {
                     const int64_t wei_idx
-                            = wei_off_f(prb, mb, src_indices[k], n);
+                            = wei_ba_off_f(prb, mb, src_indices[k], n);
                     const float src_val = src_m.get_elem(k, 0);
                     const float wei_val = wei_m.get_elem(wei_idx);
                     dst_val += src_val * wei_val;

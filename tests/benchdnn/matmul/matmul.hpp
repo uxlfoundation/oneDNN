@@ -280,10 +280,6 @@ inline int64_t src_off_f(const prb_t *prb, int64_t mb, int64_t m, int64_t k) {
     return (mb * prb->m + m) * prb->k + k;
 }
 
-inline int64_t wei_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
-    return (mb * prb->k + k) * prb->n + n;
-}
-
 inline int64_t dst_off_f(const prb_t *prb, int64_t mb, int64_t m, int64_t n) {
     return (mb * prb->m + m) * prb->n + n;
 }

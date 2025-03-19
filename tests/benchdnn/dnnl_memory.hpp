@@ -47,8 +47,11 @@ struct dnn_mem_t {
     dnn_mem_t() { map(); }
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
             const handle_info_t &handle_info = handle_info_t::allocate());
+
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
             const std::string &tag, dnnl_engine_t engine);
+    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
+            const dnnl_dims_t strides, dnnl_engine_t engine);
 
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
             const std::string &tag, dnnl_engine_t engine);

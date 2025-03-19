@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_SYCL_SUM_KERNELS_HPP
-#define GPU_SYCL_SUM_KERNELS_HPP
+#ifndef GPU_GENERIC_SYCL_SUM_KERNELS_HPP
+#define GPU_GENERIC_SYCL_SUM_KERNELS_HPP
 
 #include "common/primitive_exec_types.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"

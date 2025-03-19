@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2024 Intel Corporation
+ * Copyright 2024-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_GENERIC_VECTOR_OPS_H
-#define GPU_INTEL_OCL_GENERIC_VECTOR_OPS_H
+#ifndef GPU_INTEL_OCL_OCL_GENERIC_VECTOR_OPS_H
+#define GPU_INTEL_OCL_OCL_GENERIC_VECTOR_OPS_H
 
 typedef half __attribute__((ext_vector_type(1))) half1;
 typedef uint __attribute__((ext_vector_type(1))) uint1;

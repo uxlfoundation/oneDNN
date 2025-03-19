@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef COMMON_XPU_UTILS_HPP
-#define COMMON_XPU_UTILS_HPP
+#ifndef XPU_UTILS_HPP
+#define XPU_UTILS_HPP
 
 #include <tuple>
 #include <vector>

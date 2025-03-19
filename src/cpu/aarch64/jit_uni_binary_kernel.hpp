@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_UNI_BINARY_KERNEL_HPP
-#define CPU_AARCH64_UNI_BINARY_KERNEL_HPP
+#ifndef CPU_AARCH64_JIT_UNI_BINARY_KERNEL_HPP
+#define CPU_AARCH64_JIT_UNI_BINARY_KERNEL_HPP
 
 #include <cassert>
 

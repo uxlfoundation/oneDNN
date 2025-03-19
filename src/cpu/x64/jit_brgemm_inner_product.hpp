@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_BRGEMM_INNER_PRODUCT_HPP
-#define CPU_X64_BRGEMM_INNER_PRODUCT_HPP
+#ifndef CPU_X64_JIT_BRGEMM_INNER_PRODUCT_HPP
+#define CPU_X64_JIT_BRGEMM_INNER_PRODUCT_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"

@@ -381,4 +381,4 @@ inline sycl::event execute(const dnnl::primitive &aprimitive,
 
 /// @} dnnl_api
 
-#endif // DNNL_SYCL_HPP
+#endif // ONEAPI_DNNL_DNNL_SYCL_HPP

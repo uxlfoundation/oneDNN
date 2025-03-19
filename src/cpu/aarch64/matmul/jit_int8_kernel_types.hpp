@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_INT8_KERNEL_TYPES_HPP
-#define CPU_AARCH64_JIT_INT8_KERNEL_TYPES_HPP
+#ifndef CPU_AARCH64_MATMUL_JIT_INT8_KERNEL_TYPES_HPP
+#define CPU_AARCH64_MATMUL_JIT_INT8_KERNEL_TYPES_HPP
 
 namespace dnnl {
 namespace impl {

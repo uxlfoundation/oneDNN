@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef JIT_OP_IMM_CHECK_HPP
-#define JIT_OP_IMM_CHECK_HPP
+#ifndef CPU_AARCH64_JIT_OP_IMM_CHECK_HPP
+#define CPU_AARCH64_JIT_OP_IMM_CHECK_HPP
 
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 

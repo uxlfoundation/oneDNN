@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GRAPH_UTILS_PM_DAG_GRAPH_CHECK_PASS_HPP
-#define GRAPH_UTILS_PM_DAG_GRAPH_CHECK_PASS_HPP
+#ifndef GRAPH_UTILS_PM_DAG_CHECK_PASS_HPP
+#define GRAPH_UTILS_PM_DAG_CHECK_PASS_HPP
 
 #include <memory>
 #include <string>

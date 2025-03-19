@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_LRN_JIT_AVX512_COMMON_UTILS_HPP
-#define CPU_X64_LRN_JIT_AVX512_COMMON_UTILS_HPP
+#ifndef CPU_X64_LRN_JIT_AVX512_COMMON_LRN_UTILS_HPP
+#define CPU_X64_LRN_JIT_AVX512_COMMON_LRN_UTILS_HPP
 
 namespace dnnl {
 namespace impl {

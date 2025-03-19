@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_ACL_MATMUL_UTILS_HPP
-#define CPU_AARCH64_ACL_MATMUL_UTILS_HPP
+#ifndef CPU_AARCH64_MATMUL_ACL_MATMUL_UTILS_HPP
+#define CPU_AARCH64_MATMUL_ACL_MATMUL_UTILS_HPP
 
 #include "arm_compute/runtime/experimental/low_level/CpuGemmAssemblyDispatch.h"
 #include "arm_compute/runtime/experimental/operators/CpuActivation.h"
@@ -85,4 +85,4 @@ status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_AARCH64_ACL_MATMUL_UTILS_HPP
+#endif // CPU_AARCH64_MATMUL_ACL_MATMUL_UTILS_HPP

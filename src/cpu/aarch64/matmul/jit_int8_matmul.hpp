@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_INT8_MATMUL_HPP
-#define CPU_AARCH64_JIT_INT8_MATMUL_HPP
+#ifndef CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_HPP
+#define CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"

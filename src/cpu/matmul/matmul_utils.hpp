@@ -15,8 +15,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_MATMUL_UTILS_HPP
-#define CPU_MATMUL_UTILS_HPP
+#ifndef CPU_MATMUL_MATMUL_UTILS_HPP
+#define CPU_MATMUL_MATMUL_UTILS_HPP
 
 #include "common/memory_desc_wrapper.hpp"
 #include "common/tag_traits.hpp"

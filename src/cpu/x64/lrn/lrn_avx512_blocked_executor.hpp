@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_LRN_JIT_LRN_AVX512_BLOCKED_EXECUTOR_HPP
-#define CPU_X64_LRN_JIT_LRN_AVX512_BLOCKED_EXECUTOR_HPP
+#ifndef CPU_X64_LRN_LRN_AVX512_BLOCKED_EXECUTOR_HPP
+#define CPU_X64_LRN_LRN_AVX512_BLOCKED_EXECUTOR_HPP
 
 #include "cpu/x64/lrn/jit_avx512_common_lrn_bwd_blocked.hpp"
 #include "cpu/x64/lrn/jit_avx512_common_lrn_fwd_blocked.hpp"

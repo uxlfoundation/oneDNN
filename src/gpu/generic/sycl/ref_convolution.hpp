@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_SYCL_REF_CONVOLUTION_HPP
-#define GPU_SYCL_REF_CONVOLUTION_HPP
+#ifndef GPU_GENERIC_SYCL_REF_CONVOLUTION_HPP
+#define GPU_GENERIC_SYCL_REF_CONVOLUTION_HPP
 
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"

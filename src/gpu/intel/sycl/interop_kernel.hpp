@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_SYCL_SYCL_INTEROP_GPU_KERNEL_HPP
-#define GPU_INTEL_SYCL_SYCL_INTEROP_GPU_KERNEL_HPP
+#ifndef GPU_INTEL_SYCL_INTEROP_KERNEL_HPP
+#define GPU_INTEL_SYCL_INTEROP_KERNEL_HPP
 
 #include <string>
 
@@ -70,4 +70,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // SYCL_SYCL_INTEROP_GPU_KERNEL_HPP
+#endif // GPU_INTEL_SYCL_INTEROP_KERNEL_HPP

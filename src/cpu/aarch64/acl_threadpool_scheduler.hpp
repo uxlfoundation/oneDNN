@@ -64,6 +64,6 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_AARCH64_ACL_THREADPOOL_SCHEDULER_HPP
-
 #endif // DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+
+#endif // CPU_AARCH64_ACL_THREADPOOL_SCHEDULER_HPP

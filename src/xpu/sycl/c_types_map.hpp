@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,4 +35,4 @@ const memory_kind_t buffer = dnnl_sycl_interop_buffer;
 } // namespace impl
 } // namespace dnnl
 
-#endif // SYCL_SYCL_C_TYPES_MAP_HPP
+#endif // XPU_SYCL_C_TYPES_MAP_HPP

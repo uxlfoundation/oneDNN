@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATION_HPP
-#define GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATION_HPP
+#ifndef GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATIONS_HPP
+#define GPU_GENERIC_SYCL_REF_LAYER_NORMALIZATIONS_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"

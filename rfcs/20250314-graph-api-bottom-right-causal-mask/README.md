@@ -245,6 +245,70 @@ typedef struct {
 - Requires extending the Graph API to support scalar logical tensors
   (an ABI-breaking change that must wait for the oneDNN v4.0 release).
 
+### Option 1+2: Pass s_kv and s_q as Scalar Tensors While Indicating Scalar Property in Logical Tensors
+
+To mitigate the ABI-breaking change introduced in Option 2, this
+option suggests passing s_kv and s_q as scalar tensors while
+indicating their scalar nature at the logical tensor level.
+
+The current `dnnl_graph_logical_tensor_t` structure:
+
+```cpp
+typedef struct {
+    size_t id;
+    int ndims;
+    dnnl_dims_t dims;
+    dnnl_data_type_t data_type;
+    dnnl_graph_tensor_property_t property;
+    dnnl_graph_layout_type_t layout_type;
+    union {
+        dnnl_dims_t strides;
+        size_t layout_id;
+    } layout;
+} dnnl_graph_logical_tensor_t;
+```
+
+Currently supported dnnl_graph_tensor_property_t values:
+- `dnnl_graph_tensor_property_undef`: Undefined tensor property.
+- `dnnl_graph_tensor_property_variable`: The tensor may change during computation
+  or between iterations.
+- `dnnl_graph_tensor_property_constant`: The tensor remains unchanged during computation and across
+  iterations, allowing optimization and caching (e.g., constant weight tensors in inference scenarios).
+
+To support scalar tensors, introduce a new property:
+
+```cpp
+typedef enum {
+    dnnl_graph_tensor_property_undef = 0,
+    dnnl_graph_tensor_property_variable = 1,
+    dnnl_graph_tensor_property_constant = 2,
+
+    // New fields for scalar tensor support:
+    dnnl_graph_tensor_property_host_scalar = 3,
+} dnnl_graph_tensor_property_t;
+```
+
+With this addition, an example of creating a scalar tensor would be:
+
+```cpp
+dnnl::engine eng(engine::kind::cpu, 0);
+logical_tensor lt {/*id*/0, data_type::f32, /*0-D*/0, property_type::host_scalar};
+float scale = 3.f;
+tensor t {lt, eng, &scale};
+```
+
+#### Pros
+
+- No need to create GPU tensors for s_kv and s_q scalars,
+  and other scalars like attn_scale, -inf.
+- Consistent subgraph design with the top-left implicit causal mask.
+- Align with cuDNN Graph's usage.
+
+#### Cons
+
+- Requires extending the Graph API to introduce a new tensor property.
+- Scalar tensors cannot be marked as constant.
+
 ### Option 3: Pass s_kv and s_q by a New Shape Operation
 
 Another option to avoid allocating dedicated GPU tensors is to introduce a

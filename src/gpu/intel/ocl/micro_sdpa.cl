@@ -198,6 +198,23 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
 
 #define binary_add(x, y) ((x) + (y))
 
+/* As of 03/19/2025, the OpenCL compiler errors out at runtime when
+   ukernels return values that go unused:
+
+     Error during the build of OpenCL program. Build log:
+     error: parsing vISA inline assembly failed:
+     near line 833: null: undefined variable
+     error: backend compiler failed build.
+
+   Maneuver around the issue (e.g. while debugging) by writing data to
+   volatile local memory:
+
+     A_tile1 = ugemm_vs(...); // A_tile1 (result of microkernel) unused
+
+     volatile local float f;  // avoid error by copying to local memory
+     for (int i = 0; i < 8; i++)
+         f = A_tile1.x[i][0];
+*/
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, global DST_DATA_T *A,

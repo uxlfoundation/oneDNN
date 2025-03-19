@@ -176,7 +176,7 @@ public:
                     off, send_t::header_2d_off_x(), send_t::header_2d_off_y())
                 && !is_const(obj.value))
             return obj;
-        stores_[obj.buf].push_back(obj);
+        stores_[obj.buf].emplace_back(obj);
         return stmt_t();
     }
 

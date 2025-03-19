@@ -1565,6 +1565,7 @@ expr_t simplify_with_nary(const expr_t &_e, const constraint_set_t &cset) {
     return e;
 }
 
+// NOLINTNEXTLINE(readability-identifier-naming)
 class _64_bit_add_optimizer_t : public nary_op_mutator_t {
 public:
     object_t _mutate(const nary_op_t &obj) override {
@@ -1770,7 +1771,7 @@ struct op_traits_t {};
         static auto compute(T a, T b) -> decltype(a op b) { \
             return a op b; \
         } \
-        template <op_kind_t dummy_op = name, \
+        template <op_kind_t dummy_op = (name), \
                 typename = typename std::enable_if<dummy_op == op_kind_t::_and \
                         || dummy_op == op_kind_t::_or>::type> \
         static bool compute(bool a, bool b) { \

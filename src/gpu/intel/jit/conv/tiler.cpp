@@ -597,7 +597,8 @@ public:
 
 private:
     struct context_t {
-        context_t(const blocking_t &blk, const conv_config_t &cfg) : blk(blk) {
+        context_t(const blocking_t &blk, const conv_config_t &cfg)
+            : blk(blk), dpas_2x_depth(get_dpas_2x_depth(blk, cfg)) {
             auto &prb = cfg.prb();
             auto gemm_iter = to_gemm(blk.iter(), prb);
             auto gemm_loop = to_gemm(blk.loop(), prb);
@@ -611,7 +612,6 @@ private:
             m_tg = gemm_tg.get(pvars::m, 1);
             n_tg = gemm_tg.get(pvars::n, 1);
             k_tg = gemm_tg.get(pvars::k, 1);
-            dpas_2x_depth = get_dpas_2x_depth(blk, cfg);
         }
 
         bool get_dpas_2x_depth(

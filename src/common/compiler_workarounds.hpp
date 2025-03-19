@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef COMPILER_WORKAROUNDS_HPP
-#define COMPILER_WORKAROUNDS_HPP
+#ifndef COMMON_COMPILER_WORKAROUNDS_HPP
+#define COMMON_COMPILER_WORKAROUNDS_HPP
 
 // Workaround 01: clang.
 //
@@ -61,4 +61,4 @@
 #define WA_THIS_COPY_CAPTURE
 #endif
 
-#endif // COMPILER_WORKAROUNDS_HPP
+#endif // COMMON_COMPILER_WORKAROUNDS_HPP

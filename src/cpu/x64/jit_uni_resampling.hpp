@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_UNI_RESAMPLING_HPP
-#define CPU_X64_UNI_RESAMPLING_HPP
+#ifndef CPU_X64_JIT_UNI_RESAMPLING_HPP
+#define CPU_X64_JIT_UNI_RESAMPLING_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"

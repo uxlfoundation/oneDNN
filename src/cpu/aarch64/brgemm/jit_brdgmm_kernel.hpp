@@ -14,8 +14,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_AARCH64_JIT_BRDGMM_KERNEL_HPP
-#define CPU_AARCH64_JIT_BRDGMM_KERNEL_HPP
+#ifndef CPU_AARCH64_BRGEMM_JIT_BRDGMM_KERNEL_HPP
+#define CPU_AARCH64_BRGEMM_JIT_BRDGMM_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"

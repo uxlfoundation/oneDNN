@@ -336,4 +336,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif /* JIT_UNI_DW_CONV_KERNEL_BF16_HPP */
+#endif // CPU_X64_JIT_AVX512_CORE_BF16_DW_CONV_KERNEL_HPP

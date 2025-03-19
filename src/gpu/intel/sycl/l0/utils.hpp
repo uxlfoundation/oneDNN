@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef SYCL_LEVEL_ZERO_UTILS_HPP
-#define SYCL_LEVEL_ZERO_UTILS_HPP
+#ifndef GPU_INTEL_SYCL_L0_UTILS_HPP
+#define GPU_INTEL_SYCL_L0_UTILS_HPP
 
 #include <memory>
 #include <string>
@@ -57,4 +57,4 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
 } // namespace impl
 } // namespace dnnl
 
-#endif // SYCL_LEVEL_ZERO_UTILS_HPP
+#endif // GPU_INTEL_SYCL_L0_UTILS_HPP

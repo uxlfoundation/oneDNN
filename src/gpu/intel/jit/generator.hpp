@@ -139,16 +139,6 @@ class generator_t : public ngen::OpenCLCodeGenerator<hw>,
     friend struct EmulationImplementation;
 
 private:
-#ifdef CL_VERSION_2_0
-    struct svm_deleter_t {
-        cl_context context_;
-
-        void operator()(void *ptr) noexcept {
-            if (ptr) clSVMFree(context_, ptr);
-        }
-    };
-    std::unique_ptr<void, svm_deleter_t> dbg_memory_;
-#endif
 #ifdef DNNL_DEV_MODE
     static constexpr bool enable_debug_lines = true;
 #else
@@ -167,23 +157,7 @@ public:
         return ngen::OpenCLCodeGenerator<hw>::getBinary(
                 engine->context(), engine->device());
     }
-
-#ifdef CL_VERSION_2_0
-    void dbg_alloc(cl_context context);
-    void *dbg_memory() const { return dbg_memory_.get(); }
-#endif
 };
-
-#ifdef CL_VERSION_2_0
-template <gpu_gen_t hw>
-void generator_t<hw>::dbg_alloc(cl_context context) {
-    constexpr size_t size = 1048576;
-    void *mem = clSVMAlloc(
-            context, CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER, size, 0);
-    dbg_memory_ = decltype(dbg_memory_)(mem, svm_deleter_t {context});
-    memset(mem, 0xcd, size);
-}
-#endif
 
 void check_kernel_size(
         const std::string &kernel_name, size_t kernel_size, size_t icache_size);

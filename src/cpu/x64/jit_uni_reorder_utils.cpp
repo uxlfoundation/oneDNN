@@ -199,14 +199,22 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
         return po.len() == 0 || (po.len() == 1 && po.entry_[0].is_sum(false));
     };
 
-    bool ok = im_d.is_blocking_desc() && om_d.is_blocking_desc()
-            && !im_d.has_runtime_dims_or_strides() && !im_d.has_zero_dim()
-            && !om_d.has_runtime_dims_or_strides() && !om_d.has_zero_dim()
-            && attr->has_default_values(primitive_attr_t::skip_mask_t::scales
-                    | primitive_attr_t::skip_mask_t::zero_points
-                    | primitive_attr_t::skip_mask_t::post_ops)
-            && check_post_ops(attr);
-    if (!ok) return unimplemented;
+    VDISPATCH_REORDER_IC(
+            im_d.is_blocking_desc(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
+    VDISPATCH_REORDER_IC(
+            om_d.is_blocking_desc(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
+    VDISPATCH_REORDER_IC(!im_d.has_zero_dim(), VERBOSE_EMPTY_TENSOR, "src");
+    VDISPATCH_REORDER_IC(!om_d.has_zero_dim(), VERBOSE_EMPTY_TENSOR, "dst");
+    VDISPATCH_REORDER_IC(!im_d.has_runtime_dims_or_strides(),
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VDISPATCH_REORDER_IC(!om_d.has_runtime_dims_or_strides(),
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+    using smask_t = primitive_attr_t::skip_mask_t;
+    VDISPATCH_REORDER_IC(attr->has_default_values(smask_t::scales
+                                 | smask_t::zero_points | smask_t::post_ops),
+            VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_REORDER_IC(check_post_ops(attr), VERBOSE_UNSUPPORTED_POSTOP);
 
     bool is_tail_present = false;
     dims_t iblocks, oblocks, i_tails, o_tails, i_paddings, o_paddings;
@@ -218,7 +226,8 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
         const auto pdim = om_d.padded_dims()[d];
         const auto cblock = oblocks[d];
         // do not allow excess pdim other than required for rounding-up of dim.
-        if (utils::rnd_up(dim, cblock) != pdim) return unimplemented;
+        VDISPATCH_REORDER_IC(utils::rnd_up(dim, cblock) == pdim,
+                VERBOSE_UNSUPPORTED_PAD_FEATURE);
     }
 
     utils::array_set(i_tails, 0, im_d.ndims());
@@ -306,10 +315,12 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
         return IMPLICATION(check, mask == (with_groups ? 0x3 : 0x1));
     };
 
-    if (!mask_ok(p.req_s8s8_comp, om_d.extra().compensation_mask)
-            || !mask_ok(p.req_asymmetric_comp,
-                    om_d.extra().asymm_compensation_mask))
-        return status::unimplemented;
+    VDISPATCH_REORDER_IC(
+            mask_ok(p.req_s8s8_comp, om_d.extra().compensation_mask),
+            VERBOSE_UNSUPPORTED_MD_FLAG, "dst");
+    VDISPATCH_REORDER_IC(mask_ok(p.req_asymmetric_comp,
+                                 om_d.extra().asymm_compensation_mask),
+            VERBOSE_UNSUPPORTED_MD_FLAG, "dst");
 
     ptrdiff_t ss[max_ndims] = {0}; // scales strides
     if (p.src_scale_type == scale_type_t::MANY

@@ -192,8 +192,8 @@ public:
             const impl::engine_t *engine, ngen_generator_args... args)
         : ngen_generator_t(std::forward<ngen_generator_args>(args)...)
         , exec_cfg_(desc.exec_cfg(engine))
-        , ra_(hw())
-        , emu_strategy(hw(), exec_cfg_.hw().stepping_id()) {
+        , ra_(getHardware())
+        , emu_strategy(getHardware(), exec_cfg_.hw().stepping_id()) {
         desc.init_kernel_iface(kernel_iface_);
         ra_.setRegisterCount(exec_cfg_.regs());
     }
@@ -204,13 +204,12 @@ public:
         : ngen_generator_t(std::forward<ngen_generator_args>(args)...)
         , kernel_iface_(kernel_iface)
         , exec_cfg_(exec_cfg)
-        , ra_(hw())
-        , emu_strategy(hw(), exec_cfg.hw().stepping_id()) {
+        , ra_(getHardware())
+        , emu_strategy(getHardware(), exec_cfg.hw().stepping_id()) {
         ngen_generator_t::setStepping(exec_cfg.hw().stepping_id());
         ra_.setRegisterCount(exec_cfg_.regs());
     }
 
-    ngen::HW hw() const { return ngen_generator_t::getHardware(); }
     const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
 
@@ -308,7 +307,7 @@ public:
                                const ngen::Subregister &src1, uint32_t src2) {
             bool is_src2_16_bit
                     = (src2 <= std::numeric_limits<uint16_t>::max());
-            if (hw() >= ngen::HW::XeLP && is_src2_16_bit && false) {
+            if (getHardware() >= ngen::HW::XeLP && is_src2_16_bit && false) {
                 mad(1, dst, src0, src1, src2);
             } else {
                 auto tmp = ra_.alloc_sub<uint64_t>();
@@ -552,7 +551,7 @@ public:
         auto scope = ngen_register_scope_t(ra_);
         align_src_dst_offset(this, scope, mod, dst, src0);
         align_src_dst_offset(this, scope, mod, dst, src1);
-        if (hw() >= ngen::HW::XeHP) {
+        if (getHardware() >= ngen::HW::XeHP) {
             if (src2.is_reg_data()) {
                 align_src_dst_offset(this, scope, mod, dst, src2);
                 add3(mod, dst.reg_data(), fixup_ternary_rgn(src0.reg_data()),
@@ -585,7 +584,7 @@ public:
             align_src_dst_offset(this, scope, mod, dst, src2);
             mad(mod, dst.reg_data(), fixup_ternary_rgn(src0.reg_data()),
                     fixup_ternary_rgn(src1.reg_data()), src2.reg_data());
-        } else if (hw() < ngen::HW::XeLP) {
+        } else if (getHardware() < ngen::HW::XeLP) {
             align_src_dst_offset(this, scope, mod, dst, src0);
             mul(mod, dst.reg_data(), src1.reg_data(), src2.immediate());
             add(mod, dst.reg_data(), dst.reg_data(), src0.reg_data());
@@ -608,10 +607,11 @@ public:
             const ngen_operand_t &src0, const ngen_operand_t &src1) {
         if (!src1.is_immediate()) {
             // Immediate src0 is not supported with fdiv_ieee.
-            if (src0.is_immediate() && hw() >= ngen::HW::XeHPC) {
+            if (src0.is_immediate() && getHardware() >= ngen::HW::XeHPC) {
                 auto tmp_src0 = ra_.alloc_sub(src0.type());
                 mov(mod, tmp_src0, src0.immediate());
-                efdiv(mod, dst, ngen_operand_t(reg_buf_data_t(hw(), tmp_src0)),
+                efdiv(mod, dst,
+                        ngen_operand_t(reg_buf_data_t(getHardware(), tmp_src0)),
                         src1);
                 ra_.safeRelease(tmp_src0);
             } else {
@@ -635,7 +635,7 @@ public:
     void efdiv(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
             const ngen_operand_t &src0, const ngen_operand_t &src1) {
         int esize = mod.getExecSize();
-        int grf_size = ngen::GRF::bytes(hw());
+        int grf_size = ngen::GRF::bytes(getHardware());
         int div_esize = std::min(esize, grf_size / int(sizeof(float)));
 
         gpu_assert(dst.type() == ngen::DataType::f);
@@ -656,10 +656,11 @@ public:
         }
 
         // fdiv_ieee() is not supported in XeHPG so we use a less precise, inv-based sequence.
-        if (hw() < ngen::HW::XeHPC) {
+        if (getHardware() < ngen::HW::XeHPC) {
             auto tmp = ra_.alloc_sub<float>();
             inv(1, tmp, src1.reg_data());
-            emul(mod, dst, src0, ngen_operand_t(reg_buf_data_t(hw(), tmp)));
+            emul(mod, dst, src0,
+                    ngen_operand_t(reg_buf_data_t(getHardware(), tmp)));
             ra_.safeRelease(tmp);
             return;
         }
@@ -952,7 +953,7 @@ public:
             // rem = x - qot * y
             bool y_is_16_bit = (y <= static_cast<uint32_t>(
                                         std::numeric_limits<int16_t>::max()));
-            if (hw() >= ngen::HW::XeLP && y_is_16_bit) {
+            if (getHardware() >= ngen::HW::XeLP && y_is_16_bit) {
                 mad(mod, rem, x, _qot, -int16_t(y));
             } else {
                 auto tmp = ra_.alloc_sub<uint64_t>();
@@ -1043,7 +1044,7 @@ protected:
             int w = rd.getWidth();
             int hs = rd.getHS();
             int vs = rd.getVS();
-            int grf_size = ngen::GRF::bytes(host->hw());
+            int grf_size = ngen::GRF::bytes(host->getHardware());
             int regs = utils::div_up(
                     std::max(esize * hs, 1) * rd.getBytes(), grf_size);
             tmp_range_ = host_->ra_.alloc_range(regs);
@@ -1106,7 +1107,7 @@ protected:
 
     bool overlaps(
             int esize, const ngen::RegData &a, const ngen::RegData &b) const {
-        int grf_size = ngen::GRF::bytes(hw());
+        int grf_size = ngen::GRF::bytes(getHardware());
         int a_beg = a.getBase() * grf_size + a.getByteOffset();
         int b_beg = b.getBase() * grf_size + b.getByteOffset();
         int a_end = a_beg + std::max(esize * a.getHS(), 1) * a.getBytes() - 1;
@@ -1141,10 +1142,9 @@ template <ngen::HW hw>
 class ir_kernel_t : public ir_kernel_base_t<generator_t<hw>> {
 public:
     using base = ir_kernel_base_t<generator_t<hw>>;
+    using elf_generator_t = ngen::ELFCodeGenerator<hw>;
     friend class expr_evaluator_t<ir_kernel_t>;
     friend class ir_to_ngen_t<ir_kernel_t>;
-
-    NGEN_FORWARD_ELF(hw)
 
     ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
             const debug_config_t &debug_config)
@@ -1162,7 +1162,7 @@ public:
         , local_range_(local_range) {}
 
     const ngen::NEOInterfaceHandler &neo_interface() const {
-        return ngen::ELFCodeGenerator<hw>::interface_;
+        return elf_generator_t::interface_;
     }
 
     void set_kernel_iface(const kernel_iface_t &kernel_iface) {
@@ -1170,23 +1170,25 @@ public:
     }
 
     void setup_interface(const stmt_t &kernel_body = stmt_t()) {
-        externalName(kernel_name_);
-        requireLocalID(3);
-        requireLocalSize();
-        requireGRF(base::exec_cfg().regs());
-        requireSIMD(base::exec_cfg().simd());
-        requireBarrier();
-        if (require_dpas_) requireDPAS();
-        if (has_send_atomics(kernel_body)) requireGlobalAtomics();
+        elf_generator_t::externalName(kernel_name_);
+        elf_generator_t::requireLocalID(3);
+        elf_generator_t::requireLocalSize();
+        elf_generator_t::requireGRF(base::exec_cfg().regs());
+        elf_generator_t::requireSIMD(base::exec_cfg().simd());
+        elf_generator_t::requireBarrier();
+        if (require_dpas_) elf_generator_t::requireDPAS();
+        if (has_send_atomics(kernel_body))
+            elf_generator_t::requireGlobalAtomics();
 
         for (int i = 0; i < base::kernel_iface().nargs(); i++) {
             auto &name = base::kernel_iface().arg_name(i);
             auto &type = base::kernel_iface().arg_type(i);
             if (type.is_ptr()) {
-                newArgument(name, ngen::ExternalArgumentType::GlobalPtr,
+                elf_generator_t::newArgument(name,
+                        ngen::ExternalArgumentType::GlobalPtr,
                         ngen::GlobalAccessType::Stateless);
             } else {
-                newArgument(name, to_ngen(type));
+                elf_generator_t::newArgument(name, to_ngen(type));
             }
         }
 
@@ -1200,10 +1202,10 @@ public:
                 // TODO: Use status code for this check.
                 gpu_except_not_implemented("SLM size limit is exceeded.");
             }
-            requireSLM(slm_size);
+            elf_generator_t::requireSLM(slm_size);
         }
 
-        finalizeInterface();
+        elf_generator_t::finalizeInterface();
     }
 
     int thread_group_size() const {

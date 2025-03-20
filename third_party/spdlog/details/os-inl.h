@@ -589,6 +589,18 @@ SPDLOG_INLINE bool fsync(FILE *fp) {
 #endif
 }
 
+// Do non-locking fwrite if possible by the os or use the regular locking fwrite
+// Return true on success.
+SPDLOG_INLINE bool fwrite_bytes(const void *ptr, const size_t n_bytes, FILE *fp) {
+    #if defined(_WIN32) && defined(SPDLOG_FWRITE_UNLOCKED)
+    return _fwrite_nolock(ptr, 1, n_bytes, fp) == n_bytes;
+    #elif defined(SPDLOG_FWRITE_UNLOCKED)
+    return ::fwrite_unlocked(ptr, 1, n_bytes, fp) == n_bytes;
+    #else
+    return std::fwrite(ptr, 1, n_bytes, fp) == n_bytes;
+    #endif
+}
+
 }  // namespace os
 }  // namespace details
 }  // namespace spdlog

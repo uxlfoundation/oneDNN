@@ -13,7 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-
+#include "graph/backend/dnnl/kernels/gmlp_primitive.hpp"
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 
 #include "graph/backend/dnnl/patterns/fusions.hpp"
@@ -77,7 +77,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gated_mlp)
                             in_edges_t {in_edge(0, bin, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<gmlp_primitive_kernel_t<false>>();
         });
 
 // gated mlp with swish decomposed to sigmoid and multiply.
@@ -112,7 +112,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gated_mlp_v1)
                             in_edges_t {in_edge(0, bin, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<gmlp_primitive_kernel_t<false>>();
         });
 
 /*
@@ -167,7 +167,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, quantized_gated_mlp)
                     pgraph->append_op(graph::op_kind::MatMul, fc_down_edges);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<gmlp_primitive_kernel_t<false>>();
         });
 
 // quantized gated mlp with swish decomposed to sigmoid and multiply.
@@ -209,7 +209,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, quantized_gated_mlp_v1)
                     pgraph->append_op(graph::op_kind::MatMul, fc_down_edges);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<gmlp_primitive_kernel_t<false>>();
         });
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_END

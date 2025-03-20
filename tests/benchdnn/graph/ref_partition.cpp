@@ -70,8 +70,12 @@ ref_partition_t::ref_partition_t(const deserialized_graph_t &dg,
     }
 };
 
-int ref_partition_t::init_ref(const std::vector<size_t> &graph_in_ports,
-        partition_mem_map_t &partition_mem_map, res_t *res) {
+int ref_partition_t::init_ref(
+        const std::vector<size_t> &graph_in_ports, res_t *res) {
+
+    // Not create reference primitives and filling data with pre-designed
+    // strategies if correctness check is not enabled.
+    if (!has_bench_mode_bit(mode_bit_t::corr)) return OK;
 
     for (const auto &par_op_ref : partition_ops_ref_) {
         // res should be independent from op to op
@@ -150,30 +154,49 @@ int ref_partition_t::init_ref(const std::vector<size_t> &graph_in_ports,
         SAFE_V(data_displacer.displace_input_data(
                 entry.first, const_cast<dnn_mem_t &>(entry.second), res));
     }
+    return OK;
+}
+
+int ref_partition_t::init_graph_mem(
+        partition_mem_map_t &partition_mem_map, res_t *res) {
 
     // init graph input/oputput memory from lt_id_2_mems_
     for (const auto &id : partition_in_ids_) {
-        if (lt_id_2_mems_.find(id) == lt_id_2_mems_.end()) {
+        if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+            if (lt_id_2_mems_.find(id) == lt_id_2_mems_.end()) {
+                BENCHDNN_PRINT(0, "Fail: cannot find memory for %zu\n", id);
+                res->state = FAILED;
+                return FAIL;
+            }
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t(lt_id_2_mems_.at(id), lt_id_2_lt_.at(id),
+                            /*is_op_input=*/true));
+        } else
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t({}, lt_id_2_lt_.at(id),
+                            /*is_op_input=*/true));
+    }
+
+    for (const auto &id : partition_out_ids_) {
+
+        if (fake_lt_ids_.find(id) != fake_lt_ids_.end()
+                || has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t({}, lt_id_2_lt_.at(id),
+                            /*is_op_input=*/false, /*use_graph_layout=*/true));
+        } else if (lt_id_2_mems_.find(id) != lt_id_2_mems_.end()) {
+            // For output memories of graph, they need to be in compliance with
+            // the reference memories regarding the shapes and memory tags, as
+            // the memories of both paths will be reordered to abx for
+            // comparison.
+            partition_mem_map.emplace(id,
+                    dnn_graph_mem_t(lt_id_2_mems_.at(id), lt_id_2_lt_.at(id),
+                            /*is_op_input=*/false));
+        } else {
             BENCHDNN_PRINT(0, "Fail: cannot find memory for %zu\n", id);
             res->state = FAILED;
             return FAIL;
         }
-        partition_mem_map.emplace(id,
-                dnn_graph_mem_t(
-                        lt_id_2_mems_.at(id), lt_id_2_lt_.at(id), true));
-    }
-    for (const auto &id : partition_out_ids_) {
-        if (fake_lt_ids_.find(id) != fake_lt_ids_.end()) {
-            partition_mem_map.emplace(
-                    id, dnn_graph_mem_t({}, lt_id_2_lt_.at(id), false, true));
-        } else if (lt_id_2_mems_.find(id) == lt_id_2_mems_.end()) {
-            BENCHDNN_PRINT(0, "Fail: cannot find memory for %zu\n", id);
-            res->state = FAILED;
-            return FAIL;
-        } else
-            partition_mem_map.emplace(id,
-                    dnn_graph_mem_t(
-                            lt_id_2_mems_.at(id), lt_id_2_lt_.at(id), false));
     }
 
     return OK;

@@ -252,6 +252,21 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 
     if (M <= 0 || N <= 0 || K <= 0) return status::invalid_arguments;
 
+    // Upper bound, this can likely be improved by accounting for blocking
+    dim_t max_a_stride = brg->LDA * types::data_type_size(brg->dt_a)
+            * (brg->layout == brgemm_col_major ? K : M);
+    dim_t max_b_stride = brg->LDB * types::data_type_size(brg->dt_b)
+            * (brg->layout == brgemm_col_major ? N : K);
+    dim_t max_c_stride = brg->LDC * types::data_type_size(brg->dt_c)
+            * (brg->layout == brgemm_col_major ? N : M);
+
+    // Required for EVEX encoding for offsets
+    const dim_t max_stride = std::numeric_limits<int32_t>::max();
+    if ((max_a_stride > max_stride && !brg->is_runtime_lda)
+            || (max_b_stride > max_stride && !brg->is_runtime_ldb)
+            || (max_c_stride >= max_stride && !brg->is_runtime_ldc))
+        return status::unimplemented;
+
     if (utils::everyone_is(false, brg->is_int8, brg->is_bf16, brg->is_f32,
                 brg->is_f16, brg->is_fp8))
         return status::unimplemented;

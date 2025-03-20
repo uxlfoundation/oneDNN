@@ -19,6 +19,7 @@
 
 #include "cpu/ukernel/c_types_map.hpp"
 
+#include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/brgemm/brgemm_types.hpp"
 
 #include "cpu/x64/ukernel/attr_params.hpp"
@@ -95,6 +96,9 @@ private:
     // it during execute(). This is done to avoid string re-creation.
     dnnl::impl::status_t create_verbose_info();
     std::string verbose_info_;
+
+    bool palette_initialized_ = false;
+    char palette_[dnnl::impl::cpu::x64::AMX_PALETTE_SIZE] = {};
 };
 
 namespace dnnl {

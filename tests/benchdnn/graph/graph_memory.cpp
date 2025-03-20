@@ -45,23 +45,10 @@ size_t get_benchdnn_device_limit() {
 // Constructs memories for all inputs and outputs needed for comparison.
 dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
         const deserialized_lt &lt, const bool is_op_input,
-        const bool is_fake_output)
+        const bool use_graph_layout)
     : graph_dims_(lt.shape_), graph_strides_(lt.stride_) {
-    const auto &prim_dt = mem.dt();
-    // Conversion from graph types to dnnl types + boolean to u8.
-    const auto &graph_dt = convert_dt(lt.get_data_type());
-
-    // Get memory tag of primitive memory
-    int ndims = mem.ndims();
-    dims_t strides(mem.strides(), mem.strides() + ndims);
-    std::string mtag = strides2memory_tag(ndims, strides);
-
     const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
 
-    // We create memory for graph path in two steps:
-    // 1. Create memory objects.
-    // 2. Do memory copy if needed.
-    //
     // For inputs, graph path needs data from reference path,
     // and the data movement requires both memories have the same
     // shape, so the tag of graph path is used to create the memory.
@@ -70,40 +57,85 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
     // otherwise use shape & tag from ref path side
 
     // Create memory for graph path
+    const auto &graph_dt = convert_dt(lt.get_data_type());
     const auto data_type = static_cast<dnnl::memory::data_type>(graph_dt);
-    if (is_op_input) {
-        if (graph_dims_.empty()) graph_dims_.push_back(1);
-        if (graph_strides_.empty()) graph_strides_.push_back(1);
 
-        // create graph memory
+    if (graph_dims_.empty()) {
+        // As graph strides are deduced from graph dims, they should be in
+        // compliance with each other.
+        assert(graph_strides_.empty());
+
+        graph_dims_.push_back(1);
+        graph_strides_.push_back(1);
+    }
+
+    if (is_op_input) {
+        // Create graph memory with memory description from graph path.
         dnnl::memory::desc md(graph_dims_, data_type, graph_strides_);
         mem_ = dnn_mem_t(md.get(), g_eng.get());
 
-        const auto prim_to_graph_memcpy = [](dnn_mem_t &graph_mem,
-                                                  const dnn_mem_t &prim_mem) {
-            const void *prim_data_handle = static_cast<const void *>(prim_mem);
-            void *graph_data_handle = graph_mem.get_mapped_pointer<void>();
-            std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());
-        };
-
-        if (prim_dt != graph_dt) {
-            // Call a reorder (for data conversion) when reference memory
-            // doesn't coincide with the graph memory...
-            dnn_mem_t c_mem(ndims, mem.dims(), graph_dt, mtag, g_eng.get());
-            SAFE_V(c_mem.reorder(mem));
-            prim_to_graph_memcpy(mem_, c_mem);
-        } else {
-            // ... otherwise, perform a plain memcpy.
-            prim_to_graph_memcpy(mem_, mem);
+        if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+            // Fill data from reference memories.
+            fill_mem_with_data(mem);
         }
+
     } else {
-        if (is_fake_output) {
+        if (use_graph_layout) {
+            // For some cases such as fake outputs and no reference memory
+            // mode, which means the output does not have correctponding
+            // argument in primitives, we need to create them with memory
+            // description from graph path.
             dnnl::memory::desc md(graph_dims_, data_type, graph_strides_);
             mem_ = dnn_mem_t(md.get(), g_eng.get());
+
         } else {
+            // Use information from the reference memory descriptor to create
+            // memories. As we need to reorder output from both paths to abx
+            // for comparison, the memory tag of graph path output should align
+            // the reference path.
+
+            // Get memory tag of primitive memory
+            int ndims = mem.ndims();
+            dims_t strides(mem.strides(), mem.strides() + ndims);
+            std::string mtag = strides2memory_tag(ndims, strides);
+
             mem_ = dnn_mem_t(mem.md_, graph_dt, mtag, g_eng.get());
         }
     }
+}
+
+int dnn_graph_mem_t::fill_mem_with_data(const dnn_mem_t &mem) {
+
+    if (mem.size() != mem_.size()) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: failed to fill graph memory with given memory\n");
+        SAFE(FAIL, WARN);
+    }
+
+    const auto &src_dt = mem.dt();
+    const auto &dst_dt = mem_.dt();
+
+    int ndims = mem.ndims();
+    dims_t strides(mem.strides(), mem.strides() + ndims);
+    std::string mtag = strides2memory_tag(ndims, strides);
+    const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
+
+    const auto prim_to_graph_memcpy = [](dnn_mem_t &graph_mem,
+                                              const dnn_mem_t &prim_mem) {
+        const void *prim_data_handle = static_cast<const void *>(prim_mem);
+        void *graph_data_handle = graph_mem.get_mapped_pointer<void>();
+        std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());
+    };
+
+    if (src_dt != dst_dt) {
+        dnn_mem_t c_mem(ndims, mem.dims(), dst_dt, mtag, g_eng.get());
+        SAFE_V(c_mem.reorder(mem));
+        prim_to_graph_memcpy(mem_, c_mem);
+    } else {
+        prim_to_graph_memcpy(mem_, mem);
+    }
+
+    return OK;
 }
 
 dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(

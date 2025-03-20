@@ -156,12 +156,13 @@ public:
     //
     // The constructor accepts three boolean parameters:
     // 1. is_op_input: whether the logical tensor is an input of an op
-    // 2. is_fake_output: for fake outputs, the driver cannot create memory
-    // objects based on primitive memory for them, but construct memory
-    // from graph shape. The default value is false.
+    // 2. use_graph_layout: for fake outputs and mode without reference
+    // memories, the driver cannot create memory objects based on primitive
+    // memory for them, but construct memory from graph shape. The default
+    // value is false.
     //
     dnn_graph_mem_t(const dnn_mem_t &mem, const deserialized_lt &lt,
-            const bool is_op_input, const bool is_fake_output = false);
+            const bool is_op_input, const bool use_graph_layout = false);
 
     dnnl::graph::tensor make_graph_tensor(const deserialized_lt &lt) const;
 
@@ -171,6 +172,8 @@ public:
     void unmap_mem() { mem_.unmap(); }
 
 private:
+    int fill_mem_with_data(const dnn_mem_t &mem);
+
     dnn_mem_t mem_;
     std::shared_ptr<void> buffer_;
     dnnl::memory::dims graph_dims_;

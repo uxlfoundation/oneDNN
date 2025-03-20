@@ -122,6 +122,11 @@ status_t brgemm_t::finalize() {
     // compensation on their own as a binary post-op.
     brgemm_desc_.req_s8s8_compensation = false;
 
+    // Precompute the pallette
+    // If status isn't successful, it means tiles configuration is not required.
+    status = brgemm_init_tiles(brgemm_desc_, palette_);
+    palette_initialized_ = (status == status::success);
+
     return status::success;
 }
 
@@ -153,11 +158,8 @@ bool brgemm_t::is_execute_postops_valid() const {
 }
 
 status_t brgemm_t::set_hw_context() const {
-    char palette[AMX_PALETTE_SIZE] = {};
-    auto status = brgemm_init_tiles(brgemm_desc_, palette);
-    // If status isn't successful, it means tiles configuration is not required.
-    if (status == status::success) {
-        status = amx_tile_lazy_configure(palette);
+    if (palette_initialized_) {
+        auto status = amx_tile_lazy_configure(palette_);
         VCHECK_BRGEMM_STATUS(
                 status, status == status::success, "amx_tile_configure failed");
     }

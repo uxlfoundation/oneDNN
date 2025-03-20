@@ -77,9 +77,11 @@ status_t gmlp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
                 mm_down_ = post_op;
             }
         } else {
-            VCHECK_GMLP_PRIMITIVE(mm_gate_ == nullptr, status::unimplemented,
-                    "Multiple mm_gate found");
-            mm_gate_ = cur_op;
+            if (in_tensor_list(cur_op->get_output_value(0).get(), outputs)) {
+                VCHECK_GMLP_PRIMITIVE(mm_gate_ == nullptr,
+                        status::unimplemented, "Multiple mm_gate found");
+                mm_gate_ = cur_op;
+            }
         }
     }
 

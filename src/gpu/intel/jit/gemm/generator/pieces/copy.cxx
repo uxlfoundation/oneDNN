@@ -169,7 +169,7 @@ void BLASKernelGenerator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
     // Prepare temporary VirtualFlagAllocators for flag allocations.
     // Use lock bits to track overwritable flags.
     auto raVFlag0 = state.raVFlag;
-    if (!state.vflagsEnabled())
+   // if (!state.vflagsEnabled())
         for (int i = 0; i < nflag; i++)
             if (!raVFlag0.isFree(VirtualFlag{i}))
                 raVFlag0.lock(VirtualFlag{i}, true);

@@ -202,6 +202,10 @@ int find_logical_tensor(size_t lt_id, const graph::op_ref_list_t &ops,
 int map_unmap_partition_mem(graph::partition_mem_map_t &partition_mem_map,
         const std::vector<dnnl::graph::logical_tensor> &lts,
         const int &map_flag, res_t *res) {
+
+    // Not map or unmap the reference primitive memories for `no_ref_memory`
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
+
     // In case one logical tensor is used for multiple inputs, record the
     // processed logical tensor ids to avoid duplicate processing
     std::unordered_set<size_t> processed_ids;
@@ -253,7 +257,6 @@ int make_input_tensors(std::vector<dnnl::graph::tensor> &input_ts,
         }
 
         // generate tensor for graph path
-
         const auto iter = partition_mem_map.find(lt_id);
         if (iter != partition_mem_map.end()) {
             const auto &graph_mem = iter->second;
@@ -637,10 +640,12 @@ int doit(const prb_t *prb, res_t *res) {
         std::vector<dnnl::graph::tensor> output_ts(outputs.size());
 
         ref_partition_t ref_partition(dg, partitions[i], inputs, outputs);
+
         // Construct memory for both perf & corr modes
-        SAFE(ref_partition.init_ref(
-                     graph_in_ports, partition_mem_map_v[i], res),
-                WARN);
+        SAFE(ref_partition.init_ref(graph_in_ports, res), WARN);
+        if (res->state == SKIPPED) return OK;
+
+        SAFE(ref_partition.init_graph_mem(partition_mem_map_v[i], res), WARN);
         if (res->state == SKIPPED) return OK;
 
         if (has_bench_mode_bit(mode_bit_t::corr)) {
@@ -657,15 +662,12 @@ int doit(const prb_t *prb, res_t *res) {
         }
 
         // unmap memory from host to device
-        map_unmap_partition_mem(partition_mem_map_v[i], inputs, UNMAP, res);
-        map_unmap_partition_mem(partition_mem_map_v[i], outputs, UNMAP, res);
-        if (res->state == FAIL) {
-            BENCHDNN_PRINT(0,
-                    "FAIL: Fail to unmap memories to host for partition "
-                    "%zu.\n",
-                    i);
-            return FAIL;
-        }
+        SAFE(map_unmap_partition_mem(
+                     partition_mem_map_v[i], inputs, UNMAP, res),
+                WARN);
+        SAFE(map_unmap_partition_mem(
+                     partition_mem_map_v[i], outputs, UNMAP, res),
+                WARN);
 
         const op_ref_list_t &op_list = ref_partition.get_partition_ops();
         const auto &inplace_ports
@@ -705,8 +707,10 @@ int doit(const prb_t *prb, res_t *res) {
         graph_mem_mgr.stop_graph_mem_check();
 
         // map memory from device back to host
-        map_unmap_partition_mem(partition_mem_map_v[i], inputs, MAP, res);
-        map_unmap_partition_mem(partition_mem_map_v[i], outputs, MAP, res);
+        SAFE(map_unmap_partition_mem(partition_mem_map_v[i], inputs, MAP, res),
+                WARN);
+        SAFE(map_unmap_partition_mem(partition_mem_map_v[i], outputs, MAP, res),
+                WARN);
 
         // If the device is out-of-memory due to graph path execution, skip the
         // case.

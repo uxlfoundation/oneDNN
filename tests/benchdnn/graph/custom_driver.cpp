@@ -293,10 +293,20 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
 
 int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max) {
 
+    const auto dt = mem_dt.dt();
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+            && !is_integral_dt(dt)) {
+        // Use data filled by benchdnn for `no_ref_memory`, except some
+        // customized operations in Graph API which expect the input
+        // values to indicate indexing information, especially for integral
+        // inputs. Hence we need to be limited the input value to the
+        // provided range.
+        return OK;
+    }
+
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
 
-    const auto dt = mem_dt.dt();
     f_min = (dt == dnnl_u8 && f_min < 0) ? 0 : f_min;
     const int64_t n_chunks = 16;
     const int64_t chunk_size = div_up(nelems, n_chunks);
@@ -339,8 +349,6 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const prb_t *prb, res_t *res) {
-    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
-
     switch (prb->alg) {
         case GENINDEX:
             SAFE(::custom::genindex::init_ref_memory_args(

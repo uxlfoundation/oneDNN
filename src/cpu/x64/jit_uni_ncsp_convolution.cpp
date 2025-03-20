@@ -100,7 +100,7 @@ status_t reduction_helper_t::reshape_weights(
 status_t reduction_helper_t::reshape_for_transpose(
         memory_desc_t &o_md, memory_desc_t &i_md) {
     const int ndims = i_md.ndims;
-    int *perm = new int[ndims];
+    std::vector<int> perm(ndims);
     for (int dim = 0; dim < ndims; dim++) {
         if (dim == ndims - 2)
             perm[dim] = dim + 1;
@@ -109,7 +109,7 @@ status_t reduction_helper_t::reshape_for_transpose(
         else
             perm[dim] = dim;
     }
-    return memory_desc_permute_axes(o_md, i_md, perm);
+    return memory_desc_permute_axes(o_md, i_md, perm.data());
 }
 
 bool reduction_helper_t::is_gemm() {

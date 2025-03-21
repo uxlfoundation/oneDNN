@@ -59,14 +59,21 @@ status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
         auto cur_op = op->shared_from_this();
         auto creator = opm->get_additional_item<executable_creator_func>(
                 "executable_creator");
+
         std::shared_ptr<op_executable_t> exec
                 = creator(cur_op, p_engine, mgr, pd_cache);
-
         VCHECK_COMPILE_OPS(exec != nullptr, status::invalid_graph_op,
                 "unimplemented op, can't compile op %s",
                 op->get_name().c_str());
-
+        if (cur_op->get_kind() == op_kind::dnnl_sdpa) {
+            auto sdpa_exec = std::dynamic_pointer_cast<sdpa_executable_t>(exec);
+            VCHECK_COMPILE_OPS(sdpa_exec->is_initialized(),
+                    status::unimplemented,
+                    "failed to create executable for op %s",
+                    op->get_name().c_str());
+        }
         sg->execs_.emplace_back(exec);
+
         sg->is_constant_.push_back(op->has_attr(op_attr::is_constant)
                 && op->get_attr<bool>(op_attr::is_constant));
         return status::success;

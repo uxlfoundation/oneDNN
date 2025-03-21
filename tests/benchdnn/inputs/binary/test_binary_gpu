@@ -36,6 +36,10 @@
 --sdt=f32:f32
 --batch=option_set_minimal
 
+--ddt=s32
+--sdt=s32:s32
+--batch=option_set_minimal
+
 --ddt=s8
 --sdt=s8:s8
 --attr-scales=,src:common:0.25+src1:common:0.5
@@ -85,6 +89,10 @@
 
 --ddt=f32
 --sdt=f32:f32
+--batch=option_set_all
+
+--ddt=s32
+--sdt=s32:s32
 --batch=option_set_all
 
 --batch=harness_binary_different_dt

@@ -14,8 +14,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_AARCH64_JIT_INJECTOR_UTILS_HPP
-#define CPU_AARCH64_JIT_INJECTOR_UTILS_HPP
+#ifndef CPU_AARCH64_INJECTORS_INJECTOR_UTILS_HPP
+#define CPU_AARCH64_INJECTORS_INJECTOR_UTILS_HPP
 
 #include <array>
 #include <cstddef>

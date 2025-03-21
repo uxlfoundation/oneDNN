@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef BACKEND_GRAPH_COMPILER_PATTERNS_PATTERN_UTILS_HPP
-#define BACKEND_GRAPH_COMPILER_PATTERNS_PATTERN_UTILS_HPP
+#ifndef GRAPH_BACKEND_GRAPH_COMPILER_PATTERNS_PATTERN_UTILS_HPP
+#define GRAPH_BACKEND_GRAPH_COMPILER_PATTERNS_PATTERN_UTILS_HPP
 
 #include <algorithm>
 #include <memory>

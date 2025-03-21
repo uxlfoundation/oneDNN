@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2021 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_PRELU_JIT_PRELU_BASE_KERNEL_HPP_
-#define CPU_X64_PRELU_JIT_PRELU_BASE_KERNEL_HPP_
+#ifndef CPU_X64_PRELU_JIT_PRELU_BASE_KERNEL_HPP
+#define CPU_X64_PRELU_JIT_PRELU_BASE_KERNEL_HPP
 
 #include "cpu/x64/jit_generator.hpp"
 #include "cpu/x64/prelu/jit_prelu_utils.hpp"

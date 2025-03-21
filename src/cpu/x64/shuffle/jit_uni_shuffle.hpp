@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2021 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_UNI_SHUFFLE_HPP
-#define CPU_X64_JIT_UNI_SHUFFLE_HPP
+#ifndef CPU_X64_SHUFFLE_JIT_UNI_SHUFFLE_HPP
+#define CPU_X64_SHUFFLE_JIT_UNI_SHUFFLE_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"

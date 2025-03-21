@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef MEMORY_MAP_MANAGER_HPP
-#define MEMORY_MAP_MANAGER_HPP
+#ifndef COMMON_MEMORY_MAP_MANAGER_HPP
+#define COMMON_MEMORY_MAP_MANAGER_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"

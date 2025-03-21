@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_X64_JIT_UNI_POSTOPS_INJECTOR_HPP
-#define CPU_X64_JIT_UNI_POSTOPS_INJECTOR_HPP
+#ifndef CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
+#define CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
 
 #include <functional>
 #include <map>

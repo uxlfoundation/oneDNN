@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+#ifndef CPU_X64_JIT_AVX512_CORE_AMX_CONV_UTILS_HPP
+#define CPU_X64_JIT_AVX512_CORE_AMX_CONV_UTILS_HPP
 
 #include "common/dnnl_thread.hpp"
 #include "common/utils.hpp"
@@ -308,5 +311,7 @@ inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
+
+#endif
 
 // vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

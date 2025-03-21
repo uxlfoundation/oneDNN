@@ -432,6 +432,8 @@ std::string locate_file(const std::string &fname) {
                 BENCHDNN_PRINT(50, "file used: %s\n", fullname.c_str());
                 ifs.close();
                 return fullname;
+            } else {
+                BENCHDNN_PRINT(50, "File not found at: %s\n", fullname.c_str());
             }
             ifs.close();
         }

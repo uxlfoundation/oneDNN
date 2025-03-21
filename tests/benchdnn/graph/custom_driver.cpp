@@ -119,8 +119,10 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
+        auto dtype = dnnl_f32;
+        if (exec_arg == DNNL_ARG_WEIGHTS) dtype = dnnl_s8;
         ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                exec_arg, dnn_mem_t(mem.md_, dtype, tag::abx, ref_engine));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {

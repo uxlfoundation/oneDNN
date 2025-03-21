@@ -191,7 +191,11 @@ namespace custom {
                 opkind, static_cast<int>(i));
         const auto &lt = base_op_ref.in_lts_[i];
         auto dim = lt.shape_;
-        const auto dt = dnnl_f32;
+        auto dt = dnnl_f32;
+        if (opkind == ::graph::op::kind::Select && i == 0) {
+            // cond input is s8
+            dt = dnnl_s8;
+        }
         auto tag = strides2memory_tag(lt.stride_.size(), lt.stride_, false);
 
         // 0-dim means scalar input in graph, extend to 1-dim to match behavior.

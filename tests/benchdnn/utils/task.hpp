@@ -48,6 +48,12 @@ struct task_t {
 
         v_prim_ = std::make_shared<
                 std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>>>();
+
+        // A timer for each test case. Starts from `create_func_` and ends at
+        // `parse_result`.
+        auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
+        tct.start();
+
         SAFE(create_func_(*v_prim_, &prb_, &res_), WARN);
         return OK;
     }
@@ -73,6 +79,11 @@ struct task_t {
             // through this part of the flow.
             BENCHDNN_PRINT(1, "run (just report, no exec): %s\n", prb_.str());
         }
+
+        // A timer for each test case. Starts from `create_func_` and ends at
+        // `parse_result`.
+        auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
+        tct.stamp();
 
         return report();
     }

@@ -46,7 +46,13 @@ void check_correctness(const settings_t &s) {
         const char *pstr = cpp_pstr.c_str();
         BENCHDNN_PRINT(1, "run: %s\n", pstr);
         res_t res {};
+
+        // A timer for each test case.
+        auto &tct = res.timer_map.get_timer(timer::names::test_case_timer);
+        tct.start();
         doit(&prb, &res);
+        tct.stamp();
+
         // Reset the memory size args for the graph after testing.
         reset_graph_mem_req();
 

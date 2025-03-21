@@ -58,8 +58,8 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                         size_t size = std::min(ow_offset + kerW, inW)
                                 - std::max(ow_offset, 0);
                         size_t cycleLength = __riscv_vsetvl_e32m8(size);
-                        vfloat32m8_t vmax
-                                = __riscv_vle32_v_f32m8(&arr_flt_min[0], cycleLength);
+                        vfloat32m8_t vmax = __riscv_vle32_v_f32m8(
+                                &arr_flt_min[0], cycleLength);
 
                         for (int id = std::max(od_offset, 0);
                                 id < std::min(od_offset + kerD, inD); id++)
@@ -81,7 +81,7 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                                 }
 
                                 size_t tailLength
-					= __riscv_vsetvl_e32m8(size - iw);
+					 = __riscv_vsetvl_e32m8(size - iw);
                                 {
                                     vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
                                             &local_src[local_src_offset + iw],

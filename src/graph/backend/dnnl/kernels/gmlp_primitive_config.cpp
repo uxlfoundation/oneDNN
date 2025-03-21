@@ -65,19 +65,20 @@ status_t gmlp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
         // mm_down has no post ops
         if (post_op && post_op->get_kind() == op_kind::dnnl_binary) {
             // Locate mm_up and all post ops(scale and mask) here.
-            // 1. locate mm_up
+            // locate mm_up
             VCHECK_GMLP_PRIMITIVE(mm_up_ == nullptr, status::unimplemented,
                     "Multiple mm_up found");
             mm_up_ = cur_op;
             const auto &ppost_op = get_post_op(post_op);
             if (ppost_op && ppost_op->get_kind() == op_kind::dnnl_matmul) {
-                // 2. locate mm_down
+                // locate mm_down
                 VCHECK_GMLP_PRIMITIVE(mm_down_ == nullptr,
                         status::unimplemented, "Multiple mm_down found");
-                mm_down_ = post_op;
+                mm_down_ = ppost_op;
             }
         } else {
-            if (in_tensor_list(cur_op->get_output_value(0).get(), outputs)) {
+            // locate mm_gate
+            if (!in_tensor_list(cur_op->get_output_value(0).get(), outputs)) {
                 VCHECK_GMLP_PRIMITIVE(mm_gate_ == nullptr,
                         status::unimplemented, "Multiple mm_gate found");
                 mm_gate_ = cur_op;

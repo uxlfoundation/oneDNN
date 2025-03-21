@@ -225,6 +225,11 @@ struct ref_gemm_t : public gpu_gemm_t {
             using namespace primitive_kind;
             using namespace data_type;
             const auto &p = attr()->post_ops_;
+
+            for (auto idx = 0; idx < p.len(); ++idx) {
+                if (p.entry_[idx].is_binary_with_ternary_op()) return false;
+            }
+
             switch (p.len()) {
                 case 0: return true;
                 case 1: return p.contain(sum, 0) || p.contain(eltwise, 0);

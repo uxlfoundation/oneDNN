@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #include "gpu/intel/ocl/custom_reorder.hpp"
 #include "gpu/intel/ocl/generic_reorder.hpp"
 #include "gpu/intel/ocl/ref_reorder.hpp"
-#include "gpu/intel/ocl/rnn/rnn_reorders.hpp"
+#include "gpu/intel/ocl/rnn/reorders.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA

@@ -24,8 +24,8 @@
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/gpu_primitive_attr.hpp"
-#include "gpu/intel/ocl/reduction/reduction_utils.hpp"
 #include "gpu/intel/ocl/reduction/reusable_ref_reduction.hpp"
+#include "gpu/intel/ocl/reduction/utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {

@@ -26,7 +26,7 @@
 // function
 // only the cell execution function should be impacted
 
-#include "gpu/intel/ocl/rnn/rnn_grid.hpp"
+#include "gpu/intel/ocl/rnn/grid.hpp"
 
 #include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"

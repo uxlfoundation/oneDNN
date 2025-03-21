@@ -394,8 +394,8 @@ public:
             max_block_size
                     = std::max(max_block_size, b.block * (dim_t)b.stride);
         }
-        dim_t max_off_bytes = (max_off + 1) * type().size();
-        return std::max(max_off_bytes, max_block_size * type().size());
+        dim_t max_elems = std::max(max_off + 1, max_block_size);
+        return max_elems * type().size() / type().packing();
     }
 
     // Offset in bytes following the last accessible element.
@@ -407,7 +407,7 @@ public:
         }
         dim_t after_last = max_off + 1;
         if (!ignore_offset) after_last += expr_cast<dim_t>(offset_);
-        return after_last * type().size();
+        return after_last * type().size() / type().packing();
     }
 
     template <typename T = expr_t>
@@ -526,7 +526,7 @@ public:
     template <typename T = expr_t>
     T offset_in_bytes(
             const std::vector<T> &args = {}, bool ignore_offset = false) const {
-        return offset(args, ignore_offset) * type().size();
+        return offset(args, ignore_offset) * type().size() / type().packing();
     }
 
     std::string desc_str(bool dnnl_style = false) const {
@@ -1542,7 +1542,8 @@ public:
 
     expr_t offset_in_bytes(const std::vector<expr_t> &vargs = {},
             bool ignore_offset = false) const {
-        return offset(vargs, ignore_offset) * type().size();
+        const int type_packing = 8 * type().size() / type().bitsize();
+        return offset(vargs, ignore_offset) * type().size() / type_packing;
     }
 
     int get_alignment(const constraint_set_t &cset) const {

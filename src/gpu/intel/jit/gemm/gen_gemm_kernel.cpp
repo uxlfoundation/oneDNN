@@ -535,19 +535,13 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
         if (!has_mode) return;
-        auto &def = base.selector.precisions;
         if (match(problem_.Ta)) {
-            match_params.push_back(base);
             match_params.back().selector.precisions[0] = match(problem_.Ta);
-            match_params.back().selector.precisions[1] = def[1];
         }
         if (match(problem_.Tb)) {
-            match_params.push_back(base);
-            match_params.back().selector.precisions[0] = def[0];
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }
         if (match(problem_.Ta) && match(problem_.Tb)) {
-            match_params.push_back(base);
             match_params.back().selector.precisions[0] = match(problem_.Ta);
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }

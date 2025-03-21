@@ -63,7 +63,7 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(
                     IMPLICATION(this->with_bias(),
                             utils::one_of(this->desc()->bias_desc.data_type,
-                                    f32, bf16)),
+                                    f32, bf16, f16)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
@@ -83,6 +83,7 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
 
     using f32_data_t = typename prec_traits_t<data_type::f32>::type;
     using bf16_data_t = typename prec_traits_t<data_type::bf16>::type;
+    using f16_data_t = typename prec_traits_t<data_type::f16>::type;
     using data_t = typename prec_traits_t<src_type>::type;
     using dst_data_t = typename prec_traits_t<dst_type>::type;
 

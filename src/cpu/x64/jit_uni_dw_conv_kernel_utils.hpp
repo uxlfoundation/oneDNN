@@ -28,6 +28,7 @@
 #include "cpu/x64/jit_primitive_conf.hpp"
 
 #include "cpu/x64/jit_avx512_core_bf16_dw_conv_kernel.hpp"
+#include "cpu/x64/jit_avx512_core_f16_dw_conv_kernel.hpp"
 #include "cpu/x64/jit_uni_dw_conv_kernel_f32.hpp"
 
 namespace dnnl {
@@ -61,9 +62,12 @@ struct jit_uni_dw_conv_fwd_kernel {
 
 private:
     constexpr static bool ker_condition_
-            = isa == avx512_core && kernel_dt == data_type::bf16;
+            = (isa == avx512_core && kernel_dt == data_type::bf16)
+            || (isa == avx512_core_fp16 && kernel_dt == data_type::f16);
     using jit_kernel_t = typename utils::conditional<ker_condition_,
-            jit_avx512_dw_conv_fwd_kernel_bf16,
+            typename utils::conditional<kernel_dt == data_type::bf16,
+                    jit_avx512_dw_conv_fwd_kernel_bf16,
+                    jit_avx512_dw_conv_fwd_kernel_f16>::type,
             jit_uni_dw_conv_fwd_kernel_f32<isa>>::type;
     std::unique_ptr<jit_kernel_t> ker_;
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel)

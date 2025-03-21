@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include "common/memory_tracking.hpp"
 
 #include "common/bfloat16.hpp"
+#include "common/float16.hpp"
 
 #include "cpu/x64/jit_uni_dw_convolution.hpp"
 
@@ -53,6 +54,13 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
         bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
                 key_conv_bias_bf16_convert_wsp);
         cvt_bfloat16_to_float(bias, bias_in, jcp.oc_without_padding);
+        utils::array_set(bias + jcp.oc_without_padding, 0.f,
+                jcp.oc - jcp.oc_without_padding);
+    } else if (pd()->desc()->bias_desc.data_type == f16) {
+        auto bias_in = CTX_IN_MEM(const f16_data_t *, DNNL_ARG_BIAS);
+        bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+                key_conv_bias_f16_convert_wsp);
+        cvt_float16_to_float(bias, bias_in, jcp.oc_without_padding);
         utils::array_set(bias + jcp.oc_without_padding, 0.f,
                 jcp.oc - jcp.oc_without_padding);
     } else {
@@ -159,6 +167,10 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
 }
 
+REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core_fp16,
+        f16, f32>);
+REG_AVX512_ISA(
+        template struct jit_uni_dw_convolution_fwd_t<avx512_core_fp16, f16>);
 REG_AVX512_ISA(
         template struct jit_uni_dw_convolution_fwd_t<avx512_core, bf16, f32>);
 REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core, bf16>);

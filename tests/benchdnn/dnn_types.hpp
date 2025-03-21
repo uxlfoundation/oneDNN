@@ -320,6 +320,7 @@ struct attr_t {
 
                 dnnl_alg_kind_t alg = dnnl_alg_kind_undef;
                 dnnl_data_type_t src1_dt = dnnl_data_type_undef;
+                dnnl_data_type_t src2_dt = dnnl_data_type_undef;
                 policy_t policy = policy_t::COMMON;
                 int64_t mask = -1;
                 mask_input_t mask_input = mask_input_t::none;
@@ -333,6 +334,7 @@ struct attr_t {
             bool is_convolution_kind() const;
             bool is_eltwise_kind() const;
             bool is_binary_kind() const;
+            bool is_binary_kind_with_ternary_op() const;
             bool is_prelu_kind() const;
         };
 
@@ -582,7 +584,7 @@ struct attr_args_t {
     };
 
     int prepare_post_ops_mds(const attr_t &attr, int ndims,
-            const dnnl_dims_t prb_dims,
+            const dnnl_dims_t prb_dims, std::string dtag = tag::any,
             dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive);
 
     void prepare_dw_post_op(const attr_t &attr, dnnl_data_type_t wei_dt,

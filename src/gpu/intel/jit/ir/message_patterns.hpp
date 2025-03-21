@@ -56,7 +56,7 @@ struct stride_layout_t {
 
     struct stride_dim_t {
         stride_dim_t() = default;
-        stride_dim_t(dim_type_t dim, dim_t size, dim_t stride,
+        stride_dim_t(const dim_type_t &dim, dim_t size, dim_t stride,
                 bool can_overflow, bool is_complex)
             : dim(dim)
             , size(size)
@@ -500,7 +500,7 @@ struct uniform_send_idiom_t final {
                 ret.begin(), ret.end(), [&](const hint_t &a, const hint_t &b) {
                     return a.size() > b.size();
                 });
-        if (ret.size() && filtered_ret.size()
+        if (!ret.empty() && !filtered_ret.empty()
                 && ret[0].size() > filtered_ret[0].size())
             gpu_warning() << "Optimal send hint disabled: " << ret[0];
 

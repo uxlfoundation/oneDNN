@@ -282,8 +282,8 @@ void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
 
     std::vector<expr_t> kernel_grid_vars;
     kernel_grid_vars.push_back(oc_tile.grid_idx());
-    kernel_grid_vars.push_back(od);
-    kernel_grid_vars.push_back(oh);
+    kernel_grid_vars.push_back(std::move(od));
+    kernel_grid_vars.push_back(std::move(oh));
     kernel_grid_vars.push_back(ow_tile.grid_idx());
     kernel_grid_vars.push_back(g_tile.grid_idx());
     kernel_grid_vars.push_back(mb_tile.grid_idx());
@@ -661,8 +661,8 @@ void init_bwd_w(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
     kernel_grid_vars.push_back(od_tile.grid_idx());
     kernel_grid_vars.push_back(oh_tile.grid_idx());
     kernel_grid_vars.push_back(ow_tile.grid_idx());
-    kernel_grid_vars.push_back(kd);
-    kernel_grid_vars.push_back(kh);
+    kernel_grid_vars.push_back(std::move(kd));
+    kernel_grid_vars.push_back(std::move(kh));
     kernel_grid_vars.push_back(kw_tile.grid_idx());
     kernel_grid_vars.push_back(ic_tile.grid_idx());
     kernel_grid_vars.push_back(mb_tile.grid_idx());
@@ -1263,17 +1263,16 @@ struct fma_layout_hint_t {
 };
 
 struct fma_context_t {
-    fma_context_t(const conv_config_t &cfg) {
-        hw = cfg.hw();
-        simd = cfg.simd();
-        vec_size = cfg.vec_size();
-        fma = cfg.fma_kind();
-        a_type = type_t(cfg.prb().a_data_type);
-        b_type = type_t(cfg.prb().b_data_type);
-        acc_type = get_accumulation_type(cfg, a_type, b_type);
-        is_src1_broadcast = !cfg.prb().is_dw;
-        ab_swap_transpose_ = cfg.prb().ab_swap_transpose;
-    }
+    fma_context_t(const conv_config_t &cfg)
+        : hw(cfg.hw())
+        , simd(cfg.simd())
+        , vec_size(cfg.vec_size())
+        , fma(cfg.fma_kind())
+        , a_type(cfg.prb().a_data_type)
+        , b_type(cfg.prb().b_data_type)
+        , acc_type(get_accumulation_type(cfg, a_type, b_type))
+        , is_src1_broadcast(!cfg.prb().is_dw)
+        , ab_swap_transpose_(cfg.prb().ab_swap_transpose) {}
 
     fma_layout_hint_t &layout_hint(abc_kind_t abc) {
         return (abc == abc_kind_t::a) ? a_layout_hint : b_layout_hint;
@@ -2167,7 +2166,7 @@ private:
 
         auto &direct_view
                 = (abc == abc_kind_t::a ? a_direct_view_ : b_direct_view_);
-        auto load_view = direct_view ? direct_view.get() : gmem_view;
+        const auto &load_view = direct_view ? direct_view.get() : gmem_view;
 
         auto params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
                 send_address_t::a64, cfg_.fma_kind(), abc, load_view,

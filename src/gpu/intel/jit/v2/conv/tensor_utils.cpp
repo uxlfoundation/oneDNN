@@ -111,7 +111,7 @@ layout_tag_t append_groups(
     bool is_dst = (tensor_kind == tensor_kind_t::dst);
     bool is_bias = (tensor_kind == tensor_kind_t::bias);
     if (!is_src && !is_dst && !is_bias) return layout_tag;
-    auto xc_dim = (is_src ? pvars::ic : pvars::oc);
+    const auto &xc_dim = (is_src ? pvars::ic : pvars::oc);
     auto xc_letter = dim_idx::as_tag(layout_tag.desc().dim_index(xc_dim));
     auto new_g_letter = xc_letter;
     auto new_xc_letter = into<char>(xc_letter + 1);
@@ -188,7 +188,7 @@ std::string blocked_to_str_tag(const memory_desc_t &md) {
     for (int i = blk.inner_nblks - 1; i >= 0; i--) {
         dim_idx_t idx = into<dim_idx_t>(blk.inner_idxs[i]);
         dim_t block = blk.inner_blks[i];
-        parts.push_back(std::string(1, dim_idx::as_tag(idx)));
+        parts.emplace_back(1, dim_idx::as_tag(idx));
         parts.push_back(std::to_string(block));
         full_inner_blks[idx] *= block;
         stride *= block;
@@ -211,7 +211,7 @@ std::string blocked_to_str_tag(const memory_desc_t &md) {
                 // Size-one blocks have to be added first.
                 if (min_dim == 1 && rem_dims[j] != min_dim) continue;
                 bool is_blocked = (full_inner_blks[j] != 1);
-                parts.push_back(std::string(1, dim_idx::as_tag(j, is_blocked)));
+                parts.emplace_back(1, dim_idx::as_tag(j, is_blocked));
                 stride *= rem_dims[j];
                 seen[j] = true;
                 found = true;
@@ -406,7 +406,7 @@ std::vector<pvar_t> skip_mask(
         // Check if the mask can be proven with known dimension requirements.
         if (!reqs.can_prove(dim_sizes.at(dim) % tile.at(dim) == 0)) continue;
         // Mask is not required for this dimension.
-        ret.push_back(dim);
+        ret.push_back(std::move(dim));
     }
     return ret;
 }

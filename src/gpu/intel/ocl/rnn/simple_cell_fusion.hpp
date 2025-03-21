@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_OCL_RNN_SIMPLE_CELL_FUSION_HPP
 #define GPU_INTEL_OCL_RNN_SIMPLE_CELL_FUSION_HPP
 
-#include "gpu/intel/ocl/rnn/rnn_grid.hpp"
+#include "gpu/intel/ocl/rnn/grid.hpp"
 
 namespace dnnl {
 namespace impl {

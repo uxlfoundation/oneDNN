@@ -34,7 +34,7 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #include "gpu/intel/sycl/engine.hpp"
-#include "gpu/intel/sycl/sycl_interop_gpu_kernel.hpp"
+#include "gpu/intel/sycl/interop_kernel.hpp"
 #include "ngen_sycl.hpp"
 #endif
 
@@ -120,7 +120,7 @@ public:
         auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
         auto sycl_kernel = ngen_code_generator_t<hw>::getKernel(
                 sycl_engine->context(), sycl_engine->device());
-        return sycl::sycl_interop_gpu_kernel_t::make(kernel, sycl_kernel, {});
+        return sycl::interop_kernel_t::make(kernel, sycl_kernel, {});
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         auto *ocl_engine = utils::downcast<const ocl::engine_t *>(engine);

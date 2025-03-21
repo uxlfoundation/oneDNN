@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/sycl/sycl_interop_gpu_kernel.hpp"
+#include "gpu/intel/sycl/interop_kernel.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -87,7 +87,7 @@ static void set_scalar_arg(::sycl::handler &cgh, int index,
     }
 }
 
-status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
+status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
         const gpu::intel::compute::nd_range_t &range,
         const gpu::intel::compute::kernel_arg_list_t &arg_list,
         const xpu::event_t &deps, xpu::event_t &out_dep) {
@@ -183,7 +183,7 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
     return status::success;
 }
 
-status_t sycl_interop_gpu_kernel_t::dump() const {
+status_t interop_kernel_t::dump() const {
     xpu::binary_t binary;
     CHECK(gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary));
     return gpu::intel::gpu_utils::dump_kernel_binary(binary, name());
@@ -192,19 +192,18 @@ status_t sycl_interop_gpu_kernel_t::dump() const {
 // This class is to get around std::make_shared requirement to have a public
 // constructor. We keep the original constructor as private but expose it here
 // to use with std::make_shared.
-class sycl_interop_gpu_kernel_compat_t : public sycl_interop_gpu_kernel_t {
+class interop_kernel_compat_t : public interop_kernel_t {
 public:
     template <typename... Args>
-    sycl_interop_gpu_kernel_compat_t(Args &&...args)
-        : sycl_interop_gpu_kernel_t(std::forward<Args>(args)...) {}
+    interop_kernel_compat_t(Args &&...args)
+        : interop_kernel_t(std::forward<Args>(args)...) {}
 };
 
-status_t sycl_interop_gpu_kernel_t::make(compute::kernel_t &compute_kernel,
+status_t interop_kernel_t::make(compute::kernel_t &compute_kernel,
         const ::sycl::kernel &sycl_kernel,
         const gpu::intel::compute::program_src_t &src) {
     compute_kernel = compute::kernel_t(
-            std::make_shared<sycl_interop_gpu_kernel_compat_t>(
-                    sycl_kernel, src));
+            std::make_shared<interop_kernel_compat_t>(sycl_kernel, src));
     return status::success;
 }
 

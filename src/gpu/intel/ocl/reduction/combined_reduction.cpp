@@ -20,7 +20,7 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/reduction/reduction_utils.hpp"
+#include "gpu/intel/ocl/reduction/utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/utils.hpp"
 

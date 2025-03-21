@@ -14,11 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/rnn/rnn_utils.hpp"
+#include "gpu/intel/ocl/rnn/utils.hpp"
 
 #include "common/c_types_map.hpp"
 #include "common/math_utils.hpp"
-#include "gpu/intel/ocl/rnn/rnn_grid.hpp"
+#include "gpu/intel/ocl/rnn/grid.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {

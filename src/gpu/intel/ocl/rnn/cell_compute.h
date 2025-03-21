@@ -18,7 +18,7 @@
 #define GPU_INTEL_OCL_RNN_CELL_COMPUTE_H
 
 #include "gpu/intel/ocl/ocl_conversion.h"
-#include "gpu/intel/ocl/rnn/rnn_common.h"
+#include "gpu/intel/ocl/rnn/common.h"
 
 #if CELL_COMP_ENABLED
 #define DHC_TG get_local_size(0)

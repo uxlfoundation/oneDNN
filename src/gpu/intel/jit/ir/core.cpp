@@ -34,6 +34,7 @@ int type_t::size() const {
     if (is_ptr()) return sizeof(uint64_t);
 
     if (is_bool()) return utils::div_up(elems(), 8);
+    if (is_x4() || is_fp4()) return utils::div_up(elems(), 2);
 
     if (elems() != 1) return elems() * scalar().size();
 
@@ -67,6 +68,8 @@ data_type_t to_dnnl(const type_t &type) {
     gpu_assert(type.elems() == 1) << type;
     gpu_assert(!type.is_ptr() == 1) << type;
     switch (type.kind()) {
+        case type_kind_t::f4_e3m0: return data_type::f4_e3m0;
+        case type_kind_t::f4_e2m1: return data_type::f4_e2m1;
         case type_kind_t::bf8: return data_type::f8_e5m2;
         case type_kind_t::hf8: return data_type::f8_e4m3;
         case type_kind_t::bf16: return data_type::bf16;

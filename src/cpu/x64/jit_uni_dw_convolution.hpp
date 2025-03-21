@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(
                     IMPLICATION(this->with_bias(),
                             utils::one_of(this->desc()->bias_desc.data_type,
-                                    f32, bf16)),
+                                    f32, bf16, f16)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
@@ -83,6 +83,7 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
 
     typedef typename prec_traits<data_type::f32>::type f32_data_t;
     typedef typename prec_traits<data_type::bf16>::type bf16_data_t;
+    typedef typename prec_traits<data_type::f16>::type f16_data_t;
     typedef typename prec_traits<src_type>::type data_t;
     typedef typename prec_traits<dst_type>::type dst_data_t;
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -87,9 +87,12 @@ status_t jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_conf(
     const bool is_data_layout_nxc = data_tag == nxc_tag;
 
     const bool is_bf16 = src_d.data_type() == data_type::bf16;
+    const bool is_f16 = src_d.data_type() == data_type::f16;
 
     jcp.dst_dt = cd.dst_desc.data_type;
-    jcp.isa = (is_bf16 && mayiuse(avx512_core_bf16)) ? avx512_core_bf16 : isa;
+    jcp.isa = (is_bf16 && mayiuse(avx512_core_bf16)) ? avx512_core_bf16
+            : is_f16 && mayiuse(avx512_core_fp16)    ? avx512_core_fp16
+                                                     : isa;
 
     VDISPATCH_CONV_IC(!(!mayiuse(isa) || (is_bf16 && !mayiuse(avx512_core))),
             VERBOSE_UNSUPPORTED_ISA);
@@ -142,10 +145,10 @@ status_t jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_conf(
 
     jcp.loop_order = loop_ngcw;
 
-    jcp.ur_w = is_bf16           ? (isa_has_bf16(jcp.isa) ? 6 : 4)
-            : isa == avx512_core ? 6
-            : isa == avx2        ? 4
-                                 : 3;
+    jcp.ur_w = is_bf16 ? (isa_has_bf16(jcp.isa) ? 6 : 4)
+            : utils::one_of(isa, avx512_core, avx512_core_fp16) ? 6
+            : isa == avx2                                       ? 4
+                                                                : 3;
     jcp.ur_w = nstl::min(jcp.ur_w, jcp.ow);
 
     jcp.ch_block = simd_w;
@@ -157,7 +160,7 @@ status_t jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_conf(
         jcp.loop_order = loop_nhwcg;
         const int resrc_depthwise_ur_w = (31 - jcp.kw + jcp.stride_w)
                 / (jcp.nb_ch_blocking + jcp.stride_w);
-        jcp.is_resrc_depthwise = (!is_bf16) && isa == avx512_core
+        jcp.is_resrc_depthwise = (!is_bf16 && !is_f16) && isa == avx512_core
                 && jcp.stride_w < jcp.kw && jcp.kw <= 5 && jcp.dilate_w == 0
                 && resrc_depthwise_ur_w >= 2;
         if (jcp.is_resrc_depthwise) {
@@ -263,6 +266,8 @@ void jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_scratchpad(
     using namespace dnnl::impl::memory_tracking::names;
     if (jcp.bia_dt == data_type::bf16)
         scratchpad.book<float>(key_conv_bias_bf16_convert_wsp, jcp.oc);
+    else if (jcp.bia_dt == data_type::f16)
+        scratchpad.book<float>(key_conv_bias_f16_convert_wsp, jcp.oc);
     else if (jcp.with_bias && jcp.oc_without_padding != jcp.oc)
         scratchpad.book<float>(key_conv_padded_bias, jcp.oc);
 }
@@ -809,6 +814,7 @@ void jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::partition_nthr_nxc(
     }
 }
 
+REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel<avx512_core, f16>);
 REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel<avx512_core, bf16>);
 REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel<avx512_core, f32>);
 REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel<avx2, f32>);

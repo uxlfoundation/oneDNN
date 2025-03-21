@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 * Copyright 2024 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -179,6 +179,7 @@ enum {
     key_conv_amx_wsp_buffer,
     key_conv_bia_reduction,
     key_conv_bias_bf16_convert_wsp,
+    key_conv_bias_f16_convert_wsp,
     key_conv_cudnn,
     key_conv_cudnn_algo,
     key_conv_cudnn_filter,

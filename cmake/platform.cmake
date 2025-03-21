@@ -474,8 +474,7 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
 
                                #include <riscv_vector.h>
                                int main() {
-                                size_t size = 64;
-                                return __riscv_vsetvl_e32m2(size);
+                                return 0;
                                };"
                                CAN_COMPILE_RVV_INTRINSICS
     )

@@ -368,7 +368,7 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     stream_t stream(engine);
     std::vector<dnnl_exec_arg_t> dnnl_args;
 
-    execute_unmap_args(args, dnnl_args);
+    TIME_EXECUTE(execute_unmap_args(args, dnnl_args));
 
     dnnl_status_t status = dnnl_runtime_error;
     bool run_regular_exec = true;
@@ -401,12 +401,12 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     }
 #endif
     if (run_regular_exec) {
-        status = exec_func(stream, dnnl_args);
-        DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+        TIME_EXECUTE(status = exec_func(stream, dnnl_args));
+        TIME_EXECUTE(DNN_SAFE(dnnl_stream_wait(stream), CRIT));
     }
     if (res) res->state = EXECUTED;
 
-    execute_map_args(args);
+    TIME_EXECUTE(execute_map_args(args));
     if (status != dnnl_success) {
         if (res) res->state = FAILED;
         return FAIL;

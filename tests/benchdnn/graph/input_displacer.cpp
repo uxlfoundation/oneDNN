@@ -148,12 +148,12 @@ partition_data_displacer_t::partition_data_displacer_t(
         while (aop.kind_ == "Add" || aop.kind_ == "Select") {
             auto *aop_out_lt = &aop.out_lts_[0];
             auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_op->kind_ != "SoftMax") break;
+            //if (child_op->kind_ != "SoftMax") break;
 
             // Softmax must be a part of same partition as the mask. This is to
             // avoid cases, where mask is the last op in the partition, from
             // being modified.
-            if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
+            //if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
 
             // Search for an input lt without a parent, this is the one to
             // modify for both explicit and implicit masks.

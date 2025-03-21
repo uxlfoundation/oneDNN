@@ -99,21 +99,19 @@ public:
         return alloc_reg_buf(regs, base_bundle);
     }
 
-    reg_buf_data_t alloc_reg_data(const type_t &type, int stride_bytes = -1,
+    reg_buf_data_t alloc_reg_data(const type_t &type, int stride = 1,
             ngen::Bundle bundle = ngen::Bundle()) {
         if (type.is_scalar()) {
             auto sub = alloc_sub(to_ngen(type), bundle);
             return reg_buf_data_t(hw(), sub);
         }
 
-        int type_size = type.scalar().size();
-        if (stride_bytes == -1) stride_bytes = type_size;
         int grf_size = ngen::GRF::bytes(hw());
-        int regs = utils::div_up(type.elems() * stride_bytes, grf_size);
+        int regs = utils::div_up(
+                type.with_elems(type.elems() * stride).size(), grf_size);
         auto buf = alloc_reg_buf(regs, bundle);
         reg_buf_data_t rbd(buf);
-        return rbd.format(0, to_ngen(type.scalar()), type.elems(),
-                stride_bytes / type_size);
+        return rbd.format(0, type.elems(), stride, to_ngen(type.scalar()));
     }
 
     ngen::GRF alloc(ngen::Bundle bundle = ngen::Bundle()) {

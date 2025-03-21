@@ -289,12 +289,17 @@ struct gen_gemm_t : public gpu_gemm_t {
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
 
-            if (attr()->mayiconvert(f32, tf32))
-                set_mode(mode, kernel_desc_t::mode_tf32);
-            if (attr()->mayiconvert(f32, bf16))
+            if (attr()->mayiconvert(u8, bf16))
                 set_mode(mode, kernel_desc_t::mode_bf16x1);
-            if (attr()->mayiconvert(f32, f16))
+            if (attr()->mayiconvert(u8, f16))
                 set_mode(mode, kernel_desc_t::mode_f16x1);
+            if (attr()->mayiconvert(f32, tf32)
+                    && !(mode
+                            & (kernel_desc_t::mode_f16x1
+                                    | kernel_desc_t::mode_bf16x1))) {
+                VDISPATCH_GEMM(!wei_decomp_, VERBOSE_UNSUPPORTED_DT);
+                set_mode(mode, kernel_desc_t::mode_tf32);
+            }
             if (attr()->mayiconvert(f32, f32))
                 set_mode(mode, kernel_desc_t::mode_strict);
             if (attr()->deterministic_)

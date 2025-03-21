@@ -202,7 +202,7 @@ bool jit_gemm_pd_t::dy_quant_enabled() {
     return (utils::one_of(d->c_type(), f32, f16, bf16, u8, s8)
                    && utils::one_of(d->a_type(), u8, s8, s4, u4)
                    && utils::one_of(d->b_type(), u8, s8))
-            || all_f8;
+            || all_f8) && !attr()->mayiconvert(d->a_type(), f32);
 }
 
 bool jit_gemm_pd_t::wei_decomp() {

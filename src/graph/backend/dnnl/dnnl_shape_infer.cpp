@@ -545,13 +545,18 @@ status_t infer_dnnl_binary_output_shape(op_t *n,
     }
 }
 
-//TODO(GX): revisit this function to correct logic, check if shape is given
 status_t infer_dnnl_sdpa_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
+    // [batch_size, num_heads_q, seq_len_q, head_size_qk]
     auto query = logical_tensor_wrapper_t(inputs[0]);
+    // [batch_size, num_heads_q, head_size_qk, seq_len_kv,]
     auto key = logical_tensor_wrapper_t(inputs[1]);
-    auto value = logical_tensor_wrapper_t(inputs[1]);
+    // [batch_size, num_heads_v, seq_len_kv, head_size_v]
+    auto value = logical_tensor_wrapper_t(inputs[2]);
+    // [batch_size, num_heads_q, seq_len_q, head_size_v]
+    auto out0 = logical_tensor_wrapper_t(outputs[0]);
+
     dims query_dims = query.vdims();
     dims key_dims = key.vdims();
     dims value_dims = value.vdims();
@@ -563,7 +568,36 @@ status_t infer_dnnl_sdpa_output_shape(op_t *n,
             op_t::kind2str(n->get_kind()).c_str(), dims2str(query_dims).c_str(),
             dims2str(key_dims).c_str(), dims2str(value_dims).c_str());
 
-    dims inferred_output_shape = query_dims;
+    VCHECK_INVALID_SHAPE((query_dims.size() == 4),
+            "%s, only support 4D input for all Q/K/V. input0 dimension: %s, "
+            "input1 dimension: %s, input2 dimension: %s ",
+            op_t::kind2str(n->get_kind()).c_str(),
+            std::to_string(query_dims.size()).c_str(),
+            std::to_string(key_dims.size()).c_str(),
+            std::to_string(value_dims.size()).c_str());
+
+    VCHECK_INVALID_SHAPE((query_dims[3] == key_dims[2]),
+            "%s, query head size should be match with key head size. query "
+            "dims: %s, Key dims: %s",
+            op_t::kind2str(n->get_kind()).c_str(), dims2str(query_dims).c_str(),
+            dims2str(key_dims).c_str());
+
+    VCHECK_INVALID_SHAPE((key_dims[3] == value_dims[2]),
+            "%s, key sequence length should be match with value sequence "
+            "length. key dims: %s, value dims: %s ",
+            op_t::kind2str(n->get_kind()).c_str(), dims2str(key_dims).c_str(),
+            dims2str(value_dims).c_str());
+
+    dims inferred_output_shape;
+    inferred_output_shape
+            = {query_dims[0], query_dims[1], query_dims[2], value_dims[3]};
+
+    if (out0.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(inferred_output_shape, out0.vdims()),
+                "%s, inferred out shape and output shape are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+
     set_shape_and_strides(*outputs[0], inferred_output_shape);
     return status::success;
 }

@@ -86,7 +86,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
         BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
     }
     pipeline.reset_visualize_arg(true, false);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_matmul);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_predecessor);
     BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
 
     // Run the added passes

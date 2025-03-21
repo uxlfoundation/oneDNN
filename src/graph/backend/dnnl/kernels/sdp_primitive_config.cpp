@@ -166,10 +166,27 @@ status_t sdp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
 
 status_t sdp_primitive_config_t::initial_check(
         const std::shared_ptr<subgraph_t> &sg,
-        const std::vector<logical_tensor_t> &inputs) {
+        const std::vector<logical_tensor_t> &inputs, bool v1_kenrel) {
     // At least 3 inputs: Q, K, V
     VCHECK_SDP_PRIMITIVE(inputs.size() >= 3, status::invalid_arguments,
             "At least 3 inputs are required");
+
+    VCHECK_SDP_PRIMITIVE(inputs[0].data_type != dnnl_data_type_t::dnnl_f32,
+            status::invalid_arguments,
+            "SDPA ukernel doesn't support f32 datatype now");
+
+    // Note: sdpa_primitive_v1 kenrel currently don't support legacy GQA pattern.
+    if (v1_kenrel) {
+        for (auto &cur_op : sg->get_ops()) {
+            if (cur_op->get_kind() == graph::op_kind::StaticReshape) {
+                auto in = cur_op->get_input_value(0)->get_logical_tensor();
+                auto out = cur_op->get_output_value(0)->get_logical_tensor();
+                if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
+                    return status::unimplemented;
+                }
+            }
+        }
+    }
 
     // step1(pattern check): Not support sdpa variants with select as mask
     // We already have a pattern matcher to ensure that the sdpa patterns
@@ -268,10 +285,15 @@ status_t sdp_primitive_config_t::initial_check(
 
     VCHECK_SDP_PRIMITIVE(q_id != -1 && k_id != -1 && v_id != -1,
             status::unimplemented, "Q, K, V are not found");
-    VCHECK_SDP_PRIMITIVE(ltw(inputs[q_id]).vdims().size() == 4
-                    && ltw(inputs[k_id]).vdims().size() == 4
-                    && ltw(inputs[v_id]).vdims().size() == 4,
-            status::unimplemented, "Q, K, V should be 4-dims");
+
+    // Note: sdpa_primitive_v1 kenrel accept 5D GQA pattern, and will reshape to
+    // 4D in later compilation pass.
+    if (!v1_kenrel) {
+        VCHECK_SDP_PRIMITIVE(ltw(inputs[q_id]).vdims().size() == 4
+                        && ltw(inputs[k_id]).vdims().size() == 4
+                        && ltw(inputs[v_id]).vdims().size() == 4,
+                status::unimplemented, "Q, K, V should be 4-dims");
+    }
 
     // sdp_primitive only supports single scale value.
     if (scale) {

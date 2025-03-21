@@ -1576,11 +1576,39 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     UNUSED(mgr);
     UNUSED(pd_cache);
     UNUSED(rewriter);
-    auto dst_md = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+
     value_ptr dst_val = op->get_output_value(0);
-    dst_val->set_strides(get_dense_strides(dst_md.get_dims()));
-    status_t status = fill_layout_info(dst_val, dst_md);
+    const logical_tensor_t &out_lt = dst_val->get_logical_tensor();
+    dnnl::memory::desc expected_md;
+
+    if (ltw(out_lt).is_any()) {
+        // For GQA, we need to check the layout of the dnnl_reshape output
+        // following dnnl_sdpa, which is given by the user.
+        if (!dst_val->get_consumers().empty()) {
+            const auto &consumer_op = dst_val->get_consumers()[0].get_op();
+            const auto &consumer_out = ltw(
+                    consumer_op.get_output_value(0)->get_logical_tensor());
+            if (consumer_op.get_kind() == op_kind::dnnl_reshape
+                    && consumer_out.ndims() == 5 && consumer_out.is_strided()) {
+                const auto &ori_strides = consumer_out.vstrides();
+                std::vector<dim_t> strides = {ori_strides[0], ori_strides[2],
+                        ori_strides[3], ori_strides[4]};
+                dnnl::memory::desc tmp_md {ltw(out_lt).vdims(),
+                        static_cast<dnnl::memory::data_type>(
+                                ltw(out_lt).data_type()),
+                        strides};
+                expected_md = tmp_md;
+            }
+        } else {
+            dnnl::memory::desc expected_md {ltw(out_lt).vdims(),
+                    static_cast<dnnl::memory::data_type>(
+                            ltw(out_lt).data_type()),
+                    dnnl::memory::format_tag::acbd};
+        }
+    } else {
+        expected_md = make_dnnl_memory_desc(out_lt);
+    }
+    status_t status = fill_layout_info(dst_val, expected_md);
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     value_ptr scratchpad_val = op->get_output_value(1);

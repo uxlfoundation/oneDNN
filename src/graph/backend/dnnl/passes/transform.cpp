@@ -3835,13 +3835,16 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
     return impl::status::success;
 }
 
-impl::status_t fuse_dst_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
+impl::status_t fuse_dst_transpose_to_predecessor(
+        std::shared_ptr<subgraph_t> &sg) {
     std::vector<op_ptr> transpose_ops;
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() == op_kind::dnnl_transpose
                 && cur_op->get_input_value(0)->has_producer()
-                && cur_op->get_input_value(0)->get_producer().get_kind()
-                        == op_kind::dnnl_matmul
+                && (cur_op->get_input_value(0)->get_producer().get_kind()
+                                == op_kind::dnnl_matmul
+                        || cur_op->get_input_value(0)->get_producer().get_kind()
+                                == op_kind::dnnl_sdpa)
                 && !cur_op->get_output_value(0)->get_consumers().empty()
                 && (cur_op->get_output_value(0)
                                         ->get_consumers()[0]
@@ -3894,13 +3897,17 @@ impl::status_t fuse_dst_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
         dnnl::memory::desc expected_out_md = out_md.permute_axes(axes);
         // Special check to avoid low matmul performance with adbc layout.
         // TODO: remove this once the performance is improved.
-        if (get_format_tag(expected_out_md) == dnnl::memory::format_tag::adbc) {
+        if (in_val->get_producer().get_kind() == op_kind::dnnl_matmul
+                && get_format_tag(expected_out_md)
+                        == dnnl::memory::format_tag::adbc) {
             break;
         }
         const auto &strides = expected_out_md.get_strides();
         in_val->set_strides(strides);
-        auto &matmul = transpose_op->get_input_value(0)->get_producer();
-        matmul.set_attr(op_attr::keep_dst_layout, true);
+        if (in_val->get_producer().get_kind() == op_kind::dnnl_matmul) {
+            auto &matmul = in_val->get_producer();
+            matmul.set_attr(op_attr::keep_dst_layout, true);
+        }
     }
     rewriter.run();
     return impl::status::success;
@@ -4182,12 +4189,12 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
             switch (walker->get_kind()) {
                 case op_kind::dnnl_matmul: {
                     if (pattern_ops.size() == 1) {
-                    } 
+                    }
                     // Finish pattern match process after second matmul
                     else {
                         valid_pattern = (pattern_ops.size() >= 3);
                         finished = true;
-                }
+                    }
                     break;
                 }
                 case op_kind::dnnl_binary: {
@@ -4256,8 +4263,8 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
             auto alg = static_cast<dnnl::algorithm>(
                     op->get_attr<int64_t>(op_attr::alg_kind));
             // handle scale
-            if (alg == dnnl::algorithm::binary_mul || 
-                alg == dnnl::algorithm::binary_div) {
+            if (alg == dnnl::algorithm::binary_mul
+                    || alg == dnnl::algorithm::binary_div) {
                 auto scale_val = op->get_input_value(1);
                 scale_val->remove_consumer(*op, 1);
                 sdpa_op->connect_input(input_idx++, scale_val);

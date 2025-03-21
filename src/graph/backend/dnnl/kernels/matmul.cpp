@@ -110,7 +110,7 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
     }
 
     BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_matmul);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_predecessor);
     BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
 
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_adjacent_reorders);

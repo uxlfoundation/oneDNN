@@ -1,0 +1,391 @@
+{
+  "version": "3.7.0",
+  "engine_kind": "cpu",
+  "fpmath_mode": "strict",
+  "fpmath_mode_apply_to_int": "false",
+  "input_ports": [
+    0,
+    1
+  ],
+  "output_ports": [
+    9
+  ],
+  "graph": [
+    {
+      "id": 0,
+      "name": "matmul_qk",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 1
+        }
+      },
+      "inputs": [
+        {
+          "id": 0,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            64
+          ],
+          "stride": [
+            393216,
+            24576,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 1,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            64
+          ],
+          "stride": [
+            393216,
+            24576,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "genindex_row",
+      "kind": "GenIndex",
+      "attrs": {
+        "axis": {
+          "type": "s64",
+          "value": 2
+        }
+      },
+      "inputs": [
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 3,
+          "dtype": "s32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "genindex_row",
+      "kind": "GenIndex",
+      "attrs": {
+        "axis": {
+          "type": "s64",
+          "value": 3
+        }
+      },
+      "inputs": [
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 4,
+          "dtype": "s32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "mask_greater_equal",
+      "kind": "GreaterEqual",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 3,
+          "dtype": "s32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 4,
+          "dtype": "s32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 5,
+          "dtype": "boolean",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Select",
+      "kind": "Select",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 5,
+          "dtype": "boolean",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 8,
+          "dtype": "f32",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 9,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "softmax",
+      "kind": "SoftMax",
+      "attrs": {
+        "axis": {
+          "type": "s64",
+          "value": -1
+        }
+      },
+      "inputs": [
+        {
+          "id": 9,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 10,
+          "dtype": "f32",
+          "shape": [
+            1,
+            16,
+            384,
+            384
+          ],
+          "stride": [
+            2359296,
+            147456,
+            384,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    }
+  ]
+}

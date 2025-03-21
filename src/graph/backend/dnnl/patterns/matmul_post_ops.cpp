@@ -77,6 +77,34 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops)
             return std::make_shared<float_matmul>();
         });
 
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, matmul_select)
+        .set_priority(11.f)
+        .set_kind(partition_kind_t::matmul_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *pmatmul
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    pm::pb_op_t *pgen_idx
+                            = pgraph->append_op(graph::op_kind::GenIndex,
+                                    in_edges_t {in_edge(0, pmatmul, 0)});
+                    pm::pb_op_t *pgen_idx2
+                            = pgraph->append_op(graph::op_kind::GenIndex,
+                                    in_edges_t {in_edge(0, pmatmul, 0)});
+                    pm::pb_op_t *ge
+                            = pgraph->append_op(graph::op_kind::GreaterEqual,
+                                    in_edges_t {in_edge(0, pgen_idx, 0),
+                                            in_edge(1, pgen_idx2, 0)});
+                    pm::pb_op_t *select
+                            = pgraph->append_op(graph::op_kind::Select,
+                                    in_edges_t {in_edge(0, ge, 0),
+                                            in_edge(1, pmatmul, 0)});
+                    pm::pb_op_t *softmax
+                            = pgraph->append_op(graph::op_kind::SoftMax,
+                                    in_edges_t {in_edge(0, select, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<larger_partition_kernel_t>();
+        });
 /*
               \   /
               matmul

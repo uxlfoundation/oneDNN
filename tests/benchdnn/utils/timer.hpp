@@ -39,6 +39,8 @@
 #define TIME_COMPARE(func) TIME_FUNC(func, res, timer::names::compare_timer)
 // Designated timer to calculate time spent on filling
 #define TIME_FILL(func) TIME_FUNC(func, res, timer::names::fill_timer)
+// Designated timer to calculate time spent on execute
+#define TIME_EXECUTE(func) TIME_FUNC(func, res, timer::names::execute_timer)
 
 namespace timer {
 
@@ -103,6 +105,8 @@ const std::string compare_timer = "compare_timer";
 const std::string fill_timer = "fill_timer";
 // Test case timer from the create function till dumping the output.
 const std::string test_case_timer = "test_case_timer";
+// Driver's execute.
+const std::string execute_timer = "execute_timer";
 } // namespace names
 
 struct timer_map_t {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -114,6 +114,8 @@ const std::vector<service_timers_entry_t> &get_global_service_timers() {
     static const std::vector<service_timers_entry_t> global_service_timers = {
             service_timers_entry_t {
                     "fill", mode_bit_t::exec, timer::names::fill_timer},
+            service_timers_entry_t {
+                    "execute", mode_bit_t::exec, timer::names::execute_timer},
             service_timers_entry_t {
                     "compute_ref", mode_bit_t::corr, timer::names::ref_timer},
             service_timers_entry_t {

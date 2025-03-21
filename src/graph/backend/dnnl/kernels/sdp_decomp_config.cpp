@@ -186,6 +186,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
         auto post_stride = ori_desc.format_desc.blocking.strides;
         auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
         dims post_stride_dims = dims(post_stride, post_stride + ori_desc.ndims);
+        post_stride_dims[0] = post_stride_dims[1];
         auto new_sub_md = memory::desc({1, 1, post_shape[2], post_shape[3]},
                 post_dt, post_stride_dims);
         sub_mm1_post_md.emplace_back(new_sub_md);

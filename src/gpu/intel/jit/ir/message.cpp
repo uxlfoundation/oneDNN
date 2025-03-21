@@ -208,9 +208,8 @@ class memory_walker_t {
 public:
     memory_walker_t(const constraint_set_t &cset, const view_t &view)
         : view_(view)
-        , type_size_(view.type().size())
         , mask_tensor_(view.create_mask_tensor(cset).reinterpret(view.type()))
-        , full_size_(view.velems() * type_size_) {
+        , full_size_(utils::div_up(view.velems() * view.type().bitsize(), 8)) {
         init_dense_blocks(cset);
         reset();
     }
@@ -226,7 +225,9 @@ public:
 
     int remaining_size() const { return remaining_size_; }
 
-    int remaining_elems() const { return remaining_size_ / type_size_; }
+    int remaining_elems() const {
+        return remaining_size_ * type().packing() / type().size();
+    }
 
     bool is_dense_and_aligned(int off, int size, int alignment) const {
         if (off + size > remaining_size_) return false;
@@ -244,7 +245,8 @@ public:
             int off = i * slot_size;
             // Overflow is fine, expect it to be handled by proper masking.
             if (off >= remaining_size_) return true;
-            if ((slot_size * slots) % type_size_ != 0) return false;
+            if ((slot_size * slots * type().packing()) % type().size() != 0)
+                return false;
             if (!is_dense_and_aligned(off, slot_size, alignment)) return false;
         }
         return true;
@@ -307,13 +309,15 @@ public:
 
     // Moves the current position `size` bytes ahead.
     void advance(int size) {
-        gpu_assert(size % type_size_ == 0);
+        gpu_assert((size * type().packing()) % type().size() == 0);
         size = std::min(size, remaining_size_);
         cur_off_ += size;
         remaining_size_ -= size;
     }
 
 private:
+    const type_t &type() const { return view_.type(); }
+
     void init_dense_blocks(const constraint_set_t &cset) {
         auto l = view_.create_pseudo_vlayout();
         // Find the maximum innermost dense tile.
@@ -325,7 +329,7 @@ private:
             stride = b.block * b.stride;
         }
         tensor_t tile(dims);
-        dense_block_size_ = tile.elems() * type_size_;
+        dense_block_size_ = tile.elems() * type().size() / type().packing();
         // Split the memory view into dense blocks and precompute block offsets
         // and alignments.
         view_.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
@@ -342,14 +346,14 @@ private:
     }
 
     mask_tensor_t create_sub_mask_tensor(int off, int size) const {
-        gpu_assert(off % type_size_ == 0);
-        gpu_assert(size % type_size_ == 0);
+        gpu_assert((off * type().packing()) % type().size() == 0);
+        gpu_assert((size * type().packing()) % type().size() == 0);
 
-        std::vector<dim_t> sub_dims = {size / type_size_};
-        layout_t sub_layout(view_.type(), 0, sub_dims);
+        std::vector<dim_t> sub_dims = {size * type().packing() / type().size()};
+        layout_t sub_layout(type(), 0, sub_dims);
         mask_tensor_t sub_mask_tensor(sub_layout);
-        int beg = (cur_off_ + off) / type_size_;
-        int end = (cur_off_ + off + size) / type_size_;
+        int beg = (cur_off_ + off) * type().packing() / type().size();
+        int end = (cur_off_ + off + size) * type().packing() / type().size();
         for (int i = beg; i < end; i++) {
             auto mask = (i < mask_tensor_.elems()) ? mask_tensor_.mask(i)
                                                    : expr_t(false);
@@ -367,7 +371,6 @@ private:
     }
 
     view_t view_;
-    int type_size_;
     mask_tensor_t mask_tensor_;
     std::vector<expr_t> block_offs_;
     std::vector<int> block_alignments_;
@@ -381,10 +384,7 @@ class layout_walker_t {
 public:
     layout_walker_t() = default;
     layout_walker_t(const layout_t &layout, int grf_size)
-        : layout_(layout)
-        , grf_size_(grf_size)
-        , type_size_(layout.type().size())
-        , idxs_(layout.blocks().size()) {}
+        : layout_(layout), grf_size_(grf_size), idxs_(layout.blocks().size()) {}
 
     int offset_bytes() const { return off_bytes_; }
 
@@ -401,12 +401,13 @@ public:
     // - The last element must not cross the layout boundary
     bool can_advance(int stride, int elems, bool is_last_region = false) {
         if (is_last_region) elems = std::min(elems, remaining_elems());
+        const auto stride_bytes
+                = utils::div_up(stride * type().size(), type().packing());
         auto cur_idxs = idxs_;
         int cur_off_bytes = off_bytes_;
         for (int i = 0; i < elems - 1; i++) {
             int next_off_bytes = advance(cur_idxs, cur_off_bytes);
-            if (next_off_bytes - cur_off_bytes != stride * type_size_)
-                return false;
+            if (next_off_bytes - cur_off_bytes != stride_bytes) return false;
             cur_off_bytes = next_off_bytes;
         }
         cur_off_bytes = advance(cur_idxs, cur_off_bytes);
@@ -425,6 +426,8 @@ public:
     }
 
 private:
+    const type_t &type() const { return layout_.type(); }
+
     int max_offset_bytes() const {
         return utils::rnd_up((int)layout_.size(), grf_size_);
     }
@@ -441,12 +444,11 @@ private:
             int stride = (int)layout_.blocks()[i].stride;
             off += idxs[i] * stride;
         }
-        return off * type_size_;
+        return utils::div_up(off * type().size(), type().packing());
     }
 
     layout_t layout_;
     int grf_size_;
-    int type_size_;
 
     std::vector<int> idxs_;
     int elems_ = 0;
@@ -881,6 +883,8 @@ bool access_builder_t::check_2d_mask(const tensor_t &tile,
 bool access_builder_t::try_build(
         const layout_t &try_layout, memory_walker_t &mem_walker) {
     auto &try_layout_blocks = try_layout.blocks();
+    const int type_size = mem_type_.size();
+    const int type_packing = mem_type_.packing();
     int reg_stride
             = (try_layout_blocks.empty() ? 0
                                          : (int)try_layout_blocks[0].stride);
@@ -902,16 +906,17 @@ bool access_builder_t::try_build(
             int nmasks = s.nmasks();
             int payload_stride = s.payload_type_stride();
             int access_size = s.access_size();
-            int access_elems = access_size / mem_type_.size();
+            int access_elems = access_size * type_packing / type_size;
             bool is_last_chunk = mem_walker.remaining_size() <= access_size;
 
             if (reg_stride != 1 || payload_stride != slot_size) {
                 // Detected strided GRF layout or strided payload. In this
                 // case require full data type and stride match.
                 if (reg_stride != 0
-                        && payload_stride != reg_stride * mem_type_.size())
+                        && payload_stride * type_packing
+                                != reg_stride * type_size)
                     continue;
-                if (s.type.size() != mem_type_.size()) continue;
+                if (type_packing * s.type.size() != type_size) continue;
             }
             // Prefetches don't have payload so skip these conditions for
             // prefetch.
@@ -946,7 +951,8 @@ bool access_builder_t::try_build(
         send_stmt = try_promote_to_lsc(send_stmt);
         stmt_ = stmt_.append(send_stmt);
 
-        reg_layout_walker_->advance(send.access_size() / mem_type_.size());
+        reg_layout_walker_->advance(
+                send.access_size() * type_packing / type_size);
         mem_walker.advance(send.access_size());
     }
     reg_layout_ = try_layout;
@@ -965,7 +971,8 @@ std::vector<layout_t> access_builder_t::candidate_payload_layouts() const {
     // These payload layouts are to match payload for byte x {1,2} scattered
     // messages (they are dword-strided).
     if (type_size == 2) ret.push_back(vlayout.make_strided(2));
-    if (type_size == 1) ret.push_back(vlayout.make_strided(4));
+    if (type_size == 1 && mem_type_.bitsize() == 8)
+        ret.push_back(vlayout.make_strided(4));
 
     return ret;
 }
@@ -1015,12 +1022,13 @@ stmt_t access_builder_t::create_send_stmt(
 
 static const int any_block = 0;
 
-send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &_type,
+send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &type,
         bool vnni, bool transpose, int w_tile, int h_tile,
         int w_blk = any_block, int h_blk = any_block) {
-    auto type = _type;
-
     gpu_assert(!(vnni && transpose)) << "VNNI with transpose is not supported.";
+
+    // Disable sub-byte types for now.
+    if (type.packing() > 1) return send_2d_hint_t();
 
     // XXX: Convert transpose to VNNI when transpose is not
     // supported. This will require additional reorder but

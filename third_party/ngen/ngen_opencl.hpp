@@ -17,9 +17,11 @@
 #ifndef NGEN_OPENCL_HPP
 #define NGEN_OPENCL_HPP
 
-#include "ngen_config.hpp"
+#include "ngen_config_internal.hpp"
 
+#ifndef __OPENCL_CL_H
 #include <CL/cl.h>
+#endif
 
 #include <atomic>
 #include <sstream>
@@ -55,17 +57,14 @@ class OpenCLCodeGenerator : public ELFCodeGenerator<hw>
 public:
     explicit OpenCLCodeGenerator(Product product_, DebugConfig debugConfig = {})  : ELFCodeGenerator<hw>(product_, debugConfig) {}
     explicit OpenCLCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(stepping_, debugConfig) {}
-    explicit OpenCLCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator<hw>(0, debugConfig) {}
+    explicit OpenCLCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator<hw>(debugConfig) {}
 
     inline std::vector<uint8_t> getBinary(cl_context context, cl_device_id device, const std::string &options = "-cl-std=CL2.0");
     inline cl_kernel getKernel(cl_context context, cl_device_id device, const std::string &options = "-cl-std=CL2.0");
     bool binaryIsZebin() { return isZebin; }
 
     static inline HW detectHW(cl_context context, cl_device_id device);
-    static inline void detectHWInfo(cl_context context, cl_device_id device, HW &outHW, Product &outProduct);
-
-    /* Deprecated. Use the Product-based API instead. */
-    static inline void detectHWInfo(cl_context context, cl_device_id device, HW &outHW, int &outStepping);
+    static inline Product detectHWInfo(cl_context context, cl_device_id device);
 
 private:
     bool isZebin = false;
@@ -259,41 +258,31 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
 template <HW hw>
 HW OpenCLCodeGenerator<hw>::detectHW(cl_context context, cl_device_id device)
 {
-    HW outHW;
-    Product outProduct;
-
-    detectHWInfo(context, device, outHW, outProduct);
-
-    return outHW;
+    return getCore(detectHWInfo(context, device).family);
 }
 
 template <HW hw>
-void OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device, HW &outHW, int &outStepping)
+Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
 {
-    Product outProduct;
-    detectHWInfo(context, device, outHW, outProduct);
-    outStepping = outProduct.stepping;
-}
-
-template <HW hw>
-void OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device, HW &outHW, Product &outProduct)
-{
-    const char *dummyCL = "kernel void _ngen_hw_detect(){}";
-    const char *dummyOptions = "";
+    Product product;
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
-    if (clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS) {
-        outProduct = npack::decodeHWIPVersion(ipVersion);
-        outHW = getCore(outProduct.family);
-        if (outProduct.family != ProductFamily::Unknown)
-            return;
+    if (clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS)
+        product = npack::decodeHWIPVersion(ipVersion);
+    else {
+        // If it fails, compile a test program and extract the HW information from it.
+        const char *dummyCL = "kernel void _ngen_hw_detect(){}";
+        const char *dummyOptions = "";
+        auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, dummyOptions);
+        product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 
-    // If it fails, compile a test program and extract the HW information from it.
-    auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, dummyOptions);
+    cl_bool integrated;
+    if (clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(integrated), &integrated, nullptr) == CL_SUCCESS)
+        product.type = integrated ? PlatformType::Integrated : PlatformType::Discrete;
 
-    ELFCodeGenerator<hw>::getBinaryHWInfo(binary, outHW, outProduct);
+    return product;
 }
 
 } /* namespace NGEN_NAMESPACE */

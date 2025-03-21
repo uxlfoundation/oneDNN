@@ -16,15 +16,18 @@
 
 #ifndef NGEN_ASM_HPP
 #define NGEN_ASM_HPP
-#ifdef NGEN_ASM
 
-#include "ngen_config.hpp"
+#include "ngen_config_internal.hpp"
+
+#ifdef NGEN_ASM
 
 #include <array>
 #include <cstdint>
 #include <sstream>
 #include <string>
 
+#include "ngen_core.hpp"
+#include "ngen_debuginfo.hpp"
 #include "ngen_gen12.hpp"
 
 namespace NGEN_NAMESPACE {
@@ -210,6 +213,7 @@ struct AsmInstruction {
     explicit AsmInstruction(uint32_t inum_, const std::string &comment_)
             : op(Opcode::illegal), ext(0), inum(inum_), mod{}, dst{}, src{}, labelManager{nullptr}, comment{comment_} {}
     inline AsmInstruction(const autoswsb::SyncInsertion &si);
+    inline AsmInstruction(const autoswsb::DummyMovInsertion &mi);
 
     bool isLabel() const   { return (op == Opcode::illegal) && (dst.type == AsmOperand::Type::label); }
     bool isComment() const { return (op == Opcode::illegal) && !comment.empty(); }
@@ -276,6 +280,21 @@ AsmInstruction::AsmInstruction(const autoswsb::SyncInsertion &si)
         src[0] = Immediate::ud(si.mask);
     else
         src[0] = NullRegister();
+}
+
+AsmInstruction::AsmInstruction(const autoswsb::DummyMovInsertion &mi)
+{
+    op = Opcode::mov_gen12;
+    ext = 0;
+    mod = 1 | InstructionModifier::createMaskCtrl(true);
+    mod.setSWSB(mi.swsb);
+    dst = NullRegister().retype(mi.dt);
+    for (auto n = 1; n < 4; n++)
+        src[n] = NoOperand();
+    if (mi.constant) {
+        src[0] = Immediate::zero(mi.dt);
+    } else
+        src[0] = GRF(mi.grf).sub(0, mi.dt);
 }
 
 unsigned AsmInstruction::getTypecode(const AsmOperand &op)
@@ -416,7 +435,7 @@ public:
         streamStack.push_back(new InstructionStream());
     }
 
-    explicit AsmCodeGenerator(HW hardware_, int stepping_ = 0) : AsmCodeGenerator({genericProductFamily(hardware_), 0}) {}
+    explicit AsmCodeGenerator(HW hardware_, int stepping_ = 0) : AsmCodeGenerator({genericProductFamily(hardware_), 0, PlatformType::Unknown}) {}
 
     AsmCodeGenerator(HW hardware_, std::ostream &defaultOutput_, int stepping_ = 0) : AsmCodeGenerator(hardware_, stepping_) {
         defaultOutput = &defaultOutput_;
@@ -488,7 +507,6 @@ private:
     LabelManager labelManager;
     std::vector<InstructionStream*> streamStack;
 
-
     inline void unsupported();
 
     // Output functions.
@@ -555,7 +573,7 @@ private:
         src0.fixup(hardware, 1, 0, defaultType, 0, 3);
         src1.fixup(hardware, 1, 0, defaultType, 1, 3);
         src2.fixup(hardware, 1, 0, defaultType, 2, 3);
-        (void) streamStack.back()->append(op, static_cast<uint16_t>((sdepth << 8) | rcount), mod | defaultModifier, &labelManager, dst, src0, src1, src2);
+        (void) streamStack.back()->append(op, (sdepth << 8) | rcount, mod | defaultModifier, &labelManager, dst, src0, src1, src2);
     }
     template <typename D, typename S0> void opCall(Opcode op, const InstructionModifier &mod, D dst, S0 src0) {
         (void) streamStack.back()->append(op, 0, mod | defaultModifier | NoMask, &labelManager, dst, src0);
@@ -581,7 +599,6 @@ protected:
     void setDefaultAutoSWSB(bool def = true)        { defaultModifier.setAutoSWSB(def); }
     bool getDefaultNoMask() const                   { return defaultModifier.isWrEn(); }
     bool getDefaultAutoSWSB() const                 { return defaultModifier.isAutoSWSB(); }
-
 
     // Stream handling.
     void pushStream()                               { pushStream(new InstructionStream()); }
@@ -917,7 +934,7 @@ protected:
     void halt(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
         halt(mod, jip, jip);
     }
-    void if_(InstructionModifier mod, Label &jip, Label &uip, bool branchCtrl = false, SourceLocation loc = {}) {
+    void if_(InstructionModifier mod, Label &jip, Label &uip, bool branchCtrl, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         (void) uip.getID(labelManager);
         opX(Opcode::if_, DataType::invalid, mod, NoOperand(), jip, uip, NoOperand(), branchCtrl);
@@ -1073,6 +1090,9 @@ protected:
     }
     template <typename DT = void>
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+#ifdef NGEN_SAFE
+        if (!src0.isIndirect()) throw invalid_address_mode_exception();
+#endif
         if (hardware >= HW::Gen10)
             movi<DT>(mod, dst, src0, null);
         else
@@ -1082,6 +1102,7 @@ protected:
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
         if (hardware < HW::Gen10) throw unsupported_instruction();
+        if (!src0.isIndirect()) throw invalid_address_mode_exception();
 #endif
         opX(isGen12 ? Opcode::movi_gen12 : Opcode::movi, getDataType<DT>(), mod, dst, src0, src1);
     }
@@ -1585,17 +1606,24 @@ void AsmCodeGenerator::getCode(std::ostream &out)
 
     autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer);
     std::multimap<int32_t, autoswsb::SyncInsertion*> syncs;      // Syncs inserted by auto-SWSB.
+    std::multimap<int32_t, autoswsb::DummyMovInsertion*> movs;   // Dummy moves inserted by auto-SWSB.
 
-    for (auto &bb : analysis)
-        for (auto &sync : bb.syncs)
+    for (auto &bb : analysis) {
+        for (auto &sync: bb.syncs)
             syncs.insert(std::make_pair(sync.inum, &sync));
+        for (auto &mov: bb.movs)
+            movs.insert(std::make_pair(mov.inum, &mov));
+    }
 
     auto nextSync = syncs.begin();
+    auto nextMov = movs.begin();
     int lineNo = 0;
 
     for (auto &i : streamStack.back()->buffer) {
         while ((nextSync != syncs.end()) && (nextSync->second->inum == i.inum))
             outX(out, *(nextSync++)->second, lineNo++);
+        while ((nextMov != movs.end()) && (nextMov->second->inum == i.inum))
+            outX(out, *(nextMov++)->second, lineNo++);
 
         if (i.isLabel()) {
             i.dst.label.outputText(out, PrintDetail::full, labelManager);

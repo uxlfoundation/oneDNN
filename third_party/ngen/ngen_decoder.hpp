@@ -17,17 +17,17 @@
 #ifndef NGEN_DECODER_HPP
 #define NGEN_DECODER_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 #endif
 
-#include "ngen_config.hpp"
+#include "ngen_config_internal.hpp"
 
-#include "ngen_core.hpp"
 #include "ngen_auto_swsb.hpp"
-#include "ngen_gen8.hpp"
+#include "ngen_core.hpp"
 #include "ngen_gen12.hpp"
+#include "ngen_gen8.hpp"
 
 namespace NGEN_NAMESPACE {
 
@@ -93,8 +93,7 @@ bool Decoder::getOperandRegion(autoswsb::DependencyRegion &region, int opNum) co
 
 } /* namespace NGEN_NAMESPACE */
 
-#ifdef ENABLE_LLVM_WCONVERSION
+#if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-
 #endif /* header guard */

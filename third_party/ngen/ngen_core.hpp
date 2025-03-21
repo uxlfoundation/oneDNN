@@ -17,17 +17,13 @@
 #ifndef NGEN_CORE_HPP
 #define NGEN_CORE_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
-
-
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <vector>
-#include <algorithm>
 #include <type_traits>
+#include <vector>
+
+#include "ngen_config_internal.hpp"
 
 #include "ngen_utils.hpp"
 
@@ -214,13 +210,13 @@ class invalid_execution_size_exception : public std::runtime_error {
 public:
     invalid_execution_size_exception() : std::runtime_error("Invalid execution size") {}
 };
-class invalid_address_modifier_exception : public std::runtime_error {
-public:
-    invalid_address_modifier_exception() : std::runtime_error("Invalid address offset") {}
-};
 class invalid_address_mode_exception : public std::runtime_error {
 public:
     invalid_address_mode_exception() : std::runtime_error("Invalid address mode") {}
+};
+class invalid_address_modifier_exception : public std::runtime_error {
+public:
+    invalid_address_modifier_exception() : std::runtime_error("Invalid address offset") {}
 };
 #endif
 
@@ -268,14 +264,15 @@ enum class ProductFamily : int {
     GenericXe3,
 };
 
+enum class PlatformType {Unknown, Integrated, Discrete};
+
 struct Product {
     ProductFamily family;
     int stepping;
+    PlatformType type;
 };
 
-enum class PlatformType {Unknown, Integrated, Discrete};
-
-static inline bool operator==(const Product &p1, const Product &p2) { return p1.family == p2.family && p1.stepping == p2.stepping; }
+static inline bool operator==(const Product &p1, const Product &p2) { return p1.family == p2.family && p1.stepping == p2.stepping && p1.type == p2.type; }
 static inline bool operator!=(const Product &p1, const Product &p2) { return !(p1 == p2); }
 static inline bool operator<(const Product &p1, const Product &p2) { return (p1.family < p2.family) || (p1.family == p2.family && p1.stepping < p2.stepping); }
 static inline bool operator>(const Product &p1, const Product &p2) { return p2 < p1; }
@@ -750,6 +747,7 @@ public:
     friend inline bool operator!=(const RegData &r1, const RegData &r2);
 
     friend inline RegData abs(const RegData &r);
+
 #ifdef NGEN_ASM
     inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
 #endif
@@ -1221,6 +1219,7 @@ public:
     constexpr14 RegData &getBase()        { return base; }
     constexpr RegData getBase()     const { return base; }
     constexpr uint8_t getMMENum()   const { return mmeNum; }
+
 #ifdef NGEN_ASM
     inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
     static const bool emptyOp = false;
@@ -1719,6 +1718,7 @@ static inline bool trackedByToken(HW hw, Opcode op, unsigned dstTypecode)
     switch (op) {
         case Opcode::math:
             if (hw >= HW::XeHPC) return false;
+            /* fall through */
         case Opcode::dpas:
         case Opcode::dpasw:
             return true;
@@ -2222,6 +2222,7 @@ public:
             result.set(int32_t(int16_t(payload)));
         return result;
     }
+
 #ifdef NGEN_ASM
     inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
 #endif
@@ -3157,11 +3158,9 @@ static inline void encodeAtomicDescriptors(HW hw, MessageDescriptor &desc, Exten
     if (dst.isNull())
         desc.parts.responseLen = 0;
 }
+
+
 } /* namespace NGEN_NAMESPACE */
 
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif
 
 #endif /* header guard */

@@ -250,18 +250,23 @@ inline bool hasGatewayEOTSend(const std::vector<uint8_t> &binary)
     return false;
 }
 
-inline void getBinaryHWInfo(const std::vector<uint8_t> &binary, HW &outHW, Product &outProduct)
+inline Product getBinaryHWInfo(const std::vector<uint8_t> &binary)
 {
     const SProgramBinaryHeader *pheader = nullptr;
 
     findDeviceBinary(binary, nullptr, &pheader, nullptr);
-    outHW = decodeGfxCoreFamily(pheader->Device);
-    outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown;
-    outProduct.stepping = pheader->SteppingId;
+    HW hw = decodeGfxCoreFamily(pheader->Device);
 
     // XeHPG identifies with older runtimes as XeHP. Check whether EOT goes to TS (XeHP) or gateway (XeHPG).
-    if (outHW == HW::XeHP && hasGatewayEOTSend(binary))
-        outHW = HW::XeHPG;
+    if (hw == HW::XeHP && hasGatewayEOTSend(binary))
+        hw = HW::XeHPG;
+
+    Product ret;
+    ret.family = genericProductFamily(hw);
+    ret.stepping = pheader->SteppingId;
+    ret.type = PlatformType::Unknown;
+
+    return ret;
 }
 
 inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
@@ -278,25 +283,27 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
         };
     } version;
 
-    ngen::Product outProduct = {ngen::ProductFamily::Unknown, 0};
+    NGEN_NAMESPACE::Product outProduct = {NGEN_NAMESPACE::ProductFamily::Unknown, 0, NGEN_NAMESPACE::PlatformType::Unknown};
 
     version.raw = rawVersion;
     switch (version.architecture) {
-        case 9:  outProduct.family = ngen::ProductFamily::GenericGen9; break;
-        case 11: outProduct.family = ngen::ProductFamily::GenericGen11; break;
+        case 9:  outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen9; break;
+        case 11: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen11; break;
         case 12:
             if (version.release <= 10)
-                outProduct.family = ngen::ProductFamily::GenericGen12LP;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericGen12LP;
             else if (version.release == 50)
-                outProduct.family = ngen::ProductFamily::GenericXeHP;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXeHP;
             else if (version.release > 50 && version.release <= 59)
-                outProduct.family = ngen::ProductFamily::DG2;
-            else if (version.release >= 60 && version.release <= 61)
-                outProduct.family = ngen::ProductFamily::PVC;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::DG2;
+            else if (version.release == 60)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVC;
+            else if (version.release == 61)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::PVCVG;
             else if (version.release >= 70 && version.release <= 71)
-                outProduct.family = ngen::ProductFamily::MTL;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::MTL;
             else if (version.release >= 73 && version.release <= 74)
-                 outProduct.family = ngen::ProductFamily::ARL;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::ARL;
             break;
         case 20:
             if (version.release <= 2)
@@ -310,13 +317,15 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
         default: outProduct.family = ngen::ProductFamily::Unknown; break;
     }
 
-    if (outProduct.family != ngen::ProductFamily::Unknown)
+    if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)
         outProduct.stepping = version.revision;
+
+    outProduct.type = getPlatformType(outProduct.family);
 
     return outProduct;
 }
 
 } /* namespace npack */
-} /* namespace ngen */
+} /* namespace NGEN_NAMESPACE */
 
 #endif /* header guard */

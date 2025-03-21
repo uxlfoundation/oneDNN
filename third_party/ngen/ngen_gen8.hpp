@@ -610,5 +610,5 @@ static inline constexpr14 Align16Operand extToAlign16(const ExtendedReg &reg)
     return Align16Operand::createWithMME(reg.getBase(), reg.getMMENum());
 }
 
-}
+} // namespace NGEN_NAMESPACE
 #endif

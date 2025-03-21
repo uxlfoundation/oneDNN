@@ -2685,9 +2685,12 @@ struct sdpa_executable_t : public op_executable_t {
 
         dim_t kv_head_number
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
-        create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(), md_k.get(),
-                md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
+        status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
+                md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
                 is_invert_scale_, kv_head_number, is_causal_mask_, attr.get());
+        if (s != dnnl::impl::status::success) {
+            throw std::runtime_error("create_sdpa_pd failed");
+        }
 
         sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());
     }

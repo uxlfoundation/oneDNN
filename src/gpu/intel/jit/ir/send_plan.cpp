@@ -711,7 +711,7 @@ struct send_2d_params_t {
             }
             ret += (int64_t)b.stride * vblock_off[i];
         }
-        return ret * vlayout.type().size();
+        return ret * vlayout.type().size() / vlayout.type().packing();
     }
 
     int64_t to_x_inc(
@@ -1244,6 +1244,7 @@ public:
     int inner_idx() const { return inner_idx_; }
     int outer_idx() const { return outer_idx_; }
     int reg_bytes_per_elem() const { return reg_bytes_per_elem_; }
+    int reg_bits_per_elem() const { return reg_bits_per_elem_; }
     send_kind_t send_kind() const { return send_kind_; }
     const send_2d_params_t &send_2d_params() const { return send_2d_params_; }
     const expr_t &addr_base() const { return addr_base_; }
@@ -1297,7 +1298,9 @@ public:
         // GRF layout will be strided in the middle and may trigger unsupported
         // reorders. Once reorder is robust enough, this check is to be removed
         const int type_size = send_params.mem_type.size();
-        if (type_size < slot_size && slot_size < 4) slot_size = type_size;
+        const int type_packing = send_params.mem_type.packing();
+        if (type_size < slot_size * type_packing && slot_size < 4)
+            slot_size = type_size;
 
         // GPUs <= XeLP requires qword alignment for qword scattered messages,
         // downgrade to byte scattered (x1, x2 or x4) when alignment is
@@ -1315,11 +1318,12 @@ private:
         if (inner_idx < 0) return 1;
         // Get base address.
         const auto &tlayout = view().tlayout();
+        const auto &type = vlayout().type();
         dim_t align = mod_info().get_modulus(tlayout, mod_info().vmods()).n();
         // Get outer strides.
         for (int i = inner_idx; i < vlayout().nblocks(); i++) {
             auto &b = vlayout().blocks()[i];
-            dim_t stride_bytes = dim_t(b.stride) * vlayout().type().size();
+            dim_t stride_bytes = dim_t(b.stride) * type.size() / type.packing();
             align = math::gcd(align, stride_bytes);
         }
         return align;
@@ -1396,25 +1400,28 @@ private:
         send_2d_params_ = try_init_2d();
         if (!send_2d_params_.is_empty()) {
             reg_bytes_per_elem_ = vlayout_.type().size();
+            reg_bits_per_elem_ = vlayout_.type().bitsize();
             send_kind_ = send_kind_t::_2d;
             outer_idx_ = inner_idx_ = 2;
             return;
         }
         vlayout_ = split_layout_inner(vlayout_, inner_idx_);
-        int type_size = vlayout_.type().size();
-        int inner_bytes = type_size;
-        int total_bytes = type_size * into<int>(vlayout_.elems());
+        const type_t &type = vlayout_.type();
+        int inner_elems = 1;
+        int total_elems = into<int>(vlayout_.elems());
         auto &blocks = vlayout_.blocks();
         for (int i = 0; i < inner_idx_; i++) {
-            inner_bytes *= into<int>(blocks[i].block);
+            inner_elems *= into<int>(blocks[i].block);
         }
+        int inner_bytes = type.size() * inner_elems / type.packing();
+        int total_bytes = type.size() * total_elems / type.packing();
         if (can_use_block(inner_idx_, inner_bytes, total_bytes, send_params_)) {
             send_kind_ = send_kind_t::block;
         } else {
             send_kind_ = send_kind_t::scattered;
         }
-        vlayout_
-                = split_layout_outer(vlayout_, outer_idx_, reg_bytes_per_elem_);
+        vlayout_ = split_layout_outer(vlayout_, outer_idx_, reg_bits_per_elem_);
+        reg_bytes_per_elem_ = utils::div_up(reg_bits_per_elem_, 8);
     }
 
     layout_t split_layout_inner(const layout_t &layout, int &inner_idx) const {
@@ -1459,27 +1466,31 @@ private:
     }
 
     layout_t split_layout_outer(const layout_t &layout, int &outer_idx,
-            int &reg_bytes_per_elem) const {
+            int &reg_bits_per_elem) const {
         outer_idx = inner_idx_;
         if (send_kind_ == send_kind_t::block) {
-            reg_bytes_per_elem = layout.type().size();
+            reg_bits_per_elem = layout.type().bitsize();
             return layout;
         }
         gpu_assert(send_kind_ == send_kind_t::scattered);
 
-        int type_size = layout.type().size();
-        int inner_bytes = type_size;
+        const type_t &type = layout.type();
+        int inner_elems = 1;
+        int total_elems = into<int>(vlayout_.elems());
 
         auto &blocks = layout.blocks();
         int nblocks = (int)blocks.size();
         for (int i = 0; i < inner_idx_; i++) {
-            inner_bytes *= (int)blocks[i].block;
+            inner_elems *= (int)blocks[i].block;
         }
+        gpu_assert(total_elems * type.size() % type.packing() == 0);
+        gpu_assert(inner_elems * type.size() % type.packing() == 0);
 
-        int total_bytes = into<int>(vlayout_.elems() * type_size);
+        int inner_bytes = inner_elems * type.size() / type.packing();
+        int total_bytes = total_elems * type.size() / type.packing();
         int slot_size
                 = init_scattered_params(send_params_, inner_bytes, total_bytes);
-        reg_bytes_per_elem = std::max(1, 4 / slot_size) * type_size;
+        reg_bits_per_elem = std::max(1, 4 / slot_size) * type.bitsize();
 
         int max_slots = get_max_slots(hw_, send_params_);
         int inner_slots = ir_utils::safe_divide(inner_bytes, slot_size);
@@ -1592,6 +1603,7 @@ private:
     layout_t vlayout_; // Virtual layout.
     int inner_idx_ = 0;
     int outer_idx_ = 0;
+    int reg_bits_per_elem_ = 0;
     int reg_bytes_per_elem_ = 0;
     send_kind_t send_kind_ = send_kind_t::undef;
     send_2d_params_t send_2d_params_;
@@ -1826,8 +1838,11 @@ public:
     }
 
     int type_size() const { return info_.vlayout().type().size(); }
+    int type_packing() const { return info_.vlayout().type().packing(); }
     int inner_elems() const { return inner_elems_; }
-    int inner_bytes() const { return inner_elems_ * type_size(); }
+    int inner_bytes() const {
+        return inner_elems_ * type_size() / type_packing();
+    }
     int reg_off() const { return reg_off_; }
 
     int middle_blocks() const {
@@ -1837,7 +1852,9 @@ public:
         return ret;
     }
 
-    dim_t total_bytes() const { return info_.vlayout().elems() * type_size(); }
+    dim_t total_bytes() const {
+        return info_.vlayout().elems() * type_size() / type_packing();
+    }
 
     int nblocks() const { return (int)blocks().size(); }
 
@@ -1855,7 +1872,7 @@ public:
         gpu_assert(has_next(elems));
         advance(block_off_, info_.vlayout(), elems);
         linear_off_ += elems;
-        reg_off_ += elems * info_.reg_bytes_per_elem();
+        reg_off_ += utils::div_up(elems * info_.reg_bits_per_elem(), 8);
         off_.assign(info_.vlayout().ndims(), 0);
         for (int i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
@@ -1894,6 +1911,7 @@ public:
             ret += (int64_t)b.stride * block_off_[i];
         }
         ret *= type_size();
+        ret /= type_packing();
         vec_off_t vec(slots, ret);
         for (int i = 0; i < slots; i++)
             vec[i] += i * slot_size;
@@ -2497,8 +2515,9 @@ send_group_t init_scattered(const view_info_t &info,
     auto &vlayout = info.vlayout();
     auto &blocks = vlayout.blocks();
     int type_size = vlayout.type().size();
+    int type_packing = vlayout.type().packing();
     int slot_size = info.init_scattered_params(send_params, it.inner_bytes(),
-            into<int>(vlayout.elems() * type_size));
+            into<int>(vlayout.elems() * type_size / type_packing));
     int slot_stride = std::max(4, slot_size);
     int inner_slots = ir_utils::safe_divide(it.inner_bytes(), slot_size);
 
@@ -2530,10 +2549,11 @@ send_group_t init_scattered(const view_info_t &info,
         } else {
             gpu_assert(reg_layout.nblocks() > 0);
             auto &b0 = reg_layout.blocks()[0];
-            int inner = slot_size / type_size;
+            int inner = slot_size * type_packing / type_size;
             reg_layout
                     = reg_layout.split_block({0, b0}, inner, b0.block / inner);
-            int stride1 = ir_utils::safe_divide(slot_stride, type_size);
+            int stride1 = ir_utils::safe_divide(
+                    slot_stride * type_packing, type_size);
             reg_layout = reg_layout.make_strided(stride1, 1);
         }
     }
@@ -2679,8 +2699,9 @@ send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
         auto &last = reg_layout.blocks().back();
         stride = (dim_t)last.stride * last.block;
     }
+    const type_t &type = reg_layout.type();
     stride = utils::rnd_up(
-            stride, base_group.pad_bytes / reg_layout.type().size());
+            stride, base_group.pad_bytes * type.packing() / type.size());
     for (int i = outer_idx; i < (int)blocks.size(); i++) {
         auto &b = blocks[i];
         reg_layout = reg_layout.add_outer_block(b.dim_idx, b.block, stride);

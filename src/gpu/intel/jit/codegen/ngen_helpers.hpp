@@ -206,10 +206,10 @@ inline bool ngen_is_xf(ngen::DataType type) {
 
 inline ngen::Subregister get_subregister(
         ngen::HW hw, ngen::DataType type, const ngen::GRFRange &r, int idx) {
-    int grf_size = ngen::GRF::bytes(hw);
-    int type_size = ngen::getBytes(type);
-    int off = idx * type_size;
-    return r[off / grf_size].sub((off % grf_size) / type_size, type);
+    int grf_bits = ngen::GRF::bytes(hw) * 8;
+    int type_bits = ngen::getBits(type);
+    int off_bits = idx * type_bits;
+    return r[off_bits / grf_bits].sub((off_bits % grf_bits) / type_bits, type);
 }
 
 inline ngen::Subregister get_subregister(const ngen::RegData &rd) {

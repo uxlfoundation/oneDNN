@@ -17,7 +17,7 @@
 #ifndef NGEN_REGISTER_ALLOCATOR_HPP
 #define NGEN_REGISTER_ALLOCATOR_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 #endif
@@ -700,7 +700,7 @@ void RegisterAllocator::dump(std::ostream &str)
 
 } /* namespace NGEN_NAMESPACE */
 
-#ifdef ENABLE_LLVM_WCONVERSION
+#if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 

@@ -19,6 +19,8 @@
 
 
 #include "ngen_core.hpp"
+#include "ngen_asm.hpp"
+
 #include <sstream>
 
 
@@ -136,12 +138,13 @@ public:
 
     template <typename CodeGenerator>
     inline void generatePrologue(CodeGenerator &generator, const GRF &temp = GRF(127)) const;
-#ifdef NGEN_ASM
-    inline void dumpAssignments(std::ostream &stream) const;
-#endif
 
     inline void generateDummyCL(std::ostream &stream) const;
     inline std::string generateZeInfo() const;
+
+#ifdef NGEN_ASM
+    inline void dumpAssignments(std::ostream &stream) const;
+#endif
 
     static constexpr int noSurface = 0x80;        // Returned by getArgumentSurfaceIfExists in case of no surface assignment
 

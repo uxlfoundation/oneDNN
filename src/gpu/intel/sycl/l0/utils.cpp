@@ -386,12 +386,10 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         int &stepping_id, uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels) {
     using namespace ngen;
-    HW hw = HW::Unknown;
-    Product product = {ProductFamily::Unknown, 0};
-    LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
-            context, device, hw, product);
+    Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
+            context, device);
 
-    gpu_arch = jit::convert_ngen_arch_to_dnnl(hw);
+    gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product.family));
     gpu_product_family = static_cast<int>(product.family);
     stepping_id = product.stepping;
 

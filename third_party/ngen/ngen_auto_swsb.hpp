@@ -21,11 +21,6 @@
 #ifndef NGEN_AUTO_SWSB_HPP
 #define NGEN_AUTO_SWSB_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
-#endif
-
 #if defined(NGEN_DEBUG) || defined(NGEN_DEBUG_PROPAGATE) || defined(NGEN_DEBUG_BB)
 #include <iomanip>
 #include <iostream>
@@ -34,6 +29,8 @@
 #include <limits>
 #include <list>
 #include <map>
+
+#include "ngen_core.hpp"
 
 namespace NGEN_NAMESPACE {
 namespace autoswsb {
@@ -2629,9 +2626,5 @@ inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program)
 // Program interface:
 // 	Instruction operator[](int inum);
 // 	size_t size() const;
-
-#ifdef ENABLE_LLVM_WCONVERSION
-#pragma clang diagnostic pop
-#endif
 
 #endif /* NGEN_AUTOSWSB_HPP */

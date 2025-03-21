@@ -60,13 +60,12 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         int &gpu_product_family, int &stepping_id, uint64_t &native_extensions,
         bool &mayiuse_systolic, bool &mayiuse_ngen_kernels) {
     using namespace ngen;
-    HW hw = HW::Unknown;
-    Product product = {ProductFamily::Unknown, 0};
-    jit::generator_t<HW::Unknown>::detectHWInfo(context, device, hw, product);
+    Product product = ngen::OpenCLCodeGenerator<HW::Unknown>::detectHWInfo(
+            context, device);
     bool is_xelpg = (product.family == ngen::ProductFamily::ARL
             || product.family == ngen::ProductFamily::MTL);
 
-    gpu_arch = jit::convert_ngen_arch_to_dnnl(hw);
+    gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product.family));
     gpu_product_family = static_cast<int>(product.family);
     stepping_id = product.stepping;
 

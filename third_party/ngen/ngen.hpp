@@ -27,12 +27,12 @@
 #ifndef NGEN_HPP
 #define NGEN_HPP
 
-#ifdef ENABLE_LLVM_WCONVERSION
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 #endif
 
-#include "ngen_config.hpp"
+#include "ngen_config_internal.hpp"
 
 #include <array>
 #include <cstring>
@@ -42,16 +42,13 @@
 #include "ngen_core.hpp"
 #include "ngen_auto_swsb.hpp"
 #include "ngen_debuginfo.hpp"
-
 // -----------------------------------------------------------------------
 // Binary formats, split between pre-Gen12 and post-Gen12.
 #include "ngen_gen8.hpp"
 #include "ngen_gen12.hpp"
 // -----------------------------------------------------------------------
 
-#ifdef NGEN_ASM
 #include "ngen_asm.hpp"
-#endif
 
 namespace NGEN_NAMESPACE {
 
@@ -299,7 +296,7 @@ public:
         pushStream(rootStream);
     }
 
-    explicit BinaryCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator({genericProductFamily(hw), stepping_}, debugConfig) {}
+    explicit BinaryCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
 
     ~BinaryCodeGenerator() {
         for (size_t sn = 1; sn < streamStack.size(); sn++)
@@ -684,7 +681,7 @@ protected:
     void halt(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
         halt(mod, jip, jip, loc);
     }
-    void if_(InstructionModifier mod, Label &jip, Label &uip, bool branchCtrl = false, SourceLocation loc = {}) {
+    void if_(InstructionModifier mod, Label &jip, Label &uip, bool branchCtrl, SourceLocation loc = {}) {
         mod.setBranchCtrl(branchCtrl);
         opBranch(Opcode::if_, mod, null, jip, uip, loc);
     }
@@ -1506,9 +1503,14 @@ int getStepping() const { return scope::getStepping(); } \
 void setProduct(NGEN_NAMESPACE::Product product_) { scope::setProduct(product_); } \
 void setProductFamily(NGEN_NAMESPACE::ProductFamily family_) { scope::setProductFamily(family_); } \
 void setStepping(int stepping_) { scope::setStepping(stepping_); } \
+NGEN_FORWARD_SCOPE_EXTRA(scope) \
 NGEN_FORWARD_SCOPE_OP_NAMES(scope) \
 NGEN_FORWARD_SCOPE_MIN_MAX(scope) \
 NGEN_FORWARD_SCOPE_REGISTERS(scope)
+
+#define NGEN_FORWARD_SCOPE_EXTRA(scope)
+#define NGEN_FORWARD_SCOPE_EXTRA_ELF_OVERRIDES(hw)
+
 
 #ifdef NGEN_NO_OP_NAMES
 #define NGEN_FORWARD_SCOPE_OP_NAMES(scope)
@@ -2798,7 +2800,7 @@ void BinaryCodeGenerator<hw>::opNop(Opcode op, SourceLocation loc)
 
 } /* namespace NGEN_NAMESPACE */
 
-#ifdef ENABLE_LLVM_WCONVERSION
+#if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 

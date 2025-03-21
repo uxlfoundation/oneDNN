@@ -17,9 +17,11 @@
 /*
  * Do not #include this file directly; ngen uses it internally.
  */
-
 #ifndef NGEN_GEN12_HPP
 #define NGEN_GEN12_HPP
+
+#include "ngen_auto_swsb.hpp"
+#include "ngen_gen8.hpp"
 
 namespace NGEN_NAMESPACE {
 // Gen12 binary encoding.

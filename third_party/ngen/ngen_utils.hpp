@@ -18,12 +18,11 @@
 #define NGEN_UTILS_HPP
 
 #include <cstdint>
+#include <string>
 
 #ifdef _MSC_VER
 #include <intrin.h>
 #endif
-
-#include <string>
 
 #ifdef NGEN_CPP11
 #define constexpr14

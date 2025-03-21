@@ -143,10 +143,15 @@ void parse_result(res_t &res, const char *pstr) {
                 + " total:" + std::to_string(res.total) + ")";
     }
 
+    const auto &tct = res.timer_map.get_timer(timer::names::test_case_timer);
+    // Round to integer for nicer input.
+    const int64_t tct_ms = static_cast<int64_t>(tct.ms());
+    std::string tct_str = " (" + std::to_string(tct_ms) + " ms)";
+
     // This is the common format of the repro line ([] - for optional entries):
-    // case_num:status[ (reason)][ (error_stats)] __REPRO: prb_str
+    // case_num:status[ (reason)][ (error_stats)] (time) __REPRO: prb_str
     std::string full_repro = std::to_string(bs.tests) + ":" + std::string(state)
-            + reason + error_stat + " __REPRO: " + pstr;
+            + reason + error_stat + tct_str + " __REPRO: " + pstr;
     if (is_failed) {
         bs.failed++;
         bs.failed_cases.emplace(bs.tests, full_repro);

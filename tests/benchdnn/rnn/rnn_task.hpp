@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,6 +45,12 @@ struct rnn_task_t {
 
         v_prim_ = std::make_shared<
                 std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>>>();
+
+        // A timer for each test case. Starts from `create_func_` and ends at
+        // `parse_result`.
+        auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
+        tct.start();
+
         const prb_t *prb = prb_.get();
         SAFE(create_func_(*v_prim_, *prb, &res_), WARN);
         return OK;
@@ -67,6 +73,11 @@ struct rnn_task_t {
             const prb_t *prb = prb_.get();
             do_func_(*v_prim_, *prb, &res_);
         }
+
+        // A timer for each test case. Starts from `create_func_` and ends at
+        // `parse_result`.
+        auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
+        tct.stamp();
 
         return report();
     }

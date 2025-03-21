@@ -101,6 +101,8 @@ const std::string cp_timer = "create_prim_timer";
 const std::string compare_timer = "compare_timer";
 // Driver's memory filling.
 const std::string fill_timer = "fill_timer";
+// Test case timer from the create function till dumping the output.
+const std::string test_case_timer = "test_case_timer";
 } // namespace names
 
 struct timer_map_t {

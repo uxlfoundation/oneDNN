@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,6 +50,9 @@ std::vector<broadcasting_strategy_t> extract_bcast_strategies(
         const memory_desc_wrapper &dst_md);
 
 memory_desc_t get_src1_desc(
+        const post_ops_t::entry_t &post_op, const memory_desc_wrapper &dst_d);
+
+memory_desc_t get_src2_desc(
         const post_ops_t::entry_t &post_op, const memory_desc_wrapper &dst_d);
 
 /*

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 #include "gpu/intel/ocl/rnn/cell_compute.h"
 #include "gpu/intel/ocl/rnn/cell_kind_utility.h"
-#include "gpu/intel/ocl/rnn/rnn_common.h"
+#include "gpu/intel/ocl/rnn/common.h"
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 simple_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,

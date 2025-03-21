@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include "common/primitive.hpp"
 #include "gpu/gpu_batch_normalization_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/bnorm/bnorm_lookup_table.hpp"
+#include "gpu/intel/ocl/bnorm/lookup_table.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {

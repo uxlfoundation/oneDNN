@@ -32,8 +32,8 @@
 #include "gpu/intel/primitive_conf.hpp"
 
 #include "common/experimental.hpp"
-#include "gpu/intel/ocl/bnorm/bnorm_utils.hpp"
 #include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/intel/ocl/bnorm/utils.hpp"
 
 namespace dnnl {
 namespace impl {

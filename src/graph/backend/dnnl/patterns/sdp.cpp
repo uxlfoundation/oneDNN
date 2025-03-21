@@ -106,7 +106,8 @@ graph::utils::pm::repetition_t *optional_scale_and_masks(
         bool check_xf16 = false) {
     auto opt_scale = optional_scale(pgraph, matmul_qk);
     auto opt_causal_mask = optional_causal_mask(pgraph, opt_scale, check_xf16);
-    auto opt_explicit_mask = optional_explicit_mask(pgraph, opt_causal_mask);
+    auto opt_soft_capping = optional_soft_capping(pgraph, opt_causal_mask);
+    auto opt_explicit_mask = optional_explicit_mask(pgraph, opt_soft_capping);
     // Optional select for distilbert
     auto opt_select = optional_select(pgraph, opt_explicit_mask, 2);
     return opt_select;

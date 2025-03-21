@@ -123,8 +123,8 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
                 part->get_use_blocked_layout(), false);
 
         const std::vector<logical_tensor_t> select_inputs
-                = {inputs[sdp_cfg_.graph_inport[5]],
-                        inputs[sdp_cfg_.graph_inport[6]]};
+                = {inputs[sdp_cfg_.graph_inport[6]],
+                        inputs[sdp_cfg_.graph_inport[7]]};
 
         select_subgraph_->ins_ = select_inputs;
         BACKEND_DNNL_ADD_PASS(select_pipeline, replace_select_values);
@@ -240,7 +240,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     char *wei1_user_pointer = static_cast<char *>(
             inputs[sdp_cfg_.graph_inport[1]].get_data_handle());
     char *wei2_user_pointer = static_cast<char *>(
-            inputs[sdp_cfg_.graph_inport[4]].get_data_handle());
+            inputs[sdp_cfg_.graph_inport[2]].get_data_handle());
     char *dst2_user_pointer = static_cast<char *>(outputs[0].get_data_handle());
 
     // allocate the select internal memory
@@ -252,8 +252,8 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
             "no enough scratchpad memory");
     if (sdp_cfg_.has_select) {
         const std::vector<tensor_t> select_inputs
-                = {inputs[sdp_cfg_.graph_inport[5]],
-                        inputs[sdp_cfg_.graph_inport[6]]};
+                = {inputs[sdp_cfg_.graph_inport[6]],
+                        inputs[sdp_cfg_.graph_inport[7]]};
         prepare_args_set(select_res, select_inputs, select_scratchpad);
     }
     size_t block_size = sdp_registry_.size();
@@ -271,6 +271,10 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         // prepare execution args and allocate real memory
         prepare_sub_args(var_grantor, tid, block_size, res->mem_map);
 
+        const size_t group_head = sdp_cfg_.num_head_q / sdp_cfg_.num_head_kv;
+        size_t wei_head_offset = bi / group_head;
+        size_t group_id = bi % group_head;
+
         // reorder0
         auto &sub_src1_tid = res->mem_map[sdp_cfg_.sub_src1.get()][tid];
         // reorder1:
@@ -285,13 +289,20 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
                                            .get()][tid];
             sub_mm1_post_scale_tid.set_data_handle(
-                    inputs[sdp_cfg_.graph_inport[2]].get_data_handle());
+                    inputs[sdp_cfg_.graph_inport[3]].get_data_handle());
+        }
+        if (sdp_cfg_.has_soft_capping) {
+            auto &sub_mm1_post_soft_cap_tid
+                    = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
+                                           .get()][tid];
+            sub_mm1_post_soft_cap_tid.set_data_handle(static_cast<char *>(
+                    inputs[sdp_cfg_.graph_inport[4]].get_data_handle()));
         }
         if (sdp_cfg_.has_attention_mask) {
             auto &sub_mm1_post_add_tid
                     = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
                                            .get()][tid];
-            const auto &mask_input = inputs[sdp_cfg_.graph_inport[3]];
+            const auto &mask_input = inputs[sdp_cfg_.graph_inport[5]];
             const auto mask_strides
                     = ltw(mask_input.get_logical_tensor()).vstrides();
             const auto mask_dims = ltw(mask_input.get_logical_tensor()).vdims();
@@ -315,10 +326,18 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                         = select_res_args[sdp_cfg_.select_outop_index[i - 1]]
                                   .at(DNNL_ARG_DST);
                 auto out_strides = out_mem.get_desc().get_strides();
+                auto out_shape = out_mem.get_desc().get_dims();
+                size_t mm1_post_offset
+                        = out_shape[0] == 1 ? 0 : bo * out_strides[0];
+                mm1_post_offset += out_shape[1] == 1
+                        ? 0
+                        : wei_head_offset * out_strides[1];
+                mm1_post_offset += (out_shape[2] == 1 || sdp_cfg_.ndims == 4)
+                        ? 0
+                        : group_id * out_strides[2];
                 sub_mm1_post_tid.set_data_handle(
                         static_cast<char *>(out_mem.get_data_handle())
-                        + bo * out_strides[0]
-                                * get_mem_dt_size(sub_mm1_post_tid));
+                        + mm1_post_offset * get_mem_dt_size(sub_mm1_post_tid));
             }
         }
         // reorder2:
@@ -331,11 +350,17 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         // matmul2
         auto &sub_mm2_dst_tid = res->mem_map[sdp_cfg_.sub_mm2_dst.get()][tid];
 
-        const size_t sub_src1_offset = (bo * sdp_cfg_.src1_strides[0]
-                                               + bi * sdp_cfg_.src1_strides[1])
+        size_t sub_src1_offset
+                = (bo * sdp_cfg_.src1_strides[0]
+                          + (sdp_cfg_.ndims == 4 ? bi * sdp_cfg_.src1_strides[1]
+                                                 : wei_head_offset
+                                                          * sdp_cfg_.src1_strides
+                                                                    [1]
+                                                  + group_id
+                                                          * sdp_cfg_.src1_strides
+                                                                    [2]))
                 * get_mem_dt_size(sub_src1_tid);
-        const size_t group_head = sdp_cfg_.num_head_q / sdp_cfg_.num_head_kv;
-        size_t wei_head_offset = bi / group_head;
+
         const size_t sub_wei1_offset
                 = (bo * sdp_cfg_.wei1_strides[0]
                           + wei_head_offset * sdp_cfg_.wei1_strides[1])
@@ -345,7 +370,14 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                           + wei_head_offset * sdp_cfg_.wei2_strides[1])
                 * get_mem_dt_size(sub_wei2_user_tid);
         const size_t sub_dst_user_offset
-                = (bo * sdp_cfg_.dst_strides[0] + bi * sdp_cfg_.dst_strides[1])
+                = (bo * sdp_cfg_.dst_strides[0]
+                          + (sdp_cfg_.ndims == 4 ? bi * sdp_cfg_.dst_strides[1]
+                                                 : wei_head_offset
+                                                          * sdp_cfg_.dst_strides
+                                                                    [1]
+                                                  + group_id
+                                                          * sdp_cfg_.dst_strides
+                                                                    [2]))
                 * get_mem_dt_size(sub_dst_user_tid);
 
         sub_wei1_user_tid.set_data_handle(wei1_user_pointer + sub_wei1_offset);

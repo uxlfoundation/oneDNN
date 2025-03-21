@@ -68,8 +68,8 @@ public:
                     for (dim_idx_t i = 0; i < dst_layout_.ndims(); i++) {
                         if (dst_layout_.dims()[i] == 1) dst_start[i] = 0;
                     }
-                    int src_off = int(src_layout_(src_start) * src_type.size());
-                    int dst_off = int(dst_layout_(dst_start) * dst_type.size());
+                    int src_off = src_layout_(src_start);
+                    int dst_off = dst_layout_(dst_start);
 
                     if (is_inplace) {
                         bool same_src_dst = (dst_off == src_off);
@@ -82,9 +82,9 @@ public:
                     }
 
                     auto d = dst_rd.format(
-                            dst_off, to_ngen(dst_type), tile_elems, 1);
+                            dst_off, tile_elems, 1, to_ngen(dst_type));
                     auto s = src_rd.format(
-                            src_off, to_ngen(src_type), tile_elems, src_stride);
+                            src_off, tile_elems, src_stride, to_ngen(src_type));
                     bool s_half_grf_aligned
                             = utils::one_of(s.byte_offset(), 0, grf_size / 2);
                     bool s_is_bf = src_type.is_bf16();
@@ -107,7 +107,7 @@ public:
                                 tmp_type.with_elems(tile_elems));
                         emit_reorder_1d_tile(hw_, host, tile_scope, tile_elems,
                                 s, src_stride, tmp, 1);
-                        s = tmp.format(0, to_ngen(tmp_type), tile_elems, 1);
+                        s = tmp.format(0, tile_elems, 1, to_ngen(tmp_type));
                     }
                     align_src_dst_offset(host, tile_scope, tile_elems, d, s);
                     host->add(tile_elems, d.reg_data(), d.reg_data(),

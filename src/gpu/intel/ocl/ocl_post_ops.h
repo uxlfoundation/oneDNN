@@ -188,7 +188,7 @@ float fwd_Xnary(bool is_binary, unsigned algorithm, float x, float y,
 #define APPLY_ALL_PO_STAGES(accumulator, acc_elem_dt, ...) \
     { \
         const int nelems = sizeof(accumulator) / sizeof(acc_elem_dt); \
-        acc_elem_dt *acc = &accumulator; \
+        acc_elem_dt *acc = (acc_elem_dt *)&accumulator; \
         CONCAT2(APPLY_PO_STAGE_, POST_OP_CHAIN_LENGTH) \
         (nelems, acc, acc_elem_dt, __VA_ARGS__) \
     }

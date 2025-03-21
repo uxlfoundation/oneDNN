@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -745,13 +745,13 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
                 convert_float(bias[off_ker_bias(dhc, 0, j)]), alpha, tm_scales);
 #endif
 #if IS_TESTMODE
-        float tmp = = dH * activation_bwd(g, tm_scales[0], 0.);
+        float tmp = = dH * activation_bwd(g, tm_scales[0], 0.0f);
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
                 = TO_SRC(tmp);
         diff_bias_acc[0] += tmp;
 #else
-        float tmp = dH * activation_bwd(g, alpha, 0.);
+        float tmp = dH * activation_bwd(g, alpha, 0.0f);
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
                 = TO_SRC(tmp);

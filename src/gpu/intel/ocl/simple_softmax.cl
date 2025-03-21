@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -124,7 +124,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = 1.0f / denom_;
 #endif
 
     for (int i = begin; i < end; ++i) {

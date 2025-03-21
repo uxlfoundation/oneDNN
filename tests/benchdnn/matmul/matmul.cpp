@@ -413,6 +413,20 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
     density_args.n_acc = prb->k;
     const auto density = cfg.get_density(density_args);
 
+    const auto &e_zp_src = prb->attr.zero_points.get(DNNL_ARG_SRC);
+    const bool has_src_zp = !e_zp_src.is_def();
+    const int src_zp_mask = attr_t::get_default_mask(e_zp_src.policy);
+    // Apply src_zp for source tensor only.
+    int src_zp = kind == SRC && has_src_zp && src_zp_mask == 0 ? e_zp_src.value
+                                                               : 0;
+
+    const auto &e_zp_wei = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS);
+    const bool has_wei_zp = !e_zp_wei.is_def();
+    const int wei_zp_mask = attr_t::get_default_mask(e_zp_wei.policy);
+    // Apply wei_zp for weights tensor only.
+    int wei_zp = kind == WEI && has_wei_zp && wei_zp_mask == 0 ? e_zp_wei.value
+                                                               : 0;
+
     /* Do fixed partitioning to have same filling for any number of threads */
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
@@ -438,6 +452,7 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             float val = 0;
             while (val <= 0)
                 val = gen(int_seed);
+            val += src_zp + wei_zp; // Add zp so that it will be subtracted.
             mem_fp.set_elem(
                     0, round_to_nearest_representable(cfg.get_dt(kind), val));
             idx_start += 1;
@@ -453,6 +468,7 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
                 val *= is_one;
             } else {
                 val = is_one * gen(int_seed);
+                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
             }
             mem_fp.set_elem(
                     idx, round_to_nearest_representable(cfg.get_dt(kind), val));
@@ -703,15 +719,41 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         }
     }
 
+    // Check int4 weights byte alignment if format is specified.
     if ((prb->wei_dt() == dnnl_s4 || prb->wei_dt() == dnnl_u4)
-            && (prb->n % 2)) {
-        BENCHDNN_PRINT(2,
-                "[INVALID][%s:%d]: Int4 Weights decompression requires OC "
-                "('%d') to be even.\n",
-                __FILE__, __LINE__, (int)prb->n);
-        res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
-        return;
+            && (!prb->strides[WEI].empty()
+                    || (prb->wtag != tag::any && prb->wtag != tag::undef))) {
+        const auto &weights_rt_dims = get_runtime_dims(
+                prb->weights_dims(), prb->weights_runtime_dim_mask());
+        const auto wei_md
+                = dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(),
+                        prb->wei_dt(), prb->wtag, prb->strides[STRIDES_WEI]);
+
+        const auto wei_strides = query_md_strides(wei_md);
+        int n_unit_strides = 0;
+        for (int d = 0; d < query_md_ndims(wei_md); d++) {
+            if (wei_strides[d] == 1) {
+                n_unit_strides++;
+                if (n_unit_strides > 1) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Int4 Weights decompression "
+                            "requires byte alignment for the tensor.\n",
+                            __FILE__, __LINE__);
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
+            }
+            if (wei_strides[d] > 1 && (wei_strides[d] % 2)) {
+                BENCHDNN_PRINT(2,
+                        "[INVALID][%s:%d]: Int4 Weights decompression requires "
+                        "byte alignment for the tensor.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::invalid_case;
+                return;
+            }
+        }
     }
 
     auto src_rt_mask = prb->src_runtime_dim_mask();

@@ -208,114 +208,163 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_sum_po(prb->attr, res, dnnl_reorder, sdt);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_reorder);
 
-    bool scales_ok = true;
-#if !defined(DNNL_X64) || DNNL_X64 == 0
-    {
-        // reference reorder supports only a subset of scale policies
-        const std::vector<policy_t> supported_policy = {policy_t::COMMON,
-                policy_t::PER_DIM_0, policy_t::PER_DIM_1, policy_t::PER_DIM_01};
-
-        for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
-            scales_ok = std::any_of(supported_policy.cbegin(),
-                    supported_policy.cend(), [&](const policy_t policy) {
-                        return prb->attr.scales.get(arg).policy == policy;
-                    });
-        }
-    }
-#endif
-    if (!scales_ok) {
+    const bool s32_src_ok = IMPLICATION(sdt == dnnl_s32,
+            ddt != dnnl_f8_e5m2 && ddt != dnnl_f8_e4m3 && ddt != dnnl_bf16
+                    && ddt != dnnl_f16);
+    const bool s32_dst_ok = IMPLICATION(ddt == dnnl_s32,
+            sdt != dnnl_f8_e5m2 && sdt != dnnl_f8_e4m3 && sdt != dnnl_bf16
+                    && sdt != dnnl_f16);
+    if (!s32_src_ok || !s32_dst_ok) {
+        BENCHDNN_PRINT(2,
+                "[SKIP][%s:%d]: Mixed (xf8,xf16)<-->s32 support is limited.\n",
+                __FILE__, __LINE__);
         res->state = SKIPPED;
         res->reason = skip_reason::case_not_supported;
         return;
-    }
-
-    if (prb->is_reorder_with_compensation(FLAG_ANY)) {
-        // Compensation is supported for s8 dst data type.
-        const bool dt_ok = ddt == dnnl_s8;
-        // Compensation can be paired with dst scale only.
-        const bool attr_ok
-                = prb->attr.zero_points.is_def() && prb->attr.post_ops.is_def();
-        // Compensation does not support runtime dims.
-        const bool rt_ok = prb->runtime_dim_mask == 0;
-
-        // Compensation and scales mask should coincide
-        const auto comp_mask = prb->get_compensation_mask(FLAG_ANY);
-        bool masks_ok = true;
-        for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
-            const auto &e = prb->attr.scales.get(arg);
-            if (!e.is_def()) {
-                int e_mask = attr_t::get_default_mask(e.policy);
-                masks_ok = masks_ok && e_mask == comp_mask;
-            }
-        }
-
-        if (!dt_ok || !attr_ok || !rt_ok || !masks_ok) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-
-#if !defined(DNNL_X64) || DNNL_X64 == 0
-        // Simple reorder doesn't provide decent coverage for compensated cases.
-        // Shut them down unconditionally by default.
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-#endif
-    }
-
-    // Destination scale is not supported for runtime dimensions since the
-    // implementation logic inverts dst scales and requires scratchpad for
-    // `mask > 0` cases which is impossible to estimate with rt dims.
-    const auto &dst_scales = prb->attr.scales.get(DNNL_ARG_DST);
-    if (!dst_scales.is_def() && attr_t::get_default_mask(dst_scales.policy) > 0
-            && prb->runtime_dim_mask != 0) {
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-
-    // Compensation is supported through jit reorder only, but jit reorder
-    // doesn't support different masks for source and destination scales.
-    const auto &src_scales = prb->attr.scales.get(DNNL_ARG_SRC);
-    if (!src_scales.is_def() && !dst_scales.is_def()) {
-        if (attr_t::get_default_mask(src_scales.policy)
-                        != attr_t::get_default_mask(dst_scales.policy)
-                && prb->is_reorder_with_compensation(FLAG_ANY)) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
     }
 
     if (is_cpu()) {
-        // Int4 reorder support is limited on CPU.
+        bool scales_ok = true;
+#if !defined(DNNL_X64) || DNNL_X64 == 0
+        {
+            // reference reorder supports only a subset of scale policies
+            const std::vector<policy_t> supported_policy
+                    = {policy_t::COMMON, policy_t::PER_DIM_0,
+                            policy_t::PER_DIM_1, policy_t::PER_DIM_01};
+
+            for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
+                scales_ok = std::any_of(supported_policy.cbegin(),
+                        supported_policy.cend(), [&](const policy_t policy) {
+                            return prb->attr.scales.get(arg).policy == policy;
+                        });
+            }
+        }
+#endif
+        if (!scales_ok) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Generic CPU doesn't support specified "
+                    "scale mask.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+
+        if (prb->is_reorder_with_compensation(FLAG_ANY)) {
+            const bool dt_ok = ddt == dnnl_s8;
+            if (!dt_ok) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Compensation is supported only for s8 "
+                        "dst data type.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+
+            const bool attr_ok = prb->attr.zero_points.is_def()
+                    && prb->attr.post_ops.is_def();
+            if (!attr_ok) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Compensation is supported with scale "
+                        "attribute only.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+
+            const bool rt_ok = prb->runtime_dim_mask == 0;
+            if (!rt_ok) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Compensation is not supported for "
+                        "runtime dimensions.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+
+            const auto comp_mask = prb->get_compensation_mask(FLAG_ANY);
+            bool masks_ok = true;
+            for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
+                const auto &e = prb->attr.scales.get(arg);
+                if (!e.is_def()) {
+                    int e_mask = attr_t::get_default_mask(e.policy);
+                    masks_ok = masks_ok && e_mask == comp_mask;
+                }
+            }
+            if (!masks_ok) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Compensation mask doesn't coincide "
+                        "with scaling mask.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+
+#if !defined(DNNL_X64) || DNNL_X64 == 0
+            // Simple reorder doesn't provide decent coverage for compensated
+            // cases. Shut them down unconditionally by default.
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Generic CPU doesn't support compensation "
+                    "cases uniformly.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+#endif
+        }
+
+        const auto &dst_scales = prb->attr.scales.get(DNNL_ARG_DST);
+        if (!dst_scales.is_def()
+                && attr_t::get_default_mask(dst_scales.policy) > 0
+                && prb->runtime_dim_mask != 0) {
+            // Destination scale is not supported for runtime dimensions since
+            // the implementation logic inverts dst scales and requires
+            // scratchpad for `mask > 0` cases which is impossible to estimate
+            // with runtime dims.
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Destination scale is not supported for "
+                    "runtime dimensions.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+
+        const auto &src_scales = prb->attr.scales.get(DNNL_ARG_SRC);
+        if (!src_scales.is_def() && !dst_scales.is_def()) {
+            if (attr_t::get_default_mask(src_scales.policy)
+                            != attr_t::get_default_mask(dst_scales.policy)
+                    && prb->is_reorder_with_compensation(FLAG_ANY)) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Compensation cases when both scales "
+                        "specified but with different masks isn't supported.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+        }
+
         if (sdt == dnnl_s4 || ddt == dnnl_s4 || sdt == dnnl_u4
                 || ddt == dnnl_u4) {
+            BENCHDNN_PRINT(2, "[SKIP][%s:%d]: Int4 support is limited.\n",
+                    __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;
         }
 
-        // CPU reorder doesn't support (xf8,xf16)<-->s32 combinations.
-        const bool s32_src_ok = IMPLICATION(sdt == dnnl_s32,
-                ddt != dnnl_f8_e5m2 && ddt != dnnl_f8_e4m3 && ddt != dnnl_bf16
-                        && ddt != dnnl_f16);
-        const bool s32_dst_ok = IMPLICATION(ddt == dnnl_s32,
-                sdt != dnnl_f8_e5m2 && sdt != dnnl_f8_e4m3 && sdt != dnnl_bf16
-                        && sdt != dnnl_f16);
-        if (!s32_src_ok || !s32_dst_ok) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-
-        // CPU f16 reorders only support f16<->f32 combinations
         const bool f16_src_ok = IMPLICATION(
                 sdt == dnnl_f16, ddt == dnnl_f16 || ddt == dnnl_f32);
         const bool f16_dst_ok = IMPLICATION(
                 ddt == dnnl_f16, sdt == dnnl_f16 || sdt == dnnl_f32);
         if (!f16_src_ok || !f16_dst_ok) {
+            BENCHDNN_PRINT(2, "[SKIP][%s:%d]: f16 support is limited.\n",
+                    __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;
@@ -329,6 +378,8 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                 = IMPLICATION(sdt == dnnl_f8_e5m2 || sdt == dnnl_f8_e4m3,
                         ddt == dnnl_f16 || ddt == dnnl_f32);
         if (!xf8_src_ok || !xf8_dst_ok) {
+            BENCHDNN_PRINT(2, "[SKIP][%s:%d]: f8 support is limited.\n",
+                    __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;
@@ -336,20 +387,23 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     }
 
     if (is_gpu()) {
-        // GPU does not support run-time dims.
-        // Reorders w/ compensation are not supported by design: zp_comp is done
-        // in kernels directly, but s8s8 instructions are available in HW.
-        if (prb->runtime_dim_mask != 0
-                || prb->is_reorder_with_compensation(FLAG_ANY)) {
+        if (prb->runtime_dim_mask != 0) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: GPU doesn't support runtime dimensions.\n",
+                    __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;
         }
 
-        // GPU doesn't support f8_e5m2/f8_e4m3.
-        const bool is_xf8 = prb->sdt == dnnl_f8_e5m2 || prb->sdt == dnnl_f8_e4m3
-                || prb->ddt == dnnl_f8_e5m2 || prb->ddt == dnnl_f8_e4m3;
-        if (is_xf8) {
+        if (prb->is_reorder_with_compensation(FLAG_ANY)) {
+            // Reorders w/ compensation are not supported by design: zp_comp is
+            // done in kernels directly, but s8s8 instructions are available in
+            // HW.
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: GPU doesn't support cases with "
+                    "compensation.\n",
+                    __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;
@@ -358,31 +412,40 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
-    // No sense in cross engine reorders when one of devices is switched off.
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_NONE
     auto cross_engine = prb->cross_engine;
     if (cross_engine == CPU2GPU || cross_engine == GPU2CPU) {
+        BENCHDNN_PRINT(2,
+                "[INVALID][%s:%d]: Cross-engine case isn't supported when just "
+                "one runtime is enabled.\n",
+                __FILE__, __LINE__);
         res->state = SKIPPED;
         res->reason = skip_reason::invalid_case;
         return;
     }
 #endif
 
-    // Zero-points can't be used with sum post-op.
     if (!prb->attr.zero_points.is_def(DNNL_ARG_DST)
             && prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) != -1) {
+        BENCHDNN_PRINT(2,
+                "[INVALID][%s:%d]: Zero-points can't be used with sum "
+                "post-op.\n",
+                __FILE__, __LINE__);
         res->state = SKIPPED;
         res->reason = skip_reason::invalid_case;
         return;
     }
 
-    // only integral data types can have zero points
     const bool is_src_zp_ok = is_integral_dt(prb->sdt)
             || prb->attr.zero_points.is_def(DNNL_ARG_SRC);
     const bool is_dst_zp_ok = is_integral_dt(prb->ddt)
             || prb->attr.zero_points.is_def(DNNL_ARG_DST);
     if (!(is_src_zp_ok && is_dst_zp_ok)) {
+        BENCHDNN_PRINT(2,
+                "[INVALID][%s:%d]: Non-integral data types don't support "
+                "zero-points\n",
+                __FILE__, __LINE__);
         res->state = SKIPPED;
         res->reason = skip_reason::invalid_case;
         return;

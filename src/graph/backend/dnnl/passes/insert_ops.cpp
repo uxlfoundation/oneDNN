@@ -571,6 +571,107 @@ status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
+status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
+
+    for (auto &cur_op : sg->get_ops()) {
+        if (cur_op->get_kind() != op_kind::dnnl_sdpa) continue;
+
+        int32_t query_ndims
+                = cur_op->get_input_value(0)->get_logical_tensor().ndims;
+        if (query_ndims != 5) continue;
+
+        // Insert reshape for Query
+        auto query_dims = logical_tensor_wrapper_t(
+                cur_op->get_input_value(0)->get_logical_tensor())
+                                  .vdims();
+        dims expected_query_dims {
+                query_dims[0], -1, query_dims[3], query_dims[4]};
+        op_ptr reshape_query = std::make_shared<op_t>(op_kind::dnnl_reshape);
+        reshape_query->set_attr<bool>(op_attr::special_zero, false);
+        reshape_query->set_attr<std::vector<int64_t>>(
+                op_attr::shape, expected_query_dims);
+        rewriter.insert_op_before(reshape_query, cur_op, 0);
+
+        // Insert reshape for Key
+        auto key_dims = logical_tensor_wrapper_t(
+                cur_op->get_input_value(1)->get_logical_tensor())
+                                .vdims();
+        dims expected_key_dims {key_dims[0], -1, key_dims[3], key_dims[4]};
+        op_ptr reshape_key = std::make_shared<op_t>(op_kind::dnnl_reshape);
+        reshape_key->set_attr<bool>(op_attr::special_zero, false);
+        reshape_key->set_attr<std::vector<int64_t>>(
+                op_attr::shape, expected_key_dims);
+        rewriter.insert_op_before(reshape_key, cur_op, 1);
+
+        // Insert reshape for value
+        auto value_dims = logical_tensor_wrapper_t(
+                cur_op->get_input_value(2)->get_logical_tensor())
+                                  .vdims();
+        dims expected_value_dims {
+                value_dims[0], -1, value_dims[3], value_dims[4]};
+        op_ptr reshape_value = std::make_shared<op_t>(op_kind::dnnl_reshape);
+        reshape_value->set_attr<bool>(op_attr::special_zero, false);
+        reshape_value->set_attr<std::vector<int64_t>>(
+                op_attr::shape, expected_value_dims);
+        rewriter.insert_op_before(reshape_value, cur_op, 2);
+
+        size_t index = 3;
+        // Insert reshape for scale
+        if (cur_op->get_attr<bool>(op_attr::with_scale)) {
+            int32_t scale_ndims = cur_op->get_input_value(index)
+                                          ->get_logical_tensor()
+                                          .ndims;
+            if (scale_ndims == 5) {
+                auto scale_dims = logical_tensor_wrapper_t(
+                        cur_op->get_input_value(index)->get_logical_tensor())
+                                          .vdims();
+                dims expected_scale_dims {
+                        scale_dims[0], -1, scale_dims[3], scale_dims[4]};
+                op_ptr reshape_scale
+                        = std::make_shared<op_t>(op_kind::dnnl_reshape);
+                reshape_scale->set_attr<bool>(op_attr::special_zero, false);
+                reshape_scale->set_attr<std::vector<int64_t>>(
+                        op_attr::shape, expected_scale_dims);
+                rewriter.insert_op_before(reshape_scale, cur_op, index);
+            }
+            index += 1;
+        }
+        // Insert reshape for mask
+        if (cur_op->get_attr<bool>(op_attr::with_mask)) {
+            int32_t mask_ndims = cur_op->get_input_value(index)
+                                         ->get_logical_tensor()
+                                         .ndims;
+            if (mask_ndims == 5) {
+                auto mask_dims = logical_tensor_wrapper_t(
+                        cur_op->get_input_value(index)->get_logical_tensor())
+                                         .vdims();
+                dims expected_mask_dims {
+                        mask_dims[0], -1, mask_dims[3], mask_dims[4]};
+                op_ptr reshape_mask
+                        = std::make_shared<op_t>(op_kind::dnnl_reshape);
+                reshape_mask->set_attr<bool>(op_attr::special_zero, false);
+                reshape_mask->set_attr<std::vector<int64_t>>(
+                        op_attr::shape, expected_mask_dims);
+                rewriter.insert_op_before(reshape_mask, cur_op, index);
+            }
+        }
+
+        // Insert reshape for output
+        auto output_dims = logical_tensor_wrapper_t(
+                cur_op->get_output_value(0)->get_logical_tensor())
+                                   .vdims();
+        const dims &expected_output_dims = output_dims;
+        op_ptr reshape_output = std::make_shared<op_t>(op_kind::dnnl_reshape);
+        reshape_output->set_attr<bool>(op_attr::special_zero, false);
+        reshape_output->set_attr<std::vector<int64_t>>(
+                op_attr::shape, expected_output_dims);
+        rewriter.insert_op_after(reshape_output, cur_op, 0);
+    }
+    rewriter.run();
+    return infer_shape(sg);
+}
+
 status_t insert_unsqueeze_and_squeeze_for_matmul(
         std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);

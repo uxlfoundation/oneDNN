@@ -142,8 +142,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_gpu)
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
                     auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
-                    auto optional_scale_and_mask = optional_scale_and_masks(
-                            pgraph, matmul_qk, /*check_xf16*/ true);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
                     auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
                             {in_edge(0, optional_scale_and_mask, 0)});
                     auto matmul_v = pgraph->append_op(

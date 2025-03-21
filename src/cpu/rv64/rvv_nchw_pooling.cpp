@@ -57,9 +57,9 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                         int ow_offset = ow * strideW - padLeft;
                         size_t size = std::min(ow_offset + kerW, inW)
                                 - std::max(ow_offset, 0);
-                        size_t cycleLength = vsetvl_e32m8(size);
+                        size_t cycleLength = __riscv_vsetvl_e32m8(size);
                         vfloat32m8_t vmax
-                                = vle32_v_f32m8(&arr_flt_min[0], cycleLength);
+                                = __riscv_vle32_v_f32m8(&arr_flt_min[0], cycleLength);
 
                         for (int id = std::max(od_offset, 0);
                                 id < std::min(od_offset + kerD, inD); id++)
@@ -73,34 +73,34 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                                 size_t iw = 0;
                                 for (; iw < size - cycleLength;
                                         iw += cycleLength) {
-                                    vfloat32m8_t vsrc = vle32_v_f32m8(
+                                    vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
                                             &local_src[local_src_offset + iw],
                                             cycleLength);
-                                    vmax = vfmax_vv_f32m8(
+                                    vmax = __riscv_vfmax_vv_f32m8(
                                             vsrc, vmax, cycleLength);
                                 }
 
-                                size_t tailLength = vsetvl_e32m8(size - iw);
+                                size_t tailLength = __riscv_vsetvl_e32m8(size - iw);
                                 {
-                                    vfloat32m8_t vsrc = vle32_v_f32m8(
+                                    vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
                                             &local_src[local_src_offset + iw],
                                             tailLength);
-                                    vmax = vfmax_vv_f32m8(
+                                    vmax = __riscv_vfmax_vv_f32m8(
                                             vsrc, vmax, tailLength);
                                 }
                             }
 
                         vfloat32m1_t min_scalar;
                         float min = -__FLT_MAX__;
-                        min_scalar = vle32_v_f32m1(&min, 1);
+                        min_scalar = __riscv_vle32_v_f32m1(&min, 1);
 
-                        cycleLength = vsetvl_e32m8(size);
+                        cycleLength = __riscv_vsetvl_e32m8(size);
                         vfloat32m1_t vred_res;
-                        vred_res = vfredmax_vs_f32m8_f32m1(
-                                vred_res, vmax, min_scalar, cycleLength);
+                        vred_res = __riscv_vfredmax_vs_f32m8_f32m1(
+                                vmax, min_scalar, cycleLength);
 
                         float red_res;
-                        vse32_v_f32m1(&red_res, vred_res, 1);
+                        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
                         dst[dst_offset] = red_res;
                     }
 }

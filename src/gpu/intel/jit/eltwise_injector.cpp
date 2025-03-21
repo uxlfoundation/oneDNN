@@ -328,9 +328,10 @@ void eltwise_injector_f32_t<ngen_generator_t>::sround_compute_fwd(int simd,
         h->add(8, bias.ud(0)(1), bias.uw(0)(8, 8, 1), imm);
     }
 
+    const uint32_t f32_digits = 24;
     const uint32_t dst_dt_digits = dnnl::impl::types::digits<uint32_t>(
             convert_ngen_type_to_dnnl(dst_dt));
-    assert(dst_dt_digits <= 24);
+    assert(dst_dt_digits <= f32_digits);
 
     data_type_t dnnl_t = to_dnnl(to_ir(dst_dt));
     const float f_min = types::min_value<float>(dnnl_t);
@@ -342,12 +343,15 @@ void eltwise_injector_f32_t<ngen_generator_t>::sround_compute_fwd(int simd,
     // u_r & 0x7F800000 != 0x7F800000 implies (~u_r) & 0x7F800000 != 0
     h->and_(simd | h->nz | f0[0], h->null.ud(), ~u_r, 0x7F800000);
 
-    const int truncation_mask = (0xffffffff << (24 - dst_dt_digits));
+    const uint32_t truncation_mask
+            = (0xffffffff << (f32_digits - dst_dt_digits));
 
     philox_4x32(simd, seed, bias);
 
-    if (getBytes(dst_dt) == 2) {
+    if (getBytes(dst_dt) == 1) {
         h->mov(simd, bia_scratch.ud(0), bias.ub(0)(simd, simd, 1));
+        // For f16->f8, align bias to f16 LSB in f32 precision
+        h->shl(simd, bia_scratch.ud(0), bia_scratch.ud(0), 13);
     } else {
         h->mov(simd, bia_scratch.ud(0), bias.uw(0)(simd, simd, 1));
     }

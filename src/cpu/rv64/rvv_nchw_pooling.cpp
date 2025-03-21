@@ -80,7 +80,8 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                                             vsrc, vmax, cycleLength);
                                 }
 
-                                size_t tailLength = __riscv_vsetvl_e32m8(size - iw);
+                                size_t tailLength
+					= __riscv_vsetvl_e32m8(size - iw);
                                 {
                                     vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
                                             &local_src[local_src_offset + iw],

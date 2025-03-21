@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #define GPU_INTEL_OCL_RNN_CELL_COMPUTE_H
 
 #include "gpu/intel/ocl/ocl_conversion.h"
-#include "gpu/intel/ocl/rnn/rnn_common.h"
+#include "gpu/intel/ocl/rnn/common.h"
 
 #if CELL_COMP_ENABLED
 #define DHC_TG get_local_size(0)

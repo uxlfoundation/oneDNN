@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_RNN_RNN_COMMON_H
-#define GPU_INTEL_OCL_RNN_RNN_COMMON_H
+#ifndef GPU_INTEL_OCL_RNN_COMMON_H
+#define GPU_INTEL_OCL_RNN_COMMON_H
 
 #include "gpu/intel/ocl/ocl_types.h"
 #include "gpu/intel/ocl/types_interop.h"

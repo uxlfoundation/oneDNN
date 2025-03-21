@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_GEMM_X8S8S32X_CONV_ZP_SRC_PAD_COMP_HPP_
-#define CPU_GEMM_X8S8S32X_CONV_ZP_SRC_PAD_COMP_HPP_
+#ifndef CPU_GEMM_X8S8S32X_CONV_ZP_SRC_PAD_COMP_HPP
+#define CPU_GEMM_X8S8S32X_CONV_ZP_SRC_PAD_COMP_HPP
 
 #include "common/c_types_map.hpp"
 #include "cpu/gemm_convolution_utils.hpp"

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef XPU_OCL_GPU_ENGINE_ID_HPP
-#define XPU_OCL_GPU_ENGINE_ID_HPP
+#ifndef XPU_OCL_ENGINE_ID_HPP
+#define XPU_OCL_ENGINE_ID_HPP
 
 #include "xpu/ocl/utils.hpp"
 

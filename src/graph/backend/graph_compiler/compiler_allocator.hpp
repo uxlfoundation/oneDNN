@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2021-2023 Intel Corporation
+ * Copyright 2021-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef BACKEND_GRAPH_COMPILER_COMPILER_ALLOCATOR_HPP
-#define BACKEND_GRAPH_COMPILER_COMPILER_ALLOCATOR_HPP
+#ifndef GRAPH_BACKEND_GRAPH_COMPILER_COMPILER_ALLOCATOR_HPP
+#define GRAPH_BACKEND_GRAPH_COMPILER_COMPILER_ALLOCATOR_HPP
 
 #include <memory>
 #include <unordered_set>

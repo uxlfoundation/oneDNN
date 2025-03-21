@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_INJECTOR_UTILS_HPP
-#define CPU_X64_JIT_INJECTOR_UTILS_HPP
+#ifndef CPU_X64_INJECTORS_INJECTOR_UTILS_HPP
+#define CPU_X64_INJECTORS_INJECTOR_UTILS_HPP
 
 #include <array>
 #include <cstddef>

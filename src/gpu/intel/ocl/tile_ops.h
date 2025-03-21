@@ -14,8 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_OCL_TILE_OPS_H
-#define GPU_OCL_TILE_OPS_H
+#ifndef GPU_INTEL_OCL_TILE_OPS_H
+#define GPU_INTEL_OCL_TILE_OPS_H
 
 #include "gpu/intel/ocl/ocl_generic_vector_ops.h"
 #include "gpu/intel/ocl/ocl_types.h"

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef REF_IO_HELPER_HPP
-#define REF_IO_HELPER_HPP
+#ifndef CPU_REF_IO_HELPER_HPP
+#define CPU_REF_IO_HELPER_HPP
 
 #include <cassert>
 

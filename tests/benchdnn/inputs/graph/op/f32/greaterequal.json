@@ -24,7 +24,7 @@
       "inputs": [
         {
           "id": 0,
-          "dtype": "f32",
+          "dtype": "s32",
           "shape": [
             1,
             16,
@@ -42,7 +42,7 @@
         }, 
         {
           "id": 1,
-          "dtype": "f32",
+          "dtype": "s32",
           "shape": [
             1,
             16,

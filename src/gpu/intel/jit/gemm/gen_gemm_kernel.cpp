@@ -535,6 +535,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool fpmath_strict = !(fpmath_tf32 || fpmath_bf16 || fpmath_f16)
             && (mode & mode_strict) && (mode & mode_w_decomp);
 
+    // Add additional optional parameters to match.
     auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
         if (!has_mode) return;
         auto &def = base.selector.precisions;
@@ -555,19 +556,30 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         }
     };
 
+    // Modify base params, used for mandatory converison.
+    auto mod_match = [&](bool has_mode, const char *(*match)(Type)) {
+        if (!has_mode) return;
+        if (match(problem_.Ta)) {
+            match_params.back().selector.precisions[0] = match(problem_.Ta);
+        }
+        if (match(problem_.Tb)) {
+            match_params.back().selector.precisions[1] = match(problem_.Tb);
+        }
+    };
+
     add_mode_matches(fpmath_tf32, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "T"; }
         return nullptr;
     });
 
-    add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
+    mod_match(fpmath_bf16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SB]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OB]";
         if (dt.isF8()) return "B";
         return nullptr;
     });
 
-    add_mode_matches(fpmath_f16, [](Type dt) -> const char * {
+    mod_match(fpmath_f16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SH]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OH]";
         if (dt.isF8()) return "H";
@@ -590,7 +602,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
                     = match_params.back().selector.precisions[1];
         }
     }
-    add_mode_matches(true, [](Type dt) -> const char * {
+
+    mod_match(true, [](Type dt) -> const char * {
         if (dt.isFP4()) return "E";
         return nullptr;
     });

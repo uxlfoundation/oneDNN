@@ -812,6 +812,12 @@ status_t fuse_to_shuffle(std::shared_ptr<subgraph_t> &sg) {
 
 status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
     // lambda function to fuse one post op into base primitive
+    std::unordered_map<op_kind_t, size_t> op_fusible_priority
+            = {{op_kind::dnnl_matmul, 10}, {op_kind::dnnl_convolution, 10},
+                    {op_kind::dnnl_batchnorm, 9}, {op_kind::dnnl_pool, 9},
+                    {op_kind::dnnl_resampling, 3}, {op_kind::dnnl_reduction, 3},
+                    {op_kind::dnnl_binary, 2}, {op_kind::dnnl_eltwise, 1},
+                    {op_kind::dnnl_reorder, 1}};
     auto fuse_post_ops_func = [&](bool &changed) -> status_t {
         auto &mgr = sg->fusion_info_mgr_;
         std::vector<std::pair<op_t *, op_t *>> fuse_groups;
@@ -821,9 +827,8 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             const auto &pops_fusible_map = get_post_ops_fusible_map();
 
             auto base_op_kind = op->get_kind();
-            // only fuse two ops each time
-            if (!pops_fusible_map.count(base_op_kind) || visited.count(op) != 0
-                    || !fuse_groups.empty())
+            // only fuse two ops each time, the priority we need to set
+            if (!pops_fusible_map.count(base_op_kind) || visited.count(op) != 0)
                 return status::success;
 
             auto out_val = op->get_output_values()[0];
@@ -852,7 +857,12 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             visited.insert(&post_op);
             return status::success;
         });
-
+        sort(fuse_groups.begin(), fuse_groups.end(),
+                [&](const std::pair<op_t *, op_t *> &a,
+                        const std::pair<op_t *, op_t *> &b) {
+                    return op_fusible_priority[a.first->get_kind()]
+                            > op_fusible_priority[b.first->get_kind()];
+                });
         VCHECK_TRANSFORM(ret == status::success, ret,
                 "Error finding fusible post_op groups");
 
@@ -860,8 +870,10 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             changed = false;
             return status::success;
         }
+        std::vector<std::pair<op_t *, op_t *>> fuse_groups_first;
+        fuse_groups_first.push_back(fuse_groups[0]);
         subgraph_rewriter_t rewriter(sg);
-        for (auto &fuse_group : fuse_groups) {
+        for (auto &fuse_group : fuse_groups_first) {
             auto base_op = fuse_group.first;
             auto post_op = fuse_group.second;
             // post op fuse to which predecessor

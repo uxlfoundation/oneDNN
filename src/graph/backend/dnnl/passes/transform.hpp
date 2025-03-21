@@ -204,9 +204,10 @@ impl::status_t lift_up_weight_reshape_for_depthwiseconv(
 // This pass will compute matmul with the src layout of transpose before matmul
 impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg);
 
-// This pass will compute matmul with the dst layout of following transpose if
-// the operator after transpose need a dense layout
-impl::status_t fuse_dst_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg);
+// This pass will compute matmul/sdpa with the dst layout of following transpose
+// if the operator after transpose need a dense layout
+impl::status_t fuse_dst_transpose_to_predecessor(
+        std::shared_ptr<subgraph_t> &sg);
 
 // This pass will fuse all the reshape to its lead op for GQA.
 impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg);
@@ -282,6 +283,9 @@ impl::status_t replace_select_values(std::shared_ptr<subgraph_t> &sg);
 ///                Select
 ///                   |
 status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg);
+
+/// This pass will transform the sdpa subgraph into a dnnl_sdpa op.
+status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg);
 
 } // namespace dnnl_impl
 } // namespace graph

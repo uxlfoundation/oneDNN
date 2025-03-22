@@ -464,10 +464,17 @@ endif()
 if (DNNL_TARGET_ARCH STREQUAL "RV64")
     # Check if the RVV Intrinsics can be compiled with the current toolchain and flags
     include(CheckCXXSourceCompiles)
-    check_cxx_source_compiles("#include <riscv_vector.h>
+    check_cxx_source_compiles("#if !defined(__riscv) || !defined(__riscv_v)
+                               #error \"RISC-V or vector extension(RVV) is not supported by the compiler\"
+                               #endif
+
+                               #if defined(__riscv_v_intrinsic) && __riscv_v_intrinsic < 12000
+                               #error \"RISC-V intrinsics v0.12 or higher is required\"
+                               #endif
+
+                               #include <riscv_vector.h>
                                int main() {
-                                size_t size = 64;
-                                return vsetvl_e32m2(size);
+                                return 0;
                                };"
                                CAN_COMPILE_RVV_INTRINSICS
     )

@@ -132,7 +132,11 @@ impl::status_t sdp_decomp_config_t::construct_params(
     memory::data_type dt_wei_user = static_cast<memory::data_type>(
             ltw(inputs[graph_inport[1]]).data_type());
     memory::data_type dt_wei = quantized ? memory::data_type::s8 : dt_src_user;
-    memory::data_type dt_inter = quantized ? dt : dt_src_user;
+    memory::data_type dt_inter = quantized
+            ? dt
+            : static_cast<memory::data_type>(
+                    ltw(sdp_op[1]->get_output_value(0)->get_logical_tensor())
+                            .data_type());
 
     ////////////////////////////////////////////////////////////////////////
     ////////////// Start Creating primitives ///////////////////////////////

@@ -36,9 +36,9 @@ void tf_gemm2_gqa(const dim bs, const dim head_num_kv, const dim group,
     const dims dot1_in2_shape {bs, head_num_kv, 1, head_size, seq_len_kv};
     const dims dot1_out_shape {bs, head_num_kv, group, seq_len_q, seq_len_kv};
     const dims scale_sz = {1};
-    logical_tensor lt_dot1_in1 {lt_id++, logical_tensor::data_type::f32,
+    logical_tensor lt_dot1_in1 {lt_id++, logical_tensor::data_type::bf16,
             dot1_in1_shape, logical_tensor::layout_type::strided};
-    logical_tensor lt_dot1_in2 {lt_id++, logical_tensor::data_type::f32,
+    logical_tensor lt_dot1_in2 {lt_id++, logical_tensor::data_type::bf16,
             dot1_in2_shape, logical_tensor::layout_type::strided};
     logical_tensor lt_dot1_out {lt_id++, logical_tensor::data_type::f32,
             dot1_out_shape, logical_tensor::layout_type::strided};
@@ -83,16 +83,16 @@ void tf_gemm2_gqa(const dim bs, const dim head_num_kv, const dim group,
     op softmax_op(op_id++, op::kind::SoftMax, "softmax");
     softmax_op.set_attr<int64_t>(
             op::attr::axis, -1); // assume -1 means last axis, to confirm
-    logical_tensor lt_softmax_out {lt_id++, logical_tensor::data_type::f32,
+    logical_tensor lt_softmax_out {lt_id++, logical_tensor::data_type::bf16,
             logical_tensor::layout_type::strided};
     softmax_op.add_input(lt_select_out);
     softmax_op.add_output(lt_softmax_out);
 
     const dims dot2_in2_shape {bs, head_num_kv, 1, seq_len_kv, head_size};
     const dims dot2_out_shape {bs, head_num_kv, group, seq_len_q, head_size};
-    logical_tensor lt_dot2_in2 {lt_id++, logical_tensor::data_type::f32,
+    logical_tensor lt_dot2_in2 {lt_id++, logical_tensor::data_type::bf16,
             dot2_in2_shape, logical_tensor::layout_type::strided};
-    logical_tensor lt_dot2_out {lt_id++, logical_tensor::data_type::f32,
+    logical_tensor lt_dot2_out {lt_id++, logical_tensor::data_type::bf16,
             dot2_out_shape, logical_tensor::layout_type::strided};
 
     op matmul_2_op(op_id++, op::kind::MatMul, "matmul_2");

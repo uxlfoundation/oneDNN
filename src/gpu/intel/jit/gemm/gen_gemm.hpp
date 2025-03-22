@@ -217,6 +217,16 @@ struct gen_gemm_t : public gpu_gemm_t {
             VDISPATCH_GEMM(attr()->post_ops_.check_sum_consistency(d->c_type(),
                                    utils::one_of(d->a_type(), s8, u8)),
                     VERBOSE_UNSUPPORTED_POSTOP);
+            auto a_kernel_type = convert_dnnl_to_kernel_type(d->a_type());
+            auto b_kernel_type = convert_dnnl_to_kernel_type(d->b_type());
+            VDISPATCH_GEMM(
+                    IMPLICATION(a_kernel_type.isInt4() || a_kernel_type.isFP4(),
+                            d->lda() % 2 == 0),
+                    VERBOSE_SHAPE_RESTRICTION);
+            VDISPATCH_GEMM(
+                    IMPLICATION(b_kernel_type.isInt4() || b_kernel_type.isFP4(),
+                            d->ldb() % 2 == 0),
+                    VERBOSE_SHAPE_RESTRICTION);
             auto valid_2d_mask = [](int mask, int ndims) {
                 return utils::one_of(mask, (1 << (ndims - 1)),
                         (1 << (ndims - 1)) + (1 << (ndims - 2)));

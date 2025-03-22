@@ -59,14 +59,20 @@ status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
         auto cur_op = op->shared_from_this();
         auto creator = opm->get_additional_item<executable_creator_func>(
                 "executable_creator");
-        std::shared_ptr<op_executable_t> exec
-                = creator(cur_op, p_engine, mgr, pd_cache);
 
-        VCHECK_COMPILE_OPS(exec != nullptr, status::invalid_graph_op,
-                "unimplemented op, can't compile op %s",
-                op->get_name().c_str());
+        try {
+            std::shared_ptr<op_executable_t> exec
+                    = creator(cur_op, p_engine, mgr, pd_cache);
+            VCHECK_COMPILE_OPS(exec != nullptr, status::invalid_graph_op,
+                    "unimplemented op, can't compile op %s",
+                    op->get_name().c_str());
 
-        sg->execs_.emplace_back(exec);
+            sg->execs_.emplace_back(exec);
+        } catch (const std::runtime_error &e) {
+            VCHECK_COMPILE_OPS(false, status::unimplemented,
+                    "failed to create executable for op %s: %s",
+                    op->get_name().c_str(), e.what());
+        }
         sg->is_constant_.push_back(op->has_attr(op_attr::is_constant)
                 && op->get_attr<bool>(op_attr::is_constant));
         return status::success;

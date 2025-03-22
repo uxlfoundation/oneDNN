@@ -469,7 +469,7 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
                                #endif
 
                                #if defined(__riscv_v_intrinsic) && __riscv_v_intrinsic < 12000
-                               #error \"Wrong intrinsics version, v0.12 or higher is required for gcc or clang\"
+                               #error \"RISC-V intrinsics v0.12 or higher is required\"
                                #endif
 
                                #include <riscv_vector.h>

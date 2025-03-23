@@ -113,7 +113,7 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
             && bgmmc.orig_wei_dt == bgmmc.wei_dt && bgmmc.is_amx
             && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M && a_dt_ok && a_tag_ok
             && (bgmmc.reduce_kind == matmul_reduce_kind::undef) && b_tag_ok
-            && b_dt_ok && !has_zp;
+            && b_dt_ok && !has_zp && !bgmmc.packed_sparse_weights;
 }
 
 bool matmul_amx_blocking_params_macro_t::divs_are_acceptable() const {

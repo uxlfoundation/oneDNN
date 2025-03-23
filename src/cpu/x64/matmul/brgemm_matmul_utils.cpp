@@ -1340,8 +1340,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);
     // When M == 1 MatMul always considers A to be non-transposed even if A md
-    // was created using "ba" tag.
-    bgmmc.treat_A_as_plain = bgmmc.M == 1;
+    // was created using "ba" tag. It is not plain in cab layout.
+    bgmmc.treat_A_as_plain = bgmmc.M == 1
+            && IMPLICATION(bgmmc.batch != 1,
+                    bm_conf_utils.check_is_plain(bgmmc.src_tag));
     bgmmc.transposed_A = ((transposed_A && !bgmmc.treat_A_as_plain)
             || bgmmc.src_tag == adbc);
     // For batched problems with plain A and C and fully broadcasted across B

@@ -1738,8 +1738,7 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.buffer_b_chunk_sz = bgmmc.tr_b_dt_sz * rnd_up(bgmmc.N_blk, bgmmc.LDB)
             * rnd_up(bgmmc.K_chunk_elems, bgmmc.wei_k_blk);
 
-    bgmmc.buffer_b_per_thread_sz
-            = bgmmc.buffer_b_chunk_sz * bgmmc.brgemm_batch_size;
+    bgmmc.buffer_b_per_thread_sz = bgmmc.buffer_b_chunk_sz;
 
     bgmmc.buffer_reduce_per_thread_sz = 0;
     if (bgmmc.reduce_kind == matmul_reduce_kind::src) {

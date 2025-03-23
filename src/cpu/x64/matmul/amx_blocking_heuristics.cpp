@@ -955,9 +955,11 @@ void matmul_amx_blocking_params_micro_t::set_blocking_parameters(
             if (brgemm_k_elems >= K) {
                 k_blk_ = K;
                 k_chunk_size_ = 1;
+                brgemm_batch_size_ = 1;
             } else {
                 k_blk_ = brgemm_k_elems;
                 k_chunk_size_ = 1;
+                brgemm_batch_size_ = 1;
             }
         } else if (current_k_tail == 0
                 && K % (k_blk_ * brgemm_batch_size_) == 0) {

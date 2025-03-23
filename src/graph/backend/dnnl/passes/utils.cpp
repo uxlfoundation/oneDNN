@@ -503,6 +503,35 @@ get_post_ops_fusible_map() {
                     {dnnl_layernorm, {dnnl_eltwise, dnnl_binary}},
                     {dnnl_groupnorm, {dnnl_eltwise, dnnl_binary}},
             };
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    // For NVIDIA GPU, binary op with eltwise post-op fusion is unsupported
+    static std::unordered_map<op_kind_t, std::unordered_set<op_kind_t>>
+            modified_map = fusible_map;
+    auto bn_it = modified_map.find(dnnl_batchnorm);
+    if (bn_it != modified_map.end()) { bn_it->second.erase(dnnl_eltwise); }
+    if (bn_it != modified_map.end()) {
+        std::cout << "Supported post-ops for bn op:" << std::endl;
+        for (const auto &op : bn_it->second) {
+            std::cout << static_cast<int>(op) << ": " << kind2str(op)
+                      << std::endl;
+        }
+    }
+
+    auto binary_it = modified_map.find(dnnl_binary);
+    if (binary_it != modified_map.end()) {
+        binary_it->second.erase(dnnl_eltwise);
+    }
+    if (binary_it != modified_map.end()) {
+        std::cout << "Supported post-ops for binary op:" << std::endl;
+        for (const auto &op : binary_it->second) {
+            std::cout << static_cast<int>(op) << ": " << kind2str(op)
+                      << std::endl;
+        }
+    }
+    return modified_map;
+#endif
+
     return fusible_map;
 }
 

@@ -737,7 +737,7 @@ size_t jit_brgemm_amx_uker_base_t::C_offset(const brgemm_iteration_t &bi,
     const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
     const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
     const auto bd_shift = bd - (ununroll_bd_loop ? bi_bd_start : 0);
-    size_t ldc_elem = (size_t)ldb * bi.ldi->block(0);
+    size_t ldc_elem = (size_t)ldb * brg.ld_block;
     size_t bloc_idx = ldc_elem / brg.LDC;
     size_t in_block = ldc_elem % brg.LDC;
 

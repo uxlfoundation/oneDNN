@@ -42,6 +42,17 @@ jobs:
       - name: Check commit messages
         run: python3 ./.github/automation/commit-msg-check.py "${{ github.event.pull_request.head.sha }}" "${{ github.event.pull_request.base.sha }}"
 
+  pr-header-guards:
+    name: Header guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Check header guards
+        run: ./scripts/fix_header_guards.py -v $(git diff --name-only "${{ github.event.pull_request.base.sha }}")
+
   pr-clang-format:
     name: Clang-Format
     runs-on: ubuntu-22.04

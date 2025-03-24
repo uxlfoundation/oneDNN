@@ -33,6 +33,8 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+using namespace gemmstone;
+
 status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
     using namespace prop_kind;
     using namespace data_type;

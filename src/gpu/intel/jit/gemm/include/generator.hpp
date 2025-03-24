@@ -46,7 +46,7 @@
 #include "generator/pieces/copy_plan.hpp"
 #include "generator/pieces/register_block.hpp"
 #include "generator/pieces/state.hpp"
-#include "emulation.hpp"
+#include "gpu/intel/jit/emulation.hpp"
 
 #include "gpu/intel/microkernels/entrance_agent.hpp"
 #include "gpu/intel/microkernels/package.hpp"
@@ -57,7 +57,7 @@
 #define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
 #define FORWARD(hw) NGEN_FORWARD_ELF(hw)
 
-#define GENERATOR_BASE(hw) generator_t<hw>
+#define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
 
 
 template <ngen::HW hw>
@@ -72,15 +72,11 @@ public:
     // Kernel generation entrypoints.
     void gemm(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
     void gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
-    micro::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC = false);
+    dnnl::impl::gpu::intel::micro::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, dnnl::impl::gpu::intel::micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC = false);
 
     // Driver information retrieval.
     static CommonDriverInfo driverInfo(GEMMProblem problem, const GEMMStrategy &strategy);
 
-    static bool supportedBinaryOp(alg_kind_t alg) {
-        using namespace alg_kind;
-        return utils::one_of(alg, binary_add, binary_sub, binary_mul, binary_div, binary_min, binary_max);
-    }
 
 protected:
     ngen::InterfaceHandler &interface = super::interface_;
@@ -89,7 +85,7 @@ protected:
     GRFMultirange outputCRange;
     std::vector<RegisterBlock> outputCLayout;
 
-    using Injector = post_op_injector_t<GENERATOR_BASE(hw)>;
+    using Injector = dnnl::impl::gpu::intel::jit::post_op_injector_t<GENERATOR_BASE(hw)>;
     std::unique_ptr<Injector> postOpInjector;
 
     class status_stream {
@@ -141,18 +137,18 @@ protected:
     ngen::Bundle getHint(HintType type, const GEMMStrategy &strategy);
 
     // emulation.cpp
-    friend struct EmulationImplementation;
+    friend struct dnnl::impl::gpu::intel::jit::EmulationImplementation;
     template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0,   const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
-    template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::Immediate src0, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc ={})                                              { EmulationImplementation::emov<DT>(*this, mod, dst, src0, strategy.emulate, loc); }
+    template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::Immediate src0, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc ={})                                              { dnnl::impl::gpu::intel::jit::EmulationImplementation::emov<DT>(*this, mod, dst, src0, strategy.emulate, loc); }
     template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
-    template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { EmulationImplementation::eadd<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
-    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
-    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
-    template <typename DT = void> void eshl(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { EmulationImplementation::eshl<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
-    template <typename DT = void> void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { EmulationImplementation::eshr<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
-    template <typename DT = void> void emulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int32_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})      { EmulationImplementation::emulConstant<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { dnnl::impl::gpu::intel::jit::EmulationImplementation::eadd<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { dnnl::impl::gpu::intel::jit::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { dnnl::impl::gpu::intel::jit::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void eshl(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { dnnl::impl::gpu::intel::jit::EmulationImplementation::eshl<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { dnnl::impl::gpu::intel::jit::EmulationImplementation::eshr<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int32_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})      { dnnl::impl::gpu::intel::jit::EmulationImplementation::emulConstant<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
     template <typename DT = void> void emulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, Type src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {});
-    template <typename S1> void emul32High(const ngen::InstructionModifier &mod, const ngen::RegData &dstHi, const ngen::RegData &src0, const S1 &src1, ngen::SourceLocation loc = {})                                                                     { EmulationImplementation::emul32High(*this, mod, dstHi, src0, src1, loc); }
+    template <typename S1> void emul32High(const ngen::InstructionModifier &mod, const ngen::RegData &dstHi, const ngen::RegData &src0, const S1 &src1, ngen::SourceLocation loc = {})                                                                     { dnnl::impl::gpu::intel::jit::EmulationImplementation::emul32High(*this, mod, dstHi, src0, src1, loc); }
 
     template <typename S0, typename S2> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const S2 &src2, const CommonStrategy &strategy, CommonState &state, bool sub, ngen::SourceLocation loc = {});
     template <typename S0> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const ngen::Immediate &src2, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});

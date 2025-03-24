@@ -56,9 +56,9 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
 
     auto problem = pd()->kernel_desc()->problem();
 
-    if (!last_k_block) flags |= FlagNonfinalKBlock;
-    if (cmask & 1) flags |= FlagCOColumn;
-    if (cmask & 2) flags |= FlagCORow;
+    if (!last_k_block) flags |= gemmstone::FlagNonfinalKBlock;
+    if (cmask & 1) flags |= gemmstone::FlagCOColumn;
+    if (cmask & 2) flags |= gemmstone::FlagCORow;
 
     compute::kernel_arg_list_t arg_list;
     int argn = 0;
@@ -160,13 +160,13 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
 
     compute::range_t gws = compute::range_t::empty();
 
-    gws[0] = utils::div_up(m, nocopy_info()->unroll[LoopM]);
-    gws[1] = utils::div_up(n, nocopy_info()->unroll[LoopN]);
+    gws[0] = utils::div_up(m, nocopy_info()->unroll[gemmstone::LoopM]);
+    gws[1] = utils::div_up(n, nocopy_info()->unroll[gemmstone::LoopN]);
     gws[2] = nocopy_info()->kParallel() ? nstl::max(1, utils::div_up(k, k0))
                                         : lws_k;
 
-    compute::range_t lws = {size_t(nocopy_info()->wg[LoopM]),
-            size_t(nocopy_info()->wg[LoopN]), size_t(lws_k)};
+    compute::range_t lws = {size_t(nocopy_info()->wg[gemmstone::LoopM]),
+            size_t(nocopy_info()->wg[gemmstone::LoopN]), size_t(lws_k)};
 
     if (nocopy_info()->isNMK()) {
         std::swap(lws[0], lws[1]);
@@ -405,8 +405,8 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 
     if (k_parallel_fixed) block_k = pd()->kernel_desc()->aux_params()->k0;
 
-    block_m = utils::rnd_up(block_m, nocopy_info()->wgTile(LoopM));
-    block_n = utils::rnd_up(block_n, nocopy_info()->wgTile(LoopN));
+    block_m = utils::rnd_up(block_m, nocopy_info()->wgTile(gemmstone::LoopM));
+    block_n = utils::rnd_up(block_n, nocopy_info()->wgTile(gemmstone::LoopN));
 
     int32_t k0 = 1;
     if (k_parallel_fixed) {

@@ -68,7 +68,7 @@ void BLASKernelGenerator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProble
                     problem, strategy, state);
 
 #if 1
-    if (gpu_utils::dev_getenv("ALL_PF",0)) {
+    if (dnnl::impl::gpu::intel::gpu_utils::dev_getenv("ALL_PF",0)) {
         if (doA) mov(1, nextFlagL3PFA, 0xFFFF);
         if (doB) mov(1, nextFlagL3PFB, 0xFFFF);
     }

@@ -37,7 +37,8 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-static inline Type convert_dnnl_to_kernel_type(data_type_t type) {
+static inline gemmstone::Type convert_dnnl_to_kernel_type(data_type_t type) {
+    using gemmstone::Type;
     switch (type) {
         default: assert(!"Unknown type");
         case data_type::f64: return Type::f64;
@@ -60,11 +61,15 @@ static inline Type convert_dnnl_to_kernel_type(data_type_t type) {
 struct gen_gemm_kernel_desc_t {
     friend struct gen_gemm_kernel_t;
 
-    const GEMMProblem *problem() const { return &problem_; };
-    const GEMMStrategy *strategy() const { return &strategy_; };
+    const gemmstone::GEMMProblem *problem() const { return &problem_; };
+    const gemmstone::GEMMStrategy *strategy() const { return &strategy_; };
 
-    const CommonDriverInfo *driver_info() const { return &driver_info_; };
-    const EvaluateAuxOutput *aux_params() const { return &aux_params_; };
+    const gemmstone::CommonDriverInfo *driver_info() const {
+        return &driver_info_;
+    };
+    const gemmstone::EvaluateAuxOutput *aux_params() const {
+        return &aux_params_;
+    };
 
     compute::scalar_type_t scalar_type() const;
 
@@ -76,7 +81,7 @@ struct gen_gemm_kernel_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
-    const kcatalog::Entry &entry() const {
+    const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
         return *entry_;
     };
@@ -85,11 +90,11 @@ protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
     int stepping_ = 0;
-    GEMMProblem problem_ = {};
-    GEMMStrategy strategy_;
-    const kcatalog::Entry *entry_ = nullptr;
-    EvaluateAuxOutput aux_params_;
-    CommonDriverInfo driver_info_;
+    gemmstone::GEMMProblem problem_ = {};
+    gemmstone::GEMMStrategy strategy_;
+    const gemmstone::kcatalog::Entry *entry_ = nullptr;
+    gemmstone::EvaluateAuxOutput aux_params_;
+    gemmstone::CommonDriverInfo driver_info_;
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;

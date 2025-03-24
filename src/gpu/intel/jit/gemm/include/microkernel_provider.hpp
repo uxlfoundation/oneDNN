@@ -32,7 +32,7 @@ struct HWInformation {
 };
 
 /* Main entrypoint for microkernel auto-selection */
-micro::Package selectGEMMMicrokernel(micro::GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
+dnnl::impl::gpu::intel::micro::Package selectGEMMMicrokernel(dnnl::impl::gpu::intel::micro::GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
                                      const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
                                      void (*strategyAdjuster)(GEMMStrategy &strategy) = nullptr);
 

@@ -399,8 +399,9 @@ bool BLASKernelGenerator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &proble
     return ok;
 }
 
-static inline BinaryOp dnnlToBinaryOp(alg_kind_t kind)
+static inline BinaryOp dnnlToBinaryOp(dnnl::impl::alg_kind_t kind)
 {
+    using namespace dnnl::impl;
     switch (kind) {
         case alg_kind::binary_add:   return BinaryOp::Add;
         case alg_kind::binary_sub:   return BinaryOp::Sub;
@@ -537,8 +538,8 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
     for (size_t i = poMin; i < poMax; i++) {
         auto &entry = problem.postOps[i];
         switch (entry.kind()) {
-            case post_op::kind_t::eltwise: {
-                using Injector = eltwise_injector_f32_t<GENERATOR_BASE(hw)>;
+            case dnnl::impl::gpu::intel::post_op::kind_t::eltwise: {
+            using Injector = dnnl::impl::gpu::intel::jit::eltwise_injector_f32_t<GENERATOR_BASE(hw)>;
                 if (state.Tacc != Type::f32) stub();
 
                 int euCount = 0; /* only used for a DG2 W/A for conv */
@@ -555,7 +556,7 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
                 injector.compute(C_grfs, C_ngrf);
                 break;
             }
-            case post_op::kind_t::binary: {
+            case dnnl::impl::gpu::intel::post_op::kind_t::binary: {
                 auto &ld = state.inputs.binaryLDs[i];
                 auto &eff = state.effBinary[i];
                 auto op = dnnlToBinaryOp(entry.as_binary().alg);
@@ -573,21 +574,21 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
         }
     }
     if(problem.cStochasticRound){
-        using Injector = eltwise_injector_f32_t<GENERATOR_BASE(hw)>;
+        using Injector = dnnl::impl::gpu::intel::jit::eltwise_injector_f32_t<GENERATOR_BASE(hw)>;
         int euCount = 0; /* only used for a DG2 W/A for conv */
-        Injector injector{this, alg_kind::eltwise_stochastic_round, 0.0, 0.0, 1.0, 
+        Injector injector{this, dnnl::impl::alg_kind::eltwise_stochastic_round, 0.0, 0.0, 1.0,
                           euCount, GRFRange(), problem.postOpFwd};
         auto scratch = state.ra.try_alloc_range(injector.preferred_scratch_regs());
         if (scratch.isInvalid())
             scratch = state.ra.alloc_range(injector.min_scratch_regs());
         if (scratch.isInvalid())
             stub();
-        
+
         injector.set_scratch(scratch);
         injector.prepare();
         injector.compute(C_grfs, C_ngrf, state.inputs.sroundSeed.getBase(), state.inputs.sroundSeed.getOffset(), problem.Tc_ext.ngen());
     }
-        
+
 
     mark(lSkip);
 }

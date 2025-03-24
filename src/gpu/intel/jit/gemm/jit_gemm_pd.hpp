@@ -48,6 +48,12 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
         return {{}, sum_t(mode_t::impl_managed(), {}), {}};
     }
 
+    static constexpr bool supported_binary_op(alg_kind_t alg) {
+        using namespace alg_kind;
+        return utils::one_of(alg, binary_add, binary_sub, binary_mul,
+                binary_div, binary_min, binary_max);
+    }
+
     status_t init_post_ops();
 
     dim_t ld_binary(int idx) const;

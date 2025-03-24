@@ -16,7 +16,7 @@
 
 
 #include "ngen_object_helpers.hpp"
-#include "emulation.hpp"
+#include "ngen_emulation.hpp"
 #include "hw_utils.hpp"
 
 using namespace ngen;

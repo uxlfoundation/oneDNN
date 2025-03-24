@@ -207,7 +207,7 @@ private:
     compute::kernel_t kernel_[2][2]; // [first_k_block][last_k_block]
     compute::kernel_t copy_kernel_[2][2]; // [trans][clear_sum]
 
-    CommonDriverInfo compute_info_;
+    gemmstone::CommonDriverInfo compute_info_;
 
     compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
     int eu_count_ = 0;
@@ -215,7 +215,7 @@ private:
     char co_kind_ = 'N';
     bool walk_n_first_ = false;
 
-    GEMMProblem problem_;
+    gemmstone::GEMMProblem problem_;
 
     const pd_t *pd() const { return (const pd_t *)gpu_primitive_t::pd().get(); }
 };

@@ -36,6 +36,8 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
         pass_pipeline_t &pipeline) {
     // Directly lower down (1 to 1 mapping)
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    // handle the case that the input is a scalar tensor
+    BACKEND_DNNL_ADD_PASS(pipeline, insert_host_scalar);
     // Decompose select to binary ops if necessary
     BACKEND_DNNL_ADD_PASS(pipeline, decompose_select_to_binary_ops);
 

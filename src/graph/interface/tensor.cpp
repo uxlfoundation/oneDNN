@@ -119,6 +119,20 @@ dnnl_graph_tensor::dnnl_graph_tensor(
                 = tensor_malloc(num_bytes, eng, allocator_t::mem_type_t::temp);
         assertm(data, "Can't allocate memory for a tensor!");
         handle_.reset(data, [eng](void *p) { tensor_free(p, eng); });
+    } else if (lt.property == property_type::host_scalar) {
+        // Allocate memory for the scalar and copy the value
+        size_t scalar_size = logical_tensor_wrapper_t(lt).size();
+        void *scalar_data = static_cast<dnnl::impl::graph::allocator_t *>(
+                eng->get_allocator())
+                                    ->allocate(scalar_size,
+                                            {allocator_t::mem_type_t::temp,
+                                                    DNNL_CPU_MEMALIGNMENT});
+        assertm(scalar_data, "Can't allocate memory for a scalar!");
+        handle_.reset(scalar_data, [eng](void *p) {
+            static_cast<dnnl::impl::graph::allocator_t *>(eng->get_allocator())
+                    ->deallocate(p);
+            ;
+        });
     } else {
         handle_.reset(handle, dummy_destructor);
     }

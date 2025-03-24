@@ -348,9 +348,11 @@ public:
     tdim_info_t() = default;
     tdim_info_t(
             int tidx, const tdim_t &tdim, const view_t &view, int64_t block = 1)
-        : tidx_(tidx), block_(block), dim_(&tdim) {
-        base_mod_ = to_base(tdim, view.vvars());
-        size_ = view.tlayout().dim(tidx);
+        : tidx_(tidx)
+        , size_(view.tlayout().dim(tidx))
+        , base_mod_(to_base(tdim, view.vvars()))
+        , block_(block)
+        , dim_(&tdim) {
         for (dim_idx_t i = 0; i < tdim.nvargs(); i++) {
             vidxs_[i] = tdim.vidx(i);
             vstrides_[i] = tdim.vstride(i);
@@ -1827,10 +1829,10 @@ class view_iterator_t {
 public:
     view_iterator_t(const view_info_t &info)
         : info_(info)
+        , inner_elems_(1)
         , block_off_(nblocks())
         , block_dims_(nblocks())
         , off_(info.vlayout().ndims()) {
-        inner_elems_ = 1;
         for (int i = 0; i < info_.inner_idx(); i++) {
             inner_elems_ *= (int)blocks()[i].block;
         }

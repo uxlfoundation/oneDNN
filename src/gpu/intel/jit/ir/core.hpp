@@ -910,6 +910,7 @@ public:
     template <typename T>
     std::vector<T> mutate(const std::vector<T> &v) {
         std::vector<T> new_v;
+        new_v.reserve(v.size());
         for (auto &e : v)
             new_v.push_back(mutate(e));
         return new_v;

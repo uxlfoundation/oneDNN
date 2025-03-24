@@ -21,8 +21,6 @@
 #include <stdexcept>
 #include <vector>
 
-#include "common/impl_registration.hpp"
-
 #include "pieces/address_setup.cxx"
 #include "pieces/asm_helpers.cxx"
 #include "pieces/atomic_fusions.cxx"

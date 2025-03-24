@@ -178,11 +178,11 @@ struct GEMMProblem : public CommonProblem {
     bool postOpFwd = true;                          // Eltwise parameters
     bool cStochasticRound = false;
 
-    gpu_post_ops_t postOps;                         // Fused post operations to apply
-    std::bitset<post_ops_t::post_ops_limit> binaryRow;      // Binary op broadcasts row data if false
-    std::bitset<post_ops_t::post_ops_limit> binaryCol;      // Binary op broadcasts column data if false
-    std::bitset<post_ops_t::post_ops_limit> binaryBatch;    // Binary op broadcasts in batch dimension if false
-    std::bitset<post_ops_t::post_ops_limit> binaryTrans;    // Used to compute GEMMProblem::binary
+    dnnl::impl::gpu::intel::gpu_post_ops_t postOps;         // Fused post operations to apply
+    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryRow;      // Binary op broadcasts row data if false
+    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryCol;      // Binary op broadcasts column data if false
+    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryBatch;    // Binary op broadcasts in batch dimension if false
+    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryTrans;    // Used to compute GEMMProblem::binary
 
     // The following data is derived from the postOps and does not need
     //   to be considered for equality/hashing purposes.
@@ -265,7 +265,7 @@ struct GEMMProblem : public CommonProblem {
     std::string scalarsToString() const;
 
     /* Serialization for kernel cache. */
-    void serialize(serialization_stream_t &s) const
+    void serialize(dnnl::impl::serialization_stream_t &s) const
     {
         s.append(Ta, Tb, Tc, Ts);
         s.append(Ta_ext, Tb_ext, Tc_ext);

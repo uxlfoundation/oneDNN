@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,22 +16,36 @@
 
 #ifndef GEMMSTONE_GUARD_UTILS_HPP
 #define GEMMSTONE_GUARD_UTILS_HPP
-#include "common/cpp_compat.hpp"
-
 #include <stdexcept>
+#include <string>
 
 #ifdef __cpp_lib_source_location
 #include <source_location>
 #endif
 
-#include "common/math_utils.hpp"
-#include "common/utils.hpp"
-
 #include "namespace_start.hxx"
 
-using dnnl::impl::utils::one_of;
-static inline int ilog2(size_t x) {
-    return math::ilog2q(x);
+template <typename T, typename T1>
+static inline constexpr bool one_of(T value, T1 option1)
+{
+    return (value == option1);
+}
+
+template <typename T, typename T1, typename... TO>
+static inline constexpr bool one_of(T value, T1 option1, TO... others)
+{
+    return (value == option1) || one_of(value, others...);
+}
+
+static inline int ilog2(size_t x)
+{
+#ifdef _MSC_VER
+    unsigned long index = 0;
+    (void) _BitScanReverse64(&index, __int64(x));
+    return index;
+#else
+    return (sizeof(unsigned long long) * 8 - 1) - __builtin_clzll(x);
+#endif
 }
 
 template <typename T> static inline constexpr bool equal(T t) { return true; }
@@ -62,12 +76,35 @@ static inline int align_up(int value, int factor)
     return factor * div_up(value, factor);
 }
 
-using dnnl::impl::math::gcd;
+template <typename T> static inline T gcd(T x, T y)
+{
+    if (x == 0) return y;
+    if (y == 0) return x;
+
+    // Optimized path for powers of 2 (common case)
+    if ((x & (x - 1)) == 0 && (y & (y - 1)) == 0)
+        return std::min(x, y);
+
+    // Euclidean algorithm for general values
+    T g1 = std::max(x, y), g2 = std::min(x, y);
+
+    for (;;) {
+        T g = g1 % g2;
+        if (g == 0)
+            return g2;
+        g1 = g2;
+        g2 = g;
+    }
+}
 
 template <typename T> static inline T lcm(T x, T y)
 {
     if (x == 0 || y == 0) return 0;
-    return dnnl::impl::math::lcm(x, y);
+
+    if ((x & (x - 1)) == 0 && (y & (y - 1)) == 0)
+        return std::max(x, y);
+
+    return (x * y) / gcd(x, y);
 }
 
 static inline int largest_pow2_divisor(int x)

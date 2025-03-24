@@ -404,6 +404,86 @@ using const_scales_filler
         = const_memory_filler_t<op_attr::scales, float, float>;
 using const_zps_filler = const_memory_filler_t<op_attr::zps, int64_t, int32_t>;
 
+struct host_scalar_executable_t : public op_executable_t {
+    static arg_indices_t get_arg_indices(
+            const op_t *op, fusion_info_mgr_t &mgr) {
+        UNUSED(mgr);
+        arg_indices_t arg_indices;
+        arg_indices.insert(
+                {DNNL_ARG_FROM, indices_t {indices_t::type_t::input, 0}});
+        arg_indices.insert(
+                {DNNL_ARG_TO, indices_t {indices_t::type_t::output, 0}});
+        return arg_indices;
+    }
+
+    host_scalar_executable_t(std::shared_ptr<op_t> &op,
+            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+            pd_cache_t &pd_cache) {
+        UNUSED(op);
+        UNUSED(p_engine);
+        UNUSED(mgr);
+        UNUSED(pd_cache);
+    }
+
+    void execute(const stream &stream,
+            const std::unordered_map<int, memory> &args) const override {
+        auto it_src = args.find(DNNL_ARG_FROM);
+        auto it_dst = args.find(DNNL_ARG_TO);
+        if (it_src == args.end() || it_dst == args.end()) {
+            assert(!"cannot find memory for DNNL_ARG_FROM or DNNL_ARG_TO");
+            return;
+        }
+
+        const memory &src_mem = it_src->second;
+        const memory &dst_mem = it_dst->second;
+
+        // handle cross-engine case
+        auto host_eng = engine(host_eng_kind, host_eng_idx);
+
+        // const memory new_src_mem = make_dnnl_memory(
+        //         dst_mem.get_desc(), host_eng, src_mem.get_data_handle());
+        dnnl::reorder(src_mem, dst_mem)
+                .execute(stream, const_cast<memory &>(src_mem),
+                        const_cast<memory &>(dst_mem));
+    }
+
+#ifdef DNNL_WITH_SYCL
+    ::sycl::event execute_sycl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<::sycl::event> &deps) const override {
+        const memory &src_mem = args.find(DNNL_ARG_FROM)->second;
+        const memory &dst_mem = args.find(DNNL_ARG_TO)->second;
+        auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
+        auto e = sycl_queue.memcpy(dst_mem.get_data_handle(),
+                src_mem.get_data_handle(), dst_mem.get_desc().get_size());
+        return e;
+    }
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    cl_event execute_ocl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<cl_event> &deps) const override {
+        const memory &src_mem = args.find(DNNL_ARG_FROM)->second;
+        const memory &dst_mem = args.find(DNNL_ARG_TO)->second;
+        assert(deps.size() <= 1);
+        // Passing the empty event to memcpy below causes failure.
+        const bool empty = deps.empty() || deps[0] == nullptr;
+        const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
+        cl_event e;
+        UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
+                dst_mem.get_data_handle(), src_mem.get_data_handle(),
+                dst_mem.get_desc().get_size(), num,
+                empty ? nullptr : deps.data(), &e));
+        return e;
+    }
+#endif
+
+private:
+    const engine::kind host_eng_kind = engine::kind::cpu;
+    const size_t host_eng_idx = 0;
+};
+
 extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
         dnnl_memory_desc_t *, int, const dnnl_dims_t, dnnl_data_type_t,
         const char *);

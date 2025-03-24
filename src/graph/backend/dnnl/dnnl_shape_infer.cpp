@@ -545,6 +545,16 @@ status_t infer_dnnl_binary_output_shape(op_t *n,
     }
 }
 
+status_t infer_dnnl_host_scalar_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    //dims shape = {1};
+    // utils::array_copy(outputs[0]->dims, shape.data(), shape.size());
+    // utils::array_copy(outputs[0]->layout.strides, shape.data(), shape.size());
+    set_shape_and_strides(*outputs[0], {1});
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

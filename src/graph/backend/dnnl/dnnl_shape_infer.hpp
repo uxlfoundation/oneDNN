@@ -107,6 +107,10 @@ status_t infer_binary_select_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs);
 
+status_t infer_dnnl_host_scalar_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs);
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

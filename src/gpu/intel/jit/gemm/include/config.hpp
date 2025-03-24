@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,5 +16,24 @@
 
 #ifndef GEMMSTONE_GUARD_CONFIG_HPP
 #define GEMMSTONE_GUARD_CONFIG_HPP
+
+#include "common/verbose.hpp"
+
+#include "internal/namespace_start.hxx"
+
+enum class GEMMVerbose {
+    DebugInfo = dnnl::impl::verbose_t::debuginfo
+};
+
+inline int getVerbose(GEMMVerbose v) {
+    return dnnl::impl::get_verbose(static_cast<dnnl::impl::verbose_t::flag_kind>(v));
+}
+
+template <typename... Args>
+inline void verbosePrintf(const char *fmtStr, Args... args) {
+    return dnnl::impl::verbose_printf(fmtStr, args...);
+}
+
+#include "internal/namespace_end.hxx"
 
 #endif /* header guard */

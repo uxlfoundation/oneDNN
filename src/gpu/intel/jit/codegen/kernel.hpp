@@ -509,7 +509,7 @@ public:
                 };
                 src0 = subreg(src0_);
                 src1 = subreg(src1_);
-                dst = dst_.sub_reg_data(i, 1);
+                dst = dst_.sub_reg_data(i, esize);
                 if (ngen_is_dw(src1.type()) && ngen_is_w(src0.type())) {
                     emul(mod, dst.reg_data(), src1.reg_data(), src0.reg_data());
                 } else {

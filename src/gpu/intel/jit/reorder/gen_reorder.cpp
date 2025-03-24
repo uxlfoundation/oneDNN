@@ -83,10 +83,13 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
                               f4_e3m0, f4_e2m1, s32, s8, u8, f64),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_REORDER(utils::one_of(dst_dt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                              s32, s8, u8, f64),
+                              f4_e3m0, f4_e2m1, s32, s8, u8, f64),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_REORDER(IMPLICATION(utils::one_of(src_dt, f4_e3m0, f4_e2m1),
                               utils::one_of(dst_dt, f32, f16, bf16)),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_REORDER(IMPLICATION(utils::one_of(dst_dt, f4_e3m0, f4_e2m1),
+                              utils::one_of(src_dt, f32, f16, bf16)),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_REORDER(IMPLICATION(src_dt == f16 || dst_dt == f16,
                               device_info->has_native(f16)),
@@ -175,10 +178,10 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     cfg = std::make_shared<reorder_config_t>(exec_cfg, src_layout, dst_layout);
     cfg->set_zp_cfg(zp_cfg);
 
-    if (utils::one_of(src_dt, f4_e2m1, f4_e3m0)) {
+    auto count_inner_elems = [&](const layout_t &layout) {
         auto dims = cfg->tiles().front().dims();
         dim_t contiguous_inner_elems = 1;
-        for (auto &b : cfg->src_layout().user().blocks()) {
+        for (auto &b : layout.blocks()) {
             if (b.block == 1) continue;
             if ((dim_t)b.stride != contiguous_inner_elems) break;
             if (b.block > dims[b.dim_idx]) {
@@ -189,8 +192,20 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
             contiguous_inner_elems *= b.block;
             dims[b.dim_idx] /= b.block;
         }
+        return contiguous_inner_elems;
+    };
+
+    if (utils::one_of(src_dt, f4_e2m1, f4_e3m0)) {
+        auto contiguous_inner_elems
+                = count_inner_elems(cfg->src_layout().user());
         VDISPATCH_REORDER(contiguous_inner_elems % 8 == 0,
                 VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+    }
+    if (utils::one_of(dst_dt, f4_e2m1, f4_e3m0)) {
+        auto contiguous_inner_elems
+                = count_inner_elems(cfg->dst_layout().user());
+        VDISPATCH_REORDER(contiguous_inner_elems % 8 == 0,
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
     }
     VDISPATCH_REORDER_SC(
             init_kernel_info(), "kernel initialization unsuccessful");

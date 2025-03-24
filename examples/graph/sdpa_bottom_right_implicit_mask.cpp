@@ -120,6 +120,7 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
 
     // Create execution dnnl::engine.
     dnnl::engine eng = make_engine_with_allocator(ekind, 0, alloc);
+    dnnl::engine host_eng(engine::kind::cpu, 0);
     // Create dnnl::stream.
     dnnl::stream strm(eng);
 
@@ -165,13 +166,15 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     gen_index_row_op.add_outputs({gen_index_row_out_lt});
 
     auto mask_add_op = op(id++, op::kind::Add, "mask_add_op");
-    auto mask_add_in_lt = logical_tensor(id++, data_type::s32, scale_sz, layout_type::strided); //scalar
+    auto mask_add_in_lt = logical_tensor(id++, data_type::s32, 0,
+            layout_type::strided, property_type::host_scalar); //scalar
     auto mask_add_out_lt = logical_tensor(id++, data_type::s32, score_sz, layout_type::strided); 
     mask_add_op.add_inputs({gen_index_row_out_lt, mask_add_in_lt});
     mask_add_op.add_outputs({mask_add_out_lt});
 
     auto mask_sub_op = op(id++, op::kind::Subtract, "mask_sub_op");
-    auto mask_sub_op_in_lt = logical_tensor(id++, data_type::s32, scale_sz, layout_type::strided); //scalar
+    auto mask_sub_op_in_lt = logical_tensor(id++, data_type::s32, 0,
+            layout_type::strided, property_type::host_scalar); //scalar
     auto mask_sub_op_out_lt = logical_tensor(id++, data_type::s32, score_sz, layout_type::strided); 
     mask_sub_op.add_inputs({mask_add_out_lt, mask_sub_op_in_lt});
     mask_sub_op.add_outputs({mask_sub_op_out_lt});
@@ -233,12 +236,14 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     compiled_partition cp = partitions[0].compile(
             {query, key, scale, mask_add_in_lt, mask_sub_op_in_lt, neg_inf, value}, {output}, eng);
 
+    int32_t seq_len_kv = p.seq_len;
+    int32_t seq_len_q = p.seq_len;
+    auto ts_mask_add = tensor(mask_add_in_lt, host_eng, &seq_len_kv);
+    auto ts_mask_sub = tensor(mask_sub_op_in_lt, host_eng, &seq_len_q);
     // Create tensor objects
     auto ts_query = tensor(query, eng);
     auto ts_key = tensor(key, eng);
     auto ts_scale = tensor(scale, eng);
-    auto ts_mask_add_op = tensor(mask_add_in_lt, eng);
-    auto ts_mask_sub_op = tensor(mask_sub_op_in_lt, eng);
     auto ts_neg_inf = tensor(neg_inf, eng);
     auto ts_value = tensor(value, eng);
     auto ts_output = tensor(output, eng);
@@ -247,8 +252,6 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     std::vector<float> query_data(product(qv_sz));
     std::vector<float> key_data(product(k_sz));
     std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
-    std::vector<float> mask_add_op_data(product(scale_sz), static_cast<size_t>(p.seq_len));
-    std::vector<float> mask_sub_op_data(product(scale_sz), static_cast<size_t>(p.seq_len));
     std::vector<float> neg_inf_data(product(scale_sz), -1e30);
     std::vector<float> value_data(product(k_sz));
     std::vector<float> output_data(product(qv_sz));
@@ -261,15 +264,15 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     write_to_dnnl_tensor(query_data.data(), ts_query);
     write_to_dnnl_tensor(key_data.data(), ts_key);
     write_to_dnnl_tensor(scale_data.data(), ts_scale);
-    write_to_dnnl_tensor(mask_add_op_data.data(), ts_mask_add_op);
-    write_to_dnnl_tensor(mask_sub_op_data.data(), ts_mask_sub_op);
     write_to_dnnl_tensor(neg_inf_data.data(), ts_neg_inf);
     write_to_dnnl_tensor(value_data.data(), ts_value);
 
     // Warmup run.
     // Execute the compiled partition of sdpa.
-    cp.execute(
-            strm, {ts_query, ts_key, ts_scale, ts_mask_add_op, ts_mask_sub_op, ts_neg_inf, ts_value}, {ts_output});
+    cp.execute(strm,
+            {ts_query, ts_key, ts_scale, ts_mask_add, ts_mask_sub, ts_neg_inf,
+                    ts_value},
+            {ts_output});
 
     // Wait for the computation to finish.
     strm.wait();

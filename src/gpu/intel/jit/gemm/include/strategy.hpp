@@ -23,7 +23,7 @@
 #include "internal/utils.hpp"
 
 #include "driver_info.hpp"
-#include "emulation.hpp"
+#include "ngen_emulation.hpp"
 #include "problem.hpp"
 #include "type.hpp"
 
@@ -170,7 +170,7 @@ struct CommonStrategy {
         = ngen::ThreadArbitrationMode::Default; // Thread arbitration policy to use.
     int activeThreads = 0;                      // # of active threads (0 = dynamic).
 
-    EmulationStrategy emulate;
+    ngen::EmulationStrategy emulate;
                                     ZPAD(C, 2)
 
     CommonStrategy() = default;
@@ -405,7 +405,7 @@ struct GEMMStrategy : public GEMMStrategyPOD
     int bqGroupKGranularity() const { return groupKReduce(slmB ? unrollKSLM : kb_load); }
     static int groupKReduce(int x) { while (x > 32 && (x & 1) == 0) x >>= 1; return x; }
 
-    void serialize(serialization_stream_t &s) const
+    void serialize(dnnl::impl::serialization_stream_t &s) const
     {
         const GEMMStrategyPOD &pod = *this;
         s.append(pod);

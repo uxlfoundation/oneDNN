@@ -78,7 +78,7 @@ bool BLASKernelGenerator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &st
         if (problem.hasBinaryPostOp()) stub();
 
         const int eu_count = 0;
-        postOpInjector.reset(new Injector(this, problem.Ts.get_dnnl_type(), problem.postOps, eu_count, GRFRange(), problem.postOpFwd));
+        postOpInjector.reset(new Injector(this, problem.Ts.ngen(), problem.postOps, eu_count, GRFRange(), problem.postOpFwd));
         if (!postOpInjector) stub();
 
         postOpScratch = state.ra.try_alloc_range(postOpInjector->preferred_scratch_regs());
@@ -151,7 +151,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         auto modProblem = problem;
         modProblem.alpha = 1;
         modProblem.beta = 0;
-        modProblem.postOps = gpu_post_ops_t{};
+        modProblem.postOps = dnnl::impl::gpu::intel::gpu_post_ops_t{};
         modProblem.cOffset = COffset::None;
         return gemmAccessC(COperation::UpdateStore, modProblem, strategy, state);
     }
@@ -220,7 +220,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         // Do any post-sum post-ops.
         if (newPostOps)
             gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
-        storeProblem.postOps = gpu_post_ops_t{};
+        storeProblem.postOps = dnnl::impl::gpu::intel::gpu_post_ops_t{};
 
         if (problem.cOffset == COffset::Post)
             ok = ok && gemmApplyCOffsetDispatch(problem, strategy, state);

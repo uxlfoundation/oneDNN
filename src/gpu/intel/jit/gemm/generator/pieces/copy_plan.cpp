@@ -251,7 +251,7 @@ void CopyPlan::transform()
 
     legalizeImmediateTypes();
 #ifdef DNNL_DEV_MODE
-    if (get_verbose(verbose_t::debuginfo) > 100)
+    if (dnnl::impl::get_verbose(dnnl::impl::verbose_t::debuginfo) > 100)
         dump();
 #endif
 }
@@ -2745,7 +2745,7 @@ void CopyInstruction::dump(const CopyPlan &plan) const
     }
     if (atomic)
         std::cout << "\t{Atomic}";
-    if (get_verbose(verbose_t::debuginfo))
+    if (dnnl::impl::get_verbose(dnnl::impl::verbose_t::debuginfo))
         std::cout << "\t\t(phase = " << phase << ", cnum = [" << cnumMin << ", " << cnumMax << "])";
 
     std::cout << std::endl;

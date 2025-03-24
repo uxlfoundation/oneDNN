@@ -40,8 +40,7 @@ status_t jit_gemm_pd_t::init_post_ops() {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {
             case binary:
-                ok &= gemm_kernel_generator_t<ngen::HW::Unknown>::
-                                supportedBinaryOp(e.binary.alg)
+                ok &= supported_binary_op(e.binary.alg)
                         && is_md_gemm_compatible_plain_format(
                                 &e.binary.src1_desc);
                 binary_srcs_.push_back(

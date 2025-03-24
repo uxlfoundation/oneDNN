@@ -17,4 +17,21 @@
 #ifndef GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 #define GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 
+#include "common/verbose.hpp"
+
+namespace gemmstone {
+
+enum class GEMMVerbose { DebugInfo = dnnl::impl::verbose_t::debuginfo };
+
+inline int getVerbose(GEMMVerbose v) {
+    return dnnl::impl::get_verbose(
+            static_cast<dnnl::impl::verbose_t::flag_kind>(v));
+}
+
+template <typename... Args>
+inline void verbosePrintf(const char *fmtStr, Args... args) {
+    return dnnl::impl::verbose_printf(fmtStr, args...);
+}
+
+} // namespace gemmstone
 #endif

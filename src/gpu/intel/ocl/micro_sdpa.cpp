@@ -37,6 +37,8 @@ namespace ocl {
 
 namespace {
 
+using namespace gemmstone;
+
 /// Returns true if a common scale value is used for each slice of the tensor
 /// operation. For 4D case it's when the mask's two first bits are on and two
 /// last bits are off.
@@ -404,10 +406,10 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     auto ldmsk = pd()->with_attn_mask()
             ? msk_mdw.dims()[3] * msk_mdw.data_type_size()
             : 0;
-    kernel_ctx.define_int("Q_ALIGN", jit::alignmentForLD(int(ldq)));
-    kernel_ctx.define_int("K_ALIGN", jit::alignmentForLD(int(ldk)));
-    kernel_ctx.define_int("V_ALIGN", jit::alignmentForLD(int(ldv)));
-    kernel_ctx.define_int("A_ALIGN", jit::alignmentForLD(int(lda)));
+    kernel_ctx.define_int("Q_ALIGN", alignmentForLD(int(ldq)));
+    kernel_ctx.define_int("K_ALIGN", alignmentForLD(int(ldk)));
+    kernel_ctx.define_int("V_ALIGN", alignmentForLD(int(ldv)));
+    kernel_ctx.define_int("A_ALIGN", alignmentForLD(int(lda)));
 
     kernel_ctx.define_int("TRANSPOSE_K",
             gemm_desc_t::get_trans(*pd()->key_md()) == dnnl_trans);

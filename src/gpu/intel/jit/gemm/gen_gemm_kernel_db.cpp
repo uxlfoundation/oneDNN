@@ -16,18 +16,20 @@
 
 #include "gpu/intel/jit/gemm/gen_gemm_kernel_db.hpp"
 
+namespace gemmstone {
+#define _CATALOG_ gemm_catalog
+#include "selector/db/kernel.db"
+#undef _CATALOG_
+} // namespace gemmstone
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
 
-#define _CATALOG_ gemm_catalog
-#include "selector/db/kernel.db"
-#undef _CATALOG_
-
-kcatalog::Catalog catalog() {
-    return gemm_catalog;
+gemmstone::kcatalog::Catalog catalog() {
+    return gemmstone::gemm_catalog;
 };
 
 } // namespace jit

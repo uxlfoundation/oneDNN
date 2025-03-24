@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,6 +46,12 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
         using sum_t = post_op::specializations_t::sum_t;
         // The sum scale is handled as GEMM beta argument
         return {{}, sum_t(mode_t::impl_managed(), {}), {}};
+    }
+
+    static constexpr bool supported_binary_op(alg_kind_t alg) {
+        using namespace alg_kind;
+        return utils::one_of(alg, binary_add, binary_sub, binary_mul,
+                binary_div, binary_min, binary_max);
     }
 
     status_t init_post_ops();

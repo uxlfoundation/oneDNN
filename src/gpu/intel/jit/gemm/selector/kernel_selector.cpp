@@ -170,7 +170,7 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
     bool bestIsFallback = false;
     int bestAlignA = 0, bestAlignB = 0;
 
-    bool verbose = (get_verbose(verbose_t::debuginfo) >= 5);
+    bool verbose = (dnnl::impl::get_verbose(dnnl::impl::verbose_t::debuginfo) >= 5);
 
     // TODO: omit evaluation if only one match, if aux output not needed.
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
@@ -200,7 +200,7 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
             }
             if (verbose) {
                 const auto &info = it->driverInfo;
-                verbose_printf("info,gpu,gemm,consider:%dx%d,%dx%dx%d,score:%f\n",
+                dnnl::impl::verbose_printf("info,gpu,gemm,consider:%dx%d,%dx%dx%d,score:%f\n",
                         info.unroll[LoopM], info.unroll[LoopN], info.wg[LoopM],
                         info.wg[LoopN], info.wg[LoopK], score);
             }

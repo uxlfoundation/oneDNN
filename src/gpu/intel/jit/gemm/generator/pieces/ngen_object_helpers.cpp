@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 
 #include "ngen_object_helpers.hpp"
-#include "emulation.hpp"
+#include "gpu/intel/jit/emulation.hpp"
 #include "hw_utils.hpp"
 
 using namespace ngen;
@@ -83,7 +83,7 @@ void moveToIntPipe(int esize, RegData &s)
         case DataType::f:  s.setType(DataType::ud); break;
         case DataType::df:
             s.setType(DataType::uq);
-            EmulationImplementation::makeDWPair(s, esize);
+            dnnl::impl::gpu::intel::jit::EmulationImplementation::makeDWPair(s, esize);
             break;
         default:
             break;

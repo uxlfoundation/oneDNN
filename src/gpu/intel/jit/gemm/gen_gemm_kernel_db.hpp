@@ -25,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-kcatalog::Catalog catalog();
+gemmstone::kcatalog::Catalog catalog();
 
 }
 } // namespace intel

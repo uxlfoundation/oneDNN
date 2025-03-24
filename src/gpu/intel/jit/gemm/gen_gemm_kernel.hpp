@@ -37,34 +37,38 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-static inline Type convert_dnnl_to_kernel_type(data_type_t type) {
+static inline gemmstone::Type convert_dnnl_to_kernel_type(data_type_t type) {
     switch (type) {
         default: assert(!"Unknown type");
-        case data_type::f64: return Type::f64;
-        case data_type::f32: return Type::f32;
-        case data_type::f16: return Type::f16;
-        case data_type::bf16: return Type::bf16;
-        case data_type::f8_e5m2: return Type::bf8;
-        case data_type::f8_e4m3: return Type::hf8;
-        case data_type::f4_e2m1: return Type::f4_e2m1;
-        case data_type::f4_e3m0: return Type::f4_e3m0;
-        case data_type::s32: return Type::s32;
-        case data_type::u8: return Type::u8;
-        case data_type::s8: return Type::s8;
-        case data_type::u4: return Type::u4;
-        case data_type::s4: return Type::s4;
-        case data_type::undef: return Type::invalid;
+        case data_type::f64: return gemmstone::Type::f64;
+        case data_type::f32: return gemmstone::Type::f32;
+        case data_type::f16: return gemmstone::Type::f16;
+        case data_type::bf16: return gemmstone::Type::bf16;
+        case data_type::f8_e5m2: return gemmstone::Type::bf8;
+        case data_type::f8_e4m3: return gemmstone::Type::hf8;
+        case data_type::f4_e2m1: return gemmstone::Type::f4_e2m1;
+        case data_type::f4_e3m0: return gemmstone::Type::f4_e3m0;
+        case data_type::s32: return gemmstone::Type::s32;
+        case data_type::u8: return gemmstone::Type::u8;
+        case data_type::s8: return gemmstone::Type::s8;
+        case data_type::u4: return gemmstone::Type::u4;
+        case data_type::s4: return gemmstone::Type::s4;
+        case data_type::undef: return gemmstone::Type::invalid;
     }
 }
 
 struct gen_gemm_kernel_desc_t {
     friend struct gen_gemm_kernel_t;
 
-    const GEMMProblem *problem() const { return &problem_; };
-    const GEMMStrategy *strategy() const { return &strategy_; };
+    const gemmstone::GEMMProblem *problem() const { return &problem_; };
+    const gemmstone::GEMMStrategy *strategy() const { return &strategy_; };
 
-    const CommonDriverInfo *driver_info() const { return &driver_info_; };
-    const EvaluateAuxOutput *aux_params() const { return &aux_params_; };
+    const gemmstone::CommonDriverInfo *driver_info() const {
+        return &driver_info_;
+    };
+    const gemmstone::EvaluateAuxOutput *aux_params() const {
+        return &aux_params_;
+    };
 
     compute::scalar_type_t scalar_type() const;
 
@@ -76,7 +80,7 @@ struct gen_gemm_kernel_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
-    const kcatalog::Entry &entry() const {
+    const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
         return *entry_;
     };
@@ -85,11 +89,11 @@ protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
     int stepping_ = 0;
-    GEMMProblem problem_ = {};
-    GEMMStrategy strategy_;
-    const kcatalog::Entry *entry_ = nullptr;
-    EvaluateAuxOutput aux_params_;
-    CommonDriverInfo driver_info_;
+    gemmstone::GEMMProblem problem_ = {};
+    gemmstone::GEMMStrategy strategy_;
+    const gemmstone::kcatalog::Entry *entry_ = nullptr;
+    gemmstone::EvaluateAuxOutput aux_params_;
+    gemmstone::CommonDriverInfo driver_info_;
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;

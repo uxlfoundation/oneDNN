@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -457,7 +457,7 @@ bool BLASKernelGenerator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEM
     auto modState = state;
 
     modProblem.beta = 1;
-    modProblem.postOps = gpu_post_ops_t{};
+    modProblem.postOps = dnnl::impl::gpu::intel::gpu_post_ops_t{};
     if (modProblem.cOffset == COffset::Post)
         modProblem.cOffset = COffset::None;
 

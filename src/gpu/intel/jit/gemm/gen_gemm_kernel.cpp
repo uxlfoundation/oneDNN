@@ -29,6 +29,8 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+using namespace gemmstone;
+
 status_t gen_gemm_kernel_desc_t::create_generator(
         const compute::compute_engine_t &engine,
         compute::kernel_t &kernel) const {

@@ -49,7 +49,7 @@ public:
         const memory_desc_t *dst_md = (pd) ? pd->dst_md() : nullptr;
         set_kernel_iface(kernel_info.iface());
         reorder_ir_builder_t builder(cfg, kernel_info, attr, dst_md);
-        stmt_t body = builder.stmt();
+        const stmt_t &body = builder.stmt();
         setup_interface(body);
 
         // Generate assembly from IR.

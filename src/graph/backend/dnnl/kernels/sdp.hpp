@@ -289,6 +289,7 @@ public:
             auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
             memory::dims post_stride_dims
                     = memory::dims(post_stride, post_stride + ori_desc.ndims);
+            post_stride_dims[0] = post_stride_dims[1];
             auto new_sub_md = memory::desc({1, 1, post_shape[2], post_shape[3]},
                     post_dt, post_stride_dims);
             sub_mm1_post_md.emplace_back(new_sub_md);
@@ -905,6 +906,7 @@ public:
             BACKEND_DNNL_ADD_PASS(pipeline, insert_runtime_u8_to_s8_for_matmul);
         }
         BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
+        BACKEND_DNNL_ADD_PASS(pipeline, binary_broadcast_swap);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
         BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
         if (quantized) {
@@ -1140,9 +1142,14 @@ public:
                                                            - 1]]
                                            .at(DNNL_ARG_DST);
                     auto out_strides = out_mem.get_desc().get_strides();
+                    auto out_shape = out_mem.get_desc().get_dims();
+                    size_t mm1_post_add_offset
+                            = out_shape[0] == 1 ? 0 : bo * out_strides[0];
+                    mm1_post_add_offset
+                            += out_shape[1] == 1 ? 0 : bi * out_strides[1];
                     sub_mm1_post_tid.set_data_handle(
                             static_cast<char *>(out_mem.get_data_handle())
-                            + bo * out_strides[0]
+                            + mm1_post_add_offset
                                     * get_mem_dt_size(sub_mm1_post_tid));
                 }
             }

@@ -47,7 +47,7 @@ protected:
 // Dynamically loaded level_zero functions
 namespace {
 
-void *find_ze_symbol(const char *symbol) {
+inline void *find_ze_symbol(const char *symbol) {
 #if defined(__linux__)
     void *handle = dlopen("libze_loader.so.1", RTLD_NOW | RTLD_LOCAL);
 #elif defined(_WIN32)
@@ -82,6 +82,7 @@ ZE_INDIRECT_API(zeModuleCreate)
 ZE_INDIRECT_API(zeModuleDestroy)
 ZE_INDIRECT_API(zeDeviceGetProperties)
 ZE_INDIRECT_API(zeModuleGetNativeBinary)
+ZE_INDIRECT_API(zeKernelCreate)
 
 } // namespace
     

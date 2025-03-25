@@ -41,10 +41,14 @@ template <HW hw>
 class SYCLCodeGenerator : public ELFCodeGenerator<hw>
 {
 public:
-    explicit SYCLCodeGenerator(Product product_)  : ELFCodeGenerator<hw>(product_) {}
-    explicit SYCLCodeGenerator(int stepping_ = 0) : ELFCodeGenerator<hw>(stepping_) {}
+    using ELFCodeGenerator<hw>::getBinary;
+
+    explicit SYCLCodeGenerator(Product product_, DebugConfig debugConfig = {})  : ELFCodeGenerator<hw>(product_, debugConfig) {}
+    explicit SYCLCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(stepping_, debugConfig) {}
+    explicit SYCLCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator<hw>(0, debugConfig) {}
 
     inline sycl::kernel getKernel(const sycl::context &context, const sycl::device &device);
+    bool binaryIsZebin() { return true; }
 
     static inline HW detectHW(const sycl::context &context, const sycl::device &device);
     static inline Product detectHWInfo(const sycl::context &context, const sycl::device &device);
@@ -116,11 +120,11 @@ sycl::kernel SYCLCodeGenerator<hw>::getKernel(const sycl::context &context, cons
             };
 
             ze_module_handle_t moduleL0;
-            detail::handleL0(zeModuleCreate(contextL0, deviceL0, &moduleDesc, &moduleL0, nullptr));
+            detail::handleL0(call_zeModuleCreate(contextL0, deviceL0, &moduleDesc, &moduleL0, nullptr));
 
             ze_kernel_handle_t kernelL0;
             ze_kernel_desc_t kernelDesc{ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernelName};
-            detail::handleL0(zeKernelCreate(moduleL0, &kernelDesc, &kernelL0));
+            detail::handleL0(call_zeKernelCreate(moduleL0, &kernelDesc, &kernelL0));
 
             auto bundle = make_kernel_bundle<backend::ext_oneapi_level_zero, bundle_state::executable>({moduleL0}, context);
             outKernel = make_kernel<backend::ext_oneapi_level_zero>({bundle, kernelL0}, context);

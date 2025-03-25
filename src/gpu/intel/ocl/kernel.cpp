@@ -111,16 +111,6 @@ private:
     utils::rw_mutex_t mutex_;
 };
 
-kernel_t::kernel_t(xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
-        const std::vector<gpu::intel::compute::scalar_type_t> &arg_types,
-        compute::program_src_t src)
-    : ocl_kernel_(std::move(ocl_kernel))
-    , arg_types_(arg_types)
-    , src_(std::move(src))
-    , save_events_(false) {
-    cache_ = std::make_shared<kernel_cache_t>(ocl_kernel_);
-}
-
 status_t kernel_t::get_binary(
         const impl::engine_t *engine, xpu::binary_t &binary) const {
     auto *ocl_engine = utils::downcast<const engine_t *>(engine);
@@ -268,6 +258,36 @@ status_t kernel_t::dump() const {
 
 std::string kernel_t::name() const {
     return xpu::ocl::get_kernel_name(ocl_kernel());
+}
+
+// This class is to get around std::make_shared requirement to have a public
+// constructor. We keep the original constructor as private but expose it here
+// to use with std::make_shared.
+class kernel_compat_t : public kernel_t {
+public:
+    template <typename... Args>
+    kernel_compat_t(Args &&...args) : kernel_t(std::forward<Args>(args)...) {}
+};
+
+status_t kernel_t::make(compute::kernel_t &compute_kernel,
+        xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
+        const compute::program_src_t &src) {
+    std::vector<gpu::intel::compute::scalar_type_t> arg_types;
+    CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
+    compute_kernel = compute::kernel_t(std::make_shared<kernel_compat_t>(
+            std::forward<xpu::ocl::wrapper_t<cl_kernel>>(ocl_kernel), arg_types,
+            src));
+    return status::success;
+}
+
+kernel_t::kernel_t(xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
+        const std::vector<gpu::intel::compute::scalar_type_t> &arg_types,
+        const compute::program_src_t &src)
+    : ocl_kernel_(std::move(ocl_kernel))
+    , arg_types_(arg_types)
+    , src_(src)
+    , save_events_(false) {
+    cache_ = std::make_shared<kernel_cache_t>(ocl_kernel_);
 }
 
 } // namespace ocl

@@ -34,9 +34,6 @@ class kernel_cache_t;
 
 class kernel_t : public compute::kernel_impl_t {
 public:
-    kernel_t(xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
-            const std::vector<gpu::intel::compute::scalar_type_t> &arg_types,
-            compute::program_src_t src);
     ~kernel_t() override = default;
 
     cl_kernel ocl_kernel() const { return ocl_kernel_; }
@@ -62,7 +59,18 @@ public:
     std::string name() const override;
     const compute::program_src_t &src() const { return src_; }
 
+    static status_t make(compute::kernel_t &compute_kernel,
+            xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
+            const compute::program_src_t &src);
+
 private:
+    // See description in the class implementation.
+    friend class kernel_compat_t;
+
+    kernel_t(xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
+            const std::vector<gpu::intel::compute::scalar_type_t> &arg_types,
+            const compute::program_src_t &src);
+
     xpu::ocl::wrapper_t<cl_kernel> ocl_kernel_;
     std::vector<gpu::intel::compute::scalar_type_t> arg_types_;
     std::shared_ptr<kernel_cache_t> cache_;

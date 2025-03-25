@@ -136,15 +136,7 @@ status_t create_ocl_kernel_from_cache_blob(const engine_t *ocl_engine,
         auto ocl_kernel = xpu::ocl::make_wrapper(
                 clCreateKernel(program, kernel_name.c_str(), &err));
         OCL_CHECK(err);
-
-        std::vector<gpu::intel::compute::scalar_type_t> arg_types;
-        CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
-        OCL_CHECK(err);
-
-        std::shared_ptr<compute::kernel_impl_t> kernel_impl
-                = std::make_shared<kernel_t>(std::move(ocl_kernel), arg_types,
-                        compute::program_src_t());
-        (*kernels)[i] = std::move(kernel_impl);
+        CHECK(kernel_t::make((*kernels)[i], std::move(ocl_kernel), {}));
     }
 
     return status::success;
@@ -294,13 +286,7 @@ status_t engine_t::create_kernel_from_binary(compute::kernel_t &kernel,
     auto ocl_kernel = xpu::ocl::make_wrapper(
             clCreateKernel(program, kernel_name, &err));
     OCL_CHECK(err);
-
-    std::vector<gpu::intel::compute::scalar_type_t> arg_types;
-    CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
-
-    std::shared_ptr<compute::kernel_impl_t> kernel_impl
-            = std::make_shared<kernel_t>(std::move(ocl_kernel), arg_types, src);
-    kernel = std::move(kernel_impl);
+    CHECK(kernel_t::make(kernel, std::move(ocl_kernel), src));
 
     return status::success;
 }
@@ -315,12 +301,7 @@ status_t engine_t::create_kernels_from_cache_blob(
 status_t engine_t::create_kernel(
         compute::kernel_t *kernel, jit::generator_base_t *jitter) const {
     if (!jitter) return status::invalid_arguments;
-    xpu::binary_t binary = jitter->get_binary(this);
-    if (binary.empty()) return status::runtime_error;
-    VCHECK_KERNEL(create_kernel_from_binary(
-                          *kernel, binary, jitter->kernel_name(), {}),
-            VERBOSE_KERNEL_CREATION_FAIL, jitter->kernel_name());
-    return status::success;
+    return jitter->get_kernel(*kernel, this);
 }
 
 status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
@@ -385,13 +366,7 @@ status_t engine_t::create_kernels_from_program(
         xpu::ocl::wrapper_t<cl_kernel> ocl_kernel
                 = clCreateKernel(program, kernel_names[i], &err);
         OCL_CHECK(err);
-        std::vector<gpu::intel::compute::scalar_type_t> arg_types;
-        CHECK(get_kernel_arg_types(ocl_kernel, &arg_types));
-
-        std::shared_ptr<compute::kernel_impl_t> kernel_impl
-                = std::make_shared<kernel_t>(
-                        std::move(ocl_kernel), arg_types, src);
-        (*kernels)[i] = std::move(kernel_impl);
+        CHECK(kernel_t::make((*kernels)[i], std::move(ocl_kernel), src));
     }
 
     return status::success;

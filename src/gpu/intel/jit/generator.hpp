@@ -33,11 +33,14 @@
 #include "xpu/utils.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#include "gpu/intel/sycl/engine.hpp"
+#include "gpu/intel/sycl/sycl_interop_gpu_kernel.hpp"
 #include "ngen_sycl.hpp"
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/engine.hpp"
+#include "gpu/intel/ocl/kernel.hpp"
 #include "ngen_opencl.hpp"
 #endif
 
@@ -164,14 +167,19 @@ public:
         return ngen_code_generator_t<hw>::getExternalName().c_str();
     }
 
-    xpu::binary_t get_binary(const compute::compute_engine_t *engine) override {
+    status_t get_kernel(compute::kernel_t &kernel,
+            const compute::compute_engine_t *engine) override {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-        return ngen_code_generator_t<hw>::getBinary();
+        auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
+        auto sycl_kernel = ngen_code_generator_t<hw>::getKernel(
+                sycl_engine->context(), sycl_engine->device());
+        return sycl::sycl_interop_gpu_kernel_t::make(kernel, sycl_kernel, {});
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         auto *ocl_engine = utils::downcast<const ocl::engine_t *>(engine);
-        return ngen_code_generator_t<hw>::getBinary(
+        auto ocl_kernel = ngen_code_generator_t<hw>::getKernel(
                 ocl_engine->context(), ocl_engine->device());
+        return ocl::kernel_t::make(kernel, ocl_kernel, {});
 #endif
     }
 };

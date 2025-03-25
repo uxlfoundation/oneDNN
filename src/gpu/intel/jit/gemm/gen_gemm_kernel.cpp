@@ -931,8 +931,8 @@ void gen_gemm_kernel_t::init_interface() {
     interface_.externalName(kernel_name());
 }
 
-xpu::binary_t gen_gemm_kernel_t::get_binary(
-        const compute::compute_engine_t *engine) {
+status_t gen_gemm_kernel_t::get_kernel(
+        compute::kernel_t &kernel, const compute::compute_engine_t *engine) {
     init_interface();
     maybe_print_verbose();
 
@@ -941,7 +941,7 @@ xpu::binary_t gen_gemm_kernel_t::get_binary(
         gemm_kernel_generator_t<ngen::HW::arch> generator; \
         generator.setStepping(desc()->stepping_); \
         generator.gemm(*desc()->problem(), *desc()->strategy(), interface_); \
-        return generator.get_binary(engine); \
+        return generator.get_kernel(kernel, engine); \
         break; \
     }
 

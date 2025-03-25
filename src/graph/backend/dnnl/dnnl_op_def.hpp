@@ -1002,6 +1002,8 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_softmax, 1,
                 .set_output(1, "scratchpad")
                 // Attributes inherited from SoftMax
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
+                .set_attr(op_attr::mode, false, attribute_kind::s, "none",
+                        {"none", "inf_as_zero"})
                 // New added attributes
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,

@@ -761,11 +761,13 @@ public:
 				if (EDX & (1U << 14)) type_ |= tPREFETCHITI;
 				if (EDX & (1U << 19)) type_ |= tAVX10;
 				if (EDX & (1U << 21)) type_ |= tAPX_F;
-				if (EDX & (1U << 6)) type_ |= tAMX_TRANSPOSE;
-				if (EDX & (1U << 7)) type_ |= tAMX_TF32;
-				if (EDX & (1U << 9)) type_ |= tAMX_AVX512;
-				if (EDX & (1U << 29)) type_ |= tAMX_MOVRS;
-				if (ECX & (1U << 3)) type_ |= tAMX_FP8;
+
+                getCpuidEx(0x1e, 1, data);
+				if (EAX & (1U << 5)) type_ |= tAMX_TRANSPOSE;
+				if (EAX & (1U << 6)) type_ |= tAMX_TF32;
+				if (EAX & (1U << 7)) type_ |= tAMX_AVX512;
+				if (EAX & (1U << 8)) type_ |= tAMX_MOVRS;
+				if (EAX & (1U << 4)) type_ |= tAMX_FP8;
 			}
 		}
 		if (maxNum >= 0x19) {

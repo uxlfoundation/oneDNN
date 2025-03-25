@@ -962,9 +962,9 @@ public:
         = dnnl_graph_op_attr_coordinate_transformation_mode,
         /// Specifies a data_format of an op. The value can be "NCX" or "NXC".
         data_format = dnnl_graph_op_attr_data_format,
-        /// Specifies a mode attribute of an op. The value can be "nearest",
-        /// "linear", "bilinear", or "trilinear". The attribute is defined for
-        /// Interpolate operations.
+        /// Specifies a mode attribute of an op.
+        /// Interpolate: "nearest", "linear", "bilinear", or "trilinear".
+        /// SoftMax: "none", "inf_as_zero".
         mode = dnnl_graph_op_attr_mode,
         /// Specifies a qtype attribute to an op. The value can be "per_channel"
         /// or "per_tensor". The attribute is defined for quantization

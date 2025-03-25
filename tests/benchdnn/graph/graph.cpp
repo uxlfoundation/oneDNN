@@ -405,15 +405,6 @@ std::string case_to_str(const std::string &json_file,
 
 void skip_unimplemented_ops(const dnnl::graph::partition &partition,
         const deserialized_graph_t &dg, res_t *res) {
-    // Unconditionally skip all unimplemented cases for Graph Compiler. They got
-    // triggered when `_DNNL_DISABLE_DNNL_BACKEND=1` is utilized.
-    // TODO: extend with `getenv` call if limits too much.
-    if (is_gc_backend()) {
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
-    }
-
     // A list of ops that don't have DNNL backend support so far.
     static const std::vector<std::string> unimplemented_ops {"Pow"};
     // A list of ops that don't have DNNL backend support so far on GPU.
@@ -457,20 +448,6 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
     }
 }
 
-void skip_unimplemented_graph_attribute(
-        const graph_fpmath_mode_t &fpmath_mode, res_t *res) {
-    // Compiler backend only supports strict and bf16 for floating-point math
-    // mode
-    if (is_gc_backend()) {
-        const auto &mode = fpmath_mode.mode_;
-        if (mode != "strict" && mode != "bf16") {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-    }
-}
-
 /// @brief check if the current partition is actually an End op
 /// @param parti the current partition
 /// @param end_op_ids a collection of End op's ids
@@ -490,9 +467,6 @@ int doit(const prb_t *prb, res_t *res) {
     if (bench_mode == bench_mode_t::list) return res->state = LISTED, OK;
 
     skip_start(res);
-    if (res->state == SKIPPED) return OK;
-
-    skip_unimplemented_graph_attribute(prb->fpmath_mode, res);
     if (res->state == SKIPPED) return OK;
 
     const auto &dg = prb->dg;

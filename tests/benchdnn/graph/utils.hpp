@@ -211,8 +211,6 @@ inline const cpp_engine_t &get_graph_engine() {
     return instance;
 }
 
-bool is_gc_backend();
-
 dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt);
 
 inline double GB(double bytes) {

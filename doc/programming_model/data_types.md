@@ -7,8 +7,7 @@ to be the golden standard in deep learning applications and is supported
 in all the library functions. The purpose of low precision data types
 support is to improve performance of compute intensive operations, such as
 convolutions, inner product, and recurrent neural network cells
-in comparison to fp32. Boolean data type is used for Graph Compiler to optimize 
-operations which take bool as inputs and/or outputs data type.
+in comparison to fp32.
 
 | Data type | Description                                                                                                                                                                             |
 |:----------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -26,10 +25,6 @@ operations which take bool as inputs and/or outputs data type.
 | f4\_e3m0  | 4-bit floating-point with 3 exponent bits and no mantissa bit                                                                                                                           |
 
 
-@note
-    Boolean is only supported in the Graph Compiler in CPU engines. No
-    primitives support boolean during primitive computation.
-
 ## Inference and Training
 
 oneDNN supports training and inference with the following data types:
@@ -46,10 +41,6 @@ oneDNN supports training and inference with the following data types:
 @note
     f64 is supported only for matmul, convolution, reorder, layer normalization, and
     pooling primitives on the GPU engine.
-
-@note
-    Boolean is only supported by the oneDNN graph API when the graph compiler
-    backend is enabled.
 
 @note
     s4/u4 data types are only supported as a storage data type for weights argument
@@ -244,7 +235,3 @@ reference support on all architectures.
 @note
   f16 operations may be faster with f16 accumulation on GPU architectures older
   than Xe-HPC. Newer architectures accumulate to f32.
-
-@note
-  Boolean is only supported by the oneDNN graph API when the graph compiler
-  backend is enabled. The graph compiler backend only supports the CPU engine.

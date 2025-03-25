@@ -40,10 +40,6 @@ namespace graph {
 // forward declaration
 status_t register_dnnl_backend();
 status_t register_fake_backend();
-#ifdef DNNL_ENABLE_COMPILER_BACKEND
-// register graph compiler backend
-status_t register_compiler_backend();
-#endif
 
 class backend_t {
 public:

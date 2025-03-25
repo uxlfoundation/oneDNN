@@ -1243,14 +1243,6 @@ cpp_engine_t::cpp_engine_t() {
     }
 }
 
-bool is_gc_backend() {
-#if defined(ENABLE_GRAPH_COMPILER_BACKEND)
-    return true;
-#else
-    return false;
-#endif
-}
-
 dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt) {
     using graph_dt = dnnl::graph::logical_tensor::data_type;
 

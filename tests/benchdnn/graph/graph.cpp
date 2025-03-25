@@ -346,7 +346,8 @@ std::string case_to_str(const std::string &json_file,
         const graph_fpmath_mode_t &fpmath_mode,
         const size_t expected_n_partitions, const int64_t mb,
         const dnnl_data_type_t dt,
-        const std::map<size_t, dnnl_data_type_t> &dt_map) {
+        const std::map<size_t, dnnl_data_type_t> &dt_map,
+        const std::map<size_t, std::string> &op_kind_map) {
     std::stringstream s;
     dump_global_params(s);
 
@@ -363,6 +364,17 @@ std::string case_to_str(const std::string &json_file,
             tmp += (std::to_string(v.first) + ":" + dt2str(v.second) + "+");
         }
         s << tmp.substr(0, tmp.length() - 1) << " ";
+    }
+
+    if (!(op_kind_map.size() == 1 && op_kind_map.count(SIZE_MAX) == 1
+                && op_kind_map.at(SIZE_MAX) == "default")) {
+        s << "--op-kind=";
+        std::string tmp;
+        for (const auto &v : op_kind_map) {
+            tmp += (std::to_string(v.first) + ":" + v.second + "+");
+        }
+        // Remove dangling '+'.
+        s << tmp.substr(0, tmp.size() - 1) << " ";
     }
 
     if (!(in_shapes.size() == 1 && in_shapes.count(0)

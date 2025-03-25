@@ -898,9 +898,8 @@ void init_kernel_info(kernel_info_t &kernel_info, const problem_t &prb,
         }
         dim_t k_batches = std::min(k_iters, stream_k_k_batches(desc, prb));
         dim_t bmn_tiles = tg_grid.size(0, grid_dims);
-        dim_t iters_per_tile = utils::div_up(k_iters, k_batches);
-        dim_t iters_per_tile_tail = iters_per_tile
-                - (utils::rnd_up(k_iters, k_batches) - k_iters);
+        dim_t iters_per_tile = k_iters / k_batches;
+        dim_t iters_per_tile_tail = k_iters - iters_per_tile * (k_batches - 1);
         if (iters_per_tile_tail == 0) iters_per_tile_tail = iters_per_tile;
         stream_k_tg0
                 = stream_k_thread_groups(bmn_tiles * iters_per_tile, max_tgs);

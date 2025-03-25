@@ -88,7 +88,7 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     auto skip_impl = is_xe_hp ? "ocl" : "ref";
     VDISPATCH_GEMM(
             !(gemm_pd_ && strstr(gemm_pd_->name(), skip_impl) == nullptr),
-            VERBOSE_PRIMITIVE_CREATION_FAIL, gemm_pd_->name());
+            VERBOSE_SKIP_PRIMITIVE_IMPL);
     auto gemm_desc = *desc();
     auto dst_type = gemm_desc.c_desc.data_type;
     gemm_desc.c_desc.data_type = engine->mayiuse_f16_accumulator_with_f16()

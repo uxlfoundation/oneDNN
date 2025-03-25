@@ -150,12 +150,8 @@ public:
             return status::invalid_arguments;
         }
 
-        std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t> ocl_engine;
-        CHECK(gpu::intel::sycl::create_ocl_engine(&ocl_engine, this));
-
         auto kernel_name = jitter->kernel_name();
-
-        xpu::binary_t kernel_binary = jitter->get_binary(ocl_engine.get());
+        xpu::binary_t kernel_binary = jitter->get_binary(this);
         return create_kernel_from_binary(
                 *kernel, kernel_binary, kernel_name, {});
     }

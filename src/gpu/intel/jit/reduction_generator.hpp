@@ -37,7 +37,7 @@ namespace jit {
 template <gpu_gen_t hw>
 class reduction_generator_t : public emulated_generator_t<hw> {
 protected:
-    NGEN_FORWARD_OPENCL(hw);
+    NGEN_FORWARD_ELF(hw)
     FORWARD_EMULATION(hw);
 
 public:

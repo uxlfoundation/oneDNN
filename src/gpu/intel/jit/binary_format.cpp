@@ -217,6 +217,18 @@ public:
 status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     *ok = false;
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+    if (engine->runtime_kind() == runtime_kind::ocl) {
+        // Here we are doing a check for a temporary OpenCL engine while the
+        // GPU runtime is SYCL. nGEN-based kernels are all SYCL based in the
+        // current build so just exit here.
+        // This check should be already done for the "parent" SYCL engine so
+        // any potential errors should have been caught before this point.
+        *ok = true;
+        return status::success;
+    }
+#endif
+
     auto gpu_engine = utils::downcast<compute::compute_engine_t *>(engine);
 
     if (!gpu_engine) {

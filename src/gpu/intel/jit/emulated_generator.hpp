@@ -37,7 +37,7 @@ class emulated_generator_t : public generator_t<hw> {
     friend struct EmulationImplementation;
 
 protected:
-    NGEN_FORWARD_OPENCL(hw);
+    NGEN_FORWARD_ELF(hw)
 
 public:
     emulated_generator_t(const compute::device_info_t &device_info,

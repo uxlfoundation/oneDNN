@@ -157,7 +157,7 @@ struct gen_gemm_kernel_t : public generator_base_t {
         : desc_(desc) {}
 
     const char *kernel_name() const override { return "gemm_kernel"; }
-    xpu::binary_t get_binary(const ocl::engine_t *engine) override;
+    xpu::binary_t get_binary(const compute::compute_engine_t *engine) override;
 
     const gen_gemm_kernel_desc_t *desc() const { return &desc_; }
 

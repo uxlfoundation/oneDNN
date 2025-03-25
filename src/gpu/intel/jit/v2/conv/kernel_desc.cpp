@@ -29,6 +29,7 @@
 #include "gpu/intel/jit/v2/conv/plan.hpp"
 #include "gpu/intel/jit/v2/conv/problem.hpp"
 #include "gpu/intel/jit/v2/conv/tensor_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

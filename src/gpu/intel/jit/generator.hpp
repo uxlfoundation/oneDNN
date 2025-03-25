@@ -24,25 +24,27 @@
 
 #include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/ocl/engine.hpp"
 #include "xpu/utils.hpp"
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#include "ngen_sycl.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "gpu/intel/ocl/engine.hpp"
 #include "ngen_opencl.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-
-namespace ocl {
-class engine_t;
-}
-
 namespace jit {
 
 using gpu_gen_t = ngen::HW;
@@ -130,9 +132,18 @@ struct debug_config_t {
     uint32_t line;
 };
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 template <gpu_gen_t hw>
-class generator_t : public ngen::OpenCLCodeGenerator<hw>,
-                    public generator_base_t {
+using ngen_code_generator_t = ngen::SYCLCodeGenerator<hw>;
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+template <gpu_gen_t hw>
+using ngen_code_generator_t = ngen::OpenCLCodeGenerator<hw>;
+#endif
+
+template <gpu_gen_t hw>
+class generator_t : public ngen_code_generator_t<hw>, public generator_base_t {
     friend struct eltwise_injector_f32_t<generator_t>;
     friend struct reduction_injector_f32_t<generator_t>;
     friend struct post_op_injector_t<generator_t>;
@@ -146,16 +157,22 @@ private:
 #endif
 public:
     generator_t(const debug_config_t &debug_config)
-        : ngen::OpenCLCodeGenerator<hw>(0,
+        : ngen_code_generator_t<hw>(0,
                 {debug_config.name, debug_config.line, enable_debug_lines}) {};
 
     const char *kernel_name() const override {
-        return ngen::OpenCLCodeGenerator<hw>::getExternalName().c_str();
+        return ngen_code_generator_t<hw>::getExternalName().c_str();
     }
 
-    xpu::binary_t get_binary(const ocl::engine_t *engine) override {
-        return ngen::OpenCLCodeGenerator<hw>::getBinary(
-                engine->context(), engine->device());
+    xpu::binary_t get_binary(const compute::compute_engine_t *engine) override {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        return ngen_code_generator_t<hw>::getBinary();
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+        auto *ocl_engine = utils::downcast<const ocl::engine_t *>(engine);
+        return ngen_code_generator_t<hw>::getBinary(
+                ocl_engine->context(), ocl_engine->device());
+#endif
     }
 };
 

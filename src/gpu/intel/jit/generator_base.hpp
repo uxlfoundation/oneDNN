@@ -27,8 +27,8 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
-namespace ocl {
-class engine_t;
+namespace compute {
+class compute_engine_t;
 }
 
 namespace jit {
@@ -36,7 +36,8 @@ namespace jit {
 struct generator_base_t {
     virtual ~generator_base_t() = default;
     virtual const char *kernel_name() const = 0;
-    virtual xpu::binary_t get_binary(const ocl::engine_t *engine) = 0;
+    virtual xpu::binary_t get_binary(const compute::compute_engine_t *engine)
+            = 0;
 };
 
 } // namespace jit

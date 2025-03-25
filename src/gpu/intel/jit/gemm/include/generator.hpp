@@ -54,8 +54,8 @@
 #include "internal/namespace_start.hxx"
 
 // Macro configuration
-#define GENERATOR_SUPER(hw) ngen::OpenCLCodeGenerator<hw>
-#define FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
+#define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
+#define FORWARD(hw) NGEN_FORWARD_ELF(hw)
 
 #define GENERATOR_BASE(hw) generator_t<hw>
 

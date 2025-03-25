@@ -56,12 +56,12 @@ struct ir_generator_t : public generator_base_t {
 
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
-    xpu::binary_t get_binary(const ocl::engine_t *engine) override {
+    xpu::binary_t get_binary(const compute::compute_engine_t *engine) override {
         try {
 #define CASE(hw) \
     case ngen::HW::hw: { \
         KernelT<ngen::HW::hw> kernel(kernel_desc_, engine); \
-        return kernel.getBinary(engine->context(), engine->device()); \
+        return kernel.get_binary(engine); \
     }
             auto *device_info = engine->device_info();
             auto hw = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
@@ -1245,7 +1245,7 @@ private:
     using ir_kernel_t<hw>::eshr;
 
 #define IR_KERNEL_FORWARD(hw) \
-    NGEN_FORWARD_OPENCL(hw) \
+    NGEN_FORWARD_ELF(hw) \
     IR_KERNEL_EMULATION_FORWARD(hw) \
     using ir_kernel_t<hw>::exec_cfg; \
     using ir_kernel_t<hw>::kernel_iface; \

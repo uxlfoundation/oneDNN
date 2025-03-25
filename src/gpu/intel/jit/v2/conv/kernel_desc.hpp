@@ -64,16 +64,17 @@ struct hw_desc_t {
 // desc.specialize(problem_t) is required to finish generation.
 enum class specialization_mode_t {
     none,
+    // Whether to reduce dimensions based on the default heuristics (e.g. 3D ->
+    // 2D, see implementation for details).
+    _default,
     // Whether to specialize all problem values.
     max,
-    // Whether to reduce dimensions based on the problem, e.g. 3D -> 2D.
-    min_dims
 };
 
 static auto specialization_mode_names = nstl::to_array({
         make_enum_name(specialization_mode_t::none, "none"),
+        make_enum_name(specialization_mode_t::_default, "default"),
         make_enum_name(specialization_mode_t::max, "max"),
-        make_enum_name(specialization_mode_t::min_dims, "min_dims"),
 });
 GPU_DEFINE_PARSE_ENUM(specialization_mode_t, specialization_mode_names)
 
@@ -88,7 +89,7 @@ struct specialization_t {
     // that specialize() must be called.
     bool is_dynamic() const { return mode != specialization_mode_t::none; }
 
-    // Deduce problem dimensions based on max/min_dims specialization mode.
+    // Deduce problem dimensions based on the specialization mode.
     void specialize(const problem_t &prb);
 
     explicit operator bool() const {
@@ -299,7 +300,7 @@ public:
     bool is_supported(const hw_t &hw, const problem_t *prb = nullptr) const;
     prb_reqs_t reqs() const;
     void set(const std::string &s);
-    void set_defaults();
+    void set_missing();
     bool can_fit(const problem_t &prb) const;
     void fit_to(const problem_t &prb);
     status_t set_attr(const convolution_pd_t *pd, const primitive_attr_t *attr,

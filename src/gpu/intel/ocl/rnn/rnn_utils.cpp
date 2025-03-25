@@ -146,7 +146,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
     rnn.parts_bias[1] = 0;
 
     bool is_gru = utils::one_of(
-            rd.cell_kind, alg_kind::vanilla_gru, alg_kind::lbr_gru);
+            rd.cell_kind, alg_kind::vanilla_gru/*, alg_kind::lbr_gru*/);
 
     // Decide if to merge gemm across iterations or layers
     auto dst_layer_is_trivial_stride = dst_layer_d.dims()[0] <= 1

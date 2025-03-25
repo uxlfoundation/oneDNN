@@ -49,7 +49,7 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
         const sub_buffer_t &cell_iter, const strides_t<4> &cell_iter_strides,
         const sub_buffer_t &scratch_gates,
         const strides_t<2> &scratch_gates_strides,
-        const sub_buffer_t &scratch_cell, float alpha,
+        const memory_storage_t &scratch_cell, float alpha,
         const memory_storage_t *tm_scales, const conf_t &conf,
         const ocl_conf_t &ocl_conf, const rnn_offsets_t &offsets) {
 
@@ -75,8 +75,8 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
     auto states = workspace.states(lay, dir, iter);
     auto states_strides = workspace.states_strides();
     auto bias = user_data.bias(lay, dir);
-    auto h_states_tm_l = workspace.c_states(lay, dir, iter - 1);
-    auto cell_grid = workspace.grid_comp(lay, dir, iter);
+    auto h_states_tm_l = workspace.states(lay, dir, iter - 1);
+    auto ws_grid = workspace.grid_comp(lay, dir, iter);
 
     arg_list_t arg_list;
     arg_list.append(weights_layer, ocl_conf.wei_dt);
@@ -93,8 +93,8 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
     arg_list.append(inner<2>(states_strides));
 
     arg_list.append(h_states_tm_l, ocl_conf.ws_state_dt);
-    arg_list.append(cell_grid, ocl_conf.aux_dt);
-    arg_list.append(scratch_cell, ocl_conf.aux_dt);
+    arg_list.append(ws_grid, ocl_conf.aux_dt);
+    arg_list.append(scratch_cell);
     arg_list.append(scratch_gates, ocl_conf.aux_dt);
     arg_list.append(scratch_gates_strides);
 

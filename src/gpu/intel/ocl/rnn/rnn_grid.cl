@@ -486,6 +486,7 @@ simple_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 
     float Ht = G0 * TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)])
             + (1 - G0) * G2;
+	printf("Hidden state: %f\n", src_iter[cell_ws_state(states_ws_ld, i, j)]);
 
     h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_WS_STATE(Ht);
 
@@ -1004,7 +1005,7 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
         if (CELL_MB_TAIL && n >= dims.mb) break;
         for (int c_l = 0; c_l < CELL_DHC_THR; c_l++) {
             int c = c_thr + c_l * c_thr_stride;
-			printf("Running loop for n %d & c %d\n",n, c);
+			//printf("Running loop for n %d & c %d\n",n, c);
             if (CELL_DHC_TAIL && c >= dims.dhc) break;
 #if CELL_KIND == VANILLA_LSTM
                 float G[vanilla_lstm_n_gates];
@@ -1045,7 +1046,10 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
                                                          states.strides.mb, n,
                                                          c)])
                         + (1 - G0) * G2;
-
+				printf("hidden state iter: %f\n", ctx.lbr_gru.hidden_state_iter[cell_ws_state(
+                                                         states.strides.mb, n,
+                                                         c)]);
+			    barrier(CLK_GLOBAL_MEM_FENCE);
                 states.ptr[cell_ws_state(states.strides.mb, n, c)]
                         = TO_WS_STATE(Ht);
 
@@ -1099,7 +1103,7 @@ simple_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
         float tm_cscale,
 #elif CELL_KIND == LBR_GRU
         __global WS_STATE_DATA_T *h_states_tm_l_, dim_t h_states_tm_l_off,
-        __global AUX_DATA_T *grid_, dim_t grid_off, __global char *scr_cell, dim_t scr_cell_off,
+        __global AUX_DATA_T *grid_, dim_t grid_off, __global char *scr_cell,
 #endif
 #if NEED_SCRATCH_GATES || CELL_KIND == LBR_GRU
         __global AUX_DATA_T *scratch_gates_, dim_t scratch_gates_off,
@@ -1187,11 +1191,10 @@ simple_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
 #elif CELL_KIND == LBR_GRU
         //TO confirm... if states_strides are okay for grid
         cell_ctx_t cell_ctx = {.lbr_gru
-                = {.hidden_state_iter = h_states_tm_l_ + h_states_tm_l_off
-                                + states_strides.iter * iter,
-                        .grid = grid_ + grid_off + states_strides.iter * iter,
+                = {.hidden_state_iter = h_states_tm_l_ + h_states_tm_l_off + states_strides.iter * iter,
+                        .grid = grid_ + grid_off,
                         .scratch_cell
-                        = (__global AUX_DATA_T *)scr_cell + scr_cell_off,
+                        = (__global AUX_DATA_T *)scr_cell,
                         .bias = bias,
                         .tm_scales = tm_scales}};
 #endif

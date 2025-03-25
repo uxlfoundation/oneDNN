@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -83,10 +83,14 @@ FlagRegister VirtualFlagAllocator::assignPhysical(VirtualFlag vflag)
     VirtualFlag pflag;
 
     // Starting at nextPhys, find an unlocked flag register.
+    // Allocate it temporarily if it's not allocated.
     for (int i = nextPhys; i < nextPhys + nflag; i++) {
         if (i & (vflag.n - 1)) continue;
         auto idx = i & (nflag - 1);
-        if (!(locked & mask(idx, vflag.n))) {
+        auto msk = mask(idx, vflag.n);
+        if ((locked & msk) == 0) {
+            vtemps |= (free & msk);
+            free &= ~vtemps;
             nextPhys = (idx + vflag.n) & (nflag - 1);
             pflag = VirtualFlag{idx, vflag.n};
             break;
@@ -117,7 +121,7 @@ bool VirtualFlagAllocator::canLock(int n) const
 void VirtualFlagAllocator::freeUnlocked()
 {
     uint8_t unlocked = ~locked & ((1 << nflag) - 1);
-    free &= ~unlocked;
+    free |= unlocked;
 }
 
 TokenAllocator::TokenAllocator(HW hw, int grfCount)

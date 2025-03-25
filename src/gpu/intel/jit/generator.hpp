@@ -60,59 +60,6 @@ constexpr gpu_gen_t gpu_xe_hpc = ngen::HW::XeHPC;
 constexpr gpu_gen_t gpu_xe2 = ngen::HW::Xe2;
 constexpr gpu_gen_t gpu_xe3 = ngen::HW::Xe3;
 
-// nGEN jit generator
-//
-// The main purpose of this header file is to provide extra features for nGEN
-// kernel generator, e.g. additional macros and debugging capabilities.
-//
-// Jit generator provides additional memory to simplify kernel debugging. This
-// memory is allocated using Shared Virtual Memory (SVM) feature in OpenCL 2.0.
-// SVM enables the host and device portions of an OpenCL application to
-// seamlessly share pointers and complex pointer-containing data-structures.
-// This memory can be used to dump state of GPU registers or view GPU memory on
-// the host in debugger.
-//
-// In order to use debug memory:
-// 1.  Allocate it using 'void generator_t::dbg_alloc(cl_context context)'
-// 2.  Get memory pointer using 'void* generator_t::dbg_memory()'
-// 3.  Pass it as extra OpenCL kernel argument and define it as new argument in
-//     kernel interface at corresponding order.
-// 4.  Set a breakpoint after 'dnnl_stream_wait()', memory will be available on
-//     the host side after kernel execution.
-//
-// A short example below demonstrates how to use debug memory:
-//
-//  ``` c++
-//  status_t primitive_impl_t::execute(const exec_ctx_t &ctx) {
-//      ...
-//      auto gpu_engine = utils::downcast<ocl::engine_t*>(engine);
-//      jit_generator->dbg_alloc(gpu_engine->context());
-//      void* dbg_mem = jit_generator->dbg_memory();
-//      ...
-//      compute::kernel_arg_list_t arg_list;
-//      arg_list.set(0, src);
-//      arg_list.set(1, dst);
-//      arg_list.set(2, dbg_mem, kernel_arg_t::kind_t::svm);
-//      ...
-//      parallel_for(ctx, nd_range, kernel_, arg_list);
-//  }
-//
-//  ngen_kernel_t() : generator_t<...>() {
-//      externalName("ngen_kernel");
-//      newArgument("src", GlobalPtr);
-//      newArgument("dst", GlobalPtr);
-//      newArgument("dbg_mem", GlobalPtr);
-//      finalizeInterface();
-//      ...
-//      auto header = r32;
-//      auto data = r64;
-//      mov<uint64_t>(1, r64, getArgument("dbg_mem"));
-//      store(1, scattered_dword(), A64, header, data);
-//      ...
-//  }
-//  ```
-//
-
 template <typename ngen_generator_t>
 struct eltwise_injector_f32_t;
 

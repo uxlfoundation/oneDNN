@@ -399,6 +399,21 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     CHECK(get_l0_device_enabled_native_float_atomics(
             device, native_extensions));
 
+    // WORKAROUND: L0 returns 0 for some platforms
+    // If atomics support is not properly returned by L0, fallback to ocl
+    // TODO: remove as L0 fixes the issues
+    if (native_extensions == 0) {
+        bool is_xelpg = (product.family == ngen::ProductFamily::ARL
+                || product.family == ngen::ProductFamily::MTL);
+        uint64_t ocl_native_extensions = 0;
+        cl_device_id ocl_dev;
+        CHECK(sycl_dev2ocl_dev(&ocl_dev,
+                utils::downcast<const sycl::engine_t *>(engine)->device()));
+        CHECK(ocl::get_ocl_device_enabled_native_float_atomics(
+                ocl_dev, ocl_native_extensions, is_xelpg));
+        native_extensions |= ocl_native_extensions;
+    }
+
     auto status
             = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
     if (status != status::success) mayiuse_ngen_kernels = false;

@@ -166,22 +166,12 @@ if(ONEDNN_BUILD_GRAPH)
             "primitive selection with ONEDNN_ENABLE_PRIMITIVE=ALL.")
     endif()
 
-    if(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_BACKEND)
-        add_definitions_with_host_compiler(-DDNNL_ENABLE_COMPILER_BACKEND)
-    endif()
     if(ONEDNN_ENABLE_GRAPH_DUMP)
         message(STATUS "Graph artifacts dump is enabled")
         add_definitions_with_host_compiler(-DDNNL_ENABLE_GRAPH_DUMP)
     endif()
 
     add_subdirectory(graph)
-    if(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_BACKEND AND TARGET dnnl_graphcompiler_llvm_lib_exclude_string)
-        get_property(GC_EXCLUDE_LIBS TARGET dnnl_graphcompiler_llvm_lib_exclude_string PROPERTY INTERFACE_LINK_LIBRARIES)
-        if(DEFINED GC_EXCLUDE_LIBS AND NOT MSVC AND NOT APPLE)
-            # set the LLVM symbols as hidden, or all LLVM symbols will be exported
-            append(CMAKE_SHARED_LINKER_FLAGS "-Wl,--exclude-libs=${GC_EXCLUDE_LIBS}")
-        endif()
-    endif()
 else()
     # If graph component is not built, remove the headers from build and installation.
     list(REMOVE_ITEM HEADERS_SUBDIR

@@ -1,3 +1,4 @@
+--reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=u8 --ddt=f32 --stag=ABcd32a32b --dtag=ABcd32a32b 64x2048x7x7:64x2048x1x1_n"163ca20f4022757b94e2e3cf68fab572"
 --reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=f16 --ddt=f16 --stag=aBcd16b --dtag=aBcd16b 1x32x112x112:1x32x1x1_n"b613f94b409f19d2ea91cc069747fc71*9"
 --reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=f16 --ddt=f16 --stag=aBcd16b --dtag=aBcd16b 1x96x56x56:1x96x1x1_n"33cd9d371104ae163b91c01512fdffdb*9"
 --reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=f16 --ddt=f16 --stag=aBcd16b --dtag=aBcd16b 1x144x56x56:1x144x1x1_n"6909849f731270b424ff0cc9f6425878*9"
@@ -10,5 +11,4 @@
 --reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=f16 --ddt=f16 --stag=aBcd16b --dtag=aBcd16b 1x1152x7x7:1x1152x1x1_n"63214dc508b6b70333ae66a18938d24c*36"
 --reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=f16 --ddt=f16 --stag=aBcd16b --dtag=aBcd16b 1x1280x7x7:1x1280x1x1_n"b6837669fb54a281ce19ddb7b8b691ed*9"
 --reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=u8 --ddt=f32 --stag=aBcd32b --dtag=aBcd32b 1x2048x7x7:1x2048x1x1_n"44d80d7c549f55ce25575ec4729882e9"
---reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=u8 --ddt=f32 --stag=ABcd32a32b --dtag=ABcd32a32b 64x2048x7x7:64x2048x1x1_n"163ca20f4022757b94e2e3cf68fab572"
 --reset --allow-enum-tags-only=0 --alg=mean --p=0 --eps=0 --sdt=f16 --ddt=f16 --stag=aBcd16b --dtag=aBcd16b 1x2048x7x7:1x2048x1x1_n"89d95989b52039ad63103d74fa54e711"

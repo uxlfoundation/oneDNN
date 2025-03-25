@@ -14,6 +14,13 @@ where \f$ C \f$ is a size of tensor along axis dimension.
 | Attribute Name                           | Description                                               | Value Type | Supported Values                     | Required or Optional |
 |:-----------------------------------------|:----------------------------------------------------------|:-----------|:-------------------------------------|:---------------------|
 | [axis](@ref dnnl::graph::op::attr::axis) | Represents the axis from which the SoftMax is calculated. | s64        | Arbitrary s64 value (`1` in default) | Optional             |
+| [mode](@ref dnnl::graph::op::attr::mode) | Specifies the computation mode of SoftMax                 | string     | `none` (default), `inf_as_zero`      | Optional             |
+
+When the operation attribute `mode` is not set or set to `none`, the operation
+performs the normal SoftMax calculation. In this case, the operation will
+generate `NaN` if all the input elements are `-infinity` along the `axis`
+dimension. To prevent this, you can set the attribute to `inf_as_zero` so that
+the operation generates zeros for `-infinity` inputs. 
 
 ## Execution arguments
 

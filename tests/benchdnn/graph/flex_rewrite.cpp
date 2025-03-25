@@ -199,6 +199,7 @@ void flex_rewrite_t::rewrite(deserialized_graph_t &dgraph) {
     }
     infer_output_shape(dgraph, change_stride);
     quantized_graph_rewrite(dgraph);
+    op_kind_rewrite(dgraph);
     graph_attrs_rewrite(dgraph);
     rewrite_linked_shape_and_attr(dgraph);
     dt_rewrite(dgraph);
@@ -1325,6 +1326,56 @@ void flex_rewrite_t::dt_rewrite(deserialized_graph_t &dgraph) {
             for (auto &lt : aop.out_lts_) {
                 lt.data_type_ = str_dt;
             }
+        }
+    }
+}
+
+void flex_rewrite_t::op_kind_rewrite(deserialized_graph_t &dgraph) {
+    // Step 1: check the op kind in the map and whether the given ids are in
+    // the graph.
+    for (const auto &v : op_kind_map_) {
+        if (v.second == "default") return;
+
+        auto target_kind = opstr2kind(v.second);
+        if (target_kind == dnnl::graph::op::kind::LastSymbol) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: invalid target op kind %s is provided\n",
+                    v.second.c_str());
+            SAFE_V(FAIL);
+        }
+
+        // Only support op kind rewrite for binary and eltwise ops.
+        auto target_driver = opkind2driver(target_kind);
+        if (target_driver != dnnl_driver_t::binary
+                && target_driver != dnnl_driver_t::eltwise) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: target op kind %s for id `%zd` is not "
+                    "supported\n",
+                    v.second.c_str(), v.first);
+            SAFE_V(FAIL);
+        }
+
+        auto &aop = dgraph.get_op(v.first);
+        if (aop.empty()) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: ID `%zd` is not found in the graph\n",
+                    v.first);
+            SAFE_V(FAIL);
+        }
+        auto op_driver = opkind2driver(opstr2kind(aop.kind_));
+        if (op_driver != target_driver) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: target op kind `%s` does not "
+                    "match the op kind `%s` in the graph\n",
+                    v.second.c_str(), aop.kind_.c_str());
+            SAFE_V(FAIL);
+        }
+    }
+
+    // Step 2: rewrite the op kinds.
+    for (const auto &v : op_kind_map_) {
+        for (auto &aop : dgraph.ops_) {
+            if (aop.id_ == v.first) { aop.kind_ = v.second; }
         }
     }
 }

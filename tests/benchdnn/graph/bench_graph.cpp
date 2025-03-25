@@ -30,13 +30,14 @@ void check_correctness(const settings_t &s) {
     for_(const auto &i_op_attrs : s.op_attrs_vec)
     for_(const auto &i_expected_n_partition : s.expected_n_partition_vec)
     for_(const auto &i_fpmath_mode : s.fpmath_mode_vec)
+    for_(const auto &i_op_kind_map : s.op_kind_map)
     for_(const auto &i_dt : s.dt)
     for_(const auto &i_dt_map : s.dt_map)
     for (const auto &i_mb : s.mb) {
         deserialized_graph_t dg;
         dg.load(locate_file(s.json_file));
-        flex_rewrite_t fw(
-                i_in_shapes, i_op_attrs, i_fpmath_mode, i_mb, i_dt, i_dt_map);
+        flex_rewrite_t fw(i_in_shapes, i_op_attrs, i_fpmath_mode, i_mb, i_dt,
+                i_dt_map, i_op_kind_map);
         fw.rewrite(dg);
         BENCHDNN_PRINT(7, "[INFO] Graph dump:\n%s\n", dg.get_string().c_str());
 
@@ -87,6 +88,7 @@ int bench(int argc, char **argv) {
                 || parse_dt(s.dt, s.dt_map, argv[0])
                 || parse_input_shapes(s.in_shapes_vec, argv[0])
                 || parse_op_attrs(s.op_attrs_vec, argv[0])
+                || parse_op_kind(s.op_kind_map, argv[0])
                 || parse_graph_expected_n_partitions(
                         s.expected_n_partition_vec, argv[0])
                 || parse_graph_fpmath_mode(s.fpmath_mode_vec, argv[0])

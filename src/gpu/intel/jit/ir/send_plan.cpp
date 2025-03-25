@@ -1302,6 +1302,11 @@ public:
         if (type_size < slot_size * type_packing && slot_size < 4)
             slot_size = type_size;
 
+        // Require sub-byte types to fill a dword to avoid striding. This
+        // restriction can be reduced to byte-alignment when the restriction
+        // above is lifted.
+        if (slot_size < 4 && type_packing > 1) gpu_error_not_expected();
+
         // GPUs <= XeLP requires qword alignment for qword scattered messages,
         // downgrade to byte scattered (x1, x2 or x4) when alignment is
         // sub-qword.

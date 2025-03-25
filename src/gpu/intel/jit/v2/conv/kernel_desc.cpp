@@ -39,11 +39,12 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-pvar_tile_t min_dims_tile(const problem_t &prb) {
+pvar_tile_t default_spec_tile(const problem_t &prb) {
     pvar_tile_t xd;
     xd[pvars::id] = xd[pvars::od] = xd[pvars::kd] = 1;
     xd[pvars::dd] = xd[pvars::pd] = 0;
     xd[pvars::sd] = 1;
+    if (prb.shape().at(pvars::g) == 1) xd[pvars::g] = 1;
     pvar_tile_t xhd = xd;
     xhd[pvars::ih] = xhd[pvars::oh] = xhd[pvars::kh] = 1;
     xhd[pvars::dh] = xhd[pvars::ph] = 0;
@@ -63,7 +64,7 @@ pvar_tile_t min_dims_tile(const problem_t &prb) {
 
 pvar_tile_t get_dims_tile(const problem_t &prb, specialization_mode_t mode) {
     switch (mode) {
-        case specialization_mode_t::min_dims: return min_dims_tile(prb);
+        case specialization_mode_t::_default: return default_spec_tile(prb);
         case specialization_mode_t::max: return prb.shape();
         default: gpu_error_not_expected();
     }
@@ -71,6 +72,7 @@ pvar_tile_t get_dims_tile(const problem_t &prb, specialization_mode_t mode) {
 }
 
 void specialization_t::specialize(const problem_t &prb) {
+    if (mode == specialization_mode_t::none) return;
     auto t = get_dims_tile(prb, mode);
     for (auto &d : t) {
         gpu_assert(!dim_values.has(d) || dim_values[d] == t[d]);
@@ -281,7 +283,7 @@ void kernel_desc_t::set(const std::string &s) {
         gpu_error_not_expected()
                 << "Error: missing --iter parameter in kernel descriptor";
     }
-    set_defaults();
+    set_missing();
 }
 
 loop_desc_t default_loop_desc(prop_kind_t prop) {
@@ -311,7 +313,7 @@ loop_desc_t default_loop_desc(prop_kind_t prop) {
     return loop_desc;
 }
 
-void kernel_desc_t::set_defaults() {
+void kernel_desc_t::set_missing() {
     src_tag = make_conv_layout_tag(tensor_kind_t::src, src_tag.str());
     wei_tag = make_conv_layout_tag(tensor_kind_t::wei, wei_tag.str());
     dst_tag = make_conv_layout_tag(tensor_kind_t::dst, dst_tag.str());
@@ -561,8 +563,8 @@ void kernel_desc_t::init_parse_iface(parse_iface_t<kernel_desc_t> *iface) {
     iface->add<PACK(spec)>("spec",
             "Dimension specialization requirements (e.g. kd1kh1 for fixed "
             "values or oc@64 for divisibility requirements). Special "
-            "values max and min_dims can be used for "
-            "problem-specific specialization, e.g. mb1:min_dims.");
+            "values default and max can be used for "
+            "problem-specific specialization, e.g. mb1:default.");
     iface->add<PACK(ext)>("ext",
             "Kernel extensions, comma-separated (e.g. "
             "bias,out_b1,out_b2,out_b4).");
@@ -599,8 +601,7 @@ void kernel_desc_t::init_parse_iface(parse_iface_t<kernel_desc_t> *iface) {
     iface->add(po_entry);
 #undef PACK
 
-    iface->set_post_parse_func(
-            [](kernel_desc_t &desc) { desc.set_defaults(); });
+    iface->set_post_parse_func([](kernel_desc_t &desc) { desc.set_missing(); });
 }
 
 arg_helper_t::arg_helper_t(const kernel_desc_t &desc) : desc_(desc) {}
@@ -875,7 +876,7 @@ kernel_desc_t to_stream_k(const kernel_desc_t &desc, bool check_ext) {
             break;
         default: gpu_error_not_expected();
     }
-    sk_desc.set_defaults();
+    sk_desc.set_missing();
     return sk_desc;
 }
 

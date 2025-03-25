@@ -134,16 +134,16 @@ public:
         auto prb = to_problem(pd, engine);
         kernel_desc_t _desc;
         if (debug_t::init_kernel_desc(_desc)) {
-            _desc.set_defaults();
+            _desc.set_missing();
+            _desc.spec.mode = specialization_mode_t::_default;
         } else {
             auto &registry = const_plan_registry();
-            _desc = registry.find_best(prb);
+            _desc = registry.find_best(prb, specialization_mode_t::_default);
             if (_desc.is_empty()) {
                 gpu_info() << "Cannot find kernels that can fit the problem.";
                 return status::unimplemented;
             }
         }
-        _desc.spec.mode = specialization_mode_t::min_dims;
         _desc.fit_to(prb);
         CHECK(init_layouts(_desc, pd));
         CHECK(pd->attr_.set_default_formats(out_md(pd)));

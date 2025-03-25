@@ -120,9 +120,9 @@ void init_params(
             break;
         default: break;
     }
-    auto &iface = params.desc.parse_iface();
+    auto &iface = kernel_desc_t::parse_iface();
     iface.parse(cmd_args, params.desc, &params.parse_result);
-    params.desc.set_defaults();
+    params.desc.set_missing();
     if (!s_model.empty()) params.model_set = jit::parse<model_set_t>(s_model);
 }
 

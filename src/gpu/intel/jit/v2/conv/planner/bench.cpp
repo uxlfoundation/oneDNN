@@ -593,24 +593,24 @@ std::vector<problem_t> load_problems(const std::string &path) {
 }
 
 bench_data_t bench(const bench_manager_t &bench_mger,
-        const kernel_desc_t &kernel_desc, std::vector<bench_task_t> &tasks,
+        const kernel_desc_t &_kernel_desc, std::vector<bench_task_t> &tasks,
         memory_pool_t *mem_pool_ptr = nullptr) {
     int ntasks = (int)tasks.size();
 
     auto eng = bench_mger.get_engine();
     auto strm = bench_mger.get_stream();
-    std::cout << "Running benchmark for descriptor: " << kernel_desc.cmd_str()
+    std::cout << "Running benchmark for descriptor: " << _kernel_desc.cmd_str()
               << std::endl;
-    gpu_assert(!kernel_desc.spec.is_dynamic());
-    auto kernel_desc_min_dims = kernel_desc;
-    kernel_desc_min_dims.spec.mode = specialization_mode_t::min_dims;
+    gpu_assert(!_kernel_desc.spec.is_dynamic());
+    auto kernel_desc = _kernel_desc;
+    kernel_desc.spec.mode = specialization_mode_t::_default;
     {
-        auto guard = debug_t::make_kernel_desc_setter(kernel_desc_min_dims);
+        auto guard = debug_t::make_kernel_desc_setter(kernel_desc);
         if (!tasks[0].init_primitive(eng)) return {};
     }
 
     parallel_nd(ntasks, [&](dim_t i) {
-        auto guard = debug_t::make_kernel_desc_setter(kernel_desc_min_dims);
+        auto guard = debug_t::make_kernel_desc_setter(kernel_desc);
         bool ok = tasks[i].init_primitive(eng);
         if (!ok) throw std::runtime_error("Initialization failed");
     });
@@ -624,7 +624,7 @@ bench_data_t bench(const bench_manager_t &bench_mger,
         mem_pool.finalize(strm);
     }
 
-    bench_data_t bd(0, kernel_desc);
+    bench_data_t bd(0, _kernel_desc);
     dnnl_reset_profiling(strm.get());
     for (int i = 0; i < ntasks; i++) {
         tasks[i].bench_async(strm, mem_pool);

@@ -48,22 +48,28 @@ plan_registry_t::plan_registry_t(const char **entries) {
     }
 }
 
-kernel_desc_t plan_registry_t::find_best(const problem_t &prb) const {
+kernel_desc_t plan_registry_t::find_best(
+        const problem_t &prb, specialization_mode_t spec_mode) const {
     kernel_desc_t best;
     float min_time = std::numeric_limits<float>::max();
     for (auto &e : entries_) {
-        if (!e.desc.can_fit(prb)) continue;
-        float time = e.model_set.time(prb, e.desc);
-        if (time < min_time) {
-            min_time = time;
-            best = e.desc;
-        }
-        auto desc = to_stream_k(e.desc);
-        if (desc.is_empty() || !desc.can_fit(prb)) continue;
-        time = e.model_set.time(prb, desc);
+        auto desc = e.desc;
+        desc.spec.mode = spec_mode;
+        desc.spec.specialize(prb);
+        if (!desc.can_fit(prb)) continue;
+        float time = e.model_set.time(prb, desc);
         if (time < min_time) {
             min_time = time;
             best = std::move(desc);
+        }
+        auto sk_desc = to_stream_k(e.desc);
+        sk_desc.spec.mode = spec_mode;
+        sk_desc.spec.specialize(prb);
+        if (sk_desc.is_empty() || !sk_desc.can_fit(prb)) continue;
+        time = e.model_set.time(prb, sk_desc);
+        if (time < min_time) {
+            min_time = time;
+            best = sk_desc;
         }
     }
     return best;

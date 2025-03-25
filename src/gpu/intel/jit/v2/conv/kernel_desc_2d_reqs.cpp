@@ -98,7 +98,7 @@ struct block_2d_params_t {
 block_2d_params_t to_block_2d_params(const prop_kind_t &prop,
         const tensor_kind_t &tensor_kind, int type_size,
         const pvar_tile_t &tg_tile, const pvar_tile_t &iter_tile,
-        const pvar_map_t<stride_t> &strides) {
+        const pvar_map_t<stride_t> &strides, const prb_reqs_t &reqs) {
     bool is_fwd = (prop == prop_kind::forward);
     bool is_bwd_d = (prop == prop_kind::backward_data);
     bool is_bwd_w = (prop == prop_kind::backward_weights);
@@ -138,6 +138,7 @@ block_2d_params_t to_block_2d_params(const prop_kind_t &prop,
     }
     for (auto &d : strides) {
         if (utils::one_of(d, params.w_dim, params.h_dim)) continue;
+        if (reqs.is_equal(d, 1)) continue;
         params.base_stride.intersect(strides[d]);
     }
     params.base_stride *= type_size;
@@ -164,7 +165,7 @@ void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
     }
     int type_size = tag.type().size();
     auto params = to_block_2d_params(desc.prop, tensor_kind, type_size,
-            desc.thread_group_tile, desc.iter_tile, strides);
+            desc.thread_group_tile, desc.iter_tile, strides, reqs);
     int base_align = block_2d_base_alignment(desc.hw_desc);
     auto W = params.w_dim.var();
     auto H = params.h_dim.var();

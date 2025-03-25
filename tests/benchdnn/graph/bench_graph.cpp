@@ -43,7 +43,8 @@ void check_correctness(const settings_t &s) {
 
         const prb_t prb(dg, i_expected_n_partition);
         const auto &cpp_pstr = case_to_str(s.json_file, i_in_shapes, i_op_attrs,
-                i_fpmath_mode, i_expected_n_partition, i_mb, i_dt, i_dt_map);
+                i_fpmath_mode, i_expected_n_partition, i_mb, i_dt, i_dt_map,
+                i_op_kind_map);
         const char *pstr = cpp_pstr.c_str();
         BENCHDNN_PRINT(1, "run: %s\n", pstr);
         res_t res {};

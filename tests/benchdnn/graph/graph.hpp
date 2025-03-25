@@ -89,7 +89,8 @@ std::string case_to_str(const std::string &json_file,
         const graph_fpmath_mode_t &fpmath_mode,
         const size_t expected_n_partitions, const int64_t mb,
         const dnnl_data_type_t dt,
-        const std::map<size_t, dnnl_data_type_t> &dt_map);
+        const std::map<size_t, dnnl_data_type_t> &dt_map,
+        const std::map<size_t, std::string> &op_kind_map);
 
 struct perf_report_t : public base_perf_report_t {
     perf_report_t(const std::string &case_str, const char *perf_template)

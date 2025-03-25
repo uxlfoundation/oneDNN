@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Arm Ltd. and affiliates
+* Copyright 2022-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -83,17 +83,20 @@ void acl_set_threadpool_num_threads() {
 }
 // Swap BenchmarkScheduler for custom scheduler builds (i.e. ThreadPoolScheduler)
 void acl_set_tp_benchmark_scheduler() {
-    static std::once_flag flag_once;
-    // Create threadpool scheduler
-    std::unique_ptr<arm_compute::IScheduler> threadpool_scheduler
-            = std::make_unique<ThreadpoolScheduler>();
-    arm_compute::IScheduler *_real_scheduler = nullptr;
-    _real_scheduler = threadpool_scheduler.release();
-    // Create benchmark scheduler and set TP as real scheduler
-    std::shared_ptr<arm_compute::IScheduler> benchmark_scheduler
-            = std::make_unique<BenchmarkScheduler>(*_real_scheduler);
-    std::call_once(flag_once,
-            [&]() { arm_compute::Scheduler::set(benchmark_scheduler); });
+    static thread_local std::once_flag flag_once;
+    std::call_once(flag_once, [&]() {
+        // Create threadpool scheduler
+        std::unique_ptr<arm_compute::IScheduler> threadpool_scheduler
+                = std::make_unique<ThreadpoolScheduler>();
+        arm_compute::IScheduler *_real_scheduler = nullptr;
+        _real_scheduler = threadpool_scheduler.release();
+
+        // Create benchmark scheduler and set TP as real scheduler
+        std::shared_ptr<arm_compute::IScheduler> benchmark_scheduler
+                = std::make_unique<BenchmarkScheduler>(*_real_scheduler);
+
+        arm_compute::Scheduler::set(benchmark_scheduler);
+    });
 }
 #endif
 

@@ -56,6 +56,8 @@ struct settings_t : public base_settings_t {
     std::vector<dnnl_data_type_t> dt {dnnl_data_type_undef};
     std::vector<std::map<size_t, dnnl_data_type_t>> dt_map {
             {{SIZE_MAX, dnnl_data_type_undef}}};
+    std::vector<std::map<size_t, std::string>> op_kind_map {
+            {{SIZE_MAX, "default"}}};
 
     const char *perf_template_csv
             = "perf,%engine%,%DESC%,"

@@ -56,12 +56,13 @@ struct ir_generator_t : public generator_base_t {
 
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
-    xpu::binary_t get_binary(const compute::compute_engine_t *engine) override {
+    status_t get_kernel(compute::kernel_t &kernel,
+            const compute::compute_engine_t *engine) override {
         try {
 #define CASE(hw) \
     case ngen::HW::hw: { \
-        KernelT<ngen::HW::hw> kernel(kernel_desc_, engine); \
-        return kernel.get_binary(engine); \
+        KernelT<ngen::HW::hw> _kernel(kernel_desc_, engine); \
+        return _kernel.get_kernel(kernel, engine); \
     }
             auto *device_info = engine->device_info();
             auto hw = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
@@ -77,8 +78,10 @@ struct ir_generator_t : public generator_base_t {
                 default: gpu_assert(false) << "Unexpected GPU architecture";
             }
 #undef CASE
-        } catch (ngen::out_of_registers_exception &) { return xpu::binary_t(); }
-        return xpu::binary_t();
+        } catch (ngen::out_of_registers_exception &) {
+            return status::runtime_error;
+        }
+        return status::runtime_error;
     }
 
 private:

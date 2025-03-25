@@ -29,11 +29,7 @@ namespace sycl {
 
 class sycl_interop_gpu_kernel_t : public gpu::intel::compute::kernel_impl_t {
 public:
-    sycl_interop_gpu_kernel_t(std::unique_ptr<::sycl::kernel> &&sycl_kernel,
-            gpu::intel::compute::program_src_t src)
-        : sycl_kernel_(std::move(sycl_kernel)), src_(src) {}
-
-    ::sycl::kernel sycl_kernel() const { return *sycl_kernel_; }
+    const ::sycl::kernel &sycl_kernel() const { return sycl_kernel_; }
 
     status_t parallel_for(impl::stream_t &stream,
             const gpu::intel::compute::nd_range_t &range,
@@ -47,12 +43,23 @@ public:
 
     status_t dump() const override;
     std::string name() const override {
-        return sycl_kernel_->get_info<::sycl::info::kernel::function_name>();
+        return sycl_kernel_.get_info<::sycl::info::kernel::function_name>();
     }
     const compute::program_src_t &src() const { return src_; }
 
+    static status_t make(compute::kernel_t &compute_kernel,
+            const ::sycl::kernel &sycl_kernel,
+            const gpu::intel::compute::program_src_t &src);
+
 private:
-    std::unique_ptr<::sycl::kernel> sycl_kernel_;
+    // See description in the class implementation.
+    friend class sycl_interop_gpu_kernel_compat_t;
+
+    sycl_interop_gpu_kernel_t(const ::sycl::kernel &sycl_kernel,
+            const gpu::intel::compute::program_src_t &src)
+        : sycl_kernel_(sycl_kernel), src_(src) {}
+
+    ::sycl::kernel sycl_kernel_;
     std::vector<gpu::intel::compute::scalar_type_t> arg_types_;
     gpu::intel::compute::program_src_t src_;
 };

@@ -162,14 +162,14 @@ status_t sycl_interop_gpu_kernel_t::parallel_for(impl::stream_t &stream,
         }
         if (range.local_range()) {
             auto sycl_nd_range = gpu::intel::sycl::to_sycl_nd_range(range);
-            cgh.parallel_for(sycl_nd_range, *sycl_kernel_);
+            cgh.parallel_for(sycl_nd_range, sycl_kernel_);
         } else {
             const auto &global_range = range.global_range();
             auto sycl_range = ::sycl::range<3>(
                     global_range.ndims() >= 3 ? global_range[2] : 1,
                     global_range.ndims() >= 2 ? global_range[1] : 1,
                     global_range[0]);
-            cgh.parallel_for(sycl_range, *sycl_kernel_);
+            cgh.parallel_for(sycl_range, sycl_kernel_);
         }
     });
 
@@ -187,6 +187,25 @@ status_t sycl_interop_gpu_kernel_t::dump() const {
     xpu::binary_t binary;
     CHECK(gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary));
     return gpu::intel::gpu_utils::dump_kernel_binary(binary, name());
+}
+
+// This class is to get around std::make_shared requirement to have a public
+// constructor. We keep the original constructor as private but expose it here
+// to use with std::make_shared.
+class sycl_interop_gpu_kernel_compat_t : public sycl_interop_gpu_kernel_t {
+public:
+    template <typename... Args>
+    sycl_interop_gpu_kernel_compat_t(Args &&...args)
+        : sycl_interop_gpu_kernel_t(std::forward<Args>(args)...) {}
+};
+
+status_t sycl_interop_gpu_kernel_t::make(compute::kernel_t &compute_kernel,
+        const ::sycl::kernel &sycl_kernel,
+        const gpu::intel::compute::program_src_t &src) {
+    compute_kernel = compute::kernel_t(
+            std::make_shared<sycl_interop_gpu_kernel_compat_t>(
+                    sycl_kernel, src));
+    return status::success;
 }
 
 } // namespace sycl

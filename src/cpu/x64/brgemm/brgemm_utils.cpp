@@ -283,28 +283,33 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     const auto L1 = platform::get_per_core_cache_size(1);
 
     // Blocking configuration for AMX
+    const auto BD = brg->bcast_dim;
+    const auto BD_R16 = rnd_up(BD, 16);
+    const auto LD = brg->load_dim;
+    const auto LD_R16 = rnd_up(LD, 16);
+
     const int max_width = 16, min_width = 1;
     brg->ld_block = 16;
-    brg->ldb = brg->load_dim / brg->ld_block;
-    brg->ldb_tail = brg->load_dim % brg->ld_block;
+    brg->ldb = LD / brg->ld_block;
+    brg->ldb_tail = LD % brg->ld_block;
 
     auto find_bdb_bd_mask = [&](int bd_block, int &bdb, int &bdb_tail) {
-        if (brg->brgattr.bd_mask_level != 2 || brg->bcast_dim == 0) {
-            bdb = div_up(brg->bcast_dim, bd_block);
-            bdb_tail = brg->bcast_dim % bd_block;
+        if (brg->brgattr.bd_mask_level != 2 || BD == 0) {
+            bdb = div_up(BD, bd_block);
+            bdb_tail = BD % bd_block;
             return;
         }
 
         bdb = 0;
         bdb_tail = 0;
-        for (int i = 0; i < brg->bcast_dim;) {
+        for (int i = 0; i < BD;) {
             if (brg->brgattr.bd_mask_level == 2
                     && brg->brgattr.bd_mask[i] == 0) {
                 i++;
             } else {
                 i += bd_block;
-                if (i > brg->bcast_dim) {
-                    bdb_tail = brg->bcast_dim - i + bd_block;
+                if (i > BD) {
+                    bdb_tail = BD - i + bd_block;
                     if (brg->brgattr.use_uker) bdb++;
                 } else
                     bdb++;
@@ -313,11 +318,10 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     };
 
     auto find_bd_block_for_bd_mask = [&]() {
-        if (brg->brgattr.bd_mask_level != 2 || brg->bcast_dim == 0)
-            return false;
+        if (brg->brgattr.bd_mask_level != 2 || BD == 0) return false;
 
         auto min_bdb = INT_MAX;
-        const auto start_bd_block = nstl::min(max_width, brg->bcast_dim);
+        const auto start_bd_block = nstl::min(max_width, BD);
         auto best_bd_block = start_bd_block;
         for (auto bd_block = start_bd_block; bd_block > 0; bd_block--) {
             int bdb = 0;
@@ -364,13 +368,12 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
 
     auto try_3x1_decomposition = [&](int width_step) {
         brg->is_M_tail = false;
-        if (brg->bcast_dim > (width_step - 1) * max_width
-                && brg->bcast_dim < width_step * max_width
+        if (BD > (width_step - 1) * max_width && BD < width_step * max_width
                 && brg->ldb_tail == 0) {
             if (!find_bd_block_for_bd_mask()) {
                 brg->bd_block = max_width;
-                brg->bdb = div_up(brg->bcast_dim, brg->bd_block);
-                brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+                brg->bdb = div_up(BD, brg->bd_block);
+                brg->bdb_tail = BD % brg->bd_block;
                 brg->is_M_tail = true;
             }
             brg->bd_block2 = width_step;
@@ -385,16 +388,16 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     auto try_2x2_decomposition = [&]() {
         if (!find_bd_block_for_bd_mask()) {
             for (int m_block = max_width; m_block >= min_width; m_block--) {
-                if (brg->bcast_dim % m_block == 0) {
+                if (BD % m_block == 0) {
                     brg->bd_block = m_block;
                     break;
                 }
             }
             if (brg->bd_block == 1) {
-                brg->bd_block = nstl::min(max_width, brg->bcast_dim);
-                brg->bdb_tail = brg->bcast_dim % max_width;
+                brg->bd_block = nstl::min(max_width, BD);
+                brg->bdb_tail = BD % max_width;
                 for (int i = max_width; i >= min_width; i--) {
-                    const auto i_tail = brg->bcast_dim % i;
+                    const auto i_tail = BD % i;
                     if (i_tail > brg->bdb_tail || i_tail == 0) {
                         brg->bd_block = i;
                         brg->bdb_tail = i_tail;
@@ -402,8 +405,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                     }
                 }
             }
-            brg->bdb = brg->bcast_dim / brg->bd_block;
-            brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+            brg->bdb = BD / brg->bd_block;
+            brg->bdb_tail = BD % brg->bd_block;
         }
 
         brg->bd_block2 = (brg->bdb >= 2) ? 2 : 1;
@@ -418,6 +421,58 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         return !(brg->ld_block2 == 1 || brg->bd_block2 == 1
                 || brg->bd_block < 8);
     };
+
+    auto recalc_blocking = [&](int new_bd_block, int new_ld_block,
+                                   int new_bd_block2, int new_ld_block2) {
+        if (new_bd_block != 0) {
+            brg->bd_block = new_bd_block;
+            find_bdb_bd_mask(brg->bd_block, brg->bdb, brg->bdb_tail);
+            brg->is_M_tail = (brg->bdb_tail != 0);
+        }
+
+        if (new_ld_block != 0) {
+            brg->ld_block = new_ld_block;
+            brg->ldb = div_up(LD, brg->ld_block);
+            brg->ldb_tail = LD % brg->ld_block;
+        }
+
+        if (new_bd_block2 != 0) {
+            brg->bd_block2 = new_bd_block2;
+            if (can_dispatch_uker(brg)) {
+                brg->bdb2 = div_up(brg->bdb, brg->bd_block2);
+                brg->bdb2_tail = 0;
+            } else {
+                if (brg->bdb_tail && brg->bd_block2 > 1) brg->bd_block2--;
+                auto full_bd_blocks = brg->bdb - (brg->bdb_tail != 0 ? 1 : 0);
+                brg->bdb2 = full_bd_blocks / brg->bd_block2;
+                brg->bdb2_tail = full_bd_blocks % brg->bd_block2;
+            }
+        }
+
+        if (new_ld_block2 != 0) {
+            brg->ld_block2 = new_ld_block2;
+            if (can_dispatch_uker(brg)) {
+                brg->ldb2 = div_up(brg->ldb, brg->ld_block2);
+                brg->ldb2_tail = 0;
+            } else {
+                if (brg->ldb_tail && brg->ld_block2 > 1) brg->ld_block2--;
+                auto full_ld_blocks = brg->ldb - (brg->ldb_tail != 0 ? 1 : 0);
+                brg->ldb2 = full_ld_blocks / brg->ld_block2;
+                brg->ldb2_tail = full_ld_blocks % brg->ld_block2;
+            }
+        }
+    };
+
+    auto recalc_blocking_ext
+            = [&](int new_bd_block, int new_ld_block, int new_bd_block2,
+                      int new_ld_block2, bool load_nt_A, bool load_nt_B,
+                      brgemm_kernel_innermost_loop_t innermost_loop) {
+                  recalc_blocking(new_bd_block, new_ld_block, new_bd_block2,
+                          new_ld_block2);
+                  brg->load_nt_A = load_nt_A;
+                  brg->load_nt_B = load_nt_B;
+                  brg->innermost_loop = innermost_loop;
+              };
 
     bool is_decomposition_defined = false;
     for (int i = decomposition_2x2; i != undefined; i++) {
@@ -437,48 +492,6 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     }
     if (!is_decomposition_defined) try_2x2_decomposition();
 
-    auto recalc_bd_block = [&](int new_bd_block) {
-        if (new_bd_block == 0) return;
-        brg->bd_block = new_bd_block;
-        find_bdb_bd_mask(brg->bd_block, brg->bdb, brg->bdb_tail);
-        brg->is_M_tail = (brg->bdb_tail != 0);
-    };
-
-    auto recalc_bd_block2 = [&](int new_bd_block2) {
-        if (new_bd_block2 == 0) return;
-        brg->bd_block2 = new_bd_block2;
-        if (can_dispatch_uker(brg)) {
-            brg->bdb2 = div_up(brg->bdb, brg->bd_block2);
-            brg->bdb2_tail = 0;
-        } else {
-            if (brg->bdb_tail && brg->bd_block2 > 1) brg->bd_block2--;
-            auto full_bd_blocks = brg->bdb - (brg->bdb_tail != 0 ? 1 : 0);
-            brg->bdb2 = full_bd_blocks / brg->bd_block2;
-            brg->bdb2_tail = full_bd_blocks % brg->bd_block2;
-        }
-    };
-
-    auto recalc_ld_block = [&](int new_ld_block) {
-        if (new_ld_block == 0) return;
-        brg->ld_block = new_ld_block;
-        brg->ldb = div_up(brg->load_dim, brg->ld_block);
-        brg->ldb_tail = brg->load_dim % brg->ld_block;
-    };
-
-    auto recalc_ld_block2 = [&](int new_ld_block2) {
-        if (new_ld_block2 == 0) return;
-        brg->ld_block2 = new_ld_block2;
-        if (can_dispatch_uker(brg)) {
-            brg->ldb2 = div_up(brg->ldb, brg->ld_block2);
-            brg->ldb2_tail = 0;
-        } else {
-            if (brg->ldb_tail && brg->ld_block2 > 1) brg->ld_block2--;
-            auto full_ld_blocks = brg->ldb - (brg->ldb_tail != 0 ? 1 : 0);
-            brg->ldb2 = full_ld_blocks / brg->ld_block2;
-            brg->ldb2_tail = full_ld_blocks % brg->ld_block2;
-        }
-    };
-
     const bool try_load_nt_A
             = (brg->innermost_loop == brgemm_bd_loop_innermost);
     const bool try_load_nt_B
@@ -494,164 +507,108 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     brg->load_nt_A = try_load_nt_A && try_load_nt;
     brg->load_nt_B = try_load_nt_B && try_load_nt;
 
-    recalc_bd_block(brg->bd_block);
-    recalc_bd_block2(brg->bd_block2);
-    recalc_ld_block(brg->ld_block);
-    recalc_ld_block2(brg->ld_block2);
+    recalc_blocking(
+            brg->bd_block, brg->ld_block, brg->bd_block2, brg->ld_block2);
 
     if (can_dispatch_uker(brg)) {
         // Blocking heuristics for some shapes
-        // TODO: Review these criterias
-        size_t eff_K = brg->reduce_dim * brg->typesize_A * brg->brgattr.K_koef;
-        auto low_K = (L1 - 4 * 1024) / (6 * 16);
+        // TODO: Review these criteria
+        const size_t eff_K
+                = brg->reduce_dim * brg->typesize_A * brg->brgattr.K_koef;
+        const auto low_K = (L1 - 4 * 1024) / (6 * 16);
 
         // TODO: if rdb_tail != 0 then we should limit
         // blocking because we need extra tiles for A and B to load rdb_tail
         // if bd_mask_level != 0 it means it aligned to 16
 
-        bool bdb_block_tail = !(brg->bd_block > 12
-                && (brg->bcast_dim % brg->bd_block == 0
+        const bool bdb_block_tail = !(brg->bd_block > 12
+                && (BD % brg->bd_block == 0
                         && brg->brgattr.bd_mask_level == 0));
-        bool ldb_tail_16 = (brg->load_dim % 16 != 0);
+        const bool ldb_tail_16 = (LD % 16 != 0);
         if (everyone_is(false, bdb_block_tail, ldb_tail_16)) {
             // try to use 1x(4|5) or (4|5)x1 decomposition for specific
             // range of K
-            auto upper_K5 = (L1 - 5 * 1024) / (5 * 16);
-            auto upper_K4 = (L1 - 4 * 1024) / (4 * 16);
-            bool K5_fit_L1 = (low_K <= eff_K && eff_K < upper_K5);
-            bool K4_fit_L1 = (low_K <= eff_K && eff_K < upper_K4);
-            bool bd_big = (brg->bcast_dim > 32);
-            bool ld_big = (brg->load_dim > 32);
-            if (brg->load_dim % 80 == 0 && K5_fit_L1 && bd_big) {
+            const auto upper_K5 = (L1 - 5 * 1024) / (5 * 16);
+            const auto upper_K4 = (L1 - 4 * 1024) / (4 * 16);
+            const bool K5_fit_L1 = (low_K <= eff_K && eff_K < upper_K5);
+            const bool K4_fit_L1 = (low_K <= eff_K && eff_K < upper_K4);
+            const bool bd_big = (BD > 32);
+            const bool ld_big = (LD > 32);
+            const bool aligned_bd_mask
+                    = brg->brgattr.bd_mask_level != 0 && brg->bdb % 4 == 0;
+            if (LD % 80 == 0 && K5_fit_L1 && bd_big) {
+                recalc_blocking_ext(
+                        0, 16, 1, 5, true, false, brgemm_bd_loop_innermost);
+            } else if (LD % 64 == 0 && K4_fit_L1 && bd_big) {
+                recalc_blocking_ext(
+                        0, 16, 1, 4, true, false, brgemm_bd_loop_innermost);
+            } else if ((BD % 80 == 0 || aligned_bd_mask) && K5_fit_L1
+                    && ld_big) {
 
-                recalc_ld_block(16);
-                recalc_bd_block2(1);
-                recalc_ld_block2(5);
-                brg->load_nt_A = true;
-                brg->load_nt_B = false;
-                brg->innermost_loop = brgemm_bd_loop_innermost;
-            } else if (brg->load_dim % 64 == 0 && K4_fit_L1 && bd_big) {
-
-                recalc_ld_block(16);
-                recalc_bd_block2(1);
-                recalc_ld_block2(4);
-                brg->load_nt_A = true;
-                brg->load_nt_B = false;
-                brg->innermost_loop = brgemm_bd_loop_innermost;
-            } else if ((brg->bcast_dim % 80 == 0
-                               || (brg->brgattr.bd_mask_level != 0
-                                       && brg->bdb % 4 == 0))
-                    && K5_fit_L1 && ld_big) {
-
-                recalc_ld_block(16);
-                recalc_bd_block2(5);
-                recalc_ld_block2(1);
-                brg->load_nt_A = false;
-                brg->load_nt_B = true;
-                brg->innermost_loop = brgemm_ld_loop_innermost;
-            } else if ((brg->bcast_dim % 64 == 0
-                               || (brg->brgattr.bd_mask_level != 0
-                                       && brg->bdb % 4 == 0))
-                    && K4_fit_L1 && ld_big) {
-
-                recalc_bd_block(16);
-                recalc_ld_block(16);
-                recalc_bd_block2(4);
-                recalc_ld_block2(1);
-                brg->load_nt_A = false;
-                brg->load_nt_B = true;
-                brg->innermost_loop = brgemm_ld_loop_innermost;
+                recalc_blocking_ext(
+                        0, 16, 5, 1, false, true, brgemm_ld_loop_innermost);
+            } else if ((BD % 64 == 0 || aligned_bd_mask) && K4_fit_L1
+                    && ld_big) {
+                recalc_blocking_ext(
+                        16, 16, 4, 1, false, true, brgemm_ld_loop_innermost);
             }
         }
         // Tile decomposition for shapes with small dimensions
         // or dimensions with tails
-        if (ldb_tail_16 && !bdb_block_tail && brg->load_dim > 64
-                && brg->ld_block < 8) {
-            recalc_ld_block(16);
-            recalc_bd_block2(2);
-            recalc_ld_block2(1);
-        } else if (ldb_tail_16 && !bdb_block_tail
-                && rnd_up(brg->load_dim, 16) == 64
-                && (brg->ld_block < 8 || brg->ldb_tail > 0)) {
-            recalc_ld_block(16);
-            recalc_bd_block2(1);
-            recalc_ld_block2(4);
-        } else if (ldb_tail_16 && !bdb_block_tail
-                && rnd_up(brg->load_dim, 16) == 48
-                && (brg->ld_block < 8 || brg->ldb_tail > 0)) {
-            recalc_ld_block(16);
-            recalc_bd_block2(1);
-            recalc_ld_block2(3);
-        } else if (ldb_tail_16 && !bdb_block_tail
-                && rnd_up(brg->load_dim, 16) == 32
-                && (brg->ld_block < 8 || brg->ldb_tail > 0)) {
-            recalc_ld_block(16);
-            recalc_bd_block2(2);
-            recalc_ld_block2(2);
-        } else if (brg->bcast_dim <= 16) {
-            recalc_bd_block(brg->bcast_dim);
-            recalc_ld_block(16);
-            recalc_bd_block2(1);
-            recalc_ld_block2(
-                    nstl::min(ldb_tail_16 ? ((brg->ldb > 4) ? 3 : 4) : 5,
-                            div_up(brg->load_dim, 16)));
-        } else if (bdb_block_tail && !ldb_tail_16 && brg->bcast_dim > 64
-                && (brg->bd_block < 8 || brg->bdb_tail > 0)) {
-
-            recalc_bd_block(16);
-            recalc_ld_block(16);
-            recalc_bd_block2(1);
-            recalc_ld_block2(2);
-        } else if (bdb_block_tail && !ldb_tail_16
-                && rnd_up(brg->bcast_dim, 16) == 64
-                && (brg->bd_block < 8 || brg->bdb_tail > 0)) {
-            recalc_bd_block(16);
-            recalc_ld_block(16);
-            recalc_bd_block2(4);
-            recalc_ld_block2(1);
-        } else if (bdb_block_tail && !ldb_tail_16
-                && rnd_up(brg->bcast_dim, 16) == 48
-                && (brg->bd_block < 8 || brg->bdb_tail > 0)) {
-            recalc_bd_block(16);
-            recalc_ld_block(16);
-            recalc_bd_block2(3);
-            recalc_ld_block2(1);
-        } else if (bdb_block_tail && !ldb_tail_16
-                && rnd_up(brg->bcast_dim, 16) == 32
-                && (brg->bd_block < 8 || brg->bdb_tail > 0)
-                && (brg->load_dim % 32 == 0)) {
-
-            recalc_bd_block(16);
-            recalc_ld_block(16);
-            recalc_bd_block2(2);
-            recalc_ld_block2(2);
-        } else if (brg->load_dim <= 16) {
-            recalc_bd_block(16);
-            recalc_ld_block(16); // we can't use ld_block other than 16
-            recalc_bd_block2(
-                    nstl::min(brg->bdb_tail ? (brg->bdb > 4 ? 3 : 4) : 5,
-                            div_up(brg->bcast_dim, 16)));
-            recalc_ld_block2(1);
-        } else if (bdb_block_tail && ldb_tail_16
-                && rnd_up(brg->bcast_dim, 16) == 32
-                && rnd_up(brg->load_dim, 16) == 32
-                && (brg->ld_block < 8 || brg->ldb_tail > 0 || brg->bd_block < 8
-                        || brg->bdb_tail > 0)) {
-            recalc_bd_block(16);
-            recalc_ld_block(16);
-            recalc_bd_block2(2);
-            recalc_ld_block2(2);
+        const bool weak_ldb = brg->ld_block < 8 || brg->ldb_tail > 0;
+        const bool weak_bdb = brg->bd_block < 8 || brg->bdb_tail > 0;
+        const bool ldb_tail_only = ldb_tail_16 && !bdb_block_tail;
+        const bool bdb_tail_only = bdb_block_tail && !ldb_tail_16;
+        if (ldb_tail_only && LD > 64 && brg->ld_block < 8) {
+            recalc_blocking(0, 16, 2, 1);
+        } else if (ldb_tail_only && weak_ldb && LD_R16 == 64) {
+            recalc_blocking(0, 16, 1, 4);
+        } else if (ldb_tail_only && weak_ldb && LD_R16 == 48) {
+            recalc_blocking(0, 16, 1, 3);
+        } else if (ldb_tail_only && weak_ldb && LD_R16 == 32) {
+            recalc_blocking(0, 16, 2, 2);
+        } else if (BD <= 16) {
+            // Have to call recalc_blocking twice to calculate ldb
+            recalc_blocking(BD, 16, 0, 0);
+            const auto ld_block2 = nstl::min(
+                    ldb_tail_16 ? ((brg->ldb > 4) ? 3 : 4) : 5, div_up(LD, 16));
+            recalc_blocking(0, 0, 1, ld_block2);
+        } else if (bdb_tail_only && weak_bdb && BD > 64) {
+            recalc_blocking(16, 16, 1, 2);
+        } else if (bdb_tail_only && weak_bdb && BD_R16 == 64) {
+            recalc_blocking(16, 16, 4, 1);
+        } else if (bdb_tail_only && weak_bdb && BD_R16 == 48) {
+            recalc_blocking(16, 16, 3, 1);
+        } else if (bdb_tail_only && weak_bdb && BD_R16 == 32
+                && (LD % 32 == 0)) {
+            recalc_blocking(16, 16, 2, 2);
+        } else if (LD <= 16) {
+            // Have to call recalc_blocking twice to calculate bdb
+            // we can't use ld_block other than 16
+            recalc_blocking(16, 16, 0, 0);
+            const auto bd_block2 = nstl::min(
+                    brg->bdb_tail ? (brg->bdb > 4 ? 3 : 4) : 5, div_up(BD, 16));
+            recalc_blocking(0, 0, bd_block2, 1);
+        } else if (bdb_block_tail && ldb_tail_16 && BD_R16 == 32 && LD_R16 == 32
+                && (weak_ldb || weak_bdb)) {
+            recalc_blocking(16, 16, 2, 2);
         }
+
+        // The code below is a draft for the future optimization of interleave
+        // stores and small number of iterations.
+        // TODO: review and enable if needed
+#if 0
         // if interleave stores and small number of iterations then
         // try to increase them
-        auto n_iterations = brg->bdb2 * brg->bdb2;
-        if (false && brg->brgattr.use_interleave_stores && n_iterations < 4) {
+        const auto n_iterations = brg->bdb2 * brg->bdb2;
+        if (brg->brgattr.use_interleave_stores && n_iterations < 4) {
             int k_it = div_up(4, n_iterations);
             if (brg->bdb2 > brg->ldb2)
-                recalc_bd_block2(div_up(brg->bdb2, k_it));
+                recalc_blocking(0, 0, div_up(brg->bdb2, k_it), 0);
             else
-                recalc_ld_block2(div_up(brg->ldb2, k_it));
+                recalc_blocking(0, 0, 0, div_up(brg->ldb2, k_it));
         }
+#endif
     }
 
     if (brg->get_num_A_tiles() + brg->get_num_B_tiles() + brg->get_num_C_tiles()
@@ -661,12 +618,11 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     }
 
     // check hints for blocking parameters
-    recalc_bd_block(brg->brgattr.hint_bd_block);
-    recalc_bd_block2(brg->brgattr.hint_bd_block2 ? brg->brgattr.hint_bd_block2
-                                                 : brg->bd_block2);
-    recalc_ld_block(brg->brgattr.hint_ld_block);
-    recalc_ld_block2(brg->brgattr.hint_ld_block2 ? brg->brgattr.hint_ld_block2
-                                                 : brg->ld_block2);
+    recalc_blocking(brg->brgattr.hint_bd_block, brg->brgattr.hint_ld_block,
+            brg->brgattr.hint_bd_block2 ? brg->brgattr.hint_bd_block2
+                                        : brg->bd_block2,
+            brg->brgattr.hint_ld_block2 ? brg->brgattr.hint_ld_block2
+                                        : brg->ld_block2);
 
     if (brg->brgattr.hint_load_nt_A != brgemm_hint_nt_undef)
         brg->load_nt_A = (brg->brgattr.hint_load_nt_A == brgemm_hint_nt_true);

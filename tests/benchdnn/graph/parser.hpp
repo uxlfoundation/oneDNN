@@ -48,6 +48,9 @@ bool parse_dt(std::vector<dnnl_data_type_t> &dt,
         std::vector<std::map<size_t, dnnl_data_type_t>> &dt_map,
         const char *str, const std::string &option_name = "dt");
 
+bool parse_op_kind(std::vector<std::map<size_t, std::string>> &op_kind_map,
+        const char *str, const std::string &option_name = "op-kind");
+
 std::map<std::string, std::string> parse_attrs(const std::string &attrs_str);
 
 // Convert f32 vec attrs string into f32 vec

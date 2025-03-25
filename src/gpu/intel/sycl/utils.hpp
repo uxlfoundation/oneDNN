@@ -32,6 +32,8 @@ class engine_t;
 ::sycl::nd_range<3> to_sycl_nd_range(
         const gpu::intel::compute::nd_range_t &range);
 
+status_t sycl_dev2ocl_dev(cl_device_id *ocl_dev, const ::sycl::device &dev);
+
 status_t create_ocl_engine(
         std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t>
                 *ocl_engine,

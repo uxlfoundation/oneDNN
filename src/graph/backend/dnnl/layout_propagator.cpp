@@ -36,6 +36,10 @@ namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
+#define VCHECK_LAYOUT_PROPAGATOR(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, layout_propagator, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 using op_t = op_t;
 using op_ptr = std::shared_ptr<op_t>;
 using value_ptr = std::shared_ptr<value_t>;
@@ -60,7 +64,8 @@ status_t insert_reorder_before(op_ptr &op, size_t offset,
     // set optimal layout to reorder's output
     auto reorder_out_val = reorder_op->get_output_value(0);
     status = fill_layout_info(reorder_out_val, opt_mdesc);
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder output");
     // fill shape info
     reorder_out_val->set_data_type(ltw(in_lt).data_type());
     reorder_out_val->set_dims(ltw(in_lt).vdims());
@@ -92,7 +97,8 @@ status_t insert_reorder_after(op_ptr &op, size_t offset,
     // set optimal layout to reorder's input
     auto reorder_in_val = reorder_op->get_input_value(0);
     status = fill_layout_info(reorder_in_val, opt_mdesc);
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder input");
     // fill shape info
     reorder_in_val->set_data_type(ltw(out_lt).data_type());
     reorder_in_val->set_dims(ltw(out_lt).vdims());
@@ -118,13 +124,14 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
-
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before conv src");
     insert_reorder_before(
             op, 1, pd.weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr wei = op->get_input_value(1);
     status = fill_layout_info(wei, pd.weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before conv weights");
 
     if (op->has_attr(op_attr::with_bias)
             && op->get_attr<bool>(op_attr::with_bias)) {
@@ -132,7 +139,8 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
                 op, 2, pd.bias_desc(), p_engine, mgr, pd_cache, rewriter);
         value_ptr bias = op->get_input_value(2);
         status = fill_layout_info(bias, pd.bias_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder before conv bias");
     }
 
     fusion_info_t fusion_info;
@@ -164,7 +172,8 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
                     mgr, pd_cache, rewriter);
             status = fill_layout_info(dw_bias, dw_bias_opt_mdesc);
         }
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder before post_dw_conv");
     }
 
     if (fusion_info.has_post_binary()) {
@@ -188,7 +197,9 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
             status = fill_layout_info(
                     binary_unfused_src, binary_unfused_src_opt_mdesc);
 
-            if (status != status::success) return status;
+            VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                    "failed to fill layout info for reorder before "
+                    "conv post_binary");
         }
     }
     // insert a reorder if output layout is different from output optimal layout
@@ -198,7 +209,8 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after conv dst");
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     // according to op schema, scratchpad must be be second output
@@ -220,13 +232,15 @@ status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before deconv src");
 
     insert_reorder_before(
             op, 1, pd.weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr wei = op->get_input_value(1);
     status = fill_layout_info(wei, pd.weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before deconv weights");
 
     if (op->has_attr(op_attr::with_bias)
             && op->get_attr<bool>(op_attr::with_bias)) {
@@ -234,7 +248,8 @@ status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
                 op, 2, pd.bias_desc(), p_engine, mgr, pd_cache, rewriter);
         value_ptr bias = op->get_input_value(2);
         status = fill_layout_info(bias, pd.bias_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder before deconv bias");
     }
     // insert a reorder if output layout is different from output optimal layout
     // 1) output layout is opaque
@@ -243,7 +258,8 @@ status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after deconv dst");
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     auto scratchpad_val = op->get_output_value(1);
@@ -265,13 +281,17 @@ status_t layout_propagator_for_deconv_bwd_data(op_ptr &op,
             op, 0, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before deconv_bwd_data "
+            "diff_dst");
 
     insert_reorder_before(
             op, 1, pd.weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr wei = op->get_input_value(1);
     status = fill_layout_info(wei, pd.weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before deconv_bwd_data "
+            "weights");
 
     // insert a reorder if output layout is different from output optimal layout
     // 1) output layout is opaque
@@ -280,7 +300,9 @@ status_t layout_propagator_for_deconv_bwd_data(op_ptr &op,
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(0);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after deconv_bwd_data "
+            "diff_src");
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     // according to op schema, scratchpad must be be second output
@@ -301,19 +323,25 @@ status_t layout_propagator_for_deconv_bwd_weights(op_ptr &op,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before deconv_bwd_weights "
+            "src");
 
     insert_reorder_before(
             op, 1, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(1);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before deconv_bwd_weights "
+            "diff_dst");
 
     insert_reorder_after(
             op, 0, pd.diff_weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_weights = op->get_output_value(0);
     status = fill_layout_info(diff_weights, pd.diff_weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after deconv_bwd_weights "
+            "diff_weights");
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     auto scratchpad_val = op->get_output_value(1);
@@ -335,7 +363,8 @@ status_t layout_propagator_for_eltwise(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after eltwise dst");
 
     value_ptr scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -360,18 +389,24 @@ status_t layout_propagator_for_eltwise_bwd(op_ptr &op,
     insert_reorder_before(op, 0, opt_desc, p_engine, mgr, pd_cache, rewriter);
     value_ptr data = op->get_input_value(0);
     status = fill_layout_info(data, opt_desc);
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before eltwise_bwd "
+            "inputs 0");
 
     insert_reorder_before(
             op, 1, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(1);
     status = fill_layout_info(diff_dst, opt_desc);
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before eltwise_bwd "
+            "diff_dst");
     insert_reorder_after(
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(0);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after eltwise_bwd "
+            "diff_src");
 
     value_ptr scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -393,7 +428,9 @@ status_t layout_propagator_for_binary(op_ptr &op, const dnnl::engine &p_engine,
         status = fill_layout_info(dst,
                 to_ncx_format(
                         make_dnnl_memory_desc(dst->get_logical_tensor())));
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for binary logical tensor with 0 "
+                "dims");
 
         return fill_layout_info(op->get_output_value(1), dnnl::memory::desc {});
     }
@@ -405,7 +442,8 @@ status_t layout_propagator_for_binary(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after binary dst");
 
     value_ptr scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -424,13 +462,16 @@ status_t layout_propagator_for_concat(op_ptr &op, const dnnl::engine &p_engine,
                 mgr, pd_cache, rewriter);
         status = fill_layout_info(
                 op->get_input_value(i), pd.src_desc(static_cast<int>(i)));
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder before concat "
+                "src");
     }
 
     insert_reorder_after(
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     status = fill_layout_info(op->get_output_value(0), pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after concat dst");
 
     auto scratchpad_val = op->get_output_value(1);
     const memory::desc scratchpad_desc = pd.scratchpad_desc();
@@ -448,13 +489,14 @@ status_t layout_propagator_for_shuffle(op_ptr &op, const dnnl::engine &p_engine,
     value_ptr src = op->get_input_value(0);
     value_ptr dst = op->get_output_value(0);
 
-    assertm(!ltw(src->get_logical_tensor()).is_any(),
-            "shuffle's src can't be any layout");
+    VCHECK_LAYOUT_PROPAGATOR(!ltw(src->get_logical_tensor()).is_any(),
+            status::invalid_arguments, "shuffle's src layout can't be any");
 
     insert_reorder_after(
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after shuffle dst");
 
     value_ptr scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -476,7 +518,8 @@ status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
         status = fill_layout_info(dst,
                 to_ncx_format(
                         make_dnnl_memory_desc(dst->get_logical_tensor())));
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for matmul 0 dims dst");
 
         return fill_layout_info(op->get_output_value(1), dnnl::memory::desc {});
     }
@@ -489,13 +532,15 @@ status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before matmul src 0");
 
     insert_reorder_before(
             op, 1, pd.weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr wei = op->get_input_value(1);
     status = fill_layout_info(wei, pd.weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before matmul src 1");
 
     if (op->has_attr(op_attr::with_bias)
             && op->get_attr<bool>(op_attr::with_bias)) {
@@ -503,7 +548,8 @@ status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
                 op, 2, pd.bias_desc(), p_engine, mgr, pd_cache, rewriter);
         value_ptr bias = op->get_input_value(2);
         status = fill_layout_info(bias, pd.bias_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder before matmul bias");
     }
     // insert a reorder if output layout is different from output optimal layout
     // 1) output layout is opaque
@@ -512,7 +558,8 @@ status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after matmul dst");
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     auto scratchpad_val = op->get_output_value(1);
@@ -532,12 +579,14 @@ status_t layout_propagator_for_pool(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after pool dst");
 
     // make scratchpad as pool's last output
     value_ptr scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after pool scratchpad");
 
     if (op->has_attr(op_attr::is_training)
             && op->get_attr<bool>(op_attr::is_training)) {
@@ -562,13 +611,16 @@ status_t layout_propagator_for_pool_bwd(op_ptr &op,
             op, 0, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before pool_bwd "
+            "diff_dst");
 
     insert_reorder_after(
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(0);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after pool_bwd diff_src");
 
     // make scratchpad as pool's last output
     value_ptr scratchpad_val = op->get_output_value(1);
@@ -588,13 +640,15 @@ status_t layout_propagator_for_batchnorm(op_ptr &op,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before batchnorm src");
 
     insert_reorder_after(
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after batchnorm dst");
 
     if (op->get_attr<bool>(op_attr::is_training)) {
         value_ptr running_mean = op->get_output_value(1);
@@ -603,13 +657,17 @@ status_t layout_propagator_for_batchnorm(op_ptr &op,
         value_ptr batch_variance = op->get_output_value(4);
 
         status = fill_layout_info(running_mean, pd.mean_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for batchnorm running_mean");
         status = fill_layout_info(running_variance, pd.variance_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for batchnorm running_variance");
         status = fill_layout_info(batch_mean, pd.mean_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for batchnorm batch_mean");
         status = fill_layout_info(batch_variance, pd.variance_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for batchnorm batch_variance");
     }
 
     size_t scratchpad_index = op->num_outputs() - 1;
@@ -621,7 +679,8 @@ status_t layout_propagator_for_batchnorm(op_ptr &op,
         scratchpad_index = op->num_outputs() - 2;
         value_ptr workspace_val = op->get_output_value(op->num_outputs() - 1);
         status = fill_layout_info(workspace_val, pd.workspace_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for batchnorm workspace");
     }
 
     value_ptr scratchpad_val = op->get_output_value(scratchpad_index);
@@ -641,40 +700,52 @@ status_t layout_propagator_for_batchnorm_bwd(op_ptr &op,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before batchnorm_bwd "
+            "src");
 
     insert_reorder_before(
             op, 1, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(1);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before batchnorm_bwd "
+            "diff_dst");
 
     insert_reorder_before(
             op, 2, pd.mean_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr mean = op->get_input_value(2);
     status = fill_layout_info(mean, pd.mean_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before batchnorm_bwd "
+            "mean");
 
     insert_reorder_before(
             op, 3, pd.variance_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr var = op->get_input_value(3);
     status = fill_layout_info(var, pd.variance_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before batchnorm_bwd "
+            "virance");
 
     insert_reorder_after(
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after batchnorm_bwd "
+            "diff_src");
 
     if (op->num_outputs() > 2) {
         value_ptr diff_gamma = op->get_output_value(1);
         value_ptr diff_beta = op->get_output_value(2);
 
         status = fill_layout_info(diff_gamma, pd.diff_weights_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for batchnorm_bwd diff_gamma");
         status = fill_layout_info(diff_beta, pd.diff_weights_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for batchnorm_bwd diff_beta");
     }
 
     value_ptr scratchpad_val = op->get_output_values().back();
@@ -693,19 +764,22 @@ status_t layout_propagator_for_prelu(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before prelu src");
 
     insert_reorder_before(
             op, 1, pd.weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr wei = op->get_input_value(1);
     status = fill_layout_info(wei, pd.weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before prelu weights");
 
     insert_reorder_after(
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after prelu dst");
 
     value_ptr scratchpad_val = op->get_output_value(1);
     // make scratchpad as prelu's last output
@@ -724,29 +798,37 @@ status_t layout_propagator_for_prelu_bwd(op_ptr &op,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before prelu_bwd src");
 
     insert_reorder_before(
             op, 1, pd.weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr wei = op->get_input_value(1);
     status = fill_layout_info(wei, pd.weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before prelu_bwd "
+            "weights");
 
     value_ptr diff_dst = op->get_input_value(2);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for prelu_bwd diff_dst");
 
     insert_reorder_after(
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(0);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after prelu_bwd "
+            "diff_src");
 
     insert_reorder_after(
             op, 1, pd.diff_weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_wei = op->get_output_value(1);
     status = fill_layout_info(diff_wei, pd.diff_weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after prelu_bwd "
+            "diff_weights");
 
     value_ptr scratchpad_val = op->get_output_value(2);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -764,22 +846,26 @@ status_t layout_propagator_for_layernorm(op_ptr &op,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before layernorm src");
 
     insert_reorder_after(
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after layernorm dst");
 
     if (op->num_outputs() > 2) {
         // keep_stats is true
         value_ptr mean = op->get_output_value(1);
         value_ptr variance = op->get_output_value(2);
         status = fill_layout_info(mean, pd.mean_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for layernorm mean");
         status = fill_layout_info(variance, pd.variance_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for layernorm variance");
     }
 
     // scratchpad is layernorm's last output
@@ -800,32 +886,42 @@ status_t layout_propagator_for_layernorm_bwd(op_ptr &op,
             op, in_index, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(in_index++);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before layernorm_bwd "
+            "src");
 
     insert_reorder_before(op, in_index, pd.diff_dst_desc(), p_engine, mgr,
             pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(in_index++);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before layernorm_bwd "
+            "diff_dst");
 
     insert_reorder_before(
             op, in_index, pd.mean_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr mean = op->get_input_value(in_index++);
     status = fill_layout_info(mean, pd.mean_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before layernorm_bwd "
+            "mean");
 
     insert_reorder_before(op, in_index, pd.variance_desc(), p_engine, mgr,
             pd_cache, rewriter);
     value_ptr var = op->get_input_value(in_index++);
     status = fill_layout_info(var, pd.variance_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before layernorm_bwd "
+            "variance");
 
     size_t out_index {0};
     insert_reorder_after(op, out_index, pd.diff_src_desc(), p_engine, mgr,
             pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(out_index++);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after layernorm_bwd "
+            "diff_src");
 
     const bool use_affine = op->get_attr<bool>(op_attr::use_affine);
     if (use_affine) {
@@ -835,7 +931,9 @@ status_t layout_propagator_for_layernorm_bwd(op_ptr &op,
                 pd_cache, rewriter);
         value_ptr diff_scale = op->get_output_value(out_index++);
         status = fill_layout_info(diff_scale, diff_scale_opt_mdesc);
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder after layernorm_bwd "
+                "diff_scale");
 
         const auto &diff_shift_opt_mdesc
                 = pd.query_md(query::exec_arg_md, DNNL_ARG_DIFF_SHIFT);
@@ -843,7 +941,9 @@ status_t layout_propagator_for_layernorm_bwd(op_ptr &op,
                 pd_cache, rewriter);
         value_ptr diff_shift = op->get_output_value(out_index++);
         status = fill_layout_info(diff_shift, diff_shift_opt_mdesc);
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder after layernorm_bwd "
+                "diff_shift");
     }
     auto scratchpad_val = op->get_output_value(op->num_outputs() - 1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -1005,7 +1105,8 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
     auto in_lt = src->get_logical_tensor();
     auto out_lt = dst->get_logical_tensor();
 
-    assertm(!ltw(in_lt).is_any(), "input layout must be specified");
+    VCHECK_LAYOUT_PROPAGATOR(!ltw(in_lt).is_any(), status::invalid_arguments,
+            "input layout must be specified for reshape_like");
 
     if (target_dims.empty()) {
         // scalar, just set empty strides to make the dst strided
@@ -1094,7 +1195,8 @@ status_t layout_propagator_for_transpose(op_ptr &op,
     auto in_lt = src->get_logical_tensor();
     auto out_lt = dst->get_logical_tensor();
 
-    assertm(!ltw(in_lt).is_any(), "transpose's src can't be any layout now");
+    VCHECK_LAYOUT_PROPAGATOR(!ltw(in_lt).is_any(), status::invalid_arguments,
+            "layout of transpose src can't be any layout");
 
     std::vector<int64_t> order
             = op->get_attr<std::vector<int64_t>>(op_attr::order);
@@ -1105,7 +1207,8 @@ status_t layout_propagator_for_transpose(op_ptr &op,
         }
     } else {
         // FIXME(xx) handle this case
-        assertm(false, "not handled yet");
+        VCHECK_LAYOUT_PROPAGATOR(false, status::unimplemented,
+                "transpose with empty order is not supported");
     }
 
     /// The order in spec op is used as:
@@ -1184,11 +1287,11 @@ status_t layout_propagator_for_reorder(op_ptr &op, const dnnl::engine &p_engine,
     auto out_lt = dst->get_logical_tensor();
 
     if (!ltw(in_lt).is_any() && ltw(out_lt).is_any()) {
-        assertm(!op->has_attr(op_attr::change_layout)
+        VCHECK_LAYOUT_PROPAGATOR(!op->has_attr(op_attr::change_layout)
                         || !op->get_attr<bool>(op_attr::change_layout),
-                "the dnnl_reorder op's input and output layout must be known "
+                status::invalid_arguments,
+                "layout of dnnl_reorder input and output must be known "
                 "if it changes layout");
-
         // for logical tensor with opaque layout, make_dnnl_memory_desc
         // cannot help manually modify the logical tensor. The previously
         // created memory will be quired according to logic tensor id.
@@ -1210,16 +1313,17 @@ status_t layout_propagator_for_reorder(op_ptr &op, const dnnl::engine &p_engine,
             status = fill_layout_info(dst, out_md);
         }
     } else if (!ltw(out_lt).is_any() && ltw(in_lt).is_any()) {
-        assertm(!op->has_attr(op_attr::change_layout)
+        VCHECK_LAYOUT_PROPAGATOR(!op->has_attr(op_attr::change_layout)
                         || !op->get_attr<bool>(op_attr::change_layout),
-                "the dnnl_reorder op's input and output layout must be known "
+                status::invalid_arguments,
+                "layout of dnnl_reorder input and output must be known "
                 "if it changes layout");
-
         out_lt.data_type = ltw(in_lt).data_type();
         auto in_md = make_dnnl_memory_desc(out_lt);
         status = fill_layout_info(src, in_md);
     }
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder");
 
     // set layout info for scratchpad output
     if (op->num_outputs() == 1) { insert_empty_scratchpad(op); }
@@ -1253,7 +1357,8 @@ status_t layout_propagator_for_bn_folding(op_ptr &op,
             dnnl::memory::desc in_md = make_dnnl_memory_desc(in_lt);
             auto dst = op->get_output_value(i);
             status = fill_layout_info(dst, in_md);
-            if (status != status::success) return status;
+            VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                    "failed to fill layout info for bn_folding dst");
         }
     }
 
@@ -1275,19 +1380,25 @@ status_t layout_propagator_for_conv_bwd_data(op_ptr &op,
             op, 0, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before conv_bwd_data "
+            "diff_dst");
 
     insert_reorder_before(
             op, 1, pd.weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr wei = op->get_input_value(1);
     status = fill_layout_info(wei, pd.weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before conv_bwd_data "
+            "weights");
 
     insert_reorder_after(
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(0);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after conv_bwd_data "
+            "diff_src");
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     auto scratchpad_val = op->get_output_value(1);
@@ -1307,19 +1418,25 @@ status_t layout_propagator_for_conv_bwd_weights(op_ptr &op,
             op, 0, pd.src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr src = op->get_input_value(0);
     status = fill_layout_info(src, pd.src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before conv_bwd_weights "
+            "src");
 
     insert_reorder_before(
             op, 1, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(1);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before conv_bwd_weights "
+            "diff_dst");
 
     insert_reorder_after(
             op, 0, pd.diff_weights_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_weights = op->get_output_value(0);
     status = fill_layout_info(diff_weights, pd.diff_weights_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after conv_bwd_weights "
+            "diff_weights");
 
     // fill scratchpads dimensions and data type to scratchpad value_t
     auto scratchpad_val = op->get_output_value(1);
@@ -1339,7 +1456,9 @@ status_t layout_propagator_for_resampling(op_ptr &op,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after interpolate "
+            "dst");
 
     // make scratchpad as resampling's last output
     value_ptr scratchpad_val = op->get_output_value(1);
@@ -1358,7 +1477,9 @@ status_t layout_propagator_for_resampling_bwd(op_ptr &op,
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(0);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after interpolate_bwd "
+            "diff_src");
 
     auto scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -1380,7 +1501,9 @@ status_t layout_propagator_for_sum(op_ptr &op, const dnnl::engine &p_engine,
 
     MAYBE_UNUSED(input_has_any_format);
     assertm(!input_has_any_format,
-            "input format of sum primitive cannot be any.");
+            "input format of sum primitive cannot be any");
+    VCHECK_LAYOUT_PROPAGATOR(!input_has_any_format, status::invalid_arguments,
+            "input format of sum primitive cannot be any ");
 
     const auto &pd = sum_executable_t::create_desc(op, p_engine, mgr, pd_cache);
 
@@ -1389,7 +1512,8 @@ status_t layout_propagator_for_sum(op_ptr &op, const dnnl::engine &p_engine,
                 op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
         dst = op->get_output_value(0);
         status = fill_layout_info(dst, pd.dst_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for reorder after sum dst");
     }
 
     // scratchpad is dnnl_sum's last output
@@ -1403,8 +1527,9 @@ status_t layout_propagator_for_softmax(op_ptr &op, const dnnl::engine &p_engine,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr src = op->get_input_value(0);
-    assertm(!ltw(src->get_logical_tensor()).is_any(),
-            "softmax/logsoftmax's src can't be any layout now");
+    VCHECK_LAYOUT_PROPAGATOR(!ltw(src->get_logical_tensor()).is_any(),
+            status::invalid_arguments,
+            "layout of softmax/logsoftmax src can't be any");
 
     const auto &pd
             = softmax_executable_t::create_desc(op, p_engine, mgr, pd_cache);
@@ -1413,7 +1538,8 @@ status_t layout_propagator_for_softmax(op_ptr &op, const dnnl::engine &p_engine,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after softmax dst");
 
     value_ptr scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -1425,8 +1551,9 @@ status_t layout_propagator_for_softmax_bwd(op_ptr &op,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr dst = op->get_input_value(1);
-    assertm(!ltw(dst->get_logical_tensor()).is_any(),
-            "softmax/logsoftmax bwd's dst can't be any layout now");
+    VCHECK_LAYOUT_PROPAGATOR(!ltw(dst->get_logical_tensor()).is_any(),
+            status::invalid_arguments,
+            "layout of softmax/logsoftmax bwd dst can't be any");
 
     const auto &pd = softmax_bwd_executable_t::create_desc(
             op, p_engine, mgr, pd_cache);
@@ -1435,13 +1562,17 @@ status_t layout_propagator_for_softmax_bwd(op_ptr &op,
             op, 0, pd.diff_dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
     status = fill_layout_info(diff_dst, pd.diff_dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder before softmax_bwd "
+            "diff_dst");
 
     insert_reorder_after(
             op, 0, pd.diff_src_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr diff_src = op->get_output_value(0);
     status = fill_layout_info(diff_src, pd.diff_src_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after softmax_bwd "
+            "diff_src");
 
     // according to op schema, scratchpad must be be second output
     auto scratchpad_val = op->get_output_value(1);
@@ -1454,9 +1585,8 @@ status_t layout_propagator_for_reduction(op_ptr &op,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr src = op->get_input_value(0);
-    assertm(!ltw(src->get_logical_tensor()).is_any(),
-            "reduction's src can't be any layout now");
-
+    VCHECK_LAYOUT_PROPAGATOR(!ltw(src->get_logical_tensor()).is_any(),
+            status::invalid_arguments, "layout of reduction src can't be any");
     const auto &pd
             = reduction_executable_t::create_desc(op, p_engine, mgr, pd_cache);
 
@@ -1464,7 +1594,8 @@ status_t layout_propagator_for_reduction(op_ptr &op,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after reduction dst");
 
     value_ptr scratchpad_val = op->get_output_value(1);
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
@@ -1536,16 +1667,19 @@ status_t layout_propagator_for_groupnorm(op_ptr &op,
             op, 0, pd.dst_desc(), p_engine, mgr, pd_cache, rewriter);
     value_ptr dst = op->get_output_value(0);
     status = fill_layout_info(dst, pd.dst_desc());
-    if (status != status::success) return status;
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for reorder after groupnorm dst");
 
     if (op->num_outputs() > 2) {
         // keep_stats is true
         value_ptr mean = op->get_output_value(1);
         value_ptr variance = op->get_output_value(2);
         status = fill_layout_info(mean, pd.mean_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for groupnorm mean");
         status = fill_layout_info(variance, pd.variance_desc());
-        if (status != status::success) return status;
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for groupnorm variance");
     }
 
     // scratchpad is groupnorm's last output

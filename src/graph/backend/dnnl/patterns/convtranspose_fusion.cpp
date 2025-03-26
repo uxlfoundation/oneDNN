@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,8 +32,11 @@ using FCreatePattern = graph::pass::FCreatePattern;
 
 bool check_scales_equal_to_1(op_t *op) {
     auto scales = op->get_attr<std::vector<float>>(op_attr::scales);
-    return std::all_of(scales.begin(), scales.end(),
+    bool result = std::all_of(scales.begin(), scales.end(),
             [](float val) { return val == 1.0f; });
+    VCHECK_PATTERN_UTILS(result, result,
+            "convtranspose primitive doesn't support output scales != 1");
+    return result;
 }
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(convtranspose_fusion)

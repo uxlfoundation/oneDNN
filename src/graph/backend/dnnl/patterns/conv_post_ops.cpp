@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,8 +32,11 @@ namespace {
 bool check_s8_weight(op_t *op) {
     const op_kind_t kind = op->get_kind();
     if (kind != graph::op_kind::Dequantize) return true;
-    return (!is_int8_quantization(op)
-            || check_input_dtype<graph::data_type::s8>(op));
+    bool result = !is_int8_quantization(op)
+            || check_input_dtype<graph::data_type::s8>(op);
+    VCHECK_PATTERN_UTILS(
+            result, result, "conv primitive only supports s8 weight");
+    return result;
 }
 
 bool check_f8_conv_with_no_scale_and_zp(op_t *op) {
@@ -43,9 +46,10 @@ bool check_f8_conv_with_no_scale_and_zp(op_t *op) {
     for (const size_t index : {0, 1}) {
         auto &parent_op = op->get_input_value(index)->get_producer();
         if (parent_op.get_kind() != graph::op_kind::Dequantize) return true;
-        if (is_f8_quantization(&parent_op)
-                && !check_quant_with_no_effect(&parent_op))
-            return false;
+        bool result = !(is_f8_quantization(&parent_op)
+                && !check_quant_with_no_effect(&parent_op));
+        VCHECK_PATTERN_UTILS(result, result,
+                "f8 conv primitive doesn't support scale and zp");
     }
     return true;
 }

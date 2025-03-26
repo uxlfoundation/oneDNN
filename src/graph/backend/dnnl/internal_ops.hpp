@@ -80,7 +80,8 @@ namespace op_kind {
     X(dnnl_groupnorm, Dnnl_groupnorm) \
     X(dnnl_gen_index, Dnnl_gen_index) \
     X(dnnl_mask, Dnnl_mask) \
-    X(dnnl_sdpa, Dnnl_sdpa)
+    X(dnnl_sdpa, Dnnl_sdpa) \
+    X(dnnl_host_scalar, Dnnl_host_scalar)
 
 enum kind_t {
     kDNNL_INTERNAL_OP_STARTER = 0x1234,

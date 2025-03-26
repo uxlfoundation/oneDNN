@@ -300,7 +300,9 @@ private:
 class memory_planner_t {
 public:
     memory_planner_t()
-        : persistent_buffer_assigner_(16), temporary_buffer_assigner_(16) {}
+        : persistent_buffer_assigner_(16)
+        , temporary_buffer_assigner_(16)
+        , host_engine_(dnnl::engine::kind::cpu, 0) {}
 
     memory_planner_t(memory_planner_t &&) = delete;
     memory_planner_t(const memory_planner_t &other) = delete;
@@ -433,6 +435,8 @@ private:
     std::unordered_map<const assign_info_t *, time_bound_t>
             external_inputs_live_range_;
     std::vector<inplace_pair_t> inplace_pairs_;
+
+    dnnl::engine host_engine_;
 };
 
 } // namespace dnnl_impl

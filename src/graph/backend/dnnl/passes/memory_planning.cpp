@@ -764,7 +764,10 @@ status_t memory_planner_t::prepare_execution_args_set(
         for (auto &in : op->get_input_values()) {
             if (prepared.count(in.get())) continue;
             auto md = make_dnnl_memory_desc(in->get_logical_tensor());
-            auto mem = make_dnnl_memory(md, p_engine, nullptr);
+            bool is_host_scalar = in->get_logical_tensor().property
+                    == property_type::host_scalar;
+            auto mem = make_dnnl_memory(
+                    md, is_host_scalar ? host_engine_ : p_engine, nullptr);
             exec_args_set_.add_value_mem_map({in.get(), mem});
             classify_mem(mem, in.get());
             prepared.insert(in.get());

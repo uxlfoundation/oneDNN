@@ -2343,6 +2343,15 @@ arg_indices_t reorder_executable_t::get_arg_indices(
     return arg_indices;
 }
 
+arg_indices_t host_scalar_executable_t::get_arg_indices(
+        const op_t *op, fusion_info_mgr_t &mgr) {
+    arg_indices_t arg_indices;
+
+    arg_indices.insert({DNNL_ARG_FROM, indices_t {input, 0}});
+    arg_indices.insert({DNNL_ARG_TO, indices_t {output, 0}});
+    return arg_indices;
+}
+
 arg_indices_t softmax_bwd_executable_t::get_arg_indices(
         const op_t *op, fusion_info_mgr_t &mgr) {
     UNUSED(mgr);

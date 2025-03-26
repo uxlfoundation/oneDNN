@@ -184,7 +184,7 @@ private:
     std::vector<std::pair<abc_kind_t, block_t>> k_blocks_;
 };
 
-enum class loop_kind_t : int {
+enum class loop_kind_t : uint32_t {
     undef = 0,
     // Loop is bound to the kernel grid.
     kernel_grid = (1 << 0),
@@ -213,17 +213,7 @@ inline std::ostream &operator<<(std::ostream &out, loop_kind_t kind) {
     return out;
 }
 
-inline loop_kind_t operator&(loop_kind_t a, loop_kind_t b) {
-    return static_cast<loop_kind_t>(static_cast<int>(a) & static_cast<int>(b));
-}
-
-inline loop_kind_t operator|(loop_kind_t a, loop_kind_t b) {
-    return static_cast<loop_kind_t>(static_cast<int>(a) | static_cast<int>(b));
-}
-
-inline bool any(loop_kind_t a) {
-    return a != loop_kind_t::undef;
-}
+GPU_DEFINE_BIT_MASK_ENUM_OPS(loop_kind_t)
 
 const loop_kind_t all_loop_kinds = loop_kind_t::kernel_grid
         | loop_kind_t::serial | loop_kind_t::tg_grid | loop_kind_t::tensorized;

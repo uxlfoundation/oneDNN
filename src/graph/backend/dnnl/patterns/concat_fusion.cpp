@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,8 +39,11 @@ bool check_scales_zps_all_equal(op_t *op) {
     // We only want to accept int8 concat with inputs using the same scales and
     // zps. Concat does not change range of values so output scales and zps
     // should be same as well.
-    if (!out_op.has_attr(op_attr::scales) || !out_op.has_attr(op_attr::zps))
-        return false;
+    VCHECK_PATTERN_UTILS(
+            out_op.has_attr(op_attr::scales) && out_op.has_attr(op_attr::zps),
+            false,
+            "output of int8 concat pattern should have scales and zps "
+            "attributes");
     const auto expected_scales
             = out_op.get_attr<std::vector<float>>(op_attr::scales);
     const auto expected_zps
@@ -51,11 +54,17 @@ bool check_scales_zps_all_equal(op_t *op) {
         if (!in_port->has_producer()) return false;
 
         auto &in_op = in_port->get_producer();
-        if (!in_op.has_attr(op_attr::scales) || !in_op.has_attr(op_attr::zps))
-            return false;
+        VCHECK_PATTERN_UTILS(out_op.has_attr(op_attr::scales)
+                        && out_op.has_attr(op_attr::zps),
+                false,
+                "input of int8 concat pattern should have scales and zps "
+                "attributes");
         auto scales = in_op.get_attr<std::vector<float>>(op_attr::scales);
         auto zps = in_op.get_attr<std::vector<int64_t>>(op_attr::zps);
-        if (scales != expected_scales || zps != expected_zps) return false;
+        VCHECK_PATTERN_UTILS(scales == expected_scales && zps == expected_zps,
+                false,
+                "input scales and zps of int8 concat pattern should be equal "
+                "to output scales and zps");
     }
 
     return true;

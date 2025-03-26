@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,10 +33,14 @@ using pb_graph_t = pm::pb_graph_t;
 using FCreatePattern = graph::pass::FCreatePattern;
 
 bool check_avgpool_attributes(op_t *op) {
-    return !(op->get_kind() == graph::op_kind::AvgPool
+    bool result = !(op->get_kind() == graph::op_kind::AvgPool
             && op->get_attr<std::string>(graph::op_attr::rounding_type)
                     == "ceil"
             && op->get_attr<bool>(graph::op_attr::exclude_pad) == false);
+    VCHECK_PATTERN_UTILS(result, result,
+            "unsupported avgpool attributes combination: ceil rounding type "
+            "and exclude_pad=false");
+    return result;
 }
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(pool_post_ops)

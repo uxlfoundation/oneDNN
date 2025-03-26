@@ -22,6 +22,7 @@
 #include "graph/backend/dnnl/platform.hpp"
 #include "graph/backend/fake/pattern_utils.hpp"
 
+#include "graph/backend/dnnl/patterns/utils.hpp"
 #include "graph/utils/pm/nested_matcher.hpp"
 #include "graph/utils/pm/pass_base.hpp"
 
@@ -186,9 +187,9 @@ public:
             dir_t dir = get_op_dir(aop);
             const auto &op_kind = aop->get_kind();
 
-            if (unsupported_dt.find(dir) == unsupported_dt.end()) {
-                return impl::status::unimplemented;
-            }
+            VCHECK_PATTERN_UTILS(
+                    unsupported_dt.find(dir) != unsupported_dt.end(),
+                    impl::status::unimplemented, "unsupported dir %d ", dir);
             const auto &dt_with_dir = unsupported_dt.at(dir);
 
             for (size_t i = 0; i < aop->num_inputs(); ++i) {

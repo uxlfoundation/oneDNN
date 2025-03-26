@@ -407,6 +407,81 @@ using const_scales_filler
         = const_memory_filler_t<op_attr::scales, float, float>;
 using const_zps_filler = const_memory_filler_t<op_attr::zps, int64_t, int32_t>;
 
+struct host_scalar_executable_t : public op_executable_t {
+    DECLARE_ARG_INDICES_GETTER;
+
+    host_scalar_executable_t(std::shared_ptr<op_t> &op,
+            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+            pd_cache_t &pd_cache) {
+        UNUSED(op);
+        UNUSED(p_engine);
+        UNUSED(mgr);
+        UNUSED(pd_cache);
+    }
+
+    void execute(const stream &stream,
+            const std::unordered_map<int, memory> &args) const override {
+        auto it_src = args.find(DNNL_ARG_FROM);
+        auto it_dst = args.find(DNNL_ARG_TO);
+
+        if (it_src == args.end() || it_dst == args.end()) {
+            assert(!"cannot find memory for DNNL_ARG_FROM or DNNL_ARG_TO");
+            return;
+        }
+
+        const memory &src_mem = it_src->second;
+        const memory &dst_mem = it_dst->second;
+        dst_mem.set_data_handle(src_mem.get_data_handle());
+    }
+
+#ifdef DNNL_WITH_SYCL
+    ::sycl::event execute_sycl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<::sycl::event> &deps) const override {
+        auto it_src = args.find(DNNL_ARG_FROM);
+        auto it_dst = args.find(DNNL_ARG_TO);
+
+        if (it_src == args.end() || it_dst == args.end()) {
+            assert(!"cannot find memory for DNNL_ARG_FROM or DNNL_ARG_TO");
+            return {};
+        }
+
+        const memory &src_mem = it_src->second;
+        const memory &dst_mem = it_dst->second;
+
+        auto prim = dnnl::reorder(src_mem, dst_mem);
+
+        auto sycl_deps = deps;
+        auto e = dnnl::sycl_interop::execute(prim, stream, args, sycl_deps);
+        if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
+        return e;
+    }
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    cl_event execute_ocl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<cl_event> &deps) const override {
+        auto it_src = args.find(DNNL_ARG_FROM);
+        auto it_dst = args.find(DNNL_ARG_TO);
+
+        if (it_src == args.end() || it_dst == args.end()) {
+            assert(!"cannot find memory for DNNL_ARG_FROM or DNNL_ARG_TO");
+            return {};
+        }
+
+        const memory &src_mem = it_src->second;
+        const memory &dst_mem = it_dst->second;
+
+        auto prim = dnnl::reorder(src_mem, dst_mem);
+
+        auto ocl_deps = deps;
+        auto e = dnnl::ocl_interop::execute(prim, stream, args, ocl_deps);
+        return e;
+    }
+#endif
+};
+
 extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
         dnnl_memory_desc_t *, int, const dnnl_dims_t, dnnl_data_type_t,
         const char *);

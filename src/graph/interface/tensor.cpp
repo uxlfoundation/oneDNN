@@ -119,6 +119,13 @@ dnnl_graph_tensor::dnnl_graph_tensor(
                 = tensor_malloc(num_bytes, eng, allocator_t::mem_type_t::temp);
         assertm(data, "Can't allocate memory for a tensor!");
         handle_.reset(data, [eng](void *p) { tensor_free(p, eng); });
+    } else if (lt.property == property_type::host_scalar) {
+        if (lt.data_type == data_type::s32) {
+            scalar_.s32_value = *static_cast<int32_t *>(handle);
+            handle_.reset(&scalar_.s32_value, dummy_destructor);
+        } else {
+            assertm(false, "Unsupported data type for host scalar");
+        }
     } else {
         handle_.reset(handle, dummy_destructor);
     }

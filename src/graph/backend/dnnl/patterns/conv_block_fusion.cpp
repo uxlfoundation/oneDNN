@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,13 +35,17 @@ using FCreatePattern = graph::pass::FCreatePattern;
 namespace {
 template <bool GROUPED>
 bool check_grouped(op_t *op) {
+    bool result = true;
     if (GROUPED) {
-        return op->has_attr(op_attr::groups)
+        result = op->has_attr(op_attr::groups)
                 && op->get_attr<int64_t>(op_attr::groups) > 1;
     } else {
-        return !op->has_attr(op_attr::groups)
+        result = !op->has_attr(op_attr::groups)
                 || op->get_attr<int64_t>(op_attr::groups) <= 1;
     }
+
+    VCHECK_PATTERN_UTILS(result, result, "invalid groups attribute");
+    return result;
 }
 
 // Block creators used to construct large patterns

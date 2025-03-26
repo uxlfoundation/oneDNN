@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,8 +33,13 @@ using FCreatePattern = graph::pass::FCreatePattern;
 
 namespace {
 bool check_attributes(op_t *op) {
-    return op->get_attr<std::string>(op_attr::coordinate_transformation_mode)
+    bool result
+            = op->get_attr<std::string>(op_attr::coordinate_transformation_mode)
             == std::string("half_pixel");
+    VCHECK_PATTERN_UTILS(result, result,
+            "interpolate primitive doesn't support "
+            "other coordinate_transformation_mode except half_pixel");
+    return result;
 }
 } // namespace
 

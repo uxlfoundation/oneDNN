@@ -49,8 +49,10 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
 
     if (fusion_info.dst_scales_) {
         const op_t *dst_scales_op = fusion_info.dst_scales_->get_op();
-        assertm(fusion_info.with_runtime_scales(false, 0),
-                "only support runtime dst scales.\n");
+        VCHECK_FUSION_INFO(fusion_info.with_runtime_scales(false, 0), attr,
+                "failed to set scales for %s since primitive only supports "
+                "runtime dst scales",
+                op->get_name().c_str());
         int mask = 0;
         int64_t dt = 0;
 
@@ -73,8 +75,12 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
         for (const auto &in_scales : fusion_info.input_scales_) {
             size_t in_scales_indices = in_scales.first;
             const op_t *in_scales_op = in_scales.second->get_op();
-            assertm(fusion_info.with_runtime_scales(true, in_scales_indices),
-                    "only support runtime src scales.\n");
+            VCHECK_FUSION_INFO(
+                    fusion_info.with_runtime_scales(true, in_scales_indices),
+                    attr,
+                    "failed to set scales for %s since primitive only supports "
+                    "runtime src scales",
+                    op->get_name().c_str());
             int mask = 0;
             if (in_scales_op->has_attr(op_attr::qtype)) {
                 std::string qtype
@@ -145,8 +151,12 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
         for (const auto &in_zps : fusion_info.input_zps_) {
             size_t in_zps_indices = in_zps.first;
             const op_t *in_zps_op = in_zps.second->get_op();
-            assertm(fusion_info.with_runtime_zero_points(true, in_zps_indices),
-                    "only support runtime src zero points.\n");
+            VCHECK_FUSION_INFO(
+                    fusion_info.with_runtime_zero_points(true, in_zps_indices),
+                    attr,
+                    "failed to set zero points for %s since primitive only "
+                    "supports runtime src zero points",
+                    op->get_name().c_str());
 
             if (in_zps_op->has_attr(op_attr::qtype)) {
                 std::string qtype
@@ -193,8 +203,10 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
         const auto zps_data_type = output_zps_op->has_attr(op_attr::data_type)
                 ? output_zps_op->get_attr<int64_t>(op_attr::data_type)
                 : dnnl_s32;
-        assertm(fusion_info.with_runtime_zero_points(false, 0),
-                "only support runtime dst zero points.\n");
+        VCHECK_FUSION_INFO(fusion_info.with_runtime_zero_points(false, 0), attr,
+                "failed to set zero points for %s since primitive only "
+                "supports runtime dst zero points",
+                op->get_name().c_str());
         int mask = 0;
         attr.set_zero_points(DNNL_ARG_DST, mask, default_groups,
                 static_cast<dnnl::memory::data_type>(zps_data_type));
@@ -288,10 +300,13 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                 dnnl_pops.append_sum(scale, zp, sum_dt);
             } else {
                 // post-binary
-                assertm(extra_inputs.size() == 1,
-                        "post-binary only has 1 extra input");
-                assertm(scale == 1.f && zp == 0,
-                        "post-binary doesn't support input scale and zp");
+                VCHECK_FUSION_INFO(
+                        extra_inputs.size() == 1 && scale == 1.f && zp == 0,
+                        attr,
+                        "%s post-binary only has 1 extra input and doesn't "
+                        "support "
+                        "input scale and zp",
+                        op->get_name().c_str());
                 auto md = make_dnnl_memory_desc(psrc);
                 if (op->get_kind() == op_kind::dnnl_convolution)
                     md = to_format_any(md);

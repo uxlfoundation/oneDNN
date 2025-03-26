@@ -31,6 +31,10 @@ namespace graph {
 namespace dnnl_impl {
 namespace pattern {
 
+#define VCHECK_PATTERN_UTILS(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, pattern, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 template <int64_t N>
 bool check_zps_values(op_t *op) {
     if (op->has_attr(op_attr::zps) == false) return true;

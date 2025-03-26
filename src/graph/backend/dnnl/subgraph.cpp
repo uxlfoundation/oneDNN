@@ -42,6 +42,9 @@ namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
+#define VCHECK_SUBGRAPH(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, subgraph, (cond), status, msg, \
+            ##__VA_ARGS__);
 using op_t = op_t;
 using op_ptr = std::shared_ptr<op_t>;
 using value_ptr = std::shared_ptr<value_t>;
@@ -279,10 +282,8 @@ status_t subgraph_validator_t::run(const std::shared_ptr<subgraph_t> &sg) {
         if (!opm) { return status::invalid_graph_op; }
 
         // Validate
-        if (!opm->verify(op, false)) {
-            assertm(false, "schema verify failed");
-            return status::invalid_graph_op;
-        }
+        VCHECK_SUBGRAPH(opm->verify(op, false), status::invalid_graph_op,
+                "schema verify failed for op %s", op->get_name().c_str());
 
         // Not allow undefined attributes
         const auto &expected_attrs = opm->get_attrs();
@@ -321,13 +322,10 @@ status_t subgraph_validator_t::run(const std::shared_ptr<subgraph_t> &sg) {
                 auto groups = op->get_attr<int64_t>(op_attr::groups);
                 bool ok = data_fmt == "NCX" && filter_fmt == "OIX"
                         && groups == 1;
-                if (!ok) {
-                    DEBUG_PRINT_ERROR("data_format:" + data_fmt + ";"
-                            + "filter_format:" + filter_fmt + ";"
-                            + "groups:" + std::to_string(groups));
-                    assertm(false, "additional verify failed");
-                    return status::invalid_graph_op;
-                }
+                VCHECK_SUBGRAPH(ok, status::invalid_graph_op,
+                        "additional verify failed for dnnl_convolution,  "
+                        "data_format:%s, filter_format:%s, groups:%ld",
+                        data_fmt.c_str(), filter_fmt.c_str(), groups);
             }
         } else {
             // TODO(qun)

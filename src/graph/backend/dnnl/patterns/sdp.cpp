@@ -112,13 +112,15 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion)
                     auto fscore_scale = pgraph->append_alternation(
                             {graph::op_kind::Divide, graph::op_kind::Multiply},
                             {in_edge(0, matmul_qk, 0)});
+                    auto opt_soft_capping
+                            = optional_soft_capping(pgraph, fscore_scale);
                     auto optional_mask = std::make_shared<pb_graph_t>();
                     auto fscore_add
                             = optional_mask->append_op(graph::op_kind::Add);
                     optional_mask->create_input_port(0, fscore_add, 0);
                     optional_mask->create_output_port(0, fscore_add, 0);
                     auto mask = pgraph->append_optional(
-                            optional_mask, {in_edge(0, fscore_scale, 0)});
+                            optional_mask, {in_edge(0, opt_soft_capping, 0)});
 
                     // Optional select for distilbert
                     auto p_select2 = optional_select(pgraph, mask, 2);

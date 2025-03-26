@@ -223,6 +223,12 @@ option(DNNL_EXPERIMENTAL_LOGGING
     independently from DNNL_EXPERIMENTAL."
     OFF) # disabled by default
 
+option(DNNL_EXPERIMENTAL_SELF_SUFFICIENT_L0
+    "Enable experimental functionality for SYCL allowinf for removal of OpenCL
+    dependency for L0 backend. This option works independently from
+    DNNL_EXPERIMENTAL."
+    ON) # disabled by default
+
 option(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_BACKEND
     "builds oneDNN Graph API graph-compiler backend" OFF)
 set(ONEDNN_EXPERIMENTAL_GRAPH_COMPILER_CPU_LLVM_CONFIG "AUTO" CACHE STRING

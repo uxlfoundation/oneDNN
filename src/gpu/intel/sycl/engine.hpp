@@ -151,6 +151,100 @@ public:
             const std::vector<const char *> &kernel_names,
             const gpu::intel::compute::kernel_ctx_t &kernel_ctx)
             const override {
+#ifdef DNNL_EXPERIMENTAL_SELF_SUFFICIENT_L0
+        if (kind() != engine_kind::gpu) {
+            assert(!"not expected");
+            return status::invalid_arguments;
+        }
+
+        auto device = utils::downcast<const impl::xpu::sycl::engine_impl_t *>(
+                impl())
+                              ->device();
+        if (!device.ext_oneapi_can_compile(::sycl::ext::oneapi::experimental::
+                            source_language::opencl)) {
+            VINFO(primitive, exec, check, primitive,
+                    "OpenCL online compiler not supported on device.");
+            return create_kernels_using_ocl(kernels, kernel_names, kernel_ctx);
+        }
+
+        const char *source = nullptr;
+        for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
+            source = ocl::get_kernel_source(kernel_names[i]);
+        gpu_assert(source)
+                << "No kernel source file was found for the kernels: " <<
+                [&]() {
+                    std::ostringstream oss;
+                    bool is_first = true;
+                    for (auto &n : kernel_names) {
+                        if (!is_first) oss << ", ";
+                        oss << n;
+                        is_first = false;
+                    }
+                    return oss.str();
+                }()
+                << ". In order to map kernel names to the implementation "
+                   "file, at least one kernel needs to be implemented in a .cl "
+                   "file";
+
+        gpu_assert([&]() {
+            for (auto &name : kernel_names) {
+                if (!utils::one_of(
+                            ocl::get_kernel_source(name), source, nullptr))
+                    return false;
+            }
+            return true;
+        }()) << "Due to the cost of compiling OpenCL programs, building "
+                "kernels "
+                "from multiple source files is unsupported. Either consolidate "
+                "kernels in a single .cl source file or split creation in "
+                "groups "
+                "based on their .cl source file.";
+
+        return create_kernels_from_source(
+                kernels, kernel_names, source, kernel_ctx);
+    }
+
+    status_t create_kernels_from_source(std::vector<compute::kernel_t> *kernels,
+            const std::vector<const char *> &kernel_names,
+            const char *code_string,
+            const compute::kernel_ctx_t &kernel_ctx) const {
+        std::stringstream pp_code;
+        CHECK(gpu::intel::ocl::preprocess_headers(
+                pp_code, code_string, kernel_ctx));
+
+        namespace syclex = ::sycl::ext::oneapi::experimental;
+        std::unique_ptr<::sycl::kernel_bundle<::sycl::bundle_state::executable>>
+                kb;
+        auto kb_src = ::sycl::kernel_bundle<
+                ::sycl::bundle_state::ext_oneapi_source>(
+                syclex::create_kernel_bundle_from_source(context(),
+                        syclex::source_language::opencl, pp_code.str()));
+        auto kb_exe = ::sycl::kernel_bundle<::sycl::bundle_state::executable>(
+                syclex::build(
+                        kb_src, syclex::properties {syclex::build_options {
+                            std::string {
+                                kernel_ctx.options()
+                            }
+                        }}));
+        kb.reset(new decltype(kb_exe)(kb_exe));
+
+        *kernels = std::vector<compute::kernel_t>(kernel_names.size());
+        for (size_t i = 0; i < kernel_names.size(); ++i) {
+            if (!kernel_names[i]) continue;
+
+            CHECK(sycl_interop_gpu_kernel_t::make((*kernels)[i],
+                    kb->ext_oneapi_get_kernel(kernel_names[i]),
+                    gpu::intel::compute::program_src_t(pp_code.str())));
+        }
+
+        return status::success;
+    }
+
+    status_t create_kernels_using_ocl(
+            std::vector<gpu::intel::compute::kernel_t> *kernels,
+            const std::vector<const char *> &kernel_names,
+            const gpu::intel::compute::kernel_ctx_t &kernel_ctx) const {
+#endif // DNNL_EXPERIMENTAL_SELF_SUFFICIENT_L0
         if (kind() != engine_kind::gpu) {
             assert(!"not expected");
             return status::invalid_arguments;

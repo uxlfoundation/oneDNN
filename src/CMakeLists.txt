@@ -96,6 +96,10 @@ if(DNNL_EXPERIMENTAL_LOGGING)
     message(STATUS "Experimental logging capabilities are enabled")
 endif()
 
+if(DNNL_EXPERIMENTAL_SELF_SUFFICIENT_L0)
+    message(STATUS "Experimental SYCL capabilities are enabled")
+endif()
+
 if(DNNL_ENABLE_ITT_TASKS AND NOT DNNL_CPU_RUNTIME STREQUAL "NONE")
     # Only supported for certain architectures (see src/common/CMakeLists.txt)
     if(DNNL_TARGET_ARCH STREQUAL "AARCH64" OR DNNL_TARGET_ARCH STREQUAL "X64")

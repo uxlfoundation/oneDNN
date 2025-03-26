@@ -1134,6 +1134,32 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_mask, 1,
                 .SET_EXECUTABLE_CREATOR(executable_creator<memory_reparser_t>)
                 .SET_ARG_INDICES_GETTER(memory_reparser_t))
 
+// The data types of query/key/value/mask/output must be consistent, and only
+// f16/bf16 are supported. The data type of scale must be consistent with other
+// input and output data types or fp32.
+DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
+        op_schema_t()
+                .set_inputs_option(op_schema_t::param_num_option::variadic)
+                .set_num_inputs(std::set<size_t>({3, 32}))
+                .set_num_outputs(2)
+                .set_input(0, "query")
+                .set_input(1, "key")
+                .set_input(2, "value")
+                .set_input(3, "scale") // optional
+                .set_input(4, "mask") // optional
+                .set_output(0, "output")
+                .set_output(1, "scratchpad")
+                .set_attr(op_attr::with_scale, true, attribute_kind::b)
+                .set_attr(op_attr::is_invert_scale, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::with_mask, true, attribute_kind::b)
+                // with_causal attribute support top-left mask type only
+                .set_attr(op_attr::with_causal, true, attribute_kind::b)
+                .set_shape_inference_function(infer_dnnl_sdpa_output_shape)
+                .SET_LAYOUT_PROPAGATOR(layout_propagator_for_sdpa)
+                .SET_EXECUTABLE_CREATOR(executable_creator<sdpa_executable_t>)
+                .SET_ARG_INDICES_GETTER(sdpa_executable_t))
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

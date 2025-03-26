@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 #include "graph/backend/dnnl/kernels/sdp_decomp.hpp"
 #include "graph/backend/dnnl/kernels/sdp_primitive.hpp"
+#include "graph/backend/dnnl/kernels/sdp_primitive_v1.hpp"
 
 #include "graph/backend/dnnl/dnnl_partition_impl.hpp"
 
@@ -65,7 +66,15 @@ public:
 
         status_t ret = status::unimplemented;
 
-        if (enable_ukernel) {
+        // SDPA Ukernel v1 with fused internal sdpa solution. Support fload sdpa
+        // only.
+        // TODO(GX): Support quantized sdpa and merge with sdp_primitive_kernel_t.
+        if (enable_ukernel && !quantized) {
+            kernel = std::make_shared<sdp_primitive_v1_kernel_t>();
+            ret = kernel->compile_impl(part, g_engine, inputs, outputs);
+        }
+
+        if (ret != status::success && enable_ukernel) {
             kernel = std::make_shared<sdp_primitive_kernel_t<quantized>>();
             ret = kernel->compile_impl(part, g_engine, inputs, outputs);
         }

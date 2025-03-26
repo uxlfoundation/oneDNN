@@ -1568,6 +1568,36 @@ status_t layout_propagator_for_mask(std::shared_ptr<op_t> &op,
     return status;
 }
 
+status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
+        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
+    UNUSED(p_engine);
+    UNUSED(mgr);
+    UNUSED(pd_cache);
+    UNUSED(rewriter);
+
+    value_ptr dst_val = op->get_output_value(0);
+    const logical_tensor_t &out_lt = dst_val->get_logical_tensor();
+
+    dnnl::memory::desc expected_md;
+    // Set default output layout format for sdpa as acbd if user doesn't specify
+    // the layout since no reorder will required after sdpa.
+    if (ltw(out_lt).is_any()) {
+        expected_md = {ltw(out_lt).vdims(),
+                static_cast<dnnl::memory::data_type>(ltw(out_lt).data_type()),
+                dnnl::memory::format_tag::acbd};
+    } else {
+        expected_md = make_dnnl_memory_desc(out_lt);
+    }
+    status_t status = fill_layout_info(dst_val, expected_md);
+
+    // fill scratchpads dimensions and data type to scratchpad value_t
+    value_ptr scratchpad_val = op->get_output_value(1);
+    const memory::desc scratchpad_desc;
+    status = fill_layout_info(scratchpad_val, scratchpad_desc);
+    return status;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

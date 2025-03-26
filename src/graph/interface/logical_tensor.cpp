@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -177,6 +177,9 @@ size_t logical_tensor_wrapper_t::hash() const noexcept {
             break;
         default: assertm(false, "unknown layout_type");
     }
+    // property type
+    if (this->property_type() != property_type::undef)
+        seed = hash_combine(seed, static_cast<size_t>(this->property_type()));
     return seed;
 }
 
@@ -194,10 +197,15 @@ status_t DNNL_API dnnl_graph_logical_tensor_init(
     val.layout_type = ltype;
     val.property = ptype;
 
-    // initialize the dims and strides
-    std::fill(val.dims, val.dims + DNNL_MAX_NDIMS, DNNL_GRAPH_UNKNOWN_DIM);
-    std::fill(val.layout.strides, val.layout.strides + DNNL_MAX_NDIMS,
-            DNNL_GRAPH_UNKNOWN_DIM);
+    if (ndims == 0) {
+        val.dims[0] = 0;
+        if (ltype == layout_type::strided) { val.layout.strides[0] = 0; }
+    } else {
+        // initialize the dims and strides
+        std::fill(val.dims, val.dims + DNNL_MAX_NDIMS, DNNL_GRAPH_UNKNOWN_DIM);
+        std::fill(val.layout.strides, val.layout.strides + DNNL_MAX_NDIMS,
+                DNNL_GRAPH_UNKNOWN_DIM);
+    }
 
     *logical_tensor = val;
 

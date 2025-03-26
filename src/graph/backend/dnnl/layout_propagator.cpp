@@ -1568,6 +1568,19 @@ status_t layout_propagator_for_mask(std::shared_ptr<op_t> &op,
     return status;
 }
 
+status_t layout_propagator_for_host_scalar(std::shared_ptr<op_t> &op,
+        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
+    // no need to do layout propagation for host scalar
+    // as its output is always strided
+    UNUSED(op);
+    UNUSED(p_engine);
+    UNUSED(mgr);
+    UNUSED(pd_cache);
+    UNUSED(rewriter);
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

@@ -82,6 +82,9 @@ public:
         return status::success;
     }
 
+    void prepare_host_scalar_args(
+            execution_args_set_t *res, const std::vector<tensor_t> &inputs);
+
     void prepare_args_set(const execution_args_set_t *res,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,

@@ -31,9 +31,6 @@ namespace intel {
 namespace ocl {
 
 class device_info_t : public compute::device_info_t {
-public:
-    std::string get_cl_ext_options() const;
-
 protected:
     status_t init_device_name(impl::engine_t *engine) override;
     status_t init_arch(impl::engine_t *engine) override;

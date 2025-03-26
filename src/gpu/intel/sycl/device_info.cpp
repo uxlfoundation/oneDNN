@@ -98,7 +98,17 @@ status_t device_info_t::init_extensions(impl::engine_t *engine) {
     auto &device
             = utils::downcast<const xpu::sycl::engine_impl_t *>(engine->impl())
                       ->device();
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+    for (uint64_t i_ext = 1; i_ext < (uint64_t)device_ext_t::last;
+            i_ext <<= 1) {
+        const char *s_ext = ext2cl_str((device_ext_t)i_ext);
+        if (device.ext_oneapi_supports_cl_extension(s_ext)) {
+            extensions_ |= i_ext;
+        }
+    }
+#else
     extensions_ = gpu::intel::sycl::compat::init_extensions(device);
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
     // Handle future extensions, not yet supported by the DPC++ API
     extensions_

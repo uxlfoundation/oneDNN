@@ -70,6 +70,31 @@ bool device_info_t::is_integrated() const {
     return ngen::getPlatformType(family) == ngen::PlatformType::Integrated;
 }
 
+std::string device_info_t::get_cl_ext_options() const {
+    using namespace compute;
+
+    std::string opts;
+    for (uint64_t i_ext = 1; i_ext < (uint64_t)device_ext_t::last;
+            i_ext <<= 1) {
+        auto ext = (device_ext_t)i_ext;
+
+        // Use real GPU extensions
+        if (!has(ext)) continue;
+
+        // These extensions are not handled properly by the OpenCL runtime.
+        // Pass macros for them manually.
+        if (utils::one_of(ext, device_ext_t::intel_global_float_atomics,
+                    device_ext_t::intel_subgroup_matrix_multiply_accumulate,
+                    device_ext_t::
+                            intel_subgroup_split_matrix_multiply_accumulate,
+                    device_ext_t::intel_global_float_atomics,
+                    device_ext_t::future_bf16_cvt,
+                    device_ext_t::intel_dot_accumulate))
+            opts += std::string("-D") + ext2cl_str(ext) + " ";
+    }
+    return opts;
+}
+
 bool device_info_t::mayiuse_sub_group(int size) const {
     switch (gpu_arch()) {
         case gpu_arch_t::gen9:

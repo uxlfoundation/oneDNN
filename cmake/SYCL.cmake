@@ -141,3 +141,26 @@ endif()
 
 add_definitions_with_host_compiler("-DCL_TARGET_OPENCL_VERSION=300")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsycl")
+
+if(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER)
+    include(CheckCXXSourceRuns)
+    set(CHECK_SYCL_KERNEL_COMPILER_SOURCE
+    "
+        #include <sycl/sycl.hpp>
+        namespace syclex = sycl::ext::oneapi::experimental;
+        int main() {
+            for (auto platform : sycl::platform::get_platforms())
+                for (auto d : platform.get_devices())
+                    if (!d.ext_oneapi_can_compile(syclex::source_language::opencl))
+                        return 1;
+            return 0;
+        }
+    ")
+    CHECK_CXX_SOURCE_RUNS(
+        "${CHECK_SYCL_KERNEL_COMPILER_SOURCE}"
+        SYCL_KERNEL_COMPILER_DETECTED)
+    if(NOT SYCL_KERNEL_COMPILER_DETECTED)
+        message(FATAL_ERROR
+"SYCL implementation does not support OpenCL kernel compiler extension. Make sure that SYCL and OCLOC are correctly installed.")
+    endif()
+endif()

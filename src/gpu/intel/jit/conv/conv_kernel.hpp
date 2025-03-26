@@ -78,7 +78,6 @@ conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
     profile.stamp("Alloc_Mgr Construct");
 
     setup_interface(body);
-    this->require_signal_header_ = true;
 #ifdef DNNL_DEV_MODE
     profile.stop();
     verify_grf_usage(cfg, body, ra_.get_alloced_regs());

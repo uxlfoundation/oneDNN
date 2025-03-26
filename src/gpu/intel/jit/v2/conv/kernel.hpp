@@ -50,8 +50,6 @@ kernel_t<hw>::kernel_t(
 
     auto &desc = static_cast<const kernel_desc_t &>(_desc);
 
-    this->require_signal_header_ = true;
-
     // Build IR for the kernel.
     var_manager_t var_mgr(kernel_iface());
     stmt_t body = build_ir(exec_cfg(), desc, var_mgr);

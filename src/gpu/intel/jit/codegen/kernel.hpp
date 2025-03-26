@@ -239,7 +239,7 @@ public:
         or_(1, ngen_generator_t::cr0, ngen_generator_t::cr0, uint16_t(0x14C0));
 
         // Allocate and initialize signal header for future use.
-        if (require_signal_header_) {
+        if (exec_cfg_.require_signal_header()) {
             signal_header_ = ra_.alloc();
             ngen_generator_t::barrierheader(signal_header_);
         }
@@ -1147,7 +1147,6 @@ protected:
 
     kernel_iface_t kernel_iface_;
     exec_config_t exec_cfg_;
-    bool require_signal_header_ = false;
     reg_allocator_t ra_;
     ngen::GRF signal_header_;
 

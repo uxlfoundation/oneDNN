@@ -569,7 +569,7 @@ std::vector<problem_t> generate_problems(const bench_input_params_t &params) {
         auto prb = params.problem();
         prb.set_shape(shape);
         if (!params.reqs.fits(prb.shape())) continue;
-        ret.push_back(prb);
+        ret.push_back(std::move(prb));
         if ((int)ret.size() >= params.nprbs) break;
     }
     if ((int)ret.size() < params.nprbs) {
@@ -648,9 +648,8 @@ public:
         }
     }
 
-    bench_data_t bench(const kernel_desc_t &_kernel_desc) {
+    bench_data_t bench(const kernel_desc_t &kernel_desc) {
         if (tasks_.empty()) return bench_data_t();
-        const auto &kernel_desc = _kernel_desc;
         if (!create_conv_plan(kernel_desc, bench_mger_.hw())) return {};
         return planner::bench(bench_mger_, kernel_desc, tasks_, &mem_pool_);
     }

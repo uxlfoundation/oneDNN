@@ -387,7 +387,7 @@ public:
         buf_total_refs_ = buf_cur_refs_;
         for (auto &kv : buf_cur_refs_)
             kv.second = 0;
-        in_ctor_ = false;
+        in_ctor_ = false; // NOLINT(cppcoreguidelines-prefer-member-initializer)
     }
 
 #define HANDLE_IR_OBJECT(type) \
@@ -473,7 +473,7 @@ private:
             j = _find(j);
             parent[j] = i;
         };
-        std::vector<stmt_t> new_stmt_seq = stmt_vec;
+        std::vector<stmt_t> new_stmt_seq = std::move(stmt_vec);
         for (auto &buf : bufs) {
             auto &e = entries.at(buf);
             stmt_t stmt;

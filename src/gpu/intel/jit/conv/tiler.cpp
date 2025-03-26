@@ -360,7 +360,7 @@ private:
         x2_info.set_iter_unit(unit);
         x2_info.d0 = info0.div_info;
         x2_info.d1 = info1.div_info;
-        x2_tile_infos_.push_back(x2_info);
+        x2_tile_infos_.push_back(std::move(x2_info));
     }
 
     void finalize_loop_dims(const conv_config_t &cfg) {
@@ -395,7 +395,7 @@ private:
                 ld.size = shape.get(d, 1);
                 if (iter_.has(d))
                     ld.size = utils::div_up(ld.size, iter_dim_hint);
-                loop_dims.push_back(ld);
+                loop_dims.push_back(std::move(ld));
             }
             std::sort(loop_dims.begin(), loop_dims.end(),
                     [&](const loop_dim_t &a, const loop_dim_t &b) {
@@ -597,7 +597,8 @@ public:
 
 private:
     struct context_t {
-        context_t(const blocking_t &blk, const conv_config_t &cfg) : blk(blk) {
+        context_t(const blocking_t &blk, const conv_config_t &cfg)
+            : blk(blk), dpas_2x_depth(get_dpas_2x_depth(blk, cfg)) {
             auto &prb = cfg.prb();
             auto gemm_iter = to_gemm(blk.iter(), prb);
             auto gemm_loop = to_gemm(blk.loop(), prb);
@@ -611,7 +612,6 @@ private:
             m_tg = gemm_tg.get(pvars::m, 1);
             n_tg = gemm_tg.get(pvars::n, 1);
             k_tg = gemm_tg.get(pvars::k, 1);
-            dpas_2x_depth = get_dpas_2x_depth(blk, cfg);
         }
 
         bool get_dpas_2x_depth(
@@ -1111,7 +1111,7 @@ conv_blocking_scheme_list_t get_blocking_schemes_fwd(const conv_config_t &cfg) {
 conv_blocking_scheme_list_t get_blocking_schemes_bwd_d(
         const conv_config_t &cfg) {
     conv_blocking_scheme_list_t ret(conv_tune_level());
-    auto m_iter_dim = cfg.prb().ab_swap_transpose
+    const auto &m_iter_dim = cfg.prb().ab_swap_transpose
             ? pvars::ic
             : select_iter_dim(cfg, {pvars::mb, pvars::iw});
     bool m_is_mb = (m_iter_dim == pvars::mb);

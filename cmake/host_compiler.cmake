@@ -35,6 +35,8 @@ if(DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
     platform_unix_and_mingw_common_cxx_flags(DPCPP_HOST_COMPILER_OPTS)
 
     sdl_unix_common_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
+    sdl_unix_src_ccxx_flags(DPCPP_SRC_COMPILER_OPTS)
+    sdl_unix_example_ccxx_flags(DPCPP_EXAMPLE_COMPILER_OPTS)
 
     # SYCL uses C++17 features in headers hence C++17 support should be enabled
     # for host compiler.
@@ -79,8 +81,6 @@ if(DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
     if(DPCPP_HOST_COMPILER_KIND STREQUAL "GNU")
         platform_gnu_nowarn_ccxx_flags(DPCPP_CXX_NOWARN_FLAGS ${DPCPP_HOST_COMPILER_MAJOR_VER}.${DPCPP_HOST_COMPILER_MINOR_VER})
         sdl_gnu_common_ccxx_flags(DPCPP_HOST_COMPILER_OPTS DPCPP_HOST_COMPILER_VER)
-        sdl_gnu_src_ccxx_flags(DPCPP_SRC_CXX_FLAGS)
-        sdl_gnu_example_ccxx_flags(DPCPP_EXAMPLE_CXX_FLAGS)
 
         # SYCL headers contain some comments that trigger warning with GNU compiler
         append(DPCPP_HOST_COMPILER_OPTS "-Wno-comment")

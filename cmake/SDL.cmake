@@ -44,13 +44,13 @@ endmacro()
 # only. To prevent warnings on users' side who use the library and turn
 # this warning on, let's use it too. Applicable for the library sources
 # and interfaces only (tests currently rely on that fact heavily)
-macro(sdl_gnu_src_ccxx_flags var)
+macro(sdl_unix_src_ccxx_flags var)
     append(${var} "-Wmissing-field-initializers")
 endmacro()
 
-macro(sdl_gnu_example_ccxx_flags var)
+macro(sdl_unix_example_ccxx_flags var)
     # At this point the flags for src and examples are the same
-    sdl_gnu_src_ccxx_flags(${var})
+    sdl_unix_src_ccxx_flags(${var})
 endmacro()
 
 set(ONEDNN_SDL_COMPILER_FLAGS)
@@ -58,14 +58,14 @@ set(ONEDNN_SDL_LINKER_FLAGS)
 
 if(UNIX)
     sdl_unix_common_ccxx_flags(ONEDNN_SDL_COMPILER_FLAGS)
+    sdl_unix_src_ccxx_flags(CMAKE_SRC_CCXX_FLAGS)
+    sdl_unix_example_ccxx_flags(CMAKE_EXAMPLE_CCXX_FLAGS)
     if(UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "RELEASE")
         append(ONEDNN_SDL_COMPILER_FLAGS "-D_FORTIFY_SOURCE=2")
     endif()
     if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
         sdl_gnu_common_ccxx_flags(ONEDNN_SDL_COMPILER_FLAGS
                                   CMAKE_CXX_COMPILER_VERSION)
-        sdl_gnu_src_ccxx_flags(CMAKE_SRC_CCXX_FLAGS)
-        sdl_gnu_example_ccxx_flags(CMAKE_EXAMPLE_CCXX_FLAGS)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "(Apple)?[Cc]lang")
         get_filename_component(CXX_CMD_NAME ${CMAKE_CXX_COMPILER} NAME)
         # Fujitsu CXX compiler does not support "-fstack-protector-all".

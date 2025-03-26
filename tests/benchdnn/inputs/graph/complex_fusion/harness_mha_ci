@@ -15,10 +15,12 @@
 # f16 inputs + f32 intermediates + f16 outputs
 --reset --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --dt=4:f32+9:f32+14:f32 --case=complex_fusion/mha/GQA-fp16-v2.json
+--reset --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 
 # bf16 inputs + f32 intermediates + bf16 outputs
 --reset --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --dt=4:f32+9:f32+14:f32+1:bf16+3:bf16+8:bf16+11:bf16+16:bf16+20:bf16+19:bf16 --case=complex_fusion/mha/GQA-fp16-v2.json
+--reset --dt=0:bf16+1:bf16+4:bf16+22:bf16+24:bf16+25:bf16 --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 
 # int8 graphs
 --reset --case=complex_fusion/mha/MHA-GPT-inf-int8-bs1.json

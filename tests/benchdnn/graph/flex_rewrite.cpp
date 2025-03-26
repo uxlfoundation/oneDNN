@@ -1318,6 +1318,17 @@ void flex_rewrite_t::dt_rewrite(deserialized_graph_t &dgraph) {
                 aop.in_lts_[0].data_type_ = str_dt;
                 aop.in_lts_[1].data_type_ = str_dt;
             }
+        } else if (aop.kind_ == "Add" || aop.kind_ == "Subtract") {
+            // Add/Sub: only rewrite dtype when it's floating-point
+            if (std::any_of(fp_dts.begin(), fp_dts.end(),
+                        [&aop](const dnnl_data_type_t &fp_dt) {
+                            return aop.in_lts_[0].data_type_ == dt2str(fp_dt);
+                        })) {
+                aop.in_lts_[0].data_type_ = str_dt;
+                aop.in_lts_[1].data_type_ = str_dt;
+                aop.out_lts_[0].data_type_ = str_dt;
+            }
+
         } else {
             for (auto &lt : aop.in_lts_) {
                 lt.data_type_ = str_dt;

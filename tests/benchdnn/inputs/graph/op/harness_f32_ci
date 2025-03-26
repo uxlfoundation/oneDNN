@@ -16,6 +16,7 @@
 --reset --case=op/f32/deconv.json
 --reset --op-attrs=0:auto_pad:SAME_LOWER --case=op/f32/deconv_bwd_d.json
 --reset --op-attrs=0:weights_format:XOI*weights_shape:3x3x128x32 --case=op/f32/deconv_bwd_w.json
+--reset --op-kind=0:Divide,0:Maximum,0:Subtract --case=op/f32/add.json
 --reset --case=op/f32/dequantize_s8.json
 --reset --case=op/f32/dequantize_u8.json
 --reset --case=op/f32/dynamicdq_s4.json
@@ -32,9 +33,7 @@
 --reset --case=op/f32/log.json
 --reset --case=op/f32/logsoftmax_bwd.json
 --reset --op-attrs=0:auto_pad:VALID*kernel:2x2 --case=op/f32/maxpool_bwd.json
---reset --case=op/f32/max.json
 --reset --case=op/f32/mish.json
---reset --case=op/f32/mul.json
 --reset --op-attrs=0:per_channel_broadcast:1 --case=op/f32/prelu.json
 --reset --case=op/f32/quantize.json
 --reset --case=op/f32/reducel1.json

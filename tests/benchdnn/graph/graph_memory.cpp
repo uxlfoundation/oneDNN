@@ -55,8 +55,10 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
     int ndims = mem.ndims();
     dims_t strides(mem.strides(), mem.strides() + ndims);
     std::string mtag = strides2memory_tag(ndims, strides);
-
-    const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
+    bool is_host_scalar = lt.property_type_ == "host_scalar";
+    const auto &g_eng = is_host_scalar
+            ? get_graph_host_engine().operator const dnnl::engine &()
+            : get_graph_engine().operator const dnnl::engine &();
 
     // We create memory for graph path in two steps:
     // 1. Create memory objects.
@@ -86,7 +88,7 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
             std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());
         };
 
-        if (prim_dt != graph_dt) {
+        if (prim_dt != graph_dt || is_host_scalar) {
             // Call a reorder (for data conversion) when reference memory
             // doesn't coincide with the graph memory...
             dnn_mem_t c_mem(ndims, mem.dims(), graph_dt, mtag, g_eng.get());
@@ -112,9 +114,14 @@ dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
     dnnl_memory_get_data_handle(mem_.m_, &data_handle);
     dnnl::graph::logical_tensor graph_lt(lt.id_, lt.get_data_type(), lt.shape_,
             str2layout(lt.layout_type_), lt.get_property_type());
-    dnnl::graph::tensor ret(graph_lt, get_graph_engine(), data_handle);
-
-    return ret;
+    if (lt.get_property_type()
+            == dnnl::graph::logical_tensor::property_type::host_scalar) {
+        dnnl::graph::tensor ret(graph_lt, get_graph_host_engine(), data_handle);
+        return ret;
+    } else {
+        dnnl::graph::tensor ret(graph_lt, get_graph_engine(), data_handle);
+        return ret;
+    }
 }
 
 void flush_temp_memory() {

@@ -1221,11 +1221,11 @@ cpp_stream_t::cpp_stream_t(
     stream_ = dnnl::stream {eng, flags};
 }
 
-cpp_engine_t::cpp_engine_t() {
+cpp_engine_t::cpp_engine_t(bool use_host) {
 
-    dnnl::graph::allocator &alloc = get_graph_allocator();
+    dnnl::graph::allocator &alloc = get_graph_allocator(use_host);
 
-    if (is_cpu()) {
+    if (use_host || is_cpu()) {
         engine_ = make_engine_with_allocator(dnnl::engine::kind::cpu,
                 static_cast<size_t>(engine_index), alloc);
     } else {

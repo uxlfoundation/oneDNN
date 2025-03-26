@@ -84,19 +84,6 @@ struct ref_reorder_t : public gpu_primitive_t {
                             f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
-            VDISPATCH_REORDER(
-                    IMPLICATION(utils::one_of(ddt, f8_e4m3, f8_e5m2, f4_e2m1,
-                                        f4_e3m0),
-                            utils::one_of(sdt, f64, f32, f16, bf16, f8_e5m2,
-                                    f8_e4m3, f4_e2m1, f4_e3m0, ddt)),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_REORDER(
-                    IMPLICATION(utils::one_of(sdt, f8_e4m3, f8_e5m2, f4_e2m1,
-                                        f4_e3m0),
-                            utils::one_of(ddt, f64, f32, f16, bf16, f8_e5m2,
-                                    f8_e4m3, f4_e2m1, f4_e3m0, sdt)),
-                    VERBOSE_UNSUPPORTED_DT);
-
             auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
                     dst_engine->kind() == engine_kind::gpu ? dst_engine
                                                            : src_engine);

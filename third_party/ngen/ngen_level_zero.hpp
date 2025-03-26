@@ -152,13 +152,12 @@ Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze
 {
     Product product;
 
-    ze_device_properties_t dprop = {ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES, nullptr};
+    ze_device_properties_t dprop = {};
+    dprop.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
 
 #ifdef ZE_DEVICE_IP_VERSION_EXT_NAME
     // Try ZE_extension_device_ip_version first if available.
     ze_device_ip_version_ext_t vprop = {ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT, nullptr, 0};
-
-    dprop.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     dprop.pNext = &vprop;
 
     if (call_zeDeviceGetProperties(device, &dprop) == ZE_RESULT_SUCCESS) {
@@ -191,7 +190,6 @@ Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze
         detail::handleL0(call_zeModuleGetNativeBinary(module, &binarySize, binary.data()));
         detail::handleL0(call_zeModuleDestroy(module));
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
-        dprop.pNext = nullptr;
         detail::handleL0(call_zeDeviceGetProperties(device, &dprop));
     }
 

@@ -1580,12 +1580,38 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     const logical_tensor_t &out_lt = dst_val->get_logical_tensor();
 
     dnnl::memory::desc expected_md;
-    // Set default output layout format for sdpa as acbd if user doesn't specify
-    // the layout since no reorder will required after sdpa.
     if (ltw(out_lt).is_any()) {
-        expected_md = {ltw(out_lt).vdims(),
-                static_cast<dnnl::memory::data_type>(ltw(out_lt).data_type()),
-                dnnl::memory::format_tag::acbd};
+        // For GQA, we need to check the layout of the dnnl_reshape output
+        // following dnnl_sdpa, which is given by the user.
+        if (!dst_val->get_consumers().empty()) {
+            const auto &consumer_op = dst_val->get_consumers()[0].get_op();
+            const logical_tensor_t &consumer_out
+                    = consumer_op.get_output_value(0)->get_logical_tensor();
+            if (consumer_op.get_kind() == op_kind::dnnl_reshape
+                    && ltw(consumer_out).ndims() == 5
+                    && ltw(consumer_out).is_strided()) {
+                const auto &ori_strides = ltw(consumer_out).vstrides();
+                std::vector<dim_t> strides = {ori_strides[0], ori_strides[2],
+                        ori_strides[3], ori_strides[4]};
+                dnnl::memory::desc tmp_md {ltw(out_lt).vdims(),
+                        static_cast<dnnl::memory::data_type>(
+                                ltw(out_lt).data_type()),
+                        strides};
+                expected_md = tmp_md;
+            } else {
+                // Set default output layout format for sdpa as acbd if user
+                // doesn't specify the layout since no reorder will be required.
+                expected_md = {ltw(out_lt).vdims(),
+                        static_cast<dnnl::memory::data_type>(
+                                ltw(out_lt).data_type()),
+                        dnnl::memory::format_tag::acbd};
+            }
+        } else {
+            expected_md = {ltw(out_lt).vdims(),
+                    static_cast<dnnl::memory::data_type>(
+                            ltw(out_lt).data_type()),
+                    dnnl::memory::format_tag::acbd};
+        }
     } else {
         expected_md = make_dnnl_memory_desc(out_lt);
     }

@@ -286,10 +286,15 @@ status_t sdp_primitive_config_t::initial_check(
 
     VCHECK_SDP_PRIMITIVE(q_id != -1 && k_id != -1 && v_id != -1,
             status::unimplemented, "Q, K, V are not found");
-    VCHECK_SDP_PRIMITIVE(ltw(inputs[q_id]).vdims().size() == 4
-                    && ltw(inputs[k_id]).vdims().size() == 4
-                    && ltw(inputs[v_id]).vdims().size() == 4,
-            status::unimplemented, "Q, K, V should be 4-dims");
+
+    // Note: sdpa_primitive_v1 kernel accept 5D GQA pattern, and will reshape to
+    // 4D in later compilation pass.
+    if (!v1_kernel) {
+        VCHECK_SDP_PRIMITIVE(ltw(inputs[q_id]).vdims().size() == 4
+                        && ltw(inputs[k_id]).vdims().size() == 4
+                        && ltw(inputs[v_id]).vdims().size() == 4,
+                status::unimplemented, "Q, K, V should be 4-dims");
+    }
 
     // sdp_primitive only supports single scale value.
     if (scale) {

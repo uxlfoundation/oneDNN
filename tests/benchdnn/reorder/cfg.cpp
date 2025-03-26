@@ -39,7 +39,7 @@ REG(f64, -int_max_exact, int_max_exact);
 REG(f16, -f16_max_exact, f16_max_exact);
 REG(bf16, -int_max_exact, int_max_exact);
 REG(f8_e5m2, -f16_max_exact, f16_max_exact);
-REG(f8_e4m3, -f16_max_exact, f16_max_exact);
+REG(f8_e4m3, -127.f, 127.f);
 REG(f4_e2m1, -f16_max_exact, f16_max_exact);
 REG(f4_e3m0, -f4_max_exact, f4_max_exact);
 // Do not exceed min/max float value representable in integer. Otherwise, we get

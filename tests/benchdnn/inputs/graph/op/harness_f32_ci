@@ -6,7 +6,7 @@
 --reset --in-shapes=0:2x28x28x32+1:1x1x32x128 --op-attrs=0:data_format:NXC*weights_format:XIO --case=op/f32/conv_2d.json
 --reset --in-shapes=0:32x384*ab+1:384x1024*ab --case=op/f32/matmul_2d_4d.json
 --reset --case=op/f32/matmul_2d_4d.json
---reset --case=op/f32/abs.json
+--reset --op-kind=0:Abs,0:Exp,0:GELU,0:HardSwish,0:Log,0:Mish,0:Round,0:Sigmoid,0:Sqrt,0:Square,0:Tanh --case=op/f32/abs.json
 --reset --op-attrs=0:auto_pad:SAME_LOWER*kernel:2x2 --case=op/f32/avgpool.json
 --reset --in-shapes=0:2x71x71x192 --op-attrs=0:data_format:NXC --case=op/f32/bnorm_fwd_d.json
 --reset --in-shapes=0:2x71x71x192+1:2x71x71x192 --op-attrs=0:data_format:NXC --case=op/f32/bnorm_bwd.json
@@ -21,19 +21,13 @@
 --reset --case=op/f32/dequantize_u8.json
 --reset --case=op/f32/dynamicdq_s4.json
 --reset --case=op/f32/dynamicdq_u4.json
---reset --case=op/f32/elu.json
+--reset --op-kind=0:Elu,0:LeakyReLU --case=op/f32/elu.json
 --reset --case=op/f32/elu_bwd.json
---reset --case=op/f32/exp.json
---reset --case=op/f32/gelu.json
---reset --case=op/f32/hardswish.json
---reset --case=op/f32/hardswish_bwd.json
 --reset --op-attrs=0:mode:linear --case=op/f32/interpolate_bwd.json
 --reset --op-attrs=0:keep_stats:1 --case=op/f32/lnorm_ks.json
 --reset --case=op/f32/lnorm_bwd.json
---reset --case=op/f32/log.json
 --reset --case=op/f32/logsoftmax_bwd.json
 --reset --op-attrs=0:auto_pad:VALID*kernel:2x2 --case=op/f32/maxpool_bwd.json
---reset --case=op/f32/mish.json
 --reset --op-attrs=0:per_channel_broadcast:1 --case=op/f32/prelu.json
 --reset --case=op/f32/quantize.json
 --reset --case=op/f32/reducel1.json
@@ -42,15 +36,10 @@
 --reset --case=op/f32/reduceprod.json
 --reset --case=op/f32/reducesum.json
 --reset --case=op/f32/relu.json
---reset --case=op/f32/relu_bwd.json
+--reset --op-kind=0:ReLUBackward,0:SigmoidBackward,0:SqrtBackward,0:TanhBackward --case=op/f32/relu_bwd.json
 --reset --case=op/f32/reorder.json
---reset --case=op/f32/round.json
---reset --case=op/f32/sigmoid_bwd.json
 --reset --case=op/f32/softmax.json
 --reset --case=op/f32/softmax_bwd.json
---reset --case=op/f32/square.json
---reset --case=op/f32/tanh.json
---reset --case=op/f32/tanh_bwd.json
 --reset --case=op/f32/typecast.json
 --reset --op-attrs=0:alpha:2*beta:1 --case=op/f32/hardsigmoid_bwd.json
 --reset --case=op/f32/gnorm.json

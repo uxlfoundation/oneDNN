@@ -309,7 +309,7 @@ int partition_data_displacer_t::displace_input_data(
     } else if (filling_type == filling_type_t::causal_mask) {
         SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
     } else if (filling_type == filling_type_t::minus_infinity) {
-        static const std::vector<float> user_set {-INFINITY};
+        static const std::vector<float> user_set {-1e30};
         fill_cfg_t fill_cfg(user_set, "Implicit_causal_mask");
         SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
     } else if (filling_type == filling_type_t::zero) {

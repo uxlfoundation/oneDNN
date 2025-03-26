@@ -1609,8 +1609,12 @@ void convert_ir_to_ngen_impl(const stmt_t &body, ngen_generator_t *host,
 std::string get_ngen_str(const stmt_t &body, ir_asm_kernel_t host,
         const walk_order_t *kernel_grid_walk_order) {
 #ifdef NGEN_ASM
-    convert_ir_to_ngen_impl(body, &host, kernel_grid_walk_order);
-    return host.str();
+    try {
+        convert_ir_to_ngen_impl(body, &host, kernel_grid_walk_order);
+        return host.str();
+    } catch (std::runtime_error &e) {
+        return "IR to nGEN Exception: " + std::string(e.what());
+    }
 #else
     return "";
 #endif

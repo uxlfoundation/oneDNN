@@ -36,6 +36,8 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
         pass_pipeline_t &pipeline) {
     // Directly lower down (1 to 1 mapping)
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    // handle the case that the input is a scalar tensor
+    BACKEND_DNNL_ADD_PASS(pipeline, insert_host_scalar);
     // Decompose select to binary ops if necessary
     BACKEND_DNNL_ADD_PASS(pipeline, decompose_select_to_binary_ops);
 
@@ -166,6 +168,19 @@ void larger_partition_kernel_t::setup_pipeline(pass_pipeline_t &pipeline,
     setup_pipeline_stage2(pipeline, mem_planner, enable_constant_cache);
 }
 
+void larger_partition_kernel_t::prepare_host_scalar_args(
+        execution_args_set_t *res, const std::vector<tensor_t> &inputs) {
+    for (const auto &host_scalar_info : res->get_host_scalar_infos()) {
+        auto mem = make_dnnl_memory(host_scalar_info.md,
+                make_dnnl_engine(
+                        *(inputs[host_scalar_info.input_idx].get_engine())),
+                inputs[host_scalar_info.input_idx].get_data_handle());
+        auto args = res->get_exec_args()[host_scalar_info.exec_idx];
+        args.insert({host_scalar_info.arg, mem});
+        res->reset_exec_args(host_scalar_info.exec_idx, args);
+    }
+}
+
 void larger_partition_kernel_t::prepare_args_set(
         const execution_args_set_t *res, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const scratchpad_t &scratchpad) {
@@ -251,6 +266,7 @@ status_t larger_partition_kernel_t::execute_impl(const stream_t *g_stream,
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
+    prepare_host_scalar_args(res, inputs);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     constant_cache_t::cached_t c_buffer;
@@ -321,6 +337,7 @@ status_t larger_partition_kernel_t::sycl_execute_impl(const stream_t *g_stream,
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
+    prepare_host_scalar_args(res, inputs);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     constant_cache_t::cached_t c_buffer;
@@ -396,6 +413,7 @@ status_t larger_partition_kernel_t::ocl_execute_impl(const stream_t *g_stream,
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
+    prepare_host_scalar_args(res, inputs);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     constant_cache_t::cached_t c_buffer;

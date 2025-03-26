@@ -97,6 +97,8 @@ logical_tensor::property_type deserialized_lt::get_property_type() const {
         return logical_tensor::property_type::constant;
     } else if (property_type_ == "variable") {
         return logical_tensor::property_type::variable;
+    } else if (property_type_ == "host_scalar") {
+        return logical_tensor::property_type::host_scalar;
     } else {
         return logical_tensor::property_type::undef;
     }

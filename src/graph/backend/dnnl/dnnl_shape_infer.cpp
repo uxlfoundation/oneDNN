@@ -602,6 +602,16 @@ status_t infer_dnnl_sdpa_output_shape(op_t *n,
     return status::success;
 }
 
+status_t infer_dnnl_host_scalar_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    // host scalar output is always strided
+    // with shape = {1}, strides = {1}
+    outputs[0]->layout_type = layout_type::strided;
+    set_shape_and_strides(*outputs[0], {1});
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

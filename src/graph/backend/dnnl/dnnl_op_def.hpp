@@ -93,6 +93,20 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_mul_scales, 1,
                         executable_creator<reorder_executable_t>)
                 .SET_ARG_INDICES_GETTER(reorder_executable_t))
 
+DNNL_GRAPH_OP_SCHEMA(dnnl_host_scalar, 1,
+        op_schema_t()
+                .set_num_inputs(1)
+                .set_num_outputs(1)
+                .set_input(0, "scalar")
+                .set_output(0, "output")
+                .SET_ATTR_IS_CONSTANT // used for constant prop and cache
+                .set_shape_inference_function(
+                        infer_dnnl_host_scalar_output_shape)
+                .SET_LAYOUT_PROPAGATOR(layout_propagator_for_host_scalar)
+                .SET_EXECUTABLE_CREATOR(
+                        executable_creator<host_scalar_executable_t>)
+                .SET_ARG_INDICES_GETTER(host_scalar_executable_t))
+
 DNNL_GRAPH_OP_SCHEMA(dnnl_constant_scales, 1,
         op_schema_t()
                 .set_num_inputs(0)

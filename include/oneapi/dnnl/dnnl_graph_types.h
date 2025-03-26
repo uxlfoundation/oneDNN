@@ -76,6 +76,9 @@ typedef enum {
     /// optimizations for constant tensors or cache constant tensors inside the
     /// library. For example, constant weight tensors in inference scenarios.
     dnnl_graph_tensor_property_constant = 2,
+    /// Host scalar means the tensor will be a 0-D scalar tensor on host.
+    /// It should be used with a CPU engine when creating the tensor.
+    dnnl_graph_tensor_property_host_scalar = 3,
 } dnnl_graph_tensor_property_t;
 
 /// Logical tensor. It is based on an ID, a number of dimensions, dimensions

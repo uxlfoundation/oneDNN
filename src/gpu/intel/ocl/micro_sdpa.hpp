@@ -52,40 +52,42 @@ struct micro_sdpa_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
-            VDISPATCH_SDPA(
+            VCHECK_SDPA_COND(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),
                     VERBOSE_UNSUPPORTED_TAG);
             if (with_attn_mask()) {
-                VDISPATCH_SDPA(
+                VCHECK_SDPA_COND(
                         attn_mask_md()->ndims == 4, VERBOSE_UNSUPPORTED_TAG);
-                VDISPATCH_SDPA(utils::one_of(attn_mask_md()->dims[mask_q_index],
-                                       desc()->queries(), 1),
+                VCHECK_SDPA_COND(
+                        utils::one_of(attn_mask_md()->dims[mask_q_index],
+                                desc()->queries(), 1),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_q_index);
-                VDISPATCH_SDPA(
+                VCHECK_SDPA_COND(
                         attn_mask_md()->dims[mask_k_index] == desc()->keys(),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_k_index);
-                VDISPATCH_SDPA(attn_mask_md()->data_type == qry_md()->data_type,
+                VCHECK_SDPA_COND(
+                        attn_mask_md()->data_type == qry_md()->data_type,
                         "Mask data type should match Qry/Dst data type.");
             }
-            VDISPATCH_SDPA(
+            VCHECK_SDPA_COND(
                     (utils::everyone_is(data_type::f16, qry_md()->data_type,
                              dst_md()->data_type)
                             || utils::everyone_is(data_type::bf16,
                                     qry_md()->data_type, dst_md()->data_type)),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SDPA(utils::one_of(key_md()->data_type, bf16, f16, u8, s8,
-                                   u4, s4),
+            VCHECK_SDPA_COND(utils::one_of(key_md()->data_type, bf16, f16, u8,
+                                     s8, u4, s4),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SDPA(utils::one_of(val_md()->data_type, bf16, f16, u8, s8,
-                                   u4, s4),
+            VCHECK_SDPA_COND(utils::one_of(val_md()->data_type, bf16, f16, u8,
+                                     s8, u4, s4),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SDPA(set_default_formats() == status::success,
+            VCHECK_SDPA_COND(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_SDPA(desc()->values() == desc()->head_size(),
+            VCHECK_SDPA_COND(desc()->values() == desc()->head_size(),
                     "values does not match head size");
 
-            VDISPATCH_SDPA(qry_md()->dims[1] >= key_md()->dims[1]
+            VCHECK_SDPA_COND(qry_md()->dims[1] >= key_md()->dims[1]
                             && qry_md()->dims[1] >= val_md()->dims[1],
                     "number of heads in query tensor(%s) must be greater "
                     "than the number of heads in the key(%s) and value(%s) "
@@ -96,17 +98,17 @@ struct micro_sdpa_t : public gpu_primitive_t {
             int kq_zp_mask = desc()->kq_zero_points.get_mask(DNNL_ARG_WEIGHTS);
             if (!desc()->kq_scales.has_default_values()
                     && !desc()->kq_zero_points.has_default_values())
-                VDISPATCH_SDPA(kq_scales_mask == kq_zp_mask,
+                VCHECK_SDPA_COND(kq_scales_mask == kq_zp_mask,
                         "kq scales mask(%d) must equal kq zero point(%d) "
                         "mask",
                         kq_scales_mask, kq_zp_mask);
             if (!desc()->kq_scales.has_default_values())
-                VDISPATCH_SDPA(utils::one_of(kq_scales_mask, 0, 1, 3, 11, 15),
+                VCHECK_SDPA_COND(utils::one_of(kq_scales_mask, 0, 1, 3, 11, 15),
                         "unsupported mask for kq matmul(%d). must be 0, 1, 3, "
                         "11, or 15",
                         kq_scales_mask);
             if (!desc()->kq_zero_points.has_default_values())
-                VDISPATCH_SDPA(utils::one_of(kq_zp_mask, 0, 1, 3, 11, 15),
+                VCHECK_SDPA_COND(utils::one_of(kq_zp_mask, 0, 1, 3, 11, 15),
                         "unsupported mask for kq matmul(%d). must be 0, 1, 3, "
                         "11, or 15",
                         kq_zp_mask);
@@ -115,7 +117,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
             if (utils::one_of(
                         desc()->kq_zero_points.get_data_type(DNNL_ARG_WEIGHTS),
                         s4, u4)) {
-                VDISPATCH_SDPA(key_group_size() == 16,
+                VCHECK_SDPA_COND(key_group_size() == 16,
                         "if kq zero points data type is s4 or u4 then the "
                         "group size(%d) must be 16.",
                         key_group_size());
@@ -125,17 +127,17 @@ struct micro_sdpa_t : public gpu_primitive_t {
             int vs_zp_mask = desc()->vs_zero_points.get_mask(DNNL_ARG_WEIGHTS);
             if (!desc()->vs_scales.has_default_values()
                     && !desc()->vs_zero_points.has_default_values())
-                VDISPATCH_SDPA(vs_scales_mask == vs_zp_mask,
+                VCHECK_SDPA_COND(vs_scales_mask == vs_zp_mask,
                         "vs scales mask(%d) must equal vs zero point(%d) "
                         "mask",
                         vs_scales_mask, vs_zp_mask);
             if (!desc()->vs_scales.has_default_values())
-                VDISPATCH_SDPA(utils::one_of(vs_scales_mask, 0, 1, 3, 7, 15),
+                VCHECK_SDPA_COND(utils::one_of(vs_scales_mask, 0, 1, 3, 7, 15),
                         "unsupported mask for vs matmul(%d). must be 0, 1, 3, "
                         "7, or 15",
                         vs_scales_mask);
             if (!desc()->vs_zero_points.has_default_values())
-                VDISPATCH_SDPA(utils::one_of(vs_zp_mask, 0, 1, 3, 7, 15),
+                VCHECK_SDPA_COND(utils::one_of(vs_zp_mask, 0, 1, 3, 7, 15),
                         "unsupported mask for vs matmul(%d). must be 0, 1, 3, "
                         "7, or 15",
                         vs_zp_mask);
@@ -144,7 +146,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
             if (utils::one_of(
                         desc()->vs_zero_points.get_data_type(DNNL_ARG_WEIGHTS),
                         s4, u4)) {
-                VDISPATCH_SDPA(value_group_size() == 16,
+                VCHECK_SDPA_COND(value_group_size() == 16,
                         "if vs zero points data type is s4 or u4 then the "
                         "group size(%d) must be 16.",
                         value_group_size());
@@ -153,7 +155,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
             if (!desc()->vs_scales.has_default_values()
                     || !desc()->vs_zero_points.has_default_values()) {
                 int vgs = value_group_size();
-                VDISPATCH_SDPA(utils::one_of(vs_scales_mask, 0, 1, 3)
+                VCHECK_SDPA_COND(utils::one_of(vs_scales_mask, 0, 1, 3)
                                 || (math::is_pow2<int>(vgs)
                                         || vgs == val_md()->dims[3]),
                         "the value group size(%d) must be a power of 2 or "

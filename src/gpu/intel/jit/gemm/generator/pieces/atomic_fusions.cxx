@@ -457,7 +457,7 @@ bool BLASKernelGenerator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEM
     auto modState = state;
 
     modProblem.beta = 1;
-    modProblem.postOps = dnnl::impl::gpu::intel::gpu_post_ops_t{};
+    modProblem.postOps = PostOps{};
     if (modProblem.cOffset == COffset::Post)
         modProblem.cOffset = COffset::None;
 

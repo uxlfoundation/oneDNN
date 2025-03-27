@@ -30,7 +30,6 @@
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/codegen/reorder.hpp"
-#include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/ir_builder.hpp"
@@ -40,6 +39,7 @@
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/ir/walk_order.hpp"
 #include "ngen.hpp"
+#include "ngen_emulation.hpp"
 #include "ngen_register_allocator.hpp"
 #include "xpu/utils.hpp"
 
@@ -971,23 +971,25 @@ public:
     template <typename DT = void>
     void emov(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::RegData src0) {
-        EmulationImplementation::emov<DT>(*this, mod, dst, src0, emu_strategy);
+        ngen::EmulationImplementation::emov<DT>(
+                *this, mod, dst, src0, emu_strategy);
     }
     template <typename DT = void>
     void emov(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::Immediate src0) {
-        EmulationImplementation::emov<DT>(*this, mod, dst, src0, emu_strategy);
+        ngen::EmulationImplementation::emov<DT>(
+                *this, mod, dst, src0, emu_strategy);
     }
     template <typename DT = void>
     void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
             const ngen::RegData &src0, const ngen::RegData &src1) {
-        EmulationImplementation::eadd<DT>(
+        ngen::EmulationImplementation::eadd<DT>(
                 *this, mod, dst, src0, src1, emu_strategy, emu_state);
     }
     template <typename DT = void>
     void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
             const ngen::RegData &src0, ngen::Immediate src1) {
-        EmulationImplementation::eadd<DT>(
+        ngen::EmulationImplementation::eadd<DT>(
                 *this, mod, dst, src0, src1, emu_strategy, emu_state);
     }
     template <typename DT = void>
@@ -997,7 +999,7 @@ public:
             mul(mod, dst, src0, src1);
             return;
         }
-        EmulationImplementation::emul<DT>(
+        ngen::EmulationImplementation::emul<DT>(
                 *this, mod, dst, src0, src1, emu_strategy, emu_state);
     }
     template <typename DT = void>
@@ -1007,19 +1009,19 @@ public:
             mul(mod, dst, src0, src1);
             return;
         }
-        EmulationImplementation::emul<DT>(
+        ngen::EmulationImplementation::emul<DT>(
                 *this, mod, dst, src0, src1, emu_strategy, emu_state);
     }
     template <typename DT = void>
     void eshl(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::RegData src0, uint16_t src1) {
-        EmulationImplementation::eshl<DT>(
+        ngen::EmulationImplementation::eshl<DT>(
                 *this, mod, dst, src0, src1, emu_strategy, emu_state);
     }
     template <typename DT = void>
     void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::RegData src0, uint16_t src1) {
-        EmulationImplementation::eshr<DT>(
+        ngen::EmulationImplementation::eshr<DT>(
                 *this, mod, dst, src0, src1, emu_strategy, emu_state);
     }
 
@@ -1144,8 +1146,8 @@ protected:
     reg_allocator_t ra_;
     ngen::GRF signal_header_;
 
-    EmulationStrategy emu_strategy;
-    EmulationState emu_state;
+    ngen::EmulationStrategy emu_strategy;
+    ngen::EmulationState emu_state;
 };
 
 template <ngen::HW hw>

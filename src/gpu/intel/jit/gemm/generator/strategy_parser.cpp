@@ -32,7 +32,7 @@ static void unparseTiling(std::ostream &s, const MatrixAddressingStrategy &astra
 
 bool native64Bit(HW hw)
 {
-    dnnl::impl::gpu::intel::jit::EmulationStrategy emulate(hw);
+    ngen::EmulationStrategy emulate(hw);
     return !emulate.emulate64;
 }
 

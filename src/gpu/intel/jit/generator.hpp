@@ -19,15 +19,14 @@
 
 #include <memory>
 
-// Must be included before emulation.hpp
 #include "ngen.hpp"
+#include "ngen_emulation.hpp"
 
 #include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "xpu/utils.hpp"
@@ -97,7 +96,7 @@ class generator_t : public ngen_code_generator_t<hw>, public generator_base_t {
     friend struct eltwise_injector_f32_t<generator_t>;
     friend struct reduction_injector_f32_t<generator_t>;
     friend struct post_op_injector_t<generator_t>;
-    friend struct EmulationImplementation;
+    friend struct ngen::EmulationImplementation;
 
 private:
 #ifdef DNNL_DEV_MODE

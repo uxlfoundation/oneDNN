@@ -23,9 +23,9 @@
 #include "common/nstl.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/reduction_injector.hpp"
 #include "ngen_core.hpp"
+#include "ngen_emulation.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -215,24 +215,24 @@ template <typename ngen_generator_t>
 void reduction_injector_f32_t<ngen_generator_t>::emov(ngen_generator_t &host,
         const ngen::InstructionModifier &mod, const ngen::RegData &dst,
         const ngen::Immediate &src0) {
-    EmulationImplementation::emov(host, mod, dst, src0, emu_strategy);
+    ngen::EmulationImplementation::emov(host, mod, dst, src0, emu_strategy);
 }
 
 template <typename ngen_generator_t>
 void reduction_injector_f32_t<ngen_generator_t>::emov(ngen_generator_t &host,
         const ngen::InstructionModifier &mod, const ngen::RegData &dst,
         const ngen::RegData &src0) {
-    EmulationImplementation::emov(host, mod, dst, src0, emu_strategy);
+    ngen::EmulationImplementation::emov(host, mod, dst, src0, emu_strategy);
 }
 
 template <typename ngen_generator_t>
 void reduction_injector_f32_t<ngen_generator_t>::eadd(ngen_generator_t &host,
         const ngen::InstructionModifier &mod, const ngen::RegData &dst,
         const ngen::RegData &src0, const ngen::Immediate &src1) {
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra.alloc();
     state.temp[1] = ra.alloc();
-    EmulationImplementation::eadd(
+    ngen::EmulationImplementation::eadd(
             host, mod, dst, src0, src1, emu_strategy, state);
     ra.release(state.temp[0]);
     ra.release(state.temp[1]);
@@ -242,10 +242,10 @@ template <typename ngen_generator_t>
 void reduction_injector_f32_t<ngen_generator_t>::eadd(ngen_generator_t &host,
         const ngen::InstructionModifier &mod, const ngen::RegData &dst,
         const ngen::RegData &src0, const ngen::RegData &src1) {
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra.alloc();
     state.temp[1] = ra.alloc();
-    EmulationImplementation::eadd(
+    ngen::EmulationImplementation::eadd(
             host, mod, dst, src0, src1, emu_strategy, state);
     ra.release(state.temp[0]);
     ra.release(state.temp[1]);
@@ -255,10 +255,10 @@ template <typename ngen_generator_t>
 void reduction_injector_f32_t<ngen_generator_t>::emul(ngen_generator_t &host,
         const ngen::InstructionModifier &mod, const ngen::RegData &dst,
         const ngen::RegData &src0, const ngen::Immediate &src1) {
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra.alloc();
     state.temp[1] = ra.alloc();
-    EmulationImplementation::emul(
+    ngen::EmulationImplementation::emul(
             host, mod, dst, src0, src1, emu_strategy, state);
     ra.release(state.temp[0]);
     ra.release(state.temp[1]);
@@ -268,10 +268,10 @@ template <typename ngen_generator_t>
 void reduction_injector_f32_t<ngen_generator_t>::emul(ngen_generator_t &host,
         const ngen::InstructionModifier &mod, const ngen::RegData &dst,
         const ngen::RegData &src0, const ngen::RegData &src1) {
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra.alloc();
     state.temp[1] = ra.alloc();
-    EmulationImplementation::emul(
+    ngen::EmulationImplementation::emul(
             host, mod, dst, src0, src1, emu_strategy, state);
     ra.release(state.temp[0]);
     ra.release(state.temp[1]);

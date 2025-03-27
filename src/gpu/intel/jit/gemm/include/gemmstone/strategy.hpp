@@ -23,7 +23,7 @@
 #include "internal/utils.hpp"
 
 #include "driver_info.hpp"
-#include "gpu/intel/jit/emulation.hpp"
+#include "ngen_emulation.hpp"
 #include "problem.hpp"
 #include "type.hpp"
 
@@ -170,7 +170,7 @@ struct CommonStrategy {
         = ngen::ThreadArbitrationMode::Default; // Thread arbitration policy to use.
     int activeThreads = 0;                      // # of active threads (0 = dynamic).
 
-    dnnl::impl::gpu::intel::jit::EmulationStrategy emulate;
+    ngen::EmulationStrategy emulate;
                                     ZPAD(C, 2)
 
     CommonStrategy() = default;

@@ -69,11 +69,12 @@ optional.
 
    2. Implicit library-generated mask: You can use the operations in the library
    to generate a mask by constructing a subgraph. Currently, Graph API supports
-   generating an implicit causal mask (top-left aligned) using operations of
-   [GenIndex](@ref dev_guide_op_genindex), [GreaterEqual](@ref dev_guide_op_greaterequal)
+   generating an implicit causal mask (top-left or bottom-right aligned) using
+   operations of [GenIndex](@ref dev_guide_op_genindex), [Add](@ref dev_guide_op_add).
+   [Subtract](@ref dev_guide_op_subtract), [GreaterEqual](@ref dev_guide_op_greaterequal)
    and [Select](@ref dev_guide_op_select).
 
-   ![SDPA-mask-3](images/sdpa-mask-3.png)
+   ![SDPA-mask-3](images/sdpa-mask-3.png) ![SDPA-mask-4](images/sdpa-mask-4.png)
 
 4. The SoftMax operation takes the masked output and transforms it into
    probabilities between 0 and 1. See [SoftMax](@ref dev_guide_op_softmax)
@@ -115,8 +116,7 @@ platforms follow the general description in @ref dev_guide_data_types.
    softmax primitives. The reference implementation requires memory to store the
    intermediate results of the dot products between Query and Key which takes
    \f$O(S^2)\f$ memory. It may lead to out-of-memory error when computing long
-   sequence length input on platforms with limited memory. For an implicit
-   causal mask, the reference implementation is only available on CPU.
+   sequence length input on platforms with limited memory.
 2. The SDPA patterns functionally supports all input shapes meeting the shape
    requirements of each operation in the graph. For example, Add, Multiply,
    Divide, and Select operations require the input tensors to have the same

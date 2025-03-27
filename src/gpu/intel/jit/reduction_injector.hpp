@@ -23,9 +23,9 @@
 #include "common/utils.hpp"
 
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
-#include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "ngen_core.hpp"
+#include "ngen_emulation.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -81,7 +81,7 @@ private:
     void emul(ngen_generator_t &host, const ngen::InstructionModifier &mod,
             const ngen::RegData &dst, const ngen::RegData &src0,
             const ngen::RegData &src1);
-    EmulationStrategy emu_strategy;
+    ngen::EmulationStrategy emu_strategy;
 
     const alg_kind_t alg_;
     ngen_generator_t &h;

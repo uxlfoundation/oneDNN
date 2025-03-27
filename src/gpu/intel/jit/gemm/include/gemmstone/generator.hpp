@@ -21,10 +21,6 @@
 
 #include <bitset>
 
-#include "common/math_utils.hpp"
-#include "common/utils.hpp"
-#include "gpu/intel/jit/generator.hpp"
-
 #include <array>
 #include <bitset>
 #include <complex>
@@ -45,17 +41,7 @@
 #include "generator/pieces/state.hpp"
 #include "gpu/intel/jit/emulation.hpp"
 
-#include "gpu/intel/microkernels/entrance_agent.hpp"
-#include "gpu/intel/microkernels/package.hpp"
-
 #include "internal/namespace_start.hxx"
-
-// Macro configuration
-#define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
-#define FORWARD(hw) NGEN_FORWARD_ELF(hw)
-
-#define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
-
 
 template <ngen::HW hw>
 class BLASKernelGenerator : public GENERATOR_BASE(hw) {

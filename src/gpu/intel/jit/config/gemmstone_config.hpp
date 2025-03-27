@@ -29,6 +29,10 @@
 
 namespace gemmstone {
 
+#define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
+#define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
+#define FORWARD(hw) NGEN_FORWARD_ELF(hw)
+
 enum class GEMMVerbose { DebugInfo = dnnl::impl::verbose_t::debuginfo };
 
 inline int getVerbose(GEMMVerbose v) {

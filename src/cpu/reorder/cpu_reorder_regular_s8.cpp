@@ -59,12 +59,12 @@ const impl_list_map_t &regular_s8_impl_list_map() {
             DNNL_NON_X64_ONLY(REG_SR_BIDIR(s8, any, bf16, gOIhw4i16o4i))
             DNNL_NON_X64_ONLY(REG_SR_BIDIR(s8, any, s8, gOIhw4i16o4i))
 
-            REG_SR(s8, any, f32, any, fmt_order::any, spec::reference)
-            REG_SR(s8, any, s32, any, fmt_order::any, spec::reference)
-            REG_SR(s8, any, bf16, any, fmt_order::any, spec::reference)
-            REG_SR(s8, any, f16, any, fmt_order::any, spec::reference)
-            REG_SR(s8, any, s8, any, fmt_order::any, spec::reference)
-            REG_SR(s8, any, u8, any, fmt_order::any, spec::reference)
+            // REG_SR(s8, any, f32, any, fmt_order::any, spec::reference)
+            // REG_SR(s8, any, s32, any, fmt_order::any, spec::reference)
+            // REG_SR(s8, any, bf16, any, fmt_order::any, spec::reference)
+            // REG_SR(s8, any, f16, any, fmt_order::any, spec::reference)
+            // REG_SR(s8, any, s8, any, fmt_order::any, spec::reference)
+            // REG_SR(s8, any, u8, any, fmt_order::any, spec::reference)
 
             REG_SPARSE_SR_X64(s8, any, s8, any)
 

@@ -38,7 +38,7 @@ const impl_list_map_t &regular_f32_s32_impl_list_map() {
 
             DNNL_NON_X64_ONLY(REG_SR_BIDIR(f32, any, s32, nChw16c))
 
-            REG_SR(f32, any, s32, any, fmt_order::any, spec::reference)
+            // REG_SR(f32, any, s32, any, fmt_order::any, spec::reference)
 
             nullptr,
         }},

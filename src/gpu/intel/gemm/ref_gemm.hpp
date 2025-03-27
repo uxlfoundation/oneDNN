@@ -213,6 +213,7 @@ struct ref_gemm_t : public gpu_gemm_t {
                     DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C};
             for (int arg : supported_args) {
                 if (!zp.has_default_values(arg)) {
+                    if (arg != DNNL_ARG_C) return false;
                     const int mask = zp.get_mask(arg);
                     if (mask > 0) return false;
                 }

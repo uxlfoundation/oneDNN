@@ -221,6 +221,15 @@ struct gen_gemm_t : public gpu_gemm_t {
                 return utils::one_of(mask, (1 << (ndims - 1)),
                         (1 << (ndims - 1)) + (1 << (ndims - 2)));
             };
+            auto c_kernel_type
+                    = convert_dnnl_to_kernel_type(desc_.c_desc.data_type);
+            for (int i = 0; i < desc_.c_desc.ndims; i++) {
+                auto c_stride = desc_.c_desc.format_desc.blocking.strides[i];
+                VDISPATCH_GEMM(IMPLICATION((c_kernel_type.isInt4()
+                                                   || c_kernel_type.isFP4()),
+                                       c_stride == 1 || c_stride % 2 == 0),
+                        VERBOSE_SHAPE_RESTRICTION);
+            }
 
             if (!attr()->zero_points_.has_default_values()) {
                 if (!attr_zps.has_default_values(DNNL_ARG_A)) {
@@ -566,6 +575,22 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             auto dotrans = batch ? acb : ba;
             auto notrans = batch ? abc : ab;
+
+            auto cache_line_align_md = [&](memory_desc_t &md) {
+                auto dim = md.dims[md.ndims - 1];
+                dnnl::impl::dims_t dims;
+                dnnl::impl::utils::array_copy(dims, md.dims, md.ndims);
+                auto kernel_type = convert_dnnl_to_kernel_type(md.data_type);
+                dim_t cache_line_elems = 64 / kernel_type;
+                md.dims[md.ndims - 1] = utils::rnd_up(dim,
+                        std::min((dim_t)cache_line_elems,
+                                utils::rnd_up(dim, 2)));
+                CHECK(memory_desc_init_by_strides(md, nullptr));
+                dnnl::impl::utils::array_copy(md.dims, dims, md.ndims);
+                return status::success;
+            };
+            if (a_any) CHECK(cache_line_align_md(a_desc));
+            if (b_any) CHECK(cache_line_align_md(b_desc));
 
             if ((is_f16 || is_bf16) && is_xe_hp_plus && use_tn) {
                 if (a_any && b_any) {

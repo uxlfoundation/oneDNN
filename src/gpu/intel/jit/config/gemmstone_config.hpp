@@ -18,6 +18,8 @@
 #define GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 
 #include "common/verbose.hpp"
+#include "gpu/intel/microkernels/entrance_agent.hpp"
+#include "gpu/intel/microkernels/package.hpp"
 
 namespace gemmstone {
 
@@ -32,6 +34,8 @@ template <typename... Args>
 inline void verbosePrintf(const char *fmtStr, Args... args) {
     return dnnl::impl::verbose_printf(fmtStr, args...);
 }
+
+namespace micro = dnnl::impl::gpu::intel::micro;
 
 } // namespace gemmstone
 #endif

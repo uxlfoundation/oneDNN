@@ -349,21 +349,21 @@ status_t get_l0_device_enabled_native_float_atomics(
         native_extensions |= (uint64_t)native_ext_t::fp16_atomic_load_store;
     if ((fltAtom.fp16Flags & atomic_add) == atomic_add)
         native_extensions |= (uint64_t)native_ext_t::fp16_atomic_add;
-    if ((fltAtom.fp16Flags & atomic_add) == atomic_min_max)
+    if ((fltAtom.fp16Flags & atomic_min_max) == atomic_min_max)
         native_extensions |= (uint64_t)native_ext_t::fp16_atomic_min_max;
 
     if ((fltAtom.fp32Flags & atomic_load_store) == atomic_load_store)
         native_extensions |= (uint64_t)native_ext_t::fp32_atomic_load_store;
     if ((fltAtom.fp32Flags & atomic_add) == atomic_add)
         native_extensions |= (uint64_t)native_ext_t::fp32_atomic_add;
-    if ((fltAtom.fp32Flags & atomic_add) == atomic_min_max)
+    if ((fltAtom.fp32Flags & atomic_min_max) == atomic_min_max)
         native_extensions |= (uint64_t)native_ext_t::fp32_atomic_min_max;
 
     if ((fltAtom.fp64Flags & atomic_load_store) == atomic_load_store)
         native_extensions |= (uint64_t)native_ext_t::fp64_atomic_load_store;
     if ((fltAtom.fp64Flags & atomic_add) == atomic_add)
         native_extensions |= (uint64_t)native_ext_t::fp64_atomic_add;
-    if ((fltAtom.fp64Flags & atomic_add) == atomic_min_max)
+    if ((fltAtom.fp64Flags & atomic_min_max) == atomic_min_max)
         native_extensions |= (uint64_t)native_ext_t::fp64_atomic_min_max;
 
     return status::success;

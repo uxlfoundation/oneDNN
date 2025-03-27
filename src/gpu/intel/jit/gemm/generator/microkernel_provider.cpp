@@ -40,7 +40,7 @@
 #undef _CATALOG_
 
 using namespace ngen;
-using namespace dnnl::impl::gpu::intel::micro;
+using namespace micro;
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,
                                            GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,

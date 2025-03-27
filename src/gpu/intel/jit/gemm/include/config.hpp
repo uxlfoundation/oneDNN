@@ -18,6 +18,7 @@
 #define GEMMSTONE_GUARD_CONFIG_HPP
 
 #include "common/verbose.hpp"
+#include "gpu/intel/microkernels/package.hpp"
 
 #include "internal/namespace_start.hxx"
 
@@ -33,6 +34,8 @@ template <typename... Args>
 inline void verbosePrintf(const char *fmtStr, Args... args) {
     return dnnl::impl::verbose_printf(fmtStr, args...);
 }
+
+namespace micro = dnnl::impl::gpu::intel::micro;
 
 #include "internal/namespace_end.hxx"
 

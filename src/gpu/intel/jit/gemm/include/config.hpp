@@ -21,6 +21,7 @@
 #include "common/verbose.hpp"
 #include "gpu/intel/gpu_post_ops.hpp"
 #include "gpu/intel/microkernels/package.hpp"
+#include "gpu/intel/microkernels/entrance_agent.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/post_op_injector.hpp"
 #include "gpu/intel/utils.hpp"
@@ -29,6 +30,8 @@
 #include "pre_config.hpp"
 
 #include "internal/namespace_start.hxx"
+
+#define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
 
 enum class GEMMVerbose {
     DebugInfo = dnnl::impl::verbose_t::debuginfo
@@ -49,7 +52,7 @@ using SerializationStream = dnnl::impl::serialization_stream_t;
 
 using PostOps = dnnl::impl::gpu::intel::gpu_post_ops_t;
 template <ngen::HW hw>
-using PostOpInjector = dnnl::impl::gpu::intel::jit::post_op_injector_t<dnnl::impl::gpu::intel::jit::generator_t<hw>>;
+using PostOpInjector = dnnl::impl::gpu::intel::jit::post_op_injector_t<GENERATOR_BASE(hw)>;
 constexpr int maxPostOps = dnnl::impl::post_ops_t::post_ops_limit;
 
 static inline BinaryOp toBinaryOp(const PostOps::entry_t &e)
@@ -69,7 +72,7 @@ static inline BinaryOp toBinaryOp(const PostOps::entry_t &e)
 }
 
 template <ngen::HW hw>
-void injectNonBinaryPostOps(const PostOps::entry_t & entry, dnnl::impl::gpu::intel::jit::generator_t<hw> *g,
+void injectNonBinaryPostOps(const PostOps::entry_t & entry, GENERATOR_BASE(hw) *g,
                             ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
                             int C_ngrf, bool postOpFwd) {
     namespace jit = dnnl::impl::gpu::intel::jit;
@@ -95,7 +98,7 @@ void injectNonBinaryPostOps(const PostOps::entry_t & entry, dnnl::impl::gpu::int
 }
 
 template <ngen::HW hw>
-void injectStochasticRound(dnnl::impl::gpu::intel::jit::generator_t<hw> *g,
+void injectStochasticRound(GENERATOR_BASE(hw) *g,
                             ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
                            int C_ngrf, bool postOpFwd, const ngen::Subregister &seed, ngen::DataType t) {
     namespace jit = dnnl::impl::gpu::intel::jit;

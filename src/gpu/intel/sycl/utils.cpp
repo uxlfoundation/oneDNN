@@ -132,13 +132,21 @@ status_t sycl_dev2ocl_dev(cl_device_id *ocl_dev, const ::sycl::device &dev) {
         return uuid2ocl_dev_tmp;
     }();
 
-    if (uuid2ocl_dev.empty()) return status::runtime_error;
+    if (uuid2ocl_dev.empty()) {
+        VERROR(common, runtime, VERBOSE_MISSING_OCL_DEVICE,
+                dev.get_info<::sycl::info::device::name>().c_str());
+        return status::runtime_error;
+    }
 
     const xpu::device_uuid_t l0_dev_uuid
             = gpu::intel::sycl::get_device_uuid(dev);
     auto d = uuid2ocl_dev.get(l0_dev_uuid);
 
-    if (!d) return status::runtime_error;
+    if (!d) {
+        VERROR(common, runtime, VERBOSE_MISSING_OCL_DEVICE,
+                dev.get_info<::sycl::info::device::name>().c_str());
+        return status::runtime_error;
+    }
 
     *ocl_dev = d;
 

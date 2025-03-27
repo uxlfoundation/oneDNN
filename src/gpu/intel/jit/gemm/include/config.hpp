@@ -33,6 +33,10 @@
 
 #define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
 
+inline int getEnv(const char *s, int def) {
+    return dnnl::impl::gpu::intel::gpu_utils::dev_getenv(s, def);
+}
+
 enum class GEMMVerbose {
     DebugInfo = dnnl::impl::verbose_t::debuginfo
 };
@@ -117,7 +121,6 @@ void injectStochasticRound(GENERATOR_BASE(hw) *g,
     injector.compute(C_grfs, C_ngrf, seed.getBase(), seed.getOffset(), t);
 
 }
-
 
 #include "internal/namespace_end.hxx"
 

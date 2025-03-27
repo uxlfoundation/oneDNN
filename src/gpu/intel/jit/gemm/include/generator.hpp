@@ -23,9 +23,7 @@
 
 #include "common/math_utils.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/gpu_post_ops.hpp"
 #include "gpu/intel/jit/generator.hpp"
-#include "gpu/intel/jit/post_op_injector.hpp"
 
 #include <array>
 #include <bitset>
@@ -84,7 +82,7 @@ protected:
     GRFMultirange outputCRange;
     std::vector<RegisterBlock> outputCLayout;
 
-    using Injector = dnnl::impl::gpu::intel::jit::post_op_injector_t<GENERATOR_BASE(hw)>;
+    using Injector = PostOpInjector<hw>;
     std::unique_ptr<Injector> postOpInjector;
 
     class status_stream {

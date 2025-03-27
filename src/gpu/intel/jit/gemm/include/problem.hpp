@@ -20,7 +20,6 @@
 #include "config.hpp"
 
 #include <bitset>
-#include "gpu/intel/gpu_post_ops.hpp"
 
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
@@ -138,14 +137,6 @@ enum class BatchMode {
     None, Strided, Nonstrided, Variable
 };
 
-// Binary operations.
-enum class BinaryOp {
-    Add, Sub, Mul, Div,
-    Min, Max,
-    Prelu,
-    ScaleSub    /* internal use only */
-};
-
 // Problem parameters shared between kernel types.
 struct CommonProblem {
     bool nonuniformWGs = false;                 // Support nonuniform workgroups?
@@ -178,11 +169,11 @@ struct GEMMProblem : public CommonProblem {
     bool postOpFwd = true;                          // Eltwise parameters
     bool cStochasticRound = false;
 
-    dnnl::impl::gpu::intel::gpu_post_ops_t postOps;         // Fused post operations to apply
-    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryRow;      // Binary op broadcasts row data if false
-    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryCol;      // Binary op broadcasts column data if false
-    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryBatch;    // Binary op broadcasts in batch dimension if false
-    std::bitset<dnnl::impl::post_ops_t::post_ops_limit> binaryTrans;    // Used to compute GEMMProblem::binary
+    PostOps postOps;         // Fused post operations to apply
+    std::bitset<maxPostOps> binaryRow;      // Binary op broadcasts row data if false
+    std::bitset<maxPostOps> binaryCol;      // Binary op broadcasts column data if false
+    std::bitset<maxPostOps> binaryBatch;    // Binary op broadcasts in batch dimension if false
+    std::bitset<maxPostOps> binaryTrans;    // Used to compute GEMMProblem::binary
 
     // The following data is derived from the postOps and does not need
     //   to be considered for equality/hashing purposes.

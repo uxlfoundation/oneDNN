@@ -19,7 +19,14 @@
 
 #include "common/serialization.hpp"
 #include "common/verbose.hpp"
+#include "gpu/intel/gpu_post_ops.hpp"
 #include "gpu/intel/microkernels/package.hpp"
+#include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/jit/post_op_injector.hpp"
+#include "gpu/intel/utils.hpp"
+#include "ngen_register_allocator.hpp"
+
+#include "pre_config.hpp"
 
 #include "internal/namespace_start.hxx"
 
@@ -39,6 +46,75 @@ inline void verbosePrintf(const char *fmtStr, Args... args) {
 namespace micro = dnnl::impl::gpu::intel::micro;
 
 using SerializationStream = dnnl::impl::serialization_stream_t;
+
+using PostOps = dnnl::impl::gpu::intel::gpu_post_ops_t;
+template <ngen::HW hw>
+using PostOpInjector = dnnl::impl::gpu::intel::jit::post_op_injector_t<dnnl::impl::gpu::intel::jit::generator_t<hw>>;
+constexpr int maxPostOps = dnnl::impl::post_ops_t::post_ops_limit;
+
+static inline BinaryOp toBinaryOp(const PostOps::entry_t &e)
+{
+    using namespace dnnl::impl;
+    switch (e.as_binary().alg) {
+        case alg_kind::binary_add:   return BinaryOp::Add;
+        case alg_kind::binary_sub:   return BinaryOp::Sub;
+        case alg_kind::binary_mul:   return BinaryOp::Mul;
+        case alg_kind::binary_div:   return BinaryOp::Div;
+        case alg_kind::binary_min:   return BinaryOp::Min;
+        case alg_kind::binary_max:   return BinaryOp::Max;
+        case alg_kind::binary_prelu: return BinaryOp::Prelu;
+        default: gpu_error_not_expected();
+    }
+    return BinaryOp::Add;
+}
+
+template <ngen::HW hw>
+void injectNonBinaryPostOps(const PostOps::entry_t & entry, dnnl::impl::gpu::intel::jit::generator_t<hw> *g,
+                            ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
+                            int C_ngrf, bool postOpFwd) {
+    namespace jit = dnnl::impl::gpu::intel::jit;
+    switch (entry.kind()) {
+        case dnnl::impl::gpu::intel::post_op::kind_t::eltwise: {
+            using Injector = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
+            int euCount = 0; /* only used for a DG2 W/A for conv */
+            auto &ee = entry.as_eltwise();
+            Injector injector{g, ee.alg, ee.alpha, ee.beta, ee.scale,
+                              euCount, ngen::GRFRange(), postOpFwd};
+
+            auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());
+            if (scratch.isInvalid())
+                scratch = ra.alloc_range(injector.min_scratch_regs());
+
+            injector.set_scratch(scratch);
+            injector.prepare();
+            injector.compute(C_grfs, C_ngrf);
+            break;
+        }
+        default: gpu_error_not_expected();
+    }
+}
+
+template <ngen::HW hw>
+void injectStochasticRound(dnnl::impl::gpu::intel::jit::generator_t<hw> *g,
+                            ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
+                           int C_ngrf, bool postOpFwd, const ngen::Subregister &seed, ngen::DataType t) {
+    namespace jit = dnnl::impl::gpu::intel::jit;
+    using Injector = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
+    int euCount = 0; /* only used for a DG2 W/A for conv */
+    Injector injector{g, dnnl::impl::alg_kind::eltwise_stochastic_round, 0.0, 0.0, 1.0,
+                      euCount, ngen::GRFRange(), postOpFwd};
+    auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());
+    if (scratch.isInvalid())
+        scratch = ra.alloc_range(injector.min_scratch_regs());
+    if (scratch.isInvalid())
+        gpu_error_not_expected();
+
+    injector.set_scratch(scratch);
+    injector.prepare();
+    injector.compute(C_grfs, C_ngrf, seed.getBase(), seed.getOffset(), t);
+
+}
+
 
 #include "internal/namespace_end.hxx"
 

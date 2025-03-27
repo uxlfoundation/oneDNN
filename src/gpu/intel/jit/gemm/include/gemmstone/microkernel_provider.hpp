@@ -18,7 +18,6 @@
 #define GEMMSTONE_GUARD_MICROKERNEL_PROVIDER_HPP
 
 #include "config.hpp"
-#include "gpu/intel/microkernels/package.hpp"
 #include "kernel_selector.hpp"
 #include "kernel_evaluator.hpp"
 
@@ -32,7 +31,7 @@ struct HWInformation {
 };
 
 /* Main entrypoint for microkernel auto-selection */
-dnnl::impl::gpu::intel::micro::Package selectGEMMMicrokernel(dnnl::impl::gpu::intel::micro::GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
+micro::Package selectGEMMMicrokernel(micro::GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
                                      const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
                                      void (*strategyAdjuster)(GEMMStrategy &strategy) = nullptr);
 

@@ -158,12 +158,12 @@ void BLASKernelGenerator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy 
     syncall();
 }
 
-static inline dnnl::impl::gpu::intel::micro::StructuredType::Type microType(Type T);
+static inline micro::StructuredType::Type microType(Type T);
 
 template <HW hw>
-dnnl::impl::gpu::intel::micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, dnnl::impl::gpu::intel::micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC)
+micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC)
 {
-    using namespace dnnl::impl::gpu::intel::micro;
+    using namespace micro;
     Package package;
 
     auto problem = problem_;
@@ -291,9 +291,9 @@ dnnl::impl::gpu::intel::micro::Package BLASKernelGenerator<hw>::gemmMicrokernelP
     return package;
 }
 
-static inline dnnl::impl::gpu::intel::micro::StructuredType::Type microType(Type T)
+static inline micro::StructuredType::Type microType(Type T)
 {
-    using ST = dnnl::impl::gpu::intel::micro::StructuredType::Type;
+    using ST = micro::StructuredType::Type;
 #define CASE(x) case Type::x: return ST::x;
     switch (T) {
         CASE(f64)

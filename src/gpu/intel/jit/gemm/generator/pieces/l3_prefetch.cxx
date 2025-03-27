@@ -1,6 +1,6 @@
 
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ void BLASKernelGenerator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProble
                     problem, strategy, state);
 
 #if 1
-    if (dnnl::impl::gpu::intel::gpu_utils::dev_getenv("ALL_PF",0)) {
+    if (getEnv("ALL_PF",0)) {
         if (doA) mov(1, nextFlagL3PFA, 0xFFFF);
         if (doB) mov(1, nextFlagL3PFB, 0xFFFF);
     }

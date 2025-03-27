@@ -842,6 +842,9 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                     || (post_op_kind == op_kind::dnnl_binary
                             && !post_binary_fusible(
                                     op, &post_op, sg->get_engine_kind()))
+                    || (post_op_kind == op_kind::dnnl_eltwise
+                            && !post_eltwise_fusible(
+                                    op, &post_op, sg->get_engine_kind()))
                     || (post_op_kind == op_kind::dnnl_convolution
                             && !post_depthwise_conv_fusible(op, &post_op));
             if (not_fusible) { return status::success; }

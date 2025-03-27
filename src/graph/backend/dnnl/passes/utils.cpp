@@ -409,6 +409,21 @@ bool post_binary_fusible(
             base_op, ltw(fused_in).vdims(), ltw(other_in).vdims(), ekind);
 }
 
+bool post_eltwise_fusible(
+        const op_t *base_op, const op_t *elt_op, graph::engine_kind_t ekind) {
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (static_cast<dnnl::algorithm>(
+                elt_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::eltwise_sqrt
+            && ekind == dnnl_gpu) {
+        return false;
+    }
+#endif
+    return true;
+}
+
 bool post_depthwise_conv_fusible(
         const op_t *base_conv_op, const op_t *post_conv_op) {
     using spatial_dims_t = std::vector<int64_t>;
@@ -503,35 +518,6 @@ get_post_ops_fusible_map() {
                     {dnnl_layernorm, {dnnl_eltwise, dnnl_binary}},
                     {dnnl_groupnorm, {dnnl_eltwise, dnnl_binary}},
             };
-
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-    // For NVIDIA GPU, binary op with eltwise post-op fusion is unsupported
-    static std::unordered_map<op_kind_t, std::unordered_set<op_kind_t>>
-            modified_map = fusible_map;
-    auto bn_it = modified_map.find(dnnl_batchnorm);
-    if (bn_it != modified_map.end()) { bn_it->second.erase(dnnl_eltwise); }
-    if (bn_it != modified_map.end()) {
-        std::cout << "Supported post-ops for bn op:" << std::endl;
-        for (const auto &op : bn_it->second) {
-            std::cout << static_cast<int>(op) << ": " << kind2str(op)
-                      << std::endl;
-        }
-    }
-
-    auto binary_it = modified_map.find(dnnl_binary);
-    if (binary_it != modified_map.end()) {
-        binary_it->second.erase(dnnl_eltwise);
-    }
-    if (binary_it != modified_map.end()) {
-        std::cout << "Supported post-ops for binary op:" << std::endl;
-        for (const auto &op : binary_it->second) {
-            std::cout << static_cast<int>(op) << ": " << kind2str(op)
-                      << std::endl;
-        }
-    }
-    return modified_map;
-#endif
-
     return fusible_map;
 }
 

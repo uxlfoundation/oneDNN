@@ -1419,8 +1419,6 @@ TEST(CAPI, CompileAdd) {
 #undef COMPILE_ADD_DESTROY
 }
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
-        && DNNL_GPU_VENDOR != DNNL_VENDOR_NVIDIA
 TEST(CAPI, CompileConvBN) {
     dnnl_graph_graph_t agraph = nullptr;
     dnnl_graph_op_t conv2d = nullptr;
@@ -1581,7 +1579,6 @@ TEST(CAPI, CompileConvBN) {
     COMPILE_CONV_BN_DESTROY;
 #undef COMPILE_CONV_BN_DESTROY
 }
-#endif
 
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR != DNNL_VENDOR_NVIDIA

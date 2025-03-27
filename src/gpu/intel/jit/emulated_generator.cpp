@@ -33,25 +33,25 @@ bool is_floating_point(const DataType &dt) {
 template <typename ngen::HW hw>
 void emulated_generator_t<hw>::emov(const InstructionModifier &mod,
         const RegData &dst, const RegData &src0) {
-    EmulationImplementation::emov(*this, mod, dst, src0, emu_strategy);
+    ngen::EmulationImplementation::emov(*this, mod, dst, src0, emu_strategy);
 }
 
 template <typename ngen::HW hw>
 void emulated_generator_t<hw>::emov(const InstructionModifier &mod,
         const RegData &dst, const Immediate &src0) {
-    EmulationImplementation::emov(*this, mod, dst, src0, emu_strategy);
+    ngen::EmulationImplementation::emov(*this, mod, dst, src0, emu_strategy);
 }
-// TODO: Change EmulationState register allocation so it can be handled
-// by the EmulationImplementation directly, instead of maintaining allocation
-// for the entire lifetime of the EmulationState. This would eliminate overeager
+// TODO: Change ngen::EmulationState register allocation so it can be handled
+// by the ngen::EmulationImplementation directly, instead of maintaining allocation
+// for the entire lifetime of the ngen::EmulationState. This would eliminate overeager
 // register allocation when using several injectors which each have emulation.
 template <typename ngen::HW hw>
 void emulated_generator_t<hw>::emul(const InstructionModifier &mod,
         const RegData &dst, const RegData &src0, const RegData &src1) {
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra_.alloc();
     state.temp[1] = ra_.alloc();
-    EmulationImplementation::emul(
+    ngen::EmulationImplementation::emul(
             *this, mod, dst, src0, src1, emu_strategy, state);
     ra_.release(state.temp[0]);
     ra_.release(state.temp[1]);
@@ -60,10 +60,10 @@ void emulated_generator_t<hw>::emul(const InstructionModifier &mod,
 template <typename ngen::HW hw>
 void emulated_generator_t<hw>::emul(const InstructionModifier &mod,
         const RegData &dst, const RegData &src0, const Immediate &src1) {
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra_.alloc();
     state.temp[1] = ra_.alloc();
-    EmulationImplementation::emul(
+    ngen::EmulationImplementation::emul(
             *this, mod, dst, src0, src1, emu_strategy, state);
     ra_.release(state.temp[0]);
     ra_.release(state.temp[1]);
@@ -86,10 +86,10 @@ void emulated_generator_t<hw>::eadd(const InstructionModifier &mod,
     }
 
     // Use regular eadd implementation
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra_.alloc();
     state.temp[1] = ra_.alloc();
-    EmulationImplementation::eadd(
+    ngen::EmulationImplementation::eadd(
             *this, mod, dst, src0, src1, emu_strategy, state);
     ra_.release(state.temp[0]);
     ra_.release(state.temp[1]);
@@ -98,10 +98,10 @@ void emulated_generator_t<hw>::eadd(const InstructionModifier &mod,
 template <typename ngen::HW hw>
 void emulated_generator_t<hw>::eadd(const InstructionModifier &mod,
         const RegData &dst, const RegData &src0, const Immediate &src1) {
-    EmulationState state;
+    ngen::EmulationState state;
     state.temp[0] = ra_.alloc();
     state.temp[1] = ra_.alloc();
-    EmulationImplementation::eadd(
+    ngen::EmulationImplementation::eadd(
             *this, mod, dst, src0, src1, emu_strategy, state);
     ra_.release(state.temp[0]);
     ra_.release(state.temp[1]);
@@ -113,10 +113,10 @@ void emulated_generator_t<hw>::emad(const InstructionModifier &mod,
         const RegData &src2) {
     // mad is only supported for dw/w types
     auto supported = [](const RegData &data) -> bool {
-        return EmulationImplementation::isDW(data)
-                || EmulationImplementation::isW(data);
+        return ngen::EmulationImplementation::isDW(data)
+                || ngen::EmulationImplementation::isW(data);
     };
-    bool src2_supported = EmulationImplementation::isW(src2);
+    bool src2_supported = ngen::EmulationImplementation::isW(src2);
     if (supported(dst) && supported(src0) && supported(src1)
             && src2_supported) {
         gpu_assert(supports_signature(mod, dst, src0, src1, src2))
@@ -141,10 +141,10 @@ void emulated_generator_t<hw>::emad(const InstructionModifier &mod,
         const RegData &dst, const RegData &src0, const RegData &src1,
         const Immediate &src2) {
     auto supported = [](const RegData &data) -> bool {
-        return EmulationImplementation::isDW(data)
-                || EmulationImplementation::isW(data);
+        return ngen::EmulationImplementation::isDW(data)
+                || ngen::EmulationImplementation::isW(data);
     };
-    bool src2_supported = EmulationImplementation::isW(src2);
+    bool src2_supported = ngen::EmulationImplementation::isW(src2);
     bool imm_supported = getBytes(src2.getType()) <= 2 && src2_supported;
     bool mad_supported = supported(dst) && supported(src0) && supported(src1)
             && imm_supported;
@@ -172,8 +172,8 @@ void emulated_generator_t<hw>::eadd3(const InstructionModifier &mod,
         const Immediate &src2) {
     // add3 only supports dw/w types - emulate other options with 2 adds
     auto supported = [](const RegData &data) -> bool {
-        return EmulationImplementation::isDW(data)
-                || EmulationImplementation::isW(data);
+        return ngen::EmulationImplementation::isDW(data)
+                || ngen::EmulationImplementation::isW(data);
     };
     bool src2_supported = utils::one_of(src2.getType(), DataType::uw,
             DataType::w, DataType::ud, DataType::d);
@@ -194,8 +194,8 @@ void emulated_generator_t<hw>::eadd3(const InstructionModifier &mod,
         const RegData &src2) {
     // add3 only supports dw/w types - emulate other options with 2 adds
     auto supported = [](const RegData &data) -> bool {
-        return EmulationImplementation::isDW(data)
-                || EmulationImplementation::isW(data);
+        return ngen::EmulationImplementation::isDW(data)
+                || ngen::EmulationImplementation::isW(data);
     };
     if (supported(dst) && supported(src0) && supported(src1)
             && supported(src2)) {

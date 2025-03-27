@@ -21,7 +21,7 @@
 #include "type.hpp"
 #include "register_block.hpp"
 #include "allocators.hpp"
-#include "gpu/intel/jit/emulation.hpp"
+#include "ngen_emulation.hpp"
 #include "driver_info.hpp"
 #include "problem.hpp"
 #include "strategy.hpp"
@@ -148,7 +148,7 @@ struct CommonState {
     ngen::Subregister fusedID;
     ngen::Subregister lsDescConstant[4];
     ngen::FlagRegister flagSwizzle;
-    dnnl::impl::gpu::intel::jit::EmulationState emulate;
+    ngen::EmulationState emulate;
     ngen::GRFRange eatomicAddRegs[2];
     ngen::GRFRange remaskRegs[3];
     VirtualFlag vflagEAtomicAdd;
@@ -181,7 +181,7 @@ struct CommonState {
     bool vflagsEnabled() const                    { return !vflagStorage.empty(); }
     void usePhysicalFlag(ngen::FlagRegister flag) { activeVFlags[flag.index()] = flag; }
 
-    void allocEmulate64Temp(const dnnl::impl::gpu::intel::jit::EmulationStrategy &estrategy);
+    void allocEmulate64Temp(const ngen::EmulationStrategy &estrategy);
 };
 
 // GEMM kernel generator state.

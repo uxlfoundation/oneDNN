@@ -22,9 +22,9 @@
 
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
-#include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "ngen_core.hpp"
+#include "ngen_emulation.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,7 +34,7 @@ namespace jit {
 
 template <gpu_gen_t hw>
 class emulated_generator_t : public generator_t<hw> {
-    friend struct EmulationImplementation;
+    friend struct ngen::EmulationImplementation;
 
 protected:
     NGEN_FORWARD_ELF(hw)
@@ -50,7 +50,7 @@ protected:
     reg_allocator_t ra_;
 
 private:
-    EmulationStrategy emu_strategy;
+    ngen::EmulationStrategy emu_strategy;
 
 protected:
     reg_allocator_t &ra() { return ra_; }

@@ -62,7 +62,7 @@ void CommonState::wipeActiveVFlags()
     raVFlag.freeVFlagTempAllocs();
 }
 
-void CommonState::allocEmulate64Temp(const dnnl::impl::gpu::intel::jit::EmulationStrategy &estrategy)
+void CommonState::allocEmulate64Temp(const ngen::EmulationStrategy &estrategy)
 {
     int ntemp = 0;
     if (estrategy.emulateDWxDW)  ntemp = 1;

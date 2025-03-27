@@ -16,7 +16,7 @@
 
 
 #include "ngen_object_helpers.hpp"
-#include "gpu/intel/jit/emulation.hpp"
+#include "ngen_emulation.hpp"
 #include "hw_utils.hpp"
 
 using namespace ngen;
@@ -83,7 +83,7 @@ void moveToIntPipe(int esize, RegData &s)
         case DataType::f:  s.setType(DataType::ud); break;
         case DataType::df:
             s.setType(DataType::uq);
-            dnnl::impl::gpu::intel::jit::EmulationImplementation::makeDWPair(s, esize);
+            ngen::EmulationImplementation::makeDWPair(s, esize);
             break;
         default:
             break;

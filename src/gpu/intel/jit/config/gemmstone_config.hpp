@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 #define GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 
+#include "common/serialization.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/microkernels/entrance_agent.hpp"
 #include "gpu/intel/microkernels/package.hpp"
@@ -36,6 +37,8 @@ inline void verbosePrintf(const char *fmtStr, Args... args) {
 }
 
 namespace micro = dnnl::impl::gpu::intel::micro;
+
+using SerializationStream = dnnl::impl::serialization_stream_t;
 
 } // namespace gemmstone
 #endif

@@ -270,7 +270,7 @@ struct GEMMProblem : public CommonProblem {
     }
 
     /* Serialization for kernel cache. */
-    void serialize(dnnl::impl::serialization_stream_t &s) const
+    void serialize(SerializationStream &s) const
     {
         s.append(Ta, Tb, Tc, Ts);
         s.append(Ta_ext, Tb_ext, Tc_ext);

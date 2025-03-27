@@ -160,8 +160,8 @@ cell_execution_sig((simple_rnn_common_t<aprop>::cell_execution_gru_lbr)) {
             CHECK(gemm_primitive(engine, ctx, wei_layer, cell_layer,
                     scratch_gates, gemm_cell_layer_fwd));
 
-        if (!rnn.cell_fusion.gemm_iter)
-            CHECK(gemm_primitive(engine, ctx, wei_iter, cell_iter, scratch_cell,
+		if (!rnn.cell_fusion.gemm_iter)
+        CHECK(gemm_primitive(engine, ctx, wei_iter, cell_iter, scratch_cell,
                     gemm_iter_fwd));
 
         if (!use_cell) {

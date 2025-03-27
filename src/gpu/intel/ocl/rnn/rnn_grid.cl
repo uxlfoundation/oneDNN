@@ -486,8 +486,8 @@ simple_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 
     float Ht = G0 * TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)])
             + (1 - G0) * G2;
-	printf("Hidden state: %f\n", src_iter[cell_ws_state(states_ws_ld, i, j)]);
 
+	printf("(%d, %d) Wh_b %f G0 %f G1 %f G2 %f Ht %f\n", i, j, Wh_b, G0, G1, G2, Ht);
     h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_WS_STATE(Ht);
 
     if (!RECOMPUTE_GATES && IS_TRAINING) {
@@ -687,6 +687,7 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
         float G0 = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)];
         float G1 = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)];
         float G2 = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)];
+		printf("(%d, %d) Wh_b %f g0 %f g1 %f g2 %f h %f\n", i, j, Wh_b, G0, G1, G2, h);
 #else
         lbr_gru_gates_t gates = compute_gates_lbr_gru(scratch_gates,
                 scratch_cell, bias, tm_scales, scratch_gates_ld, dhc, i, j);
@@ -934,8 +935,8 @@ void gemm_sum(float(C)[N_OUTER_BLOCK][M_THR_BLOCK][N_THR_BLOCK],
 void cell_common_inner(const_wei_layer_cell_t wei_layer,
         const_wei_iter_cell_t wei_iter, const_ws_state_cell_t cell_layer,
         const_ws_state_cell_t cell_iter, aux_cell_t gates,
-        ws_state_cell_t states, const_aux_cell_t scratch_gates, cell_ctx_t ctx,
-        cell_dims_t outer, cell_dims_t dims) {
+        ws_state_cell_t states, const_aux_cell_t scratch_gates, const_aux_cell_t scratch_cell,
+		cell_ctx_t ctx, cell_dims_t outer, cell_dims_t dims) {
     // Extract local id from the subgroup id rather than `get_local_id` as the
     // mapping from subgroups to the local work group is not well defined.
     const int local_sgid0
@@ -953,7 +954,10 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
     const int n_thr = n_sg;
     const int n_thr_stride = 1;
 
-    float C[n_gates][CELL_BATCH_THR][CELL_DHC_THR] = {};
+    float C_Layer[n_gates][CELL_BATCH_THR][CELL_DHC_THR] = {};
+    float C_Iter[n_gates][CELL_BATCH_THR][CELL_DHC_THR] = {};
+
+    //need_scratch_gates flag = checkCellComputeFlags(CELL_COMPUTE_GEMM_LAYER, CELL_COMPUTE_GEMM_ITER);
 
     if (NEED_SCRATCH_GATES) {
         // GEMM operations may be calculated in an separate external kernel and are
@@ -965,9 +969,19 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
             for (int c_l = 0; c_l < CELL_DHC_THR; c_l++) {
                 int c = c_thr + c_l * c_thr_stride;
                 if (CELL_DHC_TAIL && c >= dims.dhc) break;
-                C[gate_idx][n_l]
+				if(CELL_KIND == VANILLA_LSTM || CELL_KIND == VANILLA_RNN || (CELL_KIND == LBR_GRU && !CELL_COMPUTE_GEMM_LAYER)) {
+                C_Layer[gate_idx][n_l]
                  [c_l] = convert_float(scratch_gates.ptr[cell_scratch_mem(
                          scratch_gates.strides.mb, dims.dhc, n, gate_idx, c)]);
+				} else if (CELL_KIND == LBR_GRU) {
+					if(!CELL_COMPUTE_GEMM_ITER) {
+                		C_Iter[gate_idx][n_l]
+                 [c_l] = convert_float(scratch_cell.ptr[cell_scratch_mem(
+                         scratch_gates.strides.mb, dims.dhc, n, gate_idx, c)]);
+
+					}
+				}
+
             }
         }
     }
@@ -980,7 +994,7 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
                 .k = dims.slc,
                 .n_inner = dims.dhc,
                 .n_outer = n_gates};
-        gemm_sum(C, cell_layer.ptr, cell_layer.strides.mb, wei_layer.ptr,
+        gemm_sum(C_Layer, cell_layer.ptr, cell_layer.strides.mb, wei_layer.ptr,
                 wei_layer.strides.slc, size, n_sg, n_thr_stride, c_sg,
                 c_thr_stride, CELL_DHC_TAIL, CELL_GEMM_LAYER_K_TAIL,
                 CELL_MB_TAIL);
@@ -994,7 +1008,7 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
                 .k = dims.sic,
                 .n_inner = dims.dhc,
                 .n_outer = n_gates};
-        gemm_sum(C, cell_iter.ptr, cell_iter.strides.mb, wei_iter.ptr,
+        gemm_sum(C_Iter, cell_iter.ptr, cell_iter.strides.mb, wei_iter.ptr,
                 wei_iter.strides.sic, size, n_sg, n_thr_stride, c_sg,
                 c_thr_stride, CELL_DHC_TAIL, CELL_GEMM_ITER_K_TAIL,
                 CELL_MB_TAIL);
@@ -1005,14 +1019,13 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
         if (CELL_MB_TAIL && n >= dims.mb) break;
         for (int c_l = 0; c_l < CELL_DHC_THR; c_l++) {
             int c = c_thr + c_l * c_thr_stride;
-			//printf("Running loop for n %d & c %d\n",n, c);
             if (CELL_DHC_TAIL && c >= dims.dhc) break;
 #if CELL_KIND == VANILLA_LSTM
                 float G[vanilla_lstm_n_gates];
                 float B[vanilla_lstm_n_bias];
                 for (int gate_idx = 0; gate_idx < vanilla_lstm_n_gates;
                         gate_idx++) {
-                    G[gate_idx] = C[gate_idx][n_l][c_l];
+                    G[gate_idx] = C_Layer[gate_idx][n_l][c_l] + C_Iter[gate_idx][n_l][c_l];
                     B[gate_idx] = convert_float(
                             ctx.lstm.bias[off_ker_bias(dims.dhc, gate_idx, c)]);
                 }
@@ -1023,48 +1036,51 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
                         states.strides.mb, dims.dhc, n, c, ctx.lstm.tm_cscale,
                         g);
 #elif CELL_KIND == VANILLA_RNN
-                float g = vanilla_rnn_compute_gates(C[0][n_l][c_l],
+                float g = vanilla_rnn_compute_gates(C_Layer[0][n_l][c_l] + C_Iter[0][n_l][c_l],
                         ctx.rnn.bias[off_ker_bias(dims.dhc, 0, c)],
                         ctx.rnn.alpha, ctx.rnn.tm_scales);
                 store_vanilla_rnn(gates.ptr, gates.strides.mb, states.ptr,
                         states.strides.mb, dims.dhc, n, c, g);
 #elif CELL_KIND == LBR_GRU
-                //__global AUX_DATA_T *scratch_cell -> ctx.lbr_gru.scratch_cell
-                //__global WS_STATE_DATA_T *src_iter -> ctx.lbr_gru.hidden_states_iter
-                //__global ... *h_states_t_l -> states.ptr
-                lbr_gru_gates_t g = compute_gates_lbr_gru(scratch_gates.ptr,
-                        ctx.lbr_gru.scratch_cell, ctx.lbr_gru.bias,
-                        ctx.lbr_gru.tm_scales, scratch_gates.strides.mb,
-                        dims.dhc, n, c);
-                float Wh_b = g.Wh_b;
-                float G0 = g.G[0];
-                float G1 = g.G[1];
-                float G2 = g.G[2];
-                float Ht = G0
+				float G[n_gates];
+				float C[n_gates];
+				float B[n_bias];
+				for (int g = 0; g < n_gates; g++){
+					G[g] = C_Layer[g][n_l][c_l];
+					C[g] = C_Iter[g][n_l][c_l];
+				}
+    			for (int i = 0; i < n_bias; i++) {
+					B[i] = convert_float(ctx.lbr_gru.bias[off_ker_bias(dims.dhc, i, c)]);
+    			}
+
+				lbr_gru_gates_t gate;
+                gate.Wh_b = C[2] + B[3];
+    			gate.G[0] = logistic_fwd_tm(G[0] + C[0] + B[0], ctx.lbr_gru.tm_scales[0]);
+   	 			gate.G[1] = logistic_fwd_tm(G[1] + C[1] + B[1], ctx.lbr_gru.tm_scales[1]);
+    			gate.G[2] = tanh_fwd_tm(G[2] + gate.G[1] * gate.Wh_b + B[2], ctx.lbr_gru.tm_scales[2]);
+                float Ht = gate.G[0]
                                 * TO_REF(ctx.lbr_gru.hidden_state_iter
                                                  [cell_ws_state(
                                                          states.strides.mb, n,
                                                          c)])
-                        + (1 - G0) * G2;
-				printf("hidden state iter: %f\n", ctx.lbr_gru.hidden_state_iter[cell_ws_state(
-                                                         states.strides.mb, n,
-                                                         c)]);
-			    barrier(CLK_GLOBAL_MEM_FENCE);
+                        + (1 - gate.G[0]) * gate.G[2];
+			printf("(%d, %d) Wh_b %f G0 %f G1 %f G2 %f Ht %f\n", n, c, gate.Wh_b, gate.G[0], gate.G[1], gate.G[2], Ht);
                 states.ptr[cell_ws_state(states.strides.mb, n, c)]
                         = TO_WS_STATE(Ht);
 
                 if (!RECOMPUTE_GATES && IS_TRAINING) {
                     gates.ptr[cell_ws_gates(
                             gates.strides.mb, dims.dhc, n, 0, c)]
-                            = G0;
+                            = gate.G[0];
                     gates.ptr[cell_ws_gates(
                             gates.strides.mb, dims.dhc, n, 1, c)]
-                            = G1;
+                            = gate.G[1];
                     gates.ptr[cell_ws_gates(
                             gates.strides.mb, dims.dhc, n, 2, c)]
-                            = G2;
-                    ctx.lbr_gru.grid[cell_ws_grid_comp(dims.dhc, n, c)] = Wh_b;
+                            = gate.G[2];
+                    ctx.lbr_gru.grid[cell_ws_grid_comp(dims.dhc, n, c)] = gate.Wh_b;
                 }
+
 #endif
         }
     }
@@ -1073,7 +1089,7 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
 void cell_common(const_wei_layer_cell_t wei_layer,
         const_wei_iter_cell_t wei_iter, const_ws_state_cell_t cell_layer,
         const_ws_state_cell_t cell_iter, aux_cell_t gates,
-        ws_state_cell_t states, const_aux_cell_t scratch_gates, cell_ctx_t ctx,
+        ws_state_cell_t states, const_aux_cell_t scratch_gates, const_aux_cell_t scratch_cell, cell_ctx_t ctx,
         cell_dims_t dims, cell_loops_t loops) {
 
     for_(cell_dim_t mb_outer = 0; mb_outer < loops.mb; mb_outer += BATCH_LOCAL)
@@ -1081,7 +1097,7 @@ void cell_common(const_wei_layer_cell_t wei_layer,
             dhc_outer += DHC_LOCAL) {
         cell_dims_t outer = {.mb = mb_outer, .dhc = dhc_outer};
         cell_common_inner(wei_layer, wei_iter, cell_layer, cell_iter, gates,
-                states, scratch_gates, ctx, outer, dims);
+                states, scratch_gates, scratch_cell, ctx, outer, dims);
     }
 }
 
@@ -1124,7 +1140,6 @@ simple_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
 #if !CELL_ENABLE_ITER_BLOCK
     const dim_t iter_loop = 1;
 #endif
-
     grid_strides_t wei_layer_strides
             = {.iter = 0, .cell = {.slc = wei_layer_strides_.array[2]}};
     grid_strides_t wei_iter_strides
@@ -1156,7 +1171,10 @@ simple_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
     // Optimization Opportunity: bias can be preloaded to a register if n_gates*dhc
     // is small enough.
     __global BIAS_DATA_T *bias = bias_ + bias_off;
-
+	__global AUX_DATA_T *scratch_cell_ = NULL;
+#if (CELL_KIND == LBR_GRU)
+		scratch_cell_ = (__global AUX_DATA_T *) scr_cell;
+#endif
     for (dim_t iter = 0; iter < iter_loop; iter++) {
         const_ws_state_cell_t cell_layer = {.ptr
                 = cell_layer_ + cell_layer_off + cell_layer_strides.iter * iter,
@@ -1173,6 +1191,7 @@ simple_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
         const_aux_cell_t scratch_gates = {.ptr = scratch_gates_
                         + scratch_gates_off + scratch_gates_strides.iter * iter,
                 .strides = scratch_gates_strides.cell};
+        const_aux_cell_t scratch_cell = {.ptr = scratch_cell_};
 
 #if CELL_KIND == VANILLA_RNN
         cell_ctx_t cell_ctx = {
@@ -1192,15 +1211,13 @@ simple_rnn_cell_fwd(__global const WEI_LAYER_DATA_T *wei_layer_,
         //TO confirm... if states_strides are okay for grid
         cell_ctx_t cell_ctx = {.lbr_gru
                 = {.hidden_state_iter = h_states_tm_l_ + h_states_tm_l_off + states_strides.iter * iter,
-                        .grid = grid_ + grid_off,
-                        .scratch_cell
-                        = (__global AUX_DATA_T *)scr_cell,
+                        .grid = grid_ + grid_off + states_strides.iter * iter,
                         .bias = bias,
                         .tm_scales = tm_scales}};
 #endif
 
         cell_common(wei_layer, wei_iter, cell_layer, cell_iter, gates, states,
-                scratch_gates, cell_ctx, dims, cell_loops);
+                scratch_gates, scratch_cell, cell_ctx, dims, cell_loops);
 
         if (iter < iter_loop - 1) barrier(CLK_GLOBAL_MEM_FENCE);
     }

@@ -124,7 +124,6 @@ typedef struct {
 		struct {
 			__global WS_STATE_DATA_T *hidden_state_iter;
 			__global AUX_DATA_T *grid;
-			__global AUX_DATA_T *scratch_cell;
             __global BIAS_DATA_T *bias;
             __global float *tm_scales;
 		} lbr_gru;
@@ -138,6 +137,21 @@ typedef struct {
 
 #define NEED_SCRATCH_GATES \
     (!(CELL_COMPUTE_GEMM_LAYER && CELL_COMPUTE_GEMM_ITER))
+
+typedef enum {
+       none = 0,
+       gemm_layer = 1,
+       gemm_iter = 2,
+       gemm_all = 3
+} need_scratch_gates;
+
+inline int checkCellComputeFlags(bool cell_compute_gemm_layer, bool cell_compute_gemm_iter) {
+       if (!cell_compute_gemm_layer & cell_compute_gemm_iter) {        return gemm_layer; }
+       if (cell_compute_gemm_layer & !cell_compute_gemm_iter) {        return gemm_iter; }
+       if (!cell_compute_gemm_layer & !cell_compute_gemm_iter) { return gemm_all; }
+       return none;
+}
+
 
 inline void __attribute__((overloadable))
 load(float *s, const __global float *data, bool is_valid) {

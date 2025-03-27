@@ -204,8 +204,8 @@ typedef struct lbr_gru_gates_t {
 } lbr_gru_gates_t;
 
 struct lbr_gru_gates_t compute_gates_lbr_gru(
-        const __global ACC_DATA_T *restrict scratch_gates,
-        const __global AUX_DATA_T *restrict scratch_cell,
+        const  __global ACC_DATA_T *restrict scratch_gates,
+        const  __global AUX_DATA_T *restrict scratch_cell,
         const __global BIAS_DATA_T *restrict bias,
         const __global float *restrict tm_scales, int scratch_gates_ld, int dhc,
         int mb, int c) {
@@ -217,11 +217,9 @@ struct lbr_gru_gates_t compute_gates_lbr_gru(
                 scratch_gates_ld, dhc, mb, i, c)]);
         C[i] = convert_float(scratch_cell[cell_scratch_mem(
                 scratch_gates_ld, dhc, mb, i, c)]);
-		printf(" Gate[%d]> scratch_gates: %f scratch_cell %f  - offset %d\n",i, G[i], C[i], cell_scratch_mem(scratch_gates_ld, dhc, mb, i, c));
     }
     for (int i = 0; i < n_bias; i++) {
         B[i] = convert_float(bias[off_ker_bias(dhc, i, c)]);
-		printf(" Bias[%d] %f offset: %d\n", i, B[i], off_ker_bias(dhc, i, c));
     }
 
     lbr_gru_gates_t ret;
@@ -229,8 +227,6 @@ struct lbr_gru_gates_t compute_gates_lbr_gru(
     ret.G[0] = logistic_fwd_tm(G[0] + C[0] + B[0], tm_scales[0]);
     ret.G[1] = logistic_fwd_tm(G[1] + C[1] + B[1], tm_scales[1]);
     ret.G[2] = tanh_fwd_tm(G[2] + ret.G[1] * ret.Wh_b + B[2], tm_scales[2]);
-	printf(" LBR>> (compute_gates) Wh_b %f G0 %f G1 %f G2 %f\n", ret.Wh_b, ret.G[0], ret.G[1], ret.G[2]);
-	barrier(CLK_LOCAL_MEM_FENCE);
     return ret;
 }
 #endif

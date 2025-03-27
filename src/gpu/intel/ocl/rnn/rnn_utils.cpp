@@ -72,6 +72,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
             prop_kind::forward_inference);
     rnn.is_training = utils::one_of(
             rd.prop_kind, prop_kind::forward_training, prop_kind::backward);
+	printf("rnn.is_training %d\n", rnn.is_training);
     rnn.is_lbr = rd.cell_kind == dnnl_lbr_gru;
     rnn.is_vanilla_gru = rd.cell_kind == dnnl_vanilla_gru;
     rnn.arch_ld = is_xe_hpc ? 128 : 64;
@@ -146,7 +147,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
     rnn.parts_bias[1] = 0;
 
     bool is_gru = utils::one_of(
-            rd.cell_kind, alg_kind::vanilla_gru/*, alg_kind::lbr_gru*/);
+            rd.cell_kind, alg_kind::vanilla_gru, alg_kind::lbr_gru);
 
     // Decide if to merge gemm across iterations or layers
     auto dst_layer_is_trivial_stride = dst_layer_d.dims()[0] <= 1
@@ -168,7 +169,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
                 && rnn.wei_iter_type == rnn.wei_layer_type && rnn.is_fwd
                 && utils::one_of(rd.cell_kind, alg_kind::vanilla_rnn,
                         alg_kind::vanilla_lstm, alg_kind::lbr_gru);
-        // Poor implementation performance if dhc % subgroup_size != 0
+		//if (rnn.is_training && rd.cell_kind == alg_kind::lbr_gru) can_fuse_gemm = false;
         bool tail_dhc = rnn.dhc % device_info.min_subgroup_size() != 0;
         // Since RNN cells may result in very small workloads the CPU overhead
         // to dispatch kernels may be significant. As such, if the work per eu
@@ -187,7 +188,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
 		int ideal_k_block = graph::utils::lcm(eu_count, (int)device_info.min_subgroup_size());
 		int ideal_k_sic = graph::utils::lcm(ideal_k_block, (int)rnn.sic);
 		int ideal_k_slc = graph::utils::lcm(ideal_k_block, (int)rnn.slc);
-		printf("ideal k sic: %d and ideal k block %d\n", ideal_k_sic, ideal_k_block);
+		//printf("ideal k sic: %d and ideal k block %d\n", ideal_k_sic, ideal_k_block);
         dim_t ideal_sic = tail_dhc ? 50 : 160;
         dim_t ideal_slc = tail_dhc ? 50 : 160;
 		ideal_sic = tail_dhc ? 50 : ideal_k_sic;

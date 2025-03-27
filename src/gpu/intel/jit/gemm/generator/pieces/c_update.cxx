@@ -151,7 +151,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         auto modProblem = problem;
         modProblem.alpha = 1;
         modProblem.beta = 0;
-        modProblem.postOps = dnnl::impl::gpu::intel::gpu_post_ops_t{};
+        modProblem.postOps = PostOps{};
         modProblem.cOffset = COffset::None;
         return gemmAccessC(COperation::UpdateStore, modProblem, strategy, state);
     }
@@ -220,7 +220,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         // Do any post-sum post-ops.
         if (newPostOps)
             gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
-        storeProblem.postOps = dnnl::impl::gpu::intel::gpu_post_ops_t{};
+        storeProblem.postOps = PostOps{};
 
         if (problem.cOffset == COffset::Post)
             ok = ok && gemmApplyCOffsetDispatch(problem, strategy, state);

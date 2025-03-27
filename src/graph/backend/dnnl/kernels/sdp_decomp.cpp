@@ -329,12 +329,12 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                 auto out_shape = out_mem.get_desc().get_dims();
                 size_t mm1_post_offset
                         = out_shape[0] == 1 ? 0 : bo * out_strides[0];
-                mm1_post_offset += out_shape[1] == 1
-                        ? 0
-                        : wei_head_offset * out_strides[1];
-                mm1_post_offset += (out_shape[2] == 1 || sdp_cfg_.ndims == 4)
-                        ? 0
-                        : group_id * out_strides[2];
+                // mm1_post_offset += out_shape[1] == 1
+                //         ? 0
+                //         : wei_head_offset * out_strides[1];
+                // mm1_post_offset += (out_shape[2] == 1 || sdp_cfg_.ndims == 4)
+                //         ? 0
+                //         : group_id * out_strides[2];
                 sub_mm1_post_tid.set_data_handle(
                         static_cast<char *>(out_mem.get_data_handle())
                         + mm1_post_offset * get_mem_dt_size(sub_mm1_post_tid));

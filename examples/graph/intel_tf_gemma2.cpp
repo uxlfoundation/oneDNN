@@ -143,7 +143,8 @@ void tf_gemm2_gqa(const dim bs, const dim head_num_kv, const dim group,
 }
 
 int main(int argc, char **argv) {
-    tf_gemm2_gqa(1, 8, 2, 1, 256, 256);
-    tf_gemm2_gqa(1, 8, 2, 256, 256, 256);
+    //     tf_gemm2_gqa(1, 8, 2, 1, 256, 256);
+    //     tf_gemm2_gqa(1, 8, 2, 256, 256, 256);
+    tf_gemm2_gqa(1, 8, 4, 4, 4, 4);
     return 0;
 }

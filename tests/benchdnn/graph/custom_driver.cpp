@@ -131,7 +131,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 SAFE(::custom::fill_mem(mem, ref_mem, -2, 1), WARN);
                 break;
             case DNNL_ARG_WEIGHTS:
-                SAFE(::custom::fill_mem(mem, ref_mem, 0, 1), WARN);
+                SAFE(::custom::fill_mem(mem, ref_mem, 0, 2), WARN);
                 break;
             default: break;
         }
@@ -144,7 +144,18 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
     const dnn_mem_t &src1 = args.find(DNNL_ARG_SRC_1);
     const dnn_mem_t &wei = args.find(DNNL_ARG_WEIGHTS);
     dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
-
+    for (int i = 0; i < src0.nelems(); i++) {
+        printf("src0[%d] = %f ", i, src0.get_elem(i));
+    }
+    printf("\n");
+    for (int i = 0; i < src1.nelems(); i++) {
+        printf("src1[%d] = %f ", i, src1.get_elem(i));
+    }
+    printf("\n");
+    for (int i = 0; i < wei.nelems(); i++) {
+        printf("wei[%d] = %f ", i, wei.get_elem(i));
+    }
+    printf("\n");
     benchdnn_parallel_nd(dst.nelems(), [&](int64_t index) {
         size_t offsrc0 = 0, offsrc1 = 0, offwei = 0, offdst = 0;
         for (int i = 0; i < dst.ndims(); i++) {
@@ -307,6 +318,9 @@ int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max) {
         std::uniform_int_distribution<> gen(f_min, f_max);
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
             float value = gen(int_seed);
+            if(f_max == 2) {
+                printf("value = %f\n", value);
+            }
             mem_fp.set_elem(idx, round_to_nearest_representable(dt, value));
         }
     });

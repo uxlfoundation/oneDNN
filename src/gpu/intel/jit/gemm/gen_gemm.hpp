@@ -580,6 +580,25 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             auto dotrans = batch ? acb : ba;
             auto notrans = batch ? abc : ab;
+            auto byte_align_md = [&](memory_desc_t &md) {
+                auto kernel_type = convert_dnnl_to_kernel_type(md.data_type);
+                auto dim = md.dims[md.ndims - 1];
+                dnnl::impl::dims_t dims;
+                dnnl::impl::utils::array_copy(dims, md.dims, md.ndims);
+                bool pad_dim = false;
+                if ((kernel_type.isInt4() || kernel_type.isFP4())
+                        && dim % 2 != 0) {
+                    pad_dim = true;
+                    md.dims[md.ndims - 1] = utils::rnd_up(
+                            dim, std::min((dim_t)16, utils::rnd_up(dim, 2)));
+                }
+                if (pad_dim) CHECK(memory_desc_init_by_strides(md, nullptr));
+                dnnl::impl::utils::array_copy(md.dims, dims, md.ndims);
+                return status::success;
+            };
+            if (a_any) CHECK(byte_align_md(a_desc));
+            if (b_any) CHECK(byte_align_md(b_desc));
+            if (c_any) CHECK(byte_align_md(c_desc));
 
             if ((is_f16 || is_bf16) && is_xe_hp_plus && use_tn) {
                 if (a_any && b_any) {

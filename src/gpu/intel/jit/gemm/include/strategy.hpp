@@ -405,7 +405,7 @@ struct GEMMStrategy : public GEMMStrategyPOD
     int bqGroupKGranularity() const { return groupKReduce(slmB ? unrollKSLM : kb_load); }
     static int groupKReduce(int x) { while (x > 32 && (x & 1) == 0) x >>= 1; return x; }
 
-    void serialize(dnnl::impl::serialization_stream_t &s) const
+    void serialize(SerializationStream &s) const
     {
         const GEMMStrategyPOD &pod = *this;
         s.append(pod);

@@ -26,10 +26,10 @@
 #include "common/nstl.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/jit/emulation.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/ocl/engine.hpp"
+#include "ngen_emulation.hpp"
 #include "xpu/utils.hpp"
 
 #include "ngen_opencl.hpp"
@@ -136,7 +136,7 @@ class generator_t : public ngen::OpenCLCodeGenerator<hw>,
     friend struct eltwise_injector_f32_t<generator_t>;
     friend struct reduction_injector_f32_t<generator_t>;
     friend struct post_op_injector_t<generator_t>;
-    friend struct EmulationImplementation;
+    friend struct ngen::EmulationImplementation;
 
 private:
 #ifdef DNNL_DEV_MODE

@@ -72,7 +72,7 @@ public:
     // Kernel generation entrypoints.
     void gemm(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
     void gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
-    dnnl::impl::gpu::intel::micro::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, dnnl::impl::gpu::intel::micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC = false);
+    micro::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC = false);
 
     // Driver information retrieval.
     static CommonDriverInfo driverInfo(GEMMProblem problem, const GEMMStrategy &strategy);

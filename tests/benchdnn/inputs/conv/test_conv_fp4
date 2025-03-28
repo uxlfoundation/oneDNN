@@ -1,0 +1,4 @@
+--reset --mb=1 --dt=f4_e2m1:f4_e2m1:bf16,f4_e3m0:f4_e3m0:bf16 --dir=fwd_d --batch=shapes_4bit
+--reset --mb=1 --dt=f16:f4_e2m1:f4_e2m1,f32:f4_e3m0:f4_e3m0 --dir=bwd_d --batch=shapes_4bit
+--reset --mb=1 --dt=f4_e2m1:f16:f4_e2m1,f4_e3m0:f32:f4_e3m0 --dir=bwd_w --batch=shapes_4bit
+--reset --mb=1 --dt=f4_e2m1,f4_e3m0 --dir=fwd_d --batch=shapes_4bit

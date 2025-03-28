@@ -157,6 +157,10 @@ mb128ic3ih230oc64oh112kh7sh2ph0
                       wei:common:2:f32+src:common:2:f32+dst:common:2:f32
 --batch=shapes_basic_gpu
 
+# Test fp4
+--reset
+--batch=test_conv_fp4
+
 # dw gen9 fwd conv
 --reset
 --dt=f16,f16:f16:s8

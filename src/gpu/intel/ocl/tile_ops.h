@@ -92,11 +92,47 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
                 as_##itype##8(v.s89abcdef)); \
     }
 
+#define DEF_BLOCK_LOAD_STORE32(type, itype, suffix) \
+    __attribute__((overloadable)) \
+            type##32 block_load(const global type *p, int vlen) __attribute__( \
+                    (enable_if(vlen == 32, "wrong vector length"))) { \
+        type##32 x; \
+        x = (type##32)(as_##type##8(intel_sub_group_block_read##suffix##8( \
+                               (global void *)p)), \
+                as_##type##8(intel_sub_group_block_read##suffix##8( \
+                        (global void *)(p + 8 * get_sub_group_size()))), \
+                as_##type##8(intel_sub_group_block_read##suffix##8( \
+                        (global void *)(p + 16 * get_sub_group_size()))), \
+                as_##type##8(intel_sub_group_block_read##suffix##8( \
+                        (global void *)(p + 24 * get_sub_group_size())))); \
+        return x; \
+    } \
+    __attribute__((overloadable)) void block_store( \
+            global type *p, type##32 v) { \
+        intel_sub_group_block_write##suffix##8((global itype *)p, \
+                (itype##8)(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7])); \
+        intel_sub_group_block_write##suffix##8( \
+                (global itype *)(p + 8 * get_sub_group_size()), \
+                (itype##8)(v[8], v[9], v[10], v[11], v[12], v[13], v[14], \
+                        v[15])); \
+        intel_sub_group_block_write##suffix##8( \
+                (global itype *)(p + 16 * get_sub_group_size()), \
+                (itype##8)(v[16], v[17], v[18], v[19], v[20], v[21], v[22], \
+                        v[23])); \
+        intel_sub_group_block_write##suffix##8( \
+                (global itype *)(p + 24 * get_sub_group_size()), \
+                (itype##8)(v[24], v[25], v[26], v[27], v[28], v[29], v[30], \
+                        v[31])); \
+    }
+
 DEF_BLOCK_LOAD_STORE1(half, ushort, _us)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 4)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 8)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 16)
+typedef ushort ushort32 __attribute__((ext_vector_type(32)));
+typedef half half32 __attribute__((ext_vector_type(32)));
+DEF_BLOCK_LOAD_STORE32(half, ushort, _us)
 
 typedef ushort ushort1 __attribute__((ext_vector_type(1)));
 DEF_BLOCK_LOAD_STORE1(ushort, ushort, _us)
@@ -104,12 +140,15 @@ DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 4)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 8)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 16)
+DEF_BLOCK_LOAD_STORE32(ushort, ushort, _us)
 
 DEF_BLOCK_LOAD_STORE1(uint, uint, )
 DEF_BLOCK_LOAD_STORE(uint, uint, , 2)
 DEF_BLOCK_LOAD_STORE(uint, uint, , 4)
 DEF_BLOCK_LOAD_STORE(uint, uint, , 8)
 DEF_BLOCK_LOAD_STORE16(uint, uint, )
+typedef uint uint32 __attribute__((ext_vector_type(32)));
+DEF_BLOCK_LOAD_STORE32(uint, uint, )
 
 #define DEF_BLOCK2D_LOAD_STORE(type, itype, vl, SG, suffix, BR, BC) \
     itype##vl __builtin_IB_subgroup_block_read_flat_##suffix( \

@@ -27,12 +27,14 @@ set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
 add_subdirectory(generic)
 
 if(DNNL_GPU_VENDOR STREQUAL "INTEL")
+    include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/config/)
+
     set(ONEDNN_NGEN_DIR "${PROJECT_SOURCE_DIR}/third_party/ngen" CACHE PATH "Path to nGEN source code")
     add_definitions_with_host_compiler(-DNGEN_CONFIG)
-    include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/ngen/)
     include_directories_with_host_compiler(${ONEDNN_NGEN_DIR})
 
     set(ONEDNN_GEMMSTONE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/intel/jit/gemm" CACHE PATH "Path to gemmstone source code")
+    add_definitions_with_host_compiler(-DGEMMSTONE_CONFIG)
     include_directories_with_host_compiler(${ONEDNN_GEMMSTONE_DIR}/include)
 
     add_subdirectory(intel)

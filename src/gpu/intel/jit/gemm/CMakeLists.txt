@@ -40,7 +40,7 @@ if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
    list(REMOVE_ITEM SOURCES ${ONEDNN_GEMMSTONE_DIR}/generator/generator.cpp)
 
     file (GLOB GENERATOR_SOURCES
-        generator/generator.cpp
+        ${ONEDNN_GEMMSTONE_DIR}/generator/generator.cpp
      )
 
     if (DNNL_ENABLE_PRIMITIVE_GPU_ISA STREQUAL "ALL")

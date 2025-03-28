@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,12 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_CONFIG_HPP
-#define GEMMSTONE_GUARD_CONFIG_HPP
+#ifndef GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
+#define GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 
-#if (defined(__has_include) && __has_include("gemmstone_config.hpp")) || defined(GEMMSTONE_CONFIG)
-#include "gemmstone_config.hpp"
-#else
 #endif
-
-#endif /* header guard */

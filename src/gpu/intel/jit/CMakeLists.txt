@@ -16,7 +16,7 @@
 
 set(CMAKE_CXX_CLANG_TIDY "")
 
-set(DIRS "codegen;conv;ir;pass;pooling;reorder;utils;v2")
+set(DIRS "codegen;config;conv;ir;pass;pooling;reorder;utils;v2")
 
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp

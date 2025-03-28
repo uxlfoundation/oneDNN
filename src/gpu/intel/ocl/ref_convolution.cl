@@ -79,16 +79,30 @@ __kernel void ref_convolution_fwd(
 
                     const off_t src_off = SRC_OFF(n, g * IC + ic, id, ih, iw);
                     const off_t wei_off = WEI_OFF(g, oc, ic, kd, kh, kw);
-                    d += SRC_TO_REF(src[src_off]) * WEI_TO_REF(wei[wei_off]);
+
+#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
+                    ACC_DATA_T s
+                            = TO_ACC(SRC_TO_REF(GET_HALF_BYTE(src, src_off)));
+#else
+                    ACC_DATA_T s = TO_ACC(SRC_TO_REF(src[src_off]));
+#endif
+#if WEI_DT_F4_E2M1 || WEI_DT_F4_E3M0
+                    ACC_DATA_T w
+                            = TO_ACC(WEI_TO_REF(GET_HALF_BYTE(wei, wei_off)));
+#else
+                    ACC_DATA_T w = TO_ACC(WEI_TO_REF(wei[wei_off]));
+#endif
+                    d += s * w;
+
 #if WITH_SRC_ZPOINTS
                     const int src_zp
                             = src_zpoints[WITH_SRC_ZPOINTS_PER_IC ? g * IC + ic
                                                                   : 0];
-                    d -= src_zp * WEI_TO_REF(wei[wei_off]);
+                    d -= src_zp * w;
 #endif
 #if WITH_WEI_ZPOINTS
                     const int wei_zp = wei_zpoints[0];
-                    d -= wei_zp * SRC_TO_REF(src[src_off]);
+                    d -= wei_zp * s;
 #endif
 #if WITH_SRC_ZPOINTS
 #if WITH_WEI_ZPOINTS
@@ -192,15 +206,25 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
         if (oh < OH && ow < OW && od < OD) {
             const off_t dst_off = DST_OFF(n, g * OC + oc, od, oh, ow);
             const off_t wei_off = WEI_OFF(g, oc, ic, kd, kh, kw);
-            d += DST_TO_REF(diff_dst[dst_off]) * WEI_TO_REF(wei[wei_off]);
+#if DST_DT_F4_E2M1 || DST_DT_F4_E3M0
+            ACC_DATA_T diff_d = DST_TO_REF(GET_HALF_BYTE(diff_dst, dst_off));
+#else
+            ACC_DATA_T diff_d = DST_TO_REF(diff_dst[dst_off]);
+#endif
+#if WEI_DT_F4_E2M1 || WEI_DT_F4_E3M0
+            ACC_DATA_T w = WEI_TO_REF(GET_HALF_BYTE(wei, wei_off));
+#else
+            ACC_DATA_T w = WEI_TO_REF(wei[wei_off]);
+#endif
+            d += diff_d * w;
 #if WITH_SRC_ZPOINTS
             const int src_zp
                     = src_zpoints[WITH_SRC_ZPOINTS_PER_IC ? g * OC + oc : 0];
-            d -= src_zp * WEI_TO_REF(wei[wei_off]);
+            d -= src_zp * w;
 #endif
 #if WITH_WEI_ZPOINTS
             const int wei_zp = wei_zpoints[0];
-            d -= wei_zp * DST_TO_REF(diff_dst[dst_off]);
+            d -= wei_zp * diff_d;
 #endif
 #if WITH_SRC_ZPOINTS
 #if WITH_WEI_ZPOINTS
@@ -308,11 +332,21 @@ __kernel void ref_convolution_bwd_weights(const __global SRC_DATA_T *src,
                     off_t id = od * SD - PD + kd * (1 + DD);
                     off_t ih = oh * SH - PH + kh * (1 + DH);
                     off_t iw = ow * SW - PW + kw * (1 + DW);
+                    off_t dst_off = DST_OFF(n, g * OC + oc, od, oh, ow);
+                    off_t src_off = SRC_OFF(n, g * IC + ic, id, ih, iw);
 
-                    dw += DST_TO_REF(
-                                  diff_dst[DST_OFF(n, g * OC + oc, od, oh, ow)])
-                            * SRC_TO_REF(
-                                    src[SRC_OFF(n, g * IC + ic, id, ih, iw)]);
+#if DST_DT_F4_E2M1 || DST_DT_F4_E3M0
+                    ACC_DATA_T diff_d
+                            = SRC_TO_REF(GET_HALF_BYTE(diff_dst, dst_off));
+#else
+                    ACC_DATA_T diff_d = DST_TO_REF(diff_dst[dst_off]);
+#endif
+#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
+                    ACC_DATA_T s = SRC_TO_REF(GET_HALF_BYTE(src, src_off));
+#else
+                    ACC_DATA_T s = SRC_TO_REF(src[src_off]);
+#endif
+                    dw += diff_d * s;
                 }
     diff_wei[WEI_OFF(g, oc, ic, kd, kh, kw)] = TO_WEI(dw);
 }

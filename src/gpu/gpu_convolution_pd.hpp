@@ -101,6 +101,10 @@ protected:
                 = [&](int idx) { return p.entry_[idx].is_eltwise(false); };
         auto is_sum = [&](int idx) { return p.entry_[idx].is_sum(false); };
 
+        for (auto idx = 0; idx < p.len(); ++idx) {
+            if (p.entry_[idx].is_binary_with_ternary_op()) return false;
+        }
+
         switch (p.len()) {
             case 0: return true; // no post_ops
             case 1: return is_eltwise(0) || is_sum(0); // sum OR eltwise

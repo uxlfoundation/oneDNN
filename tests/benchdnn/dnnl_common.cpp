@@ -1795,21 +1795,45 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
     const bool is_dropout_seed = (exec_arg == DNNL_ARG_ATTR_DROPOUT_SEED);
     const bool is_rounding_seed = (exec_arg == DNNL_ARG_ATTR_ROUNDING_SEED);
 
+    const bool is_binary_src1_arg
+            = ((exec_arg & DNNL_ARG_SRC_1) == DNNL_ARG_SRC_1);
+    const bool is_binary_src2_arg
+            = ((exec_arg & DNNL_ARG_SRC_2) == DNNL_ARG_SRC_2);
+    const bool is_binary_arg = (is_binary_src1_arg || is_binary_src2_arg);
+
     if (is_post_ops_arg) {
-        if (exec_arg & DNNL_ARG_SRC_1) {
+        if (is_binary_arg) {
             const int bin_po_idx
                     = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
             assert(bin_po_idx < attr.post_ops.len());
             const auto alg = attr.post_ops.entry[bin_po_idx].kind;
-            // Binary post-op filling.
-            fill_cfg_t def_binary_cfg(mem.dt(), -16.f, 16.f, /* int = */ true,
-                    alg, "def_binary_post_op");
-            const auto it = fill_cfg_map.find(DNNL_ARG_SRC_1);
-            const bool has_external_cfg = it != fill_cfg_map.end();
-            const fill_cfg_t &binary_fill_cfg
-                    = has_external_cfg ? (*it).second : def_binary_cfg;
-            TIME_FILL(SAFE(fill_random_real(mem, ref_mem, res, binary_fill_cfg),
-                    WARN));
+
+            // Binary post-op filling for src1/src2 tensors.
+            // For the src1 tensor, the fill values are restricted to
+            // (-16.f, -16.f) and filled unconditionally.
+            // For the src2 tensor, the values are filled only if the binary
+            // algorithm requires a ternary input and ignored otherwise.
+            // Currently, the src2 values are restricted to (0.0, 16.f) as the
+            // only supported algorithm is conditional select which uses src2
+            // as a masking tensor.
+
+            if (is_binary_src1_arg
+                    || attr.post_ops.entry[bin_po_idx]
+                               .is_binary_kind_with_ternary_op()) {
+
+                const int f_min = is_binary_src2_arg ? 0 : -16.f;
+                fill_cfg_t def_binary_cfg(mem.dt(), f_min, 16.f,
+                        /* int = */ true, alg, "def_binary_post_op");
+                const auto it = fill_cfg_map.find(
+                        is_binary_src1_arg ? DNNL_ARG_SRC_1 : DNNL_ARG_SRC_2);
+
+                const bool has_external_cfg = it != fill_cfg_map.end();
+                const fill_cfg_t &binary_fill_cfg
+                        = has_external_cfg ? (*it).second : def_binary_cfg;
+                TIME_FILL(SAFE(
+                        fill_random_real(mem, ref_mem, res, binary_fill_cfg),
+                        WARN));
+            }
         } else if (exec_arg & DNNL_ARG_WEIGHTS) {
             // Prelu post-op filling.
             fill_cfg_t def_prelu_fill_cfg(mem.dt(), -2.f, 2.f, /* int = */ true,

@@ -62,6 +62,10 @@ protected:
 
     bool post_ops_ok() const {
         const auto &post_ops = attr()->post_ops_;
+        for (auto idx = 0; idx < post_ops.len(); ++idx) {
+            if (post_ops.entry_[idx].is_binary_with_ternary_op()) return false;
+        }
+
         return post_ops.len() == 0
                 || (post_ops.len() == 1
                         && post_ops.entry_[0].kind == primitive_kind::sum);

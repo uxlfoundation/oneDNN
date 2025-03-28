@@ -133,6 +133,7 @@ bool dpas_t::matches_types(
         const hw_t &hw, const type_t &a, const type_t &b, const type_t &c) {
     if (a.is_x8() && b.is_x8() && c.is_s32()) return true;
     if (a.is_fp8() && b.is_fp8() && (c.is_f32() || c.is_bf16())) return true;
+    if (a.is_fp4() && b.is_fp4() && (c.is_f32() || c.is_bf16())) return true;
     if (a.is_f16() && b.is_f16() && c.is_f32()) return true;
     if (a.is_bf16() && b.is_bf16() && c.is_f32()) return true;
     if (a.is_tf32() && b.is_tf32() && c.is_f32() && hw >= ngen::HW::XeHPC)
@@ -146,6 +147,7 @@ bool mad_t::matches_types(
     if (a != b && !(a.is_x8() && b.is_x8())) return false;
 
     if (a.is_fp8() && b.is_fp8()) return true;
+    if (a.is_fp4() && b.is_fp4()) return true;
     if (a.is_f64() && c.is_f64()) return true;
     if (a.is_f32() && c.is_f32()) return true;
     if (a.is_f16() && c.is_f16()) return true;

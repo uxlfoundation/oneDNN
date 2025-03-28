@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -68,14 +68,17 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
     typedef half acc_t;
     const acc_t acc_max = HALF_MAX;
     const acc_t acc_zero = 0.h;
+    const acc_t acc_one = 1.h;
 #elif DT_F64 || DST_DT_F64
     typedef double acc_t;
     const acc_t acc_max = DBL_MAX;
     const acc_t acc_zero = 0.0;
+    const acc_t acc_one = 1.0;
 #else
     typedef float acc_t;
     const acc_t acc_max = FLT_MAX;
     const acc_t acc_zero = 0.f;
+    const acc_t acc_one = 1.f;
 #endif
 
     acc_t d[buf_size];
@@ -124,7 +127,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = acc_one / denom_;
 #endif
 
     for (int i = begin; i < end; ++i) {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,11 +41,13 @@
 #define COMMON_DATA_T double
 #define COMMON_DATA_MAX DBL_MAX
 #define COMMON_DATA_ZERO 0.0
+#define COMMON_DATA_ONE 1.0
 #else
 #define UP_CASE_DATA FLOAT
 #define COMMON_DATA_T float
 #define COMMON_DATA_MAX FLT_MAX
 #define COMMON_DATA_ZERO 0.0f
+#define COMMON_DATA_ONE 1.0f
 #endif
 
 #define COMMON_DATA8_T CONCAT2(COMMON_DATA_T, 8)
@@ -187,7 +189,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = COMMON_DATA_ONE / denom_;
 #endif
 
     for (int i = 0; i < num_buf; i++) {
@@ -267,7 +269,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = COMMON_DATA_ONE / denom_;
 #endif
 
     dst += data_off;
@@ -377,7 +379,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0 / denom_;
+    denom_ = COMMON_DATA_ONE / denom_;
 #endif
 
     dst += data_off;

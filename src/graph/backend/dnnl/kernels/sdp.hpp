@@ -213,7 +213,7 @@ public:
         const auto &lt_wei
                 = sdp_op[1]->get_input_value(1)->get_logical_tensor();
         const ltw ltw_wei(lt_wei);
-        seq_len_kv = ltw_wei.vdims()[3];
+        seq_len_kv = ltw_wei.vdims()[ndims - 1];
 
         // Acquire the data type from input param for later primitive creation.
         // The src and wei dt of both quantized sdp and float sdp are the same.
@@ -226,8 +226,8 @@ public:
         memory::data_type dt_inter = quantized
                 ? dt
                 : static_cast<memory::data_type>(ltw(
-                          sdp_op[1]->get_output_value(0)->get_logical_tensor())
-                                  .data_type());
+                        sdp_op[1]->get_output_value(0)->get_logical_tensor())
+                                                         .data_type());
 
         ////////////////////////////////////////////////////////////////////////
         ////////////// Start Creating primitives ///////////////////////////////
@@ -265,8 +265,13 @@ public:
         dnnl::primitive_attr sub_reorder1_attr
                 = make_primitive_attr(sdp_op[0], mgr);
         memory::dims sub_wei1_dims = {size_per_head, seq_len_kv};
-        auto wei_md = make_dnnl_memory_desc(
-                sdp_op[1]->get_input_value(1)->get_logical_tensor());
+        auto wei_value = sdp_op[1]->get_input_value(1);
+        if (wei_value->has_producer()
+                && wei_value->get_producer().get_kind()
+                        == op_kind::dnnl_reorder) {
+            wei_value = wei_value->get_producer().get_input_value(0);
+        }
+        auto wei_md = make_dnnl_memory_desc(wei_value->get_logical_tensor());
         wei1_strides = wei_md.get_strides();
         sub_wei1_user_md = memory::desc(sub_wei1_dims, dt_wei_user,
                 {wei1_strides[ndims - 2], wei1_strides[ndims - 1]});
@@ -593,6 +598,8 @@ private:
                             || post_op->get_kind()
                                     == graph::op_kind::Multiply)) {
                 mm1 = cur_op;
+                if (mm1->get_attr<bool>(op_attr::transpose_a))
+                    return status::unimplemented;
                 scale = post_op;
                 post_op = get_post_op(post_op);
                 if (post_op && post_op->get_kind() == graph::op_kind::Tanh) {

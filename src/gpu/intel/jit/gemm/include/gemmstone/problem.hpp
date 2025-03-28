@@ -137,6 +137,14 @@ enum class BatchMode {
     None, Strided, Nonstrided, Variable
 };
 
+// Binary operations.
+enum class BinaryOp {
+    Add, Sub, Mul, Div,
+    Min, Max,
+    Prelu,
+    ScaleSub    /* internal use only */
+};
+
 // Problem parameters shared between kernel types.
 struct CommonProblem {
     bool nonuniformWGs = false;                 // Support nonuniform workgroups?

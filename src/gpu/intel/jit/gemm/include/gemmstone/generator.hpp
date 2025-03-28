@@ -43,10 +43,6 @@
 
 #include "internal/namespace_start.hxx"
 
-// Macro configuration
-#define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
-#define FORWARD(hw) NGEN_FORWARD_ELF(hw)
-
 template <ngen::HW hw>
 class BLASKernelGenerator : public GENERATOR_BASE(hw) {
 public:

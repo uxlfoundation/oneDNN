@@ -114,7 +114,8 @@ std::string prepend_groups_to_tag(const std::string &tag) {
 
 int get_default_mad_block(const type_t &type) {
     switch (type.size()) {
-        case 1: return 32;
+        // fp4 gets upconverted to f16 for mad.
+        case 1: return (type.is_fp4() ? 16 : 32);
         case 2:
         case 4: return 16;
         case 8: return 8;
@@ -356,7 +357,7 @@ int pick_block(dim_t dim, int b0, int b1 = 0, int b2 = 0) {
 int get_default_block(fma_kind_t fma, const type_t &type, dim_t elems) {
     if (is_dp_fma(fma)) {
         if (is_small(type, elems)) {
-            int packed_dword_elems = 4 / type.size();
+            int packed_dword_elems = 32 / type.bitsize();
             return std::max(
                     utils::rnd_up_pow2(into<int>(elems)), packed_dword_elems);
         }
@@ -408,7 +409,8 @@ struct nc_block_t {
             auto default_gc_blk
                     = get_default_block(get_default_fma(hw, type), type, g * c);
             if (c_block != default_gc_blk) {
-                if (default_gc_blk % c == 0 && g % (default_gc_blk / c) == 0) {
+                if ((default_gc_blk % c == 0
+                            && g % (default_gc_blk / c) == 0)) {
                     c_block = default_gc_blk;
                 }
             }
@@ -485,7 +487,7 @@ struct goi_block_t {
             x_block = (ab_transpose && (is_fwd || is_bwd_d)) ? 1 : vec_size;
             y_block = (x_block == 1 ? 1 : get_default_block(fma_kind, type, y));
         } else {
-            int packed_dword_elems = 4 / type.size();
+            int packed_dword_elems = 32 / type.bitsize();
             x_block = ab_transpose ? into<int>(utils::rnd_up_pow2(x))
                                    : vec_size;
             y_block = packed_dword_elems;
@@ -841,6 +843,23 @@ status_t init_tensor_layouts(
             prb.dhw_map,
             /*add_groups=*/true);
 
+    // Disable cases that cannot generate valid fp4 tiling.
+    if (src_layout.type().is_fp4())
+        for (auto &b : src_layout.blocks()) {
+            if (b.stride == stride_t(1) && b.block % 8)
+                return status::unimplemented;
+        }
+    if (wei_layout.type().is_fp4())
+        for (auto &b : wei_layout.blocks()) {
+            if (b.stride == stride_t(1) && b.block % 8)
+                return status::unimplemented;
+        }
+    if (dst_layout.type().is_fp4())
+        for (auto &b : dst_layout.blocks()) {
+            if (b.stride == stride_t(1) && b.block % 8)
+                return status::unimplemented;
+        }
+
     src.set_compute(src_layout);
     src.set_user(user_src_layout);
     wei.set_compute(wei_layout);
@@ -895,6 +914,8 @@ bool data_types_ok(
     auto bia = prb.bia_data_type;
     bool is_fp8 = utils::one_of(data_type::f8_e5m2, src, wei, dst, bia)
             || utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
+    bool is_fp4 = utils::one_of(data_type::f4_e2m1, src, wei, dst, bia)
+            || utils::one_of(data_type::f4_e3m0, src, wei, dst, bia);
     if (!prb.is_f64_accumulator()
             && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
@@ -903,7 +924,7 @@ bool data_types_ok(
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
-    if (is_fp8 && !(hw >= ngen::HW::XeHPC && hw.systolic_support()))
+    if ((is_fp8 || is_fp4) && !(hw >= ngen::HW::XeHPC && hw.systolic_support()))
         return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;
@@ -912,13 +933,15 @@ bool data_types_ok(
         data_type_t default_acc_type
                 = src == data_type::f64 ? data_type::f64 : data_type::f32;
         ok &= utils::one_of(src, data_type::f8_e5m2, data_type::f8_e4m3,
-                data_type::bf16, data_type::f16, data_type::f32,
-                data_type::f64);
+                data_type::f4_e3m0, data_type::f4_e2m1, data_type::bf16,
+                data_type::f16, data_type::f32, data_type::f64);
         ok &= (dst == src);
         ok &= (utils::one_of(wei, src, default_acc_type)
-                || (utils::one_of(src, data_type::f8_e4m3, data_type::f8_e5m2)
+                || (utils::one_of(src, data_type::f8_e4m3, data_type::f8_e5m2,
+                            data_type::f4_e2m1, data_type::f4_e2m1)
                         && utils::one_of(wei, data_type::f8_e4m3,
-                                data_type::f8_e5m2, data_type::f32,
+                                data_type::f8_e5m2, data_type::f4_e2m1,
+                                data_type::f4_e2m1, data_type::f32,
                                 data_type::bf16, data_type::f16)));
 
         if (prb.with_bias) { ok &= utils::one_of(bia, src, data_type::f32); }

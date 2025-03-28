@@ -581,6 +581,7 @@ public:
     bool is_ok(const blocking_t &blk) const override {
         context_t ctx(blk, cfg_);
         if (!check_vec_ok(ctx)) return false;
+        if (!check_fp4_ok(ctx)) return false;
         if (!check_tg_size_ok(ctx)) return false;
         if (!check_dpas_ok(ctx)) return false;
         if (!check_grf_usage_ok(ctx)) return false;
@@ -700,6 +701,20 @@ private:
             if (is_vectorized_dim(d, cfg_.prb(), ctx.blk.iter())) vec_ndims++;
         }
         return vec_ndims == 1;
+    }
+
+    bool check_fp4_ok(const context_t &ctx) const {
+        auto prb = cfg_.prb();
+        if (prb.is_fp4_conv()) {
+            for (auto &d : ctx.blk.iter())
+                for (auto t : input_tensors(cfg_.prb())) {
+                    if (tensor_conv_dim_index(d, t) == -1) continue;
+                    if (inner_stride(cfg_, t, d) == 1
+                            && inner_block(cfg_, d) % 8)
+                        return false;
+                }
+        }
+        return true;
     }
 
     bool check_tg_size_ok(const context_t &ctx) const {

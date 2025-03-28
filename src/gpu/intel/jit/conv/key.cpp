@@ -51,6 +51,9 @@ enum class key_type_kind_t {
     hf8,
     f8_e4m3 = hf8,
     xf8, // bf8 or hf8
+    f4_e2m1,
+    f4_e3m0,
+    xf4, // f4_e2m1 or f4_e3m0
     _max,
 };
 
@@ -66,6 +69,9 @@ static auto key_type_kind_names = nstl::to_array({
         make_enum_name(key_type_kind_t::bf8, "bf8"),
         make_enum_name(key_type_kind_t::hf8, "hf8"),
         make_enum_name(key_type_kind_t::xf8, "xf8"),
+        make_enum_name(key_type_kind_t::f4_e2m1, "f4_e2m1"),
+        make_enum_name(key_type_kind_t::f4_e3m0, "f4_e3m0"),
+        make_enum_name(key_type_kind_t::xf4, "xf4"),
         make_enum_name(key_type_kind_t::f32, "f32"),
         make_enum_name(key_type_kind_t::s32, "s32"),
         make_enum_name(key_type_kind_t::tf32, "tf32"),
@@ -98,6 +104,8 @@ key_type_kind_t to_type_kind(data_type_t dt) {
         CASE(s8);
         CASE(u8);
         CASE(bf16);
+        CASE(f4_e2m1);
+        CASE(f4_e3m0);
         CASE(f8_e5m2);
         CASE(f8_e4m3);
         CASE(f16);
@@ -127,6 +135,9 @@ key_type_kind_t to_filter(key_type_kind_t kind) {
         case key_type_kind_t::bf8:
         case key_type_kind_t::hf8:
         case key_type_kind_t::xf8: return key_type_kind_t::xf8;
+        case key_type_kind_t::f4_e2m1:
+        case key_type_kind_t::f4_e3m0:
+        case key_type_kind_t::xf4: return key_type_kind_t::xf4;
         default: gpu_error_not_expected();
     }
     return key_type_kind_t::undef;

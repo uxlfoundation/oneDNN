@@ -1291,11 +1291,11 @@ struct fma_context_t {
         if (a_type.is_f16() && acc_type.is_f16()) {
             return layout.make_dense();
         }
-        bool is_a_xf8_or_xf16
-                = (a_type.is_fp8() || a_type.is_bf16() || a_type.is_f16());
-        bool is_b_xf8_or_xf16
-                = (b_type.is_fp8() || b_type.is_bf16() || b_type.is_f16());
-        if (is_a_xf8_or_xf16 || is_b_xf8_or_xf16) {
+        bool is_a_xf8_or_xf16_or_xf4 = (a_type.is_fp4() || a_type.is_fp8()
+                || a_type.is_bf16() || a_type.is_f16());
+        bool is_b_xf8_or_xf16_or_xf4 = (b_type.is_fp4() || b_type.is_fp8()
+                || b_type.is_bf16() || b_type.is_f16());
+        if (is_a_xf8_or_xf16_or_xf4 || is_b_xf8_or_xf16_or_xf4) {
             return layout.retype(type_t::f32()).make_dense();
         }
         return layout;
@@ -1307,7 +1307,8 @@ struct fma_context_t {
         bool is_dpas = is_dp_fma(fma);
         bool is_a = (abc == abc_kind_t::a);
         auto type = (is_a ? a_type : b_type);
-        int type_size = (layout.type().is_fp8() ? 2 : type.size());
+        bool cvt_f16 = (layout.type().is_fp8() || layout.type().is_fp4());
+        int type_size = (cvt_f16 ? 2 : type.size());
         if (is_dpas) {
             int sdepth = 8;
             int dword_size = 4;
@@ -1332,7 +1333,7 @@ struct fma_context_t {
                     layout_t(type, 0, (int)bmnks.size(), blocks));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
-            if (layout.type().is_fp8()) return abc_layout.retype(type_t::f16());
+            if (cvt_f16) return abc_layout.retype(type_t::f16());
             return abc_layout;
         }
 

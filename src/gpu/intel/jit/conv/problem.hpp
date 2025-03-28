@@ -107,6 +107,12 @@ public:
     }
     bool is_s32_accumulator() const { return acc_data_type == data_type::s32; }
     bool is_f64_accumulator() const { return acc_data_type == data_type::f64; }
+    bool is_fp4_conv() const {
+        return utils::one_of(
+                       src_data_type, data_type::f4_e2m1, data_type::f4_e3m0)
+                || utils::one_of(
+                        wei_data_type, data_type::f4_e2m1, data_type::f4_e3m0);
+    }
     bool is_fp8_conv() const {
         return utils::one_of(
                        src_data_type, data_type::f8_e4m3, data_type::f8_e5m2)

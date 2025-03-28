@@ -109,6 +109,20 @@ static void tensor_free(void *p, const engine_t *eng) {
     }
 }
 
+static void *host_tensor_malloc(
+        size_t size, const engine_t *eng, allocator_t::mem_type_t type) {
+    const auto *alc = static_cast<dnnl::impl::graph::allocator_t *>(
+            eng->get_allocator());
+
+    return alc->allocate(size, {type, DNNL_CPU_MEMALIGNMENT});
+}
+
+static void host_tensor_free(void *p, const engine_t *eng) {
+    const auto *alc = static_cast<dnnl::impl::graph::allocator_t *>(
+            eng->get_allocator());
+    alc->deallocate(p);
+}
+
 dnnl_graph_tensor::dnnl_graph_tensor(
         const logical_tensor_t &lt, const engine_t *eng, void *handle)
     : lt_(lt), eng_(eng) {
@@ -119,6 +133,16 @@ dnnl_graph_tensor::dnnl_graph_tensor(
                 = tensor_malloc(num_bytes, eng, allocator_t::mem_type_t::temp);
         assertm(data, "Can't allocate memory for a tensor!");
         handle_.reset(data, [eng](void *p) { tensor_free(p, eng); });
+    } else if (lt.property == property_type::host_scalar) {
+        // Allocate memory for the scalar and copy the value
+        size_t scalar_size = logical_tensor_wrapper_t(lt).size();
+        void *scalar_data = host_tensor_malloc(
+                scalar_size, eng, allocator_t::mem_type_t::temp);
+        assertm(scalar_data, "Can't allocate memory for a scalar!");
+        // Copy data from the original handle to scalar_data
+        std::memcpy(scalar_data, handle, scalar_size);
+        handle_.reset(
+                scalar_data, [eng](void *p) { host_tensor_free(p, eng); });
     } else {
         handle_.reset(handle, dummy_destructor);
     }

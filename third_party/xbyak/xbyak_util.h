@@ -595,6 +595,11 @@ public:
 	XBYAK_DEFINE_TYPE(88, tSSE4a);
 	XBYAK_DEFINE_TYPE(89, tCLWB);
 	XBYAK_DEFINE_TYPE(90, tTSXLDTRK);
+	XBYAK_DEFINE_TYPE(90, tAMX_TRANSPOSE);
+	XBYAK_DEFINE_TYPE(91, tAMX_TF32);
+	XBYAK_DEFINE_TYPE(92, tAMX_AVX512);
+	XBYAK_DEFINE_TYPE(93, tAMX_MOVRS);
+	XBYAK_DEFINE_TYPE(94, tAMX_FP8);
 
 #undef XBYAK_SPLIT_ID
 #undef XBYAK_DEFINE_TYPE
@@ -756,6 +761,13 @@ public:
 				if (EDX & (1U << 14)) type_ |= tPREFETCHITI;
 				if (EDX & (1U << 19)) type_ |= tAVX10;
 				if (EDX & (1U << 21)) type_ |= tAPX_F;
+
+                getCpuidEx(0x1e, 1, data);
+				if (EAX & (1U << 5)) type_ |= tAMX_TRANSPOSE;
+				if (EAX & (1U << 6)) type_ |= tAMX_TF32;
+				if (EAX & (1U << 7)) type_ |= tAMX_AVX512;
+				if (EAX & (1U << 8)) type_ |= tAMX_MOVRS;
+				if (EAX & (1U << 4)) type_ |= tAMX_FP8;
 			}
 		}
 		if (maxNum >= 0x19) {

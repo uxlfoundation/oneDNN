@@ -191,12 +191,12 @@ partition_data_displacer_t::partition_data_displacer_t(
                 // inputs, the condition one will be updated. For implicit
                 // causal mask, the condition would have a parent and a check
                 // for `causal_mask_lt` being non-empty will fail.
-                if (causal_mask_lt
-                        && aop_in_lt->get_data_type()
-                                != logical_tensor::data_type::boolean)
-                    continue;
+                // if (causal_mask_lt
+                //         && aop_in_lt->get_data_type()
+                //                 != logical_tensor::data_type::boolean)
+                //     continue;
 
-                causal_mask_lt = aop_in_lt;
+                // causal_mask_lt = aop_in_lt;
                 offset = i;
             }
             // No suitable tensor/subgraph for a mask displacement.

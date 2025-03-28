@@ -39,6 +39,13 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+#define VCHECK_OP_EXECUTABLE(cond, msg, ...) \
+    if (!(cond)) { VERROR(graph, op_executable, msg, ##__VA_ARGS__); }
+
+#define VCHECK_PATTERN_UTILS(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, pattern, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 const indices_t::type_t input = indices_t::type_t::input;
 const indices_t::type_t output = indices_t::type_t::output;
 
@@ -1086,7 +1093,7 @@ concat_executable_t::desc_t concat_executable_t::create_desc(
     const auto rank = op->get_output_value(0)->get_logical_tensor().ndims;
     const auto res = utils::try_reverse_axis(
             op->get_attr<int64_t>(op_attr::axis), rank);
-    assertm(res.first, "Incorrect axis value.");
+    VCHECK_OP_EXECUTABLE(res.first, "invalid axis for concat");
     const auto axis = res.second;
 
     dnnl::primitive_attr prm_attr;
@@ -1755,7 +1762,8 @@ groupnorm_executable_t::desc_t groupnorm_executable_t::create_desc(
     if (op->has_attr(op_attr::groups)) {
         group_num = op->get_attr<int64_t>(op_attr::groups);
     } else {
-        assertm(false, "group_num is required.");
+        VCHECK_OP_EXECUTABLE(
+                false, "groups attribute is required for groupnorm");
     }
     auto flags = dnnl::normalization_flags::none;
     if (use_affine)

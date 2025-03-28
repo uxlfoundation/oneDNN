@@ -21,6 +21,10 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+#define VCHECK_MQA_DECOMP(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, mqa_decomp_config, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &inputs) {
     // The order of input logical tensors in inputs is not certain, we need
@@ -31,7 +35,10 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     memory::dims src1_user_dims = ltw(inputs[graph_inport[0]]).vdims();
     // Query(3-dims): batch_size * size_per_head * (num_head * seq_len)
     memory::dims wei1_user_dims = ltw(inputs[graph_inport[1]]).vdims();
-    if (src1_user_dims.size() != 3 || wei1_user_dims.size() != 3) return false;
+    VCHECK_MQA_DECOMP(src1_user_dims.size() == 3 && wei1_user_dims.size() == 3,
+            false,
+            "dims of src1 and wei1 should be 3, but got src1: %zu, wei1: %zu",
+            src1_user_dims.size(), wei1_user_dims.size());
 
     // Initialize MQA input dimension according to the src of mm1
     batch_size = src1_user_dims[0];
@@ -41,9 +48,11 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 
     //  Check batch size compatibility.
     dims wei2_user_dims = ltw(inputs[graph_inport[3]]).vdims();
-    if (batch_size != wei1_user_dims[0] || batch_size != wei2_user_dims[0]) {
-        return false;
-    }
+    VCHECK_MQA_DECOMP(
+            batch_size == wei1_user_dims[0] && batch_size == wei2_user_dims[0],
+            false,
+            "batch size mismatch, batch_size: %lld, wei1: %lld, wei2: %lld",
+            batch_size, wei1_user_dims[0], wei2_user_dims[0]);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
@@ -59,10 +68,13 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 #define RATIO 2
     // Initialize nthr with current threads num
     nthr = dnnl_get_current_num_threads();
-    return batch_size * num_head > RATIO * nthr;
-#else
-    return true;
+    VCHECK_MQA_DECOMP(batch_size * num_head > RATIO * nthr, false,
+            "doesn't meet condition for decompose:"
+            "batch size * num_head should be larger than ratio * nthr, but got "
+            "batch_size %lld, num_head %lld, ration %d , nthr %d",
+            batch_size, num_head, RATIO, nthr);
 #endif
+    return true;
 }
 
 template <bool quantized, memory::data_type dt>

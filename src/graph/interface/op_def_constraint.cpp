@@ -19,7 +19,8 @@
 #include "graph/interface/op_def_constraint.hpp"
 
 #define VCHECK_SHAPE_INFER(cond, msg, ...) \
-    VCONDCHECK(graph, create, check, add_op, (cond), false, msg, ##__VA_ARGS__);
+    VCONDCHECK(graph, create, check, shape_infer, (cond), false, msg, \
+            ##__VA_ARGS__);
 
 namespace dnnl {
 namespace impl {

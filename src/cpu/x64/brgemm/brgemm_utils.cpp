@@ -47,7 +47,7 @@ impl::data_type_t get_accum_datatype(brgemm_desc_t *brg) {
     return brg->is_int8 ? data_type::s32 : data_type::f32;
 }
 
-void init_kernel_datatype(
+status_t init_kernel_datatype(
         brgemm_desc_t *brg, impl::data_type_t dt_a, impl::data_type_t dt_b) {
     assert(dt_a != data_type::undef && dt_b != data_type::undef);
     brg->is_int8 = utils::one_of(dt_a, data_type::u8, data_type::s8)
@@ -61,8 +61,10 @@ void init_kernel_datatype(
     brg->is_f16 = utils::one_of(data_type::f16, dt_a, dt_b) && !brg->is_f32;
     brg->is_fp8 = one_of(dt_a, data_type::f8_e5m2, data_type::f8_e4m3)
             && one_of(dt_b, data_type::f8_e5m2, data_type::f8_e4m3);
-    assert(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16
-            || brg->is_fp8);
+    if (!(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16
+                || brg->is_fp8))
+        return status::unimplemented;
+    return status::success;
 }
 
 void init_common_conf(brgemm_desc_t *brg, brgemm_batch_kind_t type, float alpha,
@@ -873,7 +875,7 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     return status::success;
 }
 
-void init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
+status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, brgemm_layout_t layout, float alpha, float beta,
         dim_t LDA, dim_t LDB, dim_t LDC, dim_t M, dim_t N, dim_t K,
@@ -885,7 +887,8 @@ void init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
 
     brg->dt_a = brg->is_row_major() ? dt_a : dt_b;
     brg->dt_b = brg->is_row_major() ? dt_b : dt_a;
-    init_kernel_datatype(brg, brg->dt_a, brg->dt_b);
+    auto status = init_kernel_datatype(brg, brg->dt_a, brg->dt_b);
+    if (status != status::success) return status;
 
     brg->dt_c = get_accum_datatype(brg);
     brg->dt_d = brg->dt_c;
@@ -935,9 +938,11 @@ void init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->bd_block2 = 0;
     brg->bdb2 = 0;
     brg->bdb2_tail = 0;
+
+    return status::success;
 }
 
-void init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
+status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, brgemm_layout_t layout, float alpha, float beta,
         dim_t LDA, dim_t LDC, dim_t M, dim_t N,
@@ -949,7 +954,8 @@ void init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
 
     brg->dt_a = dt_a;
     brg->dt_b = dt_b;
-    init_kernel_datatype(brg, brg->dt_a, brg->dt_b);
+    auto status = init_kernel_datatype(brg, brg->dt_a, brg->dt_b);
+    if (status != status::success) return status;
 
     brg->dt_c = get_accum_datatype(brg);
     brg->dt_d = brg->dt_c;
@@ -991,6 +997,8 @@ void init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
 
     brg->bcast_dim = M;
     brg->load_dim = N;
+
+    return status::success;
 }
 
 } // namespace brgemm_utils

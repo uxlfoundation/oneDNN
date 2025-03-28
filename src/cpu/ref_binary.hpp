@@ -43,6 +43,11 @@ struct ref_binary_t : public primitive_t {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 
+            const bool is_f64 = utils::one_of(f64, src_md(0)->data_type,
+                    src_md(1)->data_type, src_md(2)->data_type,
+                    dst_md()->data_type);
+            VDISPATCH_BINARY(!is_f64, VERBOSE_UNSUPPORTED_DT);
+
             VDISPATCH_BINARY(
                     platform::has_data_type_support(src_md(0)->data_type),
                     VERBOSE_UNSUPPORTED_DT);

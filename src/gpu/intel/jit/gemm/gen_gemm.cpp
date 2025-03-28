@@ -111,7 +111,9 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         }
     }
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
-    if (problem->cStochasticRound) { arg_list.set(argn++, *sround_seed); }
+    if (problem->postOps.cStochasticRound) {
+        arg_list.set(argn++, *sround_seed);
+    }
     arg_list.set(argn++, flags);
     if (k_parallel_fixed) arg_list.set(argn++, k0);
 
@@ -120,7 +122,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         arg_list.set(argn++, *po_srcs[i]);
         arg_list.set(argn++, offset_po_src[i]);
 
-        if (problem->binaryRow[i] && problem->binaryCol[i])
+        if (problem->postOps.binaryRow[i] && problem->postOps.binaryCol[i])
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
     }
 
@@ -142,7 +144,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             arg_list.set(argn++, stride_c);
         }
         for (int i = 0; i < po_count; i++) {
-            if (problem->binaryBatch[i]) {
+            if (problem->postOps.binaryBatch[i]) {
                 for (int b = pd()->batch_dims() - 1; b >= 0; b--) {
                     arg_list.set(argn++, int32_t(pd()->stride_binary(i, b)));
                 }
@@ -464,7 +466,8 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 
                 for (int i = 0; i < po_count; i++) {
                     po_offsets[i] = po_offsets0[i];
-                    bool row = problem.binaryRow[i], col = problem.binaryCol[i];
+                    bool row = problem.postOps.binaryRow[i],
+                         col = problem.postOps.binaryCol[i];
                     if (row && col) {
                         auto ld = pd()->ld_binary(i);
                         po_offsets[i] += isColMajor(problem.binary[i].layout)

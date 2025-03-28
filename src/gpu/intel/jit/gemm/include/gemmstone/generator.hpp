@@ -68,7 +68,7 @@ protected:
     GRFMultirange outputCRange;
     std::vector<RegisterBlock> outputCLayout;
 
-    using Injector = PostOpInjector<hw>;
+    using Injector = PostOpsProblem::Injector<hw>;
     std::unique_ptr<Injector> postOpInjector;
 
     class status_stream {

@@ -19,7 +19,7 @@
 
 namespace gemmstone {
 
-BinaryOp toBinaryOp(const PostOps::entry_t &e) {
+BinaryOp PostOpsProblem::toBinaryOp(const PostOps::entry_t &e) {
     using namespace dnnl::impl;
     switch (e.as_binary().alg) {
         case alg_kind::binary_add: return BinaryOp::Add;

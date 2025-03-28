@@ -306,10 +306,10 @@ status_t gen_gemm_kernel_desc_t::transfer_post_ops(
         size_t po_count = post_ops.len();
         problem_.Tbinary.reserve(po_count);
         problem_.binary.reserve(po_count);
-        problem_.binaryRow = {};
-        problem_.binaryCol = {};
-        problem_.binaryBatch = {};
-        problem_.binaryTrans = {};
+        problem_.postOps.binaryRow = {};
+        problem_.postOps.binaryCol = {};
+        problem_.postOps.binaryBatch = {};
+        problem_.postOps.binaryTrans = {};
 
         if (problem_.Ta == Type::f16) problem_.Ts = Type::f32;
         if (problem_.Ta.isF8() || problem_.Tb.isF8()) problem_.Ts = Type::f32;
@@ -339,10 +339,10 @@ status_t gen_gemm_kernel_desc_t::transfer_post_ops(
             }
 
             problem_.Tbinary.push_back(T);
-            problem_.binaryRow[i] = is_multi_row;
-            problem_.binaryCol[i] = is_multi_col;
-            problem_.binaryBatch[i] = src_rmd.ndims() >= 3;
-            problem_.binaryTrans[i] = trans;
+            problem_.postOps.binaryRow[i] = is_multi_row;
+            problem_.postOps.binaryCol[i] = is_multi_col;
+            problem_.postOps.binaryBatch[i] = src_rmd.ndims() >= 3;
+            problem_.postOps.binaryTrans[i] = trans;
 
             MatrixAddressing atype;
             atype.layout = trans ? MatrixLayout::T : MatrixLayout::N;
@@ -497,7 +497,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
     problem_.sumB = (reduce_ab == sum_ab::sum_a_row);
 
-    problem_.cStochasticRound = dst_sround;
+    problem_.postOps.cStochasticRound = dst_sround;
 
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
@@ -855,7 +855,7 @@ void gen_gemm_kernel_t::init_interface() {
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
     }
-    if (problem.cStochasticRound) {
+    if (problem.postOps.cStochasticRound) {
         interface_.newArgument("sround_seed", ExternalArgumentType::GlobalPtr);
     }
 
@@ -872,7 +872,7 @@ void gen_gemm_kernel_t::init_interface() {
         interface_.newArgument(bname, ExternalArgumentType::GlobalPtr,
                 strategy.binary[i].getGlobalAccessType());
         interface_.newArgument("offset_" + bname, DataType::q);
-        if (problem.binaryRow[i] && problem.binaryCol[i])
+        if (problem.postOps.binaryRow[i] && problem.postOps.binaryCol[i])
             interface_.newArgument("ld" + bname, DataType::d);
     }
     if (problem.batch == BatchMode::Strided) {
@@ -882,7 +882,8 @@ void gen_gemm_kernel_t::init_interface() {
             interface_.newArgument("stride_C" + std::to_string(i), DataType::d);
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {
-            if (problem.postOps[i].is_binary() && problem.binaryBatch[i]) {
+            if (problem.postOps[i].is_binary()
+                    && problem.postOps.binaryBatch[i]) {
                 for (int b = 0; b < problem.batchDims; b++) {
                     interface_.newArgument("stride" + std::to_string(b)
                                     + "binary" + std::to_string(i),

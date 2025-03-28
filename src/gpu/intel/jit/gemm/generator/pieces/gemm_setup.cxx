@@ -479,7 +479,7 @@ void BLASKernelGenerator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subreg
     }
     if (doBinary) for (size_t i = 0; i < problem.postOps.len(); i++) {
         if (!problem.postOps[i].is_binary()) continue;
-        bool row = problem.binaryRow[i], col = problem.binaryCol[i];
+        bool row = problem.postOps.binaryRow[i], col = problem.postOps.binaryCol[i];
         auto T = problem.Tbinary[i];
         auto &ld = state.inputs.binaryLDs[i];
         auto offset = initial ? state.inputs.binaryOffsets[i] : state.effBinary[i];
@@ -2445,7 +2445,7 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
         state.inputs.bScalePtr = interface.getArgumentIfExists("b_scale_ptr");
         state.inputs.surfaceBScale = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
-    if (problem.cStochasticRound) 
+    if (problem.postOps.cStochasticRound)
         state.inputs.sroundSeedPtr = interface.getArgument("sround_seed");
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
     state.inputs.offsetB = interface.getArgumentIfExists("offset_B");
@@ -2718,7 +2718,7 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
 
     if (state.inputs.flags.isValid())
         state.ra.claim(state.inputs.flags);
-    if (problem.cStochasticRound)
+    if (problem.postOps.cStochasticRound)
         state.ra.claim(state.inputs.sroundSeedPtr);
     if (state.inputs.slmBase.isValid())
         state.ra.claim(state.inputs.slmBase);

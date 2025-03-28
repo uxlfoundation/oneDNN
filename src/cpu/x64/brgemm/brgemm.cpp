@@ -244,6 +244,8 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     if (type == brgemm_batch_kind_t::brgemm_batch_kind_undef)
         return status::invalid_arguments;
 
+    if (utils::one_of(data_type::f64, dt_a, dt_b)) return status::unimplemented;
+
     brgemm_utils::init_brgemm_conf(brg, isa, type, dt_a, dt_b, layout, alpha,
             beta, LDA, LDB, LDC, M, N, K, strides);
 
@@ -570,6 +572,10 @@ status_t brgemm_kernel_create(
         brgemm_kernel_t **brg_kernel, const brgemm_desc_t &brg) {
     if (!brg_kernel) return status::invalid_arguments;
     *brg_kernel = nullptr;
+
+    if (utils::one_of(data_type::f64, brg.dt_a, brg.dt_b, brg.dt_c, brg.dt_d,
+                brg.dt_bias, brg.sum_dt))
+        return status::unimplemented;
 
     if (brg.is_dgmm) {
         if (brg.type == brgemm_static_offs) return status::unimplemented;

@@ -126,6 +126,9 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
             one_of(true, is_f32_supported, is_xf16_supported, is_int8_supported,
                     is_fp8_supported, is_f32_xf16_supported),
             VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_CONV(!one_of(f64, diff_src_type, wei_type, diff_dst_type)
+                    && IMPLICATION(with_bias(), f64 != bias_md_.data_type),
+            VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
             VERBOSE_BAD_ALGORITHM);
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");

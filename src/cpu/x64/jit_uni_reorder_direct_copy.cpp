@@ -283,6 +283,9 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(
     const bool is_s32 = utils::everyone_is(s32, src_dt, dst_dt);
     VDISPATCH_REORDER(!is_s32, VERBOSE_UNSUPPORTED_DT);
 
+    const bool is_f64 = utils::one_of(f64, src_dt, dst_dt);
+    VDISPATCH_REORDER(!is_f64, VERBOSE_UNSUPPORTED_DT);
+
     VDISPATCH_REORDER(IMPLICATION(utils::one_of(bf16, src_dt, dst_dt),
                               mayiuse(avx512_core) || mayiuse(avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);

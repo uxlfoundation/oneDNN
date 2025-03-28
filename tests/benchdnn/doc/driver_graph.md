@@ -69,6 +69,12 @@
       restrictions for input and output tensor data types. Changing the data type
       of a tensor may lead to graph construction failures, for example, failure to
       perform the `add_op()` operation in the graph.
+  - `--op-kind=ID:KIND[+ID:KIND]` -- Override a series of operation kinds in the
+    input JSON file. `ID` specifies the operations in the graph, and `KIND`
+    indicates the target operation kind. To specify the kind of multiple
+    operations, use `+` to concatenate the `ID` and `KIND` pairs. An error will
+    occur if `ID` is not contained in the JSON file. Currently, this override
+    behavior is only allowed for binary and eltwise operations. 
 
 * [graph-case] is a JSON file which is dumped by a library or created from
   scratch. It must be passed to the graph driver as `--case=JSON_FILE`. Refer to

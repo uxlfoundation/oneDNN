@@ -117,6 +117,17 @@ bool parse_op_attrs(std::vector<std::map<size_t, std::string>> &op_attrs_vec,
     return parse_key_value(op_attrs_vec, op_attrs_str), true;
 }
 
+bool parse_op_kind(std::vector<std::map<size_t, std::string>> &op_kind_map,
+        const char *str, const std::string &option_name) {
+    std::string dts_str;
+    if (!parse_string(dts_str, str, option_name)) return false;
+
+    //--op-kind=ID:KIND[+ID:KIND], change the kind should not change the topology
+    if (dts_str.find(":") == std::string::npos) return false;
+    parse_key_value(op_kind_map, dts_str, option_name);
+    return true;
+}
+
 bool parse_dt(std::vector<dnnl_data_type_t> &dt,
         std::vector<std::map<size_t, dnnl_data_type_t>> &dt_map,
         const char *str, const std::string &option_name) {

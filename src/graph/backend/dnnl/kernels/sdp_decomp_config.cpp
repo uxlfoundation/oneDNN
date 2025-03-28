@@ -123,7 +123,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     // NOT always same.
     const auto &lt_wei = sdp_op[1]->get_input_value(1)->get_logical_tensor();
     const ltw ltw_wei(lt_wei);
-    seq_len_kv = ltw_wei.vdims()[3];
+    seq_len_kv = ltw_wei.vdims()[ndims - 1];
 
     // Acquire the data type from input param for later primitive creation.
     // The src and wei dt of both quantized sdp and float sdp are the same.
@@ -507,6 +507,10 @@ impl::status_t sdp_decomp_config_t::record_input_offset(
             // TODO(xxx): Currently, p2 is not supported by decomp kernel.
             // p1: [matmul] --> [scale] --> [select] --> [mask] --> ...
             // p2: [matmul] --> [select] --> [scale] --> [mask] --> ...
+            VCHECK_SDP_DECOMP(
+                    mm1->get_attr<bool>(op_attr::transpose_a) == false,
+                    status::unimplemented,
+                    "Not support matmul 1 transpose_a is true");
             VCHECK_SDP_DECOMP(post_op->get_kind() != graph::op_kind::Select,
                     status::unimplemented,
                     "Not support select between matmul1 and scale");

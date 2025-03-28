@@ -97,10 +97,10 @@ status_t primitive_execute(
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
-        stream->wait();
         double start_ms = get_msec();
         status = stream->enqueue_primitive(primitive_iface, ctx);
-        stream->wait();
+        // Do not enclose enqueue_primitive with waits, as calling waits is
+        // illegal when DNN code is called during SYCL graph recording.
         double duration_ms = get_msec() - start_ms;
         if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency

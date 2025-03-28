@@ -903,8 +903,7 @@ bool data_types_ok(
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
-    if (is_fp8
-            && !(utils::one_of(hw, ngen::HW::XeHPC) && hw.systolic_support()))
+    if (is_fp8 && !(hw >= ngen::HW::XeHPC && hw.systolic_support()))
         return false;
     if (prb.is_fwd) return true;
     if (prb.is_bwd_d) return true;

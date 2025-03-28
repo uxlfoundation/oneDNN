@@ -32,7 +32,7 @@ oneDNN supports training and inference with the following data types:
 | Usage mode | CPU                                                                          | GPU                                           |
 |:-----------|:-----------------------------------------------------------------------------|:----------------------------------------------|
 | Inference  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1, f4\_e3m0, s8/u8, s4/u4, boolean | f32, bf16, f16, f8\_e5m2/f8\_e4m3, s8/u8, f64 |
-| Training   | f32, bf16, f16                                                               | f32, bf16, f16, f64                           |
+| Training   | f32, bf16, f16, f8\_e5m2/f8\_e4m3                                            | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f64        |
 
 @note
     Using lower precision arithmetic may require changes in the deep learning
@@ -211,17 +211,23 @@ library:
    * Intel(R) Data Center GPU Flex Series (formerly Arctic Sound)
  * Xe-HPC (accelerated f16, bf16, u8, and s8 support via DPAS and f64 support via MAD)
    * Intel(R) Data Center GPU Max Series (formerly Ponte Vecchio)
+ * Xe2-LPG
+   * Intel(R) Graphics for Intel(R) Core(TM) Ultra processors (Series 2) (formerly Lunar Lake)
+ * Xe2-HPG
+   * Intel(R) Arc(TM) B-Series Graphics (formerly Battlemage)
 
 The following table indicates the data types with performant compute primitives
 for each uArch supported by oneDNN. Unless otherwise noted, all data types have 
 reference support on all architectures.
 
-| uArch  | Supported Data types                                                |
-|:-------|:--------------------------------------------------------------------|
-| Xe-LP  | f32, f16, s8, u8                                                    |
-| Xe-HPG | f32, f16, bf16, s8, u8                                              |
-| Xe-HPC | f64, f32, bf16, f16, s8, u8                                         |
-| TBA    | f64, f32, bf16, f16, s8, u8, f8\_e5m2, f8\_e4m3, f4\_e2m1, f4\_e3m0 |
+| uArch   | Supported Data types                                                |
+|:--------|:--------------------------------------------------------------------|
+| Xe-LP   | f32, f16, s8, u8                                                    |
+| Xe-HPG  | f32, f16, bf16, s8, u8                                              |
+| Xe-HPC  | f64, f32, bf16, f16, s8, u8                                         |
+| Xe2-LPG | f64, f32, bf16, f16, s8, u8                                         |
+| Xe2-HPG | f64, f32, bf16, f16, s8, u8                                         |
+| TBA     | f64, f32, bf16, f16, s8, u8, f8\_e5m2, f8\_e4m3, f4\_e2m1, f4\_e3m0 |
 
 
 @note
@@ -229,8 +235,8 @@ reference support on all architectures.
   double-precision floating-point.
 
 @note
-  f8\_e5m2 compute operations have limited performance through upconversion on
-  Xe-HPC.
+  f8\_e5m2 and f8\_e4m3 compute operations have limited performance through upconversion on
+  Xe-HPC and Xe2 GPUs.
 
 @note
   f16 operations may be faster with f16 accumulation on GPU architectures older

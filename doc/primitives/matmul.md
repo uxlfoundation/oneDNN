@@ -181,8 +181,8 @@ memory buffer that shares its shape with the destination buffer).
    - Sum post-op doesn't support data type other than destination data type.
    - Bias of bf16 data type is supported for configuration with bf16 source data
      type and weights bf16 data type, and up to three dimensional matrices.
-   - Only reference support is available for f8_e4m3. Optimized implementation
-     for f8_e5m2 is available only on Intel(R) Data Center GPU Max Series.
+   - Optimized implementations for fp8 data type are available only on Intel(R) 
+     Data Center GPU Max Series and Intel(R) Xe2 Graphics.
    - Configuration with int8 source data type, s8 weight data type and bf16
      destination data type don't support:
      * Destination zero point.
@@ -196,8 +196,6 @@ memory buffer that shares its shape with the destination buffer).
      destination data type isn't supported.
    - Configuration with floating point source data type, integer weights data
      type and floating point destination data type is not optimized.
-   - Only reference support for fp8 data types (f8_e5m2, f8_e4m3) is
-     is available on CPU.
    - The layout of dropout mask has to be exactly the same as that of dst.
  
 ## Performance Tips

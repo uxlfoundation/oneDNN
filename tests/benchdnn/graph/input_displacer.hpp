@@ -22,34 +22,39 @@
 #include "src/common/memory_desc.hpp"
 #include "utils/fill.hpp"
 
+#define SEQ_LEN_Q 0
+#define SEQ_LEN_KV 1
+
 namespace graph {
 
 enum class filling_type_t {
     undef = 0,
     quantization,
-    // Floating-point power-of-2 values for precise disivision/multiplication.
-    pow2,
-    // Explicit causal mask from SDPA pattern.
     causal_mask,
-    // Implicit causal mask free input.
-    minus_infinity,
-    // Explicit padding mask (1D case) through the Add op from SDPA pattern.
-    zero,
-    // TODO: `pow2`, `minus_infinity`, `zero` and `one` types can be replaced
-    // with the one defined by non empty fill_cfg which will become a member
-    // of displacer.
-    // Explicit padding mask (1D case) through the Select op from SDPA pattern.
-    one,
+    // Fill pre-defined fixed values for data filling, such as 0, 1, -inf, and
+    // specified shape information for scalar input.
+    fixed_setting,
 };
 
-// tuple<
-//     main op,
-//     main op offset,
-//     the tensor as a displace starting point,
-//     filling_type
-// >
-using displace_t = ::std::tuple<::graph::deserialized_op_t, size_t,
-        ::graph::deserialized_lt, filling_type_t>;
+struct displace_args_t {
+
+public:
+    displace_args_t() = default;
+    displace_args_t(const deserialized_op_t &op, size_t offset,
+            const deserialized_lt &lt, filling_type_t type, fill_cfg_t cfg = {})
+        : main_op_(op)
+        , main_op_offset_(offset)
+        , tensor_(lt)
+        , filling_type_(type)
+        , fill_cfg_(cfg) {}
+
+    deserialized_op_t main_op_;
+    size_t main_op_offset_;
+    //the tensor as a displace starting point
+    deserialized_lt tensor_;
+    filling_type_t filling_type_;
+    fill_cfg_t fill_cfg_;
+};
 
 class partition_data_displacer_t {
 public:
@@ -63,7 +68,7 @@ private:
     // A set of op_id values from a partition came to a displacer. Used to
     // identify at displacement stage if Deq is the starting point or not.
     std::unordered_set<size_t> op_ids_set_;
-    ::std::unordered_map<size_t, displace_t> quantize_displace_;
+    ::std::unordered_map<size_t, displace_args_t> displace_args_;
 
     int gen_quantize_filling(const ::graph::deserialized_op_t &main_op, int arg,
             dnn_mem_t &mem, const ::std::string &dt, res_t *res);

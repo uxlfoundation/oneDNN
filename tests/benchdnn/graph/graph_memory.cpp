@@ -116,6 +116,8 @@ dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
             str2layout(lt.layout_type_), lt.get_property_type());
     if (lt.get_property_type()
             == dnnl::graph::logical_tensor::property_type::host_scalar) {
+        int32_t *value = static_cast<int32_t *>(data_handle);
+        std::cout << "Create scalar memory: " << *value << std::endl;
         dnnl::graph::tensor ret(graph_lt, get_graph_host_engine(), data_handle);
         return ret;
     } else {

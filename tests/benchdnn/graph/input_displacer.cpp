@@ -74,11 +74,26 @@ partition_data_displacer_t::partition_data_displacer_t(
                 parent_op = &dg_->get_op_by_out_lt(lt->id_);
                 if (parent_op->empty()) {
                     if (aop.kind_ == "Divide" || aop.kind_ == "Multiply") {
+                        // Division has values > 1.f to reduce final values.
+                        static const std::vector<float> pow2_div_vals {
+                                2.f, 4.f, 8.f};
+                        // Multiplication has values <= 1.f to reduce final values.
+                        static const std::vector<float> pow2_mul_vals {
+                                0.25f, 0.5f, 1.f};
+                        // Guard set.
+                        static const std::vector<float> dummy {};
+                        const bool is_div = aop.kind_ == "Divide";
+                        const bool is_mul = aop.kind_ == "Multiply";
+                        const auto &user_set = is_div
+                                ? pow2_div_vals
+                                : (is_mul ? pow2_mul_vals : dummy);
+
                         // There's a special case for Divide, when second (user)
                         // input should be displaced with power-of-2 values.
-                        quantize_displace_.emplace(lt->id_,
-                                std::make_tuple(
-                                        aop, i, *lt, filling_type_t::pow2));
+                        displace_args_.emplace(lt->id_,
+                                displace_args_t {aop, i, *lt,
+                                        filling_type_t::fixed_setting,
+                                        {user_set, "Mul/Div displacer"}});
                     }
                     break;
                 }
@@ -105,13 +120,12 @@ partition_data_displacer_t::partition_data_displacer_t(
                                         == f8_main_op_kind.end()))
                             break;
 
-                        quantize_displace_.emplace(parent_op_in_lt.id_,
-                                std::make_tuple(aop, i, parent_op_in_lt,
-                                        filling_type_t::quantization));
+                        displace_args_.emplace(parent_op_in_lt.id_,
+                                displace_args_t {aop, i, parent_op_in_lt,
+                                        filling_type_t::quantization});
                         break;
                     }
-                }
-                if (parent_op->kind_ == "StaticReshape") {
+                } else if (parent_op->kind_ == "StaticReshape") {
                     // StaticReshape is accepted when the pattern is
                     // "StaticReshape + Matmul" and it doesn't have any
                     // predecessors in the partition
@@ -122,9 +136,9 @@ partition_data_displacer_t::partition_data_displacer_t(
                             || op_ids_set_.find(prev_parent_op.id_)
                                     == op_ids_set_.end()) {
                         if (aop.kind_ == "MatMul") {
-                            quantize_displace_.emplace(parent_op_in_lt.id_,
-                                    std::make_tuple(aop, i, parent_op_in_lt,
-                                            filling_type_t::quantization));
+                            displace_args_.emplace(parent_op_in_lt.id_,
+                                    displace_args_t {aop, i, parent_op_in_lt,
+                                            filling_type_t::quantization});
                         }
                         break;
                     }
@@ -203,6 +217,8 @@ partition_data_displacer_t::partition_data_displacer_t(
             if (!causal_mask_lt) break;
 
             filling_type_t filling_type = filling_type_t::undef;
+            std::string cfg_name {};
+            float user_set_value = 0.f;
             if (aop.kind_ == "Add") {
                 const auto ndims = causal_mask_lt->shape_.size();
                 if (ndims < 2) {
@@ -219,7 +235,8 @@ partition_data_displacer_t::partition_data_displacer_t(
                     // are computed. To avoid numerical instabilities, a zero
                     // mask can be applied without compromising validation
                     // capabilities.
-                    filling_type = filling_type_t::zero;
+                    filling_type = filling_type_t::fixed_setting;
+                    cfg_name = "Explicit_padding_mask";
                 } else {
                     // This is a look-ahead (or causal) mask case, when future
                     // tokens (row < col) are set to infinity to remove all
@@ -229,17 +246,21 @@ partition_data_displacer_t::partition_data_displacer_t(
             } else if (aop.kind_ == "Select") {
                 if (select_cond_has_parent) {
                     // Implicit causal mask case.
-                    filling_type = filling_type_t::minus_infinity;
+                    filling_type = filling_type_t::fixed_setting;
+                    user_set_value = -1e30;
+                    cfg_name = "Implicit_causal_mask";
                 } else {
                     // Padding mask.
                     assert(qk_data_offset == 1 || qk_data_offset == 2);
                     // Fill condition depending on qk values tensor to use only
                     // its values, which is equivalent of not using a mask.
+                    filling_type = filling_type_t::fixed_setting;
                     if (qk_data_offset == 1) {
-                        filling_type = filling_type_t::one;
+                        user_set_value = 1.f;
                     } else if (qk_data_offset == 2) {
-                        filling_type = filling_type_t::zero;
+                        user_set_value = 0.f;
                     }
+                    cfg_name = "Explicit_padding_mask";
                 }
             }
 
@@ -247,11 +268,66 @@ partition_data_displacer_t::partition_data_displacer_t(
                 BENCHDNN_PRINT(
                         7, "%s\n", "[DISPLACE]: Filling type was not set");
                 break;
+            } else if (filling_type == filling_type_t::fixed_setting) {
+                const std::vector<float> user_set {user_set_value};
+                displace_args_.emplace(causal_mask_lt->id_,
+                        displace_args_t {aop, offset, *causal_mask_lt,
+                                filling_type, {user_set, cfg_name}});
+            } else {
+                // Casual mask filling
+                displace_args_.emplace(causal_mask_lt->id_,
+                        displace_args_t {
+                                aop, offset, *causal_mask_lt, filling_type});
             }
 
-            quantize_displace_.emplace(causal_mask_lt->id_,
-                    std::make_tuple(
-                            aop, offset, *causal_mask_lt, filling_type));
+            break;
+        }
+
+        // Fill scalar for bottom-right implicit casual mask
+        if (aop.kind_ == "Add") {
+            const std::string cfg_name = "Bottom_right_implicit_padding_mask";
+
+            auto *aop_out_lt = &aop.out_lts_[0];
+            auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+            if (child_op->kind_ != "Subtract") break;
+
+            auto *child_op_out_lt = &child_op->out_lts_[0];
+            auto *next_child_op = &dg_->get_op_by_in_lt(child_op_out_lt->id_);
+            if (next_child_op->kind_ != "GreaterEqual") break;
+
+            // The following subtract and greaterEqual must also be a part of
+            // the partition.
+            if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()
+                    || op_ids_set_.find(next_child_op->id_)
+                            == op_ids_set_.end())
+                break;
+
+            const auto set_scalar_displace_args =
+                    [&, this](const deserialized_op_t *op, int which_seq_len) {
+                        const size_t ndims = op->out_lts_[0].shape_.size();
+                        const size_t seq_len_idx = (which_seq_len == SEQ_LEN_Q)
+                                ? ndims - 2
+                                : ndims - 1;
+
+                        for (size_t i = 0; i < op->in_lts_.size(); i++) {
+                            if (op->in_lts_[i].get_property_type()
+                                    == logical_tensor::property_type::
+                                            host_scalar) {
+                                float user_set_value = static_cast<float>(
+                                        op->in_lts_[1 - i].shape_[seq_len_idx]);
+                                const std::vector<float> user_set {
+                                        user_set_value};
+
+                                displace_args_.emplace(op->in_lts_[i].id_,
+                                        displace_args_t {*op, i, op->in_lts_[i],
+                                                filling_type_t::fixed_setting,
+                                                {user_set, cfg_name}});
+                            }
+                        }
+                    };
+
+            set_scalar_displace_args(&aop, SEQ_LEN_Q);
+            set_scalar_displace_args(child_op, SEQ_LEN_KV);
             break;
         }
     }
@@ -264,16 +340,16 @@ int partition_data_displacer_t::displace_input_data(
         return FAIL;
     }
 
-    if (quantize_displace_.find(lt_id) == quantize_displace_.end()) {
+    if (displace_args_.find(lt_id) == displace_args_.end()) {
         // no need to displace the data of this tensor
         return OK;
     }
-    const displace_t &displace = quantize_displace_.at(lt_id);
-
-    const auto &main_op = ::std::get<0>(displace);
-    auto main_op_offset = ::std::get<1>(displace);
-    auto tensor = ::std::get<2>(displace);
-    const auto filling_type = ::std::get<3>(displace);
+    const displace_args_t &displace = displace_args_.at(lt_id);
+    const auto &main_op = displace.main_op_;
+    auto main_op_offset = displace.main_op_offset_;
+    auto tensor = displace.tensor_;
+    auto &fill_cfg = displace.fill_cfg_;
+    const auto filling_type = displace.filling_type_;
 
     auto opkind = opstr2kind(main_op.kind_);
     int main_op_arg = get_prim_arg_name_from_graph_op_input_offset(
@@ -287,38 +363,9 @@ int partition_data_displacer_t::displace_input_data(
         SAFE(gen_quantize_filling(
                      main_op, main_op_arg, mem_replace, tensor.data_type_, res),
                 WARN);
-    } else if (filling_type == filling_type_t::pow2) {
-        // This custom displace serves a shrinking the output purpose. Values
-        // are picked in the way to have more chances of ending with exact lower
-        // data type representative in the output, which in turn decreases the
-        // number of points with non-zero absolute diff.
-
-        // Division has values > 1.f to reduce final values.
-        static const std::vector<float> pow2_div_vals {2.f, 4.f, 8.f};
-        // Multiplication has values <= 1.f to reduce final values.
-        static const std::vector<float> pow2_mul_vals {0.25f, 0.5f, 1.f};
-        // Guard set.
-        static const std::vector<float> dummy {};
-
-        const bool is_div = main_op.kind_ == "Divide";
-        const bool is_mul = main_op.kind_ == "Multiply";
-        const auto &user_set
-                = is_div ? pow2_div_vals : (is_mul ? pow2_mul_vals : dummy);
-        fill_cfg_t fill_cfg(user_set, "Mul/Div displacer");
-        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
     } else if (filling_type == filling_type_t::causal_mask) {
         SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
-    } else if (filling_type == filling_type_t::minus_infinity) {
-        static const std::vector<float> user_set {-1e30};
-        fill_cfg_t fill_cfg(user_set, "Implicit_causal_mask");
-        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
-    } else if (filling_type == filling_type_t::zero) {
-        static const std::vector<float> user_set {0.f};
-        fill_cfg_t fill_cfg(user_set, "Explicit_padding_mask");
-        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
-    } else if (filling_type == filling_type_t::one) {
-        static const std::vector<float> user_set {1.f};
-        fill_cfg_t fill_cfg(user_set, "Explicit_padding_mask");
+    } else if (filling_type == filling_type_t::fixed_setting) {
         SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
     } else {
         assert(!"unexpected filling type");

@@ -274,11 +274,13 @@ struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
             VDISPATCH_CONV(utils::one_of(desc()->diff_weights_desc.data_type,
                                    f32, bf16, f16, f64, f8_e5m2, f8_e4m3),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(desc()->src_desc.data_type, f32, bf16,
-                                   f16, f64, f8_e5m2, f8_e4m3),
+            VDISPATCH_CONV(
+                    utils::one_of(desc()->src_desc.data_type, f32, bf16, f16,
+                            f64, f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(desc()->diff_dst_desc.data_type, f32,
-                                   bf16, f16, f64, f8_e5m2, f8_e4m3),
+            VDISPATCH_CONV(
+                    utils::one_of(desc()->diff_dst_desc.data_type, f32, bf16,
+                            f16, f64, f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_CONV(

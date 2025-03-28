@@ -772,7 +772,8 @@ float __attribute__((overloadable)) cvt_f4_e3m0_to_f32(uchar a) {
         || MATH_UTILS_DECLARE_F4_E2M1 || MATH_UTILS_DECLARE_F4_E3M0
 #define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 
-uchar __attribute__((overloadable)) get_half_byte(__global uchar *x, off_t y) {
+uchar __attribute__((overloadable))
+get_half_byte(const __global uchar *x, off_t y) {
     uchar ret = 0;
     if (y % 2) {
         ret = (uchar)((uchar)(x[y / 2] & 0xf0) >> 4);
@@ -782,7 +783,8 @@ uchar __attribute__((overloadable)) get_half_byte(__global uchar *x, off_t y) {
     return ret;
 }
 
-char __attribute__((overloadable)) get_half_byte(__global char *x, off_t y) {
+char __attribute__((overloadable))
+get_half_byte(const __global char *x, off_t y) {
     if (y % 2) {
         return (x[y / 2] & 0xf0) >> 4;
     } else {

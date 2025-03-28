@@ -864,7 +864,7 @@ status_t xe_hp_systolic_gemm_t::launch_compute(const gemm_exec_ctx_t &ctx,
         arg_list.set(argn++, *po_srcs[i]);
         arg_list.set(argn++, offset_po_src[i]);
 
-        if (problem_.binaryRow[i] && problem_.binaryCol[i])
+        if (problem_.postOps.binaryRow[i] && problem_.postOps.binaryCol[i])
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
     }
 
@@ -878,7 +878,7 @@ status_t xe_hp_systolic_gemm_t::launch_compute(const gemm_exec_ctx_t &ctx,
             arg_list.set(argn++, stride_c);
         }
         for (int i = 0; i < po_count; i++) {
-            if (problem_.binaryBatch[i]) {
+            if (problem_.postOps.binaryBatch[i]) {
                 for (int b = 0; b < pd()->batch_dims(); b++) {
                     auto top = pd()->batch_dims() - b - 1;
                     arg_list.set(argn++, int32_t(pd()->stride_binary(i, top)));
@@ -1094,8 +1094,8 @@ status_t xe_hp_systolic_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
 
                 for (int i = 0; i < po_count; i++) {
                     po_offsets[i] = po_offsets0[i];
-                    bool row = problem_.binaryRow[i],
-                         col = problem_.binaryCol[i];
+                    bool row = problem_.postOps.binaryRow[i],
+                         col = problem_.postOps.binaryCol[i];
                     if (row && col) {
                         auto ld = pd()->ld_binary(i);
                         po_offsets[i] += isColMajor(problem_.binary[i].layout)

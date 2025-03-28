@@ -2478,6 +2478,8 @@ status_t jit_uni_tbb_batch_normalization_fwd_t<isa>::pd_t::init(
     VDISPATCH_BNORM(
             memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md()),
             VERBOSE_INCONSISTENT_MDS, "src", "dst");
+    VDISPATCH_BNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // BN+Add+Relu fusion is not currently implemented
     VDISPATCH_BNORM(!(fuse_norm_add_relu()), VERBOSE_UNSUPPORTED_FEATURE,
@@ -2609,6 +2611,9 @@ status_t jit_uni_tbb_batch_normalization_bwd_t<isa>::pd_t::init(
     VDISPATCH_BNORM(memory_desc_wrapper(diff_src_md())
                     == memory_desc_wrapper(diff_dst_md()),
             VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
+    VDISPATCH_BNORM(impl::is_dense_format_kind(
+                            {src_md(), diff_src_md(), dst_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // BN+Add+Relu fusion is not currently implemented
     VDISPATCH_BNORM(!(fuse_norm_add_relu()), VERBOSE_UNSUPPORTED_FEATURE,

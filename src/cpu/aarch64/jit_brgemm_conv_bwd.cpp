@@ -108,6 +108,10 @@ status_t brgemm_convolution_bwd_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_BAD_ALGORITHM);
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), diff_src_md(), weights_md(0),
+                    weights_md(1), dst_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     convolution_desc_t fwd_conv_d = convolution_desc_t();
     CHECK(fwd_conv_desc_create(&fwd_conv_d, desc()));

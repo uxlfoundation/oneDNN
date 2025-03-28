@@ -222,7 +222,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     if (aoScalarLoad) loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
     if (boScalarLoad) loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
 
-    if (problem.cStochasticRound) {
+    if (problem.postOps.cStochasticRound) {
         state.inputs.sroundSeed = state.ra.alloc_sub(DataType::ud, getHint(HintType::LongTerm, strategy));
         vector<Subregister> srcs;
         srcs.push_back(state.inputs.sroundSeedPtr);

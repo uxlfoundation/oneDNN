@@ -17,6 +17,9 @@
 #ifndef GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 #define GPU_INTEL_JIT_CONFIG_GEMMSTONE_CONFIG_HPP
 
+#include <bitset>
+
+#include "common/primitive_attr.hpp"
 #include "common/serialization.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/gpu_post_ops.hpp"
@@ -52,62 +55,97 @@ inline void verbosePrintf(const char *fmtStr, Args... args) {
 namespace micro = dnnl::impl::gpu::intel::micro;
 
 using SerializationStream = dnnl::impl::serialization_stream_t;
-using PostOps = dnnl::impl::gpu::intel::gpu_post_ops_t;
-template <ngen::HW hw>
-using PostOpInjector = dnnl::impl::gpu::intel::jit::post_op_injector_t<
-        dnnl::impl::gpu::intel::jit::generator_t<hw>>;
-constexpr int maxPostOps = dnnl::impl::post_ops_t::post_ops_limit;
 
 enum class BinaryOp;
-BinaryOp toBinaryOp(const PostOps::entry_t &e);
+using PostOps = dnnl::impl::gpu::intel::gpu_post_ops_t;
+struct PostOpsProblem {
+    PostOpsProblem() = default;
+    PostOpsProblem(PostOps &&ops) : ops(std::move(ops)) {};
 
-template <ngen::HW hw>
-void injectNonBinaryPostOps(const PostOps::entry_t &entry,
-        dnnl::impl::gpu::intel::jit::generator_t<hw> *g,
-        ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
-        int C_ngrf, bool postOpFwd) {
-    namespace jit = dnnl::impl::gpu::intel::jit;
-    switch (entry.kind()) {
-        case dnnl::impl::gpu::intel::post_op::kind_t::eltwise: {
-            using Injector = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
-            int euCount = 0; /* only used for a DG2 W/A for conv */
-            auto &ee = entry.as_eltwise();
-            Injector injector {g, ee.alg, ee.alpha, ee.beta, ee.scale, euCount,
-                    ngen::GRFRange(), postOpFwd};
+    static const int maxPostOps = dnnl::impl::post_ops_t::post_ops_limit;
 
-            auto scratch
-                    = ra.try_alloc_range(injector.preferred_scratch_regs());
-            if (scratch.isInvalid())
-                scratch = ra.alloc_range(injector.min_scratch_regs());
+    template <ngen::HW hw>
+    using Injector
+            = dnnl::impl::gpu::intel::jit::post_op_injector_t<GENERATOR_BASE(
+                    hw)>;
+    static BinaryOp toBinaryOp(const PostOps::entry_t &e);
 
-            injector.set_scratch(scratch);
-            injector.prepare();
-            injector.compute(C_grfs, C_ngrf);
-            break;
-        }
-        default: gpu_error_not_expected();
+    bool empty() const { return ops.empty(); }
+    size_t len() const { return ops.len(); }
+    PostOps::entry_t &operator[](size_t idx) { return ops[idx]; }
+    const PostOps::entry_t &operator[](size_t idx) const { return ops[idx]; }
+
+    void transpose() {
+        std::swap(binaryRow, binaryCol);
+        binaryTrans.flip();
     }
-}
 
-template <ngen::HW hw>
-void injectStochasticRound(dnnl::impl::gpu::intel::jit::generator_t<hw> *g,
-        ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
-        int C_ngrf, bool postOpFwd, const ngen::Subregister &seed,
-        ngen::DataType t) {
-    namespace jit = dnnl::impl::gpu::intel::jit;
-    using Injector = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
-    int euCount = 0; /* only used for a DG2 W/A for conv */
-    Injector injector {g, dnnl::impl::alg_kind::eltwise_stochastic_round, 0.0,
-            0.0, 1.0, euCount, ngen::GRFRange(), postOpFwd};
-    auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());
-    if (scratch.isInvalid())
-        scratch = ra.alloc_range(injector.min_scratch_regs());
-    if (scratch.isInvalid()) gpu_error_not_expected();
+    void serialize(SerializationStream &s) const {
+        s.append(ops);
+        s.append(binaryRow);
+        s.append(binaryCol);
+        s.append(binaryBatch);
+        s.append(binaryTrans);
+        s.append(fwd);
+        s.append(cStochasticRound);
+    }
 
-    injector.set_scratch(scratch);
-    injector.prepare();
-    injector.compute(C_grfs, C_ngrf, seed.getBase(), seed.getOffset(), t);
-}
+    PostOps ops;
+    std::bitset<maxPostOps> binaryRow; // Broadcasts row data if false
+    std::bitset<maxPostOps> binaryCol; // Broadcasts column data if false
+    std::bitset<maxPostOps> binaryBatch; // Broadcasts batch data if false
+    std::bitset<maxPostOps> binaryTrans; // Used to compute GEMMProblem::binary
+
+    bool fwd = true;
+    bool cStochasticRound = false;
+
+    template <ngen::HW hw>
+    void injectNonBinaryPostOps(const PostOps::entry_t &entry,
+            GENERATOR_BASE(hw) * g, ngen::RegisterAllocator ra,
+            int C_grfs[ngen::GRF::maxRegs()], int C_ngrf) const {
+        namespace jit = dnnl::impl::gpu::intel::jit;
+        switch (entry.kind()) {
+            case dnnl::impl::gpu::intel::post_op::kind_t::eltwise: {
+                using Injector
+                        = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
+                int euCount = 0; /* only used for a DG2 W/A for conv */
+                auto &ee = entry.as_eltwise();
+                Injector injector {g, ee.alg, ee.alpha, ee.beta, ee.scale,
+                        euCount, ngen::GRFRange(), fwd};
+
+                auto scratch
+                        = ra.try_alloc_range(injector.preferred_scratch_regs());
+                if (scratch.isInvalid())
+                    scratch = ra.alloc_range(injector.min_scratch_regs());
+
+                injector.set_scratch(scratch);
+                injector.prepare();
+                injector.compute(C_grfs, C_ngrf);
+                break;
+            }
+            default: gpu_error_not_expected();
+        }
+    }
+
+    template <ngen::HW hw>
+    void injectStochasticRound(GENERATOR_BASE(hw) * g,
+            ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
+            int C_ngrf, const ngen::Subregister &seed, ngen::DataType t) const {
+        namespace jit = dnnl::impl::gpu::intel::jit;
+        using Injector = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
+        int euCount = 0; /* only used for a DG2 W/A for conv */
+        Injector injector {g, dnnl::impl::alg_kind::eltwise_stochastic_round,
+                0.0, 0.0, 1.0, euCount, ngen::GRFRange(), fwd};
+        auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());
+        if (scratch.isInvalid())
+            scratch = ra.alloc_range(injector.min_scratch_regs());
+        if (scratch.isInvalid()) gpu_error_not_expected();
+
+        injector.set_scratch(scratch);
+        injector.prepare();
+        injector.compute(C_grfs, C_ngrf, seed.getBase(), seed.getOffset(), t);
+    }
+};
 
 } // namespace gemmstone
 #endif

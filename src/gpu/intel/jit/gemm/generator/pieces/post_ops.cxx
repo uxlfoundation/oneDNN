@@ -449,7 +449,7 @@ void BLASKernelGenerator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, c
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    if (poMin >= poMax && !problem.cStochasticRound) return;
+    if (poMin >= poMax && !problem.postOps.cStochasticRound) return;
 
     Label lSkip;
     and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagNonfinalKBlock);
@@ -525,9 +525,9 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
         if(entry.is_binary()) {
             auto &ld = state.inputs.binaryLDs[i];
             auto &eff = state.effBinary[i];
-            auto op = toBinaryOp(entry);
+            auto op = PostOpsProblem::toBinaryOp(entry);
 
-            bool ok = gemmBinaryOpC(op, problem.binaryRow[i], problem.binaryCol[i],
+            bool ok = gemmBinaryOpC(op, problem.postOps.binaryRow[i], problem.postOps.binaryCol[i],
                                     problem.Tbinary[i], problem.binary[i], strategy.binary[i],
                                     eff, ld, problem, strategy, state);
             if (!ok) stub();
@@ -538,11 +538,11 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
 
             if (state.Tacc != Type::f32) stub();
 
-            injectNonBinaryPostOps(entry, this, state.ra, C_grfs, C_ngrf, problem.postOpFwd);
+            problem.postOps.injectNonBinaryPostOps(entry, this, state.ra, C_grfs, C_ngrf);
         }
     }
-    if(problem.cStochasticRound) {
-        injectStochasticRound(this, state.ra, C_grfs, C_ngrf, problem.postOpFwd, state.inputs.sroundSeed, problem.Tc_ext.ngen());
+    if(problem.postOps.cStochasticRound) {
+        problem.postOps.injectStochasticRound(this, state.ra, C_grfs, C_ngrf, state.inputs.sroundSeed, problem.Tc_ext.ngen());
     }
 
     mark(lSkip);

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Arm Ltd. and affiliates
+* Copyright 2022-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,24 +18,17 @@
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 
-#include "cpu/aarch64/acl_thread.hpp"
-
 #include "common/counting_barrier.hpp"
 #include "common/dnnl_thread.hpp"
+#include "cpu/aarch64/acl_thread.hpp"
 
 #include "arm_compute/core/CPP/ICPPKernel.h"
 #include "arm_compute/core/Error.h"
-#include "arm_compute/core/Helpers.h"
-#include "arm_compute/core/Utils.h"
 #include "arm_compute/runtime/IScheduler.h"
 
-// BARRIER
 #include <atomic>
 #include <cassert>
-#include <chrono>
 #include <mutex>
-#include <thread>
-#include <condition_variable>
 
 namespace dnnl {
 namespace impl {
@@ -51,7 +44,7 @@ public:
 
     /// Function to check the next element in the range if there is one.
     bool get_next(unsigned int &next) {
-        next = atomic_fetch_add_explicit(
+        next = std::atomic_fetch_add_explicit(
                 &_atomic_counter, 1u, std::memory_order_relaxed);
         return next < _end;
     }
@@ -70,11 +63,8 @@ void process_workloads(std::vector<IScheduler::Workload> &workloads,
     } while (feeder.get_next(workload_index));
 }
 
-ThreadpoolScheduler::ThreadpoolScheduler() {
-    using namespace dnnl::impl::threadpool_utils;
-    // Set number of threads to one when threadpool is not available.
-    _num_threads = get_active_threadpool() == nullptr ? 1 : num_threads_hint();
-}
+ThreadpoolScheduler::ThreadpoolScheduler()
+    : _num_threads(dnnl_get_max_threads()) {}
 
 ThreadpoolScheduler::~ThreadpoolScheduler() = default;
 
@@ -83,8 +73,8 @@ unsigned int ThreadpoolScheduler::num_threads() const {
 }
 
 void ThreadpoolScheduler::set_num_threads(unsigned int num_threads) {
-    arm_compute::lock_guard<std::mutex> lock(this->_run_workloads_mutex);
-    _num_threads = num_threads == 0 ? num_threads_hint() : num_threads;
+    std::lock_guard<std::mutex> lock(this->_mtx);
+    _num_threads = num_threads == 0 ? dnnl_get_max_threads() : num_threads;
 }
 
 void ThreadpoolScheduler::schedule(ICPPKernel *kernel, const Hints &hints) {
@@ -104,7 +94,7 @@ void ThreadpoolScheduler::schedule_op(ICPPKernel *kernel, const Hints &hints,
 void ThreadpoolScheduler::run_workloads(
         std::vector<arm_compute::IScheduler::Workload> &workloads) {
 
-    arm_compute::lock_guard<std::mutex> lock(this->_run_workloads_mutex);
+    std::lock_guard<std::mutex> lock(this->_mtx);
 
     const unsigned int num_threads
             = std::min(static_cast<unsigned int>(_num_threads),

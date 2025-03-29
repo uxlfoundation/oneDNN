@@ -1032,6 +1032,8 @@ DNNL_GRAPH_OP_SCHEMA(SoftMax, 1,
                 .set_input(0, "src", "T")
                 .set_output(0, "dst", "T")
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
+                .set_attr(op_attr::mode, false, attribute_kind::s, "none",
+                        {"none", "safe"})
                 .set_type_constraints(
                         "T", {data_type::f32, data_type::bf16, data_type::f16})
                 .set_shape_inference_function(infer_identity_output_shape))

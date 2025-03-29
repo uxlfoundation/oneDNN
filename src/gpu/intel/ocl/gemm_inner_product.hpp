@@ -69,7 +69,7 @@ struct gemm_inner_product_fwd_t : public gpu_primitive_t {
             VDISPATCH_INNER_PRODUCT(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_INNER_PRODUCT(
-                    post_ops_with_binary_ok(attr(), desc()->dst_desc.data_type),
+                    post_ops_with_binary_ok(attr(), desc()->dst_desc),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);

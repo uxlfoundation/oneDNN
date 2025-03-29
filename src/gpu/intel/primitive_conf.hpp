@@ -688,7 +688,7 @@ void def_binary_alg_kinds(compute::kernel_ctx_t &kernel_ctx);
 void def_eltwise_alg_kinds(compute::kernel_ctx_t &kernel_ctx);
 
 bool post_ops_with_binary_ok(const primitive_attr_t *attr,
-        const data_type_t dst_dt, const int max_ndims_supported = 2,
+        const memory_desc_t &dst_md, const int max_ndims_supported = 2,
         const int prelu_mask_supported = 3);
 
 constexpr int prelu_max_ndims = 5;

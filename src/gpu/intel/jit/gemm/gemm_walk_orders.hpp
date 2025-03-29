@@ -35,8 +35,10 @@ inline uint32_t uint32_reciprocal(uint32_t x) {
 inline void gemm_linear_order_args(compute::kernel_arg_list_t &arg_list,
         int &argn, const compute::range_t &lws, compute::range_t &gws,
         int32_t m, int32_t n, int32_t k, bool disable_hilbert,
-        const CommonDriverInfo &info, const EvaluateAuxOutput *aux,
+        const gemmstone::CommonDriverInfo &info,
+        const gemmstone::EvaluateAuxOutput *aux,
         const compute::device_info_t *dev_info) {
+    using namespace gemmstone;
 
     if (info.kParallel() && info.fusedBeta()) {
         auto groups_k = uint32_t(gws[2] / lws[2]);

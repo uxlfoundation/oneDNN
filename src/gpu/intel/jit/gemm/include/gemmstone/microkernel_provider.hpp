@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 #define MICROKERNEL_PROVIDER_HPP
 
 #include "config.hpp"
-#include "gpu/intel/microkernels/package.hpp"
 #include "kernel_selector.hpp"
 #include "kernel_evaluator.hpp"
 

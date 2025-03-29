@@ -527,55 +527,70 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     match_params.push_back(base);
 
+    auto is_int_type = [](data_type_t type) {
+        return (type == dnnl_u4) || (type == dnnl_s4) || (type == dnnl_u8)
+                || (type == dnnl_s8);
+    };
+    bool full_int = is_int_type(a_type) && is_int_type(b_type);
+
     bool fpmath_tf32 = mode & mode_tf32;
-    bool fpmath_bf16 = mode & mode_bf16x1;
-    bool fpmath_f16 = mode & mode_f16x1;
+    bool fpmath_bf16 = (mode & mode_bf16x1) && !full_int;
+    bool fpmath_f16 = (mode & mode_f16x1) && !full_int;
     bool fpmath_strict = !(fpmath_tf32 || fpmath_bf16 || fpmath_f16)
             && (mode & mode_strict) && (mode & mode_w_decomp);
 
-    auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
+    auto add_mode_matches = [&](bool has_mode, bool optional,
+                                    const char *(*match)(Type)) {
         if (!has_mode) return;
         auto &def = base.selector.precisions;
         if (match(problem_.Ta)) {
-            match_params.push_back(base);
+            if (optional) {
+                match_params.push_back(base);
+                match_params.back().selector.precisions[1] = def[1];
+            }
             match_params.back().selector.precisions[0] = match(problem_.Ta);
-            match_params.back().selector.precisions[1] = def[1];
         }
         if (match(problem_.Tb)) {
-            match_params.push_back(base);
-            match_params.back().selector.precisions[0] = def[0];
+            if (optional) {
+                match_params.push_back(base);
+                match_params.back().selector.precisions[0] = def[0];
+            }
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }
         if (match(problem_.Ta) && match(problem_.Tb)) {
-            match_params.push_back(base);
+            if (optional) match_params.push_back(base);
             match_params.back().selector.precisions[0] = match(problem_.Ta);
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }
     };
 
-    add_mode_matches(fpmath_tf32, [](Type dt) -> const char * {
-        if (dt == Type::f32) { return "T"; }
-        return nullptr;
-    });
+    add_mode_matches(
+            fpmath_tf32, /*optional=*/true, [](Type dt) -> const char * {
+                if (dt == Type::f32) { return "T"; }
+                return nullptr;
+            });
 
-    add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
-        if (dt == Type::f32) { return "[SB]"; }
-        if (dt.isInt8() || dt.isInt4()) return "[OB]";
-        if (dt.isF8()) return "B";
-        return nullptr;
-    });
+    add_mode_matches(
+            fpmath_bf16, /*optional=*/true, [](Type dt) -> const char * {
+                if (dt == Type::f32) { return "[SB]"; }
+                if (dt.isInt8() || dt.isInt4()) return "[OB]";
+                if (dt.isF8()) return "B";
+                return nullptr;
+            });
 
-    add_mode_matches(fpmath_f16, [](Type dt) -> const char * {
-        if (dt == Type::f32) { return "[SH]"; }
-        if (dt.isInt8() || dt.isInt4()) return "[OH]";
-        if (dt.isF8()) return "H";
-        return nullptr;
-    });
+    add_mode_matches(
+            fpmath_f16, /*optional=*/true, [](Type dt) -> const char * {
+                if (dt == Type::f32) { return "[SH]"; }
+                if (dt.isInt8() || dt.isInt4()) return "[OH]";
+                if (dt.isF8()) return "H";
+                return nullptr;
+            });
 
-    add_mode_matches(!(fpmath_f16 || fpmath_bf16), [](Type dt) -> const char * {
-        if (dt.isInt4()) return "[FO]";
-        return nullptr;
-    });
+    add_mode_matches(!(fpmath_f16 || fpmath_bf16), /*optional=*/false,
+            [](Type dt) -> const char * {
+                if (dt.isInt4()) return "[FO]";
+                return nullptr;
+            });
 
     if (fpmath_strict) {
         if (problem_.Tb.isInt4() && !(fpmath_f16 || fpmath_bf16)) {
@@ -588,7 +603,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
                     = match_params.back().selector.precisions[1];
         }
     }
-    add_mode_matches(true, [](Type dt) -> const char * {
+    add_mode_matches(true, /*optional=*/true, [](Type dt) -> const char * {
         if (dt.isFP4()) return "E";
         return nullptr;
     });

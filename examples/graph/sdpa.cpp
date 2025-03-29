@@ -319,6 +319,7 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     auto probs = logical_tensor(id++, dt, score_sz, layout_type::strided);
     auto softmax = op(id++, op::kind::SoftMax, "softmax");
     softmax.set_attr<int64_t>(op::attr::axis, -1);
+    softmax.set_attr<std::string>(op::attr::mode, "inf_as_zero");
     softmax.add_inputs({masked_score});
     softmax.add_outputs({probs});
 

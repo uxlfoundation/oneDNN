@@ -92,8 +92,11 @@ optional.
 
 oneDNN supports the floating-point SDPA pattern with data types f32, bf16, and
 f16. You can specify the data type via the input and output logical tensors'
-data type fields for each operation. oneDNN does not support mixing different
-floating data types in a floating-point SDPA pattern.
+data type fields for each operation.
+
+oneDNN supports bf16 or f16 SDPA with f32 intermediate type, which means the
+Q/K/V tensors have bf16 or f16 data type while the output of the first MatMul,
+Scale, Mask, and the input of SoftMax are in f32 data type.
 
 oneDNN supports the quantized SDPA pattern with int8-f32 mixed precision,
 int8-bf16 mixed precision, and int8-f16 mixed precision data types.
@@ -128,9 +131,9 @@ platforms follow the general description in @ref dev_guide_data_types.
 4. GPU
    - Optimized implementation is available for 4D Q/K/V tensors with shape
      defined as (N, H, S, D).
-   - Optimized implementation is available for floating-point SDPA with `f16`
-     data type and `D <= 256` on Intel Graphics Products with Intel(R) Xe Matrix
-     Extensions (Intel(R) XMX) support.
+   - Optimized implementation is available for `f16` or `bf16` SDPA with `f32`
+     intermediate data type and `D <= 256` on Intel Graphics Products with
+     Intel(R) Xe Matrix Extensions (Intel(R) XMX) support.
 
 ## Example
 

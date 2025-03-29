@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_RNN_RNN_GRID_HPP
-#define GPU_INTEL_OCL_RNN_RNN_GRID_HPP
+#ifndef GPU_INTEL_OCL_RNN_GRID_HPP
+#define GPU_INTEL_OCL_RNN_GRID_HPP
 
 #include <stdio.h>
 
@@ -26,7 +26,7 @@
 #include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_rnn_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/rnn/rnn_utils.hpp"
+#include "gpu/intel/ocl/rnn/utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 

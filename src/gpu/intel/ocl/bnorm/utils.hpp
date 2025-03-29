@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_BNORM_BNORM_UTILS_HPP
-#define GPU_INTEL_OCL_BNORM_BNORM_UTILS_HPP
+#ifndef GPU_INTEL_OCL_BNORM_UTILS_HPP
+#define GPU_INTEL_OCL_BNORM_UTILS_HPP
 
 #include "common/batch_normalization_pd.hpp"
 #include "gpu/intel/compute/utils.hpp"

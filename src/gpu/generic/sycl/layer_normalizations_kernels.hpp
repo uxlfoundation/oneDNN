@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_GENERIC_SYCL_LAYER_NORMALIZATION_KERNELS_HPP
-#define GPU_GENERIC_SYCL_LAYER_NORMALIZATION_KERNELS_HPP
+#ifndef GPU_GENERIC_SYCL_LAYER_NORMALIZATIONS_KERNELS_HPP
+#define GPU_GENERIC_SYCL_LAYER_NORMALIZATIONS_KERNELS_HPP
 
 #include "common/dnnl_thread.hpp"
 #include "common/primitive_exec_types.hpp"

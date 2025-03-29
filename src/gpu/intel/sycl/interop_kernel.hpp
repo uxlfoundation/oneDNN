@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_SYCL_SYCL_INTEROP_GPU_KERNEL_HPP
-#define GPU_INTEL_SYCL_SYCL_INTEROP_GPU_KERNEL_HPP
+#ifndef GPU_INTEL_SYCL_INTEROP_KERNEL_HPP
+#define GPU_INTEL_SYCL_INTEROP_KERNEL_HPP
 
 #include <string>
 
@@ -27,7 +27,7 @@ namespace gpu {
 namespace intel {
 namespace sycl {
 
-class sycl_interop_gpu_kernel_t : public gpu::intel::compute::kernel_impl_t {
+class interop_kernel_t : public gpu::intel::compute::kernel_impl_t {
 public:
     const ::sycl::kernel &sycl_kernel() const { return sycl_kernel_; }
 
@@ -53,9 +53,9 @@ public:
 
 private:
     // See description in the class implementation.
-    friend class sycl_interop_gpu_kernel_compat_t;
+    friend class interop_kernel_compat_t;
 
-    sycl_interop_gpu_kernel_t(const ::sycl::kernel &sycl_kernel,
+    interop_kernel_t(const ::sycl::kernel &sycl_kernel,
             const gpu::intel::compute::program_src_t &src)
         : sycl_kernel_(sycl_kernel), src_(src) {}
 
@@ -70,4 +70,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // SYCL_SYCL_INTEROP_GPU_KERNEL_HPP
+#endif // GPU_INTEL_SYCL_INTEROP_KERNEL_HPP

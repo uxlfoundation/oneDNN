@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,4 +34,4 @@ dnnl_status_t ref_gemm_bf16bf16f32(const char *transa, const char *transb,
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_GEMM_F32_REF_GEMM_F32_HPP
+#endif // CPU_GEMM_BF16_REF_GEMM_BF16_HPP

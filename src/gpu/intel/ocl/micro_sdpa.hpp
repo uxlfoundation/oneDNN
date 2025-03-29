@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_OCL_MICRO_SDPA_HPP
-#define GPU_OCL_MICRO_SDPA_HPP
+#ifndef GPU_INTEL_OCL_MICRO_SDPA_HPP
+#define GPU_INTEL_OCL_MICRO_SDPA_HPP
 
 #include <assert.h>
 

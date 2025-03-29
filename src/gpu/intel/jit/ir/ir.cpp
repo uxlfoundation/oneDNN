@@ -387,7 +387,7 @@ public:
         buf_total_refs_ = buf_cur_refs_;
         for (auto &kv : buf_cur_refs_)
             kv.second = 0;
-        in_ctor_ = false;
+        in_ctor_ = false; // NOLINT(cppcoreguidelines-prefer-member-initializer)
     }
 
 #define HANDLE_IR_OBJECT(type) \

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef SRC_GPU_GENERIC_SYCL_RNN_RNN_KERNELS_HPP
-#define SRC_GPU_GENERIC_SYCL_RNN_RNN_KERNELS_HPP
+#ifndef GPU_GENERIC_SYCL_RNN_RNN_KERNELS_HPP
+#define GPU_GENERIC_SYCL_RNN_RNN_KERNELS_HPP
 
 #include "common/c_types_map.hpp"
 #include "gpu/generic/sycl/sycl_io_helper.hpp"

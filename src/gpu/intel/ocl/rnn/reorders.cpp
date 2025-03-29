@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/rnn/rnn_reorders.hpp"
+#include "gpu/intel/ocl/rnn/reorders.hpp"
 
 #include "gpu/intel/ocl/stream.hpp"
 #include "gpu/intel/ocl/utils.hpp"

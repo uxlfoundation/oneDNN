@@ -2943,4 +2943,4 @@ typedef enum {
 }
 #endif
 
-#endif /* ONEAPI_DNNL_TYPES_H */
+#endif // ONEAPI_DNNL_DNNL_TYPES_H

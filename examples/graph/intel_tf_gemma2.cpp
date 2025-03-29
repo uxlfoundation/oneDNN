@@ -33,7 +33,7 @@ void tf_gemm2_gqa(const dim bs, const dim head_num_kv, const dim group,
     size_t op_id = 0;
 
     const dims dot1_in1_shape {bs, head_num_kv, group, seq_len_q, head_size};
-    const dims dot1_in2_shape {bs, head_num_kv, 1, head_size, seq_len_kv};
+    const dims dot1_in2_shape {bs, head_num_kv, 1, seq_len_kv, head_size};
     const dims dot1_out_shape {bs, head_num_kv, group, seq_len_q, seq_len_kv};
     const dims scale_sz = {1};
     logical_tensor lt_dot1_in1 {lt_id++, logical_tensor::data_type::bf16,
@@ -43,6 +43,7 @@ void tf_gemm2_gqa(const dim bs, const dim head_num_kv, const dim group,
     logical_tensor lt_dot1_out {lt_id++, logical_tensor::data_type::f32,
             dot1_out_shape, logical_tensor::layout_type::strided};
     op matmul_1_op(op_id++, op::kind::MatMul, "matmul_1");
+    matmul_1_op.set_attr<bool>(op::attr::transpose_b, true);
     matmul_1_op.add_inputs({lt_dot1_in1, lt_dot1_in2});
     matmul_1_op.add_output(lt_dot1_out);
 
@@ -133,6 +134,16 @@ void tf_gemm2_gqa(const dim bs, const dim head_num_kv, const dim group,
 
     // Warmup run.
     // Execute the compiled partition of mqa.
+    cp.execute(strm,
+            {ts_dot1_in1, ts_dot1_in2, ts_mul1_in2, ts_mul2_in2, ts_select_in1,
+                    ts_select_in2, ts_dot2_in2},
+            {ts_dot2_out});
+
+    partitions = g.get_partitions();
+    cp = partitions[0].compile(
+            {lt_dot1_in1, lt_dot1_in2, lt_mul1_in2, lt_mul2_in2, lt_select_in1,
+                    lt_select_in2, lt_dot2_in2},
+            {lt_dot2_out}, eng);
     cp.execute(strm,
             {ts_dot1_in1, ts_dot1_in2, ts_mul1_in2, ts_mul2_in2, ts_select_in1,
                     ts_select_in2, ts_dot2_in2},

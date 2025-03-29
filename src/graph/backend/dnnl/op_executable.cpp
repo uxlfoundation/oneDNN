@@ -1643,6 +1643,23 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
 
     // 1. sqrt_variance = sqrt(variance + epsilon)
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+    memory::dims epsilon_dims(variance.get_ndims(), 1);
+    desc.epsilon_desc_ = memory::desc(
+            epsilon_dims, memory::data_type::f32, memory::format_tag::a);
+
+    primitive_attr add_attr;
+    desc.add_pd_ = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
+            variance, desc.epsilon_desc_, variance, add_attr);
+
+    primitive_attr sqrt_attr;
+    desc.sqrt_pd_ = dnnl::eltwise_forward::primitive_desc(p_engine,
+            prop_kind::forward, algorithm::eltwise_sqrt, variance, variance,
+            0.0f, 0.0f, sqrt_attr);
+#else
+
     // temp = variance + epsilon
     memory::dims epsilon_dims(variance.get_ndims(), 1);
     desc.epsilon_desc_ = memory::desc(
@@ -1657,6 +1674,7 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     desc.add_pd_ = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
             variance, desc.epsilon_desc_, variance, add_attr);
 
+#endif
     // 2. updated_weight = weights * scale / sqrt_variance
 
     // expand 1D scale and variance to same ndims with weights
@@ -1714,7 +1732,12 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     memory::dims scratchpad_dims = variance.get_dims();
     // sqrt_variance, zero_bias and others (like epsilon),
     // or no need to alloc bias
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    size_t factor = bias.is_zero() ? 4 : 3;
+#else
     size_t factor = bias.is_zero() ? 3 : 2;
+#endif
     scratchpad_dims[0] *= factor;
     desc.scratchpad_desc_ = memory::desc(
             scratchpad_dims, variance.get_data_type(), memory::format_tag::a);

@@ -21,6 +21,7 @@
 
 #include "test_api_common.h"
 #include "test_api_common.hpp"
+#include "tests/gtests/dnnl_test_common.hpp"
 
 TEST(CAPI, CompileBN) {
     dnnl_graph_graph_t agraph = nullptr;
@@ -970,9 +971,15 @@ TEST(CAPI, CompileSumConv2DStridedBN) {
                            *(compiled_partition + 1), sum_output.id,
                            &opaque_sum_output),
             dnnl_success, COMPILE_SUM_CONV2D_STRIDED_BN_DESTROY_PLUS);
+// Blocked layout is supported on intel gpu only
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     ASSERT_EQ(opaque_sum_output.layout_type,
             engine == dnnl_gpu ? dnnl_graph_layout_type_opaque
                                : dnnl_graph_layout_type_strided);
+#else
+    ASSERT_EQ(opaque_sum_output.layout_type, dnnl_graph_layout_type_strided);
+#endif
 
     // Check in-place pairs
     size_t num_inplace_pairs = 10; // Initialized with an impossible value.
@@ -993,7 +1000,14 @@ TEST(CAPI, CompileSumConv2DStridedBN) {
                       *(compiled_partition + 1), &num_inplace_pairs,
                       &inplace_pairs),
             dnnl_success);
+// Blocked layout is supported on intel gpu only, so here we will get one
+// in-place pair on gpu of other vendors
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     EXPECT_EQ(num_inplace_pairs, 0U);
+#else
+    EXPECT_EQ(num_inplace_pairs, engine == dnnl_gpu ? 1U : 0U);
+#endif
 
     COMPILE_SUM_CONV2D_STRIDED_BN_DESTROY_PLUS;
 #undef COMPILE_SUM_CONV2D_STRIDED_BN_DESTROY
@@ -1566,6 +1580,8 @@ TEST(CAPI, CompileConvBN) {
 #undef COMPILE_CONV_BN_DESTROY
 }
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR != DNNL_VENDOR_NVIDIA
 TEST(CAPI, CompileGroupedConvBN) {
     dnnl_graph_graph_t agraph = nullptr;
     dnnl_graph_op_t conv2d = nullptr;
@@ -1726,6 +1742,7 @@ TEST(CAPI, CompileGroupedConvBN) {
     COMPILE_GROUPED_CONV_BN_DESTROY;
 #undef COMPILE_GROUPED_CONV_BN_DESTROY
 }
+#endif
 
 TEST(CAPI, CompileConvBNStandalone) {
     dnnl_graph_graph_t agraph = nullptr;

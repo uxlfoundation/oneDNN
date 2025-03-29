@@ -180,6 +180,7 @@ enum {
     key_conv_amx_wsp_buffer,
     key_conv_bia_reduction,
     key_conv_bias_bf16_convert_wsp,
+    key_conv_bias_f16_convert_wsp,
     key_conv_bias_s32_convert,
     key_conv_cudnn,
     key_conv_cudnn_algo,

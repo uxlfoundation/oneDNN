@@ -179,10 +179,7 @@ void ocl_deallocator(
 #endif
 
 dnnl::graph::allocator &get_graph_allocator(bool use_host) {
-    if (use_host) {
-        static dnnl::graph::allocator alloc(host_allocator, host_deallocator);
-        return alloc;
-    } else if (is_cpu()) {
+    if (is_cpu() || use_host) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
         static auto alloc = dnnl::graph::sycl_interop::make_allocator(
                 sycl_allocator, sycl_deallocator);

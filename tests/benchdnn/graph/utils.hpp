@@ -214,9 +214,7 @@ inline const cpp_engine_t &get_graph_engine() {
 inline const cpp_engine_t &get_graph_host_engine() {
     const dnnl::engine &g_eng
             = get_graph_engine().operator const dnnl::engine &();
-    if (is_cpu(g_eng.get()) && !is_sycl_engine(g_eng.get())) {
-        return get_graph_engine();
-    }
+    if (is_cpu(g_eng.get())) { return get_graph_engine(); }
 
     static const cpp_engine_t instance(/*use_host*/ true);
     return instance;

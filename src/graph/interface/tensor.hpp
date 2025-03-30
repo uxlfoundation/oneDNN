@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -79,6 +79,15 @@ private:
     const dnnl::impl::graph::engine_t *eng_ {nullptr};
 
     std::shared_ptr<void> handle_ {nullptr};
+
+    // the tensor is created by a host scalar
+    bool pass_by_scalar;
+    union {
+        // this field is valid when pass_by_scalar is true
+        // the scalar value is saved in the field.
+        int32_t s32_value;
+        float f32_value;
+    } scalar;
 };
 
 #endif

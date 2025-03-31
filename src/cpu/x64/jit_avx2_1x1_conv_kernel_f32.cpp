@@ -262,8 +262,9 @@ void jit_avx2_1x1_conv_kernel_f32::generate_reduce_loop(
             default:
                 offt = (i * rnd_up(jcp.ic, jcp.ic_block) + u0) * jcp.oc_block;
         }
-        return ptr[aux_reg_load_data + u1 * jcp.reduce_loop_load_step
-                + sizeof(float) * offt];
+        return make_safe_addr(aux_reg_load_data,
+                u1 * jcp.reduce_loop_load_step + sizeof(float) * offt,
+                reg_long_offt);
     };
 
     auto get_output_offset = [this](int i, int j) {

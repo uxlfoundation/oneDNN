@@ -349,7 +349,8 @@ private:
         gpu_assert((off * type().packing()) % type().size() == 0);
         gpu_assert((size * type().packing()) % type().size() == 0);
 
-        std::vector<dim_t> sub_dims = {size * type().packing() / type().size()};
+        std::vector<dim_t> sub_dims
+                = {(dim_t)size * type().packing() / type().size()};
         layout_t sub_layout(type(), 0, sub_dims);
         mask_tensor_t sub_mask_tensor(sub_layout);
         int beg = (cur_off_ + off) * type().packing() / type().size();

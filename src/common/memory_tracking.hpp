@@ -172,6 +172,7 @@ enum {
     key_concat_nelems,
     key_concat_optrs,
     key_concat_tent_dst,
+    key_conv_pack_space,
     key_conv_adjusted_scales,
     key_conv_amx_inp_buffer,
     key_conv_amx_tilecfg,

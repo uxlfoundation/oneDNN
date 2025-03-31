@@ -18,9 +18,11 @@
 #define GPU_INTEL_OCL_REF_CONVOLUTION_HPP
 
 #include "common/c_types_map.hpp"
+#include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_convolution_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -90,7 +92,7 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
             VDISPATCH_CONV_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV(post_ops_with_binary_ok(
-                                   attr(), dst_md()->data_type, 5, 0xffff),
+                                   attr(), dst_md_.data_type, 5, 0xffff),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -99,12 +101,25 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             VDISPATCH_CONV(zero_points_ok(attr()), VERBOSE_UNSUPPORTED_ZP_CFG);
+            subbyte_pack_ = utils::one_of(
+                    dst_md_.data_type, data_type::f4_e2m1, data_type::f4_e3m0);
+            if (subbyte_pack_) {
+                using namespace dnnl::impl::memory_tracking::names;
+                const memory_desc_wrapper dst_mdw(dst_md(0));
+                const auto &padded_dims = dst_mdw.padded_dims();
+                const dim_t ndims = dst_mdw.ndims();
+                const dim_t nelems = utils::array_product(padded_dims, ndims);
+                auto scratchpad = scratchpad_registry().registrar();
+                scratchpad.book(memory_tracking::names::key_conv_pack_space,
+                        nelems, sizeof(char), OCL_BUFFER_ALIGNMENT);
+            }
 
             return init_conf(engine);
         }
 
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
+        bool subbyte_pack_ = false;
 
         conv_conf_t conf;
 
@@ -124,10 +139,15 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
 
         auto status = pd()->init_kernel_ctx(kernel_ctx);
         if (status != status::success) return status;
+        kernels_.resize(2);
 
         CHECK(create_kernel(
-                engine, &kernel_, "ref_convolution_fwd", kernel_ctx));
-        if (!kernel_) return status::runtime_error;
+                engine, &kernels_[0], "ref_convolution_fwd", kernel_ctx));
+        if (pd()->subbyte_pack_)
+            CHECK(create_kernel(
+                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
+        if (!kernels_[0]) return status::runtime_error;
+        if (pd()->subbyte_pack_ && !kernels_[1]) return status::runtime_error;
 
         return status::success;
     }
@@ -139,7 +159,7 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    compute::kernel_t kernel_;
+    std::vector<compute::kernel_t> kernels_;
 };
 
 struct ref_convolution_bwd_data_t : public gpu_primitive_t {
@@ -191,11 +211,25 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
 
             VDISPATCH_CONV(zero_points_ok(attr()), VERBOSE_UNSUPPORTED_ZP_CFG);
 
+            subbyte_pack_ = utils::one_of(dst_md()->data_type,
+                    data_type::f4_e2m1, data_type::f4_e3m0);
+            if (subbyte_pack_) {
+                using namespace dnnl::impl::memory_tracking::names;
+                const memory_desc_wrapper dst_mdw(dst_md(0));
+                const auto &padded_dims = dst_mdw.padded_dims();
+                const dim_t ndims = dst_mdw.ndims();
+                const dim_t nelems = utils::array_product(padded_dims, ndims);
+                auto scratchpad = scratchpad_registry().registrar();
+                scratchpad.book(memory_tracking::names::key_conv_pack_space,
+                        nelems, sizeof(char), OCL_BUFFER_ALIGNMENT);
+            }
+
             return init_conf(engine);
         }
 
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
+        bool subbyte_pack_ = false;
 
         conv_conf_t conf;
 
@@ -216,9 +250,14 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
         auto status = pd()->init_kernel_ctx(kernel_ctx);
         if (status != status::success) return status;
 
+        kernels_.resize(2);
         CHECK(create_kernel(
-                engine, &kernel_, "ref_convolution_bwd_data", kernel_ctx));
-        if (!kernel_) return status::runtime_error;
+                engine, &kernels_[0], "ref_convolution_bwd_data", kernel_ctx));
+        if (pd()->subbyte_pack_)
+            CHECK(create_kernel(
+                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
+        if (!kernels_[0]) return status::runtime_error;
+        if (pd()->subbyte_pack_ && !kernels_[1]) return status::runtime_error;
 
         return status::success;
     }
@@ -230,7 +269,7 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
 private:
     status_t execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    compute::kernel_t kernel_;
+    std::vector<compute::kernel_t> kernels_;
 };
 
 struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
@@ -288,11 +327,25 @@ struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
             VDISPATCH_CONV(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
+            subbyte_pack_ = utils::one_of(dst_md()->data_type,
+                    data_type::f4_e2m1, data_type::f4_e3m0);
+            if (subbyte_pack_) {
+                using namespace dnnl::impl::memory_tracking::names;
+                const memory_desc_wrapper dst_mdw(dst_md(0));
+                const auto &padded_dims = dst_mdw.padded_dims();
+                const dim_t ndims = dst_mdw.ndims();
+                const dim_t nelems = utils::array_product(padded_dims, ndims);
+                auto scratchpad = scratchpad_registry().registrar();
+                scratchpad.book(memory_tracking::names::key_conv_pack_space,
+                        nelems, sizeof(char), OCL_BUFFER_ALIGNMENT);
+            }
+
             return init_conf(engine);
         }
 
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
+        bool subbyte_pack_ = false;
 
         conv_conf_t conf;
 
@@ -313,9 +366,14 @@ struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
         auto status = pd()->init_kernel_ctx(kernel_ctx);
         if (status != status::success) return status;
 
-        CHECK(create_kernel(
-                engine, &kernel_, "ref_convolution_bwd_weights", kernel_ctx));
-        if (!kernel_) return status::runtime_error;
+        kernels_.resize(2);
+        CHECK(create_kernel(engine, &kernels_[0], "ref_convolution_bwd_weights",
+                kernel_ctx));
+        if (pd()->subbyte_pack_)
+            CHECK(create_kernel(
+                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
+        if (!kernels_[0]) return status::runtime_error;
+        if (pd()->subbyte_pack_ && !kernels_[1]) return status::runtime_error;
 
         return status::success;
     }
@@ -327,7 +385,7 @@ struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
 private:
     status_t execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    compute::kernel_t kernel_;
+    std::vector<compute::kernel_t> kernels_;
 };
 
 } // namespace ocl

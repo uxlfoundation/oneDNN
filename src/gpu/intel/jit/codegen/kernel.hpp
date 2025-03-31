@@ -622,7 +622,10 @@ public:
         } else {
             auto &src1_imm = src1.immediate();
             if (to_ir(src0.type()).is_fp()) {
-                ngen::Immediate src1_inv_value(1.f / to_cpp<float>(src1_imm));
+                constexpr float inf = std::numeric_limits<float>::infinity();
+                float f = to_cpp<float>(src1_imm);
+                float f_inv = f ? 1.f / f : std::signbit(f) ? -inf : inf;
+                ngen::Immediate src1_inv_value(f_inv);
                 emul(mod, dst, src0, src1_inv_value);
             } else {
                 int32_t src1_value = to_cpp<int32_t>(src1_imm);

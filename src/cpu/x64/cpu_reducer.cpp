@@ -197,10 +197,23 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
 
             if (load_len == typesize) {
                 assert(nloads == 1);
-                this->movd(Xmm(nloads + i), this->ptr[reg_src + off]);
-                this->uni_add(Xmm(i), Xmm(nloads + i));
+                if (off > static_cast<size_t>(INT_MAX)) {
+                    this->mov(reg_long_offt, off);
+                    this->movd(Xmm(nloads + i),
+                            this->ptr[reg_src + reg_long_offt]);
+                    this->uni_add(Xmm(i), Xmm(nloads + i));
+                } else {
+                    this->movd(Xmm(nloads + i), this->ptr[reg_src + off]);
+                    this->uni_add(Xmm(i), Xmm(nloads + i));
+                }
             } else if (load_len == vlen)
-                this->uni_vadd(Vmm(i), Vmm(i), vmmword[reg_src + off]);
+                if (off > static_cast<size_t>(INT_MAX)) {
+                    this->mov(reg_long_offt, off);
+                    this->uni_vadd(
+                            Vmm(i), Vmm(i), vmmword[reg_src + reg_long_offt]);
+                } else {
+                    this->uni_vadd(Vmm(i), Vmm(i), vmmword[reg_src + off]);
+                }
             else
                 assert(!"unsupported");
         }

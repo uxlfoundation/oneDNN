@@ -1542,8 +1542,7 @@ public:
 
     expr_t offset_in_bytes(const std::vector<expr_t> &vargs = {},
             bool ignore_offset = false) const {
-        const int type_packing = 8 * type().size() / type().bitsize();
-        return offset(vargs, ignore_offset) * type().size() / type_packing;
+        return offset(vargs, ignore_offset) * type().size() / type().packing();
     }
 
     int get_alignment(const constraint_set_t &cset) const {

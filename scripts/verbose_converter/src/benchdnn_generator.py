@@ -16,7 +16,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Mapping, Optional, Set
 
 from . import ir
 
@@ -150,21 +150,21 @@ class Converter(metaclass=ConverterMeta):
             return ""
         results = []
         for post_op in post_ops:
-            if post_op.alg == "dw":
+            if isinstance(post_op, ir.DepthwisePostOp):
                 results.append(self._convert_dw_post_op(post_op))
-            elif post_op.alg == "sum":
+            elif isinstance(post_op, ir.SumPostOp):
                 results.append(self._convert_sum_post_op(post_op))
-            elif post_op.alg == "prelu":
+            elif isinstance(post_op, ir.PreLUPostOp):
                 results.append(self._convert_prelu_post_op(post_op))
-            elif post_op.alg.startswith("binary"):
+            elif isinstance(post_op, ir.BinaryPostOp):
                 results.append(self._convert_binary_post_op(post_op))
-            elif post_op.alg.startswith("eltwise"):
+            elif isinstance(post_op, ir.EltwisePostOp):
                 results.append(self._convert_eltwise_post_op(post_op))
         return "--attr-post-ops=" + "+".join(results)
 
     def _get_quantization(
         self,
-        params: Optional[Dict[str, ir.QuantizationParam]],
+        params: Optional[Mapping[str, ir.QuantizationParam]],
         def_value: float,
         def_type: str,
     ):

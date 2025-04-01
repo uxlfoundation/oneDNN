@@ -330,61 +330,55 @@ Attribute = Union[
 ]
 
 
-def attribute_accessor(name):
-    name = "attr-" + name
+@dataclass(eq=False)
+class Attributes(FormattedMapping):
+    acc_mode: Optional[str] = None
+    deterministic: Optional[str] = None
+    dropout: Optional[Dropout] = None
+    fpmath: Optional[FPMathMode] = None
+    oscale: Optional[Scale] = None
+    post_ops: Optional[List[PostOp]] = None
+    rounding_mode: Optional[Dict[str, RoundingMode]] = None
+    scales: Optional[Dict[str, Scale]] = None
+    scratchpad: Optional[str] = None
+    zero_points: Optional[Dict[str, ZeroPoint]] = None
 
-    def getter(self) -> Attribute:
-        return self._attributes.get(name)
+    acc = alias("acc_mode")
 
-    def setter(self, value):
-        self._attributes[name] = value
+    @staticmethod
+    def _field_name_to_attr_name(field_name: str):
+        return "attr-" + field_name.replace("_", "-")
 
-    def deleter(self):
-        if name in self._attributes:
-            del self._attributes[name]
-
-    return property(getter, setter, deleter)
-
-
-@dataclass(eq=False, repr=False)
-class Attributes(Mapping):
-    def __init__(self, attributes: Optional[Dict[str, Attribute]] = None):
-        if attributes is None:
-            attributes = {}
-        self._attributes: Dict[str, Attribute] = attributes
+    def _attr_name_to_field_name(self, item: str):
+        original_item = item
+        for field in fields(self):
+            if item == self._field_name_to_attr_name(field.name):
+                return field.name
+        raise KeyError(original_item)
 
     def __getitem__(self, item: str):
-        attribute = self._attributes[item]
-        if isinstance(attribute, CompositeAttribute):
-            return str(attribute)
-        return attribute
+        value = getattr(self, self._attr_name_to_field_name(item))
+        if value is None:
+            raise KeyError(item)
+        return value
 
     def __setitem__(self, item: str, value: Attribute):
-        self._attributes[item] = value
+        return setattr(self, self._attr_name_to_field_name(item), value)
 
     def __delitem__(self, item: str):
-        del self._attributes[item]
+        setattr(self, self._attr_name_to_field_name(item), None)
 
     def __iter__(self):
-        yield from self._attributes
+        for field in fields(self):
+            if getattr(self, field.name) is not None:
+                yield self._field_name_to_attr_name(field.name)
 
     def __len__(self):
-        return len(self._attributes)
-
-    acc_mode = attribute_accessor("acc-mode")
-    deterministic = attribute_accessor("deterministic")
-    dropout = attribute_accessor("dropout")
-    fpmath = attribute_accessor("fpmath")
-    oscale = attribute_accessor("oscale")
-    post_ops = attribute_accessor("post-ops")
-    rounding_mode = attribute_accessor("rounding-mode")
-    scales = attribute_accessor("scales")
-    scratchpad = attribute_accessor("scratchpad")
-    zero_points = attribute_accessor("zero-points")
+        return len(list(iter(self)))
 
     def __str__(self):
         parts = []
-        for key, attr in self._attributes.items():
+        for key, attr in self.items():
             if isinstance(attr, list):
                 sub_parts = "+".join(map(str, attr))
                 parts.append(f"{key}:{sub_parts}")

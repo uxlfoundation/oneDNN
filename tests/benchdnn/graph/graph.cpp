@@ -403,6 +403,21 @@ std::string case_to_str(const std::string &json_file,
     return s.str();
 }
 
+/// @brief check if the current partition is actually an End op
+/// @param parti the current partition
+/// @param end_op_ids a collection of End op's ids
+/// @return return true, when current partition is an End op
+bool is_single_end_op_partition(const dnnl::graph::partition &parti,
+        const std::vector<size_t> &end_op_ids) {
+    const auto parti_op_ids = parti.get_ops();
+    if (!end_op_ids.empty() && parti_op_ids.size() == 1
+            && std::count(end_op_ids.begin(), end_op_ids.end(),
+                    parti_op_ids.front())) {
+        return true;
+    }
+    return false;
+}
+
 void skip_unimplemented_ops(const dnnl::graph::partition &partition,
         const deserialized_graph_t &dg, res_t *res) {
     // A list of ops that don't have DNNL backend support so far.
@@ -448,55 +463,37 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
     }
 }
 
-/// @brief check if the current partition is actually an End op
-/// @param parti the current partition
-/// @param end_op_ids a collection of End op's ids
-/// @return return true, when current partition is an End op
-bool is_single_end_op_partition(const dnnl::graph::partition &parti,
-        const std::vector<size_t> &end_op_ids) {
-    const auto parti_op_ids = parti.get_ops();
-    if (!end_op_ids.empty() && parti_op_ids.size() == 1
-            && std::count(end_op_ids.begin(), end_op_ids.end(),
-                    parti_op_ids.front())) {
-        return true;
-    }
-    return false;
-}
-
-int doit(const prb_t *prb, res_t *res) {
-    if (bench_mode == bench_mode_t::list) return res->state = LISTED, OK;
-
-    skip_start(res);
-    if (res->state == SKIPPED) return OK;
-
-    const auto &dg = prb->dg;
-    const auto graph_in_ports = dg.get_input_ports();
-    auto ograph = dg.to_graph(prb->fpmath_mode);
-    DNN_GRAPH_SAFE(ograph.finalize(), WARN, res);
-    const auto partitions = ograph.get_partitions();
-    // a collection of End op's id in this graph
-    std::vector<size_t> end_opid_v {};
-    for (const auto &aop : dg.ops_) {
-        if (aop.kind_ == "End") { end_opid_v.emplace_back(aop.id_); }
-    }
+void skip_unimplemented_partitions(const std::vector<partition> &partitions,
+        const deserialized_graph_t &dg, const prb_t *prb,
+        std::vector<size_t> &end_opid_v, res_t *res) {
 
     if (partitions.empty()) {
         BENCHDNN_PRINT(0, "%s\n", "Error: partitions are empty");
-        return res->state = FAILED, FAIL;
+        SAFE_V(FAIL);
     }
 
     BENCHDNN_PRINT(3, "[INFO]: n_partitions:%zd; ops_in_partitions:%s\n",
             partitions.size(), verbose_partitions_n_ops(partitions).c_str());
 
+    // a collection of End op's id in this graph
+    for (const auto &aop : dg.ops_) {
+        if (aop.kind_ == "End") { end_opid_v.emplace_back(aop.id_); }
+    }
+
+    bool partition_num_mismatch = (prb->expected_n_partition != 0
+            && partitions.size() != prb->expected_n_partition);
+
     for (size_t i = 0; i < partitions.size(); ++i) {
-        if (partitions[i].is_supported()) continue;
+        // If the partition number mismatches the requirement, check whether
+        // there are unsupported data types.
+        if (partitions[i].is_supported() && !partition_num_mismatch) continue;
 
         // End operation is not supported in the library, and it's fine to
         // continue validation as it's a knob without functional meaning.
         if (is_single_end_op_partition(partitions[i], end_opid_v)) continue;
 
         skip_unimplemented_ops(partitions[i], dg, res);
-        if (res->state == SKIPPED) return OK;
+        if (res->state == SKIPPED) return;
 
         auto in_out_lts = partitions[i].get_input_ports();
         const auto &outputs = partitions[i].get_output_ports();
@@ -542,23 +539,37 @@ int doit(const prb_t *prb, res_t *res) {
             }
         }
         skip_unimplemented_data_type(in_out_dt, dir, res);
-        if (res->state == SKIPPED) return OK;
+        if (res->state == SKIPPED) return;
 
         BENCHDNN_PRINT(3, "[INFO]: partition #%zd is unsupported!\n", i);
         res->state = UNIMPLEMENTED;
-        return FAIL;
+        return;
     }
 
-    if (prb->expected_n_partition != 0
-            && partitions.size() != prb->expected_n_partition) {
+    if (partition_num_mismatch) {
         BENCHDNN_PRINT(0,
                 "Error: the expected number of partitions (%zu) doesn't "
                 "coincide with the actual number of partitions returned "
                 "(%zu).\n ",
                 prb->expected_n_partition, partitions.size());
-        return res->state = FAILED, FAIL;
+        SAFE_V(FAIL);
     }
+}
 
+int doit(const prb_t *prb, res_t *res) {
+    if (bench_mode == bench_mode_t::list) return res->state = LISTED, OK;
+
+    skip_start(res);
+    if (res->state == SKIPPED) return OK;
+
+    const auto &dg = prb->dg;
+    const auto graph_in_ports = dg.get_input_ports();
+    auto ograph = dg.to_graph(prb->fpmath_mode);
+    DNN_GRAPH_SAFE(ograph.finalize(), WARN, res);
+
+    const auto partitions = ograph.get_partitions();
+    std::vector<size_t> end_opid_v {};
+    skip_unimplemented_partitions(partitions, dg, prb, end_opid_v, res);
     if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
 
     const auto &eng = get_graph_engine();

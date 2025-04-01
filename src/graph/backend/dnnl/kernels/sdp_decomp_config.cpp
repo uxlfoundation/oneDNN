@@ -134,7 +134,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     memory::desc sub_src1_md, sub_wei1_user_md, sub_wei1_md, sub_mm1_src_md,
             sub_mm1_wei_md, sub_mm1_dst_md, sub_softmax_dst_md,
             sub_wei2_user_md, sub_mm2_wei_md, sub_mm2_dst_md, sub_dst_md,
-            sub_dst_user_md;
+            sub_dst_user_md, sub_select_cond_md, sub_select_src0_md;
     std::vector<memory::desc> sub_mm1_post_md;
 
     // must use user mode to support concurrent execution
@@ -199,6 +199,32 @@ impl::status_t sdp_decomp_config_t::construct_params(
     auto sub_mm1_pd = matmul::primitive_desc(p_engine, sub_mm1_src_md,
             sub_mm1_wei_md, sub_mm1_dst_md, sub_matmul1_attr);
     sub_mm1_prim = matmul(sub_mm1_pd);
+
+    //select
+    if (has_select) {
+        dnnl::primitive_attr sub_select_attr
+                = make_primitive_attr(sdp_op[5], mgr);
+        auto select_cond_lt
+                = sdp_op[5]->get_input_value(2)->get_logical_tensor();
+        auto select_cond_ltw = ltw(select_cond_lt);
+        auto select_src0_lt
+                = sdp_op[5]->get_input_value(0)->get_logical_tensor();
+        auto select_src0_ltw = ltw(select_src0_lt);
+        sub_select_cond_md = memory::desc(
+                {1, 1, select_cond_ltw.vdims()[2], select_cond_ltw.vdims()[3]},
+                static_cast<memory::data_type>(select_cond_ltw.data_type()),
+                {1, 1, select_cond_ltw.vstrides()[2],
+                        select_cond_ltw.vstrides()[3]});
+        sub_select_src0_md = memory::desc(
+                {1, 1, select_src0_ltw.vdims()[2], select_src0_ltw.vdims()[3]},
+                static_cast<memory::data_type>(select_src0_ltw.data_type()),
+                {1, 1, select_src0_ltw.vstrides()[2],
+                        select_src0_ltw.vstrides()[3]});
+        auto sub_select_pd = binary::primitive_desc(p_engine,
+                algorithm::binary_select, sub_select_src0_md, sub_mm1_dst_md,
+                sub_select_cond_md, sub_mm1_dst_md, sub_select_attr);
+        sub_select_prim = binary(sub_select_pd);
+    }
 
     // softmax
     // create softmax primitive attr
@@ -298,6 +324,12 @@ impl::status_t sdp_decomp_config_t::construct_params(
     for (size_t i = 0; i < sub_mm1_post_md.size(); i++) {
         sub_mm1_post_mem.emplace_back(sub_mm1_post_md[i], p_engine, nullptr);
     }
+    //select
+    if (has_select) {
+        sub_select_cond = memory(sub_select_cond_md, p_engine, nullptr);
+        sub_select_src0 = memory(sub_select_src0_md, p_engine, nullptr);
+        sub_select_dst = memory(sub_mm1_dst_md, p_engine, nullptr);
+    }
     // softmax
     sub_softmax_dst = memory(sub_softmax_dst_md, p_engine, nullptr);
     // reorder2
@@ -325,8 +357,14 @@ impl::status_t sdp_decomp_config_t::construct_params(
                 sub_mm1_post_mem[i]});
     }
 
+    sub_select_args = {{DNNL_ARG_SRC_0, sub_select_src0},
+            {DNNL_ARG_SRC_1, sub_mm1_dst}, {DNNL_ARG_SRC_2, sub_select_cond},
+            {DNNL_ARG_DST, sub_select_dst},
+            {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
+
     sub_softmax_args
-            = {{DNNL_ARG_SRC, sub_mm1_dst}, {DNNL_ARG_DST, sub_softmax_dst},
+            = {{DNNL_ARG_SRC, has_select ? sub_select_dst : sub_mm1_dst},
+                    {DNNL_ARG_DST, sub_softmax_dst},
                     {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
 
     sub_reorder2_args = {{DNNL_ARG_SRC, sub_wei2_user},
@@ -357,73 +395,6 @@ impl::status_t sdp_decomp_config_t::construct_params(
     omp_set_num_threads(nthr);
 #endif
     return status::success;
-}
-
-impl::status_t sdp_decomp_config_t::record_select_ops(
-        std::shared_ptr<subgraph_t> &sg, std::vector<op_ptr> &select_out_ops) {
-
-    //post scale isn't from select.
-    //so the post binary number from select is post_op's size - 1
-    const auto select_out_ops_size = sub_mm1_post_mem.size() - 1;
-    select_out_ops.resize(select_out_ops_size);
-    //sdp_op[1] is mm1.
-    size_t input_size = sdp_op[1]->num_inputs();
-    /*
-            src wei   post_scale attn_mask* post_binary...(from select)
-              \   \       /       /         /
-               \   \     /     /         /
-                 \  \   /   /        /
-                   \ \ / /       /
-                     mm1
-        */
-    // input_size - select_out_ops_size is the starting index of post ops
-    // from select.
-    for (size_t i = 0; i < select_out_ops_size; i++) {
-        select_out_ops[i] = sdp_op[1]
-                                    ->get_input_value(input_size
-                                            - select_out_ops_size + i)
-                                    ->get_producer()
-                                    .shared_from_this();
-    }
-
-    const std::unordered_set<op_kind_t> select_kind
-            = {op_kind::dnnl_eltwise, op_kind::dnnl_binary};
-    return topo_order_visit(
-            sg->get_output_ops(), [&select_kind, this](op_t *op) {
-                bool is_select = false;
-                if (select_kind.count(op->get_kind())) is_select = true;
-                if (op->get_kind() == op_kind::dnnl_reorder
-                        || op->get_kind() == op_kind::dnnl_unsqueeze) {
-                    auto post_op = get_post_op(op->shared_from_this());
-                    if (post_op != nullptr
-                            && select_kind.count(post_op->get_kind()))
-                        is_select = true;
-                }
-                if (is_select)
-                    this->select_op.emplace_back(op->shared_from_this());
-                return status::success;
-            });
-}
-
-impl::status_t sdp_decomp_config_t::record_select_out_index(
-        const std::shared_ptr<subgraph_t> &sg,
-        const std::vector<op_ptr> &select_out_ops) {
-    // select_outop_index is used to record the topo order index of output
-    // ops from the new select subgraph. -1 means this array isn't
-    // initialized.
-    select_outop_index.resize(select_out_ops.size(), -1);
-    int temp = 0;
-    return topo_order_visit(
-            sg->get_output_ops(), [&temp, this, &select_out_ops](op_t *op) {
-                for (size_t i = 0; i < select_out_ops.size(); i++) {
-                    if (select_out_ops[i].get() == op) {
-                        select_outop_index[i] = temp;
-                        break;
-                    }
-                }
-                temp++;
-                return status::success;
-            });
 }
 
 op_ptr sdp_decomp_config_t::get_post_op(const op_ptr &op) const {
@@ -558,6 +529,16 @@ impl::status_t sdp_decomp_config_t::record_sdp_ops(
     for (const auto &cur_op : sg->get_ops()) {
         if (!cur_op || cur_op->get_kind() != op_kind::dnnl_matmul) continue;
         auto post_op = get_post_op(cur_op);
+        op_ptr select;
+        if (has_select) {
+            if (!post_op || post_op->get_kind() != op_kind::dnnl_binary
+                    || post_op->get_attr<int64_t>(op_attr::alg_kind)
+                            != alg_kind::binary_select)
+                continue;
+            select = post_op;
+            post_op = get_post_op(select);
+        }
+
         if (!post_op || post_op->get_kind() != op_kind::dnnl_softmax) continue;
         auto ppost_op = get_post_op(post_op);
         VCHECK_SDP_DECOMP(ppost_op != nullptr, status::invalid_graph,
@@ -570,7 +551,7 @@ impl::status_t sdp_decomp_config_t::record_sdp_ops(
             reorder2 = get_wei_pre_op(ppost_op);
         }
 
-        this->sdp_op = {reorder1, cur_op, post_op, reorder2, ppost_op};
+        this->sdp_op = {reorder1, cur_op, post_op, reorder2, ppost_op, select};
         break;
     }
     return status::success;
@@ -599,6 +580,9 @@ void sdp_decomp_config_t::memory_planning(registry_t &sdp_registry) {
             sub_max_dst1_wei2.get_desc().get_size());
     temporary_registrar.book(
             mem_key_map[sub_mm2_dst.get()], sub_mm2_dst.get_desc().get_size());
+    if (has_select)
+        temporary_registrar.book(mem_key_map[sub_select_dst.get()],
+                sub_select_dst.get_desc().get_size());
     temporary_registrar.book(mem_key_map[sub_scratchpad.get()],
             sub_scratchpad.get_desc().get_size());
 }

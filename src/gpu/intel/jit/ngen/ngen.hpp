@@ -2219,7 +2219,18 @@ void BinaryCodeGenerator<hw>::opBfn(Opcode op, DataType defaultType, const Instr
     encodeTernarySrc0(i, src0, tag);
     encodeTernarySrc1(i, src1, tag);
     encodeTernarySrc2(i, src2, tag);
-    encodeTernaryTypes(i, dst, src0, src1, src2);
+
+    /* SYCL + GCC 12.3 workaround                    */
+    /* encodeTernaryTypes(i, dst, src0, src1, src2); */
+    Instruction12 i2;
+    encodeTernaryTypes(i2, dst, src0, src1, src2);
+
+    i.ternary.execType = i2.ternary.execType;
+    i.ternary.dstType  = i2.ternary.dstType;
+    i.ternary.src0Type = i2.ternary.src0Type;
+    i.ternary.src1Type = i2.ternary.src1Type;
+    i.ternary.src2Type = i2.ternary.src2Type;
+    /*************************************************/
 
     i.ternary.cmod = static_cast<int>(mod.getCMod());
 

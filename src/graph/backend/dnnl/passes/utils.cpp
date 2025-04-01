@@ -409,6 +409,21 @@ bool post_binary_fusible(
             base_op, ltw(fused_in).vdims(), ltw(other_in).vdims(), ekind);
 }
 
+bool post_eltwise_fusible(
+        const op_t *base_op, const op_t *elt_op, graph::engine_kind_t ekind) {
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (static_cast<dnnl::algorithm>(
+                elt_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::eltwise_sqrt
+            && ekind == dnnl_gpu) {
+        return false;
+    }
+#endif
+    return true;
+}
+
 bool post_depthwise_conv_fusible(
         const op_t *base_conv_op, const op_t *post_conv_op) {
     using spatial_dims_t = std::vector<int64_t>;

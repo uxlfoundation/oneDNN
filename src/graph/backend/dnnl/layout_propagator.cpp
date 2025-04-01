@@ -1727,11 +1727,10 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
                 const auto &ori_strides = ltw(consumer_out).vstrides();
                 std::vector<dim_t> strides = {ori_strides[0], ori_strides[2],
                         ori_strides[3], ori_strides[4]};
-                dnnl::memory::desc tmp_md {ltw(out_lt).vdims(),
+                expected_md = {ltw(out_lt).vdims(),
                         static_cast<dnnl::memory::data_type>(
                                 ltw(out_lt).data_type()),
                         strides};
-                expected_md = tmp_md;
             } else {
                 // Set default output layout format for sdpa as acbd if user
                 // doesn't specify the layout since no reorder will be required.

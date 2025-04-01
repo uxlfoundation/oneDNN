@@ -943,6 +943,9 @@ bool match_alternation(const binding_t &bind_arg, match_context_t *ctx,
     if (bind_arg.bind_kind == BIND_IN) {
         DEBUG(DEBUGINFO_PM, "now doing alt matching");
     }
+    // Coverity: Dynamic cast to pointer can return NULL.
+    if (!alt_nodes) return false;
+
     for (pb_graph_t *alt_node : alt_nodes->get_alternatives()) {
         std::unordered_map<op_t *, pb_op_t *> temp_op_map = matched_op_map;
         binding_t temp_bind = bind_arg;

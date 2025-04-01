@@ -43,7 +43,7 @@ void flex_rewrite_t::rewrite_linked_shape_and_attr(
             }
 
             bool input_shape_rewrite = std::any_of(aop.in_lts_.begin(),
-                    aop.in_lts_.end(), [&](const deserialized_lt &in_lt) {
+                    aop.in_lts_.end(), [&](const deserialized_lt_t &in_lt) {
                         return in_shapes_.count(in_lt.id_)
                                 && in_shapes_[in_lt.id_] != "default";
                     });
@@ -984,7 +984,7 @@ void flex_rewrite_t::inports_shape_rewrite(
                 (long)mb_);
     }
 
-    const auto set_default_deserialized_lt = [](deserialized_lt &lt) {
+    const auto set_default_deserialized_lt_t = [](deserialized_lt_t &lt) {
         auto ndims = lt.shape_.size();
         logical_tensor::dims infer_dim(ndims, -1);
         lt.shape_ = infer_dim;
@@ -1016,7 +1016,7 @@ void flex_rewrite_t::inports_shape_rewrite(
                         lt.id_);
                 SAFE_V(FAIL);
             }
-            set_default_deserialized_lt(lt);
+            set_default_deserialized_lt_t(lt);
             continue;
         }
 
@@ -1122,7 +1122,7 @@ void flex_rewrite_t::inports_shape_rewrite(
 
     for_(auto &aop : dgraph.ops_)
     for (auto &lt : aop.out_lts_) {
-        set_default_deserialized_lt(lt);
+        set_default_deserialized_lt_t(lt);
     }
 }
 

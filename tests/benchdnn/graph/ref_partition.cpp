@@ -486,7 +486,7 @@ bool ref_partition_t::need_unfusable_output_crop(
 
 bool ref_partition_t::is_output_op(const deserialized_op_t &op) const {
     return std::any_of(op.out_lts_.begin(), op.out_lts_.end(),
-            [this](const deserialized_lt &lt) {
+            [this](const deserialized_lt_t &lt) {
                 return std::find(partition_out_ids_.begin(),
                                partition_out_ids_.end(), lt.id_)
                         != partition_out_ids_.end();
@@ -605,14 +605,14 @@ std::vector<size_t> ref_partition_t::get_in_out_lt_ids(
         const deserialized_op_t &op) const {
     std::vector<size_t> in_out_lt_ids;
     std::for_each(op.in_lts_.begin(), op.in_lts_.end(),
-            [&in_out_lt_ids, this](const deserialized_lt &lt) {
+            [&in_out_lt_ids, this](const deserialized_lt_t &lt) {
                 if (std::find(partition_in_ids_.begin(),
                             partition_in_ids_.end(), lt.id_)
                         != partition_in_ids_.end())
                     in_out_lt_ids.emplace_back(lt.id_);
             });
     std::for_each(op.out_lts_.begin(), op.out_lts_.end(),
-            [&in_out_lt_ids, this](const deserialized_lt &lt) {
+            [&in_out_lt_ids, this](const deserialized_lt_t &lt) {
                 if (std::find(partition_out_ids_.begin(),
                             partition_out_ids_.end(), lt.id_)
                         != partition_out_ids_.end())

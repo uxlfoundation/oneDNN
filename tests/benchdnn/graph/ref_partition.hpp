@@ -118,7 +118,7 @@ private:
     // keep the lt id for fake output which is not supported by primitive
     std::unordered_set<size_t> fake_lt_ids_;
 
-    std::unordered_map<size_t, const deserialized_lt &> lt_id_2_lt_;
+    std::unordered_map<size_t, const deserialized_lt_t &> lt_id_2_lt_;
 };
 
 } // namespace graph

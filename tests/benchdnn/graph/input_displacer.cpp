@@ -157,7 +157,7 @@ partition_data_displacer_t::partition_data_displacer_t(
 
             // Search for an input lt without a parent, this is the one to
             // modify for both explicit and implicit masks.
-            const deserialized_lt *causal_mask_lt = nullptr;
+            const deserialized_lt_t *causal_mask_lt = nullptr;
             size_t offset = SIZE_MAX;
             size_t qk_data_offset = SIZE_MAX;
             // Select condition having a parent or not is the only reliable

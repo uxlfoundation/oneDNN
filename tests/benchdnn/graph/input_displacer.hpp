@@ -49,7 +49,7 @@ enum class filling_type_t {
 //     filling_type
 // >
 using displace_t = ::std::tuple<::graph::deserialized_op_t, size_t,
-        ::graph::deserialized_lt, filling_type_t>;
+        ::graph::deserialized_lt_t, filling_type_t>;
 
 class partition_data_displacer_t {
 public:

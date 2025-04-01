@@ -44,7 +44,7 @@ size_t get_benchdnn_device_limit() {
 
 // Constructs memories for all inputs and outputs needed for comparison.
 dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
-        const deserialized_lt &lt, const bool is_op_input,
+        const deserialized_lt_t &lt, const bool is_op_input,
         const bool use_graph_layout)
     : graph_dims_(lt.shape_), graph_strides_(lt.stride_) {
     const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
@@ -138,7 +138,7 @@ int dnn_graph_mem_t::fill_mem_with_data(const dnn_mem_t &mem) {
 }
 
 dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
-        const deserialized_lt &lt) const {
+        const deserialized_lt_t &lt) const {
     void *data_handle;
     dnnl_memory_get_data_handle(mem_.m_, &data_handle);
     dnnl::graph::logical_tensor graph_lt(lt.id_, lt.get_data_type(), lt.shape_,

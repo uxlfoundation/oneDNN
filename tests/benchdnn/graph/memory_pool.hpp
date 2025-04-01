@@ -129,7 +129,7 @@ public:
 #endif
             ptr = sh_ptr.get();
             // record the map of mm size and its ptr for reuse
-            map_size_ptr_.emplace(std::make_pair(size, sh_ptr));
+            map_size_ptr_.emplace(size, sh_ptr);
             is_free_ptr_[ptr] = false;
         }
         return ptr;

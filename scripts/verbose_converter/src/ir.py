@@ -267,7 +267,7 @@ class EltwisePostOp(PostOp):
 class BinaryPostOp(PostOp):
     dt: str
     mask: int = 0
-    tag: str = "abx"
+    tag: str = "any"
 
 
 @dataclass(eq=False)

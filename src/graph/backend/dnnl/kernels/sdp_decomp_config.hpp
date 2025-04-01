@@ -89,13 +89,13 @@ public:
     std::vector<int> graph_inport;
 
     // Primitives that actually perform calculations
-    primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim;
+    primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim, sub_select_prim;
     sdp_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3;
 
     // Args used in the execution of primitives
     std::unordered_map<int, memory> sub_reorder0_args, sub_reorder1_args,
             sub_mm1_args, sub_softmax_args, sub_reorder2_args, sub_mm2_args,
-            sub_reorder3_args;
+            sub_reorder3_args, sub_select_args;
 
     // A map from memory to registry key, used to record the internal memories
     // location inside of the whole buffer.
@@ -108,8 +108,10 @@ public:
     memory sub_wei1_user, sub_wei1_zp;
     //mm1
     memory sub_mm1_src, sub_mm1_wei, sub_mm1_dst;
-    // sub_mm1_post_mem contains [post_scale, attn_mask(optional), post_binary(from select)...]
+    // sub_mm1_post_mem contains [post_scale, attn_mask(optional)]
     std::vector<memory> sub_mm1_post_mem;
+    //select binary
+    memory sub_select_cond, sub_select_src0, sub_select_dst;
     //softmax
     memory sub_softmax_dst;
     //reorder2
@@ -130,7 +132,7 @@ public:
 
 private:
     // Used to record the ops contained in SDP
-    // sdp_op = [reorder1, mm1, softmax, reorder2, mm2]
+    // sdp_op = [reorder1, mm1, softmax, reorder2, mm2, binary_select]
     // reorder1 is using mm1 weight u8->s8
     // reorder2 is using mm2 weight u8->s8
     std::vector<op_ptr> sdp_op;
@@ -151,12 +153,6 @@ public:
     impl::status_t construct_params(std::shared_ptr<subgraph_t> &sg,
             registry_t &sdp_registry, const dnnl::engine &p_engine,
             const std::vector<logical_tensor_t> &inputs);
-
-    impl::status_t record_select_ops(std::shared_ptr<subgraph_t> &sg,
-            std::vector<op_ptr> &select_out_ops);
-    impl::status_t record_select_out_index(
-            const std::shared_ptr<subgraph_t> &sg,
-            const std::vector<op_ptr> &select_out_ops);
 
 private:
     op_ptr get_post_op(const op_ptr &op) const;

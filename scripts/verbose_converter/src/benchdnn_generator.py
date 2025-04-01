@@ -141,7 +141,9 @@ class Converter(metaclass=ConverterMeta):
         return ":".join([po.alg] + args)
 
     def _convert_binary_post_op(self, po: ir.BinaryPostOp):
-        return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}"
+        if po.tag != "any":
+            return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}"
+        return f"{po.alg}:{po.dt}:{po.mask}"
 
     @property
     def post_ops(self):

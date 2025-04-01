@@ -133,11 +133,14 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
         VCHECK_BINARY(IMPLICATION(src0_md->dims[d] != dims[d],
                               src1_md->dims[d] == dims[d]),
                 VERBOSE_INCONSISTENT_DIM, "src1", d, "dst", d);
-        // For inputs supporting ternary operators, the dimensions must match the
-        // src0 tensor as there is no broadcasting support for the tensor
-        if (src2_md != nullptr)
-            VCHECK_BINARY(src2_md->dims[d] == src0_md->dims[d], VERBOSE_BAD_DIM,
-                    "src2", d);
+
+        if (src2_md != nullptr) {
+            VCHECK_BINARY(utils::one_of(src2_md->dims[d], 1, dims[d]),
+                    VERBOSE_BAD_DIM, "src2", d);
+            VCHECK_BINARY(IMPLICATION(src0_md->dims[d] != dims[d],
+                                  src2_md->dims[d] == src0_md->dims[d]),
+                    VERBOSE_INCONSISTENT_DIM, "src0", d, "src2", d);
+        }
     }
     return status::success;
 }

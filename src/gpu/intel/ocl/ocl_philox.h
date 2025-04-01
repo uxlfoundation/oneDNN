@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,8 +60,10 @@ uchar philox_16x8(long idx, uint seed) {
 float stochastic_round_fwd(float s, long idx, uint seed) {
     if (isnan(s) || isinf(s)) return s;
     uint truncation_mask = 0xffffffff << (24 - DST_DT_DIGITS);
-    uint bias_val = sizeof(DST_DATA_T) == 2 ? philox_16x8(idx, seed)
+    uint bias_val = sizeof(DST_DATA_T) == 1 ? philox_16x8(idx, seed)
                                             : philox_8x16(idx, seed);
+    // For f16->f8, align bias to f16 LSB in f32 precision
+    if (sizeof(DST_DATA_T) == 1) bias_val <<= 13;
     uint rnd_bias = (uint)(bias_val & ~truncation_mask);
     float r = as_float((as_uint(s) + rnd_bias) & truncation_mask);
     r = fmin(fmax((float)DST_DATA_FLOW, r), (float)DST_DATA_FMAX);

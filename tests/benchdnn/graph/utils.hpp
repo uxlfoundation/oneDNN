@@ -49,7 +49,7 @@
 
 namespace graph {
 
-struct deserialized_lt;
+struct deserialized_lt_t;
 
 struct bdnn_state_t {
     res_state_t state;

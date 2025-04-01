@@ -43,7 +43,7 @@ struct deserialized_attr_t {
     void load(utils::json::json_reader_t *reader);
 };
 
-struct deserialized_lt {
+struct deserialized_lt_t {
     size_t id_;
     std::string data_type_;
     logical_tensor::dims shape_;
@@ -61,7 +61,7 @@ struct deserialized_lt {
     // Outputs the information about lt from operator<< into a string.
     std::string get_string() const;
 };
-std::ostream &operator<<(std::ostream &s, const deserialized_lt &dlt);
+std::ostream &operator<<(std::ostream &s, const deserialized_lt_t &dlt);
 
 struct deserialized_op_t {
     size_t id_;
@@ -71,8 +71,8 @@ struct deserialized_op_t {
     std::string fpmath_mode_apply_to_int_;
 
     std::unordered_map<std::string, deserialized_attr_t> attrs_;
-    std::vector<deserialized_lt> in_lts_;
-    std::vector<deserialized_lt> out_lts_;
+    std::vector<deserialized_lt_t> in_lts_;
+    std::vector<deserialized_lt_t> out_lts_;
 
     op create() const;
 

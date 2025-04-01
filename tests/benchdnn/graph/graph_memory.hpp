@@ -161,10 +161,10 @@ public:
     // memory for them, but construct memory from graph shape. The default
     // value is false.
     //
-    dnn_graph_mem_t(const dnn_mem_t &mem, const deserialized_lt &lt,
+    dnn_graph_mem_t(const dnn_mem_t &mem, const deserialized_lt_t &lt,
             const bool is_op_input, const bool use_graph_layout = false);
 
-    dnnl::graph::tensor make_graph_tensor(const deserialized_lt &lt) const;
+    dnnl::graph::tensor make_graph_tensor(const deserialized_lt_t &lt) const;
 
     const dnn_mem_t &get_mem() const { return mem_; }
 

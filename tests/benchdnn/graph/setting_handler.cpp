@@ -145,7 +145,7 @@ bool get_prb_dims(const deserialized_op_t &base_op_ref, prb_dims_t &prb_dims) {
 
 // extend shape in src to match the ndims
 // if the rank in tensor is less than ndims, we need to insert 1
-void extend_dims(::graph::deserialized_lt &lt, size_t ndims) {
+void extend_dims(::graph::deserialized_lt_t &lt, size_t ndims) {
     size_t nelem = 1;
     for (size_t i = 0; i < lt.shape_.size(); i++) {
         nelem *= lt.shape_[i];

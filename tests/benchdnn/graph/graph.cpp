@@ -176,7 +176,7 @@ void record_queried_logical_tensors(
 /// @param alt a deserialized logical tensor to be updated
 /// @param is_input a boolean flag to indicate to search input or output lts
 int find_logical_tensor(size_t lt_id, const graph::op_ref_list_t &ops,
-        graph::deserialized_op_t &aop, graph::deserialized_lt &alt,
+        graph::deserialized_op_t &aop, graph::deserialized_lt_t &alt,
         const bool is_input) {
 
     for (const auto &op : ops) {
@@ -248,7 +248,7 @@ int make_input_tensors(std::vector<dnnl::graph::tensor> &input_ts,
         // find the op id of the input logical tensor
         const auto &in = ins[idx];
         const auto &lt_id = in.get_id();
-        graph::deserialized_lt lt;
+        graph::deserialized_lt_t lt;
         graph::deserialized_op_t op;
         if (find_logical_tensor(lt_id, ops, op, lt, true) != OK) {
             BENCHDNN_PRINT(0,
@@ -288,7 +288,7 @@ int make_output_tensors(std::vector<dnnl::graph::tensor> &output_ts,
         const auto &out = outs[idx];
         const auto &lt_id = out.get_id();
         graph::deserialized_op_t op;
-        graph::deserialized_lt lt;
+        graph::deserialized_lt_t lt;
         if (find_logical_tensor(lt_id, ops, op, lt, false) != OK) {
             BENCHDNN_PRINT(0,
                     "FAIL: Cannot find logical tensor with id %zu! \n", lt_id);

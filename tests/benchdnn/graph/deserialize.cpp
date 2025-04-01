@@ -64,7 +64,7 @@ void deserialized_attr_t::load(utils::json::json_reader_t *reader) {
     reader->next_object_item(&value_entry);
 }
 
-logical_tensor::data_type deserialized_lt::get_data_type() const {
+logical_tensor::data_type deserialized_lt_t::get_data_type() const {
     if (data_type_ == "f32") {
         return logical_tensor::data_type::f32;
     } else if (data_type_ == "f16") {
@@ -92,7 +92,7 @@ logical_tensor::data_type deserialized_lt::get_data_type() const {
     }
 }
 
-logical_tensor::property_type deserialized_lt::get_property_type() const {
+logical_tensor::property_type deserialized_lt_t::get_property_type() const {
     if (property_type_ == "constant") {
         return logical_tensor::property_type::constant;
     } else if (property_type_ == "variable") {
@@ -102,7 +102,7 @@ logical_tensor::property_type deserialized_lt::get_property_type() const {
     }
 }
 
-logical_tensor deserialized_lt::create() const {
+logical_tensor deserialized_lt_t::create() const {
     if (layout_type_ == "any") {
         return logical_tensor(id_, get_data_type(), shape_,
                 logical_tensor::layout_type::any, get_property_type());
@@ -112,7 +112,7 @@ logical_tensor deserialized_lt::create() const {
     }
 }
 
-void deserialized_lt::load(utils::json::json_reader_t *reader) {
+void deserialized_lt_t::load(utils::json::json_reader_t *reader) {
     utils::json::read_helper_t helper;
 
     helper.declare_field("id", &id_);
@@ -365,13 +365,13 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
 }
 
 // Prints the lt in the plain string format: `(id):dt:shape`.
-std::ostream &operator<<(std::ostream &s, const deserialized_lt &dlt) {
+std::ostream &operator<<(std::ostream &s, const deserialized_lt_t &dlt) {
     s << "(" << dlt.id_ << "):" << dlt.data_type_ << ":"
       << lt_dims2str(dlt.shape_);
     return s;
 }
 
-std::string deserialized_lt::get_string() const {
+std::string deserialized_lt_t::get_string() const {
     std::stringstream ss;
     ss << *this;
     return ss.str();

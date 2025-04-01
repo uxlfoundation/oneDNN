@@ -319,6 +319,10 @@ std::pair<bool, std::pair<size_t, int64_t>> shuffle_fusible(
 bool post_binary_fusible(const op_t *base_op, const op_t *bin_op,
         engine_kind_t ekind = engine_kind::cpu);
 
+// binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+bool post_eltwise_fusible(
+        const op_t *base_op, const op_t *elt_op, graph::engine_kind_t ekind);
+
 // oneDNN support post depthwise conv fusion. This function is used to check if
 // two conv ops can be fused as a conv + depthwise pattern.
 bool post_depthwise_conv_fusible(

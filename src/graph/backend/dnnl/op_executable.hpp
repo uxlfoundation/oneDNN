@@ -1427,6 +1427,12 @@ struct bn_folding_t : public op_executable_t {
         dnnl::binary::primitive_desc mul_pd_;
         dnnl::binary::primitive_desc sub_pd_;
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+        // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+        dnnl::eltwise_forward::primitive_desc sqrt_pd_;
+#endif
+
         bool with_bias_ {false};
 
     public:
@@ -1441,6 +1447,13 @@ struct bn_folding_t : public op_executable_t {
             fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
         desc_ = create_desc(op, p_engine, mgr, pd_cache);
         add_prim_ = dnnl::binary(desc_.add_pd_);
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+        // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+        if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
+            sqrt_prim_ = dnnl::eltwise_forward(desc_.sqrt_pd_);
+        }
+#endif
         mul_prim_ = dnnl::binary(desc_.mul_pd_);
         sub_prim_ = dnnl::binary(desc_.sub_pd_);
     }
@@ -1460,7 +1473,61 @@ struct bn_folding_t : public op_executable_t {
 
         auto updated_weights = args.find(DNNL_ARG_DST_0)->second;
         auto updated_bias = args.find(DNNL_ARG_DST_1)->second;
+        // 0. split scratchpad buffer to specific intermediate memory
+        // sqrt_variance
+        char *buf_start = (char *)scratchpad.get_data_handle();
+        memory sqrt_variance = make_dnnl_memory(variance.get_desc(),
+                scratchpad.get_engine(), (void *)buf_start);
+        buf_start += variance.get_desc().get_size();
+        // zero_bias
+        memory valid_bias = bias;
+        if (bias.get(true) == nullptr || bias.get_data_handle() == nullptr) {
+            valid_bias = make_dnnl_memory(variance.get_desc(),
+                    scratchpad.get_engine(), (void *)buf_start);
+            buf_start += valid_bias.get_desc().get_size();
+        }
+        // epsilon
+        memory epsilon_mem = make_dnnl_memory(desc_.epsilon_desc_,
+                scratchpad.get_engine(), (void *)buf_start);
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+        if (scratchpad.get_engine().get_kind() == engine::kind::gpu) {
+
+            buf_start += epsilon_mem.get_desc().get_size();
+
+            // variance + epsilon
+            memory variance_epsilon = make_dnnl_memory(desc_.epsilon_desc_,
+                    scratchpad.get_engine(), (void *)buf_start);
+
+            // 1. sqrt_variance = sqrt(variance + epsilon)
+            engine cpu_eng(engine::kind::cpu, 0);
+            memory cpu_mem = make_dnnl_memory(
+                    desc_.epsilon_desc_, cpu_eng, (void *)&desc_.epsilon_);
+            dnnl::reorder(cpu_mem, epsilon_mem)
+                    .execute(stream, cpu_mem, epsilon_mem);
+
+            add_prim_.execute(stream,
+                    {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
+                            { DNNL_ARG_DST,
+                                variance_epsilon }});
+
+            sqrt_prim_.execute(stream,
+                    {{DNNL_ARG_SRC, variance_epsilon},
+                            { DNNL_ARG_DST,
+                                sqrt_variance }});
+        } else {
+            // 1. sqrt_variance = sqrt(variance + epsilon)
+            float *ptr = (float *)epsilon_mem.get_data_handle();
+            *ptr = desc_.epsilon_;
+
+            add_prim_.execute(stream,
+                    {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
+                            { DNNL_ARG_DST,
+                                sqrt_variance }});
+        }
+
+#else
         // 0. split scratchpad buffer to specific intermediate memory
         // sqrt_variance
         char *buf_start = (char *)scratchpad.get_data_handle();
@@ -1493,6 +1560,8 @@ struct bn_folding_t : public op_executable_t {
         add_prim_.execute(stream,
                 {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
                         {DNNL_ARG_DST, sqrt_variance}});
+
+#endif
 
         // 2. updated_weight = weights * scale / sqrt_variance
         memory new_scale(desc_.new_scale_desc_, scale.get_engine(),
@@ -1609,8 +1678,9 @@ struct bn_folding_t : public op_executable_t {
                                     scale},
                             {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
                                     sqrt_variance},
-                            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
-                                    shift}},
+                            { DNNL_ARG_ATTR_MULTIPLE_POST_OP(2)
+                                        | DNNL_ARG_SRC_1,
+                                shift }},
                     {sycl_deps2});
             if (stream.get_engine().get_kind() == engine::kind::cpu)
                 sycl_deps3.wait();
@@ -1624,8 +1694,8 @@ struct bn_folding_t : public op_executable_t {
                                 scale},
                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
                                 sqrt_variance},
-                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
-                                shift}},
+                        { DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
+                            shift }},
                 {sycl_deps2});
         if (stream.get_engine().get_kind() == engine::kind::cpu)
             sycl_deps3.wait();
@@ -1681,7 +1751,8 @@ struct bn_folding_t : public op_executable_t {
 
         auto ocl_deps = dnnl::ocl_interop::execute(add_prim_, stream,
                 {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
-                        {DNNL_ARG_DST, sqrt_variance}},
+                        { DNNL_ARG_DST,
+                            sqrt_variance }},
                 deps);
 
         // 2. updated_weight = weights * scale / sqrt_variance
@@ -1696,8 +1767,8 @@ struct bn_folding_t : public op_executable_t {
         auto ocl_deps2 = dnnl::ocl_interop::execute(mul_prim_, stream,
                 {{DNNL_ARG_SRC_0, weights}, {DNNL_ARG_SRC_1, new_scale},
                         {DNNL_ARG_DST, updated_weights},
-                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                                new_sqrt_variance}},
+                        { DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                            new_sqrt_variance }},
                 {ocl_deps});
 
         // 3. updated_bias = (bias - mean) * scale / sqrt_variance + shift
@@ -1717,8 +1788,9 @@ struct bn_folding_t : public op_executable_t {
                                     scale},
                             {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
                                     sqrt_variance},
-                            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
-                                    shift}},
+                            { DNNL_ARG_ATTR_MULTIPLE_POST_OP(2)
+                                        | DNNL_ARG_SRC_1,
+                                shift }},
                     {ocl_deps2});
             return ocl_deps3;
         }
@@ -1730,8 +1802,8 @@ struct bn_folding_t : public op_executable_t {
                                 scale},
                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
                                 sqrt_variance},
-                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
-                                shift}},
+                        { DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
+                            shift }},
                 {ocl_deps2});
         return ocl_deps3;
     }
@@ -1742,6 +1814,11 @@ private:
     dnnl::binary add_prim_;
     dnnl::binary mul_prim_;
     dnnl::binary sub_prim_;
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+    dnnl::eltwise_forward sqrt_prim_;
+#endif
 };
 
 struct conv_bwd_data_executable_t : public op_executable_t {
@@ -1927,20 +2004,24 @@ struct batchnorm_executable_t : public op_executable_t {
         // new_running_mean = momentum * old_running_mean +
         //                                      (1 - momentum) * batch_mean
         auto sum_prim_0 = dnnl::sum({p_engine, scales_,
-                {old_running_mean.get_desc(), batch_mean.get_desc()}});
+                { old_running_mean.get_desc(),
+                    batch_mean.get_desc() }});
         auto e1 = dnnl::sycl_interop::execute(sum_prim_0, stream,
                 {{DNNL_ARG_MULTIPLE_SRC, old_running_mean},
                         {DNNL_ARG_MULTIPLE_SRC + 1, batch_mean},
-                        {DNNL_ARG_DST, new_running_mean}},
+                        { DNNL_ARG_DST,
+                            new_running_mean }},
                 {e0});
         // new_running_variance = momentum * old_running_variance +
         //                                  (1 - momentum) * batch_variance
         auto sum_prim_1 = dnnl::sum({p_engine, scales_,
-                {old_running_variance.get_desc(), batch_variance.get_desc()}});
+                { old_running_variance.get_desc(),
+                    batch_variance.get_desc() }});
         auto e2 = dnnl::sycl_interop::execute(sum_prim_1, stream,
                 {{DNNL_ARG_MULTIPLE_SRC, old_running_variance},
                         {DNNL_ARG_MULTIPLE_SRC + 1, batch_variance},
-                        {DNNL_ARG_DST, new_running_variance}},
+                        { DNNL_ARG_DST,
+                            new_running_variance }},
                 {e1});
         if (stream.get_engine().get_kind() == engine::kind::cpu) e2.wait();
         return e2;
@@ -1976,20 +2057,24 @@ struct batchnorm_executable_t : public op_executable_t {
         // new_running_mean = momentum * old_running_mean +
         //                                      (1 - momentum) * batch_mean
         auto sum_prim_0 = dnnl::sum({p_engine, scales_,
-                {old_running_mean.get_desc(), batch_mean.get_desc()}});
+                { old_running_mean.get_desc(),
+                    batch_mean.get_desc() }});
         auto e1 = dnnl::ocl_interop::execute(sum_prim_0, stream,
                 {{DNNL_ARG_MULTIPLE_SRC, old_running_mean},
                         {DNNL_ARG_MULTIPLE_SRC + 1, batch_mean},
-                        {DNNL_ARG_DST, new_running_mean}},
+                        { DNNL_ARG_DST,
+                            new_running_mean }},
                 {e0});
         // new_running_variance = momentum * old_running_variance +
         //                                  (1 - momentum) * batch_variance
         auto sum_prim_1 = dnnl::sum({p_engine, scales_,
-                {old_running_variance.get_desc(), batch_variance.get_desc()}});
+                { old_running_variance.get_desc(),
+                    batch_variance.get_desc() }});
         auto e2 = dnnl::ocl_interop::execute(sum_prim_1, stream,
                 {{DNNL_ARG_MULTIPLE_SRC, old_running_variance},
                         {DNNL_ARG_MULTIPLE_SRC + 1, batch_variance},
-                        {DNNL_ARG_DST, new_running_variance}},
+                        { DNNL_ARG_DST,
+                            new_running_variance }},
                 {e1});
         return e2;
     }
@@ -2087,7 +2172,8 @@ struct resampling_executable_t : public op_executable_t {
                 auto prim = dnnl::reorder(psrc_mem, dst_mem);
                 auto e = dnnl::sycl_interop::execute(prim, stream,
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
-                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
+                                { DNNL_ARG_TO,
+                                    const_cast<memory &>(dst_mem) }},
                         sycl_deps);
                 sycl_deps = {e};
             }
@@ -2110,7 +2196,8 @@ struct resampling_executable_t : public op_executable_t {
                 auto prim = dnnl::reorder(psrc_mem, dst_mem);
                 auto e = dnnl::ocl_interop::execute(prim, stream,
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
-                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
+                                { DNNL_ARG_TO,
+                                    const_cast<memory &>(dst_mem) }},
                         ocl_deps);
                 ocl_deps = {e};
             }
@@ -2401,7 +2488,8 @@ struct reduction_executable_t : public op_executable_t {
                 auto prim = dnnl::reorder(psrc_mem, dst_mem);
                 auto e = dnnl::sycl_interop::execute(prim, stream,
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
-                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
+                                { DNNL_ARG_TO,
+                                    const_cast<memory &>(dst_mem) }},
                         sycl_deps);
                 sycl_deps = {e};
             }
@@ -2425,7 +2513,8 @@ struct reduction_executable_t : public op_executable_t {
                 auto prim = dnnl::reorder(psrc_mem, dst_mem);
                 auto e = dnnl::ocl_interop::execute(prim, stream,
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
-                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
+                                { DNNL_ARG_TO,
+                                    const_cast<memory &>(dst_mem) }},
                         ocl_deps);
                 ocl_deps = {e};
             }
@@ -2481,10 +2570,12 @@ private:
     dnnl::group_normalization_forward prim_;
 };
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 using namespace dnnl::impl::gpu::intel;
 #define MAX_NDIMS 6
 #endif
+
 struct genindex_executable_t : public op_executable_t {
     DECLARE_ARG_INDICES_GETTER;
 

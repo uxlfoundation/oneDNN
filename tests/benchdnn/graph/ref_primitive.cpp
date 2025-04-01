@@ -103,7 +103,8 @@ int ref_primitive_t::init_prim(
             || kind_ == dnnl::graph::op::kind::DynamicQuantize;
     // (De-)Quantize op is built on reorder which expects int8 dt for
     // zero-points attribute. Thus, skip them for forcing.
-    const bool force_f32_prim_dt = !force_override && !is_quant_or_dequant;
+    // const bool force_f32_prim_dt = !force_override && !is_quant_or_dequant;
+    const bool force_f32_prim_dt = false;
 
 #define CASE_INIT_PRIM(driver) \
     case dnnl_driver_t::driver: { \

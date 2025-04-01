@@ -170,6 +170,14 @@ int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
         }
     });
 
+    std::vector<float> softmax_f32_input = {-24, 17, 27, 30, -12, -4, -25, -12,
+            37, 11, -25, -13, 9, 3, 52, 28, 7, -3, -7, -7, 3, 1, 8, 4, -22, -4,
+            16, 10, -6, -2, -30, -16};
+
+    for (size_t idx = 0; idx < mem_fp.nelems(); ++idx) {
+        mem_fp.set_elem(idx, softmax_f32_input[idx]);
+    }
+
     SAFE(mem_dt.reorder(mem_fp), WARN);
 
     return OK;

@@ -189,6 +189,7 @@ inline dnnl::memory::dim product(const dnnl::memory::dims &dims) {
 inline void read_from_dnnl_memory(void *handle, dnnl::memory &mem) {
     dnnl::engine eng = mem.get_engine();
     size_t size = mem.get_desc().get_size();
+    std::cout << "memory size:" << size << std::endl;
 
     if (!handle) throw std::runtime_error("handle is nullptr.");
 

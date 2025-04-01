@@ -226,6 +226,9 @@ struct ref_matmul_t : public gpu_primitive_t {
             kernel_ctx.define_int("NDIMS", ndims);
         }
         kernel_ctx.define_int("RUNTIME_DIMS", runtime_dims);
+        auto &acc_data_type = pd()->desc()->accum_data_type;
+        std::cout << "Accumulation data type in ref MM kernel:" << acc_data_type
+                  << std::endl;
 
         def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
         def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");

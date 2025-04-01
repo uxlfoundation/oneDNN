@@ -266,14 +266,38 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     res->total += nelems;
 
+    std::vector<float> primitive_output_data_bf16 = {3.36042e-24, 2.14577e-06,
+            0.0473633, 0.953125, 5.48877e-19, 1.63064e-15, 1.24077e-24,
+            5.48877e-19, 3.05474e-07, 1.56532e-18, 3.62616e-34, 5.91646e-29,
+            2.11758e-19, 5.22778e-22, 1, 3.7744e-11, 0.263672, 1.19805e-05,
+            2.19792e-07, 2.19792e-07, 0.00482178, 0.000652313, 0.71875,
+            0.0131226, 3.1225e-17, 2.05182e-09, 0.996094, 0.00247192,
+            2.78305e-10, 1.52504e-08, 1.0482e-20, 1.26565e-14};
+
+    std::vector<float> ukernel_output_data_bf16 = {3.54137e-24, 2.26498e-06,
+            4.98047e-02, 1.00000e+00, 5.75982e-19, 1.71391e-15, 1.29893e-24,
+            5.75982e-19, 3.05474e-07, 1.56532e-18, 3.62616e-34, 5.91646e-29,
+            2.11758e-19, 5.22778e-22, 1.00000e+00, 3.77440e-11, 3.67188e-01,
+            1.66893e-05, 3.05474e-07, 3.05474e-07, 6.74438e-03, 9.11713e-04,
+            1.00000e+00, 1.83105e-02, 3.14419e-17, 2.06637e-09, 1.00000e+00,
+            2.47192e-03, 2.78305e-10, 1.52504e-08, 1.05350e-20, 1.26565e-14};
+
     dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+    dnn_mem_t exp_mem_f32(exp_mem, dnnl_f32, tag::abx, get_cpu_engine());
+
+    // for (size_t idx = 0; idx < primitive_output_data_bf16.size(); ++idx) {
+    //     got_f32.set_elem(idx, primitive_output_data_bf16[idx]);
+    //     exp_mem_f32.set_elem(idx, ukernel_output_data_bf16[idx]);
+    // }
+    // const dnn_mem_t &exp_f32 = exp_mem_f32;
+
     dnn_mem_t exp_f32_plain;
     if (has_prim_ref_
-            && !check_md_consistency_with_tag(exp_mem.md_, tag::abx)) {
+            && !check_md_consistency_with_tag(exp_mem_f32.md_, tag::abx)) {
         exp_f32_plain
-                = dnn_mem_t(exp_mem, dnnl_f32, tag::abx, get_cpu_engine());
+                = dnn_mem_t(exp_mem_f32, dnnl_f32, tag::abx, get_cpu_engine());
     }
-    const dnn_mem_t &exp_f32 = exp_f32_plain ? exp_f32_plain : exp_mem;
+    const dnn_mem_t &exp_f32 = exp_f32_plain ? exp_f32_plain : exp_mem_f32;
 
     const auto dt = got_mem.dt();
     const bool has_eltwise

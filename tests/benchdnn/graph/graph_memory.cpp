@@ -106,6 +106,12 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
             mem_ = dnn_mem_t(mem.md_, graph_dt, mtag, g_eng.get());
         }
     }
+
+    std::cout << "Fill graph memory for tensor: " << lt.id_ << ": ";
+    for (size_t idx = 0; idx < mem_.nelems(); ++idx) {
+        std::cout << mem_.get_elem(idx) << ",";
+    }
+    std::cout << std::endl;
 }
 
 dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
@@ -127,7 +133,7 @@ void flush_temp_memory() {
     static size_t ct_capacity = get_constant_tensor_cache_capacity(kind);
     if (ct_capacity > 0) set_constant_tensor_cache_capacity(kind, ct_capacity);
 
-        // flush the compiled partition cache.
+    // flush the compiled partition cache.
 #ifndef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE
     static int cp_capacity = get_compiled_partition_cache_capacity();
     set_compiled_partition_cache_capacity(0); // clear the cache

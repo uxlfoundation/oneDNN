@@ -191,7 +191,19 @@ void ref_partition_t::exec_ops(res_t *res) {
             const auto &lt = op.in_lts_[i];
             int arg = get_prim_arg_name_from_graph_op_input_offset(
                     ref_prim->get_kind(), i, use_dst);
-            ref_prim->replace_arg(arg, lt_id_2_mems_.at(lt.id_));
+            auto &mem = lt_id_2_mems_.at(lt.id_);
+
+            // std::cout << " input value for tensor with id:" << lt.id_
+            //           << std::endl;
+            // for (size_t idx = 0; idx < mem.nelems(); ++idx) {
+            //     std::cout << mem.get_elem(idx) << ",";
+            //     // input_min = MIN2(input_min, mem.get_elem(idx));
+            //     // input_max = MAX2(input_max, mem.get_elem(idx));
+            // }
+            // // std::cout << std::endl << input_min << " " << input_max;
+            // std::cout << "\n==============================\n";
+
+            ref_prim->replace_arg(arg, mem);
         }
         for (size_t i = 0; i < op.out_lts_.size(); i++) {
             const auto &lt = op.out_lts_[i];
@@ -283,6 +295,19 @@ void ref_partition_t::exec_ops(res_t *res) {
                 dnn_mem_t &dst_i
                         = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
                 dnn_mem_t dst_low_dt(dst_i, dt, tag::abx, dst_i.engine());
+
+                std::cout << "insert reorder for downcasting: \n";
+                std::cout << "Before downcast: \n";
+                for (size_t idx = 0; idx < dst_i.nelems(); ++idx) {
+                    std::cout << dst_i.get_elem(idx) << " ";
+                }
+                std::cout << std::endl;
+                std::cout << "After downcast: \n";
+                for (size_t idx = 0; idx < dst_low_dt.nelems(); ++idx) {
+                    std::cout << dst_low_dt.get_elem(idx) << " ";
+                }
+                std::cout << std::endl;
+
                 SAFE_V(dst_i.reorder(dst_low_dt));
             }
         }

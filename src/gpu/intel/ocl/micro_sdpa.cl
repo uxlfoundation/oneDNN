@@ -28,7 +28,7 @@
 #define QUANTIZE_COMMON 3
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define DIV_UP(x, y) (((x) + (y)-1) / (y))
+#define DIV_UP(x, y) (((x) + (y) - 1) / (y))
 
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
@@ -451,13 +451,51 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 );
 
 #if KEY_SCALES == QUANTIZE_COMMON
-#define k_scale_op(x) ((x)*k_scale)
+#define k_scale_op(x) ((x) * k_scale)
         tile_elementwise(S_tile, k_scale_op);
 #endif
 
+        // barrier(CLK_LOCAL_MEM_FENCE);
+        // if (get_group_id(0) == 0 && get_group_id(1) == 0
+        //         && get_group_id(2) == 0) {
+        //     if (get_local_id(0) == 0) {
+        //         printf("wg:(%zu %zu): S_tile:\n", get_group_id(0),
+        //                 get_group_id(1));
+        //     }
+        //     for (int sgr = 0; sgr < ugemm_kq_sg_per_wg_m; sgr++) {
+        //         for (int sgc = 0; sgc < ugemm_kq_sg_per_wg_n; sgc++) {
+        //             barrier(CLK_LOCAL_MEM_FENCE);
+        //             if (sg_i_kq == sgr && sg_j_kq == sgc) {
+        //                 if (get_sub_group_local_id() == 0) {
+        //                     printf("%d, %d:\n", sg_i_kq, sg_j_kq);
+        //                 }
+        //                 for (int j = 0; j < ugemm_kq_c_type_block1
+        //                                 * ugemm_kq_c_type_nblock1;
+        //                         j++) {
+        //                     for (int i = 0; i < ugemm_kq_c_type_block0
+        //                                     * ugemm_kq_c_type_nblock0;
+        //                             i++) {
+        //                         float value = xlane_tile_access(S_tile, i, j,
+        //                                 SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+        //                                 ugemm_kq_c_type_block1,
+        //                                 ugemm_kq_c_type_nblock0);
+        //                         if (get_sub_group_local_id() == 0
+        //                                 && value != 0.f) {
+        //                             printf("%7.2f", value);
+        //                         }
+        //                     }
+        //                     if (get_sub_group_local_id() == 0) { printf("\n"); }
+        //                 }
+        //             }
+        //             barrier(CLK_LOCAL_MEM_FENCE);
+        //         }
+        //     }
+        // }
+        // barrier(CLK_LOCAL_MEM_FENCE);
+
         /* Apply attention mask */
 #if WITH_ATTN_MASK
-#define unscale(x) ((x)*iscale)
+#define unscale(x) ((x) * iscale)
         mask_tile_type_float mask_tile_float;
         tile_copy_reblock(mask_tile, &mask_tile_float);
 #if WITH_ATTN_SCALE
@@ -564,6 +602,28 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         s_sum_tile_type S_sum_tile1;
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
+
+        // local float *S_slm_f32 = (local float *)&slm[Q_slm_size];
+        // tile_store_t_sys_src2(S_tile, (local float *)S_slm_f32,
+        //         ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m / 2, sg_i0_kq / 2,
+        //         sg_j0_kq);
+
+        // barrier(CLK_LOCAL_MEM_FENCE);
+        // if (get_group_id(0) == 0 && get_group_id(1) == 0
+        //         && get_group_id(2) == 0) {
+        //     if (get_local_id(0) == 0 && get_local_id(1) == 0) {
+        //         printf("wg:(%zu %zu): S_tile:\n", get_group_id(0),
+        //                 get_group_id(1));
+        //         for (int i = 0; i < ugemm_kq_wg_tile_m; i++) {
+        //             for (int j = 0; j < ugemm_kq_wg_tile_n; j++) {
+        //                 float value =  S_slm_f32[j * ugemm_kq_wg_tile_m + i];
+        //                 if (value != 0.f) { printf("%.5e ", value); }
+        //             }
+        //             printf("\n");
+        //         }
+        //     }
+        // }
+        // barrier(CLK_LOCAL_MEM_FENCE);
 
         /* Convert to half or bf16, VNNI format */
         s_tile_type_packed S_tile_packed;
@@ -696,6 +756,26 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         if (last && need_sum_barrier)
             intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (get_group_id(0) == 0 && get_group_id(1) == 0
+                && get_group_id(2) == 0) {
+            if (get_local_id(0) == 0 && get_local_id(1) == 0) {
+                printf("wg:(%zu %zu): S_slm:\n", get_group_id(0),
+                        get_group_id(1));
+                for (int i = 0; i < ugemm_kq_wg_tile_m; i++) {
+                    for (int j = 0; j < ugemm_kq_wg_tile_n; j++) {
+                        float value = cvt_bf16_to_f32(
+                                S_slm[j * ugemm_kq_wg_tile_m + i]);
+                        if( value != 0.f ) {
+                                printf("%.5e ", value);
+                        }
+                    }
+                    printf("\n");
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
         /* Accumulate A += V * S */
         a_tile_type A_tile1 = ugemm_vs(
                 V, ldv, S_slm, ugemm_kq_wg_tile_m, d, ugemm_kq_wg_tile_n,
@@ -739,7 +819,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     }
 
 #if VAL_SCALES == QUANTIZE_COMMON
-#define v_scale_op(x) ((x)*v_scale)
+#define v_scale_op(x) ((x) * v_scale)
     tile_elementwise(A_tile, v_scale_op);
 #endif
 

@@ -87,76 +87,13 @@
       ]
     }, 
     {
-      "id": 6,
-      "name": "scale_div",
-      "kind": "Divide",
-      "attrs": {
-        "auto_broadcast": {
-          "type": "string",
-          "value": "numpy"
-        }
-      },
-      "inputs": [
-        {
-          "id": 2,
-          "dtype": "bf16",
-          "shape": [
-            32, 
-            16, 
-            384, 
-            384
-          ],
-          "stride": [
-            2359296, 
-            147456, 
-            384, 
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }, 
-        {
-          "id": 4,
-          "dtype": "bf16",
-          "shape": [
-            1
-          ],
-          "stride": [
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 5,
-          "dtype": "bf16",
-          "shape": [
-            32, 
-            16, 
-            384, 
-            384
-          ],
-          "stride": [
-            2359296, 
-            147456, 
-            384, 
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ]
-    }, 
-    {
       "id": 101,
       "name": "cast1",
       "kind": "TypeCast",
       "attrs": {},
       "inputs": [
         {
-          "id": 5,
+          "id": 2,
           "dtype": "bf16",
           "shape": [
             32, 

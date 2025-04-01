@@ -43,8 +43,8 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
-        GPU_INSTANCE_INTEL(intel::ocl::gemm_matmul_t)
-        GPU_INSTANCE_INTEL(intel::ocl::ref_sparse_matmul_t)
+        // GPU_INSTANCE_INTEL(intel::ocl::gemm_matmul_t)
+        // GPU_INSTANCE_INTEL(intel::ocl::ref_sparse_matmul_t)
         GPU_INSTANCE_INTEL_REF(intel::ocl::ref_matmul_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_matmul_lt_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_matmul_t)

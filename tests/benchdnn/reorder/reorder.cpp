@@ -76,6 +76,12 @@ int fill_mem(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
         if (zero_out_wa) mem_dt.set_elem(i, 0);
     });
 
+    // std::vector<float> tc_f32_input = {-24,17,27,30,-12,-4,-25,-12,37,11,-25,-13,9,3,52,28,7,-3,-7,-7,3,1,8,4,-22,-4,16,10,-6,-2,-30,-16};
+
+    // for (size_t idx = 0; idx < mem_fp.nelems(); ++idx) {
+    //     mem_fp.set_elem(idx, tc_f32_input[idx]);
+    // }
+
     SAFE(mem_dt.reorder(mem_fp), WARN);
 
     return OK;

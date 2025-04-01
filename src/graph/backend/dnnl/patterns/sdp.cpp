@@ -183,6 +183,53 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_gpu)
             return std::make_shared<sdp_base_t<>>();
         });
 
+// for implicit causal mask, gpu only supports f16/bf16 dtype
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
+        dnnl, float_sdp_fusion_gpu_f32_scale_mask)
+        .set_priority(21.0f)
+        .set_kind(partition_kind_t::sdp)
+        .set_engine_kind(engine_kind::gpu)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    auto cast1 = pgraph->append_op(graph::op_kind::TypeCast,
+                            {in_edge(0, matmul_qk, 0)});
+                    auto optional_scale_and_mask = optional_scale_and_masks(
+                            pgraph, cast1, /*check_xf16*/ true);
+                    auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto cast2 = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, softmax, 0)});
+                    auto matmul_v = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, cast2, 0)});
+                    // Optional transpose + reshape/reorder
+                    optional_transpose_reshape(pgraph, matmul_v, 0);
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<sdp_base_t<>>();
+        });
+
+// for implicit causal mask, gpu only supports f16/bf16 dtype
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
+        dnnl, float_validate_softmax_f32_downcast_diff)
+        .set_priority(21.0f)
+        .set_kind(partition_kind_t::sdp)
+        .set_engine_kind(engine_kind::gpu)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    auto softmax = pgraph->append_op(graph::op_kind::SoftMax);
+                    auto cast1 = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, softmax, 0)});
+                    auto cast2 = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, cast1, 0)});
+                    pgraph->append_op(graph::op_kind::Subtract,
+                            in_edges_t {in_edge(0, cast2, 0),
+                                    in_edge(1, softmax, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<larger_partition_kernel_t>();
+        });
+
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_fusion)
         .set_priority(21.1f)
         .set_kind(partition_kind_t::sdp)

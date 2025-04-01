@@ -153,12 +153,18 @@ sdpa_config_t xe2_q_h64_s384_2nd = {16, 16, 16, 16, 16, 1, 4, 1};
 sdpa_config_t xe2_q_h64_s512_2nd = {64, 16, 16, 16, 8, 1, 8, 1};
 sdpa_config_t xe2_q_h64_s768_2nd = {64, 16, 16, 16, 16, 1, 8, 1};
 
-sdpa_config_t xe2_q_h256_s128 = {16, 32, 64, 16, 8, 4, 4, 8};
-sdpa_config_t xe2_q_h256_s128_integrated = {32, 16, 64, 16, 4, 4, 4, 4};
+sdpa_config_t xe2_q_h256 = {16, 64, 16, 32, 32, 1, 16, 2};
+sdpa_config_t xe2_q_h256_s384 = {16, 32, 32, 32, 8, 2, 8, 2};
+sdpa_config_t xe2_q_h256_s128 = {16, 32, 32, 32, 8, 1, 8, 1};
+sdpa_config_t xe2_q_h256_s128_integrated = {16, 32, 32, 32, 8, 2, 8, 2};
+sdpa_config_t xe2_q_h256_s64_integrated = {16, 16, 16, 16, 16, 1, 16, 1};
 sdpa_config_t xe2_q_h256_s64 = {16, 32, 64, 16, 8, 2, 4, 4};
-sdpa_config_t xe2_q_h256_s64_integrated = {32, 16, 64, 16, 4, 4, 4, 4};
-sdpa_config_t xe2_q_h256_s32 = {16, 16, 64, 16, 4, 1, 4, 1};
-sdpa_config_t xe2_q_h256_s32_integrated = {16, 16, 16, 16, 16, 1, 16, 1};
+
+sdpa_config_t xe2_q_h256_2nd_integrated = {32, 16, 64, 16, 4, 1, 4, 1};
+sdpa_config_t xe2_q_h256_s1152_2nd_integrated = {16, 16, 64, 16, 4, 1, 4, 1};
+sdpa_config_t xe2_q_h256_s768_2nd_integrated = {64, 16, 16, 16, 16, 1, 16, 1};
+sdpa_config_t xe2_q_h256_s512_2nd_integrated = {32, 32, 32, 16, 16, 1, 8, 2};
+sdpa_config_t xe2_q_h256_s384_2nd_integrated = {16, 16, 16, 16, 16, 1, 16, 1};
 
 sdpa_config_t *choose_config_xehpg(
         dim_t head_size, dim_t seq, bool thin_q, bool quantized) {
@@ -320,14 +326,22 @@ sdpa_config_t *choose_config_xe2(dim_t head_size, dim_t seq, bool thin_q,
     if (head_size <= 256) {
         if (quantized) {
             if (is_integrated) {
-
-                if (seq <= 32) return &xe2_q_h256_s32_integrated;
+                if (thin_q) {
+                    if (seq < 384) return &xe2_q_h256_s384_2nd_integrated;
+                    if (seq < 512) return &xe2_q_h256_s512_2nd_integrated;
+                    if (seq < 768) return &xe2_q_h256_s768_2nd_integrated;
+                    if (seq < 1152) return &xe2_q_h256_s1152_2nd_integrated;
+                    return &xe2_q_h256_2nd_integrated;
+                }
                 if (seq <= 64) return &xe2_q_h256_s64_integrated;
                 if (seq <= 128) return &xe2_q_h256_s128_integrated;
             }
-            if (seq <= 32) return &xe2_q_h256_s32;
-            if (seq <= 64) return &xe2_q_h256_s64;
-            if (seq <= 128) return &xe2_q_h256_s128;
+            if (!thin_q) {
+                if (seq <= 64) return &xe2_q_h256_s64;
+                if (seq <= 128) return &xe2_q_h256_s128;
+                if (seq <= 384) return &xe2_q_h256_s384;
+                return &xe2_q_h256;
+            }
         }
     }
     return choose_config_xehpc(

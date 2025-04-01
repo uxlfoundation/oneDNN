@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -3519,8 +3519,9 @@ TEST(test_interface_op_schema, SoftMax) {
     const op_kind_t op_kind_ = op_kind::SoftMax;
     const size_t expected_in_size = 1;
     const size_t expected_out_size = 1;
-    const size_t expected_attr_size = 1;
-    const std::map<op_attr_t, bool> attrs_data = {{op_attr::axis, false}};
+    const size_t expected_attr_size = 2;
+    const std::map<op_attr_t, bool> attrs_data
+            = {{op_attr::axis, false}, {op_attr::mode, false}};
 
     verify_op_schema(op_kind_, expected_in_size, expected_out_size,
             expected_attr_size, attrs_data);

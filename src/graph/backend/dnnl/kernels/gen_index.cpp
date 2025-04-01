@@ -46,15 +46,18 @@ status_t genindex_t::compile_impl(const dnnl_partition_impl_t *part,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
     if (p_engine_.get_kind() == engine::kind::gpu) {
+#if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
+        && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
         int ndims = inputs[0].ndims;
         VCHECK_GENINDEX(ndims <= MAX_NDIMS, status::invalid_arguments,
                 "only tensors of 6 or fewer dimensions are supported for "
                 "genindex GPU, but got %dD",
                 ndims);
-    }
+#else
+        return status::unimplemented;
 #endif
+    }
 
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
         return this->memory_planner_.get_memory_info(val);

@@ -1460,7 +1460,9 @@ struct bn_folding_t : public op_executable_t {
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
         // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
-        sqrt_prim_ = dnnl::eltwise_forward(desc_.sqrt_pd_);
+        if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
+            sqrt_prim_ = dnnl::eltwise_forward(desc_.sqrt_pd_);
+        }
 #endif
         mul_prim_ = dnnl::binary(desc_.mul_pd_);
         sub_prim_ = dnnl::binary(desc_.sub_pd_);
@@ -1481,8 +1483,6 @@ struct bn_folding_t : public op_executable_t {
 
         auto updated_weights = args.find(DNNL_ARG_DST_0)->second;
         auto updated_bias = args.find(DNNL_ARG_DST_1)->second;
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
-        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
         // 0. split scratchpad buffer to specific intermediate memory
         // sqrt_variance
         char *buf_start = (char *)scratchpad.get_data_handle();
@@ -1500,33 +1500,42 @@ struct bn_folding_t : public op_executable_t {
         memory epsilon_mem = make_dnnl_memory(desc_.epsilon_desc_,
                 scratchpad.get_engine(), (void *)buf_start);
 
-        buf_start += epsilon_mem.get_desc().get_size();
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+        if (scratchpad.get_engine().get_kind() == engine::kind::gpu) {
 
-        // variance + epsilon
-        memory variance_epsilon = make_dnnl_memory(desc_.epsilon_desc_,
-                scratchpad.get_engine(), (void *)buf_start);
+            buf_start += epsilon_mem.get_desc().get_size();
 
-        // 1. sqrt_variance = sqrt(variance + epsilon)
-        if (variance.get_engine().get_kind() == engine::kind::cpu) {
-            float *ptr = (float *)epsilon_mem.get_data_handle();
-            *ptr = desc_.epsilon_;
-        } else {
+            // variance + epsilon
+            memory variance_epsilon = make_dnnl_memory(desc_.epsilon_desc_,
+                    scratchpad.get_engine(), (void *)buf_start);
+
+            // 1. sqrt_variance = sqrt(variance + epsilon)
             engine cpu_eng(engine::kind::cpu, 0);
             memory cpu_mem = make_dnnl_memory(
                     desc_.epsilon_desc_, cpu_eng, (void *)&desc_.epsilon_);
             dnnl::reorder(cpu_mem, epsilon_mem)
                     .execute(stream, cpu_mem, epsilon_mem);
+
+            add_prim_.execute(stream,
+                    {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
+                            { DNNL_ARG_DST,
+                                variance_epsilon }});
+
+            sqrt_prim_.execute(stream,
+                    {{DNNL_ARG_SRC, variance_epsilon},
+                            { DNNL_ARG_DST,
+                                sqrt_variance }});
+        } else {
+            // 1. sqrt_variance = sqrt(variance + epsilon)
+            float *ptr = (float *)epsilon_mem.get_data_handle();
+            *ptr = desc_.epsilon_;
+
+            add_prim_.execute(stream,
+                    {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
+                            { DNNL_ARG_DST,
+                                sqrt_variance }});
         }
-
-        add_prim_.execute(stream,
-                {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
-                        { DNNL_ARG_DST,
-                            variance_epsilon }});
-
-        sqrt_prim_.execute(stream,
-                {{DNNL_ARG_SRC, variance_epsilon},
-                        { DNNL_ARG_DST,
-                            sqrt_variance }});
 
 #else
         // 0. split scratchpad buffer to specific intermediate memory

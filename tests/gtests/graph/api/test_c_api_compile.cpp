@@ -1580,8 +1580,6 @@ TEST(CAPI, CompileConvBN) {
 #undef COMPILE_CONV_BN_DESTROY
 }
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
-        && DNNL_GPU_VENDOR != DNNL_VENDOR_NVIDIA
 TEST(CAPI, CompileGroupedConvBN) {
     dnnl_graph_graph_t agraph = nullptr;
     dnnl_graph_op_t conv2d = nullptr;
@@ -1742,7 +1740,6 @@ TEST(CAPI, CompileGroupedConvBN) {
     COMPILE_GROUPED_CONV_BN_DESTROY;
 #undef COMPILE_GROUPED_CONV_BN_DESTROY
 }
-#endif
 
 TEST(CAPI, CompileConvBNStandalone) {
     dnnl_graph_graph_t agraph = nullptr;

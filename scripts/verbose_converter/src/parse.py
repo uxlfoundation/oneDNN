@@ -261,34 +261,34 @@ class ParserImpl:
         )
 
     def parse_attrs(self, attrs):
-        parsed = {}
+        exts = ir.Attributes()
         for attr in attrs.split():
             spec = ParseSpec(attr)
             name, args = spec.read_str(), ""
             if spec.read_literal(":"):
                 args = spec.buf
-            if name == "attr-acc-mode":
-                parsed[name] = self.parse_acc_mode(args)
+            if name in ("attr-acc-mode", "attr-acc"):
+                exts.acc_mode = self.parse_acc_mode(args)
             elif name == "attr-deterministic":
-                parsed[name] = self.parse_deterministic(args)
+                exts.deterministic = self.parse_deterministic(args)
             elif name == "attr-dropout":
-                parsed[name] = self.parse_dropout(args)
+                exts.dropout = self.parse_dropout(args)
             elif name == "attr-fpmath":
-                parsed[name] = self.parse_fpmath_mode(args)
+                exts.fpmath = self.parse_fpmath_mode(args)
             # Kept for compatibility with v2.7 and below.
             elif name == "attr-oscale":
-                parsed[name] = self.parse_oscale(args)
+                exts.oscale = self.parse_oscale(args)
             elif name == "attr-post-ops":
-                parsed[name] = self.parse_post_ops(args)
+                exts.post_ops = self.parse_post_ops(args)
             elif name == "attr-rounding-mode":
-                parsed[name] = self.parse_rounding_modes(args)
+                exts.rounding_mode = self.parse_rounding_modes(args)
             elif name == "attr-scales":
-                parsed[name] = self.parse_scales(args)
+                exts.scales = self.parse_scales(args)
             elif name == "attr-scratchpad":
-                parsed[name] = self.parse_scratchpad_mode(args)
+                exts.scratchpad = self.parse_scratchpad_mode(args)
             elif name == "attr-zero-points":
-                parsed[name] = self.parse_zero_points(args)
-        return ir.Attributes(parsed)
+                exts.zero_points = self.parse_zero_points(args)
+        return exts
 
     def parse_post_ops(self, post_ops: str):
         spec = ParseSpec(post_ops)

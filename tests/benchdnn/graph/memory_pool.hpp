@@ -121,7 +121,7 @@ public:
             auto sh_ptr = std::shared_ptr<void> {
                     malloc_shared(size, *static_cast<const sycl::device *>(dev),
                             *static_cast<const sycl::context *>(ctx)),
-                    sycl_deletor {*static_cast<const sycl::context *>(ctx)}};
+                    sycl_deletor_t {*static_cast<const sycl::context *>(ctx)}};
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
             auto sh_ptr = std::shared_ptr<void> {
                     ocl_malloc_device(size, alignment, dev, ctx),
@@ -158,9 +158,9 @@ private:
     std::unordered_map<void *, bool> is_free_ptr_;
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-    struct sycl_deletor {
-        sycl_deletor() = delete;
-        sycl_deletor(const ::sycl::context &ctx) : ctx_(ctx) {}
+    struct sycl_deletor_t {
+        sycl_deletor_t() = delete;
+        sycl_deletor_t(const ::sycl::context &ctx) : ctx_(ctx) {}
         void operator()(void *ptr) {
             if (ptr) ::sycl::free(ptr, ctx_);
         }

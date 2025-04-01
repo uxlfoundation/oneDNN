@@ -278,7 +278,7 @@ class QuantizationParam(Mapping):
     groups: str = ""
 
     def __str__(self):
-        if self.groups is not None:
+        if self.groups:
             return f"{self.mask}:{self.data_type}:{self.groups}"
         return f"{self.mask}:{self.data_type}"
 
@@ -376,17 +376,18 @@ class Attributes(FormattedMapping):
     def __len__(self):
         return len(list(iter(self)))
 
-    def __str__(self):
+    def _format(self, convert):
         parts = []
         for key, attr in self.items():
             if isinstance(attr, list):
-                sub_parts = "+".join(map(str, attr))
+                sub_parts = "+".join(map(convert, attr))
                 parts.append(f"{key}:{sub_parts}")
             elif isinstance(attr, dict):
-                sub_parts = "+".join(f"{k}:{v!s}" for k, v in attr.items())
-                parts.append(f"{key}:{sub_parts}")
+                converted = (f"{k}:{convert(v)}" for k, v in attr.items())
+                combined = "+".join(converted)
+                parts.append(f"{key}:{combined}")
             else:
-                parts.append(f"{key}:{attr!s}")
+                parts.append(f"{key}:{convert(attr)}")
         return " ".join(parts)
 
 
@@ -403,19 +404,6 @@ class HashableEntry(FormattedMapping):
     exts: Attributes
 
     def _format(self, convert):
-        def stringify(ext):
-            if isinstance(ext, list):
-                return "+".join(map(convert, ext))
-            if isinstance(ext, dict):
-                return "+".join(kv_format(k, v) for k, v in ext.items())
-            return convert(ext)
-
-        def kv_format(key, value):
-            converted = stringify(value)
-            if not converted:
-                return key
-            return f"{key}:{converted}"
-
         parts = [
             self.operation,
             self.engine,
@@ -423,8 +411,8 @@ class HashableEntry(FormattedMapping):
             self.impl,
             self.prop_kind,
             " ".join(map(convert, self.mds)),
-            " ".join(kv_format(k, v) for k, v in self.exts.items()),
-            " ".join(kv_format(k, v) for k, v in self.aux.items()),
+            convert(self.exts),
+            " ".join(f"{k}:{convert(v)}" for k, v in self.aux.items()),
             self.shapes,
         ]
         return ",".join(parts)

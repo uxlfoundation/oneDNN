@@ -289,7 +289,7 @@ public:
         if (!slm_buf.is_empty()) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
     }
 
-    void bind_kernel_grid_walk_order_blocked(const ngen::Subregister &id,
+    void bind_thread_group_grid_walk_order_blocked(const ngen::Subregister &id,
             const std::vector<std::pair<int, int>> &blocks,
             const std::vector<int> &dims, const std::vector<expr_t> &grid_vars,
             expr_binding_t &expr_binding) {
@@ -362,7 +362,8 @@ public:
         }
     }
 
-    void bind_kernel_grid_walk_order_non_blocked(const ngen::Subregister &id,
+    void bind_thread_group_grid_walk_order_non_blocked(
+            const ngen::Subregister &id,
             const std::vector<std::pair<int, int>> &blocks,
             const std::vector<expr_t> &grid_vars,
             expr_binding_t &expr_binding) {
@@ -383,7 +384,7 @@ public:
         ra_.safeRelease(_id);
     }
 
-    void bind_kernel_grid_walk_order(
+    void bind_thread_group_grid_walk_order(
             const walk_order_t &walk_order, expr_binding_t &expr_binding) {
         const int grid_ndims = 3;
         ngen::Subregister grid_ids[grid_ndims] = {r0.ud(1), r0.ud(6), r0.ud(7)};
@@ -410,10 +411,10 @@ public:
                 grid_vars[kv.second] = walk_order.grid_var(kv.first);
             }
             if (walk_order.is_blocked(i) || gpu_utils::dev_getenv("B", false)) {
-                bind_kernel_grid_walk_order_blocked(
+                bind_thread_group_grid_walk_order_blocked(
                         grid_ids[i], blocks, dims, grid_vars, expr_binding);
             } else {
-                bind_kernel_grid_walk_order_non_blocked(
+                bind_thread_group_grid_walk_order_non_blocked(
                         grid_ids[i], blocks, grid_vars, expr_binding);
             }
         }

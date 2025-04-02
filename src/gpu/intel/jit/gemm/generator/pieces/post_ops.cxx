@@ -730,10 +730,10 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
         if (!(aOffset && bOffset)) return Subregister{};
 
         auto ret = state.ra.alloc_sub(problem.Tc.ngen());
-
-        if (!boVector) mul(1, ret, state.k, state.inputs.bo);
-        else if (Tc.isFP()) mov(1, ret, state.k);
-        else stub();
+        if (!boVector)
+            mul(1, ret, state.k, state.inputs.bo);
+        else
+            mov(1, ret, state.k);
 
         return ret;
     }();
@@ -781,7 +781,7 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
 
         if (aOffset && bOffset) for (int r = 0; r < state.Bs_regs.getLen(); r++) {
             auto ne = elementsPerGRF(hw, Tc);
-            auto Bs = state.Bs_regs[r];
+            auto Bs = state.Bs_regs[r].retype(Tc.ngen());
             boVector ? emad(ne, Bs, Bs, boData[r].retype(Tc.ngen()), temp, strategy, state)
                      : add(ne, Bs, Bs, temp);
         };

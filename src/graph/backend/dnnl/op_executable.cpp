@@ -1655,6 +1655,32 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     desc.epsilon_desc_ = memory::desc(
             epsilon_dims, memory::data_type::f32, memory::format_tag::a);
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+    if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
+        primitive_attr add_attr;
+        desc.add_pd_
+                = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
+                        variance, desc.epsilon_desc_, variance, add_attr);
+
+        primitive_attr sqrt_attr;
+        desc.sqrt_pd_ = dnnl::eltwise_forward::primitive_desc(p_engine,
+                prop_kind::forward, algorithm::eltwise_sqrt, variance, variance,
+                0.0f, 0.0f, sqrt_attr);
+    } else {
+        post_ops add_post_ops;
+        // sqrt_variance = sqrt(temp)
+        add_post_ops.append_eltwise(algorithm::eltwise_sqrt, 0.0f, 0.0f);
+
+        primitive_attr add_attr;
+        add_attr.set_post_ops(add_post_ops);
+        desc.add_pd_
+                = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
+                        variance, desc.epsilon_desc_, variance, add_attr);
+    }
+
+#else
     post_ops add_post_ops;
     // sqrt_variance = sqrt(temp)
     add_post_ops.append_eltwise(algorithm::eltwise_sqrt, 0.0f, 0.0f);
@@ -1664,6 +1690,7 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     desc.add_pd_ = dnnl::binary::primitive_desc(p_engine, algorithm::binary_add,
             variance, desc.epsilon_desc_, variance, add_attr);
 
+#endif
     // 2. updated_weight = weights * scale / sqrt_variance
 
     // expand 1D scale and variance to same ndims with weights
@@ -1721,7 +1748,19 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     memory::dims scratchpad_dims = variance.get_dims();
     // sqrt_variance, zero_bias and others (like epsilon),
     // or no need to alloc bias
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU, so we need
+    // one more scratchpad for sqrt
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    size_t factor = 0;
+    if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
+        factor = bias.is_zero() ? 4 : 3;
+    } else {
+        factor = bias.is_zero() ? 3 : 2;
+    }
+#else
     size_t factor = bias.is_zero() ? 3 : 2;
+#endif
     scratchpad_dims[0] *= factor;
     desc.scratchpad_desc_ = memory::desc(
             scratchpad_dims, variance.get_data_type(), memory::format_tag::a);

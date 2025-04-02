@@ -475,26 +475,12 @@ simple_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 #elif CELL_KIND == LBR_GRU
     // AUX and SCRATCH data type is same for fwd prop
     __global AUX_DATA_T *scratch_cell = (__global AUX_DATA_T *)(scr_cell);
-    __global WS_STATE_DATA_T *src_iter = h_states_tm_l;
 
-    lbr_gru_gates_t gates = compute_gates_lbr_gru(scratch_gates, scratch_cell,
-            bias, tm_scales, scratch_gates_ld, dhc, i, j);
-    float Wh_b = gates.Wh_b;
-    float G0 = gates.G[0];
-    float G1 = gates.G[1];
-    float G2 = gates.G[2];
+    lbr_gru_gates_t gates = compute_gates_lbr_gru_scratch(scratch_gates,
+            scratch_cell, bias, tm_scales, scratch_gates_ld, dhc, i, j);
+    lbr_gru_store(ws_gates, gates_ws_ld, h_states_tm_l, h_states_t_l,
+            states_ws_ld, ws_grid, dhc, i, j, gates);
 
-    float Ht = G0 * TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)])
-            + (1 - G0) * G2;
-
-    h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_WS_STATE(Ht);
-
-    if (!RECOMPUTE_GATES && IS_TRAINING) {
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)] = G0;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)] = G1;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)] = G2;
-        ws_grid[cell_ws_grid_comp(dhc, i, j)] = Wh_b;
-    }
 #elif CELL_KIND == VANILLA_GRU
     __global WS_STATE_DATA_T *src_iter = h_states_tm_l;
 
@@ -539,7 +525,6 @@ simple_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
 #endif
 }
 #endif
-
 #if !IS_FWD
 // The scratch_diff_gates and scratch_gates buffers may refer to the
 // same memory when sizeof(SRC_DATA_T) == sizeof(AUX_DATA_T) or when
@@ -687,7 +672,7 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
         float G1 = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)];
         float G2 = ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)];
 #else
-        lbr_gru_gates_t gates = compute_gates_lbr_gru(scratch_gates,
+        lbr_gru_gates_t gates = compute_gates_lbr_gru_scratch(scratch_gates,
                 scratch_cell, bias, tm_scales, scratch_gates_ld, dhc, i, j);
         float Wh_b = gates.Wh_b;
         float G0 = gates.G[0];
@@ -1057,36 +1042,12 @@ void cell_common_inner(const_wei_layer_cell_t wei_layer,
                             ctx.lbr_gru.bias[off_ker_bias(dims.dhc, i, c)]);
                 }
 
-                lbr_gru_gates_t gate;
-                gate.Wh_b = C[2] + B[3];
-                gate.G[0] = logistic_fwd_tm(
-                        G[0] + C[0] + B[0], ctx.lbr_gru.tm_scales[0]);
-                gate.G[1] = logistic_fwd_tm(
-                        G[1] + C[1] + B[1], ctx.lbr_gru.tm_scales[1]);
-                gate.G[2] = tanh_fwd_tm(G[2] + gate.G[1] * gate.Wh_b + B[2],
-                        ctx.lbr_gru.tm_scales[2]);
-                float Ht = gate.G[0]
-                                * TO_REF(ctx.lbr_gru.hidden_state_iter
-                                                 [cell_ws_state(
-                                                         states.strides.mb, n,
-                                                         c)])
-                        + (1 - gate.G[0]) * gate.G[2];
-                states.ptr[cell_ws_state(states.strides.mb, n, c)]
-                        = TO_WS_STATE(Ht);
-
-                if (!RECOMPUTE_GATES && IS_TRAINING) {
-                    gates.ptr[cell_ws_gates(
-                            gates.strides.mb, dims.dhc, n, 0, c)]
-                            = gate.G[0];
-                    gates.ptr[cell_ws_gates(
-                            gates.strides.mb, dims.dhc, n, 1, c)]
-                            = gate.G[1];
-                    gates.ptr[cell_ws_gates(
-                            gates.strides.mb, dims.dhc, n, 2, c)]
-                            = gate.G[2];
-                    ctx.lbr_gru.grid[cell_ws_grid_comp(dims.dhc, n, c)]
-                            = gate.Wh_b;
-                }
+                lbr_gru_gates_t g
+                        = compute_gates_lbr_gru(G, C, B, ctx.lbr_gru.tm_scales,
+                                scratch_gates.strides.mb, dims.dhc, n, c);
+                lbr_gru_store(gates.ptr, gates.strides.mb,
+                        ctx.lbr_gru.hidden_state_iter, states.ptr,
+                        states.strides.mb, ctx.lbr_gru.grid, dims.dhc, n, c, g);
             }
         }
     }

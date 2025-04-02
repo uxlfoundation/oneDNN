@@ -197,31 +197,15 @@ inline float deq_w(ACC_DATA_T s, int gate, int j, __global float *scales,
 }
 #endif // IS_INT8
 
-#if CELL_KIND == LBR_GRU
 typedef struct lbr_gru_gates_t {
     float Wh_b;
     float G[3];
 } lbr_gru_gates_t;
 
-struct lbr_gru_gates_t compute_gates_lbr_gru(
-        const __global ACC_DATA_T *restrict scratch_gates,
-        const __global AUX_DATA_T *restrict scratch_cell,
-        const __global BIAS_DATA_T *restrict bias,
+struct lbr_gru_gates_t compute_gates_lbr_gru(const float G[n_gates],
+        const float C[n_gates], const float B[n_bias],
         const __global float *restrict tm_scales, int scratch_gates_ld, int dhc,
         int mb, int c) {
-    float G[n_gates];
-    float B[n_bias];
-    float C[n_gates];
-    for (int i = 0; i < n_gates; i++) {
-        G[i] = convert_float(scratch_gates[cell_scratch_mem(
-                scratch_gates_ld, dhc, mb, i, c)]);
-        C[i] = convert_float(scratch_cell[cell_scratch_mem(
-                scratch_gates_ld, dhc, mb, i, c)]);
-    }
-    for (int i = 0; i < n_bias; i++) {
-        B[i] = convert_float(bias[off_ker_bias(dhc, i, c)]);
-    }
-
     lbr_gru_gates_t ret;
     ret.Wh_b = C[2] + B[3];
     ret.G[0] = logistic_fwd_tm(G[0] + C[0] + B[0], tm_scales[0]);
@@ -229,6 +213,53 @@ struct lbr_gru_gates_t compute_gates_lbr_gru(
     ret.G[2] = tanh_fwd_tm(G[2] + ret.G[1] * ret.Wh_b + B[2], tm_scales[2]);
     return ret;
 }
-#endif
+
+struct lbr_gru_gates_t compute_gates_lbr_gru_scratch(
+        const __global ACC_DATA_T *restrict scratch_gates,
+        const __global AUX_DATA_T *restrict scratch_cell,
+        const __global BIAS_DATA_T *restrict bias,
+        const __global float *restrict tm_scales, int scratch_gates_ld, int dhc,
+        int mb, int c) {
+    float gates_[n_gates];
+    float cell_[n_gates];
+    float bias_[n_bias];
+    for (int gate_idx = 0; gate_idx < n_gates; gate_idx++) {
+        gates_[gate_idx] = convert_float(scratch_gates[cell_scratch_mem(
+                scratch_gates_ld, dhc, mb, gate_idx, c)]);
+        cell_[gate_idx] = convert_float(scratch_cell[cell_scratch_mem(
+                scratch_gates_ld, dhc, mb, gate_idx, c)]);
+    }
+    for (int bias_idx = 0; bias_idx < n_bias; bias_idx++) {
+        bias_[bias_idx] = convert_float(bias[off_ker_bias(dhc, bias_idx, c)]);
+    }
+
+    lbr_gru_gates_t gates = compute_gates_lbr_gru(
+            gates_, cell_, bias_, tm_scales, scratch_gates_ld, dhc, mb, c);
+
+    return gates;
+}
+
+void lbr_gru_store(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
+        __global WS_STATE_DATA_T *src_iter,
+        __global WS_STATE_DATA_T *h_states_t_l, int states_ws_ld,
+        __global AUX_DATA_T *ws_grid, int dhc, int i, int j,
+        lbr_gru_gates_t gates) {
+    float Wh_b = gates.Wh_b;
+    float G0 = gates.G[0];
+    float G1 = gates.G[1];
+    float G2 = gates.G[2];
+
+    float Ht = G0 * TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)])
+            + (1 - G0) * G2;
+
+    h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_WS_STATE(Ht);
+
+    if (!RECOMPUTE_GATES && IS_TRAINING) {
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)] = G0;
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)] = G1;
+        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)] = G2;
+        ws_grid[cell_ws_grid_comp(dhc, i, j)] = Wh_b;
+    }
+}
 
 #endif

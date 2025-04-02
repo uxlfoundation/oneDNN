@@ -241,12 +241,13 @@ struct GEMMProblem : public CommonProblem {
     bool downconvertBScales() const { return Tb == Type::f16 && Tb_scale == Type::f32; }
 
     bool earlyDequantizeA() const {
-        return (aOffset == ABOffset::Calc && Tao.asSigned().isSubsetOf(Ta)
+        return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)
                     && (Ta_ext.bits() < Ta.bits() || Ta.isFP()))
             || (aScale2D && (Ta_scale.isSubsetOf(Ta) || downconvertAScales()));
     }
+
     bool earlyDequantizeB() const {
-        return (bOffset == ABOffset::Calc && Tbo.asSigned().isSubsetOf(Tb)
+        return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)
                     && (Tb_ext.bits() < Tb.bits() || Tb.isFP()))
             || (bScale2D && (Tb_scale.isSubsetOf(Tb) || downconvertBScales()));
     }
@@ -263,6 +264,10 @@ struct GEMMProblem : public CommonProblem {
 
     std::string toString() const;
     std::string scalarsToString() const;
+
+    static bool earlyDequantizableOffset(Type T_ext, Type To, Type T) {
+        return To.asSigned().isSubsetOf(T) && (To.bits() < T.bits() || T_ext.bits() < T.bits());
+    }
 
     /* Serialization for kernel cache. */
     void serialize(serialized_data_t &s) const

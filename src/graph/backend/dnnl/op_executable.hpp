@@ -57,12 +57,12 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/stream.hpp"
 #endif
+#endif
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/stream.hpp"
 #endif
 
-#endif
 namespace dnnl {
 namespace impl {
 namespace graph {

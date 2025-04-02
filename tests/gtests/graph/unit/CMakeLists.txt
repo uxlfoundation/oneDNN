@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2021-2024 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -93,3 +93,10 @@ foreach(i RANGE ${count})
         endif()
     endif()
 endforeach()
+
+if(DNNL_WITH_SYCL)
+    if(DNNL_SYCL_CUDA OR (DNNL_SYCL_GENERIC AND NVIDIA_TARGET_SUPPORTED))
+        append(CMAKE_CXX_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda,spir64")
+    endif()
+endif()
+

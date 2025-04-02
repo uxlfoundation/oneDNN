@@ -1767,7 +1767,12 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
     // Avoid replacing memories that have already been properly filled.
     if (skip_replace) return OK;
 
-    if (!is_scratchpad) SAFE(prim_ref_mem.reorder(ref_mem, swapped_dt), WARN);
+    if (!is_scratchpad) {
+        const auto prim_ref_swapped_dt = query_md_data_type(ref_md) == dnnl_f32
+                ? dnnl_data_type_undef
+                : swapped_dt;
+        SAFE(prim_ref_mem.reorder(ref_mem, prim_ref_swapped_dt), WARN);
+    }
     ref_mem_map[exec_arg] = std::move(prim_ref_mem);
 
     return OK;

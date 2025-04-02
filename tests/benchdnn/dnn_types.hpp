@@ -668,9 +668,5 @@ inline void maybe_post_ops(
     maybe_post_ops(attr, val, sum_val, std::vector<float>());
 }
 
-// When using fast-ref option, reference expects everything to be in f32
-// data type and also no additional memories coming from runtime attributes.
-// That's why we update all data types to f32 and remove all runtime arguments
-// to makes them constant when possible.
-void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t new_dt = dnnl_f32);
+void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt);
 #endif

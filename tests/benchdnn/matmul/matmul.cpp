@@ -188,10 +188,6 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
         return OK;
 #endif
 
-    // Create a new copy of prb to avoid potentially corrupting the test by
-    // modifying prb in place.
-    auto cpu_attr = prb->attr;
-    update_cpu_ref_attrs(cpu_attr);
     std::vector<std::vector<dnnl_data_type_t>> prim_ref_dt {
             prb->dt, {dnnl_f32}};
     // If there's no bias, undef data type should be used for prim_ref as well.
@@ -205,6 +201,11 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
 
     for_(const auto &prim_ref_dt_i : prim_ref_dt)
     for (const auto &prim_ref_bia_dt_i : prim_ref_bia_dt) {
+        auto cpu_attr = prb->attr;
+        update_cpu_ref_attrs(cpu_attr, prim_ref_dt_i.back());
+
+        // Create a new copy of prb to avoid potentially corrupting the test by
+        // modifying prb in place.
         prb_t prb_cpu {*prb, prim_ref_dt_i, tag::any, tag::any, tag::any,
                 {vdims_t(STRIDES_SIZE)}, prim_ref_bia_dt_i, prb->bia_mask,
                 {0, 0, 0},

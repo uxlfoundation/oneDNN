@@ -317,12 +317,6 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
     // Wino inputs doesn't suit optimized CPU implementation.
     if (prb->alg == WINO) return OK;
 
-    // Create a new copy of prb to avoid potentially corrupting the test by
-    // modifying prb in place.
-    // DIRECT algorithm is used to prevent fallback  to the slow benchdnn
-    // reference implementation.
-    auto cpu_attr = prb->attr;
-    update_cpu_ref_attrs(cpu_attr);
     std::vector<std::vector<dnnl_data_type_t>> prim_ref_dt {
             prb->dt, {dnnl_f32}};
     // If there's no bias, undef data type should be used for prim_ref as well.
@@ -336,6 +330,13 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
 
     for_(const auto &prim_ref_dt_i : prim_ref_dt)
     for (const auto &prim_ref_bia_dt_i : prim_ref_bia_dt) {
+        auto cpu_attr = prb->attr;
+        update_cpu_ref_attrs(cpu_attr, prim_ref_dt_i.back());
+
+        // Create a new copy of prb to avoid potentially corrupting the test by
+        // modifying prb in place.
+        // `DIRECT` algorithm is used to prevent fallback to the slow benchdnn
+        // reference implementation.
         prb_t prb_cpu {*prb, prb->dir, prim_ref_dt_i, prim_ref_bia_dt_i,
                 tag::any, tag::any, tag::any, {vdims_t(STRIDES_SIZE)}, DIRECT,
                 prb->mb, cpu_attr, prb->ctx_init, prb->ctx_exe,

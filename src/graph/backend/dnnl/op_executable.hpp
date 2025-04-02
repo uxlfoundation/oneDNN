@@ -57,12 +57,12 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/stream.hpp"
 #endif
+#endif
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/stream.hpp"
 #endif
 
-#endif
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -2484,7 +2484,8 @@ private:
     dnnl::group_normalization_forward prim_;
 };
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 using namespace dnnl::impl::gpu::intel;
 #define MAX_NDIMS 6
 #endif

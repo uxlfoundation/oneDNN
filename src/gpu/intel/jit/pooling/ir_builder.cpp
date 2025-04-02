@@ -549,8 +549,8 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
 
     const int regs = get_peak_regs(stmt, exec.grf_size());
 
-    gpu_trace() << "Pooling kernel body:\n" << stmt;
-    gpu_trace() << "Pooling cfg (~" << regs << " regs):\n" << cfg;
+    gpu_debug() << "Pooling kernel body:\n" << stmt;
+    gpu_debug() << "Pooling cfg (~" << regs << " regs):\n" << cfg;
 
     return (regs > exec.regs()) ? stmt_t() : std::move(stmt);
 }

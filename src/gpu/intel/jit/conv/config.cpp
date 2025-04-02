@@ -2023,7 +2023,7 @@ std::string conv_config_t::str() const {
     oss << "  Estimated GRF usage:        " << estimated_peak_regs << std::endl;
     oss << "  AB Swap Transpose:          " << to_string(prb().ab_swap_transpose) << std::endl;
     oss << "  Kernel grid walk order:     " << walk_order() << std::endl;
-    oss << "  Configuration line:         " << get_config_line() << std::endl;
+    oss << "  Configuration line:         " << get_config_line();
     // clang-format on
     return oss.str();
 }

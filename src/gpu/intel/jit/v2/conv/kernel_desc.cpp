@@ -269,7 +269,9 @@ bool kernel_desc_t::is_supported(const hw_t &hw, const problem_t *prb) const {
                 << "Output/accumulator types must match for Stream-K";
     }
     gpu_check(is_grf_usage_ok(*this)) << "GRF usage exceeded";
-    if (prb) gpu_check(matches(*prb)) << "Descriptor does not match problem";
+    if (prb)
+        gpu_check(matches(*prb))
+                << "Descriptor " << cmd_str() << " does not match problem";
     return true;
 }
 
@@ -365,9 +367,9 @@ bool is_compatible(
     gpu_check(is_compatible(desc.hw_desc, prb.hw(), exact))
             << "HW does not match";
     gpu_check(prb.prop() == desc.prop) << "Propagation kind does not match";
-    gpu_check(is_compatible(tensor_kind_t::a, desc, prb, exact));
-    gpu_check(is_compatible(tensor_kind_t::b, desc, prb, exact));
-    gpu_check(is_compatible(tensor_kind_t::c, desc, prb, exact));
+    if (!is_compatible(tensor_kind_t::a, desc, prb, exact)) return false;
+    if (!is_compatible(tensor_kind_t::b, desc, prb, exact)) return false;
+    if (!is_compatible(tensor_kind_t::c, desc, prb, exact)) return false;
     gpu_check(prb.is_depthwise() == desc.is_dw)
             << "Mixing depthwise/non-depthwise descriptor and problem";
     if (desc.use_stream_k) {

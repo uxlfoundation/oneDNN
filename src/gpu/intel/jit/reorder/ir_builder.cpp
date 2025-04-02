@@ -268,7 +268,7 @@ bool reorder_ir_builder_t::try_build(
         return false;
     }
 
-    gpu_trace() << "Reorder kernel body:\n" << stmt_;
+    gpu_debug() << "Reorder kernel body:\n" << stmt_;
     return true;
 }
 

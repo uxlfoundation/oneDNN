@@ -35,6 +35,7 @@ enum class log_level_t {
     warning = 100,
     suggestion = 120,
     info = 150,
+    debug = 160,
     perf = 170,
     trace = 200,
 };
@@ -101,6 +102,7 @@ private:
             case log_level_t::warning: out_ << "[ WARN]"; break;
             case log_level_t::suggestion: out_ << "[SUGGESTION]"; break;
             case log_level_t::info: out_ << "[ INFO]"; break;
+            case log_level_t::debug: out_ << "[DEBUG]"; break;
             case log_level_t::perf: out_ << "[ PERF]"; break;
             case log_level_t::trace: out_ << "[TRACE]"; break;
             default: gpu_error_not_expected();
@@ -135,6 +137,13 @@ private:
             dnnl::impl::gpu::intel::log_level_t::info>::is_enabled() \
             && dnnl::impl::gpu::intel::logger_t< \
                     dnnl::impl::gpu::intel::log_level_t::info>( \
+                    __FILENAME__, __LINE__)
+
+#define gpu_debug() \
+    dnnl::impl::gpu::intel::logger_t< \
+            dnnl::impl::gpu::intel::log_level_t::debug>::is_enabled() \
+            && dnnl::impl::gpu::intel::logger_t< \
+                    dnnl::impl::gpu::intel::log_level_t::debug>( \
                     __FILENAME__, __LINE__)
 
 #define gpu_warning() \

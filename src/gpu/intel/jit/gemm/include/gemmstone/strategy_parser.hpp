@@ -17,8 +17,9 @@
 #ifndef GEMMSTONE_GUARD_STRATEGY_PARSER_HPP
 #define GEMMSTONE_GUARD_STRATEGY_PARSER_HPP
 
-#include "config.hpp"
-#include "generator.hpp"
+#include "gemmstone/config.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 
 #include <string>
 

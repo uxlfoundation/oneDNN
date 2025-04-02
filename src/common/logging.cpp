@@ -57,6 +57,9 @@ log_manager_t::log_manager_t()
     } catch (spdlog::spdlog_ex &exception) {
         printf("onednn_verbose,info,exception while creating logfile: %s\n",
                 exception.what());
+    } catch (fmt::v11::format_error &exception) {
+        printf("onednn_verbose,info,exception while creating logfile: %s\n",
+                exception.what());
     }
 }
 

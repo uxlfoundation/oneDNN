@@ -1430,6 +1430,12 @@ struct bn_folding_t : public op_executable_t {
         dnnl::binary::primitive_desc mul_pd_;
         dnnl::binary::primitive_desc sub_pd_;
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+        // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+        dnnl::eltwise_forward::primitive_desc sqrt_pd_;
+#endif
+
         bool with_bias_ {false};
 
     public:
@@ -1444,6 +1450,13 @@ struct bn_folding_t : public op_executable_t {
             fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
         desc_ = create_desc(op, p_engine, mgr, pd_cache);
         add_prim_ = dnnl::binary(desc_.add_pd_);
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+        // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+        if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
+            sqrt_prim_ = dnnl::eltwise_forward(desc_.sqrt_pd_);
+        }
+#endif
         mul_prim_ = dnnl::binary(desc_.mul_pd_);
         sub_prim_ = dnnl::binary(desc_.sub_pd_);
     }
@@ -1481,21 +1494,53 @@ struct bn_folding_t : public op_executable_t {
         memory epsilon_mem = make_dnnl_memory(desc_.epsilon_desc_,
                 scratchpad.get_engine(), (void *)buf_start);
 
-        // 1. sqrt_variance = sqrt(variance + epsilon)
-        if (variance.get_engine().get_kind() == engine::kind::cpu) {
-            float *ptr = (float *)epsilon_mem.get_data_handle();
-            *ptr = desc_.epsilon_;
-        } else {
+        if (scratchpad.get_engine().get_kind() == engine::kind::gpu) {
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+            buf_start += epsilon_mem.get_desc().get_size();
+
+            // variance + epsilon
+            memory variance_epsilon = make_dnnl_memory(desc_.epsilon_desc_,
+                    scratchpad.get_engine(), (void *)buf_start);
+
+            // 1. sqrt_variance = sqrt(variance + epsilon)
             engine cpu_eng(engine::kind::cpu, 0);
             memory cpu_mem = make_dnnl_memory(
                     desc_.epsilon_desc_, cpu_eng, (void *)&desc_.epsilon_);
             dnnl::reorder(cpu_mem, epsilon_mem)
                     .execute(stream, cpu_mem, epsilon_mem);
-        }
 
-        add_prim_.execute(stream,
-                {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
-                        {DNNL_ARG_DST, sqrt_variance}});
+            add_prim_.execute(stream,
+                    {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
+                            { DNNL_ARG_DST,
+                                variance_epsilon }});
+
+            sqrt_prim_.execute(stream,
+                    {{DNNL_ARG_SRC, variance_epsilon},
+                            { DNNL_ARG_DST,
+                                sqrt_variance }});
+
+#else
+            engine cpu_eng(engine::kind::cpu, 0);
+            memory cpu_mem = make_dnnl_memory(
+                    desc_.epsilon_desc_, cpu_eng, (void *)&desc_.epsilon_);
+            dnnl::reorder(cpu_mem, epsilon_mem)
+                    .execute(stream, cpu_mem, epsilon_mem);
+
+            add_prim_.execute(stream,
+                    {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
+                            {DNNL_ARG_DST, sqrt_variance}});
+
+#endif
+        } else {
+            // 1. sqrt_variance = sqrt(variance + epsilon)
+            float *ptr = (float *)epsilon_mem.get_data_handle();
+            *ptr = desc_.epsilon_;
+
+            add_prim_.execute(stream,
+                    {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
+                            {DNNL_ARG_DST, sqrt_variance}});
+        }
 
         // 2. updated_weight = weights * scale / sqrt_variance
         memory new_scale(desc_.new_scale_desc_, scale.get_engine(),
@@ -1745,6 +1790,11 @@ private:
     dnnl::binary add_prim_;
     dnnl::binary mul_prim_;
     dnnl::binary sub_prim_;
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
+    dnnl::eltwise_forward sqrt_prim_;
+#endif
 };
 
 struct conv_bwd_data_executable_t : public op_executable_t {
@@ -2484,7 +2534,8 @@ private:
     dnnl::group_normalization_forward prim_;
 };
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 using namespace dnnl::impl::gpu::intel;
 #define MAX_NDIMS 6
 #endif

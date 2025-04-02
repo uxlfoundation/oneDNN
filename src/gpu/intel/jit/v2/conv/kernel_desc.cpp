@@ -391,7 +391,9 @@ bool is_compatible(
                     << "Bias is not supported";
         }
     }
-    gpu_check(desc.reqs().fits(prb.shape()));
+    auto fitted_desc = desc;
+    fitted_desc.fit_to(prb);
+    gpu_check(fitted_desc.reqs().fits(prb.shape()));
     return true;
 }
 

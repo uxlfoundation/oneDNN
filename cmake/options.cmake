@@ -222,7 +222,7 @@ option(DNNL_EXPERIMENTAL_SELF_SUFFICIENT_L0
     "Enable experimental functionality in SYCL to allow the removal of the
     OpenCL dependency for the L0 backend. This option works independently from
     DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
+    ON) # disabled by default
 
 # ======================
 # Profiling capabilities

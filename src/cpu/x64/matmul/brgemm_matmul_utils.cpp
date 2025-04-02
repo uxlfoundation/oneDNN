@@ -481,6 +481,7 @@ status_t brgemm_matmul_conf_utils_t::set_B_flags(memory_desc_t &B_md) const {
 
 format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
         int n_blk) const {
+    const auto wei_k_blk = data_type_vnni_simd_elems(bgmmc.wei_dt, bgmmc.isa);
     if (bgmmc.ndims > 3) return format_tag::undef;
     if (this->is_int8() || this->is_f8()) switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
@@ -512,7 +513,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             case 32: return bgmmc.ndims == 3 ? aCB16b32c : BA16a32b;
             case 24: return bgmmc.ndims == 3 ? aCB8b24c : BA8a24b;
             case 16:
-                return bgmmc.wei_k_blk == 8
+                return wei_k_blk == 8
                         ? (bgmmc.ndims == 3 ? aCB8b16c : BA8a16b)
                         : (bgmmc.ndims == 3 ? aCB16b16c : BA16a16b);
             case 8: return bgmmc.ndims == 3 ? aCB8b8c : BA8a8b;

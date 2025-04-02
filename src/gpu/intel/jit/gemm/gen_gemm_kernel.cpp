@@ -962,10 +962,9 @@ status_t gen_gemm_kernel_t::get_kernel(
     } catch (const std::runtime_error &err) {
         VERROR(primitive, gpu, "%s,%s", "jit::gemm", err.what());
     }
-
-    return {};
-
 #undef ARCH_DISPATCH
+
+    return status::runtime_error;
 }
 
 void gen_gemm_kernel_t::maybe_print_verbose() {

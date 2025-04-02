@@ -280,9 +280,16 @@ inline bool has_large_size(const convolution_desc_t &cd,
         const memory_desc_wrapper &src_d, const memory_desc_wrapper &weights_d,
         const memory_desc_wrapper &dst_d) {
     auto is_large = [](const dim_t val) { return val > INT_MAX; };
+    auto img_size = [](const memory_desc_wrapper &mem_d) {
+        // assuming that first dimension for src and dst is minibatch
+        const auto mb = mem_d.dims()[0] != 0 ? mem_d.dims()[0] : 1;
+        return mem_d.nelems() / mb;
+    };
 
-    if (utils::one_of(true, is_large(src_d.nelems()),
-                is_large(weights_d.nelems()), is_large(dst_d.nelems())))
+    // Check if numbers of elements (excepting minibatch) for any memory
+    // descriptor is greater than INT_MAX
+    if (is_large(img_size(src_d)) || is_large(weights_d.nelems())
+            || is_large(img_size(dst_d)))
         return true;
 
     const int ndims = src_d.ndims();

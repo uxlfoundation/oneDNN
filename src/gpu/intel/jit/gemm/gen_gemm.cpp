@@ -24,6 +24,10 @@
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
 #include "gpu/intel/jit/gemm/include/driver_info.hpp"
 
+#ifdef DNNL_WITH_SYCL
+#include "gpu/intel/sycl/stream.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -231,11 +235,17 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
     auto zero_pool = zero_pool_;
 
 #ifdef DNNL_WITH_SYCL
-    if (!zero_pool) {
+    bool release_zp = false;
+    const auto *sycl_stream
+            = utils::downcast<const gpu::intel::sycl::stream_t *>(
+                    compute_stream);
+
+    if (need_zero_pool() && sycl_stream->recording()) {
         auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
-                ctx.stream()->engine());
+                compute_stream->engine());
         CHECK(lookup_zero_pool(compute_engine, compute_stream,
                 zero_pool_chunk_size_, &zero_pool));
+        release_zp = true;
     }
 #endif
 
@@ -478,6 +488,10 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
             }
         }
     }
+
+#ifdef DNNL_WITH_SYCL
+    if (release_zp) release_zero_pool(zero_pool);
+#endif
 
     return status::success;
 }

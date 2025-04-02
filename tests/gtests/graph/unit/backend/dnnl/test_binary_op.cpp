@@ -317,6 +317,59 @@ TEST(test_binary_op_execute, MinEltwise) {
     }
 }
 
+TEST(test_binary_op_execute, BinarySqrt) {
+    graph::engine_t *eng = get_engine();
+
+    std::vector<float> src0 {2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0};
+    std::vector<float> src1 {-1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0};
+    std::vector<float> dst(src0.size(), 0.0);
+
+    graph::logical_tensor_t src0_lt
+            = utils::logical_tensor_init(0, {1, 3, 3}, graph::data_type::f32);
+    graph::logical_tensor_t src1_lt
+            = utils::logical_tensor_init(1, {1, 3, 3}, graph::data_type::f32);
+    graph::logical_tensor_t add_dst_lt
+            = utils::logical_tensor_init(2, {1, 3, 3}, graph::data_type::f32);
+    graph::logical_tensor_t dst_lt
+            = utils::logical_tensor_init(3, {1, 3, 3}, graph::data_type::f32);
+
+    graph::op_t add_op(0, graph::op_kind::Add, "add");
+    graph::op_t sqrt_op(1, graph::op_kind::Sqrt, "sqrt");
+
+    add_op.add_input(src0_lt);
+    add_op.add_input(src1_lt);
+    add_op.add_output(add_dst_lt);
+    sqrt_op.add_input(add_dst_lt);
+    sqrt_op.add_output(dst_lt);
+
+    graph::graph_t g(eng->kind());
+    g.add_op(&add_op);
+    g.add_op(&sqrt_op);
+    g.finalize();
+
+    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    ASSERT_NE(apass, nullptr);
+    apass->run(g);
+    ASSERT_EQ(g.get_num_partitions(), 1U);
+    auto part = g.get_partitions()[0];
+
+    graph::partition_t p;
+    p.init(part);
+
+    graph::compiled_partition_t cp(p);
+    std::vector<const graph::logical_tensor_t *> inputs {&src0_lt, &src1_lt};
+    std::vector<const graph::logical_tensor_t *> outputs {&dst_lt};
+    p.compile(&cp, inputs, outputs, eng);
+
+    test_tensor_t src0_ts(src0_lt, eng, src0);
+    test_tensor_t src1_ts(src1_lt, eng, src1);
+    test_tensor_t dst_ts(dst_lt, eng, dst);
+
+    graph::stream_t *strm = get_stream();
+    cp.execute(strm, {src0_ts.get(), src1_ts.get()}, {dst_ts.get()});
+    strm->wait();
+}
+
 TEST(test_binary_op_execute, MaxEltwise) {
     graph::engine_t *eng = get_engine();
 

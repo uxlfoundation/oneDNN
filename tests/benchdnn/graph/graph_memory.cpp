@@ -106,14 +106,13 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
 
 int dnn_graph_mem_t::fill_mem_with_data(const dnn_mem_t &mem) {
 
-    if (mem.size() != mem_.size()) {
+    const auto &src_dt = mem.dt();
+    const auto &dst_dt = mem_.dt();
+    if (src_dt == dst_dt && mem.size() != mem_.size()) {
         BENCHDNN_PRINT(0, "%s\n",
                 "Error: failed to fill graph memory with given memory\n");
         SAFE(FAIL, WARN);
     }
-
-    const auto &src_dt = mem.dt();
-    const auto &dst_dt = mem_.dt();
 
     int ndims = mem.ndims();
     dims_t strides(mem.strides(), mem.strides() + ndims);

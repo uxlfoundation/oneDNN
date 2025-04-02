@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -218,20 +218,26 @@ public:
         iterator_t &operator++() {
             if (it_ == end_) return *this;
 
-            auto size = (*it_).block;
+            auto block = (*it_).block;
+            auto size = block / scale();
+            if ((size & 1) == 0) {
+                log2scale_++;
+                return *this;
+            }
             while (++factor_ <= size) {
                 if (size % factor_ == 0) return *this;
             }
 
-            dims_[(*it_).dim_idx] *= size;
+            dims_[(*it_).dim_idx] *= block;
             ++it_;
             factor_ = 1;
+            log2scale_ = 0;
             return operator++();
         }
 
         tensor_t operator*() const {
             auto dims = dims_;
-            dims[(*it_).dim_idx] *= factor_;
+            dims[(*it_).dim_idx] *= factor();
             return tensor_t(dims);
         }
 
@@ -239,9 +245,13 @@ public:
             : it_(it), end_(end), dims_(ndims, 1), factor_(1) {}
 
     private:
+        dim_t factor() const { return factor_ * scale(); }
+        dim_t scale() const { return 1ll << log2scale_; }
+
         inner_iter_t it_, end_;
         std::vector<dim_t> dims_;
         dim_t factor_;
+        dim_t log2scale_ = 0;
     };
 
     iterator_t begin() const { return {begin_, end_, ndims_}; }

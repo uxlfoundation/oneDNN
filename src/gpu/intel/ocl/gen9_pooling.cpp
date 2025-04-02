@@ -188,6 +188,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     } else {
         kernel_ctx.define_int("MB", conf.mb);
     }
+    kernel_ctx.define_int("MB_WO_PADDING", conf.mb);
     kernel_ctx.define_int("MB_BLOCK_SIZE", conf.mb_block_size);
     kernel_ctx.define_int("C_W_PADDING", conf.c_padded);
     kernel_ctx.define_int("C_WO_PADDING", conf.c);

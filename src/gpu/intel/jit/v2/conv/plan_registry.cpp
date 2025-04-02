@@ -56,6 +56,7 @@ kernel_desc_t plan_registry_t::find_best(
         auto desc = e.desc;
         desc.spec.mode = spec_mode;
         desc.spec.specialize(prb);
+        gpu_trace() << "Trying kernel desc: " << desc.cmd_str();
         if (!desc.can_fit(prb)) continue;
         float time = e.model_set.time(prb, desc);
         if (time < min_time) {
@@ -65,6 +66,7 @@ kernel_desc_t plan_registry_t::find_best(
         auto sk_desc = to_stream_k(e.desc);
         sk_desc.spec.mode = spec_mode;
         sk_desc.spec.specialize(prb);
+        gpu_trace() << "Trying kernel desc: " << sk_desc.cmd_str();
         if (sk_desc.is_empty() || !sk_desc.can_fit(prb)) continue;
         time = e.model_set.time(prb, sk_desc);
         if (time < min_time) {

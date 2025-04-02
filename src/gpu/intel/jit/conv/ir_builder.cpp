@@ -772,7 +772,7 @@ void conv_ir_builder_t::build() {
     verify_buffer_access(stmt_, ir_ctx);
 #endif
 
-    gpu_trace() << "Convolution kernel body:\n" << stmt_;
+    gpu_debug() << "Convolution kernel body:\n" << stmt_;
     trace_perf();
 }
 

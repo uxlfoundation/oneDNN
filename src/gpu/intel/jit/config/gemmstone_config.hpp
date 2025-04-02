@@ -30,6 +30,16 @@
 #include "gpu/intel/utils.hpp"
 #include "ngen_register_allocator.hpp"
 
+// TODO: Work with upstream to prefix defines with GEMMSTONE
+#define DNNL
+#define MICROKERNEL_INTERFACE
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#define ZEBIN_OUTPUT
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#define OPENCL_OUTPUT
+#endif
+
 namespace gemmstone {
 
 #define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>

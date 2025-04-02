@@ -140,12 +140,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = skip_reason::data_type_not_supported;
             return;
         }
-
-        if (prb->is_ternary_op()) {
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
     }
 }
 

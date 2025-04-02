@@ -60,7 +60,14 @@ struct gen9_binary_t : public gpu_primitive_t {
                                     && utils::one_of(dst_md()->data_type, f16,
                                             f32, s8, u8, s32))),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BINARY(!is_ternary_op(), VERBOSE_BAD_ALGORITHM);
+            VDISPATCH_BINARY(
+                    (is_ternary_op()
+                            && utils::one_of(src_md(2)->data_type, s8, u8)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BINARY(
+                    (is_ternary_op()
+                            && dnnl_memory_desc_equal(src_md(0), src_md(2))),
+                    VERBOSE_INCONSISTENT_NDIMS, "src_0", "src_2");
             VDISPATCH_BINARY(
                     IMPLICATION(!attr()->scales_.has_default_values(),
                             utils::one_of(dst_md()->data_type, s8, u8)),
@@ -146,13 +153,22 @@ struct gen9_binary_t : public gpu_primitive_t {
         auto &src1_scale
                 = CTX_IN_STORAGE(DNNL_ARG_SRC_1 | DNNL_ARG_ATTR_SCALES);
 
+        unsigned arg_idx;
         compute::kernel_arg_list_t arg_list;
         arg_list.set(0, src0);
         arg_list.set(1, src1);
-        arg_list.set(2, dst);
 
-        unsigned arg_idx = append_post_ops_to_arg_list(
-                ctx, arg_list, 3, pd()->attr()->post_ops_);
+        if (pd()->is_ternary_op()) {
+            auto &src2 = CTX_IN_STORAGE(DNNL_ARG_SRC_2);
+            arg_list.set(2, src2);
+            arg_list.set(3, dst);
+            arg_idx = append_post_ops_to_arg_list(
+                    ctx, arg_list, 4, pd()->attr()->post_ops_);
+        } else {
+            arg_list.set(2, dst);
+            arg_idx = append_post_ops_to_arg_list(
+                    ctx, arg_list, 3, pd()->attr()->post_ops_);
+        }
 
         arg_list.set(arg_idx++, src0_scale);
         arg_list.set(arg_idx, src1_scale);

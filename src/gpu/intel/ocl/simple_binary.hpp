@@ -64,10 +64,12 @@ struct simple_binary_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_BINARY(
+                    (is_ternary_op()
+                            && utils::one_of(src_md(2)->data_type, s8, u8)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BINARY(
                     !memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
-
-            VDISPATCH_BINARY(!is_ternary_op(), VERBOSE_BAD_ALGORITHM);
+                    VERBOSE_INCONSISTENT_NDIMS, "src_0", "dst");
 
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
                                      check_scales_mask()),

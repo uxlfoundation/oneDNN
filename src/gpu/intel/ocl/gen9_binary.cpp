@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -64,11 +64,19 @@ status_t gen9_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
     const memory_desc_wrapper dst_d(dst_md());
+    const memory_desc_wrapper src2_d
+            = is_ternary_op() ? memory_desc_wrapper(src_md(2)) : nullptr;
 
     const int ndims = src0_d.ndims();
     conf.src0_md_info = memory_desc_info_t::create(src0_d);
     conf.src1_md_info = memory_desc_info_t::create(src1_d);
     conf.dst_md_info = memory_desc_info_t::create(dst_d);
+    if (is_ternary_op()) {
+        conf.src2_md_info = memory_desc_info_t::create(src2_d);
+    } else {
+        conf.src2_md_info = memory_desc_info_t();
+    }
+
     conf.attr_info = attr_info_t::create(attr());
     conf.src0_data_type = src0_d.data_type();
     conf.src1_data_type = src1_d.data_type();
@@ -279,6 +287,8 @@ status_t gen9_binary_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     def_binary_alg_kinds(kernel_ctx);
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
+    kernel_ctx.define_int(
+            "IS_SELECT_BINARY", (conf.alg == dnnl_binary_select) ? 1 : 0);
 
     kernel_ctx.set_data_type(conf.src0_data_type);
     kernel_ctx.define_int("SUB_GROUP_SIZE", 16);
@@ -306,6 +316,10 @@ status_t gen9_binary_t::pd_t::init_kernel_ctx(
     def_memory_desc_info(kernel_ctx, conf.src0_md_info, "SRC0");
     def_memory_desc_info(kernel_ctx, conf.src1_md_info, "SRC1");
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+
+    if (conf.alg == dnnl_binary_select) {
+        def_memory_desc_info(kernel_ctx, conf.src2_md_info, "SRC2");
+    }
 
     CHECK(def_attr_info(
             kernel_ctx, conf.attr_info, attr()->post_ops_, *dst_md()));

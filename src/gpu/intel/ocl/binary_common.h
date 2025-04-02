@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #define DST_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(DST, x0, x1, x2, x3, x4, x5)
 #define SRC0_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC0, x0, x1, x2, x3, x4, x5)
 #define SRC1_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC1, x0, x1, x2, x3, x4, x5)
+#define SRC2_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC2, x0, x1, x2, x3, x4, x5)
 
 #if SRC1_DT_BF16
 #define SRC1_TO_FLOAT cvt_bf16_to_f32
@@ -38,6 +39,8 @@
 #else
 #define SRC0_TO_FLOAT CONVERT_FLOAT_T
 #endif
+
+#define SRC2_TO_FLOAT CONVERT_FLOAT_T
 
 #if SRC0_DT_BF8
 #define SRC0_BLOCK_READ(src) \
@@ -395,6 +398,18 @@ DEF_binary_op(float2, float);
 DEF_binary_op(float4, float);
 DEF_binary_op(float8, float);
 #undef DEF_binary_op
+
+#define DEF_ternary_op(dt, special_dt) \
+    dt __attribute__((overloadable)) \
+            ternary_op(int alg, dt src0, dt src1, dt src2) { \
+        return (src2 != 0) ? src0 : src1; \
+    }
+
+DEF_ternary_op(float, float);
+DEF_ternary_op(float2, float);
+DEF_ternary_op(float4, float);
+DEF_ternary_op(float8, float);
+#undef DEF_ternary_op
 
 #define READ_DATA(size, name, source_ptr, dest_ptr, scale) \
     { \

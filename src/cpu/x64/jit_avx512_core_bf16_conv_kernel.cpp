@@ -1760,13 +1760,6 @@ status_t jit_avx512_core_bf16_bwd_data_kernel::init_conf(jit_conv_conf_t &jcp,
     }
     jcp.ur_w_tail = jcp.iw % jcp.ur_w;
 
-    const auto diff_src_size = static_cast<dim_t>(jcp.typesize_out)
-            * jcp.ngroups * rnd_up(jcp.ic, jcp.ic_block) * jcp.id * jcp.ih
-            * jcp.iw;
-
-    VDISPATCH_CONV_IC(diff_src_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-            "diff_src size > INT_MAX is not supported");
-
     if (is_iw_threading_available(jcp)) {
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         int work_units = jcp.ngroups * jcp.mb * ic_chunks * jcp.ih;
@@ -4466,16 +4459,11 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_conf(
 
     const auto inp_row_size
             = static_cast<size_t>(jcp.ic_block) * jcp.tr_iw * jcp.typesize_in;
-    VDISPATCH_CONV_IC(inp_row_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-            "inp_row_size > INT_MAX is not supported");
     const auto out_row_size
             = static_cast<size_t>(jcp.oc_block) * jcp.tr_ow * jcp.typesize_in;
-    VDISPATCH_CONV_IC(out_row_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-            "out_row_size > INT_MAX is not supported");
-
-    int full_spat_min_h_block_size
+    const auto full_spat_min_h_block_size
             = nstl::max(1, nstl::max(jcp.b_pad, jcp.t_pad));
-    int full_spat_working_set_size
+    const auto full_spat_working_set_size
             = (inp_row_size + out_row_size) * full_spat_min_h_block_size;
     bool use_full_spat_loop = isa_has_bf16(jcp.isa) && jcp.ndims < 5
             && jcp.ih == jcp.oh && jcp.iw == jcp.ow
@@ -4513,11 +4501,6 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_conf(
         if (jcp.transpose_src) {
             jcp.tr_src_buf_size = static_cast<size_t>(jcp.tr_iw) * jcp.ic_block
                     * jcp.ih * jcp.id;
-            const auto src_max_size = jcp.tr_src_buf_size * jcp.typesize_in;
-            VDISPATCH_CONV_IC(src_max_size <= INT_MAX,
-                    VERBOSE_UNSUPPORTED_FEATURE,
-                    "src size > INT_MAX is not supported");
-
             jcp.tr_src_buf_count = jcp.global_transpose
                     ? jcp.nthr_mb * jcp.nb_ic * jcp.ngroups
                     : jcp.nthr;
@@ -4525,11 +4508,6 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_conf(
         if (jcp.transpose_dst) {
             jcp.tr_diff_dst_buf_size = static_cast<size_t>(jcp.tr_ow)
                     * jcp.oc_block * jcp.oh * jcp.od;
-            const auto diff_dst_max_size
-                    = jcp.tr_diff_dst_buf_size * jcp.typesize_in;
-            VDISPATCH_CONV_IC(diff_dst_max_size <= INT_MAX,
-                    VERBOSE_UNSUPPORTED_FEATURE,
-                    "diff_dst size > INT_MAX is not supported");
             jcp.tr_diff_dst_buf_count = jcp.global_transpose
                     ? jcp.nthr_mb * jcp.nb_oc * jcp.ngroups
                     : jcp.nthr;

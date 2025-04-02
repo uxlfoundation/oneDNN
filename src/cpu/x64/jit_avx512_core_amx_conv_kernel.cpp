@@ -3922,18 +3922,6 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
             = jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0;
     jcp.typesize_acc = sizeof(int32_t);
 
-    const dim_t src_size = (dim_t)jcp.mb * jcp.id * jcp.ih * jcp.iw
-            * (jcp.is_nspc ? jcp.ic : rnd_up(jcp.ic, jcp.ic_block))
-            * jcp.typesize_in;
-    VDISPATCH_CONV_IC(src_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-            "src size > INT_MAX is not supported");
-
-    const dim_t dst_size = (dim_t)jcp.mb * jcp.od * jcp.oh * jcp.ow
-            * (jcp.is_nspc ? jcp.oc : rnd_up(jcp.oc, jcp.oc_block))
-            * jcp.typesize_out;
-    VDISPATCH_CONV_IC(dst_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-            "dst size > INT_MAX is not supported");
-
     jcp.nb_ic = jcp.ic / jcp.ic_block;
     jcp.nb_oc = jcp.oc / jcp.oc_block;
     jcp.nb_oc_int = div_up(jcp.oc, jcp.oc_block_int);
@@ -5424,21 +5412,12 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
         // TODO: Optimize memory allocation when threaded on height and depth
         jcp.tr_src_buf_size = static_cast<size_t>(jcp.tr_iw) * jcp.ic_block
                 * jcp.ih * jcp.id;
-        const auto src_max_size = jcp.tr_src_buf_size * jcp.typesize_in;
-        VDISPATCH_CONV_IC(src_max_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
-                "scr size > INT_MAX is not supported");
-
         jcp.tr_src_buf_count = jcp.global_transpose
                 ? jcp.nthr_mb * jcp.nb_ic * jcp.ngroups
                 : jcp.nthr;
 
         jcp.tr_diff_dst_buf_size = static_cast<size_t>(jcp.tr_ow) * jcp.oc_block
                 * jcp.oh * jcp.od;
-        const auto diff_dst_max_size
-                = jcp.tr_diff_dst_buf_size * jcp.typesize_in;
-        VDISPATCH_CONV_IC(diff_dst_max_size <= INT_MAX,
-                VERBOSE_UNSUPPORTED_FEATURE,
-                "diff_dst size > INT_MAX is not supported");
         jcp.tr_diff_dst_buf_count = jcp.global_transpose
                 ? jcp.nthr_mb * jcp.nb_oc * jcp.ngroups
                 : jcp.nthr;

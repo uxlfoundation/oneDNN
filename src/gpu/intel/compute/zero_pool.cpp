@@ -75,7 +75,7 @@ status_t lookup_zero_pool(compute::compute_engine_t *engine,
     // If recording, get a per-graph zero pool.
     const auto *sycl_stream
             = utils::downcast<const gpu::intel::sycl::stream_t *>(stream);
-    if (sycl_stream->recording()) {
+    if (sycl_stream && sycl_stream->recording()) {
         {
             std::lock_guard<std::mutex> lock(zero_pool_cache_mutex);
             auto &pool = recorded_zero_pool_cache

@@ -787,7 +787,7 @@ struct gen_gemm_t : public gpu_gemm_t {
         scalar_type_ = kd->scalar_type();
         const auto *info = nocopy_info();
 
-        if (info->fusedBeta() || info->fusedPostOps()) {
+        if (need_zero_pool()) {
             int zg_cl = 0;
             if (info->fusedBeta()) zg_cl++;
             if (info->fusedPostOps()) zg_cl++;
@@ -797,12 +797,10 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto zg_max = pd()->dev_info_->hw_threads(false);
             zero_pool_chunk_size_ = zg_max * 2 * 2 * 64;
 
-#ifndef DNNL_WITH_SYCL
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
             CHECK(lookup_zero_pool(compute_engine, nullptr,
                     zero_pool_chunk_size_, &zero_pool_));
-#endif
 
             nocopy_kernel_.save_output_events();
         }
@@ -830,6 +828,10 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const CommonDriverInfo *nocopy_info() const {
         return pd()->kernel_desc()->driver_info();
+    }
+
+    bool need_zero_pool() const {
+        return nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps();
     }
 
     compute::kernel_t nocopy_kernel_;

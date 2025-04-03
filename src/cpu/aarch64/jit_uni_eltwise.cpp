@@ -116,19 +116,17 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
 
         if (is_bf16()) {
             // Convert BF16 input to FP32, apply eltwise op, then convert back to BF16:
-            // - unpack BF16 to FP32 by zero-extending (zip with zero)
+            // - unpack BF16 to FP32 by zero-extending
             // - compute eltwise alg in FP32
             // - down convert back to BF16 using bfcvt, and pack result
-            zip1(ZReg(tmp0.getIdx()).h, ZReg(vmm_zero.getIdx()).h,
-                    ZReg(vmm_src.getIdx()).h);
-            zip2(ZReg(tmp1.getIdx()).h, ZReg(vmm_zero.getIdx()).h,
-                    ZReg(vmm_src.getIdx()).h);
+            mov(ZReg(tmp0).s, P_ALL_ONE, ZReg(vmm_src).s);
+            lsl(ZReg(vmm_src.getIdx()).s, ZReg(vmm_src).s, 16);
+            and_(ZReg(tmp0).s, 0xFFFF0000); // 0xFFFF0000
             eltwise_injector_->compute_vector_range(
-                    tmp0.getIdx(), tmp0.getIdx() + 2);
-            bfcvt(ZReg(tmp0.getIdx()).h, P_ALL_ONE, ZReg(tmp0.getIdx()).s);
-            bfcvt(ZReg(tmp1.getIdx()).h, P_ALL_ONE, ZReg(tmp1.getIdx()).s);
-            uzp1(ZReg(vmm_src.getIdx()).h, ZReg(tmp0.getIdx()).h,
-                    ZReg(tmp1.getIdx()).h);
+                    {vmm_src.getIdx(), tmp0.getIdx()});
+            bfcvt(ZReg(vmm_src.getIdx()).h, P_ALL_ONE,
+                    ZReg(vmm_src.getIdx()).s);
+            bfcvtnt(ZReg(vmm_src.getIdx()).h, P_ALL_ONE, ZReg(tmp0.getIdx()).s);
         } else {
             eltwise_injector_->compute_vector(vmm_src.getIdx());
         }
@@ -155,18 +153,15 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
         cmp(reg_work_amount, 0);
         b(LE, reminder_loop_end);
 
-        if (is_bf16())
-            ld1(v_bf16[0], ptr(reg_src));
-        else
-            ld1(xmm_src[0], ptr(reg_src));
-
         if (is_bf16()) {
+            ld1(v_bf16[0], ptr(reg_src));
             // Convert BF16 input to FP32, apply eltwise op, then convert back to BF16
             shll(VReg4S(v_bf16[0].getIdx()), VReg4H(v_bf16[0].getIdx()), 16);
             eltwise_injector_->compute_vector(v_bf16.getIdx());
             bfcvt(ZReg(v_bf16[0].getIdx()).h, P_ALL_ONE,
                     ZReg(v_bf16[0].getIdx()).s);
         } else {
+            ld1(xmm_src[0], ptr(reg_src));
             eltwise_injector_->compute_vector(xmm_src.getIdx());
         }
 
@@ -215,9 +210,7 @@ private:
     TReg vmm_src {1};
     VReg4S xmm_diff_dst {2};
     TRegS vmm_diff_dst {2};
-    TReg vmm_zero = TReg(29);
-    TReg tmp0 {30};
-    TReg tmp1 {31};
+    TReg tmp0 {2};
     std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
 
     PReg p_tmp0 {4}; /* Index is temporal. */
@@ -365,6 +358,7 @@ template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<sve_512, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<sve_256, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<sve_128, data_type::f32>;
+template struct jit_uni_eltwise_fwd_t<sve_128, data_type::bf16>;
 
 } // namespace aarch64
 } // namespace cpu

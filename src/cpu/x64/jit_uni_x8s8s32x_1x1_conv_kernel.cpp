@@ -932,10 +932,11 @@ void jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_scratchpad(
         const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr) {
     using namespace dnnl::impl::memory_tracking::names;
 
-    const int wei_mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const dim_t scales_count
-            = wei_mask == 0 ? 1 : static_cast<dim_t>(jcp.oc) * jcp.ngroups;
-    const dim_t count = nstl::max<dim_t>(scales_count, 8);
+    dim_t count = 8;
+    if (!attr.scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const int wei_mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
+        if (wei_mask > 0) count = jcp.oc * jcp.ngroups;
+    }
     scratchpad.book<float>(key_conv_adjusted_scales, count);
 }
 

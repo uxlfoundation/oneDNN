@@ -855,20 +855,20 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, key);
-    arg_list.set(1, qry);
-    arg_list.set(2, val);
-    arg_list.set(3, dst);
-    arg_list.set(4, scale);
-    arg_list.set(5, (int)D);
-    arg_list.set(6, (int)K);
-    arg_list.set(7, (int)Q);
-    arg_list.set(8, key_scales);
-    arg_list.set(9, key_zp);
-    arg_list.set(10, value_scales);
-    arg_list.set(11, value_zp);
-    arg_list.set(12, mask_type);
-    if (pd()->with_attn_mask()) arg_list.set(13, attn_mask);
+    arg_list.append(key);
+    arg_list.append(qry);
+    arg_list.append(val);
+    arg_list.append(dst);
+    arg_list.append(scale);
+    arg_list.append((int)D);
+    arg_list.append((int)K);
+    arg_list.append((int)Q);
+    arg_list.append(key_scales);
+    arg_list.append(key_zp);
+    arg_list.append(value_scales);
+    arg_list.append(value_zp);
+    arg_list.append(mask_type);
+    if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;

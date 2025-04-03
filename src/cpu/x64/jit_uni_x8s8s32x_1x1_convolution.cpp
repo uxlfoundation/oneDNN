@@ -73,16 +73,18 @@ status_t jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward(
 
     auto local_scales
             = scratchpad.template get<float>(key_conv_adjusted_scales);
+    const bool has_wei_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
+    const int wei_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float factor = (pd()->jcp_.signed_input && (!pd()->jcp_.has_vnni))
             ? 1.f / pd()->jcp_.wei_adj_scale
-            : 1.0f;
-    int wei_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    if (wei_mask == 0) {
-        utils::array_set(
-                local_scales, src_scales[0] * wei_scales[0] * factor, 8);
-    } else {
+            : 1.f;
+    if (has_wei_scales && wei_mask > 0) {
         for (dim_t c = 0; c < pd()->OC(); c++)
             local_scales[c] = src_scales[0] * wei_scales[c] * factor;
+    } else {
+        utils::array_set(
+                local_scales, src_scales[0] * wei_scales[0] * factor, 8);
     }
 
     const float *dw_oscales = nullptr;

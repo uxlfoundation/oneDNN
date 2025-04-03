@@ -19,7 +19,7 @@
 #if IS_TENSOR_OP && IS_DENSE && IS_SAME_MD && !WITH_BINARY_POST_OP
 KERNEL_ATTR
 __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
-#if IS_SELECT_BINARY
+#if IS_TERNARY
         __global char *src2,
 #endif
         __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
@@ -28,8 +28,8 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
 
     float tmp_src0 = SRC0_TO_FLOAT(src0[off]);
     float tmp_src1 = SRC1_TO_FLOAT(src1[off]);
-#if IS_SELECT_BINARY
-    float tmp_src2 = SRC2_TO_FLOAT(src2[off]);
+#if IS_TERNARY
+    char tmp_src2 = src2[off];
 #endif
     float d = 0;
 
@@ -39,7 +39,7 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
 #if WITH_SRC1_SCALE
     tmp_src1 = tmp_src1 * (*src1_scale);
 #endif
-#if IS_SELECT_BINARY
+#if IS_TERNARY
     d = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
 #else
     d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
@@ -58,7 +58,7 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
 KERNEL_ATTR
 __kernel void simple_binary(__global SRC0_DATA_T *src0,
         __global SRC1_DATA_T *src1,
-#if IS_SELECT_BINARY
+#if IS_TERNARY
         __global char *src2,
 #endif
         __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
@@ -76,7 +76,7 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
     int dims0_po[6]
             = {dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]};
     int d1_init = GWS_GET_D1();
-#if IS_SELECT_BINARY
+#if IS_TERNARY
     int src2_off = SRC2_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
 #endif
@@ -115,8 +115,8 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
         for (int ic = 0; ic < block_size; ++ic) {
             float tmp_src0 = SRC0_TO_FLOAT(src0[src0_off]);
             float tmp_src1 = SRC1_TO_FLOAT(src1[src1_off]);
-#if IS_SELECT_BINARY
-            float tmp_src2 = SRC2_TO_FLOAT(src2[src2_off]);
+#if IS_TERNARY
+            char tmp_src2 = src2[src2_off];
 #endif
             float d = 0;
 
@@ -127,7 +127,7 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
             tmp_src1 = tmp_src1 * (*src1_scale);
 #endif
 
-#if IS_SELECT_BINARY
+#if IS_TERNARY
             d = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
 #else
             d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
@@ -158,8 +158,8 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
         for (int ic = 0; ic < DST_D1 - d1_init; ic++) {
             float tmp_src0 = SRC0_TO_FLOAT(src0[src0_off]);
             float tmp_src1 = SRC1_TO_FLOAT(src1[src1_off]);
-#if IS_SELECT_BINARY
-            float tmp_src2 = SRC2_TO_FLOAT(src2[src2_off]);
+#if IS_TERNARY
+            char tmp_src2 = src2[src2_off];
 #endif
             float d = 0;
 
@@ -170,7 +170,7 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
             tmp_src1 = tmp_src1 * (*src1_scale);
 #endif
 
-#if IS_SELECT_BINARY
+#if IS_TERNARY
             d = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
 #else
             d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);

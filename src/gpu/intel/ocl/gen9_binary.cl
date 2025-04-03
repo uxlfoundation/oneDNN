@@ -20,7 +20,7 @@
 KERNEL_ATTR
 __kernel void gen9_binary(__global SRC0_DATA_T *src0,
         __global SRC1_DATA_T *src1,
-#if IS_SELECT_BINARY
+#if IS_TERNARY
         __global char *src2,
 #endif
         __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
@@ -59,7 +59,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     dst += dst_off;
 
-#if IS_SELECT_BINARY
+#if IS_TERNARY
     int src2_off = SRC2_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     src2 += src2_off;
@@ -89,14 +89,14 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 #define SRC1_IDX_MASK 1
 #endif
 
-#if IS_SELECT_BINARY
-    float tmp_src2[NVECT];
+#if IS_TERNARY
+    int tmp_src2[NVECT];
     READ_DATA(NVECT, SRC2, (&src2[0]), (&tmp_src2[0]), src2_scale_val);
 #endif
 
     float tmp[NVECT];
     unroll_for(unsigned idx = 0; idx < NVECT; ++idx) {
-#if IS_SELECT_BINARY
+#if IS_TERNARY
         tmp[idx] = ternary_op(BINARY_ALG, tmp_src0[idx],
                 tmp_src1[idx * SRC1_IDX_MASK], tmp_src2[idx]);
 #else
@@ -146,15 +146,15 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 KERNEL_ATTR
 __kernel void gen9_binary(__global SRC0_DATA_T *src0,
         __global SRC1_DATA_T *src1,
-#if IS_SELECT_BINARY
-        __global float *src2,
+#if IS_TERNARY
+        __global char *src2,
 #endif
-        __global DST_DATA_T *dst, __global SRC2_DATA_T *src2 POST_OP_ARGS,
-        __global float *src0_scale, __global float *src1_scale) {
+        __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
+        __global float *src1_scale) {
 
     src0 += SRC0_OFFSET0;
     src1 += SRC1_OFFSET0;
-#if IS_SELECT_BINARY
+#if IS_TERNARY
     src2 += SRC2_OFFSET0;
 #endif
     dst += DST_OFFSET0;
@@ -174,7 +174,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 
     SRC0_DATA_T tmp_buf0[d01_block] = {0};
     SRC1_DATA_T tmp_buf1[d01_block] = {0};
-#if IS_SELECT_BINARY
+#if IS_TERNARY
     SRC2_DATA_T tmp_buf2[d01_block] = {0};
 #endif
     DST_DATA_T res_buf[d01_block] = {0};
@@ -189,7 +189,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
                 continue;
             int src0_off;
             int src1_off;
-#if IS_SELECT_BINARY
+#if IS_TERNARY
             int src2_off;
 #endif
             if (SRC0_S3_0 == 1) {
@@ -200,7 +200,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
                 src1_off = SRC1_OFF((d0 + d0_inner) * (!BCAST_DIM0),
                         (d1 + d1_inner) * (!BCAST_DIM1), d2 * (!BCAST_DIM2),
                         d3 * (!BCAST_DIM3), 0, 0);
-#if IS_SELECT_BINARY
+#if IS_TERNARY
                 src2_off = SRC2_OFF(d0 + d0_inner, d1 + d1_inner, d2, d3, 0, 0);
                 tmp_buf2[d0_inner * d1_block + d1_inner] = src2[src2_off];
 #endif
@@ -212,7 +212,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
                 src1_off = SRC1_OFF((d0 + d0_inner) * (!BCAST_DIM0),
                         (d1 + d1_inner) * (!BCAST_DIM1), d2 * (!BCAST_DIM2),
                         (d3 + sglid) * (!BCAST_DIM3), 0, 0);
-#if IS_SELECT_BINARY
+#if IS_TERNARY
                 src2_off = SRC2_OFF(
                         d0 + d0_inner, d1 + d1_inner, d2, d3 + sglid, 0, 0);
                 tmp_buf2[d0_inner * d1_block + d1_inner] = src2[src2_off];
@@ -233,7 +233,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 
             float tmp_src0 = CONVERT_FLOAT_T(tmp_buf0[i]);
             float tmp_src1 = CONVERT_FLOAT_T(tmp_buf1[i]);
-#if IS_SELECT_BINARY
+#if IS_TERNARY
             float tmp_src2 = tmp_buf2[i];
 #endif
             float res;
@@ -245,7 +245,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 #if WITH_SRC1_SCALE
             tmp_src1 = tmp_src1 * src1_scale[0];
 #endif
-#if IS_SELECT_BINARY
+#if IS_TERNARY
             res = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
 #else
             res = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
@@ -275,8 +275,11 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 #elif IS_XA16B
 KERNEL_ATTR
 __kernel void gen9_binary(__global SRC0_DATA_T *src0,
-        __global SRC1_DATA_T *src1, __global DST_DATA_T *dst,
-        __global SRC2_DATA_T *src2 POST_OP_ARGS, __global float *src0_scale,
+        __global SRC1_DATA_T *src1,
+#if IS_TERNARY
+        __global char *src2,
+#endif
+        __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
         __global float *src1_scale) {
     // since gws = no. of total elems in A, id will be the logical offset
     int dims0[6] = {0};
@@ -294,6 +297,10 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
     int src1_off = SRC1_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
 
+#if IS_TERNARY
+    int src2_off = SRC2_OFF(
+            dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
+#endif
     int sub_grp_id = get_sub_group_local_id();
 
     for (int channels = 0; channels < SRC0_PD1; channels += GWS_LWS0_DEFAULT) {
@@ -303,6 +310,9 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
         __global SRC1_DATA_T *t_src1 = src1 + src1_off;
         __global DST_DATA_T *t_dst = dst + dst_off;
         __global SRC0_DATA_T *t_src0 = src0 + src0_off;
+#if IS_TERNARY
+        __global SRC2_DATA_T *t_src2 = src2 + src2_off;
+#endif
 
         if ((SRC0_D1 % SUB_GROUP_SIZE != 0)
                 && (dims0[1] + sub_grp_id) >= SRC0_D1) {
@@ -310,13 +320,21 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
         } else {
             float8 tmp_src0 = CONVERT_FLOAT8_T(SRC0_BLOCK_READ8(&t_src0[0]));
             float8 tmp_src1 = CONVERT_FLOAT8_T(SRC1_BLOCK_READ8(&t_src1[0]));
+#if IS_TERNARY
+            char8 tmp_src2 = CONVERT_FLOAT8_T(SRC2_BLOCK_READ8(&t_src2[0]));
+#endif
 #if WITH_SRC0_SCALE
             tmp_src0 = tmp_src0 * src0_scale[0];
 #endif
 #if WITH_SRC1_SCALE
             tmp_src1 = tmp_src1 * src1_scale[0];
 #endif
+#if IS_TERNARY
+            d = ternary_op(BINARY_ALG, tmp_src0, tmp_src1, tmp_src2);
+#else
             d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
+#endif
+
 #if WITH_SUM
             dst_data = CONVERT_FLOAT8_T(DST_BLOCK_READ8(&t_dst[0]));
 #endif
@@ -343,6 +361,10 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
                 * SRC0_PD5;
         src1_off += MB_BLOCK * SUB_GROUP_SIZE * SRC1_PD2 * SRC1_PD3 * SRC1_PD4
                 * SRC1_PD5;
+#if IS_TERNARY
+        src2_off += MB_BLOCK * SUB_GROUP_SIZE * SRC0_PD2 * SRC0_PD3 * SRC0_PD4
+                * SRC0_PD5;
+#endif
         dst_off += MB_BLOCK * SUB_GROUP_SIZE * DST_PD2 * DST_PD3 * DST_PD4
                 * DST_PD5;
     }
@@ -350,9 +372,8 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 #else
 KERNEL_ATTR
 __kernel void gen9_binary(__global SRC0_DATA_T *src0,
-        __global SRC1_DATA_T *src1, __global DST_DATA_T *dst,
-        __global SRC2_DATA_T *src2 POST_OP_ARGS, __global float *src0_scale,
-        __global float *src1_scale) {
+        __global SRC1_DATA_T *src1, __global DST_DATA_T *dst POST_OP_ARGS,
+        __global float *src0_scale, __global float *src1_scale) {
 
     // since gws = no. of total elems in A, id will be the logical offset
     int dims0[6] = {0};

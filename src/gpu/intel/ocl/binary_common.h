@@ -40,7 +40,16 @@
 #define SRC0_TO_FLOAT CONVERT_FLOAT_T
 #endif
 
-#define SRC2_TO_FLOAT CONVERT_FLOAT_T
+#if SRC2_DT_S8
+#define SRC2_BLOCK_READ(src) \
+    as_char(intel_sub_group_block_read_uc((const __global uchar *)(src)))
+#define SRC2_BLOCK_READ2(src) \
+    as_char2(intel_sub_group_block_read_uc2((const __global uchar *)(src)))
+#define SRC2_BLOCK_READ4(src) \
+    as_char4(intel_sub_group_block_read_uc4((const __global uchar *)(src)))
+#define SRC2_BLOCK_READ8(src) \
+    as_char8(intel_sub_group_block_read_uc8((const __global uchar *)(src)))
+#endif // SRC2_DT_S8
 
 #if SRC0_DT_BF8
 #define SRC0_BLOCK_READ(src) \

@@ -63,9 +63,8 @@ struct simple_binary_t : public gpu_primitive_t {
                                     && dst_md()->data_type == bf16)),
                     VERBOSE_UNSUPPORTED_DT);
 
-            VDISPATCH_BINARY(
-                    (is_ternary_op()
-                            && utils::one_of(src_md(2)->data_type, s8, u8)),
+            VDISPATCH_BINARY(IMPLICATION(is_ternary_op(),
+                                     utils::one_of(src_md(2)->data_type, s8)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
                     !memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),

@@ -288,7 +288,7 @@ status_t gen9_binary_t::pd_t::init_kernel_ctx(
     def_binary_alg_kinds(kernel_ctx);
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
     kernel_ctx.define_int(
-            "IS_SELECT_BINARY", (conf.alg == dnnl_binary_select) ? 1 : 0);
+            "IS_TERNARY", (conf.alg == alg_kind::binary_select) ? 1 : 0);
 
     kernel_ctx.set_data_type(conf.src0_data_type);
     kernel_ctx.define_int("SUB_GROUP_SIZE", 16);
@@ -317,7 +317,7 @@ status_t gen9_binary_t::pd_t::init_kernel_ctx(
     def_memory_desc_info(kernel_ctx, conf.src1_md_info, "SRC1");
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
 
-    if (conf.alg == dnnl_binary_select) {
+    if (conf.alg == alg_kind::binary_select) {
         def_memory_desc_info(kernel_ctx, conf.src2_md_info, "SRC2");
     }
 

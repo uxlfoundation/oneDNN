@@ -1592,7 +1592,10 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
         ss << ",msk:" << pd->attn_mask_md()->data_type << ":"
            << md2dim_str(pd->attn_mask_md());
     } else if (pd->with_causal_mask()) {
-        ss << ",msk:causal";
+        if (desc->mask_type == attn_mask_type::top_left)
+            ss << ",msk:causal:top_left";
+        else
+            ss << ",msk:causal:bottom_right";
     }
 
     return ss.str();

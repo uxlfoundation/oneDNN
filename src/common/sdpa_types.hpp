@@ -33,6 +33,31 @@ namespace impl {
 #define DNNL_ARG_VALUES DNNL_ARG_SRC_2
 #define DNNL_ARG_ATTN_MASK DNNL_ARG_SHIFT
 
+// NOLINTBEGIN(modernize-use-using)
+/// Types of attention mask
+typedef enum {
+    dnnl_attn_mask_undef = 0,
+    /// explicit attention masks defined in a buffer
+    dnnl_attn_mask_buffer = 1,
+
+    /// causal mask with the diagonal starting from the top left hand side of
+    /// the mask tensor
+    dnnl_attn_mask_top_left = 2,
+
+    /// causal mask with the diagonal starting from the bottom right hand side
+    /// of the mask tensor
+    dnnl_attn_mask_bottom_right = 3,
+} dnnl_attn_mask_type_t;
+// NOLINTEND(modernize-use-using)
+
+using attn_mask_type_t = dnnl_attn_mask_type_t;
+namespace attn_mask_type {
+const attn_mask_type_t undef = dnnl_attn_mask_undef;
+const attn_mask_type_t buffer = dnnl_attn_mask_buffer;
+const attn_mask_type_t top_left = dnnl_attn_mask_top_left;
+const attn_mask_type_t bottom_right = dnnl_attn_mask_bottom_right;
+} // namespace attn_mask_type
+
 // A descriptor for a scaled dot product attention (SDPA) operation.
 struct sdpa_desc_t : public op_desc_t {
     sdpa_desc_t() : op_desc_t(primitive_kind::sdpa) {}
@@ -60,9 +85,7 @@ struct sdpa_desc_t : public op_desc_t {
     bool invert_scale {};
     dim_t kv_head_number {};
 
-    // causal_mask = false: use mask descriptor
-    // causal_mask = true: causal mask used. mask descriptor not used
-    bool causal_mask {};
+    attn_mask_type_t mask_type = attn_mask_type::undef;
 
     // Number of queries.
     dnnl_dim_t queries() const { return q_desc.dims[q_desc.ndims - 2]; }

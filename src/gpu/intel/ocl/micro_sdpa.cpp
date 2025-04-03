@@ -76,7 +76,9 @@ status_t update_config_from_devenv_values(
         std::array<int, 8> config_values;
         int i;
         int num_values = 0;
-        if (!q_config_str.empty() && quantized) config_str = q_config_str;
+        if (!q_config_str.empty() && quantized)
+            config_str = std::move(q_config_str);
+
         std::stringstream ss(config_str);
         while (ss >> i) {
             config_values[num_values++] = i;
@@ -130,6 +132,7 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
         case arch_t::xe_hpc:
             config = choose_config_xehpc(d->head_size(), d->keys(), thin_q,
                     quantized, is_integrated);
+            break;
         case arch_t::xe2:
         case arch_t::xe3:
             config = choose_config_xe2(d->head_size(), d->keys(), thin_q,

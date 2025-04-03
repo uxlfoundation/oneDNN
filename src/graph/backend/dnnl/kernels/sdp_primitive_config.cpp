@@ -201,6 +201,14 @@ status_t sdp_primitive_config_t::initial_check(
     bool f32_inter = true;
     for (const auto &cur_op : sg->get_ops()) {
         const auto &op_kind = cur_op->get_kind();
+        if (op_kind == graph::op_kind::GenIndex) {
+            // check unimplemented bottom-right causal mask
+            auto post_op = get_post_op(cur_op);
+            VCHECK_SDP_PRIMITIVE(
+                    post_op && post_op->get_kind() == graph::op_kind::Add,
+                    status::unimplemented,
+                    "Not support bottom-right causal mask");
+        }
         if (op_kind == graph::op_kind::DynamicDequantize
                 && cur_op->get_attr<std::string>(op_attr::qtype)
                         == "per_group") {

@@ -59,12 +59,15 @@ DNNL_GRAPH_OP_SCHEMA(Add, 1,
                 .set_output(0, "dst", "T3")
                 .set_attr(op_attr::auto_broadcast, false, attribute_kind::s,
                         "numpy", {"none", "numpy"})
-                .set_type_constraints(
-                        "T1", {data_type::f32, data_type::bf16, data_type::f16})
-                .set_type_constraints(
-                        "T2", {data_type::f32, data_type::bf16, data_type::f16})
-                .set_type_constraints(
-                        "T3", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints("T1",
+                        {data_type::f32, data_type::bf16, data_type::f16,
+                                data_type::s32})
+                .set_type_constraints("T2",
+                        {data_type::f32, data_type::bf16, data_type::f16,
+                                data_type::s32})
+                .set_type_constraints("T3",
+                        {data_type::f32, data_type::bf16, data_type::f16,
+                                data_type::s32})
                 .set_shape_inference_function(
                         infer_elemwise_arithmetic_output_shape))
 
@@ -1133,12 +1136,15 @@ DNNL_GRAPH_OP_SCHEMA(Subtract, 1,
                 .set_output(0, "dst", "T3")
                 .set_attr(op_attr::auto_broadcast, false, attribute_kind::s,
                         "numpy", {"none", "numpy"})
-                .set_type_constraints(
-                        "T1", {data_type::f32, data_type::bf16, data_type::f16})
-                .set_type_constraints(
-                        "T2", {data_type::f32, data_type::bf16, data_type::f16})
-                .set_type_constraints(
-                        "T3", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints("T1",
+                        {data_type::f32, data_type::bf16, data_type::f16,
+                                data_type::s32})
+                .set_type_constraints("T2",
+                        {data_type::f32, data_type::bf16, data_type::f16,
+                                data_type::s32})
+                .set_type_constraints("T3",
+                        {data_type::f32, data_type::bf16, data_type::f16,
+                                data_type::s32})
                 .set_shape_inference_function(
                         infer_elemwise_arithmetic_output_shape))
 

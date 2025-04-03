@@ -306,6 +306,9 @@ public:
         /// the library. For example, constant weight tensors in inference
         /// scenarios.
         constant = dnnl_graph_tensor_property_constant,
+        /// Host scalar means the tensor will be a 0-D scalar tensor on host.
+        /// It should be used with a CPU engine when creating the tensor.
+        host_scalar = dnnl_graph_tensor_property_host_scalar,
     };
 
     /// default constructor

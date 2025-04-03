@@ -64,8 +64,8 @@ struct gen9_binary_t : public gpu_primitive_t {
                                      utils::one_of(src_md(2)->data_type, s8)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
-                    (is_ternary_op()
-                            && dnnl_memory_desc_equal(src_md(0), src_md(2))),
+                    IMPLICATION(is_ternary_op(),
+                            dnnl_memory_desc_equal(src_md(0), src_md(2))),
                     VERBOSE_INCONSISTENT_NDIMS, "src_0", "src_2");
             VDISPATCH_BINARY(
                     IMPLICATION(!attr()->scales_.has_default_values(),

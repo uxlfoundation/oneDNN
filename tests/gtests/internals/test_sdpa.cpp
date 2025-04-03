@@ -27,7 +27,7 @@
 
 using mdt = memory::data_type;
 
-enum class mask_type { no_mask, oneD, twoD, causal };
+enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
 
 struct sdpa_dims_t {
     memory::dim mb;
@@ -102,7 +102,8 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         case mask_type::no_mask: ss << "_no_mask"; break;
         case mask_type::oneD: ss << "_mask1D"; break;
         case mask_type::twoD: ss << "_mask2D"; break;
-        case mask_type::causal: ss << "_maskcausal"; break;
+        case mask_type::causal_br: ss << "_maskcausalbr"; break;
+        case mask_type::causal_tl: ss << "_maskcausaltl"; break;
     }
     if (!(p.kdt == mdt::f16 || p.vdt == mdt::f16)
             && !(p.kdt == mdt::bf16 || p.vdt == mdt::f16)) {
@@ -148,7 +149,8 @@ std::string print_row(const sdpa_dims_t &p) {
         case mask_type::no_mask: ss << "no"; break;
         case mask_type::oneD: ss << "1D"; break;
         case mask_type::twoD: ss << "2D"; break;
-        case mask_type::causal: ss << "causal"; break;
+        case mask_type::causal_br: ss << "causalbr"; break;
+        case mask_type::causal_tl: ss << "causaltl"; break;
     }
     ss << "|" << p.qtype;
     return ss.str();
@@ -205,20 +207,23 @@ void fill_mask(std::vector<float> &mask, const memory::desc &desc) {
     }
 }
 
-void fill_causal_mask(std::vector<float> &mask, const memory::desc &desc) {
+void fill_causal_mask(
+        std::vector<float> &mask, const memory::desc &desc, mask_type mask_t) {
     size_t seq_len = desc.get_dims()[3];
     size_t query_num = desc.get_dims()[2];
     size_t batches = desc.get_dims()[1] * desc.get_dims()[0];
     for (size_t b = 0; b < batches; b++) {
         for (size_t q = 0; q < query_num; q++) {
-            for (size_t i = 0; i < seq_len; i++) {
-                if (i <= q) {
-                    mask[b * query_num * seq_len + q * seq_len + i] = 0;
-                    // = (float)i + (float)q / 100.f;
+            for (size_t k = 0; k < seq_len; k++) {
+                if (mask_t == mask_type::causal_br
+                                ? ((q + seq_len - query_num) >= k)
+                                : (q >= k)) {
+                    mask[b * query_num * seq_len + q * seq_len + k] = 0;
+                    // = (float)k + (float)q / 100.f;
                 } else {
-                    mask[b * query_num * seq_len + q * seq_len + i]
+                    mask[b * query_num * seq_len + q * seq_len + k]
                             = -1 * std::numeric_limits<float>::infinity();
-                    //= -((float)i + (float)q / 100.f);
+                    //= -((float)k + (float)q / 100.f);
                 }
             }
         }
@@ -304,7 +309,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     switch (p.mask) {
         case mask_type::no_mask: mask_sz = {};
         case mask_type::oneD: mask_sz = {1, 1, 1, p.seq_len}; break;
-        case mask_type::causal:
+        case mask_type::causal_br:
+        case mask_type::causal_tl:
         case mask_type::twoD: mask_sz = {1, 1, p.query_num, p.seq_len}; break;
     }
 
@@ -459,8 +465,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
             fill_random_quantized(val_zp_data_unsigned, val_zp_md);
     }
 
-    if (p.mask == mask_type::causal) {
-        fill_causal_mask(mask_data, mask_md);
+    if (p.mask == mask_type::causal_br || p.mask == mask_type::causal_tl) {
+        fill_causal_mask(mask_data, mask_md, p.mask);
     } else {
         fill_mask(mask_data, mask_md);
     }
@@ -690,21 +696,22 @@ bool with_key_transposed = true;
 bool no_key_transposed = false;
 
 // clang-format off
-//INSTANTIATE_TEST_SUITE_P(Graph,
-//    sdpa_test_t,
-//                               //  mb,  hd_num, kv_grp_sz,seq_len, qry_num, hd_size, kg_sz, vgrp_sz,       dt,       qdt,     kdt,      ksdt,   kzpdt,      vdt,     vsdt,  vzpdt,   mskdt, qtype
-//    testing::Values(
-//                    sdpa_dims_t{   1,       2,        2,     32,      32,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,     33,       1,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    128,      64,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    129,       1,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    259,       1,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    384,     384,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    384,     384,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_tensor,             no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    384,     384,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_tensor1,            no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    384,     384,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_tensor3,            no_key_transposed, mask_type::twoD },
-//                    sdpa_dims_t{   1,       2,        2,    384,     384,       96,   96,      96, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,              no_key_transposed, mask_type::twoD }
-//    ), &print_to_string);
+
+INSTANTIATE_TEST_SUITE_P(AllMaskTypes,
+    sdpa_test_t,
+                               //  mb,  hd_num, kv_grp_sz,seq_len, qry_num, hd_size, kg_sz, vgrp_sz,       dt,       qdt,     kdt,      ksdt,   kzpdt,      vdt,     vsdt,  vzpdt,   mskdt, qtype
+    testing::Values(
+                    sdpa_dims_t{   1,       2,        2,    384,     384,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,       2,        2,    384,       1,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,       2,        2,    384,     384,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::oneD},
+                    sdpa_dims_t{   1,       2,        2,    384,       1,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::oneD},
+                    sdpa_dims_t{   1,       2,        2,    384,     384,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::twoD },
+                    sdpa_dims_t{   1,       2,        2,    384,       1,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::twoD },
+                    sdpa_dims_t{   1,       2,        2,    384,     384,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::causal_br },
+                    sdpa_dims_t{   1,       2,        2,    384,       1,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::causal_br },
+                    sdpa_dims_t{   1,       2,        2,    384,     384,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::causal_tl },
+                    sdpa_dims_t{   1,       2,        2,    384,       1,       128,   128,      128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8, mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token,             no_key_transposed, mask_type::causal_tl }
+    ), &print_to_string);
 
 
 //llama-2-7b-chat shape: Q [1x32xSEQ_LENx128] KV [1x32xSEQ_LENx128]
@@ -718,14 +725,14 @@ INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
     sdpa_test_t,
                                // mb,  hd_num, kv_grp_sz,seq_len, qry_num, hd_size, kg_sz, vgrp_sz,       dt,       qdt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype
     testing::Values(
-                    sdpa_dims_t{   1,      32,        32,    384,     384,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal },
-                    sdpa_dims_t{   1,      32,        32,    385,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal },
-                    sdpa_dims_t{   1,      32,        32,    512,     512,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal },
-                    sdpa_dims_t{   1,      32,        32,    513,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal },
-                    sdpa_dims_t{   1,      32,        32,   1024,    1024,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal },
-                    sdpa_dims_t{   1,      32,        32,   1025,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal },
-                    sdpa_dims_t{   1,      32,        32,   2048,    2048,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal },
-                    sdpa_dims_t{   1,      32,        32,   2049,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal }
+                    sdpa_dims_t{   1,      32,        32,    384,     384,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
+                    sdpa_dims_t{   1,      32,        32,    385,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
+                    sdpa_dims_t{   1,      32,        32,    512,     512,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
+                    sdpa_dims_t{   1,      32,        32,    513,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
+                    sdpa_dims_t{   1,      32,        32,   1024,    1024,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
+                    sdpa_dims_t{   1,      32,        32,   1025,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
+                    sdpa_dims_t{   1,      32,        32,   2048,    2048,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
+                    sdpa_dims_t{   1,      32,        32,   2049,       1,     128,   128,     128, mdt::f16,  mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl }
     ), &print_to_string);
 
 
@@ -1105,7 +1112,18 @@ void check_memory(memory &gold, memory &test) {
     int threshold = total * 0.0006;
 
     ASSERT_LE(mismatches, threshold)
-            << "max diff: " << max_diff << "out of: " << total;
+            << "max diff: " << max_diff << " out of: " << total;
+}
+
+int to_attn_mask_type(mask_type t) {
+    using namespace dnnl::impl::attn_mask_type;
+    auto attn_mask = buffer;
+    switch (t) {
+        case mask_type::causal_tl: attn_mask = top_left; break;
+        case mask_type::causal_br: attn_mask = bottom_right; break;
+        default:;
+    }
+    return static_cast<int>(attn_mask);
 }
 
 GPU_TEST_P(sdpa_test_t, compare) {
@@ -1120,7 +1138,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
 
     switch (p.mask) {
         case mask_type::no_mask:
-        case mask_type::causal: mask_ptr = nullptr; break;
+        case mask_type::causal_tl:
+        case mask_type::causal_br: mask_ptr = nullptr; break;
         case mask_type::oneD:
         case mask_type::twoD: mask_ptr = &mask; break;
     }
@@ -1133,7 +1152,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
                                       : t.m_key_quantized.get_desc(),
                 t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
                 t.m_output_quantized.get_desc(), invert_scale, p.head_num,
-                p.mask == mask_type::causal, t.sdpa_attr_quantized,
+                to_attn_mask_type(p.mask), t.sdpa_attr_quantized,
                 t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
         sdpa_quantized_p = sdpa(sdpa_quantized_pd);
     } catch (const dnnl::error &e) {
@@ -1234,7 +1253,8 @@ GPU_TEST_P(sdpa_test_t, perf) {
 
     switch (p.mask) {
         case mask_type::no_mask:
-        case mask_type::causal: mask_ptr = nullptr; break;
+        case mask_type::causal_tl:
+        case mask_type::causal_br: mask_ptr = nullptr; break;
         case mask_type::oneD:
         case mask_type::twoD: mask_ptr = &mask; break;
     }
@@ -1247,7 +1267,7 @@ GPU_TEST_P(sdpa_test_t, perf) {
                                       : t.m_key_quantized.get_desc(),
                 t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
                 t.m_output_quantized.get_desc(), invert_scale, p.head_num,
-                p.mask == mask_type::causal, t.sdpa_attr_quantized,
+                to_attn_mask_type(p.mask), t.sdpa_attr_quantized,
                 t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
         sdpa_quantized_p = sdpa(sdpa_quantized_pd);
     } catch (const dnnl::error &e) {
@@ -1260,7 +1280,7 @@ GPU_TEST_P(sdpa_test_t, perf) {
     auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
             p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
             t.m_value.get_desc(), mask_ptr, scale_dt, t.m_output.get_desc(),
-            invert_scale, p.head_num, p.mask == mask_type::causal, t.sdpa_attr);
+            invert_scale, p.head_num, to_attn_mask_type(p.mask), t.sdpa_attr);
     auto sdpaf16_p = sdpa(sdpaf16_pd);
 
     std::unordered_map<int, memory> s8_args = {{{DNNL_ARG_QUERIES, t.m_query},

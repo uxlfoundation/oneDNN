@@ -33,6 +33,12 @@
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
 
+typedef enum {
+    dnnl_attn_mask_buffer,
+    dnnl_attn_mask_top_left,
+    dnnl_attn_mask_bottom_right
+} dnnl_attn_mask_type_t;
+
 /* Instantiate tile types and operations */
 typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
@@ -205,7 +211,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
-        const global VAL_ATTR_ZP_DATA_T *V_zp
+        const global VAL_ATTR_ZP_DATA_T *V_zp,
+        const dnnl_attn_mask_type_t attn_mask_type
 #if WITH_ATTN_MASK
         ,
         const global MSK_DATA_T *msk
@@ -476,10 +483,14 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
 #if WITH_CAUSAL_MASK
-#define greater_than(offset_k, offset_q) (offset_k > offset_q)
+#define less_than(offset_k, offset_q) (offset_q < offset_k)
+
+        int col_offset = wg_j0 + sg_j0_kq;
+        if (attn_mask_type == dnnl_attn_mask_bottom_right) col_offset += k - q;
+
         /* Apply causal mask */
-        tile_predicated_assignment_t(S_tile, k0 + sg_i0_kq, wg_j0 + sg_j0_kq,
-                greater_than, -INFINITY, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+        tile_predicated_assignment_t(S_tile, k0 + sg_i0_kq, col_offset,
+                less_than, -INFINITY, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
                 ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
                 ugemm_kq_c_type_nblock1);
 #endif

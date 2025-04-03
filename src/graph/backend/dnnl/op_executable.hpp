@@ -2786,10 +2786,6 @@ struct sdpa_executable_t : public op_executable_t {
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
 
-#if DNNL_GPU_VENDOR != DNNL_VENDOR_INTEL
-        return status::unimplemented;
-#endif
-
         exec_args_t exec_args;
         memory_arg_t mem_arg_q = {(args.at(DNNL_ARG_QUERIES)).get(), true};
         memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
@@ -2807,18 +2803,19 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_DST] = mem_arg_dst;
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
+        auto strm_t = stream.get();
+        exec_ctx_t ctx(strm_t, std::move(exec_args));
+        auto *sycl_stream_impl = dnnl::impl::utils::downcast<
+                dnnl::impl::xpu::sycl::stream_impl_t *>(strm_t->impl());
 
-        exec_ctx_t ctx(stream.get(), std::move(exec_args));
-        auto *sycl_stream
-                = dnnl::impl::utils::downcast<sycl::stream_t *>(stream.get());
-        sycl_stream->before_exec_hook();
+        strm_t->before_exec_hook();
 
-        if (!deps.empty()) sycl_stream->sycl_ctx().set_deps(deps);
+        if (!deps.empty()) sycl_stream_impl->sycl_ctx().set_deps(deps);
 
         sdpa_prim_->execute(ctx);
 
-        auto return_event = sycl_stream->get_output_event();
-        sycl_stream->after_exec_hook();
+        ::sycl::event return_event = sycl_stream_impl->get_output_event();
+        strm_t->after_exec_hook();
         return return_event;
     }
 #endif

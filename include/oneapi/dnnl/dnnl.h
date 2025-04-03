@@ -161,6 +161,10 @@ int DNNL_API dnnl_primitive_desc_query_s32(
         const_dnnl_primitive_desc_t primitive_desc, dnnl_query_t what,
         int index);
 
+dnnl_status_t DNNL_API dnnl_primitive_desc_arg_usage(
+        const_dnnl_primitive_desc_t primitive_desc, int arg,
+        int *arg_usage);
+
 /// Creates a primitive.
 ///
 /// @param primitive Output primitive.

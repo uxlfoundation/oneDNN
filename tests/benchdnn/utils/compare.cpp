@@ -266,12 +266,12 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     res->total += nelems;
 
-    dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+    dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine(), false);
     dnn_mem_t exp_f32_plain;
     if (has_prim_ref_
             && !check_md_consistency_with_tag(exp_mem.md_, tag::abx)) {
-        exp_f32_plain
-                = dnn_mem_t(exp_mem, dnnl_f32, tag::abx, get_cpu_engine());
+        exp_f32_plain = dnn_mem_t(
+                exp_mem, dnnl_f32, tag::abx, get_cpu_engine(), false);
     }
     const dnn_mem_t &exp_f32 = exp_f32_plain ? exp_f32_plain : exp_mem;
 
@@ -335,6 +335,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     const auto compare_point_values = [&](int64_t i) {
         // Skip padded (non-existent) elements.
         if (i >= nelems) return;
+        if (exp_f32.get_elem(i) == got_f32.get_f32_elem(i)) return;
 
         // Stats for all validated points per one thread.
         static thread_local int64_t ithr_zeros = 0;

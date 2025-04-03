@@ -605,7 +605,7 @@ template <typename setup_cmp_func_t, typename prb_t>
 void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         const args_t &args, const args_t &ref_args,
         const setup_cmp_func_t &setup_cmp_func, res_t *res,
-        dnnl_primitive_t prim_ref = nullptr) {
+        dnnl_primitive_t prim, dnnl_primitive_t prim_ref = nullptr) {
     // Fast exit for any modes but correctness.
     if (!has_bench_mode_bit(mode_bit_t::corr)) return;
 
@@ -613,7 +613,14 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
     // validation. This is to avoid extra checks on higher level.
     if (kinds.empty()) return;
 
+    auto const_pd = prim ? query_pd(prim) : nullptr;
     for (int i = 0; i < args.size(); ++i) {
+        if (const_pd) {
+            int arg_usage;
+            DNN_SAFE_V(dnnl_primitive_desc_arg_usage(
+                    const_pd, args.arg(i), &arg_usage));
+            if (arg_usage != 2) continue;
+        }
         TIME_COMPARE(check_zero_padding(args.dnn_mem(i), args.arg(i), res));
         TIME_COMPARE(check_buffer_overwrite(args.dnn_mem(i), args.arg(i), res));
     }

@@ -123,6 +123,22 @@ int check_reorder_presence(
     return OK;
 }
 
+inline int i_dist_fast(uint32_t &idx, int mn, int mx) {
+    static std::vector<int> v = []() {
+        std::vector<int> ret(1000003);
+        for (size_t i = 0; i < ret.size(); i++)
+            ret[i] = rand();
+        return ret;
+    }();
+    int val = v[idx++ % v.size()];
+    return mn + val % (mx - mn + 1);
+}
+
+inline bool b_dist_fast(uint32_t &idx, float density) {
+    int i = i_dist_fast(idx, 0, 1000);
+    return i < density * 1000;
+}
+
 int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
         dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
@@ -164,6 +180,9 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
     /* Do fixed partitioning to have same filling for any number of threads */
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
+    int MN = cfg.get_range_min(kind);
+    int MX = cfg.get_range_max(kind);
+    if (mem_fp.dt() != dnnl_f32) abort();
 
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
@@ -172,6 +191,7 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
         // repeating patterns. We could use discard(idx_start) too but
         // it has a complexity in O(idx_start). We also add 1 to avoid
         // seeding with 0.
+#if 0
         std::minstd_rand int_seed(kind * nelems + idx_start + 1);
         int_seed.discard(1);
         std::minstd_rand b_seed(kind * nelems + idx_start + 1);
@@ -180,26 +200,33 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
         std::uniform_int_distribution<> gen(
                 cfg.get_range_min(kind), cfg.get_range_max(kind));
         std::bernoulli_distribution b_dist(density);
+#endif
+        uint32_t seed = (kind * nelems + idx_start + 1)
+                % std::numeric_limits<uint32_t>::max();
 
         // make sure the first element is positive
         if (idx_start == 0) {
             float gen_val = 0;
             while (gen_val <= 0)
-                gen_val = gen(int_seed);
+                gen_val = i_dist_fast(seed, MN, MX);
             float val = gen_val * (1.f + is_s8s8);
             val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-            mem_fp.set_elem(
-                    0, round_to_nearest_representable(cfg.get_dt(kind), val));
+            ((float *)mem_fp)[0]
+                    = round_to_nearest_representable(cfg.get_dt(kind), val);
             idx_start += 1;
         }
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            bool is_one = density == 1.f ? true : b_dist(b_seed);
-            float gen_val = gen(int_seed) * (1.f + is_s8s8);
-            float val = is_one * gen_val;
+            bool is_one = density == 1.f ? true : b_dist_fast(seed, density);
+            if (!is_one) {
+                ((float *)mem_fp)[idx] = 0;
+                continue;
+            }
+            float gen_val = i_dist_fast(seed, MN, MX) * (1.f + is_s8s8);
+            float val = gen_val;
             val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-            mem_fp.set_elem(
-                    idx, round_to_nearest_representable(cfg.get_dt(kind), val));
+            ((float *)mem_fp)[idx]
+                    = round_to_nearest_representable(cfg.get_dt(kind), val);
         }
     });
 
@@ -482,7 +509,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine, false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -592,7 +619,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     SAFE(execute_and_wait(prim, args, res), WARN);
 
     check_correctness(prb, get_kinds_to_check(prb), args, ref_args, setup_cmp,
-            res, prim_ref);
+            res, prim, prim_ref);
     SAFE(check_bitwise(prim, get_kinds_to_check(prb), args, prb->attr,
                  prb->inplace, res),
             WARN);

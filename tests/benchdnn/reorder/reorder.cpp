@@ -118,7 +118,7 @@ int compare_compensation(const prb_t *prb, dnn_mem_map_t &mem_map,
         // straight comparison of values in native plain layout.
         auto comp_md = dnn_mem_t::init_md(mem_ref.ndims(), mem_ref.dims(),
                 mem_ref.dt(), trim_tag_by_mask(prb->dtag, comp_mask));
-        dnn_mem_t comp_m(comp_md, mem_ref.engine(), {false, comp_handle});
+        dnn_mem_t comp_m(comp_md, mem_ref.engine(), true, {false, comp_handle});
 
         compare::compare_t cmp;
         cmp.set_zero_trust_percent(100.f); // No sense in zero trust test.
@@ -584,7 +584,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         dst_dt.md_->extra = empty_extra;
 
         // Validate main reorder part.
-        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res);
+        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res, prim);
 
         // Restore extra for compensation comparison and performance mode.
         dst_dt.md_->extra = orig_dst_extra;

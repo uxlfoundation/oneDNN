@@ -193,3 +193,10 @@ status_t dnnl_primitive_desc_next_impl(
     if (!primitive_desc_iface) return invalid_arguments;
     return primitive_desc_iface->next_impl();
 }
+
+status_t dnnl_primitive_desc_arg_usage(
+        const primitive_desc_iface_t *primitive_desc_iface, int arg,
+        int *arg_usage) {
+    *arg_usage = static_cast<int>(primitive_desc_iface->impl()->arg_usage(arg));
+    return success;
+}

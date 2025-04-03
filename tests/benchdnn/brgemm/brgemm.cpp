@@ -970,7 +970,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     dnnl_dims_t dims = {1};
     auto workspace_md = dnn_mem_t::init_md(1, dims, dnnl_u8, tag::abx);
     ref_mem_map.emplace(DNNL_ARG_WORKSPACE,
-            dnn_mem_t(workspace_md, ref_engine,
+            dnn_mem_t(workspace_md, ref_engine, true,
                     {false, (void *)&kernel_args.generate_skip_accumulation_}));
     ref_mem_map.at(DNNL_ARG_WORKSPACE).map();
 
@@ -1318,7 +1318,7 @@ int doit(const prb_t *prb, res_t *res) {
     res->state = EXECUTED;
 
     if (has_bench_mode_bit(mode_bit_t::corr)) {
-        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res);
+        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res, nullptr);
     }
 
     // Create a bind to match internals to run performance measurements.

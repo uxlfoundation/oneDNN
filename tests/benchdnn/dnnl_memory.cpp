@@ -49,60 +49,60 @@ extern "C" dnnl_status_t dnnl_memory_desc_set_data_type(
         dnnl_memory_desc_t memory_desc, dnnl_data_type_t data_type);
 
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
-        const handle_info_t &handle_info) {
+        bool do_init, const handle_info_t &handle_info) {
     if (query_md_ndims(md) > 0) {
         auto status = dnnl_memory_desc_clone(&md_, md);
         (void)status;
         assert(status == dnnl_success);
-        active_ = (initialize(engine, handle_info) == OK);
+        active_ = (initialize(engine, do_init, handle_info) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-        const std::string &tag, dnnl_engine_t engine) {
+        const std::string &tag, dnnl_engine_t engine, bool do_init) {
     const int ndims = query_md_ndims(md);
     if (ndims > 0) {
         auto md_wrapper = dnn_mem_t::init_md(ndims, query_md_dims(md), dt, tag);
         md_ = md_wrapper.release();
-        active_ = (initialize(engine) == OK);
+        active_ = (initialize(engine, do_init) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-        const dnnl_dims_t strides, dnnl_engine_t engine) {
+        const dnnl_dims_t strides, dnnl_engine_t engine, bool do_init) {
     const int ndims = query_md_ndims(md);
     if (ndims > 0) {
         auto status = dnnl_memory_desc_create_with_strides(
                 &md_, ndims, query_md_dims(md), dt, strides);
         (void)status;
         assert(status == dnnl_success);
-        active_ = (initialize(engine) == OK);
+        active_ = (initialize(engine, do_init) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-        const std::string &tag, dnnl_engine_t engine) {
+        const std::string &tag, dnnl_engine_t engine, bool do_init) {
     if (ndims > 0) {
         auto md_wrapper = dnn_mem_t::init_md(ndims, dims, dt, tag);
         md_ = md_wrapper.release();
-        active_ = (initialize(engine) == OK);
+        active_ = (initialize(engine, do_init) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-        const dnnl_dims_t strides, dnnl_engine_t engine) {
+        const dnnl_dims_t strides, dnnl_engine_t engine, bool do_init) {
     if (ndims > 0) {
         auto status = dnnl_memory_desc_create_with_strides(
                 &md_, ndims, dims, dt, strides);
         (void)status;
         assert(status == dnnl_success);
-        active_ = (initialize(engine) == OK);
+        active_ = (initialize(engine, do_init) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt,
-        const std::string &tag, dnnl_engine_t engine)
-    : dnn_mem_t(rhs.md_, dt, tag, engine) {
+        const std::string &tag, dnnl_engine_t engine, bool do_init)
+    : dnn_mem_t(rhs.md_, dt, tag, engine, do_init) {
     if (active_) {
         int status = reorder(rhs);
         if (status != OK) {
@@ -575,7 +575,7 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 
 dnn_mem_t dnn_mem_t::create_from_host_ptr(
         const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr) {
-    return dnn_mem_t(md, engine, {true, host_ptr});
+    return dnn_mem_t(md, engine, true, {true, host_ptr});
 }
 
 size_t dnn_mem_t::pad_memory_size(
@@ -917,7 +917,7 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
 }
 
 int dnn_mem_t::initialize(
-        dnnl_engine_t engine, const handle_info_t &handle_info) {
+        dnnl_engine_t engine, bool do_init, const handle_info_t &handle_info) {
     is_mapped_ = false;
     engine_ = engine;
     engine_kind_ = query_engine_kind(engine_);
@@ -948,7 +948,7 @@ int dnn_mem_t::initialize(
             if (is_canary_protected_) sz = pad_memory_size(sz, engine_kind_);
             // Do not fill a memory if its size is zero. Moreover, memset
             // expects defined pointer, nullptr is not allowed.
-            if (sz != 0) {
+            if (sz != 0 && do_init) {
                 // Avoid costy data reorders for cold cache mode when
                 // initializing cold cache buffers.
                 // TODO: consider enabling broadly for perf mode.

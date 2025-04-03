@@ -1721,7 +1721,7 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
     auto const_ref_pd = query_pd(prim_ref);
     const auto &ref_md = query_md(const_ref_pd, exec_arg);
     const auto &ref_engine = get_cpu_engine();
-    dnn_mem_t prim_ref_mem(ref_md, ref_engine);
+    dnn_mem_t prim_ref_mem(ref_md, ref_engine, false);
 
     // When queried memory comes empty, it may be attributes as library doesn't
     // have dedicated query mechanism for those. Process potential outcomes:

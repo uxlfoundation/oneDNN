@@ -2681,7 +2681,10 @@ struct sdpa_executable_t : public op_executable_t {
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
         status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
                 md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
-                is_invert_scale_, kv_head_number, is_causal_mask_, attr.get());
+                is_invert_scale_, kv_head_number,
+                is_causal_mask_ ? attn_mask_type::top_left
+                                : attn_mask_type::buffer,
+                attr.get());
         if (s != dnnl::impl::status::success) {
             is_initialized_ = false;
         } else {

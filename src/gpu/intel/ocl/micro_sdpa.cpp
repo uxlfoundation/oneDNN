@@ -853,6 +853,7 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     auto sg_per_wg = gemm_kq.getSetting("sg_per_wg_m")
             * gemm_kq.getSetting("sg_per_wg_n");
 
+    int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, key);
     arg_list.set(1, qry);
@@ -866,7 +867,8 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     arg_list.set(9, key_zp);
     arg_list.set(10, value_scales);
     arg_list.set(11, value_zp);
-    if (pd()->with_attn_mask()) arg_list.set(12, attn_mask);
+    arg_list.set(12, mask_type);
+    if (pd()->with_attn_mask()) arg_list.set(13, attn_mask);
 
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;

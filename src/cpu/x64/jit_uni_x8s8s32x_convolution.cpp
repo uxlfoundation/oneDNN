@@ -44,15 +44,17 @@ const float *jit_uni_x8s8s32x_convolution_fwd_t<isa>::adjust_oscales(
         const memory_tracking::grantor_t &scratchpad, const float *src_scales,
         const float *wei_scales) const {
     auto loc_scales = scratchpad.template get<float>(key_conv_adjusted_scales);
-    int wei_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
+    const bool has_wei_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
+    const int wei_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     float factor = (pd()->jcp_.signed_input && (!pd()->jcp_.has_vnni))
             ? 1.f / pd()->jcp_.wei_adj_scale
-            : 1.0f;
-    if (wei_mask == 0) {
-        utils::array_set(loc_scales, src_scales[0] * wei_scales[0] * factor, 8);
-    } else {
+            : 1.f;
+    if (has_wei_scales && wei_mask > 0) {
         for (dim_t c = 0; c < pd()->OC(); c++)
             loc_scales[c] = src_scales[0] * wei_scales[c] * factor;
+    } else {
+        utils::array_set(loc_scales, src_scales[0] * wei_scales[0] * factor, 8);
     }
     return loc_scales;
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,8 +17,9 @@
 #ifndef GEMMSTONE_GUARD_STRATEGY_PARSER_HPP
 #define GEMMSTONE_GUARD_STRATEGY_PARSER_HPP
 
-#include "config.hpp"
-#include "generator.hpp"
+#include "gemmstone/config.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 
 #include <string>
 

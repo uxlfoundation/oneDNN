@@ -399,20 +399,6 @@ bool BLASKernelGenerator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &proble
     return ok;
 }
 
-static inline BinaryOp dnnlToBinaryOp(alg_kind_t kind)
-{
-    switch (kind) {
-        case alg_kind::binary_add:   return BinaryOp::Add;
-        case alg_kind::binary_sub:   return BinaryOp::Sub;
-        case alg_kind::binary_mul:   return BinaryOp::Mul;
-        case alg_kind::binary_div:   return BinaryOp::Div;
-        case alg_kind::binary_min:   return BinaryOp::Min;
-        case alg_kind::binary_max:   return BinaryOp::Max;
-        case alg_kind::binary_prelu: return BinaryOp::Prelu;
-        default: stub();
-    }
-}
-
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
@@ -463,7 +449,7 @@ void BLASKernelGenerator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, c
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    if (poMin >= poMax && !problem.cStochasticRound) return;
+    if (poMin >= poMax && !problem.postOps.cStochasticRound) return;
 
     Label lSkip;
     and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagNonfinalKBlock);
@@ -536,58 +522,28 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
 
     for (size_t i = poMin; i < poMax; i++) {
         auto &entry = problem.postOps[i];
-        switch (entry.kind()) {
-            case post_op::kind_t::eltwise: {
-                using Injector = eltwise_injector_f32_t<GENERATOR_BASE(hw)>;
-                if (state.Tacc != Type::f32) stub();
+        if(entry.is_binary()) {
+            auto &ld = state.inputs.binaryLDs[i];
+            auto &eff = state.effBinary[i];
+            auto op = PostOpsProblem::toBinaryOp(entry);
 
-                int euCount = 0; /* only used for a DG2 W/A for conv */
-                auto &ee = entry.as_eltwise();
-                Injector injector{this, ee.alg, ee.alpha, ee.beta, ee.scale,
-                                  euCount, GRFRange(), problem.postOpFwd};
+            bool ok = gemmBinaryOpC(op, problem.postOps.binaryRow[i], problem.postOps.binaryCol[i],
+                                    problem.Tbinary[i], problem.binary[i], strategy.binary[i],
+                                    eff, ld, problem, strategy, state);
+            if (!ok) stub();
 
-                auto scratch = state.ra.try_alloc_range(injector.preferred_scratch_regs());
-                if (scratch.isInvalid())
-                    scratch = state.ra.alloc_range(injector.min_scratch_regs());
+            state.ra.safeRelease(ld);
+            state.ra.safeRelease(eff);
+        } else {
 
-                injector.set_scratch(scratch);
-                injector.prepare();
-                injector.compute(C_grfs, C_ngrf);
-                break;
-            }
-            case post_op::kind_t::binary: {
-                auto &ld = state.inputs.binaryLDs[i];
-                auto &eff = state.effBinary[i];
-                auto op = dnnlToBinaryOp(entry.as_binary().alg);
+            if (state.Tacc != Type::f32) stub();
 
-                bool ok = gemmBinaryOpC(op, problem.binaryRow[i], problem.binaryCol[i],
-                                        problem.Tbinary[i], problem.binary[i], strategy.binary[i],
-                                        eff, ld, problem, strategy, state);
-                if (!ok) stub();
-
-                state.ra.safeRelease(ld);
-                state.ra.safeRelease(eff);
-                break;
-            }
-            default: stub();
+            problem.postOps.injectNonBinaryPostOps(entry, this, state.ra, C_grfs, C_ngrf);
         }
     }
-    if(problem.cStochasticRound){
-        using Injector = eltwise_injector_f32_t<GENERATOR_BASE(hw)>;
-        int euCount = 0; /* only used for a DG2 W/A for conv */
-        Injector injector{this, alg_kind::eltwise_stochastic_round, 0.0, 0.0, 1.0, 
-                          euCount, GRFRange(), problem.postOpFwd};
-        auto scratch = state.ra.try_alloc_range(injector.preferred_scratch_regs());
-        if (scratch.isInvalid())
-            scratch = state.ra.alloc_range(injector.min_scratch_regs());
-        if (scratch.isInvalid())
-            stub();
-        
-        injector.set_scratch(scratch);
-        injector.prepare();
-        injector.compute(C_grfs, C_ngrf, state.inputs.sroundSeed.getBase(), state.inputs.sroundSeed.getOffset(), problem.Tc_ext.ngen());
+    if(problem.postOps.cStochasticRound) {
+        problem.postOps.injectStochasticRound(this, state.ra, C_grfs, C_ngrf, state.inputs.sroundSeed, problem.Tc_ext.ngen());
     }
-        
 
     mark(lSkip);
 }

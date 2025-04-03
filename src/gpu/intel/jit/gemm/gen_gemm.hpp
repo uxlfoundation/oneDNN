@@ -583,6 +583,7 @@ struct gen_gemm_t : public gpu_gemm_t {
         }
 
         void init_scratchpad() {
+            using namespace gemmstone;
             const auto *info = kernel_desc()->driver_info();
             if (info->needsTempC()) {
                 auto scratchpad = scratchpad_registry().registrar();
@@ -712,7 +713,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             bool large_grf_mode = (info->grfCount > 128);
 
             auto groups = dev_info_->hw_threads(large_grf_mode)
-                    / (info->wg[LoopM] * info->wg[LoopN]);
+                    / (info->wg[gemmstone::LoopM] * info->wg[gemmstone::LoopN]);
             if (info->kParallelVariable()) groups *= 2;
 
             return groups;
@@ -803,7 +804,7 @@ private:
             bool last_k_block, bool swapab, bool disable_hilbert) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    const CommonDriverInfo *nocopy_info() const {
+    const gemmstone::CommonDriverInfo *nocopy_info() const {
         return pd()->kernel_desc()->driver_info();
     }
 

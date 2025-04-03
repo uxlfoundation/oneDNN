@@ -14,26 +14,24 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/gemm/gen_gemm_kernel_db.hpp"
+#include "gemmstone_config.hpp"
+#include "gemmstone/problem.hpp"
 
 namespace gemmstone {
-#define _CATALOG_ gemm_catalog
-#include "selector/db/kernel.db"
-#undef _CATALOG_
+
+BinaryOp PostOpsProblem::toBinaryOp(const PostOps::entry_t &e) {
+    using namespace dnnl::impl;
+    switch (e.as_binary().alg) {
+        case alg_kind::binary_add: return BinaryOp::Add;
+        case alg_kind::binary_sub: return BinaryOp::Sub;
+        case alg_kind::binary_mul: return BinaryOp::Mul;
+        case alg_kind::binary_div: return BinaryOp::Div;
+        case alg_kind::binary_min: return BinaryOp::Min;
+        case alg_kind::binary_max: return BinaryOp::Max;
+        case alg_kind::binary_prelu: return BinaryOp::Prelu;
+        default: gpu_error_not_expected();
+    }
+    return BinaryOp::Add;
+}
+
 } // namespace gemmstone
-
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
-
-gemmstone::kcatalog::Catalog catalog() {
-    return gemmstone::gemm_catalog;
-};
-
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl

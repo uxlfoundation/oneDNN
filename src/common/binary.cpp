@@ -137,9 +137,6 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
         if (src2_md != nullptr) {
             VCHECK_BINARY(utils::one_of(src2_md->dims[d], 1, dims[d]),
                     VERBOSE_BAD_DIM, "src2", d);
-            VCHECK_BINARY(IMPLICATION(src0_md->dims[d] != dims[d],
-                                  src2_md->dims[d] == src0_md->dims[d]),
-                    VERBOSE_INCONSISTENT_DIM, "src0", d, "src2", d);
         }
     }
     return status::success;

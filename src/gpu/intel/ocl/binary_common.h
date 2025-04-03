@@ -410,7 +410,7 @@ DEF_binary_op(float8, float);
 
 #define DEF_ternary_op(dt, special_dt) \
     dt __attribute__((overloadable)) \
-            ternary_op(int alg, dt src0, dt src1, dt src2) { \
+            ternary_op(int alg, dt src0, dt src1, char src2) { \
         return (src2 != 0) ? src0 : src1; \
     }
 

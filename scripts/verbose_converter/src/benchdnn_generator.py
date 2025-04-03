@@ -16,7 +16,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Mapping, Optional, Set
+from typing import Dict, List, Mapping, Optional, Set, cast
 
 from . import ir
 
@@ -152,16 +152,21 @@ class Converter(metaclass=ConverterMeta):
             return ""
         results = []
         for post_op in post_ops:
-            if isinstance(post_op, ir.DepthwisePostOp):
-                results.append(self._convert_dw_post_op(post_op))
-            elif isinstance(post_op, ir.SumPostOp):
-                results.append(self._convert_sum_post_op(post_op))
-            elif isinstance(post_op, ir.PreLUPostOp):
-                results.append(self._convert_prelu_post_op(post_op))
-            elif isinstance(post_op, ir.BinaryPostOp):
-                results.append(self._convert_binary_post_op(post_op))
-            elif isinstance(post_op, ir.EltwisePostOp):
-                results.append(self._convert_eltwise_post_op(post_op))
+            if post_op.alg == "dw":
+                dw_po = cast(ir.DepthwisePostOp, post_op)
+                results.append(self._convert_dw_post_op(dw_po))
+            elif post_op.alg == "sum":
+                sum_po = cast(ir.SumPostOp, post_op)
+                results.append(self._convert_sum_post_op(sum_po))
+            elif post_op.alg == "prelu":
+                prelu_po = cast(ir.PreLUPostOp, post_op)
+                results.append(self._convert_prelu_post_op(prelu_po))
+            elif post_op.alg.startswith("binary_"):
+                binary_po = cast(ir.BinaryPostOp, post_op)
+                results.append(self._convert_binary_post_op(binary_po))
+            elif post_op.alg.startswith("eltwise_"):
+                eltwise_po = cast(ir.EltwisePostOp, post_op)
+                results.append(self._convert_eltwise_post_op(eltwise_po))
         return "--attr-post-ops=" + "+".join(results)
 
     def _get_quantization(

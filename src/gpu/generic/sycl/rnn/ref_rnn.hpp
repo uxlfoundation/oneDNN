@@ -27,10 +27,9 @@
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/gpu_rnn_pd.hpp"
 
+#include "gpu/generic/sycl/sycl_gpu_kernel.hpp"
 #include "gpu/generic/sycl/sycl_gpu_primitive.hpp"
 #include "gpu/generic/sycl/sycl_primitive_conf.hpp"
-
-#include "gpu/generic/sycl/sycl_gpu_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -38,12 +37,23 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
-enum gemm_kind_t { gemm_iter_fwd, gemm_layer_fwd };
+enum gemm_kind_t {
+    gemm_iter_fwd,
+    gemm_layer_fwd,
+    gemm_iter_bwd,
+    gemm_layer_bwd,
+    gemm_diff_wei_iter,
+    gemm_diff_wei_layer
+};
 
+template <prop_kind_t aprop>
 struct _ref_rnn_common_t : public primitive_t {
     using primitive_t::primitive_t;
 
-    using base_pd_t = gpu_rnn_fwd_pd_t;
+    using base_pd_t =
+            typename utils::conditional<false || aprop == prop_kind::forward,
+                    gpu_rnn_fwd_pd_t, gpu_rnn_bwd_pd_t>::type;
+    ;
 
     struct cell_ctx_t {
         impl::engine_t *engine;
@@ -86,20 +96,29 @@ struct _ref_rnn_common_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> vanilla_cell_act_pd_;
         std::shared_ptr<primitive_desc_t> gemm_iter_fwd_pd_;
         std::shared_ptr<primitive_desc_t> gemm_layer_fwd_pd_;
+        std::shared_ptr<primitive_desc_t> gemm_iter_bwd_pd_;
+        std::shared_ptr<primitive_desc_t> gemm_layer_bwd_pd_;
+        std::shared_ptr<primitive_desc_t> gemm_diff_wei_iter_pd_;
+        std::shared_ptr<primitive_desc_t> gemm_diff_wei_layer_pd_;
 
         sycl_rnn_copy_conf_t copy_init_layer_conf_;
         sycl_rnn_copy_conf_t copy_init_iter_conf_;
         sycl_rnn_copy_conf_t copy_res_layer_conf_;
         sycl_rnn_copy_conf_t copy_res_iter_conf_;
-        sycl_rnn_bias_conf_t sycl_rnn_bias_conf_t_;
+        sycl_rnn_bias_conf_t sycl_rnn_bias_fwd_conf_t_;
+        sycl_rnn_bias_conf_t sycl_rnn_bias_bwd_conf_t_;
 
     private:
         void init_scratchpad(dim_t workspace_size) {
             using namespace memory_tracking::names;
             auto scratchpad = this->scratchpad_registry().registrar();
             scratchpad.book(key_rnn_space, workspace_size, 1);
+
             rnn_utils::scratch_t::book(scratchpad, rnn_conf,
-                    {gemm_iter_fwd_pd_.get(), gemm_layer_fwd_pd_.get()});
+                    {gemm_iter_fwd_pd_.get(), gemm_layer_fwd_pd_.get(),
+                            gemm_iter_bwd_pd_.get(), gemm_layer_bwd_pd_.get(),
+                            gemm_diff_wei_iter_pd_.get(),
+                            gemm_diff_wei_layer_pd_.get()});
         }
     };
 
@@ -122,30 +141,44 @@ private:
             std::unique_ptr<memory_storage_t> &b,
             std::unique_ptr<memory_storage_t> &c, gemm_kind_t gemm_kind) const;
 
-    status_t copy_init_layer(const exec_ctx_t &ctx, dim_t n_iter, dim_t batch,
-            dim_t slc, dim_t dhc, dim_t n_layer, dim_t n_dir, dim_t n_states,
-            dim_t states_ws_ld, const rnn_utils::workspace_t &ws,
-            const memory_storage_t &input) const;
-    status_t copy_init_iter(const exec_ctx_t &ctx, dim_t n_layer, dim_t n_dir,
-            dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter, dim_t n_states,
-            dim_t states_ws_ld, const rnn_utils::workspace_t &ws,
-            const memory_storage_t &firstit_states) const;
-    status_t copy_res_layer(const exec_ctx_t &ctx, dim_t n_iter, dim_t batch,
-            dim_t slc, dim_t dhc, dim_t n_layer, dim_t n_dir, dim_t n_states,
-            dim_t states_ws_ld, const memory_storage_t &dst_last_layer,
-            const rnn_utils::workspace_t &ws) const;
-    status_t copy_res_iter(const exec_ctx_t &ctx, dim_t n_layer, dim_t n_dir,
-            dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter, dim_t n_states,
-            dim_t states_ws_ld, const memory_storage_t &dst_last_iter,
-            const rnn_utils::workspace_t &ws) const;
-    status_t rnn_bias(const exec_ctx_t &ctx, dim_t batch, dim_t dhc, dim_t iter,
-            dim_t lay, dim_t dir, const rnn_utils::workspace_t &ws,
+    status_t copy_init_layer(const exec_ctx_t &ctx, dim_t batch, dim_t dhc,
+            dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+            dim_t states_ws_ld, const memory_storage_t &input,
+            const memory_storage_t &output) const;
+    status_t copy_init_iter(const exec_ctx_t &ctx, dim_t batch, dim_t dhc,
+            dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+            dim_t states_ws_ld, const memory_storage_t &input,
+            const memory_storage_t &output) const;
+    status_t copy_res_layer(const exec_ctx_t &ctx, dim_t batch, dim_t dhc,
+            dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+            dim_t states_ws_ld, const memory_storage_t &intput,
+            const memory_storage_t &output) const;
+    status_t copy_res_iter(const exec_ctx_t &ctx, dim_t batch, dim_t dhc,
+            dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+            dim_t states_ws_ld, const memory_storage_t &intput,
+            const memory_storage_t &output) const;
+    status_t rnn_bias_fwd(const exec_ctx_t &ctx, dim_t batch, dim_t dhc,
+            dim_t iter, dim_t lay, dim_t dir, const rnn_utils::workspace_t &ws,
             const rnn_utils::scratch_t &scratch,
             const rnn_utils ::user_data_t &user_data) const;
+    status_t rnn_bias_bwd(const exec_ctx_t &ctx, dim_t batch, dim_t dhc,
+            dim_t iter, dim_t lay, dim_t dir, dim_t n_layer,
+            const std::unique_ptr<dnnl::impl::memory_storage_t>
+                    &diff_states_layer,
+            const std::unique_ptr<dnnl::impl::memory_storage_t> &diff_cell_iter,
+            const rnn_utils ::user_data_t &user_data,
+            const std::unique_ptr<dnnl::impl::memory_storage_t> &scratch_gate,
+            const std::unique_ptr<dnnl::impl::memory_storage_t> &diff_gates)
+            const;
 
     // ptrs to GEMM primitives
     std::shared_ptr<impl::primitive_t> gemm_layer_fwd_;
     std::shared_ptr<impl::primitive_t> gemm_iter_fwd_;
+
+    std::shared_ptr<impl::primitive_t> gemm_layer_bwd_;
+    std::shared_ptr<impl::primitive_t> gemm_iter_bwd_;
+    std::shared_ptr<impl::primitive_t> gemm_diff_wei_layer_;
+    std::shared_ptr<impl::primitive_t> gemm_diff_wei_iter_;
 
     // offset variables set in workspace and used in offset calculations for
     // grid & cell execution and fwd & bwd kernel macros
@@ -163,11 +196,14 @@ private:
     std::function<status_t(const cell_ctx_t &)> cell_func;
     std::function<status_t(const grid_ctx_t &)> grid_func;
 
-    kernel_t copy_kernel_;
-    kernel_t bias_kernel_;
+    kernel_t copy_fwd_kernel_;
+    kernel_t copy_bwd_kernel_;
+    kernel_t bias_fwd_kernel_;
+    kernel_t bias_bwd_kernel_;
 };
 
-using ref_rnn_fwd_t = _ref_rnn_common_t;
+using ref_rnn_fwd_t = _ref_rnn_common_t<prop_kind::forward>;
+using ref_rnn_bwd_t = _ref_rnn_common_t<prop_kind::backward>;
 
 } // namespace sycl
 } // namespace generic

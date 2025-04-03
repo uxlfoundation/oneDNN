@@ -16,7 +16,6 @@
 
 // General architecture
 //
-// for diff states, we have n_states + 1 as we have n_states diff
 // to propagate to the previous iteration and 1 states to propagate
 // to the previous layer
 // index 0 is dh for cell(t-1, l) to consume
@@ -34,6 +33,8 @@
 #include "common/stream.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/generic/sycl/rnn/rnn_kernels.hpp"
+#include "gpu/gpu_stream.hpp"
+#include "xpu/sycl/types.hpp"
 
 #include <memory>
 
@@ -44,7 +45,6 @@
             fflush(nullptr); \
         } \
     } while (0)
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -58,7 +58,8 @@ using namespace alg_kind;
 using namespace rnn_utils;
 using namespace dnnl::impl::memory_tracking::names;
 
-status_t _ref_rnn_common_t::pd_t::set_default_params() {
+template <>
+status_t _ref_rnn_common_t<prop_kind::forward>::pd_t::set_default_params() {
     using namespace format_tag;
     if (src_layer_md_.format_kind == format_kind::any)
         CHECK(memory_desc_init_by_tag(src_layer_md_, tnc));
@@ -79,7 +80,69 @@ status_t _ref_rnn_common_t::pd_t::set_default_params() {
     return status::success;
 }
 
-status_t _ref_rnn_common_t::pd_t::init(impl::engine_t *engine) {
+template <>
+status_t _ref_rnn_common_t<prop_kind::backward>::pd_t::set_default_params() {
+    using namespace format_tag;
+    if (src_layer_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(src_layer_md_, tnc));
+    if (weights_layer_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(weights_layer_md_, ldgoi));
+
+    if (dst_layer_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(dst_layer_md_, tnc));
+
+    if (weights_iter_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(weights_iter_md_, ldgoi));
+
+    if (diff_src_layer_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(diff_src_layer_md_, tnc));
+    if (diff_weights_layer_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(diff_weights_layer_md_, ldigo));
+
+    if (diff_weights_iter_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(diff_weights_iter_md_, ldigo));
+
+    if (diff_dst_layer_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(diff_dst_layer_md_, tnc));
+
+    // Optional parameters
+    if ((!types::is_zero_md(&src_iter_md_))
+            && (src_iter_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(src_iter_md_, ldnc));
+    if ((!types::is_zero_md(&src_iter_c_md_))
+            && (src_iter_c_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(src_iter_c_md_, ldnc));
+    if ((!types::is_zero_md(&bias_md_))
+            && (bias_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(bias_md_, ldgo));
+    if ((!types::is_zero_md(&dst_iter_md_))
+            && (dst_iter_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(dst_iter_md_, ldnc));
+    if ((!types::is_zero_md(&dst_iter_c_md_))
+            && (dst_iter_c_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(dst_iter_c_md_, ldnc));
+
+    if ((!types::is_zero_md(&diff_src_iter_md_))
+            && (diff_src_iter_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(diff_src_iter_md_, ldnc));
+    if ((!types::is_zero_md(&diff_src_iter_c_md_))
+            && (diff_src_iter_c_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(diff_src_iter_c_md_, ldnc));
+    if ((!types::is_zero_md(&diff_bias_md_))
+            && (diff_bias_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(diff_bias_md_, ldgo));
+    if ((!types::is_zero_md(&diff_dst_iter_md_))
+            && (diff_dst_iter_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(diff_dst_iter_md_, ldnc));
+    if ((!types::is_zero_md(&diff_dst_iter_c_md_))
+            && (diff_dst_iter_c_md_.format_kind == format_kind::any))
+        CHECK(memory_desc_init_by_tag(diff_dst_iter_c_md_, ldnc));
+
+    return status::success;
+}
+
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     using namespace prop_kind;
     using namespace utils;
     using namespace rnn_utils;
@@ -104,9 +167,9 @@ status_t _ref_rnn_common_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_RNN(weights_iter_dt == weights_layer_dt, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_RNN_SC(this->set_default_params(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
-    VDISPATCH_RNN(this->desc()->prop_kind == forward_inference
-                    || this->desc()->prop_kind == forward_training,
-            VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_RNN(IMPLICATION(this->desc()->prop_kind != forward_inference,
+                          utils::one_of(bias_dt, dnnl_f32)),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
 
     init_rnn_conf(rnn_conf, this, acc_data_t);
 
@@ -145,11 +208,20 @@ status_t _ref_rnn_common_t::pd_t::init(impl::engine_t *engine) {
     }
 
     memory_desc_t state_md;
-    dims_t state_dims = {rnn_conf.n_layer, rnn_conf.n_dir, rnn_conf.n_iter + 1,
-            rnn_conf.mb, rnn_conf.states_ws_ld};
+    if (aprop == prop_kind::backward) {
+        dims_t state_dims = {rnn_conf.n_layer, rnn_conf.n_dir,
+                rnn_conf.n_iter + 1, rnn_conf.n_states + 1, rnn_conf.mb,
+                rnn_conf.scratch_diff_states_ld};
 
-    CHECK(memory_desc_init_by_tag(state_md, 5, state_dims,
-            rnn_conf.src_data_type, format_tag::abcde));
+        CHECK(memory_desc_init_by_tag(state_md, 6, state_dims,
+                rnn_conf.aux_data_type, format_tag::abcdef));
+    } else {
+        dims_t state_dims = {rnn_conf.n_layer, rnn_conf.n_dir,
+                rnn_conf.n_iter + 1, rnn_conf.mb, rnn_conf.states_ws_ld};
+
+        CHECK(memory_desc_init_by_tag(state_md, 5, state_dims,
+                rnn_conf.aux_data_type, format_tag::abcde));
+    }
 
     // using is_l2r/r2l to account for bidirectional as well
     // if both l2r and r2l are true, case is bidirectional concat
@@ -159,44 +231,84 @@ status_t _ref_rnn_common_t::pd_t::init(impl::engine_t *engine) {
     bool is_r2l = !(this->desc()->direction == dnnl_unidirectional_left2right);
     bool is_sum = this->desc()->direction == dnnl_bidirectional_sum;
 
-    copy_init_layer_conf_
-            = sycl_rnn_copy_conf_t {xpu::sycl::md_t(this->src_md(0)),
-                    xpu::sycl::md_t(&state_md), rnn_conf.slc, rnn_conf.n_dir,
-                    rnn_conf.n_layer, rnn_conf.n_iter, rnn_conf.mb,
-                    rnn_conf.states_ws_ld, true, true, is_l2r, is_r2l, false};
+    xpu::sycl::md_t copy_src_md = xpu::sycl::md_t(aprop == prop_kind::backward
+                    ? this->diff_dst_md(0)
+                    : this->src_md(0));
+    xpu::sycl::md_t copy_dst_md = xpu::sycl::md_t(&state_md);
 
-    xpu::sycl::md_t src_iter_md = this->src_md(1)->data_type == data_type::undef
+    copy_init_layer_conf_ = sycl_rnn_copy_conf_t {copy_src_md, copy_dst_md,
+            rnn_conf.is_fwd ? rnn_conf.slc : rnn_conf.dhc, rnn_conf.n_dir,
+            rnn_conf.n_layer, rnn_conf.n_iter, rnn_conf.mb,
+            rnn_conf.is_fwd ? rnn_conf.states_ws_ld
+                            : rnn_conf.scratch_diff_states_ld,
+            true, true, is_l2r, is_r2l, is_sum};
+
+    copy_src_md = aprop == prop_kind::backward ? this->diff_dst_md(1)
+            : this->src_md(1)->data_type == data_type::undef
             ? xpu::sycl::md_t()
             : xpu::sycl::md_t(this->src_md(1));
 
-    copy_init_iter_conf_ = sycl_rnn_copy_conf_t {src_iter_md,
-            xpu::sycl::md_t(&state_md), rnn_conf.sic, rnn_conf.n_dir,
+    copy_init_iter_conf_ = sycl_rnn_copy_conf_t {copy_src_md, copy_dst_md,
+            rnn_conf.is_fwd ? rnn_conf.sic : rnn_conf.dhc, rnn_conf.n_dir,
             rnn_conf.n_layer, rnn_conf.n_iter, rnn_conf.mb,
-            rnn_conf.states_ws_ld, false, true, is_l2r, is_r2l, false};
+            rnn_conf.is_fwd ? rnn_conf.states_ws_ld
+                            : rnn_conf.scratch_diff_states_ld,
+            false, true, is_l2r, is_r2l, is_sum};
 
-    copy_res_layer_conf_ = sycl_rnn_copy_conf_t {xpu::sycl::md_t(&state_md),
-            xpu::sycl::md_t(this->dst_md(0)), rnn_conf.dhc, rnn_conf.n_dir,
+    copy_src_md = xpu::sycl::md_t(&state_md);
+    copy_dst_md = xpu::sycl::md_t(aprop == prop_kind::backward
+                    ? this->diff_src_md(0)
+                    : this->dst_md(0));
+
+    copy_res_layer_conf_ = sycl_rnn_copy_conf_t {copy_src_md, copy_dst_md,
+            rnn_conf.is_fwd ? rnn_conf.dhc : rnn_conf.slc, rnn_conf.n_dir,
             rnn_conf.n_layer, rnn_conf.n_iter, rnn_conf.mb,
-            rnn_conf.states_ws_ld, true, false, is_l2r, is_r2l, is_sum};
+            rnn_conf.is_fwd ? rnn_conf.states_ws_ld
+                            : rnn_conf.scratch_diff_states_ld,
+            true, false, is_l2r, is_r2l, is_sum};
 
-    xpu::sycl::md_t dst_iter_md = this->dst_md(1)->data_type == data_type::undef
+    copy_src_md = xpu::sycl::md_t(&state_md);
+    copy_dst_md = aprop == prop_kind::backward ? this->diff_src_md(1)
+            : this->dst_md(1)->data_type == data_type::undef
             ? xpu::sycl::md_t()
-            : xpu::sycl::md_t(this->dst_md(1));
+            : xpu::sycl::md_t(aprop == prop_kind::backward
+                            ? this->diff_src_md(1)
+                            : this->dst_md(1));
 
-    copy_res_iter_conf_ = sycl_rnn_copy_conf_t {xpu::sycl::md_t(&state_md),
-            dst_iter_md, rnn_conf.dhc, rnn_conf.n_dir, rnn_conf.n_layer,
-            rnn_conf.n_iter, rnn_conf.mb, rnn_conf.states_ws_ld, false, false,
-            is_l2r, is_r2l, false};
+    copy_res_iter_conf_ = sycl_rnn_copy_conf_t {copy_src_md, copy_dst_md,
+            rnn_conf.is_fwd ? rnn_conf.dhc : rnn_conf.sic, rnn_conf.n_dir,
+            rnn_conf.n_layer, rnn_conf.n_iter, rnn_conf.mb,
+            rnn_conf.is_fwd ? rnn_conf.states_ws_ld
+                            : rnn_conf.scratch_diff_states_ld,
+            false, false, is_l2r, is_r2l, is_sum};
 
-    sycl_rnn_bias_conf_t_ = sycl_rnn_bias_conf_t();
-    sycl_rnn_bias_conf_t_.dst_md = xpu::sycl::md_t(this->dst_md(0));
-    sycl_rnn_bias_conf_t_.bias_type = bias_dt;
-    sycl_rnn_bias_conf_t_.batch = rnn_conf.mb;
-    sycl_rnn_bias_conf_t_.dhc = rnn_conf.dhc;
-    sycl_rnn_bias_conf_t_.gates_ws_ld = rnn_conf.gates_ws_ld;
-    sycl_rnn_bias_conf_t_.states_ws_ld = rnn_conf.states_ws_ld;
-    sycl_rnn_bias_conf_t_.activation_kind = this->activation_kind();
-    sycl_rnn_bias_conf_t_.alpha = this->desc()->alpha;
+    sycl_rnn_bias_fwd_conf_t_ = sycl_rnn_bias_conf_t();
+    sycl_rnn_bias_fwd_conf_t_.src_type = rnn_conf.ws_data_type;
+    sycl_rnn_bias_fwd_conf_t_.dst_md = xpu::sycl::md_t(&state_md);
+    sycl_rnn_bias_fwd_conf_t_.bias_type = bias_dt;
+    sycl_rnn_bias_fwd_conf_t_.batch = rnn_conf.mb;
+    sycl_rnn_bias_fwd_conf_t_.dhc = rnn_conf.dhc;
+    sycl_rnn_bias_fwd_conf_t_.gates_ws_ld = rnn_conf.gates_ws_ld;
+    sycl_rnn_bias_fwd_conf_t_.states_ws_ld = rnn_conf.states_ws_ld;
+    sycl_rnn_bias_fwd_conf_t_.activation_kind = this->activation_kind();
+    sycl_rnn_bias_fwd_conf_t_.alpha = this->desc()->alpha;
+
+    if (aprop == prop_kind::backward) {
+        sycl_rnn_bias_bwd_conf_t_ = sycl_rnn_bias_conf_t();
+        sycl_rnn_bias_bwd_conf_t_.src_type = rnn_conf.diff_data_type;
+        sycl_rnn_bias_bwd_conf_t_.dst_md = xpu::sycl::md_t(&state_md);
+        sycl_rnn_bias_bwd_conf_t_.bias_type = rnn_conf.ws_data_type;
+        sycl_rnn_bias_bwd_conf_t_.batch = rnn_conf.mb;
+        sycl_rnn_bias_bwd_conf_t_.dhc = rnn_conf.dhc;
+        sycl_rnn_bias_bwd_conf_t_.gates_ws_ld = rnn_conf.scratch_diff_gates_ld;
+        sycl_rnn_bias_bwd_conf_t_.states_ws_ld = rnn_conf.states_ws_ld;
+        sycl_rnn_bias_bwd_conf_t_.scratch_diff_states_ld
+                = rnn_conf.scratch_diff_states_ld;
+        sycl_rnn_bias_bwd_conf_t_.activation_kind = this->activation_kind();
+        sycl_rnn_bias_bwd_conf_t_.alpha = this->desc()->alpha;
+        sycl_rnn_bias_bwd_conf_t_.diff_bias_md
+                = xpu::sycl::md_t(this->diff_weights_md(2));
+    }
 
     auto fpmath_mode = this->attr()->fpmath_.mode_;
 
@@ -213,14 +325,12 @@ status_t _ref_rnn_common_t::pd_t::init(impl::engine_t *engine) {
         dims_t a_dims = {n, k}, b_dims = {k, m}, c_dims = {n, m};
 
         dims_t b_strides_md = {b_strides[0], b_strides[1]};
-        CHECK(memory_desc_init_by_strides(
-                b_md, 2, b_dims, rnn_conf.wei_layer_type, b_strides_md));
         dims_t a_strides_md = {a_strides[0], a_strides[1]};
-        CHECK(memory_desc_init_by_strides(
-                a_md, 2, a_dims, rnn_conf.src_data_type, a_strides_md));
         dims_t c_strides_md = {c_strides[0], c_strides[1]};
-        CHECK(memory_desc_init_by_strides(
-                c_md, 2, c_dims, rnn_conf.dst_data_type, c_strides_md));
+
+        CHECK(memory_desc_init_by_strides(b_md, 2, b_dims, a_dt, b_strides_md));
+        CHECK(memory_desc_init_by_strides(a_md, 2, a_dims, b_dt, a_strides_md));
+        CHECK(memory_desc_init_by_strides(c_md, 2, c_dims, c_dt, c_strides_md));
 
         primitive_attr_t attr;
         if (beta != 0) { CHECK(attr.post_ops_.append_sum(beta)); }
@@ -245,8 +355,10 @@ status_t _ref_rnn_common_t::pd_t::init(impl::engine_t *engine) {
     };
 
     float gemm_iter_fwd_beta = this->is_lbr() ? 0.0f : 1.0f;
+    float gemm_iter_bwd_beta = this->is_lbr() ? 1.0f : 0.0f;
 
     // Setup gemm PDs
+    auto diff_type = this->diff_src_md(0)->data_type;
 
     dim_t batch = rnn_conf.mb;
     dim_t n_gates = rnn_conf.n_gates;
@@ -254,28 +366,64 @@ status_t _ref_rnn_common_t::pd_t::init(impl::engine_t *engine) {
     dim_t sic = rnn_conf.sic;
     dim_t dhc = rnn_conf.dhc;
 
-    strides_t<5> wei_layer_strides = get_outer_strides(this->weights_md(0));
-    strides_t<5> wei_iter_strides = get_outer_strides(this->weights_md(1));
+    strides_t<5> wei_layer_strides = get_outer_strides<5>(this->weights_md(0));
+    strides_t<5> wei_iter_strides = get_outer_strides<5>(this->weights_md(1));
+    strides_t<5> diff_weights_layer
+            = get_outer_strides<5>(this->diff_weights_md(0));
+    strides_t<5> diff_weights_iter
+            = get_outer_strides<5>(this->diff_weights_md(1));
 
-    VDISPATCH_RNN_SC(create_gemm_pd(gemm_layer_fwd_pd_, n_gates * dhc, batch,
-                             slc, {rnn_conf.states_ws_ld, 1},
-                             {wei_layer_strides[2], wei_layer_strides[4]},
-                             {rnn_conf.scratch_gates_ld, 1}, weights_type,
-                             src_type, rnn_conf.acc_data_type, 0.0),
+    VDISPATCH_RNN_SC(
+            create_gemm_pd(gemm_layer_fwd_pd_, n_gates * dhc, batch, slc,
+                    {rnn_conf.states_ws_ld, 1},
+                    {wei_layer_strides[2], wei_layer_strides[4]},
+                    {rnn_conf.scratch_gates_ld, 1}, weights_type,
+                    rnn_conf.aux_data_type, rnn_conf.aux_data_type, 0.0),
             "create_gemm_pd(gemm_layer_fwd_pd_)");
 
     VDISPATCH_RNN_SC(create_gemm_pd(gemm_iter_fwd_pd_, n_gates * dhc, batch,
                              sic, {rnn_conf.states_ws_ld, 1},
                              {wei_iter_strides[2], wei_iter_strides[4]},
-                             {rnn_conf.gates_ws_ld, 1}, weights_type, src_type,
-                             rnn_conf.acc_data_type, gemm_iter_fwd_beta),
+                             {rnn_conf.gates_ws_ld, 1}, weights_type,
+                             rnn_conf.aux_data_type, rnn_conf.aux_data_type,
+                             gemm_iter_fwd_beta),
             "create_gemm_pd(gemm_iter_fwd_pd_)");
+
+    if (aprop == prop_kind::backward) {
+        VDISPATCH_RNN_SC(
+                create_gemm_pd(gemm_iter_bwd_pd_, sic, batch, n_gates * dhc,
+                        {rnn_conf.scratch_diff_gates_ld, 1},
+                        {wei_iter_strides[4], wei_iter_strides[2]},
+                        {rnn_conf.scratch_diff_states_ld, 1}, weights_type,
+                        diff_type, diff_type, gemm_iter_bwd_beta),
+                "create_gemm_pd(gemm_iter_bwd_pd_)");
+        VDISPATCH_RNN_SC(create_gemm_pd(gemm_diff_wei_iter_pd_, n_gates * dhc,
+                                 sic, batch, {1, rnn_conf.states_ws_ld},
+                                 {rnn_conf.scratch_diff_gates_ld, 1},
+                                 {diff_weights_iter[2], diff_weights_iter[4]},
+                                 diff_type, diff_type, diff_type, 1.0f),
+                "create_gemm_pd(gemm_diff_wei_iter_pd_)");
+        VDISPATCH_RNN_SC(
+                create_gemm_pd(gemm_layer_bwd_pd_, slc, batch, n_gates * dhc,
+                        {rnn_conf.scratch_diff_gates_ld, 1},
+                        {wei_layer_strides[4], wei_layer_strides[2]},
+                        {rnn_conf.scratch_diff_states_ld, 1}, weights_type,
+                        diff_type, diff_type, 0.0f),
+                "create_gemm_pd(gemm_layer_bwd_pd_)");
+
+        VDISPATCH_RNN_SC(create_gemm_pd(gemm_diff_wei_layer_pd_, n_gates * dhc,
+                                 slc, batch, {1, rnn_conf.states_ws_ld},
+                                 {rnn_conf.scratch_diff_gates_ld, 1},
+                                 {diff_weights_layer[2], diff_weights_layer[4]},
+                                 diff_type, diff_type, diff_type, 1.0f),
+                "create_gemm_pd(gemm_diff_wei_layer_pd_)");
+    }
 
     init_scratchpad(rnn_conf.use_workspace ? 0 : workspace_size);
     return status::success;
 }
-
-status_t _ref_rnn_common_t::init(impl::engine_t *engine) {
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::init(impl::engine_t *engine) {
     using namespace rnn_utils;
 
     switch (pd()->cell_kind()) {
@@ -294,10 +442,14 @@ status_t _ref_rnn_common_t::init(impl::engine_t *engine) {
     rnn_utils::set_workspace_offsets(rnn, ws_gates_offset_, ws_states_offset_);
 
     // IMPORTANT SYCL STUFF
-    const auto copy_kid = ::sycl::get_kernel_id<ref_rnn_copy_t>();
-    this->create_kernel(engine, copy_kid, &copy_kernel_);
-    const auto bias_kid = ::sycl::get_kernel_id<ref_rnn_bias>();
-    this->create_kernel(engine, bias_kid, &bias_kernel_);
+    const auto copy_fwd_kid = ::sycl::get_kernel_id<ref_rnn_copy_fwd_t>();
+    this->create_kernel(engine, copy_fwd_kid, &copy_fwd_kernel_);
+    const auto copy_bwd_kid = ::sycl::get_kernel_id<ref_rnn_copy_bwd_t>();
+    this->create_kernel(engine, copy_bwd_kid, &copy_bwd_kernel_);
+    const auto bias_fwd_kid = ::sycl::get_kernel_id<ref_rnn_bias_fwd>();
+    this->create_kernel(engine, bias_fwd_kid, &bias_fwd_kernel_);
+    const auto bias_bwd_kid = ::sycl::get_kernel_id<ref_rnn_bias_bwd>();
+    this->create_kernel(engine, bias_bwd_kid, &bias_bwd_kernel_);
 
     bool gemm_ok = true;
     auto create_nested_gemm =
@@ -316,12 +468,27 @@ status_t _ref_rnn_common_t::init(impl::engine_t *engine) {
     gemm_ok = gemm_ok
             && create_nested_gemm(pd()->gemm_iter_fwd_pd_, gemm_iter_fwd_);
 
+    if (aprop == prop_kind::backward) {
+        gemm_ok = gemm_ok
+                && create_nested_gemm(
+                        pd()->gemm_layer_bwd_pd_, gemm_layer_bwd_);
+        gemm_ok = gemm_ok
+                && create_nested_gemm(pd()->gemm_iter_bwd_pd_, gemm_iter_bwd_);
+        gemm_ok = gemm_ok
+                && create_nested_gemm(
+                        pd()->gemm_diff_wei_layer_pd_, gemm_diff_wei_layer_);
+        gemm_ok = gemm_ok
+                && create_nested_gemm(
+                        pd()->gemm_diff_wei_iter_pd_, gemm_diff_wei_iter_);
+    }
+
     if (!gemm_ok) return status::runtime_error;
 
     return status::success;
 } // namespace sycl
 
-status_t _ref_rnn_common_t::gemm_primitive(impl::engine_t *engine,
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::gemm_primitive(impl::engine_t *engine,
         const exec_ctx_t &ctx, std::unique_ptr<memory_storage_t> &a,
         std::unique_ptr<memory_storage_t> &b,
         std::unique_ptr<memory_storage_t> &c, gemm_kind_t gemm_kind) const {
@@ -332,6 +499,12 @@ status_t _ref_rnn_common_t::gemm_primitive(impl::engine_t *engine,
     switch (gemm_kind) {
         case gemm_iter_fwd: gemm_pd = pd()->gemm_iter_fwd_pd_; break;
         case gemm_layer_fwd: gemm_pd = pd()->gemm_layer_fwd_pd_; break;
+        case gemm_iter_bwd: gemm_pd = pd()->gemm_iter_bwd_pd_; break;
+        case gemm_layer_bwd: gemm_pd = pd()->gemm_layer_bwd_pd_; break;
+        case gemm_diff_wei_iter: gemm_pd = pd()->gemm_diff_wei_iter_pd_; break;
+        case gemm_diff_wei_layer:
+            gemm_pd = pd()->gemm_diff_wei_layer_pd_;
+            break;
     }
 
     CHECK(safe_ptr_assign(arg2,
@@ -368,6 +541,26 @@ status_t _ref_rnn_common_t::gemm_primitive(impl::engine_t *engine,
                     gemm_layer_fwd_, rnn_utils::scratch_t::key_gemm_layer_fwd);
             CHECK(gemm_layer_fwd_->execute(gemm_ctx));
             break;
+        case gemm_iter_bwd:
+            init_gemm_nested_scratchpad(
+                    gemm_layer_bwd_, rnn_utils::scratch_t::key_gemm_iter_bwd);
+            CHECK(gemm_iter_bwd_->execute(gemm_ctx));
+            break;
+        case gemm_layer_bwd:
+            init_gemm_nested_scratchpad(
+                    gemm_iter_bwd_, rnn_utils::scratch_t::key_gemm_layer_bwd);
+            CHECK(gemm_layer_bwd_->execute(gemm_ctx));
+            break;
+        case gemm_diff_wei_iter:
+            init_gemm_nested_scratchpad(gemm_diff_wei_iter_,
+                    rnn_utils::scratch_t::key_gemm_diff_wei_iter);
+            CHECK(gemm_diff_wei_iter_->execute(gemm_ctx));
+            break;
+        case gemm_diff_wei_layer:
+            init_gemm_nested_scratchpad(gemm_diff_wei_layer_,
+                    rnn_utils::scratch_t::key_gemm_diff_wei_layer);
+            CHECK(gemm_diff_wei_layer_->execute(gemm_ctx));
+            break;
 
         default: assert(!"unknown gemm_kind"); return status::runtime_error;
     }
@@ -376,11 +569,29 @@ status_t _ref_rnn_common_t::gemm_primitive(impl::engine_t *engine,
 }
 
 //*************** Grid computations strategy: linear ***************//
-status_t _ref_rnn_common_t::linear_execution(const grid_ctx_t &grid_struct) {
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::linear_execution(
+        const grid_ctx_t &grid_struct) {
 
     dim_t n_layer = grid_struct.rnn.n_layer;
     dim_t n_dir = grid_struct.rnn.n_dir;
     dim_t n_iter = grid_struct.rnn.n_iter;
+
+    if (aprop == prop_kind::backward && pd()->diff_weights_overwrite()) {
+        gpu::stream_t *stream
+                = utils::downcast<gpu::stream_t *>(grid_struct.ctx.stream());
+        auto zero = [&](const memory_storage_t &data, int arg_id) {
+            auto mdw = memory_desc_wrapper(pd()->arg_md(arg_id));
+            return stream->fill(data, 0, mdw.size(), stream->ctx().get_deps(),
+                    stream->ctx().get_deps());
+        };
+
+        CHECK(zero(grid_struct.user_data.diff_bias(), DNNL_ARG_DIFF_BIAS));
+        CHECK(zero(grid_struct.user_data.diff_wei_layer(),
+                DNNL_ARG_DIFF_WEIGHTS_LAYER));
+        CHECK(zero(grid_struct.user_data.diff_wei_iter(),
+                DNNL_ARG_DIFF_WEIGHTS_ITER));
+    }
 
     for (dim_t dir = 0; dir < n_dir; dir++) {
         for (dim_t j = 0; j < n_layer; j++) {
@@ -398,184 +609,318 @@ status_t _ref_rnn_common_t::linear_execution(const grid_ctx_t &grid_struct) {
     return status::success;
 }
 //********* GRID computations strategy: utility functions **********//
-
-status_t _ref_rnn_common_t::copy_init_layer(const exec_ctx_t &ctx, dim_t batch,
-        dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
-        dim_t n_states, dim_t states_ws_ld, const rnn_utils::workspace_t &ws,
-        const memory_storage_t &input) const {
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
+        dim_t batch, dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer,
+        dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &input,
+        const memory_storage_t &output) const {
 
     auto max_wg_size_per_dim = calc_local_range(ctx);
+    size_t local_batch = max_wg_size_per_dim;
+    size_t local_iter = max_wg_size_per_dim;
+    size_t local_channel = max_wg_size_per_dim;
+    size_t global_batch = calc_global_range(
+            static_cast<size_t>(local_batch), static_cast<size_t>(batch));
+    size_t global_iter = calc_global_range(
+            static_cast<size_t>(local_iter), static_cast<size_t>(n_iter));
 
-    parallel_for(ctx, copy_kernel_, [&](::sycl::handler &cgh) {
-        auto src_mem_arg
-                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &input)
-                          ->get_in_memory_arg(ctx.stream(), cgh);
-        auto dst_mem_arg
-                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &ws.states())
-                          ->get_out_memory_arg(ctx.stream(), cgh);
+    if (aprop == prop_kind::forward) {
+        parallel_for(ctx, copy_fwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &input)
+                              ->get_in_memory_arg(ctx.stream(), cgh);
+            auto dst_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh);
 
-        ref_rnn_copy_t copy_kernel(
-                pd()->copy_init_layer_conf_, src_mem_arg, dst_mem_arg);
-        size_t local_batch = max_wg_size_per_dim;
-        size_t local_iter = max_wg_size_per_dim;
-        size_t local_channel = max_wg_size_per_dim;
-        size_t global_batch = calc_global_range(
-                static_cast<size_t>(local_batch), static_cast<size_t>(batch));
-        size_t global_iter = calc_global_range(
-                static_cast<size_t>(local_iter), static_cast<size_t>(n_iter));
-        size_t global_channels = calc_global_range(
-                static_cast<size_t>(local_channel), static_cast<size_t>(slc));
-        cgh.parallel_for(
-                ::sycl::nd_range<3>(::sycl::range<3>(global_iter, global_batch,
-                                            global_channels),
-                        ::sycl::range<3>(
-                                local_iter, local_batch, local_channel)),
-                copy_kernel);
-    });
+            ref_rnn_copy_fwd_t copy_kernel(
+                    pd()->copy_init_layer_conf_, src_mem_arg, dst_mem_arg);
+            size_t global_channels
+                    = calc_global_range(static_cast<size_t>(local_channel),
+                            static_cast<size_t>(slc));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_iter,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_iter, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    } else {
+        parallel_for(ctx, copy_bwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &input)
+                              ->get_in_memory_arg(ctx.stream(), cgh);
+            auto dst_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh);
+
+            ref_rnn_copy_bwd_t copy_kernel(
+                    pd()->copy_init_layer_conf_, src_mem_arg, dst_mem_arg);
+            size_t global_channels
+                    = calc_global_range(static_cast<size_t>(local_channel),
+                            static_cast<size_t>(dhc));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_iter,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_iter, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    }
 
     return status::success;
 }
 
-status_t _ref_rnn_common_t::copy_init_iter(const exec_ctx_t &ctx, dim_t batch,
-        dim_t dhc, dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir,
-        dim_t n_states, dim_t states_ws_ld, const rnn_utils::workspace_t &ws,
-        const memory_storage_t &firstit_states) const {
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
+        dim_t batch, dim_t dhc, dim_t sic, dim_t n_iter, dim_t n_layer,
+        dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &input,
+        const memory_storage_t &output) const {
+
+    auto max_wg_size_per_dim = calc_local_range(ctx);
+    if (aprop == prop_kind::forward) {
+        parallel_for(ctx, copy_fwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_mem_arg = input
+                    ? utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &input)
+                              ->get_in_memory_arg(ctx.stream(), cgh)
+                    : xpu::sycl::memory_storage_base_t::empty_in_memory_arg(
+                            ctx.stream(), cgh);
+            auto dst_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh);
+
+            ref_rnn_copy_fwd_t copy_kernel(
+                    pd()->copy_init_iter_conf_, src_mem_arg, dst_mem_arg);
+            size_t local_batch = max_wg_size_per_dim;
+            size_t local_channel = max_wg_size_per_dim;
+            size_t local_lay_dir = max_wg_size_per_dim;
+            size_t global_batch = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(batch));
+            size_t global_channels = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    std::max(static_cast<size_t>(sic),
+                            static_cast<size_t>(dhc)));
+            size_t global_lay_dir = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(n_layer * n_dir));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_lay_dir,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_lay_dir, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    } else {
+        parallel_for(ctx, copy_bwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_mem_arg = input
+                    ? utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &input)
+                              ->get_in_memory_arg(ctx.stream(), cgh)
+                    : xpu::sycl::memory_storage_base_t::empty_in_memory_arg(
+                            ctx.stream(), cgh);
+            auto dst_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh);
+
+            ref_rnn_copy_bwd_t copy_kernel(
+                    pd()->copy_init_iter_conf_, src_mem_arg, dst_mem_arg);
+            size_t local_batch = max_wg_size_per_dim;
+            size_t local_channel = max_wg_size_per_dim;
+            size_t local_lay_dir = max_wg_size_per_dim;
+            size_t global_batch = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(batch));
+            size_t global_channels = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(dhc));
+            size_t global_lay_dir = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(n_layer * n_dir));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_lay_dir,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_lay_dir, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    }
+    return status::success;
+}
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::copy_res_layer(const exec_ctx_t &ctx,
+        dim_t batch, dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer,
+        dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &intput,
+        const memory_storage_t &output) const {
 
     auto max_wg_size_per_dim = calc_local_range(ctx);
 
-    parallel_for(ctx, copy_kernel_, [&](::sycl::handler &cgh) {
-        auto src_iter_mem_arg = firstit_states
-                ? utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &firstit_states)
-                          ->get_in_memory_arg(ctx.stream(), cgh)
-                : xpu::sycl::memory_storage_base_t::empty_in_memory_arg(
-                        ctx.stream(), cgh);
-        auto ws_mem_arg
-                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &ws.states())
-                          ->get_out_memory_arg(ctx.stream(), cgh);
+    if (aprop == prop_kind::forward) {
+        parallel_for(ctx, copy_fwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &intput)
+                              ->get_in_memory_arg(ctx.stream(), cgh);
+            auto dst_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh);
 
-        ref_rnn_copy_t copy_kernel(
-                pd()->copy_init_iter_conf_, src_iter_mem_arg, ws_mem_arg);
-        size_t local_batch = max_wg_size_per_dim;
-        size_t local_channel = max_wg_size_per_dim;
-        size_t local_lay_dir = max_wg_size_per_dim;
-        size_t global_batch
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(batch));
-        size_t global_channels = calc_global_range(
-                static_cast<size_t>(max_wg_size_per_dim),
-                std::max(static_cast<size_t>(sic), static_cast<size_t>(dhc)));
-        size_t global_lay_dir
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(n_layer * n_dir));
-        cgh.parallel_for(
-                ::sycl::nd_range<3>(::sycl::range<3>(global_lay_dir,
-                                            global_batch, global_channels),
-                        ::sycl::range<3>(
-                                local_lay_dir, local_batch, local_channel)),
-                copy_kernel);
-    });
+            ref_rnn_copy_fwd_t copy_kernel(
+                    pd()->copy_res_layer_conf_, src_mem_arg, dst_mem_arg);
+            size_t local_batch = max_wg_size_per_dim;
+            size_t local_iter = max_wg_size_per_dim;
+            size_t local_channel = max_wg_size_per_dim;
+            size_t global_batch = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(batch));
+            size_t global_iter = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(n_iter));
+            size_t global_channels = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(dhc));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_iter,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_iter, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    } else {
+        parallel_for(ctx, copy_bwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &intput)
+                              ->get_in_memory_arg(ctx.stream(), cgh);
+            auto dst_mem_arg
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh);
+
+            ref_rnn_copy_bwd_t copy_kernel(
+                    pd()->copy_res_layer_conf_, src_mem_arg, dst_mem_arg);
+            size_t local_batch = max_wg_size_per_dim;
+            size_t local_iter = max_wg_size_per_dim;
+            size_t local_channel = max_wg_size_per_dim;
+            size_t global_batch = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(batch));
+            size_t global_iter = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(n_iter));
+            size_t global_channels = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(slc));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_iter,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_iter, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    }
     return status::success;
 }
 
-status_t _ref_rnn_common_t::copy_res_layer(const exec_ctx_t &ctx, dim_t batch,
-        dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
-        dim_t n_states, dim_t states_ws_ld,
-        const memory_storage_t &dst_last_layer,
-        const rnn_utils::workspace_t &ws) const {
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
+        dim_t batch, dim_t dhc, dim_t sic, dim_t n_iter, dim_t n_layer,
+        dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &intput,
+        const memory_storage_t &output) const {
 
     auto max_wg_size_per_dim = calc_local_range(ctx);
+    if (aprop == prop_kind::forward) {
 
-    parallel_for(ctx, copy_kernel_, [&](::sycl::handler &cgh) {
-        auto ws_mem_arg
-                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &ws.states())
-                          ->get_in_memory_arg(ctx.stream(), cgh);
-        auto dst_mem_arg
-                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &dst_last_layer)
-                          ->get_out_memory_arg(ctx.stream(), cgh);
+        parallel_for(ctx, copy_fwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_iter
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &intput)
+                              ->get_in_memory_arg(ctx.stream(), cgh);
+            auto dst_iter = output
+                    ? utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh)
+                    : xpu::sycl::memory_storage_base_t::empty_out_memory_arg(
+                            ctx.stream(), cgh);
+            ref_rnn_copy_fwd_t copy_kernel(
+                    pd()->copy_res_iter_conf_, src_iter, dst_iter);
 
-        ref_rnn_copy_t copy_kernel(
-                pd()->copy_res_layer_conf_, ws_mem_arg, dst_mem_arg);
-        size_t local_batch = max_wg_size_per_dim;
-        size_t local_iter = max_wg_size_per_dim;
-        size_t local_channel = max_wg_size_per_dim;
-        size_t global_batch
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(batch));
-        size_t global_iter
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(n_iter));
-        size_t global_channels
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(n_states * dhc));
-        cgh.parallel_for(
-                ::sycl::nd_range<3>(::sycl::range<3>(global_iter, global_batch,
-                                            global_channels),
-                        ::sycl::range<3>(
-                                local_iter, local_batch, local_channel)),
-                copy_kernel);
-    });
+            size_t local_batch = max_wg_size_per_dim;
+            size_t local_channel = max_wg_size_per_dim;
+            size_t local_lay_dir = max_wg_size_per_dim;
+            size_t global_batch = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(batch));
+            size_t global_channels = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(dhc));
+            size_t global_lay_dir = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(n_layer * n_dir));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_lay_dir,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_lay_dir, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    } else {
+        parallel_for(ctx, copy_bwd_kernel_, [&](::sycl::handler &cgh) {
+            auto src_iter
+                    = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &intput)
+                              ->get_in_memory_arg(ctx.stream(), cgh);
+            auto dst_iter = output
+                    ? utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                            &output)
+                              ->get_out_memory_arg(ctx.stream(), cgh)
+                    : xpu::sycl::memory_storage_base_t::empty_out_memory_arg(
+                            ctx.stream(), cgh);
+            ref_rnn_copy_bwd_t copy_kernel(
+                    pd()->copy_res_iter_conf_, src_iter, dst_iter);
+
+            size_t local_batch = max_wg_size_per_dim;
+            size_t local_channel = max_wg_size_per_dim;
+            size_t local_lay_dir = max_wg_size_per_dim;
+            size_t global_batch = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(batch));
+            size_t global_channels = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    std::max(static_cast<size_t>(sic),
+                            static_cast<size_t>(dhc)));
+            size_t global_lay_dir = calc_global_range(
+                    static_cast<size_t>(max_wg_size_per_dim),
+                    static_cast<size_t>(n_layer * n_dir));
+            cgh.parallel_for(
+                    ::sycl::nd_range<3>(::sycl::range<3>(global_lay_dir,
+                                                global_batch, global_channels),
+                            ::sycl::range<3>(
+                                    local_lay_dir, local_batch, local_channel)),
+                    copy_kernel);
+        });
+    }
     return status::success;
 }
 
-status_t _ref_rnn_common_t::copy_res_iter(const exec_ctx_t &ctx, dim_t batch,
-        dim_t dhc, dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir,
-        dim_t n_states, dim_t states_ws_ld,
-        const memory_storage_t &dst_last_iter,
-        const rnn_utils::workspace_t &ws) const {
-
-    auto max_wg_size_per_dim = calc_local_range(ctx);
-
-    parallel_for(ctx, copy_kernel_, [&](::sycl::handler &cgh) {
-        auto src_iter
-                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &ws.states())
-                          ->get_in_memory_arg(ctx.stream(), cgh);
-        auto dst_iter = dst_last_iter
-                ? utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &dst_last_iter)
-                          ->get_out_memory_arg(ctx.stream(), cgh)
-                : xpu::sycl::memory_storage_base_t::empty_out_memory_arg(
-                        ctx.stream(), cgh);
-        ref_rnn_copy_t copy_kernel(
-                pd()->copy_res_iter_conf_, src_iter, dst_iter);
-
-        size_t local_batch = max_wg_size_per_dim;
-        size_t local_channel = max_wg_size_per_dim;
-        size_t local_lay_dir = max_wg_size_per_dim;
-        size_t global_batch
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(batch));
-        size_t global_channels
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(dhc));
-        size_t global_lay_dir
-                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
-                        static_cast<size_t>(n_layer * n_dir));
-        cgh.parallel_for(
-                ::sycl::nd_range<3>(::sycl::range<3>(global_lay_dir,
-                                            global_batch, global_channels),
-                        ::sycl::range<3>(
-                                local_lay_dir, local_batch, local_channel)),
-                copy_kernel);
-    });
-
-    return status::success;
-}
-
-status_t _ref_rnn_common_t::rnn_bias(const exec_ctx_t &ctx, dim_t batch,
-        dim_t dhc, dim_t iter, dim_t lay, dim_t dir,
-        const rnn_utils::workspace_t &ws, const rnn_utils::scratch_t &scratch,
+template <>
+status_t _ref_rnn_common_t<prop_kind::forward>::rnn_bias_fwd(
+        const exec_ctx_t &ctx, dim_t batch, dim_t dhc, dim_t iter, dim_t lay,
+        dim_t dir, const rnn_utils::workspace_t &ws,
+        const rnn_utils::scratch_t &scratch,
         const rnn_utils ::user_data_t &user_data) const {
 
     auto max_wg_size_per_dim = calc_local_range(ctx);
 
-    parallel_for(ctx, bias_kernel_, [&](::sycl::handler &cgh) {
+    parallel_for(ctx, bias_fwd_kernel_, [&](::sycl::handler &cgh) {
         auto src_mem_arg
                 = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
                         scratch.gates(0).get())
@@ -589,8 +934,64 @@ status_t _ref_rnn_common_t::rnn_bias(const exec_ctx_t &ctx, dim_t batch,
                 = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
                         ws.states(lay + 1, dir, iter).get())
                           ->get_out_memory_arg(ctx.stream(), cgh);
-        ref_rnn_bias bias_kernel(pd()->sycl_rnn_bias_conf_t_, src_mem_arg,
-                bias_mem_arg, dst_mem_arg);
+        ref_rnn_bias_fwd bias_kernel(pd()->sycl_rnn_bias_fwd_conf_t_,
+                src_mem_arg, bias_mem_arg, dst_mem_arg);
+
+        size_t local_batch = max_wg_size_per_dim;
+        size_t local_channel = max_wg_size_per_dim;
+        size_t global_batch
+                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
+                        static_cast<size_t>(batch));
+        size_t global_channels
+                = calc_global_range(static_cast<size_t>(max_wg_size_per_dim),
+                        static_cast<size_t>(dhc));
+        cgh.parallel_for(
+                ::sycl::nd_range<3>(
+                        ::sycl::range<3>(global_channels, global_batch, 1),
+                        ::sycl::range<3>(local_channel, local_batch, 1)),
+                bias_kernel);
+    });
+
+    return status::success;
+}
+
+template <>
+status_t _ref_rnn_common_t<prop_kind::backward>::rnn_bias_bwd(
+        const exec_ctx_t &ctx, dim_t batch, dim_t dhc, dim_t iter, dim_t lay,
+        dim_t dir, dim_t n_layer,
+        const std::unique_ptr<dnnl::impl::memory_storage_t> &diff_states_layer,
+        const std::unique_ptr<dnnl::impl::memory_storage_t> &diff_cell_iter,
+        const rnn_utils ::user_data_t &user_data,
+        const std::unique_ptr<dnnl::impl::memory_storage_t> &scratch_gate,
+        const std::unique_ptr<dnnl::impl::memory_storage_t> &diff_gates) const {
+
+    auto max_wg_size_per_dim = calc_local_range(ctx);
+
+    parallel_for(ctx, bias_bwd_kernel_, [&](::sycl::handler &cgh) {
+        auto gates_mem_arg
+                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                        scratch_gate.get())
+                          ->get_in_memory_arg(ctx.stream(), cgh);
+        auto diff_lay_mem_arg
+                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                        diff_states_layer.get())
+                          ->get_in_memory_arg(ctx.stream(), cgh);
+        auto diff_iter_mem_arg
+                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                        diff_cell_iter.get())
+                          ->get_in_memory_arg(ctx.stream(), cgh);
+        auto scratch_diff_gates_mem_arg
+                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                        diff_gates.get())
+                          ->get_out_memory_arg(ctx.stream(), cgh);
+        auto diff_bias_mem_arg
+                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                        user_data.diff_bias(n_layer - lay - 1, dir).get())
+                          ->get_inout_memory_arg(ctx.stream(), cgh);
+
+        ref_rnn_bias_bwd bias_kernel(pd()->sycl_rnn_bias_bwd_conf_t_,
+                gates_mem_arg, diff_lay_mem_arg, diff_iter_mem_arg,
+                scratch_diff_gates_mem_arg, diff_bias_mem_arg);
 
         size_t local_batch = max_wg_size_per_dim;
         size_t local_channel = max_wg_size_per_dim;
@@ -612,7 +1013,8 @@ status_t _ref_rnn_common_t::rnn_bias(const exec_ctx_t &ctx, dim_t batch,
 
 // //********************* Execution function *********************//
 
-status_t _ref_rnn_common_t::execute_(const exec_ctx_t &ctx) const {
+template <prop_kind_t aprop>
+status_t _ref_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
 
     impl::engine_t *engine = ctx.stream()->engine();
 
@@ -622,7 +1024,6 @@ status_t _ref_rnn_common_t::execute_(const exec_ctx_t &ctx) const {
 
     dim_t n_layer = rnn.n_layer;
     dim_t n_dir = rnn.n_dir;
-    dim_t n_states = rnn.n_states;
     dim_t n_iter = rnn.n_iter;
     dim_t n_gates = rnn.n_gates;
     dim_t n_bias = rnn.n_bias;
@@ -632,18 +1033,36 @@ status_t _ref_rnn_common_t::execute_(const exec_ctx_t &ctx) const {
     dim_t dhc = rnn.dhc;
     dim_t dlc = rnn.dlc;
 
+    bool is_fwd = rnn.is_fwd;
+
     auto &src_layer_native_ = CTX_IN_STORAGE(DNNL_ARG_SRC_LAYER);
     auto &src_iter_native_ = CTX_IN_STORAGE(DNNL_ARG_SRC_ITER);
     auto &wei_layer_native_ = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS_LAYER);
     auto &wei_iter_native_ = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS_ITER);
     auto &bias_native_ = CTX_IN_STORAGE(DNNL_ARG_BIAS);
 
-    auto &dst_last_layer_native_ = CTX_OUT_STORAGE(DNNL_ARG_DST_LAYER);
-    auto &dst_last_iter_native_ = CTX_OUT_STORAGE(DNNL_ARG_DST_ITER);
+    auto &dst_last_layer_native_ = is_fwd ? CTX_OUT_STORAGE(DNNL_ARG_DST_LAYER)
+                                          : CTX_IN_STORAGE(DNNL_ARG_DST_LAYER);
+    auto &dst_last_iter_native_ = is_fwd ? CTX_OUT_STORAGE(DNNL_ARG_DST_ITER)
+                                         : CTX_IN_STORAGE(DNNL_ARG_DST_ITER);
+
+    auto &diff_dst_layer_native_ = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST_LAYER);
+    auto &diff_dst_iter_native_ = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST_ITER);
+
+    auto &diff_src_layer_native_ = CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC_LAYER);
+    auto &diff_src_iter_native_ = CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC_ITER);
+
+    auto &diff_weights_layer_native_
+            = CTX_OUT_STORAGE(DNNL_ARG_DIFF_WEIGHTS_LAYER);
+    auto &diff_weights_iter_native_
+            = CTX_OUT_STORAGE(DNNL_ARG_DIFF_WEIGHTS_ITER);
+    auto &diff_bias_native_ = CTX_OUT_STORAGE(DNNL_ARG_DIFF_BIAS);
 
     auto scratch_workspace
             = ctx.get_scratchpad_grantor().get_memory_storage(key_rnn_space);
-    auto &workspace_ = rnn.is_training ? CTX_OUT_STORAGE(DNNL_ARG_WORKSPACE)
+    auto &workspace_ = rnn.is_training ? is_fwd
+                    ? CTX_OUT_STORAGE(DNNL_ARG_WORKSPACE)
+                    : CTX_IN_STORAGE(DNNL_ARG_WORKSPACE)
                                        : *scratch_workspace;
     const auto &workspace = rnn_utils::workspace_t(workspace_, rnn);
 
@@ -651,8 +1070,10 @@ status_t _ref_rnn_common_t::execute_(const exec_ctx_t &ctx) const {
             = rnn_utils::scratch_t(rnn, ctx.get_scratchpad_grantor());
 
     const rnn_utils::user_data_t user_data(wei_layer_native_,
-            pd()->weights_md(0), wei_iter_native_, pd()->weights_md(1),
-            bias_native_, pd()->weights_md(2));
+            pd()->weights_md(0), diff_weights_layer_native_,
+            pd()->diff_weights_md(0), wei_iter_native_, pd()->weights_md(1),
+            diff_weights_iter_native_, pd()->diff_weights_md(1), bias_native_,
+            pd()->weights_md(2), diff_bias_native_, pd()->diff_weights_md(2));
 
     DPRINT("\n%s\n", "+++++++++++++++");
     DPRINT("%s\n", "+++++++++++++++");
@@ -661,7 +1082,6 @@ status_t _ref_rnn_common_t::execute_(const exec_ctx_t &ctx) const {
     DPRINT("  n_iter          = %lld\n", static_cast<long long>(n_iter));
     DPRINT("  n_gates         = %lld\n", static_cast<long long>(n_gates));
     DPRINT("  n_bias          = %lld\n", static_cast<long long>(n_bias));
-    DPRINT("  n_states        = %lld\n", static_cast<long long>(n_states));
     DPRINT("  n_weights_layer = %lld\n", static_cast<long long>(rnn_pd->SLC()));
     DPRINT("  n_weights_iter  = %lld\n", static_cast<long long>(rnn_pd->SIC()));
     DPRINT("  batch           = %lld\n", static_cast<long long>(batch));
@@ -676,29 +1096,46 @@ status_t _ref_rnn_common_t::execute_(const exec_ctx_t &ctx) const {
     DPRINT("  with_dst_iter   = %s\n", rnn_pd->with_dst_iter() ? "yes" : "no");
     DPRINT("%s\n", "+++++++++++++++");
 
-    CHECK(copy_init_layer(ctx, batch, dhc, slc, n_iter, n_layer, n_dir,
-            n_states, rnn.states_ws_ld, workspace, src_layer_native_));
-
-    CHECK(copy_init_iter(ctx, batch, dhc, sic, n_iter, n_layer, n_dir, n_states,
-            rnn.states_ws_ld, workspace, src_iter_native_));
+    if (rnn.is_fwd) {
+        CHECK(copy_init_layer(ctx, batch, dhc, slc, n_iter, n_layer, n_dir,
+                rnn.states_ws_ld, src_layer_native_, workspace.states()));
+        CHECK(copy_init_iter(ctx, batch, dhc, sic, n_iter, n_layer, n_dir,
+                rnn.states_ws_ld, src_iter_native_, workspace.states()));
+    } else {
+        CHECK(copy_init_layer(ctx, batch, dhc, slc, n_iter, n_layer, n_dir,
+                rnn.scratch_diff_states_ld, diff_dst_layer_native_,
+                scratch.diff_states()));
+        CHECK(copy_init_iter(ctx, batch, dhc, sic, n_iter, n_layer, n_dir,
+                rnn.scratch_diff_states_ld, diff_dst_iter_native_,
+                scratch.diff_states()));
+    }
 
     // run the execution on the grid
     const grid_ctx_t &grid_struct {
             engine, ctx, user_data, workspace, scratch, pd()->rnn_conf};
+
     CHECK(this->grid_func(grid_struct));
 
     // Finally we copy the results to the result buffers
-
-    CHECK(copy_res_layer(ctx, batch, dhc, slc, n_iter, n_layer, n_dir, n_states,
-            rnn.states_ws_ld, dst_last_layer_native_, workspace));
-
-    CHECK(copy_res_iter(ctx, batch, dhc, sic, n_iter, n_layer, n_dir, n_states,
-            rnn.states_ws_ld, dst_last_iter_native_, workspace));
+    if (rnn.is_fwd) {
+        CHECK(copy_res_layer(ctx, batch, dhc, slc, n_iter, n_layer, n_dir,
+                rnn.states_ws_ld, workspace.states(), dst_last_layer_native_));
+        CHECK(copy_res_iter(ctx, batch, dhc, sic, n_iter, n_layer, n_dir,
+                rnn.states_ws_ld, workspace.states(), dst_last_iter_native_));
+    } else {
+        CHECK(copy_res_layer(ctx, batch, dhc, slc, n_iter, n_layer, n_dir,
+                rnn.scratch_diff_states_ld, scratch.diff_states(),
+                diff_src_layer_native_));
+        CHECK(copy_res_iter(ctx, batch, dhc, sic, n_iter, n_layer, n_dir,
+                rnn.scratch_diff_states_ld, scratch.diff_states(),
+                diff_src_iter_native_));
+    }
 
     return status::success;
 };
 
-struct _ref_rnn_common_t;
+template struct _ref_rnn_common_t<prop_kind::forward>;
+template struct _ref_rnn_common_t<prop_kind::backward>;
 
 } // namespace sycl
 } // namespace generic

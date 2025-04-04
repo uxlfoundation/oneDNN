@@ -2170,14 +2170,19 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
         VDISPATCH_REORDER_IC(
-                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+                IMPLICATION(!output_d.is_dense(), output_d.is_plain()),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         return status::success;
     }
 
     static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d) {
-        return input_d.size();
+        // Note: output can be strided for cases when dim is odd, e.g.
+        // dims=[7, 4], strides=[1, 8]. In this case, output will be bigger
+        // than input.
+        return output_d.size() * input_d.data_type_size()
+                * output_d.sub_byte_data_type_multiplier();
     }
 
     static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
@@ -2212,8 +2217,13 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         }
 
         // To avoid clashes between threads each byte (or 2 elements)
-        // is handled by a single thread
-        const dim_t work_amount = input_d.nelems() / 2;
+        // is handled by a single thread.
+        // Note: output can be strided for cases when dim is odd, e.g.
+        // dims=[7, 4], strides=[1, 8]. To make a trick with transform, padded
+        // point gets counted in `work_amount` but its value shouldn't affect
+        // anything.
+        const dim_t work_amount
+                = get_scratchpad_size(input_d, output_d) / (2 * sizeof(float));
 
         parallel(0, [&](const int ithr, const int nthr) {
             dim_t start {0}, end {0};

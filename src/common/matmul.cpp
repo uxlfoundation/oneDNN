@@ -78,8 +78,14 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     VCHECK_MATMUL_UNIMPL(attr->has_default_values(attr_mask, dst_dt),
             VERBOSE_UNSUPPORTED_ATTR);
 
-    int ndims_src = desc.src_desc.ndims;
-    int ndims_wei = desc.weights_desc.ndims;
+    const int ndims_src = desc.src_desc.ndims;
+    const int ndims_wei = desc.weights_desc.ndims;
+    const int m_idx = ndims_src - 2;
+    const int k_idx_wei = m_idx;
+    const int n_idx = ndims_wei - 1;
+    const dim_t K = desc.weights_desc.dims[k_idx_wei];
+    const dim_t N = desc.weights_desc.dims[n_idx];
+
     assert(ndims_src >= 2);
     assert(ndims_wei >= 2);
     int src_qmask_M = 1 << (ndims_src - 2);
@@ -108,9 +114,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     src_scale_group_k = sc.get_group(DNNL_ARG_SRC, 1);
             }
 
-            // Due to hardware specifics, groups should be multiple of 32.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(src_scale_group_k > 1,
-                                         src_scale_group_k % 32 == 0),
+            // Due to hardware specifics, groups, when more than 1, should be
+            // multiple of 32.
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(src_scale_group_k > 1 && src_scale_group_k < K,
+                            src_scale_group_k % 32 == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
@@ -135,12 +143,15 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                                          attr->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-            // Due to hardware specifics, groups should be multiple of 32.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_scale_group_k > 1,
-                                         wei_scale_group_k % 32 == 0),
+            // Due to hardware specifics, groups, when more than 1, should be
+            // multiple of 32.
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(wei_scale_group_k > 1 && wei_scale_group_k < K,
+                            wei_scale_group_k % 32 == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_scale_group_n > 1,
-                                         wei_scale_group_n % 32 == 0),
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(wei_scale_group_n > 1 && wei_scale_group_n < N,
+                            wei_scale_group_n % 32 == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
@@ -188,8 +199,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     src_zero_point_group_k = zp.get_group(DNNL_ARG_SRC, 1);
             }
 
-            // Due to hardware specifics, groups should be multiple of 32.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zero_point_group_k > 1,
+            // Due to hardware specifics, groups, when more than 1, should be
+            // multiple of 32.
+            VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zero_point_group_k > 1
+                                                 && src_zero_point_group_k < K,
                                          src_zero_point_group_k % 32 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
@@ -215,11 +228,14 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                                          attr->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
-            // Due to hardware specifics, groups should be multiple of 32.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_k > 1,
+            // Due to hardware specifics, groups, when more than 1, should be
+            // multiple of 32.
+            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_k > 1
+                                                 && wei_zero_point_group_k < K,
                                          wei_zero_point_group_k % 32 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_n > 1,
+            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_n > 1
+                                                 && wei_zero_point_group_n < N,
                                          wei_zero_point_group_n % 32 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 

@@ -1321,7 +1321,7 @@ struct bias_linear_exec_aoc_t {
                             reinterpret_cast<float16_t **>(bias), rnn.n_layer,
                             rnn.n_dir, rnn.n_parts_bias);
         else
-            assert("unsupported data type");
+            assert(!"unsupported data type");
     }
 
     void **operator()(int layer, int dir) const {
@@ -1336,7 +1336,7 @@ struct bias_linear_exec_aoc_t {
                 return reinterpret_cast<void **>(
                         &bias_f16_aoc_.operator()(layer, dir, 0));
             else
-                assert("unsupported data type");
+                assert(!"unsupported data type");
         }
 
         return nullptr;
@@ -1350,7 +1350,7 @@ struct bias_linear_exec_aoc_t {
         else if (bias_dt_ == data_type::f16)
             bias_f16_aoc_.~array_offset_calculator<float16_t *, 3>();
         else
-            assert("unsupported data type");
+            assert(!"unsupported data type");
     }
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(bias_linear_exec_aoc_t);

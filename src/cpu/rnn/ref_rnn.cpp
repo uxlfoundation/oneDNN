@@ -1895,7 +1895,7 @@ rnn_bias_prepare_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
                     static_cast<const float16_t *>(b_),
                     static_cast<float16_t *>(scratch_bias_));
         else
-            assert("Unsupported bias data type");
+            assert(!"Unsupported bias data type");
     }
 
     if (rnn.bias_dt == data_type::f32)
@@ -1911,7 +1911,7 @@ rnn_bias_prepare_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
                 static_cast<const float16_t *>(b_),
                 static_cast<float16_t *>(scratch_bias_));
     else
-        assert("Unsupported bias data type");
+        assert(!"Unsupported bias data type");
 }
 
 static void apply_bias_compensation(const rnn_utils::rnn_conf_t &rnn,

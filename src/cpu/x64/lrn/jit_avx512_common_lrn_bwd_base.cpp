@@ -79,7 +79,7 @@ void jit_avx512_common_lrn_kernel_bwd_t<bf16>::store_data(
     const bool is_bf16_supported
             = mayiuse(avx512_core_bf16) || bf16_emu_ != nullptr;
     if (!is_bf16_supported) {
-        assert("Failure in storing bf16 data.");
+        assert(!"Failure in storing bf16 data.");
         return;
     }
     const Ymm yr = Ymm(zr.getIdx());

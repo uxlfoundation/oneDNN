@@ -5627,7 +5627,7 @@ dim_t jit_avx512_core_amx_bwd_bias_kernel_t::get_ddst_offset(
         dim_t w_idx, dim_t hd_idx) const {
     int ow_per_oc = data_type_vnni_granularity(jcp.ddst_dt);
     if (ow_per_oc == 0) {
-        assert("Invalid vnni granularity.");
+        assert(!"Invalid vnni granularity.");
         return 0;
     }
 
@@ -5715,7 +5715,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
     Label ow_loop;
     const dim_t sp_substep = data_type_vnni_granularity(jcp.ddst_dt);
     if (sp_substep == 0) {
-        assert("Invalid vnni granularity.");
+        assert(!"Invalid vnni granularity.");
         return;
     }
 

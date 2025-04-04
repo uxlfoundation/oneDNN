@@ -170,7 +170,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::store(
             else
                 vmaskmovps(addr, vmm_tail_mask, vbias);
             break;
-        default: assert("Unsupported bias data type");
+        default: assert(!"Unsupported bias data type");
     }
 }
 
@@ -264,7 +264,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_K() {
             vmovdqu16(addr_bias, vbias_acc | k_store_mask);
             break;
         case data_type::f32: uni_vmovss(addr_bias, vbias_acc); break;
-        default: assert("Unsupported bias data type");
+        default: assert(!"Unsupported bias data type");
     }
     L(store_done);
 }

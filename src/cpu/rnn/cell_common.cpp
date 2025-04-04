@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -255,7 +255,7 @@ rnn_cell_execution_sig((
     const auto gemm_proj = [&](const weights_t *A, const weights_t *B,
                                    float *C) {
         if (weights_type != data_type::f32) {
-            assert("Projection is only supported for f32");
+            assert(!"Projection is only supported for f32");
             return dnnl_runtime_error;
         }
         return (this->*gemm_projection_func)('N', 'N', rnn.dhc, rnn.mb, rnn.dic,
@@ -281,7 +281,7 @@ rnn_cell_execution_sig((
     const auto gemm_weights_proj
             = [&](const scratch_t *A, const scratch_t *B, float *C) {
                   if (weights_type != data_type::f32) {
-                      assert("Projection is only supported for f32");
+                      assert(!"Projection is only supported for f32");
                       return dnnl_runtime_error;
                   }
                   const float beta = rnn.diff_weights_beta(cell_position);

@@ -172,6 +172,14 @@
 --attr-fpmath=f16:true
 2x3x5x512:2x3x512x1024
 
+--reset
+--skip-impl=ref
+--dt=f16:s4:f16,f16:u4:f16
+--strides=:1x128: # Need strides over tag to overcome the API limitation
+--attr-scales=wei:per_tensor:f16:127x1
+--attr-fpmath=f16:true
+32x127:127x63_n"odd_k_single_group"
+
 # Dynamic quantization (int8 src, int4/int8 weights)
 --reset
 --skip-impl=ref

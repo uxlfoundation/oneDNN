@@ -89,8 +89,8 @@ void concat_example(dnnl::engine::kind engine_kind) {
         // Write data to memory object's handle.
         write_to_dnnl_memory(src_data.data(), mem);
 
-        src_mds.push_back(md);
-        src_mems.push_back(mem);
+        src_mds.push_back(std::move(md));
+        src_mems.push_back(std::move(mem));
     }
 
     // Create primitive descriptor.

@@ -248,7 +248,8 @@ protected:
             bia_md = init_md({bia_dims, p.base.bia_dt, bia_tag,
                     p.base.dst.flags & P::RUNTIME});
             bia_m = test::make_memory(
-                    init_md({bia_dims, p.base.bia_dt, bia_tag}), eng);
+                    init_md({std::move(bia_dims), p.base.bia_dt, bia_tag}),
+                    eng);
         }
 
         primitive_attr attr;

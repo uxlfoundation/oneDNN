@@ -268,35 +268,36 @@ void transpose_strides(const dnnl::engine &eng, memory &out, memory &in) {
         size_t lastdim = ndims - 1;
         size_t n2lastdim = lastdim - 1;
 
-        dynamic_iterate_alldims(dims, [&](std::vector<int64_t> idxs) {
-            int is_odd = idxs[lastdim] % 2;
-            int is_odd_t = idxs[n2lastdim] % 2;
+        dynamic_iterate_alldims(
+                std::move(dims), [&](std::vector<int64_t> idxs) {
+                    int is_odd = idxs[lastdim] % 2;
+                    int is_odd_t = idxs[n2lastdim] % 2;
 
-            size_t offset = 0;
-            size_t offset_t = 0;
-            for (size_t i = 0; i < ndims; ++i) {
-                offset += idxs[i] * strides[i];
-                offset_t += idxs[i] * strides_t[i];
-            }
-            offset /= 2;
-            offset_t /= 2;
+                    size_t offset = 0;
+                    size_t offset_t = 0;
+                    for (size_t i = 0; i < ndims; ++i) {
+                        offset += idxs[i] * strides[i];
+                        offset_t += idxs[i] * strides_t[i];
+                    }
+                    offset /= 2;
+                    offset_t /= 2;
 
-            auto &val = mapped_ptr[offset];
-            auto &val_t = mapped_ptr_t[offset_t];
+                    auto &val = mapped_ptr[offset];
+                    auto &val_t = mapped_ptr_t[offset_t];
 
-            char bits;
-            if (is_odd) {
-                bits = val & 0xf0;
-                bits >>= 4;
-            } else {
-                bits = val & 0x0f;
-            }
-            if (is_odd_t) {
-                val_t |= (bits << 4);
-            } else {
-                val_t |= bits;
-            }
-        });
+                    char bits;
+                    if (is_odd) {
+                        bits = val & 0xf0;
+                        bits >>= 4;
+                    } else {
+                        bits = val & 0x0f;
+                    }
+                    if (is_odd_t) {
+                        val_t |= (bits << 4);
+                    } else {
+                        val_t |= bits;
+                    }
+                });
 
         in.unmap_data(mapped_ptr);
         out.unmap_data(mapped_ptr_t);

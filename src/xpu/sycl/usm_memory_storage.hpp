@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ public:
 
     usm_memory_storage_t(engine_t *engine, ::sycl::usm::alloc usm_kind)
         : memory_storage_base_t(engine), usm_kind_(usm_kind) {}
+    ~usm_memory_storage_t() = default;
 
     uint8_t *usm_ptr() const { return static_cast<uint8_t *>(usm_ptr_.get()); }
 

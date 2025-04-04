@@ -92,8 +92,8 @@ cold_cache_t::cold_cache_t(
         cold_args_size = full_args_size;
     } else if (cold_cache_input_.cold_cache_mode_
             == cold_cache_mode_t::custom) {
-        const std::vector<int> user_args = {/* DNNL_ARG_WEIGHTS, ... */};
-        cc_args = user_args;
+        std::vector<int> user_args = {/* DNNL_ARG_WEIGHTS, ... */};
+        cc_args = std::move(user_args);
         if (cc_args.empty()) {
             BENCHDNN_PRINT(0, "%s\n",
                     "Error: execution args for custom cold cache weren't "

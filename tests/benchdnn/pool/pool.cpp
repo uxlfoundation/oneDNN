@@ -107,7 +107,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     res_t *res = init_pd_args.res;
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
-    const auto src_tag = (dir & FLAG_FWD) ? prb->tag : tag::any;
+    const auto &src_tag = (dir & FLAG_FWD) ? prb->tag : tag::any;
 
     auto src_d = dnn_mem_t::init_md(prb->ndims, prb->src_dims().data(),
             force_f32_dt ? dnnl_f32 : prb->src_dt(), src_tag);

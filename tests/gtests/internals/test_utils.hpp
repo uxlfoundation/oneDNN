@@ -199,32 +199,33 @@ std::vector<float> dequantize(const std::vector<float> &input,
             }
         }
 
-        dynamic_iterate_alldims(dims, [&](std::vector<int64_t> idxs) {
-            size_t offset = 0;
-            size_t scale_offset = 0;
-            size_t zp_offset = 0;
+        dynamic_iterate_alldims(
+                std::move(dims), [&](std::vector<int64_t> idxs) {
+                    size_t offset = 0;
+                    size_t scale_offset = 0;
+                    size_t zp_offset = 0;
 
-            int group = 0;
+                    int group = 0;
 
-            for (size_t i = 0; i < ndims; ++i) {
-                if (groups[0] > 1) {
-                    group = (i == n2lastdim) ? groups[0] : 1;
-                    scale_offset += idxs[i] / group * scales_strides[i];
+                    for (size_t i = 0; i < ndims; ++i) {
+                        if (groups[0] > 1) {
+                            group = (i == n2lastdim) ? groups[0] : 1;
+                            scale_offset += idxs[i] / group * scales_strides[i];
 
-                    // set final stride = 1
-                    auto zp_stride = (i == lastdim) ? 1 : zp_strides[i];
-                    zp_offset += idxs[i] / group * zp_stride;
-                } else if (groups[1] > 1) {
-                    group = (i == lastdim) ? groups[1] : 1;
-                    scale_offset += idxs[i] / group * scales_strides[i];
-                    zp_offset += idxs[i] / group * zp_strides[i];
-                }
-                offset += idxs[i] * strides[i];
-            }
+                            // set final stride = 1
+                            auto zp_stride = (i == lastdim) ? 1 : zp_strides[i];
+                            zp_offset += idxs[i] / group * zp_stride;
+                        } else if (groups[1] > 1) {
+                            group = (i == lastdim) ? groups[1] : 1;
+                            scale_offset += idxs[i] / group * scales_strides[i];
+                            zp_offset += idxs[i] / group * zp_strides[i];
+                        }
+                        offset += idxs[i] * strides[i];
+                    }
 
-            out[offset] = (input[offset] - zero_points[zp_offset])
-                    * scales[scale_offset];
-        });
+                    out[offset] = (input[offset] - zero_points[zp_offset])
+                            * scales[scale_offset];
+                });
     }
     return out;
 }

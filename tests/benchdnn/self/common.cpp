@@ -322,7 +322,7 @@ void append_sum(attr_t::post_ops_t &po, float ascale = 1.f,
     e.sum.scale = ascale;
     e.sum.zero_point = zero_point;
     e.sum.dt = adt;
-    po.entry.push_back(e);
+    po.entry.push_back(std::move(e));
 }
 
 void append_convolution(attr_t::post_ops_t &po, pk_t akind, int kernel,
@@ -332,7 +332,7 @@ void append_convolution(attr_t::post_ops_t &po, pk_t akind, int kernel,
     e.convolution.stride = stride;
     e.convolution.padding = padding;
     e.convolution.dst_dt = adst_dt;
-    po.entry.push_back(e);
+    po.entry.push_back(std::move(e));
 }
 
 void append_eltwise(attr_t::post_ops_t &po, pk_t akind, float aalpha = 0.f,
@@ -341,7 +341,7 @@ void append_eltwise(attr_t::post_ops_t &po, pk_t akind, float aalpha = 0.f,
     e.eltwise.alg = attr_t::post_ops_t::kind2dnnl_kind(akind);
     e.eltwise.alpha = aalpha;
     e.eltwise.beta = abeta;
-    po.entry.push_back(e);
+    po.entry.push_back(std::move(e));
 }
 
 void append_binary(attr_t::post_ops_t &po, pk_t akind, dnnl_data_type_t src_dt1,
@@ -354,7 +354,7 @@ void append_binary(attr_t::post_ops_t &po, pk_t akind, dnnl_data_type_t src_dt1,
     e.binary.mask = mask;
     e.binary.policy = policy;
     e.binary.tag = tag;
-    po.entry.push_back(e);
+    po.entry.push_back(std::move(e));
 }
 
 static int check_post_ops2str() {

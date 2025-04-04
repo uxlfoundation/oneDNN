@@ -466,7 +466,7 @@ int check_pd_w_and_wo_attr(dnnl_engine_t engine, const func_t &init_pd_func,
 
     // Check that adding attributes doesn't cause a fall back to another impl.
     auto *prb_mutable = const_cast<prb_t *>(prb);
-    auto old_attr = prb_mutable->attr;
+    const auto &old_attr = prb_mutable->attr;
     prb_mutable->attr = attr_t();
     init_pd_args_t<prb_t> init_pd_args_without_attr(
             res, engine, prb_mutable, dir, hint, /* src_md = */ nullptr);

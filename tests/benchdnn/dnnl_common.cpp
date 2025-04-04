@@ -127,6 +127,7 @@ int get_cache_blob(std::vector<uint8_t> &cache_blob, dnnl_primitive_t prim) {
 
 struct lru_cache_t {
     lru_cache_t(size_t capacity) : capacity_(capacity) {}
+    ~lru_cache_t() = default;
 
     const std::vector<uint8_t> &get(const std::vector<uint8_t> &key) {
         auto it = cache_mapper_.find(key);

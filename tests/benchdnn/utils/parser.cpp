@@ -454,7 +454,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
                         size * 1024 * 1024 * (last_char == 'G' ? 1024 : 1));
 
                 // Save the input string once all values are verified.
-                c.cold_tlb_size_str_ = ext_aux_str;
+                c.cold_tlb_size_str_ = std::move(ext_aux_str);
             }
         } else {
             BENCHDNN_PRINT(0,

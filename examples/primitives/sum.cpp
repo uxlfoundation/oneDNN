@@ -81,15 +81,12 @@ void sum_example(dnnl::engine::kind engine_kind) {
     std::vector<memory> src_mem;
 
     for (int n = 0; n < num_src; ++n) {
-        auto md = memory::desc(
+        src_md.emplace_back(
                 src_dims, memory::data_type::f32, memory::format_tag::nchw);
-        auto mem = memory(md, engine);
+        src_mem.emplace_back(src_md.back(), engine);
 
         // Write data to memory object's handle.
-        write_to_dnnl_memory(src_data.data(), mem);
-
-        src_md.push_back(md);
-        src_mem.push_back(mem);
+        write_to_dnnl_memory(src_data.data(), src_mem.back());
     }
 
     // Create primitive descriptor.

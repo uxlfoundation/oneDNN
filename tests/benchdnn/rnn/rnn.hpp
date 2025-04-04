@@ -326,7 +326,11 @@ struct prb_t : public desc_t {
         , attr(attr)
         , ctx_init(ctx_init)
         , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , impl_filter(impl_filter)
+        , wei_nscales(0)
+        , wei_scales_mask(0x0)
+        , wei_proj_nscales(0)
+        , wei_proj_scales_mask(0x0) {
 
         if (n_layer) this->n_layer = n_layer;
         if (n_iter) this->n_iter = n_iter;

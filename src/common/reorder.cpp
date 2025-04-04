@@ -93,7 +93,7 @@ status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
     if (attr == nullptr) attr = &default_attr();
 
     // Zero points are only allowed for integral data types
-    auto zero_points = attr->zero_points_;
+    const auto &zero_points = attr->zero_points_;
     VCHECK_REORDER(IMPLICATION(!types::is_integral_dt(src_md->data_type),
                            zero_points.has_default_values(DNNL_ARG_SRC)),
             VERBOSE_UNSUPPORTED_ZP_CFG);

@@ -44,6 +44,8 @@ const quant_entry_t &default_quant_entry();
 
 struct quant_entry_t : public c_compatible {
     quant_entry_t() = default;
+    quant_entry_t(const quant_entry_t &e) = default;
+    ~quant_entry_t() = default;
 
     // `set(...)` approach is taken over constructors as the usage model assumes
     // the change of state of this object but it doesn't require its destruction

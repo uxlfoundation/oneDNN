@@ -1850,7 +1850,7 @@ inline void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop(
             compute_loop_fma_core(ur_w, l_overflow, r_overflow, k_offset);
 
     else
-        assert("!unknown convolution version");
+        assert(!"unknown convolution version");
 
     if (generate_ocb_loop) {
         add_imm(reg_dst, reg_dst, jcp.oc_block * typesize, reg_tmp_imm);

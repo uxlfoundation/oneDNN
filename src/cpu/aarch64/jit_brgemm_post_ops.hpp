@@ -122,7 +122,7 @@ private:
             case data_type::bf16: assert(!"unsupported\n"); break;
             case data_type::f16: assert(!"unsupported\n"); break;
             case data_type::f32: st1w(get_bias_reg(idx).s, k_mask, addr); break;
-            default: assert("Unsupported bias data type");
+            default: assert(!"Unsupported bias data type");
         }
     }
 

@@ -137,7 +137,10 @@ status_t brgemm_t::get_B_pack_type(
     brgemm_desc_t brg {};
     brg.dt_a = dt_a;
     brg.dt_b = dt_b;
-    init_kernel_datatype(&brg, dt_a, dt_b);
+    auto status = init_kernel_datatype(&brg, dt_a, dt_b);
+    if (status != status::success) {
+        VCHECK_BRGEMM_STATUS(status, false, "get_B_pack_type failed");
+    }
     brgemm_utils::set_isa_impl(&brg);
     if (brg.isa_impl == cpu_isa_t::isa_undef) {
         VCHECK_BRGEMM_STATUS(

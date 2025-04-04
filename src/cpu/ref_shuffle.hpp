@@ -50,6 +50,10 @@ struct ref_shuffle_t : public primitive_t {
             VDISPATCH_SHUFFLE(src_d.data_type() == dst_d.data_type(),
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_SHUFFLE(
+                    utils::one_of(types::data_type_size(src_d.data_type()),
+                            sizeof(float), sizeof(bfloat16_t), sizeof(int8_t)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SHUFFLE(
                     platform::has_data_type_support(src_d.data_type()),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SHUFFLE(

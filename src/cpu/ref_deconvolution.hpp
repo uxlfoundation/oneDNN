@@ -140,7 +140,8 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             }
 
             // Intermediate f32 buffer is supported only for given condition.
-            if (!attr()->has_default_values() || with_bias()) {
+            if ((!attr()->has_default_values() || with_bias())
+                    && dst_md()->data_type != f64) {
                 // Enforce f32 dt for diff src and work with f32 output for bias
                 // update or post ops after conv execution.
                 CHECK(conv_descr_create(desc(), &cd, nullptr, data_type::f32));

@@ -67,6 +67,12 @@ struct simple_resampling_fwd_t : public primitive_t {
             VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_RESAMPLING(utils::one_of(src_md()->data_type, f32, s32,
+                                         bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_RESAMPLING(utils::one_of(dst_md()->data_type, f32, s32,
+                                         bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -126,6 +132,12 @@ struct simple_resampling_bwd_t : public primitive_t {
             VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_RESAMPLING(utils::one_of(diff_dst_md()->data_type, f32,
+                                         s32, bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_RESAMPLING(utils::one_of(diff_src_md()->data_type, f32,
+                                         s32, bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);

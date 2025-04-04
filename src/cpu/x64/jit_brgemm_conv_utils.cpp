@@ -616,9 +616,9 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     const float alpha = 1.0;
     const float beta = 0.0;
     brgemm_desc_t brg;
-    brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
+    CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
-            is_bf32);
+            is_bf32));
     if (exec_type == exec_vpad) {
         brg.zp_type_a = src_zero_point ? brgemm_broadcast_t::per_tensor
                                        : brgemm_broadcast_t::none;
@@ -635,9 +635,9 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     adj_ocblock = nstl::max(1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
     if (((is_1x1 && is_amx(isa)) || max_vpad > 0) && M > 0 && M_tail > 0) {
         brgemm_desc_t brg_sp_tail;
-        brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr, src_dt,
-                wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC, M_tail,
-                vN, vK, nullptr, is_bf32);
+        CHECK(brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr,
+                src_dt, wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC,
+                M_tail, vN, vK, nullptr, is_bf32));
         if (exec_type == exec_vpad) {
             brg_sp_tail.zp_type_a = src_zero_point
                     ? brgemm_broadcast_t::per_tensor
@@ -717,9 +717,9 @@ status_t brg_blocking_t::get_brgemm_ur(
                 = rnd_up(ic, vnni_block) * rnd_up(oc, oc_block) * wei_dsz;
         const auto strides_ptr
                 = (brg_type == brgemm_strd) ? &brg_strides : nullptr;
-        brgemm_utils::init_brgemm_conf(&brg, isa, brg_type, src_dt, wei_dt,
-                brgemm_row_major, alpha, vbeta, LDA, LDB, LDC, vM, vN, vK,
-                strides_ptr, is_bf32);
+        CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brg_type, src_dt,
+                wei_dt, brgemm_row_major, alpha, vbeta, LDA, LDB, LDC, vM, vN,
+                vK, strides_ptr, is_bf32));
 
         brgemm_attr_t brgattr;
         brgattr.max_bs = max_batch;

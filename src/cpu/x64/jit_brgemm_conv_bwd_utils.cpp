@@ -589,18 +589,18 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     const float alpha = 1.0;
     const float beta = 0.0;
     brgemm_desc_t brg;
-    brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
+    CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
-            is_bf32);
+            is_bf32));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     ur = brg.bd_block * (is_amx(isa) ? brg.bd_block2 : 1);
     if (ur == 0) return status::invalid_arguments;
     ur_block = brg.bd_block;
     if (is_1x1 && is_amx(isa) && M > 0 && M_tail > 0) {
         brgemm_desc_t brg_sp_tail;
-        brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr, src_dt,
-                wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC, M_tail,
-                vN, vK, nullptr, is_bf32);
+        CHECK(brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr,
+                src_dt, wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC,
+                M_tail, vN, vK, nullptr, is_bf32));
         CHECK(brgemm_utils::brgemm_blocking(&brg_sp_tail));
         ur_block_tail = brg_sp_tail.bd_block;
     } else {
@@ -645,9 +645,9 @@ status_t brg_blocking_t::get_brgemm_ur(
                     const auto strides_ptr = (brg_type == brgemm_strd)
                             ? &brg_strides
                             : nullptr;
-                    brgemm_utils::init_brgemm_conf(&brg, isa, brg_type, src_dt,
-                            wei_dt, brgemm_row_major, alpha, vbeta, LDA, LDB,
-                            LDC, vM, vN, vK, strides_ptr, is_bf32);
+                    CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brg_type,
+                            src_dt, wei_dt, brgemm_row_major, alpha, vbeta, LDA,
+                            LDB, LDC, vM, vN, vK, strides_ptr, is_bf32));
                     CHECK(brgemm_utils::brgemm_blocking(&brg));
 
                     brgemm_attr_t brgattr;

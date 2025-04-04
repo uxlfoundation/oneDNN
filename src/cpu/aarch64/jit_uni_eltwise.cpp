@@ -119,14 +119,13 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
             // - unpack BF16 to FP32 by zero-extending
             // - compute eltwise alg in FP32
             // - down convert back to BF16 using bfcvt, and pack result
-            mov(ZReg(tmp0).s, P_ALL_ONE, ZReg(vmm_src).s);
-            lsl(ZReg(vmm_src.getIdx()).s, ZReg(vmm_src).s, 16);
-            and_(ZReg(tmp0).s, 0xFFFF0000); // 0xFFFF0000
+            mov(tmp0.s, P_ALL_ONE, vmm_src.s);
+            lsl(vmm_src.s, vmm_src.s, 16);
+            and_(tmp0.s, 0xFFFF0000);
             eltwise_injector_->compute_vector_range(
                     {vmm_src.getIdx(), tmp0.getIdx()});
-            bfcvt(ZReg(vmm_src.getIdx()).h, P_ALL_ONE,
-                    ZReg(vmm_src.getIdx()).s);
-            bfcvtnt(ZReg(vmm_src.getIdx()).h, P_ALL_ONE, ZReg(tmp0.getIdx()).s);
+            bfcvt(vmm_src.h, P_ALL_ONE, vmm_src.s);
+            bfcvtnt(vmm_src.h, P_ALL_ONE, tmp0.s);
         } else {
             eltwise_injector_->compute_vector(vmm_src.getIdx());
         }

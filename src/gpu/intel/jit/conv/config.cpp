@@ -42,29 +42,11 @@ namespace intel {
 namespace jit {
 
 // Helper functions.
-bool matches_tag(const layout_t &layout, const std::string &tag,
-        const std::vector<dim_t> &dims) {
-    if (layout.is_empty()) return false;
-    auto tag_layout = make_layout(layout.type(), dims, tag);
-    if (layout != tag_layout) return false;
-    return true;
-}
-
-bool matches_tag(const layout_t &layout, const std::string &tag) {
-    return matches_tag(layout, tag, layout.dims());
-}
-
 bool matches_tag_strict(const layout_t &layout, const std::string &tag) {
     if (layout.is_empty()) return false;
     auto tag_layout = make_layout(layout.type(), layout.dims(), tag);
     if (!layout.is_strictly_equal(tag_layout)) return false;
     return true;
-}
-
-bool matches_tag(const memory_desc_t &md, const std::string &tag) {
-    if (md.format_kind == format_kind::any) return false;
-    std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
-    return matches_tag(make_layout(md), tag, dims);
 }
 
 bool matches_tag_strict(const memory_desc_t &md, const std::string &tag) {
@@ -520,33 +502,6 @@ private:
     int i_block_outer_;
 };
 
-// Matches the user-provided descriptor against the list of supported plain tags.
-std::string get_plain_user_tag(
-        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei) {
-    memory_desc_wrapper mdw(md);
-    if (mdw.is_plain() && !mdw.is_dense()) return "user";
-    if (is_wei) {
-        std::vector<const char *> plain_non_group_wei_tags
-                = {"abx", "axb", "xba"};
-        std::vector<const char *> plain_group_wei_tags
-                = {"abcx", "abxc", "axcb"};
-        auto &plain_wei_tags = (prb.with_groups ? plain_group_wei_tags
-                                                : plain_non_group_wei_tags);
-        gpu_assert(
-                plain_non_group_wei_tags.size() == plain_group_wei_tags.size());
-        for (size_t i = 0; i < plain_wei_tags.size(); i++) {
-            if (matches_tag(md, plain_wei_tags[i])) {
-                return plain_non_group_wei_tags[i];
-            }
-        }
-    } else {
-        for (auto *t : {"axb", "abx"}) {
-            if (matches_tag(md, t)) return t;
-        }
-    }
-    return {};
-}
-
 std::string maybe_fixup_1st_conv_wei_tag(
         const conv_config_t &cfg, const std::string &tag) {
     auto &prb = cfg.prb();
@@ -587,12 +542,14 @@ void maybe_set_plain_weights(const conv_config_t &cfg, bool src_dst_axb,
     if (user_wei_tag.empty()) user_wei_tag = user_wei_req;
 }
 
-bool is_plain_tag_optimal_for_output(
-        const std::string &tag, const std::string &user_tag) {
+bool is_plain_tag_optimal_for_output(const std::string &tag,
+        const std::string &user_tag, const std::string &other_tag) {
     // NHWC is OK with output as C is used for blocking and C is dense.
     if (user_tag == "axb") return true;
-    // NCHW is OK only when blocked by W (not N).
     if (user_tag == "abx") {
+        // Other activations tag is NCHW, so expecting blocking by W - OK.
+        if (other_tag == "abx") return true;
+        // NCHW is OK only when blocked by W (not N).
         bool is_n_blocked = (tag.find("A") != std::string::npos);
         return !is_n_blocked;
     }
@@ -646,6 +603,14 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     if (!src_matches && !is_small_ic_g1 && src_axb) src_tag = "axb";
     if (!dst_matches && !is_small_oc_g1 && dst_axb) dst_tag = "axb";
 
+    // Use nchw for input activations when optimal load can be used to avoid reorders.
+    if (!src_matches && !src_output
+            && is_nchw_ok(prb, cfg.hw(), tensor_kind_t::src))
+        src_tag = "abx";
+    if (!dst_matches && !dst_output
+            && is_nchw_ok(prb, cfg.hw(), tensor_kind_t::dst))
+        dst_tag = "abx";
+
     // Use plain tags for user-facing activations for small-channel tensors.
     if (!matches_tag(src_md, src_tag) && is_small_ic_g1)
         user_src_tag = (user_src_req.empty() ? "axb" : user_src_req);
@@ -668,9 +633,11 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
     if (dst_abx && !dst_matches) user_dst_tag = "abx";
 
     // Use plain tag for output to avoid extra reorders when beneficial.
-    if (src_output && is_plain_tag_optimal_for_output(src_tag, user_src_tag))
+    if (src_output
+            && is_plain_tag_optimal_for_output(src_tag, user_src_tag, dst_tag))
         src_tag = user_src_tag;
-    if (dst_output && is_plain_tag_optimal_for_output(dst_tag, user_dst_tag))
+    if (dst_output
+            && is_plain_tag_optimal_for_output(dst_tag, user_dst_tag, src_tag))
         dst_tag = user_dst_tag;
 
     if (user_src_req == "user") src_tag = user_src_tag = "user";

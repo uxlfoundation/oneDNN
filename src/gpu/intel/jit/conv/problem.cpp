@@ -16,8 +16,10 @@
 
 #include "gpu/intel/jit/conv/problem.hpp"
 #include "common/convolution_pd.hpp"
+#include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -323,6 +325,10 @@ void conv_problem_t::init_transpose(const hw_t &hw) {
     if (is_fwd) ab_swap_transpose &= allow_fwd;
     if (is_bwd_d) ab_swap_transpose &= allow_bwd_d;
     if (is_bwd_w) ab_swap_transpose &= allow_bwd_w;
+    if (is_fwd && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::src))
+        ab_swap_transpose = true;
+    if (is_bwd_d && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::dst))
+        ab_swap_transpose = true;
     ab_swap_transpose
             = gpu_utils::dev_getenv("ab_swap_transpose", ab_swap_transpose);
 }
@@ -428,6 +434,61 @@ pvar_tile_t to_gemm(const pvar_tile_t &t, prop_kind_t prop, bool is_transpose) {
         ret[gemm_d] *= t[d];
     }
     return ret;
+}
+
+// Matches the user-provided descriptor against the list of supported plain tags.
+std::string get_plain_user_tag(
+        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei) {
+    memory_desc_wrapper mdw(md);
+    if (mdw.is_plain() && !mdw.is_dense()) return "user";
+    if (is_wei) {
+        std::vector<const char *> plain_non_group_wei_tags
+                = {"abx", "axb", "xba"};
+        std::vector<const char *> plain_group_wei_tags
+                = {"abcx", "abxc", "axcb"};
+        auto &plain_wei_tags = (prb.with_groups ? plain_group_wei_tags
+                                                : plain_non_group_wei_tags);
+        gpu_assert(
+                plain_non_group_wei_tags.size() == plain_group_wei_tags.size());
+        for (size_t i = 0; i < plain_wei_tags.size(); i++) {
+            if (matches_tag(md, plain_wei_tags[i])) {
+                return plain_non_group_wei_tags[i];
+            }
+        }
+    } else {
+        for (auto *t : {"axb", "abx"}) {
+            if (matches_tag(md, t)) return t;
+        }
+    }
+    return {};
+}
+
+bool is_nchw_ok(const conv_problem_t &prb, ngen::HW hw, tensor_kind_t kind,
+        bool nested) {
+    gpu_assert(utils::one_of(kind, tensor_kind_t::src, tensor_kind_t::dst));
+    bool is_src = (kind == tensor_kind_t::src);
+    bool is_input = (is_src && prb.is_fwd) || (!is_src && prb.is_bwd_d)
+            || prb.is_bwd_w;
+    auto &md = (is_src ? *prb.conv_pd->invariant_src_md()
+                       : *prb.conv_pd->invariant_dst_md());
+    if (get_plain_user_tag(prb, md, false) != "abx") return false;
+    // No block 2D message support before XeHPC.
+    if (hw < ngen::HW::XeHPC) return false;
+    // Strided access or element granularity for X offset are not generally
+    // supported by block 2D messages.
+    if (is_input) {
+        if (prb.kw != 1 || prb.sw != 1) return false;
+    }
+    dim_t c = prb.g * (is_src ? prb.ic : prb.oc);
+    dim_t d = (is_src ? prb.id : prb.od);
+    dim_t h = (is_src ? prb.ih : prb.oh);
+    dim_t w = (is_src ? prb.iw : prb.ow);
+    int type_size = into<int>(types::data_type_size(
+            is_src ? prb.src_data_type : prb.dst_data_type));
+    if (!block_2d_width_ok(w, type_size)) return false;
+    if (!block_2d_height_ok(c)) return false;
+    if (!block_2d_pitch_ok(hw, d * h * w, type_size)) return false;
+    return true;
 }
 
 } // namespace jit

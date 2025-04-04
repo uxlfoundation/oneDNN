@@ -186,7 +186,7 @@ struct conv_stride_layout_t : public stride_layout_t<pvar_t> {
                 s = write_strides(s, pvars::kw, i++, prb.kw);
                 break;
             }
-            default: assert("unimplemented");
+            default: assert(!"unimplemented");
         }
 
         // Normalize into a sorted order by stride, dimension, size, and

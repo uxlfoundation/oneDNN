@@ -120,7 +120,7 @@ void jit_avx512_common_lrn_kernel_fwd_t<bf16>::store_data(
     const bool is_bf16_supported = mayiuse(avx512_core_bf16)
             || IMPLICATION(emulateBfloat_, this->bf16_emu_ != nullptr);
     if (!is_bf16_supported) {
-        assert("Failure in storing bf16 data.");
+        assert(!"Failure in storing bf16 data.");
         return;
     }
 

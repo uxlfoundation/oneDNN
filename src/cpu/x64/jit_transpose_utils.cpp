@@ -1302,7 +1302,7 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
                 emu_scratch);
     if (utils::one_of(out_dt_, data_type::f8_e5m2, data_type::f8_e4m3)
             && f8_emu == nullptr) {
-        assert("Failed to create f8 emulation kernel.");
+        assert(!"Failed to create f8 emulation kernel.");
         return;
     }
 

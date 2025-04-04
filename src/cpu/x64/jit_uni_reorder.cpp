@@ -598,7 +598,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         vpslld(dst, dst, 0x10);
                         break;
                     } else
-                        assert("unreachable!");
+                        assert(!"unreachable!");
                 case f16: vcvtph2ps(dst, src); break;
                 case s32: uni_vcvtdq2ps(dst, src); break;
                 case f8_e5m2:

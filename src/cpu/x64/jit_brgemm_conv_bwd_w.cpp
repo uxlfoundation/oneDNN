@@ -416,7 +416,7 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
         if (jcp.transform_to_vnni) {
             const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
             if (vnni_granularity == 0) {
-                assert("Invalid vnni granularity.");
+                assert(!"Invalid vnni granularity.");
                 return;
             }
 
@@ -1244,7 +1244,7 @@ void brgemm_convolution_bwd_weights_t::store_in_vnni_format(
 
     const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
     if (vnni_granularity == 0) {
-        assert("Invalid vnni granularity.");
+        assert(!"Invalid vnni granularity.");
         return;
     }
 

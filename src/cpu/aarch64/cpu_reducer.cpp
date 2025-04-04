@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2021 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -218,6 +219,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type, isa> {
         Label loop_x_label[nbranches + 1];
 
         switch (isa) {
+            case sve_128: this->ptrue(preg_all.b, VL16); break;
             case sve_256: this->ptrue(preg_all.b, VL32); break;
             case sve_512: this->ptrue(preg_all.b, VL64); break;
             default: assert(!"Unsupported ISA"); break;
@@ -283,7 +285,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type, isa> {
     }
 
     void generate() override {
-        assert(isa == sve_512 || isa == sve_256);
+        assert(isa == sve_512 || isa == sve_256 || isa == sve_128);
 
         this->preamble();
 
@@ -412,6 +414,7 @@ void cpu_reducer_t<data_type, isa>::reduce_nolock(int ithr, data_t *dst,
 
 template struct cpu_reducer_t<data_type::f32, sve_512>;
 template struct cpu_reducer_t<data_type::f32, sve_256>;
+template struct cpu_reducer_t<data_type::f32, sve_128>;
 template struct cpu_reducer_t<data_type::s32, sve_512>;
 template struct cpu_reducer_t<data_type::s32, sve_256>;
 
@@ -568,6 +571,7 @@ void cpu_reducer_2d_t<data_type, isa>::reduce_nolock(int ithr, data_t *dst,
 
 template struct cpu_reducer_2d_t<data_type::f32, sve_512>;
 template struct cpu_reducer_2d_t<data_type::f32, sve_256>;
+template struct cpu_reducer_2d_t<data_type::f32, sve_128>;
 template struct cpu_reducer_2d_t<data_type::s32, sve_512>;
 template struct cpu_reducer_2d_t<data_type::s32, sve_256>;
 
@@ -596,6 +600,7 @@ void cpu_accumulator_1d_t<data_type, isa>::accumulate(
 
 template struct cpu_accumulator_1d_t<data_type::f32, sve_512>;
 template struct cpu_accumulator_1d_t<data_type::f32, sve_256>;
+template struct cpu_accumulator_1d_t<data_type::f32, sve_128>;
 template struct cpu_accumulator_1d_t<data_type::s32, sve_512>;
 template struct cpu_accumulator_1d_t<data_type::s32, sve_256>;
 

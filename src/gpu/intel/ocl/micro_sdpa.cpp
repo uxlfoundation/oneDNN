@@ -453,6 +453,11 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx, d->scale_dt, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", d->invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
+    kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_type::undef);
+    kernel_ctx.define_int("ATTN_MASK_BUFFER", attn_mask_type::buffer);
+    kernel_ctx.define_int("ATTN_MASK_TOP_LEFT", attn_mask_type::top_left);
+    kernel_ctx.define_int(
+            "ATTN_MASK_BOTTOM_RIGHT", attn_mask_type::bottom_right);
 
     kernel_ctx.define_int("WITH_ATTN_MASK",
             pd()->with_attn_mask() && !pd()->with_causal_mask());

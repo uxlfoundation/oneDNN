@@ -227,7 +227,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
         const auto cblock = oblocks[d];
         // do not allow excess pdim other than required for rounding-up of dim.
         VDISPATCH_REORDER_IC(utils::rnd_up(dim, cblock) == pdim,
-                VERBOSE_UNSUPPORTED_PAD_FEATURE);
+                VERBOSE_UNSUPPORTED_PAD_FEATURE, "dst");
     }
 
     utils::array_set(i_tails, 0, im_d.ndims());

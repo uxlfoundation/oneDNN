@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/convolution_pd.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
 namespace dnnl {
@@ -296,6 +297,16 @@ inline pvar_t to_gemm(const pvar_t &d, const conv_problem_t &prb) {
 inline pvar_tile_t to_gemm(const pvar_tile_t &t, const conv_problem_t &prb) {
     return to_gemm(t, prb.prop_kind(), prb.ab_swap_transpose);
 }
+
+// Matches the user-provided descriptor against the list of supported plain tags.
+std::string get_plain_user_tag(
+        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei);
+
+// Checks if using NCHW layout for activations is optimal, this is dependent on:
+// - Whether the user-side layout is NCHW
+// - Whether the tensor sizes allow to use optimal loads (block 2D messages)
+bool is_nchw_ok(const conv_problem_t &prb, ngen::HW hw, tensor_kind_t kind,
+        bool nested = false);
 
 } // namespace jit
 } // namespace intel

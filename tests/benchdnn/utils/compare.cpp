@@ -348,19 +348,22 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         // static variable and the corresponding element isn't erased between
         // calls to this function.
         static thread_local auto &out_data = thread_data.get();
-        auto &n_errors = out_data.n_errors;
-        auto &dumps = out_data.dumps;
 
-        driver_check_func_args_t args(exp_f32, got_f32, i, dt, trh_);
+        const auto got_val = got_f32.get_elem(i);
+        bool ok = exp_f32.get_elem(i) == got_val;
 
-        bool ok = args.diff == 0.f;
-        if (std::isnan(args.exp_f32) && is_integral_dt(dt)) {
-            // Relax output requirements for this case, since different backends
-            // may implement NaN fp32 -> int32 conversion in a different manner.
-            ok = true;
-        }
+        static thread_local driver_check_func_args_t args;
+        for (int z = ok; z < 1; z++) {
+            args = driver_check_func_args_t(exp_f32, got_f32, i, dt, trh_);
 
-        for (int z = 0; !ok && z < 1; z++) {
+            if (std::isnan(args.exp_f32) && is_integral_dt(dt)) {
+                // Relax output requirements for this case, since different
+                // backends may implement NaN fp32 -> int32 conversion in a
+                // different manner.
+                ok = true;
+                break;
+            }
+
             // Standard check for relative diff is under set threshold.
             ok = (fabsf(args.exp) > 1e-5f ? args.rel_diff : args.diff) <= trh_;
             if (ok) break;
@@ -368,13 +371,13 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             // When NaNs or infinity are allowed for the driver, check
             // that both exp and got are NaNs or infinity with same sign.
             ok = output_has_nans
-                    && compare::compare_extreme_values(args.exp, args.got);
+                    && compare::compare_extreme_values(args.exp, got_val);
             if (ok) break;
 
             // Use hack to check not fully correct s32 saturation on CPU.
             ok = is_cpu() && dt == dnnl_s32 && args.exp == max_dt(dnnl_s32)
-                    && args.got >= BENCHDNN_S32_TO_F32_SAT_CONST
-                    && args.got < max_dt(dnnl_s32);
+                    && got_val >= BENCHDNN_S32_TO_F32_SAT_CONST
+                    && got_val < max_dt(dnnl_s32);
             if (ok) break;
 
             // Check driver's additional checks, if set.
@@ -458,7 +461,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             // reference when transcendental operation present in the chain. In
             // such cases, there's no way to test original output as both
             // outputs would be rounded to integer number.
-            const auto is_int8_round_good = [args]() -> bool {
+            const auto is_int8_round_good = [&]() -> bool {
                 // Check that original value is close to x.5f.
                 static constexpr float small_eps = 9e-6f;
                 const float floor_val = floorf(args.exp_f32);
@@ -468,15 +471,15 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
                 // If it is, check exp and got values are on opposite sides.
                 if (args.exp == floor_val) {
-                    return args.got == ceil_val;
+                    return got_val == ceil_val;
                 } else if (args.exp == ceil_val) {
-                    return args.got == floor_val;
+                    return got_val == floor_val;
                 }
                 return false;
             };
             const auto is_int8_prim_ref_and_transcedental = [&]() -> bool {
                 if (!has_prim_ref_) return false;
-                if (fabsf(args.exp_f32 - args.got) != 1) return false;
+                if (fabsf(args.exp_f32 - got_val) != 1) return false;
                 // TODO: update with transcendental eltwise ops only.
                 return has_eltwise;
             };
@@ -496,19 +499,29 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         }
 
         // Update compare stats.
-        if (fabsf(args.got) == 0) ithr_zeros++;
-        ithr_all_max_rdiff = MAX2(ithr_all_max_rdiff, args.rel_diff);
-        ithr_all_max_diff = MAX2(ithr_all_max_diff, args.diff);
+        if (fabsf(got_val) == 0) ithr_zeros++;
+        if (args.rel_diff > 0)
+            ithr_all_max_rdiff = MAX2(ithr_all_max_rdiff, args.rel_diff);
+        if (args.diff > 0)
+            ithr_all_max_diff = MAX2(ithr_all_max_diff, args.diff);
         if (!ok) ithr_err_max_rdiff = MAX2(ithr_err_max_rdiff, args.rel_diff);
         if (!ok) ithr_err_max_diff = MAX2(ithr_err_max_diff, args.diff);
 
-        if (!ok) n_errors++;
+        if (!ok) out_data.n_errors++;
 
-        const bool dump
-                = need_dump || (!ok && (n_errors <= 10 || verbose >= 10));
-        if (dump)
-            dumps.emplace_back(got_mem.md_, i, args.exp_f32, args.exp, args.got,
-                    args.diff, args.rel_diff);
+        const bool dump = need_dump
+                || (!ok && (out_data.n_errors <= 10 || verbose >= 10));
+        if (dump) {
+            // Need to initialize `args` in case they weren't.
+            if (args.dt == dnnl_data_type_undef)
+                args = driver_check_func_args_t(exp_f32, got_f32, i, dt, trh_);
+
+            out_data.dumps.emplace_back(got_mem.md_, i, args.exp_f32, args.exp,
+                    got_val, args.diff, args.rel_diff);
+        }
+
+        // Reset args for the next point if they were initialized.
+        if (args.dt != dnnl_data_type_undef) args = driver_check_func_args_t();
 
         // Synchronization point, update global stats from thread stats.
         if (((i + 1) % nelems_per_thread == 0) || (i == nelems - 1)) {

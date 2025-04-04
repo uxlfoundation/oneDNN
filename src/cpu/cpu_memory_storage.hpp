@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ class cpu_memory_storage_t : public memory_storage_t {
 public:
     cpu_memory_storage_t(engine_t *engine)
         : memory_storage_t(engine), data_(nullptr, release) {}
+    ~cpu_memory_storage_t() override = default;
 
     status_t get_data_handle(void **handle) const override {
         *handle = data_.get();

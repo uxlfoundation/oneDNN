@@ -73,9 +73,8 @@ void log_manager_t::log(const char *msg, log_level_t log_level) const {
     // (by default the fmt library appends a '\n' character to
     // the logged message)
     size_t msg_len = strlen(msg);
-    auto nmsg = (msg_len > 0 && msg[msg_len - 1] == '\n')
-            ? std::string(msg, msg_len - 1)
-            : msg;
+    const std::string nmsg(
+            msg, msg_len - (msg_len > 0 && msg[msg_len - 1] == '\n'));
 
     switch (log_level) {
         case off: break;

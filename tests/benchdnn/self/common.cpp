@@ -318,43 +318,47 @@ static int check_attr() {
 
 void append_sum(attr_t::post_ops_t &po, float ascale = 1.f,
         int32_t zero_point = 0, dnnl_data_type_t adt = dnnl_data_type_undef) {
-    attr_t::post_ops_t::entry_t e(pk_t::SUM);
+    po.entry.emplace_back(pk_t::SUM);
+    auto &e = po.entry.back();
+
     e.sum.scale = ascale;
     e.sum.zero_point = zero_point;
     e.sum.dt = adt;
-    po.entry.push_back(e);
 }
 
 void append_convolution(attr_t::post_ops_t &po, pk_t akind, int kernel,
         int stride, int padding, dnnl_data_type_t adst_dt = dnnl_f32) {
-    attr_t::post_ops_t::entry_t e(akind);
+    po.entry.emplace_back(akind);
+    auto &e = po.entry.back();
+
     e.convolution.kernel = kernel;
     e.convolution.stride = stride;
     e.convolution.padding = padding;
     e.convolution.dst_dt = adst_dt;
-    po.entry.push_back(e);
 }
 
 void append_eltwise(attr_t::post_ops_t &po, pk_t akind, float aalpha = 0.f,
         float abeta = 0.f) {
-    attr_t::post_ops_t::entry_t e(akind);
+    po.entry.emplace_back(akind);
+    auto &e = po.entry.back();
+
     e.eltwise.alg = attr_t::post_ops_t::kind2dnnl_kind(akind);
     e.eltwise.alpha = aalpha;
     e.eltwise.beta = abeta;
-    po.entry.push_back(e);
 }
 
 void append_binary(attr_t::post_ops_t &po, pk_t akind, dnnl_data_type_t src_dt1,
         attr_t::post_ops_t::entry_t::binary_t::mask_input_t mask_input,
         int64_t mask, attr_t::policy_t policy, const std::string &tag) {
-    attr_t::post_ops_t::entry_t e(akind);
+    po.entry.emplace_back(akind);
+    auto &e = po.entry.back();
+
     e.binary.alg = attr_t::post_ops_t::kind2dnnl_kind(akind);
     e.binary.src1_dt = src_dt1;
     e.binary.mask_input = mask_input;
     e.binary.mask = mask;
     e.binary.policy = policy;
     e.binary.tag = tag;
-    po.entry.push_back(e);
 }
 
 static int check_post_ops2str() {

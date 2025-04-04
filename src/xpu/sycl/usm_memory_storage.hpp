@@ -39,6 +39,7 @@ public:
 
     usm_memory_storage_t(engine_t *engine, ::sycl::usm::alloc usm_kind)
         : memory_storage_base_t(engine), usm_kind_(usm_kind) {}
+    ~usm_memory_storage_t() override = default;
 
     uint8_t *usm_ptr() const { return static_cast<uint8_t *>(usm_ptr_.get()); }
 

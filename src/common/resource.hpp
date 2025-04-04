@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ struct resource_mapper_t {
     using mapped_t = std::unique_ptr<resource_t>;
 
     resource_mapper_t() = default;
+    ~resource_mapper_t() = default;
 
     bool has_resource(const primitive_t *p) const {
         return primitive_to_resource_.count(p);

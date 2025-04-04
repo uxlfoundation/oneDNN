@@ -205,10 +205,8 @@ protected:
         std::vector<memory::desc> srcs_md;
         std::vector<memory> srcs;
 
-        for (size_t i = 0; i < num_srcs; i++) {
-            auto desc = memory::desc(p.dims, src_data_type, p.srcs_format[i]);
-            srcs_md.push_back(desc);
-        }
+        for (size_t i = 0; i < num_srcs; i++)
+            srcs_md.emplace_back(p.dims, src_data_type, p.srcs_format[i]);
 
         memory dst;
         sum::primitive_desc sum_pd;

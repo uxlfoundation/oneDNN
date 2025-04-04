@@ -161,7 +161,7 @@ void fill_random_quantized(std::vector<T> &out, const dnnl::memory::desc &desc,
     }
 }
 
-void dynamic_iterate_alldims(std::vector<int64_t> dims,
+void dynamic_iterate_alldims(const std::vector<int64_t> &dims,
         const std::function<void(std::vector<int64_t> idxs)> &fn);
 
 template <typename T>

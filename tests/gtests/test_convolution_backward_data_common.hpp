@@ -90,7 +90,7 @@ class convolution_backward_data_test_t
     : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
     void SetUp() override {
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 test_convolution_params_t>::GetParam();
 
         SKIP_IF_CUDA(
@@ -216,7 +216,7 @@ protected:
     }
 
     void Test() {
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 test_convolution_params_t>::GetParam();
         ASSERT_EQ(p.aalgorithm, algorithm::convolution_direct);
         auto eng = get_test_engine();

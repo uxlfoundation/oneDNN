@@ -549,7 +549,7 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
                     ::sycl::accessor<uint8_t, 1, ::sycl::access::mode::write,
                             target_device>
                             acc(buf, cgh);
-                    cgh.fill(acc, static_cast<uint8_t>(value));
+                    cgh.fill(std::move(acc), static_cast<uint8_t>(value));
                 });
                 DNN_SAFE_V(dnnl_stream_wait(stream));
                 return;

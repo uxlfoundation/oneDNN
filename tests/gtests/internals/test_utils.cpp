@@ -333,7 +333,7 @@ std::ostream &operator<<(std::ostream &ss, const memory::data_type &dt) {
     return ss;
 }
 
-void dynamic_iterate_alldims(std::vector<int64_t> dims,
+void dynamic_iterate_alldims(const std::vector<int64_t> &dims,
         const std::function<void(std::vector<int64_t> idxs)> &fn) {
     size_t ndims = dims.size();
     assert(ndims > 1); // TODO: will fail w/ndim == 1

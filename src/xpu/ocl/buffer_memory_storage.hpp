@@ -40,6 +40,8 @@ public:
             impl::engine_t *engine, const memory_storage_t *root_storage)
         : memory_storage_base_t(engine, root_storage) {}
 
+    ~buffer_memory_storage_t() override = default;
+
     status_t get_data_handle(void **handle) const override {
         *handle = static_cast<void *>(mem_object_.get());
         return status::success;

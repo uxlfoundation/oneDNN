@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,18 +28,19 @@ bool compare_extreme_values(float a, float b);
 
 struct compare_t {
     struct driver_check_func_args_t {
+        driver_check_func_args_t() = default;
         driver_check_func_args_t(const dnn_mem_t &exp_mem,
                 const dnn_mem_t &got_f32, const int64_t i,
                 const dnnl_data_type_t data_type, const float trh);
 
-        const dnnl_data_type_t dt = dnnl_data_type_undef;
-        const int64_t idx = 0;
-        const float exp_f32 = 0.f;
-        const float exp = 0.f;
-        const float got = 0.f;
-        const float diff = 0.f;
-        const float rel_diff = 0.f;
-        const float trh = 0.f;
+        dnnl_data_type_t dt = dnnl_data_type_undef;
+        int64_t idx = 0;
+        float exp_f32 = 0.f;
+        float exp = 0.f;
+        float got = 0.f;
+        float diff = 0.f;
+        float rel_diff = 0.f;
+        float trh = 0.f;
     };
 
     compare_t() = default;

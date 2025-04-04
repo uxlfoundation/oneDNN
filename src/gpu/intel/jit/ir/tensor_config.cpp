@@ -90,6 +90,14 @@ void init_extra_tensors(const zero_points_config_t &zp_cfg,
     }
 }
 
+bool matches_tag(const layout_t &layout, const std::string &tag,
+        const std::vector<dim_t> &dims) {
+    if (layout.is_empty()) return false;
+    auto tag_layout = make_layout(layout.type(), dims, tag);
+    if (layout != tag_layout) return false;
+    return true;
+}
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

@@ -126,6 +126,19 @@ inline layout_t make_layout(const type_t &type, const std::vector<dim_t> &dims,
     return layout_t(type, 0, tag, dims, /*do_normalize=*/false);
 }
 
+bool matches_tag(const layout_t &layout, const std::string &tag,
+        const std::vector<dim_t> &dims);
+
+inline bool matches_tag(const layout_t &layout, const std::string &tag) {
+    return matches_tag(layout, tag, layout.dims());
+}
+
+inline bool matches_tag(const memory_desc_t &md, const std::string &tag) {
+    if (md.format_kind == format_kind::any) return false;
+    std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
+    return matches_tag(make_layout(md), tag, dims);
+}
+
 inline void set_default_format(memory_desc_t &md, const std::string &tag) {
     if (md.format_kind != format_kind::any) return;
     md = make_layout(md, tag).to_dnnl(md.dims);

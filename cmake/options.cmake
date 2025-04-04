@@ -122,9 +122,9 @@ set(DNNL_ENABLE_PRIMITIVE "ALL" CACHE STRING
     - ALL (the default). Includes all primitives to be enabled.
     - <PRIMITIVE_NAME>. Includes only the selected primitive to be enabled.
       Possible values are: BATCH_NORMALIZATION, BINARY, CONCAT, CONVOLUTION,
-      DECONVOLUTION, ELTWISE, INNER_PRODUCT, LAYER_NORMALIZATION, LRN, MATMUL,
-      POOLING, PRELU, REDUCTION, REORDER, RESAMPLING, RNN, SDPA, SHUFFLE,
-      SOFTMAX, SUM.
+      DECONVOLUTION, ELTWISE, GROUP_NORMALIZATION, INNER_PRODUCT,
+      LAYER_NORMALIZATION, LRN, MATMUL, POOLING, PRELU, REDUCTION, REORDER,
+      RESAMPLING, RNN, SDPA, SHUFFLE, SOFTMAX, SUM.
     - <PRIMITIVE_NAME>;<PRIMITIVE_NAME>;... Includes only selected primitives to
       be enabled at build time. This is treated as CMake string, thus, semicolon
       is a mandatory delimiter between names. This is the way to specify several

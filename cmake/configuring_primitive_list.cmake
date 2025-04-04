@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2021-2024 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ else()
     foreach(impl ${DNNL_ENABLE_PRIMITIVE})
         string(TOUPPER ${impl} uimpl)
         if(NOT "${uimpl}" MATCHES
-                "^(BATCH_NORMALIZATION|BINARY|CONCAT|CONVOLUTION|DECONVOLUTION|ELTWISE|INNER_PRODUCT|LAYER_NORMALIZATION|LRN|MATMUL|POOLING|PRELU|REDUCTION|REORDER|RESAMPLING|RNN|SDPA|SHUFFLE|SOFTMAX|SUM)$")
+                "^(BATCH_NORMALIZATION|BINARY|CONCAT|CONVOLUTION|DECONVOLUTION|ELTWISE|GROUP_NORMALIZATION|INNER_PRODUCT|LAYER_NORMALIZATION|LRN|MATMUL|POOLING|PRELU|REDUCTION|REORDER|RESAMPLING|RNN|SDPA|SHUFFLE|SOFTMAX|SUM)$")
             message(FATAL_ERROR "Unsupported primitive: ${uimpl}")
         endif()
         set(BUILD_${uimpl} TRUE)

@@ -60,8 +60,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     pass_pipeline_t pipeline = pass_pipeline_t(vis);
     pass_pipeline_t select_pipeline = pass_pipeline_t(vis);
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
-    // Decompose select to binary ops if necessary
-    BACKEND_DNNL_ADD_PASS(pipeline, decompose_select_to_binary_ops);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
     // Fusion and canonicalization passes begin
     if (quantized) {
@@ -111,45 +109,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     sdp_cfg_.construct_params<quantized, dt>(
             subgraph_, sdp_registry_, p_engine_, inputs);
 
-    // Create a new subgraph for select. the select_out_ops is the new
-    // subgraph's output ops. The out values of these out_ops are the
-    // connection between two graphs
-    std::vector<op_ptr> select_out_ops;
-    if (sdp_cfg_.has_select) {
-        sdp_cfg_.record_select_ops(subgraph_, select_out_ops);
-        select_subgraph_ = std::make_shared<subgraph_t>(sdp_cfg_.select_op,
-                p_engine_, part->get_fpmath_mode(),
-                part->get_use_blocked_layout(), false);
-
-        const std::vector<logical_tensor_t> select_inputs
-                = {inputs[sdp_cfg_.graph_inport[5]],
-                        inputs[sdp_cfg_.graph_inport[6]]};
-
-        select_subgraph_->ins_ = select_inputs;
-        BACKEND_DNNL_ADD_PASS(select_pipeline, replace_select_values);
-
-        // do constant propagation again since layout propagation may
-        // insert/delete operators
-        if (enabled_constant_cache()) {
-            BACKEND_DNNL_ADD_PASS(select_pipeline, constant_propagation);
-        }
-
-        // bind the memory for each op
-        auto memory_plan = [&](std::shared_ptr<subgraph_t> &sg) {
-            return memory_planner_.run(sg);
-        };
-        select_pipeline.reset_visualize_arg(true, true);
-        BACKEND_DNNL_ADD_PASS(select_pipeline, memory_plan);
-        BACKEND_DNNL_ADD_PASS(select_pipeline, compile_ops);
-
-        BACKEND_DNNL_CHECK(select_pipeline.run(select_subgraph_));
-
-        sdp_cfg_.record_select_out_index(select_subgraph_, select_out_ops);
-        select_resource_ctor_ = [this]() {
-            return this->memory_planner_.get_exec_args_set().clone();
-        };
-    }
-
     return status::success;
 }
 
@@ -170,6 +129,13 @@ void sdp_decomp_kernel_t<quantized, dt>::prepare_sub_args(
             var_grantor.get(
                     sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_dst1_wei2.get()])
             + size_offset);
+    //select
+    if (sdp_cfg_.has_select) {
+        mem_map[sdp_cfg_.sub_select_dst.get()][id].set_data_handle(
+                var_grantor.get(
+                        sdp_cfg_.mem_key_map[sdp_cfg_.sub_select_dst.get()])
+                + size_offset);
+    }
     // softmax
     mem_map[sdp_cfg_.sub_softmax_dst.get()][id].set_data_handle(
             var_grantor.get(
@@ -222,12 +188,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     sdp_cfg_.nthr = thread_num;
 #endif
 
-    // each thread's own local resource
-    thread_local_cache_t<execution_args_set_t> select_res_cache;
-    execution_args_set_t *select_res = nullptr;
-    if (sdp_cfg_.has_select)
-        select_res = select_res_cache.get_or_add(
-                reinterpret_cast<size_t>(this), select_resource_ctor_);
     thread_local_cache_t<sdp_args_set_t> res_cache;
     sdp_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
@@ -249,12 +209,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     assertm(select_scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    if (sdp_cfg_.has_select) {
-        const std::vector<tensor_t> select_inputs
-                = {inputs[sdp_cfg_.graph_inport[5]],
-                        inputs[sdp_cfg_.graph_inport[6]]};
-        prepare_args_set(select_res, select_inputs, select_scratchpad);
-    }
     size_t block_size = sdp_registry_.size();
     temporary_scratchpad_t scratchpad(
             block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
@@ -304,21 +258,43 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     + mask_offset * get_mem_dt_size(sub_mm1_post_add_tid));
         }
         if (sdp_cfg_.has_select) {
-            //connect select_graph and sdp_graph
-            for (size_t i = start_index; i < sdp_cfg_.sub_mm1_post_mem.size();
-                    i++) {
-                auto &sub_mm1_post_tid
-                        = res->mem_map[sdp_cfg_.sub_mm1_post_mem[i].get()][tid];
-                const auto &select_res_args = select_res->get_exec_args();
-                auto out_mem
-                        = select_res_args[sdp_cfg_.select_outop_index[i - 1]]
-                                  .at(DNNL_ARG_DST);
-                auto out_strides = out_mem.get_desc().get_strides();
-                sub_mm1_post_tid.set_data_handle(
-                        static_cast<char *>(out_mem.get_data_handle())
-                        + bo * out_strides[0]
-                                * get_mem_dt_size(sub_mm1_post_tid));
+            auto &sub_select_cond_tid
+                    = res->mem_map[sdp_cfg_.sub_select_cond.get()][tid];
+            const auto &select_cond_input = inputs[sdp_cfg_.graph_inport[5]];
+            const auto select_cond_strides
+                    = ltw(select_cond_input.get_logical_tensor()).vstrides();
+            const auto select_cond_dims
+                    = ltw(select_cond_input.get_logical_tensor()).vdims();
+            size_t select_cond_offset = 0;
+            if (select_cond_dims.size() == 4) {
+                if (select_cond_dims[0] != 1)
+                    select_cond_offset += bo * select_cond_strides[0];
+                if (select_cond_dims[1] != 1)
+                    select_cond_offset += bi * select_cond_strides[1];
             }
+            sub_select_cond_tid.set_data_handle(
+                    static_cast<char *>(select_cond_input.get_data_handle())
+                    + select_cond_offset
+                            * get_mem_dt_size(sub_select_cond_tid));
+
+            auto &sub_select_src0_tid
+                    = res->mem_map[sdp_cfg_.sub_select_src0.get()][tid];
+            const auto &select_src0_input = inputs[sdp_cfg_.graph_inport[6]];
+            const auto select_src0_strides
+                    = ltw(select_src0_input.get_logical_tensor()).vstrides();
+            const auto select_src0_dims
+                    = ltw(select_src0_input.get_logical_tensor()).vdims();
+            size_t select_src0_offset = 0;
+            if (select_src0_dims.size() == 4) {
+                if (select_src0_dims[0] != 1)
+                    select_src0_offset += bo * select_src0_strides[0];
+                if (select_src0_dims[1] != 1)
+                    select_src0_offset += bi * select_src0_strides[1];
+            }
+            sub_select_src0_tid.set_data_handle(
+                    static_cast<char *>(select_src0_input.get_data_handle())
+                    + select_src0_offset
+                            * get_mem_dt_size(sub_select_src0_tid));
         }
         // reorder2:
         auto &sub_wei2_user_tid
@@ -365,7 +341,8 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         sdp_cfg_.sub_reorder0.execute(strm, res->sub_reorder0_args[tid]);
         sdp_cfg_.sub_reorder1.execute(strm, res->sub_reorder1_args[tid]);
         sdp_cfg_.sub_mm1_prim.execute(strm, res->sub_mm1_args[tid]);
-
+        if (sdp_cfg_.has_select)
+            sdp_cfg_.sub_select_prim.execute(strm, res->sub_select_args[tid]);
         sdp_cfg_.sub_softmax_prim.execute(strm, res->sub_softmax_args[tid]);
 
         sdp_cfg_.sub_reorder2.execute(strm, res->sub_reorder2_args[tid]);
@@ -373,12 +350,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         sdp_cfg_.sub_mm2_prim.execute(strm, res->sub_mm2_args[tid]);
         sdp_cfg_.sub_reorder3.execute(strm, res->sub_reorder3_args[tid]);
     };
-    if (sdp_cfg_.has_select) {
-        for (size_t i = 0; i < select_subgraph_->execs_.size(); i++) {
-            select_subgraph_->execs_[i]->execute(
-                    strm, select_res->get_exec_args()[i]);
-        }
-    }
     parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

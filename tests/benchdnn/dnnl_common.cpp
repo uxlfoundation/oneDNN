@@ -127,6 +127,7 @@ int get_cache_blob(std::vector<uint8_t> &cache_blob, dnnl_primitive_t prim) {
 
 struct lru_cache_t {
     lru_cache_t(size_t capacity) : capacity_(capacity) {}
+    ~lru_cache_t() = default;
 
     const std::vector<uint8_t> &get(const std::vector<uint8_t> &key) {
         auto it = cache_mapper_.find(key);
@@ -392,7 +393,7 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
         DNN_SAFE(dnnl_stream_wait(stream), CRIT);
 
         auto exec = graph.finalize();
-        queue.ext_oneapi_graph(exec).wait();
+        queue.ext_oneapi_graph(std::move(exec)).wait();
 
         // SYCL graph feature completed submission and execution, no need to
         // have a regular run.
@@ -1428,7 +1429,7 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
 
     // Copy memory stats. It's required to accumulate them before performing
     // the check.
-    mem_size_args = check_mem_size_args;
+    mem_size_args = std::move(check_mem_size_args);
     return OK;
 }
 

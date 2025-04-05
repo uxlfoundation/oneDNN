@@ -207,7 +207,7 @@ protected:
 
         for (size_t i = 0; i < num_srcs; i++) {
             auto desc = memory::desc(p.dims, src_data_type, p.srcs_format[i]);
-            srcs_md.push_back(desc);
+            srcs_md.push_back(std::move(desc));
         }
 
         memory dst;
@@ -259,7 +259,7 @@ protected:
                     *((uint_type *)&src_ptr[i]) &= mask;
                 }
             }
-            srcs.push_back(src_memory);
+            srcs.push_back(std::move(src_memory));
         }
 
         ASSERT_TRUE(sum_pd.query_md(query::exec_arg_md, DNNL_ARG_DST)

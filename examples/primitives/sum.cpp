@@ -88,8 +88,8 @@ void sum_example(dnnl::engine::kind engine_kind) {
         // Write data to memory object's handle.
         write_to_dnnl_memory(src_data.data(), mem);
 
-        src_md.push_back(md);
-        src_mem.push_back(mem);
+        src_md.push_back(std::move(md));
+        src_mem.push_back(std::move(mem));
     }
 
     // Create primitive descriptor.

@@ -159,7 +159,7 @@ protected:
         std::vector<memory> srcs;
         for (size_t i = 0; i < p.srcs_cds.size(); i++) {
             auto md = memory::desc(p.srcs_cds[i], data_type, p.srcs_format[i]);
-            srcs_md.push_back(md);
+            srcs_md.push_back(std::move(md));
         }
 
         auto dst_desc = memory::desc(p.dst_cds, data_type, p.dst_format);
@@ -196,7 +196,7 @@ protected:
             const size_t sz = src_memory.get_desc().get_size() / sizeof(data_t);
             fill_data<data_t>(sz, src_memory);
             check_zero_tail<data_t>(1, src_memory);
-            srcs.push_back(src_memory);
+            srcs.push_back(std::move(src_memory));
         }
 
         for (int i = 0; i < (int)srcs.size(); i++)

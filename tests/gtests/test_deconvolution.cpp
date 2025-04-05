@@ -139,7 +139,7 @@ protected:
         SKIP_IF(unsupported_data_type(data_type),
                 "Engine does not support this data type.");
 
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 deconvolution_test_params_t>::GetParam();
 
         SKIP_IF_CUDA(
@@ -394,7 +394,7 @@ protected:
     }
 
     void BackwardData() {
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 deconvolution_test_params_t>::GetParam();
         // deconv specific types and values
         using pd_t = deconvolution_backward_data::primitive_desc;
@@ -467,7 +467,7 @@ protected:
     }
 
     void BackwardWeights() {
-        auto p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 deconvolution_test_params_t>::GetParam();
 
         // deconv specific types and values

@@ -289,7 +289,7 @@ inline memory make_memory(const memory::desc &memory_desc,
         const engine &aengine, std::vector<cl_mem> mem_objects) {
     const int nhandles = memory_desc.get_num_handles();
     std::vector<void *> handles(nhandles, DNNL_MEMORY_NONE);
-    memory amemory(memory_desc, aengine, handles);
+    memory amemory(memory_desc, aengine, std::move(handles));
     for (int i = 0; i < nhandles; i++)
         amemory.set_data_handle(mem_objects[i], i);
     return amemory;

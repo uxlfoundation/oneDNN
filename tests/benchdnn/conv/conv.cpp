@@ -195,8 +195,11 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
             bool is_one = density == 1.f ? true : b_dist(b_seed);
-            float gen_val = gen(int_seed) * (1.f + is_s8s8);
-            float val = is_one * gen_val;
+            if (!is_one) {
+                mem_fp.set_elem(idx, 0.f);
+                continue;
+            }
+            float val = gen(int_seed) * (1.f + is_s8s8);
             val += src_zp + wei_zp; // Add zp so that it will be subtracted.
             mem_fp.set_elem(
                     idx, round_to_nearest_representable(cfg.get_dt(kind), val));

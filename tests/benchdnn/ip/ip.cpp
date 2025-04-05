@@ -49,7 +49,8 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             force_f32_dt ? dnnl_f32 : prb->get_dt(DST), prb->dtag);
 
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(prb->attr, 2, prb->dst_dims().data());
+    attr_args.prepare_post_ops_mds(
+            prb->attr, 2, prb->dst_dims().data(), prb->dtag);
     auto wei_scale = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
     if (wei_scale.policy == policy_t::PER_OC) {
         attr_args.prepare_quant(

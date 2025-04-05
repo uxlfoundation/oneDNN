@@ -137,7 +137,8 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     }
 
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
+    attr_args.prepare_post_ops_mds(
+            prb->attr, prb->ndims, prb->dst_dims.data(), prb->dtag);
 
     const auto overload_quant_mask = [&](policy_t policy, int arg) {
         // Overload PER_OC/PER_OCIC mask definition for batched cases.

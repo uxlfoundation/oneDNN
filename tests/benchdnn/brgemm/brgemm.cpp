@@ -346,7 +346,8 @@ int init_kernel(kernel_args_t &kernel_args) {
     if (res->state == SKIPPED) return OK;
 
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
+    attr_args.prepare_post_ops_mds(
+            prb->attr, prb->ndims, prb->dst_dims.data(), prb->dtag);
     const auto &wei_scale = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
     if (wei_scale.policy == policy_t::PER_OC) {
         attr_args.prepare_quant(
@@ -396,7 +397,8 @@ int init_kernel(kernel_args_t &kernel_args) {
     kernel_args.scratchpad_size_ = brgemm_desc.get_wsp_buffer_size();
 #else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
+    attr_args.prepare_post_ops_mds(
+            prb->attr, prb->ndims, prb->dst_dims.data(), prb->dtag);
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args));
     auto dnnl_post_ops = query_post_ops(dnnl_attr);

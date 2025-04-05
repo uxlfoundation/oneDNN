@@ -249,6 +249,7 @@ supported, positioned after `MASK_INPUT`, to specify physical memory format.
 - `mul`
 - `ne`
 - `sub`
+- `select`
 
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result

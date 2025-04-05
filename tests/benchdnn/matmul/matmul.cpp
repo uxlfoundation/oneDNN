@@ -446,20 +446,31 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             idx_start += 1;
         }
 
-        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            bool is_one = density == 1.f ? true : b_dist(b_seed);
-            float val = 0.0f;
-            if (is_sparse_packed) {
-                is_one = nnz_mask[idx];
-                while (val == 0.0f)
+        if (is_sparse_packed) {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                const bool is_one = nnz_mask[idx];
+                if (!is_one) {
+                    mem_fp.set_elem(idx, 0.f);
+                    continue;
+                }
+                float val = 0.f;
+                while (val == 0.f)
                     val = gen(int_seed);
-                val *= is_one;
-            } else {
-                val = is_one * gen(int_seed);
-                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+                mem_fp.set_elem(idx,
+                        round_to_nearest_representable(cfg.get_dt(kind), val));
             }
-            mem_fp.set_elem(
-                    idx, round_to_nearest_representable(cfg.get_dt(kind), val));
+        } else {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                bool is_one = density == 1.f ? true : b_dist(b_seed);
+                if (!is_one) {
+                    mem_fp.set_elem(idx, 0.f);
+                    continue;
+                }
+                float val = gen(int_seed);
+                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+                mem_fp.set_elem(idx,
+                        round_to_nearest_representable(cfg.get_dt(kind), val));
+            }
         }
     });
 

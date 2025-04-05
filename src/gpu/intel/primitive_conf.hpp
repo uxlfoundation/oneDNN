@@ -415,6 +415,7 @@ struct binary_conf_t {
     bool isXa16b;
     data_type_t src0_data_type;
     data_type_t src1_data_type;
+    data_type_t src2_data_type;
     data_type_t dst_data_type;
     alg_kind_t alg;
     // bool is_ne;
@@ -434,6 +435,7 @@ struct binary_conf_t {
 
     memory_desc_info_t src0_md_info;
     memory_desc_info_t src1_md_info;
+    memory_desc_info_t src2_md_info;
     memory_desc_info_t dst_md_info;
 
     attr_info_t attr_info;

@@ -203,8 +203,6 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     });
 }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
-
 void cvt_coo_indices_to_csr_pointers(const int32_t *indices, int32_t *pointers,
         const int nnz, const int nrows) {
     for (int i = 0; i < nnz; ++i) {
@@ -310,7 +308,6 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
         });
     }
 }
-#endif
 
 void compute_ref(
         const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
@@ -319,7 +316,6 @@ void compute_ref(
         return;
     }
 
-#ifdef DNNL_EXPERIMENTAL_SPARSE
     const auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
@@ -330,9 +326,6 @@ void compute_ref(
     } else {
         compute_ref_matmul(prb, args);
     }
-#else
-    compute_ref_matmul(prb, args);
-#endif
 }
 
 } // namespace matmul

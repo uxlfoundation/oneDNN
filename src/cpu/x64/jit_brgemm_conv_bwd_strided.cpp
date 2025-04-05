@@ -114,6 +114,9 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
             && everyone_is(f32, diff_src_type, diff_dst_type)
             && IMPLICATION(with_bias(), bias_md_.data_type == f32);
 
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(
             impl_supports_datatype(diff_src_type), VERBOSE_UNSUPPORTED_DT);

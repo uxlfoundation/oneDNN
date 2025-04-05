@@ -58,6 +58,9 @@ status_t brgemm_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
             VERBOSE_BAD_ALGORITHM);
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_CONV(impl::is_dense_format_kind({src_md(0), diff_weights_md(0),
+                           diff_weights_md(1), diff_dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto scratchpad = scratchpad_registry().registrar();
 

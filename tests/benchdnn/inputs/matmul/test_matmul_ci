@@ -182,7 +182,7 @@
 --dt=f32,s8:s8:s32,bf16
 --stag=ab --wtag=ab --dtag=ab
 --runtime_dims_masks=,1:0,0:2,2:1,1:2,3:1,2:3,3:3
---attr-post-ops=mul:f32,relu,sum,prelu,prelu:per_oc
+--attr-post-ops=mul:f32,relu,sum,prelu,prelu:per_oc,select:f32:per_tensor
 3x20:20x4n"postops+runtime_dims_2d"
 
 # Basic post-ops with runtime dims 3D.
@@ -190,7 +190,7 @@
 --dt=f32,s8:s8:s32,bf16
 --stag=abc --wtag=abc --dtag=abc
 --runtime_dims_masks=,2:0,0:4,4:2,2:4,6:2,4:6,6:6
---attr-post-ops=mul:f32,relu,sum,prelu,prelu:per_oc
+--attr-post-ops=mul:f32,relu,sum,prelu,prelu:per_oc,select:f32:per_tensor
 10x3x20:10x20x4n"postops+runtime_dims_3d"
 
 # Basic post-ops with runtime dims 4D.

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -83,14 +83,16 @@ public:
     bool isLocked(VirtualFlag vflag)          const { return !(~locked & mask(vflag)); }
     bool canLock(int n = 1) const;
     void freeUnlocked();
+    void freeVFlagTempAllocs()                      { free |= vtemps; vtemps = 0; }
 
     ngen::FlagRegister assignPhysical(VirtualFlag vflag);
 
 protected:
-    uint64_t free;
-    uint8_t locked = 0;
-    uint8_t nextPhys = 0;
-    uint8_t nflag;
+    uint64_t free;                  // Bitmask: free virtual flags
+    uint8_t locked = 0;             // Bitmask: locked physical flags (= unavailable for vflag usage)
+    uint8_t vtemps = 0;             // Bitmask: temporary allocations for physical assignments of virtual flags */
+    uint8_t nextPhys = 0;           // Next physical flag to try for physical flag assignment.
+    uint8_t nflag;                  // # of physical flags in HW.
 
     static uint64_t mask(VirtualFlag vflag)         { return mask(vflag.idx, vflag.n); }
     static uint64_t mask(int idx, int n)            { return (uint64_t(1) << (idx + n)) - (uint64_t(1) << idx); }

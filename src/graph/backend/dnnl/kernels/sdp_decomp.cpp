@@ -223,6 +223,10 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     sdp_cfg_.nthr = thread_num;
 #endif
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    tp_stream->after_exec_hook();
+#endif
+
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> select_res_cache;
     execution_args_set_t *select_res = nullptr;
@@ -412,6 +416,11 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     strm, select_res->get_exec_args()[i]);
         }
     }
+
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    tp_stream->before_exec_hook();
+#endif
+
     parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

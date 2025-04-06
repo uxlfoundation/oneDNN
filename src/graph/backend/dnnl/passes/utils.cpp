@@ -411,15 +411,21 @@ bool post_binary_fusible(
 
 bool post_eltwise_fusible(
         const op_t *base_op, const op_t *elt_op, graph::engine_kind_t ekind) {
-// binary + sqrt post-op fusion is unsupported on NVIDIA GPU
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-    if (base_op->get_kind() == op_kind::dnnl_binary
-            && static_cast<dnnl::algorithm>(
-                       elt_op->get_attr<int64_t>(op_attr::alg_kind))
-                    == dnnl::algorithm::eltwise_sqrt
-            && ekind == dnnl_gpu) {
-        return false;
+    if (ekind == graph::engine_kind::gpu) {
+        auto alg = static_cast<dnnl::algorithm>(
+                elt_op->get_attr<int64_t>(op_attr::alg_kind));
+
+        static const std::unordered_set<dnnl::algorithm> unsupported_algos = {
+                dnnl::algorithm::eltwise_abs, dnnl::algorithm::eltwise_exp,
+                dnnl::algorithm::eltwise_hardsigmoid,
+                dnnl::algorithm::eltwise_log, dnnl::algorithm::eltwise_mish,
+                dnnl::algorithm::eltwise_pow, dnnl::algorithm::eltwise_round,
+                dnnl::algorithm::eltwise_soft_relu,
+                dnnl::algorithm::eltwise_sqrt, dnnl::algorithm::eltwise_square};
+
+        if (unsupported_algos.count(alg) > 0) { return false; }
     }
     return true;
 #else

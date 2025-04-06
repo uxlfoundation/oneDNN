@@ -379,6 +379,15 @@ std::pair<bool, std::pair<size_t, int64_t>> shuffle_fusible(
 
 bool post_binary_fusible(
         const op_t *base_op, const op_t *bin_op, graph::engine_kind_t ekind) {
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (ekind == graph::engine_kind::gpu
+            && base_op->get_kind() == op_kind::dnnl_convolution) {
+        return false;
+    }
+#endif
+
     auto fused_out = base_op->get_output_values()[0];
     auto consumers = fused_out->get_consumers();
     if (consumers.size() != 1) return false;

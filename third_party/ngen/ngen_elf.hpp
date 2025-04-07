@@ -198,7 +198,7 @@ private:
         struct SectionHeader {
             uint32_t name;
             enum Type : uint32_t {
-                Null = 0, Program = 1, SymbolTable = 2, StringTable = 3, RelocationWithAddend=4, Note = 7, ZeInfo = 0xFF000011
+                Null = 0, Program = 1, SymbolTable = 2, StringTable = 3, RelocationWithAddend = 4, Note = 7, Relocation = 9, ZeInfo = 0xFF000011
             } type;
             uint64_t flags = 0;
             uint64_t addr = 0;
@@ -208,17 +208,24 @@ private:
             uint32_t info = 0;
             uint64_t align = 0x10;
             uint64_t entrySize = 0;
-        } sectionHeaders[13];
+        } sectionHeaders[14];
+        struct Rel {
+            uint64_t offset;
+            enum : int32_t {
+                R_SYM_ADDR_32 = 2, R_SYM_ADDR_32_HI = 3
+            } kind = R_SYM_ADDR_32;
+            uint32_t symbol;
+        } relocations[2];
         struct SymbolEntry {
             uint32_t name = 0;
             enum Info : uint8_t {
-                NoType = 0, Object = 1, Func = 2, Section = 3, File = 4, Common = 5, TLS = 6, LOOS = 10, HIOS = 12, LOPROC = 13, HIPROC = 15
+                NoType = 0, Object = 1, Func = 2, Section = 3, File = 4, Common = 5, TLS = 6, LOOS = 10, HIOS = 12, LOPROC = 13, HIPROC = 15, Global = 16
             } info = Info::NoType;
             uint8_t other = 0;
             uint16_t shndx = 0;
             uint64_t value = 0;
             uint64_t size = 0;
-        } symTable[3];
+        } symTable[4];
         struct Note {
             uint32_t nameSize = 8;
             uint32_t descSize = 4;
@@ -317,11 +324,13 @@ private:
             const char snNote[21] = ".note.intelgt.compat";
             const char snSym[8] = ".symtab";
             const char kernelEntry[7] = "_entry";
+            const char ctPatch[41] = "__INTEL_PATCH_CROSS_THREAD_OFFSET_OFF_R0";
             const char snDebugInfo[17] = ".rela.debug_info";
             const char snDebugAbbrev[14] = ".debug_abbrev";
             const char snDebugLine[17] = ".rela.debug_line";
             const char snDebugLineStr[16] = ".debug_line_str";
             const char snDebugStr[11] = ".debug_str";
+            const char snRelText[4] = {'.', 'r', 'e', 'l'};     /* not NULL-terminated, continues into snText */
             const char snText[6] = {'.', 't', 'e', 'x', 't', '.'};
         } stringTable;
 
@@ -329,7 +338,7 @@ private:
             return (sz + 0xF) & ~0xF;
         }
 
-        ZebinELF(size_t szKernelName, size_t szMetadata, size_t szKernel, size_t offKernelEntry,
+        ZebinELF(size_t szKernelName, size_t szMetadata, size_t szKernel, InterfaceHandler &interface_,
                  size_t szDebugLine, size_t szDebugLineStr, uint32_t file1, uint32_t subProgramLine) {
             fileHeader.size = sizeof(fileHeader);
             fileHeader.sectionHeaderSize = sizeof(SectionHeader);
@@ -392,11 +401,17 @@ private:
             symTable[2].name = offsetof(StringTable, kernelEntry);
             symTable[2].info = SymbolEntry::Info::NoType;
             symTable[2].shndx = 3; // Program Header Index
-            symTable[2].value = offKernelEntry;
+            symTable[2].value = interface_.getSkipCrossThreadOffset();
             symTable[2].size = 0;
 
-            noteGfxCore.payload = static_cast<uint32_t>(npack::encodeGfxCoreFamily(hw));
+            const int symCTPatch = 3;
+            symTable[3].name = offsetof(StringTable, ctPatch);
+            symTable[3].info = SymbolEntry::Info::Global;
+            symTable[3].shndx = 0;
+            symTable[3].value = 0;
+            symTable[3].size = 0;
 
+            noteGfxCore.payload = static_cast<uint32_t>(npack::encodeGfxCoreFamily(hw));
 
             sectionHeaders[6].name = offsetof(StringTable, snDebugInfo) + 5;
             sectionHeaders[6].type = SectionHeader::Type::Program;
@@ -433,11 +448,30 @@ private:
             sectionHeaders[12].name = offsetof(StringTable, snDebugInfo);
             sectionHeaders[12].type = SectionHeader::Type::RelocationWithAddend;
             sectionHeaders[12].offset = sectionHeaders[11].offset + align(sectionHeaders[11].size);
-            sectionHeaders[12].size = 4*sizeof(Rela);
+            sectionHeaders[12].size = 4 * sizeof(Rela);
             sectionHeaders[12].link = 5; // Symbol table header index
             sectionHeaders[12].info = 6; // Debug Line header index
             sectionHeaders[12].entrySize = sizeof(Rela);
 
+            auto ctPatches = interface_.getCTPatchOffsets();
+            int nrel = 0;
+            for (auto &o: ctPatches) {
+                if (!o) continue;
+                relocations[nrel].offset = o;
+                relocations[nrel].symbol = symCTPatch;
+                nrel++;
+            }
+
+            if (nrel > 0) {
+                sectionHeaders[13].name = offsetof(StringTable, snRelText);
+                sectionHeaders[13].type = SectionHeader::Type::Relocation;
+                sectionHeaders[13].offset = offsetof(ZebinELF, relocations);
+                sectionHeaders[13].size = nrel * sizeof(Rel);
+                sectionHeaders[13].link = 5; // .symtab
+                sectionHeaders[13].info = 3; // .text
+                sectionHeaders[13].entrySize = sizeof(Rel);
+            } else
+                fileHeader.sectionCount--;
         }
 
         static size_t kernelNameOffset() {
@@ -545,15 +579,8 @@ std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary(const std::vector<uint8_t> 
     std::string metadata;
 
     // Locate entrypoints for XeHP+.
-    if (hw >= HW::XeHP) {
-        auto idPerThread = super::_labelLocalIDsLoaded.getID(labelManager);
-        auto idCrossThread = super::_labelArgsLoaded.getID(labelManager);
-
-        if (labelManager.hasTarget(idPerThread))
-            interface_.setSkipPerThreadOffset(labelManager.getTarget(idPerThread));
-        if (labelManager.hasTarget(idCrossThread))
-            interface_.setSkipCrossThreadOffset(labelManager.getTarget(idCrossThread));
-    }
+    if (hw >= HW::XeHP)
+        interface_.setPrologueLabels(super::_interfaceLabels, super::labelManager);
 
     // Generate metadata.
     metadata = interface_.generateZeInfo();
@@ -585,7 +612,7 @@ std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary(const std::vector<uint8_t> 
 
     binary.resize(paddedSzELF + paddedSzMetadata + paddedSzKernel + paddedSzDebugLine + paddedSzDebugLineStr + paddedSzRelDebugLine + paddedSzRelDebugInfo);
 
-    (void) new(binary.data()) ZebinELF(paddedSzKernelName, metadata.size(), kernel.size(), interface_.getSkipCrossThreadOffset(),
+    (void) new(binary.data()) ZebinELF(paddedSzKernelName, metadata.size(), kernel.size(), interface_,
                                        debugLine.size(), debugLineStr.size(), file1, super::debugLine.programLine);
     utils::copy_into(binary, ZebinELF::kernelNameOffset(), interface_.getExternalName());
     size_t offset = paddedSzELF;

@@ -668,6 +668,13 @@ public:
 static inline bool operator==(const RegData &r1, const RegData &r2);
 static inline bool operator!=(const RegData &r1, const RegData &r2);
 
+// Special set of labels used for prologues.
+struct InterfaceLabels {
+    Label localIDsLoaded;
+    Label argsLoaded;
+    Label crossThreadPatches[2];
+};
+
 // Superclass for registers, subregisters, and register regions, possibly
 // with source modifiers.
 class RegData {

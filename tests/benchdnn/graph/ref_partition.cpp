@@ -74,8 +74,8 @@ int ref_partition_t::init_ref(
         const std::vector<size_t> &graph_in_ports, res_t *res) {
 
     // Not create reference primitives and filling data with pre-designed
-    // strategies if correctness check is not enabled.
-    if (!has_bench_mode_bit(mode_bit_t::corr)) return OK;
+    // strategies if reference memories are not required.
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
     for (const auto &par_op_ref : partition_ops_ref_) {
         // res should be independent from op to op

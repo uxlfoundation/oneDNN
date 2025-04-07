@@ -158,8 +158,10 @@ mb128ic3ih230oc64oh112kh7sh2ph0
 --batch=shapes_basic_gpu
 
 # Test fp4
---reset
---batch=test_conv_fp4
+--reset --mb=1 --dt=f4_e2m1:f4_e2m1:bf16,f4_e3m0:f4_e3m0:bf16 --dir=fwd_d --batch=shapes_4bit
+--reset --mb=1 --dt=f16:f4_e2m1:f4_e2m1,f32:f4_e3m0:f4_e3m0 --dir=bwd_d --batch=shapes_4bit
+--reset --mb=1 --dt=f4_e2m1:f16:f4_e2m1,f4_e3m0:f32:f4_e3m0 --dir=bwd_w --batch=shapes_4bit
+--reset --mb=1 --dt=f4_e2m1,f4_e3m0 --dir=fwd_d --batch=shapes_4bit
 
 # dw gen9 fwd conv
 --reset

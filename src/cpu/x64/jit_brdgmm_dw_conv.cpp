@@ -132,7 +132,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     const cpu_isa_t isa = get_supported_isa(
             is_f32, is_int8, is_bf16, is_f16, is_f32_bf16, is_f32_f16);
 
-    auto skip_mask = skip_mask_t::post_ops;
+    auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt;
     if (is_int8) skip_mask |= (skip_mask_t::scales | skip_mask_t::zero_points);
 
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -154,6 +154,8 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
             (isa != isa_undef) && mayiuse(isa), "undefined or unsupported isa");
     VDISPATCH_CONV(attr()->has_default_values(skip_mask, dst_type),
             VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(dst_type, is_int8),
+            VERBOSE_UNSUPPORTED_POSTOP);
 
     auto &jcp = jcp_;
 

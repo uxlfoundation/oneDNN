@@ -387,20 +387,32 @@ inline graph::utils::pm::pb_node_t *optional_smooth_quant(
 }
 
 // Optional Select
-inline graph::utils::pm::repetition_t *optional_select(
+inline graph::utils::pm::alternation_t *optional_select(
         const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
         graph::utils::pm::pb_node_t *input, int input_index) {
-    auto popt_select_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto popt_select_graph_1 = std::make_shared<graph::utils::pm::pb_graph_t>();
 
-    graph::utils::pm::pb_op_t *select_op
-            = popt_select_graph->append_op(graph::op_kind::Select);
+    graph::utils::pm::pb_op_t *select_op_1
+            = popt_select_graph_1->append_op(graph::op_kind::Select);
 
-    popt_select_graph->create_input_port(0, select_op, 0);
-    popt_select_graph->create_input_port(1, select_op, 1);
-    popt_select_graph->create_input_port(2, select_op, 2);
-    popt_select_graph->create_output_port(0, select_op, 0);
-    auto pselect = pgraph->append_optional(popt_select_graph,
-            graph::utils::pm::in_edges_t {in_edge(input_index, input, 0)});
+    popt_select_graph_1->create_input_port(0, select_op_1, 0);
+    popt_select_graph_1->create_input_port(1, select_op_1, 1);
+    popt_select_graph_1->create_input_port(2, select_op_1, 2);
+    popt_select_graph_1->create_output_port(0, select_op_1, 0);
+
+    auto popt_select_graph_2 = std::make_shared<graph::utils::pm::pb_graph_t>();
+
+    graph::utils::pm::pb_op_t *select_op_2
+            = popt_select_graph_2->append_op(graph::op_kind::Select);
+
+    popt_select_graph_2->create_input_port(0, select_op_2, 0);
+    popt_select_graph_2->create_input_port(1, select_op_2, 2);
+    popt_select_graph_2->create_input_port(2, select_op_2, 1);
+    popt_select_graph_2->create_output_port(0, select_op_2, 0);
+
+    auto pselect = pgraph->append_alternation(
+            {popt_select_graph_1, popt_select_graph_2},
+            {in_edge(input_index, input, 0)});
     return pselect;
 }
 

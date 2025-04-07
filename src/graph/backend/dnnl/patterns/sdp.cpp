@@ -101,7 +101,7 @@ void create_gpt_sdp(
     }
 }
 
-graph::utils::pm::repetition_t *optional_scale_and_masks(
+graph::utils::pm::alternation_t *optional_scale_and_masks(
         const std::shared_ptr<pb_graph_t> &pgraph, pm::pb_op_t *matmul_qk,
         bool check_xf16 = false) {
     auto opt_scale = optional_scale(pgraph, matmul_qk);

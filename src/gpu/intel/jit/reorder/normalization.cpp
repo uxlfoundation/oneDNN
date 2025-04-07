@@ -162,6 +162,12 @@ struct layout_normalization_t {
         , blocks_(normalized_blocks(layout, dim_empty)) {}
 
 private:
+    static bool can_combine(const block_t &last, const block_t &next) {
+        if (last.dim_idx != next.dim_idx) return false;
+        if (last.stride * last.block != next.stride) return false;
+        return true;
+    }
+
     static std::vector<block_t> normalized_blocks(
             const layout_t &layout, std::vector<bool> dim_empty) {
         std::vector<block_t> normalized_blocks;
@@ -170,7 +176,7 @@ private:
             if (blk.block != 1
                     || (layout.is_outermost(eb) && !dim_empty[blk.dim_idx])) {
                 if (normalized_blocks.empty()
-                        || normalized_blocks.back().dim_idx != blk.dim_idx) {
+                        || !can_combine(normalized_blocks.back(), blk)) {
                     normalized_blocks.push_back(blk);
                     dim_empty[blk.dim_idx] = true;
                 } else {

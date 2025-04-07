@@ -132,7 +132,7 @@ platforms follow the general description in @ref dev_guide_data_types.
    - Optimized implementation is available for 4D Q/K/V tensors with shape
      defined as (N, H, S, D).
    - Optimized implementation is available for `f16` or `bf16` SDPA with `f32`
-     intermediate data type and `D <= 256` on Intel Graphics Products with
+     intermediate data type and `D <= 512` on Intel Graphics Products with
      Intel(R) Xe Matrix Extensions (Intel(R) XMX) support.
 
 ## Example

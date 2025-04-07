@@ -360,29 +360,33 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
     if (is_cpu()) {
         // Specific configurations are not supported.
-        const bool is_f32_src = prb->get_dt(SRC) == dnnl_f32;
-        const bool is_f32_wei = prb->get_dt(WEI) == dnnl_f32;
-        const bool is_f16 = prb->get_dt(WEI) == dnnl_f16;
-        const bool is_bf16_src = prb->get_dt(SRC) == dnnl_bf16;
-        const bool is_bf16_wei = prb->get_dt(WEI) == dnnl_bf16;
-        const bool is_int8_dst
-                = prb->get_dt(DST) == dnnl_s8 || prb->get_dt(DST) == dnnl_u8;
+        auto src_dt = prb->get_dt(SRC);
+        auto wei_dt = prb->get_dt(WEI);
+        auto dst_dt = prb->get_dt(DST);
+        const bool is_f32_src = src_dt == dnnl_f32;
+        const bool is_f32_wei = wei_dt == dnnl_f32;
+        const bool is_f16 = wei_dt == dnnl_f16;
+        const bool is_bf16_src = src_dt == dnnl_bf16;
+        const bool is_bf16_wei = wei_dt == dnnl_bf16;
+        const bool is_int8_dst = dst_dt == dnnl_s8 || dst_dt == dnnl_u8;
         const bool is_f32f32x8 = is_f32_src && is_f32_wei && is_int8_dst;
         const bool is_bf16bf16x8 = is_bf16_src && is_bf16_wei && is_int8_dst;
-        const bool is_valid_f16 = IMPLICATION(is_f16,
-                prb->get_dt(DST) == dnnl_f32 || prb->get_dt(DST) == dnnl_f16);
-        const bool is_int8_src
-                = prb->get_dt(SRC) == dnnl_s8 || prb->get_dt(SRC) == dnnl_u8;
-        const bool is_int8_wei
-                = prb->get_dt(WEI) == dnnl_s8 || prb->get_dt(WEI) == dnnl_u8;
-        const bool is_f16_dst = prb->get_dt(DST) == dnnl_f16;
+        const bool is_valid_f16
+                = IMPLICATION(is_f16, dst_dt == dnnl_f32 || dst_dt == dnnl_f16);
+        const bool is_int8_src = src_dt == dnnl_s8 || src_dt == dnnl_u8;
+        const bool is_int8_wei = wei_dt == dnnl_s8 || wei_dt == dnnl_u8;
+        const bool is_f16_dst = dst_dt == dnnl_f16;
         const bool is_x8x8f16 = is_int8_src && is_int8_wei && is_f16_dst;
         const bool is_wei_zp = !prb->attr.zero_points.is_def(DNNL_ARG_WEIGHTS);
         const bool is_non_s32_src_zp
                 = prb->attr.zero_points.get(DNNL_ARG_SRC).dt != dnnl_s32;
+        const bool dst_fp4 = (dst_dt == dnnl_f4_e2m1 || dst_dt == dnnl_f4_e3m0);
+        const bool src_fp4 = (src_dt == dnnl_f4_e2m1 || src_dt == dnnl_f4_e3m0);
+        const bool wei_fp4 = (wei_dt == dnnl_f4_e2m1 || wei_dt == dnnl_f4_e3m0);
+        const bool any_fp4 = dst_fp4 || wei_fp4 || src_fp4;
 
         if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16
-                || is_wei_zp || is_non_s32_src_zp) {
+                || is_wei_zp || is_non_s32_src_zp || any_fp4) {
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;

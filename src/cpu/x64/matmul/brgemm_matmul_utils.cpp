@@ -323,6 +323,8 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
         bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
                         && !bgmmc.is_int4_weights
                 ? this->pick_blocked_B_layout(default_n_block)
+                : bgmmc.is_int4_weights && bgmmc.N % 2 != 0
+                ? transposed_tensor_layout_tag
                 : plain_tensor_layout_tag;
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
@@ -344,14 +346,23 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                         blocked_16n_B_layout_tag)
                 : memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
                         transposed_tensor_layout_tag, acbd, adbc);
-
-        if (bgmmc.wei_tag == format_tag::undef) {
+        const bool plain_transposed_matched
+                = memory_desc_matches_tag(B_md, plain_tensor_layout_tag)
+                && memory_desc_matches_tag(B_md, transposed_tensor_layout_tag);
+        if (bgmmc.wei_tag == format_tag::undef || plain_transposed_matched) {
             if (gemm_based::check_gemm_input_format(B_md)) {
                 // Note: Here we batch layout may not be accurately represented
                 // by the wei_tag string, due to all the permutations of the
                 // batch. Only the gemm dimensions "n, k" are accurately
-                // represented in the string representing transposed or not.
+                // represented in the string representing transposed or not
+                // TODO: update helper.transB() to handle the case that
+                // wei tag can be represented in both plain and transposed
                 bgmmc.wei_tag = helper.transB() == 'N'
+                                || (plain_transposed_matched
+                                        && B_d.blocking_desc()
+                                                        .strides[bgmmc.ndims
+                                                                - 1]
+                                                == 1)
                         ? plain_tensor_layout_tag
                         : transposed_tensor_layout_tag;
             }

@@ -497,8 +497,8 @@ protected:
     std::ostream *defaultOutput;
     bool lineNumbers = false;
 
-    Label _labelLocalIDsLoaded;
-    Label _labelArgsLoaded;
+    InterfaceLabels _interfaceLabels;
+
     Label _lastFenceLabel;
     RegData _lastFenceDst;
 
@@ -1560,7 +1560,8 @@ public:
         opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::pvcwarwa)), NullRegister());
     }
 
-    inline void mark(Label &label)          { streamStack.back()->mark(label, labelManager); }
+    void mark(Label &label)            { streamStack.back()->mark(label, labelManager); }
+    void markIfUndefined(Label &label) { if (!label.defined(labelManager)) mark(label); }
 
     using _self = AsmCodeGenerator;
 
@@ -1628,7 +1629,7 @@ void AsmCodeGenerator::getCode(std::ostream &out)
         if (i.isLabel()) {
             i.dst.label.outputText(out, PrintDetail::full, labelManager);
             out << ':' << std::endl;
-            if (i.dst.label == _labelLocalIDsLoaded)
+            if (i.dst.label == _interfaceLabels.localIDsLoaded)
                 lineNo = 0;
         } else if (i.isComment())
             out << "// " << i.comment << std::endl;

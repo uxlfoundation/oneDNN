@@ -127,9 +127,8 @@ public:
 
     void setArgumentBase(RegData base)                   { baseOverride = base; }
     void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
-    void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
-    void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
+    std::array<int32_t, 2> getCTPatchOffsets() const     { return offsetCTPatches; }
 
     inline GRF getCrossthreadBase(bool effective = true) const;
     inline GRF getArgLoadBase() const;
@@ -138,6 +137,8 @@ public:
 
     template <typename CodeGenerator>
     inline void generatePrologue(CodeGenerator &generator, const GRF &temp = GRF(127)) const;
+
+    inline void setPrologueLabels(InterfaceLabels &labels, LabelManager &man);
 
     inline void generateDummyCL(std::ostream &stream) const;
     inline std::string generateZeInfo() const;
@@ -189,6 +190,7 @@ protected:
     bool needStatelessWrites = true;
     int32_t offsetSkipPerThread = 0;
     int32_t offsetSkipCrossThread = 0;
+    std::array<int32_t, 2> offsetCTPatches = {0, 0};
     size_t scratchSize = 0;
     int simd = 8;
     size_t slmSize = 0;
@@ -571,6 +573,22 @@ void InterfaceHandler::generatePrologue(CodeGenerator &generator, const GRF &tem
         generator.loadlid(getCrossthreadBytes(), needLocalID, simd, temp, -1);
     if (getCrossthreadGRFs() > inlineGRFs())
         generator.loadargs(getArgLoadBase(), getCrossthreadGRFs() - inlineGRFs(), temp);
+}
+
+void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &man)
+{
+    auto setOffset = [&](Label &label, int32_t &out, int32_t off = 0) {
+        auto id = label.getID(man);
+        if (man.hasTarget(id))
+            out = man.getTarget(id) + off;
+    };
+
+    int immOffset = 0xC;
+
+    setOffset(labels.localIDsLoaded, offsetSkipPerThread);
+    setOffset(labels.argsLoaded, offsetSkipCrossThread);
+    for (int i = 0; i < 2; i++)
+        setOffset(labels.crossThreadPatches[i], offsetCTPatches[i], immOffset);
 }
 
 std::string InterfaceHandler::generateZeInfo() const

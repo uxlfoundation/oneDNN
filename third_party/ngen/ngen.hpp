@@ -177,8 +177,8 @@ protected:
     Product product;
     int declaredGRFs = 128;
 
-    Label _labelLocalIDsLoaded;
-    Label _labelArgsLoaded;
+    InterfaceLabels _interfaceLabels;
+
     Label _lastFenceLabel;
     RegData _lastFenceDst;
 
@@ -345,7 +345,8 @@ protected:
 #endif
 
     // Labels.
-    inline void mark(Label &label)          { streamStack.back()->mark(label, labelManager); }
+    void mark(Label &label)            { streamStack.back()->mark(label, labelManager); }
+    void markIfUndefined(Label &label) { if (!label.defined(labelManager)) mark(label); }
 
     // Instructions.
     template <typename DT = void>

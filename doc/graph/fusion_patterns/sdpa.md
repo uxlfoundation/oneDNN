@@ -21,7 +21,8 @@ output is computed as:
 - N: the mini-batch size.
 - H: the number of multi-head.
 - S: the sequence length.
-- D: the size of each head.
+- D_qk: the head size of query and key.
+- D_v: the head size of value.
 
 ## SDPA patterns
 
@@ -81,8 +82,8 @@ optional.
    SoftMax and Value.
 6. The Reorder node is optional and used to reshape or transpose the attention
    output for cases where the attention output is transformed from shape (N, H,
-   S, D) to (N, S, H, D) or (N, S, H * D). The node can be constructed by the
-   combinations of [StaticTranspose](@ref dev_guide_op_statictranspose) and
+   S, D_v) to (N, S, H, D_v) or (N, S, H * D_v). The node can be constructed by
+   the combinations of [StaticTranspose](@ref dev_guide_op_statictranspose) and
    [StaticReshape](@ref dev_guide_op_staticreshape) operation in Graph API.
 
    ![SDPA-Reorder](images/sdpa-reorder.png)
@@ -122,15 +123,16 @@ platforms follow the general description in @ref dev_guide_data_types.
    shape or the shapes can be properly broadcasted based on the operation
    attribute.
 3. CPU
-   - Optimized implementation is available for 4D Q/K/V tensors with shape
-     defined as (N, H, S, D).
+   - Optimized implementation is available for 4D Q/K tensors with shape defined
+     as (N, H, S, D_qk) and V tensor with shape defined as (N, H, S, D_v).
    - Optimized implementation is available for OpenMP runtime and Threadpool
      runtime on Intel Architecture Processors.
    - Specifically for OpenMP runtime, the optimized implementation requires `N *
      H > 2 * thread number` to get enough parallelism.
 4. GPU
-   - Optimized implementation is available for 4D Q/K/V tensors with shape
-     defined as (N, H, S, D).
+   - Optimized implementation is available for 4D Q/K tensors with shape defined
+     as (N, H, S, D_qk) and V tensor with shape defined as (N, H, S, D_v) where
+     D_qk equals D_v.
    - Optimized implementation is available for `f16` or `bf16` SDPA with `f32`
      intermediate data type and `D <= 512` on Intel Graphics Products with
      Intel(R) Xe Matrix Extensions (Intel(R) XMX) support.

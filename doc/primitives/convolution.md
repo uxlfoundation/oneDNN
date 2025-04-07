@@ -173,15 +173,18 @@ source, destination, and weights memory objects:
 | forward        | u8, s8           | s8                    | u8, s8, s32, f32, f16, bf16      | u8, s8, s32, f32, f16, bf16 |
 | forward        | bf16             | bf16                  | f32, bf16                        | f32, bf16                   |
 | forward        | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3      | f8_e5m2, f8_e4m3, f32, f16, bf16 | f32                         |
+| forward        | f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0      | f4_e2m1, f4_e3m0, f32, f16, bf16 | f32                         |
 | forward        | f64              | f64                   | f64                              | f64                         |
 | backward       | f32, bf16        | bf16                  | bf16                             |                             |
 | backward       | f32, f16         | f16                   | f16                              |                             |
 | backward       | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3      | f8_e5m2, f8_e4m3                 |                             |
+| backward       | f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0      | f4_e2m1, f4_e3m0                 |                             |
 | backward       | f32              | f32                   | f32                              | f32                         |
 | backward       | f64              | f64                   | f64                              | f64                         |
 | weights update | bf16             | f32, bf16             | bf16, s8, u8                     | f32, bf16                   |
 | weights update | f16              | f32, f16              | f16                              | f32, f16                    |
 | weights update | f8_e5m2, f8_e4m3 | f32, f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3                 | f32                         |
+| weights update | f4_e2m1, f4_e3m0 | f32, f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0                 | f32                         |
 
 @warning
     There might be hardware and/or implementation specific restrictions.
@@ -444,6 +447,7 @@ of Winograd algorithm implementations.
 4. **CPU**
    - Only reference support for fp8 data types (f8_e5m2, f8_e4m3) is
      is available on CPU.
+   - No support is available for f4_e3m0 or f4_e2m1.
    - No support is available for f64.
 
 ## Performance Tips

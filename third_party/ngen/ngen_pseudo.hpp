@@ -563,6 +563,8 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
                 and_<uint32_t>(1, temp[2], r0[0], uint32_t(~0x1F), loc);
                 and_<uint16_t>(1, temp[0], r0[4], uint16_t(0xFF), loc);
                 add<uint32_t>(1, temp[2], temp[2], uint16_t(argBytes), loc);
+                markIfUndefined(_interfaceLabels.crossThreadPatches[0]);
+                add<uint32_t>(1, temp[2], temp[2], Immediate::ud(0), loc);  /* relocation */
                 if (simd == 1) {
                     mad<uint32_t>(1, tempAddr, temp[2], temp.uw(0), uint16_t(grfSize), loc);
                     lsc ? load(1, r1, D32T(4) | L1C_L3C,      A32,   temp, loc)
@@ -593,8 +595,7 @@ void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127
                 nop(loc);
         }
 
-        if (!_labelLocalIDsLoaded.defined(labelManager))
-            mark(_labelLocalIDsLoaded);
+        markIfUndefined(_interfaceLabels.localIDsLoaded);
 
     }
 }
@@ -612,6 +613,8 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inP
                 if (!lsc)
                     mov<uint32_t>(8, temp, uint16_t(0), loc);
                 and_<uint32_t>(1, tempAddr, r0[0], uint32_t(~0x1F), loc);
+                markIfUndefined(_interfaceLabels.crossThreadPatches[1]);
+                add<uint32_t>(1, tempAddr, tempAddr, Immediate::ud(0), loc);  /* relocation */
                 while (argGRFs > 0) {
                     int nload = std::min(utils::rounddown_pow2(argGRFs), lsc ? 8 : 4);
                     int loadBytes = nload * GRF::bytes(hardware);
@@ -627,8 +630,7 @@ void loadargs(const GRF &base, int argGRFs, const GRF &temp = GRF(127), bool inP
             defaultModifier = dmSave;
         }
 
-        if (!_labelArgsLoaded.defined(labelManager))
-            mark(_labelArgsLoaded);
+        markIfUndefined(_interfaceLabels.argsLoaded);
     }
 }
 

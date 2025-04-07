@@ -332,5 +332,4 @@ CMake error.
 
 | CMake Option            | Unsupported Values |
 |:------------------------|:-------------------|
-| ONEDNN_GPU_VENDOR       | NVIDIA             |
 | ONEDNN_ENABLE_PRIMITIVE | PRIMITIVE_NAME     |

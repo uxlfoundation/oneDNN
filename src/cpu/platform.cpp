@@ -138,6 +138,8 @@ bool has_data_type_support(data_type_t data_type) {
 #else
             return false;
 #endif
+        case data_type::f4_e3m0:
+        case data_type::f4_e2m1: return false;
         default: return true;
     }
 }

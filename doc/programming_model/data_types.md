@@ -30,10 +30,10 @@ in comparison to fp32.
 
 oneDNN supports training and inference with the following data types:
 
-| Usage mode | CPU                                                                               | GPU                                                         |
-|:-----------|:----------------------------------------------------------------------------------|:------------------------------------------------------------|
-| Inference  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1, f4\_e3m0, s8/u8, s4/u4, s32, boolean | f32, bf16, f16, f8\_e5m2/f8\_e4m3, s8/u8, s32, f64, boolean |
-| Training   | f32, bf16, f16, f8\_e5m2/f8\_e4m3                                                 | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f64                      |
+| Usage mode | CPU                                                                          | GPU                                                                              |
+|:-----------|:-----------------------------------------------------------------------------|:---------------------------------------------------------------------------------|
+| Inference  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1/f4\_e3m0, s8/u8, s4/u4, boolean  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1/f4\_e3m0, s8/u8, s4/u4, f64, boolean |
+| Training   | f32, bf16, f16, f8\_e5m2/f8\_e4m3                                            | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f64                                           |
 
 @note
     Using lower precision arithmetic may require changes in the deep learning
@@ -47,6 +47,12 @@ oneDNN supports training and inference with the following data types:
     s4/u4 data types are only supported as a storage data type for weights argument
     in case of weights decompression. For more details, refer to
     [Matmul Tutorial: weights decompression](@ref weights_decompression_matmul_cpp).
+
+@note
+    f8\_e5m2/f8\_e4m3 and f4\_e2m1/f4\_e3m0 data types are only supported by
+    convolution, matmul, and reorder primitives on Intel(R) Data Center GPU
+    Max Series or newer. Compute primitives provide support through internal
+    converison into f16 as current GPU architectures lack native support.
 
 See topics for the corresponding data types details:
  * @ref dev_guide_inference_int8

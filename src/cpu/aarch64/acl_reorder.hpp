@@ -22,6 +22,16 @@
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/reorder/cpu_reorder_pd.hpp"
 
+namespace {
+int find_dense_idx(const dnnl_memory_desc *md, int dense_blk) {
+    int dense_idx = -1;
+    for (int i = 0; i < md->ndims; i++) {
+        if (md->format_desc.blocking.strides[i] == dense_blk) dense_idx = i;
+    }
+    return dense_idx;
+}
+} // namespace
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -40,6 +50,7 @@ struct acl_reorder_conf_t {
     arm_compute::TensorInfo dst_info;
     arm_compute::WeightFormat src_wf;
     arm_compute::WeightFormat dst_wf;
+    bool transpose;
 };
 
 struct acl_reorder_resource_t : public resource_t {
@@ -58,7 +69,8 @@ struct acl_reorder_resource_t : public resource_t {
             &acl_obj_->src_tensor,
             &acl_obj_->dst_tensor,
             app.src_wf,
-            app.dst_wf
+            app.dst_wf,
+            app.transpose
             );
         // clang-format on
 
@@ -84,10 +96,9 @@ struct acl_reorder_fwd_t : public primitive_t {
                 const primitive_attr_t *attr, engine_t *src_engine,
                 const memory_desc_t *src_md, engine_t *dst_engine,
                 const memory_desc_t *dst_md) {
-
             using namespace acl_utils;
 
-            // ACL reorder support f32->f32 and f32->bf16
+            // ComputeLibrary reorders support f32->f32 and f32->bf16
             bool ok = src_md->data_type == data_type::f32
                     && utils::one_of(
                             dst_md->data_type, data_type::f32, data_type::bf16)
@@ -121,23 +132,58 @@ struct acl_reorder_fwd_t : public primitive_t {
             ACL_CHECK_SUPPORT(format_tag::undef == src_tag,
                     "Only ab, ba or cdba source formats supported");
 
-            auto dst_tag = memory_desc_matches_one_of_tag(*dst_md,
-                    format_tag::BA8b4a, format_tag::BA4b4a, format_tag::Ab4a,
-                    format_tag::Ab8a, format_tag::Acdb8a, format_tag::Acdb4a);
-            ACL_CHECK_SUPPORT(format_tag::undef == dst_tag,
-                    "Only Ab4a/Ab8a, BA8b4a/BA4b4a and Acdb8a/Acdb4a "
-                    "destination formats supported");
+            auto &transpose = _pd->app_.transpose;
+            auto &dst_blocking = dst_md->format_desc.blocking;
 
-            if (dst_tag == format_tag::BA4b4a || dst_tag == format_tag::Acdb4a
-                    || dst_tag == format_tag::Ab4a) {
-                _pd->app_.dst_wf = arm_compute::WeightFormat::OHWIo4;
-            } else if (mayiuse(sve_256)
-                    && (dst_tag == format_tag::BA8b4a
-                            || dst_tag == format_tag::Acdb8a
-                            || dst_tag == format_tag::Ab8a)) {
-                _pd->app_.dst_wf = arm_compute::WeightFormat::OHWIo8;
+            ACL_CHECK_SUPPORT(src_md->ndims != dst_md->ndims,
+                    "Number of dimensions in src and dst do not match");
+            ACL_CHECK_SUPPORT(dst_md->ndims != 2 && dst_md->ndims != 4,
+                    "ACL only supports 2D and 4D reorders");
+            // Check if a transpose is needed during the reorder
+            if (src_md->ndims == 4) {
+                if (memory_desc_matches_tag(
+                            *src_md, dnnl::impl::format_tag::cdba)
+                        && (memory_desc_matches_tag(
+                                    *dst_md, dnnl::impl::format_tag::Acdb4a)
+                                || memory_desc_matches_tag(*dst_md,
+                                        dnnl::impl::format_tag::Acdb8a))) {
+                    transpose = true;
+                } else {
+                    return status::unimplemented;
+                };
             } else {
-                return status::unimplemented;
+                uint32_t blk_mult = 1;
+                for (int i = 0; i < dst_blocking.inner_nblks; i++) {
+                    blk_mult *= dst_blocking.inner_blks[i];
+                }
+
+                int src_dense_idx = find_dense_idx(src_md, 1);
+                int dst_dense_idx = find_dense_idx(dst_md, blk_mult);
+
+                transpose = src_dense_idx != dst_dense_idx;
+            }
+
+            auto &dst_wf = _pd->app_.dst_wf;
+
+            dst_wf = arm_compute::WeightFormat::OHWI;
+            // Offsets to calculate the enum for ComputeLibrary weight formats
+            // defined in arm_compute/core/CoreTypes.h
+            const auto interleave_offset = 0x000100;
+            const auto block_by_offset = 0x100000;
+            for (int i = 0; i < dst_blocking.inner_nblks; i++) {
+                auto idx = dst_blocking.inner_idxs[i];
+                auto blk = dst_blocking.inner_blks[i];
+                if (idx == 0) {
+                    // Set interleave_by
+                    dst_wf = (arm_compute::WeightFormat)(
+                            (long int)dst_wf + interleave_offset * (blk - 1));
+                } else if (idx == 1) {
+                    // Set block_by
+                    dst_wf = (arm_compute::WeightFormat)(
+                            (long int)dst_wf + block_by_offset * (blk - 1));
+                } else {
+                    return status::unimplemented;
+                }
             }
 
             arm_compute::TensorShape acl_tensor_shape_in;
@@ -146,18 +192,14 @@ struct acl_reorder_fwd_t : public primitive_t {
             // Switch for 2 or 4 dim tensors
             switch (src_md->ndims) {
                 case 2: {
-                    if (src_tag == format_tag::ab
-                            && dst_md->data_type == data_type::bf16
-                            && utils::one_of(dst_tag, format_tag::BA8b4a,
-                                    format_tag::BA4b4a)) { // bf16
+                    if ((src_tag == format_tag::ab && transpose)
+                            || (src_tag == format_tag::ba && !transpose)) {
                         acl_tensor_shape_in = arm_compute::TensorShape(
                                 src_md->dims[0], src_md->dims[1]);
                         acl_tensor_shape_out = arm_compute::TensorShape(
                                 dst_md->padded_dims[0], dst_md->padded_dims[1]);
-                    } else if (src_tag == format_tag::ba
-                            && dst_md->data_type == data_type::f32
-                            && !utils::one_of(dst_tag, format_tag::BA8b4a,
-                                    format_tag::BA4b4a)) { // f32
+                    } else if ((src_tag == format_tag::ba && transpose)
+                            || (src_tag == format_tag::ab && !transpose)) {
                         acl_tensor_shape_in = arm_compute::TensorShape(
                                 src_md->dims[1], src_md->dims[0]);
                         acl_tensor_shape_out = arm_compute::TensorShape(
@@ -197,13 +239,12 @@ struct acl_reorder_fwd_t : public primitive_t {
 
             const arm_compute::DataType dst_acl_data_t
                     = acl_utils::get_acl_data_t(dst_md->data_type);
-            _pd->app_.dst_info = arm_compute::TensorInfo(
-                    acl_tensor_shape_out, 1, dst_acl_data_t, acl_layout);
+            _pd->app_.dst_info = arm_compute::TensorInfo(acl_tensor_shape_out,
+                    1, dst_acl_data_t, arm_compute::DataLayout::NCHW);
 
             ACL_CHECK_VALID(arm_compute::NEReorderLayer::validate(
                     &_pd->app_.src_info, &_pd->app_.dst_info, _pd->app_.src_wf,
-                    _pd->app_.dst_wf));
-
+                    dst_wf, _pd->app_.transpose));
             // Init scratch memory, not used so 0 in this implementation
             _pd->init_scratchpad_md();
 

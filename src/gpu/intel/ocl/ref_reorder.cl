@@ -29,7 +29,11 @@
     (off_t)(get_global_id(index) + offset.array[index])
 
 KERNEL_ATTR
-__kernel void ref_reorder(__global SRC_DATA_T *restrict src,
+#if SUB_GROUP_SIZE != 1
+__attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE)))
+#endif
+__kernel void
+ref_reorder(__global SRC_DATA_T *restrict src,
         __global DST_DATA_T *restrict dst,
         __global SRC_SCALES_DATA_T *restrict src_scales,
         __global SRC_ZP_DATA_T *restrict src_zps,

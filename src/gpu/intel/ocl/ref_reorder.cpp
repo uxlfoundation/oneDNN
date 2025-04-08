@@ -46,11 +46,14 @@ status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.ndims = src_mdw.ndims();
     conf.nelems = utils::array_product(padded_dims, conf.ndims);
 
-    conf.sub_group_size = 1;
+    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *device_info = compute_engine->device_info();
+    int sub_group_size = 1;
+    if (device_info->mayiuse_sub_group(16)) sub_group_size = 16;
+    conf.sub_group_size = sub_group_size;
 
     if (conf.nelems == 0) return status::success;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
     conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
     conf.subbyte_pack
             = utils::one_of(dst_mdw.data_type(), u4, s4, f4_e2m1, f4_e3m0);
@@ -92,6 +95,7 @@ status_t ref_reorder_t::pd_t::init_kernel_ctx(
 
     kernel_ctx.define_int("REF_REORDER", 1);
     kernel_ctx.define_int("PAD_FILL_ZERO", conf.has_padding);
+    kernel_ctx.define_int("SUB_GROUP_SIZE", conf.sub_group_size);
 
     auto dst_rnd_mode = attr()->rounding_mode_.get(DNNL_ARG_DST);
     kernel_ctx.define_int(

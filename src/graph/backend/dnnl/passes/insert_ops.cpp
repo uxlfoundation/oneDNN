@@ -638,7 +638,8 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
             index += 1;
         }
         // Insert reshape for mask
-        if (cur_op->get_attr<bool>(op_attr::with_mask)) {
+        if (cur_op->get_attr<int64_t>(op_attr::mask_type)
+                == static_cast<int64_t>(attn_mask_type::buffer)) {
             int32_t mask_ndims = cur_op->get_input_value(index)
                                          ->get_logical_tensor()
                                          .ndims;

@@ -1133,14 +1133,20 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_groupnorm, 1,
 
 DNNL_GRAPH_OP_SCHEMA(dnnl_mask, 1,
         op_schema_t()
-                .set_num_inputs(2)
+                .set_inputs_option(op_schema_t::param_num_option::optional)
+                .set_num_inputs(std::set<size_t>({2, 4}))
                 .set_num_outputs(1)
                 .set_input(0, "input")
                 .set_input(1, "-inf")
+                .set_input(2, "s_kv")
+                .set_input(3, "s_q")
                 .set_output(0, "output")
                 // Attributes inherited from front gen_index ops
                 .set_attr(op_attr::axis_row, true, attribute_kind::i)
                 .set_attr(op_attr::axis_col, true, attribute_kind::i)
+                // mask_type attribute indicates existence of explicit mask,
+                // top-left implicit causal mask or bottm-right implicit causal mask
+                .set_attr(op_attr::mask_type, true, attribute_kind::i)
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape)
@@ -1166,9 +1172,9 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 .set_attr(op_attr::with_scale, true, attribute_kind::b)
                 .set_attr(op_attr::is_invert_scale, false, attribute_kind::b,
                         false)
-                .set_attr(op_attr::with_mask, true, attribute_kind::b)
-                // with_causal attribute support top-left mask type only
-                .set_attr(op_attr::with_causal, true, attribute_kind::b)
+                // mask_type attribute indicates existence of explicit mask,
+                // top-left implicit causal mask or bottm-right implicit causal mask
+                .set_attr(op_attr::mask_type, true, attribute_kind::i)
                 .set_shape_inference_function(infer_dnnl_sdpa_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_sdpa)
                 .SET_EXECUTABLE_CREATOR(executable_creator<sdpa_executable_t>)

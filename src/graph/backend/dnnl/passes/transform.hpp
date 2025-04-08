@@ -266,6 +266,7 @@ impl::status_t replace_select_values(std::shared_ptr<subgraph_t> &sg);
 
 /// This pass will translate the subgraph containing subgraph of implicit causal
 /// mask into a dnnl_mask op
+/// for top-left implicit causal mask:
 ///           in0
 ///         /    |
 ///    GenIndex GenIndex             in0  in1
@@ -274,6 +275,21 @@ impl::status_t replace_select_values(std::shared_ptr<subgraph_t> &sg);
 ///               \  /   /               |
 ///                Select
 ///                   |
+///
+/// for bottom-right implicit causal mask:
+///           in0
+///         /     |
+///    GenIndex GenIndex
+///  in2   |      |                in0 in1 in2 in3
+///   \_  Add     |                    \ | |  /
+///   in3  |      |           -->        mask
+///     \_Sub     |                       |
+///        \     /
+///      GreaterEqual in0 in1
+///               \  /   /
+///                Select
+///                   |
+///
 status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg);
 
 /// This pass will transform the sdpa subgraph into a dnnl_sdpa op.

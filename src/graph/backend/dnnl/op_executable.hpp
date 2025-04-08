@@ -2786,8 +2786,8 @@ struct sdpa_executable_t : public op_executable_t {
     sdpa_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
             fusion_info_mgr_t &mgr, pd_cache_t &pd_cache)
         : with_scale_(op->get_attr<bool>(op_attr::with_scale))
-        , with_mask_(op->get_attr<bool>(op_attr::with_mask))
-        , is_causal_mask_(op->get_attr<bool>(op_attr::with_causal)) {
+        , mask_type_(static_cast<attn_mask_type_t>(
+                  op->get_attr<int64_t>(op_attr::mask_type))) {
 
         auto md_q = make_dnnl_memory_desc(
                 op->get_input_value(0)->get_logical_tensor());
@@ -2806,7 +2806,8 @@ struct sdpa_executable_t : public op_executable_t {
                                .data_type;
 
         dnnl::memory::desc md_mask;
-        if (with_mask_)
+        with_explicit_mask_ = mask_type_ == attn_mask_type::buffer;
+        if (with_explicit_mask_)
             md_mask = make_dnnl_memory_desc(
                     op->get_input_value(idx++)->get_logical_tensor());
 
@@ -2821,10 +2822,7 @@ struct sdpa_executable_t : public op_executable_t {
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
         status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
                 md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
-                is_invert_scale_, kv_head_number,
-                is_causal_mask_ ? attn_mask_type::top_left
-                                : attn_mask_type::buffer,
-                attr.get());
+                is_invert_scale_, kv_head_number, mask_type_, attr.get());
         if (s != dnnl::impl::status::success) {
             is_initialized_ = false;
         } else {
@@ -2845,7 +2843,8 @@ struct sdpa_executable_t : public op_executable_t {
         memory_arg_t mem_arg_scale = {
                 with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
         memory_arg_t mem_arg_mask
-                = {with_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get() : nullptr,
+                = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
+                                       : nullptr,
                         true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
@@ -2872,7 +2871,8 @@ struct sdpa_executable_t : public op_executable_t {
         memory_arg_t mem_arg_scale = {
                 with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
         memory_arg_t mem_arg_mask
-                = {with_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get() : nullptr,
+                = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
+                                       : nullptr,
                         true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
@@ -2910,7 +2910,8 @@ struct sdpa_executable_t : public op_executable_t {
         memory_arg_t mem_arg_scale = {
                 with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
         memory_arg_t mem_arg_mask
-                = {with_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get() : nullptr,
+                = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
+                                       : nullptr,
                         true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
@@ -2952,9 +2953,9 @@ private:
     std::shared_ptr<primitive_desc_t> sdpa_pd_;
     std::shared_ptr<primitive_t> sdpa_prim_;
     bool with_scale_;
-    bool with_mask_;
+    bool with_explicit_mask_;
+    attn_mask_type_t mask_type_;
     bool is_invert_scale_;
-    bool is_causal_mask_;
     bool is_initialized_;
 };
 

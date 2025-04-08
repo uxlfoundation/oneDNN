@@ -287,6 +287,7 @@ struct brgemm_desc_t {
     bool is_f16 = false, is_f16_tmm = false;
     bool is_f32 = false;
     bool is_bf32 = false;
+    bool is_tf32 = false;
 
     bool has_int8_vnni = false;
 
@@ -473,8 +474,12 @@ struct brgemm_desc_t {
     bool reduce_by_words() const {
         return is_bf16_tmm || is_f16_tmm || is_input_convert();
     }
-    int max_rd_block() const { return reduce_by_words() ? 32 : 64; }
-    int rd_block_step() const { return (reduce_by_words() && !is_fp8) ? 2 : 4; }
+    int max_rd_block() const {
+        return is_tf32 ? 16 : reduce_by_words() ? 32 : 64;
+    }
+    int rd_block_step() const {
+        return is_tf32 ? 1 : (reduce_by_words() && !is_fp8) ? 2 : 4;
+    }
 
     bool amx_may_extend_k() const {
         return (is_superset(isa_impl, avx512_core_amx) && brgattr.extendable_k

@@ -1084,29 +1084,6 @@ int get_gpu_cache_size(size_t &cache_size) {
     return OK;
 }
 
-std::string smart_bytes(double bytes) {
-    std::string s;
-    static constexpr int oneK = 1024;
-
-    if (bytes < oneK) {
-        s = std::to_string(static_cast<size_t>(bytes)) + " B";
-        return s;
-    }
-    auto KB = bytes / oneK;
-    if (KB < oneK) {
-        s = std::to_string(KB) + " KB";
-        return s;
-    }
-    auto MB = KB / oneK;
-    if (MB < oneK) {
-        s = std::to_string(MB) + " MB";
-        return s;
-    }
-    auto GB = MB / oneK;
-    s = std::to_string(GB) + " GB";
-    return s;
-}
-
 // The function logic is the following:
 // `checkit` function verifies that the bare minimum (the library and the stock
 // reference) memory requirements are complied with the limits.
@@ -1197,6 +1174,7 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     size_t total_size_cpu = total_size_ref
             + check_mem_size_args.total_size_compare
             + check_mem_size_args.total_size_mapped;
+
     // If the problem runs on CPU, the combined memory represents requirements
     // for the library and for the reference paths.
     // If the problem runs on a device, the combined memory represents potential
@@ -1207,6 +1185,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     bool fits_cpu_ram = cpu_and_device_size
             <= (is_cpu() ? benchdnn_cpu_limit : benchdnn_combined_limit);
 
+    set_zmalloc_max_expected_size(
+            is_cpu() ? cpu_and_device_size : total_size_cpu);
     // Check combined size against CPU capacity as the simpler method to account
     // for integrated devices and mapping/unmapping memory.
 

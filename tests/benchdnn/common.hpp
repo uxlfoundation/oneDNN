@@ -166,6 +166,7 @@ void init_fp_mode();
 
 void *zmalloc(size_t size, size_t align);
 void zfree(void *ptr);
+void set_zmalloc_max_expected_size(size_t size);
 
 bool str2bool(const char *str);
 const char *bool2str(bool value);
@@ -219,4 +220,5 @@ struct summary_t {
 
 extern summary_t summary;
 
+std::string smart_bytes(double bytes);
 #endif

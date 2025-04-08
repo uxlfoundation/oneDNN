@@ -23,6 +23,7 @@
 #include <cerrno>
 #include <fstream>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -243,12 +244,75 @@ static void zfree_protect(void *ptr) {
     ::free(ptr_start);
 }
 #endif
+struct memory_registry_t {
+    void add(void *ptr, size_t size) {
+        std::lock_guard<std::mutex> g(m_);
+        assert(allocations_.find(ptr) == allocations_.end());
+        allocations_.emplace(std::pair<void *, size_t>(ptr, size));
+        total_size_ += size;
+
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: zmalloc request with size %s, total "
+                "allocation size: %s\n",
+                smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+        warn_size_check();
+    }
+    void remove(void *ptr) {
+        std::lock_guard<std::mutex> g(m_);
+        const size_t size = allocations_[ptr];
+        total_size_ -= size;
+
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: zfree request with size %s, total "
+                "allocation size: %s\n",
+                smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+        allocations_.erase(ptr);
+    }
+
+    void set_expected_max(size_t size) {
+        expected_max_ = size;
+        has_warned_ = false;
+        warn_size_check();
+    }
+
+private:
+    size_t size() const { return total_size_; }
+    void warn_size_check() {
+        if (expected_max_ != unset_ && !has_warned_
+                && total_size_ > expected_max_) {
+            // Switch to WARNING once existing failures are resolved
+            BENCHDNN_PRINT(0,
+                    "[CHECK_MEM][INFO]: memory use underestimated, "
+                    "zmalloc allocations exceed %s\n",
+                    smart_bytes(expected_max_).c_str());
+            // Prevent spamming logs with subsequent overflowing allocations;
+            has_warned_ = true;
+        }
+    }
+    static constexpr size_t unset_ = 0;
+    size_t expected_max_ = unset_;
+    size_t total_size_ = 0;
+    bool has_warned_ = false;
+    std::unordered_map<void *, size_t> allocations_;
+    std::mutex m_;
+};
+
+memory_registry_t &zmalloc_registry() {
+    static memory_registry_t reg {};
+    return reg;
+}
+
+void set_zmalloc_max_expected_size(size_t size) {
+    zmalloc_registry().set_expected_max(size);
+}
 
 void *zmalloc(size_t size, size_t align) {
 #ifdef BENCHDNN_MEMORY_CHECK
     if (has_bench_mode_bit(mode_bit_t::exec)
             && !has_bench_mode_bit(mode_bit_t::perf)) {
-        return zmalloc_protect(size);
+        void *ptr = zmalloc_protect(size);
+        zmalloc_registry().add(ptr, size);
+        return ptr;
     }
 #endif
 
@@ -267,12 +331,14 @@ void *zmalloc(size_t size, size_t align) {
     if (has_bench_mode_bit(mode_bit_t::perf) && (size < align)) size = align;
     int rc = ::posix_memalign(&ptr, align, size);
 #endif /* _WIN32 */
+    zmalloc_registry().add(ptr, size);
     return rc == 0 ? ptr : nullptr;
 }
 
 // zfree behavior is aligned with UNIX free().
 void zfree(void *ptr) {
     if (!ptr) return;
+    zmalloc_registry().remove(ptr);
 #ifdef BENCHDNN_MEMORY_CHECK
     if (has_bench_mode_bit(mode_bit_t::exec)
             && !has_bench_mode_bit(mode_bit_t::perf)) {
@@ -718,4 +784,27 @@ std::string benchdnn_getenv_string(const char *name) {
     if (getenv(name, value_str, len) > 0) { value = value_str; }
     std::transform(value.begin(), value.end(), value.begin(), ::tolower);
     return value;
+}
+
+std::string smart_bytes(double bytes) {
+    std::string s;
+    static constexpr int oneK = 1024;
+
+    if (bytes < oneK) {
+        s = std::to_string(static_cast<size_t>(bytes)) + " B";
+        return s;
+    }
+    auto KB = bytes / oneK;
+    if (KB < oneK) {
+        s = std::to_string(KB) + " KB";
+        return s;
+    }
+    auto MB = KB / oneK;
+    if (MB < oneK) {
+        s = std::to_string(MB) + " MB";
+        return s;
+    }
+    auto GB = MB / oneK;
+    s = std::to_string(GB) + " GB";
+    return s;
 }

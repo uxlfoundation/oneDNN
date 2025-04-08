@@ -416,7 +416,10 @@ struct nc_block_t {
             }
         }
         auto default_n_blk = (type.size() <= 2) ? 32 : 16;
-        int n_block = (c_block == 1) ? 1 : pick_block(n, 16, default_n_blk);
+        int n_block = (c_block == 1)
+                ? 1
+                : (c_block < 8 ? pick_block(n, default_n_blk)
+                               : pick_block(n, 16, default_n_blk));
         return nc_block_t(n_block, c_block);
     }
 

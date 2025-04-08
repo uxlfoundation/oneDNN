@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -172,6 +172,7 @@ status_t brgemm_convolution_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
 template struct brgemm_convolution_bwd_t<avx2>;
 template struct brgemm_convolution_bwd_t<avx2_vnni_2>;
+template struct brgemm_convolution_bwd_t<avx10_2_512>;
 template struct brgemm_convolution_bwd_t<avx512_core>;
 template struct brgemm_convolution_bwd_t<avx512_core_bf16>;
 template struct brgemm_convolution_bwd_t<avx512_core_fp16>;

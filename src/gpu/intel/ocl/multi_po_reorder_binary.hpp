@@ -53,16 +53,15 @@ struct multi_po_reorder_binary_t : public gpu_primitive_t {
             // Assumption: src_mds have different layouts with dst mem
             // descriptor matching only with one of the src mem descriptors
             // or, all of them have the same memory layout
-            bool need_output_reorder
-                    = (!dnnl_memory_desc_equal(src_md(0), src_md(1))
-                              && (dnnl_memory_desc_equal(src_md(0), dst_md())
-                                      || dnnl_memory_desc_equal(
-                                              src_md(1), dst_md())))
-                    || (dnnl_memory_desc_equal(src_md(0), src_md(1))
-                            && dnnl_memory_desc_equal(src_md(0), dst_md()));
+            const bool need_output_reorder
+                    = dnnl_memory_desc_equal(src_md(0), dst_md())
+                    || dnnl_memory_desc_equal(src_md(1), dst_md());
 
-            // Assumption: src_mds have different layouts with dst_md matching one of src_md
-            need_input_reorder = dnnl_memory_desc_equal(src_md(0), src_md(1))
+            // Assumption: src_mds have different layouts with dst_md matching
+            // one of src_md
+            const bool src_tags_match
+                    = dnnl_memory_desc_equal(src_md(0), src_md(1));
+            need_input_reorder = src_tags_match
                     && !dnnl_memory_desc_equal(src_md(0), dst_md());
 
             if ((!need_output_reorder && !need_input_reorder)
@@ -96,17 +95,35 @@ struct multi_po_reorder_binary_t : public gpu_primitive_t {
                                 engine, src_md(1), dst_md(), &attr),
                         VERBOSE_PRIMITIVE_CREATION_FAIL, "reorder");
             } else { //need_output_reorder else-block
+                // Check for memory descriptor layouts for SRC and DST
+                // Matching layouts will not cause a reorder
+                src_index = dnnl_memory_desc_equal(src_md(0), dst_md()) ? 0 : 1;
+
                 switch (binary_alg) {
+                    case alg_kind::binary_eq:
+                    case alg_kind::binary_ne:
+                        VDISPATCH_BINARY(src_tags_match,
+                                VERBOSE_TENSOR_FORMAT_MISMATCH, "src0", "src1");
+                        break;
                     case alg_kind::binary_add:
                     case alg_kind::binary_mul:
                     case alg_kind::binary_min:
                     case alg_kind::binary_max: break;
+                    // Asymmetric ops
+                    case alg_kind::binary_lt:
+                        if (!src_index) binary_alg = alg_kind::binary_gt;
+                        break;
+                    case alg_kind::binary_gt:
+                        if (!src_index) binary_alg = alg_kind::binary_lt;
+                        break;
+                    case alg_kind::binary_le:
+                        if (!src_index) binary_alg = alg_kind::binary_ge;
+                        break;
+                    case alg_kind::binary_ge:
+                        if (!src_index) binary_alg = alg_kind::binary_le;
+                        break;
                     default: VDISPATCH_BINARY(false, VERBOSE_BAD_ALGORITHM);
                 };
-
-                // Check for memory descriptor layours for SRC and DST
-                // Matching layouts will not cause a reorder
-                src_index = dnnl_memory_desc_equal(src_md(0), dst_md()) ? 0 : 1;
 
                 VDISPATCH_BINARY_SC(attr.post_ops_.append_binary(
                                             binary_alg, src_md(src_index)),

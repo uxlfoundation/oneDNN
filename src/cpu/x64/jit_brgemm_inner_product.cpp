@@ -1021,6 +1021,7 @@ template struct brgemm_inner_product_bwd_data_t<avx512_core_amx>;
 template struct brgemm_inner_product_bwd_data_t<avx512_core_bf16>;
 template struct brgemm_inner_product_bwd_data_t<avx512_core_amx_fp16>;
 template struct brgemm_inner_product_bwd_data_t<avx512_core_fp16>;
+template struct brgemm_inner_product_bwd_data_t<avx10_2_512>;
 
 template <cpu_isa_t isa>
 struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
@@ -1789,6 +1790,7 @@ template struct brgemm_inner_product_bwd_weights_t<avx512_core_amx>;
 template struct brgemm_inner_product_bwd_weights_t<avx512_core_bf16>;
 template struct brgemm_inner_product_bwd_weights_t<avx512_core>;
 template struct brgemm_inner_product_bwd_weights_t<avx2>;
+template struct brgemm_inner_product_bwd_weights_t<avx10_2_512>;
 
 } // namespace x64
 } // namespace cpu

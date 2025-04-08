@@ -358,12 +358,13 @@ internal_padding_block_concat2(__global DATA_T *dst,
     __global const DATA_T *src;
 
     // within block idx, ex: 0-7, 0-15, 0-23, 0-31
-    idx_t blid = get_local_id(0) % B0;
+    idx_t blid = get_sub_group_local_id() % B0;
 
-    idx_t id_start = get_group_id(0) * elems_per_sg + get_local_id(0);
+    idx_t id_start = (get_global_id(0) / SIMD) * elems_per_sg
+            + get_sub_group_local_id();
     idx_t bii = id_start / B0;
 
-    idx_t sg_first_bii = get_group_id(0) * elems_per_sg / B0;
+    idx_t sg_first_bii = (get_global_id(0) / SIMD) * elems_per_sg / B0;
 
     // index along concat dimension
     idx_t ic = (bii / inner_dim) * B0 + blid;
@@ -420,13 +421,13 @@ internal_padding_block_concat2(__global DATA_T *dst,
 
 #if NPERSG > 1
             DDATA_T v = 0;
-            for (int b = get_local_id(0), vid = 0; b < rem_elems;
+            for (int b = get_sub_group_local_id(), vid = 0; b < rem_elems;
                     b += SIMD, vid++) {
                 v[vid] = src1[batch_offset1 + next_block * B0 + b];
             }
             bVal = AS_FULL(v);
 #else
-            for (int b = get_local_id(0); b < rem_elems; b += SIMD) {
+            for (int b = get_sub_group_local_id(); b < rem_elems; b += SIMD) {
                 bVal = src1[batch_offset1 + next_block * B0 + b];
             }
 #endif
@@ -457,10 +458,11 @@ internal_padding_block_concat2(__global DATA_T *dst,
             const int blocks_per_simd1 = SIMD / B0;
             const int leading_boundary_shift = first_zp_block - sg_first_bii;
             int block_scaled_leading_shift
-                    = (leading_boundary_shift) / blocks_per_simd1;
+                    = DIV_UP(leading_boundary_shift, blocks_per_simd1);
             int rollover = leading_boundary_shift % blocks_per_simd1;
 
-            if (((get_local_id(0) / B0) + rollover) >= blocks_per_simd1)
+            if (((get_sub_group_local_id() / B0) + rollover)
+                    >= blocks_per_simd1)
                 block_scaled_leading_shift++;
 
             if ((ic % B0) >= cutoff) {
@@ -478,14 +480,14 @@ internal_padding_block_concat2(__global DATA_T *dst,
             int rem_elems = n_blocks_tail * B0;
 
 #if NPERSG > 1
-            for (int b = get_local_id(0), vid = 0; b < rem_elems;
+            for (int b = get_sub_group_local_id(), vid = 0; b < rem_elems;
                     b += SIMD, vid++) {
                 //TODO: MAYBE_WRITE like in simple concat kernel? nonstandard CL
                 dst[ext_batch_offset + sg_first_bii * B0 + b]
                         = AS_VEC(aVal)[vid];
             }
 #else
-            for (int b = get_local_id(0); b < rem_elems; b += SIMD) {
+            for (int b = get_sub_group_local_id(); b < rem_elems; b += SIMD) {
                 dst[ext_batch_offset + sg_first_bii * B0 + b] = aVal;
             }
 #endif
@@ -532,7 +534,8 @@ internal_padding_block_concat2(__global DATA_T *dst,
             if (blocks_per_simd1 > 1) {
                 int rollover = leading_boundary_shift % blocks_per_simd1;
 
-                if (((get_local_id(0) / B0) + rollover) >= blocks_per_simd1)
+                if (((get_sub_group_local_id() / B0) + rollover)
+                        >= blocks_per_simd1)
                     block_scaled_leading_shift++;
 
                 bVal = bVal
@@ -541,12 +544,12 @@ internal_padding_block_concat2(__global DATA_T *dst,
                 // cannot directly shift values to corresponding location in sg since each
                 // workitem is responsible for multiple blocks, figure out source block
                 int src_bank
-                        = ((get_local_id(0) / B0)
+                        = ((get_sub_group_local_id() / B0)
                                   + leading_boundary_shift % blocks_per_simd1)
                         % blocks_per_simd1;
 
                 bVal = intel_sub_group_shuffle(
-                        bVal, src_bank * B0 + (get_local_id(0) % B0));
+                        bVal, src_bank * B0 + (get_sub_group_local_id() % B0));
 
             } else {
                 bVal = bVal
@@ -576,7 +579,7 @@ internal_padding_block_concat2(__global DATA_T *dst,
 
             // cannot directly shift values to corresponding location in sg since each
             // workitem is responsible for multiple blocks, figure out source block
-            int src_bank = ((get_local_id(0) / B0)
+            int src_bank = ((get_sub_group_local_id() / B0)
                                    + trailing_boundary_shift % blocks_per_simd1)
                     % blocks_per_simd1;
 
@@ -602,10 +605,10 @@ internal_padding_block_concat2(__global DATA_T *dst,
 
             // reorder according to source banks
             csval = intel_sub_group_shuffle(
-                    csval, src_bank * B0 + get_local_id(0) % B0);
+                    csval, src_bank * B0 + get_sub_group_local_id() % B0);
             cVal = csval << ((NPERSG - ntrail) * DATA_TYPE_SIZE * 8);
 
-            if (cutoff > 0 && (get_local_id(0) % B0) < cutoff) {
+            if (cutoff > 0 && (get_sub_group_local_id() % B0) < cutoff) {
                 aVal = (aVal & trailmask) | (cVal & ~trailmask);
             }
 
@@ -620,7 +623,8 @@ internal_padding_block_concat2(__global DATA_T *dst,
                         = (leading_boundary_shift) / blocks_per_simd1;
                 int rollover = leading_boundary_shift % blocks_per_simd1;
 
-                if (((get_local_id(0) / B0) + rollover) >= blocks_per_simd1)
+                if (((get_sub_group_local_id() / B0) + rollover)
+                        >= blocks_per_simd1)
                     block_scaled_leading_shift++;
 
                 if ((ic % B0) >= cutoff) {

@@ -155,21 +155,18 @@ static status_t normalize_reusable_simple_concat(
     return status::success;
 }
 
-static status_t attempt_normalize_ip_concat2(
-        reusable_simple_concat_params_t &conf,
+static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
         reusable_simple_concat_runtime_params_t &rt_conf,
         impl::engine_t *engine, const concat_pd_t *pd,
         normalization_t normalize) {
 
     using namespace utils;
-    using arch_t = compute::gpu_arch_t;
     const memory_desc_wrapper ref_dst_mdw = *pd->dst_md();
 
     const auto concat_dim = pd->concat_dim();
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
-    auto hw = device_info->gpu_arch();
 
     normalize.set_pessimistic_chunk_size();
 
@@ -180,6 +177,7 @@ static status_t attempt_normalize_ip_concat2(
 
     conf.read_block = 1;
     conf.write_block = 1;
+    conf.bytes_per_workitem = 0;
 
     memory_desc_t dst_md, src_md;
     int offset = 0, padded_offset = 0, nonempty_inputs = 0;
@@ -229,9 +227,7 @@ static status_t attempt_normalize_ip_concat2(
         }
         stride *= blk;
     }
-    const bool is_integrated = device_info->is_integrated();
-    const size_t preferred_bytes_per_workitem
-            = (hw == arch_t::xe2 && is_integrated) ? 4 : 8;
+    const size_t preferred_bytes_per_workitem = 8;
 
     int max_simd = 1;
     size_t bytes_per_workitem = preferred_bytes_per_workitem;
@@ -306,19 +302,16 @@ static status_t attempt_normalize_ip_concat2(
         conf.use_internal_padding_kernel = true;
         conf.bytes_per_workitem = static_cast<int>(bytes_per_workitem);
 
-        // TODO: compute::get_optimal_lws( // no emperical diff
-        const compute::range_t lws = {static_cast<size_t>(conf.simd), 1, 1};
-        const compute::range_t gws = {
-                static_cast<size_t>(
-                        utils::div_up(dst_md.padded_dims[axis::concat]
-                                        * dst_md.dims[axis::
-                                                        inner], // * concat2_inner_axis,
-                                conf.simd * loads_per_thread)
-                        * conf.simd),
-                static_cast<size_t>(dst_md.dims[axis::outer]), 1};
+        const compute::range_t gws
+                = {static_cast<size_t>(
+                           utils::div_up(dst_md.padded_dims[axis::concat]
+                                           * dst_md.dims[axis::inner],
+                                   conf.simd * loads_per_thread)
+                           * conf.simd),
+                        static_cast<size_t>(dst_md.dims[axis::outer]), 1};
         rt_conf.gws_d = gws;
-        rt_conf.lws_d = lws;
-
+        rt_conf.lws_d = compute::get_optimal_lws(
+                rt_conf.gws_d, dim_idx::invalid, device_info->gpu_arch());
         return status::success;
     }
 
@@ -343,7 +336,7 @@ static status_t init_conf_common(impl::engine_t *engine, const concat_pd_t *pd,
     }
 
     if (normalize.is_internal_padding_concat()) {
-        status_t s = attempt_normalize_ip_concat2(
+        status_t s = try_normalize_ip_concat2(
                 conf, rt_conf, engine, pd, normalize);
         if (s == status::success) { return s; }
     }

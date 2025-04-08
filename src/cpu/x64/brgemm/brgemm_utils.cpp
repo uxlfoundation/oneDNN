@@ -161,10 +161,10 @@ void set_isa_impl(brgemm_desc_t *brg) {
         }
     } else if (brg->is_f16) {
         if (everyone_is(data_type::f16, brg->dt_a, brg->dt_b)) {
-            brg->isa_impl = utils::map(true, isa_undef,
-                    is_isa_ok(avx512_core_amx_fp16), avx512_core_amx_fp16,
-                    is_isa_ok(avx512_core_fp16), avx512_core_fp16,
-                    is_isa_ok(avx2_vnni_2), avx2_vnni_2);
+            brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx10_2_512),
+                    avx10_2_512, is_isa_ok(avx512_core_amx_fp16),
+                    avx512_core_amx_fp16, is_isa_ok(avx512_core_fp16),
+                    avx512_core_fp16, is_isa_ok(avx2_vnni_2), avx2_vnni_2);
         } else if (brg->dt_a == data_type::f32 && brg->dt_b == data_type::f16) {
             // Distinguish f32:f16 case upconversion for f16 on AVX512_CORE and
             // AVX2.
@@ -996,7 +996,8 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
                 avx512_core_bf16, is_isa_ok(avx2_vnni_2), avx2_vnni_2);
     } else if (brg->is_f16) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx512_core_fp16),
-                avx512_core_fp16, is_isa_ok(avx2_vnni_2), avx2_vnni_2);
+                avx512_core_fp16, is_isa_ok(avx2_vnni_2), avx2_vnni_2,
+                is_isa_ok(avx10_2_512), avx10_2_512);
     } else if (brg->is_int8) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx10_2_512),
                 avx10_2_512, is_isa_ok(avx512_core_vnni), avx512_core_vnni,

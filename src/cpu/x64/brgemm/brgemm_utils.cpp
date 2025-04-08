@@ -131,7 +131,9 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 one_of(brg->isa_user, isa_undef, isa);
     };
 
-    if (brg->is_bf32) {
+    if (brg->is_tf32) {
+        brg->isa_impl = avx10_2_512_amx_2;
+    } else if (brg->is_bf32) {
         brg->isa_impl = avx512_core_amx;
     } else if (brg->is_f32) {
         brg->isa_impl = utils::map(true, isa_undef,
@@ -193,7 +195,7 @@ void set_isa_impl(brgemm_desc_t *brg) {
 
 void set_brg_vmm(brgemm_desc_t *brg) {
     brg->is_tmm = brg->is_int8_tmm || brg->is_bf16_tmm || brg->is_f16_tmm
-            || brg->is_bf32 || brg->is_fp8_tmm;
+            || brg->is_bf32 || brg->is_fp8_tmm || brg->is_tf32;
     brg->is_zmm = !brg->is_tmm && mayiuse(avx512_core)
             && is_superset(brg->isa_impl, avx512_core);
     brg->is_ymm
@@ -665,14 +667,16 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     // dimension)
     // TODO: these checks do not work for fp8-f16 and f16-fp8 cfgs
     if (!IMPLICATION(brg->rdb > 0 && brg->rdb_tail,
-                brg->is_input_convert() || brg->amx_wary_k_tail())) {
+                brg->is_tf32 || brg->is_input_convert()
+                        || brg->amx_wary_k_tail())) {
         return status::unimplemented;
     }
 
     if (!IMPLICATION((brg->rdb_tail
                              % ((brg->is_bf16_tmm || brg->is_f16_tmm) ? 2 : 4))
                         != 0,
-                brg->is_input_convert() || brg->amx_wary_k_tail())) {
+                brg->is_tf32 || brg->is_input_convert()
+                        || brg->amx_wary_k_tail())) {
         return status::unimplemented;
     }
 
@@ -887,7 +891,7 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, brgemm_layout_t layout, float alpha, float beta,
         dim_t LDA, dim_t LDB, dim_t LDC, dim_t M, dim_t N, dim_t K,
-        const brgemm_strides_t *strides, bool is_bf32) {
+        const brgemm_strides_t *strides, bool is_bf32, bool is_tf32) {
 
     init_common_conf(brg, type, alpha, beta, strides);
 
@@ -917,6 +921,9 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->is_bf32 = is_bf32
             && utils::one_of(brg->isa_user, isa_undef, avx512_core_amx)
             && mayiuse(avx512_core_amx);
+    brg->is_tf32 = is_tf32
+            && utils::one_of(brg->isa_user, isa_undef, avx10_2_512_amx_2)
+            && mayiuse(avx10_2_512_amx_2);
     brg->is_fp8_tmm
             = brg->is_fp8 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
 

@@ -67,7 +67,8 @@ status_t DNNL_API brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         impl::data_type_t dt_b, bool transA, bool transB,
         brgemm_layout_t layout, float alpha, float beta, dim_t LDA, dim_t LDB,
         dim_t LDC, dim_t M, dim_t N, dim_t K,
-        const brgemm_strides_t *strides = nullptr);
+        const brgemm_strides_t *strides = nullptr, bool is_bf32 = false,
+        bool is_tf32 = false);
 
 /// Initializes a BRGEMM descriptor with B matrix as a diagonal matrix
 /// represented in packed vector format.

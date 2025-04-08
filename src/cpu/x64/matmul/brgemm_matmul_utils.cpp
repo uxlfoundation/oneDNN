@@ -182,7 +182,8 @@ status_t check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     const bool ok
             = IMPLICATION(bm_conf_utils.is_f32(),
-                      one_of(isa, avx512_core, avx2) || bm_conf_utils.is_bf32())
+                      one_of(isa, avx512_core, avx2) || bm_conf_utils.is_bf32()
+                              || bm_conf_utils.is_tf32())
             && IMPLICATION(bm_conf_utils.is_int8(),
                     is_superset(isa, avx512_core_amx)
                             || is_superset(isa, avx512_core)
@@ -219,6 +220,7 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_f16(), bm_conf_utils.is_f32_f16(),
                       bm_conf_utils.is_f32_bf16(), bm_conf_utils.is_bf32(),
                       bm_conf_utils.is_f8(), bm_conf_utils.is_int8(),
+                      bm_conf_utils.is_tf32(),
                       bm_conf_utils.is_bf16_with_int_wei(),
                       bm_conf_utils.is_f16_with_int_wei())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
@@ -245,6 +247,9 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , bf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
               && isa == avx512_core_amx)
+    , tf32_dt(f32_dt
+              && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
+              && isa == avx10_2_512_amx_2)
     , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
                       fpmath_mode::any)
@@ -401,7 +406,7 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                 = (this->is_bf16() || this->is_f32() || this->is_bf32()
                           || this->is_f16() || this->is_f32_f16()
                           || this->is_f32_bf16() || this->is_bf16_with_int_wei()
-                          || this->is_f16_with_int_wei())
+                          || this->is_f16_with_int_wei() || this->is_tf32())
                 && !xf16_avx2_vnni_2;
         bgmmc.src_tag = is_adbc_allowed
                 ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
@@ -518,7 +523,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     // Note: bf32 assumes f32 blocking
     if (this->is_f32() || this->is_bf32() || this->is_f16()
             || this->is_f32_f16() || this->is_f32_bf16()
-            || this->is_f16_with_int_wei())
+            || this->is_f16_with_int_wei() || this->is_tf32())
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c : BA16a64b;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c : BA16a48b;
@@ -1174,6 +1179,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(bgmmc.wei_dt == s8, VERBOSE_UNSUPPORTED_DT);
     }
     bgmmc.is_bf32 = bm_conf_utils.is_bf32();
+    bgmmc.is_tf32 = bm_conf_utils.is_tf32();
     bgmmc.is_bf16_with_int_wei = bm_conf_utils.is_bf16_with_int_wei();
     bgmmc.is_f16_with_int_wei = bm_conf_utils.is_f16_with_int_wei();
     bgmmc.is_f32_f16 = bm_conf_utils.is_f32_f16();
@@ -1430,7 +1436,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_MEM_STRIDE);
     }
 
-    const bool is_copy_a_required = (bgmmc.is_amx && bm_conf_utils.is_bf32())
+    const bool is_copy_a_required
+            = (bgmmc.is_amx
+                      && (bm_conf_utils.is_bf32() || bm_conf_utils.is_tf32()))
             || ((bm_conf_utils.is_f16() || bm_conf_utils.is_f16_with_int_wei())
                     && isa == avx512_core_fp16)
             || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
@@ -1825,8 +1833,16 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                                           wei_stride / factor)
                 * factor;
     } else if (bgmmc.transposed_B) {
-        bgmmc.copy_B_wei_stride
-                = (wei_d.strides()[bgmmc.ndims - 1] * bgmmc.b_dt_sz);
+        if (wei_d.matches_one_of_tag(abcd) == format_tag::undef) {
+            bgmmc.copy_B_wei_stride
+                    = wei_d.strides()[bgmmc.ndims - 1] * bgmmc.b_dt_sz;
+        } else {
+            const auto b_stride_elems = bgmmc.req_wei_vnni_downconvert
+                            || (bgmmc.is_tf32 && bgmmc.blocked_B)
+                    ? bgmmc.LDB
+                    : bgmmc.N;
+            bgmmc.copy_B_wei_stride = b_stride_elems * bgmmc.b_dt_sz;
+        }
     } else if (bgmmc.is_runtime_N) {
         bgmmc.copy_B_wei_stride = bgmmc.N;
     } else if (bgmmc.blocked_B) {

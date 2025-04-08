@@ -216,6 +216,7 @@ struct brgemm_matmul_conf_t {
     bool is_f32_f16 = false;
     bool is_f32_bf16 = false;
     bool is_int4_weights = false;
+    bool is_tf32 = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
     bool is_runtime_N = false;
@@ -270,7 +271,9 @@ struct brgemm_matmul_conf_utils_t {
             // use b_buffer for AMX when:
             // - not bf32 && using non-blocked weights
             // - is bf32
-            return IMPLICATION(!wei_down_convert_to_vnni(), !bgmmc.blocked_B)
+            return IMPLICATION(!(wei_down_convert_to_vnni()
+                                       || (tf32_dt && get_blocked_B())),
+                           !bgmmc.blocked_B)
                     || bgmmc.packed_sparse_weights;
 
         // Values based on measured performance difference
@@ -337,6 +340,8 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_bf32() const { return bf32_dt; }
 
+    inline bool is_tf32() const { return tf32_dt; }
+
     inline bool is_bf16_with_int_wei() const { return bf16_with_int_wei_dt; }
 
     inline bool is_f32_f16() const { return f32_f16_dt; }
@@ -379,10 +384,9 @@ struct brgemm_matmul_conf_utils_t {
 private:
     brgemm_matmul_conf_t &bgmmc;
 
-    const bool f32_dt, bf16_dt, f16_dt, f8_dt, int8_dt, bf32_dt;
+    const bool f32_dt, bf16_dt, f16_dt, f8_dt, int8_dt, bf32_dt, tf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
             f32_bf16_dt, f16_with_int_wei_dt;
-
     const bool A_any_layout;
     const bool B_any_layout;
     const bool C_any_layout;

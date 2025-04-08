@@ -1375,8 +1375,8 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     if (!IMPLICATION(is_f32, jbgp.is_bf32 || one_of(isa, avx512_core, avx2)))
         return status::unimplemented;
     if (!IMPLICATION(is_f16,
-                one_of(isa, avx2_vnni_2, avx512_core_fp16,
-                        avx512_core_amx_fp16)))
+                one_of(isa, avx2_vnni_2, avx512_core_fp16, avx512_core_amx_fp16,
+                        avx10_2_512)))
         return status::unimplemented;
     if (!IMPLICATION(is_fp8, one_of(isa, avx512_core_amx_fp16)))
         return status::unimplemented;

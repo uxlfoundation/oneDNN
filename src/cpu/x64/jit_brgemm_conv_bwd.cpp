@@ -175,6 +175,7 @@ status_t brgemm_convolution_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
 template struct brgemm_convolution_bwd_t<avx2>;
 template struct brgemm_convolution_bwd_t<avx2_vnni_2>;
+template struct brgemm_convolution_bwd_t<avx10_2_512>;
 template struct brgemm_convolution_bwd_t<avx512_core>;
 template struct brgemm_convolution_bwd_t<avx512_core_bf16>;
 template struct brgemm_convolution_bwd_t<avx512_core_fp16>;

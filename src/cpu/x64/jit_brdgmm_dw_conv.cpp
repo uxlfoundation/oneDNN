@@ -99,7 +99,7 @@ cpu_isa_t get_supported_isa(bool is_f32, bool is_int8, bool is_bf16,
     } else if (is_bf16) {
         isa_list = {avx512_core_bf16, avx2_vnni_2};
     } else if (is_f16) {
-        isa_list = {avx512_core_fp16, avx2_vnni_2};
+        isa_list = {avx10_2_512, avx512_core_fp16, avx2_vnni_2};
     }
 
     for (auto isa : isa_list) {

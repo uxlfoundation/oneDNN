@@ -60,6 +60,9 @@ struct deserialized_lt_t {
     void load(utils::json::json_reader_t *reader);
     // Outputs the information about lt from operator<< into a string.
     std::string get_string() const;
+
+    // check if the property type of the lt is host_scalar
+    bool is_host_scalar() const;
 };
 std::ostream &operator<<(std::ostream &s, const deserialized_lt_t &dlt);
 

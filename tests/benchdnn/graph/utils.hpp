@@ -194,7 +194,7 @@ private:
 // engine used for graph lib, graph lib engine needs allocator to allocate
 // memory for constant cache, scratchpad.
 struct cpp_engine_t {
-    cpp_engine_t();
+    cpp_engine_t(bool use_host);
     dnnl::engine::kind get_kind() const { return engine_.get_kind(); }
     operator dnnl::engine &() { return engine_; }
     operator const dnnl::engine &() const { return engine_; }
@@ -207,7 +207,17 @@ private:
 // engine used for graph lib, graph lib engine needs allocator to allocate
 // memory for constant cache, scratchpad.
 inline const cpp_engine_t &get_graph_engine() {
-    static const cpp_engine_t instance;
+    static const cpp_engine_t instance(/*use_host*/ false);
+    return instance;
+}
+
+inline const cpp_engine_t &get_graph_host_engine() {
+    // return `get_graph_engine` for `is_cpu` to avoid different engine instances.
+    const dnnl::engine &g_eng
+            = get_graph_engine().operator const dnnl::engine &();
+    if (is_cpu(g_eng.get())) { return get_graph_engine(); }
+
+    static const cpp_engine_t instance(/*use_host*/ true);
     return instance;
 }
 

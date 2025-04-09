@@ -1161,6 +1161,9 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     // requested data types first which can be lower precision data types which
     // require less memory.
     size_t total_size_ref = check_mem_size_args.total_size_ref;
+    // Note: `prim_ref` can require extra memory buffer for comparison to
+    // convert output to `abx` format.
+    size_t total_size_compare = check_mem_size_args.total_size_compare;
     if (prim_ref) {
         // Collect memory sizes of prim_ref.
         check_mem_size_args_t prim_ref_mem_size_args;
@@ -1169,10 +1172,30 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
         // Update reference size number.
         total_size_ref = std::accumulate(prim_ref_mem_size_args.sizes.begin(),
                 prim_ref_mem_size_args.sizes.end(), 0ULL);
+        // Update compare size number. It's twice of original memory since both
+        // tensors expected to be of the same size.
+        const auto const_pd = query_pd(prim_ref);
+        const auto prop_kind = query_prop_kind(const_pd);
+        const bool is_fwd = is_fwd_prop_kind(prop_kind);
+        const_dnnl_memory_desc_t output_md {};
+        if (is_fwd) {
+            output_md = query_md(const_pd, dnnl_query_dst_md, 0);
+        } else {
+            const auto diff_src_md
+                    = query_md(const_pd, dnnl_query_diff_src_md, 0);
+            const auto diff_wei_md
+                    = query_md(const_pd, dnnl_query_diff_weights_md, 0);
+            const auto diff_src_md_size
+                    = dnnl_memory_desc_get_size(diff_src_md);
+            output_md = diff_src_md_size > 0 ? diff_src_md : diff_wei_md;
+        }
+
+        if (!check_md_consistency_with_tag(output_md, tag::abx)) {
+            total_size_compare *= 2;
+        }
     }
 
-    size_t total_size_cpu = total_size_ref
-            + check_mem_size_args.total_size_compare
+    size_t total_size_cpu = total_size_ref + total_size_compare
             + check_mem_size_args.total_size_mapped;
 
     // If the problem runs on CPU, the combined memory represents requirements

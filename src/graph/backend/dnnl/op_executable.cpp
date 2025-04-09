@@ -1377,10 +1377,17 @@ softmax_executable_t::desc_t softmax_executable_t::create_desc(
     int64_t axis = op->get_attr<int64_t>(op_attr::axis);
     if (axis < 0) { axis += src.get_ndims(); }
 
-    const dnnl::algorithm algo
-            = op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax
-            ? dnnl::algorithm::softmax_log
-            : dnnl::algorithm::softmax_accurate;
+    dnnl::algorithm algo = dnnl::algorithm::undef;
+    if (op->get_kind() == dnnl_impl::op_kind::dnnl_softmax) {
+        const auto mode = op->get_attr<std::string>(op_attr::mode);
+        algo = mode == "inf_as_zero" ? static_cast<dnnl::algorithm>(
+                       dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+                                     : dnnl::algorithm::softmax_accurate;
+    } else if (op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax) {
+        algo = dnnl::algorithm::softmax_log;
+    } else {
+        assert(!"unexpected op kind");
+    }
 
     dnnl::softmax_forward::primitive_desc pd;
     pd = dnnl::softmax_forward::primitive_desc(p_engine,

@@ -2489,7 +2489,8 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         const int ic_block
                 = nstl::min(jcp.acc_simd_w, n_vnni_blocks) * jcp.vnni_block;
 
-        jcp.extendable_k = jcp.ic > jcp.simd_w && jcp.ic % jcp.simd_w;
+        jcp.extendable_k
+                = !jcp.is_tf32 && jcp.ic > jcp.simd_w && jcp.ic % jcp.simd_w;
 
         const bool do_zeropad = !(jcp.is_bf32 || jcp.is_tf32)
                 && !jcp.extendable_k

@@ -709,6 +709,18 @@ public:
         return inplace_options;
     }
 
+    std::string get_partition_impl() const {
+        const char *str = nullptr;
+        error::wrap_c_api(
+                dnnl_graph_compiled_partition_get_partition_impl(get(), &str),
+                "could not get the implementation from a compiled partition");
+        if (!str) return "";
+        printf("Implementation: %s\n", str);
+
+        std::string s(str);
+        return s;
+    }
+
     /// Execute a compiled partition.
     ///
     /// @param astream Stream object to run over.

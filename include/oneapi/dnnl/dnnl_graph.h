@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -553,6 +553,10 @@ dnnl_status_t DNNL_API dnnl_graph_compiled_partition_get_inplace_ports(
         const_dnnl_graph_compiled_partition_t compiled_partition,
         size_t *num_inplace_pairs,
         const dnnl_graph_inplace_pair_t **inplace_pairs);
+
+dnnl_status_t DNNL_API dnnl_graph_compiled_partition_get_partition_impl(
+        const_dnnl_graph_compiled_partition_t compiled_partition,
+        const char **str);
 
 /// @} dnnl_graph_api_compiled_partition
 

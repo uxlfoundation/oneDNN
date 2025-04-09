@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -178,8 +178,8 @@ void ocl_deallocator(
 }
 #endif
 
-dnnl::graph::allocator &get_graph_allocator() {
-    if (is_cpu()) {
+dnnl::graph::allocator &get_graph_allocator(bool use_host) {
+    if (is_cpu() || use_host) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
         static auto alloc = dnnl::graph::sycl_interop::make_allocator(
                 sycl_allocator, sycl_deallocator);

@@ -47,7 +47,9 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
         const deserialized_lt_t &lt, const bool is_op_input,
         const bool use_graph_layout)
     : graph_dims_(lt.shape_), graph_strides_(lt.stride_) {
-    const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
+    const auto &g_eng = lt.is_host_scalar()
+            ? get_graph_host_engine().operator const dnnl::engine &()
+            : get_graph_engine().operator const dnnl::engine &();
 
     // For inputs, graph path needs data from reference path,
     // and the data movement requires both memories have the same
@@ -76,7 +78,7 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
 
         if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
             // Fill data from reference memories.
-            fill_mem_with_data(mem);
+            fill_mem_with_data(mem, g_eng);
         }
 
     } else {
@@ -104,7 +106,10 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
     }
 }
 
-int dnn_graph_mem_t::fill_mem_with_data(const dnn_mem_t &mem) {
+int dnn_graph_mem_t::fill_mem_with_data(
+        const dnn_mem_t &mem, const dnnl::engine &eng) {
+    const auto &src_eng = mem.engine();
+    const auto &dst_eng = eng.get();
 
     const auto &src_dt = mem.dt();
     const auto &dst_dt = mem_.dt();
@@ -117,7 +122,6 @@ int dnn_graph_mem_t::fill_mem_with_data(const dnn_mem_t &mem) {
     int ndims = mem.ndims();
     dims_t strides(mem.strides(), mem.strides() + ndims);
     std::string mtag = strides2memory_tag(ndims, strides);
-    const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
 
     const auto prim_to_graph_memcpy = [](dnn_mem_t &graph_mem,
                                               const dnn_mem_t &prim_mem) {
@@ -126,8 +130,10 @@ int dnn_graph_mem_t::fill_mem_with_data(const dnn_mem_t &mem) {
         std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());
     };
 
-    if (src_dt != dst_dt) {
-        dnn_mem_t c_mem(ndims, mem.dims(), dst_dt, mtag, g_eng.get());
+    if (src_dt != dst_dt || src_eng != dst_eng) {
+        // If dt or eng is different, need to transfer data under same dt or
+        // engine to perform a data copy.
+        dnn_mem_t c_mem(ndims, mem.dims(), dst_dt, mtag, dst_eng);
         SAFE_V(c_mem.reorder(mem));
         prim_to_graph_memcpy(mem_, c_mem);
     } else {
@@ -143,7 +149,10 @@ dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
     dnnl_memory_get_data_handle(mem_.m_, &data_handle);
     dnnl::graph::logical_tensor graph_lt(lt.id_, lt.get_data_type(), lt.shape_,
             str2layout(lt.layout_type_), lt.get_property_type());
-    dnnl::graph::tensor ret(graph_lt, get_graph_engine(), data_handle);
+    const auto &g_eng = lt.is_host_scalar()
+            ? get_graph_host_engine().operator const dnnl::engine &()
+            : get_graph_engine().operator const dnnl::engine &();
+    dnnl::graph::tensor ret(graph_lt, g_eng, data_handle);
 
     return ret;
 }

@@ -97,6 +97,8 @@ logical_tensor::property_type deserialized_lt_t::get_property_type() const {
         return logical_tensor::property_type::constant;
     } else if (property_type_ == "variable") {
         return logical_tensor::property_type::variable;
+    } else if (property_type_ == "host_scalar") {
+        return logical_tensor::property_type::host_scalar;
     } else {
         return logical_tensor::property_type::undef;
     }
@@ -122,6 +124,10 @@ void deserialized_lt_t::load(utils::json::json_reader_t *reader) {
     helper.declare_field("layout_type", &layout_type_);
     helper.declare_field("property_type", &property_type_);
     helper.read_fields(reader);
+}
+
+bool deserialized_lt_t::is_host_scalar() const {
+    return property_type_ == "host_scalar";
 }
 
 void deserialized_op_t::load(utils::json::json_reader_t *reader) {

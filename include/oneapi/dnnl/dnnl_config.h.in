@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -177,6 +177,10 @@
 
 // When defined, experimental logging capabilities are enabled.
 #cmakedefine DNNL_EXPERIMENTAL_LOGGING
+
+// When defined, experimental asynchronous verbose capabilities are enabled.
+#cmakedefine DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+
 // When defined, it disables GPU compute reference kernels.
 #cmakedefine DNNL_DISABLE_GPU_REF_KERNELS
 

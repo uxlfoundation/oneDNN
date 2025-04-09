@@ -34,7 +34,7 @@ called it in its scaled dot-product attention to prevent the `NaN`s after
 softmax. It generates zero outputs for the inputs with an entire row of
 `-infinity`s. oneDNN is requested to align with this numeric behavior.
 
-## Proposals
+## Graph API Proposals
 
 ### Proposal 1: Use a large negative value instead of `-infinity` for masks
 
@@ -127,9 +127,34 @@ tensor([0.2500, 0.2500, 0.2500, 0.2500])
 
 ```
 
-## Conclusion
+### Conclusion
 
 Option 2 is more preferred based on the above discussion.
+
+## Primitive Proposal
+
+### Option 1: Introduce a new algorithm kind
+
+For a Graph SDPA implementation consisting of primitives to dispatch into a
+proper softmax implementation an additional marker on a softmax primitive side
+is required. While for the library side it is enough to have this marker not
+exposed in public API, for benchdnn validation it's necessary to have it
+publicly available to be able to dispatch into "inf_as_zero" implementation on
+the f32 path consisting of primitives. Otherwise, it will be impossible to
+achieve identical results.
+
+```c++
+/// Kinds of algorithms
+typedef enum {
+    ...
+    /// Softmax
+    dnnl_softmax_accurate = 0x30000,
+    /// Logsoftmax
+    dnnl_softmax_log,
+    /// Softmax treating all infinity inputs as zero
+    dnnl_softmax_inf_as_zero,
+} dnnl_alg_kind_t;
+```
 
 ## References
 

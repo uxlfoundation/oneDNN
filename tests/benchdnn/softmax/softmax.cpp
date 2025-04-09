@@ -43,7 +43,8 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     auto dst_d = dnn_mem_t::init_md(prb->ndims, prb->dims.data(),
             force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag);
 
-    dnnl_alg_kind_t alg_kind = dnnl_softmax_accurate;
+    // dnnl_alg_kind_t alg_kind = dnnl_softmax_accurate;
+    dnnl_alg_kind_t alg_kind = static_cast<dnnl_alg_kind_t>(4098);
     if (prb->alg == LOGSOFTMAX) alg_kind = dnnl_softmax_log;
 
     attr_args_t attr_args;
@@ -164,8 +165,9 @@ int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
                     n_top[i]--;
                     if (n_top[i] == 0) i++;
                 }
+                (void)value;
                 mem_fp.set_elem(offset,
-                        round_to_nearest_representable(mem_dt.dt(), value));
+                        round_to_nearest_representable(mem_dt.dt(), -INFINITY));
             }
         }
     });

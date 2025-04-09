@@ -99,7 +99,10 @@ struct softmax_pd_t : public primitive_desc_t {
     }
 
     alg_kind_t alg_kind() const { return desc()->alg_kind; }
-    bool is_softmax() const { return alg_kind() == alg_kind::softmax_accurate; }
+    bool is_softmax() const {
+        return utils::one_of(alg_kind(), alg_kind::softmax_accurate,
+                alg_kind::softmax_accurate_inf_safe);
+    }
     bool is_logsoftmax() const { return alg_kind() == alg_kind::softmax_log; }
 
 protected:

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,7 +56,9 @@ reusable_softmax_fwd_generic(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
     if (USE_WORKGROUP_REDUCTION) { denom_ = work_group_reduce_add(denom_); }
     if (USE_SUBGROUP_REDUCTION) { denom_ = sub_group_reduce_add(denom_); }
 
-    denom_ = LOGSOFTMAX ? log(denom_) : 1.0f / denom_;
+    denom_ = LOGSOFTMAX                           ? log(denom_)
+            : (SOFTMAX_INF_SAFE && denom_ == 0.f) ? 1.0f
+                                                  : 1.0f / denom_;
 
     for (off_t c = begin; c < end; c += softmax_axis_stride) {
         FLT_ACC_DATA_T unscaled = LOGSOFTMAX

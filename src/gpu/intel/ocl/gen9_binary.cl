@@ -58,9 +58,8 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
     int dst_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     dst += dst_off;
-
 #if IS_TERNARY
-    int src2_off = SRC2_OFF(
+    int src2_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     src2 += src2_off;
 #endif
@@ -74,8 +73,6 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
 #else
 #define src1_scale_val 1
 #endif
-#define src2_scale_val 1
-
     float tmp_src0[NVECT];
     READ_DATA(NVECT, SRC0, (&src0[0]), (&tmp_src0[0]), src0_scale_val);
 
@@ -88,10 +85,9 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
     READ_DATA(NVECT, SRC1, (&src1[0]), (&tmp_src1[0]), src1_scale_val);
 #define SRC1_IDX_MASK 1
 #endif
-
 #if IS_TERNARY
-    int tmp_src2[NVECT];
-    READ_DATA(NVECT, SRC2, (&src2[0]), (&tmp_src2[0]), src2_scale_val);
+    char tmp_src2[NVECT];
+    READ_CHAR_DATA(NVECT, SRC2, (&src2[0]), (&tmp_src2[0]));
 #endif
 
     float tmp[NVECT];
@@ -175,7 +171,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
     SRC0_DATA_T tmp_buf0[d01_block] = {0};
     SRC1_DATA_T tmp_buf1[d01_block] = {0};
 #if IS_TERNARY
-    SRC2_DATA_T tmp_buf2[d01_block] = {0};
+    char tmp_buf2[d01_block] = {0};
 #endif
     DST_DATA_T res_buf[d01_block] = {0};
 
@@ -234,7 +230,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
             float tmp_src0 = CONVERT_FLOAT_T(tmp_buf0[i]);
             float tmp_src1 = CONVERT_FLOAT_T(tmp_buf1[i]);
 #if IS_TERNARY
-            float tmp_src2 = tmp_buf2[i];
+            char tmp_src2 = tmp_buf2[i];
 #endif
             float res;
             float dst_data;
@@ -311,7 +307,7 @@ __kernel void gen9_binary(__global SRC0_DATA_T *src0,
         __global DST_DATA_T *t_dst = dst + dst_off;
         __global SRC0_DATA_T *t_src0 = src0 + src0_off;
 #if IS_TERNARY
-        __global SRC2_DATA_T *t_src2 = src2 + src2_off;
+        __global char *t_src2 = src2 + src2_off;
 #endif
 
         if ((SRC0_D1 % SUB_GROUP_SIZE != 0)

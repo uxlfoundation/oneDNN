@@ -40,7 +40,6 @@
 #define SRC0_TO_FLOAT CONVERT_FLOAT_T
 #endif
 
-#if SRC2_DT_S8
 #define SRC2_BLOCK_READ(src) \
     as_char(intel_sub_group_block_read_uc((const __global uchar *)(src)))
 #define SRC2_BLOCK_READ2(src) \
@@ -49,7 +48,6 @@
     as_char4(intel_sub_group_block_read_uc4((const __global uchar *)(src)))
 #define SRC2_BLOCK_READ8(src) \
     as_char8(intel_sub_group_block_read_uc8((const __global uchar *)(src)))
-#endif // SRC2_DT_S8
 
 #if SRC0_DT_BF8
 #define SRC0_BLOCK_READ(src) \
@@ -419,6 +417,30 @@ DEF_ternary_op(float2, float);
 DEF_ternary_op(float4, float);
 DEF_ternary_op(float8, float);
 #undef DEF_ternary_op
+
+#define READ_CHAR_DATA(size, name, source_ptr, dest_ptr) \
+    { \
+        unsigned offset = 0; \
+        unroll_for(unsigned j8 = 0; j8 < size / 8; ++j8) { \
+            *((char8 *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ8)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+            offset += 8; \
+        } \
+        if ((size % 8) / 4) { \
+            *((char4 *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ4)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+            offset += 4; \
+        } \
+        if ((size % 4) / 2) { \
+            *((char2 *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ2)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+            offset += 2; \
+        } \
+        if ((size % 2)) { \
+            *((char *)(dest_ptr + offset)) = CONCAT2(name, _BLOCK_READ)( \
+                    (source_ptr + offset * SUB_GROUP_SIZE)); \
+        } \
+    }
 
 #define READ_DATA(size, name, source_ptr, dest_ptr, scale) \
     { \

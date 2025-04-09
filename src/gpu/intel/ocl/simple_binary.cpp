@@ -27,8 +27,6 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
     const memory_desc_wrapper dst_d(dst_md());
-    const memory_desc_wrapper src2_d
-            = is_ternary_op() ? memory_desc_wrapper(src_md(2)) : nullptr;
 
     const int ndims = src0_d.ndims();
     conf.src0_md_info = memory_desc_info_t::create(src0_d);
@@ -36,6 +34,7 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.dst_md_info = memory_desc_info_t::create(dst_d);
 
     if (is_ternary_op()) {
+        const memory_desc_wrapper src2_d(src_md(2));
         conf.src2_md_info = memory_desc_info_t::create(src2_d);
         conf.src2_data_type = src2_d.data_type();
     } else {
@@ -120,8 +119,7 @@ status_t simple_binary_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     def_binary_alg_kinds(kernel_ctx);
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
-    kernel_ctx.define_int(
-            "IS_TERNARY", (conf.alg == alg_kind::binary_select) ? 1 : 0);
+    kernel_ctx.define_int("IS_TERNARY", (conf.alg == alg_kind::binary_select));
 
     kernel_ctx.set_data_type(conf.src0_data_type);
     kernel_ctx.set_data_type(conf.src1_data_type);
@@ -180,25 +178,19 @@ status_t simple_binary_t::execute_simple(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
     auto &src0_scale = CTX_IN_STORAGE(DNNL_ARG_SRC_0 | DNNL_ARG_ATTR_SCALES);
-
     auto &src1_scale = CTX_IN_STORAGE(DNNL_ARG_SRC_1 | DNNL_ARG_ATTR_SCALES);
 
-    unsigned arg_idx;
+    unsigned arg_idx = 0;
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, src0);
-    arg_list.set(1, src1);
-
+    arg_list.set(arg_idx++, src0);
+    arg_list.set(arg_idx++, src1);
     if (pd()->is_ternary_op()) {
         auto &src2 = CTX_IN_STORAGE(DNNL_ARG_SRC_2);
-        arg_list.set(2, src2);
-        arg_list.set(3, dst);
-        arg_idx = append_post_ops_to_arg_list(
-                ctx, arg_list, 4, pd()->attr()->post_ops_);
-    } else {
-        arg_list.set(2, dst);
-        arg_idx = append_post_ops_to_arg_list(
-                ctx, arg_list, 3, pd()->attr()->post_ops_);
+        arg_list.set(arg_idx++, src2);
     }
+    arg_list.set(arg_idx++, dst);
+    arg_idx = append_post_ops_to_arg_list(
+            ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
 
     arg_list.set(arg_idx++, src0_scale);
     arg_list.set(arg_idx, src1_scale);

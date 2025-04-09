@@ -1377,15 +1377,23 @@ softmax_executable_t::desc_t softmax_executable_t::create_desc(
     int64_t axis = op->get_attr<int64_t>(op_attr::axis);
     if (axis < 0) { axis += src.get_ndims(); }
 
-    const dnnl::algorithm algo
-            = op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax
-            ? dnnl::algorithm::softmax_log
-            : dnnl::algorithm::softmax_accurate;
+    impl::alg_kind_t algo = impl::alg_kind::undef;
+    if (op->get_kind() == dnnl_impl::op_kind::dnnl_softmax) {
+        const auto mode = op->get_attr<std::string>(op_attr::mode);
+        algo = mode == "inf_as_zero"
+                ? impl::alg_kind::softmax_accurate_inf_as_zero
+                : impl::alg_kind::softmax_accurate;
+    } else if (op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax) {
+        algo = impl::alg_kind::softmax_log;
+    } else {
+        assert(!"unexpected op kind");
+    }
 
-    dnnl::softmax_forward::primitive_desc pd;
-    pd = dnnl::softmax_forward::primitive_desc(p_engine,
-            prop_kind::forward_inference, algo, src, dst,
-            static_cast<int>(axis), prm_attr);
+    dnnl_primitive_desc_t softmax_pd = nullptr;
+    dnnl_softmax_forward_primitive_desc_create(&softmax_pd, p_engine.get(),
+            impl::prop_kind::forward_inference, algo, src.get(), dst.get(),
+            static_cast<int>(axis), prm_attr.get());
+    dnnl::softmax_forward::primitive_desc pd(softmax_pd);
 
     pd_cache.insert({op.get(), pd});
 

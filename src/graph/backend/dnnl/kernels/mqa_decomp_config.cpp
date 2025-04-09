@@ -181,9 +181,13 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     dnnl::primitive_attr sub_softmax_attr
             = make_primitive_attr(original_softmax, mgr);
     sub_softmax_dst_md = memory::desc(sub_mm1_dst_dims, dt_src_user, tag::abc);
+    const auto mode = mqa_op[2]->get_attr<std::string>(op_attr::mode);
+    const dnnl::algorithm algo = mode == "inf_as_zero"
+            ? dnnl::algorithm::softmax_accurate_inf_as_zero
+            : dnnl::algorithm::softmax_accurate;
     auto sub_softmax_pd = softmax_forward::primitive_desc(p_engine,
-            prop_kind::forward_inference, algorithm::softmax_accurate,
-            sub_mm1_dst_md, sub_softmax_dst_md, sub_mm1_dst_md.get_ndims() - 1,
+            prop_kind::forward_inference, algo, sub_mm1_dst_md,
+            sub_softmax_dst_md, sub_mm1_dst_md.get_ndims() - 1,
             sub_softmax_attr);
     sub_softmax_prim = softmax_forward(sub_softmax_pd);
 

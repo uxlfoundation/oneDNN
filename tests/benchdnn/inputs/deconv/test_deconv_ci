@@ -56,5 +56,5 @@
 --dt=f32
 --stag=any,axb
 --dtag=any,axb
---attr-fpmath=bf32,tf32
+--attr-fpmath=bf16,tf32
 --batch=shapes_ci

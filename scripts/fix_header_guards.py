@@ -21,7 +21,12 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, field, fields
 from functools import total_ordering
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
+
+# Check these directories...
+SOURCE_DIRECTORIES: Iterable[str] = "src", "include"
+# ... but not these directories
+IGNORED_DIRECTORIES: Iterable[str] = ()
 
 
 class LicenseState(enum.Enum):
@@ -67,23 +72,44 @@ class Options:
     pedantic: bool = False
 
 
-class Action(enum.Enum):
-    FIX = 0
-    CHECK_FILENAME = 1
-    IGNORE = 2
+class Status:
+    def __init__(self):
+        self.status = FileStatus.OK
+        self.messages = []
+
+    def add(self, status: FileStatus, msg: str):
+        if status > self.status:
+            self.status = status
+        self.messages.append(msg)
+
+    def __bool__(self):
+        return self.status is FileStatus.OK or self.status is FileStatus.SKIP
+
+    def color(self, *args, **kwargs):
+        return self.status.color(*args, **kwargs)
+
+    def __str__(self):
+        return "; ".join(self.messages)
+
+    def ok(self, msg: str):
+        return self.add(FileStatus.OK, msg)
+
+    def skip(self, msg: str):
+        return self.add(FileStatus.SKIP, msg)
+
+    def warn(self, msg: str):
+        return self.add(FileStatus.WARN, msg)
+
+    def fail(self, msg: str):
+        return self.add(FileStatus.FAIL, msg)
 
 
-def action(path: str):
-    _, ext = os.path.splitext(path)
-    if ext not in (".hpp", ".h"):
-        if ext in (".cpp", ".c", ".cl"):
-            return Action.CHECK_FILENAME
-        return Action.IGNORE
-    ignored_paths = ["src/cpu/ppc64/", "src/cpu/s390x/", "src/cpu/rv64/"]
-    for ignored_path in ignored_paths:
-        if path.startswith(ignored_path) or f"/{ignored_path}" in path:
-            return Action.IGNORE
-    return Action.FIX
+def ignore(path: str, status: Status):
+    for ignored_path in IGNORED_DIRECTORIES:
+        if path.startswith(ignored_path):
+            status.skip(f"Files in {ignored_path} are skipped")
+            return True
+    return False
 
 
 def get_file_guard(path):
@@ -217,52 +243,43 @@ def continuations(lines):
         continuation = []
 
 
-def fix_file(file, options):
-    file_action = action(file)
-    if file_action is Action.IGNORE:
+def get_relative_path(file: str, status: Status):
+    my_name = os.path.basename(__file__)
+    fullpath = os.path.realpath(file)
+    # os.path.join does not respect the empty first entry on Linux, so  we'll
+    # just get rid of it and tack on the root directory later.
+    *parts, base = fullpath.split(os.sep)[1:]
+    for i, part in enumerate(parts):
+        if part not in SOURCE_DIRECTORIES:
+            continue
+        copy_of_me_parts = os.sep, *parts[:i], "scripts", my_name
+        copy_of_me = os.path.abspath(os.path.join(*copy_of_me_parts))
+        if os.path.isfile(copy_of_me):
+            # For our sanity, make the relpath look Unix-y
+            return "/".join(parts[i:] + [base])
+    status.skip("Could not find DNNL root directory")
+    return None
+
+
+def fix_file(file: str, options: Options):
+    status = Status()
+    _, ext = os.path.splitext(file)
+    relpath = get_relative_path(file, status)
+    if relpath is None:
         return False
-    if file_action is Action.FIX:
-        guard = get_file_guard(file)
-        status = adjust_content(file, guard)
+    if ignore(relpath, status):
+        pass
+    elif ext in (".h", ".hpp"):
+        guard = get_file_guard(relpath)
+        adjust_content(file, guard, status)
+        warn_repetitive_filename(status, relpath)
+    elif ext in (".cpp", ".c", ".cl", ".cxx", ".hxx"):
+        warn_repetitive_filename(status, relpath)
     else:
-        status = Status()
-    warn_repetitive_filename(status, file)
-    if not status or (options.verbose and file_action is Action.FIX):
+        return False
+    if not status or (options.verbose and str(status)):
         print(f"[{status.color(sys.stdout)}] {file} ({status!s})")
     return status.status is FileStatus.FAIL
-
-
-class Status:
-    def __init__(self):
-        self.status = FileStatus.OK
-        self.messages = []
-
-    def add(self, status: FileStatus, msg: str):
-        if status > self.status:
-            self.status = status
-        self.messages.append(msg)
-        return self
-
-    def __bool__(self):
-        return self.status is FileStatus.OK or self.status is FileStatus.SKIP
-
-    def color(self, *args, **kwargs):
-        return self.status.color(*args, **kwargs)
-
-    def __str__(self):
-        return "; ".join(self.messages)
-
-    def ok(self, msg: str):
-        return self.add(FileStatus.OK, msg)
-
-    def skip(self, msg: str):
-        return self.add(FileStatus.SKIP, msg)
-
-    def warn(self, msg: str):
-        return self.add(FileStatus.WARN, msg)
-
-    def fail(self, msg: str):
-        return self.add(FileStatus.FAIL, msg)
 
 
 def warn_repetitive_filename(status: Status, path: str):
@@ -303,11 +320,7 @@ def warn_repetitive_filename(status: Status, path: str):
         status.warn(message)
 
 
-def adjust_content(file: str, guard: str):
-    status = Status()
-    if "third_party/" in file:
-        return status.skip("not checking 3rd party files")
-
+def adjust_content(file: str, guard: str, status: Status):
     with open(file) as fd:
         lines = fd.read().splitlines()
     state = LicenseState.NOT_SEEN

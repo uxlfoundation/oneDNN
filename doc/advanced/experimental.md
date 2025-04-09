@@ -31,6 +31,7 @@ Both kinds of experimental features can be enabled simultaneously.
 | ONEDNN_EXPERIMENTAL_UKERNEL                | Enable experimental microkernel APIs and functionalities.          |
 | ONEDNN_EXPERIMENTAL_PROFILING              | Enable experimental profiling API.                                 |
 | ONEDNN_EXPERIMENTAL_LOGGING                | Enable experimental logging support for oneDNN verbose mode.       |
+| DNNL_EXPERIMENTAL_ASYNC_VERBOSE            | Enable experimental asynchronous verbose mode. |
 
 ## Features details
 

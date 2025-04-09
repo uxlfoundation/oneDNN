@@ -223,6 +223,11 @@ option(DNNL_EXPERIMENTAL_LOGGING
     independently from DNNL_EXPERIMENTAL."
     OFF) # disabled by default
 
+option(DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+    "Enable experimental functionality for an asynchronous verbose mode to 
+     tracks kernel execution times asynchronously."
+    OFF) # disabled by default
+
 # ======================
 # Profiling capabilities
 # ======================

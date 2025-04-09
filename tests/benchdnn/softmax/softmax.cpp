@@ -44,7 +44,10 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag);
 
     dnnl_alg_kind_t alg_kind = dnnl_softmax_accurate;
-    if (prb->alg == LOGSOFTMAX) alg_kind = dnnl_softmax_log;
+    if (prb->alg == LOGSOFTMAX)
+        alg_kind = dnnl_softmax_log;
+    else if (prb->alg == SOFTMAX_INF_AS_ZERO)
+        alg_kind = dnnl_softmax_accurate_inf_as_zero;
 
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dims.data());
@@ -359,12 +362,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 break;
             case DNNL_ARG_DST:
                 if (!is_fwd_prim) {
-                    const bool neg_sign = prb->alg == SOFTMAX ? true : false;
+                    const bool neg_sign = prb->alg == SOFTMAX
+                            || prb->alg == SOFTMAX_INF_AS_ZERO;
                     SAFE(fill_data_bwd(DST, prb, mem, ref_mem, neg_sign), WARN);
                 }
                 break;
             case DNNL_ARG_DIFF_DST: {
-                const bool neg_sign = prb->alg == SOFTMAX ? true : false;
+                const bool neg_sign = prb->alg == SOFTMAX
+                        || prb->alg == SOFTMAX_INF_AS_ZERO;
                 SAFE(fill_data_bwd(DIFF_DST, prb, mem, ref_mem, !neg_sign),
                         WARN);
                 // Need a copy of source data for inplace mode for bitwise

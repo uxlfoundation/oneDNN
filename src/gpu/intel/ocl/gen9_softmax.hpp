@@ -212,6 +212,8 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
         kernel_ctx.define_int("IS_WRITE_ALIGNED", pd()->is_write_aligned);
         kernel_ctx.define_int("IS_FWD", 1);
         kernel_ctx.add_option("-cl-std=CL2.0");
+        kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO",
+                pd()->alg_kind() == alg_kind::softmax_accurate_inf_as_zero);
         kernel_ctx.define_int("LOGSOFTMAX", pd()->is_logsoftmax());
         kernel_ctx.define_int("WITH_SRC_SCALES",
                 !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC));

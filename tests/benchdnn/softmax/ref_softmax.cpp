@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         for (int64_t as = 0; as < axis_size; ++as) {
             int64_t idx = ou_in_offset + as * inner_size;
             float s = src.get_elem(idx);
-            if (alg == SOFTMAX) {
+            if (alg == SOFTMAX || alg == SOFTMAX_INF_AS_ZERO) {
                 float D = dst_ptr[idx] = expf(s - space_max);
                 space_denom += D;
             } else if (alg == LOGSOFTMAX) {
@@ -65,7 +65,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             }
         }
 
-        if (alg == SOFTMAX) {
+        if (alg == SOFTMAX || alg == SOFTMAX_INF_AS_ZERO) {
             space_denom = space_denom ? (1.f / space_denom) : 1.f;
         } else if (alg == LOGSOFTMAX) {
             space_denom = logf(space_denom);
@@ -73,7 +73,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
         for (int64_t as = 0; as < axis_size; ++as) {
             int64_t idx = ou_in_offset + as * inner_size;
-            if (alg == SOFTMAX) {
+            if (alg == SOFTMAX || alg == SOFTMAX_INF_AS_ZERO) {
                 dst_ptr[idx] *= space_denom;
             } else if (alg == LOGSOFTMAX) {
                 dst_ptr[idx] -= space_denom;
@@ -106,7 +106,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
             int64_t idx = ou_in_offset + as * inner_size;
             float d = dst.get_elem(idx);
             float dd = d_dst.get_elem(idx);
-            if (alg == SOFTMAX) {
+            if (alg == SOFTMAX || alg == SOFTMAX_INF_AS_ZERO) {
                 part_deriv_sum += dd * d;
             } else if (alg == LOGSOFTMAX) {
                 part_deriv_sum += dd;
@@ -117,7 +117,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
             int64_t idx = ou_in_offset + as * inner_size;
             float d = dst.get_elem(idx);
             float dd = d_dst.get_elem(idx);
-            if (alg == SOFTMAX) {
+            if (alg == SOFTMAX || alg == SOFTMAX_INF_AS_ZERO) {
                 d_src_ptr[idx] = d * (dd - part_deriv_sum);
             } else if (alg == LOGSOFTMAX) {
                 d_src_ptr[idx] = dd - expf(d) * part_deriv_sum;

@@ -204,10 +204,16 @@ impl::status_t sdp_decomp_config_t::construct_params(
     // create softmax primitive attr
     dnnl::primitive_attr sub_softmax_attr = make_primitive_attr(sdp_op[2], mgr);
     sub_softmax_dst_md = memory::desc(sub_mm1_dst_dims, dt_src_user, tag::abcd);
-    auto sub_softmax_pd = softmax_forward::primitive_desc(p_engine,
-            prop_kind::forward_inference, algorithm::softmax_accurate,
-            sub_mm1_dst_md, sub_softmax_dst_md, sub_mm1_dst_md.get_ndims() - 1,
-            sub_softmax_attr);
+    const auto mode = sdp_op[2]->get_attr<std::string>(op_attr::mode);
+    const impl::alg_kind_t algo = mode == "inf_as_zero"
+            ? impl::alg_kind::softmax_accurate_inf_safe
+            : impl::alg_kind::softmax_accurate;
+    dnnl_primitive_desc_t softmax_pd = nullptr;
+    dnnl_softmax_forward_primitive_desc_create(&softmax_pd, p_engine.get(),
+            impl::prop_kind::forward_inference, algo, sub_mm1_dst_md.get(),
+            sub_softmax_dst_md.get(), sub_mm1_dst_md.get_ndims() - 1,
+            sub_softmax_attr.get());
+    dnnl::softmax_forward::primitive_desc sub_softmax_pd(softmax_pd);
     sub_softmax_prim = softmax_forward(sub_softmax_pd);
 
     // reorder u8->s8 wei for second matmul

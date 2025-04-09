@@ -49,7 +49,8 @@ status_t softmax_desc_init(softmax_desc_t *softmax_desc, prop_kind_t prop_kind,
     VCHECK_SOFTMAX(
             IMPLICATION(!is_fwd, !any_null(diff_src_desc, diff_dst_desc)),
             VERBOSE_NULL_ARG);
-    VCHECK_SOFTMAX(one_of(alg_kind, softmax_accurate, softmax_log),
+    VCHECK_SOFTMAX(one_of(alg_kind, softmax_accurate, softmax_log,
+                           softmax_accurate_inf_safe),
             VERBOSE_BAD_ALGORITHM);
     VCHECK_SOFTMAX(0 <= softmax_axis && softmax_axis < dst_desc->ndims,
             VERBOSE_BAD_AXIS);

@@ -124,7 +124,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0f / denom_;
+    denom_ = (SOFTMAX_INF_SAFE && denom_ == 0.f) ? 1.0f : 1.0f / denom_;
 #endif
 
     for (int i = begin; i < end; ++i) {

@@ -229,7 +229,7 @@ def fix_file(file, options):
     warn_repetitive_filename(status, file)
     if not status or (options.verbose and file_action is Action.FIX):
         print(f"[{status.color(sys.stdout)}] {file} ({status!s})")
-    return status is FileStatus.FAIL
+    return status.status is FileStatus.FAIL
 
 
 class Status:

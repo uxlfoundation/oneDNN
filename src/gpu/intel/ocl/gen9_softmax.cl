@@ -187,7 +187,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0f / denom_;
+    denom_ = (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) ? 1.0f : 1.0f / denom_;
 #endif
 
     for (int i = 0; i < num_buf; i++) {
@@ -267,7 +267,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0f / denom_;
+    denom_ = (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) ? 1.0f : 1.0f / denom_;
 #endif
 
     dst += data_off;
@@ -377,7 +377,7 @@ gen9_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #if LOGSOFTMAX
     denom_ = log(denom_);
 #else
-    denom_ = 1.0f / denom_;
+    denom_ = (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) ? 1.0f : 1.0f / denom_;
 #endif
 
     dst += data_off;

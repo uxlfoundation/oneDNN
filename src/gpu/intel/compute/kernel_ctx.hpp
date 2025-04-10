@@ -60,9 +60,19 @@ public:
         }
 
         for (auto &int_var : int_var_map_) {
-            oss << " -D" << int_var.first << "=" << int_var.second;
-            if (int_var.second > INT_MAX || int_var.second < INT_MIN)
-                oss << "L";
+            // C tokens are parsed as (-)(integer_literal). As abs(INT_MIN) >
+            // INT_MAX, some compilers will promote the integer literal to a
+            // larger type. To avoid this promotion, and because the INT_MIN
+            // defines results in type promotion, we use a custom calculation.
+            if (int_var.second == std::numeric_limits<int32_t>::min())
+                oss << " -D" << int_var.first << "=(-2147483647-1)";
+            else if (int_var.second == std::numeric_limits<int64_t>::min())
+                oss << " -D" << int_var.first << "=(-9223372036854775807L-1)";
+            else {
+                oss << " -D" << int_var.first << "=" << int_var.second;
+                if (int_var.second > INT_MAX || int_var.second < INT_MIN)
+                    oss << "L";
+            }
         }
 
         for (auto &float_var : float_var_map_) {

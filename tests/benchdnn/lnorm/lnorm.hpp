@@ -138,6 +138,7 @@ struct prb_t : public prb_dims_t {
     bool use_stats() const { return flags & GLOB_STATS; }
     bool use_sc() const { return flags & USE_SCALE; }
     bool use_sh() const { return flags & USE_SHIFT; }
+    bool use_rms_norm() const { return flags & USE_RMS_NORM; }
 
     // Used to construct memory desc when dimensions are runtime since such mds
     // can't be used directly from query and memory objects can't be constructed.

@@ -368,6 +368,18 @@ int ref_partition_t::check_partition_correctness(
         // reset the state
         res->state = EXECUTED;
 
+        // TODO(zhitao): need to check whether the operation that produces the
+        // output args is the children of the operations that affect
+        // output_has_nans, such as:
+        //
+        //             |
+        //       _____MatMul_______
+        //      |                  |
+        //      |                  |
+        //     SQRT              ReLU
+        //      |                  |
+        // The graph driver allows nans from the branch of Sqrt, but for the
+        // other branch, the driver should not tolerate that.
         ref_prim->check_correctness(
                 output_args, has_eltwise, output_has_nans, res);
         if (res->state == FAILED) {

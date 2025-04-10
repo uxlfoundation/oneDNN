@@ -198,10 +198,9 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         static thread_local diff_norm_t diff_norm_ithr;
         driver_check_func_args_t args(exp_mem, got_f32, i, dt, trh_);
 
-        if ((std::isnan(args.exp_f32) && is_integral_dt(dt))
-                || std::isinf(args.exp)) {
-            // Don't include integer max values or inf values into norm as they
-            // make it irrelevant for validation.
+        if ((std::isnan(args.exp_f32)) || std::isinf(args.exp)) {
+            // Don't include nan inf values into norm as they make it
+            // irrelevant for validation.
             ;
         } else if (is_cpu() && dt == dnnl_s32 && args.exp == max_dt(dnnl_s32)
                 && args.got >= BENCHDNN_S32_TO_F32_SAT_CONST

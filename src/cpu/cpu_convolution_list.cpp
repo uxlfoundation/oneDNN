@@ -89,7 +89,8 @@ using namespace dnnl::impl::prop_kind;
         CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_2_512_amx_2>) \
         CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx10_1_512_amx_fp16>) \
         CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_1_512_amx_fp16>) \
-        CPU_INSTANCE(ref_convolution_fwd_t) nullptr, \
+        CPU_INSTANCE(ref_convolution_fwd_t) \
+        nullptr, \
     } \
 }
 
@@ -99,14 +100,16 @@ using namespace dnnl::impl::prop_kind;
         CPU_INSTANCE_AMX(brgemm_convolution_bwd_t<avx10_1_512_amx_fp16>) \
         CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx10_2_512_amx_2>) \
         CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx10_1_512_amx_fp16>) \
-        CPU_INSTANCE(ref_convolution_bwd_data_t) nullptr, \
+        CPU_INSTANCE(ref_convolution_bwd_data_t) \
+        nullptr, \
     }) \
 }
 
 #define BRGEMM_FP8_BWD_W_CONVS(dtsrc, dtwei, dtdst) { \
     {backward_weights, dtsrc, dtwei, dtdst}, REG_BWD_PK({ \
         CPU_INSTANCE_AMX(brgemm_convolution_bwd_weights_t) \
-        CPU_INSTANCE(ref_convolution_bwd_weights_t) nullptr, \
+        CPU_INSTANCE(ref_convolution_bwd_weights_t) \
+        nullptr, \
     }) \
 }
 

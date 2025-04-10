@@ -1156,10 +1156,12 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
                 smart_bytes(gpu_max_alloc_capacity).c_str());
     }
 
-    // Note: in theory, `total_size_ref` can be smaller for a `prim_ref` because
-    // stock reference uses f32 for estimation and best `prim_ref` tries
+    // Note: in theory, `total_size_ref` itself can be smaller for a `prim_ref`
+    // because stock reference uses f32 for estimation and best `prim_ref` tries
     // requested data types first which can be lower precision data types which
-    // require less memory.
+    // require less memory. However, during the filling both memories - the
+    // original f32 and prim_ref memory are alive - and they might be huge. To
+    // avoid potential overflow at that exact moment, ref sizes are combined.
     size_t total_size_ref = check_mem_size_args.total_size_ref;
     // Note: `prim_ref` can require extra memory buffer for comparison to
     // convert output to `abx` format.
@@ -1169,8 +1171,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
         check_mem_size_args_t prim_ref_mem_size_args;
         collect_mem_size(prim_ref_mem_size_args, query_pd(prim_ref), DIR_UNDEF,
                 /* need_skip = */ false);
-        // Update reference size number.
-        total_size_ref = std::accumulate(prim_ref_mem_size_args.sizes.begin(),
+        // Add prim_ref reference size number.
+        total_size_ref += std::accumulate(prim_ref_mem_size_args.sizes.begin(),
                 prim_ref_mem_size_args.sizes.end(), 0ULL);
         // Update compare size number. It's twice of original memory since both
         // tensors expected to be of the same size.

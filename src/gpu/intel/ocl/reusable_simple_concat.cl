@@ -235,10 +235,85 @@ reusable_simple_concat(__global DATA_T *dst, const ulong dst_offset0,
 #endif // SIMD == 1
 }
 
-#if BYTES_PER_WORKITEM == 8
+#if BYTES_PER_WORKITEM == 16
+
+inline ulong2 shiftl(ulong2 v, unsigned s) {
+    ulong mm0, mm1;
+    s &= 127;
+    mm0 = ((((s + 127) | s) & 64) >> 6) - 1UL;
+    mm1 = (s >> 6) - 1UL;
+    s &= 63;
+    ulong2 res;
+    res.s1 = (v.s0 << s) & (~mm1);
+    res.s0 = (v.s0 << s) & (mm1);
+    res.s1 |= ((v.s1 << s) | ((v.s0 >> (64 - s)) & mm0)) & mm1;
+    return res;
+}
+
+inline ulong2 shiftr(ulong2 v, unsigned s) {
+    ulong mm0, mm1;
+    s &= 127;
+    mm0 = ((((s + 127) | s) & 64) >> 6) - 1UL;
+    mm1 = (s >> 6) - 1UL;
+    s &= 63;
+    ulong2 res;
+    res.s0 = (v.s1 >> s) & (~mm1);
+    res.s1 = (v.s1 >> s) & (mm1);
+    res.s0 |= ((v.s0 >> s) | ((v.s1 << (64 - s)) & mm0)) & mm1;
+    return res;
+}
+
+#define AS_FULL as_ulong2
+#define COMPUTE_T ulong2
+#define FULLMASK ((ulong2)(0xFFFFFFFFFFFFFFFFUL, 0xFFFFFFFFFFFFFFFFUL))
+
+#if DATA_TYPE_SIZE == 8
+#define NPERSG 2
+#define DDATA_T DATA2_T
+#define AS_VEC as_ulong2
+#define BLOCK_READ_UL BLOCK_READ2
+#define BLOCK_WRITE_UL BLOCK_WRITE2
+#elif DATA_TYPE_SIZE == 4
+#define NPERSG 4
+#define DDATA_T DATA4_T
+#define AS_VEC as_uint4
+#define BLOCK_READ_UL BLOCK_READ4
+#define BLOCK_WRITE_UL BLOCK_WRITE4
+#elif DATA_TYPE_SIZE == 2
+#define NPERSG 8
+#define DDATA_T DATA8_T
+#define AS_VEC as_ushort8
+#define BLOCK_READ_UL BLOCK_READ8
+#define BLOCK_WRITE_UL BLOCK_WRITE8
+#elif DATA_TYPE_SIZE == 1
+#define NPERSG 16
+#define DDATA_T DATA16_T
+#define AS_VEC as_uchar16
+#define BLOCK_READ_UL BLOCK_READ16
+#define BLOCK_WRITE_UL BLOCK_WRITE16
+#endif
+
+#define SHUFFLE_UP(p, c, dt) \
+    (ulong2)(intel_sub_group_shuffle_up((p).s0, (c).s0, (dt)), \
+            intel_sub_group_shuffle_up((p).s1, (c).s1, (dt)))
+#define SHUFFLE_DOWN(c, n, dt) \
+    (ulong2)(intel_sub_group_shuffle_down((c).s0, (n).s0, (dt)), \
+            intel_sub_group_shuffle_down((c).s1, (n).s1, (dt)))
+#define SHUFFLE(data, c) \
+    (ulong2)(intel_sub_group_shuffle((data).s0, (c)), \
+            intel_sub_group_shuffle((data).s1, (c)))
+
+#define SHIFTL(v, s) shiftl((v), (s))
+#define SHIFTR(v, s) shiftr((v), (s))
+
+#elif BYTES_PER_WORKITEM == 8
+
 #define AS_FULL as_ulong
 #define COMPUTE_T ulong
 #define FULLMASK 0xFFFFFFFFFFFFFFFFUL
+#define SHUFFLE_UP intel_sub_group_shuffle_up
+#define SHUFFLE_DOWN intel_sub_group_shuffle_down
+#define SHUFFLE intel_sub_group_shuffle
 
 #define DATA1_T DATA_T
 #if DATA_TYPE_SIZE == 8
@@ -247,19 +322,16 @@ reusable_simple_concat(__global DATA_T *dst, const ulong dst_offset0,
 #define AS_VEC as_ulong
 #define BLOCK_READ_UL BLOCK_READ
 #define BLOCK_WRITE_UL BLOCK_WRITE
-#define ITEMMASK(n) (FULLMASK)
 #elif DATA_TYPE_SIZE == 4
 #define NPERSG 2
 #define DDATA_T DATA2_T
 #define AS_VEC as_uint2
-#define ITEMMASK(n) (FULLMASK << ((n)*DATA_TYPE_SIZE * 8))
 #define BLOCK_READ_UL BLOCK_READ2
 #define BLOCK_WRITE_UL BLOCK_WRITE2
 #elif DATA_TYPE_SIZE == 2
 #define NPERSG 4
 #define DDATA_T DATA4_T
 #define AS_VEC as_ushort4
-#define ITEMMASK(n) (0xFFFFU << ((n)*DATA_TYPE_SIZE * 8))
 #define BLOCK_READ_UL BLOCK_READ4
 #define BLOCK_WRITE_UL BLOCK_WRITE4
 #elif DATA_TYPE_SIZE == 1
@@ -268,38 +340,10 @@ reusable_simple_concat(__global DATA_T *dst, const ulong dst_offset0,
 #define AS_VEC as_uchar8
 #define BLOCK_READ_UL BLOCK_READ8
 #define BLOCK_WRITE_UL BLOCK_WRITE8
-#define ITEMMASK(n) (0xFFU << ((n)*DATA_TYPE_SIZE * 8))
 #endif
 
-#elif BYTES_PER_WORKITEM == 4
-
-#define AS_FULL as_uint
-#define COMPUTE_T uint
-#define FULLMASK 0xFFFFFFFFU
-
-#define DATA1_T DATA_T
-#if DATA_TYPE_SIZE == 4
-#define NPERSG 1
-#define DDATA_T DATA1_T
-#define AS_VEC as_uint
-#define BLOCK_READ_UL BLOCK_READ
-#define BLOCK_WRITE_UL BLOCK_WRITE
-#define ITEMMASK(n) (FULLMASK)
-#elif DATA_TYPE_SIZE == 2
-#define NPERSG 2
-#define DDATA_T DATA2_T
-#define AS_VEC as_ushort2
-#define BLOCK_READ_UL BLOCK_READ2
-#define BLOCK_WRITE_UL BLOCK_WRITE2
-#define ITEMMASK(n) (0xFFFFU << ((n)*DATA_TYPE_SIZE * 8))
-#elif DATA_TYPE_SIZE == 1
-#define NPERSG 4
-#define DDATA_T DATA4_T
-#define AS_VEC as_uchar4
-#define BLOCK_READ_UL BLOCK_READ4
-#define BLOCK_WRITE_UL BLOCK_WRITE4
-#define ITEMMASK(n) (0xFFU << ((n)*DATA_TYPE_SIZE * 8))
-#endif
+#define SHIFTL(v, s) ((v) << (s))
+#define SHIFTR(v, s) ((v) >> (s))
 
 #else
 
@@ -436,14 +480,13 @@ internal_padding_block_concat2(__global DATA_T *dst,
                     + next_block
                             * B0)); //TODO: MAYBE_READ like in simple concat kernel? no perf difference.
         }
-        bVal = intel_sub_group_shuffle_up(bVal, bVal, cutoff);
+        bVal = SHUFFLE_UP(bVal, bVal, cutoff);
 
         // shift both halves of block to match cutoff
         int sg_shuffle_dt
                 = (B0 - cutoff); // required shift to match block load to cutoff
 
-        COMPUTE_T offset_vec_data
-                = intel_sub_group_shuffle_down(aVal, aVal, sg_shuffle_dt);
+        COMPUTE_T offset_vec_data = SHUFFLE_DOWN(aVal, aVal, sg_shuffle_dt);
 
         if ((ic % B0) < cutoff) {
             aVal = offset_vec_data;
@@ -467,8 +510,9 @@ internal_padding_block_concat2(__global DATA_T *dst,
 
             if ((ic % B0) >= cutoff) {
                 aVal = aVal
-                        & FULLMASK >> (NPERSG - block_scaled_leading_shift)
-                                        * DATA_TYPE_SIZE * 8;
+                        & SHIFTR(FULLMASK,
+                                (NPERSG - block_scaled_leading_shift)
+                                        * DATA_TYPE_SIZE * 8);
             }
         }
 #else
@@ -538,8 +582,8 @@ internal_padding_block_concat2(__global DATA_T *dst,
                         >= blocks_per_simd1)
                     block_scaled_leading_shift++;
 
-                bVal = bVal
-                        << (block_scaled_leading_shift * DATA_TYPE_SIZE * 8);
+                bVal = SHIFTL(bVal,
+                        (block_scaled_leading_shift * DATA_TYPE_SIZE * 8));
 
                 // cannot directly shift values to corresponding location in sg since each
                 // workitem is responsible for multiple blocks, figure out source block
@@ -548,19 +592,19 @@ internal_padding_block_concat2(__global DATA_T *dst,
                                   + leading_boundary_shift % blocks_per_simd1)
                         % blocks_per_simd1;
 
-                bVal = intel_sub_group_shuffle(
+                bVal = SHUFFLE(
                         bVal, src_bank * B0 + (get_sub_group_local_id() % B0));
 
             } else {
-                bVal = bVal
-                        << (block_scaled_leading_shift * DATA_TYPE_SIZE * 8);
+                bVal = SHIFTL(bVal,
+                        (block_scaled_leading_shift * DATA_TYPE_SIZE * 8));
             }
         }
 
         int sg_shuffle_dt = cutoff;
         COMPUTE_T offset_vec_data;
         const COMPUTE_T zero = 0;
-        offset_vec_data = intel_sub_group_shuffle_up(zero, bVal,
+        offset_vec_data = SHUFFLE_UP(zero, bVal,
                 sg_shuffle_dt); // will move src1 block to cutoff
 
         COMPUTE_T cVal;
@@ -573,9 +617,8 @@ internal_padding_block_concat2(__global DATA_T *dst,
             int block_dt = (blocks_per_sg - trailing_boundary_shift);
             int block_dt_from_src1 = sg_first_bii - first_boundary_block;
 
-            COMPUTE_T csval;
             // offset trailing portion to match cutoff
-            csval = intel_sub_group_shuffle_down(cVal, zero, (B0 - cutoff));
+            cVal = SHUFFLE_DOWN(cVal, zero, (B0 - cutoff));
 
             // cannot directly shift values to corresponding location in sg since each
             // workitem is responsible for multiple blocks, figure out source block
@@ -591,11 +634,10 @@ internal_padding_block_concat2(__global DATA_T *dst,
                 }
             }
 
-            COMPUTE_T trailmask;
-            trailmask = (ntrail < NPERSG)
-                    ? (FULLMASK << (ntrail * DATA_TYPE_SIZE * 8))
-                            >> (ntrail * DATA_TYPE_SIZE * 8)
-                    : 0;
+            COMPUTE_T trailmask = (ntrail < NPERSG)
+                    ? SHIFTR(SHIFTL(FULLMASK, ntrail * DATA_TYPE_SIZE * 8),
+                            ntrail * DATA_TYPE_SIZE * 8)
+                    : zero;
 
             if (cutoff > 0 && (ic % B0) >= cutoff) {
                 aVal = aVal
@@ -604,9 +646,8 @@ internal_padding_block_concat2(__global DATA_T *dst,
             }
 
             // reorder according to source banks
-            csval = intel_sub_group_shuffle(
-                    csval, src_bank * B0 + get_sub_group_local_id() % B0);
-            cVal = csval << ((NPERSG - ntrail) * DATA_TYPE_SIZE * 8);
+            cVal = SHUFFLE(cVal, src_bank * B0 + get_sub_group_local_id() % B0);
+            cVal = SHIFTL(cVal, ((NPERSG - ntrail) * DATA_TYPE_SIZE * 8));
 
             if (cutoff > 0 && (get_sub_group_local_id() % B0) < cutoff) {
                 aVal = (aVal & trailmask) | (cVal & ~trailmask);
@@ -629,8 +670,9 @@ internal_padding_block_concat2(__global DATA_T *dst,
 
                 if ((ic % B0) >= cutoff) {
                     aVal = aVal
-                            & FULLMASK >> (NPERSG - block_scaled_leading_shift)
-                                            * DATA_TYPE_SIZE * 8;
+                            & SHIFTR(FULLMASK,
+                                    (NPERSG - block_scaled_leading_shift)
+                                            * DATA_TYPE_SIZE * 8);
                 }
             }
 #else

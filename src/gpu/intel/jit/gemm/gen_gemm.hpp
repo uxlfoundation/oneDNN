@@ -289,11 +289,19 @@ struct gen_gemm_t : public gpu_gemm_t {
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
 
-            if (attr()->mayiconvert(u8, bf16))
+            // Fpmath modes are mutually exclusive. int->fp computation is
+            // mandatory when enabled. fp->fp conversion is optional.
+            if (attr()->mayiconvert(u8, bf16)) {
                 set_mode(mode, kernel_desc_t::mode_bf16x1);
-            if (attr()->mayiconvert(u8, f16))
+                set_mode(mode, kernel_desc_t::mode_int_cvt);
+            } else if (attr()->mayiconvert(u8, f16)) {
                 set_mode(mode, kernel_desc_t::mode_f16x1);
-            if (attr()->mayiconvert(f32, tf32)
+                set_mode(mode, kernel_desc_t::mode_int_cvt);
+            } else if (attr()->mayiconvert(f32, bf16)) {
+                set_mode(mode, kernel_desc_t::mode_bf16x1);
+            } else if (attr()->mayiconvert(f32, f16)) {
+                set_mode(mode, kernel_desc_t::mode_f16x1);
+            } else if (attr()->mayiconvert(f32, tf32)
                     && !(mode
                             & (kernel_desc_t::mode_f16x1
                                     | kernel_desc_t::mode_bf16x1))) {

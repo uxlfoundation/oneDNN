@@ -44,7 +44,11 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag);
 
     dnnl_alg_kind_t alg_kind = dnnl_softmax_accurate;
-    if (prb->alg == LOGSOFTMAX) alg_kind = dnnl_softmax_log;
+    if (prb->alg == LOGSOFTMAX)
+        alg_kind = dnnl_softmax_log;
+    else if (prb->alg == SAFESOFTMAX)
+        // TODO: replace with more productive code for safe softmax.
+        alg_kind = static_cast<dnnl_alg_kind_t>(4098);
 
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dims.data());

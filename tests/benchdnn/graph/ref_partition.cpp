@@ -322,6 +322,7 @@ int ref_partition_t::check_partition_correctness(
         size_t op_id = op.get().id_;
         const auto op_kind = op.get().kind_;
         const auto ref_prim = ref_prims_.at(op_id);
+        std::string mode {};
 
         // if there is eltwise post-ops or binary div post-ops (GPU test), need
         // to relax compare critria.
@@ -343,7 +344,13 @@ int ref_partition_t::check_partition_correctness(
                 // into NaNs.
                 || (op_driver == dnnl_driver_t::reorder
                         && op.get().in_lts_.front().get_data_type()
-                                == logical_tensor::data_type::f8_e4m3);
+                                == logical_tensor::data_type::f8_e4m3)
+                // Only safe softmax can tolerant input where the entire line
+                // is filled with -inf. otherwise, the softmax and subsequent
+                // ops should allow nan output.
+                || (op_kind == "SoftMax"
+                        && op.get().get_attr_string(mode, "mode")
+                        && mode == "none");
 
         // get the args that need comparing
         args_t output_args;
@@ -368,6 +375,9 @@ int ref_partition_t::check_partition_correctness(
         // reset the state
         res->state = EXECUTED;
 
+        // TODO(zhitao): need to check whether the operation that produces the
+        // output args is the children of the operations that affect
+        // output_has_nans.
         ref_prim->check_correctness(
                 output_args, has_eltwise, output_has_nans, res);
         if (res->state == FAILED) {

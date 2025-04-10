@@ -30,7 +30,7 @@
       "inputs": [
         {
           "id": 0,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -48,7 +48,7 @@
         }, 
         {
           "id": 1,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -68,7 +68,7 @@
       "outputs": [
         {
           "id": 2,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -99,7 +99,7 @@
       "inputs": [
         {
           "id": 2,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -117,7 +117,7 @@
         }, 
         {
           "id": 3,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1
           ],
@@ -131,7 +131,7 @@
       "outputs": [
         {
           "id": 4,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -162,7 +162,7 @@
       "inputs": [
         {
           "id": 4,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -180,7 +180,7 @@
         }, 
         {
           "id": 5,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             1, 
@@ -200,7 +200,7 @@
       "outputs": [
         {
           "id": 6,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -226,12 +226,16 @@
         "axis": {
           "type": "s64",
           "value": -1
+        },
+        "mode": {
+          "type": "string",
+          "value": "none"
         }
       },
       "inputs": [
         {
           "id": 6,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -251,7 +255,7 @@
       "outputs": [
         {
           "id": 7,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -286,7 +290,7 @@
       "inputs": [
         {
           "id": 7,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -304,7 +308,7 @@
         }, 
         {
           "id": 8,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 
@@ -324,7 +328,7 @@
       "outputs": [
         {
           "id": 9,
-          "dtype": "f16",
+          "dtype": "bf16",
           "shape": [
             1, 
             16, 

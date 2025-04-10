@@ -1943,7 +1943,15 @@ bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
 bool get_softmax_alg(
         const deserialized_op_t &base_op_ref, ::softmax::alg_t &alg) {
     const auto &op_kind = base_op_ref.kind_;
-    if (op_kind == "SoftMax" || op_kind == "SoftMaxBackward") {
+    if (op_kind == "SoftMax") {
+        alg = ::softmax::alg_t::SOFTMAX;
+
+        std::string mode {};
+        if (base_op_ref.get_attr_string(mode, "mode")
+                && mode == "inf_as_zero") {
+            alg = ::softmax::alg_t::softmax_safe;
+        }
+    } else if (op_kind == "SoftMaxBackward") {
         alg = ::softmax::alg_t::SOFTMAX;
     } else if (op_kind == "LogSoftmax" || op_kind == "LogSoftmaxBackward") {
         alg = ::softmax::alg_t::LOGSOFTMAX;

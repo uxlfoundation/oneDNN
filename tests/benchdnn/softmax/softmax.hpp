@@ -33,8 +33,10 @@ enum alg_t {
     UNDEF,
     SOFTMAX,
     LOGSOFTMAX,
+    SAFESOFTMAX,
     softmax_accurate = SOFTMAX,
     softmax_log = LOGSOFTMAX,
+    softmax_safe = SAFESOFTMAX,
 };
 alg_t str2alg(const char *str);
 const char *alg2str(alg_t alg);

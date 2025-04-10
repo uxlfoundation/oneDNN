@@ -38,6 +38,7 @@ alg_t str2alg(const char *str) {
 const char *alg2str(alg_t alg) {
     if (alg == SOFTMAX) return "SOFTMAX";
     if (alg == LOGSOFTMAX) return "LOGSOFTMAX";
+    if (alg == SAFESOFTMAX) return "SAFESOFTMAX";
     assert(!"unknown algorithm");
     return "UNDEF";
 }

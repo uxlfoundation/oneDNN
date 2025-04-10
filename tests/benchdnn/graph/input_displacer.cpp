@@ -550,10 +550,25 @@ int partition_data_displacer_t::gen_causal_mask_filling(
     benchdnn_parallel_nd(batch, M, N, [&](int64_t b, int64_t m, int64_t n) {
         int64_t idx = b * M * N + m * N + n;
         float val = m >= n ? 0.f : -INFINITY;
+        if( m == M -1 ) val = -INFINITY;
         tmp_mem.set_elem(idx, val);
     });
 
+    // // Fill the very last row with -inifinity for safe softmax validation.
+    // benchdnn_parallel_nd(batch, N, [&](int64_t b, int64_t n) {
+    //     int64_t idx = b * M * N + (M - 1) * N + n;
+    //     tmp_mem.set_elem(idx, -INFINITY);
+    // });
+
     mem = std::move(tmp_mem);
+
+    std::cout << "Filled mask:\n";
+    for( size_t idx = 0; idx < mem.nelems(); ++idx ) {
+        std::cout << mem.get_elem(idx) << " ";
+        if(idx % N == N - 1) std::cout << std::endl;
+    }
+    std::cout << std::endl;
+
     return OK;
 }
 

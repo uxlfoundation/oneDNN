@@ -164,7 +164,8 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         if (prb->flags & GLOB_STATS) {
             val = ((n % 7) << 1);
         } else if (prb->c > 0) {
-            const float m = ref_mean.get_elem(n);
+            // In case of RMS flag, mean is not used and RMS norm is computed instead.
+            const float m = (prb->use_rms_norm()) ? 0.f : ref_mean.get_elem(n);
             for (int64_t c = 0; c < prb->c; ++c) {
                 const int64_t off = n * prb->c + c;
                 const float s = ref_src.get_elem(off);

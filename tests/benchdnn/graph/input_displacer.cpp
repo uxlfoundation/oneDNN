@@ -593,6 +593,8 @@ int partition_data_displacer_t::gen_causal_mask_filling(
     benchdnn_parallel_nd(batch, M, N, [&](int64_t b, int64_t m, int64_t n) {
         int64_t idx = b * M * N + m * N + n;
         float val = m >= n ? 0.f : -INFINITY;
+        // The line below masks out the whole prompt to verify the softmax output returns zeroes, not NaNs, as expected by PyTorch.
+        if (m == M - 1) val = -INFINITY;
         tmp_mem.set_elem(idx, val);
     });
 

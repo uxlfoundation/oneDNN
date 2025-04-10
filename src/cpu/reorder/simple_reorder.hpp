@@ -2192,17 +2192,36 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         input += input_d.blk_off(0);
         output += output_d.blk_off(0);
 
-        data_t<type_i> *wspace = scratchpad.template get<data_t<type_i>>(
-                memory_tracking::names::key_reorder_space);
+        data_t<type_i> *wspace = const_cast<data_t<type_i> *>(input);
 
         // When formats of the input and the output are not identical, the idea
         // is to reorder the data from the input format to the output format
         // but within the same data type, and after the format reorder apply
         // the compression into int4 as on `abx` format.
-        const bool need_transform
-                = output_d.strides()[output_d.ndims() - 1] != 1;
-        wspace = need_transform ? wspace : const_cast<data_t<type_i> *>(input);
+        const bool need_transform = !output_d.is_dense()
+                || output_d.strides()[output_d.ndims() - 1] != 1;
         if (need_transform) {
+            wspace = scratchpad.template get<data_t<type_i>>(
+                    memory_tracking::names::key_reorder_space);
+            // The second part of data conversion relies on the fact that the
+            // scratchpad is dense as it reads the whole buffer. It means the
+            // padded area must be zeroed, otherwise, the conversion logic will
+            // convert garbage data into requested data type and spoil zeropad
+            // requirement.
+            if (!output_d.is_dense()) {
+                const dim_t work_amount_zero
+                        = get_scratchpad_size(input_d, output_d)
+                        / sizeof(float);
+                parallel(0, [&](const int ithr, const int nthr) {
+                    dim_t start {0}, end {0};
+                    balance211(work_amount_zero, nthr, ithr, start, end);
+                    PRAGMA_OMP_SIMD()
+                    for (dim_t idx = start; idx < end; idx++) {
+                        wspace[idx] = 0;
+                    }
+                });
+            }
+
             const dim_t work_amount = input_d.nelems();
             parallel(0, [&](const int ithr, const int nthr) {
                 dim_t start {0}, end {0};

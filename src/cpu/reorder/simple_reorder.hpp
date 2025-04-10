@@ -2199,8 +2199,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         // is to reorder the data from the input format to the output format
         // but within the same data type, and after the format reorder apply
         // the compression into int4 as on `abx` format.
-        const bool need_transform
-                = output_d.strides()[output_d.ndims() - 1] != 1;
+        const bool need_transform = !output_d.is_dense()
+                || output_d.strides()[output_d.ndims() - 1] != 1;
         wspace = need_transform ? wspace : const_cast<data_t<type_i> *>(input);
         if (need_transform) {
             const dim_t work_amount = input_d.nelems();

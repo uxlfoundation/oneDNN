@@ -452,8 +452,6 @@ private:
     template <typename U>
     U vmm_mask(const U &vmm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) const;
-    Xbyak::Xmm xmm_mask(const Xbyak::Xmm &xmm_in, bool mask_flag, bool store,
-            Xbyak::Opmask ktail_mask) const;
 
     void cvt2ps(data_type_t type_in, const Xbyak::Zmm &zmm_in,
             const Xbyak::Operand &op, bool mask_flag, bool store,
@@ -819,12 +817,6 @@ U jit_brgemm_amx_uker_base_t::vmm_mask(const U &vmm_in, bool mask_flag,
         bool store, Xbyak::Opmask ktail_mask) const {
     return mask_flag ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
                      : vmm_in;
-}
-
-Xbyak::Xmm jit_brgemm_amx_uker_base_t::xmm_mask(const Xbyak::Xmm &xmm_in,
-        bool mask_flag, bool store, Xbyak::Opmask ktail_mask) const {
-    return mask_flag ? (store ? xmm_in | ktail_mask : xmm_in | ktail_mask | T_z)
-                     : xmm_in;
 }
 
 void jit_brgemm_amx_uker_base_t::cvt2ps(data_type_t type_in,

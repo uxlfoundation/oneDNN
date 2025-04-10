@@ -1577,7 +1577,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
 
     // init mem advice heuristic based on bmn threads and excution scan order
-    if (is_superset(isa, avx10_1_512_amx)) mem_advice_init(bgmmc);
+    if (is_superset(isa, avx10_2_512_amx_2)) mem_advice_init(bgmmc);
 
     // Dispatch small shapes to VNNI for better performance
     const bool runtime_dims

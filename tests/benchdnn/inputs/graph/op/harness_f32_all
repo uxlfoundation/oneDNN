@@ -241,6 +241,7 @@
 --reset --in-shapes=0:8x384x1024*acb --op-attrs=0:axis:1 --case=op/f32/logsoftmax.json
 --reset --in-shapes=0:8x384x1024*acb --op-attrs=0:axis:0 --case=op/f32/logsoftmax.json
 --reset --in-shapes=0:8x384x1024*acb --op-attrs=0:axis:2 --case=op/f32/logsoftmax.json
+--reset --op-attrs=0:mode:inf_as_zero --case=op/f32/softmax.json
 --reset --in-shapes=0:8x384x1024 --op-attrs=0:axis:1 --case=op/f32/softmax.json
 --reset --in-shapes=0:8x384x1024 --op-attrs=0:axis:0 --case=op/f32/softmax.json
 --reset --in-shapes=0:8x384x1024 --op-attrs=0:axis:2 --case=op/f32/softmax.json

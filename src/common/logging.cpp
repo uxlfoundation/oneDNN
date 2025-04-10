@@ -17,6 +17,7 @@
 #include "common/logging.hpp"
 #include "common/utils.hpp"
 
+#define SPDLOG_DISABLE_DEFAULT_LOGGER
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 
@@ -54,8 +55,11 @@ log_manager_t::log_manager_t()
                 "logger enabled,logfile::{},size::{},num_logfiles::{}",
                 logfile_path_, logfile_size_, num_logfiles_);
         dnnl_logger->info(SEPARATOR_STR);
-    } catch (spdlog::spdlog_ex &exception) {
+    } catch (const spdlog::spdlog_ex &exception) {
         printf("onednn_verbose,info,exception while creating logfile: %s\n",
+                exception.what());
+    } catch (const std::exception &exception) {
+        printf("onednn_verbose,info,standard library exception caught: %s\n",
                 exception.what());
     }
 }

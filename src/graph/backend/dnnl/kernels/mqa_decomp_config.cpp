@@ -83,7 +83,8 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &inputs) {
 
     // Record the ops inside of MQA pattern in a specific order.
-    record_mqa_ops(sg);
+    status_t sta = record_mqa_ops(sg);
+    if (sta != status::success) return sta;
 
     // Acquire the data type from input param for later primitive creation.
     // The src and wei dt of both quantized mqa and float mqa are the same.
@@ -392,6 +393,12 @@ status_t mqa_decomp_config_t::record_mqa_ops(std::shared_ptr<subgraph_t> &sg) {
             matmul2 = cur_op;
         }
     }
+    VCHECK_MQA_DECOMP(
+            !dnnl::impl::utils::one_of(nullptr, matmul1, matmul2, softmax),
+            status::invalid_graph,
+            "Doesn't find all the ops in mqa pattern, matmul1: %p, matmul2: "
+            "%p, softmax: %p",
+            matmul1.get(), matmul2.get(), softmax.get());
     this->mqa_op = {reorder1, matmul1, softmax, reorder2, matmul2};
     return status::success;
 }

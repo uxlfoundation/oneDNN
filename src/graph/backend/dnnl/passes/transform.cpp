@@ -3529,6 +3529,8 @@ impl::status_t lift_up_post_add_for_matmul(std::shared_ptr<subgraph_t> &sg) {
             new_val->set_data_type(add_out_val->get_logical_tensor().data_type);
             post_add.connect_output(0, new_val);
             post_reshape.connect_input(0, new_val);
+
+            add_in_val->remove_consumer(post_add, 0);
             post_op.connect_input(0, add_in_val);
             add_out_val->remove_consumer(post_op, 0);
 

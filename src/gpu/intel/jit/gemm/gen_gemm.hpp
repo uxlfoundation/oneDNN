@@ -447,7 +447,13 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             if (attr()->mayiconvert(u8, bf16))
                 set_mode(mode, kernel_desc_t::mode_bf16x1);
+                set_mode(mode, kernel_desc_t::mode_int_cvt);
             if (attr()->mayiconvert(u8, f16))
+                set_mode(mode, kernel_desc_t::mode_f16x1);
+                set_mode(mode, kernel_desc_t::mode_int_cvt);
+            if (attr()->mayiconvert(f32, bf16))
+                set_mode(mode, kernel_desc_t::mode_bf16x1);
+            if (attr()->mayiconvert(f32, f16))
                 set_mode(mode, kernel_desc_t::mode_f16x1);
             if (attr()->mayiconvert(f32, tf32)
                     && !(mode

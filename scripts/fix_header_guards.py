@@ -423,7 +423,7 @@ def adjust_content(file: str, guard: str, status: Status):
                 comment_guard = arg[2:-2].strip()
             if (
                 comment_guard is not None
-                and comment_guard != old_guard
+                and comment_guard != guard
                 and comment_guard.upper() != "HEADER GUARD"
             ):
                 if not options.inplace:

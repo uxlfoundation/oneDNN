@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_PPC64_GEMM_GEMM_DRIVER_HPP
-#define CPU_PPC64_GEMM_GEMM_DRIVER_HPP
+#ifndef CPU_PPC64_PPC64_GEMM_DRIVER_HPP
+#define CPU_PPC64_PPC64_GEMM_DRIVER_HPP
 
 namespace dnnl {
 namespace impl {
@@ -30,4 +30,4 @@ dnnl_status_t cblas_gemm_s8x8s32_ppc64(int, int, char const *, dim_t, dim_t,
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
-#endif // CPU_PPC64_GEMM_GEMM_DRIVER_HPP
+#endif // CPU_PPC64_PPC64_GEMM_DRIVER_HPP

@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_S390X_KERNELS_PACK_HPP
-#define CPU_S390X_KERNELS_PACK_HPP
+#ifndef CPU_S390X_PACK_HPP
+#define CPU_S390X_PACK_HPP
 #include "common/utils.hpp"
 #include "cpu/s390x/helpers.h"
 namespace dnnl {

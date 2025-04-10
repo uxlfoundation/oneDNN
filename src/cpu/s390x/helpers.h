@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_S390X_VEC_H
-#define CPU_S390X_VEC_H
+#ifndef CPU_S390X_HELPERS_H
+#define CPU_S390X_HELPERS_H
 #include <vecintrin.h>
 namespace dnnl {
 namespace impl {

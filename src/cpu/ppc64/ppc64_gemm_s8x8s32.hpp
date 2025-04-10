@@ -14,6 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#ifndef CPU_PPC64_PPC64_GEMM_S8X8S32_HPP
+#define CPU_PPC64_PPC64_GEMM_S8X8S32_HPP
+
 #include <altivec.h>
 #include "cpu/simple_q10n.hpp"
 
@@ -3072,3 +3075,5 @@ void gemm_kernel_8bit(dim_t m, dim_t n, dim_t k, float alpha, int8_t *A,
 
 } // namespace impl
 } // namespace dnnl
+
+#endif

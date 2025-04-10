@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_S390X_KERNELS_S16S16S32_HPP
-#define CPU_S390X_KERNELS_S16S16S32_HPP
+#ifndef CPU_S390X_KERNEL_S16S16S32_HPP
+#define CPU_S390X_KERNEL_S16S16S32_HPP
 
 #include <cstdint>
 #include "common/utils.hpp"

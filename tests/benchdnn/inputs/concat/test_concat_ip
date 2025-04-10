@@ -4,31 +4,31 @@
 --ddt=f32,f16,bf16,s8
 --stag=aBc32b:aBc32b
 --axis=1
-4x33x8:4x32x8
-4x34x8:4x32x8
-4x129x8:4x129x8
+4x33x17:4x32x17
+4x34x17:4x32x17
+4x129x17:4x129x17
 
 # internal padding 16b
 --dtag=aBc16b
 --stag=aBc16b:aBc16b
-4x33x8:4x32x8
-4x34x8:4x32x8
-4x129x8:4x129x8
+4x33x17:4x32x17
+4x34x17:4x32x17
+4x129x17:4x129x17
 
 # internal padding 8b
 --dtag=aBc8b
 --stag=aBc8b:aBc8b
-4x33x8:4x32x8
-4x39x8:4x32x8
-4x129x8:4x129x8
+4x33x17:4x32x17
+4x39x17:4x32x17
+4x129x17:4x129x17
 
 # internal padding 4b
 --dtag=aBc4b
 --stag=aBc4b:aBc4b
-4x34x8:4x32x8
-4x35x8:4x32x8
-4x36x8:4x32x8
-4x129x8:4x129x8
+4x34x17:4x32x17
+4x35x17:4x32x17
+4x36x17:4x32x17
+4x129x17:4x129x17
 
 # increasing inner dim
 --dtag=aBc32b
@@ -63,9 +63,9 @@
 # src0 < elems_per_sg
 4x2x8:4x2x8
 # sg_size > boundary (no trailing blocks)
-4x33x8:4x4x8
+4x34x8:4x4x8
 # boundary_blocks only
-4x3x32:4x3x32
+4x2x32:4x2x32
 
 # large internal padding concat for idx_t=ulong
 --reset

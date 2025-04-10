@@ -227,9 +227,9 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
         }
         stride *= blk;
     }
-    const size_t preferred_bytes_per_workitem = 8;
 
     int max_simd = 1;
+    const size_t preferred_bytes_per_workitem = 16;
     size_t bytes_per_workitem = preferred_bytes_per_workitem;
     for (int simd : {32, 16, 8, 1}) {
         if (simd > max_sg_size) continue;
@@ -273,8 +273,9 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
 
     // heuristic for problem size too small
     size_t min_block_read_elements = conf.simd * loads_per_thread;
-    size_t src0_inner_elems = rt_conf.src_concat_axis0 * concat2_inner_axis;
-    bool src0_size_sufficient = src0_inner_elems > min_block_read_elements;
+    size_t row_inner_elems = conf.blocks[0] * concat2_inner_axis;
+    bool inner_size_sufficient = row_inner_elems > min_block_read_elements;
+    bool problem_size_sufficient = dst_bytes > 5e5;
 
     // heuristic data misaligned for subgroup loads/stores
     bool can_subgroup_read_dt = true;
@@ -293,8 +294,8 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
                     || (conf.blocks[0] == 16) || (conf.blocks[0] == 32));
 
     bool can_use_internal_padding_concat2 = (conf.n == 2)
-            && can_subgroup_read_dt && src0_size_sufficient
-            && supported_block_size;
+            && can_subgroup_read_dt && inner_size_sufficient
+            && supported_block_size && problem_size_sufficient;
 
     if (can_use_internal_padding_concat2) {
         rt_conf.inner_axis = concat2_inner_axis;

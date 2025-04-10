@@ -410,7 +410,11 @@
         "axis": {
           "type": "s64",
           "value": -1
-        }
+        },
+        "mode": {
+           "type": "string",
+           "value": "inf_as_zero"
+         }
       },
       "inputs": [
         {

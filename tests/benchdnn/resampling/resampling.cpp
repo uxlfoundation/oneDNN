@@ -164,8 +164,13 @@ fill_cfg_t binary_po_fill_cfg(
                 = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
         assert(bin_po_idx < attr.post_ops.len());
         const auto alg = attr.post_ops.entry[bin_po_idx].kind;
-        cfg = fill_cfg_t(mem.dt(), 0.f, 16.f, /* int = */ true, alg,
-                "resampling_binary_post_op");
+        const bool is_src1_arg = !(exec_arg
+                ^ (DNNL_ARG_ATTR_MULTIPLE_POST_OP(bin_po_idx)
+                        | DNNL_ARG_SRC_1));
+
+        if (is_src1_arg)
+            cfg = fill_cfg_t(mem.dt(), 0.f, 16.f, /* int = */ true, alg,
+                    "resampling_binary_post_op");
     }
     return cfg;
 }

@@ -2077,7 +2077,7 @@ void matmul_amx_blocking_params_t::set_blocking_parameters(
         // TODO: review extendable_k_ condition to cover more cases
         extendable_k_ = (K % wei_k_blk != 0) && (k_chunk_elems_ > wei_k_blk)
                 && wei_zp_type == none && !use_buffer_a
-                && !packed_sparse_weights;
+                && !packed_sparse_weights && current_lda_ == K;
 
         if (extendable_k_) {
             if (k_chunk_elems_ >= K) {

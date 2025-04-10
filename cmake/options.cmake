@@ -130,7 +130,7 @@ set(DNNL_ENABLE_PRIMITIVE "ALL" CACHE STRING
       is a mandatory delimiter between names. This is the way to specify several
       primitives to be available in the final binary.")
 
-set(DNNL_ENABLE_PRIMITIVE_CPU_ISA "ALL" CACHE STRING
+set(DNNL_ENABLE_PRIMITIVE_CPU_ISA "AVX2" CACHE STRING
     "Specifies a set of implementations using specific CPU ISA to be available
     at build time. Regardless of value chosen, compiler-based optimized
     implementations will always be available. Valid values:

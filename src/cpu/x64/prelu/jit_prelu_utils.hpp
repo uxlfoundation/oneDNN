@@ -50,7 +50,7 @@ size_t c_blk_nelems(const memory_desc_t *mem, bool padding) noexcept;
 size_t get_block_tail_size(const memory_desc_t *mem) noexcept;
 void apply_zero_padding(jit_generator_t *host, const size_t tail_size,
         const data_type_t dt, const size_t block_tail_size,
-        const Xbyak::Reg64 &reg_dst, const Xbyak::Reg64 *reg_offset) noexcept;
+        const Xbyak::Reg64 &reg_dst, const Xbyak::Reg64 *reg_offset);
 
 } // namespace prelu
 } // namespace x64

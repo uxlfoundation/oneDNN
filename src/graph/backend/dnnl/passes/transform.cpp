@@ -4144,6 +4144,9 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         // handle implicit dnnl_mask
         else if (op->get_kind() == op_kind::dnnl_mask) {
             sdpa_op->set_attr<bool>(op_attr::with_causal, true);
+        } else if (op->get_kind() == op_kind::dnnl_softmax) {
+            sdpa_op->set_attr(
+                    op_attr::mode, op->get_attr<std::string>(op_attr::mode));
         }
     }
 

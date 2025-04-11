@@ -91,8 +91,7 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_CONV(
-                    post_ops_with_binary_ok(attr(), dst_md_.data_type, 5),
+            VDISPATCH_CONV(post_ops_with_binary_ok(attr(), *dst_md(), 5),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -203,8 +202,7 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
             VDISPATCH_CONV(
                     this->set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-            VDISPATCH_CONV(post_ops_with_binary_ok(
-                                   attr(), dst_md()->data_type, ndims()),
+            VDISPATCH_CONV(post_ops_with_binary_ok(attr(), *dst_md(), ndims()),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV_SC(attr_.set_default_formats(diff_src_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);

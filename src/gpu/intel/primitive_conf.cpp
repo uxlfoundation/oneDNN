@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/gpu_eltwise_pd.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -50,7 +51,7 @@ memory_desc_info_t memory_desc_info_t::create(const memory_desc_wrapper &mdw) {
     for (int d = 0; d < mdw.ndims(); ++d) {
         md_info.dims[d] = mdw.dims()[d];
         md_info.padded_dims[d] = mdw.padded_dims()[d];
-        md_info.strides[d][0] = blk.strides[d];
+        md_info.strides[d][0] = md_info.dims[d] == 1 ? 0 : blk.strides[d];
     }
 
     int levels[MAX_NDIMS] = {0};
@@ -492,8 +493,12 @@ void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
             dim_t stride = (d < md_info.ndims) ? md_info.strides[d][l] : 0;
             kernel_ctx.define_int(
                     utils::format("%s_B%d_%d", prefix, d, l), block);
-            kernel_ctx.define_int(
-                    utils::format("%s_S%d_%d", prefix, d, l), stride);
+            if (stride != DNNL_RUNTIME_DIM_VAL)
+                kernel_ctx.define_int(
+                        utils::format("%s_S%d_%d", prefix, d, l), stride);
+            else
+                kernel_ctx.add_option(utils::format(
+                        "%s_S%d_%d=invalid_stride", prefix, d, l));
         }
     }
 }
@@ -548,8 +553,9 @@ void def_eltwise_alg_kinds(compute::kernel_ctx_t &kernel_ctx) {
 }
 
 bool post_ops_with_binary_ok(const primitive_attr_t *attr,
-        const data_type_t dst_dt, const int max_ndims_supported) {
+        const memory_desc_t &dst_md, const int max_ndims_supported) {
     const auto &p = attr->post_ops_;
+    const auto dst_dt = dst_md.data_type;
 
     auto is_eltwise = [&](int idx) { return p.entry_[idx].is_eltwise(false); };
     auto is_sum = [&](int idx) { return p.entry_[idx].is_sum(false, false); };
@@ -563,13 +569,23 @@ bool post_ops_with_binary_ok(const primitive_attr_t *attr,
                         || is_prelu(po_idx));
         if (is_binary(po_idx)) {
             const auto &bin_desc = p.entry_[po_idx].binary.src1_desc;
-            if (bin_desc.ndims > max_ndims_supported) {
-                // accept descriptor if unsupported dims are equal to 1.
-                for (int dim_idx = max_ndims_supported;
-                        dim_idx < bin_desc.ndims; ++dim_idx) {
+            bool has_runtime_dims = false;
+            int num_size_one_dims = 0;
+            for (int dim_idx = 0; dim_idx < bin_desc.ndims; dim_idx++) {
+                if (dim_idx < max_ndims_supported) {
+                    if (bin_desc.dims[dim_idx] == DNNL_RUNTIME_DIM_VAL)
+                        has_runtime_dims = true;
+                    else if (bin_desc.dims[dim_idx] == 1)
+                        num_size_one_dims++;
+                } else {
+                    // accept descriptor if unsupported dims are equal to 1.
                     if (bin_desc.dims[dim_idx] != 1) is_po_ok = false;
                 }
             }
+
+            // Only 1D runtime dimensions are supported
+            if (has_runtime_dims && num_size_one_dims != dst_md.ndims - 1)
+                is_po_ok = false;
         }
         if (is_sum(po_idx)) {
             if (p.entry_[po_idx].sum.dt != dnnl_data_type_undef

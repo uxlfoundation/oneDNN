@@ -259,7 +259,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, jcp_.src_dt, jcp_.wei_dt,
             false, false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB,
-            jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_bf32, jcp_.is_tf32));
+            jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_tf32));
 
     brgemm_attr_t brgattr;
     brgattr.use_uker = jcp_.use_uker;

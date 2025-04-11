@@ -127,7 +127,7 @@ status_t dnnl_graph_graph::finalize() {
     std::unordered_map<size_t, logical_tensor_t> id_to_tensor;
 
     for (const auto &op : ops_) {
-        auto in_values = op->get_input_values();
+        const auto &in_values = op->get_input_values();
         auto out_values = op->get_output_values();
         if (!logical_tensor_sanity_check(id_to_tensor, in_values)
                 || !logical_tensor_sanity_check(id_to_tensor, out_values)) {

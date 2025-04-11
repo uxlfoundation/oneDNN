@@ -143,7 +143,7 @@ op deserialized_op_t::create() const {
         const auto &attr_value = it->second;
         const auto &type = attr_value.type_;
         if (type == "string") {
-            const auto value = attr_value.str_value_;
+            const auto &value = attr_value.str_value_;
             aop.set_attr(attr, value);
         } else if (type == "bool") {
             const auto value = attr_value.bool_value_;
@@ -152,13 +152,13 @@ op deserialized_op_t::create() const {
             const auto value = attr_value.s64_value_;
             aop.set_attr(attr, value);
         } else if (type == "s64[]") {
-            const auto value = attr_value.s64_vector_;
+            const auto &value = attr_value.s64_vector_;
             aop.set_attr(attr, value);
         } else if (type == "f32") {
             const auto value = attr_value.f32_value_;
             aop.set_attr(attr, value);
         } else if (type == "f32[]") {
-            const auto value = attr_value.f32_vector_;
+            const auto &value = attr_value.f32_vector_;
             aop.set_attr(attr, value);
         }
     }
@@ -294,9 +294,8 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         for (const auto &lt : aop.out_lts_) {
             out_lt_2_op_[lt.id_] = aop;
             // collect graph internal and output tensors memory layout
-            std::string mtag
+            lt_2_mtag_[lt.id_]
                     = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
-            lt_2_mtag_[lt.id_] = mtag;
         }
     }
 

@@ -1467,8 +1467,7 @@ bool get_pool_dt(const deserialized_op_t &base_op_ref,
 }
 
 bool get_pool_alg(const deserialized_op_t &base_op_ref, ::pool::alg_t &alg) {
-
-    const auto op_kind_ = base_op_ref.kind_;
+    const auto &op_kind_ = base_op_ref.kind_;
     if (op_kind_ == "MaxPool" || op_kind_ == "MaxPoolBackward") {
         alg = ::pool::alg_t::max;
     } else if (op_kind_ == "AvgPool" || op_kind_ == "AvgPoolBackward") {
@@ -1799,7 +1798,7 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
 ::reorder::settings_t get_setting(
         const deserialized_op_t &base_op_ref, res_t *res) {
     ::reorder::settings_t op_setting;
-    const auto op_kind = base_op_ref.kind_;
+    const auto &op_kind = base_op_ref.kind_;
 
     DNN_GRAPH_CHECK_SETTINGS(
             get_prb_dims(base_op_ref, op_setting.prb_dims), res);

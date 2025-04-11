@@ -4205,6 +4205,9 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         else if (op->get_kind() == op_kind::dnnl_mask) {
             sdpa_op->set_attr(op_attr::mask_type,
                     op->get_attr<int64_t>(op_attr::mask_type));
+        } else if (op->get_kind() == op_kind::dnnl_softmax) {
+            sdpa_op->set_attr(
+                    op_attr::mode, op->get_attr<std::string>(op_attr::mode));
         }
     }
 

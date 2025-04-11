@@ -28,8 +28,13 @@
 #define GWS_GET_THREAD_ID(index) \
     (off_t)(get_global_id(index) + offset.array[index])
 
+#if SUB_GROUP_SIZE != 1
+__attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE)))
+#else
 KERNEL_ATTR
-__kernel void ref_reorder(__global SRC_DATA_T *restrict src,
+#endif
+__kernel void
+ref_reorder(__global SRC_DATA_T *restrict src,
         __global DST_DATA_T *restrict dst,
         __global SRC_SCALES_DATA_T *restrict src_scales,
         __global SRC_ZP_DATA_T *restrict src_zps,

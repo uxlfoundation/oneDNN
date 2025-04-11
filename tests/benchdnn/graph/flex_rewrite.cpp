@@ -1143,15 +1143,15 @@ void flex_rewrite_t::op_attrs_rewrite(deserialized_graph_t &dgraph) {
         auto &temp_op = dgraph.ops_[std::distance(op_ids_.begin(), iter)];
         const auto attrs = parse_attrs(temp_attrs.second);
         for (const auto &new_attr : attrs) {
-            auto attr_name = new_attr.first;
+            const auto &attr_name = new_attr.first;
             if (!temp_op.attrs_.count(attr_name)) {
                 BENCHDNN_PRINT(0,
                         "graph: rewrite: no attr name `%s` in op %zd.\n",
                         attr_name.c_str(), temp_attrs.first);
                 SAFE_V(FAIL);
             }
-            auto new_val = new_attr.second;
-            auto attr_type = temp_op.attrs_[attr_name].type_;
+            const auto &new_val = new_attr.second;
+            const auto &attr_type = temp_op.attrs_[attr_name].type_;
             if (attr_type == "string") {
                 temp_op.attrs_[attr_name].str_value_ = new_val;
             } else if (attr_type == "bool") {

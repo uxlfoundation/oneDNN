@@ -1205,16 +1205,16 @@ private:
         void operator()(SyncFunction fc, const InstructionModifier &mod = InstructionModifier(), SourceLocation loc = {}) {
             parent.opSync(Opcode::sync, fc, mod, loc);
         }
-        void operator()(SyncFunction fc, const RegData &src0, SourceLocation loc) {
+        void operator()(SyncFunction fc, const RegData &src0, SourceLocation loc = {}) {
             this->operator()(fc, InstructionModifier(), src0, loc);
         }
-        void operator()(SyncFunction fc, const InstructionModifier &mod, const RegData &src0, SourceLocation loc) {
+        void operator()(SyncFunction fc, const InstructionModifier &mod, const RegData &src0, SourceLocation loc = {}) {
             parent.opSync(Opcode::sync, fc, mod, src0, loc);
         }
-        void operator()(SyncFunction fc, int src0, SourceLocation loc) {
+        void operator()(SyncFunction fc, int src0, SourceLocation loc = {}) {
             this->operator()(fc, InstructionModifier(), src0, loc);
         }
-        void operator()(SyncFunction fc, const InstructionModifier &mod, uint32_t src0, SourceLocation loc) {
+        void operator()(SyncFunction fc, const InstructionModifier &mod, uint32_t src0, SourceLocation loc = {}) {
             parent.opSync(Opcode::sync, fc, mod, Immediate::ud(src0), loc);
         }
         void allrd(SourceLocation loc = {}) {
@@ -1288,7 +1288,7 @@ public:
         if (hw >= HW::Gen12LP)
             opX(Opcode::directive, DataType::ud, InstructionModifier(), GRF(static_cast<int>(op)), NullRegister(), NullRegister(), loc);
     }
-    void subdep(Operand op, const GRFRange &r, SourceLocation loc) {
+    void subdep(Operand op, const GRFRange &r, SourceLocation loc = {}) {
         if (op == Operand::dst && !r.isEmpty()) {
 #ifdef NGEN_SAFE
             if (r.getLen() > 32) throw invalid_directive_exception();
@@ -1315,11 +1315,11 @@ public:
     void wrdep(const GRF &r, SourceLocation loc = {}) {
         wrdep(r-r, loc);
     }
-    void fencedep(Label &fenceLocation, SourceLocation loc) {
+    void fencedep(Label &fenceLocation, SourceLocation loc = {}) {
         addFixup(LabelFixup(fenceLocation.getID(labelManager), LabelFixup::JIPOffset));
         opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::fencedep)), Immediate::ud(0), loc);
     }
-    void disablePVCWARWA(SourceLocation loc) {
+    void disablePVCWARWA(SourceLocation loc = {}) {
         opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::pvcwarwa)), NullRegister(), loc);
     }
 

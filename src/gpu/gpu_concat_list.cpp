@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@
 #include "gpu/intel/ocl/gen9_concat.hpp"
 #include "gpu/intel/ocl/multi_concat.hpp"
 #include "gpu/intel/ocl/reusable_simple_concat.hpp"
-#include "gpu/intel/ocl/simple_concat.hpp"
 #endif
 
 namespace dnnl {
@@ -34,7 +33,6 @@ namespace {
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_CONCAT_P({
         GPU_CONCAT_INSTANCE_INTEL(intel::ocl::reusable_simple_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::ocl::simple_concat_t)
         GPU_CONCAT_INSTANCE_INTEL(intel::ocl::gen9_concat_t)
         GPU_CONCAT_INSTANCE_INTEL(intel::ocl::multi_concat_t)
         GPU_CONCAT_INSTANCE_GENERIC(generic::ref_concat_t)

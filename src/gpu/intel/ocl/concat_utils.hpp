@@ -135,6 +135,7 @@ public:
 
     data_type_t data_type() const { return data_type_; }
     size_t data_type_size() const { return types::data_type_size(data_type_); }
+    void set_pessimistic_chunk_size() { chunk_size_ = 1; }
 
     dim_t max_write_size() const {
         dim_t write_size = 1;
@@ -159,6 +160,10 @@ public:
     }
 
     void operator()(memory_desc_t &) const;
+
+    bool is_internal_padding_concat() const {
+        return (padding_type_ == padding_t::internal);
+    }
 
 private:
     static bool striding_ok(striding_t striding) {

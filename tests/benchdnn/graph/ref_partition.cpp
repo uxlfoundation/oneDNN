@@ -91,7 +91,7 @@ int ref_partition_t::init_ref(
         // Check whether the op has any output logical tensor that is the
         // output of the partition. If so, the driver need to allocate memory
         // for correctness check.
-        const auto check_mem_sizes_args = res->mem_size_args;
+        const auto &check_mem_sizes_args = res->mem_size_args;
         const auto is_output = is_output_op(par_op_ref.get());
         SAFE_V(check_partition_total_size(
                 check_mem_sizes_args, is_output, res));
@@ -320,8 +320,8 @@ int ref_partition_t::check_partition_correctness(
 
     for (const auto &op : partition_ops_ref_) {
         size_t op_id = op.get().id_;
-        const auto op_kind = op.get().kind_;
-        const auto ref_prim = ref_prims_.at(op_id);
+        const auto &op_kind = op.get().kind_;
+        const auto &ref_prim = ref_prims_.at(op_id);
 
         // if there is eltwise post-ops or binary div post-ops (GPU test), need
         // to relax compare critria.

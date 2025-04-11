@@ -565,7 +565,7 @@ status_t memory_planner_t::assign_internal_temporary_buffer(
             assign_info_t info = buffer_assignments_.at(out.get());
             if (info.kind_ != internal_temporary) continue;
 
-            auto consumers = out->get_consumers();
+            const auto &consumers = out->get_consumers();
             if (consumers.empty()) {
                 --temporary_buffer_ref_count[info.index_];
                 if (enable_standard_sharing) {

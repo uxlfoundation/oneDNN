@@ -768,8 +768,8 @@ inline std::vector<op_t *> reorder_matched_list(
         }
         auto &outputs = op->get_output_values();
         for (auto it = outputs.begin(); it != outputs.end(); ++it) {
-            auto cons = (*it)->get_consumers();
-            for (auto &con : (*it)->get_consumers()) {
+            const auto &cons = (*it)->get_consumers();
+            for (auto &con : cons) {
                 op_t &con_op = con.get_op();
                 if (std::find(dq.begin(), dq.end(), &con_op) == dq.end()
                         && std::find(fusion_ops.begin(), fusion_ops.end(),
@@ -1237,7 +1237,7 @@ bool repetition_matcher_t::verify_current_matching_round(
     oport_t oport = pmap_.first;
     op_t *cur_op = local_cached_ctx.out_port_map.at(oport).first;
     size_t cur_op_port = local_cached_ctx.out_port_map.at(oport).second;
-    auto cons = cur_op->get_output_value(cur_op_port)->get_consumers();
+    const auto &cons = cur_op->get_output_value(cur_op_port)->get_consumers();
     if (cons.size() <= 1) return true;
 
     // if current op has more than 1 consumers, while the repetition unit

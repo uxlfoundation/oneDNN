@@ -115,14 +115,6 @@ struct micro_sdpa_t : public gpu_primitive_t {
                         "11, or 15",
                         kq_zp_mask);
 
-            /// NOTE: Limitation of microkernels
-            if (utils::one_of(desc()->kq_zero_points.get_data_type(), s4, u4)) {
-                VCHECK_SDPA_COND(key_group_size() == 16,
-                        "if kq zero points data type is s4 or u4 then the "
-                        "group size(%d) must be 16.",
-                        key_group_size());
-            }
-
             int vs_scales_mask = desc()->vs_scales.get_mask();
             int vs_zp_mask = desc()->vs_zero_points.get_mask();
             if (!desc()->vs_scales.has_default_values()

@@ -63,6 +63,7 @@ public:
     bool quantized_ = false;
     bool causal_mask_ = false;
     dim_t kv_head_number_;
+    std::string softmax_mode_ = "none";
 
     // SDP pd and primitive.
     std::shared_ptr<primitive_desc_t> sdpa_pd_;

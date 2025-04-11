@@ -1157,6 +1157,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 .set_attr(op_attr::with_mask, true, attribute_kind::b)
                 // with_causal attribute support top-left mask type only
                 .set_attr(op_attr::with_causal, true, attribute_kind::b)
+                .set_attr(op_attr::mode, true, attribute_kind::s)
                 .set_shape_inference_function(infer_dnnl_sdpa_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_sdpa)
                 .SET_EXECUTABLE_CREATOR(executable_creator<sdpa_executable_t>)

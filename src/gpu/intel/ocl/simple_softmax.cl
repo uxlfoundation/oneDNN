@@ -147,46 +147,21 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #if WITH_SUM
         sum_src = (POST_OP_DATA_T)DATA_TO_REF(dst[data_off]);
 #endif
-#if NDIMS == 3
-#if IS_CHANNEL_LAST
-        const unsigned po_d2 = (data_off / OC) % SPATIAL_DIM_0;
-#else
-        const unsigned po_d2 = data_off % SPATIAL_DIM_0;
-#endif
-        const unsigned po_d3 = 0;
-        const unsigned po_d4 = 0;
-#elif NDIMS == 4
-#if IS_CHANNEL_LAST
-        const unsigned po_d2 = data_off / OC / SPATIAL_DIM_1;
-        const unsigned po_d3 = (data_off / OC) % SPATIAL_DIM_1;
-#else
-        const unsigned po_d2 = data_off / SPATIAL_DIM_1;
-        const unsigned po_d3 = data_off % SPATIAL_DIM_1;
-#endif
-        const unsigned po_d4 = 0;
-#elif NDIMS == 5
-#if IS_CHANNEL_LAST
-        const unsigned po_d2 = (data_off / OC) / SPATIAL_DIM_1 / SPATIAL_DIM_0;
-        const unsigned po_d3 = (data_off / OC) / SPATIAL_DIM_1;
-        const unsigned po_d4 = (data_off / OC) % SPATIAL_DIM_1;
-#else
-        const unsigned po_d2 = data_off / SPATIAL_DIM_1 / SPATIAL_DIM_0;
-        const unsigned po_d3 = data_off / SPATIAL_DIM_1;
-        const unsigned po_d4 = data_off % SPATIAL_DIM_1;
-#endif
-#else
-        const unsigned po_d2 = 0;
-        const unsigned po_d3 = 0;
-        const unsigned po_d4 = 0;
-#endif
-        const int mb = data_off / SPATIAL_DIMS_SIZE / OC;
-#if IS_CHANNEL_LAST
-        const int oc = data_off % OC;
-#else
-        const int oc = data_off / SPATIAL_DIMS_SIZE;
-#endif
-        APPLY_POST_OPS_SERIAL(tmp, POST_OP_DATA_T, sum_src, POST_OP_DATA_T, mb,
-                1, oc, 1, po_d2, 1, po_d3, 1, po_d4, 1, 0, 1);
+
+#define GET_DATA_IDX(dim_idx) \
+    (SOFTMAX_AXIS_IDX > (dim_idx))           ? dim[(dim_idx)] \
+            : (SOFTMAX_AXIS_IDX < (dim_idx)) ? dim[(dim_idx)-1] \
+                                             : i
+        const unsigned po_d0 = SOFTMAX_AXIS_IDX > 0 ? dim[0] : i;
+        const unsigned po_d1 = GET_DATA_IDX(1);
+        const unsigned po_d2 = GET_DATA_IDX(2);
+        const unsigned po_d3 = GET_DATA_IDX(3);
+        const unsigned po_d4 = GET_DATA_IDX(4);
+
+        APPLY_POST_OPS_SERIAL(tmp, POST_OP_DATA_T, sum_src, POST_OP_DATA_T,
+                po_d0, 1, po_d1, 1, po_d2, 1, po_d3, 1, po_d4, 1, 0, 1);
+#undef GET_DATA_IDX
+
 #if WITH_DST_SCALES
         tmp /= dst_scale[0];
 #endif

@@ -422,10 +422,6 @@ struct xbyak_gemm_t : public jit_generator_t {
                 }
             }
 
-            if (i == 7) {
-                if (!isTransB) { sub(BO1, -8 * SIZE); }
-            }
-
             if (unroll_n >= 4) {
                 if (!isTransB) {
                     if (i == 3) { prefetcht0(ptr[BO2 + PREFETCHSIZEB * SIZE]); }
@@ -443,9 +439,6 @@ struct xbyak_gemm_t : public jit_generator_t {
 
             if (unroll_n >= 5) {
                 if (!isTransB) {
-                    if (i == 4) {
-                        prefetcht0(ptr[BO2 + LDB + PREFETCHSIZEB * SIZE]);
-                    }
                     vbroadcastss(
                             ymm2, ptr[BO2 + LDB * 1 + (i - OFFSET) * SIZE]);
                 } else {
@@ -461,9 +454,6 @@ struct xbyak_gemm_t : public jit_generator_t {
 
             if (unroll_n >= 6) {
                 if (!isTransB) {
-                    if (i == 5) {
-                        prefetcht0(ptr[BO2 + LDB * 2 + PREFETCHSIZEB * SIZE]);
-                    }
                     vbroadcastss(
                             ymm2, ptr[BO2 + LDB * 2 + (i - OFFSET) * SIZE]);
                 } else {

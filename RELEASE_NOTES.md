@@ -46,3 +46,6 @@ TBD
 
 # Breaking Changes
 * Removed experimental [Graph Compiler](https://oneapi-src.github.io/oneDNN/v3.6/dev_guide_graph_compiler.html) backend.
+
+# Thanks to these Contributors
+This release contains contributions from the project core team as well as Alexander Simonov @asimonov1, Denis @redradist Dmitriy Ovchinnikov @inteldimitrius, Eliezer Weissmann @eliezerweissmann, Hubert Maciak @hmaciak, Ilya Lavrenov @ilya-lavrenov, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Maria Zhukova @mzhukova,Orel Yehuda @yehudaorel, Ravi Pushkar @rpushkarr,Renato Barros Arantes @renato-arantes, Shreyas-fuj @Shreyas-fuj, Shu Chen @shu1chen, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, Eliezerw, hmaciak @hmaciak, jstachowintel @jstachowintel, yair @yair-obodovsky, yair-obodovsky @yair-obodovsky, zhangfei @zhangfeiv0.

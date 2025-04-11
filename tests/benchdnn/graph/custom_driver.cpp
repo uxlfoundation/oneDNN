@@ -203,7 +203,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 int execute(const prb_t *prb, const args_t &args, res_t *res) {
     const auto &src = args.find(DNNL_ARG_SRC);
-    auto tag = ::std::get<0>(prb->arg_mds_.at(DNNL_ARG_SRC));
+    const auto &tag = ::std::get<0>(prb->arg_mds_.at(DNNL_ARG_SRC));
     dnn_mem_t pad(src, src.dt(), tag, get_test_engine());
     ::graph::permute_md(pad, prb->order);
     int ret = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST)).reorder(pad);

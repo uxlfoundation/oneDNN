@@ -1068,7 +1068,6 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
                 value_ptr in1_val = zp_op->get_input_value(1);
                 in1_val->remove_consumer(*zp_op, 1);
                 value_ptr out_val = zp_op->get_output_value(0);
-                auto consumers = out_val->get_consumers();
                 in0_val->add_consumer(next_op, offset);
                 next_op.connect_input(offset, in0_val);
                 if (not_all_zero) {
@@ -1169,7 +1168,6 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                 value_ptr in1_val = scale_op->get_input_value(1);
                 in1_val->remove_consumer(*scale_op, 1);
                 value_ptr out_val = scale_op->get_output_value(0);
-                auto consumers = out_val->get_consumers();
                 in0_val->add_consumer(next_op, offset);
                 next_op.connect_input(offset, in0_val);
                 next_op.add_input(in1_val);
@@ -1336,7 +1334,6 @@ status_t fuse_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
                 "zp_op should have only one output value, but got %zu",
                 zp_op->num_outputs());
         auto out_val = zp_op->get_output_values()[0];
-        auto consumers = out_val->get_consumers();
 
         auto in_val = zp_op->get_input_values()[0];
         if (!in_val->has_producer()) continue;
@@ -4159,7 +4156,7 @@ impl::status_t replace_select_values(std::shared_ptr<subgraph_t> &sg) {
         if (select_kind.count(cur_op->get_kind())) {
             auto out_val = cur_op->get_output_value(0);
             if (out_val->get_consumers().size() == 1) {
-                auto consumer = out_val->get_consumers()[0].get_op();
+                const auto &consumer = out_val->get_consumers()[0].get_op();
                 if (consumer.get_kind() == op_kind::dnnl_matmul) {
                     out_ops.emplace_back(cur_op);
                 }

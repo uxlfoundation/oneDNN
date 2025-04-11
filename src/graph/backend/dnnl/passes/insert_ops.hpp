@@ -126,6 +126,9 @@ status_t insert_unsqueeze_and_squeeze_for_prelu_bwd(
 status_t insert_unsqueeze_and_squeeze_for_reduction(
         std::shared_ptr<subgraph_t> &sg);
 
+///  This pass insert host_scalar op for logical tensor with scalar value
+status_t insert_host_scalar(std::shared_ptr<subgraph_t> &sg);
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

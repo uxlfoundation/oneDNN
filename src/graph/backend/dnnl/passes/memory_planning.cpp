@@ -243,6 +243,11 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
         ret->topo_ordered_exec_args_.emplace_back(new_args);
     }
 
+    ret->host_scalar_infos_.reserve(host_scalar_infos_.size());
+    for (const auto &info : host_scalar_infos_) {
+        ret->host_scalar_infos_.emplace_back(info);
+    }
+
     return ret;
 }
 
@@ -253,6 +258,7 @@ void execution_args_set_t::clear() {
     mems_use_internal_persistent_.clear();
     value_mem_map_.clear();
     topo_ordered_exec_args_.clear();
+    host_scalar_infos_.clear();
 }
 
 void alias_analyzer_t::clear() {
@@ -760,13 +766,22 @@ status_t memory_planner_t::prepare_execution_args_set(
     // create memory object for each value, and classify the memory objects into
     // different categories
     std::unordered_set<value_t *> prepared;
+    std::unordered_map<value_t *, dnnl::memory::desc> host_scalar_mds;
     ret = topo_order_visit(sg->get_output_ops(), [&](op_t *op) {
         for (auto &in : op->get_input_values()) {
             if (prepared.count(in.get())) continue;
-            auto md = make_dnnl_memory_desc(in->get_logical_tensor());
-            auto mem = make_dnnl_memory(md, p_engine, nullptr);
-            exec_args_set_.add_value_mem_map({in.get(), mem});
-            classify_mem(mem, in.get());
+            const logical_tensor_t in_lt = in->get_logical_tensor();
+            auto md = make_dnnl_memory_desc(in_lt);
+            bool is_host_scalar
+                    = ltw(in_lt).property_type() == property_type::host_scalar;
+            if (is_host_scalar) {
+                // store md, leave memory allocation to execution time
+                host_scalar_mds.insert({in.get(), md});
+            } else {
+                auto mem = make_dnnl_memory(md, p_engine, nullptr);
+                exec_args_set_.add_value_mem_map({in.get(), mem});
+                classify_mem(mem, in.get());
+            }
             prepared.insert(in.get());
         }
 
@@ -812,13 +827,17 @@ status_t memory_planner_t::prepare_execution_args_set(
 
             // find the corresponding memory object
             dnnl::memory mem;
-            if (!exec_args_set_.find_value_mem_map(val, mem)) {
+            if (host_scalar_mds.find(val) != host_scalar_mds.end()) {
+                size_t input_idx = buffer_assignments_.at(val).index_;
+                exec_args_set_.add_host_scalar_arg(
+                        input_idx, host_scalar_mds[val], dnnl_arg);
+            } else if (!exec_args_set_.find_value_mem_map(val, mem)) {
                 VCHECK_MEMORY_PLANNING(false, status::invalid_arguments,
                         "can't find memory for value id: %zu",
                         val->get_logical_tensor().id);
+            } else {
+                dnnl_exec_args.insert({dnnl_arg, mem});
             }
-
-            dnnl_exec_args.insert({dnnl_arg, mem});
         }
 
         exec_args_set_.add_exec_args(dnnl_exec_args);

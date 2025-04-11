@@ -93,7 +93,7 @@ private:
 #endif
 };
 
-dnnl::graph::allocator &get_graph_allocator();
+dnnl::graph::allocator &get_graph_allocator(bool use_host = false);
 
 } // namespace graph
 

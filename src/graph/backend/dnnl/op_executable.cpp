@@ -2390,6 +2390,17 @@ arg_indices_t reorder_executable_t::get_arg_indices(
     return arg_indices;
 }
 
+arg_indices_t host_scalar_executable_t::get_arg_indices(
+        const op_t *op, fusion_info_mgr_t &mgr) {
+    UNUSED(op);
+    UNUSED(mgr);
+    arg_indices_t arg_indices;
+
+    arg_indices.insert({DNNL_ARG_FROM, indices_t {input, 0}});
+    arg_indices.insert({DNNL_ARG_TO, indices_t {output, 0}});
+    return arg_indices;
+}
+
 arg_indices_t softmax_bwd_executable_t::get_arg_indices(
         const op_t *op, fusion_info_mgr_t &mgr) {
     UNUSED(mgr);
@@ -2462,10 +2473,11 @@ arg_indices_t sdpa_executable_t::get_arg_indices(
     arg_indices.insert({DNNL_ARG_QUERIES, indices_t {input, index++}});
     arg_indices.insert({DNNL_ARG_KEYS, indices_t {input, index++}});
     arg_indices.insert({DNNL_ARG_VALUES, indices_t {input, index++}});
-    if (op->get_attr<bool>(dnnl::impl::graph::dnnl_impl::op_attr::with_scale)) {
+    if (op->get_attr<bool>(op_attr::with_scale)) {
         arg_indices.insert({DNNL_ARG_SCALE, indices_t {input, index++}});
     }
-    if (op->get_attr<bool>(dnnl::impl::graph::dnnl_impl::op_attr::with_mask)) {
+    if (op->get_attr<int64_t>(op_attr::mask_type)
+            == static_cast<int64_t>(attn_mask_type::buffer)) {
         arg_indices.insert({DNNL_ARG_ATTN_MASK, indices_t {input, index++}});
     }
 

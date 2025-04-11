@@ -324,6 +324,7 @@ std::ostream &operator<<(std::ostream &ss, const memory::data_type &dt) {
         case mdt::f32: ss << "f32"; break;
         case mdt::s32: ss << "s32"; break;
         case mdt::f16: ss << "f16"; break;
+        case mdt::bf16: ss << "bf16"; break;
         case mdt::s8: ss << "s8"; break;
         case mdt::u8: ss << "u8"; break;
         case mdt::s4: ss << "s4"; break;

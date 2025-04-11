@@ -79,8 +79,12 @@ status_t calculate_plain_transpose_blocks(dim_t &batch, dim_t &M, dim_t &K,
     }
 
     memory_desc_t src_md_reduced, dst_md_reduced;
-    memory_desc_reshape(src_md_reduced, src_md, non_unit_dim, non_unit_dims);
-    memory_desc_reshape(dst_md_reduced, dst_md, non_unit_dim, non_unit_dims);
+    VDISPATCH_REORDER_IC(memory_desc_reshape(src_md_reduced, src_md,
+                                 non_unit_dim, non_unit_dims),
+            VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+    VDISPATCH_REORDER_IC(memory_desc_reshape(dst_md_reduced, dst_md,
+                                 non_unit_dim, non_unit_dims),
+            VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
     const memory_desc_wrapper id(src_md_reduced), od(dst_md_reduced);
 

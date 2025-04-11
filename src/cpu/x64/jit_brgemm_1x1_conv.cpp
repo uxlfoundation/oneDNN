@@ -189,7 +189,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
                 = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
         CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type,
                 false, false, brgemm_row_major, alpha, vbeta, LDA, jcp_.LDB,
-                jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_bf32, jcp_.is_tf32));
+                jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_tf32));
 
         brgemm_attr_t brgattr;
         brgattr.max_bs = jcp_.gemm_batch_size;

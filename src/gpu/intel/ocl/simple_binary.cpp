@@ -26,7 +26,7 @@ namespace ocl {
 status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
-    const memory_desc_wrapper src2_d(is_ternary_op() ? src_md(2) : dst_md());
+    const memory_desc_wrapper src2_d(src_md(2));
     const memory_desc_wrapper dst_d(dst_md());
 
     const int ndims = src0_d.ndims();

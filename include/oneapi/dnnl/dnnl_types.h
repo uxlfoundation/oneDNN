@@ -2195,6 +2195,8 @@ typedef enum {
     dnnl_softmax_accurate = 0x30000,
     /// Logsoftmax
     dnnl_softmax_log,
+    /// Softmax treating full infinity input as zero
+    dnnl_softmax_accurate_inf_as_zero,
 } dnnl_alg_kind_t;
 
 /// Flags for normalization primitives.

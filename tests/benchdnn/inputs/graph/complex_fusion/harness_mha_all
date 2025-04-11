@@ -48,7 +48,6 @@
 --reset --dt=2:f32+5:f32+0:bf16+1:bf16+4:bf16+7:bf16+9:bf16+10:bf16 --case=complex_fusion/mha/sdpa-plain-wo-mask-f16.json
 --reset --dt=2:f32+6:f32+0:bf16+1:bf16+5:bf16+7:bf16+8:bf16+9:bf16  --case=complex_fusion/mha/sdpa-plain-wo-scale-f16-bs1.json
 
-
 # int8 graphs
 --reset --case=complex_fusion/mha/MHA-GPT-inf-int8-bs1.json
 --reset --case=complex_fusion/mha/MHA-bert_large-inf-int8-bs1.json

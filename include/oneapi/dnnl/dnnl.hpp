@@ -500,6 +500,8 @@ enum class algorithm {
     softmax_accurate = dnnl_softmax_accurate,
     /// LogSoftmax, numerically stable
     softmax_log = dnnl_softmax_log,
+    /// Softmax, numerically stable, treating full infinity input as zero
+    softmax_accurate_inf_as_zero = dnnl_softmax_accurate_inf_as_zero,
 };
 
 /// Converts algorithm kind enum value from C++ API to C API type.

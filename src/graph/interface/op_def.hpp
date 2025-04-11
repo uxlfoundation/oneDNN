@@ -1036,6 +1036,8 @@ DNNL_GRAPH_OP_SCHEMA(SoftMax, 1,
                 .set_input(0, "src", "T1")
                 .set_output(0, "dst", "T2")
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
+                .set_attr(op_attr::mode, false, attribute_kind::s, "none",
+                        {"none", "inf_as_zero"})
                 .set_type_constraints(
                         "T1", {data_type::f32, data_type::bf16, data_type::f16})
                 .set_type_constraints(

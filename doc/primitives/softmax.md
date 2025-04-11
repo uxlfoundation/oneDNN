@@ -95,6 +95,13 @@ argument index as specified by the following table.
    limited to cases when data types of \src and \dst or \diffsrc and \diffdst
    are identical.
 
+2. When all inputs for the @ref dnnl::alg_kind::softmax_accurate algorithm are
+   provided as `-infinity`, output values can be either `-infinity` or `NaN`,
+   depending on the underlying division implementation behavior which come from
+   the division by zero. To make the library return zero values instead of
+   undefined values, the @ref dnnl::alg_kind::softmax_accurate_inf_as_zero must
+   be used.
+
 ### Post-ops and Attributes
 
 Attributes enable you to modify the behavior of the softmax primitive.

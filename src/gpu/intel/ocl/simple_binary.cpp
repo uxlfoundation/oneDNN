@@ -26,6 +26,7 @@ namespace ocl {
 status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
+    const memory_desc_wrapper src2_d(is_ternary_op() ? src_md(2) : dst_md());
     const memory_desc_wrapper dst_d(dst_md());
 
     const int ndims = src0_d.ndims();
@@ -33,18 +34,9 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.src1_md_info = memory_desc_info_t::create(src1_d);
     conf.dst_md_info = memory_desc_info_t::create(dst_d);
 
-    bool is_src2_bcasted = false;
     if (is_ternary_op()) {
-        const memory_desc_wrapper src2_d(src_md(2));
         conf.src2_md_info = memory_desc_info_t::create(src2_d);
         conf.src2_data_type = src2_d.data_type();
-        for (int i = 0; i < MAX_NDIMS; ++i) {
-            conf.src2_bcast_dims[i] = i < ndims
-                    ? (src2_d.dims()[i] == 1
-                            && src2_d.dims()[i] != dst_d.dims()[i])
-                    : 0;
-            is_src2_bcasted = is_src2_bcasted || conf.src2_bcast_dims[i];
-        }
     } else {
         conf.src2_md_info = memory_desc_info_t();
     }
@@ -62,6 +54,12 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.src1_bcast_dims[i] = i < ndims
                 ? src1_d.dims()[i] == 1 && src0_d.dims()[i] != src1_d.dims()[i]
                 : 0;
+        if (is_ternary_op()) {
+            conf.src2_bcast_dims[i] = i < ndims
+                    ? (src2_d.dims()[i] == 1
+                            && src2_d.dims()[i] != dst_d.dims()[i])
+                    : 0;
+        }
     }
     conf.alg = desc()->alg_kind;
     conf.is_tensor_op = is_tensor_op();

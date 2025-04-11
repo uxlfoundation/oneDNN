@@ -1234,6 +1234,8 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
             VERBOSE_BLOCKING_FAIL, "bad stride value");
     VDISPATCH_LNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    VDISPATCH_LNORM(!use_rms_norm(), VERBOSE_UNSUPPORTED_FEATURE,
+            "rms norm is not supported");
 
     auto post_ops_ok = [&]() -> bool {
         const std::vector<injector::post_op_type> accepted_post_ops

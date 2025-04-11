@@ -275,6 +275,18 @@ status_t sdp_primitive_config_t::initial_check(
                         "Not support select after scale(optional) and "
                         "mask(optional)");
             }
+
+            // TODO(xxx): remove this when gpu ukernel sdpa supports it.
+            if (post_op) {
+                if (post_op->get_kind() == graph::op_kind::SoftMax) {
+                    const auto &softmax = post_op;
+                    const auto mode
+                            = softmax->get_attr<std::string>(op_attr::mode);
+                    VCHECK_SDP_PRIMITIVE(mode != "inf_as_zero",
+                            status::unimplemented,
+                            "Not support softmax with mode=inf_as_zero");
+                }
+            }
         } else {
             mm2 = cur_op;
         }

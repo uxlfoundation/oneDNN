@@ -426,6 +426,7 @@ struct binary_conf_t {
     int dim0[MAX_NDIMS];
     int src0_bcast_dims[MAX_NDIMS];
     int src1_bcast_dims[MAX_NDIMS];
+    int src2_bcast_dims[MAX_NDIMS];
     bool is_dense;
     bool is_same_md;
     bool same_src_dt;

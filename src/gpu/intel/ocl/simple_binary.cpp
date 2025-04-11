@@ -26,6 +26,7 @@ namespace ocl {
 status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
+    const memory_desc_wrapper src2_d(src_md(2));
     const memory_desc_wrapper dst_d(dst_md());
 
     const int ndims = src0_d.ndims();
@@ -34,12 +35,12 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.dst_md_info = memory_desc_info_t::create(dst_d);
 
     if (is_ternary_op()) {
-        const memory_desc_wrapper src2_d(src_md(2));
         conf.src2_md_info = memory_desc_info_t::create(src2_d);
         conf.src2_data_type = src2_d.data_type();
     } else {
         conf.src2_md_info = memory_desc_info_t();
     }
+
     conf.src0_data_type = src0_d.data_type();
     conf.src1_data_type = src1_d.data_type();
     conf.dst_data_type = dst_d.data_type();
@@ -53,6 +54,12 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.src1_bcast_dims[i] = i < ndims
                 ? src1_d.dims()[i] == 1 && src0_d.dims()[i] != src1_d.dims()[i]
                 : 0;
+        if (is_ternary_op()) {
+            conf.src2_bcast_dims[i] = i < ndims
+                    ? (src2_d.dims()[i] == 1
+                            && src2_d.dims()[i] != dst_d.dims()[i])
+                    : 0;
+        }
     }
     conf.alg = desc()->alg_kind;
     conf.is_tensor_op = is_tensor_op();
@@ -155,6 +162,12 @@ status_t simple_binary_t::pd_t::init_kernel_ctx(
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
 
     if (conf.alg == alg_kind::binary_select) {
+        kernel_ctx.define_int("SRC2_BCAST_DIM0", conf.src2_bcast_dims[0]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM1", conf.src2_bcast_dims[1]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM2", conf.src2_bcast_dims[2]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM3", conf.src2_bcast_dims[3]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM4", conf.src2_bcast_dims[4]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM5", conf.src2_bcast_dims[5]);
         def_memory_desc_info(kernel_ctx, conf.src2_md_info, "SRC2");
     }
 

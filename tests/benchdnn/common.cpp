@@ -276,7 +276,7 @@ private:
                 && total_size_ > expected_max_) {
             // Switch to WARNING once existing failures are resolved
             BENCHDNN_PRINT(0,
-                    "[CHECK_MEM][INFO]: zmalloc allocation exceeded "
+                    "[CHECK_MEM][WARNING]: zmalloc allocation exceeded "
                     "expected size %s\n",
                     smart_bytes(expected_max_).c_str());
             // Prevent spamming logs with subsequent overflowing allocations;

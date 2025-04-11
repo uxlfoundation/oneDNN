@@ -485,7 +485,7 @@ int doit(const prb_t *prb, res_t *res) {
     if (res->state == SKIPPED) return OK;
 
     const auto &dg = prb->dg;
-    const auto graph_in_ports = dg.get_input_ports();
+    const auto &graph_in_ports = dg.get_input_ports();
     auto ograph = dg.to_graph(prb->fpmath_mode);
     DNN_GRAPH_SAFE(ograph.finalize(), WARN, res);
     const auto partitions = ograph.get_partitions();

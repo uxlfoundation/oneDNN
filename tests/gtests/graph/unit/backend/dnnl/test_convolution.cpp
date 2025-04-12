@@ -2779,6 +2779,10 @@ TEST(test_convolution_execute_subgraph_fp32, ConvDepthwise_CPU) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, Conv1dConv2dConv3d) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
+
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -2963,6 +2967,9 @@ TEST(test_convolution_execute_subgraph_int8, Conv1dConv2dConv3d) {
 
 static inline void quantized_conv2d_eltwise(
         graph::op_kind_t eltwise, const float *alpha, const float *beta) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -3154,6 +3161,9 @@ TEST(test_convolution_execute_subgraph_int8, Conv2dMish) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, Conv2dSumRelu) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -3390,6 +3400,9 @@ TEST(test_convolution_execute_subgraph_int8, Conv2dSumRelu) {
 
 TEST(test_convolution_execute_subgraph_int8,
         Conv2dSumReluWithDifferentSrc1AndDstType_GPU) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -3580,6 +3593,9 @@ TEST(test_convolution_execute_subgraph_int8,
 }
 
 TEST(test_convolution_execute_subgraph_int8, Conv2dSumReluNxc) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -3803,6 +3819,9 @@ TEST(test_convolution_execute_subgraph_int8, Conv2dSumReluNxc) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, Conv1d2d3dX8s8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -3979,6 +3998,9 @@ TEST(test_convolution_execute_subgraph_int8, Conv1d2d3dX8s8f32) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, Conv2dReluX8s8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -4514,6 +4536,9 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionBiasU8s8u8MixBf16) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, ConvolutionBiasaddU8s8u8MixBf16) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -5023,6 +5048,9 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
 
 TEST(test_convolution_execute_subgraph_int8,
         ConvolutionBiasaddGeluU8s8u8MixBf16) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -5687,6 +5715,9 @@ TEST(test_convolution_execute_subgraph_int8,
 }
 
 TEST(test_convolution_execute_subgraph_int8, ConvolutionAddU8s8u8MixBf16) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -6054,6 +6085,9 @@ TEST(test_convolution_execute, ConvolutionBf16InFp32Out) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, QuantWeiConv2dSumRelu) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();
@@ -6295,6 +6329,9 @@ TEST(test_convolution_execute_subgraph_int8, QuantWeiConv2dSumRelu) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, QuantWeiConv2dSumS8Relu) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     static auto isa = dnnl_get_effective_cpu_isa();
     using dims = graph::dnnl_impl::dims;
 

@@ -27,6 +27,9 @@ namespace graph = dnnl::impl::graph;
 namespace utils = dnnl::graph::tests::unit::utils;
 
 TEST(test_quantize_execute, QuantizePerTensor) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
 
     std::vector<float> scales = {1.f, 0.1f};
@@ -97,6 +100,9 @@ TEST(test_quantize_execute, QuantizePerTensor) {
 }
 
 TEST(test_quantize_execute, QuantizePerTensorAnyLayout) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
 
     graph::op_t quantize(graph::op_kind::Quantize);
@@ -158,6 +164,9 @@ TEST(test_quantize_execute, QuantizePerTensorAnyLayout) {
 }
 
 TEST(test_quantize_execute, QuantizePerChannelSymmetric) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
 
     graph::op_t quantize(graph::op_kind::Quantize);
@@ -216,6 +225,9 @@ TEST(test_quantize_execute, QuantizePerChannelSymmetric) {
 }
 
 TEST(test_quantize_execute, TypecastQuantize) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 

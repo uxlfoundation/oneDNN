@@ -27,6 +27,9 @@ namespace graph = dnnl::impl::graph;
 namespace utils = dnnl::graph::tests::unit::utils;
 
 TEST(test_bmm_execute_subgraph_int8, BmmU8u8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -132,6 +135,9 @@ TEST(test_bmm_execute_subgraph_int8, BmmU8u8f32) {
 }
 
 TEST(test_bmm_execute_subgraph_int8, BmmU8u8f32NonContiguous) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -260,6 +266,10 @@ TEST(test_bmm_execute_subgraph_int8, BmmU8u8f32NonContiguous) {
 }
 
 TEST(test_bmm_execute_subgraph_int8, BmmDivU8u8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
+
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -373,6 +383,9 @@ TEST(test_bmm_execute_subgraph_int8, BmmDivU8u8f32) {
 }
 
 TEST(test_bmm_execute_subgraph_int8, BmmDivAddU8u8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 

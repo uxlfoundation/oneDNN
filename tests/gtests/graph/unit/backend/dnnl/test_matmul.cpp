@@ -285,6 +285,9 @@ TEST(test_matmul_compile, MatmulMatmulBf16Bf16Bf16) {
 }
 
 TEST(test_matmul_compile, MatmulBlocked) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::op_t matmul_op(0, graph::op_kind::MatMul, "matmul");
 
     graph::engine_t *eng = get_engine();
@@ -957,6 +960,9 @@ TEST(test_matmul_compile, MatmulInt8WeightScaleSupport) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulNdx2d) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [quantize]
     // case 2: [quantize] - [int8_matmul]
@@ -1117,6 +1123,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx2d) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulU8U8) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [quantize]
     // case 2: [quantize] - [int8_matmul]
@@ -1259,6 +1268,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulU8U8) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulNdx1d) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between: case 1: [quantize] - [dequantize] -
     // [fp32_matmul] - [quantize] case 2: [quantize] - [int8_matmul]
     graph::engine_t *engine = get_engine();
@@ -1412,6 +1424,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx1d) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulNdx2dWithTranspose) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [quantize]
     // case 2: [quantize] - [int8_matmul]
@@ -1578,6 +1593,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx2dWithTranspose) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumNdx2d) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [quantize]
     // case 2: [quantize] - [int8_matmul]
@@ -1785,6 +1803,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumNdx2d) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulBiasBinary) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [quantize]
     // case 2: [quantize] - [int8_matmul]
@@ -1968,6 +1989,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasBinary) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulBiasAddMul) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -2195,6 +2219,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasAddMul) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulBiasNdx2dX8s8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -2335,6 +2362,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasNdx2dX8s8f32) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulNdx2dX8s8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -2465,6 +2495,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx2dX8s8f32) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulBiasGeluNdx2dX8s8f32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -3174,6 +3207,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasU8s8bf16_CPU) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulU8U8bf16) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -3738,6 +3774,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasU8s8u8MixBf16) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulBiasaddU8s8u8MixBf16) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -4071,6 +4110,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasGeluU8s8u8MixBf16) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulBiasaddGeluU8s8u8MixBf16) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -4732,6 +4774,9 @@ TEST(test_matmul_execute, MatmulScalarOutput) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasSumNdx2d) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [quantize]
     // case 2: [quantize] - [int8_matmul]
@@ -4967,6 +5012,9 @@ TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasSumNdx2d) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, U8S8U8MatmulAddF32) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -5141,6 +5189,9 @@ TEST(test_matmul_execute_subgraph_int8, U8S8U8MatmulAddF32) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasNdx2dWithTranspose) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -5323,6 +5374,9 @@ TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasNdx2dWithTranspose) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasReluNdx2d) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -6620,6 +6674,9 @@ TEST(test_matmul_execute, MatmulSwapBinaryMulAddFusion) {
 }
 
 TEST(test_matmul_execute_subgraph_int8, MatmulReluFusion) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_matmul] - [relu] - [quantize]
     // case 2: [quantize] - [int8_matmul]

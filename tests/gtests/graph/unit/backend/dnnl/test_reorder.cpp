@@ -448,6 +448,9 @@ TEST(test_reorder_execute, Int8ReorderAdd) {
 }
 
 TEST(test_reorder_compile, ReorderBlockLayoutInput_GPU) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     using dims = graph::dnnl_impl::dims;
 
     /*    | 

@@ -199,6 +199,9 @@ TEST(test_group_norm_execute, GroupnormInference) {
 }
 
 TEST(test_group_norm_execute, GroupnormSwishTypecastQuant) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *eng = get_engine();
 
     static auto isa = dnnl_get_effective_cpu_isa();

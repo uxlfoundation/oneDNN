@@ -354,6 +354,9 @@ TEST(test_softmax_compile, LogSoftmaxBackwardGetInplacePair) {
 }
 
 TEST(test_softmax_execute_subgraph_int8, SoftmaxTypecastQuant) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
     static auto isa = dnnl_get_effective_cpu_isa();

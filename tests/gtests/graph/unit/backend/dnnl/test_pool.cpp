@@ -594,6 +594,9 @@ TEST(test_pool_execute, AvgPoolBackwardIncludePad) {
 }
 
 TEST(test_pool_execute_subgraph_int8, Avgpool) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_avgpool] - [quantize]
     // case 2: [quantize] - [int8_avgpool]
@@ -872,6 +875,9 @@ TEST(test_pool_execute, MaxPoolwithCache) {
 }
 
 TEST(test_pool_execute, MaxPoolWithOpaqueInput) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // dequantize - maxpool
     using dims = graph::dnnl_impl::dims;
     graph::engine_t *eng = get_engine();
@@ -1069,6 +1075,9 @@ TEST(test_pool_execute, MaxPoolBackwardPlainGrad) {
 }
 
 TEST(test_pool_execute_subgraph_int8, Maxpool) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_maxpool] - [quantize]
     // case 2: [quantize] - [int8_maxpool]
@@ -1207,6 +1216,9 @@ TEST(test_pool_execute_subgraph_int8, Maxpool) {
 }
 
 TEST(test_pool_execute_subgraph_int8, MaxpoolAsymmetric) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     // compare results between:
     // case 1: [quantize] - [dequantize] - [fp32_maxpool] - [quantize]
     // case 2: [quantize] - [int8_maxpool]

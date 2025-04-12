@@ -53,6 +53,9 @@ static void fill_data(
 }
 
 TEST(test_large_partition_execute, Int8Resnet50Stage2Block) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -192,6 +195,9 @@ TEST(test_large_partition_execute, Int8Resnet50Stage2BlockWithZeroZps) {
 }
 
 TEST(test_large_partition_execute, Int8Resnet50Stage2BlockWithQuantWei) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -343,6 +349,9 @@ TEST(test_large_partition_execute, F32Resnet50Stage2Block) {
 }
 
 TEST(test_large_partition_execute, ItexInt8Resnet50Stage2Block) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -541,6 +550,9 @@ TEST(test_large_partition_execute, Int8Mha_CPU) {
 }
 
 TEST(test_large_partition_execute, Int8DistilBertMha) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -598,6 +610,9 @@ TEST(test_large_partition_execute, Int8DistilBertMha) {
 }
 
 TEST(test_large_partition_execute, Int8GptMha) {
+    SKIP_IF_NV_GPU(
+            "Reorder with zero-points and scales is not complete supported on "
+            "NV gpu!");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 

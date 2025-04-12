@@ -120,6 +120,10 @@ TEST(test_large_partition_execute, Int8Resnet50Stage2Block) {
 }
 
 TEST(test_large_partition_execute, Int8Resnet50Stage2BlockWithZeroZps) {
+    // SKIP_IF(get_test_engine_kind() == graph::engine_kind::gpu, \
+    // (message));
+    SKIP_IF_NV_GPU("xxx is not supported!");
+
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 

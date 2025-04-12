@@ -46,7 +46,6 @@ float cfg_t::get_density(const cfg_t::density_args_t &density_args) const {
     if (density_args.data_kind != SRC) return density;
 
     const int64_t safe_n_acc = get_safe_n_acc();
-    assert(safe_n_acc > 0);
 
     // Bump density for some empiric value for int8 validation to hit saturation
     // bound.

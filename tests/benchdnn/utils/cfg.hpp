@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -176,15 +176,41 @@ protected:
     // SUM_1_N(VALUES) <= N_ACC * MAX_VALUE <= PREC;  It's a top estimate
     // MAX_VALUE = MAX_VAL_SRC * MAX_VAL_WEI;
     // SAFE_N_ACC <= PREC / MAX_VALUE;
+    //
+    // However, there're very low precision data types with `MAX_DIGITS` being
+    // very low. For such types, just return a predefined number of safe
+    // elements to avoid adjusting every parent config and to let all the
+    // spectrum of values to appear in the output to test conversions to those
+    // data types.
     int64_t get_safe_n_acc(
             const std::vector<data_kind_t> &kinds = {SRC, WEI}) const {
+        const int64_t safe_digits = get_safe_digits();
+        if (safe_digits <= 0) {
+            BENCHDNN_PRINT(
+                    0, "%s\n", "[CFG] Error: safe digits is non-positive.");
+            SAFE_V(FAIL);
+        } else if (safe_digits <= 2) {
+            // fp4 category.
+            return 1;
+        } else if (safe_digits <= 4) {
+            // fp8/int4 category. Hopefully, int4 won't ever make it to DST.
+            return 2;
+        }
+
         int64_t max_value = 1;
         for (auto k : kinds) {
             const auto &cfg_entry = cfg_entry_.at(k);
             max_value *= cfg_entry.get_range_abs_max();
         }
-        const int64_t safe_digits = get_safe_digits();
         const int64_t safe_n_acc = (1LL << safe_digits) / max_value;
+        if (safe_n_acc <= 0) {
+            BENCHDNN_PRINT(0,
+                    "[CFG] Error: there's no safe accumulation chain for a "
+                    "given data type combination. Safe_digits=%d, "
+                    "max_value=%d.\n",
+                    static_cast<int>(safe_digits), static_cast<int>(max_value));
+            SAFE_V(FAIL);
+        }
         return safe_n_acc;
     }
 

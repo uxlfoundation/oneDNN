@@ -355,6 +355,7 @@ status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
                     alg_kind::eltwise_linear)
             && !has_zero_dim_memory()
             && impl::is_dense_format_kind({src_md(), dst_md()})
+            && memory_desc_wrapper(src_md()).is_dense(true)
             && attr()->has_default_values() && set_default_formats_common()
             && memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md());
 

@@ -141,11 +141,7 @@ enum cpu_isa_t : unsigned {
     avx10_2_512 = avx10_2 | xmm_bit | ymm_bit | zmm_bit,
     avx10_2_512_amx_2
     = avx10_2_512 | amx_tile | amx_int8 | amx_bf16 | amx_fp16 | amx_2_bit,
-    // NOTES: 1. isa_all by default has no isa specific hints,
-    //        2. avx10.2 support is under preview support and turned off by
-    //           default,
-    //        3. amx_2 support is under preview support and turned off by
-    //           default.
+    // NOTES: 1. isa_all by default has no isa specific hints
     isa_all = ~0u & ~cpu_isa_hints_utils::hints_mask
             & (~avx10_version_bits | (1 << avx10_version_bit_start))
             & ~amx_2_bit,

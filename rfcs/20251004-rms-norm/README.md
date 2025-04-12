@@ -1,0 +1,177 @@
+# Proposal to Extend Layer Normalization to Support Root Mean Square Normalization
+
+## Introduction
+
+Root Mean Square Normalization (RMSNorm) is a normalization technique similar
+to Layer Normalization (LayerNorm) but computationally more efficient.
+
+In oneDNN, LayerNorm computes the mean and variance using the following formulas:
+```math
+\mu(t, n) = \frac{1}{C} \sum_{c} src(t, n, c)
+```
+```math
+\sigma^2(t, n) = \frac{1}{C} \sum_{c} (src(t, n, c) - \mu(t, n))^2
+```
+
+It then normalizes the input using these statistics:
+```math
+dst(t, n, c) = \frac{src(t, n, c) - \mu(t, n)}{\sqrt{\sigma^2(t, n) + \epsilon}}
+  * \gamma(c) + \beta(c)
+```
+Here `gamma` and `beta` are optional scale and shift parameters, and `epsilon`
+is a small constant to prevent division by zero.
+
+The purpose of computing the mean and variance is to re-center and re-scale the
+input data, which helps improve stability and convergence.
+
+RMSNorm, on the other hand, skips the re-centering step and normalizes using only
+the root mean square statistic (`RMS`):
+```math
+RMS(t, n) = \sqrt{\frac{1}{C} \sum_{c} src(t, n, c)^2 + \epsilon}
+```
+The `epsilon` is added to avoid further dividing by zero.
+Note that it is not always the part of the definition for `RMS` statistics.
+
+This results in a simpler normalization formula:
+```math
+dst(t, n, c) = \frac{src(t, n, c)}{RMS(t, n)} * \gamma(c) + \beta(c)
+```
+
+TLDR; RMSNorm could be considered a simplified version of
+LayerNorm where the mean is assumed to be zero. As a result, the variance is
+equal to `RMS^2`, and moreover if the input data is such that it has a mean of zero,
+RMSNorm and LayerNorm produce the same results.
+
+For more details, including comparisons with LayerNorm and examples of benefits,
+refer to the article by [Biao Zhang and Rico Sennrich](https://arxiv.org/abs/1910.07467).
+This article provides more details regarding the method and showcases some experiments
+using frameworks like TensorFlow and PyTorch.
+
+Additionally, consider TensorFlow
+[LayerNorm with RMS parameter](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LayerNormalization)
+and PyTorch [RMSNorm](https://pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html) APIs.
+
+## Proposal
+
+The proposal is to extend the LayerNorm primitive to support RMSNorm
+as this is a subset of existing functionality computations-wise.
+As for other Normalization primitives, the proposal is to not extend them at this point.
+
+For the work-in-progress POC, refer to [PR 3068](https://github.com/uxlfoundation/oneDNN/pull/3068).
+For more details about the proposal, see the following sections.
+
+Note, that previously, if users wanted to implement RMSNorm, they had to rely on the `dnnl_use_global_stats` flag,
+manually set the mean to zero, and compute the `RMS^2` statistics themselves.
+This approach is not convenient and adds extra complexity (computations, memory overhead) for the users.
+
+### Extension to the Normalization Flags
+
+This support of RMSNorm be achieved by adding a new flag to the existing `dnnl_normalization_flags_t`
+enum and `normalization_flags` enum in the C++ API:
+```cpp
+/// Flags for normalization primitives.
+enum class normalization_flags : unsigned {
+  <old flags...>
+
+  /// Use Root Mean Square (RMS) Layer Normalization.
+  /// In forward propagation, this means that the mean is set to zero, and RMS
+  /// is used instead of variance.
+  /// The RMS norm is provided as an output during forward propagation for
+  /// training.
+  /// In backward propagation, the library computes the derivative with respect
+  /// to the RMS norm, assuming that the mean is zero.
+  use_rms_norm = dnnl_use_rms_norm,
+};
+```
+
+```c
+/// Flags for normalization primitives.
+typedef enum {
+  <old flags...>
+
+  /// Use RMS normalization
+  ///
+  /// If specified:
+  ///  - on forward propagation use RMS normalization instead of true mean and
+  ///    variance
+  ///  - on backward propagation assume mean as zero
+  dnnl_use_rms_norm = 0x20U,
+} dnnl_normalization_flags_t;
+```
+
+The new flag `dnnl_use_rms_norm` will be used to indicate that the RMS
+normalization is used instead of the standard Layer Normalization.
+
+**Naming Option 2**:
+Alternative namings for the flag could signify that the mean is **assumed** to
+be zero, for instance `dnnl_{use, force}_zero_mean`. But this seems misleading
+as the mean is not explicitly set to zero, but simply ignored. Also it doesn't
+explciitly indicate what is happening with the variance.
+
+#### Compatibility with Existing Flags
+
+The `dnnl_use_global_stats` flag technically could be applied to RMSNorm, but
+it is not particularly meaningful since RMSNorm never requires the mean computations.
+Therefore the proposal is to make it incompatible with the `dnnl_use_global_stats` flag.
+
+Since RMSNorm is a simplified version of LayerNorm, it works with `dnnl_use_scale`
+and `dnnl_use_shift` flags in the same manner.
+
+Additionally, like LayerNorm, it will not support `dnnl_fuse_norm_relu` or `dnnl_fuse_norm_add_relu`.
+
+### Changes to Layer Normalization Primitive Inputs and Outputs
+
+Since the main purpose of RMSNorm is to avoid the overhead of mean computations,
+it seems reasonable to omit the mean as input/output and use `RMS^2` in place of the variance, which means:
+
+- For `dnnl_forward_training`, the mean will not be included as an output when the `dnnl_use_rms_norm`
+flag is enabled. Additionally, the output will provide `RMS^2` in place of the variance.
+- For `dnnl_backward`, the mean will not be required as an input. For the variance input
+it is expected that `RMS^2` will be supplied instead of the true variance.
+
+**Output Changes Option 2**:
+Another option is to keep the mean as an output but always set it to zero.
+This adds unnecessary overhead, but it might simplify adoption for existing codebases,
+as they wouldn't need to adjust how outputs are handled in case of LayerNorm and RMSNorm.
+
+### Changes to benchdnn
+
+An additional flag for LayerNorm to enable RMSNorm will be added to the `--flags` option.
+
+```
+`--flags=[|G|C|H|R]` -- layer normalization flags, default `none`; where
+            multiple simultaneous flags are supported.
+            `G` is dnnl_use_global_stats;
+            `C` is dnnl_use_scale;
+            `H` is dnnl_use_shift;
+            `R` is dnnl_use_rms_norm;
+            Refer to [layer normalization primitive](https://uxlfoundation.github.io/oneDNN/dev_guide_layer_normalization.html)
+            for details.
+```
+
+Note: If the flag is named `dnnl_{use, force}_zero_mean`, the option will be updated to `--flags=[|G|C|H|Z]`.
+
+Other internal changes would be captured in work-in-progress [PR 3068](https://github.com/uxlfoundation/oneDNN/pull/3068).
+
+## Open Questions
+
+- Should the flag be named `dnnl_use_rms_norm` or `dnnl_{use, force}_zero_mean`?
+
+  Pros and Cons:
+  - (Preferred) `dnnl_use_rms_norm`:
+    - Pros: Explicitly indicates that RMS normalization is used.
+    - Cons: May not be immediately clear to those unfamiliar with the term.
+  - `dnnl_{use, force}_zero_mean`:
+    - Pros: Clearly indicates that the mean is assumed to be zero.
+    - Cons: Somewhat misleading as it doesn't explicitly indicate what is happening with
+      the variance (e.g, do we compute and use true variance or `RMS^2`?).
+
+- Should the mean be omitted from the output or always set to zero?
+
+  Pros and Cons:
+  - (Preferred) **Omit mean**:
+    - Pros: Cleaner design and avoids unnecessary memory requirement.
+    - Cons: Requires users to adjust their code to handle the absence of the mean for RMSNorm comparing to LayerNorm.
+  - **Keep mean**:
+    - Pros: Easier integration to existing codebases making use of LayerNorm.
+    - Cons: Unnecessary memory overhead and less intuitive design.

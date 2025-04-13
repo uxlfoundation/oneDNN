@@ -74,7 +74,8 @@ private:
     inline void solve_common(int oc_blocks);
 
     inline dim_t filter_w_to_input(int ki, int oi = 0, int pad_l = 0) const {
-        return ki * (jcp.dilate_w + 1) + oi * jcp.stride_w - pad_l;
+        return static_cast<dim_t>(ki) * (jcp.dilate_w + 1)
+                + static_cast<dim_t>(oi) * jcp.stride_w - pad_l;
     }
 
     inline dim_t filter_h_to_input(int ki) const {
@@ -109,11 +110,14 @@ private:
     }
 
     inline dim_t get_kernel_offset(int i_oc_block, int ki, int i_ic) const {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
-        dim_t ic_block_step_size = jcp.kh * jcp.kw * block_step_size;
-        dim_t oc_block_step_size = jcp.nb_ic * ic_block_step_size;
-        dim_t offset = i_oc_block * oc_block_step_size + ki * block_step_size
-                + i_ic * jcp.oc_block;
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
+        dim_t ic_block_step_size
+                = static_cast<dim_t>(jcp.kh) * jcp.kw * block_step_size;
+        dim_t oc_block_step_size
+                = static_cast<dim_t>(jcp.nb_ic) * ic_block_step_size;
+        dim_t offset = static_cast<dim_t>(i_oc_block) * oc_block_step_size
+                + static_cast<dim_t>(ki) * block_step_size
+                + static_cast<dim_t>(i_ic) * jcp.oc_block;
         return sizeof(float) * offset;
     }
 

@@ -200,8 +200,8 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
         return Mmx(mmx_msk_base_reg + ll);
     }; // ll: 0..4 [Mmx(2)...Mmx(5)]
 
-    static bool post_ops_ok(jit_pool_conf_t &jpp, const primitive_attr_t &attr,
-            const memory_desc_wrapper &dst_d);
+    static bool init_post_ops_conf(jit_pool_conf_t &jpp,
+            const primitive_attr_t &attr, const memory_desc_wrapper &dst_d);
 
     void init_tmp_reg();
     void init_mask();
@@ -1373,47 +1373,45 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_conf(
         default: return status::unimplemented;
     }
 
-    VDISPATCH_POOLING_IC(
-            post_ops_ok(jpp, *ppd->attr(), dst_d), VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_POOLING_IC(init_post_ops_conf(jpp, *ppd->attr(), dst_d),
+            VERBOSE_UNSUPPORTED_POSTOP);
 
     return status::success;
 }
 
 template <cpu_isa_t isa>
-bool jit_uni_i8i8_pooling_fwd_ker_t<isa>::post_ops_ok(jit_pool_conf_t &jpp,
-        const primitive_attr_t &attr, const memory_desc_wrapper &dst_d) {
+bool jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_post_ops_conf(
+        jit_pool_conf_t &jpp, const primitive_attr_t &attr,
+        const memory_desc_wrapper &dst_d) {
     const auto &post_ops = attr.post_ops_;
-    const auto &entries = post_ops.entry_;
     jpp.with_postops = false;
     jpp.with_eltwise = false;
     jpp.with_binary = false;
 
-    if (entries.empty()) return true;
+    if (post_ops.len() == 0) return true;
 
-    for (const auto &entry : entries) {
-        if (entry.is_eltwise()) {
-            const auto alg = entry.eltwise.alg;
-            jpp.with_eltwise
-                    = eltwise_injector::is_supported(isa, alg, data_type::f32);
-        } else if (entry.is_binary()) {
-            if (isa != avx512_core
-                    && entry.binary.src1_desc.data_type == data_type::bf16)
-                return false;
-            jpp.with_binary = true;
-        } else
-            return false;
+    if (jpp.alg == pooling_max) {
+        /*
+        * TODO Currently eltwise/binary injectors assumes that data in vmm has f32 dt.
+        * In max pooling data remains in i8 data type.
+        */
+        return false;
     }
 
+    jpp.with_eltwise = post_ops.find(primitive_kind::eltwise) != -1;
+    jpp.with_binary = post_ops.find(primitive_kind::binary) != -1;
     jpp.with_postops = jpp.with_eltwise || jpp.with_binary;
+
+    if (!jpp.with_postops) return false;
+
     jpp.post_ops = post_ops;
 
-    /*
-     * TODO Currently eltwise/binary injectors assumes that data in vmm has f32 dt.
-     * In max pooling data remains in i8 data type.
-     */
-    return IMPLICATION(jpp.with_postops, jpp.alg != pooling_max)
-            && binary_injector::binary_args_broadcast_supported(
-                    post_ops, dst_d, get_supported_bcast_strategies());
+    using namespace injector;
+    return post_ops_ok(post_ops_ok_args_t(isa, {binary, eltwise}, post_ops,
+            &dst_d, false /*sum_at_pos_0_only*/,
+            false /*sum_requires_scale_one*/, false /*sum_requires_zp_zero*/,
+            false /*sum_requires_same_params*/,
+            get_supported_bcast_strategies()));
 }
 
 template <cpu_isa_t isa>

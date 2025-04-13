@@ -274,8 +274,8 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
     VDISPATCH_POOLING_IC(
             dst_d.matches_tag(fmt_tag), VERBOSE_UNSUPPORTED_TAG_S, "dst");
 
-    VDISPATCH_POOLING_IC(
-            post_ops_ok(jpp, attr, dst_d), VERBOSE_UNSUPPORTED_POSTOP);
+    const bool post_ops_with_binary
+            = attr.post_ops_.find(primitive_kind::binary) != -1;
 
     if (fmt_tag == ncsp_fmt_tag) {
         // transform input to blocked f32, call f32 jit, transform result to
@@ -288,7 +288,7 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
         jpp.tag_kind = jit_memory_tag_kind_t::ncsp;
 
         // used to initialize binary post-ops
-        if (ppd->is_fwd() && jpp.with_binary) {
+        if (ppd->is_fwd() && post_ops_with_binary) {
             CHECK(memory_desc_init_by_tag(jpp.tmp_md, ndims, dst_d.md_->dims,
                     data_type::f32, blocked_fmt_tag));
         }
@@ -299,11 +299,14 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
                 : jit_memory_tag_kind_t::blocked;
     }
 
-    if (ppd->is_fwd() && jpp.with_binary) {
+    if (ppd->is_fwd() && post_ops_with_binary) {
         CHECK(set_binary_postops_formats(attr.post_ops_,
                 jpp.tag_kind == jit_memory_tag_kind_t::ncsp ? &jpp.tmp_md
                                                             : dst_d.md_));
     }
+
+    VDISPATCH_POOLING_IC(
+            init_post_ops_conf(jpp, attr, dst_d), VERBOSE_UNSUPPORTED_POSTOP);
 
     jpp.isa = (jpp.is_bf16 && mayiuse(avx512_core_bf16))
             ? avx512_core_bf16
@@ -472,8 +475,6 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
         CHECK(memory_desc_init_by_tag(
                 jpp.tmp_md, ndims, dims, data_type::f32, fmt_tag));
     }
-
-    jpp.post_ops = attr.post_ops_;
 
     return status::success;
 }
@@ -717,43 +718,31 @@ inline void jit_uni_pool_kernel_t<isa>::store_indices(const int indr_i,
 }
 
 template <cpu_isa_t isa>
-bool jit_uni_pool_kernel_t<isa>::post_ops_ok(jit_pool_conf_t &jpp,
+bool jit_uni_pool_kernel_t<isa>::init_post_ops_conf(jit_pool_conf_t &jpp,
         const primitive_attr_t &attr, const memory_desc_wrapper &dst_d) {
     const auto &post_ops = attr.post_ops_;
-    const auto &entries = post_ops.entry_;
     jpp.with_postops = false;
     jpp.with_eltwise = false;
     jpp.with_binary = false;
 
-    if (!jpp.is_backward) {
-        for (const auto &entry : entries) {
-            if (entry.is_eltwise()) {
-                const auto alg = entry.eltwise.alg;
-                jpp.with_eltwise = eltwise_injector::is_supported(
-                        isa, alg, data_type::f32);
-            } else if (entry.is_binary()) {
-                const bool is_bf16_ok = IMPLICATION(
-                        entry.binary.src1_desc.data_type == data_type::bf16,
-                        utils::one_of(isa, avx512_core, avx2_vnni_2));
-                const bool is_f16_ok = IMPLICATION(
-                        entry.binary.src1_desc.data_type == data_type::f16,
-                        utils::one_of(isa, avx512_core_fp16, avx2_vnni_2));
-                const bool is_fp8_ok = IMPLICATION(
-                        utils::one_of(entry.binary.src1_desc.data_type,
-                                data_type::f8_e5m2, data_type::f8_e4m3),
-                        utils::one_of(isa, avx512_core_fp16));
-                if (!(is_bf16_ok && is_f16_ok && is_fp8_ok)) return false;
+    if (post_ops.len() == 0) return true;
 
-                jpp.with_binary = true;
-            } else
-                return false;
-        }
+    if (jpp.is_backward) { return false; }
 
-        jpp.with_postops = jpp.with_eltwise || jpp.with_binary;
-    }
+    jpp.with_eltwise = post_ops.find(primitive_kind::eltwise) != -1;
+    jpp.with_binary = post_ops.find(primitive_kind::binary) != -1;
+    jpp.with_postops = jpp.with_eltwise || jpp.with_binary;
 
-    return binary_injector::binary_args_broadcast_supported(
-            post_ops, dst_d, get_supported_bcast_strategies());
+    if (!jpp.with_postops) return false;
+
+    jpp.post_ops = post_ops;
+
+    using namespace injector;
+    return post_ops_ok(post_ops_ok_args_t(isa, {binary, eltwise},
+            attr.post_ops_, &dst_d, false /*sum_at_pos_0_only*/,
+            false /*sum_requires_scale_one*/, false /*sum_requires_zp_zero*/,
+            false /*sum_requires_same_params*/,
+            get_supported_bcast_strategies()));
 }
 
 template <cpu_isa_t isa>

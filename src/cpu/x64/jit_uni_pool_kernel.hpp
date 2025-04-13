@@ -244,8 +244,8 @@ private:
     void apply_postops(int ur_bc, int ur_w, int c_block,
             const std::function<bool(int, bool)> &is_tail_predicate);
 
-    static bool post_ops_ok(jit_pool_conf_t &jpp, const primitive_attr_t &attr,
-            const memory_desc_wrapper &dst_d);
+    static bool init_post_ops_conf(jit_pool_conf_t &jpp,
+            const primitive_attr_t &attr, const memory_desc_wrapper &dst_d);
 
     inline bool use_bf16_emulation() const {
         return jpp.is_bf16 && !isa_has_bf16(jpp.isa) && isa != avx2_vnni_2;

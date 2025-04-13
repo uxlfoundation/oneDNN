@@ -425,11 +425,9 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, reduce_pass)
             return std::make_shared<float_reduction>();
         });
 
-// GreaterEqual currently is CPU only
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, greater_equal_pass)
         .set_priority(DEFAULT_P)
         .set_kind(partition_kind_t::misc_post_ops)
-        .set_engine_kind(engine_kind::cpu)
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
                     pgraph->append_op(graph::op_kind::GreaterEqual);

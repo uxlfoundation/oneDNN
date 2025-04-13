@@ -127,13 +127,14 @@ private:
     }
 
     inline dim_t get_kernel_offset(int i_oc_block, int ki, int i_ic) const {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
         dim_t ic_block_step_size = static_cast<dim_t>(jcp.kd) * jcp.kh * jcp.kw
                 * block_step_size;
         dim_t oc_block_step_size
                 = static_cast<dim_t>(jcp.nb_ic) * ic_block_step_size;
         dim_t offset = static_cast<dim_t>(i_oc_block) * oc_block_step_size
-                + ki * block_step_size + i_ic * jcp.oc_block;
+                + static_cast<dim_t>(ki) * block_step_size
+                + static_cast<dim_t>(i_ic) * jcp.oc_block;
         return sizeof(float) * offset;
     }
 
@@ -244,7 +245,7 @@ private:
 
     inline dim_t get_kernel_offset(
             int i_oc_block, int i_ic_block, int ki, int i_oc) const {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
         dim_t ic_block_step_size = static_cast<dim_t>(jcp.kd) * jcp.kh * jcp.kw
                 * block_step_size;
         dim_t oc_block_step_size
@@ -329,7 +330,7 @@ private:
     }
 
     inline dim_t get_kernel_offset(int ki, int i_ic) const {
-        dim_t block_step_size = jcp.ic_block * jcp.oc_block;
+        dim_t block_step_size = static_cast<dim_t>(jcp.ic_block) * jcp.oc_block;
         dim_t offset = static_cast<dim_t>(ki) * block_step_size
                 + i_ic * jcp.oc_block;
         return sizeof(float) * offset;

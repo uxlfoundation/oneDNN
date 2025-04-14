@@ -26,12 +26,21 @@ namespace ocl {
 status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
+    const memory_desc_wrapper src2_d(src_md(2));
     const memory_desc_wrapper dst_d(dst_md());
 
     const int ndims = src0_d.ndims();
     conf.src0_md_info = memory_desc_info_t::create(src0_d);
     conf.src1_md_info = memory_desc_info_t::create(src1_d);
     conf.dst_md_info = memory_desc_info_t::create(dst_d);
+
+    if (is_ternary_op()) {
+        conf.src2_md_info = memory_desc_info_t::create(src2_d);
+        conf.src2_data_type = src2_d.data_type();
+    } else {
+        conf.src2_md_info = memory_desc_info_t();
+    }
+
     conf.src0_data_type = src0_d.data_type();
     conf.src1_data_type = src1_d.data_type();
     conf.dst_data_type = dst_d.data_type();
@@ -45,6 +54,12 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.src1_bcast_dims[i] = i < ndims
                 ? src1_d.dims()[i] == 1 && src0_d.dims()[i] != src1_d.dims()[i]
                 : 0;
+        if (is_ternary_op()) {
+            conf.src2_bcast_dims[i] = i < ndims
+                    ? (src2_d.dims()[i] == 1
+                            && src2_d.dims()[i] != dst_d.dims()[i])
+                    : 0;
+        }
     }
     conf.alg = desc()->alg_kind;
     conf.is_tensor_op = is_tensor_op();
@@ -111,6 +126,7 @@ status_t simple_binary_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     def_binary_alg_kinds(kernel_ctx);
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
+    kernel_ctx.define_int("IS_TERNARY", (conf.alg == alg_kind::binary_select));
 
     kernel_ctx.set_data_type(conf.src0_data_type);
     kernel_ctx.set_data_type(conf.src1_data_type);
@@ -145,6 +161,16 @@ status_t simple_binary_t::pd_t::init_kernel_ctx(
     def_memory_desc_info(kernel_ctx, conf.src1_md_info, "SRC1");
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
 
+    if (conf.alg == alg_kind::binary_select) {
+        kernel_ctx.define_int("SRC2_BCAST_DIM0", conf.src2_bcast_dims[0]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM1", conf.src2_bcast_dims[1]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM2", conf.src2_bcast_dims[2]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM3", conf.src2_bcast_dims[3]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM4", conf.src2_bcast_dims[4]);
+        kernel_ctx.define_int("SRC2_BCAST_DIM5", conf.src2_bcast_dims[5]);
+        def_memory_desc_info(kernel_ctx, conf.src2_md_info, "SRC2");
+    }
+
     CHECK(def_attr_info(
             kernel_ctx, conf.attr_info, attr()->post_ops_, *dst_md()));
 
@@ -168,13 +194,17 @@ status_t simple_binary_t::execute_simple(const exec_ctx_t &ctx) const {
 
     auto &src1_scale = CTX_IN_STORAGE(DNNL_ARG_SRC_1 | DNNL_ARG_ATTR_SCALES);
 
+    unsigned arg_idx = 0;
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, src0);
-    arg_list.set(1, src1);
-    arg_list.set(2, dst);
-
-    unsigned arg_idx = append_post_ops_to_arg_list(
-            ctx, arg_list, 3, pd()->attr()->post_ops_);
+    arg_list.set(arg_idx++, src0);
+    arg_list.set(arg_idx++, src1);
+    if (pd()->is_ternary_op()) {
+        auto &src2 = CTX_IN_STORAGE(DNNL_ARG_SRC_2);
+        arg_list.set(arg_idx++, src2);
+    }
+    arg_list.set(arg_idx++, dst);
+    arg_idx = append_post_ops_to_arg_list(
+            ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
 
     arg_list.set(arg_idx++, src0_scale);
     arg_list.set(arg_idx, src1_scale);

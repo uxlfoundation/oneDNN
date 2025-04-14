@@ -577,16 +577,21 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto notrans = batch ? abc : ab;
 
             auto cache_line_align_md = [&](memory_desc_t &md) {
-                auto dim = md.dims[md.ndims - 1];
                 dnnl::impl::dims_t dims;
                 dnnl::impl::utils::array_copy(dims, md.dims, md.ndims);
+
                 auto kernel_type = convert_dnnl_to_kernel_type(md.data_type);
-                dim_t cache_line_elems = 64 / kernel_type;
-                md.dims[md.ndims - 1] = utils::rnd_up(dim,
-                        std::min((dim_t)cache_line_elems,
+                auto dim = md.dims[md.ndims - 1];
+                dnnl::impl::dims_t strides;
+                strides[md.ndims - 1] = 1;
+                strides[md.ndims - 2] = utils::rnd_up(dim,
+                        std::min((dim_t)64 / kernel_type,
                                 utils::rnd_up(dim, 2)));
-                CHECK(memory_desc_init_by_strides(md, nullptr));
-                dnnl::impl::utils::array_copy(md.dims, dims, md.ndims);
+                for (int i = md.ndims - 3; i >= 0; i--)
+                    strides[i] = strides[i + 1] * dims[i + 1];
+
+                CHECK(memory_desc_init_by_strides(
+                        md, md.ndims, dims, md.data_type, strides));
                 return status::success;
             };
             if (a_any) CHECK(cache_line_align_md(a_desc));

@@ -34,6 +34,53 @@ using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;
 
+const float *jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::adjust_oscales(
+        const memory_tracking::grantor_t &scratchpad, const float *src_scales,
+        const float *wei_scales) const {
+    auto loc_scales = scratchpad.template get<float>(key_conv_adjusted_scales);
+    const bool has_wei_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
+    const int wei_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
+    float factor = (pd()->jcp_.signed_input && (!pd()->jcp_.has_vnni))
+            ? 1.f / pd()->jcp_.wei_adj_scale
+            : 1.f;
+    if (has_wei_scales && wei_mask > 0) {
+        for (dim_t c = 0; c < pd()->OC(); c++)
+            loc_scales[c] = src_scales[0] * wei_scales[c] * factor;
+    } else {
+        utils::array_set(loc_scales, src_scales[0] * wei_scales[0] * factor,
+                pd()->jcp_.ic_block);
+    }
+    return loc_scales;
+}
+
+const float *
+jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::maybe_adjust_dw_oscales(
+        const memory_tracking::grantor_t &scratchpad, const float *dst_scales,
+        const float *dw_wei_scales) const {
+    if (!pd()->jcp_.with_dw_conv) return nullptr;
+
+    const auto &jcp_dw = pd()->jcp_dw_;
+    memory_tracking::grantor_t dw_scratchpad(
+            scratchpad, memory_tracking::names::prefix_fusion);
+    auto dw_loc_scales
+            = dw_scratchpad.template get<float>(key_conv_adjusted_scales);
+    const auto *attr_dw = pd()->dw_conv_pd_->attr();
+    const bool has_wei_scales
+            = attr_dw->scales_.has_default_values(DNNL_ARG_WEIGHTS);
+    const int wei_mask = attr_dw->scales_.get_mask(DNNL_ARG_WEIGHTS);
+    float factor = 1.f / jcp_dw->wei_adj_scale;
+
+    if (has_wei_scales && wei_mask > 0) {
+        for (dim_t c = 0; c < pd()->dw_conv_pd_->OC(); c++)
+            dw_loc_scales[c] = dw_wei_scales[c] / dst_scales[0] * factor;
+    } else {
+        utils::array_set(dw_loc_scales,
+                dw_wei_scales[0] / dst_scales[0] * factor, pd()->jcp_.ic_block);
+    }
+    return dw_loc_scales;
+}
+
 /* convolution forward */
 status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
@@ -65,49 +112,14 @@ status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
 
     auto scratchpad = ctx.get_scratchpad_grantor();
+    const float *oscales = adjust_oscales(scratchpad, src_scales, wei_scales);
 
-    auto local_scales
-            = scratchpad.template get<float>(key_conv_adjusted_scales);
-    // Src scale is always a single value
-    float src_scale = src_scales[0];
-    int wei_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    float factor = (pd()->jcp_.signed_input && (!pd()->jcp_.has_vnni))
-            ? 1.f / pd()->jcp_.wei_adj_scale
-            : 1.f;
-    switch (wei_mask) {
-        case 0:
-            utils::array_set(local_scales, src_scale * wei_scales[0] * factor,
-                    pd()->jcp_.ic_block);
-            break;
-        default:
-            for (dim_t c = 0; c < pd()->OC(); c++)
-                local_scales[c] = src_scale * wei_scales[c] * factor;
-    }
+    const float *dw_oscales
+            = maybe_adjust_dw_oscales(scratchpad, dst_scales, dw_wei_scales);
 
-    const float *dw_oscales = nullptr;
-    if (pd()->jcp_.with_dw_conv) {
-        auto jcp_dw = pd()->jcp_dw_;
-        memory_tracking::grantor_t dw_scratchpad(
-                scratchpad, memory_tracking::names::prefix_fusion);
-        auto dw_local_scales
-                = dw_scratchpad.template get<float>(key_conv_adjusted_scales);
-        auto attr_dw = pd()->dw_conv_pd_->attr();
-        int wei_mask = attr_dw->scales_.get_mask(DNNL_ARG_WEIGHTS);
-        dim_t count = wei_mask == 0 ? 1 : pd()->dw_conv_pd_->OC();
-        float factor = 1.f / jcp_dw->wei_adj_scale;
-        if (count == 1) {
-            utils::array_set(dw_local_scales,
-                    dw_wei_scales[0] / dst_scales[0] * factor,
-                    pd()->jcp_.ic_block);
-        } else {
-            for (dim_t c = 0; c < count; c++)
-                dw_local_scales[c] = dw_wei_scales[c] / dst_scales[0] * factor;
-        }
-        dw_oscales = dw_local_scales;
-    }
     parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
-                dst, local_scales, dst_scales, dw_oscales, dw_dst_scales,
+                dst, oscales, dst_scales, dw_oscales, dw_dst_scales,
                 src_zero_point, dst_zero_point, scratchpad,
                 post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());

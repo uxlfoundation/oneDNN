@@ -581,12 +581,31 @@ struct gen_gemm_t : public gpu_gemm_t {
                 dnnl::impl::utils::array_copy(dims, md.dims, md.ndims);
 
                 auto kernel_type = convert_dnnl_to_kernel_type(md.data_type);
-                auto dim = md.dims[md.ndims - 1];
+                size_t stride = [&](int dim) {
+                    auto stride = dim * kernel_type;
+
+                    // Prefer cache line aligned sizes
+                    if (stride > 32) {
+                        stride = utils::rnd_up(stride, 64);
+                        // Avoid conflicts in 8-way associative cache
+                        if (stride % 256 == 0) stride += 64;
+                        return stride / kernel_type;
+                    }
+
+                    // Optimal stride for data loading, determined by restrictions
+                    // on loads.
+                    int load_alignment = arch_ > arch_t::xe2 ? 16 : 4;
+                    if (stride > load_alignment / 2)
+                        return utils::rnd_up(stride, load_alignment)
+                                / kernel_type;
+
+                    // Limit padding for small dimensions
+                    return utils::rnd_up_pow2(stride) / kernel_type;
+                }(md.dims[md.ndims - 1]);
+
                 dnnl::impl::dims_t strides;
                 strides[md.ndims - 1] = 1;
-                strides[md.ndims - 2] = utils::rnd_up(dim,
-                        std::min((dim_t)64 / kernel_type,
-                                utils::rnd_up(dim, 2)));
+                strides[md.ndims - 2] = stride;
                 for (int i = md.ndims - 3; i >= 0; i--)
                     strides[i] = strides[i + 1] * dims[i + 1];
 

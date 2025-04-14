@@ -59,11 +59,11 @@ void BLASKernelGenerator<hw>::gemmCheck32(const GEMMProblem &problem, GEMMStrate
     auto temp3 = temp2GRF.ud(4);
     auto flag = state.raVFlag.alloc();
 
-    auto mulHigh = [&](Subregister dst, Subregister src0, Subregister src1) {
+    auto mulHigh = [&](Subregister dst, Subregister src0, Subregister src1, SourceLocation loc = {}) {
         if (emulate)
-            emul32High(1, dst.ud(), src0, src1);
+            emul32High(1, dst.ud(), src0, src1, loc);
         else
-            mul(1, dst, src0, src1);
+            mul(1, dst, src0, src1, loc);
     };
 
     if (checkA) {
@@ -405,21 +405,21 @@ void BLASKernelGenerator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subreg
     // B += j0 * ldb (N, Pr) j0 (T)
     // C += i0 + j0 * ldc (N, Pr) j0 + i0 * ldc (T, Pc)
     // CO += i0 (row offsets) j0 (col offsets)
-    auto doAOffset = [&](Subregister offsetAx, Subregister i0x) {
+    auto doAOffset = [&](Subregister offsetAx, Subregister i0x, SourceLocation loc = {}) {
         if (problem.A.layout == MatrixLayout::Nontranspose)
-            eaddScaled(1, offsetAx, offsetAx, i0x, Ta_ext, strategy, state);
+            eaddScaled(1, offsetAx, offsetAx, i0x, Ta_ext, strategy, state, loc);
         else {
-            emul(1, tempQ1, i0x, state.inputs.lda, strategy, state);
-            eadd(1, offsetAx, offsetAx, tempQ1.reinterpret(0, offsetAx.getType()), strategy, state);
+            emul(1, tempQ1, i0x, state.inputs.lda, strategy, state, loc);
+            eadd(1, offsetAx, offsetAx, tempQ1.reinterpret(0, offsetAx.getType()), strategy, state, loc);
         }
     };
 
-    auto doBOffset = [&](Subregister offsetBx, Subregister j0x) {
+    auto doBOffset = [&](Subregister offsetBx, Subregister j0x, SourceLocation loc = {}) {
         if (problem.B.layout == MatrixLayout::Transpose)
-            eaddScaled(1, offsetBx, offsetBx, j0x, Tb_ext, strategy, state);
+            eaddScaled(1, offsetBx, offsetBx, j0x, Tb_ext, strategy, state, loc);
         else {
-            emul(1, tempQ0, j0x, state.inputs.ldb, strategy, state);
-            eadd(1, offsetBx, offsetBx, tempQ0.reinterpret(0, offsetBx.getType()), strategy, state);
+            emul(1, tempQ0, j0x, state.inputs.ldb, strategy, state, loc);
+            eadd(1, offsetBx, offsetBx, tempQ0.reinterpret(0, offsetBx.getType()), strategy, state, loc);
         }
     };
 
@@ -589,20 +589,20 @@ void BLASKernelGenerator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, con
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmFoldOffsets(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    auto foldOrSave = [&](const MatrixAddressingStrategy &sX, Subregister &inputX, Subregister &offsetX, const Subregister &inputOffsetX, Subregister &saveOffsetX, bool newInput = false) {
+    auto foldOrSave = [&](const MatrixAddressingStrategy &sX, Subregister &inputX, Subregister &offsetX, const Subregister &inputOffsetX, Subregister &saveOffsetX, bool newInput = false, SourceLocation loc = {}) {
         if (sX.base.isStateless()) {
             auto oldInputX = inputX;
             if (newInput)
                 inputX = state.ra.alloc_sub(DataType::uq, getHint(HintType::LongTerm, strategy));
-            eadd(1, inputX, oldInputX, offsetX, strategy, state);
+            eadd(1, inputX, oldInputX, offsetX, strategy, state, loc);
             if (getBytes(offsetX.getType()) < 8) {
                 state.ra.safeRelease(offsetX);
                 offsetX = state.ra.alloc_sub(DataType::uq, getHint(HintType::LongTerm, strategy));
             }
-            emov(1, offsetX, 0, strategy, state);
+            emov(1, offsetX, 0, strategy, state, loc);
         } else {
             offsetX = state.ra.alloc_sub(offsetX.getType(), getHint(HintType::LongTerm, strategy));
-            mov(1, offsetX, inputOffsetX);
+            mov(1, offsetX, inputOffsetX, loc);
         }
         saveOffsetX = offsetX;
     };
@@ -624,11 +624,11 @@ void BLASKernelGenerator<hw>::gemmFoldOffsets(const GEMMProblem &problem, const 
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmRestoreOffsets(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    auto zeroOrRestore = [&](const MatrixAddressingStrategy &sX, const Subregister &offsetX, const Subregister &inputOffsetX) {
+    auto zeroOrRestore = [&](const MatrixAddressingStrategy &sX, const Subregister &offsetX, const Subregister &inputOffsetX, SourceLocation loc = {}) {
         if (sX.base.isStateless())
-            emov(1, offsetX, 0, strategy, state);
+            emov(1, offsetX, 0, strategy, state, loc);
         else
-            mov(1, offsetX, inputOffsetX);
+            mov(1, offsetX, inputOffsetX, loc);
     };
 
     zeroOrRestore(strategy.A, state.saveOffsetA, state.inputs.offsetA);
@@ -774,12 +774,12 @@ void BLASKernelGenerator<hw>::gemmScaleInputs(const GEMMProblem &problem, const 
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext, Tc_ext = problem.Tc_ext, Tco = problem.Tco;
     auto &inputs = state.inputs;
 
-    auto scale = [&](Type T, Subregister &s, Subregister defaultSrc = Subregister()) {
+    auto scale = [&](Type T, Subregister &s, Subregister defaultSrc = Subregister(), SourceLocation loc = {}) {
         if (s.isValid())
-            emulConstant(1, s, s, T, strategy, state);
+            emulConstant(1, s, s, T, strategy, state, loc);
         else if (defaultSrc.isValid()) {
             s = state.ra.alloc_sub(defaultSrc.getType(), getHint(HintType::LongTerm, strategy));
-            emulConstant(1, s, defaultSrc, T, strategy, state);
+            emulConstant(1, s, defaultSrc, T, strategy, state, loc);
         }
     };
 
@@ -1052,7 +1052,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     for (LoopType loop: {LoopM, LoopN, LoopK})
         state.remaindersCoop[loop] = state.remainders[loop];
 
-    auto calcMNRemCoop = [&](CoopSplit split, bool isM) {
+    auto calcMNRemCoop = [&](CoopSplit split, bool isM, SourceLocation loc = {}) {
         auto loopX = isM ? LoopM : LoopN;
         auto loopY = isM ? LoopN : LoopM;
         switch (split) {
@@ -1064,7 +1064,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
                 auto rem = state.ra.alloc_sub<uint16_t>();
                 int32_t chunk = strategy.unroll[loopX] / strategy.wg[loopY];
                 auto lid = isM ? state.lidN : state.lidM;
-                emad(1 | sat, rem, state.remainders[loopX], -lid.w(), chunk, strategy, state);
+                emad(1 | sat, rem, state.remainders[loopX], -lid.w(), chunk, strategy, state, loc);
                 return rem;
             }
         }

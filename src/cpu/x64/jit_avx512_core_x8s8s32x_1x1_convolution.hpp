@@ -346,6 +346,12 @@ private:
             const void *post_ops_binary_rhs_arg_vec,
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
+            const float *src_scales, const float *wei_scales) const;
+    const float *maybe_adjust_dw_oscales(
+            const memory_tracking::grantor_t &scratchpad,
+            const float *dst_scales, const float *dw_wei_scales) const;
+
     std::unique_ptr<jit_avx512_core_x8s8s32x_1x1_conv_kernel> kernel_;
     std::unique_ptr<rtus_driver_t<avx512_core>> rtus_driver_;
     using dw_conv_kernel_t = jit_avx512_core_x8s8s32x_fwd_kernel;

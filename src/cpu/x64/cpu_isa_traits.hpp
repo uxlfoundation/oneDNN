@@ -226,21 +226,18 @@ template <>
 struct vreg_traits_t<Xbyak::Zmm> {
     using Vmm_lower_t = Xbyak::Ymm;
     static constexpr size_t vlen = 64;
-    static constexpr size_t vlen_shift = 6;
 };
 
 template <>
 struct vreg_traits_t<Xbyak::Ymm> {
     using Vmm_lower_t = Xbyak::Xmm;
     static constexpr size_t vlen = 32;
-    static constexpr size_t vlen_shift = 5;
 };
 
 template <>
 struct vreg_traits_t<Xbyak::Xmm> {
     using Vmm_lower_t = Xbyak::Xmm;
     static constexpr size_t vlen = 16;
-    static constexpr size_t vlen_shift = 4;
 };
 
 template <cpu_isa_t>
@@ -350,22 +347,15 @@ struct cpu_isa_traits_t<avx10_1_512_amx_fp16> {
     static constexpr const char *user_option_env = "avx10_1_512_amx_fp16";
 };
 
-template <typename Wmm>
-struct avx10_t {
-    typedef Wmm Vmm;
-    static constexpr int vlen_shift = vreg_traits_t<Wmm>::vlen_shift;
-    static constexpr int n_vregs = 32;
-    static constexpr int vlen = vreg_traits_t<Wmm>::vlen;
-};
-
 template <>
-struct cpu_isa_traits_t<avx10_2_512> : public avx10_t<Xbyak::Zmm> {
+struct cpu_isa_traits_t<avx10_2_512> : public cpu_isa_traits_t<avx512_core> {
     static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx10_2_512;
     static constexpr const char *user_option_env = "avx10_2_512";
 };
 
 template <>
-struct cpu_isa_traits_t<avx10_2_512_amx_2> : public avx10_t<Xbyak::Zmm> {
+struct cpu_isa_traits_t<avx10_2_512_amx_2>
+    : public cpu_isa_traits_t<avx10_2_512> {
     static constexpr dnnl_cpu_isa_t user_option_val
             = dnnl_cpu_isa_avx10_2_512_amx_2;
     static constexpr const char *user_option_env = "avx10_2_512_amx_2";
@@ -401,9 +391,10 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
             = get_avx10_version(static_cast<cpu_isa_t>(cpu_isa_mask));
     const auto isa_avx10_version = get_avx10_version(cpu_isa);
 
-    if ((cpu_isa_mask & cpu_isa_no_hints) != cpu_isa_no_hints
-            || cpu_avx10_version < isa_avx10_version)
-        return false;
+    if ((cpu_isa_mask & cpu_isa_no_hints) != cpu_isa_no_hints) return false;
+    // AVX10 version N+1 will include all the features and capabilities
+    // included in version N, and not vice versa.
+    if (cpu_avx10_version < isa_avx10_version) return false;
 
     switch (cpu_isa) {
         case sse41: REG_SSE41_ISA(return cpu().has(Cpu::tSSE41));
@@ -436,6 +427,10 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
             REG_AVX512_ISA(return cpu().has(Cpu::tAVX512_FP16)
                     && mayiuse(avx512_core_bf16, soft)
                     && mayiuse(avx2_vnni, soft));
+        case avx10_2_512:
+            REG_AVX512_ISA(return cpu().getAVX10version() >= 2
+                    && cpu().has(Cpu::tAVX512F) && mayiuse(avx2_vnni_2, soft)
+                    && cpu().has(Cpu::tAPX_F));
         case amx_tile:
             REG_AMX_ISA(return cpu().has(Cpu::tAMX_TILE)
                     && x64::amx::is_available());
@@ -455,10 +450,6 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case avx512_core_amx_fp16:
             REG_AMX_ISA(return mayiuse(avx512_core_amx, soft)
                     && mayiuse(amx_fp16, soft));
-        case avx10_2_512:
-            REG_AMX_ISA(return cpu().getAVX10version() >= 2
-                    && cpu().has(Cpu::tAVX512F) && mayiuse(avx2_vnni_2, soft)
-                    && cpu().has(Cpu::tAPX_F));
         case avx10_2_512_amx_2:
             REG_AMX_ISA(return mayiuse(avx10_2_512, soft)
                     && mayiuse(amx_tile, soft) && cpu().has(Cpu::tAMX_TRANSPOSE)
@@ -487,6 +478,7 @@ inline bool isa_has_masks(cpu_isa_t isa) {
     return is_superset(isa, avx512_core);
 }
 
+// Check if the ISA has saturating conversion support
 inline bool isa_has_sat_cvt(cpu_isa_t isa, data_type_t dt) {
     return utils::one_of(dt, data_type::u8, data_type::s8)
             && is_superset(isa, avx10_2_512);

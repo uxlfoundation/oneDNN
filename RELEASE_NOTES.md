@@ -35,6 +35,7 @@ TBD
  
 * Added support for group normalization primitive with [ONEDNN_ENABLE_PRIMITIVE](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#onednn-enable-primitive) build option.
 * Enabled ROCm 6 support for AMD GPUs.
+* Improved CMake integration when installing oneDNN with the Nvidia backend enabled.
 
 # Validation
 * Added benchdnn option [`--execution-mode`](https://github.com/uxlfoundation/oneDNN/blob/rls-v3.8/tests/benchdnn/doc/knobs_common.md#--execution-mode) to test oneDNN functionality with SYCL Graph record/execute mode.

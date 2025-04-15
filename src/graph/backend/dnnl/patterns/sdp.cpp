@@ -311,15 +311,11 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, int8_sdp_fusion)
                             in_edges_t {in_edge(0, dequantize_softmax, 0),
                                     in_edge(1, dequantize_value, 0)});
 
-                    auto transpose_output
-                            = pgraph->append_op(graph::op_kind::StaticTranspose,
-                                    in_edges_t {in_edge(0, matmul_v, 0)});
-                    auto reshape_reorder_output = pgraph->append_alternation(
-                            {graph::op_kind::Reorder,
-                                    graph::op_kind::StaticReshape},
-                            {in_edge(0, transpose_output, 0)});
-                    pgraph->append_op(graph::op_kind::Quantize,
-                            in_edges_t {in_edge(0, reshape_reorder_output, 0)});
+                    // Optional transpose + reshape/reorder
+                    auto opt_tr
+                            = optional_transpose_reshape(pgraph, matmul_v, 0);
+                    pgraph->append_op(
+                            graph::op_kind::Quantize, {in_edge(0, opt_tr, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<sdp_base_t<true, memory::data_type::f32>>();

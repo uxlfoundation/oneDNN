@@ -28,6 +28,12 @@ TBD
 * Introduced support for `f32` convolution with `fp16` compressed weights.
 * Enabled support for int8 or int4 compressed weights in matmul primitive. This functionality is implemented on Intel CPUs.
 
+## Generic SYCL backend
+* Introduced support for RNN Vanilla primitive forward propagation.
+* Introduced support for inner product primitive backward propagation.
+* Introduced support for group normalization primitive.
+* Improved precision of inner product primitive with sum post-op for larger shapes.
+
 ## NVIDIA GPUs
 * Introduces Graph API support.
 

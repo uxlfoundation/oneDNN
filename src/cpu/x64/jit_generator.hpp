@@ -2085,6 +2085,8 @@ public:
         using namespace data_type;
         if (!((idt == f32) && utils::one_of(odt, u8, s8, s32))) return;
         if (!force_lbound && isa_has_sat_cvt(max_cpu_isa_, odt)) {
+            // Initialize xmm_permb for ISA that has saturaing conversion
+            // using vpemb+vmovups is more efficient thatn vpmovusdb
             static constexpr char perm_data[] = {0, 4, 8, 12, 16, 20, 24, 28,
                     32, 36, 40, 44, 48, 52, 56, 60};
             auto xmm_permb = Xbyak::Xmm(vmm_ubound.getIdx());

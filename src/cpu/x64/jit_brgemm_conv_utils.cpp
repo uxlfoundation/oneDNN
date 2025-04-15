@@ -1764,7 +1764,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && isa == avx512_core_amx;
     jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
-            && isa == avx10_2_512_amx_2;
+            && is_superset(isa, avx10_2_512_amx_2);
     jcp.wei_plain = everyone_is(true, jcp.wei_dt == data_type::f32,
             is_superset(isa, avx512_core), weights_d.is_plain());
     if (jcp.wei_plain)

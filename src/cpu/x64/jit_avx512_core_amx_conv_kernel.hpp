@@ -700,7 +700,7 @@ private:
         return static_cast<dim_t>(kw) * (jcp.dilate_w + 1) + ow - pad_l;
     }
     inline dim_t filter_h_to_src(int kh) const {
-        return kh * (jcp.dilate_h + 1);
+        return static_cast<dim_t>(kh) * (jcp.dilate_h + 1);
     }
     inline dim_t filter_d_to_src(int kd) const {
         return static_cast<dim_t>(kd) * (jcp.dilate_d + 1) * jcp.ih;

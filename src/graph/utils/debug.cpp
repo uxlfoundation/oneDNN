@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -71,6 +71,7 @@ const char *property_type2str(property_type_t v) {
     if (v == property_type::undef) return "undef";
     if (v == property_type::variable) return "variable";
     if (v == property_type::constant) return "constant";
+    if (v == property_type::host_scalar) return "host_scalar";
     assert(!"unknown property_type");
     return "unknown property_type";
 }

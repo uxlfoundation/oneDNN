@@ -577,16 +577,40 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto notrans = batch ? abc : ab;
 
             auto cache_line_align_md = [&](memory_desc_t &md) {
-                auto dim = md.dims[md.ndims - 1];
                 dnnl::impl::dims_t dims;
                 dnnl::impl::utils::array_copy(dims, md.dims, md.ndims);
+
                 auto kernel_type = convert_dnnl_to_kernel_type(md.data_type);
-                dim_t cache_line_elems = 64 / kernel_type;
-                md.dims[md.ndims - 1] = utils::rnd_up(dim,
-                        std::min((dim_t)cache_line_elems,
-                                utils::rnd_up(dim, 2)));
-                CHECK(memory_desc_init_by_strides(md, nullptr));
-                dnnl::impl::utils::array_copy(md.dims, dims, md.ndims);
+                size_t stride = [&](int dim) {
+                    auto stride = dim * kernel_type;
+
+                    // Prefer cache line aligned sizes
+                    if (stride > 32) {
+                        stride = utils::rnd_up(stride, 64);
+                        // Avoid conflicts in 8-way associative cache
+                        if (stride % 256 == 0) stride += 64;
+                        return stride / kernel_type;
+                    }
+
+                    // Optimal stride for data loading, determined by restrictions
+                    // on loads.
+                    int load_alignment = arch_ > arch_t::xe2 ? 16 : 4;
+                    if (stride > load_alignment / 2)
+                        return utils::rnd_up(stride, load_alignment)
+                                / kernel_type;
+
+                    // Limit padding for small dimensions
+                    return utils::rnd_up_pow2(stride) / kernel_type;
+                }(md.dims[md.ndims - 1]);
+
+                dnnl::impl::dims_t strides;
+                strides[md.ndims - 1] = 1;
+                strides[md.ndims - 2] = stride;
+                for (int i = md.ndims - 3; i >= 0; i--)
+                    strides[i] = strides[i + 1] * dims[i + 1];
+
+                CHECK(memory_desc_init_by_strides(
+                        md, md.ndims, dims, md.data_type, strides));
                 return status::success;
             };
             if (a_any) CHECK(cache_line_align_md(a_desc));

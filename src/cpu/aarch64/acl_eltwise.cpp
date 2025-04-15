@@ -73,9 +73,9 @@ status_t acl_eltwise_fwd_t::pd_t::init(engine_t *engine) {
 
     bool ok = is_fwd() && one_of(src_d.data_type(), f32, f16, s32, s8)
             && !has_zero_dim_memory() && attr()->has_default_values()
-            && set_default_formats_common()
-            && src_d == memory_desc_wrapper(dst_md())
-            && impl::is_dense_format_kind({src_md(), dst_md()});
+            && impl::is_dense_format_kind({src_md(), dst_md()})
+            && set_default_formats_common() && src_d.is_dense()
+            && src_d == memory_desc_wrapper(dst_md());
     if (!ok) return status::unimplemented;
 
     // Workaround for the inaccuracies caused by

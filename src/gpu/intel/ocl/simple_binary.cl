@@ -101,9 +101,9 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
                     dims0[4] * !SRC1_BCAST_DIM4, dims0[5] * !SRC1_BCAST_DIM5);
 #if IS_TERNARY
     int src2_off
-            = SRC0_OFF(dims0[0] * !SRC0_BCAST_DIM0, dims0[1] * !SRC0_BCAST_DIM1,
-                    dims0[2] * !SRC0_BCAST_DIM2, dims0[3] * !SRC0_BCAST_DIM3,
-                    dims0[4] * !SRC0_BCAST_DIM4, dims0[5] * !SRC0_BCAST_DIM5);
+            = SRC2_OFF(dims0[0] * !SRC2_BCAST_DIM0, dims0[1] * !SRC2_BCAST_DIM1,
+                    dims0[2] * !SRC2_BCAST_DIM2, dims0[3] * !SRC2_BCAST_DIM3,
+                    dims0[4] * !SRC2_BCAST_DIM4, dims0[5] * !SRC2_BCAST_DIM5);
 #endif
 
 #endif

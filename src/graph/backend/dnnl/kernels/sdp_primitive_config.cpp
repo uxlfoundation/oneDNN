@@ -86,12 +86,15 @@ status_t sdp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
                 // 3. locate mask if have
                 if (post_op->get_kind() == op_kind::dnnl_binary) {
                     add = post_op;
+                    mask_type_ = attn_mask_type::buffer;
                 } else if (post_op->get_kind() == op_kind::dnnl_mask) {
                     // implicit causal mask
-                    causal_mask_ = true;
+                    mask_type_ = static_cast<attn_mask_type_t>(
+                            post_op->get_attr<int64_t>(op_attr::mask_type));
                 }
             } else if (post_op->get_kind() == op_kind::dnnl_mask) {
-                causal_mask_ = true;
+                mask_type_ = static_cast<attn_mask_type_t>(
+                        post_op->get_attr<int64_t>(op_attr::mask_type));
             }
         } else {
             VCHECK_SDP_PRIMITIVE(mm2 == nullptr, status::unimplemented,
@@ -363,9 +366,8 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
 
     CHECK(create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(), md_k.get(),
             md_v.get(), md_dst.get(), md_mask.get(), scale_dt, invert_scale_,
-            kv_head_number_,
-            causal_mask_ ? attn_mask_type::top_left : attn_mask_type::buffer,
-            attr.get(), qk_attr.get(), vs_attr.get()));
+            kv_head_number_, mask_type_, attr.get(), qk_attr.get(),
+            vs_attr.get()));
 
     auto status = sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());
 

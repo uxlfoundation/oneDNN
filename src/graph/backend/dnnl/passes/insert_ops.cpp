@@ -638,7 +638,8 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
             index += 1;
         }
         // Insert reshape for mask
-        if (cur_op->get_attr<bool>(op_attr::with_mask)) {
+        if (cur_op->get_attr<int64_t>(op_attr::mask_type)
+                == static_cast<int64_t>(attn_mask_type::buffer)) {
             int32_t mask_ndims = cur_op->get_input_value(index)
                                          ->get_logical_tensor()
                                          .ndims;
@@ -1095,6 +1096,42 @@ status_t insert_unsqueeze_and_squeeze_for_reduction(
         cur_op->set_attr(op_attr::keep_dims, true);
     }
 
+    rewriter.run();
+    return infer_shape(sg);
+}
+
+status_t insert_host_scalar(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
+    for (const auto &val : sg->get_input_values()) {
+        logical_tensor_t lt = val->get_logical_tensor();
+        if (lt.property == property_type::host_scalar) {
+            // Create a new dnnl_host_scalar op
+            op_ptr host_scalar_op
+                    = std::make_shared<op_t>(op_kind::dnnl_host_scalar);
+            logical_tensor_t host_scalar_op_out_lt
+                    = empty_logical_tensor_with_default_id();
+            auto host_scalar_op_out_val = std::make_shared<value_t>(
+                    *host_scalar_op, 0, host_scalar_op_out_lt, true);
+            host_scalar_op_out_val->set_data_type(lt.data_type);
+
+            std::shared_ptr<value_t> shared_val;
+            auto consumers = val->get_consumers();
+            for (const auto &consumer : consumers) {
+                if (!shared_val) {
+                    shared_val = consumer.get_op().get_input_value(
+                            consumer.get_offset());
+                }
+                val->remove_consumer(consumer.get_op(), consumer.get_offset());
+                consumer.get_op().connect_input(
+                        consumer.get_offset(), host_scalar_op_out_val);
+            }
+
+            val->add_consumer(*host_scalar_op, 0);
+            host_scalar_op->add_input(shared_val);
+            host_scalar_op->add_output(host_scalar_op_out_val);
+            rewriter.to_insert(host_scalar_op);
+        }
+    }
     rewriter.run();
     return infer_shape(sg);
 }

@@ -172,7 +172,7 @@ public:
     void unmap_mem() { mem_.unmap(); }
 
 private:
-    int fill_mem_with_data(const dnn_mem_t &mem);
+    int fill_mem_with_data(const dnn_mem_t &mem, const dnnl::engine &eng);
 
     dnn_mem_t mem_;
     std::shared_ptr<void> buffer_;

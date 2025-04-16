@@ -84,6 +84,9 @@ struct layer_normalization_pd_t : public primitive_desc_t {
     bool use_global_stats() const {
         return desc_.flags & normalization_flags::use_global_stats;
     }
+    bool use_rms_norm() const {
+        return desc_.flags & normalization_flags::use_rms_norm;
+    }
 
     bool is_fwd() const {
         return utils::one_of(desc_.prop_kind, prop_kind::forward_training,

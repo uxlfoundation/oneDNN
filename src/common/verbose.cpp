@@ -359,6 +359,7 @@ std::string normalization_flags2str(unsigned flags) {
     if (flags & normalization_flags::use_shift) s += "H";
     if (flags & normalization_flags::fuse_norm_relu) s += "R";
     if (flags & normalization_flags::fuse_norm_add_relu) s += "A";
+    if (flags & normalization_flags::use_rms_norm) s += "Z";
     return s;
 }
 

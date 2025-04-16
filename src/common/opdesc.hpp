@@ -516,8 +516,8 @@ struct softmax_desc_t : public op_desc_t {
     memory_desc_t diff_src_desc;
     // The axis along which to perform the softmax.
     int softmax_axis {};
-    // Softmax algorithm. Possible values: #dnnl_softmax_accurate and
-    // #dnnl_softmax_log.
+    // Softmax algorithm. Possible values: #dnnl_softmax_accurate,
+    // #dnnl_softmax_log, dnnl::impl::alg_kind::softmax_accurate_inf_as_zero.
     alg_kind_t alg_kind {};
     // Destination memory descriptor.
     memory_desc_t dst_desc;

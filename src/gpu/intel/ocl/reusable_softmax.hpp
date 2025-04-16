@@ -73,8 +73,9 @@ struct reusable_softmax_params_t {
     data_type_t dst_data_type;
     int algorithm_number;
     bool is_logsoftmax;
+    bool is_softmax_inf_as_zero;
 
-    uint8_t padding[3] = {0};
+    uint8_t padding[2] = {0};
 
     compute::dispatch_compile_params_t gws_params;
 };
@@ -157,6 +158,8 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
 
             // compile-time configuration setup
             conf.is_logsoftmax = is_logsoftmax();
+            conf.is_softmax_inf_as_zero
+                    = alg_kind() == alg_kind::softmax_accurate_inf_as_zero;
             conf.src_data_type = src_dt;
             conf.dst_data_type = dst_dt;
 

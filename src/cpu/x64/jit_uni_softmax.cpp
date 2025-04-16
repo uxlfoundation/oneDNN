@@ -84,6 +84,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     Reg64 reg_tmp = r13;
     Reg64 reg_dst_spat_offt = r15;
     Reg64 reg_diff_dst_spat_offt = reg_log_injector_table;
+    Reg64 reg_tmp2 = reg_log_injector_table;
     Reg64 reg_interim = reg_diff_dst;
     Reg64 reg_interim_spat_offt = abi_not_param1;
     Reg64 reg_src_scales = rsi;
@@ -564,8 +565,26 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         axis_loop(pre_body, body, post_body);
 
         get_horizontal_op(vsum, vtmp = vmax, op_t::sum);
-        if (is_softmax_) uni_vdivps(vsum, vone, vsum, vtmp = vmax);
-        if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
+
+        if (pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero) {
+            Xbyak::Label skip_div;
+            // The idea is to put vsum vector reg on a stack and read a single
+            // value as all of them are identical after `get_horizontal_op`
+            // call. `AND` with all ones will set ZF if only vsum value was 0.
+            sub(rsp, cpu_isa_traits_t<isa>::vlen);
+            uni_vmovups(ptr[rsp], vsum);
+            mov(reg_tmp2.cvt32(), ptr[rsp]);
+            mov(reg_tmp.cvt32(), 0xffff);
+            test(reg_tmp.cvt32(), reg_tmp2.cvt32()); // ZF=1 if reg_tmp comes 0.
+            jz(skip_div, T_NEAR); // Check if ZF is set.
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+            L(skip_div);
+            add(rsp, cpu_isa_traits_t<isa>::vlen);
+        } else if (is_softmax_) {
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+        } else if (is_logsoftmax_) {
+            log_injector_->compute_vector(vsum.getIdx());
+        }
     }
 
     void accumulate_vsum() {
@@ -675,8 +694,25 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
         get_horizontal_op(vsum, vtmp = vmax, op_t::sum);
 
-        if (is_softmax_) uni_vdivps(vsum, vone, vsum, vtmp = vmax);
-        if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
+        if (pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero) {
+            Xbyak::Label skip_div;
+            // The idea is to put vsum vector reg on a stack and read a single
+            // value as all of them are identical after `get_horizontal_op`
+            // call. `AND` with all ones will set ZF if only vsum value was 0.
+            sub(rsp, cpu_isa_traits_t<isa>::vlen);
+            uni_vmovups(ptr[rsp], vsum);
+            mov(reg_tmp2.cvt32(), ptr[rsp]);
+            mov(reg_tmp.cvt32(), 0xffff);
+            test(reg_tmp.cvt32(), reg_tmp2.cvt32()); // ZF=1 if reg_tmp comes 0.
+            jz(skip_div, T_NEAR); // Check if ZF is set.
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+            L(skip_div);
+            add(rsp, cpu_isa_traits_t<isa>::vlen);
+        } else if (is_softmax_) {
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+        } else if (is_logsoftmax_) {
+            log_injector_->compute_vector(vsum.getIdx());
+        }
     }
 
     // Use ne_convert instruction to load xf16 even/odd elements from memory
@@ -1029,6 +1065,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     Reg64 reg_interim_spat_offt = rsi;
     Reg64 reg_reverse_n_elems = r12;
     Reg64 reg_tmp = r13;
+    Reg64 reg_tmp2 = reg_log_injector_table;
     Reg64 reg_interim = r14;
     Reg64 reg_reverse_axis_elems = r11;
 
@@ -1367,8 +1404,27 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
             Vmm vreg_tmp_src = Vmm(i + 1);
             Vmm vtmp = get_vmax(vreg_tmp_src, unroll_inner);
             Vmm vsum = get_vsum(vreg_tmp_src, unroll_inner);
-            if (is_softmax_) uni_vdivps(vsum, vone, vsum, vtmp);
-            if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
+
+            if (pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero) {
+                Xbyak::Label skip_div;
+                // The idea is to put vsum vector reg on a stack and read a
+                // single value as all of them are identical. `AND` with all
+                // ones will set ZF if only vsum value was 0.
+                sub(rsp, cpu_isa_traits_t<isa>::vlen);
+                uni_vmovups(ptr[rsp], vsum);
+                mov(reg_tmp2.cvt32(), ptr[rsp]);
+                mov(reg_tmp.cvt32(), 0xffff);
+                // ZF=1 if reg_tmp comes 0.
+                test(reg_tmp.cvt32(), reg_tmp2.cvt32());
+                jz(skip_div, T_NEAR); // Check if ZF is set.
+                uni_vdivps(vsum, vone, vsum, vtmp);
+                L(skip_div);
+                add(rsp, cpu_isa_traits_t<isa>::vlen);
+            } else if (is_softmax_) {
+                uni_vdivps(vsum, vone, vsum, vtmp);
+            } else if (is_logsoftmax_) {
+                log_injector_->compute_vector(vsum.getIdx());
+            }
         }
 
         axis_size_loop_unroll(store_body, unroll_inner, tail);

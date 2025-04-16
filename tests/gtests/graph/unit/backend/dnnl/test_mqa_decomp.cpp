@@ -174,6 +174,13 @@ TEST(test_mqa_decomp_execute, MultithreaMqaDecomp_CPU) {
     SKIP_IF(eng->kind() == graph::engine_kind::gpu,
             "Skip for GPU - not supported yet.");
 
+// Limit OMP threads in multithread test scenario to avoid out_of_resource
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    int max_threads = dnnl_get_current_num_threads();
+    int test_threads = max_threads / 4 > 0 ? max_threads / 4 : 1;
+    omp_set_num_threads(test_threads);
+#endif
+
     int batch_size = 56;
     graph::graph_t g(eng->kind());
     utils::construct_dnnl_float_JAX_MQA(
@@ -243,6 +250,11 @@ TEST(test_mqa_decomp_execute, MultithreaMqaDecomp_CPU) {
     t2.join();
     t3.join();
     t4.join();
+
+// Set OMP threads back
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(max_threads);
+#endif
 }
 
 // Test correctness

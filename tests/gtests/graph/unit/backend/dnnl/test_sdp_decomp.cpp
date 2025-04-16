@@ -453,6 +453,13 @@ TEST(test_sdp_decomp_execute, MultithreaSdpDecomp_CPU) {
                     && eng->kind() == graph::engine_kind::cpu,
             "Skip bf16 tests for systems that do not support avx512_core.");
 
+// Limit OMP threads in multithread test scenario to avoid out_of_resource
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    int max_threads = dnnl_get_current_num_threads();
+    int test_threads = max_threads / 4 > 0 ? max_threads / 4 : 1;
+    omp_set_num_threads(test_threads);
+#endif
+
     size_t ndims = 4;
     int batch_size = 56, seq_len = 384, num_head = 16, head_dim = 1024,
         size_per_head = head_dim / num_head;
@@ -542,6 +549,11 @@ TEST(test_sdp_decomp_execute, MultithreaSdpDecomp_CPU) {
         t3.join();
         t4.join();
     }
+
+// Set OMP threads back
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(max_threads);
+#endif
 }
 
 // Test correctness
@@ -1488,6 +1500,13 @@ TEST(test_sdp_decomp_execute, MultithreaSdpDecompCorr_CPU) {
                     && eng->kind() == graph::engine_kind::cpu,
             "Skip bf16 tests for systems that do not support avx512_core.");
 
+// Limit OMP threads in multithread test scenario to avoid out_of_resource
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    int max_threads = dnnl_get_current_num_threads();
+    int test_threads = max_threads / 2 > 0 ? max_threads / 2 : 1;
+    omp_set_num_threads(test_threads);
+#endif
+
     size_t ndims = 4;
     int batch_size = 56, seq_len = 2, num_head = 16, head_dim = 64,
         size_per_head = head_dim / num_head;
@@ -1594,4 +1613,9 @@ TEST(test_sdp_decomp_execute, MultithreaSdpDecompCorr_CPU) {
         t1.join();
         t2.join();
     }
+
+// Set OMP threads back
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(max_threads);
+#endif
 }

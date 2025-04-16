@@ -55,7 +55,7 @@ int fill_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
                 ? (f_min + gen) * (1.0f + 4.0f / range)
                 : (f_min + gen) / range;
 
-        mem_fp.set_elem(i, round_to_nearest_representable(dt, value));
+        mem_fp.set_f32_elem(i, round_to_nearest_representable(dt, value));
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);

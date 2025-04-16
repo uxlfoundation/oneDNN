@@ -1836,7 +1836,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         TIME_FILL(SAFE(
                 fill_zero_points(attr, local_exec_arg, mem, ref_mem), WARN));
     } else if (is_dropout_p) {
-        ref_mem.set_elem(0, attr.dropout.p);
+        ref_mem.set_f32_elem(0, attr.dropout.p);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     } else if (is_dropout_seed) {
         ref_mem.set_elem(0, attr.dropout.seed);

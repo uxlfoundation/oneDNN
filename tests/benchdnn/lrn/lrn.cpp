@@ -52,7 +52,7 @@ int fill_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const int64_t gen = kind == SRC ? 1091 * i + 1637 : 1279 * i + 1009;
         const float value = f_min + gen % range;
-        mem_fp.set_elem(i, value);
+        mem_fp.set_f32_elem(i, value);
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);

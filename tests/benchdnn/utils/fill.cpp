@@ -112,7 +112,7 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
 
     if (e.policy == policy_t::COMMON) {
         assert(nelems == 1);
-        mem_fp.set_elem(0, e.scale);
+        mem_fp.set_f32_elem(0, e.scale);
         if (mem_dt) mem_dt.set_elem(0, e.scale);
     } else {
         /* Do fixed partitioning to have same filling for any number of threads */
@@ -136,7 +136,7 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
                 const float gen_val
                         = pow2 < 0 ? (1.f / pow2_shift) : pow2_shift;
                 const float val = gen_val;
-                mem_fp.set_elem(idx, val);
+                mem_fp.set_f32_elem(idx, val);
                 if (mem_dt) mem_dt.set_elem(idx, val);
             }
         });
@@ -155,7 +155,7 @@ int fill_zero_points(
     const auto &e = attr.zero_points.get(arg);
     if (e.policy == policy_t::COMMON) {
         assert(nelems == 1);
-        mem_fp.set_elem(0, e.value);
+        mem_fp.set_f32_elem(0, e.value);
         if (mem_dt) mem_dt.set_elem(0, e.value);
     } else {
         /* Do fixed partitioning to have same filling for any number of threads */
@@ -176,7 +176,7 @@ int fill_zero_points(
 
             for (int64_t idx = idx_start; idx < idx_end; ++idx) {
                 const float zp_val = gen(int_seed);
-                mem_fp.set_elem(idx, zp_val);
+                mem_fp.set_f32_elem(idx, zp_val);
                 if (mem_dt) mem_dt.set_elem(idx, zp_val);
             }
         });
@@ -235,7 +235,7 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
             float val = get_val();
-            mem_ref.set_elem(
+            mem_ref.set_f32_elem(
                     idx, round_to_nearest_representable(round_dt, val));
         }
     });
@@ -272,7 +272,7 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
         };
 
         const float elem_first_val = adjust_val(mem_ref.get_f32_elem(0));
-        mem_ref.set_elem(
+        mem_ref.set_f32_elem(
                 0, round_to_nearest_representable(round_dt, elem_first_val));
     }
 

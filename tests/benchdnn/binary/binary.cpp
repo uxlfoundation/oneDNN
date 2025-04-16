@@ -82,7 +82,7 @@ int fill_mem(
             // Remove zeroes in src1 to avoid division by zero.
             if (input_idx == 1 && val == 0.0f) val = 1.0f;
             val = round_to_nearest_representable(mem_dt.dt(), val);
-            mem_fp.set_elem(idx, val);
+            mem_fp.set_f32_elem(idx, val);
         }
     });
 

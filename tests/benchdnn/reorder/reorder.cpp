@@ -71,7 +71,7 @@ int fill_mem(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
         const int64_t table_idx = kind == SRC
                 ? (i % table_size)
                 : ((i * (table_size + 1) / table_size) % table_size);
-        mem_fp.set_elem(
+        mem_fp.set_f32_elem(
                 i, round_to_nearest_representable(conf->dt, gen[table_idx]));
         if (zero_out_wa) mem_dt.set_elem(i, 0);
     });

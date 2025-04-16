@@ -95,8 +95,8 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
                 d_beta += dd;
             }
 
-            if (use_sc && (prb->dir & FLAG_WEI)) d_sc.set_elem(c, d_gamma);
-            if (use_sh && (prb->dir & FLAG_WEI)) d_sh.set_elem(c, d_beta);
+            if (use_sc && (prb->dir & FLAG_WEI)) d_sc.set_f32_elem(c, d_gamma);
+            if (use_sh && (prb->dir & FLAG_WEI)) d_sh.set_f32_elem(c, d_beta);
         });
     }
 
@@ -125,7 +125,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
                 ds -= (dd_gamma + x * dd_gamma_x * rcp_denom) / prb->c;
             }
 
-            d_src.set_elem(off, rcp_denom * ds);
+            d_src.set_f32_elem(off, rcp_denom * ds);
         }
     });
 }

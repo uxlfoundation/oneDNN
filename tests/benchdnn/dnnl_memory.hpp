@@ -147,6 +147,13 @@ struct dnn_mem_t {
         return static_cast<float *>(*this)[idx];
     }
     float get_elem(int64_t idx, int buffer_index = 0) const;
+
+    // This interface is a shortcut version of the one below to speed up access
+    // to the memory that is guaranteedly of f32 data type.
+    // Keep the body in the header to help compiler to inline better.
+    void set_f32_elem(int64_t idx, float value) const {
+        static_cast<float *>(*this)[idx] = value;
+    }
     void set_elem(int64_t idx, float value, int buffer_index = 0) const;
 
     int64_t get_idx(int64_t logical_idx, int dims_mask, const int ndims,

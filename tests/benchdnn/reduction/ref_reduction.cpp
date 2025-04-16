@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -114,7 +114,7 @@ void compute_ref(
             dims_t reduce_pos = off2dims_idx(reduce_dims, r);
             const int64_t src_reduce_off = md_off_v(src, reduce_pos.data());
             const int64_t src_off = src_idle_off + src_reduce_off;
-            accumulate(acc, src.get_elem(src_off), alg, p, eps);
+            accumulate(acc, src.get_f32_elem(src_off), alg, p, eps);
         }
         finalize(acc, alg, p, eps, reduce_size);
 

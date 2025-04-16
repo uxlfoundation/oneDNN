@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -75,19 +75,19 @@ void compute_ref(
                     = src.get_idx(idx, src_zp_mask, src.ndims(), src_zp_groups);
             src_zp = src_zps.get_elem(src_zp_idx);
         }
-        float s = src.get_elem(idx) - src_zp;
+        float s = src.get_f32_elem(idx) - src_zp;
         float d = 0;
-        if (beta_idx >= 0) d = dst.get_elem(idx) - dst_zero_point;
+        if (beta_idx >= 0) d = dst.get_f32_elem(idx) - dst_zero_point;
 
         float src_scale = 1.f, dst_scale = 1.f;
         if (has_src_scale) {
             int64_t src_mask_idx = src.get_idx(
                     idx, src_scale_mask, src.ndims(), src_scale_groups);
-            src_scale = src_scales.get_elem(src_mask_idx);
+            src_scale = src_scales.get_f32_elem(src_mask_idx);
         }
         if (has_dst_scale) {
             int64_t dst_mask_idx = dst.get_idx(idx, dst_scale_mask);
-            dst_scale = dst_scales.get_elem(dst_mask_idx);
+            dst_scale = dst_scales.get_f32_elem(dst_mask_idx);
         }
         float value = (s8_scale_factor * src_scale * s + beta * d) / dst_scale
                 + dst_zero_point;
@@ -146,15 +146,16 @@ void compute_ref(
             float src_scale = 1.f, dst_scale = 1.f;
             if (has_src_scale) {
                 int64_t src_mask_idx = src.get_idx(src_off, src_scale_mask);
-                src_scale = src_scales.get_elem(src_mask_idx);
+                src_scale = src_scales.get_f32_elem(src_mask_idx);
             }
             if (has_dst_scale) {
                 int64_t dst_mask_idx = dst.get_idx(src_off, dst_scale_mask);
-                dst_scale = dst_scales.get_elem(dst_mask_idx);
+                dst_scale = dst_scales.get_f32_elem(dst_mask_idx);
             }
 
             const float alpha = src_scale / dst_scale;
-            const float value = src.get_elem(src_off) * alpha * s8_scale_factor;
+            const float value
+                    = src.get_f32_elem(src_off) * alpha * s8_scale_factor;
             comp_val -= maybe_saturate(dst_dt, value);
         }
         if (need_zp_comp) zp_comp.set_elem(f, comp_val);

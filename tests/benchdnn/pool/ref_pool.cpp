@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -52,7 +52,8 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
                     const int64_t iw = ow * SW - PW + kw * (DW + 1);
                     if (iw < 0 || iw >= IW) continue;
 
-                    float s = src.get_elem(src_off_f(prb, mb, ic, id, ih, iw));
+                    float s = src.get_f32_elem(
+                            src_off_f(prb, mb, ic, id, ih, iw));
                     if (s > max_value) {
                         max_value = s;
                         ws_off = ker_off_f(prb, kd, kh, kw);
@@ -99,7 +100,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
 
     auto ker = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
         const auto d_dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
-        float d_dst_val = d_dst.get_elem(d_dst_off);
+        float d_dst_val = d_dst.get_f32_elem(d_dst_off);
         int ws_off = (prb->alg == max) ? ws.get_elem(d_dst_off) : 0;
 
         const int64_t ID = prb->id, IH = prb->ih, IW = prb->iw;

@@ -80,7 +80,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
 
     benchdnn_parallel_nd(prb->mb, prb->g, [&](int64_t mb, int64_t g) {
         const int64_t idx = mb * prb->g + g;
-        const float m = ref_mean.get_elem(idx);
+        const float m = ref_mean.get_f32_elem(idx);
         // Note: we use a different seed for each chunk to avoid
         // repeating patterns. We could use discard(idx_start) too but
         // it has a complexity in O(idx_start). We also add 1 to avoid
@@ -203,7 +203,7 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         if (prb->flags & GLOB_STATS) {
             val = ((idx % 7) << 1);
         } else {
-            const float m = ref_mean.get_elem(idx);
+            const float m = ref_mean.get_f32_elem(idx);
             for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
                     ++c) {
                 int64_t off = data_off(prb, mb, c, 0, 0, 0);
@@ -212,7 +212,7 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 for_(int64_t h = 0; h < prb->ih; ++h)
                 for (int64_t w = 0; w < prb->iw; ++w) {
                     const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
-                    const float s = ref_src.get_elem(sp + off);
+                    const float s = ref_src.get_f32_elem(sp + off);
                     val += (s - m) * (s - m);
                 }
             }
@@ -359,7 +359,7 @@ int fill_src_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt,
         // random but we keep all values as pow2 values to have almost exact
         // summation result.
         int64_t idx = mb * prb->g + g;
-        const float m = ref_mean.get_elem(idx);
+        const float m = ref_mean.get_f32_elem(idx);
 
         for_(int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1); ++c)
         for (int64_t sp = 0; sp < SP; ++sp) {
@@ -554,7 +554,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
                 const int64_t c
                         = dst.get_idx(args.idx, 1 << 1 /* last_dim_mask */);
-                const float beta = sh.get_elem(c);
+                const float beta = sh.get_f32_elem(c);
                 // Using an empirically derived threshold, check if
                 // cancellation error in `|Y| = |a*X - (-b)|` is huge.
                 const float abs_exp = fabsf(args.exp);

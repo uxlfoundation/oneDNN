@@ -37,8 +37,8 @@ void compute_ref_fwd_ip(const prb_t *prb, const args_t &args) {
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
     assert(IMPLICATION(has_src_scale, src_scales.nelems() == 1));
     assert(IMPLICATION(has_dst_scale, dst_scales.nelems() == 1));
-    float src_scale = has_src_scale ? src_scales.get_elem(0) : 1.f;
-    float dst_scale = has_dst_scale ? 1.f / dst_scales.get_elem(0) : 1.f;
+    float src_scale = has_src_scale ? src_scales.get_f32_elem(0) : 1.f;
+    float dst_scale = has_dst_scale ? 1.f / dst_scales.get_f32_elem(0) : 1.f;
     const int wei_scale_mask
             = prb->attr.scales.get_mask(DNNL_ARG_WEIGHTS, dnnl_inner_product);
 
@@ -60,7 +60,7 @@ void compute_ref_fwd_ip(const prb_t *prb, const args_t &args) {
 
         float wei_scale = 1.f;
         if (has_wei_scale)
-            wei_scale = wei_scales.get_elem(wei_scale_mask > 0 ? oc : 0);
+            wei_scale = wei_scales.get_f32_elem(wei_scale_mask > 0 ? oc : 0);
 
         d *= src_scale * wei_scale;
 

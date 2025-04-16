@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,23 +40,23 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     assert(IMPLICATION(has_src_scale, src_scale.nelems() == 1));
     assert(IMPLICATION(has_dst_scale, dst_scale.nelems() == 1));
 
-    const float src_scale_val = has_src_scale ? src_scale.get_elem(0) : 1.f;
-    const float dst_scale_val = has_dst_scale ? dst_scale.get_elem(0) : 1.f;
+    const float src_scale_val = has_src_scale ? src_scale.get_f32_elem(0) : 1.f;
+    const float dst_scale_val = has_dst_scale ? dst_scale.get_f32_elem(0) : 1.f;
     const float r_dst_scale_val = 1.0f / dst_scale_val;
 
     auto v_po_masks = prb->attr.post_ops.get_po_masks(
             prb->ndims, dnnl_layer_normalization);
 
     benchdnn_parallel_nd(prb->n, [&](int64_t n) {
-        float smean = mean.get_elem(n);
-        float svar = var.get_elem(n);
+        float smean = mean.get_f32_elem(n);
+        float svar = var.get_f32_elem(n);
         float sqrt_var = sqrtf(svar + prb->eps);
 
         for (int64_t c = 0; c < prb->c; ++c) {
-            float gamma = (use_sc ? sc.get_elem(c) : 1.0f) / sqrt_var;
-            float beta = use_sh ? sh.get_elem(c) : 0;
+            float gamma = (use_sc ? sc.get_f32_elem(c) : 1.0f) / sqrt_var;
+            float beta = use_sh ? sh.get_f32_elem(c) : 0;
             auto off = n * prb->c + c;
-            float res = gamma * (src.get_elem(off) - smean) + beta;
+            float res = gamma * (src.get_f32_elem(off) - smean) + beta;
 
             const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, off);
             res *= src_scale_val;
@@ -86,12 +86,12 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
             float d_beta = 0;
 
             for (int64_t n = 0; n < prb->n; ++n) {
-                float smean = mean.get_elem(n);
-                float svar = var.get_elem(n);
+                float smean = mean.get_f32_elem(n);
+                float svar = var.get_f32_elem(n);
                 float rcp_denom = 1.f / sqrtf(svar + prb->eps);
                 auto off = n * prb->c + c;
-                float dd = d_dst.get_elem(off);
-                d_gamma += dd * (src.get_elem(off) - smean) * rcp_denom;
+                float dd = d_dst.get_f32_elem(off);
+                d_gamma += dd * (src.get_f32_elem(off) - smean) * rcp_denom;
                 d_beta += dd;
             }
 
@@ -101,27 +101,27 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     }
 
     benchdnn_parallel_nd(prb->n, [&](int64_t n) {
-        float smean = mean.get_elem(n);
-        float svar = var.get_elem(n);
+        float smean = mean.get_f32_elem(n);
+        float svar = var.get_f32_elem(n);
         float rcp_denom = 1.f / sqrtf(svar + prb->eps);
         float dd_gamma = 0, dd_gamma_x = 0;
         if (!(prb->flags & GLOB_STATS)) {
             for (int64_t c = 0; c < prb->c; ++c) {
                 auto off = n * prb->c + c;
-                float ds = d_dst.get_elem(off);
-                const float x = src.get_elem(off) - smean;
-                float gamma = use_sc ? sc.get_elem(c) : 1;
+                float ds = d_dst.get_f32_elem(off);
+                const float x = src.get_f32_elem(off) - smean;
+                float gamma = use_sc ? sc.get_f32_elem(c) : 1;
                 dd_gamma += gamma * ds;
                 dd_gamma_x += gamma * ds * x;
             }
             dd_gamma_x *= rcp_denom;
         }
         for (int64_t c = 0; c < prb->c; ++c) {
-            float gamma = use_sc ? sc.get_elem(c) : 1;
+            float gamma = use_sc ? sc.get_f32_elem(c) : 1;
             auto off = n * prb->c + c;
-            float ds = d_dst.get_elem(off) * gamma;
+            float ds = d_dst.get_f32_elem(off) * gamma;
             if (!(prb->flags & GLOB_STATS)) {
-                const float x = src.get_elem(off) - smean;
+                const float x = src.get_f32_elem(off) - smean;
                 ds -= (dd_gamma + x * dd_gamma_x * rcp_denom) / prb->c;
             }
 

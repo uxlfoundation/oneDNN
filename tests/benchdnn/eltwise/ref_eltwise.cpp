@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         float res = compute_eltwise_fwd(
-                prb->alg, src.get_elem(i), prb->alpha, prb->beta);
+                prb->alg, src.get_f32_elem(i), prb->alpha, prb->beta);
 
         const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, i);
 
@@ -57,8 +57,8 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     const auto nelems = src.nelems();
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
-        d_src_ptr[i] = compute_eltwise_bwd(prb->alg, d_dst.get_elem(i),
-                source.get_elem(i), prb->alpha, prb->beta);
+        d_src_ptr[i] = compute_eltwise_bwd(prb->alg, d_dst.get_f32_elem(i),
+                source.get_f32_elem(i), prb->alpha, prb->beta);
     });
 }
 

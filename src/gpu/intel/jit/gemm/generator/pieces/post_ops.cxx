@@ -244,7 +244,7 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     auto globalCM = isLayoutColMajor(state.C_layout);
 
     bool recip = false;
-    if (op == BinaryOp::Div && one_of(Tco, Type::f32, Type::f16)) {
+    if (op == BinaryOp::Div && one_of(Tco, Type::f32)) {
         // Implement div as inv+mul for speed, especially when broadcasting.
         recip = true;
         op = BinaryOp::Mul;

@@ -87,7 +87,7 @@ int fill_data(data_kind_t kind, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
                     : flip_coin(idx, 0.1f)      ? -1.f
                                                 : 1.f;
             value = round_to_nearest_representable(mem_dt.dt(), sign * value);
-            mem_fp.set_elem(idx, value);
+            mem_fp.set_f32_elem(idx, value);
         }
     });
 

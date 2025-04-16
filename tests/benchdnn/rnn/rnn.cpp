@@ -257,7 +257,7 @@ int fill_memory(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                 auto ld = kind == SRC_LAYER ? prb.slc : prb.sic;
                 if (idx % (prb.mb * ld) < ld) val *= -1;
             }
-            mem_fp.set_elem(idx, val);
+            mem_fp.set_f32_elem(idx, val);
         }
     };
     switch (kind) {
@@ -300,7 +300,7 @@ int fill_memory(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                           float current_scale = scales[idx % nscales];
                           float val = ((float *)mem_fp)[idx];
                           val = round(current_scale * val);
-                          mem_fp.set_elem(idx, MAX2(MIN2(val, max), min));
+                          mem_fp.set_f32_elem(idx, MAX2(MIN2(val, max), min));
                       }
                   };
         switch (kind) {
@@ -452,8 +452,8 @@ int fill_weights(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                                                        : prb.wei_nscales;
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
-        mem_fp.set_elem(i, 0);
-        mem_pure_fp.set_elem(i, 0);
+        mem_fp.set_f32_elem(i, 0);
+        mem_pure_fp.set_f32_elem(i, 0);
     });
 
     // Fill weights sparsely to avoid accumulation errors. Using two memories:
@@ -465,9 +465,10 @@ int fill_weights(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
                 int64_t i_off = ((19 * o + 7 * g + 11 * d + 13 * l) % I);
                 int64_t off = (((l * D + d) * I + i_off) * G + g) * O + o;
                 float val = gate_factor;
-                mem_pure_fp.set_elem(off, val);
+                mem_pure_fp.set_f32_elem(off, val);
                 if (prb.is_int8()) val *= scales[off % n_scales];
-                mem_fp.set_elem(off, round_to_nearest_representable(dt, val));
+                mem_fp.set_f32_elem(
+                        off, round_to_nearest_representable(dt, val));
             });
 
     // Pass rnn attributes to f32 -> s8 reorders only
@@ -512,7 +513,7 @@ int fill_bias(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
             bool is_one = b_dist(b_seed);
             float gen_val = gen(norm_seed);
             float val = is_one * gen_val;
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     idx, round_to_nearest_representable(prb.cfg[kind].dt, val));
         }
     });

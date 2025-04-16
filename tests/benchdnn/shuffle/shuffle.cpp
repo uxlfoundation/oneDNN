@@ -58,7 +58,7 @@ int fill_src(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
         const float value = (prb->dt == dnnl_bf16 || prb->dt == dnnl_f16)
                 ? (f_min + gen) / range
                 : (f_min + gen) * (1.0f + 4.0f / range);
-        mem_fp.set_elem(i, round_to_nearest_representable(prb->dt, value));
+        mem_fp.set_f32_elem(i, round_to_nearest_representable(prb->dt, value));
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);

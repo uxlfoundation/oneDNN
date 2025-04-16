@@ -63,7 +63,7 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
             if (prb->dt[0] == dnnl_u8 && mean_val_shift < 2) mean_val_shift = 2;
             val = val_coeff * (1LL << mean_val_shift);
         }
-        mem_fp.set_elem(n, val);
+        mem_fp.set_f32_elem(n, val);
     });
 
     if (mem_dt && IMPLICATION(prb->dir & FLAG_FWD, prb->use_stats()))
@@ -115,7 +115,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 // Shortcut for zero values.
                 if (cfg.check_alg_ == ALG_0
                         && !flip_coin(l / 2 * 257ULL, cfg.density_)) {
-                    mem_fp.set_elem(off, 0);
+                    mem_fp.set_f32_elem(off, 0);
                     continue;
                 }
 
@@ -130,7 +130,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
             // Update last element with s[c] = m.
             if ((c == cfg.L_ - 1) && cfg.L_ % 2) { val = m; }
 
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     off, round_to_nearest_representable(prb->dt[0], val));
         }
     });
@@ -172,7 +172,7 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
             }
             val /= cfg.L_;
         }
-        mem_fp.set_elem(n, val);
+        mem_fp.set_f32_elem(n, val);
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -196,7 +196,7 @@ int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->c, [&](int64_t c) {
         float val = (1.f / 8) * (1 << (c % 7));
         if (prb->flags & GLOB_STATS) val *= 8.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -220,7 +220,7 @@ int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->c, [&](int64_t c) {
         float val = ((c % 3) - 1) * (1.f / 512 * (1 << (c % 7)));
         if (prb->flags & GLOB_STATS) val *= 512.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -281,7 +281,7 @@ int fill_variance_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->n, [&](int64_t n) {
         // final variance = {0.25f, 1.f, 4.f}
         const float val = 0.25f * (1 << ((n % 3) * 2));
-        mem_fp.set_elem(n, val - prb->eps);
+        mem_fp.set_f32_elem(n, val - prb->eps);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -314,7 +314,7 @@ int fill_src_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt,
         for (int64_t c = 0; c < prb->c; ++c) {
             const int64_t off = n * prb->c + c;
             const float val = c % 2 == 0 ? (m - 1.f) : (m + 1.f);
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     off, round_to_nearest_representable(prb->dt[0], val));
         }
     });
@@ -357,7 +357,7 @@ int fill_diff_dst_bwd(
             const float sign = half_dist(b_seed) ? 1.f : -1.f;
             // d_dst = powf(2, {-4, ... , 2})
             const float val = sign * 0.0625f * (1LL << data_dist(int_seed));
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     off, round_to_nearest_representable(prb->dt[0], val));
         }
     });

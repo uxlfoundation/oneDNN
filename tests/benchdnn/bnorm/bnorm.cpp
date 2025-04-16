@@ -53,7 +53,7 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         float val = 0.f;
         if (cfg.check_alg_ != ALG_0 || (prb->flags & GLOB_STATS))
             val = 0.25f * (1 << (c % 7));
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -88,7 +88,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 // Shortcut for zero values.
                 if (cfg.check_alg_ == ALG_0
                         && !flip_coin(l / 2 * 257ULL, cfg.density_)) {
-                    mem_fp.set_elem(off + sp, 0);
+                    mem_fp.set_f32_elem(off + sp, 0);
                     continue;
                 }
 
@@ -104,7 +104,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                                 == cfg.L_ - 1)) {
                     val = m;
                 }
-                mem_fp.set_elem(
+                mem_fp.set_f32_elem(
                         off + sp, round_to_nearest_representable(prb->dt, val));
             }
         }
@@ -152,7 +152,7 @@ int fill_variance(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
             }
             val /= cfg.L_;
         }
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -186,7 +186,7 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 const float m = ref_mean.get_f32_elem(c);
 
                 if (!(prb->flags & GLOB_STATS) && s == 0) {
-                    mem_fp.set_elem(offset, 1.f);
+                    mem_fp.set_f32_elem(offset, 1.f);
                     return;
                 }
 
@@ -204,7 +204,7 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                     const int64_t sign_val = s < m ? -1 : 1;
                     val = mod2_val * sign_val;
                 }
-                mem_fp.set_elem(
+                mem_fp.set_f32_elem(
                         offset, round_to_nearest_representable(prb->dt, val));
             });
 
@@ -229,7 +229,7 @@ int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = (1.f / 8) * (1 << (c % 7));
         if (prb->flags & GLOB_STATS) val *= 8.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -253,7 +253,7 @@ int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = ((c % 3) - 1) * (1.f / 512 * (1 << (c % 7)));
         if (prb->flags & GLOB_STATS) val *= 512.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -354,7 +354,7 @@ int prepare_bwd(
             float value = flip_coin(igen_coin(msr), sparsity)
                     ? round_to_nearest_representable(prb->dt, igen_val(msr))
                     : 0;
-            mem_fp.set_elem(idx, value);
+            mem_fp.set_f32_elem(idx, value);
         }
     });
 

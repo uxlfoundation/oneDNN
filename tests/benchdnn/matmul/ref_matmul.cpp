@@ -202,7 +202,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         }
         float dst_val = dst_scale * dst + dst_zp;
         maybe_round(prb->attr, DNNL_ARG_DST, dst_val, dst_off, prb->dst_dt());
-        dst_m.set_elem(dst_off, dst_val);
+        dst_m.set_f32_elem(dst_off, dst_val);
     });
 }
 
@@ -244,7 +244,7 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
     // Batch is not supported.
     const int64_t mb = 0;
     benchdnn_parallel_nd(M, N, [&](int64_t m, int64_t n) {
-        dst_m.set_elem(dst_off_f(prb, mb, m, n), 0.0f);
+        dst_m.set_f32_elem(dst_off_f(prb, mb, m, n), 0.0f);
     });
 
     if (is_wei_sparse) {
@@ -275,7 +275,7 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
                     const float wei_val = wei_m.get_elem(n, 0);
                     float dst_val = dst_m.get_f32_elem(dst_idx);
                     dst_val += src_val * wei_val;
-                    dst_m.set_elem(dst_idx, dst_val);
+                    dst_m.set_f32_elem(dst_idx, dst_val);
                 }
             }
         });
@@ -306,7 +306,7 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
                     const float wei_val = wei_m.get_f32_elem(wei_idx);
                     dst_val += src_val * wei_val;
                 }
-                dst_m.set_elem(dst_idx, dst_val);
+                dst_m.set_f32_elem(dst_idx, dst_val);
             }
         });
     }

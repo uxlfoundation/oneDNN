@@ -66,7 +66,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             if (need_ws) ws_ptr[off] = !!res;
             maybe_post_ops(attr, res);
             dst_ptr[off] = res;
-            if (prb->dir & FLAG_BWD) src_hat.set_elem(off, x_hat);
+            if (prb->dir & FLAG_BWD) src_hat.set_f32_elem(off, x_hat);
         }
     });
 }
@@ -113,8 +113,8 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
             d_beta += dd;
         }
 
-        if (use_sc && (prb->dir & FLAG_WEI)) d_sc.set_elem(c, d_gamma);
-        if (use_sh && (prb->dir & FLAG_WEI)) d_sh.set_elem(c, d_beta);
+        if (use_sc && (prb->dir & FLAG_WEI)) d_sc.set_f32_elem(c, d_gamma);
+        if (use_sh && (prb->dir & FLAG_WEI)) d_sh.set_f32_elem(c, d_beta);
 
         for_(int64_t mb = 0; mb < MB; ++mb)
         for_(int64_t d = 0; d < D; ++d)
@@ -123,13 +123,13 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
             auto off = data_off(prb, mb, c, d, h, w);
             float dd = d_dst.get_f32_elem(off);
             if (fuse_relu && ws.get_elem(off) == 0) dd = 0;
-            if (fuse_add_relu) d_src_add.set_elem(off, dd);
+            if (fuse_add_relu) d_src_add.set_f32_elem(off, dd);
             float ds = dd;
 
             if (!glob_stats)
                 ds -= (d_beta + src_hat.get_f32_elem(off) * d_gamma) / MB_SP;
 
-            d_src.set_elem(off, rcp_denom * ds * gamma);
+            d_src.set_f32_elem(off, rcp_denom * ds * gamma);
         }
     });
 }

@@ -126,7 +126,7 @@ status_t reduction_attr_check(const reduction_desc_t &desc,
                 VERBOSE_UNSUPPORTED_POSTOP);
 
         // Note: verbose support is inside the call.
-        CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+        CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
     }
 
     return status::success;

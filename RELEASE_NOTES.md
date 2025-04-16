@@ -16,7 +16,10 @@
 	* Grouped Query Attention (GQA) with 5D input tensors.
 
 ## AArch64-based Processors
-TBD
+* Enabled BF16 forward-mode inner product via ACL. 170x and 160x speedups for BERT and AlexNet in torch compile-mode.
+* Enabled post-ops in jit_sve_1x1 conv. Yields 1.2x-1.4x speedups for 1x1 kernel problems.
+* Prefer jit_sve conv where faster. Yields 1.3x-3x speedups on average.
+
 # Functionality
 ## Common
 * Introduced select algorithm support in [binary primitive](https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html). The functionality is implemented on CPUs and Intel GPUs.
@@ -34,6 +37,10 @@ TBD
 * Introduced support for group normalization primitive.
 * Improved precision of inner product primitive with sum post-op for larger shapes.
 
+## AArch64-based Processors
+* Enabled FP16 for JIT reorder kernels.
+* Enabled matmul static quantization.
+
 ## NVIDIA GPUs
 * Introduces Graph API support.
 
@@ -42,6 +49,11 @@ TBD
 * Added support for group normalization primitive with [ONEDNN_ENABLE_PRIMITIVE](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#onednn-enable-primitive) build option.
 * Enabled ROCm 6 support for AMD GPUs.
 * Improved CMake integration when installing oneDNN with the Nvidia backend enabled.
+
+## AArch64-based Processors
+ * Default the number of threads to max for acl_threadpool. Fixes a crash in Tensorflow.
+ * Fixed scratchpad being ignored for some GEMMs. Reduces memory and speeds up execution.
+ * Fixed a bug in FP32 reorders where ACL would return incorrect results.
 
 # Validation
 * Added benchdnn option [`--execution-mode`](https://github.com/uxlfoundation/oneDNN/blob/rls-v3.8/tests/benchdnn/doc/knobs_common.md#--execution-mode) to test oneDNN functionality with SYCL Graph record/execute mode.
@@ -55,4 +67,4 @@ TBD
 * Removed experimental [Graph Compiler](https://uxlfoundation.github.io/oneDNN/v3.7/dev_guide_graph_compiler.html) backend.
 
 # Thanks to these Contributors
-This release contains contributions from the project core team as well as Alexander Simonov @asimonov1, Denis @redradist, Dmitriy Ovchinnikov @inteldimitrius, Eliezer Weissmann @eliezerweissmann, Hubert Maciak @hmaciak, Ilya Lavrenov @ilya-lavrenov, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Maria Zhukova @mzhukova, Orel Yehuda @yehudaorel, Ravi Pushkar @rpushkarr, Renato Barros Arantes @renato-arantes, Shreyas-fuj @Shreyas-fuj, Shu Chen @shu1chen, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, hmaciak @hmaciak, jstachowintel @jstachowintel, zhangfei @zhangfeiv0.
+This release contains contributions from the project core team as well as Alexander Simonov @asimonov1, Denis @redradist, Dmitriy Ovchinnikov @inteldimitrius, Eliezer Weissmann @eliezerweissmann, Hubert Maciak @hmaciak, Ilya Lavrenov @ilya-lavrenov, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Maria Zhukova @mzhukova, Orel Yehuda @yehudaorel, Ravi Pushkar @rpushkarr, Renato Barros Arantes @renato-arantes, Shreyas-fuj @Shreyas-fuj, Shu Chen @shu1chen, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, hmaciak @hmaciak, jstachowintel @jstachowintel, zhangfei @zhangfeiv0, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Renato Barros Arantes @renato-arantes.

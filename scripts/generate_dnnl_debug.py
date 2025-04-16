@@ -242,6 +242,11 @@ def func_to_str(enum, values):
             '%sif (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";\n'
             % indent
         )
+    if enum == "dnnl_alg_kind_t":
+        func += (
+            '%sif (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero) return "softmax_accurate_inf_as_zero";\n'
+            % indent
+        )
     func += '%sassert(!"unknown %s");\n' % (indent, abbrev)
     func += '%sreturn "unknown %s";\n}\n' % (indent, abbrev)
     return func

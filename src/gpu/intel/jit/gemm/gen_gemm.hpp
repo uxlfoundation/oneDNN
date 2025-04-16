@@ -58,8 +58,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             // LIMITATIONS:
             // - runtime dims are not supported
             auto attr_skip_mask = smask_t::scales | smask_t::post_ops
-                    | smask_t::fpmath_mode | smask_t::accumulation_mode
-                    | smask_t::rounding_mode;
+                    | smask_t::fpmath_mode | smask_t::accumulation_mode;
             auto &attr_zps = attr()->zero_points_;
 
             dev_info_ = compute_engine->device_info();
@@ -84,9 +83,6 @@ struct gen_gemm_t : public gpu_gemm_t {
                     || all_f8;
             quant_enabled_ = wei_decomp_ || dy_quant_enabled_;
             CHECK(set_default_formats(false));
-
-            with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
-                    == rounding_mode::stochastic;
 
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             eff_lda_ = d->lda();

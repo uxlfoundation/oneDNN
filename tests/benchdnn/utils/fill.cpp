@@ -271,7 +271,7 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
             return orig_val;
         };
 
-        const float elem_first_val = adjust_val(mem_ref.get_elem(0));
+        const float elem_first_val = adjust_val(mem_ref.get_f32_elem(0));
         mem_ref.set_elem(
                 0, round_to_nearest_representable(round_dt, elem_first_val));
     }

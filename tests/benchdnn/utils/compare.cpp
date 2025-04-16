@@ -160,9 +160,9 @@ compare_t::driver_check_func_args_t::driver_check_func_args_t(
         const dnnl_data_type_t data_type, const float trh)
     : dt(data_type)
     , idx(i)
-    , exp_f32(exp_mem.get_elem(idx))
+    , exp_f32(exp_mem.get_f32_elem(idx))
     , exp(round_to_nearest_representable(dt, exp_f32))
-    , got(got_f32.get_elem(idx))
+    , got(got_f32.get_f32_elem(idx))
     , diff(fabsf(exp - got))
     , rel_diff(diff / (fabsf(exp) > FLT_MIN ? fabsf(exp) : 1))
     , trh(trh) {}
@@ -349,8 +349,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         // calls to this function.
         static thread_local auto &out_data = thread_data.get();
 
-        const auto got_val = got_f32.get_elem(i);
-        bool ok = exp_f32.get_elem(i) == got_val;
+        const auto got_val = got_f32.get_f32_elem(i);
+        bool ok = exp_f32.get_f32_elem(i) == got_val;
 
         static thread_local driver_check_func_args_t args;
         for (int z = ok; z < 1; z++) {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ void compute_ref(
             for (int64_t as = 0; as < i_axis_size; ++as) {
                 int64_t idx = as * inner_size + in;
                 dst_ptr[off_dst + idx]
-                        = src_i.get_elem(off_src + idx) * scale_i;
+                        = src_i.get_f32_elem(off_src + idx) * scale_i;
             }
             // the next input start point
             off_dst += i_axis_size * inner_size;

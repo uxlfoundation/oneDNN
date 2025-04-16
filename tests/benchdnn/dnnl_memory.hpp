@@ -140,6 +140,12 @@ struct dnn_mem_t {
 
     explicit operator bool() const { return active_; }
 
+    // This interface is a shortcut version of the one below to speed up access
+    // to the memory that is guaranteedly of f32 data type.
+    // Keep the body in the header to help compiler to inline better.
+    float get_f32_elem(int64_t idx) const {
+        return static_cast<float *>(*this)[idx];
+    }
     float get_elem(int64_t idx, int buffer_index = 0) const;
     void set_elem(int64_t idx, float value, int buffer_index = 0) const;
 

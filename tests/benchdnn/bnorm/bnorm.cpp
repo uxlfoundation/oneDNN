@@ -73,7 +73,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
     }
 
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
-        const float m = ref_mean.get_elem(c);
+        const float m = ref_mean.get_f32_elem(c);
         for (int64_t mb = 0; mb < prb->mb; ++mb) {
             // l[0] must be even
             int64_t l_base = mb * prb->id * prb->ih * prb->iw + c * 239 * 2;
@@ -138,7 +138,7 @@ int fill_variance(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         if (prb->flags & GLOB_STATS) {
             val = ((c % 7) << 1);
         } else {
-            const float m = ref_mean.get_elem(c);
+            const float m = ref_mean.get_f32_elem(c);
             for (int64_t mb = 0; mb < prb->mb; ++mb) {
                 int64_t off = data_off(prb, mb, c, 0, 0, 0);
 
@@ -146,7 +146,7 @@ int fill_variance(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 for_(int64_t h = 0; h < prb->ih; ++h)
                 for (int64_t w = 0; w < prb->iw; ++w) {
                     const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
-                    const float s = ref_src.get_elem(sp + off);
+                    const float s = ref_src.get_f32_elem(sp + off);
                     val += (s - m) * (s - m);
                 }
             }
@@ -182,8 +182,8 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
                 const int64_t offset = data_off(prb, mb, c, 0, 0, 0) + sp;
                 const int64_t l = l_base + sp;
-                const float s = ref_src.get_elem(offset);
-                const float m = ref_mean.get_elem(c);
+                const float s = ref_src.get_f32_elem(offset);
+                const float m = ref_mean.get_f32_elem(c);
 
                 if (!(prb->flags & GLOB_STATS) && s == 0) {
                     mem_fp.set_elem(offset, 1.f);
@@ -385,7 +385,7 @@ int check_fwd_ws(dnn_mem_map_t &mem_map, res_t *res) {
      * zero, and the respective ws_dt elements should be set accordingly */
     for (int64_t i = 0; i < nelems; i += 8) {
         for (int64_t j = 0; j < MIN2(8, nelems - i); ++j) {
-            const float data = dst_dt.get_elem(i + j);
+            const float data = dst_dt.get_f32_elem(i + j);
             const bool want = data > 0.f;
             const bool bit_set = ws_type == ws_byte ? *ws : !!(*ws & (1 << j));
 
@@ -563,7 +563,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
                 const int64_t c
                         = dst.get_idx(args.idx, 1 << 1 /* channel_mask */);
-                const float beta = sh.get_elem(c);
+                const float beta = sh.get_f32_elem(c);
                 // Using an empirically derived threshold, check if
                 // cancellation error in `|Y| = |a*X - (-b)|` is huge.
                 const float abs_exp = fabsf(args.exp);

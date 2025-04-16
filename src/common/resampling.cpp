@@ -133,7 +133,7 @@ status_t resampling_attr_check(const resampling_desc_t &desc,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         VCHECK_RS_UNIMPL(false, VERBOSE_UNSUPPORTED_ATTR);

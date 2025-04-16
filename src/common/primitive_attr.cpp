@@ -328,21 +328,25 @@ bool post_ops_t::check_sum_consistency(const data_type_t dst_dt,
             && check_sum_consistent_quantization(dst_dt, is_int8);
 }
 
-status_t post_ops_t::entry_t::validate_binary_with_dst_consistency(
-        const memory_desc_t *dst_md) const {
+status_t post_ops_t::entry_t::validate_binary(
+        engine_kind_t engine_kind, const memory_desc_t *dst_md) const {
     if (!is_binary()) return status::success;
 
     VCHECK_ATTR(dst_md->ndims == binary.user_src1_desc.ndims,
             VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst", "bin_po",
             dst_md->ndims, binary.user_src1_desc.ndims);
 
+    VCHECK_ATTR(IMPLICATION(engine_kind == dnnl_cpu,
+                        binary.user_src1_desc.data_type != data_type::f64),
+            VERBOSE_INVALID_DATATYPE, "bin_po src1");
+
     return status::success;
 }
 
-status_t post_ops_t::validate_binary_with_dst_consistency(
-        const memory_desc_t *dst_md) const {
+status_t post_ops_t::validate_binary(
+        engine_kind_t engine_kind, const memory_desc_t *dst_md) const {
     for (const auto &e : entry_) {
-        CHECK(e.validate_binary_with_dst_consistency(dst_md));
+        CHECK(e.validate_binary(engine_kind, dst_md));
     }
 
     return status::success;

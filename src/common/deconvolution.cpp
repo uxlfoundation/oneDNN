@@ -219,7 +219,7 @@ status_t deconv_attr_check(const deconvolution_desc_t &desc,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         auto bwd_attr_mask = smask_t::fpmath_mode;

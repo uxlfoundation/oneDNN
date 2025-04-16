@@ -186,7 +186,7 @@ status_t layer_normalization_attr_check(const layer_normalization_desc_t &desc,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.
-            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
+            CHECK(po.validate_binary(engine->kind(), &desc.dst_desc));
         }
     } else {
         VCHECK_LNORM_UNIMPL(false, VERBOSE_UNSUPPORTED_ATTR);

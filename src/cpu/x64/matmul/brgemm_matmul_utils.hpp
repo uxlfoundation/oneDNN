@@ -274,9 +274,8 @@ struct brgemm_matmul_conf_utils_t {
             // use b_buffer for AMX when:
             // - not bf32 && using non-blocked weights
             // - is bf32
-            return IMPLICATION(!(wei_down_convert_to_vnni()
-                                       || (tf32_dt && get_blocked_B())),
-                           !bgmmc.blocked_B)
+            // - is tf32
+            return IMPLICATION(!wei_down_convert_to_vnni(), !bgmmc.blocked_B)
                     || bgmmc.packed_sparse_weights;
 
         // Values based on measured performance difference
@@ -364,7 +363,8 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline bool wei_down_convert_to_vnni() const {
-        return (bf32_dt || f16_with_int_wei_dt || bf16_with_int_wei_dt)
+        return (bf32_dt || tf32_dt || f16_with_int_wei_dt
+                       || bf16_with_int_wei_dt)
                 && get_blocked_B();
     }
 

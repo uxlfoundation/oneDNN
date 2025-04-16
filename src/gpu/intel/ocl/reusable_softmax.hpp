@@ -75,7 +75,7 @@ struct reusable_softmax_params_t {
     bool is_logsoftmax;
     bool is_softmax_inf_as_zero;
 
-    uint8_t padding[3] = {0};
+    uint8_t padding[2] = {0};
 
     compute::dispatch_compile_params_t gws_params;
 };

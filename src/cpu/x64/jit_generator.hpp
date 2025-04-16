@@ -1539,6 +1539,14 @@ public:
         vtestps(x1, op);
     }
 
+    void uni_vptest(const Xbyak::Xmm &x1, const Xbyak::Operand &op) {
+        assert(!(x1.isZMM() || op.isZMM()));
+        if (is_valid_isa(avx))
+            vptest(x1, op);
+        else
+            ptest(x1, op);
+    }
+
     void uni_vblendvps(const Xbyak::Xmm &x1, const Xbyak::Xmm &x2,
             const Xbyak::Operand &op, const Xbyak::Xmm &msk) {
         assert(!x1.isZMM() && !x2.isZMM());

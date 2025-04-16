@@ -103,7 +103,7 @@ int fill_src(int input_idx, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
         std::uniform_int_distribution<> igen(min_val, max_val);
         // Most fp8 values can't be represented exactly with integers.
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            mem_fp.set_elem(idx,
+            mem_fp.set_f32_elem(idx,
                     round_to_nearest_representable(mem_dt.dt(), igen(msr)));
         }
     });

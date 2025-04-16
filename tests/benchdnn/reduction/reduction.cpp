@@ -167,7 +167,8 @@ int fill_mem(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp,
                     value = -value;
             }
             value += shift;
-            mem_fp.set_elem(idx, round_to_nearest_representable(sdt, value));
+            mem_fp.set_f32_elem(
+                    idx, round_to_nearest_representable(sdt, value));
         }
     });
     SAFE(mem_dt.reorder(mem_fp), WARN);

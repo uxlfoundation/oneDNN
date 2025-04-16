@@ -96,7 +96,7 @@ void compute_ref(
             value = BENCHDNN_S32_TO_F32_SAT_CONST;
         maybe_round(prb->attr, DNNL_ARG_DST, value, idx, dst_dt);
 
-        dst.set_elem(idx, round_to_nearest_representable(dst_dt, value));
+        dst.set_f32_elem(idx, round_to_nearest_representable(dst_dt, value));
     });
 
     if (!need_comp) return;

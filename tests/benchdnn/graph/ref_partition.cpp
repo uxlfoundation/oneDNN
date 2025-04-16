@@ -214,7 +214,21 @@ void ref_partition_t::exec_ops(res_t *res) {
             const auto &lt = op.in_lts_[i];
             int arg = get_prim_arg_name_from_graph_op_input_offset(
                     ref_prim->get_kind(), i, use_dst);
-            ref_prim->replace_arg(arg, lt_id_2_mems_.at(lt.id_));
+            const auto &mem = lt_id_2_mems_.at(lt.id_);
+            if (op.kind_ == "SoftMax") {
+                bool meet_inf = false;
+                for (size_t idx = 0; idx < mem.nelems(); ++idx) {
+                    if (mem.get_elem(idx) == -INFINITY) {
+                        meet_inf = true;
+                        break;
+                    }
+                }
+                if (meet_inf) {
+                    std::cout << "\n==========Softmax Has -INF "
+                                 "Input===========\n";
+                }
+            }
+            ref_prim->replace_arg(arg, mem);
         }
         for (size_t i = 0; i < op.out_lts_.size(); i++) {
             const auto &lt = op.out_lts_[i];

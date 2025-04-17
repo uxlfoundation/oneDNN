@@ -32,7 +32,7 @@ enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
 struct sdpa_dims_t {
     memory::dim mb;
     memory::dim head_num;
-    memory::dim kv_group_size;
+    memory::dim kv_head_num;
     memory::dim seq_len;
     memory::dim query_num;
     memory::dim head_size;
@@ -988,7 +988,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     primitive_attr softmax_attr;
     softmax_attr.set_scratchpad_mode(scratchpad_mode::library);
     auto softmax_pd = softmax_forward::primitive_desc(eng,
-            prop_kind::forward_inference, algorithm::softmax_accurate,
+            prop_kind::forward_inference,
+            (algorithm)dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
             score.get_desc(), score.get_desc(), 3, softmax_attr);
     auto softmax_prim = softmax_forward(softmax_pd);
 
@@ -1095,7 +1096,7 @@ void check_memory(memory &gold, memory &test) {
             hist[2][j]++;
             hist[3][i]++;
         }
-        if ((is_mismatch && mismatches++ < 32) || is_nan) {
+        if ((is_mismatch && mismatches++ < 32)) {
             if (verbose)
                 fprintf(stderr,
                         "Mismatch at (%d,%d,%d,%d): test %f "
@@ -1152,8 +1153,10 @@ GPU_TEST_P(sdpa_test_t, compare) {
                                       : t.m_key_quantized.get_desc(),
                 t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
                 t.m_output_quantized.get_desc(), invert_scale, p.head_num,
-                to_attn_mask_type(p.mask), t.sdpa_attr_quantized,
-                t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
+                to_attn_mask_type(p.mask),
+                dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
+                t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
+                t.sdpa_vs_attr_quantized);
         sdpa_quantized_p = sdpa(sdpa_quantized_pd);
     } catch (const dnnl::error &e) {
         if (e.status == dnnl_unimplemented)
@@ -1267,7 +1270,8 @@ GPU_TEST_P(sdpa_test_t, perf) {
                                       : t.m_key_quantized.get_desc(),
                 t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
                 t.m_output_quantized.get_desc(), invert_scale, p.head_num,
-                to_attn_mask_type(p.mask), t.sdpa_attr_quantized,
+                to_attn_mask_type(p.mask),
+                alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr_quantized,
                 t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
         sdpa_quantized_p = sdpa(sdpa_quantized_pd);
     } catch (const dnnl::error &e) {
@@ -1280,7 +1284,8 @@ GPU_TEST_P(sdpa_test_t, perf) {
     auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
             p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
             t.m_value.get_desc(), mask_ptr, scale_dt, t.m_output.get_desc(),
-            invert_scale, p.head_num, to_attn_mask_type(p.mask), t.sdpa_attr);
+            invert_scale, p.head_num, to_attn_mask_type(p.mask),
+            alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr);
     auto sdpaf16_p = sdpa(sdpaf16_pd);
 
     std::unordered_map<int, memory> s8_args = {{{DNNL_ARG_QUERIES, t.m_query},

@@ -589,6 +589,7 @@ void serialize(serialization_stream_t &sstream, const sdpa_desc_t &desc) {
     sstream.append(desc.invert_scale);
     sstream.append(desc.kv_head_number);
     sstream.append(desc.mask_type);
+    sstream.append(desc.softmax_alg);
 }
 
 } // namespace impl

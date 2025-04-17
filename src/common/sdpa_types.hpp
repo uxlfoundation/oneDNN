@@ -86,6 +86,7 @@ struct sdpa_desc_t : public op_desc_t {
     dim_t kv_head_number {};
 
     attn_mask_type_t mask_type = attn_mask_type::undef;
+    alg_kind_t softmax_alg = alg_kind::softmax_accurate;
 
     // Number of queries.
     dnnl_dim_t queries() const { return q_desc.dims[q_desc.ndims - 2]; }

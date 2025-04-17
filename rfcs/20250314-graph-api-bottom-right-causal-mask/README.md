@@ -56,11 +56,15 @@ Top-left causal mask: Applied from the top-left corner of the attention matrix,
 this mask prevents each token from attending to subsequent tokens, effectively
 masking "future" tokens. However, when the query sequence is shorter than the
 key sequence, this approach may mask more of the key sequence than necessary.
-For example, during autoregressive decoding in large language models (LLMs),
-if a prompt consists of 3 tokens, at step 1 of decoding, the query sequence
-length would be 1 (representing the 4th token in the sequence), while the
-key/value input would have a length of 4. In such cases, the top-left mask might
-unnecessarily restrict attention to relevant tokens.
+
+For example, during speculative decoding, a popular technique used to accelerate
+decoding in large language models (LLMs), a small-sized draft model generates
+multiple tokens auto-regressively, while in parallel, The target model batches
+the input prompt with different continuations of the predicted tokens to
+validate them. This process often results in query and key/value sequences
+of differing lengths. To handle this, the bottom-right causal mask is used to
+preserve the input prompt and previously predicted tokens while masking only
+the necessary positions.
 
 Bottom-right causal mask: This mask adjusts the masking to the bottom-right
 corner, allowing for more flexibility when the query and key/value sequences have

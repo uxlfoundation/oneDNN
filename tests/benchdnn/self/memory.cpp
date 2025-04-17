@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,27 +29,33 @@ static int check_bool_operator() {
         SELF_CHECK_EQ(bool(m), false);
     }
     {
-        dnn_mem_t m(md, get_test_engine());
+        dnn_mem_t m(md, get_test_engine(), /* prefill = */ false);
         SELF_CHECK_EQ(bool(m), true);
-        dnn_mem_t n(md0, get_test_engine());
+        dnn_mem_t n(md0, get_test_engine(), /* prefill = */ false);
         SELF_CHECK_EQ(bool(n), false);
     }
     {
-        dnn_mem_t m(1, &dims, dnnl_f32, tag::abx, get_test_engine());
+        dnn_mem_t m(1, &dims, dnnl_f32, tag::abx, get_test_engine(),
+                /* prefill = */ false);
         SELF_CHECK_EQ(bool(m), true);
-        dnn_mem_t n(0, &dims, dnnl_f32, tag::abx, get_test_engine());
+        dnn_mem_t n(0, &dims, dnnl_f32, tag::abx, get_test_engine(),
+                /* prefill = */ false);
         SELF_CHECK_EQ(bool(n), false);
     }
     {
-        dnn_mem_t m(1, &dims, dnnl_f32, &dims /* strides */, get_test_engine());
+        dnn_mem_t m(1, &dims, dnnl_f32, &dims /* strides */, get_test_engine(),
+                /* prefill = */ false);
         SELF_CHECK_EQ(bool(m), true);
-        dnn_mem_t n(0, &dims, dnnl_f32, &dims /* strides */, get_test_engine());
+        dnn_mem_t n(0, &dims, dnnl_f32, &dims /* strides */, get_test_engine(),
+                /* prefill = */ false);
         SELF_CHECK_EQ(bool(n), false);
     }
     {
-        dnn_mem_t m(md, dnnl_f32, tag::abx, get_test_engine());
+        dnn_mem_t m(md, dnnl_f32, tag::abx, get_test_engine(),
+                /* prefill = */ false);
         SELF_CHECK_EQ(bool(m), true);
-        dnn_mem_t n(md0, dnnl_f32, tag::abx, get_test_engine());
+        dnn_mem_t n(md0, dnnl_f32, tag::abx, get_test_engine(),
+                /* prefill = */ false);
         SELF_CHECK_EQ(bool(n), false);
     }
     return OK;

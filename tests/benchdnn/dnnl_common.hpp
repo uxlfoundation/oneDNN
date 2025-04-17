@@ -711,6 +711,9 @@ dnnl_data_type_t deduce_cfg_data_type(
 // `init_memory_args` is responsible for:
 // * Constructing all necessary `dnn_mem_t` objects needed by the library
 //   primitive for the main operation and attributes.
+//   All these memories must utilize `prefill_memory` flag of `dnn_mem_t` ctor
+//   to verify reorders are working correctly and output memory was updated
+//   completely.
 // * Stashing them with a proper exec_arg ID in a `mem_map` object.
 // Caller is responsible for constructing reference memories and filling both
 // the library and reference memories by calling `init_ref_memory_args`.
@@ -765,12 +768,16 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         const auto &dst_md = query_md(const_pd, DNNL_ARG_TO);
         if (has_runtime_dims(src_md)) {
             mem_map.emplace(DNNL_ARG_FROM,
-                    dnn_mem_t(prb->get_md(DNNL_ARG_FROM), src_engine));
+                    dnn_mem_t(prb->get_md(DNNL_ARG_FROM), src_engine,
+                            /* prefill = */ true));
             mem_map.emplace(DNNL_ARG_TO,
-                    dnn_mem_t(prb->get_md(DNNL_ARG_TO), dst_engine));
+                    dnn_mem_t(prb->get_md(DNNL_ARG_TO), dst_engine,
+                            /* prefill = */ true));
         } else {
-            mem_map.emplace(DNNL_ARG_FROM, dnn_mem_t(src_md, src_engine));
-            mem_map.emplace(DNNL_ARG_TO, dnn_mem_t(dst_md, dst_engine));
+            mem_map.emplace(DNNL_ARG_FROM,
+                    dnn_mem_t(src_md, src_engine, /* prefill = */ true));
+            mem_map.emplace(DNNL_ARG_TO,
+                    dnn_mem_t(dst_md, dst_engine, /* prefill = */ true));
         }
     } else {
         for (const auto &exec_arg : supported_exec_args) {
@@ -779,7 +786,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 const auto n_inputs = query_n_inputs(const_pd);
                 for (int i = 0; i < n_inputs; i++) {
                     const auto &md = query_md(const_pd, exec_arg + i);
-                    mem_map.emplace(exec_arg + i, dnn_mem_t(md, test_engine));
+                    mem_map.emplace(exec_arg + i,
+                            dnn_mem_t(md, test_engine, /* prefill = */ true));
                 }
             } else {
                 const bool is_arg_in_map
@@ -800,7 +808,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                                        md, mem_map.at(exec_arg).md_)
                                     == 0) {
                         assert(!has_runtime_dims(md));
-                        dnn_mem_t new_mem(md, test_engine);
+                        dnn_mem_t new_mem(
+                                md, test_engine, /* prefill = */ true);
                         // Reorder user's data from the old memory to the new one.
                         auto st = new_mem.reorder(mem_map.at(exec_arg));
                         assert(st == OK);
@@ -810,7 +819,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 } else {
                     if (has_runtime_dims(md)) {
                         mem_map.emplace(exec_arg,
-                                dnn_mem_t(prb->get_md(exec_arg), test_engine));
+                                dnn_mem_t(prb->get_md(exec_arg), test_engine,
+                                        /* prefill = */ true));
                     } else {
                         // In case when arguments get updated on backward when
                         // forward is required, `emplace` guarantees newly
@@ -818,7 +828,9 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                         // with a key already present in the map. C++17 could
                         // use try_emplace instead to mitigate
                         // construction/destruction overhead.
-                        mem_map.emplace(exec_arg, dnn_mem_t(md, test_engine));
+                        mem_map.emplace(exec_arg,
+                                dnn_mem_t(
+                                        md, test_engine, /* prefill = */ true));
                     }
                 }
             }
@@ -859,9 +871,11 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             const auto &md = query_md(const_pd, query_arg);
             if (has_runtime_dims(md)) {
                 mem_map.emplace(insert_arg,
-                        dnn_mem_t(prb->get_md(query_arg), test_engine));
+                        dnn_mem_t(prb->get_md(query_arg), test_engine,
+                                /* prefill = */ true));
             } else {
-                mem_map.emplace(insert_arg, dnn_mem_t(md, test_engine));
+                mem_map.emplace(insert_arg,
+                        dnn_mem_t(md, test_engine, /* prefill = */ true));
             }
         }
 
@@ -878,15 +892,18 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             const auto &md = query_md(const_pd, query_arg);
             if (has_runtime_dims(md)) {
                 mem_map.emplace(insert_arg,
-                        dnn_mem_t(prb->get_md(query_arg), test_engine));
+                        dnn_mem_t(prb->get_md(query_arg), test_engine,
+                                /* prefill = */ true));
             } else {
-                mem_map.emplace(insert_arg, dnn_mem_t(md, test_engine));
+                mem_map.emplace(insert_arg,
+                        dnn_mem_t(md, test_engine, /* prefill = */ true));
             }
         }
     }
 
     const auto &scratch_md = query_md(const_pd, DNNL_ARG_SCRATCHPAD);
-    mem_map.emplace(DNNL_ARG_SCRATCHPAD, dnn_mem_t(scratch_md, test_engine));
+    mem_map.emplace(DNNL_ARG_SCRATCHPAD,
+            dnn_mem_t(scratch_md, test_engine, /* prefill = */ true));
 
     // Binary post-op.
     // TODO: currently run-time dimensions are not supported in binary post-op.
@@ -895,7 +912,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 
         int po_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
         const auto &po_md = query_md(const_pd, po_arg);
-        mem_map.emplace(po_arg, dnn_mem_t(po_md, test_engine));
+        mem_map.emplace(
+                po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
     }
 
     // Prelu post-op.
@@ -918,22 +936,23 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 
         int po_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_WEIGHTS;
         mem_map.emplace(po_arg,
-                dnn_mem_t(ndims, dims.data(), dnnl_f32, tag::axb, test_engine));
+                dnn_mem_t(ndims, dims.data(), dnnl_f32, tag::axb, test_engine,
+                        /* prefill = */ true));
     }
 
     // Dropout
     if (is_fwd_training(prop_kind) && !prb->attr.dropout.is_def()) {
         const auto &dropout_md = query_md(const_pd, DNNL_ARG_ATTR_DROPOUT_MASK);
-        mem_map.emplace(
-                DNNL_ARG_ATTR_DROPOUT_MASK, dnn_mem_t(dropout_md, test_engine));
+        mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_MASK,
+                dnn_mem_t(dropout_md, test_engine, /* prefill = */ true));
         int64_t count = 1;
         auto prob_md = dnn_mem_t::init_md(1, &count, dnnl_f32, tag::abx);
         mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
-                dnn_mem_t(prob_md, test_engine));
+                dnn_mem_t(prob_md, test_engine, /* prefill = */ true));
 
         auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s32, tag::abx);
-        mem_map.emplace(
-                DNNL_ARG_ATTR_DROPOUT_SEED, dnn_mem_t(seed_md, test_engine));
+        mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_SEED,
+                dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
     }
 
     // Scales.
@@ -970,7 +989,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             const auto dt = sc.get(exec_arg).dt;
             auto scales_md
                     = dnn_mem_t::init_md(ndims, dims.data(), dt, tag::abx);
-            mem_map.emplace(exec_sc_arg, dnn_mem_t(scales_md, test_engine));
+            mem_map.emplace(exec_sc_arg,
+                    dnn_mem_t(scales_md, test_engine, /* prefill = */ true));
         };
 
         for (const auto &exec_arg : supported_exec_args) {
@@ -1017,7 +1037,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 ndims = 1;
             }
             auto zp_md = dnn_mem_t::init_md(ndims, dims.data(), e.dt, tag::abx);
-            mem_map.emplace(exec_zp_arg, dnn_mem_t(zp_md, test_engine));
+            mem_map.emplace(exec_zp_arg,
+                    dnn_mem_t(zp_md, test_engine, /* prefill = */ true));
         };
 
         for (const auto &exec_arg : supported_exec_args) {
@@ -1038,8 +1059,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     if (!prb->attr.rounding_mode.is_def()) {
         int64_t count = 1;
         auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s32, tag::abx);
-        mem_map.emplace(
-                DNNL_ARG_ATTR_ROUNDING_SEED, dnn_mem_t(seed_md, test_engine));
+        mem_map.emplace(DNNL_ARG_ATTR_ROUNDING_SEED,
+                dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
     }
 }
 

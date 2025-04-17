@@ -544,7 +544,7 @@ int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
         const_dnnl_memory_desc_t md, const fill_cfg_t &fill_cfg,
         res_t *res) const {
 
-    dnn_mem_t m(md, get_test_engine());
+    dnn_mem_t m(md, get_test_engine(), /* prefill = */ false);
     const int64_t nelems = m.nelems();
 
     BENCHDNN_PRINT(6, "%s\n", fill_cfg.print_verbose().c_str());
@@ -580,7 +580,7 @@ int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
 int partition_data_displacer_t::gen_causal_mask_filling(
         dnn_mem_t &mem, const_dnnl_memory_desc_t md, res_t *res) const {
 
-    dnn_mem_t tmp_mem(md, get_test_engine());
+    dnn_mem_t tmp_mem(md, get_test_engine(), /* prefill = */ false);
 
     const int ndims = query_md_ndims(md);
     assert(ndims >= 2); // This was checked at displacer initialization.

@@ -869,12 +869,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         if (is_sparse && !is_sparse_wei_packed) {
             if (is_sparse_src) {
                 auto src_fp_d = create_md(prb, SRC);
-                ref_mem_map.emplace(exec_arg, dnn_mem_t(src_fp_d, ref_engine));
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(src_fp_d, ref_engine, /* prefill = */ false));
             }
 
             if (is_sparse_wei) {
                 auto wei_fp_d = create_md(prb, WEI);
-                ref_mem_map.emplace(exec_arg, dnn_mem_t(wei_fp_d, ref_engine));
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(wei_fp_d, ref_engine, /* prefill = */ false));
             }
         } else {
             if (exec_arg == DNNL_ARG_WEIGHTS) {
@@ -891,12 +893,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 strides[ndims - 2] = 1;
                 strides[ndims - 1] = dims[ndims - 2];
                 ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine));
+                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
+                                /* prefill = */ false));
             } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
                 // Scratchpad memory relates to a primitive. If reference needs
                 // it, use switch below to define a memory desc for it.
                 ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                        dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                                /* prefill = */ false));
             }
         }
         auto &ref_mem = ref_mem_map[exec_arg];
@@ -924,7 +928,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
             } break;
             case DNNL_ARG_ATTR_DROPOUT_SEED: {
-                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine);
+                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
+                        /* prefill = */ false);
                 // No break to fall back into `default` call with initialization.
             }
             default:

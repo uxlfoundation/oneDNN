@@ -109,7 +109,7 @@ public:
     //mm1
     memory sub_mm1_src, sub_mm1_wei, sub_mm1_dst;
     // sub_mm1_post_mem contains [post_scale, attn_mask(optional)]
-    std::vector<memory> sub_mm1_post_mem;
+    std::vector<memory> sub_mm1_post_mem, sub_softmax_post_mem;
     //select binary
     memory sub_select_cond, sub_select_src0, sub_select_dst;
     //softmax

@@ -77,11 +77,14 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
     if (quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
         BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
         BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_zero_points);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_zero_points);
-        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
+        // fuse those new post-binaries converted from add_zps and mul_scales
+        BACKEND_DNNL_ADD_PASS(pipeline, replace_quant_data_with_binary_post_op);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
     }
     pipeline.reset_visualize_arg(true, false);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_predecessor);

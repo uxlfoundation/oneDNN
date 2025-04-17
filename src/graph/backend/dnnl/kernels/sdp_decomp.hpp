@@ -118,8 +118,7 @@ public:
                             mem_map[ori_mem.get()][tid]
                                     = memory(ori_mem.get_desc(),
                                             ori_mem.get_engine(), nullptr);
-                            if (iter.first >= DNNL_ARG_ATTR_SCALES
-                                    && iter.first <= DNNL_ARG_ATTR_POST_OP_DW) {
+                            if (iter.first >= DNNL_ARG_ATTR_SCALES) {
                                 mem_map[ori_mem.get()][tid].set_data_handle(
                                         ori_mem.get_data_handle());
                             }

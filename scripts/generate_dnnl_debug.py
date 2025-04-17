@@ -35,8 +35,9 @@ def template(body, banner):
 %s""" % (
         banner,
         os.path.basename(__file__),
-        body
+        body,
     )
+
 
 def header(body):
     return (
@@ -236,8 +237,11 @@ def func_to_str(enum, values):
     func += func_to_str_decl(enum) + " {\n"
     for v in values:
         func += '%sif (v == %s) return "%s";\n' % (indent, v, sanitize_value(v))
-    if (enum == "dnnl_primitive_kind_t"):
-        func += '%sif (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";\n' % indent
+    if enum == "dnnl_primitive_kind_t":
+        func += (
+            '%sif (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";\n'
+            % indent
+        )
     func += '%sassert(!"unknown %s");\n' % (indent, abbrev)
     func += '%sreturn "unknown %s";\n}\n' % (indent, abbrev)
     return func
@@ -305,7 +309,9 @@ def generate(ifile, banners):
         enum = v_enum.attrib["name"]
         if maybe_skip(enum):
             continue
-        values = [v_value.attrib["name"] for v_value in v_enum.findall("EnumValue")]
+        values = [
+            v_value.attrib["name"] for v_value in v_enum.findall("EnumValue")
+        ]
 
         if enum in ["dnnl_sparse_encoding_t"]:
             h_body += "#ifdef DNNL_EXPERIMENTAL_SPARSE\n"
@@ -318,7 +324,11 @@ def generate(ifile, banners):
             h_body += "#endif\n"
             s_body += "#endif\n"
 
-        if enum in ["dnnl_format_tag_t", "dnnl_data_type_t", "dnnl_sparse_encoding_t"]:
+        if enum in [
+            "dnnl_format_tag_t",
+            "dnnl_data_type_t",
+            "dnnl_sparse_encoding_t",
+        ]:
             if enum in ["dnnl_sparse_encoding_t"]:
                 h_benchdnn_body += "#ifdef DNNL_EXPERIMENTAL_SPARSE\n"
                 s_benchdnn_body += "#ifdef DNNL_EXPERIMENTAL_SPARSE\n"
@@ -357,6 +367,7 @@ $ castxml --castxml-cc-gnu-c clang --castxml-output=1 \\
     )
     sys.exit(1)
 
+
 for arg in sys.argv:
     if "-help" in arg:
         usage()
@@ -375,8 +386,8 @@ file_paths = (
 banners = []
 for file_path in file_paths:
     with open(file_path, "r") as f:
-        m = re.match(r'^/\*+\n(\*.*\n)+\*+/\n', f.read())
-        banners.append('' if m == None else m.group(0))
+        m = re.match(r"^/\*+\n(\*.*\n)+\*+/\n", f.read())
+        banners.append("" if m == None else m.group(0))
 
 for file_path, file_body in zip(file_paths, generate(ifile, banners)):
     with open(file_path, "w") as f:

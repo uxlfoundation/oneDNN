@@ -144,16 +144,17 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
             "%s," VERBOSE_IMPL_HEURISTIC_FAIL, pd->info(engine),
             "ocl ref_kernel is faster");
 
+    conf.dispatch.define_dim("C", 0, c_padded, conf.chunks_per_c_block);
+
     if (conf.num_batches > 1) {
-        conf.dispatch.define_dim("MB", 0,
+        conf.dispatch.define_dim("MB", 1,
                 nstl::min(
                         static_cast<dim_t>(conf.mb_block_size), conf.mb_padded),
                 conf.chunks_per_mb_block);
     } else {
-        conf.dispatch.define_dim("MB", 0, conf.mb_padded / conf.unroll_mb_count,
+        conf.dispatch.define_dim("MB", 1, conf.mb_padded / conf.unroll_mb_count,
                 conf.chunks_per_mb_block);
     }
-    conf.dispatch.define_dim("C", 1, c_padded, conf.chunks_per_c_block);
 
     int ndims = conf.ndims;
     if (!conf.is_backward) {

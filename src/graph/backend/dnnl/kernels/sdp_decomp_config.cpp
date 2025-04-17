@@ -522,11 +522,20 @@ impl::status_t sdp_decomp_config_t::record_input_offset(
 impl::status_t sdp_decomp_config_t::record_sdp_ops(
         std::shared_ptr<subgraph_t> &sg, bool is_quantize) {
     const auto get_wei_pre_op = [](const op_ptr &op) -> op_ptr {
-        const auto out_val = op->get_input_value(1);
-        if (out_val->has_producer()) {
-            auto &producer = out_val->get_producer();
-            if (producer.get_kind() != op_kind::dnnl_reorder) return nullptr;
-            return producer.shared_from_this();
+        auto in_val = op->get_input_value(1);
+        if (in_val->has_producer()) {
+            auto *producer = &in_val->get_producer();
+            if (producer->get_kind() == op_kind::dnnl_permute) {
+                in_val = producer->get_input_value(0);
+                if (in_val->has_producer())
+                    producer = &in_val->get_producer();
+                else
+                    return nullptr;
+            }
+            if (producer == nullptr
+                    || producer->get_kind() != op_kind::dnnl_reorder)
+                return nullptr;
+            return producer->shared_from_this();
         } else
             return nullptr;
     };

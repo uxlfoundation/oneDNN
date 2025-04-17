@@ -2403,6 +2403,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             * comp_buffer_ow * jcp.oc_block;
     jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
 
+    // Dispatch the shapes to VNNI for better performance
+    // TODO: optimize the perf for zero point with large buffer on AMX
+    if (is_amx(isa) && jcp.src_zero_point && jcp.exec_type == exec_trans
+            && (jcp.l_pad > 0 || jcp.r_pad > 0) && jcp.oc * jcp.ow > 8192)
+        VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
+                VERBOSE_IMPL_HEURISTIC_FAIL,
+                "no optimization for zero point on amx")
+
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf
     // For shapes with large ow we calculate the comp inside brgemm kernel too

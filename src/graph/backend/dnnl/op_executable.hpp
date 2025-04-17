@@ -2749,7 +2749,7 @@ struct sdpa_executable_t : public op_executable_t {
                 is_invert_scale_, kv_head_number,
                 is_causal_mask_ ? attn_mask_type::top_left
                                 : attn_mask_type::buffer,
-                attr.get());
+                alg_kind::softmax_accurate, attr.get());
         if (s != dnnl::impl::status::success) {
             is_initialized_ = false;
         } else {

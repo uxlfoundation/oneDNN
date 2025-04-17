@@ -1,15 +1,15 @@
 # Performance Optimizations
-## Intel(R) Architecture Processors
-* Improved matmul performance on Intel(R) Xeon(R) processors with support for the Intel(R) AMX instruction set.
-* Improved `fp16`/`bf16` depthwise convolution performance with `fp32` bias or `sum` post-op.
+## Intel Architecture Processors
+* Improved matmul performance on Intel Xeon processors with support for the Intel AMX instruction set.
+* Improved `fp16`/`bf16` depthwise convolution performance with `fp32` bias or `sum` post-ops.
 * Improved `bf16` pooling backpropagation performance.
-* Improved binary post-op performance with `per_w` broadcast.
+* Improved binary post-ops performance with `per_w` broadcast.
 
 ## Intel Graphics Products
-* Improved performance on Intel(R) GPUs based on Xe3 architecture.
+* Improved performance on Intel GPUs based on Xe3 architecture.
 * Improved convolution performance on:
- * Intel® Arc™ Graphics for Intel® Core™ Ultra (Series 2, formerly Lunar Lake).
- * Intel® Arc™ B-series discrete graphics (formerly Battlemage).
+ * Intel Arc Graphics for Intel Core Ultra (Series 2, formerly Lunar Lake).
+ * Intel Arc B-series discrete graphics (formerly Battlemage).
 * Improved `int8` matmul performance with zero-points support for source and weight tensors.
 * Improved performance of the following subgraphs with Graph API:
  * Scaled Dot Product Attention (SDPA) with `int4` and `int8` KV cache.
@@ -19,16 +19,16 @@
 
 ## AArch64-based Processors
 * Enabled BF16 forward-mode inner product via ACL and improve perfomance for BERT and AlexNet in torch compile-mode.
-* Prefer jit_sve conv where faster.
+* Preferential use of jit_sve conv where faster.
 
 # Functionality
 ## Common
-* Introduced select algorithm support in [binary primitive](https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html). The functionality is implemented on CPUs and Intel(R) GPUs.
+* Introduced select algorithm support in [binary primitive](https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html). The functionality is implemented on CPUs and Intel GPUs.
 
 ## Intel Graphics Products
 * Introduced support for the [GenIndex](https://oneapi-src.github.io/oneDNN/v3.8/dev_guide_op_genindex.html) operation in Graph API.
 
-## Intel(R) Architecture Processors
+## Intel Architecture Processors
 * Introduced support for `f32` convolution with `fp16` compressed weights.
 * Enabled `int8`/`int4` compressed weight support in matmul primitive on Intel(R) CPUs. 
 
@@ -37,7 +37,7 @@
  * RNN Vanilla (forward propagation)
  * Inner product (backward propagation)
  * Group normalization
-* Improved precision of inner product primitive with sum post-op for larger shapes.
+* Improved precision of inner product primitive with sum post-ops for larger shapes.
 
 ## AArch64-based Processors
 * Enabled `fp16` support for JIT reorder kernels.

@@ -8,19 +8,18 @@
 ## Intel Graphics Products
 * Improved performance on Intel(R) GPUs based on Xe3 architecture.
 * Improved convolution performance on:
-   * Intel® Arc™ Graphics for Intel® Core™ Ultra (Series 2, formerly Lunar Lake).
-   * Intel® Arc™ B-series discrete graphics (formerly Battlemage).
+ * Intel® Arc™ Graphics for Intel® Core™ Ultra (Series 2, formerly Lunar Lake).
+ * Intel® Arc™ B-series discrete graphics (formerly Battlemage).
 * Improved `int8` matmul performance with zero-points support for source and weight tensors.
 * Improved performance of the following subgraphs with Graph API:
-	* Scaled Dot Product Attention (SDPA) with `int4` and `int8` KV cache.
-	* SDPA with bottom-right implicit causal mask.
-	* SDPA with head size between 257 and 512.
-	* Grouped Query Attention (GQA) with 5D input tensors.
+ * Scaled Dot Product Attention (SDPA) with `int4` and `int8` KV cache.
+ * SDPA with bottom-right implicit causal mask.
+ * SDPA with head size between 257 and 512.
+ * Grouped Query Attention (GQA) with 5D input tensors.
 
-## AArch64-Based Processors
-* Enabled BF16 forward-mode inner product via ACL. 170x and 160x speedups for BERT and AlexNet in torch compile-mode.
-* Enabled post-ops in jit_sve_1x1 conv. Yields 1.2x-1.4x speedups for 1x1 kernel problems.
-* Prefer jit_sve conv where faster. Yields 1.3x-3x speedups on average.
+## AArch64-based Processors
+* Enabled BF16 forward-mode inner product via ACL and improve perfomance for BERT and AlexNet in torch compile-mode.
+* Prefer jit_sve conv where faster.
 
 # Functionality
 ## Common
@@ -39,7 +38,7 @@
 * Introduced support for group normalization primitive.
 * Improved precision of inner product primitive with sum post-op for larger shapes.
 
-## AArch64-Based Processors
+## AArch64-based Processors
 * Enabled `fp16` support for JIT reorder kernels.
 * Enabled static quantization in matmul operations.
 
@@ -52,7 +51,7 @@
 * Enabled support for ROCm 6 on AMD* GPUs.
 * Improved CMake integration when installing oneDNN with the Nvidia backend enabled.
 
-## AArch64-Based Processors
+## AArch64-based Processors
  * Default the number of threads to max for acl_threadpool. Fixes a crash in Tensorflow.
  * Fixed scratchpad being ignored for some GEMMs. Reduces memory and speeds up execution.
  * Fixed a bug in `fp32` reorders where ACL returned incorrect results.

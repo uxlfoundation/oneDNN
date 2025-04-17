@@ -10,162 +10,99 @@ Fusion Patterns
    dev_guide_graph_gqa
    dev_guide_graph_sdpa_compressed_kv
    dev_guide_graph_sdpa
+   MatMul <dev_guide_graph_matmul_fusion_patterns>
+   Quantized MatMul <dev_guide_graph_quantized_matmul_fusion_patterns>
+   Convolution <dev_guide_graph_convolution_fusion_patterns>
+   Quantized Convolution <dev_guide_graph_quantized_convolution_fusion_patterns>
+   ConvTranspose <dev_guide_graph_convtranspose_fusion_patterns>
+   Quantized ConvTranspose <dev_guide_graph_quantized_convtranspose_fusion_patterns>
+   Binary <dev_guide_graph_binary_fusion_patterns>
+   Unary <dev_guide_graph_unary_fusion_patterns>
+   Interpolate <dev_guide_graph_interpolate_fusion_patterns>
+   Reduction <dev_guide_graph_reduction_fusion_patterns>
+   Pool <dev_guide_graph_pool_fusion_patterns>
+   Norm <dev_guide_graph_norm_fusion_patterns>
+   SoftMax <dev_guide_graph_softmax_fusion_patterns>
 
 
-The following fusion patterns are subgraphs that the oneDNN Graph API
-recognizes as candidates for fusion. The patterns are described using
-oneDNN Graph operation (op) names with the following convention.
+The following fusion patterns represent subgraphs that the oneDNN Graph API
+identifies as candidates for partitions. You can define computation graphs
+according to these patterns, get partitions from the graph, compile the
+partitions into compiled partitions, and execute them to obtain results. See
+`Graph API Basic Concepts <dev_guide_graph_basic_concepts.html>`_ for more
+details about the programming model.
 
 .. note::
-   oneDNN Graph performs limited input validation to minimize 
-   the performance overheads. The application is responsible for 
-   sanitizing inputs passed to the library. Because large ``u8`` or 
-   ``s8`` inputs may lead to accumulator overflow, you can use 
-   floating-point patterns instead of quantized patterns.
+  The following categories will be used in describing a fusion pattern:
 
-``"+"`` describes a chain of two ops. The preceding op produces an
-output tensor, which is consumed by the following op as its first
-operand.
-
-``"[]"`` describes a component of the overall pattern description. For
-example, it could include a subgraph or all the op choices within the
-bracket.
-
-``"|"`` describes choices of multiple operations, say A+[B|C] means the
-graph partition contains A followed by B or C.
-
-``","`` describes a graph composed of multiple subgraphs, each subgraph
-marks its output tensor explicitly, which is consumed by other
-subgraphs.
-
-``Superscript`` denotes the numbers of repetition pattern. For example,
-A+[B|C] `^{3}` means the graph partition
-contains A followed by three ops, each of them is either B or C. The
-superscript could be a range of number meaning allowing a range of
-repetition. If the range is between 0 and 1, we use superscript ``"?"``.
-
-``Subscript`` denotes the input and output tensors which need to
-explicitly mark the producer and consumer relation within one graph
-partition. For example,
-A `_{>t1}` +B+C `_{<t1}`
-refers to the pattern started with A followed by B and C, and C takes an
-implicit input tensor from B and an extra tensor t1 output from A.
-``">"`` refers to the output tensor, and ``"<"`` for input tensor. Input
-and output tensors between neighbor ops are not explicitly marked, for
-example, B consumes t1 implicitly in the example above.
-
-Subscript ``"out"`` marks the output tensor of a certain op to be the
-output of a graph partition. For example, in
-A `_{>t1}` +B `_{>out}`\ +C `_{<t1,>out}`,
-B's output and C's output are marked as output tensors.
-
-Subscript ``"in"`` marks the input tensor of a certain op to be the
-input of a graph partition. For example, in
-A `_{<in1}`\ +B `_{<in1}`
-A's input and B's second input are graph partition input, and they share
-the same input tensor in1. Most input tensors of a graph partition are
-not explicitly marked. For example, the input tensors of the first op
-are implicitly regarded as graph partition inputs. Besides, for input
-tensors of other ops, if they are not produced by any proceeding ops,
-they are regarded as implicit graph partition inputs. In the example
-A `_{>t1}`\ +B+C `_{<t1}`,
-A's inputs are regarded as implicit graph partition inputs, and if B is
-a binary operation, the second input tensor is an implicit graph
-partition input.
-
-The following categories will be used in describing a fusion pattern.
-
-Unary = [Abs \| Clamp \| Elu \| Exp \| GELU \| HardSwish \| LeakyReLU \|
-Log \| Sigmoid \| SoftPlus \| Pow \| ReLU \| Round \| Sqrt \| Square \|
-Tanh]
-
-Binary = [Add \| Divide \| Maximum \| Minimum \| Multiply \| Subtract]
-
-Reduction = [ReduceL1 \| ReduceL2 \| ReduceMax \| ReduceMean \|
-ReduceMin \| ReduceProd \| ReduceSum]
-
-Inference
-~~~~~~~~~
-
-Floating Point Patterns
-^^^^^^^^^^^^^^^^^^^^^^^
+  - Binary Operations: `Add <dev_guide_op_add.html>`_,
+    `Subtract <dev_guide_op_subtract.html>`_, `Maximum <dev_guide_op_maximum.html>`_,
+    `Minimum <dev_guide_op_minimum.html>`_, `Multiply <dev_guide_op_multiply.html>`_,
+    `Divide <dev_guide_op_divide.html>`_.
+  - Unary Operations: `Abs <dev_guide_op_abs.html>`_,
+    `Clamp <dev_guide_op_clamp.html>`_, `Elu <dev_guide_op_elu.html>`_,
+    `Exp <dev_guide_op_exp.html>`_, `GELU <dev_guide_op_gelu.html>`_,
+    `HardSigmoid <dev_guide_op_hardsigmoid.html>`_, `HardSwish <dev_guide_op_hardswish.html>`_,
+    `LeakyReLU <dev_guide_op_leakyrelu.html>`_, `Log <dev_guide_op_log.html>`_,
+    `Mish <dev_guide_op_mish.html>`_, `Sigmoid <dev_guide_op_sigmoid.html>`_,
+    `SoftPlus <dev_guide_op_softplus.html>`_, `ReLU <dev_guide_op_relu.html>`_,
+    `Round <dev_guide_op_round.html>`_, `Sqrt <dev_guide_op_sqrt.html>`_,
+    `Square <dev_guide_op_square.html>`_, `Tanh <dev_guide_op_tanh.html>`_.
 
 .. list-table:: 
-   :widths: 75 25
+   :widths: 30 70
    :header-rows: 1
 
    * - Pattern
      - Description
    * - Scaled Dot-Product Attention
-     - Refer to `Scaled Dot-Product Attention (SDPA) <dev_guide_graph_sdpa.html>`_ for more details.
+     - This pattern is widely used for attention mechanisms in transformer models, e.g., BERT and GPT. Refer to `Scaled Dot-Product Attention (SDPA) <dev_guide_graph_sdpa.html>`_ for more details.
    * - Grouped Query Attention
-     - Refer to `Grouped Query Attention (GQA) <dev_guide_graph_gqa.html>`_ for more details.
+     - This pattern is widely in LLM models like llama2 70b and llama3 to reduce the memory usage of the kv cache during inference. Refer to `Grouped Query Attention (GQA) <dev_guide_graph_gqa.html>`_ for more details.
    * - Scaled Dot-Product Attention with Compressed Key/Value
-     - Refer to `Scaled Dot-Product Attention with Compressed Key/Value <dev_guide_graph_sdpa_compressed_kv.html>`_ for more details.
+     - This pattern is used for memory-efficient attention mechanisms. Refer to `Scaled Dot-Product Attention with Compressed Key/Value <dev_guide_graph_sdpa_compressed_kv.html>`_ for more details.
    * - Gated Multi-Layer Perceptron (Gated-MLP)
-     - Refer to `Gated Multi-Layer Perceptron (Gated-MLP) <dev_guide_graph_gated_mlp.html>`_ for more details.
-   * - Convolution + BiasAdd `^?` + BatchNormInference `^?` + [Unary \| Binary] `^{0-3}` `_{>out}`
-     - This pattern is widely used in Convolution Neural Networks, for example ResNet, ResNext, SSD, etc.
-   * - ConvTranspose + BiasAdd `^?` + [Unary \| Binary] `^{0-3}` `_{>out}`
-     - This pattern is widely used in Generative Adversarial Networks.
-   * - Interpolate + [Unary \| Binary] `^{0-3}` `_{>out}`
-     - This pattern is widely used for image processing.
-   * - MatMul + BiasAdd `^?` + [Unary \| Binary] `^{0-3}` + Select `^?` `_{>out}`
-     - This pattern is widely used in language models and recommendation models, for example BERT, DLRM, etc.
-   * - Reduction + [Unary \| Binary] `^{0-3}` `_{>out}`
-     - This pattern is widely used for data processing, for example loss reduction.
-   * - Unary + Binary `^{0-3}` `_{>out}`
-     - This pattern is widely used in Convolution Neural Networks. 
-   * - Binary + [Unary \| Binary] `^{0-3}` `_{>out}`
-     - This pattern is widely used in language models and recommendation models, for example BERT, DLRM, etc.
-   * - [AvgPool \| MaxPool] + Binary `^{0-3}` `_{>out}`
-     - This pattern is widely used in Convolution Neural Networks.
-   * - BatchNormInference + ReLU `_{>out}`
-     - This pattern is widely used in Convolution Neural Networks, for example DenseNet.
-   * - Reciprocal + Multiply `_{>out}`
-     - N/A
-   * - Reorder + Add `_{>out}`
-     - N/A
-   
+     - This pattern is widely used for enhancing feedforward layers in transformer models, e.g., Vision Transformers (ViT). Refer to `Gated Multi-Layer Perceptron (Gated-MLP) <dev_guide_graph_gated_mlp.html>`_ for more details.
+   * - MatMul Fusion Patterns
+     - This pattern is widely used in language models and recommendation models, for example BERT, DLRM, etc. Refer to `MatMul Fusion Patterns <dev_guide_graph_matmul_fusion_patterns.html>`_ for more details.
+   * - Quantized MatMul Fusion Patterns
+     - This pattern is widely used for efficient matrix multiplication in quantized models. Refer to `Quantized MatMul Fusion Patterns <dev_guide_graph_quantized_matmul_fusion_patterns.html>`_ for more details.
+   * - Convolution Fusion Patterns
+     - This pattern is widely used in Convolution Neural Networks, e.g., ResNet, ResNext, SSD, etc. Refer to `Convolution Fusion Patterns <dev_guide_graph_convolution_fusion_patterns.html>`_ for more details.
+   * - Quantized Convolution Fusion Patterns
+     - This pattern is widely used in quantized Convolution Neural Networks. Refer to `Quantized Convolution Fusion Patterns <dev_guide_graph_quantized_convolution_fusion_patterns.html>`_ for more details.
+   * - ConvTranspose Fusion Patterns
+     - This pattern is widely used for upsampling in Generative Adversarial Networks. Refer to `ConvTranspose Fusion Patterns <dev_guide_graph_convtranspose_fusion_patterns.html>`_ for more details.
+   * - Quantized ConvTranspose Fusion Patterns
+     - This pattern is widely used in quantized Generative Adversarial Networks. Refer to `Quantized ConvTranspose Fusion Patterns <dev_guide_graph_quantized_convtranspose_fusion_patterns.html>`_ for more details.
+   * - Binary Fusion Patterns
+     - Fusion Patterns related to binary operations (refer to above Note for more details). This pattern is widely used in language models and recommendation models, e.g., BERT, DLRM. Refer to `Binary Fusion Patterns <dev_guide_graph_binary_fusion_patterns.html>`_ for more details.
+   * - Unary Fusion Patterns
+     - Fusion Patterns related to unary operations (refer to above Note for more details). This pattern is widely used in Convolution Neural Networks. Refer to `Unary Fusion Patterns <dev_guide_graph_unary_fusion_patterns.html>`_ for more details.
+   * - Interpolate Fusion Patterns
+     - This pattern is widely used for image processing. Refer to `Interpolate Fusion Patterns <dev_guide_graph_interpolate_fusion_patterns.html>`_ for more details.
+   * - Reduction Fusion Patterns
+     - Fusion Patterns related to reduction operations like ReduceL1, ReduceL2, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum. This pattern is widely used for data processing, for example loss reduction. Refer to `Reduction Fusion Patterns <dev_guide_graph_reduction_fusion_patterns.html>`_ for more details.
+   * - Pool Fusion Patterns
+     - Fusion Patterns related to pool operations like MaxPool, AvgPool. This pattern is widely used in Convolution Neural Networks. Refer to `Pool Fusion Patterns <dev_guide_graph_pool_fusion_patterns.html>`_ for more details.
+   * - Norm Fusion Patterns
+     - Fusion Patterns related to norm operations like GroupNorm, LayerNorm, BatchNormInference. This pattern is widely used in Convolution Neural Networks, for example DenseNet. Refer to `Norm Fusion Patterns <dev_guide_graph_norm_fusion_patterns.html>`_ for more details.
+   * - SoftMax Fusion Patterns
+     - This pattern is widely used in Convolution Neural Networks. Refer to `SoftMax Fusion Patterns <dev_guide_graph_softmax_fusion_patterns.html>`_ for more details.
+   * - Other Fusion Patterns
+     - Refer to the below section for more details.
 
+Other Fusion Patterns
+^^^^^^^^^^^^^^^^^^^^^
 
+The Other category currently includes operations such as:
+`Reorder <dev_guide_op_reorder.html>`_, `TypeCast <dev_guide_op_typecast.html>`_,
+and `Quantize <dev_guide_op_quantize.html>`_.
 
-Quantized Patterns
-^^^^^^^^^^^^^^^^^^
+oneDNN supports specialized fusion patterns for Other operations to
+optimize performance and reduce memory bandwidth requirements.
 
-.. list-table:: 
-   :widths: 75 25
-   :header-rows: 1
+Pattern Structure:
 
-   * - Pattern
-     - Description
-   * - Quantize `^?` + Dequantize `_{>t1}`, Dequantize `_{>t2}` `^{0-3}`, Dequantize + Convolution `_{<t1}` + BiasAdd `^?` + [Unary \| Binary `_{<t2}`] `^{0-3}` + Quantize `^? _{>out}`
-     - N/A
-   * - Quantize `^?` + Dequantize `_{>t1}`, Dequantize `_{>t2}` `^{0-3}`, Dequantize + ConvTranspose `_{<t1}` + BiasAdd `^?` + [Unary \| Binary `_{<t2}`] `^{0-3}` + Quantize `^?` `_{>out}`
-     - N/A
-   * - Quantize `^?` + Dequantize `_{>t1}`, Dequantize `_{>t2}` `^{0-3}`, Dequantize + MatMul `_{<t1}` + BiasAdd `^?` + [Unary \| Binary `_{<t2}`] `^{0-3}` + Select `^?` + Quantize `^?` `_{>out}`
-     - N/A
-   * - Dequantize + [AvgPool \| MaxPool] + Quantize `_{>out}``
-     - N/A
-   * - Dequantize `_{>t1}`, Dequantize + [AvgPool \| MaxPool] + Add `_{<t1}` + Quantize `_{>out}`
-     - N/A
-   * - Dequantize + Reorder + Quantize `_{>out}`
-     - This pattern is widely used in Generative Adversarial Networks.
-   * - Dequantize `_{>t1}`, Dequantize + Reorder + Add `_{<t1}` + Quantize `_{>out}`
-     - This pattern is widely used for image processing.
-   * - [SoftMax \| LayerNorm \| GroupNorm] + [Unary \| Binary `_{<t2}`] `^{0-3}` + Quantize `^? _{>out}`
-     - This pattern is used in SmoothQuant to fuse scales and quantization into previous layers.
-
-Training
-~~~~~~~~
-
-.. list-table:: 
-   :widths: 75 25
-   :header-rows: 1
-
-   * - Pattern
-     - Description
-   * - ConvolutionBackwardWeights + BiasAddBackward `_{>out}`
-     - N/A
-   * - ReLUBackward + BatchNormTrainingBackward `_{>out}`
-     - N/A
+.. image:: images/other_pattern.png
+    :alt: Other Fusion Patterns

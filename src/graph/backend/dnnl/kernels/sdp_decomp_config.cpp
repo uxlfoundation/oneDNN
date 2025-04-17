@@ -135,7 +135,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
             sub_mm1_wei_md, sub_mm1_dst_md, sub_softmax_dst_md,
             sub_wei2_user_md, sub_mm2_wei_md, sub_mm2_dst_md, sub_dst_md,
             sub_dst_user_md, sub_select_cond_md, sub_select_src0_md;
-    std::vector<memory::desc> sub_mm1_post_md;
+    std::vector<memory::desc> sub_mm1_post_md, sub_softmax_post_md;
 
     // must use user mode to support concurrent execution
     primitive_attr sub_reorder0_attr;
@@ -229,6 +229,25 @@ impl::status_t sdp_decomp_config_t::construct_params(
     // softmax
     // create softmax primitive attr
     dnnl::primitive_attr sub_softmax_attr = make_primitive_attr(sdp_op[2], mgr);
+
+    dnnl_pops = {};
+    ori_dnnl_pops = sub_softmax_attr.get_post_ops();
+    for (int i = 0; i < ori_dnnl_pops.get()->len(); i++) {
+        const auto alg = static_cast<algorithm>(
+                ori_dnnl_pops.get()->entry_[i].binary.alg);
+        const dnnl::impl::memory_desc_t &ori_desc
+                = ori_dnnl_pops.get()->entry_[i].binary.user_src1_desc;
+        auto post_shape = ori_desc.dims;
+        auto post_stride = ori_desc.format_desc.blocking.strides;
+        auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
+        dims post_stride_dims = dims(post_stride, post_stride + ori_desc.ndims);
+        auto new_sub_md = memory::desc({1, 1, post_shape[2], post_shape[3]},
+                post_dt, post_stride_dims);
+        sub_softmax_post_md.emplace_back(new_sub_md);
+        dnnl_pops.append_binary(alg, new_sub_md);
+    }
+    sub_softmax_attr.set_post_ops(dnnl_pops);
+
     sub_softmax_dst_md = memory::desc(sub_mm1_dst_dims, dt_src_user, tag::abcd);
     const auto mode = sdp_op[2]->get_attr<std::string>(op_attr::mode);
     const dnnl::algorithm algo = mode == "inf_as_zero"
@@ -337,6 +356,23 @@ impl::status_t sdp_decomp_config_t::construct_params(
     }
     // softmax
     sub_softmax_dst = memory(sub_softmax_dst_md, p_engine, nullptr);
+    for (int i = 0; i < (int)sub_softmax_post_md.size(); i++) {
+        sub_softmax_post_mem.emplace_back(sub_softmax_post_md[i], p_engine);
+        auto alg = static_cast<algorithm>(
+                ori_dnnl_pops.get()->entry_[i].binary.alg);
+        if (alg == dnnl::algorithm::binary_mul) {
+            float *ptr = reinterpret_cast<float *>(
+                    sub_softmax_post_mem[i].get_data_handle());
+            ptr[0] = get_attr_value<float, float>(
+                    sdp_op[2], i + 1, op_attr::scales);
+        }
+        if (alg == dnnl::algorithm::binary_add) {
+            int *ptr = reinterpret_cast<int *>(
+                    sub_softmax_post_mem[i].get_data_handle());
+            ptr[0] = get_attr_value<int64_t, int32_t>(
+                    sdp_op[2], i + 1, op_attr::zps);
+        }
+    }
     // reorder2
     sub_wei2_user = memory(sub_wei2_user_md, p_engine, nullptr);
     // mm2
@@ -371,6 +407,12 @@ impl::status_t sdp_decomp_config_t::construct_params(
             = {{DNNL_ARG_SRC, has_select ? sub_select_dst : sub_mm1_dst},
                     {DNNL_ARG_DST, sub_softmax_dst},
                     {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
+
+    for (int i = 0; i < (int)sub_softmax_post_mem.size(); i++) {
+        sub_softmax_args.insert(
+                {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
+                        sub_softmax_post_mem[i]});
+    }
 
     sub_reorder2_args = {{DNNL_ARG_SRC, sub_wei2_user},
             {DNNL_ARG_DST, sub_mm2_wei}, {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};

@@ -1207,6 +1207,17 @@ status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
         if (consumers.size() != 1) continue;
         auto &next_op = consumers[0].get_op();
         if (next_op.get_kind() != op_kind::dnnl_mul_scales) continue;
+        // For these three ops, the dst zps are not supported
+        if (impl::utils::one_of(cur_op->get_kind(), op_kind::dnnl_softmax,
+                    op_kind::dnnl_layernorm, op_kind::dnnl_groupnorm)) {
+            out_val = next_op.get_output_value(0);
+            consumers = out_val->get_consumers();
+            if (consumers.size() == 1) {
+                auto &next2_op = consumers[0].get_op();
+                if (next2_op.get_kind() == op_kind::dnnl_add_zps) continue;
+            }
+        }
+
         fuse_groups.emplace_back(cur_op.get(), &next_op);
         visited.insert(cur_op.get());
         visited.insert(&next_op);
@@ -1248,6 +1259,17 @@ status_t convert_to_runtime_dst_scales(std::shared_ptr<subgraph_t> &sg) {
                         op_kind::dnnl_groupnorm)
                 || visited.count(cur_op.get()))
             continue;
+
+        if (impl::utils::one_of(cur_op->get_input_op(0)->get_kind(),
+                    op_kind::dnnl_softmax, op_kind::dnnl_layernorm,
+                    op_kind::dnnl_groupnorm)) {
+            auto out_val = cur_op->get_output_value(0);
+            auto consumers = out_val->get_consumers();
+            if (consumers.size() == 1) {
+                auto &next_op = consumers[0].get_op();
+                if (next_op.get_kind() == op_kind::dnnl_add_zps) continue;
+            }
+        }
 
         // This pass only handle static quantization
         bool dync_quantization = cur_op->has_attr(op_attr::with_runtime_scales)

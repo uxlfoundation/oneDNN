@@ -239,6 +239,13 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
 
     auto src = _src;
     auto dst = _dst;
+
+    // Handle tf32 the same way as f - to have less cases to support.
+    if (src.type() == ngen::DataType::tf32)
+        src = src.reinterpret(ngen::DataType::f);
+    if (dst.type() == ngen::DataType::tf32)
+        dst = dst.reinterpret(ngen::DataType::f);
+
     ngen::DataType src_type = src.type();
     ngen::DataType dst_type = dst.type();
     // Replace (float -> float) by (int -> int) as word/dword moves have less

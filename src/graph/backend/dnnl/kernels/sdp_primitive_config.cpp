@@ -366,8 +366,8 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
 
     CHECK(create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(), md_k.get(),
             md_v.get(), md_dst.get(), md_mask.get(), scale_dt, invert_scale_,
-            kv_head_number_, mask_type_, attr.get(), qk_attr.get(),
-            vs_attr.get()));
+            kv_head_number_, mask_type_, alg_kind::softmax_accurate, attr.get(),
+            qk_attr.get(), vs_attr.get()));
 
     auto status = sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());
 

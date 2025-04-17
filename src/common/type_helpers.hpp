@@ -984,7 +984,8 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(scale_dt)
             && COMPARE_DESC_MEMBERS(invert_scale)
             && COMPARE_DESC_MEMBERS(kv_head_number)
-            && COMPARE_DESC_MEMBERS(mask_type);
+            && COMPARE_DESC_MEMBERS(mask_type)
+            && COMPARE_DESC_MEMBERS(softmax_alg);
     return ret;
 }
 

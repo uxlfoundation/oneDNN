@@ -532,10 +532,16 @@ TEST(test_convtranspose_compile, ConvtransposeFp32) {
     ASSERT_EQ(p.compile(&cp, inputs, outputs, eng), graph::status::success);
     graph::logical_tensor_t lt;
     cp.query_logical_tensor(dst.id, &lt);
+    // Blocked layout is supported on intel gpu only
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    ASSERT_EQ(lt.layout_type, graph::layout_type::strided);
+#else
     ASSERT_EQ(lt.layout_type,
             eng->kind() == graph::engine_kind::gpu
                     ? graph::layout_type::opaque
                     : graph::layout_type::strided);
+#endif
 }
 
 TEST_P(convtranspose_4d_5d_t, TestConvtranspose) {

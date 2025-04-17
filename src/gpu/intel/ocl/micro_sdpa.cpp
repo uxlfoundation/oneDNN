@@ -500,6 +500,9 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
         kernel_ctx.define_int("PREFETCH_D_MAX", nstl::min(pd()->d_max(), 64));
     }
 
+    kernel_ctx.define_int("SAFE_SOFTMAX",
+            d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
+
     /* Generate microkernel shims */
     ShimOptions shimOptions;
     shimOptions.subgroupSize = pd()->sg_size();

@@ -53,7 +53,7 @@
 * Improved CMake integration for oneDNN installation with Nvidia backend enabled.
 
 ## AArch64-based Processors
- * Default the number of threads to max for acl_threadpool. Fixes a crash in Tensorflow.
+ * Default thread count to maxin `acl_threadpool` to prevent crashes in Tensorflow.
  * Fixed scratchpad being ignored for some GEMMs. Reduces memory and speeds up execution.
  * Fixed a bug in `fp32` reorders where ACL returned incorrect results.
 

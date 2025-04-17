@@ -22,8 +22,10 @@
  * Grouped Query Attention (GQA) with 5D input tensors.
 
 ## AArch64-based Processors
-* Enabled BF16 forward-mode inner product via ACL and improve perfomance for BERT and AlexNet in torch compile-mode.
-* Preferential use of jit_sve conv where faster.
+* Improved `fp16` reorder performance.
+* Improved `int8` matmul performance.
+* Improved `bf16` inner product forward propagation performance with Arm Compute Library (ACL).
+* Improved convolution performance on processors with SVE support with Arm Compute Library (ACL).
 
 # Functionality
 ## Intel Graphics Products
@@ -36,16 +38,12 @@
 * Introduced support for `f32` convolution with `fp16` compressed weights.
 * Enabled `int8`/`int4` compressed weight support in matmul primitive on Intel(R) CPUs. 
 
-## Generic SYCL backend
-* Introduced new primitives:
- * RNN Vanilla (forward propagation)
- * Inner product (backward propagation)
+## Generic GPU Vendor
+* Introduced support for:
+ * Vanilla RNN forward propagation
+ * Inner product backpropagation
  * Group normalization
-* Improved precision of inner product primitive with sum post-ops for larger shapes.
-
-## AArch64-based Processors
-* Enabled `fp16` support for JIT reorder kernels.
-* Enabled static quantization in matmul operations.
+* Improved accuracy of inner product primitive with sum post-ops for large shapes.
 
 ## NVIDIA GPUs
 * Introduced Graph API support.
@@ -66,8 +64,6 @@
 * Extended benchdnn option [`--cold-cache`](https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn/doc/knob_cold_cache.md) with support for cold TLB mode.
 * Added benchdnn option `--bia-dt` to control bias data type for matmul, inner product, convolution, and deconvolution.
 * Extended syntax of benchdnn `--dt` option in [Graph API driver](https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn/doc/driver_graph.md) to manage data types of individual tensors in a pattern.
-
-# Deprecated Functionality
 
 # Breaking Changes
 * Removed the experimental [Graph Compiler](https://uxlfoundation.github.io/oneDNN/v3.7/dev_guide_graph_compiler.html) backend.

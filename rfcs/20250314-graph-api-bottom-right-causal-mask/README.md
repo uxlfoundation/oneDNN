@@ -1,4 +1,4 @@
-# Support Implicit Causal Mask in SDPA in Graph API
+# Support Bottom-Right Implicit Causal Mask in SDPA in Graph API
 
 ## Background
 
@@ -362,7 +362,7 @@ two axes of scaled output tensor's shape.
 
 ## Conclusions
 
-TBD
+The decision is to adopt option 1+2, which is to pass s_kv and s_q as scalar tensors while indicating scalar property in logical tensors.
 
 ## References
 

@@ -33,9 +33,10 @@
 * Enabled `int8`/`int4` compressed weight support in matmul primitive on Intel(R) CPUs. 
 
 ## Generic SYCL backend
-* Introduced support for RNN Vanilla primitive forward propagation.
-* Introduced support for inner product primitive backward propagation.
-* Introduced support for group normalization primitive.
+* Introduced new primitives:
+ * RNN Vanilla (forward propagation)
+ * Inner product (backward propagation)
+ * Group normalization
 * Improved precision of inner product primitive with sum post-op for larger shapes.
 
 ## AArch64-based Processors
@@ -48,8 +49,8 @@
 # Usability
  
 * Added support for Group Normalization primitive with [`ONEDNN_ENABLE_PRIMITIVE`](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#onednn-enable-primitive) build option.
-* Enabled support for ROCm 6 on AMD* GPUs.
-* Improved CMake integration when installing oneDNN with the Nvidia backend enabled.
+* Enabled support for ROCm 6 on AMD GPUs.
+* Improved CMake integration for oneDNN installation with Nvidia backend enabled.
 
 ## AArch64-based Processors
  * Default the number of threads to max for acl_threadpool. Fixes a crash in Tensorflow.

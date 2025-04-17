@@ -2372,6 +2372,12 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                             is_int8_convolution)),
             VERBOSE_UNSUPPORTED_ZP_CFG);
 
+    // Dispatch the shapes to VNNI for better performance
+    const bool req_zp_large_buffer = jcp.src_zero_point
+            && jcp.oc * jcp.ow > 8192 && (jcp.r_pad > 0 || jcp.l_pad > 0);
+    VDISPATCH_CONV_IC(!req_zp_large_buffer, VERBOSE_IMPL_HEURISTIC_FAIL,
+            "no optimization for zero point on AMX");
+
     // Calculate zero-point padding values outside of the main JIT-kernel
     // and store the results in an auxiliary buffer.
     jcp.req_zero_point_buffer = jcp.src_zero_point

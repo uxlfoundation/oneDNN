@@ -74,14 +74,15 @@ struct gen_gemm_t : public gpu_gemm_t {
             wei_decomp_ = (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2,
                                    f8_e4m3)
                                   && utils::one_of(d->a_type(), u8, s8, s4, u4)
-                                  && utils::one_of(d->b_type(), f16, f32, bf16,
-                                          f8_e5m2, f8_e4m3))
+                                  && utils::one_of(d->b_type(), u8, s8, s4, u4,
+                                          f16, f32, bf16, f8_e5m2, f8_e4m3))
                     && attr()->mayiconvert(d->a_type(), f32);
             dy_quant_enabled_
-                    = (utils::one_of(d->c_type(), f32, f16, bf16)
-                              && utils::one_of(d->a_type(), u8, s8, s4, u4)
-                              && utils::one_of(d->b_type(), u8, s8))
-                    || all_f8;
+                    = ((utils::one_of(d->c_type(), f32, f16, bf16)
+                               && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                               && utils::one_of(d->b_type(), u8, s8))
+                              || all_f8)
+                    && !attr()->mayiconvert(d->a_type(), f32);
             quant_enabled_ = wei_decomp_ || dy_quant_enabled_;
             CHECK(set_default_formats(false));
 
@@ -233,6 +234,9 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             if (!attr()->zero_points_.has_default_values()) {
                 if (!attr_zps.has_default_values(DNNL_ARG_A)) {
+                    // Only apply to integers inputs.
+                    VDISPATCH_GEMM(utils::one_of(d->a_type(), s4, u4, s8, u8),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
                     const int cmask_a = attr_zps.get_mask(DNNL_ARG_A);
                     ao_dims_ = cmask_a > 0;
 
@@ -262,10 +266,20 @@ struct gen_gemm_t : public gpu_gemm_t {
                         VDISPATCH_GEMM(utils::one_of(cmask_a, 0, mask_per_oc,
                                                mask_per_ic),
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
+                        // Weights zp can only be performantly enabled during upconversion
+                        // for cases that perform decompression.
+                        VDISPATCH_GEMM(wei_decomp_
+                                        || utils::one_of(
+                                                d->c_type(), s8, u8, s32)
+                                        || utils::one_of(d->a_type(), s4, u4),
+                                VERBOSE_UNSUPPORTED_ZP_CFG);
                     }
                 }
 
                 if (!attr_zps.has_default_values(DNNL_ARG_B)) {
+                    // Only apply to integers inputs.
+                    VDISPATCH_GEMM(utils::one_of(d->b_type(), s4, u4, s8, u8),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
                     const int cmask_b = attr_zps.get_mask(DNNL_ARG_B);
                     bo_dims_ = cmask_b > 0;
 
@@ -353,6 +367,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     src_scales_2d_ = false;
                 else {
                     src_q2d_group_k = scales_group_k;
+                    // 2d src scales only supported during dequantization.
                     VDISPATCH_GEMM(dy_quant_enabled_
                                     && utils::one_of(eff_a_type(), s4, u4),
                             VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -399,6 +414,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     : data_type::s32;
             if (swap_ab_) std::swap(ao_type, bo_type);
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
+            int_acc &= !wei_scales_2d_;
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
@@ -429,12 +445,25 @@ struct gen_gemm_t : public gpu_gemm_t {
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
 
-            if (attr()->mayiconvert(f32, tf32))
-                set_mode(mode, kernel_desc_t::mode_tf32);
-            if (attr()->mayiconvert(f32, bf16))
+            // Fpmath modes are mutually exclusive. int->fp computation is
+            // mandatory when enabled. fp->fp conversion is optional.
+            if (attr()->mayiconvert(u8, bf16)) {
                 set_mode(mode, kernel_desc_t::mode_bf16x1);
-            if (attr()->mayiconvert(f32, f16))
+                set_mode(mode, kernel_desc_t::mode_int_cvt);
+            } else if (attr()->mayiconvert(u8, f16)) {
                 set_mode(mode, kernel_desc_t::mode_f16x1);
+                set_mode(mode, kernel_desc_t::mode_int_cvt);
+            } else if (attr()->mayiconvert(f32, bf16)) {
+                set_mode(mode, kernel_desc_t::mode_bf16x1);
+            } else if (attr()->mayiconvert(f32, f16)) {
+                set_mode(mode, kernel_desc_t::mode_f16x1);
+            } else if (attr()->mayiconvert(f32, tf32)
+                    && !(mode
+                            & (kernel_desc_t::mode_f16x1
+                                    | kernel_desc_t::mode_bf16x1))) {
+                VDISPATCH_GEMM(!wei_decomp_, VERBOSE_UNSUPPORTED_DT);
+                set_mode(mode, kernel_desc_t::mode_tf32);
+            }
             if (attr()->mayiconvert(f32, f32))
                 set_mode(mode, kernel_desc_t::mode_strict);
             if (attr()->deterministic_)

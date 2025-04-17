@@ -231,6 +231,14 @@ struct gen_gemm_t : public gpu_gemm_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
+            auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
+            auto &src_scales = attr()->scales_.get(DNNL_ARG_SRC);
+
+            if (quant_enabled_ && !wei_scales.has_default_groups())
+                wei_scales_2d_ = true;
+            if (quant_enabled_ && !src_scales.has_default_groups())
+                src_scales_2d_ = true;
+
             if (!attr()->zero_points_.has_default_values()) {
                 if (!attr_zps.has_default_values(DNNL_ARG_A)) {
                     const int cmask_a = attr_zps.get_mask(DNNL_ARG_A);
@@ -261,6 +269,12 @@ struct gen_gemm_t : public gpu_gemm_t {
                     } else {
                         VDISPATCH_GEMM(utils::one_of(cmask_a, 0, mask_per_oc,
                                                mask_per_ic),
+                                VERBOSE_UNSUPPORTED_ZP_CFG);
+                        // Weights zp can only be performantly enabled during upconversion
+                        // for cases that perform decompression.
+                        VDISPATCH_GEMM(wei_decomp_
+                                        || utils::one_of(d->a_type(), s4, u4)
+                                        || !wei_scales_2d_,
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
                     }
                 }
@@ -306,14 +320,6 @@ struct gen_gemm_t : public gpu_gemm_t {
 
                 if (swap_ab_) std::swap(ao_dims_, bo_dims_);
             }
-
-            auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
-            auto &src_scales = attr()->scales_.get(DNNL_ARG_SRC);
-
-            if (quant_enabled_ && !wei_scales.has_default_groups())
-                wei_scales_2d_ = true;
-            if (quant_enabled_ && !src_scales.has_default_groups())
-                src_scales_2d_ = true;
 
             for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
                 if (attr()->scales_.has_default_values(s)) continue;
@@ -399,6 +405,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     : data_type::s32;
             if (swap_ab_) std::swap(ao_type, bo_type);
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
+            int_acc &= !wei_scales_2d_;
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32

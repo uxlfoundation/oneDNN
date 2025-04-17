@@ -74,7 +74,7 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
     if (is_op_input) {
         // Create graph memory with memory description from graph path.
         dnnl::memory::desc md(graph_dims_, data_type, graph_strides_);
-        mem_ = dnn_mem_t(md.get(), g_eng.get());
+        mem_ = dnn_mem_t(md.get(), g_eng.get(), /* prefill = */ true);
 
         if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
             // Fill data from reference memories.
@@ -88,7 +88,7 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
             // argument in primitives, we need to create them with memory
             // description from graph path.
             dnnl::memory::desc md(graph_dims_, data_type, graph_strides_);
-            mem_ = dnn_mem_t(md.get(), g_eng.get());
+            mem_ = dnn_mem_t(md.get(), g_eng.get(), /* prefill = */ true);
 
         } else {
             // Use information from the reference memory descriptor to create
@@ -101,7 +101,8 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
             dims_t strides(mem.strides(), mem.strides() + ndims);
             std::string mtag = strides2memory_tag(ndims, strides);
 
-            mem_ = dnn_mem_t(mem.md_, graph_dt, mtag, g_eng.get());
+            mem_ = dnn_mem_t(
+                    mem.md_, graph_dt, mtag, g_eng.get(), /* prefill = */ true);
         }
     }
 }
@@ -133,7 +134,8 @@ int dnn_graph_mem_t::fill_mem_with_data(
     if (src_dt != dst_dt || src_eng != dst_eng) {
         // If dt or eng is different, need to transfer data under same dt or
         // engine to perform a data copy.
-        dnn_mem_t c_mem(ndims, mem.dims(), dst_dt, mtag, dst_eng);
+        dnn_mem_t c_mem(
+                ndims, mem.dims(), dst_dt, mtag, dst_eng, /* prefill = */ true);
         SAFE_V(c_mem.reorder(mem));
         prim_to_graph_memcpy(mem_, c_mem);
     } else {

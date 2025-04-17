@@ -51,8 +51,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -119,8 +120,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -185,8 +187,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -231,8 +234,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const int exec_arg = entry.first;
         auto &mem = entry.second;
 
-        ref_mem_map.emplace(
-                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -251,7 +255,8 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
     dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
     // generate dense stride
-    dnn_mem_t pad(src.md_, src.dt(), tag::abx, get_test_engine());
+    dnn_mem_t pad(src.md_, src.dt(), tag::abx, get_test_engine(),
+            /* prefill = */ true);
     int ret = pad.reorder(src);
     if (ret != OK) { res->state = FAILED; }
     // update output shape with dense stride
@@ -343,7 +348,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         mem_map.emplace(exec_arg,
                 dnn_mem_t(static_cast<int>(dims.size()), dnnl_dims,
                         std::get<2>(arg_mds_), ::std::get<0>(arg_mds_),
-                        test_engine));
+                        test_engine, /* prefill = */ true));
     }
 }
 

@@ -46,7 +46,8 @@ void compute_ref_fwd_ip(const prb_t *prb, const args_t &args) {
     int64_t N = prb->oc;
     int64_t K = prb->ic * prb->id * prb->ih * prb->iw;
 
-    dnn_mem_t dst_tmp(dst_m.md_, dnnl_f32, tag::abx, dst_m.engine());
+    dnn_mem_t dst_tmp(dst_m.md_, dnnl_f32, tag::abx, dst_m.engine(),
+            /* prefill = */ false);
 
     gemm("C", "N", "T", M, N, K, 1.f, (float *)src_m, K, (float *)wei_m, K, 0.f,
             (float *)dst_tmp, N);

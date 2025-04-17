@@ -282,7 +282,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD && exec_arg != DNNL_ARG_WORKSPACE) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -296,8 +297,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_WORKSPACE: {
                 const auto ws_dt
                         = is_integral_dt(mem.dt()) ? dnnl_s32 : dnnl_f32;
-                ref_mem_map[exec_arg]
-                        = dnn_mem_t(mem.md_, ws_dt, tag::abx, ref_engine);
+                ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt, tag::abx,
+                        ref_engine, /* prefill = */ false);
                 if (prb->dir & FLAG_FWD) SAFE(fill_ws(prb, mem, ref_mem), WARN);
                 break;
             }

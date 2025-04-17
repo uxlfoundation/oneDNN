@@ -57,7 +57,7 @@ this mask prevents each token from attending to subsequent tokens, effectively
 masking "future" tokens. However, when the query sequence is shorter than the
 key sequence, this approach may mask more of the key sequence than necessary.
 
-For example, during speculative decoding, a popular technique used to accelerate
+For example, during speculative decoding [2][3], a popular technique used to accelerate
 decoding in large language models (LLMs), a small-sized draft model generates
 multiple tokens auto-regressively, while in parallel, The target model batches
 the input prompt with different continuations of the predicted tokens to
@@ -82,7 +82,7 @@ oneDNN Graph.
 ### PyTorch
 
 PyTorch supports both explicit and implicit causal masks via its
-`torch.nn.functional.scaled_dot_product_attention` function [2].
+`torch.nn.functional.scaled_dot_product_attention` function [4].
 Users can provide an explicit mask through the `attn_mask` parameter.
 The `is_causal` parameter, when set to true, applies a top-left implicit causal
 mask by default.
@@ -100,7 +100,7 @@ def scaled_dot_product_attention(
 
 For bottom-right causal mask, PyTorch extends the interface of
 the `attn_mask` parameter. Users can create a `CausalBias` instance with
-`CausalVariant.LOWER_RIGHT` [3], and pass it to `attn_mask` of the SDPA
+`CausalVariant.LOWER_RIGHT` [5], and pass it to `attn_mask` of the SDPA
 function:
 
 ```python
@@ -114,11 +114,11 @@ out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, is_causal=Fal
 
 Internally, the `CausalBias` class dispatches to flash attention or efficient
 attention implementations if available; otherwise, it falls back to an explicit
-mask [4].
+mask [6].
 
 ### cuDNN
 
-In cuDNN Graph API [6], both top-left and bottom-right implicit causal masks are
+In cuDNN Graph API [7], both top-left and bottom-right implicit causal masks are
 supported. For the top-left alignment, the graph construction utilizes operations
 such as `GenIndex`, `GreaterEqual`, and `Select`. For the bottom-right alignment,
 additional operations like `Add` and `Sub` are employed to adjust the mask accordingly.
@@ -126,7 +126,7 @@ additional operations like `Add` and `Sub` are employed to adjust the mask accor
 ### OpenVINO
 
 OpenVINO’s `ScaledDotProductAttention` operation supports both explicit and implicit
-causal masks [7]. Users can specify a `causal` flag to apply a top-left implicit
+causal masks [8]. Users can specify a `causal` flag to apply a top-left implicit
 causal mask; however, bottom-right implicit causal mask are not currently supported.
 
 ## Proposals
@@ -158,7 +158,7 @@ sequence length dimension, forming a valid bottom-right subgraph.
 To address the concern of creating GPU tensors, this option proposes to pass
 s_kv and s_q as scalar logical tensors.
 
-This method draws inspiration from cuDNN Frontend's `Tensor_attributes` [8],
+This method draws inspiration from cuDNN Frontend's `Tensor_attributes` [9],
 which supports constructors with scalar values.
 
 ```cpp
@@ -185,7 +185,7 @@ class Tensor_attributes {
 }
 ```
 
-An example from cuDNN Frontend to use this constructor [9]:
+An example from cuDNN Frontend to use this constructor [10]:
 
 ```cpp
 row_index_output = pointwise(row_index_output,
@@ -371,11 +371,12 @@ The decision is to adopt option 1+2, which is to pass s_kv and s_q as scalar ten
 ## References
 
 1. Attention is all you need, [https://arxiv.org/abs/1706.03762v7](https://arxiv.org/abs/1706.03762v7)
-2. PyTorch SDPA function, [https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
-3. PyTorch support for bottom-right causal mask, [https://pytorch.org/docs/2.6/generated/torch.nn.attention.bias.CausalBias.html#torch.nn.attention.bias.CausalBias](https://pytorch.org/docs/2.6/generated/torch.nn.attention.bias.CausalBias.html#torch.nn.attention.bias.CausalBias)
-4. PyTorch CausalBias dispatch logic, [https://github.com/pytorch/pytorch/blob/main/torch/nn/attention/bias.py#L221](https://github.com/pytorch/pytorch/blob/main/torch/nn/attention/bias.py#L221)
-5. PyTorch Aten SDPA operator implementation, [https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/transformers/attention.cpp#L699](https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/transformers/attention.cpp#L699)
-6. cuDNN Graph API support for causal mask, [https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop](https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop)
-7. OpenVINO SDPA operation, [https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/sequence/scaled-dot-product-attention.html](https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/sequence/scaled-dot-product-attention.html)
-8. cuDNN Frontend Tensor_attributes class, [https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/graph_properties.h#L23](https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/graph_properties.h#L23)
-9. cuDNN scalar Tensor_attributes, [https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/node/sdpa_fp8.h#L365-L380](https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/node/sdpa_fp8.h#L365-L380)
+2. Accelerating Large Language Model Decoding with Speculative Sampling, [https://arxiv.org/abs/2302.01318](https://arxiv.org/abs/2302.01318)
+3. Fast Inference from Transformers via Speculative Decoding, [https://arxiv.org/abs/2211.17192](https://arxiv.org/abs/2211.17192)
+4. PyTorch SDPA function, [https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
+5. PyTorch support for bottom-right causal mask, [https://pytorch.org/docs/2.6/generated/torch.nn.attention.bias.CausalBias.html#torch.nn.attention.bias.CausalBias](https://pytorch.org/docs/2.6/generated/torch.nn.attention.bias.CausalBias.html#torch.nn.attention.bias.CausalBias)
+6. PyTorch CausalBias dispatch logic, [https://github.com/pytorch/pytorch/blob/main/torch/nn/attention/bias.py#L221](https://github.com/pytorch/pytorch/blob/main/torch/nn/attention/bias.py#L221)
+7. cuDNN Graph API support for causal mask, [https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop](https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop)
+8. OpenVINO SDPA operation, [https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/sequence/scaled-dot-product-attention.html](https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/sequence/scaled-dot-product-attention.html)
+9. cuDNN Frontend Tensor_attributes class, [https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/graph_properties.h#L23](https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/graph_properties.h#L23)
+10. cuDNN scalar Tensor_attributes, [https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/node/sdpa_fp8.h#L365-L380](https://github.com/NVIDIA/cudnn-frontend/blob/main/include/cudnn_frontend/node/sdpa_fp8.h#L365-L380)

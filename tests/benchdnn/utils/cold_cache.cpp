@@ -165,7 +165,9 @@ cold_cache_t::cold_cache_t(
         auto orig_cc_mem_md = query_md(orig_mem);
 
         for (size_t i = 0; i < n_buffers_; i++) {
-            cc_entry[i] = dnn_mem_t(orig_cc_mem_md, get_test_engine());
+            // Data will be filled/reordered, no need to prefill it.
+            cc_entry[i] = dnn_mem_t(
+                    orig_cc_mem_md, get_test_engine(), /* prefill = */ false);
 
             // Sparse memories require this call to replicate the exact original
             // data distribution because the data structure affects performance
@@ -283,8 +285,10 @@ int cold_cache_t::thrash_reorder(size_t mem_size, size_t granularity) const {
     const dnnl_dims_t dims {div_up(nelems, stride)};
     const dnnl_dims_t strides {stride};
 
-    dnn_mem_t src_m(1, dims, dnnl_f32, strides, engine);
-    dnn_mem_t dst_m(1, dims, dnnl_f32, strides, engine);
+    // Since it's a thrash reorder, just need memory pages to go through, no
+    // need to prefill data.
+    dnn_mem_t src_m(1, dims, dnnl_f32, strides, engine, /* prefill = */ false);
+    dnn_mem_t dst_m(1, dims, dnnl_f32, strides, engine, /* prefill = */ false);
 
     dnnl_primitive_desc_t r_pd {};
     dnnl_primitive_attr_t attr {};

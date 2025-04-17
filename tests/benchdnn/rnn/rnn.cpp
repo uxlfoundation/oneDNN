@@ -145,8 +145,9 @@ int check_s8s8_reorder(const prb_t &prb, rnn_data_kind_t kind,
     // alignment as packed buffer is aligned internally and the offset
     // is kept in the metadata.
     // Works fine with dnn_mem_t as it is align to 2MB large page boundary
-    dnn_mem_t mem_s8_src(mem_fp.md_, dnnl_s8, tag::abx, get_cpu_engine());
-    dnn_mem_t mem_s8_dst(mem_dt.md_, get_test_engine());
+    dnn_mem_t mem_s8_src(mem_fp.md_, dnnl_s8, tag::abx, get_cpu_engine(),
+            /* prefill = */ true);
+    dnn_mem_t mem_s8_dst(mem_dt.md_, get_test_engine(), /* prefill = */ true);
 
     /* 1. compute f32_plain --quant--> s8_plain_quantized */
     /* Do fixed partitioning to have same filling for any number of threads */
@@ -435,7 +436,8 @@ int fill_weights(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
     assert(kind == WEIGHTS_PROJECTION ? mem_fp.ndims() == 4
                                       : mem_fp.ndims() == 5);
 
-    dnn_mem_t mem_pure_fp(mem_dt.md_, dnnl_f32, tag::abx, get_cpu_engine());
+    dnn_mem_t mem_pure_fp(mem_dt.md_, dnnl_f32, tag::abx, get_cpu_engine(),
+            /* prefill = */ false);
 
     const auto dt = prb.cfg[kind].dt;
     const auto &dims = mem_fp.dims();
@@ -1102,7 +1104,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD && exec_arg != DNNL_ARG_WORKSPACE) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 

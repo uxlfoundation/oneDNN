@@ -45,18 +45,18 @@ struct dnn_mem_t {
     };
 
     dnn_mem_t() { map(); }
-    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
+    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
 
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine);
+            const std::string &tag, dnnl_engine_t engine, bool prefill);
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-            const dnnl_dims_t strides, dnnl_engine_t engine);
+            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
 
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine);
+            const std::string &tag, dnnl_engine_t engine, bool prefill);
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const dnnl_dims_t strides, dnnl_engine_t engine);
+            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
 
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
             dnnl_engine_t engine);
@@ -225,7 +225,18 @@ private:
     int initialize_memory_create_opencl(const handle_info_t &handle_info);
     int initialize_memory_create(const handle_info_t &handle_info);
 
-    int initialize(dnnl_engine_t engine,
+    // `prefill` is a flag that controls whether the underlying memory buffer
+    // will be accessed to set a special value across the buffer, such as NaN,
+    // to catch issues with no/bad access.
+    //
+    // Some memory objects created will be filled right away with different
+    // values, e.g., reference f32 memories. In that case, read/write access
+    // with a special value is a waste of memory bandwidth so developer decides
+    // when to enable/disable it.
+    //
+    // The flag is propagated to the toppest dnn_mem_t constructors. In case
+    // when in doubt, always use `true` to stay on the safe side of things.
+    int initialize(dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
 
     void set_dt(dnnl_data_type_t dt) const;

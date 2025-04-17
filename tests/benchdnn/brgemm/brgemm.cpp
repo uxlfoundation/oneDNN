@@ -785,24 +785,30 @@ void init_memory_args(
 
     const auto &test_engine = get_test_engine();
 
-    mem_map.emplace(DNNL_ARG_SRC, dnn_mem_t(src_md, test_engine));
-    mem_map.emplace(DNNL_ARG_WEIGHTS, dnn_mem_t(wei_md, test_engine));
+    mem_map.emplace(
+            DNNL_ARG_SRC, dnn_mem_t(src_md, test_engine, /* prefill = */ true));
+    mem_map.emplace(DNNL_ARG_WEIGHTS,
+            dnn_mem_t(wei_md, test_engine, /* prefill = */ true));
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
     if (prb->bia_dt != dnnl_data_type_undef) {
         // Need condition to extract bias pointer based on presence in map
         // condition.
-        mem_map.emplace(DNNL_ARG_BIAS, dnn_mem_t(bia_md, test_engine));
+        mem_map.emplace(DNNL_ARG_BIAS,
+                dnn_mem_t(bia_md, test_engine, /* prefill = */ true));
     }
 #else
-    mem_map.emplace(DNNL_ARG_WEIGHTS_1, dnn_mem_t(wei_packed_md, test_engine));
+    mem_map.emplace(DNNL_ARG_WEIGHTS_1,
+            dnn_mem_t(wei_packed_md, test_engine, /* prefill = */ true));
 #endif
-    mem_map.emplace(DNNL_ARG_DST_1, dnn_mem_t(acc_md, test_engine));
-    mem_map.emplace(DNNL_ARG_DST, dnn_mem_t(dst_md, test_engine));
+    mem_map.emplace(DNNL_ARG_DST_1,
+            dnn_mem_t(acc_md, test_engine, /* prefill = */ true));
+    mem_map.emplace(
+            DNNL_ARG_DST, dnn_mem_t(dst_md, test_engine, /* prefill = */ true));
     if (scratchpad_size > 0) {
         // Need condition to extract scratchpad pointer based on presence in map
         // condition.
-        mem_map.emplace(
-                DNNL_ARG_SCRATCHPAD, dnn_mem_t(scratchpad_md, test_engine));
+        mem_map.emplace(DNNL_ARG_SCRATCHPAD,
+                dnn_mem_t(scratchpad_md, test_engine, /* prefill = */ true));
     }
 
     // Binary post-op.
@@ -837,7 +843,8 @@ void init_memory_args(
 
         auto po_md
                 = dnn_mem_t::init_md(ndims, dims.data(), b.src1_dt, tag::abx);
-        mem_map.emplace(po_arg, dnn_mem_t(po_md, test_engine));
+        mem_map.emplace(
+                po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
     }
 
     if (!prb->attr.scales.is_def()) {
@@ -864,7 +871,8 @@ void init_memory_args(
             const auto dt = sc.get(exec_arg).dt;
             auto scales_md
                     = dnn_mem_t::init_md(ndims, dims.data(), dt, tag::abx);
-            mem_map.emplace(exec_sc_arg, dnn_mem_t(scales_md, test_engine));
+            mem_map.emplace(exec_sc_arg,
+                    dnn_mem_t(scales_md, test_engine, /* prefill = */ true));
         }
     }
 
@@ -891,7 +899,8 @@ void init_memory_args(
             }
             const auto dt = zp.get(exec_arg).dt;
             auto zp_md = dnn_mem_t::init_md(ndims, dims.data(), dt, tag::abx);
-            mem_map.emplace(exec_zp_arg, dnn_mem_t(zp_md, test_engine));
+            mem_map.emplace(exec_zp_arg,
+                    dnn_mem_t(zp_md, test_engine, /* prefill = */ true));
         }
     }
 }
@@ -922,7 +931,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
 
         auto &ref_mem = ref_mem_map[exec_arg];
@@ -974,7 +984,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     dnnl_dims_t dims = {1};
     auto workspace_md = dnn_mem_t::init_md(1, dims, dnnl_u8, tag::abx);
     ref_mem_map.emplace(DNNL_ARG_WORKSPACE,
-            dnn_mem_t(workspace_md, ref_engine,
+            dnn_mem_t(workspace_md, ref_engine, /* prefill = */ false,
                     {false, (void *)&kernel_args.generate_skip_accumulation_}));
     ref_mem_map.at(DNNL_ARG_WORKSPACE).map();
 
@@ -1009,7 +1019,7 @@ int scales_post_processing(dnn_mem_map_t &mem_map) {
                                             float val) {
         dims_t dims = {16};
         auto new_md = dnn_mem_t::init_md(1, dims.data(), dt, tag::abx);
-        dnn_mem_t new_m(new_md, get_test_engine());
+        dnn_mem_t new_m(new_md, get_test_engine(), /* prefill = */ true);
         if (!new_m.is_mapped()) new_m.map();
         for (int64_t i = 0; i < new_m.nelems(); i++) {
             new_m.set_elem(i, val);

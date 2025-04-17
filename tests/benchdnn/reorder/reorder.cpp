@@ -87,7 +87,7 @@ dnn_mem_t setup_compensation_memory(const prb_t *prb, flag_bit_t flag) {
         dims_t dims = prb->get_compensation_dims(flag);
         int ndims = static_cast<int>(dims.size());
         auto md = dnn_mem_t::init_md(ndims, dims.data(), dnnl_s32, tag::abx);
-        m = dnn_mem_t(md, get_cpu_engine());
+        m = dnn_mem_t(md, get_cpu_engine(), /* prefill = */ false);
     }
     return m;
 };
@@ -118,7 +118,9 @@ int compare_compensation(const prb_t *prb, dnn_mem_map_t &mem_map,
         // straight comparison of values in native plain layout.
         auto comp_md = dnn_mem_t::init_md(mem_ref.ndims(), mem_ref.dims(),
                 mem_ref.dt(), trim_tag_by_mask(prb->dtag, comp_mask));
-        dnn_mem_t comp_m(comp_md, mem_ref.engine(), {false, comp_handle});
+        // Predefined handle_info won't use prefilling no matter what.
+        dnn_mem_t comp_m(comp_md, mem_ref.engine(), /* prefill = */ false,
+                {false, comp_handle});
 
         compare::compare_t cmp;
         cmp.set_zero_trust_percent(100.f); // No sense in zero trust test.
@@ -504,7 +506,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 

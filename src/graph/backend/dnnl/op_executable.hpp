@@ -2820,10 +2820,16 @@ struct sdpa_executable_t : public op_executable_t {
 
         dim_t kv_head_number
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
+
+        const std::string &softmax_mode
+                = op->get_attr<std::string>(op_attr::mode);
+        const alg_kind_t softmax_alg = softmax_mode == "inf_as_zero"
+                ? alg_kind::softmax_accurate_inf_as_zero
+                : alg_kind::softmax_accurate;
         status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
                 md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
-                is_invert_scale_, kv_head_number, mask_type_,
-                alg_kind::softmax_accurate, attr.get());
+                is_invert_scale_, kv_head_number, mask_type_, softmax_alg,
+                attr.get());
         if (s != dnnl::impl::status::success) {
             is_initialized_ = false;
         } else {

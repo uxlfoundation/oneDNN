@@ -276,15 +276,11 @@ status_t sdp_primitive_config_t::initial_check(
                         "mask(optional)");
             }
 
-            // TODO(xxx): remove this when gpu ukernel sdpa supports it.
             if (post_op) {
                 if (post_op->get_kind() == graph::op_kind::SoftMax) {
                     const auto &softmax = post_op;
-                    const auto mode
+                    softmax_mode_
                             = softmax->get_attr<std::string>(op_attr::mode);
-                    VCHECK_SDP_PRIMITIVE(mode != "inf_as_zero",
-                            status::unimplemented,
-                            "Not support softmax with mode=inf_as_zero");
                 }
             }
         } else {
@@ -376,10 +372,13 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
         vs_attr = make_dnnl_primitive_attr(mm2_, mgr.get_info(key));
     }
 
+    const alg_kind_t softmax_alg = softmax_mode_ == "inf_as_zero"
+            ? alg_kind::softmax_accurate_inf_as_zero
+            : alg_kind::softmax_accurate;
     CHECK(create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(), md_k.get(),
             md_v.get(), md_dst.get(), md_mask.get(), scale_dt, invert_scale_,
-            kv_head_number_, mask_type_, alg_kind::softmax_accurate, attr.get(),
-            qk_attr.get(), vs_attr.get()));
+            kv_head_number_, mask_type_, softmax_alg, attr.get(), qk_attr.get(),
+            vs_attr.get()));
 
     auto status = sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());
 

@@ -172,7 +172,6 @@ protected:
     void goto12(const ngen::InstructionModifier &mod, ngen::Label &jip) { goto12(mod, jip, jip); }
     void goto12(const ngen::InstructionModifier &mod, ngen::Label &jip, ngen::Label &uip, bool branchCtrl = false);
 
-    template <typename DT = void> void mulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int32_t src1);
 
     void cmp0(const ngen::InstructionModifier &mod, ngen::RegData src0);
     void syncall();
@@ -190,19 +189,21 @@ protected:
     void doReadSuppressionWA(const CommonStrategy &strategy, CommonState &state);
 
     // math_helpers.cpp
-    void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, int src0, const ngen::RegData &src1, int numerator, int denominator, CommonState &state, bool exact = false);
-    void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, int numerator, int denominator,  CommonState &state, bool exact = false);
-    void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int src1, int numerator, int denominator,  CommonState &state, bool exact = false);
-    template <typename S0, typename S1> void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, S0 src0, S1 src1, Type T, CommonState &state, bool exact = false, int scale = 1);
+    void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, int src0, const ngen::RegData &src1, int numerator, int denominator, CommonState &state, bool exact = false, ngen::SourceLocation loc = {});
+    void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, int numerator, int denominator,  CommonState &state, bool exact = false, ngen::SourceLocation loc = {});
+    void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int src1, int numerator, int denominator,  CommonState &state, bool exact = false, ngen::SourceLocation loc = {});
+    template <typename S0, typename S1> void addScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, S0 src0, S1 src1, Type T, CommonState &state, bool exact = false, int scale = 1, ngen::SourceLocation loc = {});
 
-    template <typename DT = void> void mod(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void modExt(const ngen::Subregister &dstMod, const ngen::Subregister &dstMultiple, const ngen::Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void alignDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void alignDown(const ngen::InstructionModifier &mod, const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void alignUp(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t divisor, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void divDown(const ngen::Subregister &dst, const ngen::Subregister &src0, const ngen::Subregister &src1, const ngen::Subregister &src1Recip, const ngen::FlagRegister &flag, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void divUp(const ngen::Subregister &dst, const ngen::Subregister &src0, const ngen::Subregister &src1, const ngen::Subregister &src1Recip, const ngen::FlagRegister &flag, const CommonStrategy &strategy, CommonState &state);
+    template <typename DT = void> void mulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int32_t src1, ngen::SourceLocation loc = {});
+
+    template <typename DT = void> void mod(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void modExt(const ngen::Subregister &dstMod, const ngen::Subregister &dstMultiple, const ngen::Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void alignDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void alignDown(const ngen::InstructionModifier &mod, const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void alignUp(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t divisor, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void divDown(const ngen::Subregister &dst, const ngen::Subregister &src0, const ngen::Subregister &src1, const ngen::Subregister &src1Recip, const ngen::FlagRegister &flag, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void divUp(const ngen::Subregister &dst, const ngen::Subregister &src0, const ngen::Subregister &src1, const ngen::Subregister &src1Recip, const ngen::FlagRegister &flag, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
 
     // common.cpp
     void duplicateScalar(SubregisterPair &val, CommonState &state);

@@ -1192,7 +1192,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
             output_md = diff_src_md_size > 0 ? diff_src_md : diff_wei_md;
         }
 
-        if (!check_md_consistency_with_tag(output_md, tag::abx)) {
+        if (query_md_data_type(output_md) != dnnl_f32
+                || !check_md_consistency_with_tag(output_md, tag::abx)) {
             total_size_compare *= 2;
         }
     }

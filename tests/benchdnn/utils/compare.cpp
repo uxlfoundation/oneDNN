@@ -364,6 +364,11 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                 break;
             }
 
+            // Discard tiny values very close to each other. It's impossible to
+            // compare them reliably and fit into any criterion.
+            ok = fabsf(args.exp) <= 1e-5f && args.diff < epsilon_dt(dnnl_f32);
+            if (ok) break;
+
             // Standard check for relative diff is under set threshold.
             ok = (fabsf(args.exp) > 1e-5f ? args.rel_diff : args.diff) <= trh_;
             if (ok) break;

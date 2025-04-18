@@ -267,6 +267,7 @@ struct memory_registry_t {
                 "allocation size: %s\n",
                 smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
         allocations_.erase(ptr);
+        if (has_warned_) exit(2);
     }
 
     void set_expected_max(size_t size) {
@@ -282,7 +283,7 @@ private:
                 && total_size_ > expected_max_) {
             // Switch to WARNING once existing failures are resolved
             BENCHDNN_PRINT(0,
-                    "[CHECK_MEM][INFO]: memory use underestimated, "
+                    "[CHECK_MEM][ERROR]: memory use underestimated, "
                     "zmalloc allocations exceed %s\n",
                     smart_bytes(expected_max_).c_str());
             // Prevent spamming logs with subsequent overflowing allocations;

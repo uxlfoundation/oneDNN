@@ -1,7 +1,10 @@
 # Performance Optimizations
 ## Intel Architecture Processors
-* Improved matmul performance on Intel Xeon processors with support for the Intel AMX instruction set.
-* Improved `fp16`/`bf16` depthwise convolution performance with `fp32` bias or `sum` post-ops.
+* Improved matmul and inner product primitives performance on Intel Xeon processors with support for the Intel AMX instruction set.
+* Improved performance of convolution and inner product primitives on processors with Intel AVX2 instruction set support.
+* Improved performance of `int8` convolution support with zero points.
+* Improved `fp32` convolution performance with `fp16` and `bf16` compressed weights on processors with Intel AVX2 and AVX512 instruction set support.
+* Improved `fp16`/`bf16` depthwise convolution performance with `fp32` bias or `sum` post-ops or dilation.
 * Improved `bf16` pooling backpropagation performance.
 * Improved binary post-ops performance with `per_w` broadcast.
 

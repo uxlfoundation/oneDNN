@@ -38,11 +38,11 @@ still take effect.
 | \                    | AVX512_CORE_BF16                             | Intel AVX-512 with Intel DL Boost and bfloat16 support                                                                                                                |
 | \                    | AVX10_1_512 or AVX512_CORE_FP16              | Intel AVX10.1/512 with float16 and Intel DL Boost and bfloat16                                                                                                        |
 | \                    | AVX10_1_512_AMX or AVX512_CORE_AMX           | Intel AVX10.1/512 with float16, Intel DL Boost and bfloat16 support and Intel Advanced Matrix Extensions (Intel AMX) with 8-bit integer and bfloat16 support          |
-| \                    | AVX2_VNNI_2                                  | Intel AVX2 with Intel Deep Learning Boost (Intel DL Boost) with 8-bit integer, float16 and bfloat16 support                                                           |
-| \                    | AVX10_1_512_AMX_FP16 or AVX512_CORE_AMX_FP16 | Intel AVX10.1/512 with float16, Intel DL Boost and bfloat16 support and Intel Advanced Matrix Extensions (Intel AMX) with 8-bit integer, bfloat16 and float16 support |
+| \                    | AVX2_VNNI_2                                  | Intel AVX2 with Intel DL Boost with 8-bit integer, float16 and bfloat16 support                                                                                       |
+| \                    | AVX10_1_512_AMX_FP16 or AVX512_CORE_AMX_FP16 | Intel AVX10.1/512 with float16, Intel DL Boost and bfloat16 support and Intel AMX with 8-bit integer, bfloat16 and float16 support                                    |
 | \                    | **DEFAULT**                                  | **No restrictions on the above ISAs, but excludes the below ISAs with preview support in the library (default)**                                                      |
-| \                    | AVX10_2_512                                  | Intel AVX10.2/512 support (TODO: Write details)                                                                                                                       |
-| \                    | AVX10_2_512_AMX_2                            | Intel AMX and AVX10.2/512 support (TODO: Write details)                                                                                                               |
+| \                    | AVX10_2_512                                  | Intel AVX10.2/512 with float16, Intel DL Boost and bfloat16                                                                                                           |
+| \                    | AVX10_2_512_AMX_2                            | Intel AVX10.2/512 with float16, Intel DL Boost and bfloat16 support and Intel AMX with 8-bit integer, bfloat16, float16, float8 support                               |
 
 @note The ISAs are partially ordered:
 * SSE41 < AVX < AVX2 < AVX2_VNNI < AVX2_VNNI_2,
@@ -51,7 +51,7 @@ still take effect.
 * AVX10_1_512 < AVX10_1_512_AMX < AVX10_1_512_AMX_FP16
   < AVX10_2_512_AMX_2,
 * AVX2_VNNI < AVX10_1_512,
-* AVX10_2_512 < AVX10_2_512_AMX_20_2_512.
+* AVX10_2_512 < AVX10_2_512_AMX_2.
 
 The below values are aliased for backward compatibility with the introduction of
 AVX10.1:

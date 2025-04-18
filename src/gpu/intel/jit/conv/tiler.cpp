@@ -620,7 +620,9 @@ private:
 
         static bool get_dpas_2x_depth(
                 const blocking_t &blk, const conv_config_t &cfg, dim_t mn) {
-            if (!cfg.is_dp_fma() || cfg.regs() <= 128) return false;
+            if (!cfg.is_dp_fma() || cfg.regs() <= 128
+                    || cfg.prb().is_fp8_conv())
+                return false;
 
             // Use 2x reduction when the reduction dimension is dense to avoid
             // partial cache line loads.

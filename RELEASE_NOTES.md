@@ -14,10 +14,11 @@
  * Intel Arc Graphics for Intel Core Ultra (Series 2, formerly Lunar Lake).
  * Intel Arc B-series discrete graphics (formerly Battlemage).
 * Improved `int8` matmul performance with zero-points support for source and weight tensors.
+* Improved matmul and reorder performance for 4-bit floating-point data types `f4_e2m1` and `f4_e3m0`. Compute primitives provide support through internal converison into f16 as current Intel GPUs lack native support.
 * Improved performance of the following subgraphs with Graph API:
  * Scaled Dot Product Attention (SDPA) with `int4` and `int8` KV cache.
  * SDPA with bottom-right implicit causal mask.
- * SDPA with head size between 257 and 512.
+ * SDPA with head size 512 and 576.
  * Grouped Query Attention (GQA) with 5D input tensors.
 
 ## AArch64-based Processors
@@ -25,11 +26,11 @@
 * Preferential use of jit_sve conv where faster.
 
 # Functionality
-## Common
-* Introduced select algorithm support in [binary primitive](https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html). The functionality is implemented on CPUs and Intel GPUs.
-
 ## Intel Graphics Products
 * Introduced support for the [GenIndex](https://oneapi-src.github.io/oneDNN/v3.8/dev_guide_op_genindex.html) operation in Graph API.
+* Introduced select algorithm support in [binary primitive](https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html). The functionality is optimized for Intel GPUs.
+* Introduced optimized support for 4-bit floating-point data types `f4_e2m1` and `f4_e3m0` in convolution on Intel(R) Data Center GPU Max Series or newer Intel GPUs.
+* Extended support for 4-bit floating-point data types in matmul and reorder.
 
 ## Intel Architecture Processors
 * Introduced support for `f32` convolution with `fp16` compressed weights.

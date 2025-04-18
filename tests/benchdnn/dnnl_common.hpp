@@ -708,6 +708,8 @@ dims_t md2dims(const_dnnl_memory_desc_t md, int mask = -1,
 dnnl_data_type_t deduce_cfg_data_type(
         dnnl_data_type_t in_dt, const attr_t &attr, data_kind_t dk);
 
+bool has_runtime_dims(const_dnnl_memory_desc_t md);
+
 // `init_memory_args` is responsible for:
 // * Constructing all necessary `dnn_mem_t` objects needed by the library
 //   primitive for the main operation and attributes.
@@ -751,12 +753,6 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     auto const_po = query_post_ops(const_pd);
     const auto prim_kind = query_prim_kind(const_pd);
     const auto prop_kind = query_prop_kind(const_pd);
-
-    const auto has_runtime_dims = [](const_dnnl_memory_desc_t md) -> bool {
-        for (int d = 0; d < query_md_ndims(md); ++d)
-            if (query_md_dims(md)[d] == DNNL_RUNTIME_DIM_VAL) return true;
-        return false;
-    };
 
     if (prim_kind == dnnl_reorder) {
         auto src_engine = query_engine(const_pd, dnnl_query_reorder_src_engine);

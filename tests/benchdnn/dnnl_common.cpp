@@ -1372,7 +1372,7 @@ void get_memory_bytes(check_mem_size_args_t &check_mem_size_args) {
         add_md_size(md, check_mem_size_args);
     }
 
-    // Binary post-op memories counted as input.
+    // Post-op memories counted as input.
     if (check_mem_size_args.want_input) {
         auto const_attr_po = query_post_ops(const_pd);
         auto po_len = dnnl_post_ops_len(const_attr_po);
@@ -1383,6 +1383,28 @@ void get_memory_bytes(check_mem_size_args_t &check_mem_size_args) {
                         = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
                 const auto &po_md = query_md(const_pd, po_arg);
                 add_md_size(po_md, check_mem_size_args);
+            } else if (kind == dnnl_prelu) {
+                // Can't query md for prelu as the library doesn't provide it.
+                // TODO: Could have a common function with the one that pushes
+                // memories for the library, but this one doesn't have `prb`
+                // and it must be templated. If `prb_t` ever comes a regular
+                // non-templated type, consolidate them.
+
+                const auto &dst_md = query_md(const_pd, DNNL_ARG_DST);
+                if (has_runtime_dims(dst_md)) {
+                    // Can't do anything with runtime dimensions.
+                    continue;
+                }
+
+                const auto ndims = query_md_ndims(dst_md);
+                int mask = 0;
+                dnnl_post_ops_get_params_prelu(const_attr_po, idx, &mask);
+
+                // Deduce prelu weights dims based on input policy.
+                dims_t dims = md2dims(dst_md, mask);
+                const auto md = dnn_mem_t::init_md(
+                        ndims, dims.data(), dnnl_f32, tag::axb);
+                add_md_size(md, check_mem_size_args);
             }
         }
     }
@@ -1704,6 +1726,12 @@ dnnl_data_type_t deduce_cfg_data_type(
     }
 
     return dt_;
+}
+
+bool has_runtime_dims(const_dnnl_memory_desc_t md) {
+    for (int d = 0; d < query_md_ndims(md); ++d)
+        if (query_md_dims(md)[d] == DNNL_RUNTIME_DIM_VAL) return true;
+    return false;
 }
 
 // This function handles cases when optimized CPU primitive is used as a

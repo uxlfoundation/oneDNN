@@ -11,15 +11,15 @@
 ## Intel Graphics Products
 * Improved performance on Intel GPUs based on Xe3 architecture.
 * Improved convolution performance on:
- * Intel Arc Graphics for Intel Core Ultra (Series 2, formerly Lunar Lake).
- * Intel Arc B-series discrete graphics (formerly Battlemage).
+  * Intel Arc Graphics for Intel Core Ultra (Series 2, formerly Lunar Lake).
+  * Intel Arc B-series discrete graphics (formerly Battlemage).
 * Improved `int8` matmul performance with zero-points support for source and weight tensors.
 * Improved `f4_e2m1` and `f4_e3m0` matmul and reorder performance.
 * Improved performance of the following subgraphs with Graph API:
- * [Scaled Dot Product Attention (SDPA)] with `int4` and `int8` [compressed key and value].
- * `fp16`/`bf16` SDPA with `fp32` intermediate data types. Using `fp32` intermediate data types is recommended.
- * SDPA with head size 512 and 576.
- * [Grouped Query Attention (GQA)] with 5D input tensors.
+  * [Scaled Dot Product Attention (SDPA)] with `int4` and `int8` [compressed key and value].
+  * `fp16`/`bf16` SDPA with `fp32` intermediate data types. Using `fp32` intermediate data types is recommended.
+  * SDPA with head size 512 and 576.
+  * [Grouped Query Attention (GQA)] with 5D input tensors.
 
 [Scaled Dot Product Attention (SDPA)]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_graph_sdpa.html
 [compressed key and value]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_graph_sdpa_compressed_kv.html
@@ -54,9 +54,9 @@
 
 ## Generic GPU Vendor
 * Introduced support for:
- * Vanilla RNN forward propagation
- * Inner product backpropagation
- * Group normalization
+  * Vanilla RNN forward propagation
+  * Inner product backpropagation
+  * Group normalization
 * Improved accuracy of inner product primitive with sum post-ops for large shapes.
 
 ## NVIDIA GPUs

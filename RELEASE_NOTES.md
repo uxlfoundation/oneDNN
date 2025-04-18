@@ -50,7 +50,7 @@
 * Introduced support for the [GenIndex] operation in Graph API.
 
 [binary primitive]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html
-[GenIndex]: https://oneapi-src.github.io/oneDNN/v3.8/dev_guide_op_genindex.html
+[GenIndex]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_op_genindex.html
 
 ## Generic GPU Vendor
 * Introduced support for:
@@ -87,6 +87,6 @@
 [Graph Compiler]: https://uxlfoundation.github.io/oneDNN/v3.7/dev_guide_graph_compiler.html
 
 # Thanks to our Contributors
-This release contains contributions from the [project core team] as well as Alexander Simonov @asimonov1, Denis @redradist, Dmitriy Ovchinnikov @inteldimitrius, Eliezer Weissmann @eliezerweissmann, Hubert Maciak @hmaciak, Ilya Lavrenov @ilya-lavrenov, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Maria Zhukova @mzhukova, Orel Yehuda @yehudaorel, Ravi Pushkar @rpushkarr, Renato Barros Arantes @renato-arantes, Shreyas-fuj @Shreyas-fuj, Shu Chen @shu1chen, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, hmaciak @hmaciak, jstachowintel @jstachowintel, zhangfei @zhangfeiv0, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Renato Barros Arantes @renato-arantes.
+This release contains contributions from the [project core team] as well as Aditya Tewari @aditew01, Alexander Simonov @asimonov1, Denis @redradist, Dmitriy Ovchinnikov @inteldimitrius, Eliezer Weissmann @eliezerweissmann, Hubert Maciak @hmaciak, Ilya Lavrenov @ilya-lavrenov, James McGregor @Jmc18134, @jstachowintel, Marek Michalowski @michalowski-arm, Maria Zhukova @mzhukova, Orel Yehuda @yehudaorel, Ravi Pushkar @rpushkarr, Renato Barros Arantes @renato-arantes, @Shreyas-fuj, Shu Chen @shu1chen, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, and @zhangfeiv0.
 
 [project core team]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.8/MAINTAINERS.md

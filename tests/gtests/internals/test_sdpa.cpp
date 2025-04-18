@@ -109,7 +109,7 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
     if ((!(p.kdt == mdt::f16 || p.vdt == mdt::f16)
                 || !(p.kdt == mdt::bf16 || p.vdt == mdt::bf16))
             && p.qtype != quantize_type::no_quantization) {
-        ss << "_qtype_" << p.qtype;
+        ss << "_" << p.qtype;
     }
     return ss;
 }
@@ -382,8 +382,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
     std::vector<float> key_quantized_data(product(k_sz), 0);
     std::vector<float> val_quantized_data(product(v_sz), 0);
-    std::vector<float> key_scale_data(product(key_scales_sz), 1.f);
-    std::vector<float> val_scale_data(product(val_scales_sz), 1.f);
+    std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));
+    std::vector<float> val_scale_data(product(val_scales_sz), std::nanf("1"));
 
     std::vector<int> key_zp_data_signed(product(key_scales_sz), INT_MAX);
     std::vector<int> val_zp_data_signed(product(val_scales_sz), INT_MAX);
@@ -455,18 +455,36 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     fill_random_quantized(val_quantized_data, val_quantized_md,
             (p.vdt == mdt::u4 || p.vdt == mdt::u8));
     if (p.qtype != quantize_type::no_quantization) {
-        if (p.kdt != mdt::f16 && p.kdt != mdt::bf16 && p.ksdt != mdt::undef)
+        if (p.kdt != mdt::f16 && p.kdt != mdt::bf16 && p.ksdt != mdt::undef) {
             fill_random_scales(key_scale_data, key_scales_md);
-        if (p.vdt != mdt::f16 && p.vdt != mdt::bf16 && p.vsdt != mdt::undef)
+        } else {
+            fill_value(key_scale_data, key_scales_md, 1.f);
+        }
+        if (p.vdt != mdt::f16 && p.vdt != mdt::bf16 && p.vsdt != mdt::undef) {
             fill_random_scales(val_scale_data, val_scales_md);
-        if (p.kdt != mdt::f16 && p.kdt != mdt::bf16 && p.kzpdt != mdt::undef)
+        } else {
+            fill_value(val_scale_data, val_scales_md, 1.f);
+        }
+        if (p.kdt != mdt::f16 && p.kdt != mdt::bf16 && p.kzpdt != mdt::undef) {
             fill_random_quantized(key_zp_data_signed, key_zp_md);
-        if (p.vdt != mdt::f16 && p.vdt != mdt::bf16 && p.vzpdt != mdt::undef)
+        } else {
+            fill_value(key_zp_data_signed, key_zp_md, 0);
+        }
+        if (p.vdt != mdt::f16 && p.vdt != mdt::bf16 && p.vzpdt != mdt::undef) {
             fill_random_quantized(val_zp_data_signed, val_zp_md);
-        if (p.kdt != mdt::f16 && p.kdt != mdt::bf16 && p.kzpdt != mdt::undef)
+        } else {
+            fill_value(val_zp_data_signed, val_zp_md, 0);
+        }
+        if (p.kdt != mdt::f16 && p.kdt != mdt::bf16 && p.kzpdt != mdt::undef) {
             fill_random_quantized(key_zp_data_unsigned, key_zp_md);
-        if (p.vdt != mdt::f16 && p.vdt != mdt::bf16 && p.vzpdt != mdt::undef)
+        } else {
+            fill_value(key_zp_data_unsigned, key_zp_md, 0U);
+        }
+        if (p.vdt != mdt::f16 && p.vdt != mdt::bf16 && p.vzpdt != mdt::undef) {
             fill_random_quantized(val_zp_data_unsigned, val_zp_md);
+        } else {
+            fill_value(val_zp_data_unsigned, val_zp_md, 0U);
+        }
     }
 
     if (p.mask == mask_type::causal_br || p.mask == mask_type::causal_tl) {
@@ -611,6 +629,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
                 key_zp_data_unsigned, key_scale_data, group_size, p.qtype,
                 out.kq_groups, 0);
     }
+
     group_size = p.vgroup_size;
     if (p.qtype == quantize_type::per_tensor) {
         group_size = v_sz[0] * v_sz[1] * v_sz[2] * v_sz[3];

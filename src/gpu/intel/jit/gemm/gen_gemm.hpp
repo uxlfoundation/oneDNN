@@ -243,13 +243,13 @@ struct gen_gemm_t : public gpu_gemm_t {
                 if (!attr_zps.has_default_values(DNNL_ARG_A)) {
                     const int cmask_a = attr_zps.get_mask(DNNL_ARG_A);
                     ao_dims_ = cmask_a > 0;
+                    const auto idx = DNNL_ARG_WEIGHTS;
 
                     // Groups determine supported masks.
                     if (!attr_zps.has_default_groups(DNNL_ARG_A)) {
                         VDISPATCH_GEMM(valid_2d_mask(cmask_a, a_ndims),
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
-                        const auto idx = DNNL_ARG_WEIGHTS;
                         auto zp_group_k = attr_zps.get_group(idx, 0);
                         if (zp_group_k < d->k()) {
                             wei_zp_2d = true;
@@ -276,19 +276,25 @@ struct gen_gemm_t : public gpu_gemm_t {
                                         || utils::one_of(d->a_type(), s4, u4)
                                         || !wei_scales_2d_,
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
+                        bool i8_plus_zp = (attr_zps.has_default_data_type()
+                                || utils::one_of(
+                                        attr_zps.get_data_type(idx), s8, u8));
+                        VDISPATCH_GEMM(!(utils::one_of(d->a_type(), s8, u8)
+                                               && wei_scales_2d_ && i8_plus_zp),
+                                VERBOSE_UNSUPPORTED_ZP_CFG);
                     }
                 }
 
                 if (!attr_zps.has_default_values(DNNL_ARG_B)) {
                     const int cmask_b = attr_zps.get_mask(DNNL_ARG_B);
                     bo_dims_ = cmask_b > 0;
+                    const auto idx = DNNL_ARG_SRC;
 
                     // Groups determine supported masks.
                     if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
                         VDISPATCH_GEMM(valid_2d_mask(cmask_b, b_ndims),
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
-                        const auto idx = DNNL_ARG_SRC;
                         auto zp_group_k = attr_zps.get_group(idx, 1);
                         if (zp_group_k < d->k()) {
                             bo_dims_ = 2;
@@ -307,6 +313,13 @@ struct gen_gemm_t : public gpu_gemm_t {
                     } else {
                         VDISPATCH_GEMM(utils::one_of(cmask_b, 0, mask_scalar,
                                                mask_per_oc | mask_per_ic),
+                                VERBOSE_UNSUPPORTED_ZP_CFG);
+                        // Int8 data with int8 zp and any grouped scale is unsupported.
+                        bool i8_plus_zp = (attr_zps.has_default_data_type()
+                                || utils::one_of(
+                                        attr_zps.get_data_type(idx), s8, u8));
+                        VDISPATCH_GEMM(!(utils::one_of(d->b_type(), s8, u8)
+                                               && src_scales_2d_ && i8_plus_zp),
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
                     }
                 }

@@ -1,9 +1,9 @@
 # Performance Optimizations
 ## Intel Architecture Processors
-* Improved matmul and inner product primitives performance on Intel Xeon processors with support for the Intel AMX instruction set.
+* Improved matmul and inner product primitives performance on processors with Intel AMX instruction set support.
 * Improved performance of convolution and inner product primitives on processors with Intel AVX2 instruction set support.
 * Improved performance of `int8` convolution support with zero points.
-* Improved `fp32` convolution performance with `fp16` and `bf16` compressed weights on processors with Intel AVX2 and AVX512 instruction set support.
+* Improved `fp32` convolution performance with `fp16` and `bf16` compressed weights on processors with Intel AVX2 or Intel AVX-512 instruction set support.
 * Improved `fp16`/`bf16` depthwise convolution performance with `fp32` bias or `sum` post-ops or dilation.
 * Improved `bf16` pooling backpropagation performance.
 * Improved binary post-ops performance with `per_w` broadcast.
@@ -14,29 +14,43 @@
  * Intel Arc Graphics for Intel Core Ultra (Series 2, formerly Lunar Lake).
  * Intel Arc B-series discrete graphics (formerly Battlemage).
 * Improved `int8` matmul performance with zero-points support for source and weight tensors.
-* Improved matmul and reorder performance for 4-bit floating-point data types `f4_e2m1` and `f4_e3m0`. Compute primitives provide support through internal converison into f16 as current Intel GPUs lack native support.
+* Improved `f4_e2m1` and `f4_e3m0` matmul and reorder performance.
 * Improved performance of the following subgraphs with Graph API:
- * Scaled Dot Product Attention (SDPA) with `int4` and `int8` KV cache.
- * SDPA with bottom-right implicit causal mask.
+ * [Scaled Dot Product Attention (SDPA)] with `int4` and `int8` [compressed key and value].
+ * `fp16`/`bf16` SDPA with `fp32` intermediate data types. Using `fp32` intermediate data types is recommended.
  * SDPA with head size 512 and 576.
- * Grouped Query Attention (GQA) with 5D input tensors.
+ * [Grouped Query Attention (GQA)] with 5D input tensors.
+
+[Scaled Dot Product Attention (SDPA)]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_graph_sdpa.html
+[compressed key and value]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_graph_sdpa_compressed_kv.html
+[Grouped Query Attention (GQA)]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_graph_gqa.html
 
 ## AArch64-based Processors
 * Improved `fp16` reorder performance.
 * Improved `int8` matmul performance.
 * Improved `bf16` inner product forward propagation performance with Arm Compute Library (ACL).
-* Improved convolution performance on processors with SVE support with Arm Compute Library (ACL).
+* Improved convolution performance on processors with SVE support with ACL.
 
 # Functionality
-## Intel Graphics Products
-* Introduced support for the [GenIndex](https://oneapi-src.github.io/oneDNN/v3.8/dev_guide_op_genindex.html) operation in Graph API.
-* Introduced select algorithm support in [binary primitive](https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html). The functionality is optimized for Intel GPUs.
-* Introduced optimized support for 4-bit floating-point data types `f4_e2m1` and `f4_e3m0` in convolution on Intel(R) Data Center GPU Max Series or newer Intel GPUs.
-* Extended support for 4-bit floating-point data types in matmul and reorder.
+
+## Common
+* Extended Graph API [`Softmax`] operation to support `inf_as_zero` mode. This functionality enables SDPA subgraph compliant with Pytorch [Safe Softmax] semantics.
+
+[`Softmax`]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_op_softmax.html
+[Safe Softmax]: https://github.com/pytorch/pytorch/issues/55056
 
 ## Intel Architecture Processors
+
 * Introduced support for `f32` convolution with `fp16` compressed weights.
-* Enabled `int8`/`int4` compressed weight support in matmul primitive on Intel(R) CPUs. 
+* Enabled `int8`/`int4` compressed weights support in matmul primitive.
+
+## Intel Graphics Products
+* Introduced select algorithm support in [binary primitive].
+* Introduced support for `f4_e2m1` and `f4_e3m0` data types in convolution.
+* Introduced support for the [GenIndex] operation in Graph API.
+
+[binary primitive]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_binary.html
+[GenIndex]: https://oneapi-src.github.io/oneDNN/v3.8/dev_guide_op_genindex.html
 
 ## Generic GPU Vendor
 * Introduced support for:
@@ -49,24 +63,28 @@
 * Introduced Graph API support.
 
 # Usability
- 
-* Added support for Group Normalization primitive with [`ONEDNN_ENABLE_PRIMITIVE`](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#onednn-enable-primitive) build option.
+
+* Added support for Group Normalization primitive with [`ONEDNN_ENABLE_PRIMITIVE`] build option.
 * Enabled support for ROCm 6 on AMD GPUs.
 * Improved CMake integration for oneDNN installation with Nvidia backend enabled.
+* Reduced memory footprint for matmul primitive when using ACL.
 
-## AArch64-based Processors
- * Default thread count to maxin `acl_threadpool` to prevent crashes in Tensorflow.
- * Fixed scratchpad being ignored for some GEMMs. Reduces memory and speeds up execution.
- * Fixed a bug in `fp32` reorders where ACL returned incorrect results.
+[`ONEDNN_ENABLE_PRIMITIVE`]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_build_options.html#onednn-enable-primitive
 
 # Validation
-* Added benchdnn option [`--execution-mode`](https://github.com/uxlfoundation/oneDNN/blob/rls-v3.8/tests/benchdnn/doc/knobs_common.md#--execution-mode) to test oneDNN functionality with SYCL Graph record/execute mode.
-* Extended benchdnn option [`--cold-cache`](https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn/doc/knob_cold_cache.md) with support for cold TLB mode.
+* Added benchdnn option [`--execution-mode`] to test oneDNN functionality with SYCL Graph record/execute mode.
+* Extended benchdnn option [`--cold-cache`] with support for cold TLB mode.
 * Added benchdnn option `--bia-dt` to control bias data type for matmul, inner product, convolution, and deconvolution.
-* Extended syntax of benchdnn `--dt` option in [Graph API driver](https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn/doc/driver_graph.md) to manage data types of individual tensors in a pattern.
+* Extended syntax of benchdnn `--dt` option in [Graph API driver] to manage data types of individual tensors in a pattern.
+
+[`--execution-mode`]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.8/tests/benchdnn/doc/knobs_common.md#--execution-mode
+[`--cold-cache`]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.8/tests/benchdnn/doc/knob_cold_cache.md
+[Graph API driver]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.8/tests/benchdnn/doc/driver_graph.md
 
 # Breaking Changes
-* Removed the experimental [Graph Compiler](https://uxlfoundation.github.io/oneDNN/v3.7/dev_guide_graph_compiler.html) backend.
+* Removed the experimental [Graph Compiler] backend.
+
+[Graph Compiler]: https://uxlfoundation.github.io/oneDNN/v3.7/dev_guide_graph_compiler.html
 
 # Thanks to Contributors
 This release contains contributions from the project core team as well as Alexander Simonov @asimonov1, Denis @redradist, Dmitriy Ovchinnikov @inteldimitrius, Eliezer Weissmann @eliezerweissmann, Hubert Maciak @hmaciak, Ilya Lavrenov @ilya-lavrenov, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Maria Zhukova @mzhukova, Orel Yehuda @yehudaorel, Ravi Pushkar @rpushkarr, Renato Barros Arantes @renato-arantes, Shreyas-fuj @Shreyas-fuj, Shu Chen @shu1chen, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, hmaciak @hmaciak, jstachowintel @jstachowintel, zhangfei @zhangfeiv0, James McGregor @Jmc18134, Marek Michalowski @michalowski-arm, Renato Barros Arantes @renato-arantes.

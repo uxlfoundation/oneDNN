@@ -2307,9 +2307,9 @@ private:
 };
 
 template struct brgemm_matmul_t<avx10_2_512_amx_2>;
-template struct brgemm_matmul_t<avx10_2_512>;
 template struct brgemm_matmul_t<avx512_core_amx_fp16>;
 template struct brgemm_matmul_t<avx512_core_amx>;
+template struct brgemm_matmul_t<avx10_2_512>;
 template struct brgemm_matmul_t<avx512_core_fp16>;
 template struct brgemm_matmul_t<avx512_core_bf16>;
 template struct brgemm_matmul_t<avx512_core_vnni>;

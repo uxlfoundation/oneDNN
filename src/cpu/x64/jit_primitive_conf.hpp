@@ -822,8 +822,8 @@ struct jit_brgemm_conv_conf_t {
     bool dst_zero_point;
     bool req_brg_comp_pad;
     bool req_cal_comp_pad;
-    bool is_bf32;
-    bool is_tf32;
+    bool is_bf32 {false};
+    bool is_tf32 {false};
     bool is_fp8 {false};
     bool is_fp8_convert {false};
     bool is_f32_f16 {false};

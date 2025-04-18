@@ -84,6 +84,37 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag) {
     }
 }
 
+void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
+
+    dim_t parallel_work_amount = bgmmc.batch * bgmmc.M_chunks * bgmmc.N_chunks;
+    int nthr_bmn = bgmmc.nthr / bgmmc.nthr_k;
+    dim_t start {0}, end {0};
+    balance211(parallel_work_amount, nthr_bmn, 0, start, end);
+    dim_t nchunks_per_thread = end - start;
+
+    // memory advice feature heuristic is based on the performance tests done
+    // on simulator and lets the tile loading snoop for other cores caches if
+    // the A/B matrices are shared. thus, if already shared, no need to fetch
+    // from lower level memories the assumption is that if we don't divide
+    // the C matrix evenly on row chunks per thread, then it worth checking
+    // mem advice as there will be sharing
+    if (bgmmc.is_thread_chunks_exec_order_horizontal) {
+        bgmmc.mem_advice
+                = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_B;
+        if (nchunks_per_thread % bgmmc.N_chunks)
+            bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
+                    brgemm_hint_mem_advice_A_B;
+    } else {
+        assert(bgmmc.is_thread_chunks_exec_order_horizontal
+                && "this mode is not operational at the moment");
+        bgmmc.mem_advice
+                = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_A;
+        if (nchunks_per_thread % bgmmc.M_chunks)
+            bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
+                    brgemm_hint_mem_advice_A_B;
+    }
+}
+
 // TODO: add support of post-ops with multiple binary and eltwise execution
 bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
         const memory_desc_wrapper &dst_d,
@@ -185,8 +216,7 @@ status_t check_isa_with_datatype(
                       one_of(isa, avx512_core, avx2) || bm_conf_utils.is_bf32()
                               || bm_conf_utils.is_tf32())
             && IMPLICATION(bm_conf_utils.is_int8(),
-                    is_superset(isa, avx512_core_amx)
-                            || is_superset(isa, avx512_core)
+                    is_superset(isa, avx512_core)
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
                     one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2))

@@ -87,6 +87,18 @@ struct micro_sdpa_t : public gpu_primitive_t {
             VCHECK_SDPA_COND(desc()->values() == desc()->head_size(),
                     "values does not match head size");
 
+            if (utils::one_of(key_md()->data_type, u4, s4)) {
+                VCHECK_SDPA_COND(desc()->keys() % 2 == 0,
+                        "The number of keys must be an even size with the data "
+                        "type is u4 or s4.");
+            }
+
+            if (utils::one_of(val_md()->data_type, u4, s4)) {
+                VCHECK_SDPA_COND(desc()->values() % 2 == 0,
+                        "The number of values must be an even size with the "
+                        "data type is u4 or s4.");
+            }
+
             VCHECK_SDPA_COND(qry_md()->dims[1] >= key_md()->dims[1]
                             && qry_md()->dims[1] >= val_md()->dims[1],
                     "number of heads in query tensor(%ld) must be greater "

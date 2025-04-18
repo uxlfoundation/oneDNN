@@ -97,8 +97,8 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
         const auto &zp = kq_attr->zero_points_;
         if (!sc.has_default_values()) {
             const auto &scale_dt = sc.get_data_type(DNNL_ARG_WEIGHTS);
-            VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, f32), kq_attr,
-                    "scales", "f16 or f32");
+            VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, bf16, f32),
+                    kq_attr, "scales", "f16, bf16, or f32");
         }
         if (!zp.has_default_values()) {
             const auto &zp_dt = zp.get_data_type(DNNL_ARG_WEIGHTS);
@@ -113,8 +113,8 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
 
         if (!sc.has_default_values()) {
             const auto &scale_dt = sc.get_data_type(DNNL_ARG_WEIGHTS);
-            VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, f32), vs_attr,
-                    "scales", "f16 or f32");
+            VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, bf16, f32),
+                    vs_attr, "scales", "f16, bf16, or f32");
         }
         if (!zp.has_default_values()) {
             const auto &zp_dt = zp.get_data_type(DNNL_ARG_WEIGHTS);

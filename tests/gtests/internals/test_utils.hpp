@@ -161,6 +161,14 @@ void fill_random_quantized(std::vector<T> &out, const dnnl::memory::desc &desc,
     }
 }
 
+template <typename T>
+void fill_value(std::vector<T> &out, const dnnl::memory::desc &desc, T value) {
+    auto elems = product(desc.get_dims());
+    for (int i = 0; i < elems; i++) {
+        out[i] = value;
+    }
+}
+
 void dynamic_iterate_alldims(const std::vector<int64_t> &dims,
         const std::function<void(std::vector<int64_t> idxs)> &fn);
 

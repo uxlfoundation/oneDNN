@@ -227,6 +227,10 @@ struct rhs_arg_dynamic_params_t {
     std::map<int, Xbyak::Reg64> vmm_idx_to_out_reg;
     std::map<int, size_t> vmm_idx_to_out_elem_off_val;
 
+    std::map<int, Xbyak::Address> vmm_idx_to_oc_elem_off_addr;
+    std::map<int, size_t> vmm_idx_to_oc_elem_off_val;
+    std::map<int, Xbyak::Reg64> vmm_idx_to_oc_off_reg;
+
     std::unordered_set<int> vmm_tail_idx_;
     tail_lode_mode_t tail_load_mode = tail_lode_mode_t::DEFAULT;
 };
@@ -322,6 +326,17 @@ private:
     /*
      * Helper functions responsible for preparing rhs tensor slice address.
      */
+
+    void append_offset_under_mem_addr(
+            const std::map<int, Xbyak::Address> &vmm_idx_to_elem_addr_off,
+            const std::map<int, Xbyak::Reg64> &vmm_idx_to_elem_reg_off,
+            int vmm_idx, const Xbyak::Reg64 &addr_reg,
+            const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes,
+            bool is_first) const;
+    void append_value_offset(
+            const std::map<int, size_t> &vmm_idx_to_elem_val_off, int vmm_idx,
+            const Xbyak::Reg64 &addr_reg, std::size_t elem_size_bytes) const;
+
     void append_no_broadcast_offset(
             const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
             const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,

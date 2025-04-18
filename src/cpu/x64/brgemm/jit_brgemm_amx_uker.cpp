@@ -177,6 +177,12 @@ private:
     const reg64_t reg_tmp_gpr = rbx;
     const reg64_t reg_ptr_sum_scale = rbx;
 
+    const reg64_t reg_binary_postops_oc_l = rbx;
+    ;
+    const reg64_t reg_aux_binary_postops_oc_l = rbx;
+    ;
+    const reg64_t reg_binary_po_stack_frame = rbx;
+    ;
     const reg64_t reg_zp_comp_a = rbx;
     const reg64_t reg_aux_zp_comp_a = rbx;
     const reg64_t reg_zp_a_values = rbx;
@@ -192,7 +198,9 @@ private:
     constexpr static int reg_zp_c_values_offs_ = 24;
     constexpr static int reg_iter_labels_list_offs_ = 32;
     constexpr static int reg_zp_a_values_offs_ = 40;
-    constexpr static int stack_space_needed_ = 48;
+    constexpr static int reg_binary_postops_oc_l_offs_ = 48;
+    constexpr static int reg_aux_binary_postops_oc_l_offs_ = 56;
+    constexpr static int stack_space_needed_ = 64;
 
     bool are_post_ops_applicable_ = false;
     bool need_to_apply_alpha_beta_ = false;
@@ -581,6 +589,7 @@ private:
     size_t ldb() const noexcept;
 
     size_t bias_offset(int ldb) const noexcept;
+    size_t oc_logical_offset(int ldb, bool is_tail = false) const noexcept;
 
     size_t scales_offset(int ldb) const noexcept;
     size_t zp_comp_a_offset(int ldb) const noexcept;
@@ -765,6 +774,11 @@ size_t jit_brgemm_amx_uker_base_t::bias_offset(int ldb) const noexcept {
     return ldb * ld_block_bias_size_;
 }
 
+size_t jit_brgemm_amx_uker_base_t::oc_logical_offset(
+        int ldb, bool is_tail) const noexcept {
+    return (is_tail) ? brg.ldb_tail : ldb * brg.ld_block;
+}
+
 size_t jit_brgemm_amx_uker_base_t::scales_offset(int ldb) const noexcept {
     return brg.is_oc_scale * ldb * ld_block_scales_size_;
 }
@@ -867,6 +881,13 @@ void jit_brgemm_amx_uker_base_t::read_params() {
 
     mov(reg_buf, ptr[param1 + GET_OFF(ptr_buf)]);
 
+    if (with_binary_per_oc_bcast_) {
+        mov(reg_binary_postops_oc_l, ptr[param1 + GET_OFF(oc_logical_off)]);
+        mov(ptr[rsp + reg_binary_postops_oc_l_offs_], reg_binary_postops_oc_l);
+        mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_],
+                reg_binary_postops_oc_l);
+    }
+
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         mov(reg_zp_comp_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
         mov(ptr[rsp + reg_zp_comp_a_offs_], reg_zp_comp_a);
@@ -964,11 +985,25 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
 
     if (brg.with_binary) {
         if (handle_binary_po_offset_) {
+            const injector_utils::conditional_register_preserve_guard_t
+                    register_guard(with_binary_per_oc_bcast_, this, {param1});
+            const auto guard_space = register_guard.stack_space_occupied();
             for (auto bd = bd_start; bd < bd_finish; bd++) {
                 // We have no way to tell the injector to skip some vectors.
                 // Therefore, we must set parameters correctly for all registers.
                 // TODO: Make it possible to specify "skipped" vectors to injector
+
                 const auto idx = accm(bd).getIdx();
+
+                if (with_binary_per_oc_bcast_) {
+                    mov(param1, ptr[rsp + abi_param1_offs_ + guard_space]);
+                    mov(reg_binary_po_stack_frame, rsp);
+                    rhs_arg_params.vmm_idx_to_oc_elem_off_addr.emplace(idx,
+                            ptr[reg_binary_po_stack_frame
+                                    + reg_aux_binary_postops_oc_l_offs_
+                                    + guard_space]);
+                }
+
                 if (is_ld_tail) rhs_arg_params.vmm_tail_idx_.emplace(idx);
                 rhs_arg_params.vmm_idx_to_out_reg.emplace(idx, reg_D);
 
@@ -977,6 +1012,9 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
                 const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
                 rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
                         idx, d_offset);
+                if (with_binary_per_oc_bcast_)
+                    rhs_arg_params.vmm_idx_to_oc_elem_off_val.emplace(
+                            idx, oc_logical_offset(ldb));
             }
         }
     }

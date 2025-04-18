@@ -114,7 +114,6 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
         printf("%6ld ", (long)s);
     }
 
-    if (mem.get_desc().get_data_type() == dnnl_bf16) { printf("bf16\n"); }
     void *mapped_ptr_ = (void *)mem.map_data();
     size_t padlen = std::max(get_idxs_str_len(ndims)
                     - static_cast<int>(std::string("   i :").size()),

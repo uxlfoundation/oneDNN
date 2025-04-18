@@ -109,10 +109,8 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
             = [this]() { return std::make_shared<sdp_args_set_t>(this); };
 
     // Initialize and construct kernel params
-    sdp_cfg_.construct_params<quantized, dt>(
+    return sdp_cfg_.construct_params<quantized, dt>(
             subgraph_, sdp_registry_, p_engine_, inputs);
-
-    return status::success;
 }
 
 template <bool quantized, memory::data_type dt>

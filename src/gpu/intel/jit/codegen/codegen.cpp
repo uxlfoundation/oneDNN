@@ -90,7 +90,11 @@ public:
             } else {
                 const int regs
                         = utils::div_up(obj.size, ngen::GRF::bytes(hw()));
-                rbd = scope.alloc_reg_buf(regs);
+                if (is_header(obj.buf)) {
+                    rbd = alloc_header(scope, regs);
+                } else {
+                    rbd = scope.alloc_reg_buf(regs);
+                }
             }
             if (obj.has_attr<grf_permute_attr_t>()) {
                 auto &attr = obj.get_attr<grf_permute_attr_t>();
@@ -329,6 +333,58 @@ public:
     }
 
 private:
+    bool is_header(const expr_t &buf) const {
+        return buf.as<var_t>().name.find("h_") == 0;
+    }
+
+    // Allocates headers using heuristics to reduce back-to-back header reuse -
+    // this helps to eliminate potential stalls caused by SWSB dependencies.
+    reg_buf_t alloc_header(ngen_register_scope_t &scope, int regs) {
+        auto is_used_recently = [&](const ngen::GRFRange &range) {
+            if (range.isInvalid()) return false;
+            for (int i = range.getBase(); i < range.getBase() + range.getLen();
+                    i++) {
+                for (auto &r : last_used_header_regs_)
+                    if (i == r) return true;
+            }
+            return false;
+        };
+        auto record = [&](const ngen::GRFRange &range) {
+            for (int i = range.getBase(); i < range.getBase() + range.getLen();
+                    i++) {
+                last_used_header_regs_.push_back(i);
+            }
+            // Remove old header registers from tracking.
+            size_t cur_size = last_used_header_regs_.size();
+            if (cur_size > max_tracked_header_regs) {
+                last_used_header_regs_.erase(last_used_header_regs_.begin(),
+                        last_used_header_regs_.begin() + cur_size
+                                - max_tracked_header_regs);
+            }
+        };
+        // Try to allocate/claim registers until we find two GRF ranges that
+        // were not used recently. Registers are usually allocated
+        // sequentially, and the first range may still be in use in SWSB
+        // analysis: e.g. when a SIMD16 load instruction accesses one register
+        // while SWSB analysis assumes it's a full SIMD32 accessing two
+        // registers.
+        std::vector<ngen::GRFRange> ranges;
+        for (int found = 0; found < 2;) {
+            auto r = scope.try_alloc_range(regs);
+            ranges.push_back(r);
+            if (!is_used_recently(r)) found++;
+        }
+        auto range = ranges.back();
+        ranges.pop_back();
+        for (auto &r : ranges)
+            scope.safeRelease(r);
+        // If there no range found, fall back to regular allocation, without
+        // any heuristics.
+        if (range.isInvalid()) range = scope.alloc_range(regs);
+        record(range);
+        return reg_buf_t(scope.hw(), range);
+    }
+
     ngen_register_scope_t register_scope() {
         return ngen_register_scope_t(host_->ra_);
     }
@@ -816,6 +872,9 @@ private:
 #endif
 
     object_map_t<alloc_attr_t, bank_conflict_allocation_t> bc_allocations_;
+
+    const size_t max_tracked_header_regs = 8;
+    std::vector<int> last_used_header_regs_;
 };
 
 // Evaluates expression by emitting instructions with nGEN.

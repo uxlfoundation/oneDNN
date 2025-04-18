@@ -241,8 +241,9 @@ struct gemm_matmul_t : public gpu_primitive_t {
                     }
 
                     if (!attr()->scales_.has_default_values())
-                        CHECK(adjust_scales_mask(scales, DNNL_ARG_WEIGHTS,
-                                orig_dims - reshape_size));
+                        for (auto i : {DNNL_ARG_WEIGHTS, DNNL_ARG_SRC})
+                            CHECK(adjust_scales_mask(
+                                    scales, i, orig_dims - reshape_size));
                     if (!attr()->zero_points_.has_default_values())
                         CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, DNNL_ARG_A, true,
                                 orig_dims - reshape_size));

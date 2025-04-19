@@ -1841,7 +1841,10 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         ref_mem.set_elem(0, attr.dropout.seed);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     } else if (is_rounding_seed) {
-        ref_mem.set_elem(0, attr.rounding_mode.seed);
+        // Fewer rounding issues converting s32 -> f32 than u32 -> f32
+        int32_t safe_seed;
+        memcpy(&safe_seed, &attr.rounding_mode.seed, sizeof(int32_t));
+        ref_mem.set_elem(0, safe_seed);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     }
 

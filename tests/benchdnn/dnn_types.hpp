@@ -217,6 +217,7 @@ struct attr_t {
 
         std::map<int, dnnl_rounding_mode_t> rounding_modes_;
         // Setting seed to all ones for better entropy
+        // Any more than 24, we lose precision when converting to f32
         uint32_t seed = -1;
         bool is_set_seed = false;
     };

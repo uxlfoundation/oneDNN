@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2022 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ void compute_ref(
             [&](int64_t ou, int64_t a, int64_t in) {
                 auto src_off = ou * dim + a * inner_size + in;
                 auto dst_off = ou * dim + transpose(a) * inner_size + in;
-                dst_ptr[dst_off] = src.get_elem(src_off);
+                dst_ptr[dst_off] = src.get_f32_elem(src_off);
             });
 }
 

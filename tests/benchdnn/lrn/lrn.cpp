@@ -52,7 +52,7 @@ int fill_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const int64_t gen = kind == SRC ? 1091 * i + 1637 : 1279 * i + 1009;
         const float value = f_min + gen % range;
-        mem_fp.set_elem(i, value);
+        mem_fp.set_f32_elem(i, value);
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -164,7 +164,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD && exec_arg != DNNL_ARG_WORKSPACE) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 

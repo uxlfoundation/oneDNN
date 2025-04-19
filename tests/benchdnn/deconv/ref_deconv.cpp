@@ -43,8 +43,8 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
     assert(IMPLICATION(has_src_scale, src_scales.nelems() == 1));
     assert(IMPLICATION(has_dst_scale, dst_scales.nelems() == 1));
-    float src_scale = has_src_scale ? src_scales.get_elem(0) : 1.f;
-    float dst_scale = has_dst_scale ? 1.f / dst_scales.get_elem(0) : 1.f;
+    float src_scale = has_src_scale ? src_scales.get_f32_elem(0) : 1.f;
+    float dst_scale = has_dst_scale ? 1.f / dst_scales.get_f32_elem(0) : 1.f;
     const int wei_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_convolution, wei_m.ndims(), prb->has_groups);
 
@@ -87,13 +87,13 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
                     for (int64_t ic = 0; ic < ICG; ++ic) {
                         int64_t src_off = ((ic * ID + id) * IH + ih) * IW + iw;
                         int64_t wei_off = ((ic * KD + kd) * KH + kh) * KW + kw;
-                        int src_zp = has_src_zp ? src_zps.get_elem(
+                        int src_zp = has_src_zp ? src_zps.get_f32_elem(
                                              src_zp_mask > 0 ? g * ICG + ic : 0)
                                                 : 0;
                         float s = (src_loc[src_off] - src_zp) * src_scale;
                         float wei_scale = 1.f;
                         if (has_wei_scale)
-                            wei_scale = wei_scales.get_elem(
+                            wei_scale = wei_scales.get_f32_elem(
                                     wei_scale_mask > 0 ? g * OCG + oc : 0);
                         float w = wei_loc[wei_off] * wei_scale;
                         d += s * w;
@@ -123,9 +123,9 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
 
                 maybe_post_ops(prb->attr, conv_res, dst, v_po_vals);
 
-                int dst_zp = has_dst_zp
-                        ? dst_zps.get_elem(dst_zp_mask > 0 ? g * OCG + oc : 0)
-                        : 0;
+                int dst_zp = has_dst_zp ? dst_zps.get_f32_elem(
+                                     dst_zp_mask > 0 ? g * OCG + oc : 0)
+                                        : 0;
                 dst = conv_res * dst_scale + dst_zp;
             });
 }
@@ -151,8 +151,8 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
     assert(IMPLICATION(has_src_scale, src_scales.nelems() == 1));
     assert(IMPLICATION(has_dst_scale, dst_scales.nelems() == 1));
-    float src_scale = has_src_scale ? src_scales.get_elem(0) : 1.f;
-    float dst_scale = has_dst_scale ? 1.f / dst_scales.get_elem(0) : 1.f;
+    float src_scale = has_src_scale ? src_scales.get_f32_elem(0) : 1.f;
+    float dst_scale = has_dst_scale ? 1.f / dst_scales.get_f32_elem(0) : 1.f;
     const int wei_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_convolution, wei_m.ndims(), prb->has_groups);
 
@@ -218,14 +218,14 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
             const int64_t wei_off
                     = ((oc * ICG * KD + kd[d]) * KH + kh[h]) * KW + kw[w];
             int src_zp = has_src_zp
-                    ? src_zps.get_elem(src_zp_mask > 0 ? g * OCG + oc : 0)
+                    ? src_zps.get_f32_elem(src_zp_mask > 0 ? g * OCG + oc : 0)
                     : 0;
             float diff_dst_val
                     = (diff_dst_loc[diff_dst_off] - src_zp) * src_scale;
 
             float wei_scale = 1.f;
             if (has_wei_scale)
-                wei_scale = wei_scales.get_elem(
+                wei_scale = wei_scales.get_f32_elem(
                         wei_scale_mask > 0 ? g * ICG + ic : 0);
             float wei_val = wei_loc[wei_off] * wei_scale;
             ds += diff_dst_val * wei_val;
@@ -256,7 +256,7 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
                                 = ((oc * OD + od) * OH + oh) * OW + ow;
                         const int64_t wei_off
                                 = ((oc * ICG * KD + kd) * KH + kh) * KW + kw;
-                        int src_zp = has_src_zp ? src_zps.get_elem(
+                        int src_zp = has_src_zp ? src_zps.get_f32_elem(
                                              src_zp_mask > 0 ? g * OCG + oc : 0)
                                                 : 0;
                         float diff_dst_val
@@ -265,7 +265,7 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
 
                         float wei_scale = 1.f;
                         if (has_wei_scale)
-                            wei_scale = wei_scales.get_elem(
+                            wei_scale = wei_scales.get_f32_elem(
                                     wei_scale_mask > 0 ? g * ICG + ic : 0);
                         float wei_val = wei_loc[wei_off] * wei_scale;
                         ds += diff_dst_val * wei_val;
@@ -297,9 +297,9 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
 
                 maybe_post_ops(prb->attr, conv_res, ds, v_po_vals);
 
-                int dst_zp = has_dst_zp
-                        ? dst_zps.get_elem(dst_zp_mask > 0 ? g * ICG + ic : 0)
-                        : 0;
+                int dst_zp = has_dst_zp ? dst_zps.get_f32_elem(
+                                     dst_zp_mask > 0 ? g * ICG + ic : 0)
+                                        : 0;
                 ds = conv_res * dst_scale + dst_zp;
             });
 }

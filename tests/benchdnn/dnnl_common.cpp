@@ -623,7 +623,10 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
         for (int i = 0; i < args.size(); i++) {
             int arg = args.arg(i);
             const auto &m = args.dnn_mem(i);
-            mem_map[j].emplace(arg, dnn_mem_t(m.md_, engine));
+            // Memory must be filled with some data for meaningful performance
+            // numbers.
+            mem_map[j].emplace(
+                    arg, dnn_mem_t(m.md_, engine, /* prefill = */ true));
             SAFE(mem_map[j].at(arg).reorder(m), WARN);
         }
         v_args[j] = args_t(mem_map[j]);
@@ -670,7 +673,8 @@ std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
 
     for (size_t d = 0; d < v_po_masks.size(); ++d) {
         const auto po_offset = dst_m.get_idx(dst_off, v_po_masks[d].second);
-        const float val = args.find(v_po_masks[d].first).get_elem(po_offset);
+        const float val
+                = args.find(v_po_masks[d].first).get_f32_elem(po_offset);
         v_vals[d] = val;
     }
     return v_vals;
@@ -1722,7 +1726,9 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
     auto const_ref_pd = query_pd(prim_ref);
     const auto &ref_md = query_md(const_ref_pd, exec_arg);
     const auto &ref_engine = get_cpu_engine();
-    dnn_mem_t prim_ref_mem(ref_md, ref_engine);
+    // Since this goes to the library, it's desired to verify CPU implementation
+    // handles memories correctly.
+    dnn_mem_t prim_ref_mem(ref_md, ref_engine, /* prefill = */ true);
 
     // When queried memory comes empty, it may be attributes as library doesn't
     // have dedicated query mechanism for those. Process potential outcomes:
@@ -1731,8 +1737,8 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         // Scales received data type support in the library. The reference
         // primitive expects them in the same data type.
         if (is_scales_arg) {
-            prim_ref_mem = dnn_mem_t(
-                    library_mem.md_, library_mem.dt(), tag::abx, ref_engine);
+            prim_ref_mem = dnn_mem_t(library_mem.md_, library_mem.dt(),
+                    tag::abx, ref_engine, /* prefill = */ true);
             break;
         }
 
@@ -1740,8 +1746,8 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         // Zero-points received data type support in the library. The reference
         // primitive expects them in the same data type.
         if (is_zero_point_arg) {
-            prim_ref_mem = dnn_mem_t(
-                    library_mem.md_, library_mem.dt(), tag::abx, ref_engine);
+            prim_ref_mem = dnn_mem_t(library_mem.md_, library_mem.dt(),
+                    tag::abx, ref_engine, /* prefill = */ true);
             break;
         }
 
@@ -1753,8 +1759,8 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         // The library doesn't return a memory desc for prelu post-op. Prelu
         // requires `tag::axb` format, thus, need to put a desc into ref prim.
         if (is_prelu_arg) {
-            prim_ref_mem = dnn_mem_t(
-                    library_mem.md_, dnnl_f32, tag::axb, ref_engine);
+            prim_ref_mem = dnn_mem_t(library_mem.md_, dnnl_f32, tag::axb,
+                    ref_engine, /* prefill = */ true);
             break;
         }
 
@@ -1835,7 +1841,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         TIME_FILL(SAFE(
                 fill_zero_points(attr, local_exec_arg, mem, ref_mem), WARN));
     } else if (is_dropout_p) {
-        ref_mem.set_elem(0, attr.dropout.p);
+        ref_mem.set_f32_elem(0, attr.dropout.p);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     } else if (is_dropout_seed) {
         ref_mem.set_elem(0, attr.dropout.seed);
@@ -1888,8 +1894,9 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         }
         // A memory used as reference for comparison, must be allocated on the
         // CPU engine.
-        run1_mem_map.emplace(
-                arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, get_cpu_engine()));
+        run1_mem_map.emplace(arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, get_cpu_engine(),
+                        /* prefill = */ false));
         SAFE(run1_mem_map.at(arg).reorder(mem), WARN);
     }
 

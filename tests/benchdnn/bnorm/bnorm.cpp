@@ -53,7 +53,7 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         float val = 0.f;
         if (cfg.check_alg_ != ALG_0 || (prb->flags & GLOB_STATS))
             val = 0.25f * (1 << (c % 7));
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -73,7 +73,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
     }
 
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
-        const float m = ref_mean.get_elem(c);
+        const float m = ref_mean.get_f32_elem(c);
         for (int64_t mb = 0; mb < prb->mb; ++mb) {
             // l[0] must be even
             int64_t l_base = mb * prb->id * prb->ih * prb->iw + c * 239 * 2;
@@ -88,7 +88,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 // Shortcut for zero values.
                 if (cfg.check_alg_ == ALG_0
                         && !flip_coin(l / 2 * 257ULL, cfg.density_)) {
-                    mem_fp.set_elem(off + sp, 0);
+                    mem_fp.set_f32_elem(off + sp, 0);
                     continue;
                 }
 
@@ -104,7 +104,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                                 == cfg.L_ - 1)) {
                     val = m;
                 }
-                mem_fp.set_elem(
+                mem_fp.set_f32_elem(
                         off + sp, round_to_nearest_representable(prb->dt, val));
             }
         }
@@ -138,7 +138,7 @@ int fill_variance(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         if (prb->flags & GLOB_STATS) {
             val = ((c % 7) << 1);
         } else {
-            const float m = ref_mean.get_elem(c);
+            const float m = ref_mean.get_f32_elem(c);
             for (int64_t mb = 0; mb < prb->mb; ++mb) {
                 int64_t off = data_off(prb, mb, c, 0, 0, 0);
 
@@ -146,13 +146,13 @@ int fill_variance(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 for_(int64_t h = 0; h < prb->ih; ++h)
                 for (int64_t w = 0; w < prb->iw; ++w) {
                     const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
-                    const float s = ref_src.get_elem(sp + off);
+                    const float s = ref_src.get_f32_elem(sp + off);
                     val += (s - m) * (s - m);
                 }
             }
             val /= cfg.L_;
         }
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -182,11 +182,11 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
                 const int64_t offset = data_off(prb, mb, c, 0, 0, 0) + sp;
                 const int64_t l = l_base + sp;
-                const float s = ref_src.get_elem(offset);
-                const float m = ref_mean.get_elem(c);
+                const float s = ref_src.get_f32_elem(offset);
+                const float m = ref_mean.get_f32_elem(c);
 
                 if (!(prb->flags & GLOB_STATS) && s == 0) {
-                    mem_fp.set_elem(offset, 1.f);
+                    mem_fp.set_f32_elem(offset, 1.f);
                     return;
                 }
 
@@ -204,7 +204,7 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                     const int64_t sign_val = s < m ? -1 : 1;
                     val = mod2_val * sign_val;
                 }
-                mem_fp.set_elem(
+                mem_fp.set_f32_elem(
                         offset, round_to_nearest_representable(prb->dt, val));
             });
 
@@ -229,7 +229,7 @@ int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = (1.f / 8) * (1 << (c % 7));
         if (prb->flags & GLOB_STATS) val *= 8.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -253,7 +253,7 @@ int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = ((c % 3) - 1) * (1.f / 512 * (1 << (c % 7)));
         if (prb->flags & GLOB_STATS) val *= 512.f;
-        mem_fp.set_elem(c, val);
+        mem_fp.set_f32_elem(c, val);
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -354,7 +354,7 @@ int prepare_bwd(
             float value = flip_coin(igen_coin(msr), sparsity)
                     ? round_to_nearest_representable(prb->dt, igen_val(msr))
                     : 0;
-            mem_fp.set_elem(idx, value);
+            mem_fp.set_f32_elem(idx, value);
         }
     });
 
@@ -385,7 +385,7 @@ int check_fwd_ws(dnn_mem_map_t &mem_map, res_t *res) {
      * zero, and the respective ws_dt elements should be set accordingly */
     for (int64_t i = 0; i < nelems; i += 8) {
         for (int64_t j = 0; j < MIN2(8, nelems - i); ++j) {
-            const float data = dst_dt.get_elem(i + j);
+            const float data = dst_dt.get_f32_elem(i + j);
             const bool want = data > 0.f;
             const bool bit_set = ws_type == ws_byte ? *ws : !!(*ws & (1 << j));
 
@@ -563,7 +563,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
                 const int64_t c
                         = dst.get_idx(args.idx, 1 << 1 /* channel_mask */);
-                const float beta = sh.get_elem(c);
+                const float beta = sh.get_f32_elem(c);
                 // Using an empirically derived threshold, check if
                 // cancellation error in `|Y| = |a*X - (-b)|` is huge.
                 const float abs_exp = fabsf(args.exp);
@@ -632,7 +632,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD && exec_arg != DNNL_ARG_WORKSPACE) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
 
         switch (exec_arg) {
@@ -641,7 +642,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     // Stash for backward which is used in reference code:
                     //     src_hat[i] = (src[i] - mean) / sqrt(var + prb->eps)
                     ref_mem_map.emplace(DNNL_ARG_DST_1,
-                            dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                            dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                                    /* prefill = */ false));
                 }
                 break;
             case DNNL_ARG_DIFF_SRC: break; // Skip on backward.
@@ -650,13 +652,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_VARIANCE:
                 if (prb->dir & FLAG_INF) {
                     const dnnl_dims_t dims1d = {prb->ic};
-                    ref_mem_map[exec_arg] = dnn_mem_t(
-                            1, dims1d, dnnl_f32, tag::abx, ref_engine);
+                    ref_mem_map[exec_arg] = dnn_mem_t(1, dims1d, dnnl_f32,
+                            tag::abx, ref_engine, /* prefill = */ false);
                 }
                 break;
             case DNNL_ARG_WORKSPACE: {
-                ref_mem_map[exec_arg]
-                        = dnn_mem_t(mem.md_, dnnl_u8, tag::abx, ref_engine);
+                ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, dnnl_u8, tag::abx,
+                        ref_engine, /* prefill = */ false);
                 break;
             }
             default: break;
@@ -678,8 +680,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     // Reference code uses different kind of workspace. Adjust to ref needs.
     if (ref_mem_map.count(DNNL_ARG_WORKSPACE)) {
         const auto &src_md = ref_mem_map[DNNL_ARG_SRC].md_;
-        ref_mem_map[DNNL_ARG_WORKSPACE]
-                = dnn_mem_t(src_md, dnnl_u8, tag::abx, ref_engine);
+        ref_mem_map[DNNL_ARG_WORKSPACE] = dnn_mem_t(
+                src_md, dnnl_u8, tag::abx, ref_engine, /* prefill = */ false);
     }
 
     return OK;

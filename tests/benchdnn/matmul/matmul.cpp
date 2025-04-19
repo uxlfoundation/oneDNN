@@ -441,25 +441,36 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             while (val <= 0)
                 val = gen(int_seed);
             val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-            mem_fp.set_elem(
+            mem_fp.set_f32_elem(
                     0, round_to_nearest_representable(cfg.get_dt(kind), val));
             idx_start += 1;
         }
 
-        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            bool is_one = density == 1.f ? true : b_dist(b_seed);
-            float val = 0.0f;
-            if (is_sparse_packed) {
-                is_one = nnz_mask[idx];
-                while (val == 0.0f)
+        if (is_sparse_packed) {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                const bool is_one = nnz_mask[idx];
+                if (!is_one) {
+                    mem_fp.set_f32_elem(idx, 0.f);
+                    continue;
+                }
+                float val = 0.f;
+                while (val == 0.f)
                     val = gen(int_seed);
-                val *= is_one;
-            } else {
-                val = is_one * gen(int_seed);
-                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+                mem_fp.set_f32_elem(idx,
+                        round_to_nearest_representable(cfg.get_dt(kind), val));
             }
-            mem_fp.set_elem(
-                    idx, round_to_nearest_representable(cfg.get_dt(kind), val));
+        } else {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                bool is_one = density == 1.f ? true : b_dist(b_seed);
+                if (!is_one) {
+                    mem_fp.set_f32_elem(idx, 0.f);
+                    continue;
+                }
+                float val = gen(int_seed);
+                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+                mem_fp.set_f32_elem(idx,
+                        round_to_nearest_representable(cfg.get_dt(kind), val));
+            }
         }
     });
 
@@ -858,12 +869,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         if (is_sparse && !is_sparse_wei_packed) {
             if (is_sparse_src) {
                 auto src_fp_d = create_md(prb, SRC);
-                ref_mem_map.emplace(exec_arg, dnn_mem_t(src_fp_d, ref_engine));
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(src_fp_d, ref_engine, /* prefill = */ false));
             }
 
             if (is_sparse_wei) {
                 auto wei_fp_d = create_md(prb, WEI);
-                ref_mem_map.emplace(exec_arg, dnn_mem_t(wei_fp_d, ref_engine));
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(wei_fp_d, ref_engine, /* prefill = */ false));
             }
         } else {
             if (exec_arg == DNNL_ARG_WEIGHTS) {
@@ -880,12 +893,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 strides[ndims - 2] = 1;
                 strides[ndims - 1] = dims[ndims - 2];
                 ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine));
+                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
+                                /* prefill = */ false));
             } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
                 // Scratchpad memory relates to a primitive. If reference needs
                 // it, use switch below to define a memory desc for it.
                 ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                        dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                                /* prefill = */ false));
             }
         }
         auto &ref_mem = ref_mem_map[exec_arg];
@@ -913,7 +928,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
             } break;
             case DNNL_ARG_ATTR_DROPOUT_SEED: {
-                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine);
+                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
+                        /* prefill = */ false);
                 // No break to fall back into `default` call with initialization.
             }
             default:

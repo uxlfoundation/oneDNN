@@ -172,7 +172,7 @@ int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
                     n_top[i]--;
                     if (n_top[i] == 0) i++;
                 }
-                mem_fp.set_elem(offset,
+                mem_fp.set_f32_elem(offset,
                         round_to_nearest_representable(mem_dt.dt(), value));
             }
         }
@@ -211,7 +211,7 @@ int fill_data_bwd(data_kind_t data_kind, const prb_t *prb, dnn_mem_t &mem_dt,
         const float gen = ((11 * i) + 37 + 19 * seed) % range;
         float coeff = data_kind == DIFF_DST ? sign * 1.f : sign * (1.f / range);
         float value = coeff * gen;
-        mem_fp.set_elem(i, value);
+        mem_fp.set_f32_elem(i, value);
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -350,7 +350,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 

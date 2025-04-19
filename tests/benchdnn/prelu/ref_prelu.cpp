@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const auto wei_idx = src.get_idx(i, weights_broadcast_mask);
-        const float s = src.get_elem(i);
-        float res = s * (s > 0 ? 1.f : wei.get_elem(wei_idx));
+        const float s = src.get_f32_elem(i);
+        float res = s * (s > 0 ? 1.f : wei.get_f32_elem(wei_idx));
         maybe_saturate(prb->sdt[0], res);
         dst_ptr[i] = res;
     });
@@ -57,9 +57,9 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     const auto wei_nelems = d_wei.nelems();
 
     const auto ker = [&](int64_t i, int64_t wei_idx, int64_t d_wei_idx) {
-        float s = src.get_elem(i);
-        float dd = d_dst.get_elem(i);
-        float d_src = dd * (s > 0 ? 1.f : wei.get_elem(wei_idx));
+        float s = src.get_f32_elem(i);
+        float dd = d_dst.get_f32_elem(i);
+        float d_src = dd * (s > 0 ? 1.f : wei.get_f32_elem(wei_idx));
         maybe_saturate(prb->sdt[0], d_src);
         d_src_ptr[i] = d_src;
         d_wei_buf[d_wei_idx] += MIN2(0.f, s) * dd;

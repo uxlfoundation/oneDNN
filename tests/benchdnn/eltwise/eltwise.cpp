@@ -275,7 +275,7 @@ int fill_data(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
             // passes through simple reorder which converts -0 into +0.
             if (value == -0.f) value = 0.f;
 
-            mem_fp.set_elem(idx, value);
+            mem_fp.set_f32_elem(idx, value);
         }
     });
 
@@ -381,7 +381,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
                 const auto &source
                         = ((prb->dir & FLAG_BWD) && prb->use_dst()) ? dst : src;
-                const float s = source.get_elem(args.idx);
+                const float s = source.get_f32_elem(args.idx);
                 if (check_abs_err(prb, s, args.trh))
                     return args.diff <= args.trh;
                 if (prb->attr.post_ops.binary_index() != -1)
@@ -425,7 +425,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -466,8 +467,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     const bool inplace_fwd = prb->inplace && (prb->dir & FLAG_FWD);
     if (inplace_fwd) {
         const auto &dst_md = mem_map.at(DNNL_ARG_SRC).md_;
-        ref_mem_map[DNNL_ARG_DST]
-                = dnn_mem_t(dst_md, dnnl_f32, tag::abx, ref_engine);
+        ref_mem_map[DNNL_ARG_DST] = dnn_mem_t(
+                dst_md, dnnl_f32, tag::abx, ref_engine, /* prefill = */ false);
     }
 
     return OK;

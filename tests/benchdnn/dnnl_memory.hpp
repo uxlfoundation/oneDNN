@@ -45,18 +45,18 @@ struct dnn_mem_t {
     };
 
     dnn_mem_t() { map(); }
-    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
+    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
 
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine);
+            const std::string &tag, dnnl_engine_t engine, bool prefill);
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-            const dnnl_dims_t strides, dnnl_engine_t engine);
+            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
 
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine);
+            const std::string &tag, dnnl_engine_t engine, bool prefill);
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const dnnl_dims_t strides, dnnl_engine_t engine);
+            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
 
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
             dnnl_engine_t engine);
@@ -140,7 +140,20 @@ struct dnn_mem_t {
 
     explicit operator bool() const { return active_; }
 
+    // This interface is a shortcut version of the one below to speed up access
+    // to the memory that is guaranteedly of f32 data type.
+    // Keep the body in the header to help compiler to inline better.
+    float get_f32_elem(int64_t idx) const {
+        return static_cast<float *>(*this)[idx];
+    }
     float get_elem(int64_t idx, int buffer_index = 0) const;
+
+    // This interface is a shortcut version of the one below to speed up access
+    // to the memory that is guaranteedly of f32 data type.
+    // Keep the body in the header to help compiler to inline better.
+    void set_f32_elem(int64_t idx, float value) const {
+        static_cast<float *>(*this)[idx] = value;
+    }
     void set_elem(int64_t idx, float value, int buffer_index = 0) const;
 
     int64_t get_idx(int64_t logical_idx, int dims_mask, const int ndims,
@@ -212,7 +225,18 @@ private:
     int initialize_memory_create_opencl(const handle_info_t &handle_info);
     int initialize_memory_create(const handle_info_t &handle_info);
 
-    int initialize(dnnl_engine_t engine,
+    // `prefill` is a flag that controls whether the underlying memory buffer
+    // will be accessed to set a special value across the buffer, such as NaN,
+    // to catch issues with no/bad access.
+    //
+    // Some memory objects created will be filled right away with different
+    // values, e.g., reference f32 memories. In that case, read/write access
+    // with a special value is a waste of memory bandwidth so developer decides
+    // when to enable/disable it.
+    //
+    // The flag is propagated to the toppest dnn_mem_t constructors. In case
+    // when in doubt, always use `true` to stay on the safe side of things.
+    int initialize(dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
 
     void set_dt(dnnl_data_type_t dt) const;

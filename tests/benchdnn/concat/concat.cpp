@@ -103,7 +103,7 @@ int fill_src(int input_idx, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
         std::uniform_int_distribution<> igen(min_val, max_val);
         // Most fp8 values can't be represented exactly with integers.
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            mem_fp.set_elem(idx,
+            mem_fp.set_f32_elem(idx,
                     round_to_nearest_representable(mem_dt.dt(), igen(msr)));
         }
     });
@@ -170,7 +170,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // use switch below to define a memory desc for it.
         if (exec_arg != DNNL_ARG_SCRATCHPAD) {
             ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 

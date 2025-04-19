@@ -308,15 +308,15 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     break;
                 case s32: vcvtdq2ps(dst, src); break;
                 case f8_e5m2:
-                    if (f8_e5m2_emu_ && is_superset(isa_, avx512_core_amx))
-                        f8_e5m2_emu_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
+                    if (f8_e5m2_cvt_ && is_superset(isa_, avx512_core_amx))
+                        f8_e5m2_cvt_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
                     else
                         assert(!"invalid isa or fp8 emulation not "
                                 "available");
                     break;
                 case f8_e4m3:
-                    if (f8_e4m3_emu_ && is_superset(isa_, avx512_core_amx))
-                        f8_e4m3_emu_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
+                    if (f8_e4m3_cvt_ && is_superset(isa_, avx512_core_amx))
+                        f8_e4m3_cvt_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
                     else
                         assert(!"invalid isa or fp8 emulation not "
                                 "available");
@@ -334,8 +334,18 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         };
 
         const auto cvt2odt = [this, cvt2ps](const Ymm ymm, data_type_t odt,
-                                     data_type_t idt) {
+                                     data_type_t idt, bool need_saturation) {
             const Xmm xmm = Xmm(ymm.getIdx());
+            if (need_saturation && isa_has_sat_cvt(isa_, odt)) {
+                switch (odt) {
+                    case s8:
+                    case u8: vpmovusdb(xmm, ymm); break;
+                    case s32: break; // nothing to do
+                    default: assert("unsupported data type");
+                }
+                return;
+            }
+
             switch (odt) {
                 case bf16:
                     if (utils::one_of(
@@ -344,11 +354,11 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                             cvt2ps(ymm, ymm, idt);
                         if (utils::one_of(idt, f8_e5m2, f8_e4m3)) {
                             if (is_superset(isa_, avx512_core_amx)) {
-                                if (idt == f8_e5m2 && f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f8_to_f32(
+                                if (idt == f8_e5m2 && f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f8_to_f32(
                                             Zmm(ymm.getIdx()), ymm);
-                                else if (idt == f8_e4m3 && f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f8_to_f32(
+                                else if (idt == f8_e4m3 && f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f8_to_f32(
                                             Zmm(ymm.getIdx()), ymm);
                                 else
                                     assert(!"fp8 emulation not available");
@@ -373,10 +383,10 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                             cvt2ps(ymm, ymm, idt);
                         if (utils::one_of(idt, f8_e5m2, f8_e4m3)) {
                             if (is_superset(isa_, avx512_core_amx)) {
-                                if (idt == f8_e5m2 && f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f8_to_f16(ymm, ymm);
-                                else if (idt == f8_e4m3 && f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f8_to_f16(ymm, ymm);
+                                if (idt == f8_e5m2 && f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f8_to_f16(ymm, ymm);
+                                else if (idt == f8_e4m3 && f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f8_to_f16(ymm, ymm);
                                 else
                                     assert(!"fp8 emulation not available");
                             } else
@@ -397,14 +407,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     if (utils::one_of(idt, f32, bf16, f16, f8_e4m3)) {
                         if (is_superset(isa_, avx512_core_amx)) {
                             if (idt == f8_e4m3) {
-                                if (f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f8_to_f16(ymm, ymm);
-                                if (f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f16_to_f8(ymm, ymm);
+                                if (f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f8_to_f16(ymm, ymm);
+                                if (f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f16_to_f8(ymm, ymm);
                             } else {
                                 if (idt != f32) cvt2ps(ymm, ymm, idt);
-                                if (f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f32_to_f8(
+                                if (f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f32_to_f8(
                                             Xmm(ymm.getIdx()),
                                             Zmm(ymm.getIdx()));
                             }
@@ -417,14 +427,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     if (utils::one_of(idt, f32, bf16, f16, f8_e5m2)) {
                         if (is_superset(isa_, avx512_core_amx)) {
                             if (idt == f8_e5m2) {
-                                if (f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f8_to_f16(ymm, ymm);
-                                if (f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f16_to_f8(ymm, ymm);
+                                if (f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f8_to_f16(ymm, ymm);
+                                if (f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f16_to_f8(ymm, ymm);
                             } else {
                                 if (idt != f32) cvt2ps(ymm, ymm, idt);
-                                if (f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f32_to_f8(
+                                if (f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f32_to_f8(
                                             Xmm(ymm.getIdx()),
                                             Zmm(ymm.getIdx()));
                             }
@@ -537,7 +547,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 cvt2odt(Ymm(i), prb_.otype,
                         need_saturation       ? s32
                                 : interim_f32 ? f32
-                                              : prb_.itype);
+                                              : prb_.itype,
+                        need_saturation);
             store(o_addr(o_off + i * node_1_output_stride), Ymm(i),
                     unroll * otype_sz_);
         }
@@ -602,15 +613,15 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 case f16: vcvtph2ps(dst, src); break;
                 case s32: uni_vcvtdq2ps(dst, src); break;
                 case f8_e5m2:
-                    if (f8_e5m2_emu_ && is_superset(isa_, avx512_core_amx))
-                        f8_e5m2_emu_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
+                    if (f8_e5m2_cvt_ && is_superset(isa_, avx512_core_amx))
+                        f8_e5m2_cvt_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
                     else
                         assert(!"invalid isa or fp8 emulation not "
                                 "available");
                     break;
                 case f8_e4m3:
-                    if (f8_e4m3_emu_ && is_superset(isa_, avx512_core_amx))
-                        f8_e4m3_emu_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
+                    if (f8_e4m3_cvt_ && is_superset(isa_, avx512_core_amx))
+                        f8_e4m3_cvt_->vcvt_f8_to_f32(Zmm(dst.getIdx()), src);
                     else
                         assert(!"invalid isa or fp8 emulation not "
                                 "available");
@@ -628,7 +639,17 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         };
 
         const auto cvt2odt = [this, cvt2ps](const Xmm xmm, data_type_t odt,
-                                     data_type_t idt) {
+                                     data_type_t idt, bool need_saturation) {
+            if (need_saturation && !compensation_needed_
+                    && isa_has_sat_cvt(isa_, prb_.otype)) {
+                switch (prb_.otype) {
+                    case s8:
+                    case u8: vpmovusdb(xmm, xmm); break;
+                    case s32: break; // nothing to do
+                    default: assert("unsupported data type");
+                }
+                return;
+            }
             switch (odt) {
                 case bf16:
                     if (!mayiuse(avx)) assert(!"unreachable");
@@ -638,11 +659,11 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                             cvt2ps(xmm, xmm, idt);
                         if (utils::one_of(idt, f8_e5m2, f8_e4m3)) {
                             if (is_superset(isa_, avx512_core_amx)) {
-                                if (idt == f8_e5m2 && f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f8_to_f32(
+                                if (idt == f8_e5m2 && f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f8_to_f32(
                                             Zmm(xmm.getIdx()), xmm);
-                                else if (idt == f8_e4m3 && f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f8_to_f32(
+                                else if (idt == f8_e4m3 && f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f8_to_f32(
                                             Zmm(xmm.getIdx()), xmm);
                                 else
                                     assert(!"fp8 emulation not available");
@@ -667,10 +688,10 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                             cvt2ps(xmm, xmm, idt);
                         if (utils::one_of(idt, f8_e5m2, f8_e4m3)) {
                             if (is_superset(isa_, avx512_core_amx)) {
-                                if (idt == f8_e5m2 && f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f8_to_f16(xmm, xmm);
-                                else if (idt == f8_e4m3 && f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f8_to_f16(xmm, xmm);
+                                if (idt == f8_e5m2 && f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f8_to_f16(xmm, xmm);
+                                else if (idt == f8_e4m3 && f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f8_to_f16(xmm, xmm);
                                 else
                                     assert(!"fp8 emulation not available");
                             } else
@@ -691,14 +712,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     if (utils::one_of(idt, f32, bf16, f16, f8_e4m3)) {
                         if (is_superset(isa_, avx512_core_amx)) {
                             if (idt == f8_e4m3) {
-                                if (f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f8_to_f16(xmm, xmm);
-                                if (f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f16_to_f8(xmm, xmm);
+                                if (f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f8_to_f16(xmm, xmm);
+                                if (f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f16_to_f8(xmm, xmm);
                             } else {
                                 if (idt != f32) cvt2ps(xmm, xmm, idt);
-                                if (f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f32_to_f8(
+                                if (f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f32_to_f8(
                                             xmm, Zmm(xmm.getIdx()));
                             }
                         } else
@@ -710,14 +731,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     if (utils::one_of(idt, f32, bf16, f16, f8_e5m2)) {
                         if (is_superset(isa_, avx512_core_amx)) {
                             if (idt == f8_e5m2) {
-                                if (f8_e5m2_emu_)
-                                    f8_e5m2_emu_->vcvt_f8_to_f16(xmm, xmm);
-                                if (f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f16_to_f8(xmm, xmm);
+                                if (f8_e5m2_cvt_)
+                                    f8_e5m2_cvt_->vcvt_f8_to_f16(xmm, xmm);
+                                if (f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f16_to_f8(xmm, xmm);
                             } else {
                                 if (idt != f32) cvt2ps(xmm, xmm, idt);
-                                if (f8_e4m3_emu_)
-                                    f8_e4m3_emu_->vcvt_f32_to_f8(
+                                if (f8_e4m3_cvt_)
+                                    f8_e4m3_cvt_->vcvt_f32_to_f8(
                                             xmm, Zmm(xmm.getIdx()));
                             }
                         } else
@@ -876,7 +897,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         cvt2odt(Xmm(ur), prb_.otype,
                                 need_saturation       ? s32
                                         : interim_f32 ? f32
-                                                      : prb_.itype);
+                                                      : prb_.itype,
+                                need_saturation);
                     }
                 }
                 for (int ur = 0; ur < reg_unroll; ur += load_step) {
@@ -1201,7 +1223,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 cvt2odt(Xmm(ur), prb_.otype,
                         need_saturation && !compensation_needed_ ? s32
                                 : interim_f32                    ? f32
-                                                                 : prb_.itype);
+                                                                 : prb_.itype,
+                        need_saturation);
 
             store(o_addr(o_off[ur]), Xmm(ur), ur_step * otype_sz_);
         }
@@ -1528,8 +1551,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         , jit_generator_t(jit_name())
         , isa_(get_max_cpu_isa())
         , bf16_emu_(nullptr)
-        , f8_e5m2_emu_(nullptr)
-        , f8_e4m3_emu_(nullptr) {
+        , f8_e5m2_cvt_(nullptr)
+        , f8_e4m3_cvt_(nullptr) {
         assert(!utils::one_of(isa_, isa_undef, isa_all));
         itype_sz_ = data_type_size(prb_.itype);
         otype_sz_ = data_type_size(prb_.otype);
@@ -1544,29 +1567,32 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     || utils::one_of(
                             prb_.itype, data_type::f8_e5m2, data_type::f8_e4m3))
                 && is_superset(isa_, avx512_core_amx)) {
-            const auto create_fp8_emu = [&](const data_type_t &dtype) {
+            const auto create_fp8_cvt = [&](const data_type_t &dtype) {
                 switch (dtype) {
                     case data_type::f8_e5m2:
-                        f8_e5m2_emu_ = utils::make_unique<fp8_emulation_e5m2_t>(
-                                this, fp8_emu_reserv_1_, fp8_emu_reserv_2_,
-                                fp8_emu_reserv_3_, fp8_emu_kmask_aux_,
-                                fp8_emu_scratch_);
+                        f8_e5m2_cvt_
+                                = utils::make_unique<fp8_conversion_e5m2_t>(
+                                        this, fp8_emu_reserv_1_,
+                                        fp8_emu_reserv_2_, fp8_emu_reserv_3_,
+                                        fp8_cvt_kmask_aux_, fp8_cvt_scratch_);
                         break;
                     case data_type::f8_e4m3:
-                        f8_e4m3_emu_ = utils::make_unique<fp8_emulation_e4m3_t>(
-                                this, fp8_emu_reserv_1_, fp8_emu_reserv_2_,
-                                fp8_emu_reserv_3_, fp8_emu_reserv_4_,
-                                fp8_emu_reserv_5_, fp8_emu_scratch_);
+                        f8_e4m3_cvt_
+                                = utils::make_unique<fp8_conversion_e4m3_t>(
+                                        this, fp8_emu_reserv_1_,
+                                        fp8_emu_reserv_2_, fp8_emu_reserv_3_,
+                                        fp8_emu_reserv_4_, fp8_emu_reserv_5_,
+                                        fp8_cvt_scratch_);
                         break;
                     default: assert(!"Unreachable.");
                 }
             };
             if (utils::one_of(
                         prb_.otype, data_type::f8_e5m2, data_type::f8_e4m3))
-                create_fp8_emu(prb_.otype);
+                create_fp8_cvt(prb_.otype);
             if (utils::one_of(
                         prb_.itype, data_type::f8_e5m2, data_type::f8_e4m3))
-                create_fp8_emu(prb_.itype);
+                create_fp8_cvt(prb_.itype);
         }
     }
 
@@ -1654,8 +1680,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         const bool is_fp8_otype = utils::one_of(
                 prb_.otype, data_type::f8_e5m2, data_type::f8_e4m3);
         if (is_fp8_itype || is_fp8_otype) {
-            if (f8_e5m2_emu_) f8_e5m2_emu_->prepare_table();
-            if (f8_e4m3_emu_) f8_e4m3_emu_->prepare_table();
+            if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+            if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
         }
     }
 
@@ -1707,12 +1733,14 @@ private:
     const int bf16_emu_zmm_3_idx_ = 18;
     const int bf16_emu_zmm_4_idx_ = 19;
 
+    // for fp8 conversion via emulation only.
     const int fp8_emu_zmm_1_idx_ = 16;
     const int fp8_emu_zmm_2_idx_ = 17;
     const int fp8_emu_zmm_3_idx_ = 18;
     const int fp8_emu_zmm_4_idx_ = 19;
     const int fp8_emu_zmm_5_idx_ = 20;
-    const int fp8_emu_kmask_aux_idx_ = 1;
+
+    const int fp8_cvt_kmask_aux_idx_ = 1;
     /* bf16 support on SKX */
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
     const Zmm bf16_emu_reserv_1_ = Zmm(bf16_emu_zmm_1_idx_);
@@ -1721,15 +1749,17 @@ private:
     const Zmm bf16_emu_reserv_3_ = Zmm(bf16_emu_zmm_3_idx_);
     const Zmm bf16_emu_reserv_4_ = Zmm(bf16_emu_zmm_4_idx_);
     /* fp8 support on SPR */
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emu_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emu_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
+    /* fp8 emulation only*/
     const Zmm fp8_emu_reserv_1_ = Zmm(fp8_emu_zmm_1_idx_);
     const Zmm fp8_emu_reserv_2_ = Zmm(fp8_emu_zmm_2_idx_);
     const Zmm fp8_emu_reserv_3_ = Zmm(fp8_emu_zmm_3_idx_);
     const Zmm fp8_emu_reserv_4_ = Zmm(fp8_emu_zmm_4_idx_);
     const Zmm fp8_emu_reserv_5_ = Zmm(fp8_emu_zmm_5_idx_);
-    const Opmask fp8_emu_kmask_aux_ = Opmask(fp8_emu_kmask_aux_idx_);
-    const Reg64 fp8_emu_scratch_ = bf16_emu_scratch_;
+
+    const Opmask fp8_cvt_kmask_aux_ = Opmask(fp8_cvt_kmask_aux_idx_);
+    const Reg64 fp8_cvt_scratch_ = bf16_emu_scratch_;
 };
 
 // Seperate class for no unroll/threading burden

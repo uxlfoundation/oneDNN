@@ -71,7 +71,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8_via_convert() || has_f8_e5m2_binary_postops
+        if (brg.is_fp8 || has_f8_e5m2_binary_postops
                 || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
                         brg.dt_d)
@@ -79,14 +79,14 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
                 // Note: avoid using 'vmm0' since it is used as
                 // 'fp8_to_f16_upconvert()' param and would collision with these
                 // emulation vmms
-                f8_e5m2_emulator_ = utils::make_unique<fp8_emulation_e5m2_t>(
-                        this, vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
+                f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
+                        vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
                         vmm_fp8_emu_aux3(), kmask_fp8_aux, reg64_fp8_aux);
             if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
                         brg.dt_d)
                     || has_f8_e4m3_binary_postops)
-                f8_e4m3_emulator_ = utils::make_unique<fp8_emulation_e4m3_t>(
-                        this, vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
+                f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,
+                        vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
                         vmm_fp8_emu_aux3(), vmm_fp8_emu_aux4(),
                         vmm_fp8_emu_aux5(), reg64_fp8_aux);
         }
@@ -107,7 +107,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
 
             const binary_injector::static_params_t bsp {this->param1,
                     binary_injector::get_all_strategies_supported_by_injector(),
-                    rhs_sp, f8_e5m2_emulator_.get(), f8_e4m3_emulator_.get()};
+                    rhs_sp, f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get()};
 
             auto st = safe_ptr_assign(postops_injector_,
                     po_injector_t::create(
@@ -144,8 +144,8 @@ private:
     using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
-    std::unique_ptr<fp8_emulation_e5m2_t> f8_e5m2_emulator_;
-    std::unique_ptr<fp8_emulation_e4m3_t> f8_e4m3_emulator_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
     Xbyak::Label avx_tail_mask_;
     Xbyak::Label sum_zp_scale_data_;
@@ -363,10 +363,9 @@ private:
         return Vmm(isa_num_vregs(brg.isa_impl) - 2);
     }
 
-    Vmm vmm_mask(const Vmm vmm_in, bool mask_flag, bool store,
+    template <typename U>
+    U vmm_mask(const U umm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) const;
-    Vmm_lower_t vmm_lower_mask(const Vmm_lower_t vmm_lower_in, bool mask_flag,
-            bool store, Xbyak::Opmask ktail_mask) const;
     void maybe_set_avx_mask(bool is_ld_tail);
 
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
@@ -640,22 +639,12 @@ dim_t jit_brgemm_kernel_t<Wmm>::zp_c_values_offset(
     return 0;
 }
 template <typename Wmm>
-typename jit_brgemm_kernel_t<Wmm>::Vmm jit_brgemm_kernel_t<Wmm>::vmm_mask(
-        const Vmm vmm_in, bool mask_flag, bool store,
+template <typename U>
+U jit_brgemm_kernel_t<Wmm>::vmm_mask(const U vmm_in, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask) const {
-    return mask_flag && is_superset(brg.isa_impl, avx512_core)
+    return mask_flag && isa_has_masks(brg.isa_impl)
             ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
             : vmm_in;
-}
-
-template <typename Wmm>
-typename jit_brgemm_kernel_t<Wmm>::Vmm_lower_t
-jit_brgemm_kernel_t<Wmm>::vmm_lower_mask(const Vmm_lower_t vmm_lower_in,
-        bool mask_flag, bool store, Xbyak::Opmask ktail_mask) const {
-    return mask_flag && is_superset(brg.isa_impl, avx512_core)
-            ? (store ? vmm_lower_in | ktail_mask
-                     : vmm_lower_in | ktail_mask | T_z)
-            : vmm_lower_in;
 }
 
 template <typename Wmm>
@@ -688,18 +677,8 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         case data_type::f16: vcvtph2ps(vmm, op); break;
         case data_type::s8: uni_vpmovsxbd(vmm, op); break;
         case data_type::u8: uni_vpmovzxbd(vmm, op); break;
-        case data_type::f8_e5m2:
-            if (brg.is_fp8_via_convert())
-                f8_e5m2_emulator_->vcvt_f8_to_f32(vmm, op);
-            else
-                assert(!"Error, native conversion unsupported");
-            break;
-        case data_type::f8_e4m3:
-            if (brg.is_fp8_via_convert())
-                f8_e4m3_emulator_->vcvt_f8_to_f32(vmm, op);
-            else
-                assert(!"Error, native conversion unsupported");
-            break;
+        case data_type::f8_e5m2: f8_e5m2_cvt_->vcvt_f8_to_f32(vmm, op); break;
+        case data_type::f8_e4m3: f8_e4m3_cvt_->vcvt_f8_to_f32(vmm, op); break;
 
         default: assert(!"unsupported data type");
     }
@@ -1035,9 +1014,9 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert(dim_t num_rows,
 
     for (dim_t r = 0; r < num_rows; ++r) {
         if (dt == data_type::f8_e5m2)
-            f8_e5m2_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
         else if (dt == data_type::f8_e4m3)
-            f8_e4m3_emulator_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
         else
             assert(!"unsupported data type");
 
@@ -1068,10 +1047,10 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(dim_t num_rows,
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2)
-        f8_e5m2_emulator_->vcvt_f8_to_f16_vnni_block(
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
                 r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
     else if (dt == data_type::f8_e4m3)
-        f8_e4m3_emulator_->vcvt_f8_to_f16_vnni_block(
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
                 r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
     else
         assert(!"unsupported data type");
@@ -1424,9 +1403,17 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         if (is_superset(brg.isa_impl, avx512_core)) {
             const Vmm r_vmm = vmm_mask(vmm, is_tail, true, k_mask);
             const Vmm_lower_t r_ymm
-                    = vmm_lower_mask(vmm_lower, is_tail, true, k_mask);
+                    = vmm_mask(vmm_lower, is_tail, true, k_mask);
             const Xmm xmm = Xmm(vmm.getIdx());
-            const Xmm r_xmm = is_tail ? xmm | k_mask : xmm;
+            const Xmm r_xmm = vmm_mask(xmm, is_tail, true, k_mask);
+            if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+                assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
+                auto vmm_perm = vmm_ubound();
+                vpermb(vmm, vmm_perm, vmm);
+                vmovdqu8(addr, r_xmm);
+                continue;
+            }
+
             switch (brg.dt_d) {
                 case data_type::f32:
                 case data_type::s32: uni_vmovups(addr, r_vmm); break;
@@ -1443,18 +1430,12 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                     vmovdqu16(addr, r_ymm);
                     break;
                 case data_type::f8_e5m2:
-                    if (brg.is_fp8_via_convert()) {
-                        f8_e5m2_emulator_->vcvt_f32_to_f8(xmm, vmm);
-                        vmovdqu8(addr, r_xmm);
-                    } else
-                        assert(!"Error, native conversion unsupported");
+                    f8_e5m2_cvt_->vcvt_f32_to_f8(xmm, vmm);
+                    vmovdqu8(addr, r_xmm);
                     break;
                 case data_type::f8_e4m3:
-                    if (brg.is_fp8_via_convert()) {
-                        f8_e4m3_emulator_->vcvt_f32_to_f8(xmm, vmm);
-                        vmovdqu8(addr, r_xmm);
-                    } else
-                        assert(!"Error, native conversion unsupported");
+                    f8_e4m3_cvt_->vcvt_f32_to_f8(xmm, vmm);
+                    vmovdqu8(addr, r_xmm);
                     break;
                 case data_type::s8: vpmovsdb(addr, r_vmm); break;
                 case data_type::u8: vpmovusdb(addr, r_vmm); break;
@@ -2051,22 +2032,30 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
         bool is_bdb_tail, dim_t ld_block2, bool is_rd_tail, bool is_ld_tail,
         bool last_bdb) {
     auto tdpbxxd = [this](const Tmm &x1, const Tmm &x2, const Tmm &x3) {
-        if (brg.is_fp8) {
-            if (brg.is_fp8_via_convert())
-                tdpfp16ps(x1, x2, x3);
-            else
-                assert(!"Not supported!");
-        } else if (brg.dt_a == data_type::bf16 && brg.dt_b == data_type::bf16) {
-            tdpbf16ps(x1, x2, x3);
-        } else if (brg.dt_a == data_type::f16 && brg.dt_b == data_type::f16) {
+        using namespace data_type;
+        if (brg.is_tf32) {
+            tmmultf32ps(x1, x2, x3);
+        } else if (brg.is_fp8 && brg.is_fp8_via_convert()) {
             tdpfp16ps(x1, x2, x3);
-        } else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::u8) {
+        } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+            tdpbf8ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
+            tdpbhf8ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+            tdphf8ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
+            tdphbf8ps(x1, x2, x3);
+        } else if (brg.dt_a == bf16 && brg.dt_b == bf16) {
+            tdpbf16ps(x1, x2, x3);
+        } else if (brg.dt_a == f16 && brg.dt_b == f16) {
+            tdpfp16ps(x1, x2, x3);
+        } else if (brg.dt_a == u8 && brg.dt_b == u8) {
             tdpbuud(x1, x2, x3);
-        } else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::s8) {
+        } else if (brg.dt_a == u8 && brg.dt_b == s8) {
             tdpbusd(x1, x2, x3);
-        } else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::u8) {
+        } else if (brg.dt_a == s8 && brg.dt_b == u8) {
             tdpbsud(x1, x2, x3);
-        } else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::s8) {
+        } else if (brg.dt_a == s8 && brg.dt_b == s8) {
             tdpbssd(x1, x2, x3);
         } else {
             assert(!"unsupported combination");
@@ -2101,7 +2090,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
-    if (brg.is_f32 || brg.is_f16
+    if (brg.is_f16 && brg.isa_impl == avx10_2_512)
+        vdpphps(v1, v2, v3);
+    else if (brg.is_f32 || brg.is_f16
             || (brg.is_bf16 && brg.isa_impl == avx2_vnni_2))
         uni_vfmadd231ps(v1, v2, v3);
     else if (brg.is_bf16)
@@ -2213,7 +2204,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
     dim_t rd_loop = 0, rd_tail_size = 0;
     if (is_rd_tail) {
-        if (brg.is_bf16 || brg.is_int8) {
+        if (brg.is_bf16 || brg.is_f16 || brg.is_int8) {
             rd_tail_size = brg.rdb_tail % brg.rd_step;
             rd_loop = (rd_tail_size != 0)
                     ? ((brg.rdb_tail / brg.rd_step) + 1) * brg.rd_step
@@ -2238,7 +2229,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         const bool maybe_load_bytes
                 = (rows_for_rd_tail > 0 || brg.brgattr.wary_A_k_tail_read)
                 && is_rd_tail && rd_tail_size != 0
-                && (brg.is_bf16 || brg.is_int8);
+                && (brg.is_bf16 || brg.is_f16 || brg.is_int8);
         const bool have_to_load_bytes
                 = maybe_load_bytes && (rd == rd_loop - brg.rd_step);
         const auto rows_by_load_bytes
@@ -2262,7 +2253,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             } else if (one_of(dt, data_type::s8, data_type::u8)) {
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {
-                if (brg.isa_impl == avx2_vnni_2) {
+                if (brg.isa_impl == avx10_2_512) {
+                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+                } else if (brg.isa_impl == avx2_vnni_2) {
                     vbcstnesh2ps(vmm_bcast, ptr[reg_aux_A + offset]);
                 } else if (is_superset(brg.isa_impl, avx512_core_fp16)) {
                     // Broadcast is not supported for legacy f16-conversions.
@@ -2283,7 +2276,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         // avx2_vnni_2 with xf16 data type, as the B matrix is generally
         // at least double-blocked.
         if (brg.dt_b == data_type::f16) {
-            if (brg.isa_impl == avx2_vnni_2) {
+            if (brg.isa_impl == avx10_2_512) {
+                uni_vmovups(vmm_load, addr);
+            } else if (brg.isa_impl == avx2_vnni_2) {
                 if (rd % 2 == 0)
                     vcvtneeph2ps(vmm_load, addr);
                 else
@@ -2342,7 +2337,6 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 broadcast_A(bcst(bd), bd, rd);
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 load_B(0, rd, ld);
-
                 for (dim_t bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
                     if (is_emdbd)
@@ -2352,6 +2346,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                         dot_product(vmm, load(), bcst(bd));
                 }
             }
+
         } else {
             dim_t prefetch_count_B = 0;
             for (dim_t ld = 0; ld < ld_block2; ld++) {
@@ -2621,7 +2616,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         bd_blocks_for_rd_tail = 0;
     } else {
         rows_for_rd_tail = 0;
-        if (brg.rdb_tail != 0 && (brg.is_bf16 || brg.is_int8)) {
+        if (brg.rdb_tail != 0 && (brg.is_bf16 || brg.is_f16 || brg.is_int8)) {
             const auto rd_tail_size = brg.rdb_tail % brg.rd_step;
             rows_for_rd_tail = rd_tail_size
                     ? div_up(brg.rd_step - rd_tail_size, brg.reduce_dim)
@@ -2879,8 +2874,8 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     }
 
     if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_emulator_) f8_e5m2_emulator_->prepare_table();
-        if (f8_e4m3_emulator_) f8_e4m3_emulator_->prepare_table();
+        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
     }
 
     if (brg.with_eltwise)

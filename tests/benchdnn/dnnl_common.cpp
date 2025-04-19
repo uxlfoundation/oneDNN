@@ -1162,7 +1162,11 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     // require less memory. However, during the filling both memories - the
     // original f32 and prim_ref memory are alive - and they might be huge. To
     // avoid potential overflow at that exact moment, ref sizes are combined.
-    size_t total_size_ref = check_mem_size_args.total_size_ref;
+    //
+    // The `ref` size also includes memory that will be allocated by native
+    // reference computations.
+    size_t total_size_ref = check_mem_size_args.total_size_ref
+            + check_mem_size_args.prb_ref_scratchpad_size;
     // Note: `prim_ref` can require extra memory buffer for comparison to
     // convert output to `abx` format.
     size_t total_size_compare = check_mem_size_args.total_size_compare;

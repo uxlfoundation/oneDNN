@@ -556,6 +556,11 @@ int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
     if (has_bench_mode_bit(mode_bit_t::exec)) {
+        // Note: assigning this value here allows to avoid creating a common
+        // interface across all `prb_t` types.
+        res->mem_size_args.prb_ref_scratchpad_size
+                += prb->get_ref_scratchpad_size();
+
         const auto &prim_ref = v_prim[1];
         if (prim_ref) {
             // Copy res to avoid save/restore state and reason.

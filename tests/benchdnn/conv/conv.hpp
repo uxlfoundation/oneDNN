@@ -224,6 +224,11 @@ struct prb_t : public desc_t {
         return make_benchdnn_dnnl_wrapper<dnnl_memory_desc_t>(nullptr);
     }
 
+    size_t get_ref_scratchpad_size() const {
+        if (alg != WINO) return 0;
+        return wino_scratchpad_t(*this, this->dir).get_total_size();
+    }
+
     const char *str() const { return repro.c_str(); }
 
 private:

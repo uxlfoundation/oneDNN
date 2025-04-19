@@ -93,6 +93,9 @@ struct check_mem_size_args_t {
     // `lib_scratchpad_size` specifies the library scratchpad size. It is needed
     // for specific checks.
     size_t lib_scratchpad_size = 0;
+    // `prb_ref_scratchpad_size` specifies additional memory needed for the
+    // reference computations.
+    size_t prb_ref_scratchpad_size = 0;
 };
 
 struct res_t {

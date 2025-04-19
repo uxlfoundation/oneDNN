@@ -1095,6 +1095,12 @@ int get_gpu_cache_size(size_t &cache_size) {
 // If no, indicate that the system won't make it and drop `prim_ref` falling
 // back to stock reference.
 int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
+    // Skip the check if it is disabled.
+    if (!mem_check) return OK;
+
+    // Skip the check if the test object won't be executed.
+    if (!has_bench_mode_bit(mode_bit_t::exec)) return OK;
+
     static size_t cpu_device_capacity = get_cpu_ram_size();
     static size_t gpu_device_capacity = 0;
     static size_t gpu_max_alloc_capacity = 0;

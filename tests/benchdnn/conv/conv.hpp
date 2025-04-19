@@ -88,6 +88,31 @@ private:
 int str2desc(desc_t *desc, const char *str);
 std::ostream &operator<<(std::ostream &s, const desc_t &d);
 
+struct wino_scratchpad_t {
+    wino_scratchpad_t(const desc_t &d, dir_t dir);
+    ~wino_scratchpad_t();
+
+    int64_t mb_;
+    int64_t ic_;
+    int64_t oc_;
+    int64_t h_tiles_;
+    int64_t w_tiles_;
+    float *_u_ptr_ = nullptr;
+    float *_v_ptr_ = nullptr;
+    float *_m_ptr_ = nullptr;
+
+    static constexpr int64_t alpha_ = 6;
+    static constexpr int64_t out_dim_ = 4;
+
+    size_t get_u_size() const;
+    size_t get_v_size() const;
+    size_t get_m_size() const;
+    size_t get_total_size() const;
+    // Keep `init` separately to avoid memory allocations when getting sizes
+    // from this object to estimate memory sizes.
+    int init();
+};
+
 struct settings_t : public base_settings_t {
     settings_t() = default;
 
@@ -120,6 +145,8 @@ struct settings_t : public base_settings_t {
                 && base_settings_t::has_single_setup();
     }
 };
+
+struct wino_scratchpad_t;
 
 struct prb_t : public desc_t {
     // A ctor with common interface across all drivers.

@@ -78,8 +78,8 @@ template <HW hw>
 template <typename DT>
 void BLASKernelGenerator<hw>::emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc)
 {
-    EmulationImplementation::applyDefaultType<DT>(dst);
-    EmulationImplementation::applyDefaultType<DT>(src0);
+    dnnl::impl::gpu::intel::jit::EmulationImplementation::applyDefaultType<DT>(dst);
+    dnnl::impl::gpu::intel::jit::EmulationImplementation::applyDefaultType<DT>(src0);
 
     if (dst.getType() == DataType::tf32 && src0.getType() == DataType::tf32) {
         dst.setType(DataType::f);
@@ -105,11 +105,11 @@ void BLASKernelGenerator<hw>::emov(const ngen::InstructionModifier &mod, ngen::R
         src0.setType(DataType::ud);
         add(mod, src0, src0, -0x8000, loc);
         and_(mod | nz | flag, null.ud(), src0, 0x1FFFF, loc);
-        mov(mod, dst, EmulationImplementation::highWord(src0), loc);
+        mov(mod, dst, dnnl::impl::gpu::intel::jit::EmulationImplementation::highWord(src0), loc);
         // add(mod, src0, src0, 0x8000);       // Preserve src0 -- if nondestructive mov -- not needed
         add(mod | flag, dst, dst, 1, loc);
     } else
-        EmulationImplementation::emov(*this, mod, dst, src0, strategy.emulate, loc);
+        dnnl::impl::gpu::intel::jit::EmulationImplementation::emov(*this, mod, dst, src0, strategy.emulate, loc);
 }
 
 template <HW hw>
@@ -128,7 +128,7 @@ void BLASKernelGenerator<hw>::eadd(const InstructionModifier &mod, const RegData
 
         state.ra.safeRelease(alloced);
     } else
-        EmulationImplementation::eadd<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc);
+        dnnl::impl::gpu::intel::jit::EmulationImplementation::eadd<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc);
 }
 
 template <HW hw>

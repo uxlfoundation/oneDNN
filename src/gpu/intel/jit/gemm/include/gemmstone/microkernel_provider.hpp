@@ -18,7 +18,6 @@
 #define GEMMSTONE_GUARD_MICROKERNEL_PROVIDER_HPP
 
 #include "config.hpp"
-#include "gpu/intel/microkernels/package.hpp"
 #include "kernel_selector.hpp"
 #include "kernel_evaluator.hpp"
 

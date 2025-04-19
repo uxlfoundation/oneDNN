@@ -20,7 +20,6 @@
 #include "config.hpp"
 
 #include <bitset>
-#include "gpu/intel/gpu_post_ops.hpp"
 
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
@@ -175,14 +174,8 @@ struct GEMMProblem : public CommonProblem {
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
-    bool postOpFwd = true;                          // Eltwise parameters
-    bool cStochasticRound = false;
 
-    gpu_post_ops_t postOps;                         // Fused post operations to apply
-    std::bitset<post_ops_t::post_ops_limit> binaryRow;      // Binary op broadcasts row data if false
-    std::bitset<post_ops_t::post_ops_limit> binaryCol;      // Binary op broadcasts column data if false
-    std::bitset<post_ops_t::post_ops_limit> binaryBatch;    // Binary op broadcasts in batch dimension if false
-    std::bitset<post_ops_t::post_ops_limit> binaryTrans;    // Used to compute GEMMProblem::binary
+    PostOpsProblem postOps;  // Fused post operations to apply
 
     // The following data is derived from the postOps and does not need
     //   to be considered for equality/hashing purposes.
@@ -191,21 +184,21 @@ struct GEMMProblem : public CommonProblem {
 
     bool hasPostOp() const { return !postOps.empty(); }
     bool hasNonSum1PostOp() const {
-        for (const auto &e : postOps)
+        for (const auto &e : postOps.ops)
             if (!e.is_sum()) return true;
         return false;
     }
     bool hasBinaryPostOp() const {
-        for (auto &e : postOps)
+        for (auto &e : postOps.ops)
             if (e.is_binary()) return true;
         return false;
     }
     bool hasSum1PostOpAtEnd() const {
-        return !postOps.empty() && postOps.back().is_sum();
+        return !postOps.empty() && postOps.ops.back().is_sum();
     }
     void removeFinalSumPostOp() {
         if (hasSum1PostOpAtEnd())
-            postOps.pop_back();
+            postOps.ops.pop_back();
     }
 
     bool beta0() const   { return (beta  ==  0); }
@@ -270,7 +263,7 @@ struct GEMMProblem : public CommonProblem {
     }
 
     /* Serialization for kernel cache. */
-    void serialize(serialization_stream_t &s) const
+    void serialize(SerializationStream &s) const
     {
         s.append(Ta, Tb, Tc, Ts);
         s.append(Ta_ext, Tb_ext, Tc_ext);
@@ -288,13 +281,7 @@ struct GEMMProblem : public CommonProblem {
         s.append(batch);
         s.append(batchDims);
         s.append(sumA, sumB);
-        s.append(postOpFwd);
         s.append(postOps);
-        s.append(binaryRow);
-        s.append(binaryCol);
-        s.append(binaryBatch);
-        s.append(binaryTrans);
-        s.append(cStochasticRound);
     }
 };
 

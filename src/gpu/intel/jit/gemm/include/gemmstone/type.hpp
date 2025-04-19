@@ -89,23 +89,6 @@ public:
     constexpr Type asSigned() const {
         return static_cast<_Type>(uint32_t(val) | (isInteger() ? 0x10000 : 0));
     }
-    data_type_t get_dnnl_type() const {
-        switch (val) {
-            case Type::f64: return data_type::f64;
-            case Type::f32: return data_type::f32;
-            case Type::f16: return data_type::f16;
-            case Type::hf8: return data_type::f8_e4m3;
-            case Type::bf8: return data_type::f8_e5m2;
-            case Type::s32: return data_type::s32;
-            case Type::u8: return data_type::u8;
-            case Type::s8: return data_type::s8;
-            case Type::u4: return data_type::u4;
-            case Type::s4: return data_type::s4;
-            case Type::f4_e2m1: return data_type::f4_e2m1;
-            case Type::f4_e3m0: return data_type::f4_e3m0;
-            default: assert(!"Unsupported type"); return data_type::undef;
-        }
-    }
     constexpr Type baseType() const { return *this; }
 
     template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(U a, Type t) {

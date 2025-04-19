@@ -54,11 +54,11 @@ struct ref_reorder_t : public gpu::generic::sycl::primitive_t {
             VDISPATCH_REORDER(!dst_d.has_runtime_dims_or_strides(),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
             VDISPATCH_REORDER(
-                    check_data_types(src_d, dst_d), VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_REORDER(
                     check_formats(src_d, dst_d), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_REORDER(
-                    attr()->has_default_values(sm::scales | sm::post_ops),
+                    check_data_types(src_d, dst_d), VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_REORDER(attr()->has_default_values(sm::post_ops
+                                      | sm::scales | sm::zero_points),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_REORDER(IMPLICATION(!attr()->scales_.has_default_values(),
                                       scales_ok()),
@@ -108,6 +108,7 @@ struct ref_reorder_t : public gpu::generic::sycl::primitive_t {
                 const auto dt = scales.get_data_type(arg);
                 if (!is_supported_type(dt)) { return false; }
             }
+
             return true;
         }
     };

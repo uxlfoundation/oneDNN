@@ -234,54 +234,50 @@ void trans_O_3x3_4x4_wu(float Mw[6][6], float M[3][3]) {
     }
 }
 
-struct scratchpad_t {
-    float *_u_ptr;
-    float *_m_ptr;
-    float *_v_ptr;
+wino_scratchpad_t::wino_scratchpad_t(const desc_t &d, dir_t dir)
+    : mb_(d.mb)
+    , ic_(d.ic)
+    , oc_(d.oc)
+    , h_tiles_(
+              dir == FLAG_FWD ? div_up(d.oh, out_dim_) : div_up(d.ih, out_dim_))
+    , w_tiles_(dir == FLAG_FWD ? div_up(d.ow, out_dim_)
+                               : div_up(d.iw, out_dim_)) {}
 
-    int64_t h_tiles;
-    int64_t w_tiles;
-
-    const int64_t alpha = 6;
-    const int64_t out_dim = 4;
-};
-
-int init_scratchpad(const prb_t *prb, scratchpad_t &sp) {
-    if (sp.out_dim != 4 || sp.alpha != 6) return FAIL;
-
-    sp.h_tiles = prb->dir == FLAG_FWD ? div_up(prb->oh, sp.out_dim)
-                                      : div_up(prb->ih, sp.out_dim);
-    sp.w_tiles = prb->dir == FLAG_FWD ? div_up(prb->ow, sp.out_dim)
-                                      : div_up(prb->iw, sp.out_dim);
-
-    sp._u_ptr = (float *)zmalloc(
-            sizeof(float) * sp.alpha * sp.alpha * prb->oc * prb->ic, 64);
-    sp._v_ptr = (float *)zmalloc(sizeof(float) * sp.alpha * sp.alpha * prb->ic
-                    * prb->mb * sp.h_tiles * sp.w_tiles,
-            64);
-    sp._m_ptr = (float *)zmalloc(sizeof(float) * sp.alpha * sp.alpha * prb->oc
-                    * prb->mb * sp.h_tiles * sp.w_tiles,
-            64);
-
-    if (sp._u_ptr == nullptr || sp._v_ptr == nullptr || sp._m_ptr == nullptr)
-        return dnnl_out_of_memory;
-
-    array_set((char *)sp._u_ptr,
-            sizeof(float) * sp.alpha * sp.alpha * prb->oc * prb->ic);
-    array_set((char *)sp._v_ptr,
-            sizeof(float) * sp.alpha * sp.alpha * prb->ic * prb->mb * sp.h_tiles
-                    * sp.w_tiles);
-    array_set((char *)sp._m_ptr,
-            sizeof(float) * sp.alpha * sp.alpha * prb->oc * prb->mb * sp.h_tiles
-                    * sp.w_tiles);
-
-    return OK;
+wino_scratchpad_t::~wino_scratchpad_t() {
+    zfree(_u_ptr_);
+    zfree(_v_ptr_);
+    zfree(_m_ptr_);
 }
 
-void free_scratchpad(scratchpad_t *sp) {
-    zfree(sp->_u_ptr);
-    zfree(sp->_v_ptr);
-    zfree(sp->_m_ptr);
+size_t wino_scratchpad_t::get_u_size() const {
+    return sizeof(float) * alpha_ * alpha_ * oc_ * ic_;
+}
+size_t wino_scratchpad_t::get_v_size() const {
+    return sizeof(float) * alpha_ * alpha_ * ic_ * mb_ * h_tiles_ * w_tiles_;
+}
+size_t wino_scratchpad_t::get_m_size() const {
+    return sizeof(float) * alpha_ * alpha_ * oc_ * mb_ * h_tiles_ * w_tiles_;
+}
+size_t wino_scratchpad_t::get_total_size() const {
+    return get_u_size() + get_v_size() + get_m_size();
+}
+
+// Keep `init` separately to avoid memory allocations when getting sizes
+// from this object to estimate memory sizes.
+int wino_scratchpad_t::init() {
+    _u_ptr_ = ((float *)zmalloc(get_u_size(), 64));
+    if (!_u_ptr_) return FAIL;
+
+    _v_ptr_ = ((float *)zmalloc(get_v_size(), 64));
+    if (!_v_ptr_) return FAIL;
+
+    _m_ptr_ = ((float *)zmalloc(get_m_size(), 64));
+    if (!_m_ptr_) return FAIL;
+
+    array_set((char *)_u_ptr_, get_u_size());
+    array_set((char *)_v_ptr_, get_v_size());
+    array_set((char *)_m_ptr_, get_m_size());
+    return OK;
 }
 
 void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
@@ -289,8 +285,8 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
     const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
     const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
-    scratchpad_t sp {};
-    SAFE_V(init_scratchpad(prb, sp));
+    wino_scratchpad_t sp(*prb, prb->dir);
+    SAFE_V(sp.init());
 
     const int64_t MB = prb->mb;
     const int64_t G = prb->g;
@@ -300,11 +296,11 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
     const int64_t ICG = IC / G;
 
     array_offset_calculator_t<float, 5> U(
-            sp._u_ptr, sp.alpha, sp.alpha, G, OCG, ICG);
-    array_offset_calculator_t<float, 7> V(
-            sp._v_ptr, sp.alpha, sp.alpha, G, ICG, MB, sp.h_tiles, sp.w_tiles);
-    array_offset_calculator_t<float, 7> M(
-            sp._m_ptr, sp.alpha, sp.alpha, G, OCG, MB, sp.h_tiles, sp.w_tiles);
+            sp._u_ptr_, sp.alpha_, sp.alpha_, G, OCG, ICG);
+    array_offset_calculator_t<float, 7> V(sp._v_ptr_, sp.alpha_, sp.alpha_, G,
+            ICG, MB, sp.h_tiles_, sp.w_tiles_);
+    array_offset_calculator_t<float, 7> M(sp._m_ptr_, sp.alpha_, sp.alpha_, G,
+            OCG, MB, sp.h_tiles_, sp.w_tiles_);
 
     SAFE_V(prb->kh == 3 ? OK : FAIL);
     SAFE_V(prb->kw == 3 ? OK : FAIL);
@@ -314,18 +310,18 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
     const int64_t l_pad = prb->pw;
     const int64_t wp_max = prb->iw + l_pad;
     const int64_t hp_max = prb->ih + t_pad;
-    const int64_t p_dim = prb->mb * sp.h_tiles * sp.w_tiles;
+    const int64_t p_dim = prb->mb * sp.h_tiles_ * sp.w_tiles_;
 
-    benchdnn_parallel_nd(G, MB, ICG, sp.h_tiles, sp.w_tiles,
+    benchdnn_parallel_nd(G, MB, ICG, sp.h_tiles_, sp.w_tiles_,
             [&](int64_t g, int64_t img, int64_t c, int64_t hfm, int64_t wfm) {
                 float I[6][6] = {};
                 float _v[6][6] = {};
                 /* src_transform v <- B_t * d * B */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
+                for (int64_t j = 0; j < sp.alpha_; j++) {
+                    int64_t ydim = hfm * sp.out_dim_ + j;
                     if ((t_pad <= ydim) && (ydim < hp_max)) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
+                        for (int64_t k = 0; k < sp.alpha_; k++) {
+                            int64_t xdim = wfm * sp.out_dim_ + k;
                             if ((l_pad <= xdim) && (xdim < wp_max)) {
                                 size_t src_off = src_off_f(prb, img, g, c, 0,
                                         ydim - t_pad, xdim - l_pad);
@@ -337,8 +333,8 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
                 trans_I_4x4_3x3(_v, I);
 
                 /* scatter v:V */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    for (int64_t k = 0; k < sp.alpha; k++) {
+                for (int64_t j = 0; j < sp.alpha_; j++) {
+                    for (int64_t k = 0; k < sp.alpha_; k++) {
                         V(j, k, g, c, img, hfm, wfm) = _v[j][k];
                     }
                 }
@@ -356,14 +352,14 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
         trans_W_4x4_3x3(_u, F);
 
         /* scatter u:U */
-        for_(int64_t j = 0; j < sp.alpha; j++)
-        for (int64_t k = 0; k < sp.alpha; k++) {
+        for_(int64_t j = 0; j < sp.alpha_; j++)
+        for (int64_t k = 0; k < sp.alpha_; k++) {
             U(j, k, g, oc, ic) = _u[j][k];
         }
     });
 
     benchdnn_parallel_nd(
-            sp.alpha, sp.alpha, G, [&](int64_t j, int64_t k, int64_t g) {
+            sp.alpha_, sp.alpha_, G, [&](int64_t j, int64_t k, int64_t g) {
                 /* M = U * V */
                 gemm("C", "N", "N", OCG, p_dim, ICG, 1.0,
                         (float *)&(U(j, k, g, 0, 0)), ICG,
@@ -372,24 +368,24 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
             });
 
     auto v_po_masks = prb->attr.post_ops.get_po_masks();
-    benchdnn_parallel_nd(G, MB, OCG, sp.h_tiles, sp.w_tiles,
+    benchdnn_parallel_nd(G, MB, OCG, sp.h_tiles_, sp.w_tiles_,
             [&](int64_t g, int64_t img, int64_t oc, int64_t hfm, int64_t wfm) {
                 float O[4][4] = {};
                 float _m[6][6] = {};
                 /* Y = A_t *m * A */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
+                for_(int64_t j = 0; j < sp.alpha_; j++)
+                for (int64_t k = 0; k < sp.alpha_; k++) {
                     _m[j][k] = M(j, k, g, oc, img, hfm, wfm);
                 }
                 trans_O_4x4_3x3(_m, O);
 
-                for (int64_t j = 0; j < sp.out_dim; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
+                for (int64_t j = 0; j < sp.out_dim_; j++) {
+                    int64_t ydim = hfm * sp.out_dim_ + j;
                     if (ydim >= prb->oh) continue;
 
-                    for (int64_t k = 0; k < sp.out_dim; k++) {
+                    for (int64_t k = 0; k < sp.out_dim_; k++) {
                         float conv_res = O[j][k];
-                        int64_t xdim = wfm * sp.out_dim + k;
+                        int64_t xdim = wfm * sp.out_dim_ + k;
                         if (xdim >= prb->ow) continue;
 
                         const size_t dst_off
@@ -408,7 +404,6 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
                     }
                 }
             });
-    free_scratchpad(&sp);
 }
 
 void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
@@ -416,15 +411,15 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
     const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
     const dnn_mem_t &diff_dst_m = args.find(DNNL_ARG_DIFF_DST);
-    scratchpad_t sp {};
-    SAFE_V(init_scratchpad(prb, sp));
+    wino_scratchpad_t sp(*prb, prb->dir);
+    SAFE_V(sp.init());
 
     array_offset_calculator_t<float, 4> U(
-            sp._u_ptr, sp.alpha, sp.alpha, prb->ic, prb->oc);
-    array_offset_calculator_t<float, 6> V(sp._m_ptr, sp.alpha, sp.alpha,
-            prb->oc, prb->mb, sp.h_tiles, sp.w_tiles);
-    array_offset_calculator_t<float, 6> M(sp._v_ptr, sp.alpha, sp.alpha,
-            prb->ic, prb->mb, sp.h_tiles, sp.w_tiles);
+            sp._u_ptr_, sp.alpha_, sp.alpha_, prb->ic, prb->oc);
+    array_offset_calculator_t<float, 6> V(sp._m_ptr_, sp.alpha_, sp.alpha_,
+            prb->oc, prb->mb, sp.h_tiles_, sp.w_tiles_);
+    array_offset_calculator_t<float, 6> M(sp._v_ptr_, sp.alpha_, sp.alpha_,
+            prb->ic, prb->mb, sp.h_tiles_, sp.w_tiles_);
 
     SAFE_V(prb->kh == 3 ? OK : FAIL);
     SAFE_V(prb->kw == 3 ? OK : FAIL);
@@ -434,20 +429,20 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
     const int64_t t_pad = prb->ih + prb->ph - prb->oh;
     const int64_t wp_max = prb->ow + l_pad;
     const int64_t hp_max = prb->oh + t_pad;
-    const int64_t p_dim = prb->mb * sp.h_tiles * sp.w_tiles;
+    const int64_t p_dim = prb->mb * sp.h_tiles_ * sp.w_tiles_;
 
     bool with_bias = prb->bia_dt() != dnnl_data_type_undef;
 
-    benchdnn_parallel_nd(prb->mb, prb->oc, sp.h_tiles, sp.w_tiles,
+    benchdnn_parallel_nd(prb->mb, prb->oc, sp.h_tiles_, sp.w_tiles_,
             [&](int64_t img, int64_t c, int64_t hfm, int64_t wfm) {
                 float I[6][6] = {};
                 float _v[6][6] = {};
                 /* diff_src transform v <- B_t * d * B */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
+                for (int64_t j = 0; j < sp.alpha_; j++) {
+                    int64_t ydim = hfm * sp.out_dim_ + j;
                     if ((t_pad <= ydim) && (ydim < hp_max)) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
+                        for (int64_t k = 0; k < sp.alpha_; k++) {
+                            int64_t xdim = wfm * sp.out_dim_ + k;
                             if ((l_pad <= xdim) && (xdim < wp_max)) {
                                 size_t dst_off = dst_off_f(prb, img, 0, c, 0,
                                         ydim - t_pad, xdim - l_pad);
@@ -458,8 +453,8 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
                     trans_I_4x4_3x3(_v, I);
 
                     /* scatter v:V */
-                    for_(int64_t j = 0; j < sp.alpha; j++)
-                    for (int64_t k = 0; k < sp.alpha; k++) {
+                    for_(int64_t j = 0; j < sp.alpha_; j++)
+                    for (int64_t k = 0; k < sp.alpha_; k++) {
                         V(j, k, c, img, hfm, wfm) = _v[j][k];
                     }
                 }
@@ -478,13 +473,13 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
         trans_W_4x4_3x3(_u, F);
 
         /* scatter u:U */
-        for_(int64_t j = 0; j < sp.alpha; j++)
-        for (int64_t k = 0; k < sp.alpha; k++) {
+        for_(int64_t j = 0; j < sp.alpha_; j++)
+        for (int64_t k = 0; k < sp.alpha_; k++) {
             U(j, k, ic, oc) = _u[j][k];
         }
     });
 
-    benchdnn_parallel_nd(sp.alpha, sp.alpha, [&](int64_t j, int64_t k) {
+    benchdnn_parallel_nd(sp.alpha_, sp.alpha_, [&](int64_t j, int64_t k) {
         /* M = U * V */
         gemm("C", "N", "N", prb->ic, p_dim, prb->oc, 1.0,
                 (float *)&(U(j, k, 0, 0)), prb->oc,
@@ -492,24 +487,24 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
                 (float *)&(M(j, k, 0, 0, 0, 0)), p_dim);
     });
 
-    benchdnn_parallel_nd(prb->ic, prb->mb, sp.h_tiles, sp.w_tiles,
+    benchdnn_parallel_nd(prb->ic, prb->mb, sp.h_tiles_, sp.w_tiles_,
             [&](int64_t c, int64_t img, int64_t hfm, int64_t wfm) {
                 float O[4][4] = {};
                 float _m[6][6] = {};
                 /* diff_dst: Y = A_t *m * A */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
+                for_(int64_t j = 0; j < sp.alpha_; j++)
+                for (int64_t k = 0; k < sp.alpha_; k++) {
                     _m[j][k] = M(j, k, c, img, hfm, wfm);
                 }
                 trans_O_4x4_3x3(_m, O);
 
                 float bia = with_bias ? ((float *)bia_m)[c] : 0.f;
 
-                for (int64_t j = 0; j < sp.out_dim; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
+                for (int64_t j = 0; j < sp.out_dim_; j++) {
+                    int64_t ydim = hfm * sp.out_dim_ + j;
                     if (ydim < prb->ih) {
-                        for (int64_t k = 0; k < sp.out_dim; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
+                        for (int64_t k = 0; k < sp.out_dim_; k++) {
+                            int64_t xdim = wfm * sp.out_dim_ + k;
                             if (xdim < prb->iw) {
                                 size_t src_off = src_off_f(
                                         prb, img, 0, c, 0, ydim, xdim);
@@ -519,23 +514,21 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
                     }
                 }
             });
-
-    free_scratchpad(&sp);
 }
 
 void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &diff_wei_m = args.find(DNNL_ARG_DIFF_WEIGHTS);
     const dnn_mem_t &diff_dst_m = args.find(DNNL_ARG_DIFF_DST);
-    scratchpad_t sp {};
-    SAFE_V(init_scratchpad(prb, sp));
+    wino_scratchpad_t sp(*prb, prb->dir);
+    SAFE_V(sp.init());
 
     array_offset_calculator_t<float, 4> U(
-            sp._u_ptr, sp.alpha, sp.alpha, prb->oc, prb->ic);
-    array_offset_calculator_t<float, 6> V(sp._v_ptr, sp.alpha, sp.alpha,
-            prb->mb, sp.h_tiles, sp.w_tiles, prb->ic);
-    array_offset_calculator_t<float, 6> M(sp._m_ptr, sp.alpha, sp.alpha,
-            prb->oc, prb->mb, sp.h_tiles, sp.w_tiles);
+            sp._u_ptr_, sp.alpha_, sp.alpha_, prb->oc, prb->ic);
+    array_offset_calculator_t<float, 6> V(sp._v_ptr_, sp.alpha_, sp.alpha_,
+            prb->mb, sp.h_tiles_, sp.w_tiles_, prb->ic);
+    array_offset_calculator_t<float, 6> M(sp._m_ptr_, sp.alpha_, sp.alpha_,
+            prb->oc, prb->mb, sp.h_tiles_, sp.w_tiles_);
 
     SAFE_V(prb->kh == 3 ? OK : FAIL);
     SAFE_V(prb->kw == 3 ? OK : FAIL);
@@ -544,18 +537,18 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
     const int64_t l_pad = prb->pw;
     const int64_t wp_max = prb->iw + l_pad;
     const int64_t hp_max = prb->ih + t_pad;
-    const int64_t p_dim = prb->mb * sp.h_tiles * sp.w_tiles;
+    const int64_t p_dim = prb->mb * sp.h_tiles_ * sp.w_tiles_;
 
-    benchdnn_parallel_nd(prb->mb, sp.h_tiles, sp.w_tiles, prb->ic,
+    benchdnn_parallel_nd(prb->mb, sp.h_tiles_, sp.w_tiles_, prb->ic,
             [&](int64_t img, int64_t hfm, int64_t wfm, int64_t ic) {
                 float I[6][6] = {};
                 float _v[6][6] = {};
                 /* src transform v <- B_t * d * B */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
+                for (int64_t j = 0; j < sp.alpha_; j++) {
+                    int64_t ydim = hfm * sp.out_dim_ + j;
                     if ((t_pad <= ydim) && (ydim < hp_max)) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
+                        for (int64_t k = 0; k < sp.alpha_; k++) {
+                            int64_t xdim = wfm * sp.out_dim_ + k;
                             if ((l_pad <= xdim) && (xdim < wp_max)) {
                                 size_t src_off = src_off_f(prb, img, 0, ic, 0,
                                         ydim - t_pad, xdim - l_pad);
@@ -567,22 +560,22 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
                 trans_I_4x4_3x3(_v, I);
 
                 /* scatter v:V */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
+                for_(int64_t j = 0; j < sp.alpha_; j++)
+                for (int64_t k = 0; k < sp.alpha_; k++) {
                     V(j, k, img, hfm, wfm, ic) = _v[j][k];
                 }
             });
 
-    benchdnn_parallel_nd(prb->oc, prb->mb, sp.h_tiles, sp.w_tiles,
+    benchdnn_parallel_nd(prb->oc, prb->mb, sp.h_tiles_, sp.w_tiles_,
             [&](int64_t oc, int64_t img, int64_t hfm, int64_t wfm) {
                 float O[6][6] = {};
                 float _m[6][6] = {};
                 /* diff_dst transform */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
+                for (int64_t j = 0; j < sp.alpha_; j++) {
+                    int64_t ydim = hfm * sp.out_dim_ + j;
                     if (ydim < prb->oh) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
+                        for (int64_t k = 0; k < sp.alpha_; k++) {
+                            int64_t xdim = wfm * sp.out_dim_ + k;
                             if (xdim < prb->ow) {
                                 size_t dst_off = dst_off_f(
                                         prb, img, 0, oc, 0, ydim, xdim);
@@ -593,13 +586,13 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
                 }
                 trans_W_3x3_4x4_wu(_m, O);
                 /* scatter v:V */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
+                for_(int64_t j = 0; j < sp.alpha_; j++)
+                for (int64_t k = 0; k < sp.alpha_; k++) {
                     M(j, k, oc, img, hfm, wfm) = _m[j][k];
                 }
             });
 
-    benchdnn_parallel_nd(sp.alpha, sp.alpha, [&](int64_t j, int64_t k) {
+    benchdnn_parallel_nd(sp.alpha_, sp.alpha_, [&](int64_t j, int64_t k) {
         /* GeMM U = M * V */
         gemm("C", "N", "N", prb->oc, prb->ic, p_dim, 1.0,
                 (float *)&(M(j, k, 0, 0, 0, 0)), p_dim,
@@ -610,8 +603,8 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
     benchdnn_parallel_nd(prb->oc, prb->ic, [&](int64_t oc, int64_t ic) {
         float F[6][6] = {};
         float _u[3][3] = {};
-        for_(int64_t j = 0; j < sp.alpha; j++)
-        for (int64_t k = 0; k < sp.alpha; k++) {
+        for_(int64_t j = 0; j < sp.alpha_; j++)
+        for (int64_t k = 0; k < sp.alpha_; k++) {
             F[j][k] = U(j, k, oc, ic);
         }
         trans_O_3x3_4x4_wu(F, _u);
@@ -623,8 +616,6 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
             ((float *)diff_wei_m)[wei_off] = _u[kh][kw];
         }
     });
-
-    free_scratchpad(&sp);
 
     if (prb->bia_dt() != dnnl_data_type_undef) compute_ref_bwd_bias(prb, args);
 }

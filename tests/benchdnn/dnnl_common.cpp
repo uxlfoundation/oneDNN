@@ -1235,12 +1235,12 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
         // 0.75 value supposed to be experimental and might be adjusted.
         static constexpr float scratch_trh = 0.75f;
         if (is_cpu()
-                && check_mem_size_args.scratchpad_size
+                && check_mem_size_args.lib_scratchpad_size
                         > scratch_trh * check_mem_size_args.total_size_device) {
             BENCHDNN_PRINT(1,
                     "[CHECK_MEM][%s]: CPU scratchpad size `%zu` exceeded a "
                     "given threshold `%zu`.\n",
-                    dir_c_str(), check_mem_size_args.scratchpad_size,
+                    dir_c_str(), check_mem_size_args.lib_scratchpad_size,
                     (size_t)(scratch_trh
                             * check_mem_size_args.total_size_device));
             res->state = FAILED;
@@ -1254,7 +1254,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
 
     std::string sizes_str;
     for (const auto sz : check_mem_size_args.sizes) {
-        const bool is_scratchpad = sz == check_mem_size_args.scratchpad_size;
+        const bool is_scratchpad
+                = sz == check_mem_size_args.lib_scratchpad_size;
         sizes_str += smart_bytes(sz) + (is_scratchpad ? " (Scratchpad)" : "")
                 + ", ";
     }
@@ -1448,7 +1449,7 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
     // Update same fields as `add_md_size` would. See details there.
     check_mem_size_args.sizes.push_back(scratchpad_size);
     check_mem_size_args.total_size_device += scratchpad_size;
-    check_mem_size_args.scratchpad_size = scratchpad_size;
+    check_mem_size_args.lib_scratchpad_size = scratchpad_size;
 
     // Get output sizes.
     check_mem_size_args.want_input = false;

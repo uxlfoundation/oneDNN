@@ -90,8 +90,9 @@ struct check_mem_size_args_t {
     // * The second element refers to the total memory for output reference
     // The args are used in memory estimation for graph driver only.
     size_t total_ref_md_size[2] = {0, 0};
-    // `scratchpad_size` specifies a scratchpad size for specific checks.
-    size_t scratchpad_size = 0;
+    // `lib_scratchpad_size` specifies the library scratchpad size. It is needed
+    // for specific checks.
+    size_t lib_scratchpad_size = 0;
 };
 
 struct res_t {

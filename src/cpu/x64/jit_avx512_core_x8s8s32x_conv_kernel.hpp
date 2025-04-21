@@ -59,11 +59,11 @@ private:
         ker_dw_reg_base_idx = 30,
         ker_zp_reg_base_idx = 26,
     };
-    typedef enum {
+    enum class ic_block_t {
         no_last_block,
         last_ic_block,
         last_sp_block,
-    } ic_block_t;
+    };
 
     /* data regs */
     const Xbyak::Reg64 reg_ptr_scales = rax;

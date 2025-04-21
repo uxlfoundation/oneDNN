@@ -603,12 +603,13 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
 
         if (jbgp.use_buffer_b)
             CHECK(create_brgemm_trans_to_vnni(trans_B_kernel_, &pd()->jbgp_,
-                    jit_brgemm_trans_to_vnni_t::matrix_to_transform::matrix_B));
+                    jit_brgemm_trans_to_vnni_t::matrix_to_transform_t::
+                            matrix_B));
 
         if (!jbgp.is_amx) {
             if (jbgp.wei_dt != jbgp.acc_dt)
                 CHECK(create_brgemm_trans_to_vnni(trans_C_kernel_, &pd()->jbgp_,
-                        jit_brgemm_trans_to_vnni_t::matrix_to_transform::
+                        jit_brgemm_trans_to_vnni_t::matrix_to_transform_t::
                                 matrix_C));
         } else if (utils::one_of(jbgp.wei_dt, data_type::bf16, data_type::f16,
                            data_type::f8_e5m2, data_type::f8_e4m3)) {

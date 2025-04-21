@@ -50,7 +50,11 @@ struct jit_avx512_core_amx_compute_zp_pbuff_t : public jit_generator_t {
 private:
     jit_conv_conf_t jcp;
 
-    typedef enum { no_last_block, last_ic_block } ic_block_t;
+    enum class ic_block_t {
+        no_last_block,
+        last_ic_block,
+    };
+
     const int ic_inner_block = 4;
 
     Xbyak::Label permb_idx_label;

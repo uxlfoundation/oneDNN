@@ -595,9 +595,10 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::compute_ker(int ur_w,
                                          : jcp.ic_without_padding % 4;
         int n_ic_blocks = jcp.is_depthwise
                 ? 1
-                : (last_ic_block_flag & ~no_last_block ? div_up(
-                           jcp.ic_without_padding % jcp.ic_block, 4)
-                                                       : jcp.ic_block / 4);
+                : (last_ic_block_flag & ~ker_block_t::no_last_block
+                                ? div_up(jcp.ic_without_padding % jcp.ic_block,
+                                        4)
+                                : jcp.ic_block / 4);
 
         for (int icb1 = 0; icb1 < n_ic_blocks; icb1++) {
             if (h_padded == true) {
@@ -624,7 +625,8 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::compute_ker(int ur_w,
                             vpmovzxbd(vmm_src,
                                     EVEX_compress_addr(
                                             aux_reg_src, aux_src_off));
-                        } else if ((last_ic_block_flag & last_sp_block)
+                        } else if ((last_ic_block_flag
+                                           & ker_block_t::last_sp_block)
                                 && tail_size != 0 && icb1 == n_ic_blocks - 1) {
                             const Xmm xmm_tmp = Xmm(
                                     vmm_inp(jj, jcp.nb_oc_blocking).getIdx());
@@ -1171,15 +1173,16 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::icb_loop(
             jg(common_ker, T_NEAR);
 
             kh_loop(ur_w, l_overflow, r_overflow,
-                    is_last_sp_block ? last_sp_block : last_ic_block);
+                    is_last_sp_block ? ker_block_t::last_sp_block
+                                     : ker_block_t::last_ic_block);
             jmp(end_ker, T_NEAR);
 
             L(common_ker);
-            kh_loop(ur_w, l_overflow, r_overflow, no_last_block);
+            kh_loop(ur_w, l_overflow, r_overflow, ker_block_t::no_last_block);
 
             L(end_ker);
         } else {
-            kh_loop(ur_w, l_overflow, r_overflow, no_last_block);
+            kh_loop(ur_w, l_overflow, r_overflow, ker_block_t::no_last_block);
         }
 
         add(reg_src, shift_src_icb);

@@ -1425,7 +1425,7 @@ void jit_trans_to_vnni_t::transpose(
         auto src1 = src_ymm(2 * i + 1);
         auto zmm_src0 = src_zmm(2 * i);
         auto zmm_src1 = src_zmm(2 * i + 1);
-        if (matrix_to_transform_ == matrix_B) {
+        if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
             vmovdqu16(zmm_src0 | mask | T_z,
                     EVEX_compress_addr(src, 2 * i * src_stride));
             vmovdqu16(zmm_src1 | mask | T_z,
@@ -1444,7 +1444,7 @@ void jit_trans_to_vnni_t::transpose(
 
     if (nrows % 2) {
         auto zmm_src0 = src_zmm(2 * i);
-        if (matrix_to_transform_ == matrix_B) {
+        if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
             vmovdqu16(zmm_src0 | mask | T_z,
                     EVEX_compress_addr(src, 2 * i * src_stride));
         } else {
@@ -1474,7 +1474,7 @@ void jit_trans_to_vnni_t::generate() {
             = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9,
                     25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31};
 
-    if (matrix_to_transform_ == matrix_B) {
+    if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
         int row_block = conf_->os_block;
 
         constexpr int amx_xf16_granularity = 2;
@@ -1498,7 +1498,7 @@ void jit_trans_to_vnni_t::generate() {
         tr_src_row_shift = static_cast<dim_t>(transpose_size) * conf_->LDB
                 * typesize_data;
 
-    } else { // matrix_to_transform_ == matrix_C
+    } else { // matrix_to_transform_ == matrix_to_transform_t::matrix_C
         int row_block = conf_->ic_block;
         last_row_block_tail = conf_->M_tail % transpose_size;
         assert(row_block == transpose_size);
@@ -1538,7 +1538,8 @@ void jit_trans_to_vnni_t::generate() {
 
     auto compute_col_loop = [&](reg64_t &reg_base, reg64_t &reg_tr_base,
                                     bool is_row_tail) {
-        const bool pad_by_zeroes = matrix_to_transform_ == matrix_C;
+        const bool pad_by_zeroes
+                = matrix_to_transform_ == matrix_to_transform_t::matrix_C;
         int nrows = is_row_tail ? last_row_block_tail : transpose_size;
 
         mov(reg_col_src, reg_base);
@@ -1830,9 +1831,11 @@ struct jit_copy_f16_t : public jit_brgemm_trans_to_vnni_t,
         : jit_brgemm_trans_to_vnni_t(conf, matrix_to_transform)
         , jit_generator_t(jit_name()) {
 
-        // matrix_to_transform_ == matrix_B, copy(f16) -> f32
-        // matrix_to_transform_ == matrix_C, copy(f32) -> f16 + zero_pad
-        if (matrix_to_transform_ == matrix_B) {
+        // matrix_to_transform_ == matrix_to_transform_t::matrix_B,
+        //     copy(f16) -> f32
+        // matrix_to_transform_ == matrix_to_transform_t::matrix_C,
+        //     copy(f32) -> f16 + zero_pad
+        if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
             row_block = conf_->os_block;
             row_tail = conf_->os % row_block;
             col_block = conf_->oc_block * conf_->nb_oc_blocking;
@@ -1843,7 +1846,7 @@ struct jit_copy_f16_t : public jit_brgemm_trans_to_vnni_t,
             tr_src_stride = conf_->LDB * typesize_out;
             src_batch_shift = src_stride * row_block;
             tr_src_batch_shift = tr_src_stride * row_block;
-        } else { // matrix_C
+        } else { // matrix_to_transform_t::matrix_C
             row_block = conf_->os_block;
             row_tail = conf_->os % row_block;
             col_block = conf_->oc_block * conf_->nb_oc_blocking;
@@ -1902,10 +1905,12 @@ private:
 
 void jit_copy_f16_t::copy_block(bool is_row_tail, bool is_col_tail) {
 
-    const int nrows = is_row_tail && matrix_to_transform_ != matrix_C
+    const int nrows = is_row_tail
+                    && matrix_to_transform_ != matrix_to_transform_t::matrix_C
             ? row_tail
             : row_block;
-    const int ncolumns = is_col_tail && matrix_to_transform_ != matrix_C
+    const int ncolumns = is_col_tail
+                    && matrix_to_transform_ != matrix_to_transform_t::matrix_C
             ? col_tail
             : col_block;
 
@@ -1926,7 +1931,7 @@ void jit_copy_f16_t::copy_block(bool is_row_tail, bool is_col_tail) {
         auto src_load = is_tail ? src_reg | mask_tail | T_z : src_reg;
         const dim_t offset = r * src_stride + cb * col_shift_in;
         auto addr = EVEX_compress_addr_safe(reg_src, offset, reg_long_offt);
-        if (matrix_to_transform_ == matrix_B)
+        if (matrix_to_transform_ == matrix_to_transform_t::matrix_B)
             vcvtph2psx(src_load, addr);
         else { // matrix_c
             if (r < nrows)
@@ -1940,9 +1945,9 @@ void jit_copy_f16_t::copy_block(bool is_row_tail, bool is_col_tail) {
         auto reg = get_zmm(r * cb);
         const dim_t offset = r * tr_src_stride + cb * col_shift_out;
         auto addr = EVEX_compress_addr_safe(reg_tr_src, offset, reg_long_offt);
-        if (matrix_to_transform_ == matrix_B)
+        if (matrix_to_transform_ == matrix_to_transform_t::matrix_B)
             vmovups(addr, reg);
-        else // matrix_C
+        else // matrix_to_transform_t::matrix_C
             vcvtps2ph(addr, reg, 0x4);
     };
 

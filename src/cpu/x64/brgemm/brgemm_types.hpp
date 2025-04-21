@@ -27,6 +27,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+// NOLINTBEGIN(modernize-use-using)
+// GCC treats using and typedef differently for enums and structs
+// https://stackoverflow.com/questions/48613758
 // The type defines organization of batch of matrices
 typedef enum {
     // Undefined brgemm batch kind
@@ -56,13 +59,6 @@ typedef enum {
     per_k = 4,
 } brgemm_broadcast_t;
 
-struct brgemm_strides_t {
-    // Stride between A matrices
-    dim_t stride_a;
-    // Stride between B matrices
-    dim_t stride_b;
-};
-
 typedef enum {
     brgemm_lo_default = 0,
     brgemm_lo_bl_1load,
@@ -88,6 +84,14 @@ typedef enum {
     brgemm_hint_nt_false,
     brgemm_hint_nt_true,
 } brgemm_kernel_hint_nt_t;
+// NOLINTEND(modernize-use-using)
+
+struct brgemm_strides_t {
+    // Stride between A matrices
+    dim_t stride_a;
+    // Stride between B matrices
+    dim_t stride_b;
+};
 
 struct brgemm_prf_t {
     int dist0 {-1};

@@ -30,18 +30,18 @@ namespace x64 {
 template <cpu_isa_t isa, impl::data_type_t src_data_t,
         impl::data_type_t scratch_data_t>
 struct jit_uni_lstm_cell_postgemm_bwd
-    : public jit_uni_rnn_postgemm,
+    : public jit_uni_rnn_postgemm_t,
       public jit_uni_lstm_cell_postgemm_t<isa> {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lstm_cell_postgemm_bwd)
 
     jit_uni_lstm_cell_postgemm_bwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm(rnn, pd, jit_name())
+        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name())
         , jit_uni_lstm_cell_postgemm_t<isa>(this, 11 /*tmp_id_begin*/,
-                  // usage of jit_uni_rnn_postgemm::bf16_emu_ to identify bf16
+                  // usage of jit_uni_rnn_postgemm_t::bf16_emu_ to identify bf16
                   // emulation case is illegal here, it's created in
-                  // jit_uni_rnn_postgemm::init(), not in constructor, so
-                  // jit_uni_rnn_postgemm::bf16_emu_ = nullptr always on this
+                  // jit_uni_rnn_postgemm_t::init(), not in constructor, so
+                  // jit_uni_rnn_postgemm_t::bf16_emu_ = nullptr always on this
                   // stage
                   src_data_t == data_type::bf16 && !mayiuse(avx512_core_bf16)) {
     }
@@ -49,7 +49,7 @@ struct jit_uni_lstm_cell_postgemm_bwd
     ~jit_uni_lstm_cell_postgemm_bwd() override = default;
 
     status_t init(data_type_t sdt) override {
-        CHECK(jit_uni_rnn_postgemm::init(src_data_t));
+        CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
         // we use rax for both constant tables as they use the same table
         tanh_injector_
                 = utils::make_unique<injector_t>(this, alg_kind::eltwise_tanh,

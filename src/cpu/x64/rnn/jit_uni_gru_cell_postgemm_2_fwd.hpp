@@ -26,7 +26,7 @@ namespace x64 {
 
 template <cpu_isa_t isa, impl::data_type_t src_data_t,
         impl::data_type_t scratch_data_t>
-struct jit_uni_gru_cell_postgemm_part2_fwd : public jit_uni_rnn_postgemm {
+struct jit_uni_gru_cell_postgemm_part2_fwd : public jit_uni_rnn_postgemm_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_gru_cell_postgemm_part2_fwd)
 
     using injector_t = typename utils::conditional<isa == avx512_core,
@@ -35,10 +35,10 @@ struct jit_uni_gru_cell_postgemm_part2_fwd : public jit_uni_rnn_postgemm {
 
     jit_uni_gru_cell_postgemm_part2_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm(rnn, pd, jit_name()) {}
+        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name()) {}
 
     status_t init(data_type_t sdt) override {
-        CHECK(jit_uni_rnn_postgemm::init(src_data_t));
+        CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
         // no need to save state of registers
         // (unless emulating bf16 support or using pre-avx2 isa)
         const bool save_state = (isa == sse41 || isa == avx)

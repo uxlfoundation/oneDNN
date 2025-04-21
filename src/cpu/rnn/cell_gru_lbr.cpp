@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ using namespace rnn_utils;
 #define AOC array_offset_calculator
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((_ref_rnn_fwd_t<src_type, weights_type,
+rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         acc_type>::cell_execution_gru_lbr)) {
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
@@ -102,7 +102,7 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
 
-    const ws_gates_aoc<scratch_data_t> scratch_gates_r(rnn, scratch_cell_);
+    const ws_gates_aoc_t<scratch_data_t> scratch_gates_r(rnn, scratch_cell_);
 
     rnn_postgemm->execute(rnn, cell_position, ws_gates_, scratch_gates_,
             augru_attention_, dst_layer_, nullptr, src_iter_, nullptr, nullptr,
@@ -145,7 +145,7 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
 #undef AOC
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((_ref_rnn_bwd_t<src_type, weights_type,
+rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
         acc_type>::cell_execution_gru_lbr)) {
     const auto gemm_layer = [&](const weights_t *A, const scratch_t *B,
                                     float *C) {

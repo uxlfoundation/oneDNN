@@ -26,17 +26,18 @@ namespace x64 {
 
 template <cpu_isa_t isa, impl::data_type_t src_data_t,
         impl::data_type_t scratch_data_t>
-struct jit_uni_lstm_cell_projection_postgemm_fwd : public jit_uni_rnn_postgemm {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lstm_cell_projection_postgemm_fwd)
+struct jit_uni_lstm_cell_projection_postgemm_fwd_t
+    : public jit_uni_rnn_postgemm_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lstm_cell_projection_postgemm_fwd_t)
 
-    jit_uni_lstm_cell_projection_postgemm_fwd(
+    jit_uni_lstm_cell_projection_postgemm_fwd_t(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm(rnn, pd, jit_name()) {}
+        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name()) {}
 
-    ~jit_uni_lstm_cell_projection_postgemm_fwd() override = default;
+    ~jit_uni_lstm_cell_projection_postgemm_fwd_t() override = default;
 
     status_t init(data_type_t sdt) override {
-        jit_uni_rnn_postgemm::init(src_data_t);
+        jit_uni_rnn_postgemm_t::init(src_data_t);
         projection_ = true;
         return create_kernel();
     }

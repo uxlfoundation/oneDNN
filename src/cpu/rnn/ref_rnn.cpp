@@ -53,7 +53,7 @@ using namespace rnn_utils;
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
-status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
+status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::pd_t::init_ref(engine_t *engine) {
 
     using namespace prop_kind;
@@ -297,7 +297,7 @@ status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 status_t
-_ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
+ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
         engine_t *engine) {
     using namespace prop_kind;
     using namespace utils;
@@ -541,7 +541,7 @@ _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
-status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init(
+status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init(
         engine_t *engine) {
     status_t st = init_brgemm(engine);
     if (st != status::success) {
@@ -565,7 +565,7 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init(
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
-void _ref_rnn_common_t<aprop, src_type, weights_type,
+void ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::pd_t::init_scratchpad(size_t scratchpad_sz) {
     using namespace memory_tracking::names;
     auto scratchpad = this->scratchpad_registry().registrar();
@@ -641,7 +641,7 @@ void _ref_rnn_common_t<aprop, src_type, weights_type,
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
-status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
+status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::init(engine_t *engine) {
     /// @todo set max_feature_size assuming that we limit the number of
     /// iterations and layer to one if slc != dhc and sic != dhc
@@ -745,13 +745,13 @@ status_t dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
 // GEMM functions wrapper definitions
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_gemm_sig((_ref_rnn_fwd_t<src_type, weights_type, acc_type>::gemm)) {
+rnn_gemm_sig((ref_rnn_fwd_t<src_type, weights_type, acc_type>::gemm)) {
     assert(!"non packed gemm is unavailable for this data type");
     return dnnl_unimplemented;
 }
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_gemm_sig((_ref_rnn_bwd_t<src_type, weights_type, acc_type>::gemm)) {
+rnn_gemm_sig((ref_rnn_bwd_t<src_type, weights_type, acc_type>::gemm)) {
     assert(!"non packed gemm is unavailable for this data type");
     return dnnl_unimplemented;
 }
@@ -762,7 +762,7 @@ template rnn_gemm_sig(ref_rnn_bwd_f16_t::gemm);
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 const std::shared_ptr<primitive_t> &
-dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
+dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::get_matmul_layer(cell_position_t cell_position) const {
     const auto &rnn = pd()->rnn_;
     const auto src_ld = rnn.src_layer_ld(cell_position);
@@ -783,7 +783,7 @@ dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 const std::shared_ptr<primitive_t> &
-dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
+dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::get_matmul_iter(cell_position_t cell_position) const {
     const auto &rnn = pd()->rnn_;
     const auto src_ld = rnn.src_iter_ld(cell_position);
@@ -804,7 +804,7 @@ dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 const std::shared_ptr<primitive_t> &
-dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
+dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::get_matmul_part2(cell_position_t cell_position) const {
     const auto &rnn = pd()->rnn_;
     const auto ldb = rnn.dst_iter_part2_ld(cell_position);
@@ -827,7 +827,7 @@ dnnl::impl::cpu::_ref_rnn_common_t<aprop, src_type, weights_type,
 
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
-rnn_matmul_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
+rnn_matmul_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::execute_matmul)) {
 
     // Service engine is just a global classic CPU engine that is used
@@ -896,13 +896,13 @@ rnn_gemm_sig((ref_rnn_bwd_bf16_t::gemm)) {
 // packed GEMM functions wrapper definitions
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_gemm_sig((_ref_rnn_fwd_t<src_type, weights_type, acc_type>::packed_gemm)) {
+rnn_gemm_sig((ref_rnn_fwd_t<src_type, weights_type, acc_type>::packed_gemm)) {
     assert(!"packed gemm is unavailable for this datatype");
     return dnnl_unimplemented;
 }
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_gemm_sig((_ref_rnn_bwd_t<src_type, weights_type, acc_type>::packed_gemm)) {
+rnn_gemm_sig((ref_rnn_bwd_t<src_type, weights_type, acc_type>::packed_gemm)) {
     assert(!"packed gemm is unavailable for this datatype");
     return dnnl_unimplemented;
 }
@@ -957,7 +957,7 @@ rnn_gemm_sig(ref_rnn_fwd_s8s8_t::packed_gemm) {
 //*************** Grid computations strategy: linear ***************//
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
-rnn_grid_execution_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
+rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::linear_execution)) {
     const AOC<src_layer_t, 4> ws_states_layer(ws_states_layer_, rnn.n_layer + 1,
             rnn.n_dir, rnn.n_iter + 1,
@@ -1878,7 +1878,7 @@ rnn_bias_prepare_sig_templ(copy_bias_to_ws) {
 
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
-rnn_bias_prepare_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
+rnn_bias_prepare_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::bias_prepare)) {
 
     if (rnn.copy_bias) {
@@ -1932,7 +1932,7 @@ static void apply_bias_compensation(const rnn_utils::rnn_conf_t &rnn,
 
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
-rnn_bias_finalize_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
+rnn_bias_finalize_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::bias_finalize)) {
     if (rnn.is_unsigned_int8_conf()) {
         const float data_shift = pd()->attr()->rnn_data_qparams_.shift_;
@@ -1949,7 +1949,7 @@ rnn_bias_finalize_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
 
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
-rnn_weights_assign_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
+rnn_weights_assign_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::assign_packed_weights)) {
     assert(md->format_kind == format_kind::rnn_packed);
     const auto packed_desc = md->format_desc.rnn_packed_desc;
@@ -1969,7 +1969,7 @@ rnn_weights_assign_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
 
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
-rnn_weights_assign_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
+rnn_weights_assign_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         acc_type>::assign_weights)) {
     assert(md->format_kind == format_kind::blocked);
     const auto &blk = md->format_desc.blocking;
@@ -1993,7 +1993,7 @@ rnn_weights_assign_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
 //********************* Execution function *********************//
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
-status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
+status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
         const exec_ctx_t &ctx) const {
     const rnn_conf_t &rnn = this->pd()->rnn_;
     auto src_layer = CTX_IN_MEM(const src_layer_t *, DNNL_ARG_SRC_LAYER);
@@ -2386,24 +2386,24 @@ rnn_merged_layer_execution_sig(ref_rnn_fwd_s8s8_t::merged_layer_execution_ref);
 template <>
 rnn_merged_layer_execution_sig(ref_rnn_fwd_s8s8_t::merged_layer_brgemm);
 
-template struct _ref_rnn_common_t<prop_kind::forward, data_type::f32,
+template struct ref_rnn_common_t<prop_kind::forward, data_type::f32,
         data_type::f32, data_type::f32>;
-template struct _ref_rnn_common_t<prop_kind::backward, data_type::f32,
+template struct ref_rnn_common_t<prop_kind::backward, data_type::f32,
         data_type::f32, data_type::f32>;
 
-template struct _ref_rnn_common_t<prop_kind::forward, data_type::bf16,
+template struct ref_rnn_common_t<prop_kind::forward, data_type::bf16,
         data_type::bf16, data_type::f32>;
-template struct _ref_rnn_common_t<prop_kind::backward, data_type::bf16,
+template struct ref_rnn_common_t<prop_kind::backward, data_type::bf16,
         data_type::bf16, data_type::f32>;
 
-template struct _ref_rnn_common_t<prop_kind::forward, data_type::f16,
+template struct ref_rnn_common_t<prop_kind::forward, data_type::f16,
         data_type::f16, data_type::f32>;
-template struct _ref_rnn_common_t<prop_kind::backward, data_type::f16,
+template struct ref_rnn_common_t<prop_kind::backward, data_type::f16,
         data_type::f16, data_type::f32>;
 
-template struct _ref_rnn_common_t<prop_kind::forward, data_type::u8,
+template struct ref_rnn_common_t<prop_kind::forward, data_type::u8,
         data_type::s8, data_type::s32>;
-template struct _ref_rnn_common_t<prop_kind::forward, data_type::s8,
+template struct ref_rnn_common_t<prop_kind::forward, data_type::s8,
         data_type::s8, data_type::s32>;
 
 #undef AOC

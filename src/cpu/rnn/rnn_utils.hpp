@@ -33,8 +33,8 @@
 #include "cpu/x64/cpu_isa_traits.hpp"
 #endif
 
-#define rnn_postgemm_sig(f) \
-    void f(const rnn_utils::rnn_conf_t &rnn, \
+#define rnn_postgemm_sig_args \
+    const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, gates_t *ws_gates_, \
             scratch_t *scratch_gates_, const dst_layer_t *augru_attention_, \
             dst_layer_t *dst_layer_, void *dst_iter_c_, \
@@ -44,20 +44,21 @@
             gemm_acc_t *diff_dst_layer_, gemm_acc_t *diff_dst_iter_, \
             gemm_acc_t *diff_dst_iter_c_, const float *weights_peephole_, \
             const void *bias_, gates_t *ws_grid_, scratch_t *scratch_cell_, \
-            dst_iter_t *dst_iter_, float *weights_scales_, int block_step) \
-            const
+            dst_iter_t *dst_iter_, float *weights_scales_, int block_step
+
+#define rnn_postgemm_sig(f) void f(rnn_postgemm_sig_args) const
 
 #if DNNL_X64
-#define rnn_merged_layer_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+#define rnn_merged_layer_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
             const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
             gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_, \
             gemm_acc_t *amx_scratchpad, \
-            x64::brgemm_batch_element_t *addr_batch_global) const
+            x64::brgemm_batch_element_t *addr_batch_global
 
-#define rnn_cell_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+#define rnn_cell_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, dst_layer_t *dst_layer_, \
             void *dst_iter_c_, gemm_acc_t *diff_src_layer_, \
             gemm_acc_t *diff_augru_attention_, gemm_acc_t *diff_src_iter_, \
@@ -75,10 +76,10 @@
             scratch_t *scratch_cell_, scratch_t *scratch_gates_blocked_, \
             scratch_t *scratch_src_layer_, scratch_t *scratch_src_iter_, \
             dst_iter_t *dst_iter_, gemm_acc_t *amx_scratchpad, \
-            x64::brgemm_batch_element_t *addr_batch_global) const
+            x64::brgemm_batch_element_t *addr_batch_global
 
-#define rnn_grid_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+#define rnn_grid_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             weights_t **weights_layer_, weights_t **weights_iter_, \
             weights_t **weights_projection_, const float *weights_peephole_, \
             const float *w_proj_comp, void **bias_, \
@@ -98,16 +99,18 @@
             gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
             float *diff_bias_, gemm_acc_t *amx_scratchpad, \
-            x64::brgemm_batch_element_t *addr_batch_global) const
+            x64::brgemm_batch_element_t *addr_batch_global
+
 #else
-#define rnn_merged_layer_execution_sig(f) \
-    dnnl_status_t f(const rnn_utils::rnn_conf_t &rnn, \
+
+#define rnn_merged_layer_execution_sig_args \
+    const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
             const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
-            gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_) const
+            gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_
 
-#define rnn_cell_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+#define rnn_cell_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, dst_layer_t *dst_layer_, \
             void *dst_iter_c_, gemm_acc_t *diff_src_layer_, \
             gemm_acc_t *diff_augru_attention_, gemm_acc_t *diff_src_iter_, \
@@ -123,10 +126,10 @@
             float *diff_bias_, gates_t *ws_gates_, scratch_t *scratch_gates_, \
             ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
             scratch_t *scratch_cell_, dst_iter_t *dst_iter_, \
-            gemm_acc_t *amx_scratchpad) const
+            gemm_acc_t *amx_scratchpad
 
-#define rnn_grid_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+#define rnn_grid_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             weights_t **weights_layer_, weights_t **weights_iter_, \
             weights_t **weights_projection_, const float *weights_peephole_, \
             const float *w_proj_comp, void **bias_, \
@@ -143,37 +146,55 @@
             scratch_t *scratch_cell_, gemm_acc_t *diff_augru_attention_, \
             gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gemm_acc_t *amx_scratchpad) const
+            float *diff_bias_, gemm_acc_t *amx_scratchpad
+
 #endif
+
+#define rnn_cell_execution_sig(f) \
+    dnnl_status_t f(rnn_cell_execution_sig_args) const
+
+#define rnn_grid_execution_sig(f) \
+    dnnl_status_t f(rnn_grid_execution_sig_args) const
+
+#define rnn_merged_layer_execution_sig(f) \
+    dnnl_status_t f(rnn_merged_layer_execution_sig_args) const
 
 #define rnn_matmul_sig(f) \
     dnnl_status_t f(const exec_ctx_t &ctx, \
             const std::shared_ptr<dnnl::impl::primitive_t> &matmul_prim, \
             const weights_t *a_, const gemm_data_t *b_, gemm_acc_t *c_) const
 
-#define rnn_gemm_sig(f) \
-    dnnl_status_t f(const char transA, const char transB, dim_t m, dim_t n, \
-            dim_t k, const float alpha, const weights_t *a_, const dim_t ldA, \
+#define rnn_gemm_sig_args \
+    const char transA, const char transB, dim_t m, dim_t n, dim_t k, \
+            const float alpha, const weights_t *a_, const dim_t ldA, \
             const gemm_data_t *b_, const dim_t ldB, const float beta, \
-            gemm_acc_t *c_, const dim_t ldC) const
+            gemm_acc_t *c_, const dim_t ldC
 
-#define rnn_bias_prepare_sig(f) \
-    void f(const rnn_utils::rnn_conf_t &rnn, void **bias_, const void *b_, \
-            void *scratch_bias_) const
+#define rnn_gemm_sig(f) dnnl_status_t f(rnn_gemm_sig_args) const
+
+#define rnn_bias_prepare_sig_args \
+    const rnn_utils::rnn_conf_t &rnn, void **bias_, const void *b_, \
+            void *scratch_bias_
+
+#define rnn_bias_prepare_sig(f) void f(rnn_bias_prepare_sig_args) const
 
 #define rnn_bias_prepare_sig_templ(f) \
     template <typename T> \
     static void f(const rnn_utils::rnn_conf_t &rnn, T **bias_, const T *b_, \
             T *scratch_bias_)
 
-#define rnn_bias_finalize_sig(f) \
-    void f(const rnn_utils::rnn_conf_t &rnn, void *scratch_bias_, \
-            const float *w_iter_comp, const float *w_layer_comp) const
+#define rnn_bias_finalize_sig_args \
+    const rnn_utils::rnn_conf_t &rnn, void *scratch_bias_, \
+            const float *w_iter_comp, const float *w_layer_comp
 
-#define rnn_weights_assign_sig(f) \
-    void f(const rnn_utils::rnn_conf_t &rnn, const memory_desc_t *md, \
-            int n_parts, const int *gates_per_part, weights_t **weights_, \
-            const weights_t *w_) const
+#define rnn_bias_finalize_sig(f) void f(rnn_bias_finalize_sig_args) const
+
+#define rnn_weights_assign_sig_args \
+    const rnn_utils::rnn_conf_t &rnn, const memory_desc_t *md, int n_parts, \
+            const int *gates_per_part, weights_t **weights_, \
+            const weights_t *w_
+
+#define rnn_weights_assign_sig(f) void f(rnn_weights_assign_sig_args) const
 
 namespace dnnl {
 namespace impl {
@@ -1237,8 +1258,8 @@ raw_array_offset_calculator_t<sizeof...(Targs)> make_raw_aoc(
 }
 
 template <typename T>
-struct ws_gates_aoc {
-    ws_gates_aoc(const rnn_conf_t &rnn, T *data)
+struct ws_gates_aoc_t {
+    ws_gates_aoc_t(const rnn_conf_t &rnn, T *data)
         : gates_(data, rnn.ws_gates_nld, rnn.ws_gates_ld), DHC_(rnn.dhc) {}
     T &operator()(int batch, int gate, int dhc) const {
         return gates_(batch, gate * DHC_ + dhc);
@@ -1248,22 +1269,10 @@ private:
     const dnnl::impl::utils::array_offset_calculator<T, 2> gates_;
     const int DHC_;
 };
-using ws_gates_aoc_t = ws_gates_aoc<float>;
-using ws_gates_aoc_s32_t = ws_gates_aoc<int32_t>;
 
 template <typename T>
-struct ws_ht_aoc {
-    ws_ht_aoc(const rnn_conf_t &rnn, T *data)
-        : ht_(data, rnn.ws_ht_nld, rnn.ws_ht_ld) {}
-    T &operator()(int batch, int dhc) const { return ht_(batch, dhc); }
-
-private:
-    const dnnl::impl::utils::array_offset_calculator<T, 2> ht_;
-};
-
-template <typename T>
-struct scratch_gates_aoc {
-    scratch_gates_aoc(const rnn_conf_t &rnn, T *data)
+struct scratch_gates_aoc_t {
+    scratch_gates_aoc_t(const rnn_conf_t &rnn, T *data)
         : gates_(data, rnn.scratch_gates_nld, rnn.scratch_gates_ld)
         , DHC_(rnn.dhc) {}
     T &operator()(int batch, int gate, int dhc) const {
@@ -1274,20 +1283,6 @@ private:
     const dnnl::impl::utils::array_offset_calculator<T, 2> gates_;
     const int DHC_;
 };
-using scratch_gates_aoc_t = scratch_gates_aoc<float>;
-using scratch_gates_aoc_s32_t = scratch_gates_aoc<int32_t>;
-
-template <typename T>
-struct scratch_ht_aoc {
-    scratch_ht_aoc(const rnn_conf_t &rnn, T *data)
-        : ht_(data, rnn.scratch_ht_nld, rnn.scratch_ht_ld) {}
-    T &operator()(int batch, int dhc) const { return ht_(batch, dhc); }
-
-private:
-    const dnnl::impl::utils::array_offset_calculator<T, 2> ht_;
-};
-using scratch_ht_aoc_t = scratch_ht_aoc<float>;
-using scratch_ht_aoc_s32_t = scratch_ht_aoc<int32_t>;
 
 template <typename T>
 struct weights_peephole_aoc_t {
@@ -1368,10 +1363,10 @@ private:
 };
 
 template <typename T>
-struct ws_states_layer_aoc {
-    ws_states_layer_aoc(const rnn_conf_t &rnn, T *data, int leading_dim)
+struct ws_states_layer_aoc_t {
+    ws_states_layer_aoc_t(const rnn_conf_t &rnn, T *data, int leading_dim)
         : state_(data, rnn.ws_states_layer_nld, leading_dim) {}
-    ws_states_layer_aoc(const rnn_conf_t &rnn, T *data)
+    ws_states_layer_aoc_t(const rnn_conf_t &rnn, T *data)
         : state_(data, rnn.ws_states_layer_nld, rnn.ws_states_layer_ld) {}
     T &operator()(int batch, int dhc) const { return state_(batch, dhc); }
 
@@ -1380,10 +1375,10 @@ private:
 };
 
 template <typename T>
-struct ws_states_iter_aoc {
-    ws_states_iter_aoc(const rnn_conf_t &rnn, T *data, int leading_dim)
+struct ws_states_iter_aoc_t {
+    ws_states_iter_aoc_t(const rnn_conf_t &rnn, T *data, int leading_dim)
         : state_(data, rnn.ws_states_iter_nld, leading_dim) {}
-    ws_states_iter_aoc(const rnn_conf_t &rnn, T *data)
+    ws_states_iter_aoc_t(const rnn_conf_t &rnn, T *data)
         : state_(data, rnn.ws_states_iter_nld, rnn.ws_states_iter_ld) {}
     T &operator()(int batch, int dhc) const { return state_(batch, dhc); }
 
@@ -1392,8 +1387,8 @@ private:
 };
 
 template <typename T>
-struct augru_attention_aoc {
-    augru_attention_aoc(const rnn_conf_t &rnn, T *data)
+struct augru_attention_aoc_t {
+    augru_attention_aoc_t(const rnn_conf_t &rnn, T *data)
         : state_(data, rnn.mb) {}
     T &operator()(int batch) const { return state_(batch); }
 
@@ -1402,8 +1397,8 @@ private:
 };
 
 template <typename T>
-struct ws_diff_states_layer_aoc {
-    ws_diff_states_layer_aoc(const rnn_conf_t &rnn, T *data)
+struct ws_diff_states_layer_aoc_t {
+    ws_diff_states_layer_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_layer_(data, rnn.ws_diff_states_layer_nld,
                 rnn.ws_diff_states_layer_ld) {}
     T &operator()(int batch, int dhc) const {
@@ -1415,8 +1410,8 @@ private:
 };
 
 template <typename T>
-struct ws_diff_states_iter_aoc {
-    ws_diff_states_iter_aoc(const rnn_conf_t &rnn, T *data)
+struct ws_diff_states_iter_aoc_t {
+    ws_diff_states_iter_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_iter_(data, rnn.ws_diff_states_iter_nld,
                 rnn.ws_diff_states_iter_ld) {}
     T &operator()(int batch, int dhc) const {
@@ -1428,8 +1423,8 @@ private:
 };
 
 template <typename T>
-struct ws_diff_states_iter_c_aoc {
-    ws_diff_states_iter_c_aoc(const rnn_conf_t &rnn, T *data)
+struct ws_diff_states_iter_c_aoc_t {
+    ws_diff_states_iter_c_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_iter_c_(data, rnn.ws_diff_states_iter_c_nld,
                 rnn.ws_diff_states_iter_c_ld) {}
     T &operator()(int batch, int dhc) const {

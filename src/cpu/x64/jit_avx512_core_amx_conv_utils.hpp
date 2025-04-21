@@ -34,9 +34,9 @@ using namespace dnnl::impl::utils;
 #define wht_blk_off(d, g, ...) \
     (with_groups ? (d).blk_off((g), __VA_ARGS__) : (d).blk_off(__VA_ARGS__))
 
-struct spatial_features_3d {
+struct spatial_features_3d_t {
 
-    spatial_features_3d(const jit_conv_conf_t &jcp)
+    spatial_features_3d_t(const jit_conv_conf_t &jcp)
         : input_size_(jcp.id)
         , filter_size_(jcp.kd)
         , dilate_(jcp.dilate_d + 1)
@@ -175,7 +175,7 @@ inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
 
         auto p = jit_conv_call_s();
         amx_tile_configure(tcfg);
-        spatial_features_3d sfd(jcp);
+        spatial_features_3d_t sfd(jcp);
 
         int mb {0}, g {0}, id_s {0}, ihc {0}, iwb {0}, icc {0};
         nd_iterator_init(start, mb, jcp.mb, g, jcp.ngroups, id_s, jcp.id, ihc,

@@ -72,13 +72,13 @@ struct ur_w_blks_params_t {
 };
 
 template <typename Vmm>
-struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel : public jit_generator_t {
+struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_x8s8s32x_deconv_fwd_ker_t);
 
-    jit_avx512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
+    jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
-    ~jit_avx512_core_x8s8s32x_deconv_fwd_kernel() override;
+    ~jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t() override;
 
     const jit_conv_conf_t &jcp;
     const primitive_attr_t &attr_;
@@ -192,27 +192,28 @@ private:
             bool mask_flag);
 };
 
-struct _jit_avx512_core_x8s8s32x_deconv_fwd_kernel {
-    _jit_avx512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
-            const primitive_attr_t &attr, const memory_desc_t &dst_md)
+struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t {
+    jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t(
+            const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
+            const memory_desc_t &dst_md)
         : kernel_(nullptr) {
 
         int ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
         switch (ch_block) {
             case 16:
                 kernel_ = utils::make_unique<
-                        jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Xbyak::Zmm>>(
-                        ajcp, attr, dst_md);
+                        jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
+                                Xbyak::Zmm>>(ajcp, attr, dst_md);
                 return;
             case 8:
                 kernel_ = utils::make_unique<
-                        jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Xbyak::Ymm>>(
-                        ajcp, attr, dst_md);
+                        jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
+                                Xbyak::Ymm>>(ajcp, attr, dst_md);
                 return;
             case 4:
                 kernel_ = utils::make_unique<
-                        jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Xbyak::Xmm>>(
-                        ajcp, attr, dst_md);
+                        jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
+                                Xbyak::Xmm>>(ajcp, attr, dst_md);
                 return;
             default: assert(!"invalid channel blocking");
         }
@@ -223,7 +224,7 @@ struct _jit_avx512_core_x8s8s32x_deconv_fwd_kernel {
         return status::out_of_memory;
     }
 
-    ~_jit_avx512_core_x8s8s32x_deconv_fwd_kernel() = default;
+    ~jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t() = default;
 
     void operator()(const jit_deconv_call_s *p) const { (*kernel_)(p); }
 
@@ -240,7 +241,8 @@ struct _jit_avx512_core_x8s8s32x_deconv_fwd_kernel {
             const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
 
 private:
-    DNNL_DISALLOW_COPY_AND_ASSIGN(_jit_avx512_core_x8s8s32x_deconv_fwd_kernel);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(
+            jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t);
     std::unique_ptr<jit_generator_t> kernel_;
 };
 
@@ -282,12 +284,12 @@ struct jit_avx512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
                     attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(_jit_avx512_core_x8s8s32x_deconv_fwd_kernel::init_conf(jcp_,
-                    *desc(), src_md_, weights_md_, dst_md_, with_bias(),
+            CHECK(jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
+                    jcp_, *desc(), src_md_, weights_md_, dst_md_, with_bias(),
                     bias_md_, attr_, dnnl_get_max_threads()));
 
             auto scratchpad = scratchpad_registry().registrar();
-            _jit_avx512_core_x8s8s32x_deconv_fwd_kernel::init_scratchpad(
+            jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_scratchpad(
                     scratchpad, jcp_, *attr());
 
             return status::success;
@@ -301,7 +303,7 @@ struct jit_avx512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new _jit_avx512_core_x8s8s32x_deconv_fwd_kernel(
+                new jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
 
         if (zp::should_calculate_deconv_zp_src_pad_str_comp(pd()->jcp_)) {
@@ -332,7 +334,7 @@ private:
     status_t execute_forward_2d(const exec_ctx_t &ctx) const;
     status_t execute_forward_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<_jit_avx512_core_x8s8s32x_deconv_fwd_kernel> kernel_;
+    std::unique_ptr<jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t> kernel_;
     std::unique_ptr<zp::jit_uni_deconv_zp_pad_str_kernel_base_t>
             zp_src_pad_comp_kernel_;
     const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,

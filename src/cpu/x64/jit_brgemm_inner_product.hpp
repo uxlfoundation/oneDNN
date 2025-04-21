@@ -640,7 +640,7 @@ private:
     std::unique_ptr<jit_brgemm_trans_to_vnni_t> trans_B_kernel_;
     std::unique_ptr<jit_brgemm_trans_to_vnni_t> trans_C_kernel_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;
-    std::unique_ptr<jit_amx_ip_trans_diff_wei> diff_wei_trans_kernel_;
+    std::unique_ptr<jit_amx_ip_trans_diff_wei_t> diff_wei_trans_kernel_;
 
     void execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

@@ -311,7 +311,7 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
                     dw_conv_buffer_size_,
                     types::data_type_size(dw_conv_pd_->src_md()->data_type));
 
-            jit_uni_dw_conv_fwd_kernel<isa_, data_type::f32>::init_scratchpad(
+            jit_uni_dw_conv_fwd_kernel_t<isa_, data_type::f32>::init_scratchpad(
                     dw_scratchpad, jcp_dw);
 
             return status::success;
@@ -360,7 +360,7 @@ private:
 
     std::unique_ptr<jit_sve_1x1_conv_kernel<isa_>> kernel_;
     std::unique_ptr<rtus_driver_t<isa_>> rtus_driver_;
-    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_f32<isa_>;
+    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_f32_t<isa_>;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 

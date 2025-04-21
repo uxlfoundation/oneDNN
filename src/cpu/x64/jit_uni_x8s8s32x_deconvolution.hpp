@@ -45,13 +45,13 @@ class jit_uni_postops_injector_t;
 using namespace Xbyak;
 
 template <cpu_isa_t isa, typename Vmm>
-struct _jit_uni_x8s8s32x_deconv_fwd_kernel : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_uni_x8s8s32x_deconv_fwd_kernel);
+struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t);
 
-    _jit_uni_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
+    jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_wrapper &dst_d);
 
-    ~_jit_uni_x8s8s32x_deconv_fwd_kernel() override;
+    ~jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t() override;
 
     const jit_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
@@ -149,9 +149,9 @@ private:
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_x8s8s32x_deconv_fwd_kernel {
+struct jit_uni_x8s8s32x_deconv_fwd_kernel_t {
 
-    jit_uni_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
+    jit_uni_x8s8s32x_deconv_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_wrapper &dst_d);
 
     status_t create_kernel() {
@@ -159,7 +159,7 @@ struct jit_uni_x8s8s32x_deconv_fwd_kernel {
         return status::out_of_memory;
     }
 
-    ~jit_uni_x8s8s32x_deconv_fwd_kernel();
+    ~jit_uni_x8s8s32x_deconv_fwd_kernel_t();
 
     void operator()(const jit_deconv_call_s *p) const { (*kernel_)(p); }
 
@@ -176,10 +176,10 @@ struct jit_uni_x8s8s32x_deconv_fwd_kernel {
             const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
 
     using _jit_avx2_x8s8s32x_deconv_fwd_kernel
-            = _jit_uni_x8s8s32x_deconv_fwd_kernel<avx2, Xbyak::Ymm>;
+            = jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<avx2, Xbyak::Ymm>;
 
 private:
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_deconv_fwd_kernel);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_deconv_fwd_kernel_t);
     std::unique_ptr<jit_generator_t> kernel_;
 };
 
@@ -211,7 +211,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
             const float *src_scales, const float *wei_scales) const;
-    std::unique_ptr<jit_uni_x8s8s32x_deconv_fwd_kernel<isa>> kernel_;
+    std::unique_ptr<jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>> kernel_;
     std::unique_ptr<zp::jit_uni_deconv_zp_pad_str_kernel_base_t>
             zp_src_pad_comp_kernel_;
 };

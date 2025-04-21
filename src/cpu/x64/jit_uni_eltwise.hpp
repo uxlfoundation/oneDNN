@@ -33,7 +33,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_uni_eltwise_kernel;
+struct jit_uni_eltwise_kernel_t;
 
 template <cpu_isa_t isa, impl::data_type_t d_type>
 struct jit_uni_eltwise_fwd_t : public primitive_t {
@@ -63,7 +63,7 @@ struct jit_uni_eltwise_fwd_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_uni_eltwise_kernel> kernel_;
+    std::unique_ptr<jit_uni_eltwise_kernel_t> kernel_;
 };
 
 template <cpu_isa_t isa, impl::data_type_t d_type>
@@ -94,7 +94,7 @@ struct jit_uni_eltwise_bwd_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_uni_eltwise_kernel> kernel_;
+    std::unique_ptr<jit_uni_eltwise_kernel_t> kernel_;
 };
 
 } // namespace x64

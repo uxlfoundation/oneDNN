@@ -44,7 +44,7 @@ using namespace nstl;
                          : (d).blk_off(__VA_ARGS__))
 
 template <cpu_isa_t isa>
-status_t jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::init_conf(
+status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
         jit_conv_conf_t &jcp, const deconvolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &weights_md, memory_desc_t &dst_md,
         const bool with_bias, memory_desc_t &bias_md, primitive_attr_t &attr,
@@ -352,7 +352,7 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::init_conf(
 }
 
 template <cpu_isa_t isa>
-jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::jit_uni_x8s8s32x_deconv_fwd_kernel(
+jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::jit_uni_x8s8s32x_deconv_fwd_kernel_t(
         const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_wrapper &dst_d)
     : kernel_(nullptr) {
@@ -371,7 +371,7 @@ jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::jit_uni_x8s8s32x_deconv_fwd_kernel(
             break;
         case 4:
             kernel_ = utils::make_unique<
-                    _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Xbyak::Xmm>>(
+                    jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Xbyak::Xmm>>(
                     ajcp, attr, dst_d);
             return;
         default: assert(!"invalid channel blocking");
@@ -379,11 +379,12 @@ jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::jit_uni_x8s8s32x_deconv_fwd_kernel(
 }
 
 template <cpu_isa_t isa>
-jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::~jit_uni_x8s8s32x_deconv_fwd_kernel()
+jit_uni_x8s8s32x_deconv_fwd_kernel_t<
+        isa>::~jit_uni_x8s8s32x_deconv_fwd_kernel_t()
         = default;
 
 template <cpu_isa_t isa>
-void jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::init_scratchpad(
+void jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {
     const int mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
@@ -401,8 +402,9 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::init_scratchpad(
 }
 
 template <cpu_isa_t isa>
-bool jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::post_ops_ok(jit_conv_conf_t &jcp,
-        const memory_desc_wrapper &dst_d, const primitive_attr_t &attr) {
+bool jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::post_ops_ok(
+        jit_conv_conf_t &jcp, const memory_desc_wrapper &dst_d,
+        const primitive_attr_t &attr) {
     using namespace injector;
 
     return injector::post_ops_ok(post_ops_ok_args_t(isa, {sum, eltwise, binary},
@@ -414,8 +416,9 @@ bool jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::post_ops_ok(jit_conv_conf_t &jcp,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-_jit_uni_x8s8s32x_deconv_fwd_kernel<isa,
-        Vmm>::_jit_uni_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
+jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
+        Vmm>::jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t(const jit_conv_conf_t
+                                                               &ajcp,
         const primitive_attr_t &attr, const memory_desc_wrapper &dst_d)
     : jit_generator_t(jit_name(), isa)
     , jcp_(ajcp)
@@ -443,12 +446,12 @@ _jit_uni_x8s8s32x_deconv_fwd_kernel<isa,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-_jit_uni_x8s8s32x_deconv_fwd_kernel<isa,
-        Vmm>::~_jit_uni_x8s8s32x_deconv_fwd_kernel()
+jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
+        Vmm>::~jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t()
         = default;
 
 template <cpu_isa_t isa, typename Vmm>
-Vmm _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::vmm_out(
+Vmm jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::vmm_out(
         int i_ur, int i_oc) const {
     const int idx = i_ur * jcp_.nb_oc_blocking + i_oc;
     assert(idx < ker_max_regs_);
@@ -457,7 +460,7 @@ Vmm _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::vmm_out(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-Vmm _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::vmm_inp(
+Vmm jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::vmm_inp(
         int i_ic, int nb_x_blocking) const {
     const int idx = i_ic + nb_x_blocking * jcp_.ur_w;
     assert(idx < ker_max_regs_);
@@ -465,7 +468,7 @@ Vmm _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::vmm_inp(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-int _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::get_ow_start(
+int jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::get_ow_start(
         int ki, int l_overflow) const noexcept {
     int res = (jcp_.ow - 1 + jcp_.r_pad) % jcp_.stride_w
             + l_overflow * jcp_.stride_w
@@ -476,7 +479,7 @@ int _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::get_ow_start(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-int _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::get_ow_end(
+int jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::get_ow_end(
         int ur_w, int ki, int r_overflow) const noexcept {
     if (utils::one_of(ur_w, jcp_.ow, jcp_.ur_w_tail))
         ur_w += nstl::min(0, jcp_.r_pad); // remove negative padding
@@ -488,20 +491,20 @@ int _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::get_ow_end(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-int _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::get_blocking_size()
+int jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::get_blocking_size()
         const noexcept {
     return jcp_.is_depthwise ? jcp_.ch_block : jcp_.oc_block;
 }
 
 template <cpu_isa_t isa, typename Vmm>
-int _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::get_tail_size()
+int jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::get_tail_size()
         const noexcept {
     return jcp_.is_depthwise ? jcp_.ngroups % jcp_.ch_block
                              : jcp_.oc_without_padding % jcp_.oc_block;
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::compute(
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::compute(
         const Vmm vreg_acc, const Vmm vreg_wei, const Vmm vreg_src) {
 
     if (jcp_.has_vnni) {
@@ -518,7 +521,7 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::compute(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-std::function<Vmm()> _jit_uni_x8s8s32x_deconv_fwd_kernel<isa,
+std::function<Vmm()> jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
         Vmm>::prepare_round_robin_vmm_inp_generator(int ur_w) const noexcept {
 
     const int start_vmm_idx = vmm_inp(ur_w - 1, jcp_.nb_oc_blocking).getIdx();
@@ -535,8 +538,9 @@ std::function<Vmm()> _jit_uni_x8s8s32x_deconv_fwd_kernel<isa,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::apply_zp_src_pad_str_comp(
-        int ur_w, int l_overflow, int r_overflow, bool h_padded) {
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
+        Vmm>::apply_zp_src_pad_str_comp(int ur_w, int l_overflow,
+        int r_overflow, bool h_padded) {
     Xbyak::Label end_zp_pad, no_tail;
 
     // apply once per icb loop, zp src stride paddding compensation calculate as
@@ -565,9 +569,9 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::apply_zp_src_pad_str_comp(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::append_zp_src_pad_str_comp(
-        int ur_w, int l_overflow, int r_overflow, bool h_padded,
-        bool last_oc_block) {
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
+        Vmm>::append_zp_src_pad_str_comp(int ur_w, int l_overflow,
+        int r_overflow, bool h_padded, bool last_oc_block) {
 
     const auto &reg_zp_src_pad_comp = reg_scratch_;
     const auto get_next_comp_vmm = prepare_round_robin_vmm_inp_generator(ur_w);
@@ -658,7 +662,7 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::append_zp_src_pad_str_comp(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::compute_ker(int ur_w,
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::compute_ker(int ur_w,
         int l_overflow, int r_overflow, ker_block_t last_ic_block_flag,
         bool h_padded) {
 
@@ -780,7 +784,7 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::compute_ker(int ur_w,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::kh_loop(int ur_w,
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::kh_loop(int ur_w,
         int l_overflow, int r_overflow, ker_block_t last_ic_block_flag) {
 
     const bool signed_input_or_src_zp
@@ -978,7 +982,8 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::kh_loop(int ur_w,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::prepare_output(int ur_w) {
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::prepare_output(
+        int ur_w) {
     for (int ocb = 0; ocb < jcp_.nb_oc_blocking; ocb++) {
         for (int ur = 0; ur < ur_w; ur++) {
             const Vmm vmm = vmm_out(ur, ocb);
@@ -994,15 +999,16 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::prepare_output(int ur_w) {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::cvt2ps(data_type_t type_in,
-        const Vmm vmm_in, const Reg64 reg, int offset, int load_size) {
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::cvt2ps(
+        data_type_t type_in, const Vmm vmm_in, const Reg64 reg, int offset,
+        int load_size) {
 
     load_data(type_in, vmm_in, reg, offset, load_size);
     if (type_in != data_type::f32) uni_vcvtdq2ps(vmm_in, vmm_in);
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::apply_postops(int ur_w,
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::apply_postops(int ur_w,
         bool last_oc_block, const float *p_sum_scale, const int32_t *p_sum_zp) {
     const auto sum_injector = [&]() {
         if (p_sum_scale) { // post_op: sum
@@ -1063,7 +1069,7 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::apply_postops(int ur_w,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::store_output(
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::store_output(
         int ur_w, bool last_oc_block) {
     mov(reg_bias_, ptr[param1_ + GET_OFF(bias)]);
     mov(reg_ptr_scales_, ptr[param1_ + GET_OFF(scales)]);
@@ -1222,7 +1228,7 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::store_output(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::icb_loop(
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::icb_loop(
         int ur_w, int l_overflow, int r_overflow, bool is_last_sp_block) {
 
     const int shift_src_icb = jcp_.typesize_in * jcp_.ic_block;
@@ -1302,7 +1308,7 @@ void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::icb_loop(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_deconv_fwd_kernel<isa, Vmm>::generate() {
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::generate() {
     preamble();
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp_))
@@ -1422,12 +1428,12 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::pd_t::init(
                                     weights_md(0), weights_md(1), dst_md(0)}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    CHECK(jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::init_conf(jcp_, *desc(),
+    CHECK(jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(jcp_, *desc(),
             src_md_, weights_md_, dst_md_, with_bias(), bias_md_, attr_,
             dnnl_get_max_threads()));
 
     auto scratchpad = scratchpad_registry().registrar();
-    jit_uni_x8s8s32x_deconv_fwd_kernel<isa>::init_scratchpad(
+    jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_scratchpad(
             scratchpad, jcp_, *attr());
 
     return status::success;
@@ -1436,7 +1442,7 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::pd_t::init(
 template <cpu_isa_t isa>
 status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_,
-            new jit_uni_x8s8s32x_deconv_fwd_kernel<isa>(pd()->jcp_,
+            new jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>(pd()->jcp_,
                     *pd()->attr(), memory_desc_wrapper(pd()->dst_md()))));
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(pd()->jcp_)) {
@@ -1997,11 +2003,11 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_3d(
 using namespace data_type;
 template struct jit_uni_x8s8s32x_deconvolution_fwd_t<avx2>;
 template struct jit_uni_x8s8s32x_deconvolution_fwd_t<sse41>;
-template struct jit_uni_x8s8s32x_deconv_fwd_kernel<avx2>;
-template struct jit_uni_x8s8s32x_deconv_fwd_kernel<sse41>;
-template struct _jit_uni_x8s8s32x_deconv_fwd_kernel<avx2, Xbyak::Ymm>;
-template struct _jit_uni_x8s8s32x_deconv_fwd_kernel<avx2, Xbyak::Xmm>;
-template struct _jit_uni_x8s8s32x_deconv_fwd_kernel<sse41, Xbyak::Xmm>;
+template struct jit_uni_x8s8s32x_deconv_fwd_kernel_t<avx2>;
+template struct jit_uni_x8s8s32x_deconv_fwd_kernel_t<sse41>;
+template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<avx2, Xbyak::Ymm>;
+template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<avx2, Xbyak::Xmm>;
+template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<sse41, Xbyak::Xmm>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

@@ -35,7 +35,7 @@ using namespace dnnl::impl::utils;
 
 using namespace Xbyak;
 
-jit_avx512_dw_conv_fwd_kernel_f16::jit_avx512_dw_conv_fwd_kernel_f16(
+jit_avx512_dw_conv_fwd_kernel_f16_t::jit_avx512_dw_conv_fwd_kernel_f16_t(
         const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md)
     : jit_generator_t(jit_name()), jcp(ajcp) {
     const auto simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
@@ -70,7 +70,7 @@ static bool check_if_tail(const bool is_ch_tail, const int c_tail, const int ch,
     return is_ch_tail && (ch + 1 == ur_ch_blocks) && simd_w > c_tail;
 }
 
-void jit_avx512_dw_conv_fwd_kernel_f16::load_src(
+void jit_avx512_dw_conv_fwd_kernel_f16_t::load_src(
         int ur_ch_blocks, int ur_w, bool is_ch_tail) {
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
@@ -110,7 +110,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16::load_src(
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_f16::apply_filter_unrolled(
+void jit_avx512_dw_conv_fwd_kernel_f16_t::apply_filter_unrolled(
         int ur_ch_blocks, int ur_w, int pad_l, int pad_r, bool is_ch_tail) {
     int ch_blk = jcp.ch_block;
     int dilate_h = jcp.dilate_h + 1;
@@ -238,7 +238,7 @@ void iterate(const int ur_ch_blocks, const int ur_w, const F &f) {
     iterate(ur_ch_blocks, ur_w, false, f);
 }
 
-void jit_avx512_dw_conv_fwd_kernel_f16::apply_postops(
+void jit_avx512_dw_conv_fwd_kernel_f16_t::apply_postops(
         const int ur_ch_blocks, const int ur_w, const bool is_ch_tail) {
     if (this->jcp.with_eltwise || this->jcp.with_binary) {
         injector_utils::vmm_index_set_t zmm_idxs;
@@ -309,7 +309,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16::apply_postops(
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_f16::store_dst(
+void jit_avx512_dw_conv_fwd_kernel_f16_t::store_dst(
         int ur_ch_blocks, int ur_w, bool is_ch_tail) {
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
@@ -333,7 +333,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16::store_dst(
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_f16::compute_loop(
+void jit_avx512_dw_conv_fwd_kernel_f16_t::compute_loop(
         int ur_w, int ur_ch_blocks, int pad_l, int pad_r) {
 
     const bool ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
@@ -412,7 +412,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16::compute_loop(
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_f16::ow_loop(int ur_ch_blocks) {
+void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
 
     int iw = jcp.iw;
     int ow = jcp.ow;
@@ -481,7 +481,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16::ow_loop(int ur_ch_blocks) {
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_f16::generate() {
+void jit_avx512_dw_conv_fwd_kernel_f16_t::generate() {
     this->preamble();
 
     if (jcp.is_fused_conv) {

@@ -43,8 +43,8 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_kernel : public jit_generator {
-    jit_uni_eltwise_kernel(const eltwise_pd_t *pd) : pd_(pd) {}
+struct jit_uni_eltwise_kernel_t : public jit_generator {
+    jit_uni_eltwise_kernel_t(const eltwise_pd_t *pd) : pd_(pd) {}
 
     void operator()(jit_args_t *p) { jit_generator::operator()(p); }
 
@@ -63,10 +63,10 @@ protected:
 namespace {
 
 template <cpu_isa_t isa>
-struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
+struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_kernel)
 
-    jit_uni_kernel_t(const eltwise_pd_t *pd) : jit_uni_eltwise_kernel(pd) {
+    jit_uni_kernel_t(const eltwise_pd_t *pd) : jit_uni_eltwise_kernel_t(pd) {
         const auto &desc = *pd_->desc();
         // there's no auxiliary vregs on fwd path
         const bool is_fwd = pd_->is_fwd();

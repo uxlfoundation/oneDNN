@@ -45,7 +45,7 @@ using namespace dnnl::impl::utils;
 
 using namespace Xbyak;
 
-jit_avx2_1x1_conv_kernel_f32::jit_avx2_1x1_conv_kernel_f32(
+jit_avx2_1x1_conv_kernel_f32_t::jit_avx2_1x1_conv_kernel_f32_t(
         const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
     : jit_generator_t(jit_name(), avx2), jcp(ajcp), attr_(attr) {
@@ -70,7 +70,7 @@ jit_avx2_1x1_conv_kernel_f32::jit_avx2_1x1_conv_kernel_f32(
     }
 }
 
-void jit_avx2_1x1_conv_kernel_f32::generate_bcast_loop(int load_loop_blk) {
+void jit_avx2_1x1_conv_kernel_f32_t::generate_bcast_loop(int load_loop_blk) {
     mov(aux1_reg_bcast_data, ptr[rsp + reg_bcast_data_off]);
     mov(aux_reg_output_data, reg_output_data);
     mov(bcast_loop_iter, reg_bcast_loop_work);
@@ -145,7 +145,7 @@ void iterate(const int load_loop_blk, const int ur, const F &f) {
     iterate(load_loop_blk, ur, 0, f);
 }
 
-void jit_avx2_1x1_conv_kernel_f32::apply_postops(
+void jit_avx2_1x1_conv_kernel_f32_t::apply_postops(
         const int load_loop_blk, const int ur, const int load_dim_tail) {
     if (jcp.with_eltwise || jcp.with_binary) {
         assert(ur * load_loop_blk < 14);
@@ -216,7 +216,7 @@ void jit_avx2_1x1_conv_kernel_f32::apply_postops(
     }
 };
 
-void jit_avx2_1x1_conv_kernel_f32::generate_reduce_loop(
+void jit_avx2_1x1_conv_kernel_f32_t::generate_reduce_loop(
         int load_loop_blk, int ur) {
     const int load_dim_tail
             = ((jcp.with_binary
@@ -507,7 +507,8 @@ void jit_avx2_1x1_conv_kernel_f32::generate_reduce_loop(
     store();
 }
 
-void jit_avx2_1x1_conv_kernel_f32::generate_diff_bias_loop(int load_loop_blk) {
+void jit_avx2_1x1_conv_kernel_f32_t::generate_diff_bias_loop(
+        int load_loop_blk) {
     if (!jcp.with_bias || jcp.prop_kind != backward_weights) return;
 
     Label diff_bias_loop, diff_bias_loop_out, diff_bias_init_out;
@@ -563,7 +564,7 @@ void jit_avx2_1x1_conv_kernel_f32::generate_diff_bias_loop(int load_loop_blk) {
     L(diff_bias_loop_out);
 }
 
-void jit_avx2_1x1_conv_kernel_f32::generate() {
+void jit_avx2_1x1_conv_kernel_f32_t::generate() {
     preamble();
 
     sub(rsp, stack_space_needed);
@@ -683,7 +684,7 @@ void jit_avx2_1x1_conv_kernel_f32::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 }
 
-status_t jit_avx2_1x1_conv_kernel_f32::init_conf(jit_1x1_conv_conf_t &jcp,
+status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
         const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
         const primitive_attr_t &attr) {
@@ -1014,7 +1015,7 @@ status_t jit_avx2_1x1_conv_kernel_f32::init_conf(jit_1x1_conv_conf_t &jcp,
     return status::success;
 }
 
-void jit_avx2_1x1_conv_kernel_f32::init_scratchpad(
+void jit_avx2_1x1_conv_kernel_f32_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad,
         const jit_1x1_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;

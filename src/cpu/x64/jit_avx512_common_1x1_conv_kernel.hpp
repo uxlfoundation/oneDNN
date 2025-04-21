@@ -29,11 +29,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_common_1x1_conv_kernel : public jit_generator_t {
-    jit_avx512_common_1x1_conv_kernel(const jit_1x1_conv_conf_t &ajcp,
+struct jit_avx512_common_1x1_conv_kernel_t : public jit_generator_t {
+    jit_avx512_common_1x1_conv_kernel_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_common_1x1_conv_kernel)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_common_1x1_conv_kernel_t)
 
     static status_t init_conf(jit_1x1_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &src_d,

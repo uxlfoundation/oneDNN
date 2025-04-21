@@ -35,10 +35,10 @@ namespace cpu {
 namespace aarch64 {
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_fwd_kernel_f32 : public jit_generator {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_fwd_kernel_f32)
+struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_fwd_kernel_f32_t)
 
-    jit_uni_dw_conv_fwd_kernel_f32(jit_conv_conf_t ajcp)
+    jit_uni_dw_conv_fwd_kernel_f32_t(jit_conv_conf_t ajcp)
         : jcp(ajcp), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
             eltwise_injector_
@@ -46,7 +46,7 @@ struct jit_uni_dw_conv_fwd_kernel_f32 : public jit_generator {
                             this, jcp.eltwise);
     }
 
-    ~jit_uni_dw_conv_fwd_kernel_f32() = default;
+    ~jit_uni_dw_conv_fwd_kernel_f32_t() = default;
 
     jit_conv_conf_t jcp;
 
@@ -136,15 +136,15 @@ private:
     }
 
     std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_f32)
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_f32_t)
     void generate() override;
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_bwd_data_kernel_f32 : public jit_generator {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_data_kernel_f32)
+struct jit_uni_dw_conv_bwd_data_kernel_f32_t : public jit_generator {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_data_kernel_f32_t)
 
-    jit_uni_dw_conv_bwd_data_kernel_f32(jit_conv_conf_t ajcp) : jcp(ajcp) {}
+    jit_uni_dw_conv_bwd_data_kernel_f32_t(jit_conv_conf_t ajcp) : jcp(ajcp) {}
     jit_conv_conf_t jcp;
 
 private:
@@ -186,11 +186,12 @@ private:
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_bwd_weights_kernel_f32 : public jit_generator {
+struct jit_uni_dw_conv_bwd_weights_kernel_f32_t : public jit_generator {
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_weights_kernel_f32)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_weights_kernel_f32_t)
 
-    jit_uni_dw_conv_bwd_weights_kernel_f32(jit_conv_conf_t ajcp) : jcp(ajcp) {}
+    jit_uni_dw_conv_bwd_weights_kernel_f32_t(jit_conv_conf_t ajcp)
+        : jcp(ajcp) {}
 
     jit_conv_conf_t jcp;
 

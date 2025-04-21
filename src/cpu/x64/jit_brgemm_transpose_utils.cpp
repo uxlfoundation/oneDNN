@@ -2914,13 +2914,13 @@ void jit_brgemm_trans_wei_f16_t::generate() {
     postamble();
 }
 
-struct jit_amx_ip_trans_diff_wei_to_vnni_t : public jit_amx_ip_trans_diff_wei,
+struct jit_amx_ip_trans_diff_wei_to_vnni_t : public jit_amx_ip_trans_diff_wei_t,
                                              public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_amx_ip_trans_diff_wei_to_vnni)
 
     jit_amx_ip_trans_diff_wei_to_vnni_t(const jit_brgemm_primitive_conf_t *jbgp,
             const int ext_ic_block, const int ext_oc_block)
-        : jit_amx_ip_trans_diff_wei(jbgp, ext_ic_block, ext_oc_block)
+        : jit_amx_ip_trans_diff_wei_t(jbgp, ext_ic_block, ext_oc_block)
         , jit_generator_t(jit_name()) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
@@ -3222,7 +3222,7 @@ status_t create_brgemm_trans_wei(
 }
 
 status_t create_brgemm_amx_ip_trans_wei(
-        std::unique_ptr<jit_amx_ip_trans_diff_wei> &trans_ker,
+        std::unique_ptr<jit_amx_ip_trans_diff_wei_t> &trans_ker,
         const jit_brgemm_primitive_conf_t *conf, const int ext_ic_block,
         const int ext_oc_block) {
     if (conf->prop_kind == dnnl_backward_weights

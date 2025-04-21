@@ -26,7 +26,7 @@ namespace x64 {
 using namespace data_type;
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-status_t jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_conf(
+status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
         jit_conv_conf_t &jcp, const convolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &weights_md,
         memory_desc_t &bias_md, memory_desc_t &dst_md, primitive_attr_t &attr) {
@@ -270,7 +270,7 @@ status_t jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_conf(
 }
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_scratchpad(
+void jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;
     if (jcp.bia_dt == data_type::bf16)
@@ -282,7 +282,7 @@ void jit_uni_dw_conv_fwd_kernel<isa, kernel_dt>::init_scratchpad(
 }
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-status_t jit_uni_dw_conv_bwd_data_kernel<isa, kernel_dt>::init_conf(
+status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
         jit_conv_conf_t &jcp, const convolution_desc_t &cd,
         memory_desc_t &diff_src_md, memory_desc_t &weights_md,
         memory_desc_t &diff_dst_md) {
@@ -452,14 +452,14 @@ status_t jit_uni_dw_conv_bwd_data_kernel<isa, kernel_dt>::init_conf(
 }
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_data_kernel<isa, kernel_dt>::init_scratchpad(
+void jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     UNUSED(scratchpad);
     UNUSED(jcp);
 }
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-status_t jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::init_conf(
+status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
         jit_conv_conf_t &jcp, const convolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &diff_weights_md,
         memory_desc_t &diff_bias_md, memory_desc_t &diff_dst_md, int nthreads) {
@@ -644,7 +644,7 @@ status_t jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::init_conf(
 }
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::init_scratchpad(
+void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;
 
@@ -693,7 +693,7 @@ void jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::init_scratchpad(
 }
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::balance(
+void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::balance(
         jit_conv_conf_t &jcp, int nthreads) {
     jcp.nthr_oh = jcp.nthr_g = jcp.nthr_mb = 1;
     if (jcp.harness == harness_mb_reduction) {
@@ -723,7 +723,7 @@ void jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::balance(
 }
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::partition_nthr_nxc(
+void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
         jit_conv_conf_t &jcp, int nthreads, bool prioritize_threading) {
 
     /* Explore thread partitioning space across 'nb_ch', 'mb' and 'nb_oh'
@@ -840,25 +840,25 @@ void jit_uni_dw_conv_bwd_weights_kernel<isa, kernel_dt>::partition_nthr_nxc(
 }
 
 REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_fwd_kernel<avx512_core_fp16, f16>);
-REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel<avx512_core, bf16>);
-REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel<avx2, f32>);
-REG_SSE41_ISA(template struct jit_uni_dw_conv_fwd_kernel<sse41, f32>);
+        template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core_fp16, f16>);
+REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core, bf16>);
+REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core, f32>);
+REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx2, f32>);
+REG_SSE41_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<sse41, f32>);
 
 REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_bwd_data_kernel<avx512_core, bf16>);
+        template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core, bf16>);
 REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_bwd_data_kernel<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_data_kernel<avx2, f32>);
-REG_SSE41_ISA(template struct jit_uni_dw_conv_bwd_data_kernel<sse41, f32>);
+        template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core, f32>);
+REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<avx2, f32>);
+REG_SSE41_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<sse41, f32>);
 
+REG_AVX512_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core,
+        bf16>);
 REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_bwd_weights_kernel<avx512_core, bf16>);
-REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_bwd_weights_kernel<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel<avx2, f32>);
-REG_SSE41_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel<sse41, f32>);
+        template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core, f32>);
+REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx2, f32>);
+REG_SSE41_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<sse41, f32>);
 } // namespace x64
 } // namespace cpu
 } // namespace impl

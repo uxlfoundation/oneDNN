@@ -43,8 +43,8 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_kernel : public jit_generator_t {
-    jit_uni_eltwise_kernel(
+struct jit_uni_eltwise_kernel_t : public jit_generator_t {
+    jit_uni_eltwise_kernel_t(
             const eltwise_pd_t *pd, const char *name, cpu_isa_t isa)
         : jit_generator_t(name, isa), pd_(pd) {}
 
@@ -76,11 +76,11 @@ protected:
 // jit kernels
 namespace {
 template <cpu_isa_t isa>
-struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
+struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_kernel)
 
     jit_uni_kernel_t(const eltwise_pd_t *pd)
-        : jit_uni_eltwise_kernel(pd, jit_name(), isa)
+        : jit_uni_eltwise_kernel_t(pd, jit_name(), isa)
         , vlen_(is_bf16() || is_f16() ? cpu_isa_traits_t<isa>::vlen / 2
                           : is_f8()   ? cpu_isa_traits_t<isa>::vlen / 4
                                       : cpu_isa_traits_t<isa>::vlen)

@@ -33,7 +33,7 @@ namespace x64 {
 using namespace Xbyak;
 using namespace dnnl::impl::utils;
 
-jit_avx512_dw_conv_fwd_kernel_bf16::jit_avx512_dw_conv_fwd_kernel_bf16(
+jit_avx512_dw_conv_fwd_kernel_bf16_t::jit_avx512_dw_conv_fwd_kernel_bf16_t(
         const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md)
     : jit_generator_t(jit_name()), jcp(ajcp) {
     if (jcp.with_eltwise || jcp.with_binary) {
@@ -63,16 +63,16 @@ jit_avx512_dw_conv_fwd_kernel_bf16::jit_avx512_dw_conv_fwd_kernel_bf16(
                 bf16_emu_reserv_4, bf16_emu_reserv_5, bf16_emu_reserv_6);
 }
 
-int jit_avx512_dw_conv_fwd_kernel_bf16::get_acc_reg_idx(int idx) const {
+int jit_avx512_dw_conv_fwd_kernel_bf16_t::get_acc_reg_idx(int idx) const {
     assert(idx + acc_idx_start <= get_max_regs());
     return idx + acc_idx_start;
 }
 
-Xbyak::Zmm jit_avx512_dw_conv_fwd_kernel_bf16::get_acc_reg(int idx) {
+Xbyak::Zmm jit_avx512_dw_conv_fwd_kernel_bf16_t::get_acc_reg(int idx) {
     return Xbyak::Zmm(get_acc_reg_idx(idx));
 }
 
-void jit_avx512_dw_conv_fwd_kernel_bf16::load_src(
+void jit_avx512_dw_conv_fwd_kernel_bf16_t::load_src(
         int ur_ch_blocks, int ur_w, bool last_ch_block_flag) {
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
@@ -113,8 +113,9 @@ void jit_avx512_dw_conv_fwd_kernel_bf16::load_src(
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_bf16::apply_filter_unrolled(int ur_ch_blocks,
-        int ur_w, int pad_l, int pad_r, bool last_ch_block_flag) {
+void jit_avx512_dw_conv_fwd_kernel_bf16_t::apply_filter_unrolled(
+        int ur_ch_blocks, int ur_w, int pad_l, int pad_r,
+        bool last_ch_block_flag) {
     int ch_blk = jcp.ch_block;
     int dilate_h = jcp.dilate_h + 1;
     int dilate_w = jcp.dilate_w + 1;
@@ -200,7 +201,7 @@ static void iterate(const int ur_ch_blocks, const int ur_w, const F &f) {
     iterate(ur_ch_blocks, ur_w, false, f);
 }
 
-void jit_avx512_dw_conv_fwd_kernel_bf16::apply_postops(
+void jit_avx512_dw_conv_fwd_kernel_bf16_t::apply_postops(
         int ur_ch_blocks, int ur_w, bool last_ch_block_flag) {
     if (this->jcp.with_eltwise || this->jcp.with_binary) {
 
@@ -262,7 +263,7 @@ void jit_avx512_dw_conv_fwd_kernel_bf16::apply_postops(
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_bf16::store_dst(
+void jit_avx512_dw_conv_fwd_kernel_bf16_t::store_dst(
         int ur_ch_blocks, int ur_w, bool last_ch_block_flag) {
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
@@ -371,7 +372,7 @@ void jit_avx512_dw_conv_fwd_kernel_bf16::store_dst(
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_bf16::compute_loop(
+void jit_avx512_dw_conv_fwd_kernel_bf16_t::compute_loop(
         int ur_w, int ur_ch_blocks, int pad_l, int pad_r) {
 
     // ch_loop currently happen only when data layout is nxc. The strides are
@@ -455,7 +456,7 @@ void jit_avx512_dw_conv_fwd_kernel_bf16::compute_loop(
     pop(reg_ch_blocks);
 }
 
-void jit_avx512_dw_conv_fwd_kernel_bf16::loop_ow(int ur_ch_blocks) {
+void jit_avx512_dw_conv_fwd_kernel_bf16_t::loop_ow(int ur_ch_blocks) {
 
     int iw = jcp.iw;
     int ow = jcp.ow;
@@ -524,7 +525,7 @@ void jit_avx512_dw_conv_fwd_kernel_bf16::loop_ow(int ur_ch_blocks) {
     }
 }
 
-void jit_avx512_dw_conv_fwd_kernel_bf16::generate() {
+void jit_avx512_dw_conv_fwd_kernel_bf16_t::generate() {
     this->preamble();
 
     assert(mayiuse(avx512_core));
@@ -614,7 +615,7 @@ void jit_avx512_dw_conv_fwd_kernel_bf16::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 }
 
-inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::load_ddst(
+inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::load_ddst(
         int ur_ch_blocks, int ur_str_w) {
     for (int ch = 0; ch < ur_ch_blocks; ch++) {
         for (int w = 0; w < ur_str_w; w++) {
@@ -624,7 +625,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::load_ddst(
     }
 }
 
-inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::apply_filter(
+inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::apply_filter(
         int ur_ch_blocks, int ur_str_w, bool last_ch_block_flag) {
     int kw = jcp.kw;
     int kh = jcp.kh;
@@ -705,7 +706,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::apply_filter(
     L(iter_exit_label);
 }
 
-inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::store_dsrc(
+inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::store_dsrc(
         int ur_ch_blocks, int ur_str_w, bool last_ch_block_flag) {
     int ch_blk = jcp.ch_block;
     int iw = jcp.iw;
@@ -752,7 +753,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::store_dsrc(
      * registers, changes are needed in both JIT-kernel and Driver code. */
 }
 
-inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::ch_loop_body(
+inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::ch_loop_body(
         int ur_ch_blocks, int unroll_w) {
 
     auto call_compute_body
@@ -822,7 +823,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::ch_loop_body(
     }
 }
 
-inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::unroll_width_body(
+inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::unroll_width_body(
         int ur_ch_blocks) {
 
     auto unroll_width_loop = [&](int unroll_w) {
@@ -850,7 +851,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16::unroll_width_body(
     unroll_width_loop(1);
 }
 
-void jit_avx512_dw_conv_bwd_data_kernel_bf16::generate() {
+void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::generate() {
     assert(is_dsrc_layout_nxc() == is_ddst_layout_nxc());
 
     preamble();
@@ -897,14 +898,15 @@ void jit_avx512_dw_conv_bwd_data_kernel_bf16::generate() {
 #undef GET_OFF
 
 #define GET_OFF(field) offsetof(jit_dw_conv_call_s, field)
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::zero_filter() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::zero_filter() {
     for (int i = 0; i < jcp.kw; ++i) {
         Zmm zmm_acc = get_acc_reg(i);
         uni_vpxor(zmm_acc, zmm_acc, zmm_acc);
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::load_filter(bool is_last_ch) {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::load_filter(
+        bool is_last_ch) {
     for (int i = 0; i < jcp.kw; ++i) {
         int off_filter = i * jcp.ch_block;
         Zmm zmm_acc = get_acc_reg(i);
@@ -914,17 +916,17 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::load_filter(bool is_last_ch) {
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::zero_bias() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::zero_bias() {
     uni_vpxor(zmm_bias_reg, zmm_bias_reg, zmm_bias_reg);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::load_bias(bool is_last_ch) {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::load_bias(bool is_last_ch) {
     Zmm m_zmm_bias_reg
             = is_last_ch ? zmm_bias_reg | k_ch_tail_mask | T_z : zmm_bias_reg;
     vmovups(m_zmm_bias_reg, vmmword[reg_bias_baddr]);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ow_step_unroll(
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_ow_step_unroll(
         int unroll_w, int l_pad, int pad_offset, int ow_block,
         bool is_last_ch) {
 
@@ -1004,7 +1006,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ow_step_unroll(
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_bias_step_unroll(
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_bias_step_unroll(
         const int unroll_w, bool is_last_ch) {
 
     const int ch_step = is_ddst_layout_nxc() ? jcp.ngroups : jcp.ch_block;
@@ -1019,7 +1021,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_bias_step_unroll(
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::store_filter(bool is_last_ch) {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::store_filter(
+        bool is_last_ch) {
 
     /* bf16: all data is stored as f32. Down-convert to bf16 happens at the
      * reduction phase. */
@@ -1032,13 +1035,13 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::store_filter(bool is_last_ch) {
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::store_bias(bool is_last_ch) {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::store_bias(bool is_last_ch) {
     Zmm m_zmm_bias_reg
             = is_last_ch ? zmm_bias_reg | k_ch_tail_mask : zmm_bias_reg;
     vmovups(vmmword[reg_bias_baddr], m_zmm_bias_reg);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_spatial_loop_bias(
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_spatial_loop_bias(
         bool is_last_ch) {
     Label oh_label;
     Label ow_blk_label;
@@ -1079,7 +1082,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_spatial_loop_bias(
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::
         compute_single_ch_block_bias() {
 
     auto write_compute_bias = [&](bool masked_ch_tail) {
@@ -1121,7 +1124,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::
     L(done_bias_label);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ch_loop_bias(
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_ch_loop_bias(
         bool do_load_bias) {
 
     assert(is_ddst_layout_nxc());
@@ -1161,7 +1164,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ch_loop_bias(
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::deploy_ch_loop_bias() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::deploy_ch_loop_bias() {
 
     Label ch_loop_label, zero_bias_label, load_bias_done_label;
 
@@ -1179,7 +1182,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::deploy_ch_loop_bias() {
     L(load_bias_done_label);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_bias() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_bias() {
 
     mov(reg_bias_baddr, ptr[this->param1 + GET_OFF(bias)]);
 
@@ -1189,7 +1192,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_bias() {
         compute_single_ch_block_bias();
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::zero_filter_kh_loop() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::zero_filter_kh_loop() {
 
     const size_t filter_offset_kw = jcp.kw * jcp.ch_block * jcp.typesize_out;
     const size_t filter_offset_kh = jcp.kh * filter_offset_kw;
@@ -1211,7 +1214,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::zero_filter_kh_loop() {
     sub(reg_tmp_filter, filter_offset_kh);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::deploy_zero_filter() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::deploy_zero_filter() {
 
     Label skip_zeroing_label;
 
@@ -1228,7 +1231,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::deploy_zero_filter() {
     L(skip_zeroing_label);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_kh_step(int unroll_w,
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_kh_step(int unroll_w,
         int l_pad, int pad_offset, int ow_block, bool is_last_ch) {
 
     const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
@@ -1270,7 +1273,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_kh_step(int unroll_w,
     L(skip_loop_label);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ch_loop(
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_ch_loop(
         int unroll_w, int l_pad, int pad_offset, int ow_block) {
 
     const bool masked_ch_tail = is_layout_nxc() && jcp.ch_tail > 0;
@@ -1298,7 +1301,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ch_loop(
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_h_loop(
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_h_loop(
         int unroll_w, int l_pad, int pad_offset, int ow_block) {
 
     mov(reg_tmp_output, reg_output_baddr);
@@ -1406,7 +1409,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_h_loop(
     L(loop_end_label);
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::calculate_w_unrolling(
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::calculate_w_unrolling(
         int &unroll_trips, int &unroll_w, int &unroll_w_tail) {
 
     const bool do_unroll_w = jcp.ow > max_unroll_w_;
@@ -1432,7 +1435,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::calculate_w_unrolling(
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ow_block_unroll() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_ow_block_unroll() {
 
     Label ow_blk_label; // for compute middle block
     int pad_offset = 0;
@@ -1489,7 +1492,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16::compute_ow_block_unroll() {
     }
 }
 
-void jit_avx512_dw_conv_bwd_weights_kernel_bf16::generate() {
+void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::generate() {
     assert(is_src_layout_nxc() == is_ddst_layout_nxc());
 
     preamble();

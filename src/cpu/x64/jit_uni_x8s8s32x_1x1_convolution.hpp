@@ -104,14 +104,14 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             rtus_prepare(this, conv_d, src_d, dst_md(), weights_md());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_conf(jcp_,
+            CHECK(jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_conf(jcp_,
                     *conv_d, *src_d, *weights_md(), *dst_md(),
                     with_bias() ? *weights_md(1) : types::zero_md(), attr_,
                     dnnl_get_max_threads(), rtus_.reduce_src_));
             if (jcp_.with_dw_conv) CHECK(depthwise_po_init(engine));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_scratchpad(
+            jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_scratchpad(
                     scratchpad, jcp_, *attr());
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
@@ -369,7 +369,7 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_x8s8s32x_1x1_conv_kernel<isa>(
+                new jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_1x1_md())));
         CHECK(kernel_->create_kernel());
 
@@ -402,9 +402,9 @@ private:
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_uni_x8s8s32x_1x1_conv_kernel<isa>> kernel_;
+    std::unique_ptr<jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>> kernel_;
     std::unique_ptr<rtus_driver_t<isa>> rtus_driver_;
-    using dw_conv_kernel_t = jit_uni_x8s8s32x_fwd_kernel<isa>;
+    using dw_conv_kernel_t = jit_uni_x8s8s32x_fwd_kernel_t<isa>;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 

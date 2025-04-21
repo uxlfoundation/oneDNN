@@ -1237,7 +1237,7 @@ void brgemm_inner_product_bwd_weights_t<isa>::transpose_matrix_c_chunk(
     const auto &jbgp = pd()->jbgp_;
 
     if (jbgp.is_amx) {
-        auto p = jit_amx_ip_trans_diff_wei::ctx_t();
+        auto p = jit_amx_ip_trans_diff_wei_t::ctx_t();
 
         // Note: This assumes AxB{inner_blocking} weights memory format.
         const dim_t ext_nb_ic = div_up(jbgp.ic, ext_ic_block_);

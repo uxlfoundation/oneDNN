@@ -68,22 +68,22 @@ struct jit_trans_dst_t {
     const jit_conv_conf_t *conf_;
 };
 
-struct jit_transpose4x16_src_t {
+struct jit_transpose4x16_src_params_t {
     int src_pf0_distance;
     int tr_src_pf0_distance;
     bool src_pf1;
     bool tr_src_pf1;
 };
 
-struct jit_transpose4x16_src : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_transpose4x16_src)
+struct jit_transpose4x16_src_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_transpose4x16_src_t)
 
-    jit_transpose4x16_src(const jit_1x1_conv_conf_t *aparams,
-            jit_transpose4x16_src_t *tparams_)
+    jit_transpose4x16_src_t(const jit_1x1_conv_conf_t *aparams,
+            jit_transpose4x16_src_params_t *tparams_)
         : jit_generator_t(jit_name()), params(aparams), tparams(tparams_) {}
 
     const jit_1x1_conv_conf_t *params;
-    const jit_transpose4x16_src_t *tparams;
+    const jit_transpose4x16_src_params_t *tparams;
 
     static const int transpose_size = 4;
 

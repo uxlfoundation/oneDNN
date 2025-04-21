@@ -75,12 +75,12 @@ struct jit_uni_x8s8s32x_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_uni_x8s8s32x_fwd_kernel<isa>::init_conf(jcp_, *desc(),
+            CHECK(jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jcp_, *desc(),
                     src_md_, weights_md_, dst_md_, bias_md_, attr_,
                     dnnl_get_max_threads()));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_x8s8s32x_fwd_kernel<isa>::init_scratchpad(
+            jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_scratchpad(
                     scratchpad, jcp_, *attr());
 
             return attr_.set_default_formats(dst_md(0));
@@ -111,7 +111,7 @@ struct jit_uni_x8s8s32x_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_x8s8s32x_fwd_kernel<isa>(
+                new jit_uni_x8s8s32x_fwd_kernel_t<isa>(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md())));
         return kernel_->create_kernel();
     }
@@ -142,7 +142,7 @@ private:
     const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
             const float *src_scales, const float *wei_scales) const;
 
-    std::unique_ptr<jit_uni_x8s8s32x_fwd_kernel<isa>> kernel_;
+    std::unique_ptr<jit_uni_x8s8s32x_fwd_kernel_t<isa>> kernel_;
 };
 
 } // namespace x64

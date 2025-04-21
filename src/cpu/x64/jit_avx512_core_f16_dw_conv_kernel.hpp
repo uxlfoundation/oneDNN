@@ -32,10 +32,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_dw_conv_fwd_kernel_f16 : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_fwd_kernel_f16)
+struct jit_avx512_dw_conv_fwd_kernel_f16_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_fwd_kernel_f16_t)
 
-    jit_avx512_dw_conv_fwd_kernel_f16(
+    jit_avx512_dw_conv_fwd_kernel_f16_t(
             const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md);
 
     jit_conv_conf_t jcp;

@@ -32,11 +32,11 @@ namespace cpu {
 namespace x64 {
 
 template <typename Vmm>
-struct _jit_avx512_core_bf16_fwd_kernel : public jit_generator_t {
-    _jit_avx512_core_bf16_fwd_kernel(const jit_conv_conf_t &ajcp,
+struct jit_avx512_core_bf16_fwd_kernel_vmm_t : public jit_generator_t {
+    jit_avx512_core_bf16_fwd_kernel_vmm_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_avx512_core_bf16_fwd_kernel)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_bf16_fwd_kernel_vmm_t)
 
     const jit_conv_conf_t &jcp;
     const primitive_attr_t &attr_;
@@ -213,24 +213,24 @@ private:
     }
 };
 
-struct jit_avx512_core_bf16_fwd_kernel {
-    jit_avx512_core_bf16_fwd_kernel(const jit_conv_conf_t &ajcp,
+struct jit_avx512_core_bf16_fwd_kernel_t {
+    jit_avx512_core_bf16_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
         switch (ajcp.oc_block) {
             case 16:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_bf16_fwd_kernel<Xbyak::Zmm>>(
+                        jit_avx512_core_bf16_fwd_kernel_vmm_t<Xbyak::Zmm>>(
                         ajcp, attr, dst_md);
                 return;
             case 8:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_bf16_fwd_kernel<Xbyak::Ymm>>(
+                        jit_avx512_core_bf16_fwd_kernel_vmm_t<Xbyak::Ymm>>(
                         ajcp, attr, dst_md);
                 return;
             case 4:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_bf16_fwd_kernel<Xbyak::Xmm>>(
+                        jit_avx512_core_bf16_fwd_kernel_vmm_t<Xbyak::Xmm>>(
                         ajcp, attr, dst_md);
                 return;
             default: assert(!"invalid channel blocking");
@@ -242,7 +242,7 @@ struct jit_avx512_core_bf16_fwd_kernel {
         return status::out_of_memory;
     }
 
-    ~jit_avx512_core_bf16_fwd_kernel() = default;
+    ~jit_avx512_core_bf16_fwd_kernel_t() = default;
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &src_pd,
@@ -255,14 +255,14 @@ struct jit_avx512_core_bf16_fwd_kernel {
     const Xbyak::uint8 *jit_ker() const { return kernel_->jit_ker(); }
 
 private:
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_bf16_fwd_kernel);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_bf16_fwd_kernel_t);
     std::unique_ptr<jit_generator_t> kernel_;
 };
 
 template <typename Vmm>
-struct _jit_avx512_core_bf16_bwd_data_kernel : public jit_generator_t {
+struct jit_avx512_core_bf16_bwd_data_kernel_vmm_t : public jit_generator_t {
 
-    _jit_avx512_core_bf16_bwd_data_kernel(const jit_conv_conf_t &ajcp)
+    jit_avx512_core_bf16_bwd_data_kernel_vmm_t(const jit_conv_conf_t &ajcp)
         : jit_generator_t(jit_name(), avx512_core_bf16)
         , jcp(ajcp)
         , bf16_emu_(nullptr) {
@@ -429,24 +429,24 @@ private:
     }
 };
 
-struct jit_avx512_core_bf16_bwd_data_kernel {
+struct jit_avx512_core_bf16_bwd_data_kernel_t {
 
-    jit_avx512_core_bf16_bwd_data_kernel(const jit_conv_conf_t &ajcp)
+    jit_avx512_core_bf16_bwd_data_kernel_t(const jit_conv_conf_t &ajcp)
         : kernel_(nullptr) {
         switch (ajcp.ic_block) {
             case 16:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_bf16_bwd_data_kernel<Xbyak::Zmm>>(
+                        jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Xbyak::Zmm>>(
                         ajcp);
                 return;
             case 8:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_bf16_bwd_data_kernel<Xbyak::Ymm>>(
+                        jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Xbyak::Ymm>>(
                         ajcp);
                 return;
             case 4:
                 kernel_ = utils::make_unique<
-                        _jit_avx512_core_bf16_bwd_data_kernel<Xbyak::Xmm>>(
+                        jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Xbyak::Xmm>>(
                         ajcp);
                 return;
             default: assert(!"invalid channel blocking");
@@ -458,7 +458,7 @@ struct jit_avx512_core_bf16_bwd_data_kernel {
         return status::out_of_memory;
     }
 
-    ~jit_avx512_core_bf16_bwd_data_kernel() = default;
+    ~jit_avx512_core_bf16_bwd_data_kernel_t() = default;
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &diff_src_md,
@@ -468,14 +468,14 @@ struct jit_avx512_core_bf16_bwd_data_kernel {
     const Xbyak::uint8 *jit_ker() const { return kernel_->jit_ker(); }
 
 private:
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_bf16_bwd_data_kernel);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_core_bf16_bwd_data_kernel_t);
     std::unique_ptr<jit_generator_t> kernel_;
 };
 
-struct jit_avx512_core_bf16_conv_bwd_weights_kernel_f32
+struct jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t
     : public jit_generator_t {
 
-    jit_avx512_core_bf16_conv_bwd_weights_kernel_f32(
+    jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t(
             const jit_conv_conf_t &ajcp)
         : jit_generator_t(jit_name(), avx512_core_bf16)
         , jcp(ajcp)
@@ -486,10 +486,10 @@ struct jit_avx512_core_bf16_conv_bwd_weights_kernel_f32
         }
     }
 
-    ~jit_avx512_core_bf16_conv_bwd_weights_kernel_f32() override = default;
+    ~jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
-            jit_avx512_core_bf16_conv_bwd_weights_kernel_f32)
+            jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t)
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &src_md,

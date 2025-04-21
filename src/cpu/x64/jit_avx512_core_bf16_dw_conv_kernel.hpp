@@ -32,10 +32,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx512_dw_conv_fwd_kernel_bf16 : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_fwd_kernel_bf16)
+struct jit_avx512_dw_conv_fwd_kernel_bf16_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_fwd_kernel_bf16_t)
 
-    jit_avx512_dw_conv_fwd_kernel_bf16(
+    jit_avx512_dw_conv_fwd_kernel_bf16_t(
             const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md);
 
     jit_conv_conf_t jcp;
@@ -127,10 +127,10 @@ private:
     void generate() override;
 };
 
-struct jit_avx512_dw_conv_bwd_data_kernel_bf16 : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_data_kernel_bf16)
+struct jit_avx512_dw_conv_bwd_data_kernel_bf16_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_data_kernel_bf16_t)
 
-    jit_avx512_dw_conv_bwd_data_kernel_bf16(const jit_conv_conf_t &ajcp)
+    jit_avx512_dw_conv_bwd_data_kernel_bf16_t(const jit_conv_conf_t &ajcp)
         : jit_generator_t(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
 
         if (!isa_has_bf16(jcp.isa))
@@ -139,7 +139,7 @@ struct jit_avx512_dw_conv_bwd_data_kernel_bf16 : public jit_generator_t {
                     bf16_emu_reserv_4, bf16_emu_reserv_5, bf16_emu_reserv_6);
     }
 
-    ~jit_avx512_dw_conv_bwd_data_kernel_bf16() override = default;
+    ~jit_avx512_dw_conv_bwd_data_kernel_bf16_t() override = default;
 
     jit_conv_conf_t jcp;
 
@@ -202,14 +202,14 @@ private:
                 format_tag::nwc);
     }
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_data_kernel_bf16);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_data_kernel_bf16_t);
 };
 
-struct jit_avx512_dw_conv_bwd_weights_kernel_bf16 : public jit_generator_t {
+struct jit_avx512_dw_conv_bwd_weights_kernel_bf16_t : public jit_generator_t {
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_weights_kernel_bf16)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_dw_conv_bwd_weights_kernel_bf16_t)
 
-    jit_avx512_dw_conv_bwd_weights_kernel_bf16(const jit_conv_conf_t &ajcp)
+    jit_avx512_dw_conv_bwd_weights_kernel_bf16_t(const jit_conv_conf_t &ajcp)
         : jit_generator_t(jit_name()), jcp(ajcp), bf16_emu_(nullptr) {
 
         if (!isa_has_bf16(jcp.isa))
@@ -218,7 +218,7 @@ struct jit_avx512_dw_conv_bwd_weights_kernel_bf16 : public jit_generator_t {
                     bf16_emu_reserv_4, bf16_emu_reserv_5, bf16_emu_reserv_6);
     }
 
-    ~jit_avx512_dw_conv_bwd_weights_kernel_bf16() override = default;
+    ~jit_avx512_dw_conv_bwd_weights_kernel_bf16_t() override = default;
 
     jit_conv_conf_t jcp;
 
@@ -280,7 +280,7 @@ private:
 
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_weights_kernel_bf16)
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_avx512_dw_conv_bwd_weights_kernel_bf16_t)
 
     /* Micro-kernel JIT'ing, fusing 'kw' and 'ow_block' loops into unrolled FMAs
      */

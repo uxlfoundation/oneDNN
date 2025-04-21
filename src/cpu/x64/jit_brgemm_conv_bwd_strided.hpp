@@ -60,7 +60,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
 
         // need custom hasher to use array as key in unordered_map
         template <int asize>
-        struct ahasher {
+        struct hasher_t {
             size_t operator()(const std::array<int, asize> &a) const {
                 size_t seed = 0;
                 for (auto e : a)
@@ -70,7 +70,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
         };
         template <int asize>
         using Arrmap = std::unordered_map<std::array<int, asize>, int,
-                ahasher<asize>>;
+                hasher_t<asize>>;
 
         int brg_indices_c {0};
         Arrmap<4> brg_indices;

@@ -84,11 +84,12 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::compute_ker(int ur_w, int pad_l,
 
     const bool ic_tail
             = (jcp.ic_without_padding % (jcp.ic_block / ic_inner_block)) > 0;
-    const bool masked_write = ic_tail && last_ic_block_flag == last_ic_block;
+    const bool masked_write
+            = ic_tail && last_ic_block_flag == ic_block_t::last_ic_block;
 
     /* Skip the last loads of input
             if (ic%16)/ic_sub_step < ic_block/ic_sub_step */
-    const int icb = (last_ic_block_flag == last_ic_block)
+    const int icb = (last_ic_block_flag == ic_block_t::last_ic_block)
             ? div_up(
                     (jcp.ic_without_padding % jcp.ic_block_int), ic_inner_block)
             : ic_block / ic_inner_block;
@@ -120,7 +121,8 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::compute_ker(int ur_w, int pad_l,
         }
     };
 
-    if (jcp.is_relo && last_ic_block_flag == last_ic_block && ic_tail) {
+    if (jcp.is_relo && last_ic_block_flag == ic_block_t::last_ic_block
+            && ic_tail) {
         const Reg64 reg_tmp = reg_scratch;
         mov(reg_tmp, ic_mask_label);
         kmovq(kmask_ic_block, qword[reg_tmp]);
@@ -290,17 +292,18 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::icb_loop(
             cmp(reg_icb, 1); // The last ic block
             jne(common_ker, T_NEAR);
         }
-        kd_loop(ur_w, pad_l, pad_r, last_ic_block, handle_h_pad);
+        kd_loop(ur_w, pad_l, pad_r, ic_block_t::last_ic_block, handle_h_pad);
         if (do_icb_loop) {
             jmp(end_ker, T_NEAR);
 
             L(common_ker);
-            kd_loop(ur_w, pad_l, pad_r, no_last_block, handle_h_pad);
+            kd_loop(ur_w, pad_l, pad_r, ic_block_t::no_last_block,
+                    handle_h_pad);
 
             L(end_ker);
         }
     } else {
-        kd_loop(ur_w, pad_l, pad_r, no_last_block, handle_h_pad);
+        kd_loop(ur_w, pad_l, pad_r, ic_block_t::no_last_block, handle_h_pad);
     }
     // End of IC Loop
     if (do_icb_loop) {

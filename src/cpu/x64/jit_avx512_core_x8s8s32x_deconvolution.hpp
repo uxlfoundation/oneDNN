@@ -40,11 +40,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-typedef enum {
+enum ker_block_t {
     no_last_block = 0x1U,
     last_ic_block = 0x2U,
     last_sp_block = 0x4U,
-} ker_block_t;
+};
 
 struct ur_w_blks_params_t {
     struct single_ur_w_blk_params_t {

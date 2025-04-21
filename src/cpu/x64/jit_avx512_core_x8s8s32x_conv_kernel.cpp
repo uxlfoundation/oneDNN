@@ -492,7 +492,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Zmm>::compute_ker_dw(int ur_w,
     if (jcp.signed_input) vmovups(zmm_shifted_zero, vmm_shift);
 
     for (int ci = 0; ci < jcp.nb_ch_blocking; ci++) {
-        const bool mask_flag = last_ic_block_flag != no_last_block
+        const bool mask_flag = last_ic_block_flag != ic_block_t::no_last_block
                 && ci == jcp.nb_ch_blocking - 1;
         if (jcp.is_resrc_depthwise && !h_padded) {
             // now we can load input once and reuse up to jcp.kw times
@@ -645,7 +645,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::compute_ker(int ur_w,
         int _end = jcp.signed_input ? ur_w : jj_end;
         /* Skip the last loads of input
             if (ic%16)/ic_sub_step < ic_block/ic_sub_step */
-        int icb = (last_ic_block_flag != no_last_block)
+        int icb = (last_ic_block_flag != ic_block_t::no_last_block)
                 ? div_up((jcp.ic_without_padding % ic_block), ic_sub_step)
                 : ic_block / ic_sub_step;
         if (compute_kernel) {
@@ -660,7 +660,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::compute_ker(int ur_w,
                     for (int jj = _start; jj < _end; jj++) {
                         int aux_input_offset = input_offset(jj, ic, ki);
                         if (jj >= jj_start && jj < jj_end) {
-                            if (last_ic_block_flag == last_sp_block
+                            if (last_ic_block_flag == ic_block_t::last_sp_block
                                     && ic_tail_size != 0 && ic == icb - 1) {
                                 Xmm xmm_tmp = Xmm(
                                         vmm_inp(jj, nb_oc_block).getIdx());
@@ -912,17 +912,18 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::icb_loop(
             jne(common_ker, T_NEAR);
         }
         kh_loop(ur_w, pad_l, pad_r,
-                is_last_sp_block ? last_sp_block : last_ic_block);
+                is_last_sp_block ? ic_block_t::last_sp_block
+                                 : ic_block_t::last_ic_block);
         if (do_icb_loop) {
             jmp(end_ker, T_NEAR);
 
             L(common_ker);
-            kh_loop(ur_w, pad_l, pad_r, no_last_block);
+            kh_loop(ur_w, pad_l, pad_r, ic_block_t::no_last_block);
 
             L(end_ker);
         }
     } else {
-        kh_loop(ur_w, pad_l, pad_r, no_last_block);
+        kh_loop(ur_w, pad_l, pad_r, ic_block_t::no_last_block);
     }
     // End of IC Loop
     if (do_icb_loop) {
@@ -1147,7 +1148,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
         r_pad_fall_through_n_urw = (cur_ow / jcp.ur_w) % n_urw_per_ow_block;
         r_pad_fall_through_ow_block = cur_ow / (n_urw_per_ow_block * jcp.ur_w);
 
-        // r_pad or last_sp_block
+        // r_pad or ic_block_t::last_sp_block
         if (cur_ow + jcp.ur_w <= jcp.ow) {
             if (r_pad_fall_through_n_urw == 0) ++n_labels;
             const int n_urw_r_pad_region = (jcp.ow - cur_ow) / jcp.ur_w;
@@ -1286,7 +1287,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
         }
     }
 
-    // r_pad region or last_sp_block
+    // r_pad region or ic_block_t::last_sp_block
     if (cur_ow + jcp.ur_w <= jcp.ow) {
         if (jcp.nb_ow > 1) {
             if (cur_n_oi == 0) {

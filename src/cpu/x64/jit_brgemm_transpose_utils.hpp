@@ -145,10 +145,10 @@ struct jit_brgemm_trans_to_vnni_t {
         dim_t current_col_size, current_row_size;
     };
 
-    typedef enum matrix_to_transform {
+    enum class matrix_to_transform_t {
         matrix_B,
-        matrix_C
-    } matrix_to_transform_t;
+        matrix_C,
+    };
 
     virtual void operator()(ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;

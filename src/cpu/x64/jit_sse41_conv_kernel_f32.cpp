@@ -38,7 +38,7 @@ using namespace dnnl::impl::utils;
 
 using namespace Xbyak;
 
-jit_sse41_conv_fwd_kernel_f32::jit_sse41_conv_fwd_kernel_f32(
+jit_sse41_conv_fwd_kernel_f32_t::jit_sse41_conv_fwd_kernel_f32_t(
         const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
     : jit_generator_t(jit_name(), sse41), jcp(ajcp), attr_(attr) {
@@ -63,7 +63,7 @@ jit_sse41_conv_fwd_kernel_f32::jit_sse41_conv_fwd_kernel_f32(
     }
 }
 
-void jit_sse41_conv_fwd_kernel_f32::oh_step_unroll_kw(
+void jit_sse41_conv_fwd_kernel_f32_t::oh_step_unroll_kw(
         int ur_w, int pad_l, int pad_r, int oc_blocks) {
     int kw = jcp.kw;
     int stride_w = jcp.stride_w;
@@ -99,7 +99,7 @@ void jit_sse41_conv_fwd_kernel_f32::oh_step_unroll_kw(
     }
 }
 
-void jit_sse41_conv_fwd_kernel_f32::oh_step_nopad(
+void jit_sse41_conv_fwd_kernel_f32_t::oh_step_nopad(
         int ur_w, int pad_l, int pad_r, int oc_blocks) {
     Label kw_loop;
 
@@ -155,7 +155,7 @@ static void iterate(const int oc_blocks, const int ur_w, const F &f) {
             f(mask_flag, i, j);
     }
 }
-void jit_sse41_conv_fwd_kernel_f32::apply_postops(
+void jit_sse41_conv_fwd_kernel_f32_t::apply_postops(
         const int oc_blocks, const int ur_w) {
     injector_utils::vmm_index_set_t vmm_idxs;
     if (jcp.with_binary) {
@@ -183,7 +183,7 @@ void jit_sse41_conv_fwd_kernel_f32::apply_postops(
     }
 }
 
-void jit_sse41_conv_fwd_kernel_f32::width_blk_step(
+void jit_sse41_conv_fwd_kernel_f32_t::width_blk_step(
         int ur_w, int pad_l, int pad_r, int oc_blocks) {
     int kw = jcp.kw;
     int oc_blk = jcp.oc_block;
@@ -295,7 +295,7 @@ void jit_sse41_conv_fwd_kernel_f32::width_blk_step(
     sub(reg_bias, sizeof(float) * 8);
 }
 
-inline void jit_sse41_conv_fwd_kernel_f32::solve_common(int oc_blocks) {
+inline void jit_sse41_conv_fwd_kernel_f32_t::solve_common(int oc_blocks) {
     int ur_w = jcp.ur_w;
     int ur_w_tail = jcp.ur_w_tail;
     int n_oi = jcp.ow / ur_w;
@@ -344,7 +344,7 @@ inline void jit_sse41_conv_fwd_kernel_f32::solve_common(int oc_blocks) {
         width_blk_step(ur_w_tail, 0, r_pad, oc_blocks); // "tail"
 }
 
-void jit_sse41_conv_fwd_kernel_f32::generate() {
+void jit_sse41_conv_fwd_kernel_f32_t::generate() {
     this->preamble();
 
     mov(reg_input, ptr[this->param1 + GET_OFF(src)]);
@@ -379,7 +379,7 @@ void jit_sse41_conv_fwd_kernel_f32::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 }
 
-status_t jit_sse41_conv_fwd_kernel_f32::init_conf(jit_conv_conf_t &jcp,
+status_t jit_sse41_conv_fwd_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
         const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
         const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
         const primitive_attr_t &attr, int nthreads) {

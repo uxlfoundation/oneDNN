@@ -1940,7 +1940,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::prepare_scratchpad_data(
     const auto &jcp = pd()->jcp_;
 
     // XXX: See the comment about tr_iw and guarding elements in
-    // jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_conf()
+    // jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf()
     auto tr_src = scratchpad.template get<src_data_t>(key_conv_tr_src);
     // Zero out guard elements that cross a buffer boundary to prevent a
     // race condition due to buffer overflows from memory optimization where

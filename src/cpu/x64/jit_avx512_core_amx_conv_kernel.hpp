@@ -286,12 +286,12 @@ private:
     bool is_store_done_ = false;
     bool is_buffer_empty_ = true;
 
-    struct w_pad_output {
+    struct w_pad_output_t {
         int l_pad_output;
         int r_pad_output;
-        w_pad_output(int l_, int r_) : l_pad_output(l_), r_pad_output(r_) {}
+        w_pad_output_t(int l_, int r_) : l_pad_output(l_), r_pad_output(r_) {}
     };
-    std::queue<w_pad_output> w_padding;
+    std::queue<w_pad_output_t> w_padding;
 
     /* data regs */
     const Xbyak::Reg64 reg_inp_ptr = r15;

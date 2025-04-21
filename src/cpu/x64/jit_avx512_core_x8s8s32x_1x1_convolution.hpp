@@ -105,13 +105,13 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             rtus_prepare(this, conv_d, src_d, dst_md(), weights_md());
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
-            CHECK(jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_conf(jcp_,
+            CHECK(jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(jcp_,
                     *conv_d, src_d, weights_md_, dst_md_, bias_md_, *attr(),
                     dnnl_get_max_threads(), rtus_.reduce_src_));
             if (jcp_.with_dw_conv) CHECK(depthwise_po_init(engine));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_avx512_core_x8s8s32x_1x1_conv_kernel::init_scratchpad(
+            jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_scratchpad(
                     scratchpad, jcp_, *attr());
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
@@ -315,7 +315,7 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_avx512_core_x8s8s32x_1x1_conv_kernel(
+                new jit_avx512_core_x8s8s32x_1x1_conv_kernel_t(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_1x1_md(0))));
         CHECK(kernel_->create_kernel());
 
@@ -352,9 +352,9 @@ private:
             const memory_tracking::grantor_t &scratchpad,
             const float *dst_scales, const float *dw_wei_scales) const;
 
-    std::unique_ptr<jit_avx512_core_x8s8s32x_1x1_conv_kernel> kernel_;
+    std::unique_ptr<jit_avx512_core_x8s8s32x_1x1_conv_kernel_t> kernel_;
     std::unique_ptr<rtus_driver_t<avx512_core>> rtus_driver_;
-    using dw_conv_kernel_t = jit_avx512_core_x8s8s32x_fwd_kernel;
+    using dw_conv_kernel_t = jit_avx512_core_x8s8s32x_fwd_kernel_t;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 

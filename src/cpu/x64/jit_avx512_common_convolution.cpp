@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1136,7 +1136,7 @@ status_t jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     nthr_ic_b_ = j.nthr_ic_b;
 
     CHECK(safe_ptr_assign(
-            kernel_, new jit_avx512_common_conv_bwd_weights_kernel_f32(j)));
+            kernel_, new jit_avx512_common_conv_bwd_weights_kernel_f32_t(j)));
     CHECK(kernel_->create_kernel());
 
     if (nthr_mb_ > 1) {

@@ -1067,11 +1067,11 @@ void jit_trans_ow_oc_t::generate() {
 
 /*
 // -------------------------------------------------
-// jit_transpose4x16_src
+// jit_transpose4x16_src_t
 // -------------------------------------------------
 */
 
-void jit_transpose4x16_src::transpose(int nrows) {
+void jit_transpose4x16_src_t::transpose(int nrows) {
     assert(nrows >= 0 && nrows <= transpose_size);
     static_assert(transpose_size == 4, "Unsupported transpose size");
     if (!nrows) return;
@@ -1191,7 +1191,7 @@ alignas(64) static constexpr const int64_t idx1[8] = {2, 3, 0, 1, 6, 7, 4, 5};
 alignas(64) static constexpr const int32_t idxP[16]
         = {0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15};
 
-void jit_transpose4x16_src::generate() {
+void jit_transpose4x16_src_t::generate() {
     preamble();
 
     const int ic_block = params->ic_block;

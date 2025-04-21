@@ -36,7 +36,7 @@ using namespace dnnl::impl::utils;
 using namespace Xbyak;
 
 template <cpu_isa_t isa>
-jit_uni_dw_conv_fwd_kernel_f32<isa>::jit_uni_dw_conv_fwd_kernel_f32(
+jit_uni_dw_conv_fwd_kernel_f32_t<isa>::jit_uni_dw_conv_fwd_kernel_f32_t(
         const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md)
     : jit_generator_t(jit_name(), isa), jcp(ajcp) {
     if (jcp.with_eltwise || jcp.with_binary) {
@@ -66,7 +66,7 @@ bool check_if_tail_load(const bool is_ch_tail, const int c_tail, const int ch,
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::load_src(
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_src(
         int ur_ch_blocks, int ur_w, bool is_ch_tail) {
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
@@ -127,7 +127,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::load_src(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::apply_filter_unrolled(
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
         int ur_ch_blocks, int ur_w, int pad_l, int pad_r, bool is_ch_tail) {
     int ch_blk = jcp.ch_block;
     int dilate_h = jcp.dilate_h + 1;
@@ -270,7 +270,7 @@ void iterate(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::apply_postops(
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_postops(
         const int ur_ch_blocks, const int ur_w, const bool is_ch_tail) {
     if (this->jcp.with_eltwise || this->jcp.with_binary) {
         const int repeats = max_repeats();
@@ -345,63 +345,63 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::apply_postops(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::load_tail(
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
     uni_vmovups(vmm | k_oc_tail_mask | T_z, ptr[reg + offset]);
 }
 
 template <>
-void jit_uni_dw_conv_fwd_kernel_f32<avx2>::load_tail(
+void jit_uni_dw_conv_fwd_kernel_f32_t<avx2>::load_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
     load_bytes(vmm, reg, offset, load_size);
 }
 
 template <>
-void jit_uni_dw_conv_fwd_kernel_f32<sse41>::load_tail(
+void jit_uni_dw_conv_fwd_kernel_f32_t<sse41>::load_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
     load_bytes(vmm, reg, offset, load_size);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::add_tail_from_mem(Vmm &vmm_acc,
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::add_tail_from_mem(Vmm &vmm_acc,
         Vmm &vmm_tmp, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
     uni_vaddps(vmm_acc | k_oc_tail_mask | T_z, vmm_acc, ptr[reg + offset]);
 }
 
 template <>
-void jit_uni_dw_conv_fwd_kernel_f32<avx2>::add_tail_from_mem(Vmm &vmm_acc,
+void jit_uni_dw_conv_fwd_kernel_f32_t<avx2>::add_tail_from_mem(Vmm &vmm_acc,
         Vmm &vmm_tmp, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
     load_bytes(vmm_tmp, reg, offset, load_size);
     uni_vaddps(vmm_acc, vmm_acc, vmm_tmp);
 }
 
 template <>
-void jit_uni_dw_conv_fwd_kernel_f32<sse41>::add_tail_from_mem(Vmm &vmm_acc,
+void jit_uni_dw_conv_fwd_kernel_f32_t<sse41>::add_tail_from_mem(Vmm &vmm_acc,
         Vmm &vmm_tmp, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
     load_bytes(vmm_tmp, reg, offset, load_size);
     uni_vaddps(vmm_acc, vmm_acc, vmm_tmp);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::store_tail(
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
     uni_vmovups(vmmword[reg + offset], vmm | k_oc_tail_mask);
 }
 
 template <>
-void jit_uni_dw_conv_fwd_kernel_f32<avx2>::store_tail(
+void jit_uni_dw_conv_fwd_kernel_f32_t<avx2>::store_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
     store_bytes(vmm, reg, offset, store_size);
 }
 
 template <>
-void jit_uni_dw_conv_fwd_kernel_f32<sse41>::store_tail(
+void jit_uni_dw_conv_fwd_kernel_f32_t<sse41>::store_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
     store_bytes(vmm, reg, offset, store_size);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::store_dst(
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_dst(
         int ur_ch_blocks, int ur_w, bool is_ch_tail) {
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
@@ -434,7 +434,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::store_dst(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::compute_loop(
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::compute_loop(
         int ur_w, int ur_ch_blocks, int pad_l, int pad_r) {
 
     const bool ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
@@ -514,7 +514,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::compute_loop(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::ow_loop(int ur_ch_blocks) {
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::ow_loop(int ur_ch_blocks) {
 
     int iw = jcp.iw;
     int ow = jcp.ow;
@@ -584,7 +584,7 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::ow_loop(int ur_ch_blocks) {
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_fwd_kernel_f32<isa>::generate() {
+void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::generate() {
     this->preamble();
 
     if (jcp.is_fused_conv) {
@@ -653,52 +653,52 @@ void jit_uni_dw_conv_fwd_kernel_f32<isa>::generate() {
         postops_injector_->prepare_table(/* generate = */ true);
 }
 
-template struct jit_uni_dw_conv_fwd_kernel_f32<avx512_core>;
-template struct jit_uni_dw_conv_fwd_kernel_f32<avx2>;
-template struct jit_uni_dw_conv_fwd_kernel_f32<sse41>;
+template struct jit_uni_dw_conv_fwd_kernel_f32_t<avx512_core>;
+template struct jit_uni_dw_conv_fwd_kernel_f32_t<avx2>;
+template struct jit_uni_dw_conv_fwd_kernel_f32_t<sse41>;
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::load_vmm(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::load_vmm(
         Vmm &vmm, const Xbyak::Address &addr, bool tail) {
     int ch_tail = jcp.oc_without_padding % simd_w_; // special case for SSE41
     int bytes = (tail && ch_tail > 0 ? ch_tail : simd_w_) * sizeof(float);
     load_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<avx2>::load_vmm(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<avx2>::load_vmm(
         Vmm &vmm, const Xbyak::Address &addr, bool tail) {
     int bytes = (tail ? jcp.ch_tail : jcp.ch_block) * sizeof(float);
     load_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<avx512_core>::load_vmm(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<avx512_core>::load_vmm(
         Vmm &vmm, const Xbyak::Address &addr, bool tail) {
     Zmm masked_vmm = tail ? vmm | k_ch_tail_mask | T_z : vmm;
     vmovups(masked_vmm, addr);
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::store_vmm(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::store_vmm(
         Vmm &vmm, const Xbyak::Address &addr, bool tail) {
     int ch_tail = jcp.oc_without_padding % simd_w_; // special case for SSE41
     int bytes = (tail && ch_tail > 0 ? ch_tail : simd_w_) * sizeof(float);
     store_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<avx2>::store_vmm(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<avx2>::store_vmm(
         Vmm &vmm, const Xbyak::Address &addr, bool tail) {
     int bytes = (tail ? jcp.ch_tail : jcp.ch_block) * sizeof(float);
     store_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<avx512_core>::store_vmm(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<avx512_core>::store_vmm(
         Vmm &vmm, const Xbyak::Address &addr, bool tail) {
     Zmm masked_vmm = tail ? vmm | k_ch_tail_mask : vmm;
     vmovups(addr, masked_vmm);
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::load_ddst(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::load_ddst(
         int ur_ch_blocks, int ur_str_w) {
     for (int i = 0; i < reg_repeats_; i++) {
         for (int ch = 0; ch < ur_ch_blocks; ch++) {
@@ -712,7 +712,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::load_ddst(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::apply_filter(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::apply_filter(
         int ur_ch_blocks, int ur_str_w, bool is_last_ch) {
     int kw = jcp.kw;
     int kh = jcp.kh;
@@ -801,7 +801,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::apply_filter(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::store_dsrc(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::store_dsrc(
         int ur_ch_blocks, int ur_str_w, bool is_last_ch) {
     int ch_block = jcp.ch_block;
     int iw = jcp.iw;
@@ -837,7 +837,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::store_dsrc(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::ch_loop_body(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::ch_loop_body(
         int ur_ch_blocks, int unroll_w) {
 
     auto call_compute_body
@@ -909,7 +909,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::ch_loop_body(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::unroll_width_body(
+inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::unroll_width_body(
         int ur_ch_blocks) {
     assert(is_dsrc_layout_nxc() == is_ddst_layout_nxc());
     const size_t ch_step = sizeof(float)
@@ -939,7 +939,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::unroll_width_body(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::generate() {
+void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::generate() {
     preamble();
 
     mov(reg_dsrc, ptr[this->param1 + GET_OFF(src)]);
@@ -986,14 +986,14 @@ void jit_uni_dw_conv_bwd_data_kernel_f32<isa>::generate() {
 }
 #undef GET_OFF
 
-template struct jit_uni_dw_conv_bwd_data_kernel_f32<avx512_core>;
-template struct jit_uni_dw_conv_bwd_data_kernel_f32<avx2>;
-template struct jit_uni_dw_conv_bwd_data_kernel_f32<sse41>;
+template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<avx512_core>;
+template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<avx2>;
+template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<sse41>;
 
 #define GET_OFF(field) offsetof(jit_dw_conv_call_s, field)
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::load_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::load_xmm(
         Vmm &vmm, const Xbyak::Address &addr, bool compute_tail) {
     int ch_tail = jcp.oc_without_padding % simd_w_; // special case for SSE41
     int bytes
@@ -1001,20 +1001,20 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::load_xmm(
     load_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx2>::load_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx2>::load_xmm(
         Vmm &vmm, const Xbyak::Address &addr, bool compute_tail) {
     int bytes = (compute_tail ? jcp.ch_tail : jcp.ch_block) * sizeof(float);
     load_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx512_core>::load_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx512_core>::load_xmm(
         Vmm &vmm, const Xbyak::Address &addr, bool compute_tail) {
     Zmm masked_vmm = compute_tail ? vmm | k_ch_tail_mask | T_z : vmm;
     vmovups(masked_vmm, addr);
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::store_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::store_xmm(
         Vmm &vmm, const Xbyak::Address &addr, bool compute_tail) {
     int ch_tail = jcp.oc_without_padding % simd_w_; // special case for SSE41
     int bytes
@@ -1022,26 +1022,27 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::store_xmm(
     store_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx2>::store_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx2>::store_xmm(
         Vmm &vmm, const Xbyak::Address &addr, bool compute_tail) {
     int bytes = (compute_tail ? jcp.ch_tail : jcp.ch_block) * sizeof(float);
     store_bytes(vmm, addr, bytes);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx512_core>::store_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx512_core>::store_xmm(
         Vmm &vmm, const Xbyak::Address &addr, bool compute_tail) {
     Zmm masked_vmm = compute_tail ? vmm | k_ch_tail_mask : vmm;
     vmovups(addr, masked_vmm);
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::addps_xmm(Vmm &vmm_dst,
-        Vmm &vmm_src, const Xbyak::Address &addr, bool compute_tail) {
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::addps_xmm(
+        Vmm &vmm_dst, Vmm &vmm_src, const Xbyak::Address &addr,
+        bool compute_tail) {
     load_xmm(vmm_src, addr, compute_tail);
     uni_vaddps(vmm_dst, vmm_dst, vmm_src);
 }
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx2>::addps_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx2>::addps_xmm(
         Vmm &vmm_dst, Vmm &vmm_src, const Xbyak::Address &addr,
         bool compute_tail) {
     if (compute_tail) {
@@ -1053,7 +1054,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx2>::addps_xmm(
     }
 }
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx512_core>::addps_xmm(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx512_core>::addps_xmm(
         Vmm &vmm_dst, Vmm &vmm_src, const Xbyak::Address &addr,
         bool compute_tail) {
     Zmm masked_vmm = compute_tail ? vmm_src | k_ch_tail_mask | T_z : vmm_src;
@@ -1061,7 +1062,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<avx512_core>::addps_xmm(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_filter() {
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_filter() {
     for (int ch = 0; ch < jcp.nb_ch_blocking; ++ch) {
         for (int r = 0; r < reg_repeats_; ++r) {
             for (int i = 0; i < jcp.kw; ++i) {
@@ -1074,7 +1075,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_filter() {
 }
 
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::load_filter(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::load_filter(
         int nb_ch_blocking, bool is_last_ch) {
     assert(nb_ch_blocking == 1);
     for (int r = 0; r < reg_repeats_; ++r) {
@@ -1093,7 +1094,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::load_filter(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::load_filter(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::load_filter(
         int nb_ch_blocking, bool is_last_ch) {
     const size_t filter_step = jcp.kh * jcp.kw;
     for (int ch = 0; ch < nb_ch_blocking; ++ch) {
@@ -1109,7 +1110,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::load_filter(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_bias() {
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_bias() {
     for (int ch = 0; ch < jcp.nb_ch_blocking; ++ch) {
         for (int r = 0; r < reg_repeats_; ++r) {
             Vmm vmm_bias = get_bias_reg(r * jcp.nb_ch_blocking + ch);
@@ -1119,7 +1120,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_bias() {
 }
 
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::load_bias(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::load_bias(
         int nb_ch_blocking, bool is_last_ch) {
     for (int r = 0; r < reg_repeats_; ++r) {
         bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
@@ -1134,7 +1135,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::load_bias(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::load_bias(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::load_bias(
         int nb_ch_blocking, bool is_last_ch) {
     for (int ch = 0; ch < nb_ch_blocking; ++ch) {
         bool masked_load = is_last_ch && (ch == nb_ch_blocking - 1);
@@ -1147,7 +1148,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::load_bias(
 
 template <cpu_isa_t isa>
 inline void
-jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_unroll_ow_step_nxc(
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step_nxc(
         int unroll_w, int l_pad, int pad_offset, int ow_block,
         int nb_ch_blocking, bool is_last_ch) {
 
@@ -1245,7 +1246,8 @@ jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_unroll_ow_step_nxc(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_unroll_ow_step(
+inline void
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step(
         int unroll_w, int l_pad, int pad_offset, int ow_block,
         bool is_last_ch) {
 
@@ -1344,7 +1346,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_unroll_ow_step(
 
 template <cpu_isa_t isa>
 inline void
-jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::dispatch_ow_step_unroll(
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::dispatch_ow_step_unroll(
         int unroll_w, int l_pad, int pad_offset, int ow_block,
         int nb_ch_blocking, bool is_last_ch) {
     if (jcp.is_fast_depthwise) {
@@ -1359,7 +1361,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::dispatch_ow_step_unroll(
 
 template <>
 inline void
-jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::compute_bias_step_unroll(
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::compute_bias_step_unroll(
         const int unroll_w, int nb_ch_blocking, bool is_last_ch) {
     const int ch_step = is_ddst_layout_nxc() ? jcp.ngroups : simd_w_;
     for (int r = 0; r < reg_repeats_; ++r) {
@@ -1381,7 +1383,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::compute_bias_step_unroll(
 
 template <cpu_isa_t isa>
 inline void
-jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_bias_step_unroll(
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_bias_step_unroll(
         const int unroll_w, int nb_ch_blocking, bool is_last_ch) {
     const int ch_step = is_ddst_layout_nxc() ? jcp.ngroups : simd_w_;
     for (int i = 0; i < unroll_w; ++i) {
@@ -1400,7 +1402,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_bias_step_unroll(
 }
 
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::store_filter(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::store_filter(
         int nb_ch_blocking, bool is_last_ch) {
     assert(nb_ch_blocking == 1);
     for (int r = 0; r < reg_repeats_; ++r) {
@@ -1419,7 +1421,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::store_filter(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::store_filter(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::store_filter(
         int nb_ch_blocking, bool is_last_ch) {
     size_t filter_step = jcp.kh * jcp.kw;
     for (int ch = 0; ch < nb_ch_blocking; ++ch) {
@@ -1435,7 +1437,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::store_filter(
 }
 
 template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::store_bias(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::store_bias(
         int nb_ch_blocking, bool is_last_ch) {
     for (int r = 0; r < reg_repeats_; ++r) {
         bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
@@ -1450,7 +1452,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>::store_bias(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::store_bias(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::store_bias(
         int nb_ch_blocking, bool is_last_ch) {
     for (int ch = 0; ch < nb_ch_blocking; ++ch) {
         bool masked_store = is_last_ch && ch == nb_ch_blocking - 1;
@@ -1463,7 +1465,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::store_bias(
 
 template <cpu_isa_t isa>
 inline void
-jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_spatial_loop_bias(
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_spatial_loop_bias(
         int nb_ch_blocking, bool is_last_ch) {
     Label oh_label;
     Label ow_blk_label;
@@ -1505,7 +1507,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_spatial_loop_bias(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_bwd_weights_kernel_f32<
+void jit_uni_dw_conv_bwd_weights_kernel_f32_t<
         isa>::compute_single_ch_block_bias() {
 
     auto write_compute_bias = [&](bool is_last_ch) {
@@ -1549,7 +1551,7 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32<
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_ch_loop_bias(
+void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ch_loop_bias(
         bool do_load_bias) {
 
     assert(is_ddst_layout_nxc());
@@ -1602,7 +1604,7 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_ch_loop_bias(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::deploy_ch_loop_bias() {
+void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::deploy_ch_loop_bias() {
 
     Label ch_loop_label, zero_bias_label, load_bias_done_label;
 
@@ -1621,7 +1623,7 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::deploy_ch_loop_bias() {
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_bias() {
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_bias() {
 
     mov(reg_bias_baddr, ptr[this->param1 + GET_OFF(bias)]);
 
@@ -1632,7 +1634,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_bias() {
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_filter_kh_loop(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_filter_kh_loop(
         int nb_ch_blocking) {
 
     const size_t filter_offset_kw = jcp.kw * jcp.ch_block * sizeof(float);
@@ -1656,7 +1658,8 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_filter_kh_loop(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_filter_ch_loop() {
+inline void
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_filter_ch_loop() {
 
     bool write_ch_blocking_unroll
             = is_layout_nxc() && jcp.nb_ch > jcp.nb_ch_blocking;
@@ -1687,7 +1690,8 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::zero_filter_ch_loop() {
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::deploy_zero_filter() {
+inline void
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::deploy_zero_filter() {
 
     Label skip_zeroing_label;
 
@@ -1705,7 +1709,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::deploy_zero_filter() {
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_kh_step(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_kh_step(
         int unroll_w, int l_pad, int pad_offset, int ow_block,
         int nb_ch_blocking, bool is_last_ch) {
 
@@ -1749,7 +1753,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_kh_step(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_ch_loop(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ch_loop(
         int unroll_w, int l_pad, int pad_offset, int ow_block) {
 
     bool write_ch_blocking_unroll
@@ -1790,7 +1794,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_ch_loop(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_h_loop(
+inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_h_loop(
         int unroll_w, int l_pad, int pad_offset, int ow_block) {
 
     mov(reg_tmp_output, reg_output_baddr);
@@ -1899,7 +1903,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_h_loop(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::calculate_w_unrolling(
+void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::calculate_w_unrolling(
         int &unroll_trips, int &unroll_w, int &unroll_w_tail) {
 
     const bool do_unroll_w = jcp.ow > max_unroll_w_;
@@ -1927,7 +1931,7 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::calculate_w_unrolling(
 
 template <cpu_isa_t isa>
 inline void
-jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_ow_block_unroll() {
+jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ow_block_unroll() {
 
     Label ow_blk_label; // for computing 'ow middle' block
     int pad_offset = 0;
@@ -1985,7 +1989,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::compute_ow_block_unroll() {
 }
 
 template <cpu_isa_t isa>
-void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::generate() {
+void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::generate() {
     assert(is_src_layout_nxc() == is_ddst_layout_nxc());
 
     preamble();
@@ -2009,9 +2013,9 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32<isa>::generate() {
 }
 #undef GET_OFF
 
-template struct jit_uni_dw_conv_bwd_weights_kernel_f32<avx512_core>;
-template struct jit_uni_dw_conv_bwd_weights_kernel_f32<avx2>;
-template struct jit_uni_dw_conv_bwd_weights_kernel_f32<sse41>;
+template struct jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx512_core>;
+template struct jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx2>;
+template struct jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>;
 
 } // namespace x64
 } // namespace cpu

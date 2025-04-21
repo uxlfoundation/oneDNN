@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2023 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -602,7 +602,7 @@ REG_AVX512_ISA(template struct jit_avx512_common_1x1_convolution_bwd_data_t<
 status_t jit_avx512_common_1x1_convolution_bwd_weights_t ::init(
         engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_,
-            new jit_avx512_common_1x1_conv_kernel(
+            new jit_avx512_common_1x1_conv_kernel_t(
                     pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
     CHECK(safe_ptr_assign(
             acc_ker_, new cpu_accumulator_1d_t<data_type::f32>()));

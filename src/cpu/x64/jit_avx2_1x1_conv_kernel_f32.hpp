@@ -30,10 +30,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_avx2_1x1_conv_kernel_f32 : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_1x1_conv_kernel_f32)
+struct jit_avx2_1x1_conv_kernel_f32_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_1x1_conv_kernel_f32_t)
 
-    jit_avx2_1x1_conv_kernel_f32(const jit_1x1_conv_conf_t &ajcp,
+    jit_avx2_1x1_conv_kernel_f32_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
     static status_t init_conf(jit_1x1_conv_conf_t &jcp,

@@ -25,7 +25,7 @@ namespace cpu {
 namespace x64 {
 namespace gemm_x8s8s32x_convolution_utils {
 
-jit_gemm_x8s8s32x_zp_pad_comp_helper::jit_gemm_x8s8s32x_zp_pad_comp_helper(
+jit_gemm_x8s8s32x_zp_pad_comp_helper_t::jit_gemm_x8s8s32x_zp_pad_comp_helper_t(
         jit_generator_t *host, const conv_gemm_conf_t &jcp,
         const Xbyak::Reg64 &reg_zp_pad_comp,
         const Xbyak::Reg64 &reg_zp_pad_comp_temp,
@@ -62,7 +62,7 @@ jit_gemm_x8s8s32x_zp_pad_comp_helper::jit_gemm_x8s8s32x_zp_pad_comp_helper(
     , reg_zp_pad_comp_(reg_zp_pad_comp)
     , reg_zp_pad_comp_tmp_(reg_zp_pad_comp_temp) {}
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::init(const dim_t off_w,
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::init(const dim_t off_w,
         const dim_t off_h, const dim_t off_w_size, const dim_t off_w_off,
         const dim_t off_zp_pad_com_base_off,
         const dim_t off_g_oc_offset_prologue, const dim_t off_g_oc_offset,
@@ -76,14 +76,14 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::init(const dim_t off_w,
     load_zp_src_comp_pad_addr_if_needed(g_oc_offset_prologue_);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::
         load_next_point_zp_src_comp_pad_addr() {
     next_point();
     should_apply_zp_src_pad();
     load_zp_src_comp_pad_addr_if_needed(g_oc_offset_);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::zp_src_comp_pad_operation(
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::zp_src_comp_pad_operation(
         const std::function<void(const Xbyak::Reg64 &)> &op) {
     if (op) {
         Xbyak::Label end;
@@ -94,8 +94,8 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::zp_src_comp_pad_operation(
     }
 }
 
-jit_gemm_x8s8s32x_zp_pad_comp_helper::zp_src_pad_com_d
-jit_gemm_x8s8s32x_zp_pad_comp_helper::calculate_zp_src_pad_com_d(
+jit_gemm_x8s8s32x_zp_pad_comp_helper_t::zp_src_pad_com_d
+jit_gemm_x8s8s32x_zp_pad_comp_helper_t::calculate_zp_src_pad_com_d(
         const dim_t d_off) const {
 
     dim_t zp_src_pad_com_d_off = 0;
@@ -124,21 +124,21 @@ jit_gemm_x8s8s32x_zp_pad_comp_helper::calculate_zp_src_pad_com_d(
     return {should_apply_zp_src_pad_comp_d, zp_src_pad_com_d_off};
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::fin() {
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::fin() {
     host_->add(host_->rsp, reserved_stack_size_);
 }
 
-dim_t jit_gemm_x8s8s32x_zp_pad_comp_helper::calculate_lower_bound_dim(
+dim_t jit_gemm_x8s8s32x_zp_pad_comp_helper_t::calculate_lower_bound_dim(
         const dim_t begin_comp_pad) const noexcept {
     return begin_comp_pad;
 }
 
-dim_t jit_gemm_x8s8s32x_zp_pad_comp_helper::calculate_upper_bound_dim(
+dim_t jit_gemm_x8s8s32x_zp_pad_comp_helper_t::calculate_upper_bound_dim(
         const dim_t output_size, const dim_t end_comp_pad) const noexcept {
     return output_size - end_comp_pad;
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::set_up_initial_args(
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::set_up_initial_args(
         const dim_t off_w, const dim_t off_h, const dim_t off_w_size,
         const dim_t off_w_off, const dim_t off_zp_pad_com_base_off,
         const dim_t off_g_oc_offset_prologue, const dim_t off_g_oc_offset,
@@ -180,7 +180,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::set_up_initial_args(
     host_->mov(should_apply_zp_src_pad_comp_d_, reg_zp_pad_comp_tmp_i8);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::check_bound(
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::check_bound(
         const Xbyak::Reg64 &reg_dim, const Xbyak::Address &result_addr,
         const dim_t bound_value, const bound bound_kind) {
 
@@ -191,8 +191,8 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::check_bound(
         host_->setge(result_addr);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::load_zp_src_comp_pad_addr_if_needed(
-        const Xbyak::Address &g_oc_offset) {
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::
+        load_zp_src_comp_pad_addr_if_needed(const Xbyak::Address &g_oc_offset) {
     Xbyak::Label calc_zp_src_comp_pad_addr, end;
     host_->cmp(should_apply_zp_src_pad_, 0);
     host_->je(end, jit_generator_t::T_NEAR);
@@ -214,7 +214,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::load_zp_src_comp_pad_addr_if_needed(
     host_->L(end);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::
         calculate_zp_src_comp_pad_effective_addr(
                 const Xbyak::Address &g_oc_offset) {
     // Calculation steps:
@@ -240,7 +240,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::
     host_->add(reg_zp_pad_comp_, reg_zp_pad_comp_tmp_);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::get_zp_pad_com_dim(
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::get_zp_pad_com_dim(
         const Xbyak::Address &dim_under_lower_bound,
         const Xbyak::Address &dim_over_eq_upper_bound, const dim_t begin_pad,
         dim_t mid_pad, const dim_t end_pad, const dim_t out_dim_size,
@@ -272,7 +272,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::get_zp_pad_com_dim(
     host_->L(end);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::should_apply_zp_src_pad() {
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::should_apply_zp_src_pad() {
     const Xbyak::Reg8 &reg_tmp8 = reg_zp_pad_comp_tmp_.cvt8();
     host_->mov(reg_tmp8, w_under_lower_bound_);
     host_->or_(reg_tmp8, w_over_eq_upper_bound_);
@@ -285,7 +285,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper::should_apply_zp_src_pad() {
     host_->setne(should_apply_zp_src_pad_);
 }
 
-void jit_gemm_x8s8s32x_zp_pad_comp_helper::next_point() {
+void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::next_point() {
 
     Xbyak::Label inc_h, inc_w, row_begin, store_w;
 

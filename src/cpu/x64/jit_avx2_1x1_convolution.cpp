@@ -493,7 +493,7 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
 
 status_t jit_avx2_1x1_convolution_bwd_weights_t::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_,
-            new jit_avx2_1x1_conv_kernel_f32(
+            new jit_avx2_1x1_conv_kernel_f32_t(
                     pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
     CHECK(kernel_->create_kernel());
 

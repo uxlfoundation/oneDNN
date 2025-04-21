@@ -45,9 +45,10 @@ using namespace Xbyak;
 using namespace injector_utils;
 
 template <cpu_isa_t isa, typename Vmm>
-_jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::_jit_uni_x8s8s32x_1x1_conv_kernel(
-        const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
-        const memory_desc_t &dst_md)
+jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa,
+        Vmm>::jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t(const jit_1x1_conv_conf_t
+                                                             &ajcp,
+        const primitive_attr_t &attr, const memory_desc_t &dst_md)
     : jit_generator_t(jit_name(), isa), jcp(ajcp), attr_(attr) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
         using namespace binary_injector;
@@ -69,14 +70,15 @@ _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::_jit_uni_x8s8s32x_1x1_conv_kernel(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::cvt2ps(data_type_t type_in,
-        const Vmm &vmm_in, const Reg64 &reg, int offset, int load_size) {
+void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::cvt2ps(
+        data_type_t type_in, const Vmm &vmm_in, const Reg64 &reg, int offset,
+        int load_size) {
     load_data(type_in, vmm_in, reg, offset, load_size);
     if (type_in != data_type::f32) uni_vcvtdq2ps(vmm_in, vmm_in);
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::bcast_loop(
+void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::bcast_loop(
         int load_loop_blk) {
     mov(aux1_reg_bcast_data, reg_bcast_data);
     mov(aux_reg_bcast_data, reg_bcast_data);
@@ -113,7 +115,7 @@ void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::bcast_loop(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-int _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::output_ptr(
+int jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::output_ptr(
         const int i_load, const int i_ur) {
     const size_t ur_stride = jcp.with_dw_conv
             ? jcp.nb_load_blocking * jcp.oc_block * i_ur
@@ -123,7 +125,7 @@ int _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::output_ptr(
 };
 
 template <cpu_isa_t isa, typename Vmm>
-int _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::vreg_accum_idx(
+int jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::vreg_accum_idx(
         const int load_loop_blk, const int i_load, const int i_ur) {
     const int vmm_idx = i_ur * load_loop_blk + i_load;
     assert(vmm_idx < ker_max_reg_idx);
@@ -131,7 +133,7 @@ int _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::vreg_accum_idx(
 };
 
 template <cpu_isa_t isa, typename Vmm>
-Vmm _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::vreg_accum(
+Vmm jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::vreg_accum(
         const int load_loop_blk, const int i_load, const int i_ur) {
     return Vmm(vreg_accum_idx(load_loop_blk, i_load, i_ur));
 };
@@ -144,7 +146,7 @@ void iterate(const int ur, const int load_loop_blk, const F &f) {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::apply_sum(const int ur,
+void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_sum(const int ur,
         const int load_loop_blk, const bool mask_flag_in,
         const float *p_sum_scale, const int32_t *p_sum_zp) {
 
@@ -186,8 +188,8 @@ void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::apply_sum(const int ur,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::apply_postops(const int ur,
-        const int load_loop_blk, const bool mask_flag_in,
+void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_postops(
+        const int ur, const int load_loop_blk, const bool mask_flag_in,
         const float *p_sum_scale, const int32_t *p_sum_zp) {
 
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
@@ -241,7 +243,7 @@ void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::apply_postops(const int ur,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::reduce_loop(
+void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
         int load_loop_blk, int ur, bool wraparound) {
 
     // use 0x10001 to represent 2 words of 0x1
@@ -511,7 +513,7 @@ void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::reduce_loop(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::generate() {
+void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::generate() {
     preamble();
 
     sub(rsp, stack_space_needed);
@@ -632,7 +634,7 @@ void _jit_uni_x8s8s32x_1x1_conv_kernel<isa, Vmm>::generate() {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_conf(
+status_t jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_conf(
         jit_1x1_conv_conf_t &jcp, const convolution_desc_t &cd,
         const memory_desc_wrapper &src_d, const memory_desc_wrapper &weights_d,
         const memory_desc_wrapper &dst_d, const memory_desc_wrapper &bias_d,
@@ -927,7 +929,7 @@ status_t jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_conf(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_scratchpad(
+void jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad,
         const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr) {
     using namespace dnnl::impl::memory_tracking::names;
@@ -940,10 +942,10 @@ void jit_uni_x8s8s32x_1x1_conv_kernel<isa>::init_scratchpad(
     scratchpad.book<float>(key_conv_adjusted_scales, count);
 }
 
-template struct _jit_uni_x8s8s32x_1x1_conv_kernel<avx2, Ymm>;
-template struct _jit_uni_x8s8s32x_1x1_conv_kernel<sse41, Xmm>;
-template struct jit_uni_x8s8s32x_1x1_conv_kernel<avx2>;
-template struct jit_uni_x8s8s32x_1x1_conv_kernel<sse41>;
+template struct jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<avx2, Ymm>;
+template struct jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<sse41, Xmm>;
+template struct jit_uni_x8s8s32x_1x1_conv_kernel_t<avx2>;
+template struct jit_uni_x8s8s32x_1x1_conv_kernel_t<sse41>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

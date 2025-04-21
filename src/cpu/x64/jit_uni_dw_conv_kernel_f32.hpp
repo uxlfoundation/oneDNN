@@ -32,10 +32,10 @@ namespace cpu {
 namespace x64 {
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_fwd_kernel_f32 : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_fwd_kernel_f32)
+struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_fwd_kernel_f32_t)
 
-    jit_uni_dw_conv_fwd_kernel_f32(
+    jit_uni_dw_conv_fwd_kernel_f32_t(
             const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md);
 
     jit_conv_conf_t jcp;
@@ -126,10 +126,10 @@ private:
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_bwd_data_kernel_f32 : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_data_kernel_f32)
+struct jit_uni_dw_conv_bwd_data_kernel_f32_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_data_kernel_f32_t)
 
-    jit_uni_dw_conv_bwd_data_kernel_f32(const jit_conv_conf_t &ajcp)
+    jit_uni_dw_conv_bwd_data_kernel_f32_t(const jit_conv_conf_t &ajcp)
         : jit_generator_t(jit_name()), jcp(ajcp) {}
     jit_conv_conf_t jcp;
 
@@ -190,11 +190,11 @@ private:
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_bwd_weights_kernel_f32 : public jit_generator_t {
+struct jit_uni_dw_conv_bwd_weights_kernel_f32_t : public jit_generator_t {
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_weights_kernel_f32)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_weights_kernel_f32_t)
 
-    jit_uni_dw_conv_bwd_weights_kernel_f32(const jit_conv_conf_t &ajcp)
+    jit_uni_dw_conv_bwd_weights_kernel_f32_t(const jit_conv_conf_t &ajcp)
         : jit_generator_t(jit_name()), jcp(ajcp) {}
 
     jit_conv_conf_t jcp;

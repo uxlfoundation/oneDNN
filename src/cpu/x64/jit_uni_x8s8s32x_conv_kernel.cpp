@@ -54,7 +54,7 @@ void pick_loop_order(jit_conv_conf_t &jcp) {
 } // namespace
 
 template <cpu_isa_t isa, typename Vmm>
-_jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::_jit_uni_x8s8s32x_fwd_kernel(
+jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::jit_uni_x8s8s32x_fwd_kernel_vmm_t(
         const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
     : jit_generator_t(jit_name(), isa), jcp(ajcp), attr_(attr) {
@@ -85,7 +85,7 @@ _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::_jit_uni_x8s8s32x_fwd_kernel(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::prepare_output(int ur_w) {
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::prepare_output(int ur_w) {
     int nb_oc_block
             = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
     for (int k = 0; k < nb_oc_block; ++k)
@@ -105,7 +105,7 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::prepare_output(int ur_w) {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::cvt2ps(data_type_t type_in,
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::cvt2ps(data_type_t type_in,
         const Vmm &vmm_in, const Reg64 &reg, int offset, int load_size) {
 
     load_data(type_in, vmm_in, reg, offset, load_size);
@@ -133,9 +133,9 @@ void iterate(const int nb_oc_block, const int ur_w, const F &f) {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::apply_sum(const int nb_oc_block,
-        const int ur_w, const bool last_oc_block_flag, const int oc_block,
-        const float *p_sum_scale, const int32_t *p_sum_zp) {
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::apply_sum(
+        const int nb_oc_block, const int ur_w, const bool last_oc_block_flag,
+        const int oc_block, const float *p_sum_scale, const int32_t *p_sum_zp) {
     if (jcp.with_sum) {
         assert(!utils::any_null(p_sum_scale, p_sum_zp)
                 && "p_sum_scale or p_sum_zp = nullptr");
@@ -177,7 +177,7 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::apply_sum(const int nb_oc_block,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::apply_postops(
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::apply_postops(
         const int nb_oc_block, const int ur_w, const bool last_oc_block_flag,
         const int oc_block, const float *p_sum_scale, const int32_t *p_sum_zp) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
@@ -221,7 +221,7 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::apply_postops(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::store_output(
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::store_output(
         int ur_w, bool last_oc_block_flag) {
     int nb_oc_block
             = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
@@ -373,8 +373,8 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::store_output(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::compute_ker_dw(int ur_w, int pad_l,
-        int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::compute_ker_dw(int ur_w,
+        int pad_l, int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
 
     if (!(utils::one_of(isa, avx2) && std::is_same<Vmm, Xbyak::Ymm>::value)
             && !(utils::one_of(isa, sse41)
@@ -514,8 +514,8 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::compute_ker_dw(int ur_w, int pad_l,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::compute_ker(int ur_w, int pad_l,
-        int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::compute_ker(int ur_w,
+        int pad_l, int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
     if (jcp.is_depthwise)
         return compute_ker_dw(ur_w, pad_l, pad_r, last_ic_block_flag, h_padded);
 
@@ -659,7 +659,7 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::compute_ker(int ur_w, int pad_l,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::kh_loop(
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::kh_loop(
         int ur_w, int pad_l, int pad_r, ic_block_t last_ic_block_flag) {
 
     Label kd_label, kh_label, skip_kd_loop, skip_kh_loop;
@@ -816,7 +816,7 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::kh_loop(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::icb_loop(
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::icb_loop(
         int ur_w, int pad_l, int pad_r, bool is_last_sp_block) {
     prepare_output(ur_w);
 
@@ -888,7 +888,7 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::icb_loop(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::generate() {
+void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
     Label permute_index_table;
     int in_ic_shift = jcp.is_fused_conv ? jcp.dw_conv_buffer_oc
                                         : jcp.ic_without_padding * jcp.ngroups;
@@ -1236,7 +1236,7 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::generate() {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_x8s8s32x_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
+status_t jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
         const convolution_desc_t &cd, memory_desc_t &src_md,
         memory_desc_t &weights_md, memory_desc_t &dst_md,
         memory_desc_t &bias_md, primitive_attr_t &attr, int nthreads) {
@@ -1615,7 +1615,7 @@ status_t jit_uni_x8s8s32x_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
 }
 
 template <cpu_isa_t isa>
-void jit_uni_x8s8s32x_fwd_kernel<isa>::init_scratchpad(
+void jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {
     dim_t count = 8;
@@ -1626,11 +1626,11 @@ void jit_uni_x8s8s32x_fwd_kernel<isa>::init_scratchpad(
     scratchpad.book<float>(key_conv_adjusted_scales, count);
 }
 
-template struct _jit_uni_x8s8s32x_fwd_kernel<avx2, Ymm>;
-template struct _jit_uni_x8s8s32x_fwd_kernel<avx2, Xmm>;
-template struct _jit_uni_x8s8s32x_fwd_kernel<sse41, Xmm>;
-template struct jit_uni_x8s8s32x_fwd_kernel<avx2>;
-template struct jit_uni_x8s8s32x_fwd_kernel<sse41>;
+template struct jit_uni_x8s8s32x_fwd_kernel_vmm_t<avx2, Ymm>;
+template struct jit_uni_x8s8s32x_fwd_kernel_vmm_t<avx2, Xmm>;
+template struct jit_uni_x8s8s32x_fwd_kernel_vmm_t<sse41, Xmm>;
+template struct jit_uni_x8s8s32x_fwd_kernel_t<avx2>;
+template struct jit_uni_x8s8s32x_fwd_kernel_t<sse41>;
 
 } // namespace x64
 } // namespace cpu

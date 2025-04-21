@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,10 +25,10 @@ namespace cpu {
 
 namespace gemm_utils {
 template <typename T, bool isTransA, bool isTransB>
-struct gemm_traits {};
+struct gemm_traits_t {};
 
 template <bool isTransA, bool isTransB>
-struct gemm_traits<double, isTransA, isTransB> {
+struct gemm_traits_t<double, isTransA, isTransB> {
     static constexpr dim_t m = 8;
     static constexpr dim_t n = 6;
     static constexpr dim_t BM = 4032;
@@ -37,7 +37,7 @@ struct gemm_traits<double, isTransA, isTransB> {
 };
 
 template <bool isTransA, bool isTransB>
-struct gemm_traits<float, isTransA, isTransB> {
+struct gemm_traits_t<float, isTransA, isTransB> {
     static constexpr dim_t m = 16;
     static constexpr dim_t n = 6;
     static constexpr dim_t BM = 4032;
@@ -46,7 +46,7 @@ struct gemm_traits<float, isTransA, isTransB> {
 };
 
 template <bool isTransA, bool isTransB>
-struct gemm_traits<bfloat16_t, isTransA, isTransB> {
+struct gemm_traits_t<bfloat16_t, isTransA, isTransB> {
     static constexpr dim_t m = 32;
     static constexpr dim_t n = 6;
     static constexpr dim_t BM = 4032;
@@ -55,7 +55,7 @@ struct gemm_traits<bfloat16_t, isTransA, isTransB> {
 };
 
 template <typename T>
-using unroll_factor = gemm_traits<T, false, false>;
+using unroll_factor = gemm_traits_t<T, false, false>;
 
 template <typename data_t>
 void sum_two_matrices(dim_t m, dim_t n, data_t *__restrict p_src, dim_t ld_src,

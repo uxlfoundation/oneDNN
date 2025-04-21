@@ -40,9 +40,10 @@ using namespace nstl;
                          : (d).blk_off(__VA_ARGS__))
 
 template <typename Vmm>
-jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::
-        jit_avx512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
-                const primitive_attr_t &attr, const memory_desc_t &dst_md)
+jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
+        jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t(
+                const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
+                const memory_desc_t &dst_md)
     : jit_generator_t(jit_name())
     , jcp(ajcp)
     , attr_(attr)
@@ -72,11 +73,11 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::
 }
 
 template <typename Vmm>
-jit_avx512_core_x8s8s32x_deconv_fwd_kernel<
-        Vmm>::~jit_avx512_core_x8s8s32x_deconv_fwd_kernel()
+jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
+        Vmm>::~jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t()
         = default;
 
-status_t _jit_avx512_core_x8s8s32x_deconv_fwd_kernel::init_conf(
+status_t jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
         jit_conv_conf_t &jcp, const deconvolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &weights_md, memory_desc_t &dst_md,
         const bool with_bias, memory_desc_t &bias_md, primitive_attr_t &attr,
@@ -369,7 +370,7 @@ status_t _jit_avx512_core_x8s8s32x_deconv_fwd_kernel::init_conf(
     return status::success;
 }
 
-bool _jit_avx512_core_x8s8s32x_deconv_fwd_kernel::post_ops_ok(
+bool jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::post_ops_ok(
         jit_conv_conf_t &jcp, primitive_attr_t &attr,
         const memory_desc_wrapper &dst_d) {
 
@@ -383,7 +384,7 @@ bool _jit_avx512_core_x8s8s32x_deconv_fwd_kernel::post_ops_ok(
                     &dst_d, sum_at_pos_0_only, sum_requires_scale_one));
 }
 
-void _jit_avx512_core_x8s8s32x_deconv_fwd_kernel::init_scratchpad(
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {
     const int mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
@@ -401,7 +402,7 @@ void _jit_avx512_core_x8s8s32x_deconv_fwd_kernel::init_scratchpad(
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::compute(
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::compute(
         const Vmm &vreg_acc, const Vmm &vreg_wei, const Vmm &vreg_src) {
 
     if (jcp.has_vnni) {
@@ -418,7 +419,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::compute(
 }
 
 template <typename Vmm>
-std::function<Vmm()> jit_avx512_core_x8s8s32x_deconv_fwd_kernel<
+std::function<Vmm()> jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
         Vmm>::prepare_round_robin_vmm_inp_generator(int ur_w) const noexcept {
     const int start_vmm_idx = vmm_inp(0, jcp.nb_oc_blocking).getIdx();
     const int end_vmm_idx = vmm_inp(ur_w - 1, jcp.nb_oc_blocking).getIdx() + 1;
@@ -434,8 +435,9 @@ std::function<Vmm()> jit_avx512_core_x8s8s32x_deconv_fwd_kernel<
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::apply_zp_src_pad_str_comp(
-        int ur_w, int l_overflow, int r_overflow, bool h_padded) {
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
+        Vmm>::apply_zp_src_pad_str_comp(int ur_w, int l_overflow,
+        int r_overflow, bool h_padded) {
     Xbyak::Label end_zp_pad, no_tail;
 
     // apply once per icb loop, zp src stride padding compensation calculated as
@@ -466,7 +468,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::apply_zp_src_pad_str_comp(
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
         Vmm>::append_zp_src_pad_str_comp(int ur_w, int l_overflow,
         int r_overflow, bool h_padded, bool last_oc_block) {
 
@@ -558,7 +560,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::compute_ker(int ur_w,
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::compute_ker(int ur_w,
         int l_overflow, int r_overflow, ker_block_t last_ic_block_flag,
         bool h_padded) {
 
@@ -683,7 +685,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::compute_ker(int ur_w,
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::kh_loop(int ur_w,
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::kh_loop(int ur_w,
         int l_overflow, int r_overflow, ker_block_t last_ic_block_flag) {
 
     const bool signed_input_or_src_zp
@@ -878,20 +880,21 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::kh_loop(int ur_w,
     }
 }
 template <typename Vmm>
-int jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::get_tail_size()
+int jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::get_tail_size()
         const noexcept {
     return jcp.is_depthwise ? jcp.ngroups % jcp.ch_block
                             : jcp.oc_without_padding % jcp.oc_block;
 }
 
 template <typename Vmm>
-int jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::get_blocking_size()
+int jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::get_blocking_size()
         const noexcept {
     return jcp.is_depthwise ? jcp.ch_block : jcp.oc_block;
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::prepare_output(int ur_w) {
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::prepare_output(
+        int ur_w) {
     for (int ocb = 0; ocb < jcp.nb_oc_blocking; ocb++) {
         for (int ur = 0; ur < ur_w; ur++) {
             const Vmm vmm = vmm_out(ur, ocb);
@@ -907,7 +910,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::prepare_output(int ur_w) {
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::cvt2ps(
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::cvt2ps(
         data_type_t type_in, Vmm vmm_in, const Operand &op, bool mask_flag) {
     const Vmm vmm = mask_flag ? vmm_in | ktail_mask | T_z : vmm_in;
     switch (type_in) {
@@ -921,7 +924,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::cvt2ps(
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::store_output(
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::store_output(
         int ur_w, bool last_oc_block) {
     mov(reg_bias, ptr[param1 + GET_OFF(bias)]);
     mov(reg_ptr_scales, ptr[param1 + GET_OFF(scales)]);
@@ -1137,7 +1140,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::store_output(
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::icb_loop(
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::icb_loop(
         int ur_w, int l_overflow, int r_overflow, bool is_last_sp_block) {
 
     int shift_src_icb = jcp.typesize_in * jcp.ic_block;
@@ -1215,7 +1218,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::icb_loop(
 
 template <typename Vmm>
 ur_w_blks_params_t
-jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::get_ur_w_blks_params() {
+jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::get_ur_w_blks_params() {
     const int n_ur_blocks = jcp.ow / jcp.ur_w;
 
     ur_w_blks_params_t ur_w_blks_params;
@@ -1277,7 +1280,7 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::get_ur_w_blks_params() {
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Vmm>::generate() {
+void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::generate() {
     preamble();
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1902,9 +1905,9 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
     return status::success;
 }
 
-template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Xbyak::Zmm>;
-template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Xbyak::Ymm>;
-template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel<Xbyak::Xmm>;
+template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Xbyak::Zmm>;
+template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Xbyak::Ymm>;
+template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Xbyak::Xmm>;
 
 } // namespace x64
 } // namespace cpu

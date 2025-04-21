@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -123,9 +123,9 @@ void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
         const bfloat16_t *A, const dim_t lda, const bfloat16_t *B,
         const dim_t ldb, const float beta, float *C, const dim_t ldc,
         bool do_copy, bfloat16_t *ws) {
-    constexpr dim_t BM = gemm_traits<bfloat16_t, isTransA, isTransB>::BM;
-    constexpr dim_t BN = gemm_traits<bfloat16_t, isTransA, isTransB>::BN;
-    constexpr dim_t BK = gemm_traits<bfloat16_t, isTransA, isTransB>::BK;
+    constexpr dim_t BM = gemm_traits_t<bfloat16_t, isTransA, isTransB>::BM;
+    constexpr dim_t BN = gemm_traits_t<bfloat16_t, isTransA, isTransB>::BN;
+    constexpr dim_t BK = gemm_traits_t<bfloat16_t, isTransA, isTransB>::BK;
 
     const bfloat16_t *curA;
     const bfloat16_t *curB;

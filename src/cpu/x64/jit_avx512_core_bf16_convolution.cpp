@@ -735,8 +735,8 @@ status_t jit_avx512_core_bf16_convolution_bwd_weights_t ::init(
     nthr_oc_b_ = j.nthr_oc_b;
     nthr_ic_b_ = j.nthr_ic_b;
 
-    CHECK(safe_ptr_assign(
-            kernel_, new jit_avx512_core_bf16_conv_bwd_weights_kernel_f32(j)));
+    CHECK(safe_ptr_assign(kernel_,
+            new jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t(j)));
     CHECK(kernel_->create_kernel());
 
     if (j.transpose_src) {
@@ -1919,7 +1919,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t::prepare_scratchpad_data(
 
     if (jcp.transpose_src) {
         // XXX: See the comment about tr_iw and guarding elements in
-        // jit_avx512_core_bf16_conv_bwd_weights_kernel_f32::init_conf()
+        // jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf()
         auto tr_src = scratchpad.template get<src_data_t>(key_conv_tr_src);
         // Zero out guard elements that cross a buffer boundary to prevent a
         // race condition due to buffer overflows from memory optimization where

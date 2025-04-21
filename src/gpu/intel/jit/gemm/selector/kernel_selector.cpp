@@ -338,6 +338,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
             *tagPtr++ = ReqBatchMultiDim;
     }
 
+    if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None)
+        *tagPtr++ = ReqABOffset;
+
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0)
         *tagPtr++ = ReqOffsetMultiDim;
 

@@ -34,9 +34,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-struct jit_uni_rnn_postgemm : public jit_generator_t {
+struct jit_uni_rnn_postgemm_t : public jit_generator_t {
 
-    jit_uni_rnn_postgemm(const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd,
+    jit_uni_rnn_postgemm_t(const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd,
             const char *name)
         : jit_generator_t(name)
         , rnn_(rnn)
@@ -69,7 +69,7 @@ struct jit_uni_rnn_postgemm : public jit_generator_t {
         , zmm_tail_k_mask(k3)
         , xf16_dq_reg_idx(tmp_vector_register_idx) {}
 
-    ~jit_uni_rnn_postgemm() override { delete bf16_emu_; }
+    ~jit_uni_rnn_postgemm_t() override { delete bf16_emu_; }
 
     bool is_projection() const { return projection_; };
 
@@ -140,8 +140,8 @@ struct jit_uni_rnn_postgemm : public jit_generator_t {
             const float *weights_peephole_, const void *bias_,
             gates_t *ws_grid_, scratch_t *scratch_cell_, dst_iter_t *dst_iter_,
             float *weights_scales_, int block_step) const {
-        const rnn_utils::ws_gates_aoc<gates_t> ws_gates(rnn, ws_gates_);
-        const rnn_utils::scratch_gates_aoc<scratch_t> scratch_gates(
+        const rnn_utils::ws_gates_aoc_t<gates_t> ws_gates(rnn, ws_gates_);
+        const rnn_utils::scratch_gates_aoc_t<scratch_t> scratch_gates(
                 rnn, scratch_gates_);
         const rnn_utils::weights_peephole_aoc_t<const float> weights_peephole(
                 rnn, weights_peephole_);
@@ -155,26 +155,26 @@ struct jit_uni_rnn_postgemm : public jit_generator_t {
         const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
         const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
 
-        const rnn_utils::ws_states_layer_aoc<dst_layer_t> dst_layer(
+        const rnn_utils::ws_states_layer_aoc_t<dst_layer_t> dst_layer(
                 rnn, dst_layer_, dst_layer_ld);
-        const rnn_utils::ws_states_iter_aoc<dst_iter_t> dst_iter(
+        const rnn_utils::ws_states_iter_aoc_t<dst_iter_t> dst_iter(
                 rnn, dst_iter_, dst_iter_ld);
-        const rnn_utils::ws_states_iter_aoc<const src_iter_t> src_iter(
+        const rnn_utils::ws_states_iter_aoc_t<const src_iter_t> src_iter(
                 rnn, src_iter_, src_iter_ld);
-        const rnn_utils::augru_attention_aoc<const dst_layer_t> augru_attention(
-                rnn, augru_attention_);
+        const rnn_utils::augru_attention_aoc_t<const dst_layer_t>
+                augru_attention(rnn, augru_attention_);
         const auto dst_iter_c = rnn_utils::make_raw_aoc(dst_iter_c_,
                 types::data_type_size(rnn.dst_iter_c_dt),
                 rnn.ws_states_iter_c_nld, dst_iter_c_ld);
         const auto src_iter_c = rnn_utils::make_raw_aoc(src_iter_c_,
                 types::data_type_size(rnn.src_iter_c_dt),
                 rnn.ws_states_iter_c_nld, src_iter_c_ld);
-        const rnn_utils::ws_gates_aoc<scratch_t> scratch_cell(
+        const rnn_utils::ws_gates_aoc_t<scratch_t> scratch_cell(
                 rnn, scratch_cell_);
         // TODO: There is some inconsistency with the strides used in brgemm vs
         // ref implementation. Fix this to have a consistent post-gemm else
         // document the differences.
-        const rnn_utils::scratch_gates_aoc<scratch_t> scratch_cell_brgemm(
+        const rnn_utils::scratch_gates_aoc_t<scratch_t> scratch_cell_brgemm(
                 rnn, scratch_cell_);
         const utils::array_offset_calculator<gates_t, 2> ws_Wh_b(
                 ws_grid_, rnn.mb, rnn.dhc);
@@ -250,34 +250,34 @@ struct jit_uni_rnn_postgemm : public jit_generator_t {
 
         const rnn_utils::weights_peephole_aoc_t<const float> weights_peephole(
                 rnn, weights_peephole_);
-        const rnn_utils::ws_gates_aoc<gates_t> ws_gates(rnn, ws_gates_);
-        const rnn_utils::ws_gates_aoc<scratch_t> scratch_gates(
+        const rnn_utils::ws_gates_aoc_t<gates_t> ws_gates(rnn, ws_gates_);
+        const rnn_utils::ws_gates_aoc_t<scratch_t> scratch_gates(
                 rnn, scratch_gates_);
-        const rnn_utils::ws_diff_states_layer_aoc<gemm_acc_t> diff_src_layer(
+        const rnn_utils::ws_diff_states_layer_aoc_t<gemm_acc_t> diff_src_layer(
                 rnn, diff_src_layer_);
-        const rnn_utils::ws_diff_states_iter_aoc<gemm_acc_t> diff_src_iter(
+        const rnn_utils::ws_diff_states_iter_aoc_t<gemm_acc_t> diff_src_iter(
                 rnn, diff_src_iter_);
-        const rnn_utils::ws_diff_states_iter_c_aoc<gemm_acc_t> diff_src_iter_c(
-                rnn, diff_src_iter_c_);
-        const rnn_utils::augru_attention_aoc<gemm_acc_t> diff_augru_attention(
+        const rnn_utils::ws_diff_states_iter_c_aoc_t<gemm_acc_t>
+                diff_src_iter_c(rnn, diff_src_iter_c_);
+        const rnn_utils::augru_attention_aoc_t<gemm_acc_t> diff_augru_attention(
                 rnn, diff_augru_attention_);
-        const rnn_utils::ws_diff_states_layer_aoc<gemm_acc_t> diff_dst_layer(
+        const rnn_utils::ws_diff_states_layer_aoc_t<gemm_acc_t> diff_dst_layer(
                 rnn, diff_dst_layer_);
-        const rnn_utils::ws_diff_states_iter_aoc<gemm_acc_t> diff_dst_iter(
+        const rnn_utils::ws_diff_states_iter_aoc_t<gemm_acc_t> diff_dst_iter(
                 rnn, diff_dst_iter_);
-        const rnn_utils::ws_diff_states_iter_c_aoc<gemm_acc_t> diff_dst_iter_c(
-                rnn, diff_dst_iter_c_);
+        const rnn_utils::ws_diff_states_iter_c_aoc_t<gemm_acc_t>
+                diff_dst_iter_c(rnn, diff_dst_iter_c_);
         const auto dst_iter_c = rnn_utils::make_raw_aoc(dst_iter_c_,
                 types::data_type_size(rnn.dst_iter_c_dt),
                 rnn.ws_states_iter_c_nld, dst_iter_c_ld);
         const auto src_iter_c = rnn_utils::make_raw_aoc(src_iter_c_,
                 types::data_type_size(rnn.src_iter_c_dt),
                 rnn.ws_states_iter_c_nld, src_iter_c_ld);
-        const rnn_utils::augru_attention_aoc<const dst_layer_t> augru_attention(
-                rnn, augru_attention_);
-        const ws_states_iter_aoc<const src_iter_t> src_iter(
+        const rnn_utils::augru_attention_aoc_t<const dst_layer_t>
+                augru_attention(rnn, augru_attention_);
+        const ws_states_iter_aoc_t<const src_iter_t> src_iter(
                 rnn, src_iter_, src_iter_ld);
-        const ws_gates_aoc<scratch_t> scratch_cell(rnn, scratch_cell_);
+        const ws_gates_aoc_t<scratch_t> scratch_cell(rnn, scratch_cell_);
         const utils::array_offset_calculator<scratch_t, 2> hG1(
                 scratch_cell_, rnn.ws_states_layer_nld, rnn.ws_states_layer_ld);
         const utils::array_offset_calculator<gates_t, 2> ws_grid(

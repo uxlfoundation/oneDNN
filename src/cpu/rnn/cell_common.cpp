@@ -30,8 +30,8 @@ using namespace rnn_utils;
 using namespace dnnl::impl::utils;
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((
-        _ref_rnn_fwd_t<src_type, weights_type, acc_type>::cell_execution_ref)) {
+rnn_cell_execution_sig(
+        (ref_rnn_fwd_t<src_type, weights_type, acc_type>::cell_execution_ref)) {
     const auto weights_scales = this->pd_->attr()->rnn_weights_qparams_.scales_;
     const auto weights_projection_scales = rnn.is_lstm_projection
             ? this->pd_->attr()->rnn_weights_projection_qparams_.scales_
@@ -119,7 +119,8 @@ void lstm_bwd_weights_peephole_and_bias(const rnn_utils::rnn_conf_t &rnn,
             types::data_type_size(rnn.src_iter_c_dt), rnn.ws_states_iter_c_nld,
             src_iter_c_ld);
 
-    const ws_gates_aoc<const scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const ws_gates_aoc_t<const scratch_data_t> scratch_gates(
+            rnn, scratch_gates_);
     const weights_peephole_aoc_t<float> diff_weights_peephole(
             rnn, diff_weights_peephole_);
 
@@ -238,8 +239,8 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
 }
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((
-        _ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_ref)) {
+rnn_cell_execution_sig(
+        (ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_ref)) {
     const auto gemm_layer = [&](const weights_t *A, const scratch_t *B,
                                     float *C) {
         return (this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb,
@@ -306,7 +307,7 @@ template rnn_cell_execution_sig(ref_rnn_bwd_bf16_t::cell_execution_ref);
 template rnn_cell_execution_sig(ref_rnn_bwd_f16_t::cell_execution_ref);
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_merged_layer_execution_sig((_ref_rnn_fwd_t<src_type, weights_type,
+rnn_merged_layer_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         acc_type>::merged_layer_execution_ref)) {
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
     // If we avoid copying the last iteration, the corresponding
@@ -329,7 +330,7 @@ rnn_merged_layer_execution_sig((_ref_rnn_fwd_t<src_type, weights_type,
 }
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_merged_layer_execution_sig((_ref_rnn_bwd_t<src_type, weights_type,
+rnn_merged_layer_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
         acc_type>::merged_layer_execution_ref)) {
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
     // If we avoid copying the last iteration, the corresponding

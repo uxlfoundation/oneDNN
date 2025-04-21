@@ -50,7 +50,7 @@ float activation(alg_kind_t alg_kind, prop_kind_t prop_kind, float s,
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t scratch_type, impl::data_type_t acc_type>
-struct rnn_postgemm_dispatcher {
+struct rnn_postgemm_dispatcher_t {
 
     using src_layer_t = typename prec_traits_t<src_type>::type;
     using src_iter_t = typename prec_traits_t<src_type>::type;
@@ -61,11 +61,11 @@ struct rnn_postgemm_dispatcher {
     using ht_t = typename prec_traits_t<src_type>::type;
     using gates_t = typename prec_traits_t<src_type>::type;
 
-    using class_name
-            = rnn_postgemm_dispatcher<aprop, src_type, scratch_type, acc_type>;
-    typedef rnn_postgemm_sig((class_name::*postgemm_f));
+    using class_name = rnn_postgemm_dispatcher_t<aprop, src_type, scratch_type,
+            acc_type>;
+    using postgemm_f = void (class_name::*)(rnn_postgemm_sig_args) const;
 
-    rnn_postgemm_dispatcher(
+    rnn_postgemm_dispatcher_t(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
         : pd_(pd) {
         // add check if in testing mode
@@ -102,7 +102,7 @@ struct rnn_postgemm_dispatcher {
         }
     }
 
-    virtual ~rnn_postgemm_dispatcher() = default;
+    virtual ~rnn_postgemm_dispatcher_t() = default;
 
     status_t init(const rnn_utils::rnn_conf_t &rnn) {
         DNNL_X64_ONLY(CHECK(initialize_jit(rnn)));
@@ -229,11 +229,11 @@ protected:
     postgemm_f postgemm_func;
     postgemm_f postgemm_part2_func;
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(rnn_postgemm_dispatcher);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(rnn_postgemm_dispatcher_t);
 
 #if DNNL_X64
-    std::unique_ptr<x64::jit_uni_rnn_postgemm> rnn_postgemm_;
-    std::unique_ptr<x64::jit_uni_rnn_postgemm> rnn_postgemm_part2_;
+    std::unique_ptr<x64::jit_uni_rnn_postgemm_t> rnn_postgemm_;
+    std::unique_ptr<x64::jit_uni_rnn_postgemm_t> rnn_postgemm_part2_;
 
     status_t initialize_jit(const rnn_utils::rnn_conf_t &rnn) {
         using namespace dnnl::impl::cpu::x64;
@@ -298,9 +298,9 @@ protected:
 
 template <impl::data_type_t src_type, impl::data_type_t scratch_type,
         impl::data_type_t acc_type>
-struct rnn_postgemm_fwd_t : public rnn_postgemm_dispatcher<prop_kind::forward,
+struct rnn_postgemm_fwd_t : public rnn_postgemm_dispatcher_t<prop_kind::forward,
                                     src_type, scratch_type, acc_type> {
-    using base_t = rnn_postgemm_dispatcher<prop_kind::forward, src_type,
+    using base_t = rnn_postgemm_dispatcher_t<prop_kind::forward, src_type,
             scratch_type, acc_type>;
     using base_t::base_t;
     using src_layer_t = typename base_t::src_layer_t;
@@ -325,9 +325,10 @@ struct rnn_postgemm_fwd_t : public rnn_postgemm_dispatcher<prop_kind::forward,
 
 template <impl::data_type_t src_type, impl::data_type_t scratch_type,
         impl::data_type_t acc_type>
-struct rnn_postgemm_bwd_t : public rnn_postgemm_dispatcher<prop_kind::backward,
-                                    src_type, scratch_type, acc_type> {
-    using base_t = rnn_postgemm_dispatcher<prop_kind::backward, src_type,
+struct rnn_postgemm_bwd_t
+    : public rnn_postgemm_dispatcher_t<prop_kind::backward, src_type,
+              scratch_type, acc_type> {
+    using base_t = rnn_postgemm_dispatcher_t<prop_kind::backward, src_type,
             scratch_type, acc_type>;
     using base_t::base_t;
     using src_layer_t = typename base_t::src_layer_t;

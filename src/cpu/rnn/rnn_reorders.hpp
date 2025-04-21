@@ -313,7 +313,7 @@ template <data_type_t type_i>
 struct rnn_weights_reorder_s8_t : public primitive_t {
     struct pd_t : public cpu_reorder_pd_t {
         using cpu_reorder_pd_t::cpu_reorder_pd_t;
-        typedef dnnl_status_t (*gemm_pack_f)(const char *identifier,
+        using gemm_pack_f = dnnl_status_t (*)(const char *identifier,
                 const char *transa, const char *transb, const dim_t *M,
                 const dim_t *N, const dim_t *K, const dim_t *lda,
                 const dim_t *ldb, const void *src, void *dst);

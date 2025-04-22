@@ -643,6 +643,7 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
             {graph::op_kind::Multiply, graph::op_kind::HardSwish}};
 
     std::vector<graph::logical_tensor_t> lt_vec;
+    lt_vec.reserve(9);
     for (size_t i = 0; i < 9; ++i)
         lt_vec.emplace_back(utils::logical_tensor_init(
                 i, binary_src_shape, graph::data_type::f32));
@@ -659,7 +660,8 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
         input_lts.push_back(lt_idx);
         binary_op.add_output(lt_vec[++lt_idx]);
 
-        std::vector<graph::op_t> post_ops {};
+        std::vector<graph::op_t> post_ops;
+        post_ops.reserve(pop_ts.size());
         for (size_t i = 0; i < pop_ts.size(); ++i) {
             auto pop_t = pop_ts[i];
             post_ops.emplace_back(i + 1, pop_t, "post op");
@@ -691,7 +693,8 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
 
         test_tensor_t binary_src0_ts(lt_vec[0], engine, src_datas[0]);
         test_tensor_t binary_src1_ts(lt_vec[1], engine, src_datas[1]);
-        std::vector<test_tensor_t> src_tss {};
+        std::vector<test_tensor_t> src_tss;
+        src_tss.reserve(input_lts.size());
         for (size_t i = 0; i < input_lts.size(); ++i)
             src_tss.emplace_back(lt_vec[input_lts[i]], engine, src_datas[i]);
 

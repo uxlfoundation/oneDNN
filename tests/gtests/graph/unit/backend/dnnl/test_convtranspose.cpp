@@ -2531,7 +2531,7 @@ TEST(test_convtranspose_execute_subgraph_int8,
                 ? std::vector<int64_t> {1, out_channel, 14}
                 : nd == 2 ? std::vector<int64_t> {1, out_channel, 14, 14}
                           : std::vector<int64_t> {1, out_channel, 14, 14, 14};
-        std::vector<int64_t> other_shape = dst_shape;
+        const std::vector<int64_t> &other_shape = dst_shape;
 
         std::vector<uint8_t> src_u8_data(product(src_shape));
         std::vector<int8_t> weight_s8_data(product(weight_shape));

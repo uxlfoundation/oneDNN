@@ -4200,7 +4200,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
 
     size_t input_idx = 3;
     for (size_t i = 1; i < candidates.size(); ++i) {
-        auto op = candidates[i];
+        const auto &op = candidates[i];
         if (op->get_kind() == op_kind::dnnl_binary) {
             auto alg = static_cast<dnnl::algorithm>(
                     op->get_attr<int64_t>(op_attr::alg_kind));

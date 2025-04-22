@@ -32,12 +32,14 @@ enum class direction { forward, backward };
 
 enum class across_version : char { First, Middle, Last, Single };
 
+// NOLINTBEGIN(readability-identifier-naming)
 struct nChw16c_across_t {
     int H, W;
     across_version version;
     constexpr nChw16c_across_t(int h, int w, across_version version)
         : H(h), W(w), version(version) {}
 };
+// NOLINTEND(readability-identifier-naming)
 
 enum class tail_mode { NoTail, NextTail, CurrentTail };
 

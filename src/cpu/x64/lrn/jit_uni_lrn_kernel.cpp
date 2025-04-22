@@ -128,7 +128,7 @@ void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::within_loop(
 
     this->dec(h_);
     this->cmp(h_, 0);
-    this->jne(lrn_loop_h, this->T_NEAR);
+    this->jne(lrn_loop_h, T_NEAR);
 
     for (int i = config.H - upper_bound; i < config.H; ++i) {
         pixel_count = 0;
@@ -169,7 +169,7 @@ void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::within_body_reg_blocked(
         derived_ptr->move_data_pointers(max_reg_blocks, pk);
         this->dec(this->w_);
         this->cmp(this->w_, 0);
-        this->jne(reg_block_compute_loop, this->T_NEAR);
+        this->jne(reg_block_compute_loop, T_NEAR);
     }
     if (res.rem) {
         derived_ptr->within_body(

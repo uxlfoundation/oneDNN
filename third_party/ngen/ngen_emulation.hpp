@@ -261,7 +261,7 @@ struct EmulationImplementation {
             else
                 g.asr(mod, dstHi, dstLo, uint16_t(31), loc);
         } else if (((dstQ || s0Q) && strategy.emulate64)
-                || (isDF && unaligned && g.hardware >= HW::XeHP)) {
+                || (isDF && unaligned && g.getHardware() >= HW::XeHP)) {
             if (dstQ != s0Q) stub();
 
             auto mod2x = mod;
@@ -627,7 +627,7 @@ struct EmulationImplementation {
             g.mov(mod, dstHi, dstLo, loc);
             g.mov(mod, dstLo, acc, loc);
         } else if (dstD && s0D && s1D && strategy.emulateDWxDW) {
-            int ne1 = GRF::bytes(g.hardware) >> 2;
+            int ne1 = GRF::bytes(g.getHardware()) >> 2;
 
             for (int r = 0; r < mod.getExecSize(); r += ne1) {
                 auto mmod = mod;
@@ -645,9 +645,9 @@ struct EmulationImplementation {
                     g.macl(mmod, dst, src0, expandDW(src1), loc);
                 }
 
-                regionVSAdvance(g.hardware, dst, ne1);
-                regionVSAdvance(g.hardware, src0, ne1);
-                regionVSAdvance(g.hardware, src1, ne1);
+                regionVSAdvance(g.getHardware(), dst, ne1);
+                regionVSAdvance(g.getHardware(), src0, ne1);
+                regionVSAdvance(g.getHardware(), src1, ne1);
             }
         } else
             g.mul(mod, dst, src0, src1, loc);

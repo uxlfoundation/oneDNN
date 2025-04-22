@@ -169,7 +169,7 @@ private:
 
 class bw_map_t {
 public:
-    bw_map_t() {}
+    bw_map_t() = default;
 
     float get_bw(int x) const { return linear_interpolation(multicore_bw, x); }
 

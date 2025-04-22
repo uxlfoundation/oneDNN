@@ -88,41 +88,32 @@ gemm_info_t<a_t, b_t, c_t>::gemm_info_t(const char *transA, const char *transB,
         const float *alpha, const a_t *a, const dim_t *lda, const a_t *oa,
         const b_t *b, const dim_t *ldb, const b_t *ob, const float *beta,
         c_t *c, const dim_t *ldc, const c_t *oc, bool force_nocopy,
-        pack_type packing, gemm_pack_storage_t *pack_dst, bool measure_only) {
-
-    this->transa = decode_trans(*transA);
-    this->transb = decode_trans(*transB);
-
-    this->m = *m;
-    this->n = *n;
-    this->k = *k;
-
-    this->a = a;
-    this->b = b;
-    this->c = c;
-
-    this->lda = lda ? *lda : 0;
-    this->ldb = ldb ? *ldb : 0;
-    this->ldc = ldc ? *ldc : 0;
-
-    this->ao = 0;
-    this->bo = 0;
-    this->co = nullptr;
-
-    this->alpha = alpha ? *alpha : 1.0f;
-    this->beta = beta ? *beta : 1.0f;
-
-    this->offsetc = offset_type::none;
-
-    this->packing = packing;
-    this->pack_dst = pack_dst;
-    this->measure_only
-            = measure_only && pack_dst && (packing != pack_type::none);
+        pack_type packing, gemm_pack_storage_t *pack_dst, bool measure_only)
+    : transa(decode_trans(*transA))
+    , transb(decode_trans(*transB))
+    , offsetc(offset_type::none)
+    , m(*m)
+    , n(*n)
+    , k(*k)
+    , lda(lda ? *lda : 0)
+    , ldb(ldb ? *ldb : 0)
+    , ldc(ldc ? *ldc : 0)
+    , a(a)
+    , b(b)
+    , c(c)
+    , alpha(alpha ? *alpha : 1.0f)
+    , beta(beta ? *beta : 1.0f)
+    , ao(0)
+    , bo(0)
+    , co(nullptr)
+    , packing(packing)
+    , pack_dst(pack_dst)
+    , measure_only(measure_only && pack_dst && (packing != pack_type::none)) {
 
     if (this->transa == packed) {
         dim_t cols;
 
-        this->a_packed.reset(new gemm_pack_storage_t(a));
+        this->a_packed = std::make_shared<gemm_pack_storage_t>(a);
         if (this->a_packed->get_nocopy(this->transa, this->lda, cols)) {
             this->a = this->a_packed->template matrix<a_t>();
             this->a_packed = nullptr;
@@ -131,7 +122,7 @@ gemm_info_t<a_t, b_t, c_t>::gemm_info_t(const char *transA, const char *transB,
     if (this->transb == packed) {
         dim_t rows;
 
-        this->b_packed.reset(new gemm_pack_storage_t(b));
+        this->b_packed = std::make_shared<gemm_pack_storage_t>(b);
         if (this->b_packed->get_nocopy(this->transb, this->ldb, rows)) {
             this->b = this->b_packed->template matrix<b_t>();
             this->b_packed = nullptr;

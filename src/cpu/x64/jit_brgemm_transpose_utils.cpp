@@ -2116,7 +2116,7 @@ void jit_brgemm_relo_copy_to_wbuffer_t::generate() {
     if (!is_f32) {
         const uint8_t no = 16; // 16o
         for (uint8_t o = 0; o < no; ++o) {
-            for (uint8_t r = 0; r < vnni_width; r++) {
+            for (uint8_t r = 0; r < static_cast<uint8_t>(vnni_width); r++) {
                 const uint8_t index = o + r * no;
                 if (is_xf16)
                     dw(index);

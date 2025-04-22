@@ -1877,11 +1877,9 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                                           wei_stride / factor)
                 * factor;
     } else if (bgmmc.transposed_B) {
-        if (wei_d.matches_one_of_tag(abcd) != format_tag::undef) {
-            const auto b_stride_elems = bgmmc.req_wei_vnni_downconvert
-                            || (bgmmc.is_tf32 && bgmmc.blocked_B)
-                    ? bgmmc.LDB
-                    : bgmmc.N;
+        if (wei_d.strides()[bgmmc.ndims - 1] == 1) {
+            const auto b_stride_elems
+                    = bgmmc.req_wei_vnni_downconvert ? bgmmc.LDB : bgmmc.N;
             bgmmc.copy_B_wei_stride = b_stride_elems * bgmmc.b_dt_sz;
         } else {
             bgmmc.copy_B_wei_stride

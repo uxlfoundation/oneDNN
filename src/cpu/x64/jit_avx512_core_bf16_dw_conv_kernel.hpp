@@ -152,7 +152,7 @@ private:
     Xbyak::Zmm zmm_ker_reg = Xbyak::Zmm(0);
     Xbyak::Zmm zmm_dst_reg = Xbyak::Zmm(1);
 
-    inline Xbyak::Zmm get_acc_reg(int idx) {
+    inline Xbyak::Zmm get_acc_reg(int idx) const {
         assert(idx + acc_idx_start <= get_max_regs());
         return Xbyak::Zmm(idx + acc_idx_start);
     }
@@ -237,11 +237,11 @@ private:
     Xbyak::Zmm zmm_bias_reg = Xbyak::Zmm(0);
     Xbyak::Zmm zmm_out_reg = Xbyak::Zmm(1);
 
-    inline Xbyak::Zmm get_acc_reg(int idx) {
+    inline Xbyak::Zmm get_acc_reg(int idx) const {
         assert(idx + idx_start <= get_max_regs());
         return Xbyak::Zmm(idx + idx_start);
     }
-    inline Xbyak::Zmm get_input_reg(int idx) {
+    inline Xbyak::Zmm get_input_reg(int idx) const {
         const int i_idx = idx_start + jcp.kw + idx % jcp.kw;
         assert(i_idx <= get_max_regs());
         return Xbyak::Zmm(i_idx);

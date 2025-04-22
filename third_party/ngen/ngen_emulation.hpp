@@ -247,10 +247,12 @@ struct EmulationImplementation {
         bool dstQ = isQW(dst);
         bool s0Q = isQW(src0);
         bool s0D = isDW(src0);
+        bool s0W = isW(src0);
+        bool s0B = isW(src0);
         bool isDF = (src0.getType() == DataType::df && dst.getType() == DataType::df);
         bool unaligned = (mod.getExecSize() > 1 && src0.getHS() != 0 && src0.getOffset() != dst.getOffset());
 
-        if ((dstQ && s0D) && strategy.emulate64) {
+        if ((dstQ && (s0D || s0W || s0B)) && strategy.emulate64) {
             if (src0.getNeg()) stub();
             bool s0Signed = isSigned(src0.getType());
             RegData dstHi, dstLo;

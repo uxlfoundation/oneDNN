@@ -21,7 +21,7 @@
 
 #include "cpu/x64/jit_avx512_core_x8s8s32x_deconvolution.hpp"
 
-#define GET_OFF(field) offsetof(jit_deconv_call_s, field)
+#define GET_OFF(field) offsetof(jit_deconv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -1465,7 +1465,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
         int work_amount = jcp.mb * nb_groups * oc_chunks;
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_deconv_call_s();
+        auto p = jit_deconv_args_t();
 
         int n {0}, g {0}, occ {0};
         if (jcp.loop_order == loop_ngc)
@@ -1572,7 +1572,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
         int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.oh;
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_deconv_call_s();
+        auto p = jit_deconv_args_t();
 
         /*loop order = cgn*/
         int n {0}, g {0}, occ {0}, oh_s {0};
@@ -1743,7 +1743,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
         int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.od * jcp.oh;
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_deconv_call_s();
+        auto p = jit_deconv_args_t();
 
         /*loop order = cgn*/
         int n {0}, g {0}, occ {0}, od_s {0}, oh_s {0};

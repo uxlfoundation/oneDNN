@@ -190,7 +190,7 @@ struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_t {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr);
 
-    void operator()(const jit_1x1_conv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_1x1_conv_args_t *p) const { (*kernel_)(p); }
     const Xbyak::uint8 *jit_ker() const { return kernel_->jit_ker(); }
 
 private:

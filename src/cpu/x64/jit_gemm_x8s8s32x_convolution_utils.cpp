@@ -251,12 +251,12 @@ void jit_pp_ker_t::operator()(void *void_dst, const acc_data_t *acc,
         args.w_size = chunk_desc.w_size_ + chunk_desc.w_off_;
         args.w_off = chunk_desc.w_off_;
         args.zp_src_pad_comp = zp.src_pad_comp;
-        const auto zp_src_pad_com_d
+        const auto zp_src_pad_comp_d_dim_t
                 = zp_pad_comp_helper_->calculate_zp_src_pad_com_d(
                         chunk_desc.d_off_);
-        args.zp_src_pad_com_d_offset = zp_src_pad_com_d.offset;
+        args.zp_src_pad_com_d_offset = zp_src_pad_comp_d_dim_t.offset;
         args.should_apply_zp_src_pad_comp_d
-                = zp_src_pad_com_d.should_apply_pad_comp_d;
+                = zp_src_pad_comp_d_dim_t.should_apply_pad_comp_d;
     }
 
     jit_generator_t::operator()(&args);

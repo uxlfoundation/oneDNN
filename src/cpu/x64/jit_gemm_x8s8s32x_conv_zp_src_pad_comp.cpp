@@ -94,7 +94,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::zp_src_comp_pad_operation(
     }
 }
 
-jit_gemm_x8s8s32x_zp_pad_comp_helper_t::zp_src_pad_com_d
+jit_gemm_x8s8s32x_zp_pad_comp_helper_t::zp_src_pad_comp_d_dim_t
 jit_gemm_x8s8s32x_zp_pad_comp_helper_t::calculate_zp_src_pad_com_d(
         const dim_t d_off) const {
 
@@ -107,18 +107,18 @@ jit_gemm_x8s8s32x_zp_pad_comp_helper_t::calculate_zp_src_pad_com_d(
     const bool should_apply_zp_src_pad_comp_d
             = d_under_lower_bound || d_over_eq_upper_bound;
 
-    dim_t zp_src_pad_com_d = 0;
+    dim_t zp_src_pad_comp_d_dim_t = 0;
     if (d_under_lower_bound) {
-        zp_src_pad_com_d = d_off;
+        zp_src_pad_comp_d_dim_t = d_off;
     } else if (d_over_eq_upper_bound) {
-        zp_src_pad_com_d = jcp_.zp.src_pad_comp.front_pad
+        zp_src_pad_comp_d_dim_t = jcp_.zp.src_pad_comp.front_pad
                 + jcp_.zp.src_pad_comp.mid_d
                 + (jcp_.zp.src_pad_comp.back_pad - (jcp_.od - d_off));
     } else {
-        zp_src_pad_com_d = jcp_.zp.src_pad_comp.front_pad;
+        zp_src_pad_comp_d_dim_t = jcp_.zp.src_pad_comp.front_pad;
     }
 
-    zp_src_pad_com_d_off = zp_src_pad_com_d * jcp_.zp.src_pad_comp.h
+    zp_src_pad_com_d_off = zp_src_pad_comp_d_dim_t * jcp_.zp.src_pad_comp.h
             * jcp_.zp.src_pad_comp.w;
 
     return {should_apply_zp_src_pad_comp_d, zp_src_pad_com_d_off};

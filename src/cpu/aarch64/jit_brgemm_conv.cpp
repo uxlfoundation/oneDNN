@@ -1311,7 +1311,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     + ocb * _pd->wei_ocb_stride + kd_b * _pd->wei_kd_stride
                     + kh_b * _pd->wei_kh_stride + kw_b * _pd->wei_kw_stride;
 
-            jit_brgemm_conv_comp_pad_call_s p;
+            jit_brgemm_conv_comp_pad_args_t p;
 
             p.kd_l = kd_e - kd_b;
             p.kh_l = kh_e - kh_b;
@@ -1489,7 +1489,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(int ithr,
         if (bmask(icb, odb, ohb, owb)) return;
     }
 
-    auto cp = jit_brgemm_conv_trans_kernel_call_s();
+    auto cp = jit_brgemm_conv_trans_kernel_args_t();
 
     const auto prev_odb = (jcp.copy_block_only || odb == 0
                                   || bmask(icb, odb - 1, ohb, owb) == 0)

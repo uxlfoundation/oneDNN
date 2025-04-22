@@ -32,7 +32,8 @@ namespace aarch64 {
 using namespace Xbyak_aarch64;
 using namespace alg_kind;
 
-#define GET_OFF(field) static_cast<uint32_t>(offsetof(jit_pool_call_s, field))
+#define GET_OFF(field) \
+    static_cast<uint32_t>(offsetof(jit_uni_pooling_args_t, field))
 
 static bcast_set_t get_supported_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,

@@ -28,7 +28,7 @@
 #include "cpu/x64/injectors/jit_uni_eltwise_injector.hpp"
 #include "cpu/x64/jit_avx512_common_conv_kernel.hpp"
 
-#define GET_OFF(field) offsetof(jit_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_conv_args_t, field)
 #define KNx_L2_EFFECTIVE_CAPACITY ((512 - 64) * 1024)
 
 namespace dnnl {

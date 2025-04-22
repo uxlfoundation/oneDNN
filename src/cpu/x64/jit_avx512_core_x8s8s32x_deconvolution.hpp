@@ -226,7 +226,7 @@ struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t {
 
     ~jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t() = default;
 
-    void operator()(const jit_deconv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_deconv_args_t *p) const { (*kernel_)(p); }
 
     static bool post_ops_ok(jit_conv_conf_t &jcp, primitive_attr_t &attr,
             const memory_desc_wrapper &dst_d);

@@ -357,7 +357,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::maybe_rtus(int ithr,
                 + ih * src_w_sz + iw * jcp.ngroups * jcp.ic_without_padding
                 + g_ic;
         auto p = jit_avx512_core_brgemm_conv_trans_kernel::
-                jit_brgemm_conv_trans_kernel_call_s();
+                jit_brgemm_conv_trans_kernel_args_t();
         p.h_count = nh;
         p.owb = nw;
         p.src = src + src_dt_size * inp_offset;

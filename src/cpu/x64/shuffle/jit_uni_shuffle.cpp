@@ -212,7 +212,7 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
             const dim_t sp_curr = spb * sp_work;
             const dim_t off = mb * stride_mb + sp_curr * conf.blk_size;
 
-            jit_shuffle_call_s args;
+            jit_uni_shuffle_args_t args;
             args.src = input + off * data_type_size;
             args.dst = output + (off + SP * c_curr) * data_type_size;
 

@@ -250,7 +250,7 @@ struct _jit_sve_512_core_x8s8s32x_deconv_fwd_kernel {
 
     ~_jit_sve_512_core_x8s8s32x_deconv_fwd_kernel() = default;
 
-    void operator()(const jit_deconv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_deconv_args_t *p) const { (*kernel_)(p); }
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const deconvolution_desc_t &cd, memory_desc_t &src_md,

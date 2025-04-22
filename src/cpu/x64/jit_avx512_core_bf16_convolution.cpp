@@ -82,7 +82,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_1d(
     parallel(nthr, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         int n {0}, gg {0}, occ {0}, owb {0};
 
@@ -183,7 +183,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_2d(
     parallel(nthr, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -309,7 +309,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_3d(
     parallel(nthr, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -438,7 +438,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data_3d(
         int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.id * jcp.ih;
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -606,7 +606,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data(
         int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.ih * jcp.nb_iw;
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -1055,7 +1055,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::compute_diff_weights_2d(
     nd_iterator_init(start, img, jcp.mb, oh_s, jcp.oh);
 
     while (start < end) {
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
         int work_rem = end - start;
         const int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
         int ih_s = nstl::max(0, -jcp.t_pad + oh_s * jcp.stride_h);
@@ -1287,7 +1287,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::compute_diff_weights_3d(
 
     nd_iterator_init(start, img, jcp.mb, od_s, jcp.od);
     while (start < end) {
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
         int work_rem = end - start;
         const int od_e = od_s + work_rem > jcp.od ? jcp.od : od_s + work_rem;
         int id_s = nstl::max(0, -jcp.f_pad + od_s * jcp.stride_d);
@@ -1691,7 +1691,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::compute_diff_weights(
     };
 
     for (int img = ti->img_start; img < ti->img_end; ++img) {
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
         if (jcp.global_transpose) {
             using simple_barrier::barrier;
             // TODO: try to call local transpositions just before jit kernel

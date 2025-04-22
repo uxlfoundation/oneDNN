@@ -458,7 +458,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
             const dim_t dst_off = ((mb * C + c) * OD * OH * OW + od * OH * OW)
                     * dst_dt_size;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.src = src + src_off;
             args.dst = dst + dst_off;
             args.dst_orig = dst;
@@ -479,7 +479,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
 
             const size_t cb = std::div(nsp, CB).rem;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.batch_of_sp_points_to_process = OW;
             args.src = src + src_off;
             args.dst = dst + dst_off;
@@ -520,7 +520,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
             const dim_t src_off = (mb * C + c) * ID * IH * IW * src_dt_size;
             const dim_t dst_off = (mb * C + c) * OD * OH * OW * dst_dt_size;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.batch_of_sp_points_to_process = OW * OH * OD;
             args.src = src + src_off;
             args.dst = dst + dst_off;
@@ -551,7 +551,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
 
             const size_t cb = std::div(nsp, CB).rem;
 
-            jit_resampling_call_s args = jit_resampling_call_s();
+            jit_uni_resampling_args_t args;
             args.batch_of_sp_points_to_process = OW;
             args.src = src + src_off;
             args.dst = dst + dst_off;

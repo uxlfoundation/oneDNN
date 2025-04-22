@@ -87,7 +87,7 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
 
     const auto &post_ops = jcp_.post_ops;
     if (jcp_.with_eltwise || jcp_.with_binary) {
-#define PARAM_OFF(field) offsetof(ker_args, field)
+#define PARAM_OFF(field) offsetof(ker_args_t, field)
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
         static constexpr size_t helper_vmm_idx = 31;
@@ -136,7 +136,7 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
 template <data_type_t dst_data_type>
 void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::apply_postops(
         const bool apply_mask, const size_t out_offset, const int vmm_idx) {
-#define PARAM_OFF(x) offsetof(ker_args, x)
+#define PARAM_OFF(x) offsetof(ker_args_t, x)
     if (jcp_.with_eltwise || jcp_.with_binary) {
         if (jcp_.with_binary) {
             binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
@@ -163,7 +163,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::generate() {
     mov(reg_param, rcx);
 #endif
 
-#define PARAM_OFF(x) offsetof(ker_args, x)
+#define PARAM_OFF(x) offsetof(ker_args_t, x)
     mov(reg_dst_base, ptr[reg_param + PARAM_OFF(dst)]);
     mov(reg_acc_base, ptr[reg_param + PARAM_OFF(acc)]);
     if (jcp_.with_bias) mov(reg_bias, ptr[reg_param + PARAM_OFF(bias)]);
@@ -304,7 +304,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
         const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
         const size_t g_oc_offset) {
 
-    ker_args args;
+    ker_args_t args;
     args.acc = acc;
     args.dst = dst;
     args.bias = bias;
@@ -330,7 +330,7 @@ void gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::operator()(
         const size_t g_oc_offset) {
     if (sp_len == 0) return;
 
-    ker_args args;
+    ker_args_t args;
     args.acc = acc;
     args.dst = dst;
     args.bias = bias;

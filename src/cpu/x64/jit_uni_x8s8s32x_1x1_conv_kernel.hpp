@@ -154,7 +154,7 @@ struct jit_uni_x8s8s32x_1x1_conv_kernel_t {
 
     ~jit_uni_x8s8s32x_1x1_conv_kernel_t() = default;
 
-    void operator()(const jit_1x1_conv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_1x1_conv_args_t *p) const { (*kernel_)(p); }
 
     static status_t init_conf(jit_1x1_conv_conf_t &jcp,
             const convolution_desc_t &cd, const memory_desc_wrapper &src_d,

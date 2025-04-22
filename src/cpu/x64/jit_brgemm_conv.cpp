@@ -1541,7 +1541,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                 std::memset(&s8s8_comp_buffer[buffer_offs], 0,
                         sizeof(int32_t) * comp_kw_sz);
 
-            jit_brgemm_conv_comp_pad_call_s p;
+            jit_brgemm_conv_comp_pad_args_t p;
 
             p.kd_l = kd_e - kd_b;
             p.kh_l = kh_e - kh_b;
@@ -1779,7 +1779,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
         if (bmask(icb, btc.odb, btc.ohb, btc.owb)) return;
     }
 
-    auto cp = jit_brgemm_conv_trans_kernel_call_s();
+    auto cp = jit_brgemm_conv_trans_kernel_args_t();
 
     const auto prev_odb
             = (jcp.copy_block_only || btc.odb == 0
@@ -1859,7 +1859,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
                 + iw_buf * jcp.inp_ic_block * (jcp.is_relo_whi() ? KH : 1);
 
         // for relo_whi we copy top and bottom padded lines
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         bool has_inp_buffer_overlap = true && last_btc.g == btc.g
                 && last_btc.n == btc.n && last_btc.owb == btc.owb;

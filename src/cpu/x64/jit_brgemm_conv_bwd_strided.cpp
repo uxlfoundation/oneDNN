@@ -900,7 +900,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                     const int ic_size
                             = is_ic_tail ? jcp.ic % jcp.ic_block : jcp.ic_block;
 
-                    auto cp = jit_brgemm_conv_bwd_copy_kernel_call_s();
+                    auto cp = jit_brgemm_conv_bwd_copy_kernel_args_t();
                     cp.src = btc.out_buffer;
                     cp.dst = diff_src
                             + data_blk_off(diff_src_d, n,
@@ -970,7 +970,7 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
             if (!everyone_is(0, kd_e, kd_b, kh_e, kh_b, kw_e, kw_b)) {
                 assert(kd_e > kd_b && kh_e > kh_b && kw_e > kw_b);
 
-                jit_brgemm_conv_comp_pad_call_s p;
+                jit_brgemm_conv_comp_pad_args_t p;
 
                 p.kd_l = div_up(kd_e - kd_b, SD);
                 p.kh_l = div_up(kh_e - kh_b, SH);
@@ -1150,7 +1150,7 @@ void brgemm_convolution_bwd_strided_t<isa>::maybe_trans_inp(int ithr,
             && last_ihb == ihb && last_iwb == iwb)
         return;
 
-    auto cp = jit_brgemm_conv_bwd_trans_kernel_call_s();
+    auto cp = jit_brgemm_conv_bwd_trans_kernel_args_t();
 
     const auto oc = ocb * jcp.oc_block;
     const auto g_oc = g * jcp.oc + oc;

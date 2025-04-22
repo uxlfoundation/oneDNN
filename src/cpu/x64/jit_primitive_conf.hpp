@@ -302,117 +302,117 @@ inline bool has_large_size(const convolution_desc_t &cd,
     return false;
 }
 
-struct jit_conv_call_s {
-    const void *src; /* hack, non-const for backward_data */
-    const void *dst; /* hack, non-const for forward */
-    const void *filt; /* hack, non-const for backward_weights */
-    const void *bias; /* hack, non-const for backward_bias */
-    const void *src_prf;
-    const void *dst_prf;
-    const void *filt_prf;
-    const void *bias_prf;
-    const void *scales;
-    const void *acc_s32;
-    const void *compensation;
-    const int32_t *zp_compensation;
-    const int32_t *src_zero_point;
-    const int32_t *zero_point_pbuff;
-    const int32_t *dst_zero_point;
-    const void *tile_cfg;
-    const void *tile_cfg_tail;
-    const void *dst_scale;
+struct jit_conv_args_t {
+    const void *src = nullptr; /* hack, non-const for backward_data */
+    const void *dst = nullptr; /* hack, non-const for forward */
+    const void *filt = nullptr; /* hack, non-const for backward_weights */
+    const void *bias = nullptr; /* hack, non-const for backward_bias */
+    const void *src_prf = nullptr;
+    const void *dst_prf = nullptr;
+    const void *filt_prf = nullptr;
+    const void *bias_prf = nullptr;
+    const void *scales = nullptr;
+    const void *acc_s32 = nullptr;
+    const void *compensation = nullptr;
+    const int32_t *zp_compensation = nullptr;
+    const int32_t *src_zero_point = nullptr;
+    const int32_t *zero_point_pbuff = nullptr;
+    const int32_t *dst_zero_point = nullptr;
+    const void *tile_cfg = nullptr;
+    const void *tile_cfg_tail = nullptr;
+    const void *dst_scale = nullptr;
 
     // ptr to table of void * elements that are pointers to
     // post_op binary src1 tensors
-    const void *post_ops_binary_rhs_arg_vec;
-    const void *dst_orig; // pointer to dst memory (no offset)
+    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    const void *dst_orig = nullptr; // pointer to dst memory (no offset)
 
-    size_t kd_offset;
-    size_t kd_offset_prf;
-    size_t kh_offset;
-    size_t kh_offset_prf;
-    size_t os_index_begin;
-    size_t os_index_begin_prf;
-    size_t os_index_end;
-    size_t os_index_end_prf;
-    size_t kd_padding;
-    size_t kd_padding_prf;
-    size_t kh_padding;
-    size_t kh_padding_prf;
-    size_t iwb;
-    size_t iwb_prf;
-    size_t owb;
-    size_t owb_prf;
-    size_t ohb;
-    size_t kw_padding;
-    size_t channel;
-    size_t channel_prf;
-    size_t ic_blocks;
-    size_t oc_blocks;
-    size_t ur_w;
-    size_t ur_str_w;
-    size_t ch_blocks;
-    size_t ch_blocks_prf;
-    size_t reduce_work;
-    size_t reduce_work_prf;
-    size_t load_work;
-    size_t load_work_prf;
-    size_t l_overflow;
-    size_t r_overflow;
-    size_t t_overflow;
-    size_t b_overflow;
-    size_t f_overflow;
-    size_t back_overflow;
-    size_t last_h;
-    size_t tail;
-    size_t current_iw;
-    size_t is_osb;
-    int flags;
-    int flags_prf;
-    int oc_flag;
-    size_t last_ic_block;
-    size_t last_oc_block;
+    size_t kd_offset = 0;
+    size_t kd_offset_prf = 0;
+    size_t kh_offset = 0;
+    size_t kh_offset_prf = 0;
+    size_t os_index_begin = 0;
+    size_t os_index_begin_prf = 0;
+    size_t os_index_end = 0;
+    size_t os_index_end_prf = 0;
+    size_t kd_padding = 0;
+    size_t kd_padding_prf = 0;
+    size_t kh_padding = 0;
+    size_t kh_padding_prf = 0;
+    size_t iwb = 0;
+    size_t iwb_prf = 0;
+    size_t owb = 0;
+    size_t owb_prf = 0;
+    size_t ohb = 0;
+    size_t kw_padding = 0;
+    size_t channel = 0;
+    size_t channel_prf = 0;
+    size_t ic_blocks = 0;
+    size_t oc_blocks = 0;
+    size_t ur_w = 0;
+    size_t ur_str_w = 0;
+    size_t ch_blocks = 0;
+    size_t ch_blocks_prf = 0;
+    size_t reduce_work = 0;
+    size_t reduce_work_prf = 0;
+    size_t load_work = 0;
+    size_t load_work_prf = 0;
+    size_t l_overflow = 0;
+    size_t r_overflow = 0;
+    size_t t_overflow = 0;
+    size_t b_overflow = 0;
+    size_t f_overflow = 0;
+    size_t back_overflow = 0;
+    size_t last_h = 0;
+    size_t tail = 0;
+    size_t current_iw = 0;
+    size_t is_osb = 0;
+    int flags = 0;
+    int flags_prf = 0;
+    int oc_flag = 0;
+    size_t last_ic_block = 0;
+    size_t last_oc_block = 0;
 };
 
-struct jit_deconv_call_s {
-    const void *src; /* hack, non-const for backward_data */
-    const void *dst; /* hack, non-const for forward */
-    const void *filt; /* hack, non-const for backward_weights */
-    const void *bias; /* hack, non-const for backward_bias */
-    const void *scales;
-    const void *dst_scale;
-    const void *compensation;
-    const int32_t *zp_src_pad_str_compensation;
-    const int32_t *zp_compensation;
-    const int32_t *src_zero_point;
-    const int32_t *dst_zero_point;
+struct jit_deconv_args_t {
+    const void *src = nullptr; /* hack, non-const for backward_data */
+    const void *dst = nullptr; /* hack, non-const for forward */
+    const void *filt = nullptr; /* hack, non-const for backward_weights */
+    const void *bias = nullptr; /* hack, non-const for backward_bias */
+    const void *scales = nullptr;
+    const void *dst_scale = nullptr;
+    const void *compensation = nullptr;
+    const int32_t *zp_src_pad_str_compensation = nullptr;
+    const int32_t *zp_compensation = nullptr;
+    const int32_t *src_zero_point = nullptr;
+    const int32_t *dst_zero_point = nullptr;
 
     /*
      * ptr to table of void * elements that are pointers to post_op binary
      * src1 tensors
      */
-    const void *post_ops_binary_rhs_arg_vec;
-    const void *dst_orig; /* pointer to dst memory (no offset) */
-    size_t t_overflow;
-    size_t b_overflow;
-    size_t f_overflow;
-    size_t back_overflow;
-    size_t kh_padding;
-    size_t kd_padding;
-    size_t oc_blocks;
+    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    const void *dst_orig = nullptr; /* pointer to dst memory (no offset) */
+    size_t t_overflow = 0;
+    size_t b_overflow = 0;
+    size_t f_overflow = 0;
+    size_t back_overflow = 0;
+    size_t kh_padding = 0;
+    size_t kd_padding = 0;
+    size_t oc_blocks = 0;
 };
 
-struct jit_dw_conv_call_s {
-    const void *input;
-    const void *output;
-    const void *filter;
-    const void *bias;
-    size_t kh_count;
-    size_t oh_count;
-    size_t oh_index;
-    size_t filter_pad_off;
-    unsigned char
-            exec_flags; /* Flags passed by driver execution to inner kernel */
+struct jit_dw_conv_args_t {
+    const void *input = nullptr;
+    const void *output = nullptr;
+    const void *filter = nullptr;
+    const void *bias = nullptr;
+    size_t kh_count = 0;
+    size_t oh_count = 0;
+    size_t oh_index = 0;
+    size_t filter_pad_off = 0;
+    // Flags passed by driver execution to inner kernel
+    unsigned char exec_flags = 0;
 };
 
 struct jit_1x1_conv_conf_t {
@@ -483,32 +483,33 @@ struct jit_1x1_conv_conf_t {
     bool uses_permw_transposition;
 };
 
-struct jit_1x1_conv_call_s {
-    const void *bcast_data;
-    const void *load_data;
-    const void *output_data;
-    const void *bias_data; // used in forward and backward_weights only
-    const void *acc_s32;
-    const void *scales;
-    const void *compensation;
-    const void *store_buffer;
-    const int32_t *zp_compensation;
-    const int32_t *src_zero_point;
-    const int32_t *dst_zero_point;
-    const void *dst_scale;
+struct jit_1x1_conv_args_t {
+    const void *bcast_data = nullptr;
+    const void *load_data = nullptr;
+    const void *output_data = nullptr;
+    // Used in forward and backward_weights only
+    const void *bias_data = nullptr;
+    const void *acc_s32 = nullptr;
+    const void *scales = nullptr;
+    const void *compensation = nullptr;
+    const void *store_buffer = nullptr;
+    const int32_t *zp_compensation = nullptr;
+    const int32_t *src_zero_point = nullptr;
+    const int32_t *dst_zero_point = nullptr;
+    const void *dst_scale = nullptr;
 
     // ptr to table of void * elements that are pointers to
     // post_op binary src1 tensors
-    const void *post_ops_binary_rhs_arg_vec;
-    const void *dst_orig; // pointer to dst memory (no offset)
+    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    const void *dst_orig = nullptr; // pointer to dst memory (no offset)
 
-    size_t load_dim;
-    size_t bcast_dim;
-    size_t reduce_dim;
+    size_t load_dim = 0;
+    size_t bcast_dim = 0;
+    size_t reduce_dim = 0;
 
-    size_t output_stride; // used in backward_weights only
+    size_t output_stride = 0; // used in backward_weights only
 
-    size_t first_last_flag;
+    size_t first_last_flag = 0;
 };
 
 struct jit_pool_conf_t {
@@ -556,28 +557,28 @@ struct jit_pool_conf_t {
     dim_t f32_accum_block_size;
 };
 
-struct jit_pool_call_s {
-    const void *src;
-    const void *dst;
-    const void *indices;
-    const void *src_prf;
-    const void *dst_prf;
-    const void *indices_prf;
-    const void *post_ops_binary_rhs_arg_vec;
-    const void *dst_orig;
-    const void *dst_po_helper;
-    size_t zero_ih;
-    size_t zero_id;
-    const void *zero_ptr;
-    size_t kd_padding;
-    size_t kh_padding;
-    size_t kh_padding_shift;
-    size_t kd_padding_shift;
-    size_t kw_padding;
-    const void *init_value;
-    float ker_area_h;
-    size_t ur_bc; // contains number of channel blocks to processing
-    size_t b_c; // contains number of channel blocks already processed
+struct jit_uni_pooling_args_t {
+    const void *src = nullptr;
+    const void *dst = nullptr;
+    const void *indices = nullptr;
+    const void *src_prf = nullptr;
+    const void *dst_prf = nullptr;
+    const void *indices_prf = nullptr;
+    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    const void *dst_orig = nullptr;
+    const void *dst_po_helper = nullptr;
+    size_t zero_ih = 0;
+    size_t zero_id = 0;
+    const void *zero_ptr = nullptr;
+    size_t kd_padding = 0;
+    size_t kh_padding = 0;
+    size_t kh_padding_shift = 0;
+    size_t kd_padding_shift = 0;
+    size_t kw_padding = 0;
+    const void *init_value = nullptr;
+    float ker_area_h = 0.f;
+    size_t ur_bc = 0; // contains number of channel blocks to processing
+    size_t b_c = 0; // contains number of channel blocks already processed
 };
 
 struct jit_resampling_conf_t {
@@ -624,7 +625,7 @@ struct jit_resampling_conf_t {
     std::queue<float> sum_scales;
 };
 
-struct jit_resampling_call_s {
+struct jit_uni_resampling_args_t {
     size_t batch_of_sp_points_to_process = 0;
 
     const void *src = nullptr;
@@ -874,13 +875,13 @@ struct jit_shuffle_conf_t {
     cpu_isa_t isa = isa_undef;
 };
 
-struct jit_shuffle_call_s {
+struct jit_uni_shuffle_args_t {
     const void *src = nullptr;
     void *dst = nullptr;
     const void *input_off_ptr = nullptr;
 
-    dim_t cb_loop_size
-            = 0; // number of loop iterations over corresponding C batches
+    // Number of loop iterations over corresponding C batches.
+    dim_t cb_loop_size = 0;
     bool is_padded_block = false;
 };
 
@@ -924,14 +925,19 @@ struct jit_binary_conf_t {
     data_type_t dst_type = data_type::undef;
 };
 
-struct jit_binary_call_s {
+struct jit_uni_binary_args_t {
     // keep all sizes at 8 bytes -- jit code expects this
-    const void *src0, *src1, *src2, *dst, *indices;
-    const float *scales_src0, *scales_src1;
-    size_t spat_offt_count;
-    const void *post_ops_binary_rhs_arg_vec;
-    size_t src1_stride_range;
-    const void *dst_orig;
+    const void *src0 = nullptr;
+    const void *src1 = nullptr;
+    const void *src2 = nullptr;
+    const void *dst = nullptr;
+    const void *indices = nullptr;
+    const float *scales_src0 = nullptr;
+    const float *scales_src1 = nullptr;
+    size_t spat_offt_count = 0;
+    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    size_t src1_stride_range = 0;
+    const void *dst_orig = nullptr;
 };
 
 struct jit_reduction_conf_t {
@@ -959,7 +965,7 @@ struct jit_reduction_conf_t {
     std::queue<float> sum_scales;
 };
 
-struct jit_reduction_call_s {
+struct jit_uni_reduction_args_t {
     const void *src = nullptr;
     void *dst = nullptr;
     const void *post_ops_binary_rhs_arg_vec = nullptr;

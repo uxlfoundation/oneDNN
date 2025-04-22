@@ -163,7 +163,7 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
                     + (jcp.signed_input ? jcp.ngroups * jcp.oc : 0)
             : nullptr;
 
-    auto p = jit_1x1_conv_call_s();
+    auto p = jit_1x1_conv_args_t();
 
     auto rp = typename rtus_driver_t<isa>::call_params_t();
     const int nb_oc = jcp.nb_load;
@@ -382,7 +382,7 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
 
         const auto ocb_end = ocb_start + load_step;
         const size_t src_ch_stride = jcp_dw->nb_ch_blocking * jcp_dw->ch_block;
-        auto par_conv_dw = jit_conv_call_s();
+        auto par_conv_dw = jit_conv_args_t();
 
         par_conv_dw.t_overflow = nstl::min(jcp_dw->kh, nstl::max(0, -oh_1x1));
         par_conv_dw.b_overflow = nstl::min(

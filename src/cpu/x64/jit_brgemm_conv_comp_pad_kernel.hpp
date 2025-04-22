@@ -26,16 +26,16 @@ namespace cpu {
 namespace x64 {
 
 namespace jit_uni_brgemm_conv_comp_pad_kernel {
-struct jit_brgemm_conv_comp_pad_call_s {
-    const void *ptr_in;
-    void *ptr_zp_out;
-    void *ptr_cp_out;
-    size_t use_inversion;
-    size_t kw_l;
-    size_t kh_l;
-    size_t kd_l;
-    size_t ker_l {1};
-    size_t last_ocb {1};
+struct jit_brgemm_conv_comp_pad_args_t {
+    const void *ptr_in = nullptr;
+    void *ptr_zp_out = nullptr;
+    void *ptr_cp_out = nullptr;
+    size_t use_inversion = 0;
+    size_t kw_l = 0;
+    size_t kh_l = 0;
+    size_t kd_l = 0;
+    size_t ker_l = 1;
+    size_t last_ocb = 1;
 };
 
 // Kernel is unified to work with fwd and bwd_d conv

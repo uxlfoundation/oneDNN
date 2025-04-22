@@ -58,7 +58,7 @@ struct jit_uni_dw_conv_fwd_kernel_t {
             const jit_conv_conf_t &jcp);
 
     jit_generator_t *ker() const { return ker_.get(); }
-    void operator()(const jit_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     constexpr static bool ker_condition_
@@ -92,7 +92,7 @@ struct jit_uni_dw_conv_bwd_data_kernel_t {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp);
 
-    void operator()(const jit_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     using jit_kernel_t = typename utils::conditional<isa == avx512_core
@@ -127,7 +127,7 @@ struct jit_uni_dw_conv_bwd_weights_kernel_t {
             jit_conv_conf_t &jcp, int nthreads, bool prioritize_threading);
     static void balance(jit_conv_conf_t &jcp, int nthreads);
 
-    void operator()(const jit_dw_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_dw_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     using jit_kernel_t = typename utils::conditional<isa == avx512_core

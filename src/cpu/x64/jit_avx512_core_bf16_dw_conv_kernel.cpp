@@ -23,7 +23,7 @@
 #include "cpu/x64/injectors/jit_uni_eltwise_injector.hpp"
 #include "cpu/x64/jit_avx512_core_bf16_dw_conv_kernel.hpp"
 
-#define GET_OFF(field) offsetof(jit_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_conv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -897,7 +897,7 @@ void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::generate() {
 }
 #undef GET_OFF
 
-#define GET_OFF(field) offsetof(jit_dw_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_dw_conv_args_t, field)
 void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::zero_filter() {
     for (int i = 0; i < jcp.kw; ++i) {
         Zmm zmm_acc = get_acc_reg(i);

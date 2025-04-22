@@ -32,9 +32,9 @@ using namespace dnnl::impl::utils;
 
 using namespace nstl;
 
-using jit_conv_ker_t = void (*)(jit_conv_call_s *);
+using jit_conv_ker_t = void (*)(jit_conv_args_t *);
 
-inline void jit_conv_ker_pipeline(const jit_conv_ker_t ker, jit_conv_call_s &p,
+inline void jit_conv_ker_pipeline(const jit_conv_ker_t ker, jit_conv_args_t &p,
         const void *src, const void *dst, const void *filt, const void *bias,
         int channel, int kh_padding, int reduce_work, int load_work) {
     p.src = src;
@@ -52,7 +52,7 @@ inline void jit_conv_ker_pipeline(const jit_conv_ker_t ker, jit_conv_call_s &p,
 }
 // The special case for the driver with iw-parallelization (BWD)
 inline void jit_conv_ker_pipeline_iw_thr(const jit_conv_ker_t ker,
-        jit_conv_call_s &p, const void *src, const void *dst, const void *filt,
+        jit_conv_args_t &p, const void *src, const void *dst, const void *filt,
         const void *bias, int channel, int kh_padding, int iwb, int reduce_work,
         int load_work) {
     p.iwb = iwb;
@@ -62,7 +62,7 @@ inline void jit_conv_ker_pipeline_iw_thr(const jit_conv_ker_t ker,
 }
 
 inline void jit_conv_3d_ker_pipeline(const jit_conv_ker_t ker,
-        jit_conv_call_s &p, const void *src, const void *dst, const void *filt,
+        jit_conv_args_t &p, const void *src, const void *dst, const void *filt,
         const void *bias, int channel, int kh_padding, int kd_padding,
         int reduce_work, int load_work) {
     p.src = src;
@@ -80,7 +80,7 @@ inline void jit_conv_3d_ker_pipeline(const jit_conv_ker_t ker,
     ker(&p);
 }
 // The special case for the driver with ow-parallelization (FWD)
-inline void jit_conv_ker_pipeline_ow_thr(jit_conv_ker_t ker, jit_conv_call_s &p,
+inline void jit_conv_ker_pipeline_ow_thr(jit_conv_ker_t ker, jit_conv_args_t &p,
         const void *src, const void *dst, const void *filt, const void *bias,
         int channel, int kh_padding, int owb, int reduce_work, int load_work,
         const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
@@ -98,7 +98,7 @@ inline void jit_conv_ker_pipeline_ow_thr(jit_conv_ker_t ker, jit_conv_call_s &p,
 // The special case for the driver with ow-parallelization (FWD)
 // TODO: implement it for BWD_D and BWD_W too
 inline void jit_conv_3d_ker_pipeline_ow_thr(const jit_conv_ker_t ker,
-        jit_conv_call_s &p, const void *src, const void *dst, const void *filt,
+        jit_conv_args_t &p, const void *src, const void *dst, const void *filt,
         const void *bias, int channel, int kh_padding, int kd_padding, int owb,
         int reduce_work, int load_work, const void *post_ops_binary_rhs_arg_vec,
         const void *dst_orig, int flags) {
@@ -114,7 +114,7 @@ inline void jit_conv_3d_ker_pipeline_ow_thr(const jit_conv_ker_t ker,
 }
 
 inline void jit_conv_ker_pipeline_bwd_w(const jit_conv_ker_t ker,
-        jit_conv_call_s &p, const void *src, const void *dst, const void *filt,
+        jit_conv_args_t &p, const void *src, const void *dst, const void *filt,
         const void *bias, int channel, int kh_padding, size_t reduce_work,
         size_t load_work) {
     jit_conv_ker_pipeline(ker, p, src, dst, filt, bias, channel, kh_padding,
@@ -122,7 +122,7 @@ inline void jit_conv_ker_pipeline_bwd_w(const jit_conv_ker_t ker,
 }
 
 void jit_conv_2d_ker_bwd_w_pipeline(const jit_conv_ker_t ker,
-        jit_conv_call_s &p, const void *src, const void *dst, const void *filt,
+        jit_conv_args_t &p, const void *src, const void *dst, const void *filt,
         const void *bias, int channel, int os_index_begin, int os_index_end,
         int kh_padding /* kh_work_size */, size_t kh_offset, size_t reduce_work,
         size_t load_work) {
@@ -144,7 +144,7 @@ void jit_conv_2d_ker_bwd_w_pipeline(const jit_conv_ker_t ker,
 }
 
 void jit_conv_3d_ker_bwd_w_pipeline(const jit_conv_ker_t ker,
-        jit_conv_call_s &p, const void *src, const void *dst, const void *filt,
+        jit_conv_args_t &p, const void *src, const void *dst, const void *filt,
         const void *bias, int channel, int os_index_begin, int os_index_end,
         int kd_padding /* kd_work_size */, size_t kd_offset, size_t reduce_work,
         size_t load_work) {
@@ -214,7 +214,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -340,7 +340,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -500,7 +500,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -661,7 +661,7 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -773,7 +773,7 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -937,7 +937,7 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
 
-        auto par_conv = jit_conv_call_s();
+        auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
         // See `blk_off` method definition.
@@ -1394,7 +1394,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
         ic_b_step = utils::div_up(icb_work, 2);
 
     for (int img = ti->img_start; img < ti->img_end; ++img) {
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         const int max_oc = nstl::min(ti->oc_b_end * jcp.oc_block, jcp.oc);
         const int max_ic = nstl::min(ti->ic_b_end * jcp.ic_block, jcp.ic);
@@ -1461,7 +1461,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     if (ic_b_step > 1 && icb_work > ic_b_step && icb_work < 2 * ic_b_step)
         ic_b_step = utils::div_up(icb_work, 2);
     while (img_start < img_end) {
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         int work_rem = img_end - img_start;
         const int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
@@ -1549,7 +1549,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
         ic_b_step = utils::div_up(icb_work, 2);
 
     while (img_start < img_end) {
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         int work_rem = img_end - img_start;
         const int od_e = od_s + work_rem > jcp.od ? jcp.od : od_s + work_rem;

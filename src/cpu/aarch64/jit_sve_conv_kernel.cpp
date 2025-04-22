@@ -26,7 +26,7 @@
 #include "cpu/aarch64/jit_sve_conv_kernel.hpp"
 #include "cpu/platform.hpp"
 
-#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_call_s, field))
+#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_args_t, field))
 #define A64FX_L2_EFFECTIVE_CAPACITY ((666 - 128) * 1024)
 
 namespace dnnl {

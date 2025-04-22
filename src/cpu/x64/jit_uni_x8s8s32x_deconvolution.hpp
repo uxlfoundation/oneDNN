@@ -161,7 +161,7 @@ struct jit_uni_x8s8s32x_deconv_fwd_kernel_t {
 
     ~jit_uni_x8s8s32x_deconv_fwd_kernel_t();
 
-    void operator()(const jit_deconv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_deconv_args_t *p) const { (*kernel_)(p); }
 
     static bool post_ops_ok(jit_conv_conf_t &jcp,
             const memory_desc_wrapper &dst_d, const primitive_attr_t &attr);

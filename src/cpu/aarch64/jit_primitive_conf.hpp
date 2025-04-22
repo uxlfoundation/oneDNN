@@ -219,7 +219,7 @@ inline status_t init_tag(format_tag_t &tag, const memory_desc_wrapper &mdw,
     return tag == tag_value ? status::success : status::unimplemented;
 }
 
-struct jit_conv_call_s {
+struct jit_conv_args_t {
     const void *src; /* hack, non-const for backward_data */
     const void *dst; /* hack, non-const for forward */
     const void *filt; /* hack, non-const for backward_weights */
@@ -289,7 +289,7 @@ struct jit_conv_call_s {
     int oc_flag;
 };
 
-struct jit_deconv_call_s {
+struct jit_deconv_args_t {
     const void *src; /* hack, non-const for backward_data */
     const void *dst; /* hack, non-const for forward */
     const void *filt; /* hack, non-const for backward_weights */
@@ -321,7 +321,7 @@ struct jit_deconv_call_s {
     size_t oc_blocks;
 };
 
-struct jit_dw_conv_call_s {
+struct jit_dw_conv_args_t {
     const void *input;
     const void *output;
     const void *filter;
@@ -399,7 +399,7 @@ struct jit_1x1_conv_conf_t {
     bool uses_permw_transposition;
 };
 
-struct jit_1x1_conv_call_s {
+struct jit_1x1_conv_args_t {
     const void *bcast_data;
     const void *load_data;
     const void *output_data;
@@ -471,7 +471,7 @@ struct jit_pool_conf_t {
     memory_desc_t tmp_md;
 };
 
-struct jit_pool_call_s {
+struct jit_uni_pooling_args_t {
     const void *src;
     const void *dst;
     const void *indices;
@@ -518,7 +518,7 @@ struct jit_shuffle_conf_t {
     cpu_isa_t isa = isa_undef;
 };
 
-struct jit_shuffle_call_s {
+struct jit_uni_shuffle_args_t {
     const void *src = nullptr;
     void *dst = nullptr;
     const void *input_off_ptr = nullptr;
@@ -732,7 +732,7 @@ struct jit_binary_conf_t {
     data_type_t dst_type = data_type::undef;
 };
 
-struct jit_binary_call_s {
+struct jit_uni_binary_args_t {
     // keep all sizes at 8 bytes -- jit code expects this
     const void *src0, *src1, *dst, *indices;
     const float *scales_src0, *scales_src1;

@@ -28,7 +28,7 @@ using namespace data_type;
 
 namespace jit_avx512_core_brgemm_conv_trans_kernel {
 
-#define GET_OFF(field) offsetof(jit_brgemm_conv_trans_kernel_call_s, field)
+#define GET_OFF(field) offsetof(jit_brgemm_conv_trans_kernel_args_t, field)
 
 jit_avx512_core_brgemm_conv_trans_kernel_t::
         jit_avx512_core_brgemm_conv_trans_kernel_t(

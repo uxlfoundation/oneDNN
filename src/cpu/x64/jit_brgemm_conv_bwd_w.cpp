@@ -981,7 +981,7 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_2d(
                             0, 0, 1, oh_s, ohb_s, ohb_e);
 
                     if (jcp.with_bias && ic_b == 0) {
-                        auto bp = jit_conv_call_s();
+                        auto bp = jit_conv_args_t();
 
                         bp.bias = diff_bias + g * rnd_up(jcp.oc, jcp.oc_block)
                                 + oc_b * jcp.oc_block;
@@ -1170,7 +1170,7 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_3d(
 
                         if (jcp.with_bias && ic_b == 0) {
                             for (int iodb = odb_s; iodb < odb_e; iodb++) {
-                                auto bp = jit_conv_call_s();
+                                auto bp = jit_conv_args_t();
 
                                 bp.bias = diff_bias
                                         + g * rnd_up(jcp.oc, jcp.oc_block)
@@ -1263,7 +1263,7 @@ void brgemm_convolution_bwd_weights_t::store_in_vnni_format(
         const int g = ti->g_start + sub_g_start;
         const int oc_b = ti->oc_b_start + sub_oc_b_start;
         const int ic_b = ti->ic_b_start + vnni_granularity * sub_icb2_start;
-        jit_conv_call_s p = jit_conv_call_s();
+        jit_conv_args_t p = jit_conv_args_t();
 
         float *input = ti->wei_bia_reduction + wei_offset_int(g, oc_b, ic_b, 0);
         char *output = (char *)ti->diff_weights

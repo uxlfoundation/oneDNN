@@ -109,7 +109,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
     const int nb_ic = jcp.nb_reduce;
     const int nb_ic_blocking = jcp.nb_reduce_blocking;
 
-    auto p = jit_1x1_conv_call_s();
+    auto p = jit_1x1_conv_args_t();
     auto rp = rtus_driver_t<avx2>::call_params_t();
 
     // override some constants for fused dw_conv
@@ -271,7 +271,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
             const int kh_padding = jcp_dw->kh - div_up(i_t_overflow, dil_h)
                     - div_up(i_b_overflow, dil_h);
 
-            jit_conv_call_s par_conv_dw;
+            jit_conv_args_t par_conv_dw;
 
             par_conv_dw.src = addrs.data();
 
@@ -405,7 +405,7 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
     };
 
     auto ker = [&](const int ithr, const int nthr) {
-        auto p = jit_1x1_conv_call_s();
+        auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx2>::call_params_t();
 
         int start {0}, end {0};
@@ -582,7 +582,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
                                  data_t *store_to, size_t store_to_ld,
                                  const data_t *diff_dst, const data_t *src,
                                  int ithr) {
-        auto p = jit_1x1_conv_call_s();
+        auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx2>::call_params_t();
 
         p.output_stride = store_to_ld * sizeof(float);

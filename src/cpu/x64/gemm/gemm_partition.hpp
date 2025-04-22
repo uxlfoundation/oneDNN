@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -136,8 +136,6 @@ static inline void partition_2d(const int ithr, int *nthrs, const int ithr_i,
         out_m_band = 0;
         out_n_band = 0;
     }
-
-    return;
 }
 
 static inline std::tuple<int, int> partition_2d_minblk_with_primes(dim_t m,

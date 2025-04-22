@@ -57,12 +57,14 @@ const bool reverse = false;
 const bool any = keep;
 } // namespace fmt_order
 
+// NOLINTBEGIN(readability-identifier-naming)
 namespace spec {
 struct direct_copy {};
 struct direct_copy_except_dim_0 {};
 struct reference {};
 struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
 } // namespace spec
+// NOLINTEND(readability-identifier-naming)
 
 #define SIMPLE_REORDER_TEMPL_DECL \
     impl::data_type_t type_i, impl::format_tag_t tag_i, \
@@ -111,7 +113,7 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
 
 /* specific reorders: common template */
 template <SIMPLE_REORDER_TEMPL_DECL, typename spec = void>
-struct simple_reorder_impl {};
+struct simple_reorder_impl_t {};
 
 namespace {
 inline bool simple_fmt_check(bool order_keep, impl::format_tag_t tag_i,
@@ -214,7 +216,7 @@ inline dim_t get_quant_off(const dims_t &input_idx, const int ndims,
 
 /* specific reorders: implementation */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && utils::one_of(tag_o, format_tag::wio,
                                 format_tag::wigo, format_tag::hwio,
@@ -355,7 +357,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<
                 (utils::one_of(tag_i, format_tag::iwo, format_tag::oiw,
                          format_tag::wio)
@@ -614,7 +616,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
 /* Asymmetric Blocking */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(utils::one_of(tag_i, format_tag::iwo,
                                            format_tag::oiw, format_tag::wio)
                                           && utils::one_of(
@@ -764,7 +766,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
 /* Asymmetric Blocking */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(utils::one_of(tag_i, format_tag::iwo,
                                            format_tag::oiw, format_tag::wio)
                                           && utils::one_of(tag_o,
@@ -957,7 +959,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<
                 (utils::one_of(tag_i, format_tag::ab, format_tag::ba,
                          format_tag::abc, format_tag::acb)
@@ -1155,7 +1157,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<
                 (utils::one_of(tag_i, format_tag::goiw, format_tag::wigo)
                         && utils::one_of(tag_o, format_tag::Goiw16g,
@@ -1346,7 +1348,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
 /* bf16 reorders */
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(
                 (tag_i == format_tag::goihw || tag_i == format_tag::oihw)
                 && (tag_o == format_tag::gOIhw16i16o
@@ -1471,7 +1473,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<(tag_i == format_tag::nchw
                                           && tag_o == format_tag::nChw16c)
                 && type_i == data_type::f32
@@ -1559,7 +1561,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 /* reorders with tail support */
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<false
                 || (utils::one_of(
                             tag_i, format_tag::nCdhw4c, format_tag::nCdhw8c)
@@ -1706,7 +1708,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
     }
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                 && (tag_traits_t<tag_o>::block_dims == bd::_A
                         || tag_traits_t<tag_o>::block_dims == bd::_B)
@@ -1857,7 +1859,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                 && (tag_traits_t<tag_o>::block_dims == bd::_AB
                         || tag_traits_t<tag_o>::block_dims == bd::_BC)
@@ -2051,7 +2053,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 /* generic and direct-copy reorders */
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any,
@@ -2154,7 +2156,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any && type_i == data_type::f32
                         && utils::one_of(type_o, data_type::s4, data_type::u4,
@@ -2269,7 +2271,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && utils::one_of(type_i, data_type::s4, data_type::u4,
@@ -2422,7 +2424,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any,
@@ -2526,7 +2528,7 @@ private:
 };
 
 template <SIMPLE_REORDER_TEMPL_DECL>
-struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any
@@ -2699,7 +2701,7 @@ struct simple_reorder_t : public primitive_t {
                             | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            auto status = simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+            auto status = simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     spec>::is_applicable(src_md, dst_md, attr);
             if (status != status::success) return status;
 
@@ -2718,7 +2720,7 @@ struct simple_reorder_t : public primitive_t {
             CHECK(_pd->init(engine, src_engine, dst_engine));
 
             const size_t scratchpad_sz_
-                    = simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
+                    = simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                             spec>::get_scratchpad_size(src_md, dst_md);
             auto scratchpad = _pd->scratchpad_registry().registrar();
             scratchpad.book(memory_tracking::names::key_reorder_space,
@@ -2742,7 +2744,7 @@ struct simple_reorder_t : public primitive_t {
     simple_reorder_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL, spec>::execute(
+        return simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL, spec>::execute(
                 pd(), ctx);
     }
 

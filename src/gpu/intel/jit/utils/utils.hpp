@@ -1228,6 +1228,7 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
     d.pop(t);
 }
 
+// NOLINTBEGIN(bugprone-macro-parentheses)
 #define GPU_DEFINE_BIT_MASK_ENUM_OPS(E) \
     constexpr E operator&(E a, E b) { \
         using backing_t = typename std::underlying_type<E>::type; \
@@ -1244,6 +1245,7 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
         return static_cast<E>(~static_cast<backing_t>(a)); \
     } \
     constexpr bool any(E a) { return a != static_cast<E>(0); }
+// NOLINTEND(bugprone-macro-parentheses)
 
 } // namespace jit
 } // namespace intel

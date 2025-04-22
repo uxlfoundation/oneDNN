@@ -537,7 +537,7 @@ public:
             }
 
             // Copy buffer terms into params
-            std::vector<size_t> buf_terms = buffer_term_map[buf_idx];
+            const std::vector<size_t> &buf_terms = buffer_term_map[buf_idx];
             compile_params.buffer_num_terms[buf_idx] = buf_terms.size();
             for (size_t j = 0; j < buf_terms.size(); j++) {
                 compile_params.buffer_term_index[buf_idx][j] = buf_terms[j];

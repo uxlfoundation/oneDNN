@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-#define PARAM_OFF(x) ((int32_t)offsetof(jit_binary_call_s, x))
+#define PARAM_OFF(x) ((int32_t)offsetof(jit_uni_binary_args_t, x))
 
 static bcast_set_t get_supported_postops_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
@@ -189,7 +189,7 @@ void jit_uni_binary_kernel_t<isa>::load_kernel_params() {
     mov(W_TMP_0, float2int(conf_.sum_scale));
     dup(vreg_sum_scale_.s, W_TMP_0);
 
-    assert(sizeof(jit_binary_call_s) <= 255);
+    assert(sizeof(jit_uni_binary_args_t) <= 255);
 
     if (is_src1_outer_dims_tail_)
         ldr(reg_outer_dims_range_, ptr(reg_param_, PARAM_OFF(spat_offt_count)));

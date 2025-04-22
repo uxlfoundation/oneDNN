@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-#define PARAM_OFF(x) offsetof(jit_binary_call_s, x)
+#define PARAM_OFF(x) offsetof(jit_uni_binary_args_t, x)
 
 static bcast_set_t get_supported_postops_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,

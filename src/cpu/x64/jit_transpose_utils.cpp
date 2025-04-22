@@ -1205,7 +1205,7 @@ void jit_transpose4x16_src_t::generate() {
     const int src_step = ic_block * transpose_size * typesize;
     const int tr_src_step = ic_block * transpose_size * typesize;
 
-#define GET_TR_OFF(x) offsetof(jit_src_transpose_s, x)
+#define GET_TR_OFF(x) offsetof(jit_transpose_src_args_t, x)
     mov(reg_loop, ptr[param1 + GET_TR_OFF(size)]);
     mov(reg_src, ptr[param1 + GET_TR_OFF(src)]);
     mov(reg_tr_src, ptr[param1 + GET_TR_OFF(tr_src)]);
@@ -1263,7 +1263,7 @@ void jit_transpose4x16_src_t::generate() {
 
 #undef GET_OFF
 
-#define GET_OFF(field) offsetof(jit_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_conv_args_t, field)
 
 void jit_diff_wei_trans_to_vnni_t::generate() {
     /* Reorder part of F32 weights tensor

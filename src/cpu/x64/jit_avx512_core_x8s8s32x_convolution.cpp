@@ -113,7 +113,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         int n {0}, gg {0}, occ {0}, owb {0};
         switch (jcp.loop_order) {
@@ -243,7 +243,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         size_t src_h_stride = src_d.blk_off(0, 0, 1);
         size_t dst_h_stride = dst_d.blk_off(0, 0, 1);
@@ -409,7 +409,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
 
     parallel_nd(jcp.mb, jcp.oh, jcp.nb_ow, nb_groups,
             [&](dim_t n, dim_t oh_s, dim_t owb, dim_t gg) {
-                auto p = jit_conv_call_s();
+                auto p = jit_conv_args_t();
 
                 size_t src_h_stride = src_d.blk_off(0, 0, 1);
                 size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
@@ -527,7 +527,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
 
         size_t src_d_stride = src_d.blk_off(0, 0, 1);
         size_t src_h_stride = src_d.blk_off(0, 0, 0, 1);

@@ -29,7 +29,7 @@ namespace cpu {
 namespace aarch64 {
 
 namespace jit_sve_core_brgemm_conv_trans_kernel {
-struct jit_brgemm_conv_trans_kernel_call_s {
+struct jit_brgemm_conv_trans_kernel_args_t {
     const void *src;
     const void *dst;
     size_t owb;

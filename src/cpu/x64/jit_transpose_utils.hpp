@@ -43,12 +43,12 @@ struct jit_trans_src_t {
     const jit_conv_conf_t *conf_;
 };
 
-struct jit_src_transpose_s {
-    size_t size;
-    const void *src;
-    const void *tr_src;
-    const void *src_prf;
-    const void *tr_src_prf;
+struct jit_transpose_src_args_t {
+    size_t size = 0;
+    const void *src = nullptr;
+    const void *tr_src = nullptr;
+    const void *src_prf = nullptr;
+    const void *tr_src_prf = nullptr;
 };
 
 struct jit_trans_dst_t {

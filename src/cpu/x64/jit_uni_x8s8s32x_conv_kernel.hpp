@@ -219,7 +219,7 @@ struct jit_uni_x8s8s32x_fwd_kernel_t {
 
     ~jit_uni_x8s8s32x_fwd_kernel_t() = default;
 
-    void operator()(const jit_conv_call_s *p) const { (*kernel_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*kernel_)(p); }
 
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &src_pd,
@@ -228,7 +228,7 @@ struct jit_uni_x8s8s32x_fwd_kernel_t {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
 
-    void (*jit_ker)(jit_conv_call_s *);
+    void (*jit_ker)(jit_conv_args_t *);
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_fwd_kernel_t);

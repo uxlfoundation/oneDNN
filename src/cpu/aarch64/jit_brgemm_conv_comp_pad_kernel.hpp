@@ -28,7 +28,7 @@ namespace cpu {
 namespace aarch64 {
 
 namespace jit_uni_brgemm_conv_comp_pad_kernel {
-struct jit_brgemm_conv_comp_pad_call_s {
+struct jit_brgemm_conv_comp_pad_args_t {
     const void *ptr_in;
     void *ptr_zp_out;
     void *ptr_cp_out;

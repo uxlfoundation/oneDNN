@@ -29,7 +29,7 @@ using namespace prop_kind;
 
 namespace jit_uni_brgemm_conv_comp_pad_kernel {
 
-#define GET_OFF(field) offsetof(jit_brgemm_conv_comp_pad_call_s, field)
+#define GET_OFF(field) offsetof(jit_brgemm_conv_comp_pad_args_t, field)
 
 template <typename Vmm>
 jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::

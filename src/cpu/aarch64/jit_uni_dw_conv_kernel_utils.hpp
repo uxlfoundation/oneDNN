@@ -58,7 +58,7 @@ struct jit_uni_dw_conv_fwd_kernel_t {
             const jit_conv_conf_t &jcp);
 
     jit_generator *ker() const { return ker_.get(); }
-    void operator()(const jit_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_t)
@@ -305,7 +305,7 @@ struct jit_uni_dw_conv_bwd_data_kernel_t {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp);
 
-    void operator()(const jit_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_bwd_data_kernel_t)
@@ -439,7 +439,7 @@ struct jit_uni_dw_conv_bwd_weights_kernel_t {
 
     static void balance(jit_conv_conf_t &jcp, int nthreads);
 
-    void operator()(const jit_dw_conv_call_s *p) const { (*ker_)(p); }
+    void operator()(const jit_dw_conv_args_t *p) const { (*ker_)(p); }
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_bwd_weights_kernel_t)

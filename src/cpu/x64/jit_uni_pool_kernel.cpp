@@ -32,7 +32,7 @@ namespace x64 {
 using namespace Xbyak;
 using namespace alg_kind;
 
-#define GET_OFF(field) offsetof(jit_pool_call_s, field)
+#define GET_OFF(field) offsetof(jit_uni_pooling_args_t, field)
 
 constexpr int sse41_single_block_size
         = cpu_isa_traits_t<sse41>::vlen / sizeof(float);

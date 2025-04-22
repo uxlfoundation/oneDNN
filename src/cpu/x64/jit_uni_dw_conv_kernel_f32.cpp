@@ -22,7 +22,7 @@
 
 #include "cpu/x64/jit_uni_dw_conv_kernel_f32.hpp"
 
-#define GET_OFF(field) offsetof(jit_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_conv_args_t, field)
 
 namespace dnnl {
 namespace impl {
@@ -990,7 +990,7 @@ template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<avx512_core>;
 template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<avx2>;
 template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<sse41>;
 
-#define GET_OFF(field) offsetof(jit_dw_conv_call_s, field)
+#define GET_OFF(field) offsetof(jit_dw_conv_args_t, field)
 
 template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::load_xmm(

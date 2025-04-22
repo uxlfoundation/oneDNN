@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ namespace cpu {
 namespace x64 {
 
 using namespace Xbyak;
-#define GET_OFF(field) offsetof(jit_reduction_call_s, field)
+#define GET_OFF(field) offsetof(jit_uni_reduction_args_t, field)
 
 static const bcast_set_t &get_supported_postops_bcast_strategies() {
     static const bcast_set_t supported_strategies

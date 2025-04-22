@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2023 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 int ocb_num = jcp.nb_oc_blocking;
 
                 for (int icb = icbb; icb < icbb + icb_step; ++icb) {
-                    auto par_conv = jit_conv_call_s();
+                    auto par_conv = jit_conv_args_t();
 
                     const int ij = oh * jcp.stride_h;
                     const int i_t_overflow = nstl::max(0, jcp.t_pad - ij);

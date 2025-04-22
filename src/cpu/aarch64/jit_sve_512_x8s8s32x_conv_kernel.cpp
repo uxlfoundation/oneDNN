@@ -24,7 +24,7 @@
 
 #include "cpu/aarch64/jit_sve_512_x8s8s32x_conv_kernel.hpp"
 
-#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_call_s, field))
+#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_args_t, field))
 
 namespace dnnl {
 namespace impl {

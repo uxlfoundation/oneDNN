@@ -24,7 +24,7 @@
 
 #include "cpu/aarch64/jit_uni_dw_conv_kernel_f32.hpp"
 
-#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_call_s, field))
+#define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_args_t, field))
 
 namespace dnnl {
 namespace impl {
@@ -780,11 +780,11 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_bias_loop(
     ldr(reg_oh,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, oh_index))));
+                            offsetof(jit_dw_conv_args_t, oh_index))));
     ldr(reg_oh_worksize,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, oh_count))));
+                            offsetof(jit_dw_conv_args_t, oh_count))));
 
     mov(reg_tmp_output, reg_output_baddr);
     L(oh_label);
@@ -826,7 +826,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_zero_filter() {
     ldr(reg_exec_flags,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, exec_flags))));
+                            offsetof(jit_dw_conv_args_t, exec_flags))));
     and_(reg_exec_flags, reg_exec_flags, FLAG_ZERO_FILTER);
     tst(reg_exec_flags, reg_exec_flags);
     b(EQ, skip_zeroing_label);
@@ -914,15 +914,15 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_h_loop(
     ldr(reg_oh,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, oh_index))));
+                            offsetof(jit_dw_conv_args_t, oh_index))));
     ldr(reg_oh_worksize,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, oh_count))));
+                            offsetof(jit_dw_conv_args_t, oh_count))));
     ldr(reg_kh_count,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, kh_count))));
+                            offsetof(jit_dw_conv_args_t, kh_count))));
 
     mov(reg_tmp_output, reg_output_baddr);
     mov(reg_tmp_input, reg_input_baddr);
@@ -1025,14 +1025,14 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ow_block_unroll() {
         ldr(reg_bias_baddr,
                 ptr(abi_param1,
                         static_cast<int32_t>(
-                                offsetof(jit_dw_conv_call_s, bias))));
+                                offsetof(jit_dw_conv_args_t, bias))));
 
         zero_bias();
 
         ldr(reg_exec_flags,
                 ptr(abi_param1,
                         static_cast<int32_t>(
-                                offsetof(jit_dw_conv_call_s, exec_flags))));
+                                offsetof(jit_dw_conv_args_t, exec_flags))));
 
         and_(reg_exec_flags, reg_exec_flags, FLAG_ZERO_BIAS);
         tst(reg_exec_flags, reg_exec_flags);
@@ -1051,7 +1051,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ow_block_unroll() {
     ldr(reg_kh_offset,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, filter_pad_off))));
+                            offsetof(jit_dw_conv_args_t, filter_pad_off))));
     add(reg_filter_baddr, reg_filter_baddr, reg_kh_offset);
 
     /* compute left padded block */
@@ -1113,15 +1113,15 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::generate() {
 
     ldr(reg_input_baddr,
             ptr(abi_param1,
-                    static_cast<int32_t>(offsetof(jit_dw_conv_call_s, input))));
+                    static_cast<int32_t>(offsetof(jit_dw_conv_args_t, input))));
     ldr(reg_output_baddr,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, output))));
+                            offsetof(jit_dw_conv_args_t, output))));
     ldr(reg_filter_baddr,
             ptr(abi_param1,
                     static_cast<int32_t>(
-                            offsetof(jit_dw_conv_call_s, filter))));
+                            offsetof(jit_dw_conv_args_t, filter))));
 
     compute_ow_block_unroll();
 

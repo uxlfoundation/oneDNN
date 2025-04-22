@@ -50,12 +50,19 @@ public:
     void load_next_point_zp_src_comp_pad_addr();
     void zp_src_comp_pad_operation(
             const std::function<void(const Xbyak::Reg64 &)> &op);
-    struct zp_src_pad_com_d {
-        bool should_apply_pad_comp_d;
-        dim_t offset;
+
+    // `d` dim in `dhw` spatial.
+    struct zp_src_pad_comp_d_dim_t {
+        zp_src_pad_comp_d_dim_t() = default;
+        zp_src_pad_comp_d_dim_t(bool should_apply_pad_comp_d, dim_t offset)
+            : should_apply_pad_comp_d(should_apply_pad_comp_d)
+            , offset(offset) {}
+
+        bool should_apply_pad_comp_d = false;
+        dim_t offset = 0;
     };
 
-    zp_src_pad_com_d calculate_zp_src_pad_com_d(const dim_t d_off) const;
+    zp_src_pad_comp_d_dim_t calculate_zp_src_pad_com_d(const dim_t d_off) const;
 
 private:
     enum bound { upper, lower };

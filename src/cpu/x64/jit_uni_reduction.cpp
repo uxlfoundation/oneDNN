@@ -183,7 +183,7 @@ status_t jit_uni_reduction_t::execute(const exec_ctx_t &ctx) const {
         const dim_t src_off = i * reduce_size * src_dt_size;
         const dim_t dst_off = i * dst_dt_size;
 
-        jit_reduction_call_s args = jit_reduction_call_s();
+        jit_uni_reduction_args_t args;
         args.src = src + src_off;
         args.dst = dst + dst_off;
         args.dst_orig = dst;

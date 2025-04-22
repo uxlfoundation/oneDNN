@@ -26,10 +26,10 @@ namespace cpu {
 namespace x64 {
 
 namespace jit_avx512_core_brgemm_conv_bwd_copy_kernel {
-struct jit_brgemm_conv_bwd_copy_kernel_call_s {
-    const void *src;
-    const void *dst;
-    size_t num_ic;
+struct jit_brgemm_conv_bwd_copy_kernel_args_t {
+    const void *src = nullptr;
+    const void *dst = nullptr;
+    size_t num_ic = 0;
 };
 
 template <typename Vmm>

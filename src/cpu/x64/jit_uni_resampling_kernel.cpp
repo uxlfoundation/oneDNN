@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ using namespace Xbyak;
 using namespace format_tag;
 using tag_kind = jit_memory_tag_kind_t;
 
-#define GET_OFF(field) offsetof(jit_resampling_call_s, field)
+#define GET_OFF(field) offsetof(jit_uni_resampling_args_t, field)
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_resampling_kernel_t<isa, Vmm>::jit_uni_resampling_kernel_t(

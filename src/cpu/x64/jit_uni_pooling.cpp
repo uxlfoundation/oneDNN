@@ -716,7 +716,7 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
 
     const auto ker = [&](std::size_t ithr, int n, int b_c, int oh, int ur_bc) {
         assert(ur_bc == jpp.ur_bc || ur_bc == jpp.ur_bc_tail);
-        auto arg = jit_pool_call_s();
+        jit_uni_pooling_args_t args;
 
         const int ij = oh * jpp.stride_h;
         const int i_t_overflow = nstl::max(0, jpp.t_pad - ij);
@@ -730,14 +730,14 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
                 * b_c;
 
         if (trans_src)
-            arg.src = transpose_facade.get_src_addr(ithr, ih, jpp);
+            args.src = transpose_facade.get_src_addr(ithr, ih, jpp);
         else
-            arg.src = static_cast<const void *>(
+            args.src = static_cast<const void *>(
                     &src[src_d.blk_off(n, c_off, ih)]);
 
-        arg.dst_orig = dst;
+        args.dst_orig = dst;
         if (trans_dst) {
-            arg.dst = transpose_facade.get_dst_addr(ithr, oh, jpp);
+            args.dst = transpose_facade.get_dst_addr(ithr, oh, jpp);
             if (!types::is_zero_md(&jpp.tmp_md)) {
                 const memory_desc_wrapper tmp_d
                         = memory_desc_wrapper(jpp.tmp_md);
@@ -745,31 +745,31 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
                 const int dt_scale
                         = sizeof(float) / types::data_type_size(d_type);
                 const auto blk_off = tmp_d.blk_off(n, c_off, oh) * dt_scale;
-                arg.dst_po_helper = static_cast<const void *>(&dst[blk_off]);
+                args.dst_po_helper = static_cast<const void *>(&dst[blk_off]);
             }
         } else {
-            arg.dst = static_cast<const void *>(
+            args.dst = static_cast<const void *>(
                     &dst[dst_d.blk_off(n, c_off, oh)]);
         }
 
         if (indices) {
             if (trans_dst)
-                arg.indices = transpose_facade.get_indices_addr(ithr, oh, jpp);
+                args.indices = transpose_facade.get_indices_addr(ithr, oh, jpp);
             else {
                 const size_t ind_off = indices_d.blk_off(n, c_off, oh);
-                arg.indices = static_cast<const void *>(
+                args.indices = static_cast<const void *>(
                         &indices[ind_off * ind_dt_size]);
             }
         }
-        arg.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
-        arg.kh_padding_shift = i_t_overflow * jpp.kw;
-        arg.ker_area_h = static_cast<float>(jpp.kh
+        args.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
+        args.kh_padding_shift = i_t_overflow * jpp.kw;
+        args.ker_area_h = static_cast<float>(jpp.kh
                 - nstl::max(0, oh * jpp.stride_h - jpp.t_pad + jpp.kh - jpp.ih)
                 - nstl::max(0, jpp.t_pad - oh * jpp.stride_h));
-        arg.ur_bc = ur_bc;
-        arg.b_c = b_c;
-        arg.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
-        (*kernel_)(&arg);
+        args.ur_bc = ur_bc;
+        args.b_c = b_c;
+        args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+        (*kernel_)(&args);
     };
 
     const int nthr = jpp.nthr;
@@ -847,7 +847,7 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
     auto ker = [&](int n, int b_c, int od, int oh, int id, int d_t_overflow,
                        int d_b_overflow, int ur_bc, int ithr) {
         assert(ur_bc == jpp.ur_bc || ur_bc == jpp.ur_bc_tail);
-        auto arg = jit_pool_call_s();
+        jit_uni_pooling_args_t args;
 
         const int ij = oh * jpp.stride_h;
         const int i_t_overflow = nstl::max(0, jpp.t_pad - ij);
@@ -860,13 +860,13 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
                 * b_c;
 
         if (trans_src)
-            arg.src = transpose_facade.get_src_addr_3d(ithr, id, ih, jpp);
+            args.src = transpose_facade.get_src_addr_3d(ithr, id, ih, jpp);
         else
-            arg.src = &src[src_d.blk_off(n, c_off, id, ih)];
+            args.src = &src[src_d.blk_off(n, c_off, id, ih)];
 
-        arg.dst_orig = dst;
+        args.dst_orig = dst;
         if (trans_dst) {
-            arg.dst = transpose_facade.get_dst_addr_3d(ithr, od, oh, jpp);
+            args.dst = transpose_facade.get_dst_addr_3d(ithr, od, oh, jpp);
             if (!types::is_zero_md(&jpp.tmp_md)) {
                 const memory_desc_wrapper tmp_d
                         = memory_desc_wrapper(jpp.tmp_md);
@@ -874,41 +874,41 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
                 const int dt_scale
                         = sizeof(float) / types::data_type_size(d_type);
                 const auto blk_off = tmp_d.blk_off(n, c_off, od, oh) * dt_scale;
-                arg.dst_po_helper = static_cast<const void *>(&dst[blk_off]);
+                args.dst_po_helper = static_cast<const void *>(&dst[blk_off]);
             }
         } else {
-            arg.dst = &dst[dst_d.blk_off(n, c_off, od, oh)];
+            args.dst = &dst[dst_d.blk_off(n, c_off, od, oh)];
         }
 
         if (indices) {
             if (trans_dst) {
-                arg.indices = transpose_facade.get_indices_addr_3d(
+                args.indices = transpose_facade.get_indices_addr_3d(
                         ithr, od, oh, jpp);
             } else {
                 const size_t ind_off = indices_d.blk_off(n, c_off, od, oh);
-                arg.indices = &indices[ind_off * ind_dt_size];
+                args.indices = &indices[ind_off * ind_dt_size];
             }
         }
 
-        arg.kd_padding = jpp.kd - d_t_overflow - d_b_overflow;
-        arg.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
-        arg.kh_padding_shift
+        args.kd_padding = jpp.kd - d_t_overflow - d_b_overflow;
+        args.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
+        args.kh_padding_shift
                 = i_t_overflow * jpp.kw + d_t_overflow * jpp.kw * jpp.kh;
-        arg.kd_padding_shift = (i_t_overflow + i_b_overflow) * jpp.kw;
-        arg.ker_area_h = (float)(jpp.kh
-                                 - nstl::max(0,
-                                         oh * jpp.stride_h - jpp.t_pad + jpp.kh
-                                                 - jpp.ih)
-                                 - nstl::max(0, jpp.t_pad - oh * jpp.stride_h))
+        args.kd_padding_shift = (i_t_overflow + i_b_overflow) * jpp.kw;
+        args.ker_area_h = (float)(jpp.kh
+                                  - nstl::max(0,
+                                          oh * jpp.stride_h - jpp.t_pad + jpp.kh
+                                                  - jpp.ih)
+                                  - nstl::max(0, jpp.t_pad - oh * jpp.stride_h))
                 * (jpp.kd
                         - nstl::max(0,
                                 od * jpp.stride_d - jpp.f_pad + jpp.kd - jpp.id)
                         - nstl::max(0, jpp.f_pad - od * jpp.stride_d));
 
-        arg.ur_bc = ur_bc;
-        arg.b_c = b_c;
-        arg.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
-        (*kernel_)(&arg);
+        args.ur_bc = ur_bc;
+        args.b_c = b_c;
+        args.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+        (*kernel_)(&args);
     };
 
     const int nthr = jpp.nthr;
@@ -1062,7 +1062,7 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward(
                 nstl::max(oh * jpp.stride_h - jpp.t_pad + jpp.kh, 0), jpp.ih);
     };
     const auto ker = [&](int ithr, int n, int b_c, int oh, int ur_bc) {
-        auto arg = jit_pool_call_s();
+        jit_uni_pooling_args_t args;
 
         const int ih = get_first_ih(oh);
         assert(IMPLICATION(pd()->ndims() == 3, utils::everyone_is(0, ih, oh)));
@@ -1070,54 +1070,54 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward(
 
         const auto c_off = jpp.is_plain() ? b_c * jpp.c_block : b_c;
         if (transpose_facade.should_transpose_src())
-            arg.src = transpose_facade.get_src_addr(ithr, ih, jpp);
+            args.src = transpose_facade.get_src_addr(ithr, ih, jpp);
         else if (jpp.needs_f32_accum_for_bf16)
-            arg.src = f32_accum.get_addr_2d(ithr, ih);
+            args.src = f32_accum.get_addr_2d(ithr, ih);
         else
-            arg.src = &diff_src[diff_src_d.blk_off(n, c_off, ih)];
+            args.src = &diff_src[diff_src_d.blk_off(n, c_off, ih)];
 
         if (transpose_facade.should_transpose_dst())
-            arg.dst = transpose_facade.get_dst_addr(ithr, oh, jpp);
+            args.dst = transpose_facade.get_dst_addr(ithr, oh, jpp);
         else
-            arg.dst = &diff_dst[diff_dst_d.blk_off(n, c_off, oh)];
+            args.dst = &diff_dst[diff_dst_d.blk_off(n, c_off, oh)];
 
         if (indices) {
             if (transpose_facade.should_transpose_dst())
-                arg.indices = transpose_facade.get_indices_addr(ithr, oh, jpp);
+                args.indices = transpose_facade.get_indices_addr(ithr, oh, jpp);
 
             else {
                 const size_t ind_off = indices_d.blk_off(n, c_off, oh);
-                arg.indices = &indices[ind_off * ind_dt_size];
+                args.indices = &indices[ind_off * ind_dt_size];
             }
         }
 
         const int zero_ih_start = (oh == 0) ? 0 : get_last_ih(oh - 1);
         const int zero_ih_end = (oh == jpp.oh - 1) ? jpp.ih : get_last_ih(oh);
 
-        arg.zero_id = 1;
-        arg.zero_ih = zero_ih_end - zero_ih_start;
+        args.zero_id = 1;
+        args.zero_ih = zero_ih_end - zero_ih_start;
         if (transpose_facade.should_transpose_src())
-            arg.zero_ptr
+            args.zero_ptr
                     = transpose_facade.get_src_addr(ithr, zero_ih_start, jpp);
         else if (jpp.needs_f32_accum_for_bf16)
-            arg.zero_ptr = f32_accum.get_addr_2d(ithr, zero_ih_start);
+            args.zero_ptr = f32_accum.get_addr_2d(ithr, zero_ih_start);
         else
-            arg.zero_ptr
+            args.zero_ptr
                     = &diff_src[diff_src_d.blk_off(n, c_off, zero_ih_start, 0)];
 
         const int i_t_overflow = nstl::max(0, jpp.t_pad - oh * jpp.stride_h);
         const int i_b_overflow
                 = nstl::max(jpp.ih, oh * jpp.stride_h + jpp.kh - jpp.t_pad)
                 - jpp.ih;
-        arg.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
-        arg.kh_padding_shift = i_t_overflow * jpp.kw;
-        arg.ker_area_h = static_cast<float>(jpp.kh
+        args.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
+        args.kh_padding_shift = i_t_overflow * jpp.kw;
+        args.ker_area_h = static_cast<float>(jpp.kh
                 - nstl::max(0, oh * jpp.stride_h - jpp.t_pad + jpp.kh - jpp.ih)
                 - nstl::max(0, jpp.t_pad - oh * jpp.stride_h));
 
-        arg.ur_bc = ur_bc;
-        arg.b_c = b_c;
-        (*kernel_)(&arg);
+        args.ur_bc = ur_bc;
+        args.b_c = b_c;
+        (*kernel_)(&args);
     };
 
     auto process_block = [&](int ithr, int n, int b_c, int ur_bc) {
@@ -1203,7 +1203,7 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
     auto ker = [&](int n, int b_c, int od, int oh, int id, int d_t_overflow,
                        int d_b_overflow, bool zero_inp, int kd, int ur_bc,
                        int ithr) {
-        auto arg = jit_pool_call_s();
+        jit_uni_pooling_args_t args;
 
         const int ij = oh * jpp.stride_h;
         const int i_t_overflow = nstl::max(0, jpp.t_pad - ij);
@@ -1216,26 +1216,26 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
                 * b_c;
 
         if (trans_src)
-            arg.src = transpose_facade.get_src_addr_3d(ithr, id + kd, ih, jpp);
+            args.src = transpose_facade.get_src_addr_3d(ithr, id + kd, ih, jpp);
         else if (jpp.needs_f32_accum_for_bf16)
-            arg.src = f32_accum.get_addr_3d(ithr, id + kd, ih);
+            args.src = f32_accum.get_addr_3d(ithr, id + kd, ih);
         else
-            arg.src = (const void *)&diff_src[diff_src_d.blk_off(
+            args.src = (const void *)&diff_src[diff_src_d.blk_off(
                     n, c_off, id + kd, ih)];
 
         if (trans_dst)
-            arg.dst = transpose_facade.get_dst_addr_3d(ithr, od, oh, jpp);
+            args.dst = transpose_facade.get_dst_addr_3d(ithr, od, oh, jpp);
         else
-            arg.dst = (const void
+            args.dst = (const void
                             *)&diff_dst[diff_dst_d.blk_off(n, c_off, od, oh)];
 
         if (indices) {
             if (trans_dst) {
-                arg.indices = transpose_facade.get_indices_addr_3d(
+                args.indices = transpose_facade.get_indices_addr_3d(
                         ithr, od, oh, jpp);
             } else {
                 const size_t ind_off = indices_d.blk_off(n, c_off, od, oh);
-                arg.indices = (const void *)&indices[ind_off * ind_dt_size];
+                args.indices = (const void *)&indices[ind_off * ind_dt_size];
             }
         }
 
@@ -1244,45 +1244,45 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
             const int zero_id_end
                     = (od == jpp.od - 1) ? jpp.id : get_last_id(od);
 
-            arg.zero_id = zero_id_end - zero_id_start;
+            args.zero_id = zero_id_end - zero_id_start;
 
             const int zero_ih_start = (oh == 0) ? 0 : get_last_ih(oh - 1);
             const int zero_ih_end
                     = (oh == jpp.oh - 1) ? jpp.ih : get_last_ih(oh);
-            arg.zero_ih = zero_ih_end - zero_ih_start;
+            args.zero_ih = zero_ih_end - zero_ih_start;
 
             if (trans_src)
-                arg.zero_ptr = transpose_facade.get_src_addr_3d(
+                args.zero_ptr = transpose_facade.get_src_addr_3d(
                         ithr, zero_id_start, zero_ih_start, jpp);
             else if (jpp.needs_f32_accum_for_bf16)
-                arg.zero_ptr = f32_accum.get_addr_3d(
+                args.zero_ptr = f32_accum.get_addr_3d(
                         ithr, zero_id_start, zero_ih_start);
             else
-                arg.zero_ptr = &diff_src[diff_src_d.blk_off(
+                args.zero_ptr = &diff_src[diff_src_d.blk_off(
                         n, c_off, zero_id_start, zero_ih_start, 0)];
         } else {
-            arg.zero_id = 0;
-            arg.zero_ih = 0;
+            args.zero_id = 0;
+            args.zero_ih = 0;
         }
 
-        arg.kd_padding = jpp.kd - d_t_overflow - d_b_overflow;
-        arg.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
-        arg.kh_padding_shift = i_t_overflow * jpp.kw
+        args.kd_padding = jpp.kd - d_t_overflow - d_b_overflow;
+        args.kh_padding = jpp.kh - i_t_overflow - i_b_overflow;
+        args.kh_padding_shift = i_t_overflow * jpp.kw
                 + d_t_overflow * jpp.kw * jpp.kh + kd * jpp.kw * jpp.kh;
-        arg.kd_padding_shift = (i_t_overflow + i_b_overflow) * jpp.kw;
-        arg.ker_area_h = (float)(jpp.kh
-                                 - nstl::max(0,
-                                         oh * jpp.stride_h - jpp.t_pad + jpp.kh
-                                                 - jpp.ih)
-                                 - nstl::max(0, jpp.t_pad - oh * jpp.stride_h))
+        args.kd_padding_shift = (i_t_overflow + i_b_overflow) * jpp.kw;
+        args.ker_area_h = (float)(jpp.kh
+                                  - nstl::max(0,
+                                          oh * jpp.stride_h - jpp.t_pad + jpp.kh
+                                                  - jpp.ih)
+                                  - nstl::max(0, jpp.t_pad - oh * jpp.stride_h))
                 * (jpp.kd
                         - nstl::max(0,
                                 od * jpp.stride_d - jpp.f_pad + jpp.kd - jpp.id)
                         - nstl::max(0, jpp.f_pad - od * jpp.stride_d));
 
-        arg.ur_bc = ur_bc;
-        arg.b_c = b_c;
-        (*kernel_)(&arg);
+        args.ur_bc = ur_bc;
+        args.b_c = b_c;
+        (*kernel_)(&args);
     };
 
     auto process_simple = [&](int n, int b_c, int od, int ur_bc, int ithr) {

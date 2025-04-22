@@ -135,7 +135,7 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
         p.tile_cfg = tcfg;
         p.tile_cfg_tail = tcfg + 64;
 

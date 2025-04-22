@@ -47,7 +47,9 @@ struct binary_kernel_t : public jit_generator_t {
             bool tail_kernel = false);
     ~binary_kernel_t() override = default;
 
-    void operator()(jit_binary_call_s *p) { jit_generator_t::operator()(p); }
+    void operator()(jit_uni_binary_args_t *p) {
+        jit_generator_t::operator()(p);
+    }
 
     size_t simd_w() const noexcept { return simd_w_; }
     size_t vlen() const noexcept { return vlen_; }

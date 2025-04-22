@@ -173,7 +173,7 @@ inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        auto p = jit_conv_call_s();
+        auto p = jit_conv_args_t();
         amx_tile_configure(tcfg);
         spatial_features_3d_t sfd(jcp);
 

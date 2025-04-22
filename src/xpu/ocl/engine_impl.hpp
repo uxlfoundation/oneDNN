@@ -137,7 +137,6 @@ private:
     std::string name_;
     runtime_version_t runtime_version_;
 
-private:
     xpu::ocl::wrapper_t<cl_device_id> device_;
     xpu::ocl::wrapper_t<cl_context> context_;
     cl_platform_id platform_ = nullptr;

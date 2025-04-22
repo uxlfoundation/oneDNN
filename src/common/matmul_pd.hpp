@@ -38,13 +38,18 @@ namespace impl {
 
 status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
+        const memory_desc_t *bias_desc, const memory_desc_t *dst_desc,
+        const memory_desc_t *reduce_desc, matmul_reduce_kind_t reduce_kind);
+
+status_t matmul_desc_init(matmul_desc_t *matmul_desc,
+        const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc);
 
 struct matmul_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::matmul;
 
-    typedef matmul_pd_t base_class;
-    typedef matmul_pd_t hint_class;
+    using base_class = matmul_pd_t;
+    using hint_class = matmul_pd_t;
 
     const matmul_desc_t *desc() const { return &desc_; }
     const op_desc_t *op_desc() const override {
@@ -57,6 +62,7 @@ struct matmul_pd_t : public primitive_desc_t {
 
         if (arg == DNNL_ARG_BIAS && with_bias()) return arg_usage_t::input;
 
+        if (arg == DNNL_ARG_REDUCE && with_reduce()) return arg_usage_t::output;
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
         return primitive_desc_t::arg_usage(arg);
@@ -69,6 +75,7 @@ struct matmul_pd_t : public primitive_desc_t {
             case DNNL_ARG_WEIGHTS: return weights_md(0);
             case DNNL_ARG_BIAS: return weights_md(1);
             case DNNL_ARG_DST: return dst_md(0, user_input);
+            case DNNL_ARG_REDUCE: return reduce_md(0);
             default: return primitive_desc_t::arg_md(arg);
         }
     }
@@ -93,10 +100,16 @@ struct matmul_pd_t : public primitive_desc_t {
         return &glob_zero_md;
     }
 
+    const memory_desc_t *reduce_md(
+            int index = 0, bool user_input = false) const {
+        if (index == 0) return user_input ? &desc()->reduce_desc : &reduce_md_;
+        return &glob_zero_md;
+    }
+
     int n_inputs() const override {
         return 2 + with_bias() + n_binary_po_inputs() + n_prelu_po_inputs();
     }
-    int n_outputs() const override { return 1; }
+    int n_outputs() const override { return 1 + with_reduce(); }
 
     bool has_zero_dim_memory() const {
         return memory_desc_wrapper(src_md(0)).has_zero_dim()
@@ -113,6 +126,10 @@ struct matmul_pd_t : public primitive_desc_t {
     }
 
     bool with_bias() const { return bias_md_.ndims != 0; }
+    bool with_reduce() const { return reduce_md_.ndims != 0; }
+
+    matmul_reduce_kind_t reduce_kind() const { return desc_.reduce_kind; }
+
     bool batched() const { return ndims() > 2; }
 
     dim_t batch() const {
@@ -165,47 +182,59 @@ struct matmul_pd_t : public primitive_desc_t {
 
     virtual bool attr_scales_ok(const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) const {
-        if (attr()->scales_.has_default_values()) return true;
+        const auto &scales = attr()->scales_;
+        if (scales.has_default_values()) return true;
 
-        bool ok = attr()->scales_.has_default_values(supported_args);
+        bool ok = scales.has_default_values(supported_args);
         for (int arg : supported_args) {
-            const auto &sc = attr()->scales_.get(arg);
-            const auto &mask = sc.mask_;
-            if (sc.has_default_values()) { continue; }
+            if (scales.has_default_values(arg)) { continue; }
 
+            const auto &mask = scales.get_mask(arg);
             if (arg == DNNL_ARG_WEIGHTS) {
-                const bool wei_k_group_ok
-                        = IMPLICATION(sc.ndims_ == 2 && sc.group_dims_[0] > 1,
-                                K() % sc.group_dims_[0] == 0);
-                const bool wei_n_group_ok
-                        = IMPLICATION(sc.ndims_ == 2 && sc.group_dims_[1] > 1,
-                                N() % sc.group_dims_[1] == 0);
+                const auto &g0 = scales.get_group(arg, 0);
+                const auto &g1 = scales.get_group(arg, 1);
+                const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g1 == 0);
+                const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g0 == 0);
 
                 // Any group is allowed to be greater than 1 but only one at a
                 // time, not both.
-                ok = ok && utils::one_of(sc.ndims_, 0, 2)
-                        && IMPLICATION(sc.ndims_ == 2,
-                                utils::one_of(
-                                        1, sc.group_dims_[0], sc.group_dims_[1])
-                                        && wei_k_group_ok && wei_n_group_ok);
+                ok = ok
+                        && IMPLICATION(!scales.get(arg).has_default_groups(),
+                                utils::one_of(1, g0, g1) && wei_k_group_ok
+                                        && wei_n_group_ok);
+
+                // Mask over K dim is allowed for decompression feature only.
+                const bool is_decompression_or_dynquant
+                        = utils::one_of(weights_md(0)->data_type, data_type::s8,
+                                  data_type::u8, data_type::s4, data_type::u4)
+                        && IMPLICATION(
+                                !types::is_integral_dt(src_md()->data_type),
+                                attr()->fpmath_.apply_to_int_);
+                ok = ok
+                        && IMPLICATION((mask & wei_qmask_K()),
+                                is_decompression_or_dynquant);
             } else if (arg == DNNL_ARG_SRC) {
                 ok = ok
                         && utils::one_of(mask, 0, src_qmask_K(),
                                 src_qmask_M() + src_qmask_K());
-                ok = ok && utils::one_of(sc.ndims_, 0, 2);
-                ok = ok && IMPLICATION((mask & src_qmask_K()), sc.ndims_ == 2);
                 ok = ok
-                        && IMPLICATION(sc.ndims_ == 2,
-                                sc.group_dims_[0] == 1
-                                        && K() % sc.group_dims_[1] == 0);
-            } else {
+                        && IMPLICATION((mask & src_qmask_K()),
+                                !scales.get(arg).has_default_groups());
+                ok = ok
+                        && IMPLICATION(!scales.get(arg).has_default_groups(),
+                                scales.get_group(arg, 0)
+                                        && K() % scales.get_group(arg, 1) == 0);
+            } else if (arg == DNNL_ARG_DST) {
                 ok = ok
                         && utils::one_of(mask, 0, dst_qmask_N(),
                                 dst_qmask_M() + dst_qmask_N());
-                ok = ok && utils::one_of(sc.ndims_, 0, 2)
-                        && IMPLICATION(sc.ndims_ == 2,
-                                sc.group_dims_[1] == 1
-                                        && M() % sc.group_dims_[0] == 0);
+                ok = ok
+                        && IMPLICATION(!scales.get(arg).has_default_groups(),
+                                scales.get_group(arg, 1) == 1
+                                        && (M() % scales.get_group(arg, 0))
+                                                == 0);
+            } else {
+                assert(!"Unsupported arg");
             }
         }
         return ok;
@@ -218,6 +247,7 @@ protected:
     memory_desc_t weights_md_;
     memory_desc_t bias_md_;
     memory_desc_t dst_md_;
+    memory_desc_t reduce_md_;
 
     matmul_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
             const matmul_pd_t *hint_fwd_pd)
@@ -226,11 +256,13 @@ protected:
         , src_md_(desc_.src_desc)
         , weights_md_(desc_.weights_desc)
         , bias_md_(desc_.bias_desc)
-        , dst_md_(desc_.dst_desc) {}
+        , dst_md_(desc_.dst_desc)
+        , reduce_md_(desc_.reduce_desc) {}
 
     // temporary solution to deal with format `any`
     bool set_default_formats() {
-        for (auto md : {&src_md_, &weights_md_, &bias_md_, &dst_md_}) {
+        for (auto md :
+                {&src_md_, &weights_md_, &bias_md_, &dst_md_, &reduce_md_}) {
             memory_desc_wrapper mdw(md);
             if (mdw.format_any()) {
                 if (mdw.has_runtime_dims_or_strides()) return false;
@@ -246,7 +278,7 @@ protected:
     // call this function.
     bool is_dense_format_kind() {
         return impl::is_dense_format_kind(
-                {&src_md_, &weights_md_, &bias_md_, &dst_md_});
+                {&src_md_, &weights_md_, &bias_md_, &dst_md_, &reduce_md_});
     }
 };
 

@@ -27,7 +27,7 @@
 #include "xpu/ocl/utils.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/ocl_gpu_engine.hpp"
+#include "gpu/intel/ocl/engine.hpp"
 #endif
 
 namespace dnnl {
@@ -63,7 +63,7 @@ public:
         VERROR_ENGINE(status == status::success, status,
                 VERBOSE_INVALID_ENGINE_KIND, "opencl", "gpu");
 
-        VERROR_ENGINE(ocl_devices.size() > 0, status::invalid_arguments,
+        VERROR_ENGINE(!ocl_devices.empty(), status::invalid_arguments,
                 "opencl gpu devices queried but not found");
 
         VERROR_ENGINE(index < ocl_devices.size(), status::invalid_arguments,

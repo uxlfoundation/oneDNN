@@ -91,6 +91,12 @@ static status_t binary_handler(
     new_op->merge_attributes(op->get_attributes());
     rewriter.replace_op(op, new_op);
     insert_empty_scratchpad(new_op);
+    if (op->get_kind() == graph::op_kind::GreaterEqual) {
+        auto out_vals = op->get_output_values();
+        auto dst = out_vals[0];
+        // GreaterEqual output's datatype is boolean. we treated it as u8
+        dst->set_data_type(dnnl::impl::data_type::u8);
+    }
     return status::success;
 }
 
@@ -375,17 +381,16 @@ static status_t static_quant_handler(
 
     auto in_vals = op->get_input_values();
     auto out_vals = op->get_output_values();
-    assertm(in_vals.size() == 1 && out_vals.size() == 1,
-            "static quantize/dequantize should only have one input and "
-            "output");
-
+    VCHECK_INVALID_ARGUMENT(in_vals.size() == 1 && out_vals.size() == 1,
+            "static quantize/dequantize should only have one input and output"
+            " but got %zu input and %zu output",
+            in_vals.size(), out_vals.size());
+    VCHECK_INVALID_ARGUMENT(std::all_of(scales.begin(), scales.end(),
+                                    [](float i) { return i != 0.f; }),
+            "scales can't be zero");
     // int8 = f32 / scales + zps
     op_ptr mul_scales_op = std::make_shared<op_t>(op_kind::dnnl_mul_scales);
     op_ptr add_zps_op = std::make_shared<op_t>(op_kind::dnnl_add_zps);
-
-    assertm(std::all_of(scales.begin(), scales.end(),
-                    [](float i) { return i != 0.f; }),
-            "scales can't be zero");
 
     std::vector<float> inv_scales
             = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
@@ -433,8 +438,10 @@ static status_t static_dequant_handler(
 
     auto in_vals = cur_op->get_input_values();
     auto out_vals = cur_op->get_output_values();
-    assertm(in_vals.size() == 1 && out_vals.size() == 1,
-            "static dequantize should only have one input and output");
+    VCHECK_INVALID_ARGUMENT(in_vals.size() == 1 && out_vals.size() == 1,
+            "static dequantize should only have one input and output but "
+            "got %zu input and %zu output",
+            in_vals.size(), out_vals.size());
 
     // f32 = scales * (int8 - zps)
     op_ptr sub_zps_op = std::make_shared<op_t>(op_kind::dnnl_sub_zps);
@@ -478,9 +485,11 @@ static status_t dynamic_quant_handler(
 
     auto &in_vals = cur_op->get_input_values();
     auto &out_vals = cur_op->get_output_values();
-    assertm((in_vals.size() == 3 || in_vals.size() == 2)
+    VCHECK_INVALID_ARGUMENT((in_vals.size() == 3 || in_vals.size() == 2)
                     && out_vals.size() == 1,
-            "dynamic quantize must have 2 or 3 inputs and 1 output");
+            "dynamic quantize must have 2 or 3 inputs and 1 output, but "
+            "got %zu input and %zu output",
+            in_vals.size(), out_vals.size());
 
     // DynamicQuantize has optional zps
     bool has_zps = in_vals.size() == 3;
@@ -537,9 +546,11 @@ static status_t dynamic_dequant_handler(
 
     auto &in_vals = cur_op->get_input_values();
     auto &out_vals = cur_op->get_output_values();
-    assertm((in_vals.size() == 3 || in_vals.size() == 2)
+    VCHECK_INVALID_ARGUMENT((in_vals.size() == 3 || in_vals.size() == 2)
                     && out_vals.size() == 1,
-            "dynamic dequantize must have 2 or 3 inputs and 1 output");
+            "dynamic dequantize must have 2 or 3 inputs and 1 output, but "
+            "got %zu input and %zu output",
+            in_vals.size(), out_vals.size());
 
     // DynamicDequantize has optional zps
     bool has_zps = in_vals.size() == 3;
@@ -557,15 +568,10 @@ static status_t dynamic_dequant_handler(
         const auto scale_lt = scales->get_logical_tensor();
 
         const auto ndims = ltw(src_lt).ndims();
-        VCHECK_INVALID_ARGUMENT((ndims == ltw(scale_lt).ndims()),
-                "scale and src should have the same number of dimensions "
-                "for grouped quantization");
         VCHECK_INVALID_ARGUMENT(
                 (static_cast<size_t>(ndims) == group_shape.size()),
                 "group shape size should match the number of dimensions of "
                 "src");
-        VCHECK_UNIMPLEMENTED((ndims >= 2),
-                "group quantization requires at least two dimensions");
         const auto &src_dims = ltw(src_lt).vdims();
         const auto &scale_dims = ltw(scale_lt).vdims();
 
@@ -616,14 +622,7 @@ static status_t dynamic_dequant_handler(
     rewriter.to_insert(mul_scales);
 
     if (has_zps) {
-        value_ptr scales = in_vals[1], zps = in_vals[2];
-        const auto &scale_dims = ltw(scales->get_logical_tensor()).vdims();
-        const auto &zp_dims = ltw(zps->get_logical_tensor()).vdims();
-        for (size_t idx = 0; idx < scale_dims.size(); ++idx) {
-            VCHECK_INVALID_ARGUMENT((scale_dims[idx] == zp_dims[idx]),
-                    "scale and zero point tensors should have the same shape");
-        }
-
+        value_ptr zps = in_vals[2];
         const int64_t zps_data_type = zps->get_logical_tensor().data_type;
         op_ptr sub_zps = std::make_shared<op_t>(op_kind::dnnl_sub_zps);
         sub_zps->connect_input(1, zps);
@@ -632,6 +631,14 @@ static status_t dynamic_dequant_handler(
         sub_zps->set_attr<std::string>(op_attr::qtype, qtype);
         sub_zps->set_attr<int64_t>(op_attr::data_type, zps_data_type);
         if (is_group_quantization) {
+            value_ptr scales = in_vals[1];
+            const auto &scale_dims = ltw(scales->get_logical_tensor()).vdims();
+            const auto &zp_dims = ltw(zps->get_logical_tensor()).vdims();
+            for (size_t idx = 0; idx < scale_dims.size(); ++idx) {
+                VCHECK_INVALID_ARGUMENT((scale_dims[idx] == zp_dims[idx]),
+                        "scale and zero point tensors should have the same "
+                        "shape");
+            }
             const auto &group_shape = cur_op->get_attr<std::vector<int64_t>>(
                     op_attr::group_shape);
             sub_zps->set_attr<std::vector<int64_t>>(
@@ -653,121 +660,57 @@ static status_t select_handler(
 
     auto in_vals = op->get_input_values();
     auto out_vals = op->get_output_values();
-    assertm(in_vals.size() == 3 && out_vals.size() == 1,
-            "select should have three inputs and a output");
+    VCHECK_INVALID_ARGUMENT(in_vals.size() == 3 && out_vals.size() == 1,
+            "select should have three input and one output but "
+            "got %zu input and %zu output",
+            in_vals.size(), out_vals.size());
     auto cond = in_vals[0];
     auto src0 = in_vals[1];
     auto src1 = in_vals[2];
-    cond->set_data_type(dnnl::impl::data_type::u8);
+    // For the binary select operation, the conditional input tensor can
+    // only be of `s8` data type.
+    cond->set_data_type(dnnl::impl::data_type::s8);
 
-    //TODO: This reorder can be removed once eltwise_clip support int8 input
-    op_ptr type_cast = std::make_shared<op_t>(op_kind::dnnl_reorder);
-    type_cast->set_attr<bool>(op_attr::change_layout, false);
-
-    op_ptr clip = std::make_shared<op_t>(op_kind::dnnl_eltwise);
-    clip->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::eltwise_clip));
-    clip->set_attr<float>(op_attr::alpha, 0.f);
-    clip->set_attr<float>(op_attr::beta, 1.f);
-
-    // After reorder and clip. The cond value is 0 or 1.
-    // Then output = src0.*cond+src1.*(cond*-1 + 1)
-    op_ptr mul1 = std::make_shared<op_t>(op_kind::dnnl_binary);
-    mul1->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::binary_mul));
-    mul1->merge_attributes(op->get_attributes());
-
-    op_ptr mul2 = std::make_shared<op_t>(op_kind::dnnl_binary);
-    mul2->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::binary_mul));
-    mul2->merge_attributes(op->get_attributes());
-
-    op_ptr linear = std::make_shared<op_t>(op_kind::dnnl_eltwise);
-    linear->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::eltwise_linear));
-    const float alpha_value = -1.0f, beta_value = 1.0f;
-    linear->set_attr<float>(op_attr::alpha, alpha_value);
-    linear->set_attr<float>(op_attr::beta, beta_value);
-
-    op_ptr add = std::make_shared<op_t>(op_kind::dnnl_binary);
-    add->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::binary_add));
+    op_ptr new_op = std::make_shared<op_t>(op_kind::dnnl_binary);
+    new_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(get_binary_alg_map().at(op->get_kind())));
+    new_op->merge_attributes(op->get_attributes());
 
     // reconnect
     cond->remove_consumer(*op, 0);
     src0->remove_consumer(*op, 1);
     src1->remove_consumer(*op, 2);
 
-    // first reorder and clip
-    cond->add_consumer(*type_cast, 0);
-    type_cast->add_input(cond);
-    logical_tensor_t float_cond = empty_logical_tensor_with_default_id();
-    auto float_cond_val
-            = std::make_shared<value_t>(*type_cast, 0, float_cond, true);
-    float_cond_val->set_data_type(dnnl::impl::data_type::f32);
-    type_cast->add_output(float_cond_val);
-    insert_empty_scratchpad(type_cast);
+    // binary select primitive places the condition input tensor as the
+    // third input tensor.
+    src0->add_consumer(*new_op, 0);
+    src1->add_consumer(*new_op, 1);
+    cond->add_consumer(*new_op, 2);
 
-    float_cond_val->add_consumer(*clip, 0);
-    clip->add_input(float_cond_val);
-    logical_tensor_t clip_cond = empty_logical_tensor_with_default_id();
-    auto clip_cond_val = std::make_shared<value_t>(*clip, 0, clip_cond, true);
-    clip_cond_val->set_data_type(
-            float_cond_val->get_logical_tensor().data_type);
-    clip->add_output(clip_cond_val);
-    insert_empty_scratchpad(clip);
+    new_op->add_input(src0);
+    new_op->add_input(src1);
+    new_op->add_input(cond);
+    new_op->add_output(out_vals[0]);
 
-    // first multiply
-    src0->add_consumer(*mul1, 0);
-    clip_cond_val->add_consumer(*mul1, 1);
-    mul1->add_input(src0);
-    mul1->add_input(clip_cond_val);
-
-    logical_tensor_t src0_cond = empty_logical_tensor_with_default_id();
-    auto src0_val = std::make_shared<value_t>(*mul1, 0, src0_cond, true);
-    src0_val->set_data_type(src0->get_logical_tensor().data_type);
-    mul1->add_output(src0_val);
-    insert_empty_scratchpad(mul1);
-
-    //cond.*{-1} + 1
-    clip_cond_val->add_consumer(*linear, 0);
-    linear->add_input(clip_cond_val);
-
-    logical_tensor_t cond_inv = empty_logical_tensor_with_default_id();
-    auto cond_inv_val = std::make_shared<value_t>(*linear, 0, cond_inv, true);
-    cond_inv_val->set_data_type(clip_cond_val->get_logical_tensor().data_type);
-    linear->add_output(cond_inv_val);
-    insert_empty_scratchpad(linear);
-
-    //src1.*(cond_inv)
-
-    src1->add_consumer(*mul2, 0);
-    cond_inv_val->add_consumer(*mul2, 1);
-    mul2->add_input(src1);
-    mul2->add_input(cond_inv_val);
-
-    logical_tensor_t src1_cond = empty_logical_tensor_with_default_id();
-    auto src1_val = std::make_shared<value_t>(*mul2, 0, src1_cond, true);
-    src1_val->set_data_type(src1->get_logical_tensor().data_type);
-    mul2->add_output(src1_val);
-    insert_empty_scratchpad(mul2);
-
-    src0_val->add_consumer(*add, 0);
-    src1_val->add_consumer(*add, 1);
-    add->add_input(src0_val);
-    add->add_input(src1_val);
-    add->add_output(out_vals[0]);
-    insert_empty_scratchpad(add);
-
-    // add new ops and delete select op
-    rewriter.to_insert(type_cast);
-    rewriter.to_insert(clip);
-    rewriter.to_insert(mul1);
-    rewriter.to_insert(linear);
-    rewriter.to_insert(mul2);
-    rewriter.to_insert(add);
+    insert_empty_scratchpad(new_op);
+    rewriter.to_insert(new_op);
     rewriter.to_remove(op);
 
+    return status::success;
+}
+
+static status_t gen_index_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    auto new_op = std::make_shared<op_t>(op_kind::dnnl_gen_index);
+    new_op->merge_attributes(op->get_attributes());
+    int64_t axis = new_op->get_attr<int64_t>(op_attr::axis);
+    const int64_t ndims = static_cast<int64_t>(
+            ltw(op->get_input_value(0)->get_logical_tensor()).ndims());
+    VCHECK_INVALID_ARGUMENT(axis >= -1 * ndims && axis < ndims,
+            "GenIndex axis should be in range [-ndims, ndims) but got %d",
+            static_cast<int>(axis));
+    if (axis < 0) { new_op->set_attr<int64_t>(op_attr::axis, axis + ndims); }
+    rewriter.replace_op(op, new_op);
     return status::success;
 }
 
@@ -808,6 +751,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(Divide, binary_handler),
         ITEM(Minimum, binary_handler),
         ITEM(Maximum, binary_handler),
+        ITEM(GreaterEqual, binary_handler),
         // eltwise fwd
         ITEM(Abs, eltwise_fwd_handler),
         ITEM(Clamp, eltwise_fwd_handler),
@@ -881,6 +825,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(Concat, common_handler<op_kind::kDnnl_concat>),
         ITEM(SquaredDifference, squared_difference_handler),
         ITEM(Select, select_handler),
+        ITEM(GenIndex, gen_index_handler),
         // utility
         ITEM(Wildcard, dummy_handler),
         ITEM(End, dummy_handler),
@@ -893,13 +838,11 @@ status_t lower_down(std::shared_ptr<subgraph_t> &sg) {
 
     for (auto &cur_op : sg->get_ops()) {
         auto kind = cur_op->get_kind();
-        if (!handler_table.count(kind)) {
-            assertm(false,
-                    "All spec ops should be lowered to internal ops, except "
-                    "for some utility ops like End, Wildcard");
-            return status::invalid_graph_op;
-        }
-
+        VCHECK_INVALID_ARGUMENT(handler_table.count(kind),
+                "All spec ops should be lowered to internal ops, except "
+                "for some utility ops like End, Wildcard. Current op name is "
+                "%s",
+                cur_op->get_name().c_str());
         // lower this spec op to dnnl backend internal op
         const auto &handler = handler_table.at(kind);
         auto status = handler(cur_op, rewriter);

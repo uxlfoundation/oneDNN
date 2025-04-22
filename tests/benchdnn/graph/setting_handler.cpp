@@ -125,6 +125,18 @@ bool get_driver_axis(const deserialized_op &base_op_ref, int &axis) {
     return true;
 }
 
+bool get_driver_bia_dt(const deserialized_op &base_op_ref,
+        dnnl_data_type_t &bia_dt, const dnnl_data_type_t dt) {
+    if (base_op_ref.in_lts_.size() <= 2)
+        bia_dt = dnnl_data_type_undef;
+    else if (is_integral_dt(dt)) {
+        bia_dt = convert_dt(base_op_ref.in_lts_[2].get_data_type());
+    } else {
+        bia_dt = dt;
+    }
+    return true;
+}
+
 bool get_prb_dims(const deserialized_op &base_op_ref, prb_dims_t &prb_dims) {
     prb_dims.dims = base_op_ref.in_lts_.front().shape_;
     prb_dims.ndims = static_cast<int>(prb_dims.dims.size());
@@ -153,6 +165,10 @@ namespace custom {
     ::custom::settings_t op_setting;
     auto opkind = opstr2kind(base_op_ref.kind_);
     switch (opkind) {
+        case ::graph::op::kind::GenIndex:
+            op_setting.alg = ::custom::alg_t::GENINDEX;
+            base_op_ref.get_attr_s64(op_setting.axis, "axis");
+            break;
         case ::graph::op::kind::Select:
             op_setting.alg = ::custom::alg_t::SELECT;
             break;
@@ -169,20 +185,13 @@ namespace custom {
             res->state = res_state_t::INVALID_ARGUMENTS;
             return op_setting;
     }
-    // Select op has boolean weights. It requires special handling for dt
-    // conversion because custom driver prb values directly translate into graph
-    // objects, there's no intermediate primitive layer that can be instructed
-    // to have f32 data type.
-    const bool op_is_select = opkind == ::graph::op::kind::Select;
 
     for (size_t i = 0; i < base_op_ref.in_lts_.size(); i++) {
         const auto arg = get_prim_arg_name_from_graph_op_input_offset(
                 opkind, static_cast<int>(i));
         const auto &lt = base_op_ref.in_lts_[i];
         auto dim = lt.shape_;
-        const auto orig_dt = convert_dt(lt.get_data_type());
-        const auto dt
-                = op_is_select && arg == DNNL_ARG_WEIGHTS ? orig_dt : dnnl_f32;
+        const auto dt = dnnl_f32;
         auto tag = strides2memory_tag(lt.stride_.size(), lt.stride_, false);
 
         // 0-dim means scalar input in graph, extend to 1-dim to match behavior.
@@ -197,9 +206,7 @@ namespace custom {
                 opkind, static_cast<int>(i));
         const auto &lt = base_op_ref.out_lts_[i];
         auto dim = lt.shape_;
-        const auto orig_dt = convert_dt(lt.get_data_type());
-        const auto dt
-                = op_is_select && arg == DNNL_ARG_WEIGHTS ? orig_dt : dnnl_f32;
+        const auto dt = dnnl_f32;
         auto tag = strides2memory_tag(lt.stride_.size(), lt.stride_, false);
 
         // 0-dim means scalar input in graph, extend to 1-dim to match behavior.
@@ -296,7 +303,8 @@ bool get_binary_alg(const deserialized_op &base_op_ref, ::binary::alg_t &alg) {
                     {"Maximum", ::binary::alg_t::MAX},
                     {"Minimum", ::binary::alg_t::MIN},
                     {"Multiply", ::binary::alg_t::MUL},
-                    {"Subtract", ::binary::alg_t::SUB}};
+                    {"Subtract", ::binary::alg_t::SUB},
+                    {"GreaterEqual", ::binary::alg_t::GE}};
 
     const auto &op_kind = base_op_ref.kind_;
     if (map_kind_to_alg.find(op_kind) == map_kind_to_alg.end()) return false;
@@ -418,6 +426,7 @@ namespace concat {
 bool get_concat_prb_vdims(
         const deserialized_op &base_op_ref, prb_vdims_t &prb_vdims) {
     std::vector<dims_t> vdims;
+    vdims.reserve(base_op_ref.in_lts_.size());
     for (const auto &in : base_op_ref.in_lts_) {
         vdims.push_back(in.shape_);
     }
@@ -551,12 +560,13 @@ bool get_conv_desc(const deserialized_op &base_op_ref, ::conv::desc_t &d) {
 bool get_conv_dir(const deserialized_op &base_op_ref, dir_t &dir) {
     const auto &op_kind = base_op_ref.kind_;
     if (op_kind == "Convolution") {
-        dir = base_op_ref.in_lts_.size() > 2 ? dir_t::FWD_B : dir_t::FWD_I;
+        dir = dir_t::FWD_I;
     } else if (op_kind == "ConvolutionBackwardData") {
         dir = dir_t::BWD_D;
     } else if (op_kind == "ConvolutionBackwardWeights") {
         dir = dir_t::BWD_W;
     } else {
+        assert(!"unexpected op_kind");
         return false;
     }
     return true;
@@ -666,6 +676,10 @@ bool get_conv_stag_and_dtag(
     DNN_GRAPH_CHECK_SETTINGS(
             conv::get_conv_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
+            get_driver_bia_dt(base_op_ref, op_setting.bia_dt.front(),
+                    op_setting.dt.front()[0]),
+            res);
+    DNN_GRAPH_CHECK_SETTINGS(
             conv::get_conv_stag_and_dtag(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             conv::get_conv_wtag(base_op_ref, op_setting.wtag.front()), res);
@@ -751,22 +765,18 @@ bool get_deconv_desc(const deserialized_op &base_op_ref, ::deconv::desc_t &d) {
 }
 
 bool get_deconv_dir(const deserialized_op &base_op_ref, dir_t &dir) {
-    bool ret = false;
     const auto &op_kind = base_op_ref.kind_;
     if (op_kind == "ConvTranspose") {
-        dir = base_op_ref.in_lts_.size() > 2 ? dir_t::FWD_B : dir_t::FWD_I;
-        ret = true;
+        dir = dir_t::FWD_I;
     } else if (op_kind == "ConvTransposeBackwardData") {
         dir = dir_t::BWD_D;
-        ret = true;
     } else if (op_kind == "ConvTransposeBackwardWeights") {
         dir = dir_t::BWD_W;
-        ret = true;
     } else {
         assert(!"unexpected op_kind");
         return false;
     }
-    return ret;
+    return true;
 }
 
 bool get_deconv_dt(
@@ -848,6 +858,10 @@ bool get_deconv_wtag(const deserialized_op &base_op_ref, std::string &tag) {
             deconv::get_deconv_dir(base_op_ref, op_setting.dir.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             deconv::get_deconv_dt(base_op_ref, op_setting.dt.front()), res);
+    DNN_GRAPH_CHECK_SETTINGS(
+            get_driver_bia_dt(base_op_ref, op_setting.bia_dt.front(),
+                    op_setting.dt.front()[0]),
+            res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
                     op_setting.dtag.front(),
@@ -1307,13 +1321,9 @@ bool get_matmul_tags(const deserialized_op &base_op_ref, std::string &stag,
     return true;
 }
 
-bool get_matmul_bia_dt_mask(const deserialized_op &base_op_ref,
-        dnnl_data_type_t &bia_dt, const dnnl_data_type_t dt, int &bia_mask) {
-    bia_dt = dnnl_data_type_undef;
+bool get_matmul_bia_mask(const deserialized_op &base_op_ref, int &bia_mask) {
     if (base_op_ref.in_lts_.size() <= 2) return true;
 
-    // bia_dt is the same as src_dt
-    bia_dt = dt;
     const logical_tensor::dims &bias_shape = base_op_ref.in_lts_[2].shape_;
     const logical_tensor::dims &dst_shape = base_op_ref.out_lts_[0].shape_;
     if (bias_shape.size() != dst_shape.size()) {
@@ -1343,9 +1353,11 @@ bool get_matmul_bia_dt_mask(const deserialized_op &base_op_ref,
     DNN_GRAPH_CHECK_SETTINGS(
             matmul::get_matmul_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            matmul::get_matmul_bia_dt_mask(base_op_ref,
-                    op_setting.bia_dt.front(), op_setting.dt.front()[0],
-                    op_setting.bia_mask.front()),
+            get_driver_bia_dt(base_op_ref, op_setting.bia_dt.front(),
+                    op_setting.dt.front()[0]),
+            res);
+    DNN_GRAPH_CHECK_SETTINGS(matmul::get_matmul_bia_mask(
+                                     base_op_ref, op_setting.bia_mask.front()),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
             matmul::get_matmul_tags(base_op_ref, op_setting.stag.front(),
@@ -1738,8 +1750,6 @@ bool get_reorder_attrs(const deserialized_op &base_op_ref,
         std::vector<int64_t> group_shape;
         base_op_ref.get_attr_s64_vector(group_shape, "group_shape");
         groups = {group_shape[ndims - 2], group_shape[ndims - 1]};
-        scale_dt = static_cast<dnnl_data_type_t>(
-                base_op_ref.in_lts_[1].get_data_type());
     }
 
     if (op_kind == "Dequantize" || op_kind == "Quantize") {

@@ -91,7 +91,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
                 | skip_mask_t::zero_points_runtime;
 
     const bool is_f32_supported
-            = everyone_is(f32, diff_src_type, wei_type, diff_dst_type);
+            = everyone_is(f32, diff_src_type, wei_type, diff_dst_type)
+            && IMPLICATION(with_bias(), bias_md_.data_type == f32);
 
     const bool is_xf16_supported = one_of(wei_type, bf16, f16)
             && wei_type == diff_dst_type && one_of(diff_src_type, wei_type, f32)
@@ -274,7 +275,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
         brgattr.hint_expected_C_size = 0;
     }
 
-    brgattr.wary_tail_read = false;
+    brgattr.wary_A_k_tail_read = false;
     // use_M_mask is always 0 for brgemm_convolution_bwd_strided_t
     brgattr.bd_mask = nullptr;
     brgattr.bd_mask_level = jcp_.use_M_mask;
@@ -294,6 +295,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
     brg.with_weights_scale_adjust = jcp_.scale_adjust_factor != 1.0f;
     CHECK(brgemm_desc_set_postops(
             &brg, attr(), &diff_src_md_, LDD, jcp_.bia_dt));
+    CHECK(brgemm_desc_finalize(&brg));
+
     jcp_.amx_buf_size_per_thread = nstl::max(
             brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread);
     brg_idx = brgs_->insert(brg);
@@ -646,8 +649,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::init(engine_t *engine) {
     if (is_jit_supported && pd()->IC() > 1
             && req_copy_scales(attr, jcp.scale_adjust_factor)) {
         const auto &attr_scales = attr->scales_;
-        int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
-        if (wei_scale_mask != 0) {
+        int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+        if (wei_scale_mask > 0) {
             CHECK(safe_ptr_assign(jit_scale_precompute_,
                     new jit_avx512_core_scale_precompute_t(
                             attr, jcp.scale_adjust_factor)));
@@ -697,11 +700,10 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
 
     const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
 
-    const int wei_scale_mask
-            = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_;
+    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(scratchpad,
             src_scales, wei_scales, pd()->OC(), pd()->IC(), false,
-            wei_scale_mask != 0, pd()->attr(), jit_scale_precompute_.get(),
+            wei_scale_mask > 0, pd()->attr(), jit_scale_precompute_.get(),
             jcp.scale_adjust_factor);
 
     brgemm_bwd_exec_ctx_t brgemm_ctx(ctx, _pd);
@@ -1257,6 +1259,10 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
     const auto call_brgemm = [&](int iw, int brg_idx, int oc_block_s,
                                      int n_oc_blocks, size_t comp_ker_offs,
                                      bool do_postops, bool do_only_comp) {
+        if (brg_idx < 0) {
+            assert(!"Requested brgemm kernel was not created.");
+            return;
+        }
         const auto kh_ee = kh_e;
         int k_sum = 0;
         int32_t *src_zp = jcp.src_zero_point
@@ -1512,6 +1518,10 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
          is_first_call_postops_state_changed = false;
     const auto call_brgemm = [&](int brg_idx, int oc_block_s, int n_oc_blocks,
                                      size_t comp_ker_offs, bool do_postops) {
+        if (brg_idx < 0) {
+            assert(!"Requested brgemm kernel was not created.");
+            return;
+        }
         const auto kh_ee = kh_e;
         const auto kw_e = kw_f;
         const auto pbuf_base = inp_buffer;

@@ -291,6 +291,8 @@ dnnl::graph::op::kind opstr2kind(const std::string &kind) {
             {"Exp", dnnl::graph::op::kind::Exp},
             {"GELU", dnnl::graph::op::kind::GELU},
             {"GELUBackward", dnnl::graph::op::kind::GELUBackward},
+            {"GenIndex", dnnl::graph::op::kind::GenIndex},
+            {"GreaterEqual", dnnl::graph::op::kind::GreaterEqual},
             {"GroupNorm", dnnl::graph::op::kind::GroupNorm},
             {"HardSigmoid", dnnl::graph::op::kind::HardSigmoid},
             {"HardSigmoidBackward", dnnl::graph::op::kind::HardSigmoidBackward},
@@ -484,6 +486,9 @@ dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind) {
                     {dnnl::graph::op::kind::GELU, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::GELUBackward,
                             dnnl_driver_t::eltwise},
+                    {dnnl::graph::op::kind::GenIndex, dnnl_driver_t::custom},
+                    {dnnl::graph::op::kind::GreaterEqual,
+                            dnnl_driver_t::binary},
                     {dnnl::graph::op::kind::GroupNorm, dnnl_driver_t::gnorm},
                     {dnnl::graph::op::kind::HardSigmoid,
                             dnnl_driver_t::eltwise},
@@ -839,7 +844,8 @@ int get_prim_arg_name_from_graph_op_input_offset(
         case dnnl::graph::op::kind::Maximum:
         case dnnl::graph::op::kind::Minimum:
         case dnnl::graph::op::kind::Multiply:
-        case dnnl::graph::op::kind::Subtract: {
+        case dnnl::graph::op::kind::Subtract:
+        case dnnl::graph::op::kind::GreaterEqual: {
             if (input_offset == 0)
                 return DNNL_ARG_SRC_0;
             else if (input_offset == 1)
@@ -1255,8 +1261,9 @@ dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt) {
         case graph_dt::s32: return dnnl_s32;
         case graph_dt::s8: return dnnl_s8;
         case graph_dt::u8: return dnnl_u8;
-        // use u8 instead of boolean in the reference path
-        // dnn_graph_mem_t will use the data type from the logical tensor and the u8 data handle
+        // Use `u8` instead of `boolean` in the reference path.
+        // `dnn_graph_mem_t` will use the data type from the logical tensor and
+        // the `u8` data handle.
         case graph_dt::boolean: return dnnl_u8;
         case graph_dt::f8_e5m2: return dnnl_f8_e5m2;
         case graph_dt::f8_e4m3: return dnnl_f8_e4m3;

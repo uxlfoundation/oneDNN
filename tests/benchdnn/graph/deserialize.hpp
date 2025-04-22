@@ -168,7 +168,9 @@ private:
             "SigmoidBackward", "SoftMaxBackward", "SoftPlusBackward",
             "SqrtBackward", "TanhBackward"};
 
-    bool check_tensor_with_mb(size_t tensor_id) const;
+    // Check whether the tensor supports mb rewrite.
+    bool check_tensor_with_mb(size_t tensor_id,
+            std::unordered_map<size_t, bool> &mb_rewrite_ret) const;
 };
 std::ostream &operator<<(std::ostream &s, const deserialized_graph &dg);
 

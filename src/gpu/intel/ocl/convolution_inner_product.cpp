@@ -18,7 +18,7 @@
 #include "common/c_types_map.hpp"
 #include "common/convolution_pd.hpp"
 #include "common/reorder.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 using namespace dnnl::impl::memory_tracking;
 
@@ -197,6 +197,13 @@ status_t convolution_inner_product_fwd_t::execute_forward(
             = memory_arg_t {conf.reorder_dst ? wspace_dst.get() : dst, false};
 
     const auto &args = ctx.args();
+    for (const int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+        if (pd()->attr()->scales_.has_default_values(arg)) continue;
+
+        c_args[DNNL_ARG_ATTR_SCALES | arg]
+                = args.at(DNNL_ARG_ATTR_SCALES | arg);
+    }
+
     for (int idx = 0; idx < pd()->attr()->post_ops_.len(); ++idx) {
         if (pd()->attr()->post_ops_.entry_[idx].is_binary()) {
             c_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1]

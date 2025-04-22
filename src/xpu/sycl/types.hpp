@@ -56,6 +56,30 @@ namespace sycl {
                     &CTX_OUT_STORAGE(arg)) \
                       ->get_inout_memory_arg(ctx.stream(), cgh)
 
+#define CTX_IN_SCRATCH_KERNEL_MEMORY(KEY) \
+    ctx.get_scratchpad_grantor() \
+                    .get_memory_storage(memory_tracking::names::KEY) \
+                    ->is_null() \
+            ? xpu::sycl::memory_storage_base_t::empty_in_memory_arg( \
+                    ctx.stream(), cgh) \
+            : utils::downcast<const xpu::sycl::memory_storage_base_t *>( \
+                    ctx.get_scratchpad_grantor() \
+                            .get_memory_storage(memory_tracking::names::KEY) \
+                            .get()) \
+                      ->get_in_memory_arg(ctx.stream(), cgh);
+
+#define CTX_OUT_SCRATCH_KERNEL_MEMORY(KEY) \
+    ctx.get_scratchpad_grantor() \
+                    .get_memory_storage(memory_tracking::names::KEY) \
+                    ->is_null() \
+            ? xpu::sycl::memory_storage_base_t::empty_out_memory_arg( \
+                    ctx.stream(), cgh) \
+            : utils::downcast<const xpu::sycl::memory_storage_base_t *>( \
+                    ctx.get_scratchpad_grantor() \
+                            .get_memory_storage(memory_tracking::names::KEY) \
+                            .get()) \
+                      ->get_out_memory_arg(ctx.stream(), cgh);
+
 #define CHECK_SYCL_KERNEL_ARG_TYPE(type) \
     static_assert(::sycl::is_device_copyable_v<type>)
 
@@ -77,7 +101,8 @@ struct memory_arg_t {
         if (usm_) return usm_;
         return const_cast<acc_dt *>(
                 acc_.template get_multi_ptr<::sycl::access::decorated::no>()
-                        .get());
+                        .get()
+                + acc_.get_offset());
     }
 
     bool empty() const { return empty_; }
@@ -273,30 +298,30 @@ CHECK_SYCL_KERNEL_ARG_TYPE(md_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(bfloat16_t);
 
 template <data_type_t>
-struct prec_traits;
+struct prec_traits_t;
 
 template <>
-struct prec_traits<data_type::f16> {
+struct prec_traits_t<data_type::f16> {
     using type = float16_t;
 };
 template <>
-struct prec_traits<data_type::bf16> {
+struct prec_traits_t<data_type::bf16> {
     using type = bfloat16_t;
 };
 template <>
-struct prec_traits<data_type::f32> {
+struct prec_traits_t<data_type::f32> {
     using type = float;
 };
 template <>
-struct prec_traits<data_type::s32> {
+struct prec_traits_t<data_type::s32> {
     using type = int32_t;
 };
 template <>
-struct prec_traits<data_type::s8> {
+struct prec_traits_t<data_type::s8> {
     using type = int8_t;
 };
 template <>
-struct prec_traits<data_type::u8> {
+struct prec_traits_t<data_type::u8> {
     using type = uint8_t;
 };
 

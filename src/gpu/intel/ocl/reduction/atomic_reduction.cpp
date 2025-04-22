@@ -27,9 +27,9 @@
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive_attr.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/reduction/atomic_reduction.hpp"
 #include "gpu/intel/ocl/reduction/reduction_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -101,6 +101,10 @@ atomic_reduction_conf_t::atomic_reduction_conf_t(
     conf.src_type = src_type;
     conf.dst_type = dst_type;
     conf.subgroup_size = device_info.max_subgroup_size();
+    // Short-circuit if zero-dim is present
+    gpu_assert(reduction_block.block != 0) << "Reducing over 0 elements";
+    if (outer_block.block == 0 || inner_block.block == 0) return;
+
     auto arch = device_info.gpu_arch();
     const int base_threads_per_eu
             = compute::device_info_t::threads_per_eu(arch);
@@ -237,7 +241,8 @@ status_t atomic_reduction_conf_t::init_dispatcher(
         src.append_block(all_dims[dim_idx], sizes[dim_idx]);
     }
     // the loop dim may have padding - update the outer block's stride to avoid it
-    size_t src_outer_idx = src.get_dim_idx(reduction_dims::outer);
+    dim_idx_t src_outer_idx = src.get_dim_idx(reduction_dims::outer);
+    gpu_assert(src_outer_idx != dim_idx::invalid);
     src.format_desc.blocking.strides[src_outer_idx]
             = outer_block.stride / conf.vect_size;
 
@@ -251,7 +256,8 @@ status_t atomic_reduction_conf_t::init_dispatcher(
     src.remove_dim(reduction_dims::local, false);
 
     // Once again, loop dim padding causes issues
-    size_t dst_outer_idx = dst.get_dim_idx(reduction_dims::outer);
+    dim_idx_t dst_outer_idx = dst.get_dim_idx(reduction_dims::outer);
+    gpu_assert(dst_outer_idx != dim_idx::invalid);
     dst.format_desc.blocking.strides[dst_outer_idx]
             = inner_block.block / conf.vect_size;
 

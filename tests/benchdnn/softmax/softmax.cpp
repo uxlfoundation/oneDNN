@@ -258,11 +258,6 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
 #endif
     cmp.set_threshold(trh);
 
-    // LogSoftMax is unstable enough when there are attributes on top.
-    const bool compare_with_norm
-            = (prb->alg == alg_t::LOGSOFTMAX && !prb->attr.is_def());
-    cmp.set_norm_validation_mode(compare_with_norm);
-
     const int64_t axis_size = prb->dims[prb->axis];
     const int64_t n_zeros = (prb->ddt == dnnl_s8 || prb->ddt == dnnl_u8)
             ? (axis_size - 1)
@@ -418,10 +413,15 @@ int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     return OK;
 }
 
-int check_cacheit(
-        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
+int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
-    return check_caches(v_prim[0], prb, res);
+    if (has_bench_mode_bit(mode_bit_t::exec)) {
+        SAFE(check_total_size(res), WARN);
+    }
+    if (has_bench_mode_bit(mode_bit_t::corr)) {
+        SAFE(check_caches(v_prim[0], prb, res), WARN);
+    }
+    return OK;
 }
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,

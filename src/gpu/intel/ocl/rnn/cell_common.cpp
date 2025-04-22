@@ -120,7 +120,7 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
 }
 
 template <prop_kind_t aprop>
-cell_execution_sig((_simple_rnn_common_t<aprop>::cell_execution)) {
+cell_execution_sig((simple_rnn_common_t<aprop>::cell_execution)) {
     const conf_t &rnn = this->pd()->rnn_conf;
     const ocl_conf_t &ocl_conf = this->pd()->ocl_conf;
     const rnn_offsets_t &offsets = this->pd()->off;

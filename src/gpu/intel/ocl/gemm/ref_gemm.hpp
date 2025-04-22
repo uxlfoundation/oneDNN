@@ -21,12 +21,63 @@
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gemm/gpu_gemm.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/serialization.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace ocl {
+
+struct ref_gemm_jit_params_t
+    : public trivially_serializable_t<ref_gemm_jit_params_t> {
+    status_t create_generator(const compute::compute_engine_t &engine,
+            compute::kernel_bundle_t &bundle) const {
+        return engine.create_kernel_bundle(
+                bundle, get_kernel_names(), get_kernel_ctx());
+    }
+
+    const std::vector<const char *> &get_kernel_names() const {
+        static const std::vector<const char *> names {"ref_gemm"};
+        return names;
+    }
+
+    compute::kernel_ctx_t get_kernel_ctx() const {
+        compute::kernel_ctx_t kernel_ctx;
+        kernel_ctx.set_data_type(c_dt);
+        def_data_type(kernel_ctx, a_dt, "A");
+        def_data_type(kernel_ctx, b_dt, "B");
+        def_data_type(kernel_ctx, c_dt, "C");
+        def_data_type(kernel_ctx, bia_dt, "BIA");
+        def_data_type(kernel_ctx, acc_dt, "ACC");
+
+        kernel_ctx.define_int("WITH_BIAS", bia_dt != data_type::undef);
+        kernel_ctx.define_int("NON_DEFAULT_ATTRS",
+                with_post_ops || with_sum || with_dst_zpoints);
+
+        kernel_ctx.define_int("WITH_POST_OP", with_post_ops);
+        if (with_post_ops) {
+            def_binary_alg_kinds(kernel_ctx);
+            def_eltwise_alg_kinds(kernel_ctx);
+            kernel_ctx.define_int("ELTWISE_ALG", eltwise_alg);
+        }
+        kernel_ctx.define_int("WITH_SUM", with_sum);
+        kernel_ctx.define_int("WITH_DST_ZPOINTS", with_dst_zpoints);
+
+        return kernel_ctx;
+    };
+
+    data_type_t a_dt = {};
+    data_type_t b_dt = {};
+    data_type_t c_dt = {};
+    data_type_t bia_dt = {};
+    data_type_t acc_dt = {};
+    bool with_post_ops = {};
+    bool with_sum = {};
+    bool with_dst_zpoints = {};
+    uint8_t pad[1] = {};
+    int eltwise_alg = {};
+};
 
 struct ref_gemm_t : public gpu_gemm_t {
     using gpu_gemm_t::gpu_gemm_t;
@@ -55,9 +106,6 @@ struct ref_gemm_t : public gpu_gemm_t {
             const auto b_strides = desc()->b_desc.format_desc.blocking.strides;
             const auto c_strides = desc()->c_desc.format_desc.blocking.strides;
 
-            VDISPATCH_GEMM(
-                    IMPLICATION(acc_dt == s32, attr()->zero_points_.common()),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_GEMM(!has_blocks(), VERBOSE_UNSUPPORTED_FEATURE,
                     "blocked format");
             VDISPATCH_GEMM(desc()->c_desc.ndims <= 3, VERBOSE_BAD_NDIMS,
@@ -127,6 +175,16 @@ struct ref_gemm_t : public gpu_gemm_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             attr_info = attr_info_t::create(attr());
 
+            conf.a_dt = a_dt;
+            conf.b_dt = b_dt;
+            conf.c_dt = c_dt;
+            conf.bia_dt = bia_dt;
+            conf.acc_dt = acc_dt;
+            conf.with_post_ops = attr()->post_ops_.len() > 0;
+            conf.with_sum = attr_info.with_sum;
+            conf.with_dst_zpoints = attr_info.with_dst_zpoints;
+            conf.eltwise_alg = attr_info.eltwise_alg;
+
             return status::success;
         }
 
@@ -136,15 +194,32 @@ struct ref_gemm_t : public gpu_gemm_t {
 
         bool attr_oscale_ok() const {
             const auto &scales = attr()->scales_;
-            return scales.get(DNNL_ARG_SRC).mask_ == 0
-                    && scales.get(DNNL_ARG_WEIGHTS).mask_ == 0
-                    && scales.get(DNNL_ARG_DST).mask_ == 0;
+            const bool src_scale_ok = scales.has_default_values(DNNL_ARG_SRC)
+                    || scales.get_mask(DNNL_ARG_SRC) == 0;
+            const bool wei_scale_ok
+                    = scales.has_default_values(DNNL_ARG_WEIGHTS)
+                    || scales.get_mask(DNNL_ARG_WEIGHTS) == 0;
+            const bool dst_scale_ok = scales.has_default_values(DNNL_ARG_DST)
+                    || scales.get_mask(DNNL_ARG_DST) == 0;
+            return src_scale_ok && wei_scale_ok && dst_scale_ok;
         }
 
         bool attr_zp_ok() const {
-            return this->attr()->zero_points_.common(DNNL_ARG_A)
-                    && this->attr()->zero_points_.common(DNNL_ARG_B)
-                    && this->attr()->zero_points_.common(DNNL_ARG_C);
+            const auto &zp = attr()->zero_points_;
+
+            bool ok = IMPLICATION(desc()->acc_type != data_type::s32,
+                    zp.has_default_values());
+            if (!ok) return false;
+
+            static const std::vector<int> supported_args {
+                    DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C};
+            for (int arg : supported_args) {
+                if (!zp.has_default_values(arg)) {
+                    const int mask = zp.get_mask(arg);
+                    if (mask > 0) return false;
+                }
+            }
+            return true;
         }
 
         bool attr_post_ops_ok() const {
@@ -164,29 +239,11 @@ struct ref_gemm_t : public gpu_gemm_t {
         }
 
         attr_info_t attr_info = {};
+        ref_gemm_jit_params_t conf = {};
     };
 
     status_t init(impl::engine_t *engine) override {
-        compute::kernel_ctx_t kernel_ctx;
-
-        kernel_ctx.define_int("WITH_BIAS", pd()->with_bias());
-        kernel_ctx.define_int(
-                "NON_DEFAULT_ATTRS", !pd()->attr()->has_default_values());
-
-        const auto d = pd()->desc();
-        kernel_ctx.set_data_type(d->c_type());
-        CHECK(def_attr_info(kernel_ctx, pd()->attr_info,
-                pd()->attr()->post_ops_, *pd()->dst_md()));
-
-        const auto bias_type = d->bias_type() != data_type::undef
-                ? d->bias_type()
-                : data_type::f32;
-        def_data_type(kernel_ctx, d->a_type(), "A");
-        def_data_type(kernel_ctx, d->b_type(), "B");
-        def_data_type(kernel_ctx, d->c_type(), "C");
-        def_data_type(kernel_ctx, d->acc_type, "ACC");
-        def_data_type(kernel_ctx, bias_type, "BIA");
-        CHECK(create_kernel(engine, &kernel_, "ref_gemm", kernel_ctx));
+        CHECK(create_kernel(engine, kernel_, "ref_gemm", pd()->conf));
         if (!kernel_) return status::runtime_error;
 
         return status::success;

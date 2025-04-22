@@ -41,46 +41,6 @@ namespace v2 {
 namespace conv {
 namespace planner {
 
-class search_iterator_t {
-public:
-    int add(const std::vector<int> &key_values) {
-        int key = (int)values_.size();
-        values_.push_back(key_values);
-        idxs_.push_back(0);
-        if (key == 0) {
-            idxs_[0] = -1;
-            total_ = 1;
-        }
-        total_ *= (int)key_values.size();
-        return key;
-    }
-
-    int nkeys() const { return (int)values_.size(); }
-
-    bool has_next() const { return idx_ + 1 < total_; }
-
-    void next() {
-        ir_assert(has_next());
-        int carry = 1;
-        for (int j = 0; j < nkeys(); j++) {
-            int new_idx = idxs_[j] + carry;
-            int bound = (int)values_[j].size();
-            idxs_[j] = new_idx % bound;
-            carry = new_idx / bound;
-            if (carry == 0) break;
-        }
-        idx_++;
-    }
-
-    int operator()(int key) const { return values_[key][idxs_[key]]; }
-
-private:
-    int idx_ = -1;
-    int total_ = 0;
-    std::vector<std::vector<int>> values_;
-    std::vector<int> idxs_;
-};
-
 // Flags specifying blocking restrictions for a convolution dimension.
 enum class tile_flags_t : uint32_t {
     undef = 0,
@@ -203,7 +163,7 @@ private:
             auto dim = pvar_t(value);
             tile_infos_[dim].add(tile_flags_t::thread_group);
         } else {
-            ir_error_not_expected();
+            gpu_error_not_expected();
         }
     }
 
@@ -309,27 +269,45 @@ private:
     pvar_map_t<std::vector<dim_tile_t>> tiles_;
 };
 
-std::vector<tile_scheme_t> get_tile_schemes(prop_kind_t prop, bool is_dw) {
+struct search_params_t {
+    kernel_desc_t base_desc;
+    bool is_iter_set = false;
+    bool is_tg_set = false;
+    bool is_prefetch_set = false;
+
+    search_params_t(
+            const kernel_desc_t &_base_desc, const parse_result_t &parse_result)
+        : base_desc(_base_desc) {
+        is_iter_set = parse_result.is_set("--iter");
+        is_tg_set = parse_result.is_set("--tg");
+        is_prefetch_set = parse_result.is_set("--prefetch");
+    }
+
+    search_params_t(const planner_params_t &params)
+        : search_params_t(params.desc, params.parse_result) {}
+};
+
+std::vector<tile_scheme_t> get_tile_schemes(const search_params_t &params) {
     std::vector<tile_scheme_t> schemes;
-    if (prop == prop_kind::forward) {
+    if (params.base_desc.prop == prop_kind::forward) {
         schemes.emplace_back("tg=[ic],    iter=[mb,g,oc,ic]");
         schemes.emplace_back("tg=[ic],    iter=[ow,g,oc,ic]");
         schemes.emplace_back("tg=[oc,mb], iter=[mb,g,oc,ic]");
         schemes.emplace_back("tg=[oc,mb], iter=[ow,g,oc,ic]");
         schemes.emplace_back("tg=[oc,ow], iter=[mb,g,oc,ic]");
         schemes.emplace_back("tg=[oc,ow], iter=[ow,g,oc,ic]");
-    } else if (prop == prop_kind::backward_data) {
+    } else if (params.base_desc.prop == prop_kind::backward_data) {
         schemes.emplace_back("tg=[ic,iw], iter=[mb,g,oc,ic]");
         schemes.emplace_back("tg=[ic,mb], iter=[mb,g,oc,ic]");
         schemes.emplace_back("tg=[ic,iw], iter=[iw,g,oc,ic]");
-    } else if (prop == prop_kind::backward_weights) {
+    } else if (params.base_desc.prop == prop_kind::backward_weights) {
         schemes.emplace_back("tg=[oc,ic], iter=[mb,g,oc,ic]");
         schemes.emplace_back("tg=[oc,ic], iter=[ow,g,oc,ic]");
     } else {
-        ir_error_not_expected();
+        gpu_error_not_expected();
     }
     for (auto &s : schemes) {
-        if (is_dw) {
+        if (params.base_desc.is_dw) {
             s.unset(pvars::ic);
             s.unset(pvars::oc);
         } else {
@@ -349,24 +327,24 @@ public:
     const std::vector<kernel_desc_t> &descs() const { return descs_; }
 
     void add_desc(const kernel_desc_t &desc) {
-        ir_assert(desc.reqs.str() == reqs_.str())
+        gpu_assert(desc.reqs().str() == reqs_.str())
                 << "Reqs mismatch:\n"
-                << desc.cmd_str() << "\ndesc.reqs:" << desc.reqs.str()
+                << desc.cmd_str() << "\ndesc.reqs:" << desc.reqs().str()
                 << "\nreqs:\n"
                 << reqs_.str();
         if (descs_.empty()) {
             is_dw_ = desc.is_dw;
         } else {
-            ir_assert(desc.is_dw == is_dw_);
+            gpu_assert(desc.is_dw == is_dw_);
         }
         descs_.push_back(desc);
     }
 
-    bench_input_params_t bench_input_params(int nprbs) const {
+    bench_input_params_t bench_input_params(int nprbs, const hw_t &hw) const {
         if (descs_.empty()) return bench_input_params_t();
         auto &kd = descs_.front();
         bench_input_params_t params;
-        params.hw = kd.hw;
+        params.hw = hw;
         params.prop = kd.prop;
         params.src_tag = kd.src_tag;
         params.wei_tag = kd.wei_tag;
@@ -391,8 +369,6 @@ public:
     // Number of problems to generate to rank kernel descriptors in a kernel
     // descriptor group.
     static const int bench_nprbs = 50;
-    // Number of problems to generate to build performance model.
-    static const int model_nprbs = 250;
     // Number of top kernel descriptors in a kernel descriptor group to save to
     // registry.
     static const int registry_top_k = 8;
@@ -400,75 +376,67 @@ public:
     static const int max_descs = 256;
 
     kernel_search_manager_t(
-            const bench_manager_t &bench_mger, const kernel_desc_t &base_desc)
-        : bench_mger_(bench_mger), base_desc_(base_desc) {
-        reset_reqs(base_desc_);
-    }
+            const bench_manager_t &bench_mger, const search_params_t &params)
+        : bench_mger_(bench_mger), params_(params) {}
 
     void search() {
         std::cout << "Starting kernel search" << std::endl;
-        auto desc_groups = gen_desc_groups();
         auto &registry = plan_registry();
+        auto desc_groups = gen_desc_groups();
         for (auto &dg : desc_groups) {
             auto bench_data_set = bench_kernel_desc_group(
                     bench_mger_, dg, bench_nprbs, max_descs);
             auto best = bench_data_set.find_best(registry_top_k);
             for (auto &bd : best) {
-                auto &d = bd.kernel_desc;
-                auto bd_model = bench(bench_mger_, d, model_nprbs);
-                if (!bd_model) continue;
-                auto model = model_fit(bd_model);
-                auto d_ext = try_extensions(bench_mger_, d);
-                registry.set(d_ext, model);
+                auto entry = prepare_plan_registry_entry(
+                        bench_mger_, bd.kernel_desc);
+                registry.set(entry);
             }
         }
         std::cout << "Kernel search completed" << std::endl;
     }
 
 private:
-    static void reset_reqs(kernel_desc_t &kernel_desc) {
-        if (kernel_desc.prop != prop_kind::backward_data) return;
-        // XXX: No stride support in backward by data yet.
-        kernel_desc.reqs.add(pvars::sw.var() == 1);
-        kernel_desc.reqs.add(pvars::sh.var() == 1);
-        kernel_desc.reqs.add(pvars::sd.var() == 1);
-    }
-
     std::vector<search_kernel_desc_group_t> gen_desc_groups() const {
-        std::unordered_map<std::string, kernel_desc_t> descs;
-        for (auto &s : get_tile_schemes(base_desc_.prop, base_desc_.is_dw)) {
+        std::unordered_set<std::string> seen;
+        std::vector<kernel_desc_t> descs;
+        for (auto &s : get_tile_schemes(params_)) {
             dim_tile_set_t tile_set(s);
             auto tiling_descs = tile_set.create_tiling_descs();
             for (auto &td : tiling_descs) {
-                auto d = base_desc_;
-                d.thread_group_tile = td.thread_group;
-                d.iter_tile = td.iter;
-                if (!finalize_conv_desc(d, bench_mger_.hw())) {
+                auto d = params_.base_desc;
+                if (!params_.is_tg_set) d.thread_group_tile = td.thread_group;
+                if (!params_.is_iter_set) d.iter_tile = td.iter;
+                auto d_key = jit::stringify(d);
+                if (seen.count(d_key) > 0) continue;
+                seen.insert(d_key);
+                if (!create_conv_plan(d, bench_mger_.hw())) {
                     std::cout << d.brief_str() << ": \033[1;31mFAIL\033[0m"
                               << std::endl;
                     continue;
                 }
-                auto d_key = jit::stringify(d);
-                if (descs.find(d_key) != descs.end()) continue;
-                descs[d_key] = d;
+                descs.push_back(d);
                 std::cout << d.brief_str() << ": \033[1;32mOK\033[0m"
                           << std::endl;
             }
         }
-        ir_info() << "gen_desc_groups(): descs.size() = " << descs.size()
-                  << std::endl;
+        gpu_info() << "gen_desc_groups(): descs.size() = " << descs.size();
         std::unordered_map<std::string, search_kernel_desc_group_t> desc_groups;
-        for (auto &kv : descs) {
-            auto &d = kv.second;
+        std::vector<int> prefetch_dists;
+        if (params_.is_prefetch_set) {
+            prefetch_dists.push_back(params_.base_desc.prefetch.dist);
+        } else {
+            prefetch_dists.push_back(1);
+            prefetch_dists.push_back(3);
+        }
+        for (auto &d : descs) {
             auto ret = desc_groups.emplace(
-                    d.reqs.str(), search_kernel_desc_group_t(d.reqs));
+                    d.reqs().str(), search_kernel_desc_group_t(d.reqs()));
             ret.first->second.add_desc(d);
-            for (int dist : {1, 3}) {
+            for (int dist : prefetch_dists) {
                 auto _d = d;
                 _d.prefetch = prefetch_desc_t(dist, true, true);
-                reset_reqs(_d);
-                _d.is_finalized = false;
-                if (!finalize_conv_desc(_d, bench_mger_.hw())) {
+                if (!create_conv_plan(_d, bench_mger_.hw())) {
                     std::cout << d.brief_str() << ": \033[1;31mFAIL\033[0m"
                               << std::endl;
                     continue;
@@ -503,28 +471,8 @@ private:
         return tiles;
     }
 
-    // TODO: Use search_desc.
-    void search_desc(const kernel_desc_t &_desc) const {
-        auto iter_outer_tiles = generate_iter_outer_tiles(_desc);
-        auto &registry = plan_registry();
-        for (auto &iter_outer : iter_outer_tiles) {
-            auto desc = _desc;
-            desc.iter_outer_tile = iter_outer;
-            std::cout << "Running benchmark for descriptor: " << desc.cmd_str()
-                      << std::endl;
-            auto bd = bench(bench_mger_, desc);
-            if (!bd) {
-                std::cout << "Benchmarking failed" << std::endl;
-                continue;
-            }
-            auto model = model_fit(bd);
-            registry.set(desc, model);
-            return;
-        }
-    }
-
     const bench_manager_t &bench_mger_;
-    kernel_desc_t base_desc_;
+    search_params_t params_;
 };
 
 class search_sequence_t {
@@ -557,7 +505,7 @@ public:
     }
 
     std::pair<int, kernel_desc_t> next() {
-        ir_assert((bool)*this);
+        gpu_assert((bool)*this);
         auto &e = *entry_it_;
         ++entry_it_;
         return std::make_pair(e.id, e.desc);
@@ -609,7 +557,8 @@ bench_data_set_t bench_kernel_desc_group(const bench_manager_t &bench_mger,
         const search_kernel_desc_group_t &desc_group, int nprbs,
         int max_descs) {
     auto eng = bench_mger.get_engine();
-    bench_runner_t runner(bench_mger, desc_group.bench_input_params(nprbs));
+    bench_runner_t runner(
+            bench_mger, desc_group.bench_input_params(nprbs, bench_mger.hw()));
     bench_data_set_t bd_set;
     search_sequence_t seq(desc_group.descs(), max_descs);
     while (seq) {
@@ -626,47 +575,90 @@ bench_data_set_t bench_kernel_desc_group(const bench_manager_t &bench_mger,
     return bd_set;
 }
 
-void search(const bench_manager_t &bench_mger, const kernel_desc_t &desc) {
-    kernel_search_manager_t mger(bench_mger, desc);
-    mger.search();
+std::string merge_cmd_lines(const std::string &recipe_line,
+        const parse_result_t &cmd_parse_result) {
+    auto &iface = kernel_desc_t::parse_iface();
+    kernel_desc_t recipe_desc;
+    parse_result_t recipe_parse_result;
+    iface.parse(recipe_line, recipe_desc, &recipe_parse_result);
+    bool is_first = true;
+    std::ostringstream oss;
+    for (auto &kv : cmd_parse_result.args()) {
+        auto &name = kv.first;
+        ;
+        auto &value = kv.second;
+        if (!is_first) oss << " ";
+        oss << name << "=" << value;
+        is_first = false;
+    }
+    for (auto &kv : recipe_parse_result.args()) {
+        auto &name = kv.first;
+        auto &value = kv.second;
+        if (cmd_parse_result.args().count(name) > 0) continue;
+        if (!is_first) oss << " ";
+        oss << name << "=" << value;
+        is_first = false;
+    }
+    return oss.str();
 }
 
-void auto_search(const bench_manager_t &bench_mger) {
+void auto_search(
+        const bench_manager_t &bench_mger, const planner_params_t &params) {
     // clang-format off
     std::vector<const char *> recipes = {
         "--hw xehpc --prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --fma dpas --simd 16 --regs 256 --2d 1",
-        "--hw xehpc --prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --fma dpas --simd 16 --regs 256 --align 1",
+        "--hw xehpc --prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --fma dpas --simd 16 --regs 256",
         "--hw xehpc --prop fwd --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256 --2d 1",
-        "--hw xehpc --prop fwd --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256 --align 1",
+        "--hw xehpc --prop fwd --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256",
         "--hw xehpc --prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 32 --regs 128 --2d 1",
-        "--hw xehpc --prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 32 --regs 128 --align 1",
+        "--hw xehpc --prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 32 --regs 128",
         "--hw xehpc --prop bwd_d --src axb:bf16 --wei axbc:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256 --2d 1",
-        "--hw xehpc --prop bwd_d --src axb:bf16 --wei axbc:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256 --align 1",
+        "--hw xehpc --prop bwd_d --src axb:bf16 --wei axbc:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256",
         "--hw xehpc --prop bwd_d --src axb:f32 --wei axbc:f32 --dst axb:f32 --fma mad --simd 32 --regs 128 --2d 1",
-        "--hw xehpc --prop bwd_d --src axb:f32 --wei axbc:f32 --dst axb:f32 --fma mad --simd 32 --regs 128 --align 1",
+        "--hw xehpc --prop bwd_d --src axb:f32 --wei axbc:f32 --dst axb:f32 --fma mad --simd 32 --regs 128",
         "--hw xehpc --prop bwd_w --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256 --2d 1",
-        "--hw xehpc --prop bwd_w --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256 --align 1",
+        "--hw xehpc --prop bwd_w --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma dpas --simd 16 --regs 256",
         "--hw xehpc --prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 16 --regs 128 --2d 1",
-        "--hw xehpc --prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 16 --regs 128 --align 1",
-        "--hw xehpc --dw 1 --prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --fma mad --simd 32 --regs 128 --align 1",
-        "--hw xehpc --dw 1 --prop fwd --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma mad --simd 32 --regs 128 --align 1",
-        "--hw xehpc --dw 1 --prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 32 --regs 128 --align 1",
-        "--hw xehpc --dw 1 --prop bwd_d --src axb:bf16 --wei axbc:bf16 --dst axb:bf16 --fma mad --simd 32 --regs 128 --align 1",
-        "--hw xehpc --dw 1 --prop bwd_d --src axb:f32 --wei axbc:f32 --dst axb:f32 --fma mad --simd 32 --regs 128 --align 1",
-        "--hw xehpc --dw 1 --prop bwd_w --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma mad --simd 16 --regs 128 --align 1",
-        "--hw xehpc --dw 1 --prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 32 --regs 128 --align 1",
+        "--hw xehpc --prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 16 --regs 128",
+        "--hw xehpc --dw 1 --prop fwd --src axb:s8 --wei axcb:s8 --dst axb:s8 --fma mad --simd 32 --regs 128",
+        "--hw xehpc --dw 1 --prop fwd --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma mad --simd 32 --regs 128",
+        "--hw xehpc --dw 1 --prop fwd --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 32 --regs 128",
+        "--hw xehpc --dw 1 --prop bwd_d --src axb:bf16 --wei axbc:bf16 --dst axb:bf16 --fma mad --simd 32 --regs 128",
+        "--hw xehpc --dw 1 --prop bwd_d --src axb:f32 --wei axbc:f32 --dst axb:f32 --fma mad --simd 32 --regs 128",
+        "--hw xehpc --dw 1 --prop bwd_w --src axb:bf16 --wei axcb:bf16 --dst axb:bf16 --fma mad --simd 16 --regs 128",
+        "--hw xehpc --dw 1 --prop bwd_w --src axb:f32 --wei axcb:f32 --dst axb:f32 --fma mad --simd 32 --regs 128",
     };
     // clang-format on
+    auto &iface = kernel_desc_t::parse_iface();
     double t = get_msec();
+    std::unordered_set<std::string> seen;
     for (const char *_r : recipes) {
-        auto r = std::string(_r) + " --iter x --tg x";
+        std::string line = merge_cmd_lines(_r, params.parse_result);
+        if (seen.count(line) > 0) continue;
+        seen.insert(line);
         kernel_desc_t desc;
-        desc.set(r);
-        desc.hw = hw_t(bench_mger.get_engine().get());
-        search(bench_mger, desc);
+        parse_result_t parse_result;
+        iface.parse(line, desc, &parse_result);
+        kernel_search_manager_t mger(
+                bench_mger, search_params_t(desc, parse_result));
+        mger.search();
     }
     t = get_msec() - t;
     std::cout << "Kernel search done, took: " << t / 1e3 << " sec" << std::endl;
+}
+
+void search(const bench_manager_t &bench_mger, const planner_params_t &params) {
+    switch (params.mode) {
+        case planner_mode_t::search: {
+            kernel_search_manager_t mger(bench_mger, search_params_t(params));
+            mger.search();
+            break;
+        }
+        case planner_mode_t::auto_search:
+            auto_search(bench_mger, params);
+            break;
+        default: gpu_error_not_expected();
+    }
 }
 
 } // namespace planner

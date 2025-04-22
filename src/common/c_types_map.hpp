@@ -260,6 +260,8 @@ const profiling_data_kind_t internal_only_start
         = (profiling_data_kind_t)(1 << 8);
 const profiling_data_kind_t cycles
         = (profiling_data_kind_t)(internal_only_start + 1);
+const profiling_data_kind_t time_per_kernel
+        = (profiling_data_kind_t)(internal_only_start + 2);
 } // namespace profiling_data_kind
 
 using format_tag_t = dnnl_format_tag_t;
@@ -708,6 +710,7 @@ const format_tag_t AB32a32b8a2b = dnnl_AB32a32b8a2b;
 const format_tag_t AB8a2b = dnnl_AB8a2b;
 const format_tag_t abDc16d = dnnl_abDc16d;
 const format_tag_t abDc32d = dnnl_abDc32d;
+const format_tag_t abDC16d4c = dnnl_abDC16d4c;
 const format_tag_t abDC32d4c = dnnl_abDC32d4c;
 const format_tag_t abCd4c = dnnl_abCd4c;
 const format_tag_t abCde4c = dnnl_abCde4c;
@@ -717,6 +720,7 @@ const format_tag_t abCde32c = dnnl_abCde32c;
 const format_tag_t abCdef32c = dnnl_abCdef32c;
 const format_tag_t abdEc16e = dnnl_abdEc16e;
 const format_tag_t abdEc32e = dnnl_abdEc32e;
+const format_tag_t abdEC16e4c = dnnl_abdEC16e4c;
 const format_tag_t abdEC32e2c = dnnl_abdEC32e2c;
 const format_tag_t abdEC32e4c = dnnl_abdEC32e4c;
 const format_tag_t abdEC64e2c = dnnl_abdEC64e2c;
@@ -1479,10 +1483,12 @@ const format_tag_t gOIhw4o8i2o = dnnl_gOIhw4o8i2o;
 const format_tag_t gOIdhw4o8i2o = dnnl_gOIdhw4o8i2o;
 const format_tag_t ldOi16o = dnnl_ldOi16o;
 const format_tag_t ldOi32o = dnnl_ldOi32o;
+const format_tag_t ldOI16o4i = dnnl_ldOI16o4i;
 const format_tag_t ldOI32o4i = dnnl_ldOI32o4i;
 const format_tag_t ldIo32i = dnnl_ldIo32i;
 const format_tag_t ldgOi16o = dnnl_ldgOi16o;
 const format_tag_t ldgOi32o = dnnl_ldgOi32o;
+const format_tag_t ldgOI16o4i = dnnl_ldgOI16o4i;
 const format_tag_t ldgOI32o2i = dnnl_ldgOI32o2i;
 const format_tag_t ldgOI32o4i = dnnl_ldgOI32o4i;
 const format_tag_t ldgOI64o2i = dnnl_ldgOI64o2i;
@@ -2060,6 +2066,14 @@ const query_t internal_only_start = (query_t)(1 << 12);
 const query_t zero_pad_d = internal_only_start;
 const query_t preferred_gpu_threads_per_eu = (query_t)(internal_only_start + 1);
 } // namespace query
+
+// There are no external values to map to because this is an internal feature
+// for now.
+using matmul_reduce_kind_t = int;
+namespace matmul_reduce_kind {
+const matmul_reduce_kind_t undef = 0;
+const matmul_reduce_kind_t src = 1;
+} // namespace matmul_reduce_kind
 
 using rnn_direction_t = dnnl_rnn_direction_t;
 

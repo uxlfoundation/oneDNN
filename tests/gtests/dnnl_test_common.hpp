@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -101,7 +101,7 @@ dnnl::engine::kind get_test_engine_kind();
 dnnl::engine get_test_engine();
 #endif
 
-inline int get_vendor_id(const std::string &vendor) {
+inline uint32_t get_vendor_id(const std::string &vendor) {
     if (vendor == "nvidia") {
         return 0x10DE;
     } else if (vendor == "amd") {
@@ -109,7 +109,7 @@ inline int get_vendor_id(const std::string &vendor) {
     } else if (vendor == "intel") {
         return 0x8086;
     } else {
-        return -1;
+        return 0x0;
     }
 }
 
@@ -437,7 +437,14 @@ static void fill_data(const memory::dim nelems, const memory &mem, data_t mean,
 
 inline void fill_data(memory::data_type dt, const memory &mem, float mean,
         float deviation, double sparsity = 1.) {
-    size_t nelems = mem.get_desc().get_size() / memory::data_type_size(dt);
+    const auto dt_size = memory::data_type_size(dt);
+    if (dt_size <= 0) {
+        assert(!"unexpected data type");
+        return;
+    }
+
+    memory::dim nelems
+            = static_cast<memory::dim>(mem.get_desc().get_size() / dt_size);
     switch (dt) {
         case memory::data_type::f32:
             fill_data<float>(nelems, mem, mean, deviation, sparsity);
@@ -851,12 +858,13 @@ inline std::string to_string(dnnl_stream_flags_t stream_flags) {
 
 // testing all available C++ primitive descriptor constructors
 struct allows_attr_t {
-    bool po_sum;
-    bool po_eltwise;
-    bool po_binary;
-    bool po_prelu;
-    bool zp;
-    bool scales;
+    bool po_sum = false;
+    bool po_eltwise = false;
+    bool po_binary = false;
+    bool po_prelu = false;
+    bool zp = false;
+    bool scales = false;
+    int scales_arg = DNNL_ARG_SRC;
 };
 
 using engine = dnnl::engine;
@@ -895,17 +903,33 @@ void test_fwd_pd_attr_po_eltwise(const engine &eng, bool supports_po_eltwise,
 
 template <typename pd_t, typename... prim_params_t>
 void test_fwd_pd_attr_po_binary(const engine &eng, bool supports_po_binary,
-        const prim_params_t &...prim_params) {
-    dnnl::post_ops ops_binary;
-    dnnl::memory::desc src1_desc(
-            {16}, memory::data_type::s8, memory::format_tag::x);
-    ops_binary.append_binary(dnnl::algorithm::binary_mul, src1_desc);
-    dnnl::primitive_attr attr_po_binary;
-    attr_po_binary.set_post_ops(ops_binary);
-    if (supports_po_binary)
-        EXPECT_NO_THROW(pd_t pd(eng, prim_params..., attr_po_binary));
-    else
-        EXPECT_ANY_THROW(pd_t pd(eng, prim_params..., attr_po_binary));
+        const pd_t &pd, const prim_params_t &...prim_params) {
+    dnnl::primitive_attr attr_po_binary_good, attr_po_binary_bad;
+    dnnl::post_ops ops_binary_good, ops_binary_bad;
+
+    int dst_ndims = pd.dst_desc().get_ndims();
+    dnnl::memory::dims dims_good(dst_ndims, 1);
+    dnnl::memory::dims dims_bad(
+            dst_ndims > 1 ? dst_ndims - 1 : dst_ndims + 1, 1);
+
+    dnnl::memory::desc src1_desc_good(
+            dims_good, memory::data_type::f32, /* strides */ dims_good);
+    dnnl::memory::desc src1_desc_bad(
+            dims_bad, memory::data_type::s8, /* strides */ dims_bad);
+
+    ops_binary_good.append_binary(dnnl::algorithm::binary_mul, src1_desc_good);
+    ops_binary_bad.append_binary(dnnl::algorithm::binary_mul, src1_desc_bad);
+
+    attr_po_binary_good.set_post_ops(ops_binary_good);
+    attr_po_binary_bad.set_post_ops(ops_binary_bad);
+
+    if (!supports_po_binary) {
+        EXPECT_ANY_THROW(pd_t pd(eng, prim_params..., attr_po_binary_good));
+        return;
+    }
+
+    EXPECT_ANY_THROW(pd_t pd(eng, prim_params..., attr_po_binary_bad));
+    EXPECT_NO_THROW(pd_t pd(eng, prim_params..., attr_po_binary_good));
 }
 
 template <typename pd_t, typename... prim_params_t>
@@ -932,11 +956,13 @@ void test_fwd_pd_attr_zp(const engine &eng, bool supports_zero_point,
         EXPECT_ANY_THROW(pd_t pd(eng, prim_params..., attr_zp));
 }
 
+// Note: `arg` is needed to specify `DNNL_ARG_MULTIPLE_SRC` as a value for
+// supported scale for concat and sum.
 template <typename pd_t, typename... prim_params_t>
-void test_fwd_pd_attr_scales(const engine &eng, bool supports_scales,
+void test_fwd_pd_attr_scales(const engine &eng, bool supports_scales, int arg,
         const prim_params_t &...prim_params) {
     dnnl::primitive_attr attr_scales;
-    attr_scales.set_scales_mask(DNNL_ARG_SRC, 0);
+    attr_scales.set_scales_mask(arg, 0);
 
     if (supports_scales) { // Currently only used with binary ops
         EXPECT_NO_THROW(pd_t pd(eng, prim_params..., attr_scales));
@@ -971,10 +997,11 @@ void test_fwd_pd_constructors(const pd_t &pd, const allows_attr_t &aa,
     // following ctors w/ attrs may throw based on pd support
     test_fwd_pd_attr_po_sum<pd_t>(eng, aa.po_sum, prim_params...);
     test_fwd_pd_attr_po_eltwise<pd_t>(eng, aa.po_eltwise, prim_params...);
-    test_fwd_pd_attr_po_binary<pd_t>(eng, aa.po_binary, prim_params...);
+    test_fwd_pd_attr_po_binary<pd_t>(eng, aa.po_binary, pd, prim_params...);
     test_fwd_pd_attr_po_prelu<pd_t>(eng, aa.po_prelu, prim_params...);
     test_fwd_pd_attr_zp<pd_t>(eng, aa.zp, prim_params...);
-    test_fwd_pd_attr_scales<pd_t>(eng, aa.scales, prim_params...);
+    test_fwd_pd_attr_scales<pd_t>(
+            eng, aa.scales, aa.scales_arg, prim_params...);
     // check allow empty, should not throw
     test_fwd_pd_allow_empty<pd_t>(test_pd, prim_params...);
 }

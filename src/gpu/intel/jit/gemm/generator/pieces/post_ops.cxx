@@ -211,6 +211,14 @@ void BLASKernelGenerator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, cons
             if (scale.isValid()) {
                 if (op != BinaryOp::Add) stub();
                 mad(nc, C(1), C(1), offBase(stride()), scale);
+            } else if (strategy.dotVL > 0) {
+                // Dot-based kernels pack the C-tile into one register when possible, which results in
+                // register region restriction complications. Split binary operations into execSize=1 pieces.
+                for (int off = 0; off < nc; off++) {
+                    auto val = C.offset(off)(1);
+                    auto src1 = offBase.offset(off)(stride());
+                    binaryOp(op, 1, val, val, src1, state);
+                }
             } else
                 binaryOp(op, nc, C(1), C(1), offBase(stride()), state);
 
@@ -530,7 +538,7 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
         auto &entry = problem.postOps[i];
         switch (entry.kind()) {
             case post_op::kind_t::eltwise: {
-                using Injector = jit_eltwise_injector_f32<hw>;
+                using Injector = eltwise_injector_f32_t<hw>;
                 if (state.Tacc != Type::f32) stub();
 
                 int euCount = 0; /* only used for a DG2 W/A for conv */
@@ -565,7 +573,7 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
         }
     }
     if(problem.cStochasticRound){
-        using Injector = jit_eltwise_injector_f32<hw>;
+        using Injector = eltwise_injector_f32_t<hw>;
         int euCount = 0; /* only used for a DG2 W/A for conv */
         Injector injector{this, alg_kind::eltwise_stochastic_round, 0.0, 0.0, 1.0, 
                           euCount, GRFRange(), problem.postOpFwd};

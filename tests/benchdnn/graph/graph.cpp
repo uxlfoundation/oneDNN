@@ -345,13 +345,25 @@ std::string case_to_str(const std::string &json_file,
         const std::map<size_t, std::string> &op_attrs,
         const graph_fpmath_mode_t &fpmath_mode,
         const size_t expected_n_partitions, const int64_t mb,
-        const dnnl_data_type_t dt) {
+        const dnnl_data_type_t dt,
+        const std::map<size_t, dnnl_data_type_t> &dt_map) {
     std::stringstream s;
     dump_global_params(s);
 
     if (mb != 0) { s << "--mb=" << mb << " "; }
 
     if (dt != dnnl_data_type_undef) { s << "--dt=" << dt << " "; }
+
+    const bool skip_dts = dt_map.empty()
+            || (dt_map.size() == 1 && dt_map.count(SIZE_MAX) == 1);
+    if (!skip_dts) {
+        s << "--dt=";
+        std::string tmp;
+        for (const auto &v : dt_map) {
+            tmp += (std::to_string(v.first) + ":" + dt2str(v.second) + "+");
+        }
+        s << tmp.substr(0, tmp.length() - 1) << " ";
+    }
 
     if (!(in_shapes.size() == 1 && in_shapes.count(0)
                 && in_shapes.at(0) == "default")) {
@@ -404,7 +416,10 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
 
     // A list of ops that don't have DNNL backend support so far.
     static const std::vector<std::string> unimplemented_ops {"Pow"};
-
+    // A list of ops that don't have DNNL backend support so far on GPU.
+    static const std::vector<std::string> unimplemented_ops_gpu {"GenIndex"};
+    const auto &eng = get_graph_engine();
+    bool is_gpu = eng.get_kind() == dnnl::engine::kind::gpu;
     // For an unsupported partition, retrieve all operation IDs, find a
     // correspondent operation kind in a deserialized_graph and match it against
     // a list of known unsupported ops.
@@ -422,6 +437,21 @@ void skip_unimplemented_ops(const dnnl::graph::partition &partition,
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;
+        }
+
+        if (is_gpu) {
+            const bool has_unimplemented_op_gpu = std::any_of(
+                    unimplemented_ops_gpu.begin(), unimplemented_ops_gpu.end(),
+                    [&dg_op_kind](const std::string &kind) {
+                        return dg_op_kind == kind;
+                    });
+            if (has_unimplemented_op_gpu) {
+                BENCHDNN_PRINT(2, "[INFO]: Unimplemented op on GPU: %s.\n",
+                        dg_op_kind.c_str());
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
         }
     }
 }

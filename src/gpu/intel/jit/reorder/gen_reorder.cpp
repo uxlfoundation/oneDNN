@@ -29,7 +29,7 @@
 #include "gpu/intel/jit/reorder/config.hpp"
 #include "gpu/intel/jit/reorder/reorder_kernel.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -58,8 +58,13 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
         return true;
     };
     auto scales_ok = [&]() {
-        return (attr()->scales_.get(DNNL_ARG_SRC).mask_ == 0)
-                && (attr()->scales_.get(DNNL_ARG_DST).mask_ == 0);
+        const bool src_scale_ok
+                = attr()->scales_.has_default_values(DNNL_ARG_SRC)
+                || attr()->scales_.get_mask(DNNL_ARG_SRC) == 0;
+        const bool dst_scale_ok
+                = attr()->scales_.has_default_values(DNNL_ARG_DST)
+                || attr()->scales_.get_mask(DNNL_ARG_DST) == 0;
+        return src_scale_ok && dst_scale_ok;
     };
     auto is_bf16_or_f32_or_f8 = [](data_type_t dt) {
         return utils::one_of(dt, bf16, f32, f8_e5m2, f8_e4m3);
@@ -98,7 +103,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
             | sm::rounding_mode;
     VDISPATCH_REORDER(
             attr()->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_REORDER(extra_ok(), VERBOSE_UNSUPPORTED_MD_FLAG, "extra_ok");
+    VDISPATCH_REORDER(extra_ok(true), VERBOSE_UNSUPPORTED_MD_FLAG, "extra_ok");
     VDISPATCH_REORDER(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_REORDER(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
@@ -148,6 +153,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
             check_layout(dst_layout), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
     VDISPATCH_REORDER(compute_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
+
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
     hw_t hw(engine);
@@ -158,7 +164,8 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     cfg->set_zp_cfg(zp_cfg);
     VDISPATCH_REORDER_SC(
             init_kernel_info(), "kernel initialization unsuccessful");
-
+    VDISPATCH_REORDER_SC(maybe_create_zp_precompute_conv_pd(dst_engine),
+            "failed to create nested zp precompute convolution");
     return status::success;
 }
 
@@ -186,13 +193,11 @@ status_t gen_reorder_t::pd_t::init_kernel_info() {
 
     // Initialize kernel arguments.
     for (auto &t : tensor_cfg.tensors()) {
-        ir_assert(!t.needs_reorder);
-        ir_assert(!t.needs_zero_out);
+        gpu_assert(!t.needs_reorder);
+        gpu_assert(!t.needs_zero_out);
 
         if (t.arg_key == DNNL_ARG_UNDEF) {
-            ir_assert(!t.needs_reorder);
-            ir_assert(!t.needs_zero_out);
-            ir_error_not_expected();
+            gpu_error_not_expected();
             continue;
         }
         kernel_info->register_user_arg(make_buffer(t.name), t.arg_key,
@@ -202,6 +207,9 @@ status_t gen_reorder_t::pd_t::init_kernel_info() {
 }
 
 status_t gen_reorder_t::init(impl::engine_t *engine) {
+    CHECK(pd()->maybe_create_zp_precompute_conv(
+            zp_precomp_conv_, engine, this));
+
     auto &cfg = *pd()->cfg;
     auto &info = *pd()->kernel_info;
 
@@ -221,6 +229,7 @@ status_t gen_reorder_t::execute(const exec_ctx_t &ctx) const {
     info.set_args(arg_list, storage_list);
 
     CHECK(parallel_for(ctx, info.nd_range(), kernel_, arg_list));
+    CHECK(pd()->maybe_exec_zp_precompute_conv(ctx, zp_precomp_conv_));
     return status::success;
 }
 

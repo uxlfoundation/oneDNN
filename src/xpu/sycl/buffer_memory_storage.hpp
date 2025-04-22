@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -67,6 +67,9 @@ public:
             size_t offset, size_t size) const override;
 
     std::unique_ptr<memory_storage_t> clone() const override;
+
+    std::unique_ptr<memory_storage_t> clone_ptr_off(
+            size_t offset) const override;
 
     in_memory_arg_t get_in_memory_arg(
             stream_t *stream, ::sycl::handler &cgh) const override;

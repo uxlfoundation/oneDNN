@@ -56,16 +56,7 @@ class Converter(metaclass=ConverterMeta):
         if self.entry.prop_kind not in dirs:
             return ""
 
-        dir = dirs[self.entry.prop_kind]
-        for md in self.entry.mds:
-            if md.arg != "bia" or md.data_type == "undef":
-                continue
-            if "FWD" in dir:
-                return "FWD_B"
-            if dir == "BWD_W":
-                return "BWD_WB"
-            break
-        return dir
+        return dirs[self.entry.prop_kind]
 
     def _get_alg(self):
         return self.entry.aux.get("alg")
@@ -388,6 +379,17 @@ class MultiDataTypeMixin:
         return "--dt=" + ":".join(dt for dt in dts if dt)
 
 
+class MultiDataTypeWithBiasMixin(MultiDataTypeMixin):
+    @property
+    def dts(self):
+        dts = super().dts
+        for md in self.entry.mds:
+            if md.arg != "bia":
+                continue
+            return f"{dts} --bia-dt={md.data_type}".strip()
+        return dts
+
+
 class NormalizationMixin:
     entry: ir.Entry
 
@@ -435,7 +437,7 @@ class ConcatConverter(CommonDataTypeMixin, MultiSourceMixin, Converter):
 class ConvolutionConverter(
     AlgorithmMixin,
     TagTripletMixin,
-    MultiDataTypeMixin,
+    MultiDataTypeWithBiasMixin,
     Converter,
 ):
     driver: str = "conv"
@@ -482,7 +484,9 @@ class GroupNormalizationConverter(
         return "--tag=" + ":".join(tags)
 
 
-class InnerProductConverter(TagTripletMixin, MultiDataTypeMixin, Converter):
+class InnerProductConverter(
+    TagTripletMixin, MultiDataTypeWithBiasMixin, Converter
+):
     driver: str = "ip"
 
 
@@ -523,7 +527,7 @@ class LRNConverter(AlgorithmMixin, Converter):
         return f"--alg={algs[alg]}"
 
 
-class MatmulConverter(StridesMixin, MultiDataTypeMixin, Converter):
+class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
     driver: str = "matmul"
 
     @staticmethod
@@ -543,15 +547,6 @@ class MatmulConverter(StridesMixin, MultiDataTypeMixin, Converter):
                 mask = md.flags.value.split("_")[1][4:]
                 return f"--bia_mask={mask}"
         return ""
-
-    @property
-    def dts(self):
-        dts = super().dts
-        for md in self.entry.mds:
-            if md.arg != "bia":
-                continue
-            return f"{dts} --bia_dt={md.data_type}".strip()
-        return dts
 
     @property
     def aux(self):

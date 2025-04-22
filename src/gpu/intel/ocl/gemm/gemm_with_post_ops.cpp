@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/gemm/gemm_with_post_ops.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -43,10 +44,13 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
             VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_GEMM(!utils::one_of(d->c_type(), u4, s4), VERBOSE_UNSUPPORTED_DT);
 
     const primitive_attr_t *attributes_with_po = attr();
     for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
-        const auto &mask = attr()->scales_.get(arg).mask_;
+        if (attr()->scales_.has_default_values(arg)) continue;
+
+        const auto &mask = attr()->scales_.get_mask(arg);
         if (arg == DNNL_ARG_WEIGHTS && !wei_decomp)
             VDISPATCH_GEMM((mask == 0 || mask == (1 << (dst_md()->ndims - 1))),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -58,6 +62,17 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(d->sum_ab == sum_ab::sum_none, VERBOSE_UNSUPPORTED_FEATURE,
             "bias reduction");
 
+    subbyte_pack_ = utils::one_of(d->c_type(), f4_e2m1, f4_e3m0);
+    if (subbyte_pack_) {
+        using namespace dnnl::impl::memory_tracking::names;
+        const memory_desc_wrapper dst_mdw(dst_md(0));
+        const auto &padded_dims = dst_mdw.padded_dims();
+        const dim_t ndims = dst_mdw.ndims();
+        const dim_t nelems = utils::array_product(padded_dims, ndims);
+        auto scratchpad = scratchpad_registry().registrar();
+        scratchpad.book(memory_tracking::names::key_matmul_pack_space, nelems,
+                sizeof(char), OCL_BUFFER_ALIGNMENT);
+    }
     const auto impl_list = engine->get_implementation_list(op_desc());
     int current_impl_idx
             = impl_list_item_t::find<ocl::gemm_with_post_ops_t::pd_t>(
@@ -88,17 +103,19 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     // Setup empty attributes but keep zero points for gemm.
     primitive_attr_t attributes_without_po = *attr();
     attributes_without_po.set_post_ops(post_ops_t());
-    attributes_without_po.scales_ = arg_scales_t();
+    attributes_without_po.scales_ = scales_t();
     attributes_without_po.zero_points_ = zero_points_t();
-    int src_mask, wei_mask;
-    auto zp = attributes_with_po->zero_points_;
-    zp.get(DNNL_ARG_SRC, &src_mask);
-    zp.get(DNNL_ARG_WEIGHTS, &wei_mask);
-    if (!zp.has_default_values(DNNL_ARG_SRC))
+    const auto &zp = attributes_with_po->zero_points_;
+    int src_mask = zp.get_mask(DNNL_ARG_SRC);
+    int wei_mask = zp.get_mask(DNNL_ARG_WEIGHTS);
+    if (!zp.has_default_values(DNNL_ARG_SRC)) {
         attributes_without_po.zero_points_.set(DNNL_ARG_SRC, src_mask);
-    if (!zp.has_default_values(DNNL_ARG_WEIGHTS))
-        attributes_without_po.zero_points_.set(DNNL_ARG_WEIGHTS, wei_mask, 0,
-                nullptr, attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS));
+    }
+    if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const auto dt = attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS);
+        attributes_without_po.zero_points_.set(
+                DNNL_ARG_WEIGHTS, wei_mask, dt, 0, {});
+    }
 
     primitive_desc_iterator_t it_gemm_without_po(engine,
             reinterpret_cast<const op_desc_t *>(&gemm_desc),
@@ -140,54 +157,47 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
 status_t gemm_with_post_ops_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     auto c_type = dst_md(0)->data_type;
-    const memory_desc_wrapper bia_d(src_md(2));
-    const memory_desc_wrapper dst_d(gemm_pd_->dst_md(0));
-    offsets_t off;
-    dim_t bia_off[4][MAX_NDIMS];
-    set_offsets(dst_d, off.dst_off);
-    set_offsets(bia_d, bia_off);
-    int ndims = dst_d.ndims();
-    def_offsets(off.dst_off, kernel_ctx, "DST", ndims);
-    def_offsets(bia_off, kernel_ctx, "BIA", ndims);
-    bool with_bias = !bia_d.is_zero();
-    bool is_int8 = src_md(1)->data_type == data_type::s8;
+    const auto src_info = memory_desc_info_t::create(gemm_pd_->dst_md(0));
+    const auto bias_info = [&]() {
+        // If no bias, just default to same layout as dst - any valid layout will work, it's just a dummy
+        auto info = memory_desc_info_t::create(
+                with_bias() ? src_md(2) : dst_md(0));
+        if (info.data_type == data_type::undef) info.data_type = data_type::f32;
+        return info;
+    }();
+
+    def_memory_desc_info(kernel_ctx, src_info, "SRC", false);
+    def_memory_desc_info(kernel_ctx, bias_info, "BIAS", false);
+    def_memory_desc_info(
+            kernel_ctx, memory_desc_info_t::create(dst_md(0)), "DST", false);
+
+    int ndims = src_info.ndims;
     kernel_ctx.set_data_type(c_type);
-    //here SRC is output tensor of gemm call
-    def_data_type(kernel_ctx, desc_.acc_type, "SRC");
-    def_data_type(kernel_ctx, is_int8 ? data_type::f32 : desc_.acc_type, "ACC");
-    def_data_type(kernel_ctx, with_bias ? src_md(2)->data_type : c_type, "BIA");
-    def_data_type(kernel_ctx, desc()->acc_type, "SPAD");
-    def_data_type(kernel_ctx, c_type, "DST");
 
-    kernel_ctx.define_int("USE_TEMP_DST", use_scratchpad_with_post_op_worker);
-
-    kernel_ctx.define_int("WITH_BIAS", with_bias);
-    kernel_ctx.define_int("NDIMS", ndims);
-    kernel_ctx.define_int("BIA_NDIMS", bia_d.md_->ndims);
-    kernel_ctx.define_int("D0_WO_PADDING", gemm_pd_->dst_md()->dims[0]);
-    kernel_ctx.define_int("D1_WO_PADDING", gemm_pd_->dst_md()->dims[1]);
-    kernel_ctx.define_int(
-            "D3_WO_PADDING", ndims > 3 ? gemm_pd_->dst_md()->dims[3] : 1);
-    kernel_ctx.define_int(
-            "D2_WO_PADDING", ndims > 2 ? gemm_pd_->dst_md()->dims[2] : 1);
-    CHECK(def_attr_info(
-            kernel_ctx, attr_info_, attr()->post_ops_, *gemm_pd_->dst_md()));
     const auto &attr_scales = attr()->scales_;
-    const bool with_src_scales
-            = !attr_scales.get(DNNL_ARG_SRC).has_default_values();
+    const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const bool with_wei_scales
-            = !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_values();
-    const bool with_dst_scales
-            = !attr_scales.get(DNNL_ARG_DST).has_default_values();
+            = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
+    const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
+    auto is_int_type = [](data_type_t t) {
+        return utils::one_of(t, data_type::s8, data_type::u8, data_type::s32);
+    };
+    data_type_t acc_type = desc_.acc_type;
+    if (desc_.acc_type == data_type::s32) {
+        if (with_src_scales || with_wei_scales
+                || !is_int_type(bias_info.data_type)
+                || !is_int_type(dst_md(0)->data_type)) {
+            acc_type = data_type::f32;
+        }
+    }
+    def_data_type(kernel_ctx, acc_type, "ACC");
+
+    kernel_ctx.define_int("NDIMS", ndims);
+    CHECK(def_attr_info(kernel_ctx, attr_info_, attr()->post_ops_,
+            *gemm_pd_->dst_md(), false));
     kernel_ctx.define_int("A_SCALES", with_src_scales);
     kernel_ctx.define_int("B_SCALES", with_wei_scales);
     kernel_ctx.define_int("C_SCALES", with_dst_scales);
-    def_data_type(kernel_ctx, attr_scales.get(DNNL_ARG_WEIGHTS).data_type_,
-            "WEI_SCALES");
-    def_data_type(
-            kernel_ctx, attr_scales.get(DNNL_ARG_DST).data_type_, "DST_SCALES");
-    int dst_zp_mask;
-    attr()->zero_points_.get(DNNL_ARG_DST, &dst_zp_mask);
     kernel_ctx.define_int("DST_ZERO_POINT",
             !attr()->zero_points_.has_default_values(DNNL_ARG_DST));
     def_dispatch(kernel_ctx, dispatch_);
@@ -234,31 +244,47 @@ status_t gemm_with_post_ops_t::execute(const gemm_exec_ctx_t &ctx) const {
 
     exec_status = gpu_gemm(gemm_prim_)->execute(gemm_ex_ctx);
     CHECK(exec_status);
+
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
             ctx.stream()->engine());
+    const bool subbyte_pack = pd()->subbyte_pack_;
+
     auto arch = compute_engine->device_info()->gpu_arch();
     // Workaround correctness issue on Gen9
     if (arch == compute::gpu_arch_t::gen9) ctx.stream()->wait();
+    auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
+            memory_tracking::names::key_matmul_pack_space);
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, GEMM_CTX_ARG_STORAGE(c));
+    arg_list.set(0,
+            pd()->use_scratchpad() ? *c_mem_before_po_worker->memory_storage()
+                                   : GEMM_CTX_ARG_STORAGE(c));
     arg_list.set(1, GEMM_CTX_ARG_STORAGE(bias));
-    arg_list.set(2, GEMM_CTX_ARG_STORAGE(c));
+    arg_list.set(2, pd()->subbyte_pack_ ? *tmp : GEMM_CTX_ARG_STORAGE(c));
     const auto &args = ctx.args();
     int idx = append_post_ops_to_arg_list_gemm(
             args.exec_args, arg_list, 3, pd()->attr()->post_ops_);
-    arg_list.set(idx++,
-            pd()->use_scratchpad() ? *c_mem_before_po_worker->memory_storage()
-                                   : memory_storage_t::empty_storage());
     //a/b tensors are swapped for gemm
     arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(b_scales));
     arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(a_scales));
     arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(c_scales));
     arg_list.set(idx++,
-            pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_ != 0 ? 1 : 0);
+            pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0 ? 1 : 0);
     arg_list.set(idx, GEMM_CTX_ARG_STORAGE(c_zero_point));
     auto nd_range = pd()->dispatch_.nd_range();
-    exec_status = parallel_for(ctx, nd_range, post_process_kernel_, arg_list);
-    return exec_status;
+    CHECK(parallel_for(ctx, nd_range, post_process_kernel_, arg_list));
+
+    if (!subbyte_pack) return status_t::dnnl_success;
+    memory_desc_wrapper dst_mdw(pd()->dst_md(0));
+    const dim_t nelems = dst_mdw.nelems();
+    compute::kernel_arg_list_t repack_arg_list;
+    repack_arg_list.set(0, *tmp);
+    repack_arg_list.set(1, GEMM_CTX_ARG_STORAGE(c));
+    repack_arg_list.set(2, into<dim_t>(nelems));
+    repack_arg_list.set(3, 4);
+    compute::range_t repack_gws((nelems * 4 + 7) / 8);
+    compute::nd_range_t repack_nd_range(repack_gws);
+    return large_parallel_for(exec_ctx_t(ctx.stream()), repack_nd_range,
+            subbyte_pack_kernel_, repack_arg_list, 4);
 };
 
 } // namespace ocl

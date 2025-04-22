@@ -368,9 +368,9 @@ private:
         auto &c_buf = buf_info_.reg_buf("c");
 
         for (auto &d : a_layout.dims())
-            ir_assert(fma.inst_tile.has(d)) << d;
+            gpu_assert(fma.inst_tile.has(d)) << d;
         for (auto &d : b_layout.dims())
-            ir_assert(fma.inst_tile.has(d)) << d;
+            gpu_assert(fma.inst_tile.has(d)) << d;
 
         // BMNK order.
         pvar_t dims[4];
@@ -411,7 +411,7 @@ private:
                         c_layout.type(), b_layout.type(), a_layout.type());
                 break;
             }
-            default: ir_error_not_expected();
+            default: gpu_error_not_expected();
         }
         stmt_t call_stmt;
         for (int b = 0; b < sizes[i0]; b += blocks[i0]) {
@@ -496,14 +496,14 @@ public:
 private:
     view_t rhs_mem_view(const pvar_coord_t<expr_t> &_coord,
             const pvar_tile_t &_tile, const type_t &type, uint16_t mask) {
-        dim_mapper_manager_t mger(desc_.prop, desc_.reqs);
+        dim_mapper_manager_t mger(desc_.prop, desc_.spec.reqs());
         auto &c_mapper = mger.mapper(tensor_kind_t::c);
         auto kind = pick_c(desc_.prop, tensor_kind_t::src, tensor_kind_t::wei,
                 tensor_kind_t::dst);
         auto &c_tag = pick_c(
                 desc_.prop, desc_.src_tag, desc_.wei_tag, desc_.dst_tag);
-        auto rhs_layout
-                = make_conv_layout(kind, c_tag, desc_.is_dw, desc_.reqs, mask);
+        auto rhs_layout = make_conv_layout(
+                kind, c_tag, desc_.is_dw, desc_.spec.reqs(), mask);
         rhs_layout = rhs_layout.retype(type);
         auto is_bcast = [&](const pvar_t &dim) {
             for (auto &b : rhs_layout.blocks()) {
@@ -525,7 +525,7 @@ private:
     void build_binary_post_op(alg_kind_t alg, const layout_t &lhs,
             const layout_t &_rhs, const expr_t &lhs_buf, const expr_t &_rhs_buf,
             float scale = 1, int zero_point = 0) {
-        ir_assert(lhs.type() == type_t::f32());
+        gpu_assert(lhs.type() == type_t::f32());
         auto rhs = _rhs;
         auto rhs_buf = _rhs_buf;
         if (rhs.type() != type_t::f32()) {
@@ -543,8 +543,8 @@ private:
                     = eltwise_t::make(alg_kind::eltwise_linear, 1, scale, 0.0f);
             emit(func.call({expr_t(rhs.elems()), rhs_buf}));
         }
-        ir_assert(lhs.nblocks() > 0);
-        int max_simd = (2 * desc_.hw.grf_size()) / sizeof(float);
+        gpu_assert(lhs.nblocks() > 0);
+        int max_simd = (2 * desc_.hw_desc.grf_size()) / sizeof(float);
         auto &lhs0 = lhs.blocks()[0];
         int elems = math::gcd(max_simd, lhs0.int_size());
         bool is_bcast = !rhs.dim_sizes().has(lhs0.dim);
@@ -637,7 +637,7 @@ private:
         auto f32_layout = out_layout.retype(type_t::f32(), /*dense=*/true);
         auto tile = f32_layout.int_dim_sizes();
         int elems = f32_layout.elems();
-        ir_assert(elems * type_t::f32().size() == f32_layout.size());
+        gpu_assert(elems * type_t::f32().size() == f32_layout.size());
         auto buf = reorder(layout, f32_layout, _buf);
         arg_helper_t arg_helper(desc_);
         auto &c_tag = pick_c(
@@ -667,7 +667,7 @@ private:
                         buf_info_.mem_buf(rhs_buf_name), type_t(b.src1_desc.dt),
                         mask);
             } else {
-                ir_error_not_expected();
+                gpu_error_not_expected();
             }
         }
         out_layout = f32_layout;
@@ -966,17 +966,17 @@ private:
 
 stmt_t build_ir(const exec_config_t &exec_cfg, const kernel_desc_t &desc,
         var_manager_t &var_mgr) {
-    auto plan = create_conv_plan(desc);
-    if (!plan) ir_except_not_implemented("Cannot create plan.");
+    auto plan = create_conv_plan(desc, exec_cfg.hw());
+    if (!plan) gpu_except_not_implemented("Cannot create plan.");
 
-    ir_info() << desc << std::endl;
-    ir_trace() << plan << std::endl;
+    gpu_info() << desc;
+    gpu_trace() << plan;
 
     constraint_set_t cset;
     ir_context_t ir_ctx(exec_cfg, cset);
     conv_builder_t builder(ir_ctx, desc, var_mgr, plan);
     auto stmt = builder.get_stmt();
-    ir_trace() << "Convolution kernel body:\n" << stmt << std::endl;
+    gpu_trace() << "Convolution kernel body:\n" << stmt;
     return stmt;
 }
 

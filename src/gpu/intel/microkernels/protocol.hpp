@@ -118,7 +118,7 @@ struct StructuredType {
     enum Format { Scalar, GlobalPointer, LocalPointer, Tensor } format = Scalar;
     int ndims = 1;
 
-    StructuredType() {}
+    StructuredType() = default;
     StructuredType(Type type_) : type(type_) {}
     StructuredType(Format format_) : format(format_) {}
     StructuredType(int ndims_) : format(Tensor), ndims(ndims_) {}

@@ -36,7 +36,7 @@ int hw_t::cache_line_size() const {
         case ngen::HW::Xe3p:
 #endif
         case ngen::HW::Xe3: return 64;
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return 0;
 }

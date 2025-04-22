@@ -39,8 +39,8 @@ namespace impl {
 struct sdpa_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::sdpa;
 
-    typedef sdpa_pd_t base_class;
-    typedef sdpa_pd_t hint_class;
+    using base_class = sdpa_pd_t;
+    using hint_class = sdpa_pd_t;
 
     const sdpa_desc_t *desc() const { return &desc_; }
     const op_desc_t *op_desc() const override {
@@ -106,6 +106,9 @@ struct sdpa_pd_t : public primitive_desc_t {
         return (attn_mask_md()->data_type != data_type::undef);
     }
 
+    /// If true, the attention mask is causal mask
+    bool with_causal_mask() const { return desc_.causal_mask; }
+
     /// If true, dequantize the K tensor using scaling in the KQ matmul
     bool with_key_scales() const {
         return (!desc()->kq_scales.has_default_values());
@@ -127,7 +130,9 @@ struct sdpa_pd_t : public primitive_desc_t {
     }
 
     /// Returns the data type of the scales tensor for the KQ matmul
-    data_type_t key_scales_dt() const { return desc()->kq_scales.data_type_; }
+    data_type_t key_scales_dt() const {
+        return desc()->kq_scales.get_data_type();
+    }
 
     /// Returns the data type of the zero points tensor for the KQ matmul
     data_type_t key_zp_dt() const {
@@ -135,7 +140,9 @@ struct sdpa_pd_t : public primitive_desc_t {
     }
 
     /// Returns the data type of the scales tensor for the VS matmul
-    data_type_t value_scales_dt() const { return desc()->vs_scales.data_type_; }
+    data_type_t value_scales_dt() const {
+        return desc()->vs_scales.get_data_type();
+    }
 
     /// Returns the data type of the zero points tensor for the VS matmul
     data_type_t value_zp_dt() const {
@@ -195,18 +202,19 @@ protected:
 
 private:
     static int scale_group_size(
-            const runtime_scales_t &scales, const memory_desc_t &desc) {
+            const quant_entry_t &scales, const memory_desc_t &desc) {
         dim_t out = utils::array_product(desc.dims, desc.ndims);
+        const auto mask = scales.get_mask();
         if (scales.has_default_groups()) {
-            for (int idx : mask_iterator(scales.mask_)) {
+            for (int idx : mask_iterator(mask)) {
                 out /= desc.dims[idx];
             }
         } else {
-            for (int idx : mask_iterator(scales.mask_)) {
+            for (int idx : mask_iterator(mask)) {
                 if (idx < 2) {
                     out /= desc.dims[idx];
                 } else {
-                    out /= (desc.dims[idx] / scales.group_dims_[idx - 2]);
+                    out /= (desc.dims[idx] / scales.get_group(idx - 2));
                 }
             }
         }
@@ -216,17 +224,17 @@ private:
     static int zp_group_size(
             const zero_points_t &zp, const memory_desc_t &desc) {
         dim_t out = utils::array_product(desc.dims, desc.ndims);
-        if (zp.has_default_groups(DNNL_ARG_WEIGHTS)) {
-            for (int idx : mask_iterator(zp.get(DNNL_ARG_WEIGHTS))) {
+        if (zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+            for (int idx : mask_iterator(zp.get_mask(DNNL_ARG_WEIGHTS))) {
                 out /= desc.dims[idx];
             }
         } else {
-            auto groups = zp.get_groups(DNNL_ARG_WEIGHTS);
-            for (int idx : mask_iterator(zp.get(DNNL_ARG_WEIGHTS))) {
+            for (int idx : mask_iterator(zp.get_mask(DNNL_ARG_WEIGHTS))) {
                 if (idx < 2) {
                     out /= desc.dims[idx];
                 } else {
-                    out /= (desc.dims[idx] / groups[idx - 2]);
+                    out /= (desc.dims[idx]
+                            / zp.get_group(DNNL_ARG_WEIGHTS, idx - 2));
                 }
             }
         }

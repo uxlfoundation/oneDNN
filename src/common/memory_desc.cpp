@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -471,8 +471,9 @@ status_t memory_desc_permute_axes(memory_desc_t &out_memory_desc,
     VCHECK_MEMORY(
             !memory_desc_wrapper(in_memory_desc).has_runtime_dims_or_strides(),
             invalid_arguments, VERBOSE_UNSUPPORTED_MEM_STRIDE);
-    VCHECK_MEMORY(in_memory_desc.extra.flags == 0, invalid_arguments,
-            VERBOSE_UNSUPPORTED_MD_FLAG, "extra");
+    VCHECK_MEMORY(
+            check_md_extra_flags_compensation_gpu(in_memory_desc.extra.flags),
+            invalid_arguments, VERBOSE_UNSUPPORTED_MD_FLAG, "extra");
 
     // verify that perm is indeed a permutation of [0 .. ndims)
     unsigned occurrence_mask = 0;
@@ -530,8 +531,10 @@ status_t memory_desc_init_by_string_tag(memory_desc_t &md, int ndims,
             pos--;
 
         int dim_idx = std::tolower(tag[pos0]) - 'a';
-        VCHECK_MEMORY(dim_idx < ndims, invalid_arguments, VERBOSE_BAD_NDIMS, "",
-                ndims);
+        VCHECK_MEMORY(dim_idx < ndims, invalid_arguments,
+                "ndims deduced (%d) from the tag \'%s\' is inconsistent with "
+                "provided ndims (%d)",
+                dim_idx + 1, tag.c_str(), ndims);
         ndims_from_tag = std::max(dim_idx + 1, ndims_from_tag);
         int block_str_len = pos0 - pos - 1;
         bool is_blocked = block_str_len > 0;
@@ -541,7 +544,9 @@ status_t memory_desc_init_by_string_tag(memory_desc_t &md, int ndims,
         dim_blocks.emplace_back(dim_idx, block);
     }
     VCHECK_MEMORY((ndims_from_tag == ndims), invalid_arguments,
-            VERBOSE_BAD_NDIMS, "", ndims);
+            "ndims deduced (%d) from the tag \'%s\' is inconsistent with "
+            "provided ndims (%d)",
+            ndims_from_tag, tag.c_str(), ndims);
 
     auto &blk = md.format_desc.blocking;
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,11 +28,16 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+void init_kernel_datatype(
+        brgemm_desc_t *brg, data_type_t dt_a, data_type_t dt_b);
+
 namespace brgemm_utils {
 
 bool can_dispatch_uker(const brgemm_desc_t *brg);
 
 void maybe_try_bf32(brgemm_desc_t *brg);
+
+void set_isa_impl(brgemm_desc_t *brg);
 
 status_t brgemm_blocking(brgemm_desc_t *brg);
 

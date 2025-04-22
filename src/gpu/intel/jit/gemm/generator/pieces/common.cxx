@@ -454,7 +454,7 @@ void BLASKernelGenerator<hw>::zeroMatrix(const GRFMultirange &r, const CommonStr
     int i = 0;
     map<uint32_t>(hw, r, r, strategy, [&](int esize, GRF reg, GRF _) {
         (i++ & 1) ? mov(esize, reg.f(), 0.f)
-                  : mov(esize, reg, 0);
+	          : mov(esize, reg, 0);
     });
 }
 
@@ -568,7 +568,7 @@ Subregister BLASKernelGenerator<hw>::findLDMultiple(const LDMultiples &multiples
 
 // Calculate and cache a specific ld multiple.
 template <HW hw>
-void BLASKernelGenerator<hw>::calcIncrement(LDIncrements &increments, SubregisterPair &base, int scale, const CommonStrategy &strategy, CommonState &state)
+void BLASKernelGenerator<hw>::calcIncrement(LDIncrements &increments, SubregisterPair &base, int scale,  const CommonStrategy &strategy, CommonState &state)
 {
     // Check for existing increment.
     for (auto &inc: increments)
@@ -577,7 +577,8 @@ void BLASKernelGenerator<hw>::calcIncrement(LDIncrements &increments, Subregiste
 
     // Copy base for scale = 1.
     if (scale == 1) {
-        duplicateScalar(base, state);
+        if(strategy.avoidIncConflicts)
+            duplicateScalar(base, state);
         increments.push_back(std::make_pair(1, base));
         return;
     }
@@ -585,14 +586,13 @@ void BLASKernelGenerator<hw>::calcIncrement(LDIncrements &increments, Subregiste
     // General scaling.
     SubregisterPair scaled;
     if (strategy.avoidIncConflicts)
-        scaled = SubregisterPair(state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm0, strategy)),
-                                 state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm1, strategy)));
+        scaled = SubregisterPair(state.ra.alloc_sub(increments.type, getHint(HintType::LongTerm0, strategy)),
+                                 state.ra.alloc_sub(increments.type, getHint(HintType::LongTerm1, strategy)));
     else
-        scaled = SubregisterPair(state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy)));
+        scaled = SubregisterPair(state.ra.alloc_sub(increments.type, getHint(HintType::LongTerm, strategy)));
 
-    int nr = strategy.avoidIncConflicts ? 2 : 1;
-    for (int i = 0; i < nr; i++)
-        emulConstant(1, scaled.getReg(i), base, scale, strategy, state);
+    emulConstant(1, scaled.getReg(0), base, scale, strategy, state);
+    if(scaled.isDuplicated()) emov(1, scaled.getReg(1), scaled.getReg(0), strategy, state);
 
     increments.push_back(std::make_pair(scale, scaled));
 }
@@ -610,7 +610,7 @@ SubregisterPair BLASKernelGenerator<hw>::lookupIncrement(const LDIncrements &inc
     if (!release)
         return SubregisterPair();
 
-    auto result = state.ra.alloc_sub<int32_t>();
+    auto result = state.ra.alloc_sub(increments.type);
     emulConstant(1, result, base, scale, strategy, state);
     *release = true;
 

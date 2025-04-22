@@ -68,7 +68,7 @@ struct simple_sum_t : public gpu_primitive_t {
     status_t execute(const exec_ctx_t &ctx) const override;
 
     enum { max_num_arrs = 16 };
-    typedef typename prec_traits<data_type>::type data_t;
+    using data_t = typename prec_traits_t<data_type>::type;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

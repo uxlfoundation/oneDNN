@@ -89,9 +89,9 @@ struct vectorized_lnorm_fwd_t : public gpu_primitive_t {
         CHECK(status);
 
         kernel_ctx.define_int("WITH_SRC_SCALES",
-                !pd()->attr()->scales_.get(DNNL_ARG_SRC).has_default_values());
+                !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC));
         kernel_ctx.define_int("WITH_DST_SCALES",
-                !pd()->attr()->scales_.get(DNNL_ARG_DST).has_default_values());
+                !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST));
 
         CHECK(create_kernel(
                 engine, &kernel_, "vectorized_lnorm_fwd", kernel_ctx));

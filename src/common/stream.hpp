@@ -29,7 +29,7 @@
 struct dnnl_stream : public dnnl::impl::c_compatible {
     dnnl_stream(dnnl::impl::engine_t *engine, dnnl::impl::stream_impl_t *impl)
         : engine_(engine), impl_(impl) {}
-    virtual ~dnnl_stream() {}
+    virtual ~dnnl_stream() = default;
 
     /** returns stream's engine */
     dnnl::impl::engine_t *engine() const { return engine_; }

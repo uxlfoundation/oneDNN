@@ -19,7 +19,7 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/bnorm/bnorm_model.hpp"
 #include "gpu/intel/ocl/bnorm/bnorm_utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 using namespace dnnl::impl::memory_tracking::names;
 

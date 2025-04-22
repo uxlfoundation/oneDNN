@@ -265,7 +265,7 @@ status_t brgemm_convolution_fwd_t<isa, use_inversion>::pd_t::add_brg_descriptor(
     brgattr.hint_expected_B_size = 0;
     brgattr.hint_expected_C_size = 0;
 
-    brgattr.wary_tail_read = false;
+    brgattr.wary_A_k_tail_read = false;
     brgattr.bd_mask_level = jcp_.use_M_mask;
 
     brgattr.max_top_vpad = jcp_.max_vpad;
@@ -279,6 +279,8 @@ status_t brgemm_convolution_fwd_t<isa, use_inversion>::pd_t::add_brg_descriptor(
     brg.with_sum = with_sum;
     brg.with_weights_scale_adjust = jcp_.scale_adjust_factor != 1.0f;
     CHECK(brgemm_desc_set_postops(&brg, attr(), &dst_md_, LDD, jcp_.bia_dt));
+
+    CHECK(brgemm_desc_finalize(&brg));
 
     brgemm_descriptors_->insert(brg_idx, brg, bd_mask, stoffs);
 

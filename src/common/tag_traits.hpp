@@ -142,6 +142,7 @@ enum class inner_blk_t {
     _16b4c,
     _16c2b,
     _16c4b,
+    _16e4c,
     _24a2b,
     _24a4b,
     _24b2a,
@@ -150,6 +151,7 @@ enum class inner_blk_t {
     _24b4c,
     _24c2b,
     _24c4b,
+    _16d4c,
     _32d4c,
     _32e2c,
     _32e4c,
@@ -323,12 +325,12 @@ constexpr int AB_or_BC_blk_off(int x0, int x1) {
 }
 
 template <inner_blk_t b>
-struct inner_blk_traits {
+struct inner_blk_traits_t {
     using ib = inner_blk_t;
 };
 
 template <format_tag_t>
-struct tag_traits {
+struct tag_traits_t {
     // block_dim_t block_dims;
     // inner_blk_t inner_blks;
     // int ndims;
@@ -336,7 +338,7 @@ struct tag_traits {
 
 #define DECL_TRAITS(_tag, _blk_fmt, _inner_blk, _ndims) \
     template <> \
-    struct tag_traits<format_tag::_tag> { \
+    struct tag_traits_t<format_tag::_tag> { \
         static constexpr block_dim_t block_dims = block_dim_t::_blk_fmt; \
         static constexpr inner_blk_t inner_blks = inner_blk_t::_inner_blk; \
         static constexpr int ndims = _ndims; \
@@ -851,6 +853,7 @@ DECL_TRAITS(aBCde4c8b2c, _BC, _4c8b2c, 5);
 DECL_TRAITS(aBCdef4c8b2c, _BC, _4c8b2c, 6);
 DECL_TRAITS(abDc16d, _D, _16d, 4);
 DECL_TRAITS(abDc32d, _D, _32d, 4);
+DECL_TRAITS(abDC16d4c, _CD, _16d4c, 4);
 DECL_TRAITS(abDC32d4c, _CD, _32d4c, 4);
 DECL_TRAITS(abCd32c, _C, _32c, 4);
 DECL_TRAITS(abCde32c, _C, _32c, 5);
@@ -860,6 +863,7 @@ DECL_TRAITS(abCde4c, _C, _4c, 5);
 DECL_TRAITS(abCdef4c, _C, _4c, 6);
 DECL_TRAITS(abdEc16e, _E, _16e, 5);
 DECL_TRAITS(abdEc32e, _E, _32e, 5);
+DECL_TRAITS(abdEC16e4c, _CE, _16e4c, 5);
 DECL_TRAITS(abdEC32e2c, _CE, _32e2c, 5);
 DECL_TRAITS(abdEC32e4c, _CE, _32e4c, 5);
 DECL_TRAITS(abdEC64e2c, _CE, _64e2c, 5);

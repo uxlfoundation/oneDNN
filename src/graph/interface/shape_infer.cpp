@@ -32,9 +32,6 @@ namespace dnnl {
 namespace impl {
 namespace graph {
 
-// utils function
-namespace {
-
 std::string dims2str(const dims &dims) {
     if (dims.empty()) return std::string("");
 
@@ -44,8 +41,6 @@ std::string dims2str(const dims &dims) {
         str += ("x" + std::to_string(dims[d]));
     return str;
 }
-
-} // namespace
 
 /// convert shape to ncx or oix
 dims canonicalize(const dims &shape, const std::string &format) {

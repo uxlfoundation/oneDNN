@@ -17,7 +17,7 @@
 #include "gpu/intel/jit/gen9_simple_sum.hpp"
 
 #include "gpu/intel/jit/gen9_simple_sum_kernel_f32.hpp"
-#include "gpu/intel/ocl/ocl_gpu_kernel.hpp"
+#include "gpu/intel/ocl/kernel.hpp"
 
 namespace dnnl {
 namespace impl {

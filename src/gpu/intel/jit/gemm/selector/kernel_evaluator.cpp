@@ -244,9 +244,9 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     } else if (e.driverInfo.kParallelVariable()) {
         /* Variable k-slicing disabled: use kr to fill GPU as much as possible */
         if (threads < capacity && !noKR)
-            aux.wgK = roundDownSmallPow2(uint16_t(std::floor(capacity / threads)));
+            aux.wgK = roundDownSmallPow2(uint16_t(threads ? std::floor(capacity / threads) : 1));
     } else if (e.driverInfo.shrinkWGK())
-        aux.wgK = roundUpSmallPow2(uint8_t(std::ceil(capacity * e.driverInfo.wg[LoopK] * e.driverInfo.fillGoal() / threads)));
+        aux.wgK = roundUpSmallPow2(uint8_t(threads ? std::ceil(capacity * e.driverInfo.wg[LoopK] * e.driverInfo.fillGoal() / threads) : 1));
     else
         aux.wgK = e.driverInfo.wg[LoopK];
 

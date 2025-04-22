@@ -35,7 +35,7 @@ Privileges:
 ## Code Owner
 
 A Code Owner has responsibility for a specific project component or a functional
-area. Code Owners are collectively responsible, with other Code Owners, 
+area. Code Owners are collectively responsible, with other Code Owners,
 for developing and maintaining their component or functional areas, including
 reviewing all changes to their their areas of responsibility and indicating
 whether those changes are ready to merge. They have a track record of
@@ -72,7 +72,7 @@ including name, Github username, and affiliation.
 2. At least two specific component Maintainers approve the PR.
 
 ## Maintainer
-Maintainers are the most established contributors who are responsible for the 
+Maintainers are the most established contributors who are responsible for the
 project technical direction and participate in making decisions about the
 strategy and priorities of the project.
 
@@ -100,7 +100,7 @@ Privileges:
   * Can recommend Code Owners to become Maintainers.
 
 Process of becoming a maintainer:
-1. A Maintainer may nominate a current Reviewer to become a new Maintainer by 
+1. A Maintainer may nominate a current Reviewer to become a new Maintainer by
 opening a PR against MAINTAINERS.md file.
 2. A majority of the current Maintainers must then approve the PR.
 
@@ -117,6 +117,7 @@ Team: @oneapi-src/onednn-arch
 | Mourad Gouicem     | @mgouicem             | Intel Corporation | Maintainer |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Ankit Manerikar    | @avmanerikar          | Intel Corporation | Code Owner |
+| Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
 
 ## Graph API
 
@@ -130,9 +131,7 @@ Team: @oneapi-src/onednn-graph
 | Shaojie Cui        | @ShanSimu             | Intel Corporation | Code Owner |
 | Yonghao Gu         | @gyhintel             | Intel Corporation | Code Owner |
 | Rong Zhang         | @rongzha1             | Intel Corporation | Code Owner |
-| Zhailong Mu        | @muzhailong           | Intel Corporation | Code Owner |
 | Xiang Guo          | @xiang1guo            | Intel Corporation | Code Owner |
-| Jiaming Song       | @litchilitchy         | Intel Corporation | Code Owner |
 | Yixin Bao          | @ElaineBao            | Intel Corporation | Code Owner |
 
 ## CPU Engine
@@ -144,14 +143,12 @@ Team: @oneapi-src/onednn-cpu-x64
 | Name               | Github ID             | Affiliation       | Role       |
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Andrey Kalinin     | @ankalinin            | Intel Corporation | Maintainer |
-| Arthur Mitrano     | @aaraujom             | Intel Corporation | Maintainer |
-| Srinivas Putta     | @nivas-x86            | Intel Corporation | Maintainer |
 | Tatyana Primak     | @tprimak              | Intel Corporation | Maintainer |
+| Alexey Makarevich  | @amakarev             | Intel Corporation | Code Owner |
 | David Eberius      | @davideberius         | Intel Corporation | Code Owner |
-| John Karasev       | @karashjoh000         | Intel Corporation | Code Owner |
 | Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
 | Tomasz Czeszun     | @tczeszun             | Intel Corporation | Code Owner |
-| Xuxin Zen          | @xuxinzen             | Intel Corporation | Code Owner |
+| Xuxin Zeng         | @xuxinzen             | Intel Corporation | Code Owner |
 
 ### AArch64
 
@@ -166,6 +163,7 @@ Team: @oneapi-src/onednn-cpu-aarch64
 | Radu Salavat       | @Radu2k               | Arm Ltd           | Code Owner |
 | Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
 | Sunita Nadampalli  | @snadampal            | Amazon.com, Inc.  | Code Owner |
+| Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
 
 ### OpenPOWER (PPC64)
 
@@ -216,11 +214,11 @@ Teams:
 | Name               | Github ID             | Affiliation       | Role       |
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Anton Mitkov       | @ShanoToni            | Codeplay Software | Code Owner |
-| Dylan Angus        | @dylan-angus-codeplay | Codeplay Software | Code Owner |
-| John Osorio        | @kala855              | Codeplay Software | Code Owner |
+| Atharva Dubey      | @AD2605               | Codeplay Software | Code Owner |
 | Mehdi Goli         | @mehdi-goli           | Codeplay Software | Code Owner |
-| Tadej Ciglarič     | @t4c1                 | Codeplay Software | Code Owner |
+| Nicolò Scipione    | @s-Nick               | Codeplay Software | Code Owner |
 | Svetlozar Georgiev | @sgeor255             | Codeplay Software | Code Owner |
+| Romain Biessy      | @Rbiessy              | Codeplay Software | Code Owner |
 
 ## Support functions
 
@@ -231,7 +229,8 @@ Team: @oneapi-src/onednn-doc
 | Name               | Github ID             | Affiliation       | Role       |
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
-| Deb Taylor         | @deb-intel            | Intel Corporation | Code Owner |
+| Ranu Kundu         | @ranukund             | Intel Corporation | Code Owner |
+| Tao Lv             | @TaoLv                | Intel Corporation | Code Owner |
 
 ### DevOps
 
@@ -247,6 +246,5 @@ Team: @oneapi-src/onednn-devops
 
 | Name               | Github ID             | Affiliation       | Role       |
 | ------------------ | --------------------- | ----------------- | ---------- |
-| Harry Mao          | @harrymao2022         | Intel Corporation | Maintainer |
 | Tatyana Primak     | @tprimak              | Intel Corporation | Maintainer |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2022-2024 Intel Corporation
+ * Copyright 2022-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -171,7 +171,7 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
         const auto &post_ops = fusion_info.get_post_ops();
         for (size_t i = 0; i < post_ops.size(); ++i) {
             if (!post_ops[i]->is_post_binary()) continue;
-            auto binary = post_ops[i];
+            const auto &binary = post_ops[i];
             std::vector<size_t> binary_idx
                     = binary->get_unfused_input_indices();
             if (binary_idx.empty()) continue;
@@ -1510,6 +1510,20 @@ status_t layout_propagator_for_add_zps(std::shared_ptr<op_t> &op,
     return status::invalid_graph_op;
 }
 
+status_t layout_propagator_for_gen_index(std::shared_ptr<op_t> &op,
+        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
+    UNUSED(p_engine);
+    UNUSED(mgr);
+    UNUSED(pd_cache);
+    UNUSED(rewriter);
+    auto src_md = make_dnnl_memory_desc(
+            op->get_input_value(0)->get_logical_tensor());
+    value_ptr dst_val = op->get_output_value(0);
+    status_t status = fill_layout_info(dst_val, src_md);
+    return status;
+}
+
 status_t layout_propagator_for_groupnorm(op_ptr &op,
         const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
@@ -1537,6 +1551,20 @@ status_t layout_propagator_for_groupnorm(op_ptr &op,
     // scratchpad is groupnorm's last output
     value_ptr scratchpad_val = op->get_output_values().back();
     status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
+    return status;
+}
+
+status_t layout_propagator_for_mask(std::shared_ptr<op_t> &op,
+        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
+    UNUSED(p_engine);
+    UNUSED(mgr);
+    UNUSED(pd_cache);
+    UNUSED(rewriter);
+    auto src_md = make_dnnl_memory_desc(
+            op->get_input_value(0)->get_logical_tensor());
+    value_ptr dst_val = op->get_output_value(0);
+    status_t status = fill_layout_info(dst_val, src_md);
     return status;
 }
 

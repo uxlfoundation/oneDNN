@@ -23,6 +23,7 @@ file(GLOB HEADERS_SUBDIR
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/oneapi/dnnl/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/oneapi/dnnl/*.hpp
     )
+include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party)
 include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR})
 
 if (DNNL_LIBRARY_TYPE STREQUAL "SHARED")
@@ -152,10 +153,10 @@ endif()
 if(ONEDNN_BUILD_GRAPH)
     message(STATUS "Graph component is enabled")
 
-    if (NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND NOT DNNL_GPU_VENDOR STREQUAL "INTEL")
+    if (NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND NOT DNNL_GPU_VENDOR STREQUAL "INTEL" AND NOT DNNL_GPU_VENDOR STREQUAL "NVIDIA")
         message(FATAL_ERROR "Graph API does not support ${DNNL_GPU_VENDOR} GPU. "
             "Either disable Graph API with ONEDNN_BUILD_GRAPH=OFF or change GPU "
-            "vendor to INTEL with ONEDNN_GPU_VENDOR=INTEL.")
+            "vendor to INTEL or NVIDIA.")
     endif()
 
     if (NOT DNNL_ENABLE_PRIMITIVE STREQUAL "ALL")
@@ -230,7 +231,7 @@ foreach(header ${HEADERS_SUBDIR})
 endforeach()
 
 string(TOUPPER "${LIB_PACKAGE_NAME}::" LIB_NAMESPACE)
-if(DNNL_INSTALL_MODE STREQUAL "BUNDLE_V2" AND WIN32)
+if(DNNL_INSTALL_MODE STREQUAL "BUNDLE" AND WIN32)
     # Config file for binary distribution needs to define a mapping
     # DEBUG -> RELWITHMDD so that proper library (dnnld) is picked up for the
     # DEBUG configuration.
@@ -261,7 +262,7 @@ install(EXPORT ${LIB_EXPORT_NAME}
 
 # Apply a workaround to CMake config file to make it work with symlinks.
 # The patched config file is only used in oneAPI binary distribution.
-if(UNIX AND DNNL_INSTALL_MODE STREQUAL "BUNDLE_V2")
+if(UNIX AND DNNL_INSTALL_MODE STREQUAL "BUNDLE")
     install(CODE "file(READ \"${CMAKE_INSTALL_PREFIX}/${LIB_CONFIG_INSTALL_DIR}/${LIB_PACKAGE_NAME}-targets.cmake\" TARGETS_CONTENT)")
     install(CODE "string(REPLACE
                          \"get_filename_component(_IMPORT_PREFIX \\\"\\\${CMAKE_CURRENT_LIST_FILE}\\\" PATH)\"

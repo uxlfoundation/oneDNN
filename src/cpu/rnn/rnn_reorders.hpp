@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ template <data_type_t type_i>
 static inline void quantize_igo(int8_t *scratch_quantized,
         const memory_desc_wrapper &src_d, const float *src, int mask,
         float *scales) {
-    typedef typename prec_traits<type_i>::type in_data_t;
+    using in_data_t = typename prec_traits_t<type_i>::type;
 
     // TODO: trivial strides assumes here.
     //       Use proper strides where appropriate
@@ -87,7 +87,7 @@ template <data_type_t type_i>
 static inline void quantize_goi(int8_t *scratch_quantized,
         const memory_desc_wrapper &src_d, const float *src, int mask,
         float *scales) {
-    typedef typename prec_traits<type_i>::type in_data_t;
+    using in_data_t = typename prec_traits_t<type_i>::type;
 
     // TODO: trivial strides assumes here.
     //       Use proper strides where appropriate
@@ -232,8 +232,8 @@ struct rnn_data_reorder_t : public primitive_t {
     rnn_data_reorder_t(const pd_t *apd) : primitive_t(apd) {}
 
 private:
-    typedef typename prec_traits<type_i>::type in_data_t;
-    typedef typename prec_traits<type_o>::type out_data_t;
+    using in_data_t = typename prec_traits_t<type_i>::type;
+    using out_data_t = typename prec_traits_t<type_o>::type;
 
     bool is_dense() const {
         const memory_desc_wrapper &input_d = pd()->src_md();
@@ -428,7 +428,7 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
     rnn_weights_reorder_s8_t(const pd_t *apd) : primitive_t(apd) {}
 
 private:
-    typedef typename prec_traits<type_i>::type in_data_t;
+    using in_data_t = typename prec_traits_t<type_i>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         // TODO: trivial strides assumed here.
@@ -615,8 +615,8 @@ struct rnn_weights_reorder_t : public primitive_t {
     rnn_weights_reorder_t(const pd_t *apd) : primitive_t(apd) {}
 
 private:
-    typedef typename prec_traits<type_i>::type in_data_t;
-    typedef typename prec_traits<type_o>::type out_data_t;
+    using in_data_t = typename prec_traits_t<type_i>::type;
+    using out_data_t = typename prec_traits_t<type_o>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         // TODO: trivial strides assumed here.
@@ -779,12 +779,7 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
                 return unimplemented;
 
             // Check the proper memory desc has been passed to u8s8 and s8s8
-            // Note: currently rnn_u8s8_compensation and rnn_s8s8_compensation
-            // have common bit so we have to perform additional checks to
-            // separate these two cases
             const bool check_u8s8 = (od.extra().flags & rnn_u8s8_compensation)
-                    && !types::extra_flag_rnn_s8s8_compensation_is_set(
-                            od.extra().flags)
                     && od.extra().compensation_mask
                             == ((id.ndims() == 5) ? 27 /* 11011 */
                                                   : 13 /* 1101 */);
@@ -802,7 +797,8 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
             format_tag_t otag, itag;
 
             itag = id.matches_one_of_tag(ldigo, ldio);
-            otag = od.matches_one_of_tag(ldgOI64o4i, ldgOI32o4i, ldOI32o4i);
+            otag = od.matches_one_of_tag(
+                    ldgOI64o4i, ldgOI32o4i, ldgOI16o4i, ldOI32o4i, ldOI16o4i);
             if (itag != format_tag::undef && otag != format_tag::undef) {
                 _pd->itag_ = itag;
                 _pd->otag_ = otag;
@@ -842,8 +838,8 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
     rnn_brgemm_weights_reorder_s8_t(const pd_t *apd) : primitive_t(apd) {}
 
 private:
-    typedef typename prec_traits<type_i>::type in_data_t;
-    typedef typename prec_traits<type_o>::type out_data_t;
+    using in_data_t = typename prec_traits_t<type_i>::type;
+    using out_data_t = typename prec_traits_t<type_o>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         using namespace format_tag;
@@ -860,15 +856,13 @@ private:
             return status::success;
         }
 
-        const auto &blocked_d = dst_d;
-        const auto &pdims = blocked_d.padded_dims();
-
-        const int o_block = pd()->otag_ == ldgOI64o4i ? 64 : 32;
+        const int o_block = dst_d.blocking_desc().inner_blks[0];
         static constexpr int i_block = 4;
 
         dim_t L, D, I, G, O;
         init_dims(L, D, I, G, O, src_d);
 
+        const auto &pdims = dst_d.padded_dims();
         const dim_t pI = pdims[2];
         const dim_t pO = (src_d.ndims() == 5) ? pdims[4] : pdims[3];
         const dim_t IB = pI / i_block;
@@ -886,9 +880,7 @@ private:
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_reduction);
         float *comp = reinterpret_cast<float *>(dst + compensation_offset);
-        const bool req_s8s8_comp = (dst_d.extra().flags & rnn_u8s8_compensation)
-                && !types::extra_flag_rnn_s8s8_compensation_is_set(
-                        dst_d.extra().flags);
+        const bool req_s8s8_comp = dst_d.extra().flags & rnn_u8s8_compensation;
         const auto mask_ok = [&](int mask) {
             return mask
                     == ((src_d.ndims() == 5) ? 27 /* 11011 */

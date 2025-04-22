@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,9 @@
 #include "graph/backend/dnnl/utils.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
+
+#define VCHECK_UTILS(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, utils, (cond), status, msg, ##__VA_ARGS__);
 
 namespace dnnl {
 namespace impl {
@@ -88,7 +91,8 @@ public:
         status_t ret;
         for (size_t i = 0; i < passes_.size(); i++) {
             ret = passes_[i](sg);
-            if (ret != status::success) { return ret; }
+            VCHECK_UTILS(ret == status::success, ret, "run pass %s failed",
+                    names_[i].c_str());
 
             // Dump the subgraph to dot file
             if (enable_visualizer_) {
@@ -97,8 +101,13 @@ public:
             }
 
             // Validate the subgraph after each pass
-            if (enable_validator_) { ret = validator_.run(sg); }
-            if (ret != status::success) { return ret; }
+            if (enable_validator_) {
+                ret = validator_.run(sg);
+                VCHECK_UTILS(ret == status::success, ret,
+                        "validation failed "
+                        "after run pass %s",
+                        names_[i].c_str());
+            }
         }
         return status::success;
     }
@@ -347,6 +356,9 @@ std::shared_ptr<op_t> clone_mul_scales(const std::shared_ptr<op_t> &scale_op);
 
 // This function is used to inverse scales of a dnnl_mul_scales op
 bool inverse_mul_scales(std::shared_ptr<op_t> &scale_op);
+
+bool need_broadcast_for_inputs(
+        const std::shared_ptr<op_t> &op, size_t index1, size_t index2);
 
 } // namespace dnnl_impl
 } // namespace graph

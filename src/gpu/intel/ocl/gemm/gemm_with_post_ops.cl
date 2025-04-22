@@ -15,69 +15,19 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/dispatch.h"
+#include "gpu/intel/ocl/ocl_io.h"
 #include "gpu/intel/ocl/ocl_math_utils.h"
 #include "gpu/intel/ocl/ocl_post_ops.h"
 #include "gpu/intel/ocl/ocl_types.h"
 
-#if defined(DST_DT_BF16)
-#define DST_TO_ACC(x) cvt_bf16_to_f32(x)
-#elif defined(DST_DT_BF8)
-#define DST_TO_ACC(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif defined(DST_DT_HF8)
-#define DST_TO_ACC(x) convert_float(cvt_f8_e4m3_to_hf(x))
-#else
-#define DST_TO_ACC(x) (x)
-#endif
-#if defined(BIA_DT_BF16)
-#define BIA_TO_ACC(x) cvt_bf16_to_f32(x)
-#elif defined(BIA_DT_BF8)
-#define BIA_TO_ACC(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif defined(BIA_DT_HF8)
-#define BIA_TO_ACC(x) convert_float(cvt_f8_e4m3_to_hf(x))
-#else
-#define BIA_TO_ACC(x) (x)
-#endif
-#if defined(SRC_DT_BF16)
-#define SRC_TO_ACC(x) cvt_bf16_to_f32(x)
-#elif defined(SRC_DT_BF8)
-#define SRC_TO_ACC(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif defined(SRC_DT_HF8)
-#define SRC_TO_ACC(x) convert_float(cvt_f8_e4m3_to_hf(x))
-#else
-#define SRC_TO_ACC(x) (x)
-#endif
-#ifndef BIA_D2
-#define BIA_D2 1
-#endif
-#ifndef BIA_D3
-#define BIA_D3 1
-#endif
-#if BIA_NDIMS == 4
-#define BIA_OFF(x0, x1, d, h, w) \
-    (((x0 % BIA_D0) % BIA_B0) * BIA_SB0 + ((x0 % BIA_D0) / BIA_B0) * BIA_S0 \
-            + ((x1 % BIA_D1) % BIA_B1) * BIA_SB1 \
-            + ((x1 % BIA_D1) / BIA_B1) * BIA_S1 \
-            + ((h % BIA_D2) % BIA_B2) * BIA_SB2 \
-            + ((h % BIA_D2) / BIA_B2) * BIA_S2 \
-            + ((w % BIA_D3) % BIA_B3) * BIA_SB3 \
-            + ((w % BIA_D3) / BIA_B3) * BIA_S3)
-#elif BIA_NDIMS == 3
-#define BIA_OFF(x0, x1, d, h, w) \
-    (((x0 % BIA_D0) % BIA_B0) * BIA_SB0 + ((x0 % BIA_D0) / BIA_B0) * BIA_S0 \
-            + ((x1 % BIA_D1) % BIA_B1) * BIA_SB1 \
-            + ((x1 % BIA_D1) / BIA_B1) * BIA_S1 \
-            + ((w % BIA_D2) % BIA_B2) * BIA_SB2 \
-            + ((w % BIA_D2) / BIA_B2) * BIA_S2)
-#elif BIA_NDIMS == 2
-#define BIA_OFF(x0, x1, d, h, w) \
-    (((x0 % BIA_D0) % BIA_B0) * BIA_SB0 + ((x0 % BIA_D0) / BIA_B0) * BIA_S0 \
-            + ((x1 % BIA_D1) % BIA_B1) * BIA_SB1 \
-            + ((x1 % BIA_D1) / BIA_B1) * BIA_S1)
-#elif BIA_NDIMS == 1
-#define BIA_OFF(x1, x0, d, h, w) (x0)
-#endif
-__kernel void gemm_post_ops(__global SRC_DATA_T *src, __global BIA_DATA_T *bias,
-        __global DST_DATA_T *dst POST_OP_ARGS, __global SPAD_DATA_T *scratchpad,
+#undef SRC_OFF
+#define SRC_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC, x0, x1, x2, x3, x4, x5)
+#define BIAS_OFF(x0, x1, x2, x3, x4, x5) \
+    OFF_MD(BIAS, (x0 % BIAS_PD0), (x1 % BIAS_PD1), (x2 % BIAS_PD2), \
+            (x3 % BIAS_PD3), (x4 % BIAS_PD4), (x5 % BIAS_PD5))
+
+__kernel void gemm_post_ops(__global SRC_DATA_T *src,
+        __global BIAS_DATA_T *bias, __global DST_DATA_T *dst POST_OP_ARGS,
         global float *a_scales, global WEI_SCALES_DATA_T *b_scales,
         global DST_SCALES_DATA_T *c_scales, int scale_stride,
         global int *dst_zp) {
@@ -86,74 +36,45 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src, __global BIA_DATA_T *bias,
     const uint d2 = GWS_GET_D2();
     const uint d3 = GWS_GET_D3();
 
-#if NDIMS == 4
-    size_t data_idx = DST_OFF(d0, d1, 0, d2, d3);
-#elif NDIMS == 3
-    size_t data_idx = DST_OFF(d0, d1, 0, 0, d2);
-#else
-    size_t data_idx = DST_OFF(d0, d1, 0, 0, 0);
-#endif
-#if USE_TEMP_DST == 1
-    ACC_DATA_T acc = SRC_TO_ACC(scratchpad[data_idx]);
-#else
-    ACC_DATA_T acc = SRC_TO_ACC(src[data_idx]);
-#endif
-    float accumulator = convert_float(acc);
-    if ((d0 == D0_WO_PADDING && d1 == D1_WO_PADDING && d2 == D2_WO_PADDING
-                && d3 == D3_WO_PADDING)
-            || (d0 < D0_WO_PADDING && d1 < D1_WO_PADDING && d2 < D2_WO_PADDING
-                    && d3 < D3_WO_PADDING)) {
+    size_t data_idx = SRC_OFF(d0, d1, d2, d3, 0, 0);
 
-#if A_SCALES || B_SCALES
-#define A_SCALE (A_SCALES ? a_scales[0] : 1)
-#if NDIMS == 2
-        const float b_scale
-                = B_SCALES ? WEI_SCALES_TO_REF(b_scales[scale_stride * d1]) : 1;
-#elif NDIMS == 3
-        const float b_scale
-                = B_SCALES ? WEI_SCALES_TO_REF(b_scales[scale_stride * d2]) : 1;
-#elif NDIMS == 4
-        const float b_scale
-                = B_SCALES ? WEI_SCALES_TO_REF(b_scales[scale_stride * d3]) : 1;
-#endif
-        accumulator *= A_SCALE * b_scale;
-#endif
-
-#if WITH_BIAS == 1
-#if NDIMS == 4
-        size_t bia_idx = BIA_OFF(d0, d1, 0, d2, d3);
-#elif NDIMS == 3
-        size_t bia_idx = BIA_OFF(d0, d1, 0, 0, d2);
+    ACC_DATA_T acc;
+#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
+    load(&acc, src, data_idx);
 #else
-        size_t bia_idx = BIA_OFF(d0, d1, 0, 0, 0);
+    load(&acc, src + data_idx);
 #endif
-        accumulator += BIA_TO_ACC(bias[bia_idx]);
-#endif
+    POST_OP_DATA_T accumulator = 0;
+    if (d0 < DST_D0 && d1 < DST_D1 && d2 < DST_D2 && d3 < DST_D3) {
+        const float a_scale = A_SCALES ? a_scales[0] : 1;
+        const uint b_scale_dim = (NDIMS == 2) ? d1 : (NDIMS == 3) ? d2 : d3;
+        float b_scale = 1;
+        if (B_SCALES) load(&b_scale, b_scales + scale_stride * b_scale_dim);
+        if (A_SCALES || B_SCALES) acc *= a_scale * b_scale;
+
+        if (bias) {
+            ACC_DATA_T b = load(b, bias + BIAS_OFF(d0, d1, d2, d3, 0, 0));
+            acc += b;
+        }
 
         // Apply postops
-        float sum_src = 0.0f;
-#if WITH_SUM
-        sum_src = DST_TO_ACC(dst[data_idx]);
+        POST_OP_DATA_T sum_src = 0.0f;
+#if DST_DT_F4_E2M1 || DST_DT_F4_E3M0
+        if (WITH_SUM) load(&sum_src, dst, data_idx);
+#else
+        if (WITH_SUM) load(&sum_src, dst + data_idx);
 #endif
 
-#if NDIMS == 2
-        APPLY_POST_OPS_SERIAL(accumulator, float, sum_src, float, d0, 1, d1, 1,
-                0, 1, 0, 1, 0, 1, 0, 1);
-#elif NDIMS == 3
-        APPLY_POST_OPS_SERIAL(accumulator, float, sum_src, float, d0, 1, d1, 1,
-                d2, 1, 0, 1, 0, 1, 0, 1);
-#elif NDIMS == 4
-        APPLY_POST_OPS_SERIAL(accumulator, float, sum_src, float, d0, 1, d1, 1,
-                d2, 1, d3, 1, 0, 1, 0, 1);
-#endif
+        accumulator = AS_POST_OP_DATA_T(acc);
+        APPLY_POST_OPS_SERIAL(accumulator, POST_OP_DATA_T, sum_src,
+                POST_OP_DATA_T, d0, 1, d1, 1, d2, 1, d3, 1, 0, 1, 0, 1);
 
-#if C_SCALES
-        accumulator /= DST_SCALES_TO_REF(c_scales[0]);
-#endif
-#if DST_ZERO_POINT
-        accumulator += dst_zp[0];
-#endif
+        if (C_SCALES) {
+            POST_OP_DATA_T c_scale = load(c_scale, c_scales);
+            accumulator /= c_scale;
+        }
+        if (DST_ZERO_POINT) accumulator += dst_zp[0];
     }
 
-    dst[data_idx] = TO_DST(accumulator);
+    write(dst + data_idx, accumulator);
 }

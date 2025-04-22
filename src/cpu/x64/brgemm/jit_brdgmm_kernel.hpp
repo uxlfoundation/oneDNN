@@ -34,7 +34,7 @@ namespace cpu {
 namespace x64 {
 
 template <typename Wmm>
-struct jit_brdgmm_kernel_base_t : public jit_generator {
+struct jit_brdgmm_kernel_base_t : public jit_base_brgemm_kernel_t {
     jit_brdgmm_kernel_base_t(const brgemm_desc_t &abrd);
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brdgmm_kernel_base_t)
@@ -159,6 +159,8 @@ struct jit_brdgmm_kernel_base_t : public jit_generator {
         auto vmm_alloc = vmm_allocator_helper_t(brg);
         return vmm_alloc.get_compute_vmm_count();
     }
+
+    const brgemm_desc_t &get_brg() const override { return brg; }
 
 private:
     // note: this kernel doesn't yet support TMM's. We differentiate Wmm and Vmm

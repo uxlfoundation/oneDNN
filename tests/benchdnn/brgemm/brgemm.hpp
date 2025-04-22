@@ -257,6 +257,9 @@ struct cfg_t : public base_cfg_t {
     float get_density(const density_args_t &density_args) const override;
 };
 
+// See the description next to the definition.
+int brgemm_finalize();
+
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);
 void compute_ref(const prb_t *prb, const args_t &args,

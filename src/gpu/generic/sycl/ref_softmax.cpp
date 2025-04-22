@@ -36,10 +36,8 @@ status_t ref_sycl_softmax_fwd_t::pd_t::init_conf() {
     conf_.channels = axis_size();
     conf_.wk_size = inner_size() * outer_size();
 
-    conf_.do_scale_src
-            = !attr()->scales_.get(DNNL_ARG_SRC).has_default_values();
-    conf_.do_scale_dst
-            = !attr()->scales_.get(DNNL_ARG_DST).has_default_values();
+    conf_.do_scale_src = !attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    conf_.do_scale_dst = !attr()->scales_.has_default_values(DNNL_ARG_DST);
 
     conf_.post_ops = sycl_post_ops_t(attr(), dst_md());
 

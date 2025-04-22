@@ -135,7 +135,8 @@ dnnl_status_t brgemm_attr_init(
         PROCESS_KEY_VAL(hint_expected_A_size);
         PROCESS_KEY_VAL(hint_expected_B_size);
         PROCESS_KEY_VAL(hint_expected_C_size);
-        PROCESS_KEY_VAL(wary_tail_read);
+        PROCESS_KEY_VAL(wary_A_k_tail_read);
+        PROCESS_KEY_VAL(extendable_k);
         PROCESS_KEY_VAL(generate_skip_accumulation);
         // TODO: `bd_mask` can't be passed to the kernel at this moment, that's
         // why `bd_mask_level` has to stay `0` for now until it's enabled.
@@ -370,6 +371,9 @@ int init_kernel(kernel_args_t &kernel_args) {
             WARN);
     if (res->state == SKIPPED) return OK;
 
+    SAFE(check_dnnl_status(brgemm_desc_finalize(&brgemm_desc), prb, res), WARN);
+    if (res->state == SKIPPED) return OK;
+
     kernel_args.generate_skip_accumulation_
             = brgemm_attr.generate_skip_accumulation;
 
@@ -431,7 +435,9 @@ int init_kernel(kernel_args_t &kernel_args) {
     if (res->state == SKIPPED) return OK;
 
     dnnl_pack_type_t pack_type = dnnl_pack_type_undef;
-    DNN_SAFE(dnnl_brgemm_get_B_pack_type(brgemm, &pack_type), WARN);
+    DNN_SAFE(dnnl_brgemm_get_B_pack_type(
+                     &pack_type, prb->src_dt(), prb->wei_dt()),
+            WARN);
     kernel_args.need_pack_ = pack_type == dnnl_pack_type_pack32;
 
     DNN_SAFE(dnnl_brgemm_generate(brgemm), WARN);
@@ -1098,7 +1104,19 @@ int release_hw_config(const kernel_args_t &kernel_args) {
         DNN_SAFE(namespace_impl::amx_tile_release(), WARN);
     }
 #endif
-#else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
+#endif
+    return OK;
+}
+
+// `release_hw_config` and `brgemm_finalize` are doing the same thing -
+// releasing the hw resources they allocated. The difference is in the
+// implementation side - ukernel has lazy initialization and would reset the
+// state per `set_hw_config` call while internal API doesn't - it just sets
+// the new state unconditionally. Because of laziness, the test wants to ensure
+// resetting is correct and, thus, releasing is done once - at the end of the
+// suite, while for internal API it is done after each case.
+int brgemm_finalize() {
+#if defined(DNNL_EXPERIMENTAL_UKERNEL)
     DNN_SAFE(dnnl_brgemm_release_hw_context(), WARN);
 #endif
     return OK;
@@ -1325,6 +1343,11 @@ int doit(const prb_t *prb, res_t *res) {
 }
 
 #else
+
+// For builadability of non-x64 configuration.
+int brgemm_finalize() {
+    return OK;
+}
 
 int doit(const prb_t *prb, res_t *res) {
     return OK;

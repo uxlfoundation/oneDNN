@@ -40,9 +40,9 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
         int bias_mask, __global int *ao, __global int *bo, __global int *c0,
         int c0_mask, float beta) {
 
-    int n = get_global_id(0);
-    int m = get_global_id(1);
-    int mb = get_global_id(2);
+    long n = get_global_id(0);
+    long m = get_global_id(1);
+    long mb = get_global_id(2);
 
 #if WITH_BIAS
     bias += offset_bias0;
@@ -82,10 +82,10 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
     long off_bias = mb * b_strides[0] + m * b_strides[1] + n * b_strides[2];
     temp += BIA_TO_REF(bias[off_bias]);
 #endif
+#if WITH_POST_OP
 #if WITH_SUM
     temp += (POST_OP_DATA_T)(beta * C_TO_REF(c[off_c]));
 #endif
-#if WITH_ELTWISE
     temp = fwd_eltwise(temp, eltwise_alpha, eltwise_beta, eltwise_scale);
 #endif
 #if WITH_DST_ZPOINTS

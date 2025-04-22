@@ -50,16 +50,14 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
             if (buf.is_empty()) continue;
             int key = kernel_info.key(scale_args[i].first)
                     & ~DNNL_ARG_ATTR_SCALES;
-            auto scales = attr.scales_.get(key);
-            if (scales.has_default_values()) continue;
-            int mask = scales.mask_;
-            auto sc_type = scales.data_type_ == data_type::undef
-                    ? type_t::f32()
-                    : scales.data_type_;
+            if (attr.scales_.has_default_values(key)) continue;
+
+            int mask = attr.scales_.get_mask(key);
+            auto sc_type = attr.scales_.get_data_type(key);
             view_t view;
             switch (key) {
                 case DNNL_ARG_SRC:
-                    ir_assert(mask == 0);
+                    gpu_assert(mask == 0);
                     src_scales_type = sc_type;
                     view = po_vm_.create_view(sc_type, mask);
                     src_scales = add_input_tensor(view, buf);
@@ -67,16 +65,16 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
                     break;
                 case DNNL_ARG_WEIGHTS:
                     // Convert o/i weights mask to src/dst.
-                    // XXX: per_oc for BWD_D is treated as per_ic assuming it's
-                    // called from deconvolution.
-                    ir_assert(utils::one_of(mask, 0, 1, 3));
+                    // XXX: per_oc for BWD_D is treated as per_ic assuming
+                    // it's called from deconvolution.
+                    gpu_assert(utils::one_of(mask, 0, 1, 3));
                     wei_scales_type = sc_type;
                     view = po_vm_.create_view(sc_type, (mask) ? 1 << 1 : 0);
                     wei_scales = add_input_tensor(view, buf);
                     wei_scales_mask = mask;
                     break;
                 case DNNL_ARG_DST: // Invert dst scales right after load.
-                    ir_assert(utils::one_of(mask, 0, 2));
+                    gpu_assert(utils::one_of(mask, 0, 2));
                     dst_scales_type = sc_type;
                     view = po_vm_.create_view(sc_type, mask);
                     dst_scales = add_input_tensor(view, buf);
@@ -108,12 +106,27 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
 
     if (po_vm_.can_use_simple_src_zps() && zp_cfg.do_src_compensation) {
         if (zp_cfg.is_runtime_src_zero_points) {
-            bool per_oc = !zp_cfg.is_common_src_zero_point
-                    || zp_cfg.needs_src_precalc;
-            auto view = po_vm_.create_src_zp_view((per_oc) ? 1 << 1 : 0);
+            auto view = po_vm_.create_src_zp_view(
+                    (!zp_cfg.is_common_src_zero_point) ? 1 << 1 : 0);
             auto buf = kernel_info.find_arg("src_zero_points");
-            auto in = add_input_tensor(view, buf);
-            post_ops_.emplace_back(c, c - in);
+            if (zp_cfg.needs_src_reorder_precalc) {
+                auto wei = kernel_info.find_arg("wei_user", true);
+                if (wei.is_empty()) wei = kernel_info.find_arg("wei");
+
+                layout_t tlayout(view.tlayout());
+                tlayout.set_offset(
+                        utils::div_up(schedule.b_view().tlayout().size(),
+                                tlayout.type().size()));
+                view.set_tlayout(tlayout);
+                layout_t scalar(zp_cfg.src_zp_type, 0,
+                        std::vector<dim_t>(view.vvars().size(), 1), false);
+                auto zp = add_input_tensor(view_t(scalar, view.vvars()), buf);
+                auto in = add_input_tensor(view, wei);
+                post_ops_.emplace_back(c, c - in * zp);
+            } else {
+                auto in = add_input_tensor(view, buf);
+                post_ops_.emplace_back(c, c - in);
+            }
         } else {
             auto func = eltwise_t::make(alg_kind::eltwise_linear,
                     /*scale=*/1.f,
@@ -172,7 +185,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
             auto op_kind = alg_kind_to_op_kind(po.binary.alg);
             post_ops_.emplace_back(c, binary_op_t::make(op_kind, c, rhs));
         } else {
-            ir_error_not_expected();
+            gpu_error_not_expected();
         }
     }
 
@@ -273,7 +286,7 @@ bool post_op_context_t::init_need_to_restore_zero_padding(
         } else if (po.is_prelu()) {
             return false;
         } else {
-            ir_error_not_expected();
+            gpu_error_not_expected();
         }
     }
     if (zp_cfg.do_src_compensation && dst_md.dims[0] != dst_md.padded_dims[0])
@@ -282,7 +295,8 @@ bool post_op_context_t::init_need_to_restore_zero_padding(
             && out_md.dims[1] != out_md.padded_dims[1])
         return true;
     auto dst_scales = attr.scales_.get(DNNL_ARG_DST);
-    if (!dst_scales.has_default_values() && dst_scales.mask_ != 0) return true;
+    if (!dst_scales.has_default_values() && dst_scales.get_mask() != 0)
+        return true;
     return false;
 }
 

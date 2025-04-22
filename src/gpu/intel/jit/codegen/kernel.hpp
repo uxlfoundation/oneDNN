@@ -28,7 +28,10 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/codegen/operand.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
+#include "gpu/intel/jit/codegen/register_scope.hpp"
+#include "gpu/intel/jit/codegen/reorder.hpp"
 #include "gpu/intel/jit/emulation.hpp"
+#include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
@@ -36,9 +39,8 @@
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/ir/walk_order.hpp"
-#include "gpu/intel/jit/jit_generator.hpp"
-#include "gpu/intel/jit/ngen/ngen.hpp"
-#include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"
+#include "ngen/ngen.hpp"
+#include "ngen/ngen_register_allocator.hpp"
 #include "xpu/utils.hpp"
 
 namespace dnnl {
@@ -48,13 +50,13 @@ namespace intel {
 namespace jit {
 
 template <template <ngen::HW> class KernelT>
-struct ir_generator_t : public jit_generator_base {
+struct ir_generator_t : public generator_base_t {
     ir_generator_t(const kernel_desc_base_t &kernel_desc)
         : kernel_name_(kernel_desc.kernel_name()), kernel_desc_(kernel_desc) {}
 
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
-    xpu::binary_t get_binary(const ocl::ocl_gpu_engine_t *engine) override {
+    xpu::binary_t get_binary(const ocl::engine_t *engine) override {
         try {
 #define CASE(hw) \
     case ngen::HW::hw: { \
@@ -93,7 +95,7 @@ public:
 
     ~expr_binding_t() {
         if (!cpp_compat::uncaught_exceptions()) {
-            ir_assert(expr2dst_.empty()) << "Detected missing unbind_dst().";
+            gpu_assert(expr2dst_.empty()) << "Detected missing unbind_dst().";
         }
     }
 
@@ -102,20 +104,20 @@ public:
     }
 
     ngen_operand_t get_dst(const expr_t &expr) const {
-        ir_assert(is_dst_bound(expr)) << "Destination is not bound: " << expr;
+        gpu_assert(is_dst_bound(expr)) << "Destination is not bound: " << expr;
         return expr2dst_.at(expr);
     }
 
     void bind_dst(const expr_t &expr, const ngen_operand_t &operand) {
-        ir_assert(!expr.is_empty());
+        gpu_assert(!expr.is_empty());
         auto ret = expr2dst_.insert({expr, operand});
-        ir_assert(ret.second) << "Already bound: " << expr;
+        gpu_assert(ret.second) << "Already bound: " << expr;
     }
 
     void unbind_dst(const expr_t &expr) {
-        ir_assert(!expr.is_empty());
+        gpu_assert(!expr.is_empty());
         auto it = expr2dst_.find(expr);
-        ir_assert(it != expr2dst_.end());
+        gpu_assert(it != expr2dst_.end());
         expr2dst_.erase(it);
     }
 
@@ -127,7 +129,7 @@ public:
         if (expr.is_empty()) return ngen_operand_t();
         if (!is_bound(expr)) {
             if (!allow_empty)
-                ir_assert(false) << "Operand is not bound: " << expr;
+                gpu_assert(false) << "Operand is not bound: " << expr;
             return ngen_operand_t();
         }
         return expr2operand_.at(expr);
@@ -148,7 +150,7 @@ public:
         int esize = operand.mod().getExecSize();
         if (esize == 0) esize = 1;
         if (esize != expr.type().elems() && !expr.type().is_bool()) {
-            ir_assert(expr.type().is_scalar() || esize == 1)
+            gpu_assert(expr.type().is_scalar() || esize == 1)
                     << "Expected broadcast.";
             if (operand.is_reg_buf_data() && esize != 1) {
                 // Bind scalar expression to the first vector element.
@@ -158,14 +160,14 @@ public:
         }
 
         auto ret = expr2operand_.insert({expr, op_to_bind});
-        ir_assert(ret.second) << "Already bound: " << expr;
+        gpu_assert(ret.second) << "Already bound: " << expr;
     }
 
     void unbind(const expr_t &expr) {
-        ir_assert(!expr.is_empty());
+        gpu_assert(!expr.is_empty());
 
         auto it = expr2operand_.find(expr);
-        ir_assert(it != expr2operand_.end());
+        gpu_assert(it != expr2operand_.end());
         expr2operand_.erase(it);
     }
 
@@ -182,7 +184,7 @@ template <ngen::HW hw>
 class ir_to_ngen_t;
 
 template <ngen::HW hw>
-class ir_kernel_t : public jit_generator<hw> {
+class ir_kernel_t : public generator_t<hw> {
 public:
     NGEN_FORWARD_OPENCL(hw);
 
@@ -192,7 +194,8 @@ public:
 
     ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
             const debug_config_t &debug_config)
-        : kernel_name_(desc.kernel_name())
+        : generator_t<hw>(debug_config)
+        , kernel_name_(desc.kernel_name())
         , exec_cfg_(desc.exec_cfg(engine))
         , local_range_(desc.local_range())
         , require_dpas_(desc.with_dpas())
@@ -207,7 +210,8 @@ public:
     ir_kernel_t(const std::string &kernel_name, const exec_config_t &exec_cfg,
             const compute::range_t &local_range, bool require_dpas,
             const debug_config_t &debug_config)
-        : kernel_name_(kernel_name)
+        : generator_t<hw>(debug_config)
+        , kernel_name_(kernel_name)
         , exec_cfg_(exec_cfg)
         , local_range_(local_range)
         , require_dpas_(require_dpas)
@@ -257,7 +261,7 @@ public:
                     regs_ > 128);
             if (slm_size > max_slm_size) {
                 // TODO: Use status code for this check.
-                ir_except_not_implemented("SLM size limit is exceeded.");
+                gpu_except_not_implemented("SLM size limit is exceeded.");
             }
             requireSLM(slm_size);
         }
@@ -327,10 +331,10 @@ public:
                 auto alloc_buf
                         = alloc_mgr.find_buffer(name, /*allow_empty=*/true);
                 if (alloc_buf.is_empty()) {
-                    ir_warning() << "Unused argument: " << arg_var << std::endl;
+                    gpu_warning() << "Unused argument: " << arg_var;
                     continue;
                 }
-                ir_assert(alloc_buf.is_same(arg_var));
+                gpu_assert(alloc_buf.is_same(arg_var));
             }
             expr_binding.bind(arg_var, getArgument(name));
         }
@@ -418,7 +422,7 @@ public:
             const std::vector<expr_t> &grid_vars,
             expr_binding_t &expr_binding) {
         int nblocks = (int)blocks.size();
-        ir_assert((int)grid_vars.size() == nblocks);
+        gpu_assert((int)grid_vars.size() == nblocks);
         if (nblocks == 1) {
             expr_binding.bind(grid_vars[0], id);
             return;
@@ -502,7 +506,7 @@ public:
             }
         } else {
             // dst is a flag register.
-            ir_assert(!dst.is_negated());
+            gpu_assert(!dst.is_negated());
             auto _mod = mod;
             _mod.setExecSize(1);
             if (src0.is_reg_data()) {
@@ -516,7 +520,7 @@ public:
     void eadd(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
             const ngen_operand_t &src0, const ngen_operand_t &src1) {
         if (src0.is_immediate()) {
-            ir_assert(src1.is_reg_data());
+            gpu_assert(src1.is_reg_data());
             eadd(mod, dst, src1, src0);
             return;
         }
@@ -546,7 +550,7 @@ public:
         auto dst = dst_;
         auto mod = mod_;
         if (src0.is_immediate()) {
-            ir_assert(src1.is_reg_data());
+            gpu_assert(src1.is_reg_data());
             emul(mod, dst, src1, src0);
             return;
         }
@@ -577,7 +581,7 @@ public:
                 return;
             }
             if (ngen_is_dw(src1_imm.getType())) {
-                ir_assert(mod.getExecSize() == 1);
+                gpu_assert(mod.getExecSize() == 1);
                 auto tmp = ra_.alloc_sub<int64_t>();
                 if (ngen_is_w(src0.type())) {
                     auto tmp_src1 = ra_.alloc_sub<int32_t>();
@@ -596,20 +600,28 @@ public:
     }
 
     void eadd3(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
-            const ngen_operand_t &src0, const ngen_operand_t &src1,
-            const ngen_operand_t &src2) {
+            const ngen_operand_t &_src0, const ngen_operand_t &_src1,
+            const ngen_operand_t &_src2) {
+        auto src0 = _src0;
+        auto src1 = _src1;
+        auto src2 = _src2;
+        auto scope = ngen_register_scope_t(ra_);
+        align_src_dst_offset(this, scope, mod, dst, src0);
+        align_src_dst_offset(this, scope, mod, dst, src1);
         if (hw >= ngen::HW::XeHP) {
             if (src2.is_reg_data()) {
-                add3(mod, dst.reg_data(), src0.reg_data(), src1.reg_data(),
-                        src2.reg_data());
+                align_src_dst_offset(this, scope, mod, dst, src2);
+                add3(mod, dst.reg_data(), fixup_ternary_rgn(src0.reg_data()),
+                        fixup_ternary_rgn(src1.reg_data()), src2.reg_data());
             } else {
-                add3(mod, dst.reg_data(), src0.reg_data(), src1.reg_data(),
-                        src2.immediate());
+                add3(mod, dst.reg_data(), fixup_ternary_rgn(src0.reg_data()),
+                        fixup_ternary_rgn(src1.reg_data()), src2.immediate());
             }
             return;
         }
         add(mod, dst.reg_data(), src0.reg_data(), src1.reg_data());
         if (src2.is_reg_data()) {
+            align_src_dst_offset(this, scope, mod, dst, src2);
             add(mod, dst.reg_data(), dst.reg_data(), src2.reg_data());
         } else {
             add(mod, dst.reg_data(), dst.reg_data(), src2.immediate());
@@ -617,26 +629,34 @@ public:
     }
 
     void emad(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
-            const ngen_operand_t &src0, const ngen_operand_t &src1,
-            const ngen_operand_t &src2) {
+            const ngen_operand_t &_src0, const ngen_operand_t &_src1,
+            const ngen_operand_t &_src2) {
+        auto src0 = _src0;
+        auto src1 = _src1;
+        auto src2 = _src2;
+        auto scope = ngen_register_scope_t(ra_);
+        align_src_dst_offset(this, scope, mod, dst, src1);
         if (src2.is_reg_data()) {
-            mad(mod, dst.reg_data(), src0.reg_data(), src1.reg_data(),
-                    src2.reg_data());
+            align_src_dst_offset(this, scope, mod, dst, src0);
+            align_src_dst_offset(this, scope, mod, dst, src2);
+            mad(mod, dst.reg_data(), fixup_ternary_rgn(src0.reg_data()),
+                    fixup_ternary_rgn(src1.reg_data()), src2.reg_data());
         } else if (hw < ngen::HW::XeLP) {
+            align_src_dst_offset(this, scope, mod, dst, src0);
             mul(mod, dst.reg_data(), src1.reg_data(), src2.immediate());
             add(mod, dst.reg_data(), dst.reg_data(), src0.reg_data());
         } else if (src0.is_immediate()
                 && (ngen_is_dw(src0.type())
                         || src0.type() == ngen::DataType::uw)) {
             // dword immediate src0 is not supported, move to a register.
-            auto tmp_src0 = ra_.alloc_sub(src0.type());
+            auto tmp_src0 = scope.alloc_sub(src0.type());
             mov(1, tmp_src0, src0.immediate());
-            mad(mod, dst.reg_data(), tmp_src0, src1.reg_data(),
-                    src2.immediate());
-            ra_.safeRelease(tmp_src0);
+            mad(mod, dst.reg_data(), tmp_src0,
+                    fixup_ternary_rgn(src1.reg_data()), src2.immediate());
         } else {
-            mad(mod, dst.reg_data(), src0.reg_data(), src1.reg_data(),
-                    src2.immediate());
+            align_src_dst_offset(this, scope, mod, dst, src0);
+            mad(mod, dst.reg_data(), fixup_ternary_rgn(src0.reg_data()),
+                    fixup_ternary_rgn(src1.reg_data()), src2.immediate());
         }
     }
 
@@ -660,7 +680,7 @@ public:
                 emul(mod, dst, src0, src1_inv_value);
             } else {
                 int32_t src1_value = to_cpp<int32_t>(src1_imm);
-                ir_assert(0 < src1_value && src1_value <= INT32_MAX)
+                gpu_assert(0 < src1_value && src1_value <= INT32_MAX)
                         << src1_value;
                 eidiv(mod, dst.reg_data(), ngen::Subregister(), src0.reg_data(),
                         src1_value);
@@ -674,9 +694,9 @@ public:
         int grf_size = ngen::GRF::bytes(hw);
         int div_esize = std::min(esize, grf_size / int(sizeof(float)));
 
-        ir_assert(dst.type() == ngen::DataType::f);
-        ir_assert(src0.type() == ngen::DataType::f);
-        ir_assert(src1.type() == ngen::DataType::f);
+        gpu_assert(dst.type() == ngen::DataType::f);
+        gpu_assert(src0.type() == ngen::DataType::f);
+        gpu_assert(src1.type() == ngen::DataType::f);
 
         if (src1.reg_data().getHS() != 0) {
             int nregs = std::max(1, (mod.getExecSize() * 4) / grf_size);
@@ -739,10 +759,10 @@ public:
 
     void emod(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
             const ngen_operand_t &src0, const ngen_operand_t &src1) {
-        ir_assert(src1.is_immediate());
+        gpu_assert(src1.is_immediate());
         auto &src1_imm = src1.immediate();
         int32_t src1_value = to_cpp<int32_t>(src1_imm);
-        ir_assert(0 < src1_value && src1_value <= INT32_MAX) << src1_value;
+        gpu_assert(0 < src1_value && src1_value <= INT32_MAX) << src1_value;
         eidiv(mod, ngen::Subregister(), dst.reg_data(), src0.reg_data(),
                 src1_value);
     }
@@ -787,6 +807,14 @@ public:
             const ngen_operand_t &src1) {
         if (src1.is_reg_data()) {
             cmp(mod, src0.reg_data(), src1.reg_data());
+        } else if (utils::one_of(src1.immediate().getType(), ngen::DataType::q,
+                           ngen::DataType::uq)) {
+            auto tmp = src1.immediate().getType() == ngen::DataType::uq
+                    ? ra_.alloc().uq()
+                    : ra_.alloc().q();
+            mov(1, tmp, src1.immediate());
+            cmp(mod, src0.reg_data(), tmp);
+            ra_.safeRelease(tmp);
         } else {
             cmp(mod, src0.reg_data(), src1.immediate());
         }
@@ -796,6 +824,14 @@ public:
             const ngen_operand_t &src0, const ngen_operand_t &src1) {
         if (src1.is_reg_data()) {
             cmp(mod, dst.reg_data(), src0.reg_data(), src1.reg_data());
+        } else if (utils::one_of(src1.immediate().getType(), ngen::DataType::q,
+                           ngen::DataType::uq)) {
+            auto tmp = src1.immediate().getType() == ngen::DataType::uq
+                    ? ra_.alloc().uq()
+                    : ra_.alloc().q();
+            mov(1, tmp, src1.immediate());
+            cmp(mod, dst.reg_data(), src0.reg_data(), tmp);
+            ra_.safeRelease(tmp);
         } else {
             cmp(mod, dst.reg_data(), src0.reg_data(), src1.immediate());
         }
@@ -826,10 +862,10 @@ public:
     void eidiv(const ngen::InstructionModifier &mod, const ngen::RegData &qot,
             const ngen::RegData &rem, const ngen::RegData &x,
             const ngen::RegData &_y, const ngen::RegData &_magic) {
-        ir_assert(x.getHS() == 0);
-        ir_assert(_y.getType() == ngen::DataType::ud);
-        ir_assert(_magic.getHS() == 0);
-        ir_assert(_magic.getType() == ngen::DataType::uq);
+        gpu_assert(x.getHS() == 0);
+        gpu_assert(_y.getType() == ngen::DataType::ud);
+        gpu_assert(_magic.getHS() == 0);
+        gpu_assert(_magic.getType() == ngen::DataType::uq);
 
         bool x_signed = utils::one_of(x.getType(), ngen::DataType::b,
                 ngen::DataType::w, ngen::DataType::d);
@@ -885,8 +921,8 @@ public:
     void eidiv(const ngen::InstructionModifier &mod, const ngen::RegData &_qot,
             const ngen::RegData &rem, const ngen::RegData &x,
             const ngen::RegData &_y, bool update_cr0_fp_to_int_rtz = true) {
-        ir_assert(mod.getExecSize() == 1);
-        ir_assert(_y.getType() == ngen::DataType::ud);
+        gpu_assert(mod.getExecSize() == 1);
+        gpu_assert(_y.getType() == ngen::DataType::ud);
         auto cr0_save = ra_.alloc_sub<uint32_t>();
         auto f_tmp = ra_.alloc_sub<float>();
         auto x_tmp = ra_.alloc_sub<float>();
@@ -931,7 +967,7 @@ public:
         bool x_signed = utils::one_of(x.getType(), ngen::DataType::b,
                 ngen::DataType::w, ngen::DataType::d);
         auto div_type = (x_signed ? ngen::DataType::d : ngen::DataType::ud);
-        ir_assert(x.getHS() == 0);
+        gpu_assert(x.getHS() == 0);
         if (ngen::utils::is_zero_or_pow2(y)) {
             auto _x = get_subregister(x);
             if (x.getNeg() || (x == qot) || (x == rem)) {
@@ -1098,7 +1134,7 @@ protected:
                 case 1: ret.setType(ngen::DataType::ub); break;
                 case 2: ret.setType(ngen::DataType::uw); break;
                 case 4: ret.setType(ngen::DataType::ud); break;
-                default: ir_error_not_expected();
+                default: gpu_error_not_expected();
             }
             return ret;
         }
@@ -1144,12 +1180,19 @@ protected:
     }
 
     int thread_group_size() const {
-        ir_assert(local_range_);
+        gpu_assert(local_range_);
         int local_size = 1;
         for (int i = 0; i < (int)local_range_.ndims(); i++) {
             local_size *= (int)local_range_[i];
         }
         return ir_utils::safe_divide(local_size, exec_cfg_.simd());
+    }
+
+    static ngen::RegData fixup_ternary_rgn(const ngen::RegData &r) {
+        ngen::RegData retn = r;
+        return ((retn.getHS() == 1) && (retn.getVS() == retn.getWidth()))
+                ? retn.setRegion(1, 1, 0)
+                : retn;
     }
 
     kernel_iface_t kernel_iface_;

@@ -64,6 +64,7 @@ public:
             case alg_kind::eltwise_gelu_tanh: return "gelu_tanh";
             case alg_kind::eltwise_gelu_erf: return "gelu_erf";
             case alg_kind::eltwise_hardswish: return "hardswish";
+            case alg_kind::eltwise_hardsigmoid: return "hardsigmoid";
             case alg_kind::eltwise_relu_use_dst_for_bwd:
                 return "relu_use_dst_for_bwd";
             case alg_kind::eltwise_tanh_use_dst_for_bwd:
@@ -82,7 +83,7 @@ public:
             // Note: `eltwise_stochastic_round` is not a part of `enum` which
             // forces `switch` to iterate over `int`, not `alg_kind_t`.
             case alg_kind::eltwise_stochastic_round: return "stochastic_round";
-            default: ir_error_not_expected();
+            default: gpu_error_not_expected();
         }
         return "unknown";
     }

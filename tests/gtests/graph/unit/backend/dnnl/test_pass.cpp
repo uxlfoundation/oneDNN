@@ -12929,7 +12929,9 @@ TEST(test_pass, F32MhaFusion) {
     agraph.finalize();
     ASSERT_EQ(agraph.get_ops().size(), 7U);
 
-    dnnl::impl::graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
+    graph::pass::pass_base_ptr apass = get_pass(
+            engine_kind == graph::engine_kind::cpu ? "float_sdp_fusion_cpu"
+                                                   : "float_sdp_fusion_gpu");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 }
@@ -14202,7 +14204,7 @@ TEST(test_pass, Binary3Postops) {
 
         for (size_t i = 0; i < pop_seq.size(); ++i) {
             auto pop = pop_seq[i];
-            post_ops.emplace_back(op_t {i + 1, pop, "post op"});
+            post_ops.emplace_back(i + 1, pop, "post op");
 
             // set additional parameters for specific ops
             switch (pop) {
@@ -14791,7 +14793,7 @@ TEST(test_pass, Pool3Postops) {
         std::vector<op_t> post_ops {};
         for (size_t i = 0; i < post_op_t_seq.size(); ++i) {
             auto pop_t = post_op_t_seq[i];
-            post_ops.emplace_back(op_t {i + 1, pop_t, "post op"});
+            post_ops.emplace_back(i + 1, pop_t, "post op");
 
             post_ops.back().add_input(lt_vec[lt_idx]);
             if (std::find(binary_op_ts.begin(), binary_op_ts.end(), pop_t)

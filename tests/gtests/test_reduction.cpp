@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,8 +49,6 @@ protected:
 
         SKIP_IF(unsupported_data_type(src_dt),
                 "Engine does not support this data type.");
-        SKIP_IF(get_test_engine().get_kind() != engine::kind::cpu,
-                "Engine does not support this primitive.");
         SKIP_IF_CUDA(p.aalgorithm != algorithm::reduction_max
                         && p.aalgorithm != algorithm::reduction_min
                         && p.aalgorithm != algorithm::reduction_sum
@@ -61,18 +59,36 @@ protected:
                                 != algorithm::reduction_norm_lp_power_p_max
                         && p.eps != 0.0f,
                 "Unsupported algorithm type for CUDA");
+        SKIP_IF_GENERIC(!(generic_supported_format_tag(p.src_format)
+                                && generic_supported_format_tag(p.dst_format)),
+                "Unsupported format tag");
 
         catch_expected_failures(
                 [&]() { Test(); }, p.expect_to_fail, p.expected_status);
     }
 
+    bool generic_supported_format_tag(memory::format_tag tag) {
+        return impl::utils::one_of(tag, impl::format_tag::a,
+                impl::format_tag::ab, impl::format_tag::abc,
+                impl::format_tag::abcd, impl::format_tag::abcde,
+                impl::format_tag::abcdef, impl::format_tag::abdec,
+                impl::format_tag::acb, impl::format_tag::acbde,
+                impl::format_tag::acbdef, impl::format_tag::acdb,
+                impl::format_tag::acdeb, impl::format_tag::ba,
+                impl::format_tag::bac, impl::format_tag::bacd,
+                impl::format_tag::bca, impl::format_tag::bcda,
+                impl::format_tag::bcdea, impl::format_tag::cba,
+                impl::format_tag::cdba, impl::format_tag::cdeba,
+                impl::format_tag::decab, impl::format_tag::defcab);
+    }
+
     void Test() {
         // reduction specific types and values
         using pd_t = reduction::primitive_desc;
-        allows_attr_t allowed_attributes {false}; // doesn't support anything
-        allowed_attributes.po_sum = true;
-        allowed_attributes.po_eltwise = true;
-        allowed_attributes.po_binary = true;
+        allows_attr_t aa {};
+        aa.po_sum = true;
+        aa.po_eltwise = true;
+        aa.po_binary = true;
 
         auto eng = get_test_engine();
         auto strm = make_stream(eng);
@@ -85,8 +101,8 @@ protected:
         // regular pd ctor
         pd = pd_t(eng, p.aalgorithm, desc_src, desc_dst, p.p, p.eps);
         // test all pd ctors
-        test_fwd_pd_constructors<pd_t>(pd, allowed_attributes, p.aalgorithm,
-                desc_src, desc_dst, p.p, p.eps);
+        test_fwd_pd_constructors<pd_t>(
+                pd, aa, p.aalgorithm, desc_src, desc_dst, p.p, p.eps);
 
         EXPECT_ANY_THROW(reduction(pd, {}));
         // default primitive ctor

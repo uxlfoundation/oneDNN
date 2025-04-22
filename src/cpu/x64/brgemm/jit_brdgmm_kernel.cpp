@@ -23,7 +23,6 @@
 #include "cpu/x64/brgemm/jit_brdgmm_kernel.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
-#include "cpu/x64/jit_generator.hpp"
 
 #define GET_OFF(field) offsetof(brgemm_kernel_params_t, field)
 #define GET_OFF_BATCH_ELEMENT(field) offsetof(brgemm_batch_element_t, field)
@@ -39,7 +38,7 @@ using namespace Xbyak;
 template <typename Wmm>
 jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         const brgemm_desc_t &abrd)
-    : jit_generator(jit_name(), abrd.isa_impl)
+    : jit_base_brgemm_kernel_t(jit_name(), abrd.isa_impl)
     , brg(abrd)
     , simd_w_(vreg_traits<Vmm>::vlen / brg.typesize_C)
     , max_vmms_(isa_num_vregs(brg.isa_impl))
@@ -514,10 +513,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
                         if (brg.is_bf16_emu)
                             bf16_emu_->vcvtneps2bf16(vmm_low, vmm);
                         else
-                            vcvtneps2bf16(vmm_low, vmm,
-                                    brg.isa_impl == avx2_vnni_2
-                                            ? Xbyak::VexEncoding
-                                            : Xbyak::EvexEncoding);
+                            vcvtneps2bf16(vmm_low, vmm, get_encoding());
                         if (mask_flag)
                             vmovdqu16(addr, r_vmm_low);
                         else
@@ -828,10 +824,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
         bool is_tail_block) {
     switch (kernel_type) {
         case compute_pad_kernel_t::s8s8_kernel:
-            vpdpbusd(vmm_acc, vmm_shift(), vmmb,
-                    is_superset(brg.isa_impl, avx512_core)
-                            ? Xbyak::EvexEncoding
-                            : Xbyak::VexEncoding);
+            vpdpbusd(vmm_acc, vmm_shift(), vmmb, get_encoding());
             break;
         case compute_pad_kernel_t::zero_point_kernel: {
             const Vmm vmm_zp = isa_has_masks(brg.isa_impl)
@@ -1003,10 +996,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
             if (brg.dt_a == data_type::s8 && isa_has_s8s8(brg.isa_impl))
                 vpdpbssd(vmm_acc, vmma, vmmb);
             else
-                vpdpbusd(vmm_acc, vmma, vmmb,
-                        is_superset(brg.isa_impl, avx512_core)
-                                ? Xbyak::EvexEncoding
-                                : Xbyak::VexEncoding);
+                vpdpbusd(vmm_acc, vmma, vmmb, get_encoding());
         }
     };
 

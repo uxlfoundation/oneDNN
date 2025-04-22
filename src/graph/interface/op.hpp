@@ -106,7 +106,7 @@ public:
     }
 
     bool attributes_equal(const dnnl_graph_op &other) const {
-        for (auto attr : this->attributes_) {
+        for (const auto &attr : this->attributes_) {
             // There is no need to check internal attributes.
             if (attr.first >= dnnl_graph_op_attr_t::dnnl_graph_op_attr_end)
                 continue;
@@ -394,6 +394,8 @@ public:
             CASE(Exp);
             CASE(GELU);
             CASE(GELUBackward);
+            CASE(GenIndex);
+            CASE(GreaterEqual);
             CASE(GroupNorm);
             CASE(HardSigmoid);
             CASE(HardSigmoidBackward);

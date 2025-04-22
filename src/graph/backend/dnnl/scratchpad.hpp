@@ -215,7 +215,8 @@ public:
     }
 
     char *get(const registry_t::key_t &key) const {
-        return aligned_base_ptr_ + registry_.get(key);
+        return aligned_base_ptr_ ? (aligned_base_ptr_ + registry_.get(key))
+                                 : nullptr;
     }
 
 private:

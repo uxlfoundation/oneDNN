@@ -35,7 +35,7 @@ using std::vector;
 template <HW hw>
 void BLASKernelGenerator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const InterfaceHandler &interface_)
 {
-    GEMMState state(hw);
+    GEMMState state(hw, strategy);
     interface = interface_;
     gemm(problem, strategy, state);
 }
@@ -118,6 +118,23 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
 
     // Scale LDs/offsets.
     gemmScaleInputs(problem, strategy, state);
+
+    // Check if this is a TLB warmup thread, and perform warmup if so.
+    if (strategy.tlbWarmup) {
+        Label lNotTLBWarmup;
+        state.groupIDMN = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+        add(1 | ge | f1[0], state.groupIDMN.d(), state.inputs.groupIDMN, -1);
+        jmpi(1 | f1[0], lNotTLBWarmup);
+        status << "TLB warmup" << status_stream::endl;
+        auto mstate = state;
+        moveR0(strategy, mstate);
+        gemmGetBatchIDs(problem, strategy, mstate);
+        gemmOffsetBatchABC(problem, strategy, mstate);
+        gemmSetupABC(problem, strategy, mstate);
+        gemmTLBWarmup(problem, strategy, mstate);
+        epilogue(strategy, mstate);
+        mark(lNotTLBWarmup);
+    }
 
     // Local ID handling and saving.
     gemmReorderLocalIDs(problem, strategy, state);
@@ -232,8 +249,10 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
         if (!strategy.linearOrder()) stub();
         if (problem.batch != BatchMode::None) stub();       // need to wrangle groupIDK also
 
-        state.groupIDMN = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
-        mov(1, state.groupIDMN, state.inputs.groupIDMN);
+        if (state.groupIDMN == state.inputs.groupIDMN) {
+            state.groupIDMN = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+            mov(1, state.groupIDMN, state.inputs.groupIDMN);
+        }
 
         if (state.effTempC == state.inputs.tempC)
             state.effTempC = state.ra.alloc_sub<uint64_t>(getHint(HintType::LongTerm, strategy));
@@ -617,8 +636,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             and_(1 | ze | f0[0], null.ud(), state.inputs.flags, FlagKSlicing);
             cmp(1 | gt | f1[0], state.k0Rem, 0);
             jmpi(1 | f0[0], lNotKSliced);
-            add(1, state.inputs.groupIDMN, state.inputs.groupIDMN, -1);
-            alignDown(1 | nz | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
+            add(1, state.groupIDMN, state.groupIDMN, -1);
+            alignDown(1 | gt | f0[1], state.k0Rem.ud(), state.k0Rem.ud(), strategy.kAlign(problem), strategy, state);
             persistentRestore();
             jmpi(1 | f0[1], lReentry);
             jmpi(1, lLeavePersistentLoop);

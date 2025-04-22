@@ -24,7 +24,6 @@
 
 #include "internal/namespace_start.hxx"
 
-
 // Enum-like class for data types.
 class Type {
 public:
@@ -43,6 +42,9 @@ public:
         s32  = 0x01190402,
         u64  = 0x011A0803,
         s64  = 0x011B0803,
+        f4_e2m1 = 0x410B0100,
+        f4_e3m0 = 0x410A0100,
+        f8_e8m0 = 0x1080100,
         bf8  = 0x010E0100,
         hf8  = 0x010F0100,
         bf16 = 0x010C0201,
@@ -63,17 +65,20 @@ public:
     constexpr int components()        const { return 1; }
     constexpr bool isInteger()        const { return uint32_t(val) & 0x100000; }
     constexpr bool isFP()             const { return !isInteger(); }
+    constexpr bool isFP4()            const { return uint32_t(val) & 0x40000000; }
     constexpr bool isInt4()           const { return uint32_t(val) & 0x20000000; }
+    constexpr bool is4Bit()           const { return isInt4() || isFP4(); }
     constexpr bool isInt8()           const { return (val == Type::u8)  || (val == Type::s8);  }
     constexpr bool isInt16()          const { return (val == Type::u16) || (val == Type::s16); }
-    constexpr bool isF8()             const { return (val == Type::bf8) || (val == Type::hf8); }
+    constexpr bool isF8()             const { return (val == Type::bf8) || (val == Type::hf8  || (val == Type::f8_e8m0)); }
+    constexpr bool isF4()             const { return (val == Type::f4_e2m1 || val == Type::f4_e3m0) ;}
     constexpr bool isSigned()         const { return (uint32_t(val) & 0x110000) != 0x100000; }
-    constexpr int bits()              const { return isInt4() ? 4 : (paddedSize() * 8); }
+    constexpr int bits()              const { return is4Bit() ? 4 : (paddedSize() * 8); }
     constexpr int paddedSize()        const { return (uint32_t(val) >> 8) & 0xFF; }
     int log2Size()                    const { subByteCheck(); return uint32_t(val) & 0xFF; }
     int size()                        const { subByteCheck(); return paddedSize(); }
-    constexpr int perByte()           const { return isInt4() ? 2 : 1; }
-    void subByteCheck()               const { if (isInt4()) stub(); }
+    constexpr int perByte()           const { return is4Bit() ? 2 : 1; }
+    void subByteCheck()               const { if (is4Bit()) stub(); }
 
     constexpr Type arithmetic() const {
         return (val == tf32) ? Type(f32) : real();
@@ -89,24 +94,45 @@ public:
             case Type::f64: return data_type::f64;
             case Type::f32: return data_type::f32;
             case Type::f16: return data_type::f16;
+            case Type::hf8: return data_type::f8_e4m3;
+            case Type::bf8: return data_type::f8_e5m2;
             case Type::s32: return data_type::s32;
             case Type::u8: return data_type::u8;
             case Type::s8: return data_type::s8;
             case Type::u4: return data_type::u4;
             case Type::s4: return data_type::s4;
+            case Type::f4_e2m1: return data_type::f4_e2m1;
+            case Type::f4_e3m0: return data_type::f4_e3m0;
             default: assert(!"Unsupported type"); return data_type::undef;
         }
     }
     constexpr Type baseType() const { return *this; }
 
-    template <typename U> constexpr friend int operator*(U a, Type t) {
-        return t.isInt4() ? int((unsigned(a) + 1) >> 1) : int(a * (U(1) << t.log2Size()));
+    template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(U a, Type t) {
+        return t.is4Bit() ?(a + 2 * (a >= 0) - 1) / 2 : a * int(1u << t.log2Size());
     }
-    template <typename U> constexpr friend int operator*(Type t, U a) { return a * t; }
-    template <typename U>           friend int operator*=(U &a, Type t) { a = a * t; return a; }
-    template <typename U> constexpr friend int operator/(U a, Type t) {
-        return t.isInt4() ? int(a * 2) : int(a / (U(1) << t.log2Size()));
+    template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(Type t, U a) { return a * t; }
+    template <typename U>           friend U operator*=(U &a, Type t) { a = a * t; return a; }
+    template <typename U> constexpr friend decltype(std::declval<U>()/1) operator/(U a, Type t) {
+        return t.is4Bit() ? a * 2 : a / int(1u << t.log2Size());
     }
+
+    // Not a valid nGEN DataType; for gemmstone internal use only
+#if XE3P
+    static  constexpr  ngen::DataType ngen_f4_e2m1() { return  ngen::DataType::e2m1; }
+    static  constexpr  ngen::DataType ngen_f4_e3m0() { return  ngen::DataType::e3m0; }
+    static  constexpr  ngen::DataType ngen_f8_e8m0() { return  static_cast<ngen::DataType>(0x79); }
+#else
+    // Not a valid nGEN DataType; for gemmstone internal use only
+    static  constexpr  ngen::DataType ngen_f4_e2m1() { return  static_cast<ngen::DataType>(0x5A);}
+    static  constexpr  ngen::DataType ngen_f4_e3m0() { return  static_cast<ngen::DataType>(0x5B);}
+    static  constexpr  ngen::DataType ngen_f8_e8m0() { return  static_cast<ngen::DataType>(0x79);}
+#endif
+
+
+
+
+
 
     ngen::DataType ngen() const
     {
@@ -114,7 +140,7 @@ public:
         auto none = DT::invalid;
         static const DT table[32] = {DT::hf,   DT::f,    DT::df,    none,
                                      none,     none,     none,      none,
-                                     none,     none,     none,      none,
+                                     ngen_f8_e8m0(),     none,     ngen_f4_e3m0(),      ngen_f4_e2m1(),
                                      DT::bf,   DT::tf32, DT::bf8,   DT::hf8,
                                      none,     none,     DT::u4,    DT::s4,
                                      DT::ub,   DT::b,    DT::uw,    DT::w,
@@ -140,6 +166,8 @@ public:
     }
 };
 
+static_assert((-9 * Type(Type::s4) == -5) && (9 * Type(Type::s4) == 5), "Round away from zero is required non-integer type sizes");
+
 inline char typeToChar(Type T)
 {
     switch (T.baseType()) {
@@ -160,6 +188,9 @@ inline char typeToChar(Type T)
         case Type::s64:   return 'L';
         case Type::bf16:  return 'B';
         case Type::tf32:  return 'T';
+        case Type::f4_e2m1:   return 'E';
+        case Type::f4_e3m0:   return 'e';
+        case Type::f8_e8m0:   return 'X';
         default:          return '?';
     }
 }
@@ -182,6 +213,9 @@ inline Type charToType(char c)
         case 'I': return Type::s32;
         case 'B': return Type::bf16;
         case 'T': return Type::tf32;
+        case 'E': return Type::f4_e2m1;
+        case 'e': return Type::f4_e3m0;
+        case 'X': return Type::f8_e8m0;
         default:  return Type::invalid;
     }
 }

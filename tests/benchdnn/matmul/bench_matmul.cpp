@@ -25,17 +25,7 @@
 
 namespace matmul {
 
-using create_func_t = std::function<int(
-        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, const prb_t *,
-        res_t *)>;
-using check_cache_func_t = std::function<int(
-        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, const prb_t *,
-        res_t *)>;
-using do_func_t = std::function<int(
-        const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &,
-        const prb_t *, res_t *)>;
-using driver_task_executor_t = task_executor_t<prb_t, perf_report_t,
-        create_func_t, check_cache_func_t, do_func_t>;
+TASK_EXECUTOR_DECL_TYPES;
 
 void check_correctness(
         const settings_t &s, driver_task_executor_t &task_executor) {
@@ -70,8 +60,7 @@ void check_correctness(
                 i_attr, i_ctx_init, i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
-        task_executor.submit(
-                prb, s.perf_template, createit, check_cacheit, doit);
+        task_executor.submit(prb, s.perf_template, createit, checkit, doit);
     }
 }
 
@@ -154,6 +143,15 @@ static const std::string help_runtime_dims_masks
           "For tensors with runtime dimensions specified a correspondent "
           "memory format must be specified, too.\n";
 
+bool parse_legacy_dt(std::vector<dnnl_data_type_t> &dt,
+        const std::vector<dnnl_data_type_t> &def_dt, const char *str,
+        const std::string &option_name /* = "dt"*/) {
+    // TODO: uncomment in v3.8
+    // BENCHDNN_PRINT(0, "%s\n", "Warning: \'--bia_dt\' option is deprecated.
+    //         Please use the \'--bia-dt\' one.");
+    return parser::parse_dt(dt, def_dt, str, option_name);
+}
+
 int bench(int argc, char **argv) {
     driver_name = "matmul";
     using namespace parser;
@@ -171,7 +169,9 @@ int bench(int argc, char **argv) {
                 || parse_encoding(s.sparse_options, argv[0], "encoding")
 #endif
                 || parse_strides(s.strides, def.strides, argv[0], "strides")
-                || parse_dt(s.bia_dt, def.bia_dt, argv[0], "bia_dt")
+                || parse_dt(s.bia_dt, def.bia_dt, argv[0], "bia-dt")
+                // TODO: remove this later
+                || parse_legacy_dt(s.bia_dt, def.bia_dt, argv[0], "bia_dt")
                 || parse_vector_option(s.bia_mask, def.bia_mask, atoi, argv[0],
                         "bia_mask", help_bia_mask)
                 || parse_multivector_option(s.rt_dims_masks, def.rt_dims_masks,

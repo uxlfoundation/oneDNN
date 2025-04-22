@@ -67,7 +67,9 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
             // better readability
             if (!mayiuse(isa)) return status::unimplemented;
 
-            VDISPATCH_INNER_PRODUCT(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_INNER_PRODUCT(
+                    get_prop_kind() == prop_kind::forward_training,
+                    VERBOSE_BAD_PROPKIND);
             VDISPATCH_INNER_PRODUCT(
                     expect_data_types(src_dt, wei_dt, data_type::undef, dst_dt,
                             data_type::undef),
@@ -126,7 +128,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
                 brgemm_attr_t brgattr;
                 if (jbgp_.is_amx) {
                     brgattr.max_bs = bs;
-                    brgattr.wary_tail_read = false;
+                    brgattr.wary_A_k_tail_read = false;
                     brgattr.hint_expected_A_size = jbgp_.mb * jbgp_.ic;
                     brgattr.hint_expected_B_size = jbgp_.oc * jbgp_.ic;
                     brgattr.hint_expected_C_size = jbgp_.mb * jbgp_.oc;
@@ -141,6 +143,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
                 }
 
                 CHECK(brgemm_desc_set_attr(&brg, brgattr));
+                CHECK(brgemm_desc_finalize(&brg));
 
                 if (jbgp_.is_amx)
                     jbgp_.amx_buf_size_per_thread
@@ -222,8 +225,8 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
         const auto attr = pd()->attr();
         if (is_jit_supported && pd()->OC() > 1 && req_copy_scales(attr)) {
             const auto &attr_scales = attr->scales_;
-            int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
-            if (wei_scale_mask != 0) {
+            int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+            if (wei_scale_mask > 0) {
                 CHECK(safe_ptr_assign(jit_scale_precompute_,
                         new jit_avx512_core_scale_precompute_t(attr)));
                 CHECK(jit_scale_precompute_->create_kernel());
@@ -321,7 +324,7 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
                 if (jbgp_.is_amx) {
                     brgemm_attr_t brgattr;
                     brgattr.max_bs = bs;
-                    brgattr.wary_tail_read = false;
+                    brgattr.wary_A_k_tail_read = false;
                     brgattr.hint_expected_A_size = jbgp_.mb * jbgp_.oc;
                     brgattr.hint_expected_B_size = jbgp_.oc * jbgp_.ic;
                     brgattr.hint_expected_C_size = jbgp_.mb * jbgp_.ic;
@@ -332,6 +335,9 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
                     brgattr.fpmath_mode = attr()->fpmath_.mode_;
 
                     CHECK(brgemm_desc_set_attr(&brg, brgattr));
+                }
+                CHECK(brgemm_desc_finalize(&brg));
+                if (jbgp_.is_amx) {
                     jbgp_.amx_buf_size_per_thread
                             = nstl::max(brg.get_wsp_buffer_size(),
                                     jbgp_.amx_buf_size_per_thread);
@@ -442,9 +448,19 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
             auto src_dt = invariant_src_md()->data_type;
             auto diff_wei_type = invariant_wei_md()->data_type;
             auto diff_dst_type = invariant_dst_md()->data_type;
+            auto diff_bia_type = invariant_bia_md()->data_type;
             // disabling verbose dispatch messages for unsupported isa for
             // better readability
             if (!mayiuse(isa)) return status::unimplemented;
+
+            const bool is_f32 = utils::everyone_is(data_type::f32, src_dt,
+                                        diff_wei_type, diff_dst_type)
+                    && IMPLICATION(
+                            with_bias(), diff_bia_type == data_type::f32);
+
+            VDISPATCH_INNER_PRODUCT(IMPLICATION(!is_f32, mayiuse(avx512_core)),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+
             VDISPATCH_INNER_PRODUCT(
                     desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
@@ -497,7 +513,7 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
                 if (jbgp_.is_amx) {
                     brgemm_attr_t brgattr;
                     brgattr.max_bs = bs;
-                    brgattr.wary_tail_read = false;
+                    brgattr.wary_A_k_tail_read = false;
                     brgattr.hint_expected_A_size = jbgp_.mb * jbgp_.ic;
                     brgattr.hint_expected_B_size = jbgp_.mb * jbgp_.oc;
                     brgattr.hint_expected_C_size = jbgp_.ic * jbgp_.oc;
@@ -508,6 +524,9 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
                     brgattr.fpmath_mode = attr()->fpmath_.mode_;
 
                     CHECK(brgemm_desc_set_attr(&brg, brgattr));
+                }
+                CHECK(brgemm_desc_finalize(&brg));
+                if (jbgp_.is_amx) {
                     jbgp_.amx_buf_size_per_thread
                             = nstl::max(brg.get_wsp_buffer_size(),
                                     jbgp_.amx_buf_size_per_thread);

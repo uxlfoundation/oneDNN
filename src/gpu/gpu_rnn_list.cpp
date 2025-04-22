@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,6 +20,10 @@
 #include "gpu/intel/ocl/rnn/rnn_grid.hpp"
 #endif
 
+#ifdef GENERIC_SYCL_KERNELS_ENABLED
+#include "gpu/generic/sycl/rnn/ref_rnn.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -32,6 +36,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_RNN_P({
     {{forward}, {
         GPU_INSTANCE_INTEL(intel::ocl::simple_rnn_fwd_t)
+        GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_rnn_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({

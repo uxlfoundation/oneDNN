@@ -124,8 +124,8 @@ void BLASKernelGenerator<hw>::gemmHilbertlikeOrder(const Subregister &groupIDMN,
 {
     if (aLeader.isValid() || bLeader.isValid()) stub();
 
-    bool triangular = false;
-    bool rectangular = !triangular && state.inputs.hilbertVD.isValid();
+    const bool triangular = false;
+    const bool rectangular = !triangular && state.inputs.hilbertVD.isValid();
 
     auto storage = state.ra.alloc();
     auto u = storage.ud(0);

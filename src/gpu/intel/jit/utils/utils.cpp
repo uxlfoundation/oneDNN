@@ -21,11 +21,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
-namespace ir_utils {
-
-thread_local int ir_check_log_level_t::level_ = LOG_CHECK_DEFAULT;
-
-} // namespace ir_utils
 
 void stringify_to_cpp_file(const std::string &file_name,
         const std::string &var_name, const std::vector<std::string> &namespaces,

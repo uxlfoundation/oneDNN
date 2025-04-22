@@ -144,7 +144,7 @@ static inline status_t create_gemm_pd(
 
     gemm_pd_ = *(++it);
     if (!gemm_pd_) return status::unimplemented;
-    if (skip_ref && strstr(gemm_pd_.get()->name(), "ref") != NULL)
+    if (skip_ref && strstr(gemm_pd_->name(), "ref") != nullptr)
         return status::unimplemented;
 
     return status::success;

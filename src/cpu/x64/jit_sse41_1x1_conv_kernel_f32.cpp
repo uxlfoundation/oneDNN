@@ -588,8 +588,8 @@ status_t jit_sse41_1x1_conv_kernel_f32::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.os = jcp.oh * jcp.ow;
     jcp.is = jcp.ih * jcp.iw;
 
-    jcp.typesize_in = sizeof(prec_traits<data_type::f32>::type);
-    jcp.typesize_out = sizeof(prec_traits<data_type::f32>::type);
+    jcp.typesize_in = sizeof(prec_traits_t<data_type::f32>::type);
+    jcp.typesize_out = sizeof(prec_traits_t<data_type::f32>::type);
 
     const auto &post_ops = attr.post_ops_;
 

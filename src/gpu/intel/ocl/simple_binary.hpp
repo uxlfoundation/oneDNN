@@ -97,7 +97,7 @@ struct simple_binary_t : public gpu_primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
         bool with_scales(int position) const {
-            return !attr()->scales_.get(position).has_default_values();
+            return !attr()->scales_.has_default_values(position);
         }
 
         bool with_scales() const {

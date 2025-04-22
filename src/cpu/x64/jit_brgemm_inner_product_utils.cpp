@@ -444,8 +444,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     const memory_desc_wrapper dst_d(&dst_md);
     if (!post_ops_ok(attr, dst_d)) return status::unimplemented;
     if (jbgp.with_scales) {
-        const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
-        jbgp.is_oc_scale = wei_scales.mask_ != 0;
+        jbgp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
     }
 
     const int min_ic_divisor = is_amx_int8 ? 4 : is_amx_xf16 ? 2 : 1;
@@ -703,6 +702,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
                 jbgp.src_dt, jbgp.wei_dt, false, false, brgemm_row_major, 1.0f,
                 1.0f, jbgp.ic_without_padding, jbgp.oc_block,
                 jbgp.oc_without_padding, jbgp.os_block, jbgp.oc_block, jbgp.K);
+        if (st == success) st = brgemm_desc_finalize(&brg_desc);
 
         if (st == success) {
             int bd_block = brg_desc.bd_block;

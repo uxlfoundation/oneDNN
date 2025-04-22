@@ -109,7 +109,7 @@ public:
                                      std::vector<std::unordered_map<int,
                                              memory>> &args) {
                 args.resize(nthr);
-                for (auto iter : ori_args) {
+                for (const auto &iter : ori_args) {
                     memory ori_mem = iter.second;
                     if (mem_map.count(ori_mem.get()) == 0) {
                         //construct new memory

@@ -33,7 +33,7 @@ namespace pattern {
 
 namespace {
 
-platform::dir_t get_op_dir(const std::shared_ptr<op_t> &aop) {
+inline platform::dir_t get_op_dir(const std::shared_ptr<op_t> &aop) {
     using namespace dnnl::impl::graph::op_kind;
     using namespace dnnl::impl::graph::dnnl_impl::platform;
 
@@ -121,7 +121,7 @@ platform::dir_t get_op_dir(const std::shared_ptr<op_t> &aop) {
     return dir;
 }
 
-bool is_reorder_type(op_kind_t op_kind) {
+inline bool is_reorder_type(op_kind_t op_kind) {
     using namespace dnnl::impl::graph::op_kind;
     static const std::unordered_set<int> reorder_ops {Reorder, Quantize,
             Dequantize, DynamicDequantize, DynamicQuantize, TypeCast};

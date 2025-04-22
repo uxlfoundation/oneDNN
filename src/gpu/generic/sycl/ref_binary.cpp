@@ -37,10 +37,8 @@ status_t ref_binary_t::pd_t::init_conf() {
     conf_.alg_kind = desc()->alg_kind;
     // Limitations:
     // - Only common scale policy is supported.
-    conf_.do_scale_src0
-            = !attr()->scales_.get(DNNL_ARG_SRC_0).has_default_values();
-    conf_.do_scale_src1
-            = !attr()->scales_.get(DNNL_ARG_SRC_1).has_default_values();
+    conf_.do_scale_src0 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
+    conf_.do_scale_src1 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
     conf_.is_tensor_op = is_tensor_op();
     for (size_t i = 0; i < xpu::sycl::md_t::max_dims; i++) {
         conf_.broadcast_dims0[i]

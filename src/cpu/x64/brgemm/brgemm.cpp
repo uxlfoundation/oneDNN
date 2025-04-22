@@ -261,13 +261,6 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
                 brg->dt_b == u8, is_superset(brg->isa_impl, avx512_core_amx)))
         return status::unimplemented;
 
-    CHECK(brgemm_blocking(brg));
-
-    // avx2_vnni_2 kernel with xf16 data type requires blocked weights.
-    if (brg->isa_impl == avx2_vnni_2 && brg->is_xf16()
-            && brg->LDB % brg->ld_block > 0)
-        return status::unimplemented;
-
     return status::success;
 }
 
@@ -290,8 +283,6 @@ status_t brdgmm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     if (utils::everyone_is(
                 false, brg->is_int8, brg->is_bf16, brg->is_f32, brg->is_f16))
         return status::unimplemented;
-
-    CHECK(brdgmm_blocking(brg));
 
     return status::success;
 }
@@ -374,9 +365,6 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         brg->is_bf16_emu
                 = !(mayiuse(avx512_core_bf16) || brg->isa_impl == avx2_vnni_2);
 
-    // Rerun blocking heuristic due to reduced zmm register count
-    if (brg->is_bf16_emu && brg->is_dgmm) CHECK(brdgmm_blocking(brg));
-
     if (!brg->attr()) return status::success;
 
     using namespace injector;
@@ -435,46 +423,47 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     if (brg->with_scales) {
         // Note. the current version supports only two different output scale
         // types:
-        //     1) common (mask_ = 0)
+        //     1) common (mask = 0)
         //     2) per_n_dim_scale - broadcast across n dimension;
         //        for convolution and inner product promitives it corresponds
-        //        to "per_oc" mask_ = 1 << 1; for matmul - to
-        //        mask_ = (1 << (ndims - 1))), where ndims is number of
+        //        to "per_oc" mask = 1 << 1; for matmul - to
+        //        mask = (1 << (ndims - 1))), where ndims is number of
         //        dimensions for original matmul problem
-        // So if wei_scales.mask_ != 0 (not common) it's assumed here that scale
-        // type is per_n_dim_scale and driver which calls brgemm kernel checked
-        // that mask has correct value for this case
-        brg->is_oc_scale = wei_scales.mask_ != 0;
+        // So if wei_scales.get_mask() > 0 (not common) it's assumed here that
+        // scale type is per_n_dim_scale and driver which calls brgemm kernel
+        // checked that mask has correct value for this case
+        brg->is_oc_scale = wei_scales.get_mask() > 0;
     }
 
     const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
     brg->with_dst_scales = !dst_scales.has_default_values();
-    const bool scales_ok = src_scales.mask_ == 0 && dst_scales.mask_ == 0
-            && attr->scales_.has_default_values(
-                    {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST});
+    const bool scales_ok = attr->scales_.has_default_values({DNNL_ARG_SRC,
+                                   DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
+            && IMPLICATION(!src_scales.has_default_values(),
+                    src_scales.get_mask() == 0)
+            && IMPLICATION(!dst_scales.has_default_values(),
+                    dst_scales.get_mask() == 0);
     if (!scales_ok) return status::unimplemented;
 
     auto init_zp_type
             = [&](brgemm_broadcast_t &zp_type, int mem_arg) -> status_t {
-        auto zero_points = attr->zero_points_;
-
-        // common zero point type is supported for now
-        const bool is_per_dim_1_bcast = zero_points.per_dim_1(mem_arg);
-        const bool is_common_bcast = zero_points.common(mem_arg);
-        if (!is_common_bcast && !is_per_dim_1_bcast)
-            return status::unimplemented;
+        const auto &zp = attr->zero_points_;
+        // Always init a default value;
+        zp_type = brgemm_broadcast_t::none;
 
         const bool skip_zero_point
                 = mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation;
+        if (skip_zero_point) return status::success;
 
-        zp_type = brgemm_broadcast_t::none;
-        const bool is_any_bcast
-                = !(zero_points.has_default_values(mem_arg) || skip_zero_point);
-        if (is_any_bcast) {
-            if (is_common_bcast)
+        if (!zp.has_default_values(mem_arg)) {
+            int mask = zp.get_mask(mem_arg);
+            if (mask == 0) {
                 zp_type = brgemm_broadcast_t::per_tensor;
-            else if (is_per_dim_1_bcast)
+            } else if (mask == (1 << 1)) {
                 zp_type = brgemm_broadcast_t::per_n;
+            } else {
+                return status::unimplemented;
+            }
         }
 
         return status::success;
@@ -483,13 +472,6 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     CHECK(init_zp_type(brg->zp_type_a, DNNL_ARG_SRC));
     CHECK(init_zp_type(brg->zp_type_b, DNNL_ARG_WEIGHTS));
     CHECK(init_zp_type(brg->zp_type_c, DNNL_ARG_DST));
-
-    // Post-ops may use vector registers so brgemm/brdgmm blocking may need to
-    // be updated
-    if (brg->is_dgmm)
-        CHECK(brdgmm_blocking(brg));
-    else
-        CHECK(brgemm_blocking(brg));
 
     return status::success;
 }
@@ -520,42 +502,6 @@ status_t brgemm_desc_set_attr(
 
     if (brgattr.fpmath_mode != fpmath_mode::strict) maybe_try_bf32(brg);
 
-    const int max_vpad = nstl::max(brgattr.max_top_vpad,
-            brgattr.max_bottom_vpad); // these should be equal
-    bool hint_blocking_set
-            = (brgattr.hint_bd_block != 0 || brgattr.hint_bd_block2 != 0
-                    || brgattr.hint_ld_block != 0 || brgattr.hint_ld_block2 != 0
-                    || brgattr.hint_load_nt_A != brgemm_hint_nt_undef
-                    || brgattr.hint_load_nt_B != brgemm_hint_nt_undef
-                    || brgattr.hint_bs_group > 1 || brgattr.b_is_vnni);
-    if (brgattr.use_uker || brg->is_bf16_tmm || hint_blocking_set
-            || brgattr.bd_mask_level
-            || brgattr.fpmath_mode != fpmath_mode::strict || max_vpad > 0) {
-        if (brg->is_dgmm)
-            CHECK(brdgmm_blocking(brg));
-        else
-            CHECK(brgemm_blocking(brg));
-    }
-
-    if (!brg->is_dgmm) {
-        // virtual padding is restricted by bd_block size due to
-        // brgemm_kernel implementation. TODO: remove this restriction
-        const int min_bd_block
-                = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
-        if ((max_vpad > min_bd_block)) return status::unimplemented;
-    }
-
-    brg->LDA2 = (brgattr.LDA2 != 0) ? brgattr.LDA2 : brg->LDA;
-    brg->LDB2 = (brgattr.LDB2 != 0) ? brgattr.LDB2 : brg->LDB;
-    brg->LDC2_M = (brgattr.LDC2_M != 0) ? brgattr.LDC2_M : brg->LDC;
-    brg->LDC2_N = (brgattr.LDC2_N != 0) ? brgattr.LDC2_N : brg->ld_block;
-
-    brg->is_blocked = (brg->LDA2 != brg->LDA || brg->LDB2 != brg->LDB
-            || brg->LDC2_M != brg->LDC || brg->LDC2_N != brg->ld_block);
-
-    if (!IMPLICATION(brg->is_blocked, brg->layout == brgemm_row_major))
-        return status::invalid_arguments;
-
     // virtual padding is not supported for "amx"
     if ((brgattr.max_top_vpad > 0 || brgattr.max_bottom_vpad > 0)
             && (brg->is_tmm))
@@ -579,6 +525,28 @@ status_t brgemm_desc_set_attr(
 
     // TODO: update conditions once other implementations are enabled
     if (brg->is_fp8 && !brg->is_fp8_via_convert()) return status::unimplemented;
+
+    return status::success;
+}
+
+status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
+    if (brg == nullptr) return status::invalid_arguments;
+
+    const int max_vpad = nstl::max(
+            brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
+
+    if (brg->is_dgmm)
+        CHECK(brdgmm_blocking(brg));
+    else
+        CHECK(brgemm_blocking(brg));
+
+    if (!brg->is_dgmm) {
+        // virtual padding is restricted by bd_block size due to
+        // brgemm_kernel implementation. TODO: remove this restriction
+        const int min_bd_block
+                = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
+        if ((max_vpad > min_bd_block)) return status::unimplemented;
+    }
 
     return status::success;
 }
@@ -632,10 +600,11 @@ status_t brgemm_kernel_destroy(brgemm_kernel_t *brg_kernel) {
 status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     if (!brg.is_tmm) return status::unimplemented;
 
-    //TODO: Add support of tail processing by reduction dimension
     auto rd_block = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
     if (brg.is_input_convert())
         rd_block = utils::rnd_up(rd_block, 2 /*vnni_granularity*/);
+    else
+        rd_block = utils::rnd_up(rd_block, brg.rd_step);
 
     palette_config_t *buff = (palette_config_t *)(palette);
 
@@ -777,7 +746,8 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_prfB.dist2);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist2);
-    CMP_BRGEMM_FIELD(brgattr.wary_tail_read);
+    CMP_BRGEMM_FIELD(brgattr.wary_A_k_tail_read);
+    CMP_BRGEMM_FIELD(brgattr.extendable_k);
     CMP_BRGEMM_FIELD(brgattr.generate_skip_accumulation);
     CMP_BRGEMM_FIELD(brgattr.bd_mask_level);
     CMP_BRGEMM_FIELD(brgattr.use_uker);

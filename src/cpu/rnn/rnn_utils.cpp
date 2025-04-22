@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,8 +76,8 @@ bool rnn_utils::is_ldoi(const memory_desc_wrapper &mdw) {
 bool rnn_utils::is_ldigo_blocked(const memory_desc_wrapper &mdw) {
     format_tag_t md_format_tag = mdw.matches_one_of_tag(format_tag::ldgOi32o,
             format_tag::ldgOI32o2i, format_tag::ldgOI32o4i,
-            format_tag::ldgOI64o2i, format_tag::ldgOI64o4i,
-            format_tag::ldgOi16o);
+            format_tag::ldgOI16o4i, format_tag::ldgOI64o2i,
+            format_tag::ldgOI64o4i, format_tag::ldgOi16o);
     return md_format_tag != format_tag::undef;
 }
 
@@ -88,8 +88,8 @@ bool rnn_utils::is_ldgoi_blocked(const memory_desc_wrapper &mdw) {
 }
 
 bool rnn_utils::is_ldio_blocked(const memory_desc_wrapper &mdw) {
-    format_tag_t md_format_tag = mdw.matches_one_of_tag(
-            format_tag::ldOi32o, format_tag::ldOI32o4i, format_tag::ldOi16o);
+    format_tag_t md_format_tag = mdw.matches_one_of_tag(format_tag::ldOi32o,
+            format_tag::ldOI32o4i, ldOI16o4i, format_tag::ldOi16o);
     return md_format_tag != format_tag::undef;
 }
 
@@ -286,14 +286,16 @@ status_t rnn_utils::set_expected_desc(rnn_conf_t &rnn,
 
             if (weights_type == weights_type_t::projection) {
                 if (rnn.is_int8_conf())
-                    tag = format_tag::ldOI32o4i;
+                    tag = utils::map(n_block, format_tag::undef, 32,
+                            format_tag::ldOI32o4i, 16, format_tag::ldOI16o4i);
                 else
                     tag = utils::map(n_block, format_tag::undef, 32,
                             format_tag::ldOi32o, 16, format_tag::ldOi16o);
             } else if (rnn.is_fwd) {
                 if (rnn.is_int8_conf())
                     tag = utils::map(n_block, format_tag::undef, 64,
-                            format_tag::ldgOI64o4i, 32, ldgOI32o4i);
+                            format_tag::ldgOI64o4i, 32, ldgOI32o4i, 16,
+                            ldgOI16o4i);
                 else if (rnn.is_xf16_conf())
                     tag = utils::map(n_block, format_tag::undef, 64,
                             format_tag::ldgOI64o2i, 32, ldgOI32o2i);

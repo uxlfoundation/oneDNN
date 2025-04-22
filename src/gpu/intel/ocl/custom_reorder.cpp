@@ -21,8 +21,8 @@
 #include "gpu/intel/ocl/custom_reorder.hpp"
 
 #include "common/utils.hpp"
-#include "gpu/intel/ocl/ocl_stream.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/stream.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -619,8 +619,8 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
             if (!may_use_sg8 && vect_size == 8) {
                 return status_t::dnnl_unimplemented;
             }
-            for (dim_idx_t dim = last - 1;
-                    dim >= 0 && dim < MAX_NDIMS && temp_block == 1; dim--) {
+            for (dim_idx_t dim = last - 1; dim < MAX_NDIMS && temp_block == 1;
+                    dim--) {
                 if (padded_dims[dim] % 4 == 0) { temp_block = 4; }
                 if (padded_dims[dim] % 8 == 0) { temp_block = 8; }
                 if (padded_dims[dim] % 16 == 0) { temp_block = 16; }

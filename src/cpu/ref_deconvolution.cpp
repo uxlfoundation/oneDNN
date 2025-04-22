@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -174,8 +174,7 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    const int wei_scale_mask
-            = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_;
+    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
 
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
@@ -190,7 +189,7 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
     const auto maybe_oscale = [](float &d, dim_t oc, const float *src_scales,
                                       const float *wei_scales, int wei_mask) {
         // scale_idx_mult = 1 for per_oc scales and 0, otherwise
-        const int wei_scale_idx_mult = wei_mask != 0;
+        const int wei_scale_idx_mult = wei_mask > 0;
         d *= src_scales[0] * wei_scales[oc * wei_scale_idx_mult];
     };
 
@@ -216,11 +215,14 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-    const int dst_scale_mask = pd()->attr()->scales_.get(DNNL_ARG_DST).mask_;
+    const bool has_dst_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
+    const int dst_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_DST);
 
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
-    const bool is_dst_zp_common
-            = pd()->attr()->zero_points_.common(DNNL_ARG_DST);
+    const bool has_dst_zp
+            = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_DST);
+    const int dst_zp_mask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
 
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
@@ -231,20 +233,6 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
     const auto OC = pd()->OC();
     const auto OCP = dst_d.padded_dims()[1];
     const auto ndims = pd()->desc()->src_desc.ndims;
-
-    const auto maybe_dst_zero_point = [=](float &result, dim_t oc) {
-        if (is_dst_zp_common)
-            result += dst_zero_point[0];
-        else
-            result += dst_zero_point[oc];
-    };
-
-    const auto maybe_scale
-            = [](float &d, dim_t oc, const float *scales, int mask) {
-                  // scale_idx_mult = 1 for per_oc scales and 0, otherwise
-                  const int scale_idx_mult = mask != 0;
-                  d *= scales[oc * scale_idx_mult];
-              };
 
     const auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
@@ -269,8 +257,13 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
                     args.l_offset = dst_l_off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(tmp_result, args);
-                    maybe_scale(tmp_result, ocp, dst_scales, dst_scale_mask);
-                    maybe_dst_zero_point(tmp_result, ocp);
+                    if (has_dst_scales) {
+                        // scale_idx_mult = 1 for per_oc scales and 0, otherwise
+                        tmp_result *= dst_scales[ocp * (dst_scale_mask > 0)];
+                    }
+                    if (has_dst_zp) {
+                        tmp_result += dst_zero_point[ocp * (dst_zp_mask > 0)];
+                    }
                 }
                 io::store_float_value(
                         dst_d.data_type(), tmp_result, dst, dst_off);
@@ -300,7 +293,7 @@ dim_t get_weights_off(const memory_desc_wrapper &wei_d, bool with_groups,
 template <data_type_t wei_type>
 static void compute_src_zp_compensation(const exec_ctx_t &ctx,
         const int32_t *src_zero_point, const bool is_src_zp_common,
-        typename prec_traits<wei_type>::type *wei,
+        typename prec_traits_t<wei_type>::type *wei,
         const cpu_deconvolution_fwd_pd_t *pd) {
     using namespace memory_tracking::names;
 
@@ -347,7 +340,8 @@ template <data_type_t wei_type>
 static std::function<int32_t(
         const dim_t, const dim_t, const dim_t, const dim_t, const dim_t)>
 prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_point,
-        const bool is_src_zp_common, typename prec_traits<wei_type>::type *wei,
+        const bool is_src_zp_common,
+        typename prec_traits_t<wei_type>::type *wei,
         const cpu_deconvolution_fwd_pd_t *deconv_pd) {
 
     const auto KH = deconv_pd->KH();
@@ -423,7 +417,7 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_point,
 template <data_type_t wei_type>
 static status_t apply_src_zero_point(const exec_ctx_t &ctx,
         const cpu_deconvolution_fwd_pd_t *deconv_pd, float *conv_output) {
-    using wei_data_t = typename prec_traits<wei_type>::type;
+    using wei_data_t = typename prec_traits_t<wei_type>::type;
     using namespace memory_tracking::names;
     using namespace data_type;
 
@@ -432,7 +426,7 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
     const auto wei = CTX_OUT_MEM(wei_data_t *, DNNL_ARG_WEIGHTS);
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     const bool is_src_zp_common
-            = deconv_pd->attr()->zero_points_.common(DNNL_ARG_SRC);
+            = deconv_pd->attr()->zero_points_.get_mask(DNNL_ARG_SRC) == 0;
 
     const auto scratchpad = ctx.get_scratchpad_grantor();
     const int32_t *const zp_src_compensation
@@ -536,11 +530,10 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     float *conv_output = scratchpad.get<float>(key_deconv_bias);
 
-    const auto &arg_scales = pd()->attr()->scales_;
-    const auto &src_scales = arg_scales.get(DNNL_ARG_SRC);
-    const auto &wei_scales = arg_scales.get(DNNL_ARG_WEIGHTS);
+    const auto &scales = pd()->attr()->scales_;
 
-    if (!src_scales.has_default_values() || !wei_scales.has_default_values()) {
+    if (!scales.has_default_values(DNNL_ARG_SRC)
+            || !scales.has_default_values(DNNL_ARG_WEIGHTS)) {
         compute_oscale(ctx, conv_output);
     }
 
@@ -601,8 +594,8 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias(
 
 template <data_type_t dbia_type, data_type_t ddst_type>
 void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ncdhw(
-        typename prec_traits<dbia_type>::type *diff_bias,
-        const typename prec_traits<ddst_type>::type *diff_dst) const {
+        typename prec_traits_t<dbia_type>::type *diff_bias,
+        const typename prec_traits_t<ddst_type>::type *diff_dst) const {
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
 
     const auto OC = pd()->OC();
@@ -624,8 +617,8 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ncdhw(
 
 template <data_type_t dbia_type, data_type_t ddst_type>
 void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ndhwc(
-        typename prec_traits<dbia_type>::type *diff_bias,
-        const typename prec_traits<ddst_type>::type *diff_dst) const {
+        typename prec_traits_t<dbia_type>::type *diff_bias,
+        const typename prec_traits_t<ddst_type>::type *diff_dst) const {
     const auto MB = pd()->MB();
     const auto SP = pd()->OW() * pd()->OH() * pd()->OD();
     const auto OC = pd()->OC();
@@ -639,14 +632,15 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ndhwc(
                 db += diff_dst[offset];
             }
         }
-        diff_bias[oc] = static_cast<typename prec_traits<dbia_type>::type>(db);
+        diff_bias[oc]
+                = static_cast<typename prec_traits_t<dbia_type>::type>(db);
     });
 }
 
 template <data_type_t dbia_type, data_type_t ddst_type, dim_t blksize>
 void ref_deconvolution_bwd_weights_t::compute_bwd_bias_nCdhwXc(
-        typename prec_traits<dbia_type>::type *diff_bias,
-        const typename prec_traits<ddst_type>::type *diff_dst) const {
+        typename prec_traits_t<dbia_type>::type *diff_bias,
+        const typename prec_traits_t<ddst_type>::type *diff_dst) const {
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
 
     const auto OC = pd()->OC();
@@ -679,8 +673,8 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_nCdhwXc(
 template <data_type_t dbia_type, data_type_t ddst_type>
 void ref_deconvolution_bwd_weights_t::compute_bias(
         const exec_ctx_t &ctx) const {
-    using dbia_data_t = typename prec_traits<dbia_type>::type;
-    using ddst_data_t = typename prec_traits<ddst_type>::type;
+    using dbia_data_t = typename prec_traits_t<dbia_type>::type;
+    using ddst_data_t = typename prec_traits_t<ddst_type>::type;
 
     auto diff_bias = CTX_OUT_MEM(dbia_data_t *, DNNL_ARG_DIFF_BIAS);
     auto diff_dst = CTX_IN_MEM(const ddst_data_t *, DNNL_ARG_DIFF_DST);

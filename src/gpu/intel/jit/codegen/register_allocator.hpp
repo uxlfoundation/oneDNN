@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@
 #define GPU_INTEL_JIT_CODEGEN_REGISTER_ALLOCATOR_HPP
 
 #include "common/z_magic.hpp"
-#include "gpu/intel/jit/ngen/ngen.hpp"
-#include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "ngen/ngen.hpp"
+#include "ngen/ngen_register_allocator.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -36,15 +36,19 @@ public:
 
     reg_allocator_t(ngen::HW hw, const std::string &kernel_name_) : ra(hw) {
 #ifdef DNNL_DEV_MODE
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         kernel_name = kernel_name_;
 #endif
         MAYBE_UNUSED(kernel_name_);
     }
-    ~reg_allocator_t() {
+    ~reg_allocator_t()
 #ifdef DNNL_DEV_MODE
-        ir_assert(!is_speculate) << "Speculative allocation never finished\n";
-#endif
+    {
+        gpu_assert(!is_speculate) << "Speculative allocation never finished\n";
     }
+#else
+            = default;
+#endif
 
     ngen::HW hardware() const { return ra.hardware(); }
 

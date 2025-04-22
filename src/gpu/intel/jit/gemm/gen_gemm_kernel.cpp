@@ -17,6 +17,7 @@
 #include "gpu/intel/jit/gemm/gen_gemm_kernel.hpp"
 #include "common/impl_registration.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/jit/gemm/gen_gemm_kernel_db.hpp"
 #include "gpu/intel/jit/gemm/include/generator.hpp"
 #include "gpu/intel/jit/gemm/include/strategy_parser.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
@@ -27,11 +28,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
-
-#define _CATALOG_ gemm_catalog
-#include "selector/db/kernel.db"
-;
-#undef _CATALOG_
 
 status_t gen_gemm_kernel_desc_t::create_generator(
         const compute::compute_engine_t &engine,
@@ -52,6 +48,8 @@ compute::scalar_type_t gen_gemm_kernel_desc_t::scalar_type() const {
         case Type::u32: return compute::scalar_type_t::_uint;
         case Type::s64: return compute::scalar_type_t::_long;
         case Type::u64: return compute::scalar_type_t::_ulong;
+        case Type::f4_e2m1: return compute::scalar_type_t::_f4_e2m1;
+        case Type::f4_e3m0: return compute::scalar_type_t::_f4_e3m0;
         case Type::bf8: return compute::scalar_type_t::_bfloat8;
         case Type::hf8: return compute::scalar_type_t::_hfloat8;
         case Type::bf16: return compute::scalar_type_t::_bfloat16;
@@ -79,13 +77,61 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
                 entry_->restrictions.alignment[2]));
     }
 
-    problem_.CO.setAlignment(problem_.Tco.size());
+    problem_.CO.setAlignment(problem_.Tco.paddedSize());
 
     // Parse strategy string.
     strategy_ = GEMMStrategy(hw_, stepping_);
-    strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
-    strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
-    parseStrategy(entry_->strategy, hw_, problem_, strategy_);
+#ifdef DNNL_DEV_MODE
+    std::string ovr_strategy;
+    ovr_strategy = gpu_utils::dev_getenv("GEMM_KERNEL", ovr_strategy);
+    if (!ovr_strategy.empty()) {
+        // Warning: will override problem data types (including up/down
+        // conversions) - this will cause inaccuracies if precisions/layouts
+        // are chosen that are incompatible with the given problem
+        std::stringstream ss(ovr_strategy);
+        std::string val;
+        ss >> val;
+        gpu_assert(val == "gemm");
+        ss >> val;
+        const char *pstr = val.c_str();
+        pstr = parsePrecisions(pstr, problem_.Ta_ext, problem_.Ta);
+        pstr = parsePrecisions(pstr, problem_.Tb_ext, problem_.Tb);
+        pstr = parsePrecisions(pstr, problem_.Tc, problem_.Tc_ext);
+        ss >> val;
+        pstr = val.c_str();
+        pstr = parseLayout(pstr, problem_.A);
+        pstr = parseLayout(pstr, problem_.B);
+        pstr = parseLayout(pstr, problem_.C);
+
+        if (problem_.A.alignment == 0)
+            problem_.A.setAlignment(
+                    problem_.A.defaultAlignment(problem_.Ta_ext));
+        if (problem_.B.alignment == 0)
+            problem_.B.setAlignment(
+                    problem_.B.defaultAlignment(problem_.Tb_ext));
+        if (problem_.C.alignment == 0)
+            problem_.C.setAlignment(
+                    problem_.C.defaultAlignment(problem_.Tc_ext));
+
+        strategy_ = GEMMStrategy(hw_, stepping_);
+        ss >> strategy_.unroll[LoopM];
+        ss >> strategy_.unroll[LoopN];
+
+        ss >> val;
+        problem_.alpha = std::stoi(val);
+        ss >> val;
+        problem_.beta = std::stoi(val);
+
+        ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
+        parseStrategy(ovr_strategy.c_str(), hw_, problem_, strategy_);
+    } else {
+#endif
+        strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
+        strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
+        parseStrategy(entry_->strategy, hw_, problem_, strategy_);
+#ifdef DNNL_DEV_MODE
+    }
+#endif
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
     adjustStrategy(hw_, problem_, strategy_, tags);
@@ -155,6 +201,9 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * strategy_.barrierFreq)
         strategy_.barrierFreq = 0;
 
+    // Correct GRF count in following calculations for fixed systolic kernels.
+    if (strategy_.fixedSystolic) strategy_.GRFs = 256;
+
     // Disable linear ordering and persistent threads if the GEMM doesn't fill the GPU.
     if (m_ >= 0 && n_ >= 0 && eu_count_ >= 0) {
         int wg_tile_m = strategy_.wg[LoopM] * strategy_.unroll[LoopM];
@@ -203,52 +252,6 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
             }
         }
     }
-
-#ifdef DNNL_DEV_MODE
-    std::string ovr_strategy;
-    ovr_strategy = gpu_utils::dev_getenv("GEMM_KERNEL", ovr_strategy);
-    if (!ovr_strategy.empty()) {
-        // Warning: will override problem data types (including up/down
-        // conversions) - this will cause inaccuracies if precisions/layouts
-        // are chosen that are incompatible with the given problem
-        std::stringstream ss(ovr_strategy);
-        std::string val;
-        ss >> val;
-        gpu_assert(val == "gemm");
-        ss >> val;
-        const char *pstr = val.c_str();
-        pstr = parsePrecisions(pstr, problem_.Ta_ext, problem_.Ta);
-        pstr = parsePrecisions(pstr, problem_.Tb_ext, problem_.Tb);
-        pstr = parsePrecisions(pstr, problem_.Tc, problem_.Tc_ext);
-        ss >> val;
-        pstr = val.c_str();
-        pstr = parseLayout(pstr, problem_.A);
-        pstr = parseLayout(pstr, problem_.B);
-        pstr = parseLayout(pstr, problem_.C);
-
-        if (problem_.A.alignment == 0)
-            problem_.A.setAlignment(
-                    problem_.A.defaultAlignment(problem_.Ta_ext));
-        if (problem_.B.alignment == 0)
-            problem_.B.setAlignment(
-                    problem_.B.defaultAlignment(problem_.Tb_ext));
-        if (problem_.C.alignment == 0)
-            problem_.C.setAlignment(
-                    problem_.C.defaultAlignment(problem_.Tc_ext));
-
-        strategy_ = GEMMStrategy(hw_, stepping_);
-        ss >> strategy_.unroll[LoopM];
-        ss >> strategy_.unroll[LoopN];
-
-        ss >> val;
-        problem_.alpha = std::stoi(val);
-        ss >> val;
-        problem_.beta = std::stoi(val);
-
-        ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
-        parseStrategy(ovr_strategy.c_str(), hw_, problem_, strategy_);
-    }
-#endif
 
     strategy_.relaxedAccumulation |= relaxed_acc_;
     strategy_.systolicAvailable &= !disable_systolic_;
@@ -402,29 +405,13 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     disable_systolic_ = !has_systolic;
     relaxed_acc_ = mode & mode_relaxed_acc;
 
-    align_a = nstl::max(align_a, int(types::data_type_size(a_type)));
-    align_b = nstl::max(align_b, int(types::data_type_size(b_type)));
-    align_c = nstl::max(align_c, int(types::data_type_size(c_type)));
+    auto a_type_size = types::data_type_size(a_type);
+    auto b_type_size = types::data_type_size(a_type);
+    auto c_type_size = types::data_type_size(a_type);
 
-    bool can_2d_a = (lda * problem_.Ta_ext <= 16777216);
-    bool can_2d_b = (ldb * problem_.Tb_ext <= 16777216);
-    bool can_2d_c = (ldc * problem_.Tc_ext <= 16777216);
-
-    // Xe2 requires stronger alignment for block 2D.
-    if (arch == compute::gpu_arch_t::xe2 || arch == compute::gpu_arch_t::xe3) {
-        can_2d_a &= (align_a % 16 == 0);
-        can_2d_b &= (align_b % 16 == 0);
-        can_2d_c &= (align_c % 16 == 0);
-    }
-
-#if XE3P
-    // Disable block 2D for small matrices (width < 1 cache line) to avoid simulator errors.
-    if (arch == arch_t::xe3p) {
-        can_2d_a &= ((trans_a ? k : m) * types::data_type_size(a_type)) >= 64;
-        can_2d_b &= ((trans_b ? n : k) * types::data_type_size(b_type)) >= 64;
-        can_2d_c &= (m * types::data_type_size(c_type)) >= 64;
-    }
-#endif
+    align_a = nstl::max(align_a, int(a_type_size));
+    align_b = nstl::max(align_b, int(b_type_size));
+    align_c = nstl::max(align_c, int(c_type_size));
 
     // Set up problem structure.
     problem_.Ta = problem_.Ta_ext = convert_dnnl_to_kernel_type(a_type);
@@ -443,6 +430,18 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     problem_.A.setAlignment(align_a);
     problem_.B.setAlignment(align_b);
     problem_.C.setAlignment(align_c);
+
+    auto a_size = (trans_a ? m : k) * lda * a_type_size;
+    auto b_size = (trans_b ? k : n) * ldb * b_type_size;
+    auto c_size = n * ldc * c_type_size;
+
+    // Consolidate specialization logic to limit large buffer configurations
+    bool needA64 = std::max({a_size, b_size, c_size})
+            > std::numeric_limits<uint32_t>::max();
+    problem_.A.needA64 = needA64;
+    problem_.B.needA64 = needA64;
+    problem_.C.needA64 = needA64;
+
     if (batch_dims > 0) {
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
@@ -528,7 +527,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 #if XE3P
     /* Reuse PVC strategies for legacy mode on Xe3p */
     if (arch == arch_t::xe3p && !efficient_64b_)
-        match_params[0].selector.hw = kcatalog::HWTagXeHPC;
+        base.selector.hw = kcatalog::HWTagXeHPC;
 #endif
 
     base.sizes.m = m;
@@ -537,9 +536,30 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     base.sizes.batch = batch;
     base.stepping = stepping;
 
+    bool can_2d_a = (lda * problem_.Ta_ext <= 16777216);
+    bool can_2d_b = (ldb * problem_.Tb_ext <= 16777216);
+    bool can_2d_c = (ldc * problem_.Tc_ext <= 16777216);
+
+    // Xe2 requires stronger alignment for block 2D.
+    if (arch == compute::gpu_arch_t::xe2 || arch == compute::gpu_arch_t::xe3) {
+        can_2d_a &= (align_a % 16 == 0);
+        can_2d_b &= (align_b % 16 == 0);
+        can_2d_c &= (align_c % 16 == 0);
+    }
+#if XE3P
+    // Disable block 2D for small matrices (width < 1 cache line) to avoid simulator errors.
+    if (arch == arch_t::xe3p) {
+        can_2d_a &= ((trans_a ? k : m) * types::data_type_size(a_type)) >= 64;
+        can_2d_b &= ((trans_b ? n : k) * types::data_type_size(b_type)) >= 64;
+        can_2d_c &= (m * types::data_type_size(c_type)) >= 64;
+    }
+#endif
+
     auto tags = const_cast<char *>(base.tags);
     while (*tags)
         tags++;
+    if (problem_.A.needA64 || problem_.B.needA64 || problem_.C.needA64)
+        *tags++ = kcatalog::ReqBatchN;
     if (can_2d_a) *tags++ = kcatalog::ReqBlock2DA;
     if (can_2d_b) *tags++ = kcatalog::ReqBlock2DB;
     if (can_2d_c) *tags++ = kcatalog::ReqBlock2DC;
@@ -580,12 +600,14 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SB]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OB]";
+        if (dt.isF8()) return "B";
         return nullptr;
     });
 
     add_mode_matches(fpmath_f16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SH]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OH]";
+        if (dt.isF8()) return "H";
         return nullptr;
     });
 
@@ -631,6 +653,10 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
                     = match_params.back().selector.precisions[1];
         }
     }
+    add_mode_matches(true, [](Type dt) -> const char * {
+        if (dt.isFP4()) return "E";
+        return nullptr;
+    });
 
     EvaluateParams eval_params;
 
@@ -643,7 +669,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.batch = (batch_dims > 0);
     eval_params.deterministic = (mode & mode_deterministic);
 
-    entry_ = select(gemm_catalog, static_cast<int>(match_params.size()),
+    entry_ = select(catalog(), static_cast<int>(match_params.size()),
             match_params.data(), eval_params, aux_params_);
 
     if (!entry_) return status::unimplemented;
@@ -657,6 +683,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     auto update_type = [](Type &T, Type T_new, bool sz_change = false) {
         if ((T.bits() != T_new.bits()) && !sz_change) return;
         if (T.isF8() && T_new.isF8()) return;
+        if (T.isF4() && T_new.isF4()) return;
         T = T.isSigned() ? T_new.asSigned() : T_new.asUnsigned();
     };
     update_type(problem_.Ta, Ta_new, true);
@@ -787,7 +814,7 @@ status_t gen_gemm_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.cConvert = (acc_type != c_type);
     eval_params.batch = (batch_dims > 0);
 
-    entry_ = select(gemm_catalog, match_params, eval_params, aux_params_);
+    entry_ = select(catalog(), match_params, eval_params, aux_params_);
 
     if (!entry_) return status::unimplemented;
 
@@ -885,7 +912,7 @@ void gen_gemm_kernel_t::init_interface() {
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(
                 "CO", ExternalArgumentType::GlobalPtr, co_access);
-        interface_.newArgument("offset_CO", DataType::d);
+        interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
     }
@@ -905,7 +932,7 @@ void gen_gemm_kernel_t::init_interface() {
         auto bname = "binary" + std::to_string(i);
         interface_.newArgument(bname, ExternalArgumentType::GlobalPtr,
                 strategy.binary[i].getGlobalAccessType());
-        interface_.newArgument("offset_" + bname, DataType::d);
+        interface_.newArgument("offset_" + bname, DataType::q);
         if (problem.binaryRow[i] && problem.binaryCol[i])
             interface_.newArgument("ld" + bname, DataType::d);
     }
@@ -961,9 +988,9 @@ void gen_gemm_kernel_t::init_interface() {
     if (strategy.variableSLM())
         interface_.newArgument("local_mem", ExternalArgumentType::LocalPtr);
     if (problem.aoPtrDims >= 1 || problem.aScale2D)
-        interface_.newArgument("offset_Aq", DataType::d);
+        interface_.newArgument("offset_Aq", DataType::q);
     if (problem.boPtrDims >= 1 || problem.bScale2D)
-        interface_.newArgument("offset_Bq", DataType::d);
+        interface_.newArgument("offset_Bq", DataType::q);
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
     interface_.externalName(kernel_name());
@@ -973,8 +1000,7 @@ void gen_gemm_kernel_t::init_interface() {
 #endif
 }
 
-xpu::binary_t gen_gemm_kernel_t::get_binary(
-        const ocl::ocl_gpu_engine_t *engine) {
+xpu::binary_t gen_gemm_kernel_t::get_binary(const ocl::engine_t *engine) {
     init_interface();
     maybe_print_verbose();
 

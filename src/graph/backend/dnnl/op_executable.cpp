@@ -25,11 +25,14 @@
 
 #include <graph/utils/utils.hpp>
 
+#include "common/dnnl_thread.hpp"
+
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_constant_tensor_cache.hpp"
 #include "graph/backend/dnnl/fusion_info.hpp"
 #include "graph/backend/dnnl/internal_attrs.hpp"
 #include "graph/backend/dnnl/op_executable.hpp"
+#include "graph/backend/dnnl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -1099,9 +1102,8 @@ concat_executable_t::desc_t concat_executable_t::create_desc(
     for (const auto &in_val : op->get_input_values()) {
         const auto tmp_desc
                 = make_dnnl_memory_desc(in_val->get_logical_tensor());
-        src_mds.emplace_back(
-                memory::desc {tmp_desc.get_dims(), tmp_desc.get_data_type(),
-                        get_forced_format_tag(tmp_desc.get_dims())});
+        src_mds.emplace_back(tmp_desc.get_dims(), tmp_desc.get_data_type(),
+                get_forced_format_tag(tmp_desc.get_dims()));
     }
     const auto tmp_desc = make_dnnl_memory_desc(
             op->get_output_value(0)->get_logical_tensor());
@@ -1249,8 +1251,15 @@ binary_executable_t::desc_t binary_executable_t::create_desc(
             op->get_attr<int64_t>(op_attr::alg_kind));
 
     dnnl::binary::primitive_desc pd;
-    pd = dnnl::binary::primitive_desc(
-            p_engine, algo, src0, src1, dst, prm_attr);
+    if (algo == algorithm::binary_select) {
+        auto src2 = make_dnnl_memory_desc(
+                op->get_input_value(2)->get_logical_tensor());
+        pd = dnnl::binary::primitive_desc(
+                p_engine, algo, src0, src1, src2, dst, prm_attr);
+    } else {
+        pd = dnnl::binary::primitive_desc(
+                p_engine, algo, src0, src1, dst, prm_attr);
+    }
 
     pd_cache.insert({op.get(), pd});
 
@@ -1770,6 +1779,23 @@ groupnorm_executable_t::desc_t groupnorm_executable_t::create_desc(
     return {pd, false};
 }
 
+void genindex_executable_t ::execute(const stream &stream,
+        const std::unordered_map<int, memory> &args) const {
+    const auto &it_dst = args.find(DNNL_ARG_DST);
+    if (it_dst == args.end()) return;
+
+    auto &output = it_dst->second;
+    auto output_ptr = static_cast<int32_t *>(output.get_data_handle());
+    dnnl::impl::parallel_nd(nelems_, [&](dim_t i) {
+        dims_t input_dims; // decomposition for physical offsets
+        dnnl::impl::utils::l_dims_by_l_offset(
+                input_dims, i, output_dims_, ndims_);
+        auto offset
+                = utils::offset_compute(output_strides_, input_dims, ndims_);
+        output_ptr[offset] = input_dims[axis_];
+    });
+}
+
 static void get_arg_indices_for_post_ops(const op_t *op, fusion_info_mgr_t &mgr,
         arg_indices_t &indices, size_t &base_index) {
     const fusion_info_t &fusion_info
@@ -1874,12 +1900,16 @@ arg_indices_t matmul_executable_t::get_arg_indices(
 arg_indices_t binary_executable_t::get_arg_indices(
         const op_t *op, fusion_info_mgr_t &mgr) {
     arg_indices_t arg_indices;
+    const algorithm algo = static_cast<dnnl::algorithm>(
+            op->get_attr<int64_t>(op_attr::alg_kind));
 
     // add input args
     size_t index = 0;
     arg_indices.insert({DNNL_ARG_SRC_0, indices_t {input, index++}});
     arg_indices.insert({DNNL_ARG_SRC_1, indices_t {input, index++}});
-
+    if (algo == algorithm::binary_select) {
+        arg_indices.insert({DNNL_ARG_SRC_2, indices_t {input, index++}});
+    }
     get_arg_indices_for_post_ops(op, mgr, arg_indices, index);
 
     // add output args
@@ -2361,6 +2391,18 @@ arg_indices_t eltwise_bwd_executable_t::get_arg_indices(
 arg_indices_t groupnorm_executable_t::get_arg_indices(
         const op_t *op, fusion_info_mgr_t &mgr) {
     return get_arg_indices_for_lnorm_and_gnorm(op, mgr);
+}
+
+arg_indices_t genindex_executable_t::get_arg_indices(
+        const op_t *op, fusion_info_mgr_t &mgr) {
+    UNUSED(op);
+    UNUSED(mgr);
+
+    arg_indices_t arg_indices;
+    arg_indices.insert({DNNL_ARG_SRC, indices_t {input, 0}});
+    arg_indices.insert({DNNL_ARG_DST, indices_t {output, 0}});
+
+    return arg_indices;
 }
 
 } // namespace dnnl_impl

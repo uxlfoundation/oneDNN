@@ -405,10 +405,41 @@ bool parse_impl_filter(impl_filter_t &impl_filter,
             }
         }
 
-        return impl_filter_t(v, use_impl);
+        return impl_filter_t(v, use_impl, /* respect_global_filter = */ true);
     };
     return parse_single_value_option(impl_filter, def_impl_filter,
             str2impl_filter, str, option_name, help);
+}
+
+summary_t parse_summary_str(const std::string &s) {
+    // Allowed input: (no-)option+...
+    summary_t v;
+    if (s.empty()) return v;
+
+    size_t start_pos = 0;
+    while (start_pos != std::string::npos) {
+        auto subs = parser::get_substr(s, start_pos, '+');
+        size_t subs_pos = 0;
+
+        bool negate_option = false;
+        if (subs.find("no-", 0, 3) != std::string::npos) {
+            negate_option = true;
+            subs_pos += 3;
+        }
+
+        auto option = parser::get_substr(subs, subs_pos, '\0');
+        if (option == "failures") {
+            v.failed_cases = !negate_option;
+        } else {
+            BENCHDNN_PRINT(0,
+                    "Error: unsupported option-value combination "
+                    "\'--summary=%s\'\n",
+                    option.c_str());
+            SAFE_V(FAIL);
+        }
+    }
+
+    return v;
 }
 
 } // namespace parser_utils
@@ -979,15 +1010,19 @@ static bool parse_engine(
               "use an engine with requested `KIND`.\n    `KIND` values can be "
               "`cpu` or `gpu`.\n    `INDEX` is an integer value specifying "
               "which engine to use if several were identified.\n";
+
+    size_t start_pos = 0;
+    std::string kind_str = get_substr(str, start_pos, ':');
+
     if (!parse_single_value_option(engine_tgt_kind, dnnl_cpu, str2engine_kind,
-                str, option_name, help))
+                kind_str.c_str(), option_name, help))
         return false;
-    // Parse engine index if present
-    std::string s(str);
-    auto start_pos = s.find_first_of(':');
-    if (start_pos != eol) {
-        // Let the library catch issues with incorrect engine indices.
-        engine_index = std::stoi(s.substr(start_pos + 1));
+
+    if (start_pos != std::string::npos) {
+        std::string index_str(str + start_pos);
+        // If the index is a valid number, let the library catch potential
+        // issues around unavailable devices, etc.
+        engine_index = parser_utils::stoll_safe(index_str);
     }
 
     return true;
@@ -1034,31 +1069,6 @@ static bool parse_global_skip_impl(
 
     return parser_utils::parse_impl_filter(global_impl_filter, impl_filter_t(),
             /* use_impl = */ false, str, option_name, help);
-}
-
-// TODO: remove
-static bool parse_fast_ref_gpu(
-        const char *str, const std::string &option_name = "fast-ref-gpu") {
-    bool parsed = parse_single_value_option(fast_ref, default_fast_ref,
-            str2bool, str, option_name, std::string());
-
-    static bool msg_printed = false;
-    if (parsed && !msg_printed) {
-        BENCHDNN_PRINT(0, "%s\n",
-                "Warning: \'--fast-ref-gpu\' is deprecated. Use \'--fast-ref\' "
-                "instead.");
-        msg_printed = true;
-    }
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
-    if (parsed && fast_ref) {
-        fast_ref = false;
-        fprintf(stderr,
-                "%s driver: WARNING: option `fast_ref` is not supported "
-                "for GPU only configurations.\n",
-                driver_name.c_str());
-    }
-#endif
-    return parsed;
 }
 
 bool parse_ctx(std::vector<thr_ctx_t> &ctx,
@@ -1359,6 +1369,16 @@ static bool parse_stream_kind(
     return parsed;
 }
 
+static bool parse_summary(
+        const char *str, const std::string &option_name = "summary") {
+    static const std::string help
+            = "STRING    (Default: `failures`)\n    Instructs benchdnn to "
+              "print additional statistics and information based on the STRING "
+              "values.\n";
+    return parse_single_value_option(summary, summary_t(),
+            parser_utils::parse_summary_str, str, option_name, help);
+}
+
 static bool parse_verbose(
         const char *str, const std::string &option_name = "verbose") {
     static const std::string help
@@ -1376,6 +1396,33 @@ static bool parse_verbose(
         return true;
     }
     return false;
+}
+
+static bool parse_execution_mode(
+        const char *str, const std::string &option_name = "execution-mode") {
+    static const std::string help
+            = "MODE    (Default: direct)\n"
+              "    Specifies a `MODE` of execution.\n"
+              "    `MODE` values are:\n"
+              "    * `direct` instruction the driver to execute the primitive "
+              "directly.\n"
+              "    * `graph` to execute the primitive using a graph backend.\n"
+              "          Currently limited to the experimental SYCL Graph on "
+              "DPC++ builds.\n";
+    bool parsed = parse_single_value_option(execution_mode,
+            execution_mode_t::direct, str2execution_mode, str, option_name,
+            help);
+
+#if !defined(DNNL_WITH_SYCL)
+    if (parsed) {
+        BENCHDNN_PRINT(0,
+                "Error: option `--%s` is supported with DPC++ "
+                "builds only, exiting...\n",
+                option_name.c_str());
+        SAFE_V(FAIL);
+    }
+#endif
+    return parsed;
 }
 
 bool parse_bench_settings(const char *str) {
@@ -1396,13 +1443,14 @@ bool parse_bench_settings(const char *str) {
             || parse_attr_same_pd_check(str) || parse_canonical(str)
             || parse_check_ref_impl(str) || parse_cold_cache(str)
             || parse_cpu_isa_hints(str) || parse_engine(str)
-            || parse_fast_ref(str) || parse_fast_ref_gpu(str)
-            || parse_fix_times_per_prb(str) || parse_global_impl(str)
-            || parse_global_skip_impl(str) || parse_max_ms_per_prb(str)
-            || parse_num_streams(str) || parse_repeats_per_prb(str)
-            || parse_mem_check(str) || parse_memory_kind(str) || parse_mode(str)
+            || parse_fast_ref(str) || parse_fix_times_per_prb(str)
+            || parse_global_impl(str) || parse_global_skip_impl(str)
+            || parse_max_ms_per_prb(str) || parse_num_streams(str)
+            || parse_repeats_per_prb(str) || parse_mem_check(str)
+            || parse_memory_kind(str) || parse_mode(str)
             || parse_mode_modifier(str) || parse_start(str)
-            || parse_stream_kind(str) || parse_verbose(str);
+            || parse_stream_kind(str) || parse_summary(str)
+            || parse_verbose(str) || parse_execution_mode(str);
 
     // Last condition makes this help message to be triggered once driver_name
     // is already known.

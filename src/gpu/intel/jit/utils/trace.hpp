@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,23 +32,27 @@ class ir_context_t;
 #ifdef DNNL_DEV_MODE
 ir_utils::debug_profiler_t &get_trace_profiler();
 inline void trace_start() {
-    if (get_verbose(verbose_t::debuginfo) >= ir_utils::LOG_PERF)
+    if (get_verbose(verbose_t::debuginfo)
+            >= static_cast<int>(log_level_t::perf))
         get_trace_profiler().start();
 }
 inline void trace_reset() {
-    if (get_verbose(verbose_t::debuginfo) >= ir_utils::LOG_PERF)
+    if (get_verbose(verbose_t::debuginfo)
+            >= static_cast<int>(log_level_t::perf))
         get_trace_profiler().reset();
 }
 inline void trace_stamp(const char *pass_name) {
-    if (get_verbose(verbose_t::debuginfo) >= ir_utils::LOG_PERF)
+    if (get_verbose(verbose_t::debuginfo)
+            >= static_cast<int>(log_level_t::perf))
         get_trace_profiler().stamp(pass_name);
 }
 inline void trace_stop(const char *pass_name) {
-    if (get_verbose(verbose_t::debuginfo) >= ir_utils::LOG_PERF)
+    if (get_verbose(verbose_t::debuginfo)
+            >= static_cast<int>(log_level_t::perf))
         get_trace_profiler().stop(pass_name);
 }
 inline void trace_perf() {
-    ir_perf() << get_trace_profiler() << std::endl;
+    gpu_perf() << get_trace_profiler();
 }
 #else
 inline void trace_start() {};

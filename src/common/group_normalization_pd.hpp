@@ -112,8 +112,8 @@ protected:
 };
 
 struct group_normalization_fwd_pd_t : public group_normalization_pd_t {
-    typedef group_normalization_fwd_pd_t base_class;
-    typedef group_normalization_fwd_pd_t hint_class;
+    using base_class = group_normalization_fwd_pd_t;
+    using hint_class = group_normalization_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (arg == DNNL_ARG_SRC) return arg_usage_t::input;
@@ -190,17 +190,17 @@ protected:
         return IMPLICATION(use_scale() || use_shift(),
                 weights_md()->data_type == data_type::f32);
     }
-    bool attr_scales_ok() const {
+    bool attr_scales_ok(const std::vector<int> &supported_args
+            = {DNNL_ARG_SRC, DNNL_ARG_DST}) const {
         using namespace data_type;
         const auto &scales = attr()->scales_;
-        const std::vector<int> supported_args({DNNL_ARG_SRC, DNNL_ARG_DST});
         bool ok = scales.has_default_values(supported_args);
 
         for (const auto &arg : supported_args) {
-            const auto &sc = scales.get(arg);
-            if (!sc.has_default_values()) {
+            if (!scales.has_default_values(arg)) {
                 const data_type_t dt = arg_md(arg)->data_type;
-                ok = ok && utils::one_of(dt, s8, u8) && sc.mask_ == 0;
+                ok = ok && utils::one_of(dt, s8, u8);
+                ok = ok && scales.get_mask(arg) == 0;
             }
         }
         return ok;
@@ -208,8 +208,8 @@ protected:
 };
 
 struct group_normalization_bwd_pd_t : public group_normalization_pd_t {
-    typedef group_normalization_bwd_pd_t base_class;
-    typedef group_normalization_fwd_pd_t hint_class;
+    using base_class = group_normalization_bwd_pd_t;
+    using hint_class = group_normalization_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_MEAN, DNNL_ARG_VARIANCE,

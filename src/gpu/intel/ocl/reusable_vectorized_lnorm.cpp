@@ -26,8 +26,8 @@
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/lnorm_utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/reusable_lnorm.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 #include <vector>

@@ -24,7 +24,7 @@
 #include "common/stream.hpp"
 #include "gpu/gpu_concat_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -40,7 +40,7 @@ struct multi_concat_t : public gpu_primitive_t {
         using gpu_concat_pd_t::gpu_concat_pd_t;
 
         pd_t(const pd_t &rhs) = default;
-        ~pd_t() = default;
+        ~pd_t() override = default;
 
         DECLARE_CONCAT_PD_T("multi:any", multi_concat_t);
 

@@ -99,7 +99,7 @@ private:
         for (auto &t : tensors_) {
             if (t.name == name) return t;
         }
-        ir_error_not_expected() << "Can't find tensor " << name;
+        gpu_error_not_expected() << "Can't find tensor " << name;
         return tensors_.front();
     }
 

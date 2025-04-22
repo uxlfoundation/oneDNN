@@ -58,29 +58,42 @@ struct gemm_matmul_t : public gpu_primitive_t {
 
             auto map_gemm_zp = [&](int arg, int gemm_arg, bool reshape = false,
                                        int diff_dims = 0) {
-                auto &zp = attr()->zero_points_;
-                if (!zp.has_default_values(arg)) {
-                    int mask = 0;
-                    CHECK(zp.get(arg, &mask));
-                    if (reshape) mask = mask >> diff_dims;
-                    CHECK(gemm_attr.zero_points_.set(arg, mask,
-                            zp.get_groups_ndims(arg), zp.get_groups(arg),
-                            zp.get_data_type(arg)));
+                const auto &zp = attr()->zero_points_;
+                if (zp.has_default_values(arg)) return status::success;
+
+                int mask = zp.get_mask(arg);
+                if (reshape) mask = mask >> diff_dims;
+                data_type_t dt = zp.get_data_type(arg);
+                int nd = 0;
+                dims_t dims {};
+                if (!zp.get(arg).has_default_groups()) {
+                    nd = 2; // Note: hardcoded so far.
+                    dims[0] = zp.get_group(arg, 0);
+                    dims[1] = zp.get_group(arg, 1);
                 }
+                CHECK(gemm_attr.zero_points_.set(arg, mask, dt, nd, dims));
                 return status::success;
             };
 
-            auto adjust_scales_mask = [&](arg_scales_t &scales, int arg,
-                                              int diff_dims) {
-                int mask = 0, nd = 0;
-                bool is_set = false;
-                data_type_t dt = dnnl_data_type_undef;
-                dims_t dims = {};
-                CHECK(attr()->scales_.get(arg, &mask, &is_set, &nd, dims, &dt));
-                mask = mask >> diff_dims;
-                if (is_set) { CHECK(scales.set(arg, mask, nd, dims, dt)); }
-                return status::success;
-            };
+            // The function shrinks the mask for scales and updates it in
+            // `scales` object.
+            auto adjust_scales_mask
+                    = [&](scales_t &scales, int arg, int diff_dims) {
+                          if (attr()->scales_.has_default_values(arg))
+                              return status::success;
+
+                          int mask = attr()->scales_.get_mask(arg) >> diff_dims;
+                          data_type_t dt = attr()->scales_.get_data_type(arg);
+                          int nd = 0;
+                          dims_t dims {};
+                          if (!attr()->scales_.get(arg).has_default_groups()) {
+                              nd = 2; // Note: hardcoded so far.
+                              dims[0] = attr()->scales_.get_group(arg, 0);
+                              dims[1] = attr()->scales_.get_group(arg, 1);
+                          }
+                          CHECK(scales.set(arg, mask, dt, nd, dims));
+                          return status::success;
+                      };
             if (!attr()->zero_points_.has_default_values()) {
                 CHECK(map_gemm_zp(DNNL_ARG_SRC, DNNL_ARG_B));
                 CHECK(map_gemm_zp(
@@ -88,13 +101,13 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 CHECK(map_gemm_zp(DNNL_ARG_DST, DNNL_ARG_C));
             }
 
-            auto maybe_reshape = [&](dims_t &orig_a_dims, dims_t &orig_b_dims,
-                                         dims_t &orig_c_dims,
-                                         dims_t &orig_bias_dims,
-                                         const int orig_dims) {
+            auto maybe_reshape
+                    = [&](dims_t &orig_a_dims, dims_t &orig_b_dims,
+                              dims_t &orig_c_dims, dims_t &orig_bias_dims,
+                              const int orig_dims) -> status_t {
                 int batch_b_dims = 1;
-                for (int i = b_md->ndims; i > 2; i--) {
-                    batch_b_dims *= b_md->dims[b_md->ndims - i];
+                for (int i = 0; i < b_md->ndims - 2; i++) {
+                    batch_b_dims *= b_md->dims[i];
                 }
                 for (int i = 0; i < orig_dims; i++) {
                     orig_a_dims[i] = a_md->dims[i];
@@ -161,7 +174,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
                     for (int i = 0; i < attr()->post_ops_.len(); i++) {
                         auto &po = post_ops.entry_[i];
                         if (po.is_binary()) {
-                            auto &po_desc = po.binary.src1_desc;
+                            const auto &po_desc = po.binary.src1_desc;
                             auto a_dim = po_desc.dims[po_desc.ndims
                                     - reshape_size];
                             for (int i = po_desc.ndims; i > reshape_size; i--) {
@@ -187,9 +200,11 @@ struct gemm_matmul_t : public gpu_primitive_t {
                                         ? po_desc.dims[po_desc.ndims - 1]
                                         : 1;
                             }
-                            CHECK(memory_desc_reshape(
-                                    po_desc, po_desc, reshape_size, po_dims));
-                            tmp_post_ops.entry_[i].binary.src1_desc = po_desc;
+                            memory_desc_t tmp_po_desc;
+                            CHECK(memory_desc_reshape(tmp_po_desc, po_desc,
+                                    reshape_size, po_dims));
+                            tmp_post_ops.entry_[i].binary.src1_desc
+                                    = tmp_po_desc;
                         } else if (po.is_prelu()) {
                             auto mask = po.prelu.mask;
                             int new_mask = 0;

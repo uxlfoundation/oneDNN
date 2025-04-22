@@ -3,7 +3,7 @@
 97x2053:2053x997n"test_scratchpad_allocation_for_non_batched_case"
 
 # batch size smaller than num_threads
---stag=abc --wtag=abc --dt=u8:s8:s32 --bia_dt=f32 --bia_mask=4
+--stag=abc --wtag=abc --dt=u8:s8:s32 --bia-dt=f32 --bia_mask=4
 2x20x30:2x30x4
 2x20x30:1x30x4
 
@@ -20,3 +20,13 @@
 --dt=s8:s8:s8
 --stag=ab,ba --wtag=ba --dtag=AB16b16a
 11x13:13x16
+
+# verify transpose dst tag can be treated as plain
+--reset
+--dt=s8:s8:f32
+--stag=ab --wtag=ab --dtag=ba,ab
+1x1:1x200
+
+# Test that cases when M == 1 are handled correctly.
+--reset
+--stag=ba,ab --wtag=ab --dtag=ab --dt=s8:s8:f32 1x2:2x256

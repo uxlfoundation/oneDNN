@@ -25,15 +25,9 @@ namespace v2 {
 namespace conv {
 
 problem_t::problem_t(const std::string &line) {
-    ir_error_not_expected();
+    gpu_error_not_expected();
     auto s_desc = gpu_utils::split(line, " ").back();
     set_shape(s_desc);
-}
-
-pvar_map_t<dim_t> problem_t::vars() const {
-    pvar_map_t<dim_t> map;
-    map[pvar_t("outsz")] = out_type().size();
-    return map;
 }
 
 const type_t &problem_t::out_type() const {
@@ -41,13 +35,13 @@ const type_t &problem_t::out_type() const {
         case prop_kind::forward: return dst_tag_.type();
         case prop_kind::backward_data: return src_tag_.type();
         case prop_kind::backward_weights: return wei_tag_.type();
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return src_tag_.type();
 }
 
 void problem_t::set_shape(const std::string &s) {
-    ir_assert(prop_ != prop_kind::undef);
+    gpu_assert(prop_ != prop_kind::undef);
     pvar_tile_t s_tile(s);
     bool has_d = has_spatial(s_tile, 'd');
     bool has_h = has_spatial(s_tile, 'h');
@@ -69,7 +63,7 @@ void problem_t::set_shape(const std::string &s) {
         s_tile[pvars::dw] = s_tile[pvars::dh];
         s_tile[pvars::pw] = s_tile[pvars::ph];
     } else {
-        ir_error_not_expected();
+        gpu_error_not_expected();
     }
     for (auto &d : default_shape()) {
         if (s_tile.has(d)) continue;
@@ -156,12 +150,16 @@ std::string problem_t::desc_str() const {
 std::string problem_t::str() const {
     std::ostringstream oss;
     oss << "Conv problem" << std::endl;
-    oss << "  HW:          " << to_string(hw_.to_ngen()) << std::endl;
-    oss << "  Propagation: " << jit::to_string(prop_) << std::endl;
-    oss << "  Source:      " << src_tag_ << std::endl;
-    oss << "  Weights:     " << wei_tag_ << std::endl;
-    oss << "  Destination: " << dst_tag_ << std::endl;
-    oss << "  Descriptor:  " << desc_str();
+    oss << "  HW:            " << to_string(hw_.to_ngen()) << std::endl;
+    oss << "  Propagation:   " << jit::to_string(prop_) << std::endl;
+    oss << "  Source:        " << src_tag_ << std::endl;
+    oss << "  Weights:       " << wei_tag_ << std::endl;
+    oss << "  Destination:   " << dst_tag_ << std::endl;
+    oss << "  With post-ops: " << ir_utils::to_string(with_post_ops_)
+        << std::endl;
+    oss << "  Deterministic: " << ir_utils::to_string(deterministic_)
+        << std::endl;
+    oss << "  Descriptor:    " << desc_str();
     return oss.str();
 }
 

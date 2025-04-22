@@ -70,7 +70,7 @@ void pass_manager_t::print_passes(const std::string &pass_config_json) {
 }
 
 void pass_manager_t::print_passes(std::ostream *os) {
-    auto passes = get_passes();
+    const auto &passes = get_passes();
     json::json_writer_t write(os);
     write.begin_object();
     std::string hash = dnnl_version()->hash;

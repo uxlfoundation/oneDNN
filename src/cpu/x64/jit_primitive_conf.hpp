@@ -661,6 +661,7 @@ struct jit_brdgmm_conv_conf_t {
 enum conv_brgemm_loop_order_t {
     loop_ndhwgc,
     loop_ngcdhw,
+    loop_gcndhw,
 };
 
 enum conv_brgemm_exec_type_t {
@@ -816,6 +817,8 @@ struct jit_brgemm_conv_conf_t {
     int vnni_block {1};
     bool has_uneven_iw;
     int trans_dim_koef {1};
+    bool extendable_k = false;
+    brgemm_kernel_loop_order_t brgemm_kernel_loop_order {brgemm_lo_default};
 };
 
 struct jit_shuffle_conf_t {

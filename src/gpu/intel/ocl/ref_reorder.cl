@@ -24,7 +24,7 @@
 #include "gpu/intel/ocl/reorder_common.h"
 #include "gpu/intel/ocl/types_interop.h"
 
-#define FROM_I4 ((SRC_DT_U4 || SRC_DT_S4) && (!DST_DT_U4 && !DST_DT_S4))
+#define FROM_I4 (SRC_DT_U4 || SRC_DT_S4)
 #define GWS_GET_THREAD_ID(index) \
     (off_t)(get_global_id(index) + offset.array[index])
 
@@ -100,7 +100,7 @@ __kernel void ref_reorder(__global SRC_DATA_T *restrict src,
 #if WITH_DST_SCALE
         dst_scale = dst_scales[SCALE_OFF(DST, d0, d1, d2, d3, d4, d5)];
 #endif
-#if FROM_I4 || SRC_DT_F4_E2M1
+#if FROM_I4 || SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
         SRC_DATA_T src_value = GET_HALF_BYTE(src, src_off);
 #else
         SRC_DATA_T src_value = src[src_off];

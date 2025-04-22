@@ -168,7 +168,7 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
         component_t::flag_kind filter_kind) noexcept {
 #if defined(DISABLE_VERBOSE)
     return verbose_t::none;
-#else
+#endif
     // we print all verbose by default
     static int flags = component_t::all;
     // record filter parsing result to instruct verbose printing
@@ -181,9 +181,8 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
             // Legacy: we accept values 0,1,2
             // 0 and none erase previously set flags, including error
             if (s == "0" || s == "none") k = verbose_t::none;
-            if (s == "1") k |= verbose_t::exec_profile;
-            if (s == "2")
-                k |= verbose_t::exec_profile | verbose_t::create_profile;
+            if (s == "1") k |= verbose_t::level1;
+            if (s == "2") k |= verbose_t::level2;
             if (s == "all" || s == "-1") k |= verbose_t::all;
             if (s == "error") k |= verbose_t::error;
             if (s == "check")
@@ -245,7 +244,7 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
             }
 
             // filter enabled and at least one component is hit
-            if (filter_status.components.length() != 0) {
+            if (!filter_status.components.empty()) {
                 // pop out the last comma
                 filter_status.components.pop_back();
                 filter_status.status = filter_status_t::flags::valid;
@@ -291,14 +290,13 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
     if (result) print_header(filter_status);
     bool filter_result = flags & filter_kind;
     return filter_result ? result : 0;
-#endif
 }
 
 static setting_t<bool> verbose_timestamp {false};
 bool get_verbose_timestamp() {
 #if defined(DISABLE_VERBOSE)
     return false;
-#else
+#endif
     if (verbose.get() == 0) return false;
 
     if (!verbose_timestamp.initialized()) {
@@ -308,28 +306,7 @@ bool get_verbose_timestamp() {
         verbose_timestamp.set(val);
     }
     return verbose_timestamp.get();
-#endif
 }
-
-#if defined(DISABLE_VERBOSE)
-void pd_info_t::init(
-        dnnl::impl::engine_t *, const dnnl::impl::primitive_desc_t *) {}
-
-std::string rt_mds2str(primitive_kind_t prim_kind, const memory_desc_t *src_md,
-        const memory_desc_t *wei_md, const memory_desc_t *bia_md,
-        const memory_desc_t *dst_md) {
-    return std::string();
-}
-
-std::string rt_dims2fmt_str(primitive_kind_t prim_kind,
-        const memory_desc_t *src_md, const memory_desc_t *wei_md,
-        const memory_desc_t *dst_md) {
-    return std::string();
-}
-
-void verbose_printf_impl(const char *raw_fmt_str, verbose_t::flag_kind kind) {}
-
-#else
 
 std::ostream &operator<<(std::ostream &ss, engine_kind_t eng_kind) {
     ss << dnnl_engine_kind2str(eng_kind);
@@ -414,6 +391,21 @@ std::ostream &operator<<(std::ostream &ss, const memory_extra_desc_t &extra) {
         ss << ":s8m" << extra.compensation_mask;
     if (extra.flags & compensation_conv_asymmetric_src)
         ss << ":zpm" << extra.asymm_compensation_mask;
+    if (extra.flags & compensation_gpu_conv_asymmetric_src) {
+        ss << ":zid" << extra.idhw[0];
+        ss << ":zih" << extra.idhw[1];
+        ss << ":ziw" << extra.idhw[2];
+        ss << ":zod" << extra.odhw[0];
+        ss << ":zoh" << extra.odhw[1];
+        ss << ":zow" << extra.odhw[2];
+        ss << ":zpd" << extra.pdhw[0];
+        ss << ":zph" << extra.pdhw[1];
+        ss << ":zpw" << extra.pdhw[2];
+        ss << ":zdd" << extra.ddhw[0];
+        ss << ":zdh" << extra.ddhw[1];
+        ss << ":zdw" << extra.ddhw[2];
+        ss << ":zs" << extra.dst_size;
+    }
     if (extra.flags & scale_adjust && extra.scale_adjust != 1.f)
         ss << ":sa" << extra.scale_adjust;
     return ss;
@@ -626,18 +618,6 @@ std::string md2desc_str(const memory_desc_t *md) {
     return s;
 }
 
-std::ostream &operator<<(std::ostream &ss, const runtime_scales_t &scale) {
-    ss << scale.mask_;
-    ss << ":" << scale.data_type_;
-    if (scale.ndims_) {
-        ss << ":";
-        for (int i = 0; i < scale.ndims_ - 1; ++i)
-            ss << scale.group_dims_[i] << 'x';
-        ss << scale.group_dims_[scale.ndims_ - 1];
-    }
-    return ss;
-}
-
 std::ostream &operator<<(
         std::ostream &ss, const rnn_create_time_scales_t &rnn_scales) {
     ss << rnn_scales.mask_;
@@ -750,46 +730,18 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
     if (deterministic) {
         ss << field_delim() << "attr-deterministic:" << deterministic;
     }
+
+    // Fast exit if rest attributes were not specified.
     if (attr->has_default_values()) return ss;
 
-    const arg_scales_t &as = attr->scales_;
-    if (!as.has_default_values()) {
-        std::string delim = empty_delim;
-        ss << field_delim() << "attr-scales:";
-        for (const auto &map_entry : as.scales_) {
-            const auto &val = map_entry.second;
-            if (val.has_default_values()) continue;
-
-            int arg = map_entry.first;
-            ss << delim << arg2str(arg) << ":" << val;
-            delim = attr_delim;
-        }
+    const scales_t &scales = attr->scales_;
+    if (!scales.has_default_values()) {
+        ss << field_delim() << "attr-scales:" << scales.get_verbose();
     }
 
-    const zero_points_t &zp = attr->zero_points_;
-    if (!zp.has_default_values()) {
-        std::string delim = empty_delim;
-        ss << field_delim() << "attr-zero-points:";
-        for (const auto &arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
-            if (zp.has_default_values(arg)) continue;
-
-            int mask = 0;
-            zp.get(arg, &mask);
-            const auto dt = zp.get_data_type(arg);
-
-            ss << delim << arg2str(arg) << ":" << mask << ":" << dt;
-
-            const auto &g_ndim = zp.get_groups_ndims(arg);
-            if (g_ndim) {
-                const auto &g_dims = zp.get_groups(arg);
-                ss << ":";
-                for (int i = 0; i < g_ndim - 1; ++i)
-                    ss << g_dims[i] << 'x';
-                ss << g_dims[g_ndim - 1];
-            }
-
-            delim = attr_delim;
-        }
+    const zero_points_t &zero_points = attr->zero_points_;
+    if (!zero_points.has_default_values()) {
+        ss << field_delim() << "attr-zero-points:" << zero_points.get_verbose();
     }
 
     const post_ops_t &po = attr->post_ops_;
@@ -1609,56 +1561,38 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
 
     const sdpa_desc_t *desc = pd->desc();
 
-    // TODO: re-use the code from primitive_attr operator<<
-    auto print_zp = [&](std::ostream &ss, const zero_points_t &zp) {
-        for (const auto &arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
-            if (zp.has_default_values(arg)) continue;
-
-            int mask = 0;
-            zp.get(arg, &mask);
-            const auto dt = zp.get_data_type(arg);
-
-            ss << arg2str(arg) << ":" << mask << ":" << dt;
-
-            const auto &g_ndim = zp.get_groups_ndims(arg);
-            if (g_ndim) {
-                const auto &g_dims = zp.get_groups(arg);
-                ss << ":";
-                for (int i = 0; i < g_ndim - 1; ++i)
-                    ss << g_dims[i] << 'x';
-                ss << g_dims[g_ndim - 1];
-            }
-        }
-        return std::ref(ss);
-    };
-
     std::string delimiter;
     if (!desc->kq_scales.has_default_values()) {
         ss << delimiter << "kq_attr-scales:wei:" << desc->kq_scales;
         delimiter = "+";
     }
     if (!desc->kq_zero_points.has_default_values()) {
-        ss << delimiter << "kq_attr-zero-points:";
-        print_zp(ss, desc->kq_zero_points);
+        ss << delimiter
+           << "kq_attr-zero-points:" << desc->kq_zero_points.get_verbose();
         delimiter = "+";
     }
+
     if (!desc->vs_scales.has_default_values()) {
         ss << delimiter << "vs_attr-scales:wei:" << desc->vs_scales;
         delimiter = "+";
     }
     if (!desc->vs_zero_points.has_default_values()) {
-        ss << delimiter << "vs_attr-zero-points:";
-        print_zp(ss, desc->vs_zero_points);
-        delimiter = "+";
+        ss << delimiter
+           << "vs_attr-zero-points:" << desc->vs_zero_points.get_verbose();
     }
 
     ss << ",query:" << pd->qry_md()->data_type << ":"
        << md2dim_str(pd->qry_md());
-    ss << ",key:" << pd->key_md()->data_type << ":" << md2dim_str(pd->key_md());
+    ss << ",key:" << pd->key_md()->data_type << ":" << md2dim_str(pd->key_md())
+       << ":" << md2fmt_tag_str(pd->key_md());
     ss << ",val:" << pd->val_md()->data_type << ":" << md2dim_str(pd->val_md());
-    if (pd->with_attn_mask())
+    if (pd->with_attn_mask()) {
         ss << ",msk:" << pd->attn_mask_md()->data_type << ":"
            << md2dim_str(pd->attn_mask_md());
+    } else if (pd->with_causal_mask()) {
+        ss << ",msk:causal";
+    }
+
     return ss.str();
 }
 
@@ -1670,6 +1604,10 @@ std::string rt_mds2str(primitive_kind_t prim_kind, const memory_desc_t *src_md,
     // Note: pass format_kind::undef since runtime dims-ed mds can't have
     // format_kind::any at any stage.
     std::string s;
+#if defined(DISABLE_VERBOSE)
+    return s;
+#endif
+
     switch ((int)prim_kind) {
         case primitive_kind::matmul:
             s = mds2str_matmul(src_md, format_kind::undef, wei_md,
@@ -1713,6 +1651,10 @@ std::string prepend_identifier_and_version(const char *fmt_str) {
 }
 
 void verbose_printf_impl(const char *raw_fmt_str, verbose_t::flag_kind kind) {
+#if defined(DISABLE_VERBOSE)
+    return;
+#endif
+
     const auto &fmt_str = prepend_identifier_and_version(raw_fmt_str);
 
 #ifdef DNNL_EXPERIMENTAL_LOGGING
@@ -1734,6 +1676,10 @@ std::string rt_dims2fmt_str(primitive_kind_t prim_kind,
         const memory_desc_t *src_md, const memory_desc_t *wei_md,
         const memory_desc_t *dst_md) {
     std::string s;
+#if defined(DISABLE_VERBOSE)
+    return s;
+#endif
+
     switch ((int)prim_kind) {
         case primitive_kind::matmul:
             s = dims2fmt_str_matmul(src_md, wei_md);
@@ -1763,6 +1709,7 @@ std::string rt_dims2fmt_str(primitive_kind_t prim_kind,
 }
 
 void pd_info_t::init(engine_t *engine, const primitive_desc_t *pd) {
+    // Handles VERBOSE_DISABLE since `is_initialized_` is set to `true`.
     if (is_initialized_) return;
 
     std::call_once(initialization_flag_, [&] {
@@ -1808,7 +1755,6 @@ void pd_info_t::init(engine_t *engine, const primitive_desc_t *pd) {
         is_initialized_ = true;
     });
 }
-#endif
 
 } // namespace impl
 } // namespace dnnl
@@ -1819,12 +1765,8 @@ dnnl_status_t dnnl_set_verbose(int level) {
     if (level < 0 || level > 2) return invalid_arguments;
 
     uint32_t verbose_level = verbose_t::none;
-    if (level == 1)
-        verbose_level
-                = verbose_t::error | verbose_t::exec_profile | verbose_t::warn;
-    if (level == 2)
-        verbose_level = verbose_t::error | verbose_t::exec_profile
-                | verbose_t::create_profile | verbose_t::warn;
+    if (level == 1) verbose_level = verbose_t::level1;
+    if (level == 2) verbose_level = verbose_t::level2;
     // we put the lower byte of level as devinfo to preserve backward
     // compatibility with historical VERBOSE={1,2}
     if (level == 1 || level == 2) verbose_level |= (level << 24);

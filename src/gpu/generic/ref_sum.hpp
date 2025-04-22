@@ -40,7 +40,7 @@ struct ref_sum_t : public gpu::primitive_t {
         using gpu_sum_pd_t::gpu_sum_pd_t;
 
         pd_t(const pd_t &rhs) = default;
-        ~pd_t() = default;
+        ~pd_t() override = default;
 
         DECLARE_SUM_PD_T("ref:any", ref_sum_t);
 

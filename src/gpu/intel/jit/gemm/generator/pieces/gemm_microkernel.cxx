@@ -26,7 +26,7 @@ using namespace ngen::utils;
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_)
 {
-    GEMMState state(hw);
+    GEMMState state(hw, strategy);
 
     interface = interface_;
 

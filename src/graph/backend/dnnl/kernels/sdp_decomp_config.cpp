@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "graph/backend/dnnl/kernels/sdp_decomp_config.hpp"
+#include "graph/interface/shape_infer.hpp"
 
 #define VCHECK_SDP_DECOMP(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, sdp_decomp_kernel_t, (cond), status, msg, \
@@ -56,6 +57,17 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
         auto scale_sz = ltw(inputs[graph_inport[2]]).nelems();
         VCHECK_SDP_DECOMP(scale_sz == 1, false,
                 "Only supports single scale value, but got %lld", scale_sz);
+    }
+
+    // Check select cond and src0 shape
+    if (graph_inport[5] != -1 && graph_inport[6] != -1) {
+        const auto select_cond_dims = ltw(inputs[graph_inport[5]]).vdims();
+        const auto select_src0_dims = ltw(inputs[graph_inport[6]]).vdims();
+        VCHECK_SDP_DECOMP(select_cond_dims != select_src0_dims, false,
+                "Only supports select for case requiring broadcast cond input, "
+                "but got cond dims %s and src0 dims %s",
+                dims2str(select_cond_dims).c_str(),
+                dims2str(select_src0_dims).c_str());
     }
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
@@ -279,8 +291,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     sub_mm1_wei = memory(sub_mm1_wei_md, p_engine, nullptr);
     sub_mm1_dst = memory(sub_mm1_dst_md, p_engine, nullptr);
     for (size_t i = 0; i < sub_mm1_post_md.size(); i++) {
-        sub_mm1_post_mem.emplace_back(
-                memory(sub_mm1_post_md[i], p_engine, nullptr));
+        sub_mm1_post_mem.emplace_back(sub_mm1_post_md[i], p_engine, nullptr);
     }
     // softmax
     sub_softmax_dst = memory(sub_softmax_dst_md, p_engine, nullptr);
@@ -445,12 +456,11 @@ impl::status_t sdp_decomp_config_t::record_input_offset(
                     graph::op_kind::SoftMax};
     for (const auto &cur_op : sg->get_ops()) {
         const auto &op_kind = cur_op->get_kind();
-        VCHECK_SDP_DECOMP(
-                !(op_kind == graph::op_kind::DynamicDequantize
-                        && cur_op->get_attr<std::string>(op_attr::qtype)
-                                == "per_group"),
+        VCHECK_SDP_DECOMP(op_kind != graph::op_kind::GenIndex,
+                status::unimplemented, "Not support implicit causal mask");
+        VCHECK_SDP_DECOMP(op_kind != graph::op_kind::DynamicDequantize,
                 status::unimplemented,
-                "Not support per_group DynamicDequantize");
+                "Decomposed kernel does not support dynamic quantization");
         // both mm1 and mm2 are found.
         if (mm1 && mm2) break;
         if (op_kind != graph::op_kind::MatMul) continue;

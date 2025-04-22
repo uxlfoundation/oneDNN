@@ -21,6 +21,7 @@
 #include "common/float16.hpp"
 #include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
+#include "common/verbose_msg.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
@@ -65,11 +66,21 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
             && utils::one_of(d->c_type(), s32, f32, s8, u8, f16));
 
     if (dt_int_ok) {
-        a_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_SRC);
-        b_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS);
-        c_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
+        a_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_A);
+        b_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_B);
+        c_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_C);
     }
 
+    // LIMITATIONS:
+    // - batch is not supported for unpacked inputs.
+    // - runtime dims are not supported
+    bool limits_ok
+            = !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k());
+
+    VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+    // Must check runtime dimensions before calling `set_default_formats` to
+    // avoid undefined behavior.
     VDISPATCH_GEMM_SC(
             set_default_formats(d->a_type()), VERBOSE_UNSUPPORTED_TAG);
 
@@ -78,11 +89,8 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     VDISPATCH_GEMM(!use_nocopy(), VERBOSE_SKIP_PRIMITIVE_IMPL);
 
-    // LIMITATIONS:
-    // - batch is not supported for unpacked inputs.
-    // - runtime dims are not supported
-    bool limits_ok
-            = !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k());
+    // `set_default_formats` determines a/b/c packing, so it must be called
+    // prior to this.
     if (!packed_a())
         limits_ok = limits_ok && (d->lda() != DNNL_RUNTIME_DIM_VAL)
                 && (d->batch() == 1);
@@ -115,6 +123,15 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
                                    && d->bias_mask() < 8),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
 
+    // Limit scope of large buffer implementation support as the ability test
+    // large buffers is limited by testing time.
+    VDISPATCH_GEMM(std::max({memory_desc_wrapper(src_md(0)).size(),
+                           memory_desc_wrapper(src_md(1)).size(),
+                           memory_desc_wrapper(src_md(2)).size(),
+                           memory_desc_wrapper(dst_md()).size()})
+                    <= (size_t)std::numeric_limits<int32_t>::max(),
+            VERBOSE_SHAPE_RESTRICTION);
+
     VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
 
     if (dt_int_ok) {
@@ -122,13 +139,21 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
                         && IMPLICATION(b_zp_, !packed_a()),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
-        int cmask_a = 0, cmask_b = 0, cmask_c = 0;
-        CHECK(attr()->zero_points_.get(DNNL_ARG_WEIGHTS, &cmask_b));
-        CHECK(attr()->zero_points_.get(DNNL_ARG_SRC, &cmask_a));
-        CHECK(attr()->zero_points_.get(DNNL_ARG_DST, &cmask_c));
-        VDISPATCH_GEMM((cmask_a == 0) && (cmask_b == 0)
-                        && utils::one_of(cmask_c, 0, 1 << 0, 1 << 1),
-                VERBOSE_UNSUPPORTED_ZP_CFG);
+        const auto &zp = attr()->zero_points_;
+
+        if (!zp.has_default_values(DNNL_ARG_SRC)) {
+            VDISPATCH_GEMM(
+                    zp.get_mask(DNNL_ARG_SRC) == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+        }
+        if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+            VDISPATCH_GEMM(zp.get_mask(DNNL_ARG_WEIGHTS) == 0,
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+        }
+        if (!zp.has_default_values(DNNL_ARG_DST)) {
+            VDISPATCH_GEMM(utils::one_of(zp.get_mask(DNNL_ARG_DST), 0, (1 << 0),
+                                   (1 << 1)),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+        }
     }
 
     init_scratchpad();
@@ -471,7 +496,7 @@ status_t xe_hp_systolic_gemm_t::init(impl::engine_t *engine) {
     int cmask = -1;
 
     if (pd()->with_c_zero_points())
-        CHECK(pd()->attr()->zero_points_.get(DNNL_ARG_DST, &cmask));
+        cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
     else if (pd()->with_bias())
         cmask = pd()->bias_cmask();
 
@@ -780,8 +805,8 @@ status_t xe_hp_systolic_gemm_t::launch_compute(const gemm_exec_ctx_t &ctx,
         int64_t offset_b, int32_t ldb, const memory_storage_t &c,
         int64_t offset_c, int32_t ldc, float alpha, float beta,
         const memory_storage_t *ao, const memory_storage_t *bo,
-        const memory_storage_t &co, int32_t offset_co, int po_count,
-        const memory_storage_t **po_srcs, int32_t *offset_po_src,
+        const memory_storage_t &co, int64_t offset_co, int po_count,
+        const memory_storage_t **po_srcs, int64_t *offset_po_src,
         bool first_k_block, bool last_k_block, int32_t batch, int32_t stride_a,
         int32_t stride_b, int32_t stride_c) const {
     if (batch == 0) return status::success;
@@ -997,9 +1022,9 @@ status_t xe_hp_systolic_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
             = b.offset() / types::data_type_size(b_type) + pd()->dyn_offset_b;
     size_t off_c0
             = c.offset() / types::data_type_size(c_type) + pd()->dyn_offset_c;
-    size_t off_co0 = 0;
+    int64_t off_co0 = 0;
 
-    int32_t po_offsets0[GEMM_MAX_PO] = {0}, po_offsets[GEMM_MAX_PO] = {0};
+    int64_t po_offsets0[GEMM_MAX_PO] = {0}, po_offsets[GEMM_MAX_PO] = {0};
     for (int i = 0; i < po_count; i++)
         if (po_srcs[i])
             po_offsets0[i] = po_srcs[i]->offset() / problem_.Tbinary[i];
@@ -1057,7 +1082,7 @@ status_t xe_hp_systolic_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
                 if (packed_b) off_b_packed += off_b0;
 
                 auto off_c = off_c0 + Bm + Bn * ldc;
-                auto off_co = int32_t(off_co0);
+                auto off_co = off_co0;
                 switch (co_kind_) {
                     case 'R': off_co += Bm; break;
                     case 'C': off_co += Bn; break;

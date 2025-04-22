@@ -27,8 +27,8 @@
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/lnorm_utils.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/reusable_lnorm.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -49,8 +49,8 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     conf->dst_dt = dst_buf.data_type;
 
     auto scales = pd->attr()->scales_;
-    conf->with_src_scale = !scales.get(DNNL_ARG_SRC).has_default_values();
-    conf->with_dst_scale = !scales.get(DNNL_ARG_DST).has_default_values();
+    conf->with_src_scale = !scales.has_default_values(DNNL_ARG_SRC);
+    conf->with_dst_scale = !scales.has_default_values(DNNL_ARG_DST);
 
     // We require that the lnorm axis is a single dense block, so that it can
     // be represented by a stride + size alone.

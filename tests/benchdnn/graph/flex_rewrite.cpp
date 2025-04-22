@@ -26,6 +26,169 @@
 
 namespace graph {
 
+void flex_rewrite::rewrite_linked_shape_and_attr(deserialized_graph &dgraph) {
+    for (auto &aop : dgraph.ops_) {
+        if (aop.kind_ == "DynamicDequantize") {
+            auto &attr = aop.attrs_;
+            if (attr.find("qtype") == attr.end()
+                    || attr["qtype"].str_value_ != "per_group")
+                continue;
+            if (attr.find("group_shape") == attr.end()) {
+                BENCHDNN_PRINT(0,
+                        "Error: missed `group-shape` attribute for "
+                        "per-group quantization for op with id=\'%zu\'\n",
+                        aop.id_);
+                SAFE_V(FAIL);
+            }
+
+            bool input_shape_rewrite = std::any_of(aop.in_lts_.begin(),
+                    aop.in_lts_.end(), [&](const deserialized_lt &in_lt) {
+                        return in_shapes_.count(in_lt.id_)
+                                && in_shapes_[in_lt.id_] != "default";
+                    });
+            bool group_shape_rewrite = op_attrs_.count(aop.id_)
+                    && parse_attrs(op_attrs_.at(aop.id_)).count("group_shape");
+
+            auto &group_shape = attr["group_shape"].s64_vector_;
+            const auto &src_lt = aop.in_lts_[0];
+
+            if (!group_shape_rewrite && !input_shape_rewrite) continue;
+            if (input_shape_rewrite && group_shape_rewrite) {
+                // if both input shapes and group_shape are provided, check if
+                // the new shape are valid.
+                auto &scale_lt = aop.in_lts_[1];
+                if (src_lt.shape_.size() != scale_lt.shape_.size()) {
+                    BENCHDNN_PRINT(0,
+                            "Error: the ndims of scale tensor should align "
+                            "with the ndims of input tensor for op with "
+                            "id=\'%zu\'\n",
+                            aop.id_);
+                    SAFE_V(FAIL);
+                }
+
+                if (src_lt.shape_.size() != group_shape.size()) {
+                    BENCHDNN_PRINT(0,
+                            "Error: the ndims of `group-shape` attribute "
+                            "should align with the input ndims for op with "
+                            "id=\'%zu\'\n",
+                            aop.id_);
+                    SAFE_V(FAIL);
+                }
+
+                for (size_t idx = 0; idx < src_lt.shape_.size(); ++idx) {
+                    if (src_lt.shape_[idx]
+                            != scale_lt.shape_[idx] * group_shape[idx]) {
+                        BENCHDNN_PRINT(0,
+                                "Error: the input shape should equal with the "
+                                "product of corresponding dimension of scale "
+                                "shape and group shape, input shape: %lld, "
+                                "scale shape: %lld, group shape: %lld\n",
+                                (long long)src_lt.shape_[idx],
+                                (long long)scale_lt.shape_[idx],
+                                (long long)group_shape[idx]);
+                        SAFE_V(FAIL);
+                    }
+                }
+
+                if (aop.in_lts_.size() > 2) {
+                    auto &zp_lt = aop.in_lts_[2];
+                    if (scale_lt.shape_.size() != zp_lt.shape_.size()) {
+                        BENCHDNN_PRINT(0,
+                                "Error: the ndims of scale tensor should align "
+                                "with the ndims of zero-point tensor for op "
+                                "with id=\'%zu\'\n",
+                                aop.id_);
+                        SAFE_V(FAIL);
+                    }
+
+                    for (size_t idx = 0; idx < scale_lt.shape_.size(); ++idx) {
+                        if (scale_lt.shape_[idx] != zp_lt.shape_[idx]) {
+                            BENCHDNN_PRINT(0,
+                                    "Error: the shape of zero-point tensor "
+                                    "should be the same as the shape of scale "
+                                    "tensor for op with id=\'%zu\'\n",
+                                    aop.id_);
+                            SAFE_V(FAIL);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (group_shape_rewrite && !input_shape_rewrite) {
+                // if user only rewrite group shape attribute, update the scale
+                // shape and zps shape (if available) accordingly.
+                dims_t new_group_quant_scale_zps_dims(
+                        src_lt.shape_.size(), DNNL_GRAPH_UNKNOWN_DIM);
+                if (src_lt.shape_.size() != group_shape.size()) {
+                    BENCHDNN_PRINT(0,
+                            "Error: the ndims of `group-shape` attribute "
+                            "should align with the input ndims for op with "
+                            "id=\'%zu\'\n",
+                            aop.id_);
+                    SAFE_V(FAIL);
+                }
+
+                for (size_t idx = 0; idx < src_lt.shape_.size(); ++idx) {
+                    if (src_lt.shape_[idx] % group_shape[idx] != 0) {
+                        BENCHDNN_PRINT(0,
+                                "Error: the dimension of `group-shape` "
+                                "attribute should be divisible by the "
+                                "corresponding dimensions of the input shape, "
+                                "group shape: %lld, input shape: %lld\n",
+                                (long long)group_shape[idx],
+                                (long long)src_lt.shape_[idx]);
+                        SAFE_V(FAIL);
+                    }
+                    new_group_quant_scale_zps_dims[idx]
+                            = src_lt.shape_[idx] / group_shape[idx];
+                }
+
+                auto &scale_lt = aop.in_lts_[1];
+                scale_lt.shape_ = new_group_quant_scale_zps_dims;
+                scale_lt.stride_ = memory_tag2strides(
+                        scale_lt.shape_, dgraph.lt_2_mtag_[scale_lt.id_]);
+                if (aop.in_lts_.size() > 2) {
+                    auto &zp_lt = aop.in_lts_[2];
+                    zp_lt.shape_ = new_group_quant_scale_zps_dims;
+                    zp_lt.stride_ = memory_tag2strides(
+                            zp_lt.shape_, dgraph.lt_2_mtag_[zp_lt.id_]);
+                }
+            } else if (input_shape_rewrite && !group_shape_rewrite) {
+                // if user only rewrites input shapes, update the group-shape
+                // attribute accordingly.
+                auto &scale_lt = aop.in_lts_[1];
+                if (src_lt.shape_.size() != scale_lt.shape_.size()) {
+                    BENCHDNN_PRINT(0,
+                            "Error: the ndims of scale tensor should align "
+                            "with the ndims of input tensor for op with "
+                            "id=\'%zu\'\n",
+                            aop.id_);
+                    SAFE_V(FAIL);
+                }
+
+                std::vector<int64_t> new_group_shape(src_lt.shape_.size(), 1);
+                for (size_t idx = 0; idx < src_lt.shape_.size(); ++idx) {
+                    if (src_lt.shape_[idx] % scale_lt.shape_[idx] != 0) {
+                        BENCHDNN_PRINT(0,
+                                "Error: the dimension of scale  shape should "
+                                "be divisible by the corresponding dimensions "
+                                "of the input  shape, scale shape: %lld, input "
+                                "shape: %lld\n",
+                                (long long)scale_lt.shape_[idx],
+                                (long long)src_lt.shape_[idx]);
+                        SAFE_V(FAIL);
+                    }
+                    new_group_shape[idx]
+                            = src_lt.shape_[idx] / scale_lt.shape_[idx];
+                }
+
+                group_shape = new_group_shape;
+            }
+        }
+    }
+}
+
 void flex_rewrite::rewrite(deserialized_graph &dgraph) {
     bool change_stride = false;
     inports_shape_rewrite(dgraph, change_stride);
@@ -36,7 +199,9 @@ void flex_rewrite::rewrite(deserialized_graph &dgraph) {
     infer_output_shape(dgraph, change_stride);
     quantized_graph_rewrite(dgraph);
     graph_attrs_rewrite(dgraph);
+    rewrite_linked_shape_and_attr(dgraph);
     dt_rewrite(dgraph);
+    dt_map_rewrite(dgraph);
 }
 
 void flex_rewrite::split_ncx(const std::string &data_format, dims_t &in,
@@ -236,6 +401,8 @@ void flex_rewrite::infer_output_shape(
             case dnnl::graph::op::kind::Exp:
             case dnnl::graph::op::kind::GELU:
             case dnnl::graph::op::kind::GELUBackward:
+            case dnnl::graph::op::kind::GenIndex:
+            case dnnl::graph::op::kind::GreaterEqual:
             case dnnl::graph::op::kind::HardSigmoid:
             case dnnl::graph::op::kind::HardSigmoidBackward:
             case dnnl::graph::op::kind::HardSwish:
@@ -959,6 +1126,7 @@ void flex_rewrite::inports_shape_rewrite(
 
 void flex_rewrite::op_attrs_rewrite(deserialized_graph &dgraph) {
     std::vector<size_t> op_ids_;
+    op_ids_.reserve(dgraph.ops_.size());
     for (const auto &aop : dgraph.ops_) {
         op_ids_.emplace_back(aop.id_);
     }
@@ -1136,6 +1304,18 @@ void flex_rewrite::dt_rewrite(deserialized_graph &dgraph) {
                                return aop.kind_ == k;
                            })) {
             dt_rewrite_norm(aop, str_dt);
+        } else if (aop.kind_ == "GenIndex") {
+            // GenIndex: only rewrite src dtype
+            aop.in_lts_[0].data_type_ = str_dt;
+        } else if (aop.kind_ == "GreaterEqual") {
+            // GreaterEqual: only rewrite src dtype when it's floating-point
+            if (std::any_of(fp_dts.begin(), fp_dts.end(),
+                        [&aop](const dnnl_data_type_t &fp_dt) {
+                            return aop.in_lts_[0].data_type_ == dt2str(fp_dt);
+                        })) {
+                aop.in_lts_[0].data_type_ = str_dt;
+                aop.in_lts_[1].data_type_ = str_dt;
+            }
         } else {
             for (auto &lt : aop.in_lts_) {
                 lt.data_type_ = str_dt;
@@ -1143,6 +1323,45 @@ void flex_rewrite::dt_rewrite(deserialized_graph &dgraph) {
 
             for (auto &lt : aop.out_lts_) {
                 lt.data_type_ = str_dt;
+            }
+        }
+    }
+}
+
+void flex_rewrite::dt_map_rewrite(deserialized_graph &dgraph) {
+    // check the IDs and data types in dt_map.
+    for (const auto &v : dt_map_) {
+        if (v.second == dnnl_data_type_undef) return;
+
+        bool found_id = false;
+        for (auto &aop : dgraph.ops_) {
+            for (auto &lt : aop.in_lts_) {
+                if (lt.id_ == v.first) found_id = true;
+            }
+
+            for (auto &lt : aop.out_lts_) {
+                if (lt.id_ == v.first) found_id = true;
+            }
+        }
+
+        if (!found_id) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: ID `%zd` is not found in the graph\n",
+                    v.first);
+            SAFE_V(FAIL);
+        }
+    }
+
+    // rewrite
+    for (const auto &v : dt_map_) {
+        const std::string str_dt(dt2str(v.second));
+        for (auto &aop : dgraph.ops_) {
+            for (auto &lt : aop.in_lts_) {
+                if (lt.id_ == v.first) lt.data_type_ = str_dt;
+            }
+
+            for (auto &lt : aop.out_lts_) {
+                if (lt.id_ == v.first) lt.data_type_ = str_dt;
             }
         }
     }
@@ -1211,6 +1430,8 @@ void flex_rewrite::update_output_info(
         case dnnl::graph::op::kind::Exp:
         case dnnl::graph::op::kind::GELU:
         case dnnl::graph::op::kind::GELUBackward:
+        case dnnl::graph::op::kind::GenIndex:
+        case dnnl::graph::op::kind::GreaterEqual:
         case dnnl::graph::op::kind::GroupNorm:
         case dnnl::graph::op::kind::HardSigmoid:
         case dnnl::graph::op::kind::HardSigmoidBackward:

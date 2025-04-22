@@ -139,9 +139,9 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
             IMPLICATION(is_int8,
                     one_of(bia_type, data_type::undef, f32, s32, s8, u8)),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
-    VDISPATCH_CONV(
-            IMPLICATION(!is_int8,
-                    one_of(bia_type, data_type::undef, src_type, dst_type)),
+    VDISPATCH_CONV(IMPLICATION(!is_int8,
+                           one_of(bia_type, data_type::undef, data_type::f32,
+                                   src_type, dst_type)),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
             VERBOSE_BAD_ALGORITHM);
@@ -240,30 +240,34 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     const auto &wei_scales = attr_.scales_.get(DNNL_ARG_WEIGHTS);
     jcp.with_scale = !src_scales.has_default_values()
             || !wei_scales.has_default_values();
-    jcp.is_oc_scale = wei_scales.mask_ != 0;
+    jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
     const bool scales_ok
             = attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST});
     VDISPATCH_CONV(scales_ok, VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    const auto zp_attr = attr()->zero_points_;
-    jcp.src_zero_point = !zp_attr.has_default_values(DNNL_ARG_SRC);
-    jcp.dst_zero_point = !zp_attr.has_default_values(DNNL_ARG_DST);
+    const auto &zp = attr()->zero_points_;
+    jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
+    jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
 
-    // Only common zero points for the whole output tensor is supported now
-    const bool has_zero_points = jcp.src_zero_point || jcp.dst_zero_point;
-    const bool params_ok
-            = IMPLICATION(has_zero_points, utils::one_of(jcp.src_dt, u8, s8))
-            && IMPLICATION(jcp.src_zero_point,
-                    attr()->zero_points_.common(DNNL_ARG_SRC)
-                            || attr()->zero_points_.per_dim_1(DNNL_ARG_SRC))
-            && IMPLICATION(jcp.dst_zero_point,
-                    attr()->zero_points_.common(DNNL_ARG_DST));
-    VDISPATCH_CONV(params_ok, VERBOSE_UNSUPPORTED_ZP_CFG);
-
-    VDISPATCH_CONV(!(jcp.src_zero_point
-                           && cd.weights_desc.format_kind != format_kind::any),
+    VDISPATCH_CONV(IMPLICATION(jcp.src_zero_point || jcp.dst_zero_point,
+                           utils::one_of(jcp.src_dt, s8, u8)),
             VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    VDISPATCH_CONV(
+            IMPLICATION(jcp.src_zero_point,
+                    utils::one_of(zp.get_mask(DNNL_ARG_SRC), 0, (1 << 1))),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    VDISPATCH_CONV(
+            IMPLICATION(jcp.dst_zero_point, zp.get_mask(DNNL_ARG_DST) == 0),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    // Source zero_point requires compensation, thus, must initialize weights
+    // descriptor and can't take predefined one.
+    const bool src_zp_format_ok = IMPLICATION(jcp.src_zero_point,
+            cd.weights_desc.format_kind == format_kind::any);
+    VDISPATCH_CONV(src_zp_format_ok, VERBOSE_UNSUPPORTED_ZP_CFG);
 
     // strd is only feasible for 1D (i.e., height dim is one)
     // and if there are no tails (for calculating matrix_B strides).
@@ -429,6 +433,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                 LDA, LDC, M, N, &strides));
         CHECK(brgemm_desc_set_attr(&bcp, brg_attr));
         CHECK(brgemm_desc_set_postops(&bcp, attr(), dst_md(), LDD, jcp.bia_dt));
+        CHECK(brgemm_desc_finalize(&bcp));
         ++idx;
         return status::success;
     };
@@ -556,8 +561,8 @@ status_t brdgmm_dw_convolution_fwd_t::init(engine_t *engine) {
     const auto attr = pd()->attr();
     if (is_jit_supported && pd()->OC() > 1 && req_copy_scales(attr)) {
         const auto &attr_scales = attr->scales_;
-        int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
-        if (wei_scale_mask != 0) {
+        int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+        if (wei_scale_mask > 0) {
             CHECK(safe_ptr_assign(jit_scale_precompute_,
                     new jit_avx512_core_scale_precompute_t(attr)));
             CHECK(jit_scale_precompute_->create_kernel());
@@ -587,11 +592,10 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
 
-    const int wei_scale_mask
-            = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_;
+    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(
             ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
-            pd()->OC(), false, wei_scale_mask != 0, pd()->attr(),
+            pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
             jit_scale_precompute_.get());
 
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -755,7 +759,8 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                 post_ops_data.oc_logical_off = ch;
                 post_ops_data.dst_scales = dst_scales;
                 const bool is_bcast_zp
-                        = pd()->attr()->zero_points_.common(DNNL_ARG_SRC);
+                        = pd()->attr()->zero_points_.get_mask(DNNL_ARG_SRC)
+                        == 0;
                 post_ops_data.a_zp_values = jcp.src_zero_point
                         ? src_zero_point + ch * !is_bcast_zp
                         : nullptr;

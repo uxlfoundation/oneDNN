@@ -35,7 +35,7 @@ std::string to_string(tensor_kind_t tensor) {
         CASE(b);
         CASE(c);
 #undef CASE
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return {};
 }

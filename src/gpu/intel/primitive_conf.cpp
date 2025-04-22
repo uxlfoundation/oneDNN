@@ -104,22 +104,23 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
     attr_info.with_src_scales = !src_scales.has_default_values();
     attr_info.with_src0_scale = !src_scales.has_default_values();
-    attr_info.src_scales_mask = src_scales.mask_;
-    attr_info.src_scales_data_type = src_scales.data_type_;
+    attr_info.src_scales_data_type = src_scales.get_data_type();
 
     const auto &src1_scales = attr->scales_.get(DNNL_ARG_SRC_1);
     attr_info.with_src1_scale = !src1_scales.has_default_values();
-    gpu_assert(src1_scales.mask_ == 0);
+    if (attr_info.with_src1_scale) { gpu_assert(src1_scales.get_mask() == 0); }
 
     const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
     attr_info.with_wei_scales = !wei_scales.has_default_values();
-    attr_info.wei_scales_mask = wei_scales.mask_;
-    attr_info.wei_scales_data_type = wei_scales.data_type_;
+    // TODO: remove the default `0` value.
+    attr_info.wei_scales_mask
+            = attr_info.with_wei_scales ? wei_scales.get_mask() : 0;
+    attr_info.wei_scales_data_type = wei_scales.get_data_type();
 
     const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
     attr_info.with_dst_scales = !dst_scales.has_default_values();
-    attr_info.dst_scales_mask = dst_scales.mask_;
-    attr_info.dst_scales_data_type = dst_scales.data_type_;
+    attr_info.dst_scales_mask = dst_scales.get_mask();
+    attr_info.dst_scales_data_type = dst_scales.get_data_type();
 
     // zero points
     const auto &zp = attr->zero_points_;
@@ -131,10 +132,12 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     attr_info.dst_zpoints_data_type = zp.get_data_type(DNNL_ARG_DST);
 
     attr_info.with_per_ic_src_zpoints = attr_info.with_src_zpoints
-            && !zp.has_default_values(DNNL_ARG_SRC) && !zp.common(DNNL_ARG_SRC);
+            && !zp.has_default_values(DNNL_ARG_SRC)
+            && zp.get_mask(DNNL_ARG_SRC) > 0;
 
     attr_info.with_per_oc_dst_zpoints = attr_info.with_dst_zpoints
-            && !zp.has_default_values(DNNL_ARG_DST) && !zp.common(DNNL_ARG_DST);
+            && !zp.has_default_values(DNNL_ARG_DST)
+            && zp.get_mask(DNNL_ARG_DST) > 0;
 
     // Rounding mode.
     attr_info.with_dst_sround = attr->rounding_mode_.get(DNNL_ARG_DST)
@@ -370,7 +373,7 @@ void def_offsets(const dim_t offs[4][MAX_NDIMS],
         kernel_ctx.define_int(
                 utils::format("%s_SB%d", str, d), (d < ndims) ? offs[2][d] : 0);
         kernel_ctx.define_int(
-                utils::format("%s_D%d", str, d), (d < ndims) ? offs[3][d] : 0);
+                utils::format("%s_D%d", str, d), (d < ndims) ? offs[3][d] : 1);
     }
 }
 
@@ -390,14 +393,15 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
     const char *bf8_name = with_punning ? "uchar" : "f8_e5m2";
     const char *hf8_name = with_punning ? "uchar" : "f8_e4m3";
     const char *f4_e2m1_name = with_punning ? "uchar" : "f4_e2m1";
+    const char *f4_e3m0_name = with_punning ? "uchar" : "f4_e3m0";
     const char *e8m0_name = with_punning ? "uchar" : "e8m0";
     const char *u4_name = with_punning ? "uchar" : "u4";
     const char *s4_name = with_punning ? "uchar" : "s4";
 
     switch (dt) {
         case data_type::undef:
-            kernel_ctx.add_option(
-                    utils::format("-D%s_DATA_T=void -D%s_DT_UNDEF", str, str));
+            kernel_ctx.add_option(utils::format(
+                    "-D%s_DATA_T=undef_data -D%s_DT_UNDEF", str, str));
             break;
         case data_type::bf16:
             kernel_ctx.add_option(utils::format(
@@ -435,6 +439,10 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
             kernel_ctx.add_option(utils::format(
                     "-D%s_DATA_T=%s -D%s_DT_F4_E2M1", str, f4_e2m1_name, str));
             break;
+        case data_type::f4_e3m0:
+            kernel_ctx.add_option(utils::format(
+                    "-D%s_DATA_T=%s -D%s_DT_F4_E3M0", str, f4_e3m0_name, str));
+            break;
         case data_type::e8m0:
             kernel_ctx.add_option(utils::format(
                     "-D%s_DATA_T=%s -D%s_DT_E8M0", str, e8m0_name, str));
@@ -463,8 +471,9 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
 }
 
 void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
-        const memory_desc_info_t &md_info, const char *prefix) {
-    def_data_type(kernel_ctx, md_info.data_type, prefix);
+        const memory_desc_info_t &md_info, const char *prefix,
+        bool with_punning) {
+    def_data_type(kernel_ctx, md_info.data_type, prefix, with_punning);
     kernel_ctx.register_buffer_size(md_info.size);
 
     kernel_ctx.define_int(utils::format("%s_OFFSET0", prefix), md_info.offset0);
@@ -608,17 +617,7 @@ status_t get_prelu_md(int prelu_mask, const dim_t *dst_dims,
 
 status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
         const post_ops_t &post_ops, const memory_desc_t &dst_md) {
-    const int po_nop_id = 0;
-    const int po_binary_id = 1;
-    const int po_eltwise_id = 2;
-    const int po_sum_id = 3;
-
-    kernel_ctx.define_int("PO_BINARY", po_binary_id);
-    kernel_ctx.define_int("PO_ELTWISE", po_eltwise_id);
-    kernel_ctx.define_int("PO_SUM", po_sum_id);
-
     std::string po_kernel_args = "-DPOST_OP_ARGS=\"";
-    int nof_supported_post_ops = 0;
 
     bool post_op_uses_bf16 = false;
     bool post_op_uses_bf8 = false;
@@ -634,8 +633,8 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
             post_op_uses_hf8 |= (type == data_type::f8_e4m3);
         };
         if (e.is_binary()) {
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_KIND", po_binary_id);
+            kernel_ctx.add_option(
+                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_BINARY");
             kernel_ctx.define_int(
                     "PO_" + std::to_string(idx) + "_ALG", e.binary.alg);
 
@@ -643,10 +642,14 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
             const auto mdi = memory_desc_info_t::create(src1_mdw);
             def_memory_desc_info(kernel_ctx, mdi, bin_arg_name.c_str());
             define_binary_po_type(mdi.data_type);
+
+            po_kernel_args += ", const __global PO_" + std::to_string(idx)
+                    + "_BIN_ARG_DATA_T *po_" + std::to_string(idx)
+                    + "_binary_arg";
         } else if (e.is_prelu()) {
             // binary && eltwise relu = prelu post op
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_KIND", po_binary_id);
+            kernel_ctx.add_option(
+                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_BINARY");
             kernel_ctx.define_int("PO_" + std::to_string(idx) + "_ALG",
                     alg_kind_t::dnnl_eltwise_relu);
 
@@ -660,21 +663,13 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
 
             // prelu weights are assumed to be f32
             define_binary_po_type(data_type::f32);
-        } else {
-            memory_desc_t empty_mem_desc;
-            dnnl_dims_t empty_dims = {1, 1, 1, 1};
-            CHECK(memory_desc_init_by_tag(empty_mem_desc, 4, empty_dims,
-                    data_type_t::dnnl_s8, format_tag_t::dnnl_nchw));
-            const memory_desc_wrapper src1_mdw(empty_mem_desc);
-            const auto mdi = memory_desc_info_t::create(src1_mdw);
-            def_memory_desc_info(kernel_ctx, mdi, bin_arg_name.c_str());
 
-            // unused - just need any type that's convertible to float
-            define_binary_po_type(data_type::f32);
-        }
-        if (e.is_eltwise(false)) {
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_KIND", po_eltwise_id);
+            po_kernel_args += ", const __global PO_" + std::to_string(idx)
+                    + "_BIN_ARG_DATA_T *po_" + std::to_string(idx)
+                    + "_binary_arg";
+        } else if (e.is_eltwise()) {
+            kernel_ctx.add_option(
+                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_ELTWISE");
             kernel_ctx.define_int(
                     "PO_" + std::to_string(idx) + "_ALG", e.eltwise.alg);
             kernel_ctx.define_float(
@@ -686,51 +681,27 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
             kernel_ctx.define_float(
                     ("PO_" + std::to_string(idx) + "_ELTWISE_SCALE").c_str(),
                     e.eltwise.scale);
-        } else {
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_ELTWISE_ALPHA").c_str(),
-                    1.0f);
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_ELTWISE_BETA").c_str(),
-                    0.0f);
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_ELTWISE_SCALE").c_str(),
-                    1.0f);
-        }
-        if (e.is_sum(false)) {
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_KIND", po_sum_id);
+        } else if (e.is_sum(false)) {
+            kernel_ctx.add_option(
+                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_SUM");
             kernel_ctx.define_int(
                     "PO_" + std::to_string(idx) + "_ALG", alg_kind::undef);
             kernel_ctx.define_float(
                     ("PO_" + std::to_string(idx) + "_SUM_SCALE").c_str(),
                     e.sum.scale);
         } else {
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_SUM_SCALE").c_str(), 1.0f);
+            return status::runtime_error;
         }
-        if (!(e.is_binary() || e.is_eltwise(false) || e.is_sum(false)
-                    || e.is_prelu())) {
-            // empty post op
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_KIND", po_nop_id);
-            // *_ALG need to be set but it's unused when kind is NOP
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_ALG", alg_kind::undef);
-            --nof_supported_post_ops;
-        }
-        po_kernel_args += ", const __global PO_" + std::to_string(idx)
-                + "_BIN_ARG_DATA_T *po_" + std::to_string(idx) + "_binary_arg";
         return status::success;
     };
 
-    for (int idx = 0; idx < post_ops.len(); ++idx, ++nof_supported_post_ops) {
+    for (int idx = 0; idx < post_ops.len(); ++idx) {
         const std::string bin_arg_name
                 = "PO_" + std::to_string(idx) + "_BIN_ARG";
         CHECK(add_po_defines(bin_arg_name, post_ops.entry_[idx], idx));
     }
 
-    kernel_ctx.define_int("POST_OP_CHAIN_LENGTH", nof_supported_post_ops);
+    kernel_ctx.define_int("POST_OP_CHAIN_LENGTH", post_ops.len());
     if (post_op_uses_bf16) kernel_ctx.define_int("POST_OP_USING_BF16", 1);
     if (post_op_uses_bf8) kernel_ctx.define_int("POST_OP_USING_BF8", 1);
     if (post_op_uses_hf8) kernel_ctx.define_int("POST_OP_USING_HF8", 1);
@@ -761,8 +732,6 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
                     ? *(arg.mem->memory_storage())
                     : dnnl::impl::memory_storage_t::empty_storage();
             arg_list.set(post_op_idx++, prelu_wei_arg);
-        } else {
-            arg_list.set(post_op_idx++, memory_storage_t::empty_storage());
         }
     };
 
@@ -806,14 +775,13 @@ bool post_ops_preserves_zeroes(
 
 status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md) {
+        const memory_desc_t &dst_md, bool with_punning) {
     gpu_assert(attr_info.initialized);
 
     kernel_ctx.define_int("WITH_POST_OP", post_ops.len() > 0);
 
-    kernel_ctx.define_int("WITH_ELTWISE", attr_info.with_eltwise);
-    kernel_ctx.define_int("ELTWISE_IDX", attr_info.eltwise_idx);
-    kernel_ctx.define_int("ELTWISE_ALG", attr_info.eltwise_alg);
+    if (!kernel_ctx.has_macro("ELTWISE_ALG"))
+        kernel_ctx.define_int("ELTWISE_ALG", attr_info.eltwise_alg);
 
     kernel_ctx.define_int("WITH_SUM", attr_info.with_sum);
     kernel_ctx.define_int("SUM_IDX", attr_info.sum_idx);
@@ -826,12 +794,14 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("WITH_SRC_SCALES", attr_info.with_src_scales);
     kernel_ctx.define_int("WITH_WEI_SCALES", attr_info.with_wei_scales);
     kernel_ctx.define_int("WITH_DST_SCALES", attr_info.with_dst_scales);
-    kernel_ctx.define_int("SRC_SCALES_MASK", attr_info.src_scales_mask);
     kernel_ctx.define_int("WEI_SCALES_MASK", attr_info.wei_scales_mask);
     kernel_ctx.define_int("DST_SCALES_MASK", attr_info.dst_scales_mask);
-    def_data_type(kernel_ctx, attr_info.src_scales_data_type, "SRC_SCALES");
-    def_data_type(kernel_ctx, attr_info.wei_scales_data_type, "WEI_SCALES");
-    def_data_type(kernel_ctx, attr_info.dst_scales_data_type, "DST_SCALES");
+    def_data_type(kernel_ctx, attr_info.src_scales_data_type, "SRC_SCALES",
+            with_punning);
+    def_data_type(kernel_ctx, attr_info.wei_scales_data_type, "WEI_SCALES",
+            with_punning);
+    def_data_type(kernel_ctx, attr_info.dst_scales_data_type, "DST_SCALES",
+            with_punning);
 
     kernel_ctx.define_int("WITH_SRC_ZPOINTS", attr_info.with_src_zpoints);
     kernel_ctx.define_int("WITH_WEI_ZPOINTS", attr_info.with_wei_zpoints);
@@ -847,20 +817,15 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
 
     def_binary_alg_kinds(kernel_ctx);
     def_eltwise_alg_kinds(kernel_ctx);
-    if (post_ops.len() == 0
-            && utils::one_of(data_type::bf16, attr_info.src_scales_data_type,
-                    attr_info.wei_scales_data_type,
-                    attr_info.dst_scales_data_type)) {
-        kernel_ctx.define_int("POST_OP_USING_BF16", 1);
-    }
 
     return def_post_ops_cfg(kernel_ctx, post_ops, dst_md);
 }
 
 status_t def_attr_info(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md) {
-    return def_attr_info_impl(kernel_ctx, attr_info, post_ops, dst_md);
+        const memory_desc_t &dst_md, bool with_punning) {
+    return def_attr_info_impl(
+            kernel_ctx, attr_info, post_ops, dst_md, with_punning);
 }
 
 void def_dispatch(compute::kernel_ctx_t &kernel_ctx,

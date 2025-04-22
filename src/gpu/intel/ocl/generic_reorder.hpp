@@ -24,7 +24,7 @@
 #include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -73,6 +73,12 @@ struct generic_reorder_t : public gpu_primitive_t {
                                     && compute_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_REORDER(IMPLICATION(utils::one_of(data_type::f64,
+                                                  src_md()->data_type,
+                                                  dst_md()->data_type),
+                                      compute_engine->mayiuse(
+                                              compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_REORDER_SC(init_conf(engine),

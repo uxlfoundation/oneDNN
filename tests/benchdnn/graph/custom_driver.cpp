@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,6 +31,69 @@ extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
         const char *);
 
 namespace custom {
+
+namespace genindex {
+// GENINDEX OP
+// DNNL_ARG_SRC: src
+// DNNL_ARG_DST: dst
+
+std::vector<int> exec_args = {
+        DNNL_ARG_SRC,
+        DNNL_ARG_DST,
+};
+
+int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
+        const prb_t *prb, res_t *res) {
+
+    const auto &ref_engine = get_cpu_engine();
+
+    for (auto &entry : mem_map) {
+        const int exec_arg = entry.first;
+        auto &mem = entry.second;
+
+        ref_mem_map.emplace(
+                exec_arg, dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine));
+        auto &ref_mem = ref_mem_map[exec_arg];
+
+        switch (exec_arg) {
+            case DNNL_ARG_SRC:
+                // For GenIndex op, the input value doesn't affect the output
+                // value, it doesn't matter what value we fill in.
+                SAFE(::custom::fill_mem(mem, ref_mem, 0, 0), WARN);
+                break;
+            default: break;
+        }
+    }
+    return OK;
+}
+
+int execute(const prb_t *prb, const args_t &args, res_t *res) {
+    dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
+    auto ndims = dst.ndims();
+    const size_t axis = prb->axis < 0 ? (prb->axis + ndims) : prb->axis;
+    auto dims = dst.dims();
+    auto strides = dst.strides();
+
+    benchdnn_parallel_nd(dst.nelems(), [&](int64_t index) {
+        // This function resembles dnn_mem_t::get_idx but has a format + axis
+        // peculiarity which can't be covered in get_idx function without
+        // sacrificing performance, and the current code as is.
+        size_t offdst = 0, result = 0;
+        for (int i = 0; i < ndims; i++) {
+            // calculate the idx on each dimension
+            int idx = index % dims[i];
+            if ((size_t)i == axis) result = idx;
+            index /= dims[i];
+
+            // accumulate offset for each arg
+            offdst += strides[i] * idx;
+            if (index == 0) break;
+        }
+        dst.set_elem(offdst, result);
+    });
+    return OK;
+}
+} // namespace genindex
 
 namespace select {
 // SELECT OP
@@ -208,6 +271,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
 std::vector<int> supported_exec_args(const prb_t *prb) {
     std::vector<int> exec_args;
     switch (prb->alg) {
+        case GENINDEX: return ::custom::genindex::exec_args;
         case SELECT: return ::custom::select::exec_args;
         case TRANSPOSE: return ::custom::transpose::exec_args;
         case RESHAPE: return ::custom::reshape::exec_args;
@@ -219,6 +283,7 @@ std::vector<int> supported_exec_args(const prb_t *prb) {
 void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
         const args_t &ref_args) {
     switch (prb->alg) {
+        case GENINDEX:
         case SELECT:
         case TRANSPOSE:
         case RESHAPE: cmp.set_zero_trust_percent(100.f); break;
@@ -257,15 +322,16 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         if (prb->arg_mds_.find(exec_arg) == prb->arg_mds_.end()) {
             assert(!"missing required args");
             SAFE_V(FAIL);
-        };
-        auto arg_mds_ = prb->arg_mds_.find(exec_arg)->second;
-        dnnl_dims_t dnnl_dims;
-        auto dim = ::std::get<1>(arg_mds_);
-        for (size_t i = 0; i < dim.size(); i++) {
-            dnnl_dims[i] = dim[i];
         }
+        auto arg_mds_ = prb->arg_mds_.find(exec_arg)->second;
+        dnnl_dims_t dnnl_dims {};
+        auto dims = ::std::get<1>(arg_mds_);
+        for (size_t i = 0; i < dims.size(); i++) {
+            dnnl_dims[i] = dims[i];
+        }
+
         mem_map.emplace(exec_arg,
-                dnn_mem_t(static_cast<int>(dim.size()), dnnl_dims,
+                dnn_mem_t(static_cast<int>(dims.size()), dnnl_dims,
                         std::get<2>(arg_mds_), ::std::get<0>(arg_mds_),
                         test_engine));
     }
@@ -276,6 +342,11 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
     switch (prb->alg) {
+        case GENINDEX:
+            SAFE(::custom::genindex::init_ref_memory_args(
+                         ref_mem_map, mem_map, prb, res),
+                    WARN);
+            break;
         case SELECT:
             SAFE(::custom::select::init_ref_memory_args(
                          ref_mem_map, mem_map, prb, res),
@@ -303,6 +374,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {}
 int execute(const prb_t *prb, const args_t &args, res_t *res) {
     int ret = FAILED;
     switch (prb->alg) {
+        case GENINDEX: ret = ::custom::genindex::execute(prb, args, res); break;
         case SELECT: ret = ::custom::select::execute(prb, args, res); break;
         case TRANSPOSE:
             ret = ::custom::transpose::execute(prb, args, res);

@@ -49,7 +49,7 @@ layout_desc_t make_conv_layout_desc(
         CASE(ow, 'w');
         CASE(kw, is_wei ? 'w' : 'x');
 #undef CASE
-        ir_assert(c != ' ');
+        gpu_assert(c != ' ');
         letter_map[d] = c;
     }
     return layout_desc_t(letter_map);
@@ -67,7 +67,7 @@ layout_desc_t make_conv_algo_layout_desc(
         case tensor_kind_t::dst:
             if (prop != prop_kind::backward_data) return desc;
             break;
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     pvar_map_t<char> letter_map;
     bool is_src = (tensor_kind == tensor_kind_t::src);
@@ -106,6 +106,7 @@ layout_tag_t make_conv_layout_tag(
 
 layout_tag_t append_groups(
         tensor_kind_t tensor_kind, const layout_tag_t &layout_tag, bool is_dw) {
+    if (layout_tag.is_any()) return layout_tag;
     bool is_src = (tensor_kind == tensor_kind_t::src);
     bool is_dst = (tensor_kind == tensor_kind_t::dst);
     bool is_bias = (tensor_kind == tensor_kind_t::bias);
@@ -156,12 +157,11 @@ layout_t make_conv_layout(tensor_kind_t tensor_kind, const layout_tag_t &_tag,
     layout_t ret(tag.desc(), tag.type());
     pvar_map_t<int> blocks;
     auto rem_size = [&](const pvar_t &dim, const pvar_map_t<int> &blocks) {
-        auto dim_size = dim.var();
         uint32_t dim_mask = (mask & (1 << tag.desc().dim_index(dim)));
-        bool is_dim_1 = reqs.is_equal(dim, 1) || (dim_mask == 0);
-        if (is_dim_1) return expr_t(1);
+        if (dim_mask == 0) return expr_t(1);
+        auto dim_size = reqs.to_expr(dim);
         if (!blocks.has(dim)) return dim_size;
-        return binary_op_t::make(op_kind_t::_div_up, dim_size, blocks[dim]);
+        return div_up(dim_size, blocks[dim]);
     };
     auto &entries = tag.raw_tag().entries();
     for (auto it = entries.rbegin(); it != entries.rend(); it++) {
@@ -218,7 +218,7 @@ std::string blocked_to_str_tag(const memory_desc_t &md) {
                 break;
             }
         }
-        if (!found) ir_error_not_expected();
+        if (!found) gpu_error_not_expected();
     }
     std::ostringstream oss;
     for (int i = (int)parts.size() - 1; i >= 0; i--)
@@ -246,7 +246,7 @@ layout_tag_t make_conv_layout_tag(tensor_kind_t tensor_kind,
         dim_idx_t conv_ndims, const memory_desc_t &md) {
     bool is_any = (md.format_kind == format_kind::any);
     bool is_blocked = (md.format_kind == format_kind::blocked);
-    ir_assert(is_any || is_blocked);
+    gpu_assert(is_any || is_blocked);
     auto desc = make_conv_layout_desc(tensor_kind);
     type_t type(md.data_type);
     if (is_any) return layout_tag_t(desc, type, layout_raw_tag_t::any());
@@ -280,7 +280,7 @@ const dim_mapper_t &dim_mapper_manager_t::mapper(tensor_kind_t tensor) const {
             return mapper(pick_c(prop_, tensor_kind_t::src, tensor_kind_t::wei,
                     tensor_kind_t::dst));
         case tensor_kind_t::bias: return bias_mapper_;
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return src_mapper_;
 }
@@ -399,7 +399,7 @@ std::vector<pvar_t> skip_mask(
     auto dim_sizes = view.base_layout().dim_sizes();
     for (int i = 0; i < mask_desc.nmasks(); i++) {
         pvar_t dim = mask_desc[i].dim;
-        ir_assert(view.dim_mapper().has(dim));
+        gpu_assert(view.dim_mapper().has(dim));
         // Assume that dimensions with non-trivial mapping always require
         // masking.
         if (!view.dim_mapper().expr(dim).is_same(dim.index_var())) continue;

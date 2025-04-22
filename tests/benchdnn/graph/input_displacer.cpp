@@ -30,7 +30,7 @@ partition_data_displacer_t::partition_data_displacer_t(
 
     static const std::unordered_set<std::string> main_op_kind {"Convolution",
             "ConvTranspose", "AvgPool", "MaxPool", "MatMul", "Add", "Divide",
-            "Maximum", "Minimum", "Multiply", "Substract"};
+            "Maximum", "Minimum", "Multiply", "Substract", "Select"};
 
     static const std::unordered_set<std::string> go_through_op_kind {
             "StaticTranspose", "StaticReshape", "TypeCast", "Quantize",
@@ -136,6 +136,124 @@ partition_data_displacer_t::partition_data_displacer_t(
                 }
             }
         }
+
+        // Alternatively, looking for Add->SoftMax chain, which represents
+        // explicit SDPA mask, and should be filled with upper-corner with -inf:
+        // 0 -inf -inf -inf
+        // 0    0 -inf -inf
+        // 0    0    0 -inf
+        // 0    0    0    0
+        // This is done to avoid taking future tokens into account by
+        // influencing SoftMax input values.
+        while (aop.kind_ == "Add" || aop.kind_ == "Select") {
+            auto *aop_out_lt = &aop.out_lts_[0];
+            auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+            if (child_op->kind_ != "SoftMax") break;
+
+            // Softmax must be a part of same partition as the mask. This is to
+            // avoid cases, where mask is the last op in the partition, from
+            // being modified.
+            if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
+
+            // Search for an input lt without a parent, this is the one to
+            // modify for both explicit and implicit masks.
+            const deserialized_lt *causal_mask_lt = nullptr;
+            size_t offset = SIZE_MAX;
+            size_t qk_data_offset = SIZE_MAX;
+            // Select condition having a parent or not is the only reliable
+            // difference between explicit and implicit causal mask.
+            bool select_cond_has_parent = false;
+            // Need to iterate over all inputs to handle padding mask expressed
+            // through Select op.
+            for (size_t i = 0; i < aop.in_lts_.size(); i++) {
+                auto *aop_in_lt = &aop.in_lts_[i];
+                auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+                if (!parent_op->empty()) {
+                    if (aop_in_lt->get_data_type()
+                            != logical_tensor::data_type::boolean) {
+                        // This is the qk_data, need to know its offset to
+                        // properly fill condition for padding mask.
+                        qk_data_offset = i;
+                    } else {
+                        // This means it's implicit causal mask.
+                        select_cond_has_parent = true;
+                    }
+                    continue;
+                }
+
+                // Explicit padding mask expressed through the Select op would
+                // have two user inputs: condition, hinting where padding
+                // occurred and a special value (-inf) to use. In such scenario,
+                // unlike for implicit causal mask, it's required to update the
+                // condition to always take qk values instead of a special one.
+                //
+                // Checking for data type to make sure that in case of two user
+                // inputs, the condition one will be updated. For implicit
+                // causal mask, the condition would have a parent and a check
+                // for `causal_mask_lt` being non-empty will fail.
+                if (causal_mask_lt
+                        && aop_in_lt->get_data_type()
+                                != logical_tensor::data_type::boolean)
+                    continue;
+
+                causal_mask_lt = aop_in_lt;
+                offset = i;
+            }
+            // No suitable tensor/subgraph for a mask displacement.
+            if (!causal_mask_lt) break;
+
+            filling_type_t filling_type = filling_type_t::undef;
+            if (aop.kind_ == "Add") {
+                const auto ndims = causal_mask_lt->shape_.size();
+                if (ndims < 2) {
+                    BENCHDNN_PRINT(7, "%s\n",
+                            "[DISPLACE]: Causal mask ndims is less than 2");
+                    break;
+                }
+
+                const auto M = causal_mask_lt->shape_[ndims - 2];
+                if (M == 1) {
+                    // This is a padding mask case, when padded tokens should
+                    // be removed from the final computations. In case of
+                    // benchdnn, there's no such thing as padding as all tokens
+                    // are computed. To avoid numerical instabilities, a zero
+                    // mask can be applied without compromising validation
+                    // capabilities.
+                    filling_type = filling_type_t::zero;
+                } else {
+                    // This is a look-ahead (or causal) mask case, when future
+                    // tokens (row < col) are set to infinity to remove all
+                    // connections of current tokens to unissued ones.
+                    filling_type = filling_type_t::causal_mask;
+                }
+            } else if (aop.kind_ == "Select") {
+                if (select_cond_has_parent) {
+                    // Implicit causal mask case.
+                    filling_type = filling_type_t::minus_infinity;
+                } else {
+                    // Padding mask.
+                    assert(qk_data_offset == 1 || qk_data_offset == 2);
+                    // Fill condition depending on qk values tensor to use only
+                    // its values, which is equivalent of not using a mask.
+                    if (qk_data_offset == 1) {
+                        filling_type = filling_type_t::one;
+                    } else if (qk_data_offset == 2) {
+                        filling_type = filling_type_t::zero;
+                    }
+                }
+            }
+
+            if (filling_type == filling_type_t::undef) {
+                BENCHDNN_PRINT(
+                        7, "%s\n", "[DISPLACE]: Filling type was not set");
+                break;
+            }
+
+            quantize_displace_.emplace(causal_mask_lt->id_,
+                    std::make_tuple(
+                            aop, offset, *causal_mask_lt, filling_type));
+            break;
+        }
     }
 }
 
@@ -187,17 +305,33 @@ int partition_data_displacer_t::displace_input_data(
         const auto &user_set
                 = is_div ? pow2_div_vals : (is_mul ? pow2_mul_vals : dummy);
         fill_cfg_t fill_cfg(user_set, "Mul/Div displacer");
-        SAFE(gen_pow2_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
+        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
+    } else if (filling_type == filling_type_t::causal_mask) {
+        SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
+    } else if (filling_type == filling_type_t::minus_infinity) {
+        static const std::vector<float> user_set {-INFINITY};
+        fill_cfg_t fill_cfg(user_set, "Implicit_causal_mask");
+        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
+    } else if (filling_type == filling_type_t::zero) {
+        static const std::vector<float> user_set {0.f};
+        fill_cfg_t fill_cfg(user_set, "Explicit_padding_mask");
+        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
+    } else if (filling_type == filling_type_t::one) {
+        static const std::vector<float> user_set {1.f};
+        fill_cfg_t fill_cfg(user_set, "Explicit_padding_mask");
+        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
     } else {
-        assert(!"unexepcted filling type");
+        assert(!"unexpected filling type");
     }
 
     if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
 
     // do the reverse job
     auto *parent_op = &dg_->get_op_by_out_lt(tensor.id_);
+    bool backward_path_launched = false;
     while (filling_type == filling_type_t::quantization && !parent_op->empty()
             && op_ids_set_.find(parent_op->id_) != op_ids_set_.end()) {
+        backward_path_launched = true;
         // generate the reverse op based on OP kind
         // make a copy of deserialized_op to avoid impact on graph execution
         // Currently, we support the following OPs' reverse execution:
@@ -270,7 +404,9 @@ int partition_data_displacer_t::displace_input_data(
         parent_op = &dg_->get_op_by_out_lt(tensor.id_);
     }
 
-    BENCHDNN_PRINT(3, "%s\n", "[DISPLACE]: Backward path ended.");
+    if (backward_path_launched) {
+        BENCHDNN_PRINT(3, "%s\n", "[DISPLACE]: Backward path ended.");
+    }
 
     bool mds_are_equal = dnnl_memory_desc_equal(mem_replace.md_, mem.md_) == 1;
     bool mds_are_int8 = is_integral_dt(mem_replace.dt())
@@ -321,23 +457,23 @@ int partition_data_displacer_t::gen_quantize_filling(
                 // None of them supports u8u8, replace with u8s8.
                 op.in_lts_[1].data_type_ = "s8";
             } else if (dt == "s4" || dt == "u4") {
-                // None of them supports x4x4, replace with f32x4.
-                op.in_lts_[0].data_type_ = "f32";
+                // None of them supports x4x4, replace with f32x4f32 or
+                // xf16x4xf16.
+                op.in_lts_[0].data_type_ = op.out_lts_[0].data_type_;
             }
         }
     }
-    if (driver == dnnl_driver_t::pool || driver == dnnl_driver_t::binary) {
-        // pool does not support x8f32 on cpu
-        // binary does not support x8x8bf16 on gpu
-        // replace output with x8
+    if (driver == dnnl_driver_t::pool || driver == dnnl_driver_t::binary
+            || is_f8_quantization) {
+        // pool does not support x8f32 on cpu, and binary does not support
+        // x8x8bf16 on gpu, hence replace output with x8.
+        // f8 data types needs setting output data type to f8
         op.out_lts_[0].data_type_ = dt;
     } else if (op.out_lts_[0].data_type_ != "bf16") {
         if (op.in_lts_.size() > 1 && op.in_lts_[1].data_type_ == "s8") {
             // Use u8 as output data type for two-input operations to avoid
             // data overflow due to the specific driver logic.
             op.out_lts_[0].data_type_ = "u8";
-        } else if (is_f8_quantization) {
-            op.out_lts_[0].data_type_ = "f8_e5m2";
         } else {
             // Use f32 as output data type since not all primitives support
             // different data types for input and output.
@@ -361,7 +497,7 @@ int partition_data_displacer_t::gen_quantize_filling(
     return OK;
 }
 
-int partition_data_displacer_t::gen_pow2_filling(dnn_mem_t &mem,
+int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
         const_dnnl_memory_desc_t md, const fill_cfg_t &fill_cfg,
         res_t *res) const {
 
@@ -395,6 +531,29 @@ int partition_data_displacer_t::gen_pow2_filling(dnn_mem_t &mem,
     });
 
     mem = std::move(m);
+    return OK;
+}
+
+int partition_data_displacer_t::gen_causal_mask_filling(
+        dnn_mem_t &mem, const_dnnl_memory_desc_t md, res_t *res) const {
+
+    dnn_mem_t tmp_mem(md, get_test_engine());
+
+    const int ndims = query_md_ndims(md);
+    assert(ndims >= 2); // This was checked at displacer initialization.
+    const auto &dims = query_md_dims(md);
+    const int64_t batch = std::accumulate(dims, dims + ndims - 2, (dnnl_dim_t)1,
+            std::multiplies<dnnl_dim_t>());
+    const int64_t M = dims[ndims - 2];
+    const int64_t N = dims[ndims - 1];
+
+    benchdnn_parallel_nd(batch, M, N, [&](int64_t b, int64_t m, int64_t n) {
+        int64_t idx = b * M * N + m * N + n;
+        float val = m >= n ? 0.f : -INFINITY;
+        tmp_mem.set_elem(idx, val);
+    });
+
+    mem = std::move(tmp_mem);
     return OK;
 }
 

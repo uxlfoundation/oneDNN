@@ -23,10 +23,10 @@
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
-#include "gpu/intel/jit/ngen/ngen_register_allocator.hpp"
 #include "gpu/intel/jit/pooling/pooling_kernel.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "ngen/ngen_register_allocator.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -132,13 +132,11 @@ status_t gen_pooling_fwd_t::init(impl::engine_t *engine) {
 
     // Initialize kernel arguments.
     for (auto &t : tensor_cfg.tensors()) {
-        ir_assert(!t.needs_reorder);
-        ir_assert(!t.needs_zero_out);
+        gpu_assert(!t.needs_reorder);
+        gpu_assert(!t.needs_zero_out);
 
         if (t.arg_key == DNNL_ARG_UNDEF) {
-            ir_assert(!t.needs_reorder);
-            ir_assert(!t.needs_zero_out);
-            ir_error_not_expected();
+            gpu_error_not_expected();
             continue;
         }
         kernel_info_.register_user_arg(make_buffer(t.name), t.arg_key,
@@ -152,14 +150,14 @@ status_t gen_pooling_fwd_t::init(impl::engine_t *engine) {
             break;
         } catch (const ngen::out_of_registers_exception &exc) {
             UNUSED(exc);
-            ir_warning() << "loop too large: cut and retry!" << std::endl;
+            gpu_warning() << "loop too large: cut and retry!";
             kernel_ = {};
             if (!cfg_.cut()) {
-                ir_error_not_expected() << "minimal loop too large!";
+                gpu_error_not_expected() << "minimal loop too large!";
                 break;
             }
         } catch (const std::exception &exc) {
-            ir_error_not_expected() << exc.what();
+            gpu_error_not_expected() << exc.what();
             kernel_ = {};
             break;
         }

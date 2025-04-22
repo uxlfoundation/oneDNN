@@ -20,6 +20,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
+#include "cpu/cpu_convolution_pd.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/injectors/injector_utils.hpp"
@@ -821,6 +822,13 @@ status_t jit_avx512_common_conv_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.stride_d = (ndims == 5) ? cd.strides[0] : 1;
     jcp.stride_h = (ndims == 3) ? 1 : cd.strides[ndims - 4];
     jcp.stride_w = cd.strides[ndims - 3];
+
+    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // TODO: change data type of jcp fields to size_t
+    VDISPATCH_CONV_IC(!((ndims == 5 && cd.dilates[ndims - 5] > INT_MAX)
+                              || (ndims >= 4 && cd.dilates[ndims - 4] > INT_MAX)
+                              || (cd.dilates[ndims - 3] > INT_MAX)),
+            VERBOSE_BAD_PARAM, "dilates");
 
     jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
     jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
@@ -4110,14 +4118,24 @@ status_t jit_avx512_common_conv_bwd_weights_kernel_f32::init_conf(
     jcp.typesize_in = typesize;
     jcp.typesize_out = typesize;
 
+    dim_t src_size = static_cast<dim_t>(jcp.mb)
+            * (is_data_layout_nxc ? jcp.ic : rnd_up(jcp.ic, jcp.ic_block))
+            * jcp.id * jcp.ih * jcp.iw * jcp.typesize_in;
+
+    VDISPATCH_CONV_IC(src_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
+            "src size > INT_MAX is not supported");
+
+    dim_t diff_dst_size = static_cast<dim_t>(jcp.mb)
+            * (is_data_layout_nxc ? jcp.oc : rnd_up(jcp.oc, jcp.oc_block))
+            * jcp.id * jcp.ih * jcp.iw * jcp.typesize_in;
+
+    VDISPATCH_CONV_IC(diff_dst_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
+            "diff_dst size > INT_MAX is not supported");
+
     bool use_nxc_harness = false;
     if (is_data_layout_nxc) {
         dim_t kernel_size = static_cast<dim_t>(jcp.ic) * jcp.oc * jcp.kd
                 * jcp.kh * jcp.kw * jcp.typesize_out;
-        dim_t src_size = static_cast<dim_t>(jcp.mb) * jcp.ic * jcp.id * jcp.ih
-                * jcp.iw * jcp.typesize_in;
-        dim_t diff_dst_size = static_cast<dim_t>(jcp.mb) * jcp.oc * jcp.id
-                * jcp.ih * jcp.iw * jcp.typesize_in;
         dim_t data_size = src_size + diff_dst_size;
 
         // The advantage of the nxc kernel is cache traversal, this comes at a

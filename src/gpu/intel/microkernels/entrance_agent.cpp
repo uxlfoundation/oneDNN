@@ -18,9 +18,9 @@
 
 #include <array>
 
-#include "gpu/intel/jit/ngen/ngen_config.hpp"
-#include "gpu/intel/jit/ngen/ngen_decoder.hpp"
-#include "gpu/intel/jit/ngen/npack/neo_packager.hpp"
+#include "ngen/ngen_config.hpp"
+#include "ngen/ngen_decoder.hpp"
+#include "ngen/npack/neo_packager.hpp"
 
 namespace dnnl {
 namespace impl {

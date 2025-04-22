@@ -120,8 +120,8 @@ private:
 };
 
 struct softmax_fwd_pd_t : public softmax_pd_t {
-    typedef softmax_fwd_pd_t base_class;
-    typedef softmax_fwd_pd_t hint_class;
+    using base_class = softmax_fwd_pd_t;
+    using hint_class = softmax_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (arg == DNNL_ARG_SRC) return arg_usage_t::input;
@@ -176,19 +176,26 @@ protected:
                 dst_md_, src_md_.format_desc.blocking);
     }
 
-    bool attr_scales_ok() const {
+    bool attr_scales_ok(const std::vector<int> &supported_args
+            = {DNNL_ARG_SRC, DNNL_ARG_DST}) const {
         const auto &scales = attr()->scales_;
-        bool ok = true;
-        for (const auto &e : scales.scales_) {
-            ok = ok && e.second.mask_ == 0;
+        bool ok = scales.has_default_values(supported_args);
+
+        for (const auto &arg : supported_args) {
+            if (scales.has_default_values(arg)) continue;
+
+            // TODO: disallow non-int8 scales?
+            // const data_type_t dt = arg_md(arg)->data_type;
+            // ok = ok && utils::one_of(dt, s8, u8);
+            ok = ok && scales.get_mask(arg) == 0;
         }
         return ok;
     }
 };
 
 struct softmax_bwd_pd_t : public softmax_pd_t {
-    typedef softmax_bwd_pd_t base_class;
-    typedef softmax_fwd_pd_t hint_class;
+    using base_class = softmax_bwd_pd_t;
+    using hint_class = softmax_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_DST, DNNL_ARG_DIFF_DST))

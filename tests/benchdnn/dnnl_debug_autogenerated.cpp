@@ -928,6 +928,8 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(BAcd8a8b);
     CASE(BAcde8a8b);
     CASE(aCBdef8b8c);
+    CASE(abdEC16e4c);
+    CASE(abDC16d4c);
     CASE(x);
     CASE(nc);
     CASE(cn);
@@ -980,9 +982,11 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(ldgo);
     CASE(ldOi16o);
     CASE(ldOi32o);
+    CASE(ldOI16o4i);
     CASE(ldOI32o4i);
     CASE(ldIo32i);
     CASE(ldgOi16o);
+    CASE(ldgOI16o4i);
     CASE(ldgOi32o);
     CASE(ldgOI32o2i);
     CASE(ldgOI32o4i);

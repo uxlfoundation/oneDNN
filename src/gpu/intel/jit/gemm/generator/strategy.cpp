@@ -180,10 +180,13 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     block2DCRemainder &= !isPacked(problem.C.layout);
     block2DCRemainder &= !isBlock2D(C.accessType);
-    block2DCFull |= (Tc_ext.size() < 4);
+    block2DCFull |= (Tc_ext.paddedSize() < 4);
     block2DCFull &= block2DCRemainder;
 
     extendedAtomicFMA &= !problem.needsASums() && !problem.needsBSums();
+
+    if (tlbWarmup && !linearOrder())
+         cWalkOrder = WalkOrder::SimpleLinear;
 
     // Default SIMD setting.
     if (fmaSIMD == 0) {
@@ -222,6 +225,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         ka_load = kb_load = 32 / Ta_real;
         dpasw = true;
     }
+
+    altCRemainder &= (problem.Tc_ext.bits() >= 8);
 
     dpasw &= systolic && fused;
 

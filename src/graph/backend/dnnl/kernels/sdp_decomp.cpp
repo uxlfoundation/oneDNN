@@ -60,6 +60,8 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     pass_pipeline_t pipeline = pass_pipeline_t(vis);
     pass_pipeline_t select_pipeline = pass_pipeline_t(vis);
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    // Decompose select to binary ops if necessary
+    BACKEND_DNNL_ADD_PASS(pipeline, decompose_select_to_binary_ops);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
     // Fusion and canonicalization passes begin
     if (quantized) {

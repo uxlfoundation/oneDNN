@@ -40,8 +40,8 @@ namespace impl {
 struct binary_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::binary;
 
-    typedef binary_pd_t base_class;
-    typedef binary_pd_t hint_class;
+    using base_class = binary_pd_t;
+    using hint_class = binary_pd_t;
 
     const binary_desc_t *desc() const { return &desc_; }
     const op_desc_t *op_desc() const override {
@@ -179,10 +179,13 @@ protected:
 
     bool attr_scales_ok(const std::vector<int> &supported_args
             = {DNNL_ARG_SRC_0, DNNL_ARG_SRC_1, DNNL_ARG_DST}) const {
-        bool ok = attr()->scales_.has_default_values(supported_args);
-        for (int arg : supported_args) {
-            const auto &mask = attr()->scales_.get(arg).mask_;
-            ok = ok && (mask == 0);
+        const auto &scales = attr()->scales_;
+        bool ok = scales.has_default_values(supported_args);
+
+        for (const auto &arg : supported_args) {
+            if (scales.has_default_values(arg)) continue;
+
+            ok = ok && scales.get_mask(arg) == 0;
         }
         return ok;
     }

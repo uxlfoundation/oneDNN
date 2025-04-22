@@ -60,8 +60,8 @@ std::string ngen_operand_t::str() const {
     auto &rb = rbd.reg_buf();
     std::ostringstream oss;
     if (rbd.type() != ngen::DataType::invalid) {
-        ir_assert(rb.blocks() == 1);
-        ir_assert(!rb.with_permute());
+        gpu_assert(rb.blocks() == 1);
+        gpu_assert(!rb.with_permute());
         oss << "r" << rbd.base() << ".";
         oss << rbd.offset() << ":";
         oss << to_string(rbd.type());

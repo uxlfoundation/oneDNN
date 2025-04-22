@@ -400,6 +400,77 @@ inline graph::utils::pm::repetition_t *optional_select(
     return pselect;
 }
 
+inline graph::utils::pm::repetition_t *optional_scale(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *input) {
+    auto scale_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto scale = scale_graph->append_alternation(
+            {graph::op_kind::Divide, graph::op_kind::Multiply});
+    scale_graph->create_input_port(0, scale, 0);
+    scale_graph->create_output_port(0, scale, 0);
+    auto optional_scale
+            = pgraph->append_optional(scale_graph, {in_edge(0, input, 0)});
+    return optional_scale;
+}
+
+inline graph::utils::pm::repetition_t *optional_explicit_mask(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *scaled_output) {
+    auto mask_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto add = mask_graph->append_op(graph::op_kind::Add);
+    mask_graph->create_input_port(0, add, 0);
+    mask_graph->create_output_port(0, add, 0);
+    auto optional_mask = pgraph->append_optional(
+            mask_graph, {in_edge(0, scaled_output, 0)});
+    return optional_mask;
+}
+
+inline bool check_inputs_xf16(op_t *op) {
+    for (size_t i = 0; i < op->num_inputs(); ++i) {
+        const logical_tensor_t &iport
+                = op->get_input_value(i)->get_logical_tensor();
+        if (iport.data_type != graph::data_type::f16
+                && iport.data_type != graph::data_type::bf16)
+            return false;
+    }
+
+    return true;
+}
+
+// Implicit Causal Mask
+inline graph::utils::pm::repetition_t *optional_causal_mask(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *scaled_output, bool check_xf16 = false) {
+    auto popt_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+
+    graph::utils::pm::pb_op_t *gen_index_row
+            = popt_graph->append_op(graph::op_kind::GenIndex);
+    if (check_xf16) {
+        // sdpa_primitive only supports f16/bf16 on gpu
+        // for other dtypes, we don't have a reference implementation on gpu
+        // so filter them out
+        gen_index_row->append_decision_function(check_inputs_xf16);
+    }
+    graph::utils::pm::pb_op_t *gen_index_col
+            = popt_graph->append_op(graph::op_kind::GenIndex);
+    graph::utils::pm::pb_op_t *greater_equal
+            = popt_graph->append_op(graph::op_kind::GreaterEqual,
+                    graph::utils::pm::in_edges_t {in_edge(0, gen_index_row, 0),
+                            {in_edge(1, gen_index_col, 0)}});
+    graph::utils::pm::pb_op_t *select = popt_graph->append_op(
+            graph::op_kind::Select,
+            graph::utils::pm::in_edges_t {in_edge(0, greater_equal, 0)});
+
+    popt_graph->create_input_port(0, gen_index_row, 0);
+    popt_graph->create_input_port(0, gen_index_col, 0);
+    popt_graph->create_input_port(0, select, 1);
+    popt_graph->create_input_port(1, select, 2);
+    popt_graph->create_output_port(0, select, 0);
+    auto pmask = pgraph->append_optional(popt_graph,
+            graph::utils::pm::in_edges_t {in_edge(0, scaled_output, 0)});
+    return pmask;
+}
+
 // Optional (transpose + reorder/staticReshape)
 inline graph::utils::pm::repetition_t *optional_transpose_reshape(
         const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,

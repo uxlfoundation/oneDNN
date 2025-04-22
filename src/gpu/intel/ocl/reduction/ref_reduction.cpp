@@ -18,8 +18,8 @@
 
 #include "common/primitive_exec_types.hpp"
 
-#include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/reduction/ref_reduction.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

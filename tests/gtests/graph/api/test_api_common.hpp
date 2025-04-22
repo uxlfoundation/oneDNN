@@ -150,7 +150,6 @@ struct sycl_deletor {
 
 struct engine_handle_t {
     dnnl_engine_t engine = nullptr;
-    ~engine_handle_t() {};
     explicit operator bool() const noexcept {
         return static_cast<bool>(engine);
     }

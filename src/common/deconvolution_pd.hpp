@@ -173,7 +173,9 @@ protected:
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) const {
         bool ok = attr()->scales_.has_default_values(supported_args);
         for (int arg : supported_args) {
-            const auto &mask = attr()->scales_.get(arg).mask_;
+            if (attr()->scales_.has_default_values(arg)) continue;
+
+            const auto &mask = attr()->scales_.get_mask(arg);
             if (arg == DNNL_ARG_WEIGHTS)
                 ok = ok && (mask == 0 || mask == (with_groups() ? 3 : 1));
             else
@@ -200,8 +202,8 @@ protected:
 };
 
 struct deconvolution_fwd_pd_t : public deconvolution_pd_t {
-    typedef deconvolution_fwd_pd_t base_class;
-    typedef deconvolution_fwd_pd_t hint_class;
+    using base_class = deconvolution_fwd_pd_t;
+    using hint_class = deconvolution_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS))
@@ -264,8 +266,8 @@ protected:
 };
 
 struct deconvolution_bwd_data_pd_t : public deconvolution_pd_t {
-    typedef deconvolution_bwd_data_pd_t base_class;
-    typedef deconvolution_fwd_pd_t hint_class;
+    using base_class = deconvolution_bwd_data_pd_t;
+    using hint_class = deconvolution_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DIFF_DST))
@@ -324,8 +326,8 @@ protected:
 };
 
 struct deconvolution_bwd_weights_pd_t : public deconvolution_pd_t {
-    typedef deconvolution_bwd_weights_pd_t base_class;
-    typedef deconvolution_fwd_pd_t hint_class;
+    using base_class = deconvolution_bwd_weights_pd_t;
+    using hint_class = deconvolution_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_DIFF_DST))

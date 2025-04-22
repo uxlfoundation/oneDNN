@@ -84,15 +84,13 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t K = a_d.dims()[last];
 
     const auto &attr_scales = pd()->attr()->scales_;
-    const int wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
+    const int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
     const bool wei_scale_per_k = wei_scale_mask & pd()->wei_qmask_K();
-    const auto wei_scale_group_ndim = attr_scales.get(DNNL_ARG_WEIGHTS).ndims_;
-    const auto wei_scale_group_k = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[0]
+    const auto wei_scale_group_k
+            = !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()
+            ? attr_scales.get_group(DNNL_ARG_WEIGHTS, 0)
             : (wei_scale_per_k ? 1 : K);
-    const auto wei_scale_group_n = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[1]
-            : 1;
+    const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
     const auto wei_scale_ngroups_k = K / wei_scale_group_k;
     // Identify wei_scales dimensions as user may not pass them.
     dims_t wei_scale_dims {};
@@ -120,11 +118,11 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t wei_scale_stride_b1
             = b_d.ndims() > 3 ? wei_scale_strides[b_d.ndims() - 4] : 0;
 
-    const int src_scale_mask = attr_scales.get(DNNL_ARG_SRC).mask_;
+    const int src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
     const bool src_scale_per_k = src_scale_mask & pd()->src_qmask_K();
-    const auto src_scale_group_ndim = attr_scales.get(DNNL_ARG_SRC).ndims_;
-    const auto src_scale_group_k = src_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_SRC).group_dims_[1]
+    const auto src_scale_group_k
+            = !attr_scales.get(DNNL_ARG_SRC).has_default_groups()
+            ? attr_scales.get_group(DNNL_ARG_SRC, 1)
             : (src_scale_per_k ? 1 : K);
     const auto src_scale_ngroups_k = K / src_scale_group_k;
     // Identify src_scales dimensions as user may not pass them.
@@ -153,16 +151,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             = a_d.ndims() > 3 ? src_scale_strides[a_d.ndims() - 4] : 0;
 
     const auto &attr_zps = pd()->attr()->zero_points_;
-    int wei_zp_mask = 0;
-    attr_zps.get(DNNL_ARG_WEIGHTS, &wei_zp_mask);
-    const bool wei_zp_per_k = wei_zp_mask & pd()->wei_qmask_K();
-    const auto wei_zp_group_ndims = attr_zps.get_groups_ndims(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_k = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[0]
-            : (wei_zp_per_k ? 1 : K);
-    const auto wei_zp_group_n = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[1]
-            : 1;
+    int wei_zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
+    const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
+    const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
     const auto wei_zp_ngroups_k = K / wei_zp_group_k;
     // Identify wei_zp dimensions as user may not pass them.
     dims_t wei_zp_dims {};
@@ -188,13 +179,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t wei_zp_stride_b1
             = b_d.ndims() > 3 ? wei_zp_strides[b_d.ndims() - 4] : 0;
 
-    int src_zp_mask = 0;
-    attr_zps.get(DNNL_ARG_SRC, &src_zp_mask);
-    const bool src_zp_per_k = src_zp_mask & pd()->src_qmask_K();
-    const auto src_zp_group_ndims = attr_zps.get_groups_ndims(DNNL_ARG_SRC);
-    const auto src_zp_group_k = src_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_SRC)[1]
-            : (src_zp_per_k ? 1 : K);
+    int src_zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
+    const auto src_zp_group_k = attr_zps.get_group(DNNL_ARG_SRC, 1);
     const auto src_zp_ngroups_k = K / src_zp_group_k;
     // Identify src_zp dimensions as user may not pass them.
     dims_t src_zp_dims {};
@@ -310,11 +296,11 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     compute::range_t gws = {1, (size_t)N, (size_t)(D0 * D1 * D2 * D3)};
     auto nd_range = compute::nd_range_t(gws);
 
-    status_t status = parallel_for(ctx, nd_range, kernels_[0], arg_list);
+    CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
 
     ctx.zero_pad_output(DNNL_ARG_DST);
 
-    if (!subbyte_pack) return status;
+    if (!subbyte_pack) return status_t::dnnl_success;
     compute::kernel_arg_list_t repack_arg_list;
     repack_arg_list.set(0, *tmp);
     repack_arg_list.set(1, c);

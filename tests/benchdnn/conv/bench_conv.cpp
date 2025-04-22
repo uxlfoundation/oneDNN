@@ -27,22 +27,13 @@
 
 namespace conv {
 
-using create_func_t = std::function<int(
-        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, const prb_t *,
-        res_t *)>;
-using check_cache_func_t = std::function<int(
-        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, const prb_t *,
-        res_t *)>;
-using do_func_t = std::function<int(
-        const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &,
-        const prb_t *, res_t *)>;
-using driver_task_executor_t = task_executor_t<prb_t, perf_report_t,
-        create_func_t, check_cache_func_t, do_func_t>;
+TASK_EXECUTOR_DECL_TYPES;
 
 void check_correctness(
         const settings_t &s, driver_task_executor_t &task_executor) {
     for_(const auto &i_dir : s.dir)
     for_(const auto &i_dt : s.dt)
+    for_(const auto &i_bia_dt_ : s.bia_dt)
     for_(const auto &i_stag : s.stag)
     for_(const auto &i_wtag : s.wtag)
     for_(const auto &i_dtag : s.dtag)
@@ -52,18 +43,34 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (const auto &i_mb : s.mb) {
-        const prb_t prb(s.desc, i_dir, i_dt, i_stag, i_wtag, i_dtag, i_strides,
-                i_alg, i_mb, i_attr, i_ctx_init, i_ctx_exe, s.impl_filter);
+        auto i_bia_dt = i_bia_dt_;
+        if (i_dir & FLAG_BIA) {
+            if (i_bia_dt != dnnl_data_type_undef) {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "Warning: `--dir=FWD_B,BWD_WB` options are "
+                        "incompatible with `--bia-dt` option. To specify a "
+                        "bias data type, use `--dir=FWD_D,FWD_I,BWD_W` values "
+                        "intead.");
+            }
+            // The f32/f64 data type should be used as the default for bias with
+            // directions that include a bias.
+            const bool is_f64 = (i_dt.size() == 1 && i_dt[0] == dnnl_f64)
+                    || (i_dt.size() > 1 && i_dt[1] == dnnl_f64);
+            i_bia_dt = is_f64 ? dnnl_f64 : dnnl_f32;
+        }
+        const prb_t prb(s.desc, i_dir, i_dt, i_bia_dt, i_stag, i_wtag, i_dtag,
+                i_strides, i_alg, i_mb, i_attr, i_ctx_init, i_ctx_exe,
+                s.impl_filter);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
         bool has_dw_po = i_attr.post_ops.convolution_index() >= 0;
         auto &conv_createit
                 = has_dw_po ? conv_dw_fusion::createit : conv::createit;
-        auto &conv_check_cacheit = has_dw_po ? conv_dw_fusion::check_cacheit
-                                             : conv::check_cacheit;
+        auto &conv_checkit
+                = has_dw_po ? conv_dw_fusion::checkit : conv::checkit;
         auto &conv_doit = has_dw_po ? conv_dw_fusion::doit : conv::doit;
-        task_executor.submit(prb, s.perf_template, conv_createit,
-                conv_check_cacheit, conv_doit);
+        task_executor.submit(
+                prb, s.perf_template, conv_createit, conv_checkit, conv_doit);
     }
 }
 
@@ -128,6 +135,7 @@ int bench(int argc, char **argv) {
                 || parse_batch(bench, argv[0])
                 || parse_dir(s.dir, def.dir, argv[0])
                 || parse_multi_dt(s.dt, def.dt, argv[0], "dt")
+                || parse_dt(s.bia_dt, def.bia_dt, argv[0], "bia-dt")
                 || parse_tag(s.stag, def.stag, argv[0], "stag")
                 || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
                 || parse_tag(s.dtag, def.dtag, argv[0], "dtag")

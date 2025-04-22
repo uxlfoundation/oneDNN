@@ -27,7 +27,7 @@
 #include "gpu/gpu_matmul_pd.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -84,8 +84,10 @@ struct ref_matmul_t : public gpu_primitive_t {
                     = (utils::one_of(src_dt_, f8_e5m2, f8_e4m3)
                               || utils::one_of(wei_dt_, f8_e5m2, f8_e4m3))
                     && utils::one_of(dst_dt_, f32, bf16, f16, src_dt_);
-            const bool is_f4 = (utils::everyone_is(f4_e2m1, src_dt_, wei_dt_)
-                    && utils::one_of(dst_dt_, f32, bf16, f16, src_dt_));
+            const bool is_f4
+                    = ((utils::one_of(src_dt_, f4_e2m1, f4_e3m0)
+                               || utils::everyone_is(wei_dt_, f4_e2m1, f4_e3m0))
+                            && utils::one_of(dst_dt_, f32, bf16, f16, src_dt_));
             const bool is_bf16 = src_dt_ == bf16
                     && utils::one_of(wei_dt_, bf16, s8, u8, s4, u4)
                     && utils::one_of(dst_dt_, bf16, f32);
@@ -116,7 +118,8 @@ struct ref_matmul_t : public gpu_primitive_t {
                     IMPLICATION(utils::one_of(f64, src_dt_, wei_dt_, dst_dt_),
                             dev_info_->has_native(f64)),
                     VERBOSE_UNSUPPORTED_DT);
-            subbyte_pack_ = (dst_dt_ == data_type::f4_e2m1);
+            subbyte_pack_ = utils::one_of(
+                    dst_dt_, data_type::f4_e2m1, data_type::f4_e3m0);
             if (subbyte_pack_) {
                 using namespace dnnl::impl::memory_tracking::names;
                 const memory_desc_wrapper dst_mdw(dst_md(0));
@@ -145,46 +148,45 @@ struct ref_matmul_t : public gpu_primitive_t {
 
     private:
         bool zero_points_ok() const {
-            int mask_src = 0, mask_wei = 0, mask_dst = 0;
-            CHECK_BOOL(attr()->zero_points_.get(DNNL_ARG_SRC, &mask_src));
-            CHECK_BOOL(attr()->zero_points_.get(DNNL_ARG_WEIGHTS, &mask_wei));
-            CHECK_BOOL(attr()->zero_points_.get(DNNL_ARG_DST, &mask_dst));
+            const auto &zp = attr()->zero_points_;
+            if (!zp.has_default_values(DNNL_ARG_SRC)) {
+                int mask_src = zp.get_mask(DNNL_ARG_SRC);
+                bool ok = utils::one_of(mask_src, 0, src_qmask_K(),
+                        src_qmask_M() + src_qmask_K());
+                if (!ok) return false;
 
-            const auto src_group_ndims
-                    = attr()->zero_points_.get_groups_ndims(DNNL_ARG_SRC);
-            const auto src_group_dims
-                    = attr()->zero_points_.get_groups(DNNL_ARG_SRC);
-            const bool src_m_group_ok
-                    = IMPLICATION(src_group_ndims == 2, src_group_dims[0] == 1);
-            const bool src_k_group_ok
-                    = IMPLICATION(src_group_ndims == 2 && src_group_dims[1] > 1,
-                            K() % src_group_dims[1] == 0);
+                if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
+                    const auto gM = zp.get_group(DNNL_ARG_SRC, 0);
+                    ok = gM == 1;
+                    if (!ok) return false;
 
-            const auto wei_group_ndims
-                    = attr()->zero_points_.get_groups_ndims(DNNL_ARG_WEIGHTS);
-            const auto wei_group_dims
-                    = attr()->zero_points_.get_groups(DNNL_ARG_WEIGHTS);
-            const bool wei_k_group_ok
-                    = IMPLICATION(wei_group_ndims == 2 && wei_group_dims[0] > 1,
-                            K() % wei_group_dims[0] == 0);
-            const bool wei_n_group_ok
-                    = IMPLICATION(wei_group_ndims == 2 && wei_group_dims[1] > 1,
-                            N() % wei_group_dims[1] == 0);
+                    const auto gK = zp.get_group(DNNL_ARG_SRC, 1);
+                    ok = IMPLICATION(gK > 1, K() % gK == 0);
+                    if (!ok) return false;
+                }
+            }
+            /* weights decompression requires zero points support */
+            if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+                if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    const auto gK = zp.get_group(DNNL_ARG_WEIGHTS, 0);
+                    bool ok = IMPLICATION(gK > 1, K() % gK == 0);
+                    if (!ok) return false;
 
-            bool mask_src_ok = utils::one_of(
-                    mask_src, 0, src_qmask_K(), src_qmask_M() + src_qmask_K());
-            bool mask_dst_ok = mask_dst == 0;
+                    const auto gN = zp.get_group(DNNL_ARG_WEIGHTS, 1);
+                    ok = IMPLICATION(gN > 1, N() % gN == 0);
+                    if (!ok) return false;
 
-            return mask_src_ok && mask_dst_ok
-                    && utils::one_of(wei_group_ndims, 0, 2)
-                    && IMPLICATION(wei_group_ndims == 2,
-                            utils::one_of(
-                                    1, wei_group_dims[0], wei_group_dims[1])
-                                    && wei_k_group_ok && wei_n_group_ok)
-                    && IMPLICATION(src_group_ndims == 2,
-                            utils::one_of(
-                                    1, src_group_dims[0], src_group_dims[1])
-                                    && src_m_group_ok && src_k_group_ok);
+                    // Only one non-unit group is supported.
+                    ok = utils::one_of(1, gK, gN);
+                    if (!ok) return false;
+                }
+            }
+            if (!zp.has_default_values(DNNL_ARG_DST)) {
+                int mask_dst = zp.get_mask(DNNL_ARG_DST);
+                bool ok = mask_dst == 0;
+                if (!ok) return false;
+            }
+            return true;
         }
     };
 
@@ -230,19 +232,19 @@ struct ref_matmul_t : public gpu_primitive_t {
         def_data_type(kernel_ctx, pd()->bia_dt_, "BIA");
         def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC");
         def_data_type(kernel_ctx,
-                pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).data_type_,
+                pd()->attr()->scales_.get_data_type(DNNL_ARG_WEIGHTS),
                 "WEI_SCALES");
         def_data_type(kernel_ctx,
                 pd()->attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS),
                 "WEI_ZP");
         def_data_type(kernel_ctx,
-                pd()->attr()->scales_.get(DNNL_ARG_SRC).data_type_,
+                pd()->attr()->scales_.get_data_type(DNNL_ARG_SRC),
                 "SRC_SCALES");
         def_data_type(kernel_ctx,
                 pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
                 "SRC_ZP");
         def_data_type(kernel_ctx,
-                pd()->attr()->scales_.get(DNNL_ARG_DST).data_type_,
+                pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
                 "DST_SCALES");
         kernels_.resize(2);
         CHECK(create_kernel(engine, &kernels_[0], "ref_matmul", kernel_ctx));

@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "dnnl_types.h"
-
 #include "common/c_types_map.hpp"
 #include "common/convolution_pd.hpp"
 #include "common/dnnl_thread.hpp"
@@ -32,6 +30,8 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_brgemm_conv_utils.hpp"
 #include "cpu/x64/jit_generator.hpp"
+
+#include <set>
 
 namespace dnnl {
 namespace impl {
@@ -118,13 +118,10 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     // These are rough estimates of the latency (relative) of access to various
     // cache levels. This is enough for an estimation of data access cost.
     // TODO: Improve memory access estimates
-    static constexpr float L1_k = 1.f;
-    static constexpr float L2_k = 3.f;
-    static constexpr float L3_k = 15.f;
-    // TODO: At the moment, we are primarily evaluating the fit of the data into
-    // the L1/L2. Need to take into account the difference between the L3 and
-    // memory.
-    static constexpr float mem_k = 15.f;
+    static float L1_k;
+    static float L2_k;
+    static float L3_k;
+    static float mem_k;
     static constexpr int bench_iterations = 1;
 
     int sp, sp_block, nb_sp;
@@ -172,11 +169,22 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         return (k > 1.f) ? (k - 1 + eff) / k : eff * koeff;
     }
 
-    static int estimate_ur(int oc_block) {
-        const auto est_ur = (oc_block == 64)
-                ? 6
-                : ((oc_block == 48) ? 9 : ((oc_block == 32) ? 14 : 28));
-        return est_ur;
+    static int estimate_ur(cpu_isa_t isa, int oc_block) {
+        if (one_of(isa, avx2, avx2_vnni, avx2_vnni_2)) {
+            switch (oc_block) {
+                case 32: return 3;
+                case 24: return 4;
+                case 16: return 6;
+                default: return 14;
+            }
+        } else {
+            switch (oc_block) {
+                case 64: return 6;
+                case 48: return 9;
+                case 32: return 14;
+                default: return 28;
+            }
+        }
     }
 
     int inp_w(int out_w, int ker_w) const {
@@ -378,6 +386,10 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &src_md,
 
 unsigned brg_blocking_t::L1;
 unsigned brg_blocking_t::L2;
+float brg_blocking_t::L1_k;
+float brg_blocking_t::L2_k;
+float brg_blocking_t::L3_k;
+float brg_blocking_t::mem_k;
 
 float brg_blocking_t::io_k(dim_t src, dim_t wei, dim_t dst, float n, float pk,
         bool is_broadcast, bool is_shared) const {
@@ -405,8 +417,6 @@ void brg_blocking_t::select_ic_block() {
     if (is_1x1 && is_amx(isa)) {
         // TODO: merge with non-1x1 code block below
         const int ic_padded_block = 16 * vnni_block;
-        assert(IMPLICATION(
-                !is_bf32, ic < ic_padded_block || ic % ic_padded_block == 0));
         MAYBE_UNUSED(ic_padded_block);
         // Note: bf32 requires ic_block be less than 64, otherwise it results
         // in incorrect output.
@@ -460,8 +470,8 @@ void brg_blocking_t::select_ic_block() {
         }
     } else {
         const auto est_ur = sp_block > 0
-                ? nstl::min(sp_block, estimate_ur(oc_block))
-                : estimate_ur(oc_block);
+                ? nstl::min(sp_block, estimate_ur(isa, oc_block))
+                : estimate_ur(isa, oc_block);
         const auto inp_ur = is_os_blocking ? est_ur : inp_w(est_ur, kw_block);
 
         if (kw_block > 1) {
@@ -633,50 +643,77 @@ status_t brg_blocking_t::get_brgemm_ur(
 
     LDD = oc_without_padding;
 
-    const float alpha = 1.0;
-    const float beta = 1.0;
-    const float beta_init = 0.0;
-
-    for (int i = 0; i < M; i++) {
-        auto vM = i + 1;
-        // init only needed brgemm descriptors
-        if ((utils::one_of(exec_type, exec_trans, exec_vpad) || is_1x1)
-                && vM != M && vM != M_tail)
-            continue;
-        for (int i_init = 0; i_init < 2; i_init++) {
-            for_(int i_N = 0; i_N < 2; i_N++)
-            for (int i_K = 0; i_K < 2; i_K++) {
-                auto vbeta = (i_init) ? beta_init : beta;
-                auto vN = (i_N) ? N_tail : N;
-                auto vK = (i_K) ? K_tail : K;
-                if (vN == 0 || vK == 0) continue;
-                brgemm_desc_t brg;
-                brgemm_strides_t brg_strides;
-                brg_strides.stride_a = ngroups * ic_without_padding
-                        * (dilate_w + 1) * src_dsz;
-                // weights are padded by oc_block and last_ic_block
-                brg_strides.stride_b = rnd_up(ic, vnni_block)
-                        * rnd_up(oc, oc_block) * wei_dsz;
-                const auto strides_ptr
-                        = (brg_type == brgemm_strd) ? &brg_strides : nullptr;
-                brgemm_utils::init_brgemm_conf(&brg, isa, brg_type, src_dt,
-                        wei_dt, brgemm_row_major, alpha, vbeta, LDA, LDB, LDC,
-                        vM, vN, vK, strides_ptr, is_bf32);
-                CHECK(brgemm_utils::brgemm_blocking(&brg));
-
-                brgemm_attr_t brgattr;
-                brgattr.max_bs = max_batch;
-                max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
-                brgattr.max_top_vpad = max_vpad;
-                brgattr.max_bottom_vpad = max_vpad;
-                brgattr.fpmath_mode = attr->fpmath_.mode_;
-                CHECK(brgemm_desc_set_attr(&brg, brgattr));
-
-                brg.with_sum = with_sum;
-                CHECK(brgemm_desc_set_postops(
-                        &brg, attr, &dst_md, LDD, bia_dt));
+    // The code below will verify that for selected `brgemm_ur` all brgemm
+    // descriptors will be initialized successfully. If they do, stick to this
+    // `brgemm_ur`, otherwise, a new estimation will come.
+    //
+    // This set will filter only needed M for validating brgemm descriptors.
+    //
+    // Note: the same approach for `jcp_.exec_type == exec_base` to filter out
+    // M and extra brgemm descriptors is used in convolution implementation in
+    // `pd_t::init`. Maybe it's possible to align them, or make them relying on
+    // the same set of unique M values.
+    std::set<dim_t> unique_vM;
+    if (utils::one_of(exec_type, exec_trans, exec_vpad) || is_1x1) {
+        // Up to two M values for these exec_types.
+        unique_vM.emplace(M);
+        if (M_tail) unique_vM.emplace(M_tail);
+    } else {
+        // For `exec_base` exec_type need to compute all relevant M values.
+        for (int ow = 0; ow < this->ow; ow += this->ow_block) {
+            int kw_s = 0;
+            int kw_f = 0;
+            int dummy; // `kw_full_s` and `kw_full_f` are not needed here.
+            brgemm_convolution_utils::get_kw_range(
+                    /* jcp */ *this, ow, kw_s, dummy, dummy, kw_f);
+            for (int kw = kw_s; kw < kw_f; kw++) {
+                int ow_s = 0;
+                int ow_f = 0;
+                brgemm_convolution_utils::get_ow_range(
+                        /* jcp */ *this, ow, kw, ow_s, ow_f);
+                const auto M = ow_f - ow_s;
+                if (M <= 0) continue;
+                unique_vM.emplace(M);
             }
         }
+    }
+
+    const float alpha = 1.0f;
+    const float beta = 1.0f;
+    const float beta_init = 0.0f;
+
+    for_(auto vM : unique_vM)
+    for_(int i_init = 0; i_init < 2; i_init++)
+    for_(int i_N = 0; i_N < 2; i_N++)
+    for (int i_K = 0; i_K < 2; i_K++) {
+        auto vbeta = (i_init) ? beta_init : beta;
+        auto vN = (i_N) ? N_tail : N;
+        auto vK = (i_K) ? K_tail : K;
+        if (vN == 0 || vK == 0) continue;
+        brgemm_desc_t brg;
+        brgemm_strides_t brg_strides;
+        brg_strides.stride_a
+                = ngroups * ic_without_padding * (dilate_w + 1) * src_dsz;
+        // weights are padded by oc_block and last_ic_block
+        brg_strides.stride_b
+                = rnd_up(ic, vnni_block) * rnd_up(oc, oc_block) * wei_dsz;
+        const auto strides_ptr
+                = (brg_type == brgemm_strd) ? &brg_strides : nullptr;
+        brgemm_utils::init_brgemm_conf(&brg, isa, brg_type, src_dt, wei_dt,
+                brgemm_row_major, alpha, vbeta, LDA, LDB, LDC, vM, vN, vK,
+                strides_ptr, is_bf32);
+
+        brgemm_attr_t brgattr;
+        brgattr.max_bs = max_batch;
+        max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
+        brgattr.max_top_vpad = max_vpad;
+        brgattr.max_bottom_vpad = max_vpad;
+        brgattr.fpmath_mode = attr->fpmath_.mode_;
+        CHECK(brgemm_desc_set_attr(&brg, brgattr));
+
+        brg.with_sum = with_sum;
+        CHECK(brgemm_desc_set_postops(&brg, attr, &dst_md, LDD, bia_dt));
+        CHECK(brgemm_utils::brgemm_blocking(&brg));
     }
 
     return status::success;
@@ -729,6 +766,7 @@ bool brg_blocking_t::fast_check_oc_block() const {
 }
 
 float brg_blocking_t::est_eff() {
+    const auto jcp = *this;
     const auto ocblock = oc_block / acc_simd_w;
 
     const auto brgemm_microkernel_eff
@@ -761,28 +799,18 @@ float brg_blocking_t::est_eff() {
             dim_t thr_job = 0;
             int start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
-            int n {0}, g {0}, ocb {0}, odp {0}, ohp {0}, spb {0};
-            if (loop_order == loop_ndhwgc)
-                nd_iterator_init(start, n, mb, odp, od, ohp, oh, spb, nb_sp, g,
-                        ngroups, ocb, nb_oc);
-            else if (loop_order == loop_ngcdhw)
-                nd_iterator_init(start, n, mb, g, ngroups, ocb, nb_oc, odp, od,
-                        ohp, oh, spb, nb_sp);
+            int n {0}, g {0}, ocb {0}, odb {0}, ohb {0}, owb {0};
+            BRGEMM_CONV_ITERATOR_INIT;
 
             for (auto work = start; work < end; work++) {
                 const int ocp = ocb * oc_block;
                 const auto oc_sz = nstl::min(oc - ocp, oc_block);
                 int sp_sz = 0;
-                const int spp = spb * sp_block;
+                const int spp = owb * sp_block;
                 sp_sz = nstl::min(sp - spp, sp_block);
                 thr_job += sp_sz * oc_sz;
 
-                if (loop_order == loop_ndhwgc)
-                    nd_iterator_step(n, mb, odp, od, ohp, oh, spb, nb_sp, g,
-                            ngroups, ocb, nb_oc);
-                else if (loop_order == loop_ngcdhw)
-                    nd_iterator_step(n, mb, g, ngroups, ocb, nb_oc, odp, od,
-                            ohp, oh, spb, nb_sp);
+                BRGEMM_CONV_ITERATOR_STEP;
             }
             thr_jobs[ithr] = thr_job;
         }
@@ -1591,8 +1619,26 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         memory_desc_t &bias_md, primitive_attr_t &attr, int nthreads) {
     using namespace prop_kind;
 
-    brg_blocking_t::L1 = platform::get_per_core_cache_size(1);
+    // take L1 as 7/8 of the real size for L1
+    brg_blocking_t::L1 = (platform::get_per_core_cache_size(1) * 7) / 8;
     brg_blocking_t::L2 = platform::get_per_core_cache_size(2);
+    // here is hard-coded L2 size for avx2 performance cores
+    // TODO: get L2 size from the platform
+    if (one_of(isa, avx2, avx2_vnni, avx2_vnni_2))
+        brg_blocking_t::L2 = 2 * 1024 * 1024;
+    // take L2 as 3/4 of the real size for L2
+    brg_blocking_t::L2 = (brg_blocking_t::L2 * 3) / 4;
+
+    // These are rough estimates of the latency (relative) of access to various
+    // cache levels. This is enough for an estimation of data access cost.
+    // TODO: Improve memory access estimates
+    brg_blocking_t::L1_k = 1.f;
+    brg_blocking_t::L2_k = 2.3f;
+    brg_blocking_t::L3_k = 17.f;
+    // TODO: At the moment, we are primarily evaluating the fit of the data into
+    // the L1/L2. Need to take into account the difference between the L3 and
+    // memory.
+    brg_blocking_t::mem_k = 17.f;
 
     const memory_desc_wrapper src_d(&src_md);
     const memory_desc_wrapper weights_d(&weights_md);
@@ -1805,20 +1851,23 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const int prelu_ind = p.find(primitive_kind::prelu);
     jcp.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
 
+    const auto &zp = attr.zero_points_;
     jcp.src_zero_point
             = get_zp_type(attr, DNNL_ARG_SRC) != brgemm_broadcast_t::none;
     jcp.dst_zero_point
             = get_zp_type(attr, DNNL_ARG_DST) != brgemm_broadcast_t::none;
 
-    // Only common zero points for the whole output tensor is supported now
-    const bool has_zero_points = jcp.src_zero_point || jcp.dst_zero_point;
-    const bool params_ok
-            = IMPLICATION(has_zero_points, utils::one_of(jcp.src_dt, u8, s8))
-            && IMPLICATION(
-                    jcp.src_zero_point, attr.zero_points_.common(DNNL_ARG_SRC))
-            && IMPLICATION(
-                    jcp.dst_zero_point, attr.zero_points_.common(DNNL_ARG_DST));
-    VDISPATCH_CONV_IC(params_ok, VERBOSE_UNSUPPORTED_ZP_CFG);
+    VDISPATCH_CONV_IC(IMPLICATION(jcp.src_zero_point || jcp.dst_zero_point,
+                              utils::one_of(jcp.src_dt, s8, u8)),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    VDISPATCH_CONV_IC(
+            IMPLICATION(jcp.src_zero_point, zp.get_mask(DNNL_ARG_SRC) == 0),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    VDISPATCH_CONV_IC(
+            IMPLICATION(jcp.dst_zero_point, zp.get_mask(DNNL_ARG_DST) == 0),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     jcp.nthr = nthreads;
     jcp.copy_block_only = false;
@@ -1899,6 +1948,17 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
                 VERBOSE_IMPL_HEURISTIC_FAIL,
                 "no optimization for 1x1 convolution");
+
+    dim_t src_size
+            = (dim_t)jcp.mb * jcp.id * jcp.ih * jcp.iw * jcp.ic * jcp.src_dsz;
+    VDISPATCH_CONV_IC(src_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
+            "src size > INT_MAX is not supported");
+
+    dim_t dst_size
+            = (dim_t)jcp.mb * jcp.od * jcp.oh * jcp.ow * jcp.oc * jcp.dst_dsz;
+    VDISPATCH_CONV_IC(dst_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
+            "dst size > INT_MAX is not supported");
+
     const memory_desc_wrapper src_d(&src_md);
     const memory_desc_wrapper weights_d(&weights_md);
     const memory_desc_wrapper dst_d(&dst_md);
@@ -1925,12 +1985,19 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     using namespace data_type;
     // ======================= blocking =================================
 
-    auto bcast_amount
-            = static_cast<size_t>(jcp.id) * jcp.ih * jcp.iw * jcp.src_dsz;
+    auto bcast_amount = static_cast<size_t>(jcp.id) * jcp.ih * jcp.iw
+            * jcp.src_dsz * jcp.ic;
     auto wei_amount = static_cast<size_t>(jcp.oc) * jcp.kd * jcp.kh * jcp.kw
-            * jcp.wei_dsz;
+            * jcp.wei_dsz * jcp.ic;
 
-    jcp.loop_order = (bcast_amount < wei_amount) ? loop_ngcdhw : loop_ndhwgc;
+    jcp.loop_order
+            = (one_of(isa, avx2, avx2_vnni, avx2_vnni_2) && jcp.mb > jcp.nthr
+                      && bcast_amount > brg_blocking_t::L2
+                      && wei_amount > brg_blocking_t::L2)
+            ? loop_gcndhw
+            : ((bcast_amount < wei_amount) ? loop_ngcdhw : loop_ndhwgc);
+    jcp.brgemm_kernel_loop_order
+            = brgemm_kernel_loop_order_t::brgemm_lo_default;
 
     const int min_oc_block = jcp.acc_simd_w;
 
@@ -1946,6 +2013,13 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         const bool small_amx_job = est_amx_job < 64 || jcp.oc < 256;
         auto start_ocb
                 = (is_amx(isa) && jcp.is_os_blocking && small_amx_job) ? 2 : 4;
+        if (one_of(isa, avx2, avx2_vnni, avx2_vnni_2)
+                && jcp.loop_order == loop_gcndhw)
+            start_ocb = 2;
+        if (one_of(isa, avx2, avx2_vnni, avx2_vnni_2)
+                && jcp.oh * jcp.ow >= 150 * 150)
+            start_ocb = 2;
+
         start_ocb = nstl::min(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
 
         auto finish_ocb = 1;
@@ -1980,6 +2054,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     bool try_exec_trans = false;
     bool try_exec_base = true;
 
+    // TODO: this logic seems not taking dilation into which can avoid pure
+    // kernel-in-pad cases.
     if (!is_amx(isa) && div_up(jcp.l_pad, jcp.stride_w) < jcp.kw
             && div_up(jcp.r_pad, jcp.stride_w) < jcp.kw) {
         try_exec_vpad = true;
@@ -2198,7 +2274,6 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 #endif
 
     // ============ end blocking ===========================================
-
     jcp.brg_type
             = (jcp.use_uker && one_of(jcp.exec_type, exec_base, exec_trans))
             ? brgemm_static_offs
@@ -2226,7 +2301,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (!jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
-    jcp.buffer_size = jcp.LDC * jcp.M;
+    jcp.buffer_size = static_cast<dim_t>(jcp.LDC) * jcp.M;
 
     jcp.nb_od = div_up(jcp.od, jcp.od_block);
     jcp.nb_oh = div_up(jcp.oh, jcp.oh_block);
@@ -2287,12 +2362,24 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.with_scales = !src_scales.has_default_values()
             || !wei_scales.has_default_values()
             || jcp.scale_adjust_factor != 1.0f;
-    jcp.is_oc_scale = wei_scales.mask_ != 0;
+    jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
     const bool compensation_w_padding
             = (jcp.s8s8_compensation_required || jcp.src_zero_point)
             && !everyone_is(0, jcp.t_pad, jcp.back_pad, jcp.f_pad, jcp.b_pad,
                     jcp.l_pad, jcp.r_pad);
+    // estimate the number of kernel range combination for compensation
+    const auto kd_cnt = 1 + utils::div_up(abs(jcp.f_pad), jcp.dilate_d + 1)
+            + utils::div_up(abs(jcp.back_pad), jcp.dilate_d + 1);
+    const auto kh_cnt = 1 + utils::div_up(abs(jcp.t_pad), jcp.dilate_h + 1)
+            + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
+    jcp.ker_ranges_size = jcp.exec_type == exec_trans
+            ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
+            : kd_cnt * kh_cnt;
+    const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
+            * comp_buffer_ow * jcp.oc_block;
+    jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
 
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf
@@ -2307,25 +2394,13 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = (output_sz <= 8192 && jcp.oc < 512) || jcp.ow > 128;
     const auto is_relo = jcp.is_relo() && jcp.relo_conv_weights;
     jcp.req_brg_comp_pad = compensation_w_padding && jcp.exec_type != exec_trans
-            && IMPLICATION(!is_relo, shape_for_brgemm_kernel);
+            && IMPLICATION(!is_relo, shape_for_brgemm_kernel)
+            && IMPLICATION(
+                    jcp.exec_type == exec_vpad, jcp.comp_a_buffer_size > 1024);
     jcp.req_cal_comp_pad = compensation_w_padding && !jcp.req_brg_comp_pad
             && IMPLICATION(jcp.exec_type == exec_vpad,
                     jcp.t_pad > 0 || jcp.b_pad > 0 || jcp.f_pad > 0
                             || jcp.back_pad > 0);
-
-    // estimate the number of kernel range combination for compensation
-    const auto kd_cnt = 1 + utils::div_up(abs(jcp.f_pad), jcp.dilate_d + 1)
-            + utils::div_up(abs(jcp.back_pad), jcp.dilate_d + 1);
-    const auto kh_cnt = 1 + utils::div_up(abs(jcp.t_pad), jcp.dilate_h + 1)
-            + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
-    jcp.ker_ranges_size = jcp.exec_type == exec_trans
-            ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
-            : kd_cnt * kh_cnt;
-    const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
-    jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
-            * comp_buffer_ow * jcp.oc_block;
-
-    jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
 
     // enable ununroll_bd_loop for big shapes to reduce kernel sizes
     jcp.ununroll_bd_loop
@@ -2371,7 +2446,9 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         const int n_vnni_blocks = utils::div_up(jcp.ic, jcp.vnni_block);
         const int ic_block
                 = nstl::min(jcp.acc_simd_w, n_vnni_blocks) * jcp.vnni_block;
-        const bool do_zeropad = (!jcp.is_bf32)
+        jcp.extendable_k = jcp.ic > jcp.simd_w && jcp.ic % jcp.simd_w;
+
+        const bool do_zeropad = !jcp.is_bf32 && !jcp.extendable_k
                 && (jcp.ic % jcp.vnni_block != 0 || jcp.ic > ic_block);
         if (do_zeropad) jcp.ic = utils::rnd_up(jcp.ic, ic_block);
         const auto ic_padded_block = jcp.simd_w;
@@ -2548,7 +2625,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.with_scales = !src_scales.has_default_values()
             || !wei_scales.has_default_values()
             || jcp.scale_adjust_factor != 1.0f;
-    jcp.is_oc_scale = wei_scales.mask_ != 0;
+    jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
     // enable ununroll_bd_loop for big shapes to reduce kernel sizes
     jcp.ununroll_bd_loop
@@ -3244,9 +3321,10 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.tr_diff_dst_buf_count = jcp.global_transpose
             ? jcp.nthr_mb * jcp.nb_oc * jcp.ngroups
             : jcp.nthr;
-    jcp.tr_src_block_size = jcp.tr_iw * jcp.ic_block * jcp.ih_block * jcp.id;
-    jcp.tr_diff_dst_block_size
-            = jcp.tr_ow * jcp.oc_block * jcp.oh_block * jcp.od;
+    jcp.tr_src_block_size = static_cast<size_t>(jcp.tr_iw) * jcp.ic_block
+            * jcp.ih_block * jcp.id;
+    jcp.tr_diff_dst_block_size = static_cast<size_t>(jcp.tr_ow) * jcp.oc_block
+            * jcp.oh_block * jcp.od;
 
     jcp.tr_src_buf_size = jcp.tr_src_block_size
             * (jcp.global_transpose ? 1 : jcp.nb_ic_blocking);
@@ -3306,7 +3384,7 @@ status_t init_scratchpad_bwd_w(memory_tracking::registrar_t &scratchpad,
     // (jcp.tr_diff_dst_buf_size + jcp.tr_iw * jcp.oc_block)
     const auto tr_diff_dst_size
             = jcp.tr_diff_dst_buf_count * jcp.tr_diff_dst_buf_size
-            + jcp.tr_iw * jcp.oc_block;
+            + static_cast<size_t>(jcp.tr_iw) * jcp.oc_block;
 
     const size_t min_align = 64;
     scratchpad.book(
@@ -3322,8 +3400,9 @@ status_t init_scratchpad_bwd_w(memory_tracking::registrar_t &scratchpad,
     if (IMPLICATION(jcp.nthr_mb == 1,
                 (jcp.with_bias && jcp.bia_dt != data_type::f32)
                         || jcp.wei_dt != data_type::f32)) {
-        const size_t wei_size = jcp.ngroups * jcp.nb_oc * jcp.oc_block
-                * jcp.nb_ic * jcp.ic_block * jcp.kh * jcp.kw * jcp.kd;
+        const size_t wei_size = static_cast<size_t>(jcp.ngroups) * jcp.nb_oc
+                * jcp.oc_block * jcp.nb_ic * jcp.ic_block * jcp.kh * jcp.kw
+                * jcp.kd;
         const size_t bia_size
                 = jcp.with_bias * jcp.ngroups * jcp.nb_oc * jcp.oc_block;
 
@@ -3368,6 +3447,65 @@ status_t init_scratchpad_bwd_w(memory_tracking::registrar_t &scratchpad,
     VDISPATCH_CONV_IC(
             scratchpad.size() <= scratchpad_limit, VERBOSE_SCRATCHPAD_LIMIT);
     return status::success;
+}
+
+// Sets `ow_s` and `ow_f` values based on given `jcp`.
+void get_ow_range(const jit_brgemm_conv_conf_t &jcp, int ow, int kw, int &ow_s,
+        int &ow_f) {
+    // This function is used for exec_base only
+
+    const bool is_ow_tail = (jcp.ow - ow < jcp.ow_block);
+    const auto M = is_ow_tail ? jcp.ow_tail : jcp.ow_block;
+
+    const auto IW = jcp.iw;
+    const auto SW = jcp.stride_w;
+    const auto LP = jcp.l_pad;
+    const auto DW = jcp.dilate_w + 1;
+
+    const auto iiw = ow * SW - LP;
+    auto iw_lp = iiw + kw * DW;
+    const auto iw_rp = iw_lp + (M - 1) * SW - IW + 1;
+    ow_s = ow;
+
+    int ker_idx = 0;
+    if (iw_lp < 0) {
+        iw_lp = nstl::abs(iw_lp);
+        ker_idx += div_up(iw_lp, SW);
+        ow_s += ker_idx;
+    }
+    if (iw_rp > 0) ker_idx += div_up(iw_rp, SW);
+    ow_f = nstl::max(ow_s, ow_s + (M - ker_idx));
+
+    ow_s = nstl::min(ow_s, ow + M);
+    ow_f = nstl::min(ow_f, ow + M);
+}
+
+// Sets pairs of `kw_s`-`kw_f` and `kw_full_s`-`kw_full_f` based on given `jcp`.
+void get_kw_range(const jit_brgemm_conv_conf_t &jcp, int ow, int &kw_s,
+        int &kw_full_s, int &kw_full_f, int &kw_f) {
+    // This function is used for exec_base only
+    // TODO: calculate these values instead direct loop by kw
+
+    const bool is_ow_tail = (jcp.ow - ow < jcp.ow_block);
+    const auto M = is_ow_tail ? jcp.ow_tail : jcp.ow_block;
+    kw_s = kw_full_s = kw_full_f = kw_f = -1;
+    for (int kw = 0; kw < jcp.kw; kw++) {
+        int ow_s {0}, ow_f {0};
+        brgemm_convolution_utils::get_ow_range(jcp, ow, kw, ow_s, ow_f);
+        if (ow_s < ow_f) {
+            if (kw_s == -1) kw_s = kw;
+            kw_f = kw + 1;
+            if (ow_f - ow_s == M) {
+                if (kw_full_s == -1) kw_full_s = kw;
+                kw_full_f = kw + 1;
+            }
+        }
+    }
+    if (kw_f == -1) {
+        kw_s = 0;
+        kw_f = 0;
+    }
+    if (kw_full_f == -1) kw_full_s = kw_full_f = kw_f;
 }
 
 } // namespace brgemm_convolution_utils

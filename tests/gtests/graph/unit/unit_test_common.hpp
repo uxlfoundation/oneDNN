@@ -80,13 +80,13 @@ inline int set_compiled_partition_cache_capacity(int capacity) {
     return 0;
 }
 
-class test_tensor {
+class test_tensor_t {
 private:
     using ltw = dnnl::impl::graph::logical_tensor_wrapper_t;
 
-    struct deletor_wrapper {
-        deletor_wrapper(const dnnl::impl::graph::engine_t *eng) : eng_(eng) {}
-        void operator()(void *p) {
+    struct deletor_wrapper_t {
+        deletor_wrapper_t(const dnnl::impl::graph::engine_t *eng) : eng_(eng) {}
+        void operator()(void *p) const {
             if (p) {
                 const auto k = eng_->kind();
                 auto alc = static_cast<dnnl::impl::graph::allocator_t *>(
@@ -102,8 +102,8 @@ private:
                     alc->deallocate(p, get_device(), get_context(), {});
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
                     const auto *ocl_engine = dnnl::impl::utils::downcast<
-                            const dnnl::impl::gpu::intel::ocl::ocl_gpu_engine_t
-                                    *>(eng_);
+                            const dnnl::impl::gpu::intel::ocl::engine_t *>(
+                            eng_);
                     auto dev = ocl_engine->device();
                     auto ctx = ocl_engine->context();
                     alc->deallocate(p, dev, ctx, {});
@@ -129,24 +129,24 @@ private:
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
             data.reset(static_cast<char *>(alc->allocate(
                                size, get_device(), get_context())),
-                    deletor_wrapper {e});
+                    deletor_wrapper_t {e});
 #else
             data.reset(static_cast<char *>(alc->allocate(size)),
-                    deletor_wrapper {e});
+                    deletor_wrapper_t {e});
 #endif
         } else { // gpu kind
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
             data.reset(static_cast<char *>(alc->allocate(
                                size, get_device(), get_context())),
-                    deletor_wrapper {e});
+                    deletor_wrapper_t {e});
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
             const auto *ocl_engine = dnnl::impl::utils::downcast<
-                    const dnnl::impl::gpu::intel::ocl::ocl_gpu_engine_t *>(e);
+                    const dnnl::impl::gpu::intel::ocl::engine_t *>(e);
             auto dev = ocl_engine->device();
             auto ctx = ocl_engine->context();
 
             data.reset(static_cast<char *>(alc->allocate(size, dev, ctx)),
-                    deletor_wrapper {e});
+                    deletor_wrapper_t {e});
 #else
             assert(!"only sycl and ocl runtime is supported on gpu");
 #endif
@@ -155,9 +155,9 @@ private:
     }
 
 public:
-    test_tensor() = default;
+    test_tensor_t() = default;
 
-    test_tensor(const dnnl::impl::graph::logical_tensor_t &lt,
+    test_tensor_t(const dnnl::impl::graph::logical_tensor_t &lt,
             const dnnl::impl::graph::engine_t *e)
         : num_bytes_(ltw(lt).size()) {
         data_ = allocate(e, num_bytes_);
@@ -165,9 +165,9 @@ public:
     }
 
     template <typename T>
-    test_tensor(const dnnl::impl::graph::logical_tensor_t &lt,
+    test_tensor_t(const dnnl::impl::graph::logical_tensor_t &lt,
             const dnnl::impl::graph::engine_t *e, const std::vector<T> &data)
-        : test_tensor(lt, e) {
+        : test_tensor_t(lt, e) {
         this->fill(data);
     }
 
@@ -237,10 +237,10 @@ public:
     }
 
     static std::vector<dnnl::impl::graph::tensor_t> to_graph_tensor(
-            const std::vector<test_tensor> &vecs) {
-        std::vector<dnnl::impl::graph::tensor_t> res;
-        for (const auto &e : vecs) {
-            res.emplace_back(e.get());
+            const std::vector<test_tensor_t> &vecs) {
+        std::vector<dnnl::impl::graph::tensor_t> res(vecs.size());
+        for (size_t i = 0; i < vecs.size(); ++i) {
+            res[i] = vecs[i].get();
         }
         return res;
     }

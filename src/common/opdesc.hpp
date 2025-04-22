@@ -273,6 +273,10 @@ struct matmul_desc_t : public op_desc_t {
     memory_desc_t bias_desc {};
     // Destination memory descriptor.
     memory_desc_t dst_desc {};
+    // Reduce memory descriptor;
+    memory_desc_t reduce_desc {};
+    // Reduce kind.
+    matmul_reduce_kind_t reduce_kind {};
     // The accumulator data type. Initialized automatically.
     data_type_t accum_data_type {};
 };

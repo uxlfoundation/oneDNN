@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -69,7 +69,6 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 
     def_eltwise_alg_kinds(kernel_ctx);
 
-    kernel_ctx.define_int("WITH_ELTWISE", 1);
     kernel_ctx.define_int("ELTWISE_ALG", conf.alg);
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("GWS0", conf.dispatch.nd_range().global_range()[0]);
@@ -82,10 +81,11 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int(
             "USE_GWS_GET", conf.with_zero_padding || with_binary_post_ops);
 
-    def_memory_desc_info(kernel_ctx, conf.data_md_info, "DATA");
+    def_data_type(kernel_ctx, conf.data_md_info.data_type, "SRC", false);
+    def_memory_desc_info(kernel_ctx, conf.data_md_info, "DST", false);
 
     if (!conf.is_forward) {
-        def_memory_desc_info(kernel_ctx, conf.data_diff_md_info, "DIFF_DATA");
+        def_memory_desc_info(kernel_ctx, conf.data_diff_md_info, "DIFF", false);
     } else {
         kernel_ctx.define_int("IS_FWD", 1);
     }

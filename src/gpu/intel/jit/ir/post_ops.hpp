@@ -46,7 +46,8 @@ public:
     bool is_common_src_zero_point = false;
     bool is_common_wei_zero_point = false;
     bool is_common_dst_zero_point = false;
-    bool needs_src_precalc = false;
+    bool needs_src_reorder_precalc = false;
+    bool needs_src_conv_precalc = false;
     int common_src_zero_point = 0;
     int common_wei_zero_point = 0;
     int common_dst_zero_point = 0;
@@ -70,13 +71,15 @@ public:
         , is_runtime_dst_zero_points(pd
                   && !pd->attr()->zero_points_.has_default_values(DNNL_ARG_DST))
         , is_common_src_zero_point(
-                  pd && pd->attr()->zero_points_.common(DNNL_ARG_SRC))
-        , is_common_wei_zero_point(
-                  pd && pd->attr()->zero_points_.common(DNNL_ARG_WEIGHTS))
+                  pd && pd->attr()->zero_points_.get_mask(DNNL_ARG_SRC) == 0)
+        , is_common_wei_zero_point(pd
+                  && pd->attr()->zero_points_.get_mask(DNNL_ARG_WEIGHTS) == 0)
         , is_common_dst_zero_point(
-                  pd && pd->attr()->zero_points_.common(DNNL_ARG_DST))
-        , needs_src_precalc(
-                  pd && do_src_compensation && is_src_precalc_compatible(pd))
+                  pd && pd->attr()->zero_points_.get_mask(DNNL_ARG_DST) == 0)
+        , needs_src_reorder_precalc(
+                  pd && do_src_compensation && can_use_src_reorder_precalc(pd))
+        , needs_src_conv_precalc(pd && do_src_compensation
+                  && !needs_src_reorder_precalc && can_use_src_conv_precalc(pd))
         , common_src_zero_point(0)
         , common_wei_zero_point(0)
         , common_dst_zero_point(0) {
@@ -102,12 +105,22 @@ public:
     }
 
 private:
-    bool is_src_precalc_compatible(const primitive_desc_t *pd) {
+    bool can_use_src_reorder_precalc(const primitive_desc_t *pd) {
         if (pd->kind() != primitive_kind_t::dnnl_convolution) return false;
-        // In general, precomputed ZPs are slower than the regular ZPs up to a
-        // point where a nested convolution that does the precalc takes less
-        // time than the in-situ compensations; that usually happens around
-        // MB = 64, but the exact number is just a heuristic.
+        // Reorder-based precomputed ZPs are only available if the user did not
+        // specify the weights mem desc so the convolution can choose it freely
+        // and set a mem desc flag asking a reorder to precompute the values.
+        return (pd->invariant_wei_md()->format_kind == format_kind::any)
+                && pd->attr()->zero_points_.get_mask(DNNL_ARG_SRC) == 0
+                && pd->attr()->zero_points_.has_default_values(
+                        DNNL_ARG_WEIGHTS);
+    }
+    bool can_use_src_conv_precalc(const primitive_desc_t *pd) {
+        if (pd->kind() != primitive_kind_t::dnnl_convolution) return false;
+        // In general, conv-based precomputed ZPs are slower than the regular
+        // ZPs up to a point where a nested convolution that does the precalc
+        // takes less time than the in-situ compensations; that usually happens
+        // around MB = 64, but the exact number is just a heuristic.
         // TODO: a finer-grained estimate
         return (pd->invariant_src_md()->dims[0] >= 64)
                 && pd->attr()->zero_points_.has_default_values(
@@ -172,12 +185,12 @@ private:
         auto *ptr = buf.as_ptr<ptr_t>();
         if (ptr) {
             auto prefix = make_op_var_name(ptr->base);
-            ir_assert(is_const(ptr->off));
+            gpu_assert(is_const(ptr->off));
             dim_t off = to_cpp<dim_t>(ptr->off);
             return prefix + "_" + std::to_string(off);
         }
 
-        ir_error_not_expected() << "Can't generate op var name: " << buf;
+        gpu_error_not_expected() << "Can't generate op var name: " << buf;
         return "unknown";
     }
     bool is_input_;
@@ -294,7 +307,7 @@ inline op_kind_t alg_kind_to_op_kind(alg_kind_t alg) {
         case alg_kind::binary_lt: return op_kind_t::_lt;
         case alg_kind::binary_eq: return op_kind_t::_eq;
         case alg_kind::binary_ne: return op_kind_t::_ne;
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return op_kind_t::undef;
 }
@@ -351,7 +364,7 @@ private:
             const expr_t &buf, const expr_t &op_var,
             const expr_t &compute_expr = expr_t(),
             const bool do_convert = true) {
-        ir_assert(cp_ndims() == view.nvdims());
+        gpu_assert(cp_ndims() == view.nvdims());
         uint32_t mask = (buf.is_empty() && compute_expr.is_empty()
                         ? ~(1u << cp_ndims())
                         : compute_mask(view));
@@ -361,7 +374,7 @@ private:
     }
 
     uint32_t compute_mask(const view_t &view) const {
-        ir_assert(cp_ndims() == view.nvdims());
+        gpu_assert(cp_ndims() == view.nvdims());
         uint32_t mask = 0;
         for (dim_idx_t i = 0; i < cp_ndims(); i++) {
             if (view.vdims()[i] != 1) mask |= (1 << i);

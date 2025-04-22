@@ -24,8 +24,8 @@
 #include "common/math_utils.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/gpu_post_ops.hpp"
-#include "gpu/intel/jit/jit_generator.hpp"
-#include "gpu/intel/jit/jit_post_op_injector.hpp"
+#include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/jit/post_op_injector.hpp"
 #include "gpu/intel/serialization.hpp"
 
 #include <array>
@@ -57,7 +57,7 @@
 #define GENERATOR_SUPER(hw) ngen::OpenCLCodeGenerator<hw>
 #define FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
 
-#define GENERATOR_BASE(hw) jit_generator<hw>
+#define GENERATOR_BASE(hw) generator_t<hw>
 
 
 template <ngen::HW hw>
@@ -65,7 +65,7 @@ class BLASKernelGenerator : public GENERATOR_BASE(hw) {
 public:
     using super = GENERATOR_SUPER(hw);
 
-    BLASKernelGenerator() {}
+    BLASKernelGenerator(): GENERATOR_BASE(hw)({GENERATOR_NAME, GENERATOR_LINE}) {}
 
     FORWARD(hw)
 
@@ -89,7 +89,7 @@ protected:
     GRFMultirange outputCRange;
     std::vector<RegisterBlock> outputCLayout;
 
-    using Injector = jit_post_op_injector<hw>;
+    using Injector = post_op_injector_t<hw>;
     std::unique_ptr<Injector> postOpInjector;
 
     class status_stream {
@@ -142,31 +142,31 @@ protected:
 
     // emulation.cpp
     friend struct EmulationImplementation;
-    template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0,   const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::Immediate src0, const CommonStrategy &strategy, CommonState &state)                                              { EmulationImplementation::emov<DT>(*this, mod, dst, src0, strategy.emulate); }
-    template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state) { EmulationImplementation::eadd<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate); }
-    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, const CommonState &state) { EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate); }
-    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state) { EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate); }
-    template <typename DT = void> void eshl(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state)                           { EmulationImplementation::eshl<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate); }
-    template <typename DT = void> void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state)                           { EmulationImplementation::eshr<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate); }
-    template <typename DT = void> void emulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int32_t src1, const CommonStrategy &strategy, const CommonState &state)      { EmulationImplementation::emulConstant<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate); }
-    template <typename DT = void> void emulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, Type src1, const CommonStrategy &strategy, const CommonState &state);
-    template <typename S1> void emul32High(const ngen::InstructionModifier &mod, const ngen::RegData &dstHi, const ngen::RegData &src0, const S1 &src1)                                                                     { EmulationImplementation::emul32High(*this, mod, dstHi, src0, src1); }
+    template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0,   const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::Immediate src0, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc ={})                                              { EmulationImplementation::emov<DT>(*this, mod, dst, src0, strategy.emulate, loc); }
+    template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { EmulationImplementation::eadd<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void eshl(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { EmulationImplementation::eshl<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { EmulationImplementation::eshr<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, int32_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})      { EmulationImplementation::emulConstant<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emulConstant(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, Type src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {});
+    template <typename S1> void emul32High(const ngen::InstructionModifier &mod, const ngen::RegData &dstHi, const ngen::RegData &src0, const S1 &src1, ngen::SourceLocation loc = {})                                                                     { EmulationImplementation::emul32High(*this, mod, dstHi, src0, src1, loc); }
 
-    template <typename S0, typename S2> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const S2 &src2, const CommonStrategy &strategy, CommonState &state, bool sub);
-    template <typename S0> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const ngen::Immediate &src2, const CommonStrategy &strategy, CommonState &state);
-    template <typename S0> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, ngen::RegData src1, ngen::RegData src2, const CommonStrategy &strategy, CommonState &state);
-    template <typename S0> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, int32_t src2, const CommonStrategy &strategy, CommonState &state);
-    template <typename S0> void eaddScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, Type src2, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void, typename S0, typename S2> void eadd3(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const S2 &src2);
-    template <typename S0> void ecsel(const ngen::InstructionModifier &mod, const ngen::InstructionModifier &cmod, const ngen::FlagRegister &flag, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const ngen::RegData &src2);
+    template <typename S0, typename S2> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const S2 &src2, const CommonStrategy &strategy, CommonState &state, bool sub, ngen::SourceLocation loc = {});
+    template <typename S0> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const ngen::Immediate &src2, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename S0> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, ngen::RegData src1, ngen::RegData src2, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename S0> void emad(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, int32_t src2, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename S0> void eaddScaled(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, Type src2, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void, typename S0, typename S2> void eadd3(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const S2 &src2, ngen::SourceLocation loc = {});
+    template <typename S0> void ecsel(const ngen::InstructionModifier &mod, const ngen::InstructionModifier &cmod, const ngen::FlagRegister &flag, const ngen::RegData &dst, const S0 &src0, const ngen::RegData &src1, const ngen::RegData &src2, ngen::SourceLocation loc = {});
 
-    template <typename DT = void> void emath(const ngen::InstructionModifier &mod, ngen::MathFunction fc, const ngen::RegData &dst, const ngen::RegData &src0, const GEMMStrategy &strategy, CommonState &state);
-    template <typename DT = void> void einv(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const GEMMStrategy &strategy, CommonState &state) { emath<DT>(mod, ngen::MathFunction::inv, dst, src0, strategy, state); }
-    template <typename DT = void> void esqt(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const GEMMStrategy &strategy, CommonState &state) { emath<DT>(mod, ngen::MathFunction::sqt, dst, src0, strategy, state); }
+    template <typename DT = void> void emath(const ngen::InstructionModifier &mod, ngen::MathFunction fc, const ngen::RegData &dst, const ngen::RegData &src0, const GEMMStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
+    template <typename DT = void> void einv(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const GEMMStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {}) { emath<DT>(mod, ngen::MathFunction::inv, dst, src0, strategy, state, loc); }
+    template <typename DT = void> void esqt(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const GEMMStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {}) { emath<DT>(mod, ngen::MathFunction::sqt, dst, src0, strategy, state, loc); }
 
-    void ejmpi(ngen::InstructionModifier mod, ngen::Label &dst);
+    void ejmpi(ngen::InstructionModifier mod, ngen::Label &dst, ngen::SourceLocation loc = {});
 
     // asm_helpers.cpp
     void goto12(const ngen::InstructionModifier &mod, ngen::Label &jip) { goto12(mod, jip, jip); }
@@ -276,6 +276,7 @@ protected:
 
     void setupTeardownRemask(Type T, int index, bool setup, int nq, ngen::Subregister remQ, const CommonStrategy &strategy, CommonState &state, int fixedOffQ = 0, const ngen::Subregister &variableOffQ = ngen::Subregister());
     void remaskLayout(Type T, int index, bool column, const std::vector<RegisterBlock> &layout, const GRFMultirange &regs, const CommonStrategy &strategy, CommonState &state, int offset = 0);
+    void remaskLayoutSingle(Type T, int index, bool column, int nq, ngen::Subregister remQ, const std::vector<RegisterBlock> &layout, const GRFMultirange &regs, const CommonStrategy &strategy, CommonState &state, int fixedOffQ = 0, const ngen::Subregister &variableOffQ = ngen::Subregister(), int maskOff = 0);
 
     void setAddrRemainder(Type T, const ngen::GRFRange &addr, const RegisterBlock &block, const ngen::Subregister &remR, const ngen::Subregister &remC, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const CommonStrategy &strategy, CommonState &state);
     void setAddrRemainder(Type T, const std::vector<ngen::GRFRange> &addr, const std::vector<RegisterBlock> &layout, const ngen::Subregister &remR, const ngen::Subregister &remC, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const CommonStrategy &strategy, CommonState &state);
@@ -465,6 +466,11 @@ protected:
     bool gemmFusedPostOpsFinalize(ngen::Label &labelLateExit, GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmRedirectToTempC(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
 
+    // tlb_warmup.cxx
+    void tlbWarmup(ngen::AddressBase base, const ngen::Subregister &ptr, const ngen::Subregister &bytes, const ngen::Subregister &lid, int whose, const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state);
+    void tlbWarmup(const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const ngen::Subregister &base, const ngen::Subregister &r, const ngen::Subregister &c, const ngen::Subregister &ld, const ngen::Subregister &lid, int whose, const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state);
+    void gemmTLBWarmup(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+
     // gemm_setup.cpp
     void gemmCheck32(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmGetBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
@@ -488,7 +494,6 @@ protected:
     void gemmDowngradeAccess(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK = false);
     void gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK = false);
-    static void gemmAutoTypeConversions(GEMMProblem &problem, const GEMMStrategy &strategy);
 
     // gemm.cpp
     void gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState state);

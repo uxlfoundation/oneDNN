@@ -18,13 +18,13 @@
 #define GPU_INTEL_JIT_EMULATED_GENERATOR_HPP
 
 // Must be included before emulation.hpp
-#include "gpu/intel/jit/ngen/ngen.hpp"
+#include "ngen/ngen.hpp"
 
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/emulation.hpp"
-#include "gpu/intel/jit/jit_generator.hpp"
-#include "gpu/intel/jit/ngen/ngen_core.hpp"
+#include "gpu/intel/jit/generator.hpp"
+#include "ngen/ngen_core.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,16 +33,18 @@ namespace intel {
 namespace jit {
 
 template <gpu_gen_t hw>
-class emulated_generator_t : public jit_generator<hw> {
+class emulated_generator_t : public generator_t<hw> {
     friend struct EmulationImplementation;
 
 protected:
     NGEN_FORWARD_OPENCL(hw);
 
 public:
-    emulated_generator_t(
-            const compute::device_info_t &device_info, const std::string &name)
-        : ra_(hw, name), emu_strategy(hw, device_info.stepping_id()) {}
+    emulated_generator_t(const compute::device_info_t &device_info,
+            const std::string &name, const debug_config_t &debug_config)
+        : generator_t<hw>(debug_config)
+        , ra_(hw, name)
+        , emu_strategy(hw, device_info.stepping_id()) {}
 
 protected:
     reg_allocator_t ra_;

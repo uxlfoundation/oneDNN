@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +38,9 @@ struct cpu_reorder_pd_t : public reorder_pd_t {
                 post_ops.len() == 1
                         && post_ops.entry_[0].kind == primitive_kind::sum);
         VDISPATCH_REORDER(args_ok, VERBOSE_UNSUPPORTED_POSTOP);
+        auto gpu_zp = memory_extra_flags::compensation_gpu_conv_asymmetric_src;
+        VDISPATCH_REORDER(!(dst_md()->extra.flags & gpu_zp),
+                VERBOSE_UNSUPPORTED_MD_FLAG, "extra");
         return status::success;
     }
 
@@ -82,15 +85,15 @@ struct cpu_reorder_pd_t : public reorder_pd_t {
             const float *dst_scales) const {
         using namespace dnnl::impl::memory_tracking::names;
 
-        int mask = -1;
-        bool is_set = false;
-        auto status = attr->scales_.get(DNNL_ARG_DST, &mask, &is_set);
-        if (status != status::success) return nullptr;
+        if (attr->scales_.has_default_values(DNNL_ARG_DST)) {
+            return dst_scales;
+        }
 
         // It's possible that mask > 0 but `count` is still `1`. This case is
         //   covered by `DEFINE_ARG_SCALES_BUFFER` macro and no need to inverse
         //   in such case.
-        if (is_set && mask > 0 && count > 1) {
+        int mask = attr->scales_.get_mask(DNNL_ARG_DST);
+        if (mask > 0 && count > 1) {
             auto loc_scales = scratchpad.template get<float>(
                     key_reorder_precomputed_dst_scales);
             if (!loc_scales) return nullptr;

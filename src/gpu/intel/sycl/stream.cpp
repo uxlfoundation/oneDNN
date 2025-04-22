@@ -24,7 +24,7 @@
 
 #include "gpu/intel/sycl/stream.hpp"
 
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

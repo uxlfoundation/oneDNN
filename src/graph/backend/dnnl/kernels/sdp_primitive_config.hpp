@@ -61,6 +61,7 @@ public:
 
     bool invert_scale_ = false;
     bool quantized_ = false;
+    bool causal_mask_ = false;
     dim_t kv_head_number_;
 
     // SDP pd and primitive.

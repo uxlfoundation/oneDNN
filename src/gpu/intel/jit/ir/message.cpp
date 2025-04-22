@@ -46,7 +46,7 @@ std::ostream &operator<<(std::ostream &out, const send_op_t op) {
         case send_op_t::store: s = "store"; break;
         case send_op_t::store_2d: s = "store_2d"; break;
         case send_op_t::undef: s = "undef"; break;
-        default: ir_error_not_expected(); s = "unknown";
+        default: gpu_error_not_expected(); s = "unknown";
     }
 
     return out << s;
@@ -68,14 +68,14 @@ send_op_t atomic_send_op(const type_t &type, bool has_atomic_fp64) {
 #if XE3P
     if (type == type_t::bf16()) return send_op_t::atomic_bfadd;
 #endif
-    ir_error_not_expected() << "Atomics are not supported for " << type;
+    gpu_error_not_expected() << "Atomics are not supported for " << type;
     return send_op_t::undef;
 }
 
 stmt_t send_t::create_offset_store(const expr_t &header_buf,
         const expr_t &mem_buf, const expr_t &_mem_off,
         bool is_signed_offset) const {
-    ir_assert(is_var(mem_buf));
+    gpu_assert(is_var(mem_buf));
     int header_off = 0;
     int unit_size = 1;
     if (!is_lsc && is_block() && is_slm()) {
@@ -313,7 +313,7 @@ public:
             return base;
         }
         int block_idx = get_block_index(cur_off_ + off);
-        ir_assert(block_idx >= 0 && block_idx < int(block_offs_.size()));
+        gpu_assert(block_idx >= 0 && block_idx < int(block_offs_.size()));
         base = block_offs_[block_idx];
         auto prev_base = block_offs_[block_idx == 0 ? 0 : block_idx - 1];
         auto get_const_summand = [&](const expr_t &expr) -> int64_t {
@@ -339,24 +339,24 @@ public:
     // Returns a boolean mask expression for the given region to access.
     expr_t get_mask(int off, int size, int mask_size, int nmasks,
             bool allow_fail = false) const {
-        ir_assert(size % mask_size == 0) << "Incompatible mask size.";
+        gpu_assert(size % mask_size == 0) << "Incompatible mask size.";
         auto sub_mask_tensor = create_sub_mask_tensor(off, size);
         sub_mask_tensor = sub_mask_tensor.reinterpret(type_t::u8(mask_size));
         if (sub_mask_tensor.is_empty()) {
             if (allow_fail) return expr_t();
-            ir_error_not_expected();
+            gpu_error_not_expected();
         }
         auto ret = sub_mask_tensor.to_expr(nmasks);
         if (ret.is_empty()) {
             if (allow_fail) return expr_t();
-            ir_error_not_expected() << "Can't create mask.";
+            gpu_error_not_expected() << "Can't create mask.";
         }
         return ret;
     }
 
     // Moves the current position `size` bytes ahead.
     void advance(int size) {
-        ir_assert(size % type_size_ == 0);
+        gpu_assert(size % type_size_ == 0);
         size = std::min(size, remaining_size_);
         cur_off_ += size;
         remaining_size_ -= size;
@@ -391,8 +391,8 @@ private:
     }
 
     mask_tensor_t create_sub_mask_tensor(int off, int size) const {
-        ir_assert(off % type_size_ == 0);
-        ir_assert(size % type_size_ == 0);
+        gpu_assert(off % type_size_ == 0);
+        gpu_assert(size % type_size_ == 0);
 
         std::vector<dim_t> sub_dims = {size / type_size_};
         layout_t sub_layout(view_.type(), 0, sub_dims);
@@ -547,11 +547,10 @@ void access_builder_t::build() {
     }
     if (!ok && send_op_ == send_op_t::prefetch) {
         // Do not treat as an error, skip prefetch messages during generation.
-        ir_warning() << "Can't generate send decomposition for prefetch."
-                     << std::endl;
+        gpu_warning() << "Can't generate send decomposition for prefetch.";
         return;
     }
-    ir_assert(ok) << "Can't generate send decomposition.";
+    gpu_assert(ok) << "Can't generate send decomposition.";
 }
 
 static bool stride_dimension_ok(const view_t &view, int stride_tidx,
@@ -586,7 +585,7 @@ static expr_t try_scalarize(const expr_t &e) {
         return binary_op_t::make(binary->op_kind, a, b);
     }
 
-    ir_error_not_expected() << e;
+    gpu_error_not_expected() << e;
     return expr_t();
 }
 
@@ -624,7 +623,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     auto &b0 = blocks[0];
     auto &b1 = blocks[1];
-    ir_assert(b0.dim_idx != b1.dim_idx);
+    gpu_assert(b0.dim_idx != b1.dim_idx);
     if (b0.stride != stride_t(1)) return false;
     if (!b1.stride.is_fixed()) return false;
 
@@ -634,7 +633,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
             auto &tdim = mem_view_.tdim(i);
             for (dim_idx_t j = 0; j < tdim.nvargs(); j++) {
                 if (tdim.vidx(j) == vdim_idx) {
-                    ir_assert(ret == dim_idx::invalid);
+                    gpu_assert(ret == dim_idx::invalid);
                     stride = (int)tdim.vstride(j);
                     ret = i;
                 }
@@ -684,7 +683,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     // Try to reduce the number of messages by increasing count per message.
     int try_count = count * 2;
-    int max_count = block_2d_max_count(send_params.hw, is_prefetch, is_store,
+    int max_count = block_2d_max_count(ir_ctx_->hw(), is_prefetch, is_store,
             transpose, width, mem_type_.size());
     while (try_count <= max_count) {
         if (b0.block % (try_count * width) != 0) break;
@@ -1067,12 +1066,12 @@ stmt_t access_builder_t::create_send_stmt(
 
 static const int any_block = 0;
 
-send_2d_hint_t get_send_2d_hint(const hw_t &hw, send_op_t send_op,
-        const type_t &_type, bool vnni, bool transpose, int w_tile, int h_tile,
-        int w_blk = any_block, int h_blk = any_block) {
+send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
+        send_op_t send_op, const type_t &_type, bool vnni, bool transpose,
+        int w_tile, int h_tile, int w_blk = any_block, int h_blk = any_block) {
     auto type = _type;
 
-    ir_assert(!(vnni && transpose)) << "VNNI with transpose is not supported.";
+    gpu_assert(!(vnni && transpose)) << "VNNI with transpose is not supported.";
 
     // XXX: Convert transpose to VNNI when transpose is not
     // supported. This will require additional reorder but
@@ -1104,14 +1103,6 @@ send_2d_hint_t get_send_2d_hint(const hw_t &hw, send_op_t send_op,
 
     int w_min = (transpose ? 1 : 4 / type.size());
     int w_max = (transpose ? 8 : (vnni ? 16 : 64 / type.size()));
-    int w_fixed_max = 0;
-#if XE3P
-    // Xe3p supports 256 bytes per width (the exact value) for prefetches only.
-    // Otherwise the width has to be <= 64 bytes.
-    if ((send_op == send_op_t::prefetch) && hw == ngen::HW::Xe3p) {
-        w_fixed_max = 256 / type.size();
-    }
-#endif
     int h_min = (vnni ? (4 / type.size()) : 1);
     int h_max = (is_load_or_prefetch ? 32 : 8);
 
@@ -1120,29 +1111,25 @@ send_2d_hint_t get_send_2d_hint(const hw_t &hw, send_op_t send_op,
     if (h_blk != any_block && (h_blk < h_min || h_blk > h_max))
         return send_2d_hint_t();
 
-    auto find_block = [&](int dim, int min, int max, int fixed_max = 0) {
-        if (fixed_max != 0 && dim > max && dim % fixed_max == 0) {
-            return fixed_max;
-        }
+    auto find_block = [&](int dim, int min, int max) {
         for (int b = max; b >= min; b--) {
             if (dim % b == 0) return b;
         }
         return -1;
     };
 
-    if (w_blk == any_block)
-        w_blk = find_block(w_tile, w_min, w_max, w_fixed_max);
+    if (w_blk == any_block) w_blk = find_block(w_tile, w_min, w_max);
     if (h_blk == any_block) h_blk = find_block(h_tile, h_min, h_max);
     if (w_blk == -1 || h_blk == -1) return send_2d_hint_t();
 
     if (vnni) {
         // TODO: Remove.
-        ir_assert(h_blk > 0);
+        gpu_assert(h_blk > 0);
         h_blk = find_block(h_tile, h_blk, h_max);
     }
     if (transpose && w_blk > 0) {
         // TODO: Remove.
-        ir_assert(w_blk > 0);
+        gpu_assert(w_blk > 0);
         w_blk = find_block(w_tile, w_blk, w_max);
     }
 
@@ -1188,8 +1175,8 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
     auto &b1 = blocks[1];
 
     if (b0.block >= 128) return hint;
-    return get_send_2d_hint(exec_cfg.hw(), send_op, view.type(), false, false,
-            b0.block, b1.block);
+    return get_send_2d_hint(
+            exec_cfg, send_op, view.type(), false, false, b0.block, b1.block);
 }
 
 send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
@@ -1225,15 +1212,12 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
         if (b0_blk != any_block && b0.block % b0_blk != 0) return hint;
         if (b1_blk != any_block && b1.block % b1_blk != 0) return hint;
         bool vnni = is_dpas_src1 && !transpose;
-        hint = get_send_2d_hint(exec_cfg.hw(), send_op, view.type(), vnni,
-                transpose, b0.block, b1.block, b0_blk, b1_blk);
+        hint = get_send_2d_hint(exec_cfg, send_op, view.type(), vnni, transpose,
+                b0.block, b1.block, b0_blk, b1_blk);
     } else {
-        hint = get_send_2d_hint(exec_cfg.hw(), send_op, view.type(), false,
-                false, b0.block, b1.block);
-        if (!hint.enable) return send_2d_hint_t();
-        int msg_count = (b0.block / hint.width) * (b1.block / hint.height);
-        if (msg_count == 1 || b0.block < 128) return hint;
-        return send_2d_hint_t();
+        if (b0.block >= 128) return hint;
+        hint = get_send_2d_hint(exec_cfg, send_op, view.type(), false, false,
+                b0.block, b1.block);
     }
 
     // XXX: Special VNNI permute hint to use with Xa16b:bf16 layout which can't

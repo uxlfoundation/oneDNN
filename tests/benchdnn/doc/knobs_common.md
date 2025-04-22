@@ -140,11 +140,22 @@ Refer to [implementation filtering](knob_impl_filter.md) for details.
 `--start=N` specifies the test index `N` to start testing from. All tests
 before the index `N` will be skipped.
 
+### --summary
+`--summary=VALUE` provides additional specific statistics output. Refer to
+[summary documentation](knob_summary.md) for details.
+
 ### --verbose
 `--verbose=N`, or a short form `-vN`, specifies the driver verbosity level.
 Additional information is printed to the stdout depending on a level `N`. `N` is
 a non-negative integer value. The default value is `0`. Refer to
 [verbose](knobs_verbose.md) for details.
+
+### --execution-mode
+`--execution-mode=MODE` specifies the execution mode to be used. When `MODE`
+is set to `direct` (the default), the driver will execute normally. When `MODE`
+is set to `graph` it instructs the driver to execute on a graph backend.
+Currently this feature is limited to the experimental SYCL Graph feature on
+DPC++ runtime with Level Zero backend.
 
 ## Correctness mode settings
 
@@ -161,7 +172,8 @@ changes the implementation dispatching which is an undesired behavior. When
 string against the `ref` string pattern. When `BOOL` is set to `true`, the check
 returns an error if the name matches the reference pattern. By default, the
 check is disabled. It's useful to catch unexpected fallbacks to slow reference
-implementations from a big batch of problems.
+implementations from a big batch of problems. This option is always disabled on
+NVIDIA, AMD, and Generic vendors.
 
 ### --fast-ref
 `--fast-ref=BOOL` instructs the driver to use an optimized implementation

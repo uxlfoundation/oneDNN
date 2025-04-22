@@ -113,7 +113,7 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
                 float conv_res = 0;
                 ker(conv_res, g, mb, oc, od, oh, ow);
 
-                if (prb->dir & FLAG_BIA) {
+                if (prb->bia_dt() != dnnl_data_type_undef) {
                     const size_t bia_off = bia_off_f(prb, g, oc);
                     conv_res += ((float *)bia_m)[bia_off];
                 }
@@ -287,7 +287,7 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
                 else
                     ker(conv_res, g, mb, ic, id, ih, iw);
 
-                if (prb->dir & FLAG_BIA) {
+                if (prb->bia_dt() != dnnl_data_type_undef) {
                     const size_t bia_off = (size_t)g * ICG + ic;
                     conv_res += ((float *)bia_m)[bia_off];
                 }
@@ -324,8 +324,8 @@ void compute_ref_bwd_weights(const prb_t *prb, const args_t &args) {
             = [](int64_t I, int64_t O, int64_t k, int64_t S, int64_t P,
                       int64_t D, int64_t &o_s, int64_t &o_e) {
                   const float tmp = P - k * D;
-                  o_s = MAX2(0, ceilf(tmp / S));
-                  o_e = MIN2(O, ceilf((I + tmp) / S));
+                  o_s = MAX2(0, div_up(tmp, S));
+                  o_e = MIN2(O, div_up(I + tmp, S));
               };
 
     auto ker = [&](float &dw, int64_t g, int64_t oc, int64_t ic, int64_t kd,
@@ -481,7 +481,7 @@ void compute_ref_bwd_w(
     // entry problem which is transposed - `p_tr`. Simpler to use the kernel
     // directly.
     // Take original memories, not `ref_conv_args`.
-    if (prb->dir & FLAG_BIA) {
+    if (prb->bia_dt() != dnnl_data_type_undef) {
         const dnn_mem_t &diff_bia_m = args.find(DNNL_ARG_DIFF_BIAS);
         const dnn_mem_t &diff_dst_m = args.find(DNNL_ARG_DIFF_DST);
         /* help compiler optimize the code */
@@ -512,8 +512,8 @@ void compute_ref_bwd_w(
 void compute_ref(
         const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
     // Update prb descriptor to re-use convolution reference.
-    prb_t prb_tr((desc_t)*prb, prb->dir, prb->dt, prb->stag, prb->wtag,
-            prb->dtag, prb->alg, prb->mb, prb->attr, prb->ctx_init,
+    prb_t prb_tr((desc_t)*prb, prb->dir, prb->dt, prb->bia_dt(), prb->stag,
+            prb->wtag, prb->dtag, prb->alg, prb->mb, prb->attr, prb->ctx_init,
             prb->ctx_exe, prb->impl_filter);
     std::swap(prb_tr.ic, prb_tr.oc);
     std::swap(prb_tr.ih, prb_tr.oh);

@@ -41,7 +41,7 @@ type_t to_type(data_type_t dt) {
         case data_type::f32:
         case data_type::s32: return type_t::d32;
         case data_type::f64: return type_t::d64;
-        default: ir_error_not_expected() << "Unknown type: " << dt;
+        default: gpu_error_not_expected() << "Unknown type: " << dt;
     }
     return type_t::undef;
 }
@@ -58,7 +58,7 @@ hw_t to_hw(ngen::HW hw) {
 #if XE3P
         case ngen::HW::Xe3p: return hw_t::xehpc;
 #endif
-        default: ir_error_not_expected() << "Unknown HW: " << to_string(hw);
+        default: gpu_error_not_expected() << "Unknown HW: " << to_string(hw);
     }
     return hw_t::undef;
 }
@@ -70,7 +70,7 @@ fma_t to_fma(fma_kind_t fma) {
         case fma_kind_t::dpas:
         case fma_kind_t::dpasw: return fma_t::dpas;
         default:
-            ir_error_not_expected() << "Unknown FMA kind: " << to_string(fma);
+            gpu_error_not_expected() << "Unknown FMA kind: " << to_string(fma);
     }
     return fma_t::undef;
 }

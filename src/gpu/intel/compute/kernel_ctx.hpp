@@ -72,13 +72,17 @@ public:
         if (size > INT_MAX) use_int32_offset(false);
     }
 
+    void register_buffer_size(const memory_desc_wrapper &mdw) {
+        register_buffer_size(mdw.size());
+    }
+
     // Enable various optimizations when all buffers are < 2GB in size. In this
     // case, int32_t types can be used for data offsets and avoid int64_t
     // operations when native 64-bit operations are unsupported.
     void use_int32_offset(bool value) { use_int32_offset_ = value; }
 
     void define_int(const char *variable, int64_t value) {
-        int_var_map_.insert({variable, value});
+        set_macro(variable, value, int_var_map_);
     }
 
     void define_int(const std::string &variable, int64_t value) {
@@ -105,7 +109,7 @@ public:
         return has_macro(name.c_str());
     }
 
-    void set_data_type(data_type_t dt) {
+    void set_data_type(data_type_t dt, bool with_punning = true) {
         switch (dt) {
             case data_type::bf16: define_int("DT_BF16", 1); break;
             case data_type::f16: define_int("DT_F16", 1); break;
@@ -116,16 +120,11 @@ public:
             case data_type::f8_e4m3: define_int("DT_HF8", 1); break;
             case data_type::f8_e5m2: define_int("DT_BF8", 1); break;
             case data_type::f4_e2m1: define_int("DT_F4_E2M1", 1); break;
+            case data_type::f4_e3m0: define_int("DT_F4_E3M0", 1); break;
             case data_type::s32: define_int("DT_S32", 1); break;
             default: assert(!"unknown data type"); break;
         }
-    }
-
-    template <typename T>
-    T get_scalar(const std::string &s) const {
-        UNUSED(s);
-        static_assert(!std::is_same<T, T>::value, "not expected");
-        return {};
+        define_int("WITH_PUNNING", with_punning);
     }
 
     std::string data_type() const {
@@ -179,18 +178,22 @@ private:
         if (attr) { define_int("DETERMINISTIC", attr->deterministic_); }
     }
 
+    template <typename T>
+    void set_macro(const char *variable, const T &value,
+            std::map<std::string, T> &var_map) {
+        gpu_assert(var_map.count(variable) == 0 || var_map[variable] == value)
+                << "Error: macro " << variable
+                << " is already set to a different value.\n  Old value: "
+                << var_map[variable] << "\n  New value: " << value;
+        var_map.insert({variable, value});
+    }
+
     std::map<std::string, int64_t> int_var_map_;
     std::map<std::string, float> float_var_map_;
     std::set<std::string> option_set_;
     std::unordered_map<std::string, std::string> custom_headers_;
     bool use_int32_offset_ = true;
 };
-
-template <>
-inline int64_t kernel_ctx_t::get_scalar(const std::string &name) const {
-    assert(int_var_map_.count(name) != 0 && "not expected");
-    return int_var_map_.at(name);
-}
 
 } // namespace compute
 } // namespace intel

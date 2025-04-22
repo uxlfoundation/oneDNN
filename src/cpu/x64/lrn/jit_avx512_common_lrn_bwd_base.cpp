@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -70,12 +70,18 @@ void jit_avx512_common_lrn_kernel_bwd_t<f16>::load_data(
 template <>
 void jit_avx512_common_lrn_kernel_bwd_t<f16>::store_data(
         bool nt, const Address addr, Zmm zr) {
-    this->vcvtps2ph(addr, zr, this->_op_mxcsr);
+    this->vcvtps2ph(addr, zr, jit_generator::_op_mxcsr);
 }
 
 template <>
 void jit_avx512_common_lrn_kernel_bwd_t<bf16>::store_data(
         bool nt, const Address addr, Zmm zr) {
+    const bool is_bf16_supported
+            = mayiuse(avx512_core_bf16) || bf16_emu_ != nullptr;
+    if (!is_bf16_supported) {
+        assert("Failure in storing bf16 data.");
+        return;
+    }
     const Ymm yr = Ymm(zr.getIdx());
     if (mayiuse(avx512_core_bf16))
         vcvtneps2bf16(yr, zr);

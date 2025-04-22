@@ -36,6 +36,8 @@
 namespace dnnl {
 namespace impl {
 
+const primitive_attr_t &default_attr();
+
 struct rnn_data_qparams_t : public c_compatible {
     rnn_data_qparams_t() : scale_(1.f), shift_(0.f) {}
     bool has_default_values() const { return (scale_ == 1. && shift_ == 0.); }
@@ -364,7 +366,8 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
 
         bool is_like_binary() const { return is_binary() || is_prelu(); }
 
-        dnnl::impl::status_t set_depthwise_scales(const float *scales);
+        dnnl::impl::status_t validate_binary_with_dst_consistency(
+                const dnnl::impl::memory_desc_t *dst_desc) const;
 
         bool operator==(const entry_t &rhs) const {
             using namespace dnnl::impl;
@@ -415,7 +418,7 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
         }
     };
 
-    dnnl_post_ops() : entry_() {}
+    dnnl_post_ops() = default;
     ~dnnl_post_ops() = default;
 
     dnnl::impl::status_t append_sum(float scale, int32_t zero_point = 0,
@@ -484,6 +487,9 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
                 || entry_[sum_ind].sum.dt == dst_dt;
     }
 
+    dnnl::impl::status_t validate_binary_with_dst_consistency(
+            const dnnl::impl::memory_desc_t *dst_desc) const;
+
     bool contain(dnnl::impl::primitive_kind_t kind, int index) const {
         return find(kind, index, index + 1) == index;
     }
@@ -527,7 +533,8 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         return new dnnl_primitive_attr(*this);
     }
 
-    dnnl_primitive_attr(const dnnl_primitive_attr &other) {
+    dnnl_primitive_attr(const dnnl_primitive_attr &other)
+        : c_compatible(other) {
         if (copy_from(other) != dnnl::impl::status::success)
             is_initialized_ = false;
     }
@@ -667,7 +674,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
     }
 
     // NOTE: make sure that the types below have overloaded comparison operator
-    dnnl::impl::arg_scales_t scales_;
+    dnnl::impl::scales_t scales_;
     dnnl::impl::zero_points_t zero_points_;
     dnnl::impl::scratchpad_mode_t scratchpad_mode_;
     dnnl::impl::fpmath_t fpmath_;

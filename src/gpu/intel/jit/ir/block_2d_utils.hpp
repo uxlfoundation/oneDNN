@@ -19,7 +19,8 @@
 
 #include <algorithm>
 
-#include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
+#include "ngen/ngen.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,17 +28,23 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-inline int block_2d_base_alignment(const hw_t &hw) {
-    switch (hw.to_ngen()) {
-        case ngen::HW::XeHPC:
-            // XXX: A steppings require 128 byte alignment due to a HW bug.
-            return (hw.stepping_id() <= 6) ? 128 : 64;
+inline int block_2d_min_dim() {
+    return 64;
+}
+
+inline int block_2d_max_dim() {
+    return 1 << 24;
+}
+
+inline int block_2d_base_alignment(ngen::HW hw) {
+    switch (hw) {
+        case ngen::HW::XeHPC: return 64;
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return 64;
 #if XE3P
         case ngen::HW::Xe3p: return 4;
 #endif
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return 0;
 }
@@ -46,45 +53,49 @@ inline int block_2d_x_alignment(int type_size) {
     return std::max(4, type_size) / type_size;
 }
 
+inline int block_2d_w_alignment(int type_size) {
+    return std::max(4, type_size);
+}
+
 inline bool block_2d_width_ok(dim_t width, int type_size) {
     dim_t width_bytes = width * type_size;
-    if (width_bytes < 64) return false;
-    if (width_bytes > (1 << 24)) return false;
-    if (width_bytes % std::max(4, type_size) != 0) return false;
+    if (width_bytes < block_2d_min_dim()) return false;
+    if (width_bytes > block_2d_max_dim()) return false;
+    if (width_bytes % block_2d_w_alignment(type_size) != 0) return false;
     return true;
 }
 
 inline bool block_2d_height_ok(dim_t height) {
-    if (height > (1 << 24)) return false;
+    if (height > block_2d_max_dim()) return false;
     return true;
 }
 
-inline int block_2d_pitch_alignment(const hw_t &hw) {
-    switch (hw.to_ngen()) {
+inline int block_2d_pitch_alignment(ngen::HW hw) {
+    switch (hw) {
         case ngen::HW::XeHPC: return 8;
         case ngen::HW::Xe2: return 16;
         case ngen::HW::Xe3: return 16;
 #if XE3P
         case ngen::HW::Xe3p: return 4;
 #endif
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return 0;
 }
 
 inline bool block_2d_pitch_ok(
-        const hw_t &hw, dim_t pitch, int type_size, bool use_xy = true) {
+        ngen::HW hw, dim_t pitch, int type_size, bool use_xy = true) {
     dim_t pitch_bytes = pitch * type_size;
-    if (pitch_bytes < 64) return false;
+    if (pitch_bytes < block_2d_min_dim()) return false;
     // 2^24 Pitch does not work on Xe2/Xe3
-    if (pitch_bytes > ((1 << 24) - 1)) return false;
+    if (pitch_bytes > block_2d_max_dim() - 1) return false;
     if (pitch_bytes % block_2d_pitch_alignment(hw) != 0) return false;
     // To be able to point the base to different rows.
     if (use_xy && pitch_bytes % block_2d_base_alignment(hw) != 0) return false;
     return true;
 }
 
-inline int block_2d_max_count(const hw_t &hw, bool is_prefetch, bool is_store,
+inline int block_2d_max_count(ngen::HW hw, bool is_prefetch, bool is_store,
         bool is_transpose, int block_width, int type_size) {
     if (is_store || is_transpose) return 1;
 #if XE3P

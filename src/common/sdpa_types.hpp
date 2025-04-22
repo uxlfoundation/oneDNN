@@ -47,9 +47,9 @@ struct sdpa_desc_t : public op_desc_t {
 
     // primitive_attr_t can't be used because of deleted copy-ctor, but desc_t
     // must be copyable.
-    runtime_scales_t kq_scales {};
+    quant_entry_t kq_scales {};
     zero_points_t kq_zero_points {};
-    runtime_scales_t vs_scales {};
+    quant_entry_t vs_scales {};
     zero_points_t vs_zero_points {};
 
     memory_desc_t dst_desc {};
@@ -59,6 +59,10 @@ struct sdpa_desc_t : public op_desc_t {
     // invert_scale = true:  divide by scale
     bool invert_scale {};
     dim_t kv_head_number {};
+
+    // causal_mask = false: use mask descriptor
+    // causal_mask = true: causal mask used. mask descriptor not used
+    bool causal_mask {};
 
     // Number of queries.
     dnnl_dim_t queries() const { return q_desc.dims[q_desc.ndims - 2]; }

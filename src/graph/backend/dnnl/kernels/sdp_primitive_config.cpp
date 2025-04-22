@@ -58,7 +58,7 @@ status_t sdp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
     op_ptr mm1 = nullptr, mm2 = nullptr, scale = nullptr, add = nullptr,
            final_op = nullptr;
     const std::unordered_set<op_kind_t> mm1_post_op_kind
-            = {op_kind::dnnl_binary, op_kind::dnnl_softmax};
+            = {op_kind::dnnl_binary, op_kind::dnnl_softmax, op_kind::dnnl_mask};
     for (const auto &cur_op : sg->get_ops()) {
         if (in_tensor_list(cur_op->get_output_value(0).get(), outputs))
             final_op = cur_op;
@@ -86,7 +86,12 @@ status_t sdp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
                 // 3. locate mask if have
                 if (post_op->get_kind() == op_kind::dnnl_binary) {
                     add = post_op;
+                } else if (post_op->get_kind() == op_kind::dnnl_mask) {
+                    // implicit causal mask
+                    causal_mask_ = true;
                 }
+            } else if (post_op->get_kind() == op_kind::dnnl_mask) {
+                causal_mask_ = true;
             }
         } else {
             VCHECK_SDP_PRIMITIVE(mm2 == nullptr, status::unimplemented,
@@ -134,7 +139,26 @@ status_t sdp_primitive_config_t::locate_io(std::shared_ptr<subgraph_t> &sg,
 
     if (add) {
         auto m0 = add->get_input_value(0), m1 = add->get_input_value(1);
-        attn_mask_ = in_tensor_list(m1.get(), inputs) ? m1 : m0;
+        if (in_tensor_list(m1.get(), inputs)) {
+            attn_mask_ = m1;
+        } else if (in_tensor_list(m0.get(), inputs)) {
+            attn_mask_ = m0;
+        } else if (m1->has_producer()
+                && m1->get_producer().get_kind() == op_kind::dnnl_unsqueeze
+                && in_tensor_list(
+                        m1->get_producer().get_input_value(0).get(), inputs)) {
+            // consider the case when mask is not 4D,
+            // unsqueeze op is inserted to broadcast the mask
+            attn_mask_ = m1;
+        } else if (m0->has_producer()
+                && m0->get_producer().get_kind() == op_kind::dnnl_unsqueeze
+                && in_tensor_list(
+                        m0->get_producer().get_input_value(0).get(), inputs)) {
+            attn_mask_ = m0;
+        } else {
+            VCHECK_SDP_PRIMITIVE(
+                    false, status::unimplemented, "explicit mask is not found");
+        }
     }
 
     return status::success;
@@ -177,6 +201,13 @@ status_t sdp_primitive_config_t::initial_check(
                         && group_shape[idx] != input_dims[idx])
                     return status::unimplemented;
             }
+            // TODO(zhitao): execute the reorder for scale and zps mannually if the
+            // transpose attribute is specified as true.
+            auto post_op = get_post_op(cur_op);
+            if (post_op && post_op->get_kind() == graph::op_kind::MatMul
+                    && post_op->has_attr(op_attr::transpose_b)
+                    && post_op->get_attr<bool>(op_attr::transpose_b))
+                return status::unimplemented;
         }
         if (op_kind != graph::op_kind::MatMul) continue;
         auto post_op = get_post_op(cur_op);
@@ -195,17 +226,20 @@ status_t sdp_primitive_config_t::initial_check(
                 post_op = get_post_op(post_op);
             }
             // mask
-            if (post_op->get_kind() == graph::op_kind::Add) {
-                // Mask exists, update post_op and traverse to next op
-                post_op = get_post_op(post_op);
+            if (post_op) {
+                if (post_op->get_kind() == graph::op_kind::Add) {
+                    // Mask exists, update post_op and traverse to next op
+                    post_op = get_post_op(post_op);
+                }
+                // Not support select after scale(optional) and mask(optional)
+                // Distill-Bert:[mm1] --> [scale]* --> [mask]* --> [select] --> ...
+                VCHECK_SDP_PRIMITIVE(post_op
+                                && post_op->get_kind()
+                                        != graph::op_kind::Select,
+                        status::unimplemented,
+                        "Not support select after scale(optional) and "
+                        "mask(optional)");
             }
-
-            // Not support select after scale(optional) and mask(optional)
-            // Distill-Bert:[mm1] --> [scale]* --> [mask]* --> [select] --> ...
-            VCHECK_SDP_PRIMITIVE(post_op->get_kind() != graph::op_kind::Select,
-                    status::unimplemented,
-                    "Not support select after scale(optional) and "
-                    "mask(optional)");
         } else {
             mm2 = cur_op;
         }
@@ -289,7 +323,8 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
 
     CHECK(create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(), md_k.get(),
             md_v.get(), md_dst.get(), md_mask.get(), scale_dt, invert_scale_,
-            attr.get(), kv_head_number_, qk_attr.get(), vs_attr.get()));
+            kv_head_number_, causal_mask_, attr.get(), qk_attr.get(),
+            vs_attr.get()));
 
     auto status = sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());
 

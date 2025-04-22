@@ -20,7 +20,7 @@
 #include "generator.hpp"
 #include "kernel_selector.hpp"
 #include "strategy_parser.hpp"
-#include "npack/neo_packager.hpp"
+#include "ngen/npack/neo_packager.hpp"
 
 #include "internal/namespace_start.hxx"
 
@@ -50,8 +50,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
                               const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
                               void (*strategyAdjuster)(GEMMStrategy &strategy))
 {
-    kcatalog::Catalog catalog;
-
     bool localA = protocol.options().localA;
     bool localB = protocol.options().localB;
     bool beta1 = protocol.options().addToC;
@@ -118,12 +116,14 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     if (localA && localB)
         stub("Unsupported protocol");
 
-    if (localA)
-        catalog = CatalogLMR;
-    else if (localB)
-        catalog = CatalogMLR;
-    else
-        catalog = CatalogMMR;
+    kcatalog::Catalog catalog = [&] () {
+        if (localA)
+            return kcatalog::Catalog(CatalogLMR);
+        else if (localB)
+            return kcatalog::Catalog(CatalogMLR);
+        else
+            return kcatalog::Catalog(CatalogMMR);
+    }();
 
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
@@ -267,12 +267,11 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     } else if (!block2DA) {
         s.A.accessType = AccessType::Block;
         if (systolic)
-            s.ka_load = (problem.A.layout == MatrixLayout::T) ? 32 : 16;
+            s.ka_load = (problem.A.layout == MatrixLayout::T) ? (64 / problem.Ta_ext) : 16;
         s.slmA = true;
-
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
-        s.ka_load = 32;
+        s.ka_load = 64 / problem.Ta_ext;
     } else if (problem.A.layout == MatrixLayout::N) {
         s.A.accessType = AccessType::Block2DVNNI;
         s.A_copies = 2;
@@ -343,6 +342,8 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         return false;
 
     s.systolic = systolic;
+    if (systolic && hw >= HW::XeHPC)
+        s.extendedAtomicFMA = s.atomicFMA = true;
     s.registerScheme = GEMMStrategy::VAvoid;
     if (s.wgTile(LoopM) * s.wgTile(LoopN) > 512)
         s.GRFs = 256;
@@ -353,6 +354,9 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.slmBuffers = 1;
         s.unrollKSLM = std::max(int(s.slmA) * s.ka_load, int(s.slmB) * s.kb_load);
     }
+
+    if (hw == HW::Xe2 || hw == HW::Xe3)
+        s.raHW = HW::XeHPC;
 
     adjustStrategy(hw, problem, strategy);
 

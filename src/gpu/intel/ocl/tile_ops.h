@@ -18,6 +18,7 @@
 #define GPU_OCL_TILE_OPS_H
 
 #include "gpu/intel/ocl/ocl_generic_vector_ops.h"
+#include "gpu/intel/ocl/ocl_types.h"
 
 float __builtin_IB_atomic_max_local_f32(__local float *, float);
 
@@ -27,6 +28,11 @@ __attribute__((overloadable)) float local_atomic_max(local float *p, float v) {
 
 __attribute__((overloadable)) half local_atomic_max(
         local half *p, half v) { /* not implemented */
+    return v;
+}
+
+__attribute__((overloadable)) ushort local_atomic_max(
+        local ushort *p, ushort v) { /* not implemented */
     return v;
 }
 
@@ -91,6 +97,14 @@ DEF_BLOCK_LOAD_STORE(half, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 4)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 8)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 16)
+
+typedef ushort ushort1 __attribute__((ext_vector_type(1)));
+DEF_BLOCK_LOAD_STORE1(ushort, ushort, _us)
+DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 2)
+DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 4)
+DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 8)
+DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 16)
+
 DEF_BLOCK_LOAD_STORE1(uint, uint, )
 DEF_BLOCK_LOAD_STORE(uint, uint, , 2)
 DEF_BLOCK_LOAD_STORE(uint, uint, , 4)
@@ -134,8 +148,12 @@ DEF_BLOCK_LOAD_STORE16(uint, uint, )
                 pp, w - 1, h - 1, ld - 1, coord, as_##itype##vl(v)); \
     }
 
+DEF_BLOCK2D_LOAD_STORE(half, ushort, 8, 16, u16_m8k16v1, 16, 8)
 DEF_BLOCK2D_LOAD_STORE(half, ushort, 8, 16, u16_m4k32v1, 32, 4)
 DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
+
+DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 8, 16, u16_m4k32v1, 32, 4)
+DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
 
 #define tile_fill(t, v) \
     do { \
@@ -176,14 +194,15 @@ DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
                 = __builtin_convertvector(t.x[i], __typeof__(t_new.x[i])); \
     } while (0)
 
-#define tile_copy_to_half2(t, t_new) \
+#define tile_copy_to_vec2(t, t_new, type) \
     do { \
         _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \
                                i++) { \
             _Pragma("unroll") for (int s = 0; \
                                    s < sizeof(t.x[0]) / sizeof(t.x[0][0]) / 2; \
                                    s++) { \
-                half2 v = {t.x[i][2 * s], t.x[i][2 * s + 1]}; \
+                type v = {CONVERT_DATA_T(t.x[i][2 * s]), \
+                        CONVERT_DATA_T(t.x[i][2 * s + 1])}; \
                 t_new.x[i][s] = as_uint(v); \
             } \
         } \
@@ -195,6 +214,21 @@ DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
 
 #define xlane_tile_access(t, i, j, sg, br, bc, nbr) \
     sub_group_broadcast(tile_access(t, i, j, sg, br, bc, nbr), i % sg)
+
+#define tile_predicated_assignment_t( \
+        t, sg_offset_r, sg_offset_c, predicate, value, sg, br, bc, nbr, nbc) \
+    do { \
+        for (int j = 0; j < (bc * nbc); j++) { \
+            for (int i0 = 0; i0 < (br * nbr); i0 += sg) { \
+                int i = i0 + get_sub_group_local_id(); \
+                int offset_r = sg_offset_r + j; \
+                int offset_c = sg_offset_c + i; \
+                if (predicate(offset_r, offset_c)) { \
+                    tile_access(t, i0, j, sg, br, bc, nbr) = value; \
+                } \
+            } \
+        } \
+    } while (0)
 
 #define DECLARE_2D_TILE_OPS(tile_type, element_type, sg, br, bc, nbr, nbc) \
     __attribute__((overloadable)) void tile_load_full(tile_type *t, \
@@ -457,13 +491,14 @@ DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
     }
 
 #define DECLARE_2D_TILE_COPY_REBLOCK(tile_type0, sg0, br0, bc0, nbr0, nbc0, \
-        tile_type1, sg1, br1, bc1, nbr1, nbc1) \
+        tile_type1, sg1, br1, bc1, nbr1, nbc1, conversion_func) \
     __attribute__((overloadable)) void tile_copy_reblock( \
             tile_type0 t0, tile_type1 *t1) { \
         _Pragma("unroll") for (int j = 0; j < bc0 * nbc0; j++) { \
             _Pragma("unroll") for (int i0 = 0; i0 < br0 * nbr0; i0 += sg0) { \
                 tile_access(*t1, i0, j, sg1, br1, bc1, nbr1) \
-                        = tile_access(t0, i0, j, sg0, br0, bc0, nbr0); \
+                        = conversion_func( \
+                                tile_access(t0, i0, j, sg0, br0, bc0, nbr0)); \
             } \
         } \
     }
@@ -557,16 +592,17 @@ DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
         tile_store_block2d(t, ptr, m, n, m, offset_r, offset_c); \
     }
 
-#define DECLARE_2D_TILE_LOAD_PACKED_HALF(tile_type, sg, br, bc, nbr, nbc) \
-    __attribute__((overloadable)) void tile_load_packed_half(tile_type *t, \
-            const global half *ptr, int m, int n, int ld, int offset_r, \
-            int offset_c) { \
+#define DECLARE_2D_TILE_LOAD_PACKED_VEC( \
+        tile_type, element_type, vec_type, sg, br, bc, nbr, nbc) \
+    __attribute__((overloadable)) void tile_load_packed_vec2(tile_type *t, \
+            const global element_type *ptr, int m, int n, int ld, \
+            int offset_r, int offset_c) { \
         ptr += ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             if (offset_c + j < n) { \
                 _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
                     int i = 2 * (i0 + get_sub_group_local_id()); \
-                    half2 loaded = 0; \
+                    vec_type loaded = 0; \
                     if (offset_r + i < m) loaded.s0 = ptr[i]; \
                     if (offset_r + i + 1 < m) loaded.s1 = ptr[i + 1]; \
                     tile_access(*t, i0, j, sg, br, bc, nbr) = as_uint(loaded); \
@@ -574,10 +610,10 @@ DEF_BLOCK2D_LOAD_STORE(half, ushort, 16, 16, u16_m8k32v1, 32, 8)
             } \
         } \
     } \
-    __attribute__((overloadable)) void tile_load_packed_half(tile_type *t, \
-            const global half *ptr, int m, int n, int offset_r, \
+    __attribute__((overloadable)) void tile_load_packed_vec2(tile_type *t, \
+            const global element_type *ptr, int m, int n, int offset_r, \
             int offset_c) { \
-        tile_load_packed_half(t, ptr, m, n, m, offset_r, offset_c); \
+        tile_load_packed_vec2(t, ptr, m, n, m, offset_r, offset_c); \
     }
 
 #define cooperative_prefetch_2d(ptr, r, c, ld, sg_id, n_sg, sg_size, caching) \
@@ -614,11 +650,13 @@ __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
         uint n_sg, uint sg_size, enum LSC_LDCC caching) {
     const uint cl_per_col = (rbytes + 63) >> 6;
     const uint cl = cl_per_col * c;
+
     const uint cl_per_sg = (cl + n_sg - 1) / n_sg;
     const uint cl_iters = (cl_per_sg + sg_size - 1) / sg_size;
 #pragma unroll
     for (uint ii_cl = 0; ii_cl < cl_iters; ii_cl++) {
-        uint i_cl = ii_cl + (sg_id * cl_per_sg) + get_sub_group_local_id();
+        uint i_cl = (ii_cl * cl_per_sg + sg_id) * sg_size
+                + get_sub_group_local_id();
         uint r_cl = i_cl % cl_per_col;
         uint c_cl = i_cl / cl_per_col;
         if (i_cl < cl) {
@@ -640,7 +678,8 @@ __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
     const uint max_off = rbytes - 1 + (c - 1) * ld_bytes;
 #pragma unroll
     for (uint ii_cl = 0; ii_cl < cl_iters; ii_cl++) {
-        uint i_cl = ii_cl + (sg_id * cl_per_sg) + get_sub_group_local_id();
+        uint i_cl = (ii_cl * cl_per_sg + sg_id) * sg_size
+                + get_sub_group_local_id();
         uint r_cl = i_cl % cl_per_col;
         uint c_cl = i_cl / cl_per_col;
         uint pf_off = min(r_cl * 64 + c_cl * ld_bytes, max_off);

@@ -25,7 +25,7 @@
 #include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_sum_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,15 +33,15 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-struct multi_po_reorder_sum : public gpu_primitive_t {
+struct multi_po_reorder_sum_t : public gpu_primitive_t {
     using gpu_primitive_t::gpu_primitive_t;
     struct pd_t : public gpu_sum_pd_t {
         using gpu_sum_pd_t::gpu_sum_pd_t;
 
         pd_t(const pd_t &rhs) = default;
-        ~pd_t() = default;
+        ~pd_t() override = default;
 
-        DECLARE_SUM_PD_T("multi_po_reorder_sum", multi_po_reorder_sum);
+        DECLARE_SUM_PD_T("multi_po_reorder_sum", multi_po_reorder_sum_t);
 
         status_t init(impl::engine_t *engine) {
             VDISPATCH_SUM_SC(

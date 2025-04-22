@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
 * Copyright 2024 Arm Ltd. and affiliates
 *
@@ -291,41 +291,52 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
 
     const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
-    brg->with_scales = !src_scales.has_default_values()
-            || !wei_scales.has_default_values()
+    const bool has_src_scales = !src_scales.has_default_values();
+    const bool has_wei_scales = !wei_scales.has_default_values();
+    brg->with_scales = has_src_scales || has_wei_scales
             || brg->with_weights_scale_adjust;
     if (brg->with_scales) {
         // Note. the current version supports only two different output scale
         // types:
-        //     1) common (mask_ = 0)
+        //     1) common (mask = 0)
         //     2) per_n_dim_scale - broadcast across n dimension;
         //        for convolution and inner product promitives it corresponds
-        //        to "per_oc" mask_ = 1 << 1; for matmul - to
-        //        mask_ = (1 << (ndims - 1))), where ndims is number of
+        //        to "per_oc" mask = 1 << 1; for matmul - to
+        //        mask = (1 << (ndims - 1))), where ndims is number of
         //        dimensions for original matmul problem
-        // So if wei_scales.mask_ != 0 (not common) it's assumed here that scale
-        // type is per_n_dim_scale and driver which calls brgemm kernel checked
-        // that mask has correct value for this case
-        brg->is_oc_scale = wei_scales.mask_ != 0;
+        // So if wei_scales.get_mask() > 0 (not common) it's assumed here that
+        // scale type is per_n_dim_scale and driver which calls brgemm kernel
+        // checked that mask has correct value for this case
+        brg->is_oc_scale = wei_scales.get_mask() > 0;
     }
 
     const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
-    brg->with_dst_scales = !dst_scales.has_default_values();
-    const bool scales_ok = src_scales.mask_ == 0 && dst_scales.mask_ == 0
+    const bool has_dst_scales = !dst_scales.has_default_values();
+    brg->with_dst_scales = has_dst_scales;
+    const bool scales_ok
+            = IMPLICATION(has_src_scales, src_scales.get_mask() == 0)
+            && IMPLICATION(has_dst_scales, dst_scales.get_mask() == 0)
             && attr->scales_.has_default_values(
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST});
     if (!scales_ok) return status::unimplemented;
 
     auto init_zp_type
             = [&](brgemm_broadcast_t &zp_type, int mem_arg) -> status_t {
-        auto zero_points = attr->zero_points_;
+        const auto &zp = attr->zero_points_;
+        // Always init a default value;
+        zp_type = brgemm_broadcast_t::none;
 
-        // common zero point type is supported for now
-        if (!zero_points.common(mem_arg)) return status::unimplemented;
+        if (!zp.has_default_values(mem_arg)) {
+            int mask = zp.get_mask(mem_arg);
+            if (mask == 0) {
+                zp_type = brgemm_broadcast_t::per_tensor;
+            } else if (mask == (1 << 1)) {
+                zp_type = brgemm_broadcast_t::per_n;
+            } else {
+                return status::unimplemented;
+            }
+        }
 
-        zp_type = zero_points.has_default_values(mem_arg)
-                ? brgemm_broadcast_t::none
-                : brgemm_broadcast_t::per_tensor;
         return status::success;
     };
 
@@ -414,6 +425,11 @@ status_t brgemm_desc_set_attr(brgemm_t *brg, const brgemm_attr_t &brgattr) {
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
 
+    return status::success;
+}
+
+status_t brgemm_desc_finalize(brgemm_t *brg) {
+    // TODO: implement functionality here similar to corresponding one in x64
     return status::success;
 }
 
@@ -513,7 +529,8 @@ int brgemm_cmp(const brgemm_t &lhs, const brgemm_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_prfB.dist2);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist2);
-    CMP_BRGEMM_FIELD(brgattr.wary_tail_read);
+    CMP_BRGEMM_FIELD(brgattr.wary_A_k_tail_read);
+    CMP_BRGEMM_FIELD(brgattr.extendable_k);
     CMP_BRGEMM_FIELD(brgattr.generate_skip_accumulation);
     CMP_BRGEMM_FIELD(brgattr.bd_mask_level);
     CMP_BRGEMM_FIELD(brgattr.use_uker);

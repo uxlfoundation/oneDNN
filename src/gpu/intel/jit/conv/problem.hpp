@@ -53,7 +53,7 @@ T &&pick_abc(tensor_kind_t abc, prop_kind_t prop, T &&src, T &&wei, T &&dst) {
             if (is_fwd) return std::forward<T>(dst);
             if (is_bwd_d) return std::forward<T>(src);
             return std::forward<T>(wei);
-        default: ir_error_not_expected();
+        default: gpu_error_not_expected();
     }
     return std::forward<T>(src);
 }
@@ -77,6 +77,7 @@ T &&pick_c(prop_kind_t prop, T &&src, T &&wei, T &&dst) {
 }
 
 tensor_kind_t to_abc(prop_kind_t prop, tensor_kind_t tensor);
+tensor_kind_t from_abc(prop_kind_t prop, tensor_kind_t abc);
 const std::vector<pvar_t> &conv_stride_dims();
 const std::vector<pvar_t> &conv_dilation_dims();
 const std::vector<pvar_t> &conv_padding_dims();
@@ -128,7 +129,7 @@ public:
         if (is_fwd) return prop_kind::forward;
         if (is_bwd_d) return prop_kind::backward_data;
         if (is_bwd_w) return prop_kind::backward_weights;
-        ir_error_not_expected();
+        gpu_error_not_expected();
         return prop_kind::undef;
     }
 
@@ -236,7 +237,7 @@ public:
         if (prb_.is_fwd) return DNNL_ARG_SRC;
         if (prb_.is_bwd_d) return DNNL_ARG_DIFF_SRC;
         if (prb_.is_bwd_w) return DNNL_ARG_SRC;
-        ir_error_not_expected();
+        gpu_error_not_expected();
         return DNNL_ARG_UNDEF;
     }
 
@@ -247,7 +248,7 @@ public:
         if (prb_.is_fwd) return DNNL_ARG_WEIGHTS;
         if (prb_.is_bwd_d) return DNNL_ARG_WEIGHTS;
         if (prb_.is_bwd_w) return DNNL_ARG_DIFF_WEIGHTS;
-        ir_error_not_expected();
+        gpu_error_not_expected();
         return DNNL_ARG_UNDEF;
     }
 
@@ -258,7 +259,7 @@ public:
         if (prb_.is_fwd) return DNNL_ARG_BIAS;
         if (prb_.is_bwd_d) return DNNL_ARG_BIAS;
         if (prb_.is_bwd_w) return DNNL_ARG_DIFF_BIAS;
-        ir_error_not_expected();
+        gpu_error_not_expected();
         return DNNL_ARG_UNDEF;
     }
 
@@ -269,7 +270,7 @@ public:
         if (prb_.is_fwd) return DNNL_ARG_DST;
         if (prb_.is_bwd_d) return DNNL_ARG_DIFF_DST;
         if (prb_.is_bwd_w) return DNNL_ARG_DIFF_DST;
-        ir_error_not_expected();
+        gpu_error_not_expected();
         return DNNL_ARG_UNDEF;
     }
 

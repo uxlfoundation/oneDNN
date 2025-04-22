@@ -17,21 +17,20 @@
 #include "common/logging.hpp"
 #include "common/utils.hpp"
 
-#include "common/spdlog/sinks/rotating_file_sink.h"
-#include "common/spdlog/spdlog.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/spdlog.h"
 
 namespace dnnl {
 namespace impl {
 
-log_manager_t::log_manager_t() {
-
+log_manager_t::log_manager_t()
+    : logfile_path_(getenv_string_user("VERBOSE_LOGFILE"))
     // enables logging as well as printing to stdout
-    console_flag_ = getenv_int_user("VERBOSE_LOG_WITH_CONSOLE", 0);
+    , console_flag_(getenv_int_user("VERBOSE_LOG_WITH_CONSOLE", 0)) {
 
     // logging is automatically disabled when no filepath is provided by
     // DNNL_VERBOSE_LOGFILE
     // in this case, we fall back to printing to stdout
-    logfile_path_ = getenv_string_user("VERBOSE_LOGFILE");
     if (logfile_path_.empty()) {
         console_flag_ = true;
         return;

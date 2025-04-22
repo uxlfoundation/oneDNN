@@ -26,8 +26,8 @@
 #include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_rnn_pd.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
 #include "gpu/intel/ocl/rnn/rnn_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 // TODO just to debug
@@ -55,17 +55,17 @@ enum gemm_kind_t {
 };
 
 template <prop_kind_t aprop>
-struct _simple_rnn_common_t : public gpu_primitive_t {
+struct simple_rnn_common_t : public gpu_primitive_t {
     using gpu_primitive_t::gpu_primitive_t;
 
-    using class_name = _simple_rnn_common_t<aprop>;
+    using class_name = simple_rnn_common_t<aprop>;
 
-    typedef elemwise_sig((class_name::*elemwise_f));
-    typedef elemwise_sig_gru((class_name::*elemwise_gru_f));
-    typedef elemwise_sig_gru_lbr((class_name::*elemwise_gru_lbr_f));
-    typedef cell_execution_sig((class_name::*cell_execution_f));
-    typedef grid_execution_sig((class_name::*grid_execution_f));
-    typedef gemm_sig((class_name::*gemm_t));
+    using elemwise_f = elemwise_sig((class_name::*));
+    using elemwise_gru_f = elemwise_sig_gru((class_name::*));
+    using elemwise_gru_lbr_f = elemwise_sig_gru_lbr((class_name::*));
+    using cell_execution_f = cell_execution_sig((class_name::*));
+    using grid_execution_f = grid_execution_sig((class_name::*));
+    using gemm_t = gemm_sig((class_name::*));
 
     using base_pd_t =
             typename utils::conditional<false || aprop == prop_kind::forward,
@@ -263,8 +263,8 @@ private:
 
     enum { SCALES_ = 0, TM_SCALES_ = 1 };
 };
-using simple_rnn_fwd_t = _simple_rnn_common_t<prop_kind::forward>;
-using simple_rnn_bwd_t = _simple_rnn_common_t<prop_kind::backward>;
+using simple_rnn_fwd_t = simple_rnn_common_t<prop_kind::forward>;
+using simple_rnn_bwd_t = simple_rnn_common_t<prop_kind::backward>;
 } // namespace ocl
 } // namespace intel
 } // namespace gpu

@@ -95,7 +95,10 @@ struct brgemm_matmul_conf_t {
 
     cpu_isa_t isa;
 
+    matmul_reduce_kind_t reduce_kind;
+
     format_tag_t src_tag, wei_tag, dst_tag, bia_tag;
+    bool with_reduce;
     bool with_bias;
     bool with_sum;
     bool with_eltwise;
@@ -114,6 +117,7 @@ struct brgemm_matmul_conf_t {
     bool use_buffer_a_tail_only;
     bool use_buffer_b;
     bool use_buffer_c;
+    bool use_buffer_reduce;
 
     brgemm_matmul_bcast_desc_t bcast_A_desc;
     brgemm_matmul_bcast_desc_t bcast_B_desc;
@@ -123,13 +127,14 @@ struct brgemm_matmul_conf_t {
     data_type_t wei_dt;
     data_type_t acc_dt;
     data_type_t bia_dt;
+    data_type_t reduce_dt;
     data_type_t orig_src_dt;
     data_type_t orig_wei_dt;
     int nthr;
     int nthr_k;
 
     // Auxiliary values for init_config() and execute()
-    dim_t a_dt_sz, b_dt_sz, c_dt_sz, acc_dt_sz, bias_dt_sz;
+    dim_t a_dt_sz, b_dt_sz, c_dt_sz, acc_dt_sz, bias_dt_sz, reduce_dt_sz;
 
     // used for transposed buffer datatype when different from x_dt_sz
     // (e.g. used in BF32 implementations having to down-convert to BF16
@@ -164,6 +169,9 @@ struct brgemm_matmul_conf_t {
 
     dim_t buffer_b_chunk_sz;
     dim_t buffer_b_per_thread_sz;
+
+    dim_t buffer_reduce_per_thread_sz;
+
     dim_t s8s8_comp_ithr_str;
     dim_t s8s8_comp_b_str;
     dim_t s8s8_comp_n_str;
@@ -172,7 +180,13 @@ struct brgemm_matmul_conf_t {
     bool transposed_A;
     bool transposed_B;
     bool blocked_B;
-    bool treat_transposed_A_as_plain;
+    bool treat_A_as_plain;
+
+    // A_strides could be changed during
+    // Matmul conf initialization in case when batches merged into M.
+    // This flag helps to properly initialize LDA when A_strides
+    // were changed.
+    bool adjust_a_strides = false;
 
     dim_t zp_a_comp_shift_n;
     dim_t zp_a_comp_elems_per_thr;
@@ -203,6 +217,8 @@ struct brgemm_matmul_conf_t {
     bool is_oscale_per_n = false;
     bool is_oscale_per_k = false;
     bool apply_scales_in_buffer_b = false;
+    bool extendable_k = false;
+
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;
         const dim_t big_K_threshold = big_stride_threshold_in_bytes / a_dt_sz;
@@ -267,7 +283,13 @@ struct brgemm_matmul_conf_utils_t {
         }
         bool use_blocked_LDB = bgmmc.is_amx || bgmmc.use_buffer_b
                 || bgmmc.wei_tag != plain_tensor_layout_tag;
-        return use_blocked_LDB ? bgmmc.wei_n_blk : md_ldb;
+        if (use_blocked_LDB) return bgmmc.wei_n_blk;
+        // When K == 1 we always pick "ab" format for B (see set_or_check_B_tag)
+        // regardles of whether the actual tag was "ab" or  "ba".
+        // Since the implementation assumes the "ab" format is used we cannot
+        // use bgmmc.B_strides[1] directly as the strides could be specified for
+        // "ba" therefore we need to use bgmmc.N instead.
+        return bgmmc.K == 1 ? bgmmc.N : md_ldb;
     }
 
     inline bool maybe_low_brg_blocking() const {

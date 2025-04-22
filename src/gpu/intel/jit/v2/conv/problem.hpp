@@ -47,12 +47,13 @@ public:
                 return pick_b(prop_, src_tag_, wei_tag_, dst_tag_);
             case tensor_kind_t::c:
                 return pick_c(prop_, src_tag_, wei_tag_, dst_tag_);
-            default: ir_error_not_expected();
+            default: gpu_error_not_expected();
         }
         return src_tag_;
     }
     const pvar_tile_t &shape() const { return shape_; }
-    pvar_map_t<dim_t> vars() const;
+    bool with_post_ops() const { return with_post_ops_; }
+    bool deterministic() const { return deterministic_; }
     bool is_depthwise() const {
         dim_t g = shape_.at(pvars::g);
         dim_t ic = shape_.at(pvars::ic);
@@ -70,6 +71,8 @@ public:
     void set_dst_tag(const layout_tag_t &tag) { dst_tag_ = tag; }
     void set_bias_type(const type_t &bias_type) { bias_type_ = bias_type; }
     void set_shape(const pvar_tile_t &shape) { shape_ = shape; }
+    void set_with_post_ops(bool value) { with_post_ops_ = value; }
+    void set_deterministic(bool value) { deterministic_ = value; }
     bool with_bias_fwd() const {
         return prop_ == prop_kind::forward && !bias_type_.is_undef();
     }
@@ -98,6 +101,8 @@ private:
     type_t bias_type_;
     pvar_tile_t shape_;
     std::array<int, 3> dhw_map_;
+    bool with_post_ops_ = false;
+    bool deterministic_ = false;
 };
 
 } // namespace conv

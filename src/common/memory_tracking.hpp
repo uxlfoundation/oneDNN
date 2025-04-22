@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2018-2025 Intel Corporation
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -166,6 +166,7 @@ enum {
     key_brgemm_primitive_buffer_d,
     key_brgemm_primitive_zp_comp_a,
     key_brgemm_primitive_zp_comp_b,
+    key_brgemm_primitive_buffer_reduce,
     key_concat_iptrs,
     key_concat_istrides,
     key_concat_nelems,
@@ -179,6 +180,7 @@ enum {
     key_conv_amx_wsp_buffer,
     key_conv_bia_reduction,
     key_conv_bias_bf16_convert_wsp,
+    key_conv_bias_s32_convert,
     key_conv_cudnn,
     key_conv_cudnn_algo,
     key_conv_cudnn_filter,
@@ -205,8 +207,6 @@ enum {
     key_conv_ncsp_matmul_dst,
     key_conv_ncsp_diff_sp_sum,
     key_conv_padded_bias,
-    key_conv_permuted_inputs,
-    key_conv_permuted_outputs,
     key_conv_permuted_weights,
     key_conv_rtus_space,
     key_conv_store_wsp,
@@ -266,8 +266,6 @@ enum {
     key_matmul_wei_trans,
     key_matmul_dst_trans,
     key_matmul_dst_cast_acc,
-    key_matmul_lt_src_scale,
-    key_matmul_lt_wei_scale,
     key_matmul_sparse_tmp_ptr,
     key_pool_dst_bf16cvt,
     key_pool_dst_plain2blocked_cvt,
@@ -281,6 +279,7 @@ enum {
     key_reducer_space_bctx,
     key_reduction,
     key_reduction_1,
+    key_reduction_out,
     key_reorder_cross_space,
     key_reorder_space,
     key_reorder_src_scales,
@@ -317,11 +316,9 @@ enum {
     key_softmax_interim_store,
     key_sum_reduction,
     key_sum_srcs_cvt,
-    key_wino_transformed_weights,
     key_wino_U,
     key_wino_V,
     key_wino_M,
-    key_wino_workspace,
     // These two keys should always be the last ones,
     // even though they are not in alphabetical order
     key_nested,
@@ -454,8 +451,8 @@ struct registry_t {
                     (return_type)ptr_start, entry.size};
         }
     };
-    typedef common_iterator_t<void *> iterator;
-    typedef common_iterator_t<const void *> const_iterator;
+    using iterator = common_iterator_t<void *>;
+    using const_iterator = common_iterator_t<const void *>;
     iterator begin(void *base_ptr_) const {
         return iterator(base_ptr_, offset_map_);
     }

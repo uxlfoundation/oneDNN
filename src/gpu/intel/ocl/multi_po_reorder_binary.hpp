@@ -25,7 +25,7 @@
 #include "gpu/gpu_binary_pd.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,16 +33,17 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-struct multi_po_reorder_binary : public gpu_primitive_t {
+struct multi_po_reorder_binary_t : public gpu_primitive_t {
     using gpu_primitive_t::gpu_primitive_t;
     struct pd_t : public gpu_binary_pd_t {
         using gpu_binary_pd_t::gpu_binary_pd_t;
 
-        DECLARE_COMMON_PD_T("multi_po_reorder_binary", multi_po_reorder_binary);
+        DECLARE_COMMON_PD_T(
+                "multi_po_reorder_binary", multi_po_reorder_binary_t);
 
         status_t init(impl::engine_t *engine) {
-            if (attr()->scales_.get(DNNL_ARG_SRC_0).is_set_
-                    || attr()->scales_.get(DNNL_ARG_SRC_1).is_set_
+            if (!attr()->scales_.has_default_values(DNNL_ARG_SRC_0)
+                    || !attr()->scales_.get(DNNL_ARG_SRC_1).has_default_values()
                     || attr()->post_ops_.len() >= 1) {
                 VDISPATCH_BINARY(false, VERBOSE_UNSUPPORTED_ATTR);
             }

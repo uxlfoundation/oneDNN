@@ -83,9 +83,8 @@ struct attr_info_t {
     bool with_src_scales;
     bool with_wei_scales;
     bool with_dst_scales;
-    bool src_scales_mask;
-    bool wei_scales_mask;
-    bool dst_scales_mask;
+    int wei_scales_mask;
+    int dst_scales_mask;
     data_type_t src_scales_data_type;
     data_type_t wei_scales_data_type;
     data_type_t dst_scales_data_type;
@@ -104,23 +103,23 @@ struct attr_info_t {
 template <size_t ndims>
 using strides_t = std::array<dim_t, ndims>;
 template <>
-struct compute::scalar_type_traits<strides_t<2>> {
+struct compute::scalar_type_traits_t<strides_t<2>> {
     static const auto type = scalar_type_t::_int64x3_t;
 };
 template <>
-struct compute::scalar_type_traits<strides_t<3>> {
+struct compute::scalar_type_traits_t<strides_t<3>> {
     static const auto type = scalar_type_t::_int64x3_t;
 };
 template <>
-struct compute::scalar_type_traits<strides_t<4>> {
+struct compute::scalar_type_traits_t<strides_t<4>> {
     static const auto type = scalar_type_t::_int64x4_t;
 };
 template <>
-struct compute::scalar_type_traits<strides_t<5>> {
+struct compute::scalar_type_traits_t<strides_t<5>> {
     static const auto type = scalar_type_t::_int64x5_t;
 };
 template <>
-struct compute::scalar_type_traits<strides_t<6>> {
+struct compute::scalar_type_traits_t<strides_t<6>> {
     static const auto type = scalar_type_t::_int64x5_t;
 };
 
@@ -681,7 +680,8 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         const std::string &str, bool with_punning = true);
 
 void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
-        const memory_desc_info_t &md_info, const char *prefix);
+        const memory_desc_info_t &md_info, const char *prefix,
+        bool with_punning = true);
 
 void def_binary_alg_kinds(compute::kernel_ctx_t &kernel_ctx);
 
@@ -713,11 +713,11 @@ bool post_ops_preserves_zeroes(
 
 status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md);
+        const memory_desc_t &dst_md, bool with_punning = true);
 
 status_t def_attr_info(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md);
+        const memory_desc_t &dst_md, bool with_punning = true);
 
 void def_dispatch(
         compute::kernel_ctx_t &kernel_ctx, const compute::dispatch_t &dispatch);

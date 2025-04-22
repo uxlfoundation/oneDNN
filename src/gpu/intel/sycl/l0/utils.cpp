@@ -17,6 +17,10 @@
 #include "gpu/intel/sycl/l0/utils.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
 
+#include "gpu/intel/jit/binary_format.hpp"
+#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "ngen/ngen_level_zero.hpp"
+
 #if defined(__linux__)
 #include <dlfcn.h>
 #elif defined(_WIN32)
@@ -25,7 +29,8 @@
 #error "Level Zero is supported on Linux and Windows only"
 #endif
 
-#include "gpu/intel/sycl/l0/level_zero/ze_api.h"
+#include "level_zero/ze_api.h"
+#include "level_zero/ze_intel_gpu.h"
 
 #if !defined(__SYCL_COMPILER_VERSION)
 #error "Unsupported compiler"
@@ -173,6 +178,21 @@ status_t func_zeDeviceGetProperties(
     return status::success;
 }
 
+status_t func_zeDeviceGetModuleProperties(ze_device_handle_t hDevice,
+        ze_device_module_properties_t *pDeviceProperties) {
+    static auto f = find_ze_symbol<decltype(&zeDeviceGetModuleProperties)>(
+            "zeDeviceGetModuleProperties");
+
+    if (!f) {
+        VERROR(common, level_zero,
+                "failed to find systolic query extension (maybe update the "
+                "driver?)");
+        return status::runtime_error;
+    }
+    ZE_CHECK(f(hDevice, pDeviceProperties));
+    return status::success;
+}
+
 } // namespace
 
 // This function is called from compatibility layer that ensures compatibility
@@ -270,6 +290,130 @@ bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs) {
     auto rhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(rhs);
 
     return lhs_ze_handle == rhs_ze_handle;
+}
+
+status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
+    auto devicePropsIP = ze_device_ip_version_ext_t();
+    devicePropsIP.stype = ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT;
+
+    auto deviceProps = ze_device_properties_t();
+    deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+    deviceProps.pNext = &devicePropsIP;
+
+    CHECK(func_zeDeviceGetProperties(device, &deviceProps));
+    ip_version = devicePropsIP.ipVersion;
+    return status::success;
+}
+
+status_t get_l0_device_enabled_systolic_intel(
+        ze_device_handle_t device, bool &mayiuse_systolic) {
+    // Note: supported by Intel Driver 24.05 and onwards
+    auto deviceModPropsExt = ze_intel_device_module_dp_exp_properties_t();
+    deviceModPropsExt.stype
+            = ZE_STRUCTURE_INTEL_DEVICE_MODULE_DP_EXP_PROPERTIES;
+
+    auto deviceModProps = ze_device_module_properties_t();
+    deviceModProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
+    deviceModProps.pNext = &deviceModPropsExt;
+
+    CHECK(func_zeDeviceGetModuleProperties(device, &deviceModProps));
+    mayiuse_systolic
+            = deviceModPropsExt.flags & ZE_INTEL_DEVICE_MODULE_EXP_FLAG_DPAS;
+    return status::success;
+}
+
+status_t get_l0_device_enabled_native_float_atomics(
+        ze_device_handle_t device, uint64_t native_extensions) {
+    using namespace gpu::intel::compute;
+
+    auto fltAtom = ze_float_atomic_ext_properties_t();
+    fltAtom.stype = ZE_STRUCTURE_TYPE_FLOAT_ATOMIC_EXT_PROPERTIES;
+
+    auto deviceProps = ze_device_properties_t();
+    deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+    deviceProps.pNext = &fltAtom;
+
+    CHECK(func_zeDeviceGetProperties(device, &deviceProps));
+
+    ze_device_fp_atomic_ext_flags_t atomic_load_store
+            = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_LOAD_STORE
+            | ZE_DEVICE_FP_ATOMIC_EXT_FLAG_LOCAL_LOAD_STORE;
+    ze_device_fp_atomic_ext_flags_t atomic_add
+            = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_ADD
+            | ZE_DEVICE_FP_ATOMIC_EXT_FLAG_LOCAL_ADD;
+    ze_device_fp_atomic_ext_flags_t atomic_min_max
+            = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_MIN_MAX
+            | ZE_DEVICE_FP_ATOMIC_EXT_FLAG_LOCAL_MIN_MAX;
+
+    if ((fltAtom.fp16Flags & atomic_load_store) == atomic_load_store)
+        native_extensions |= (uint64_t)native_ext_t::fp16_atomic_load_store;
+    if ((fltAtom.fp16Flags & atomic_add) == atomic_add)
+        native_extensions |= (uint64_t)native_ext_t::fp16_atomic_add;
+    if ((fltAtom.fp16Flags & atomic_add) == atomic_min_max)
+        native_extensions |= (uint64_t)native_ext_t::fp16_atomic_min_max;
+
+    if ((fltAtom.fp32Flags & atomic_load_store) == atomic_load_store)
+        native_extensions |= (uint64_t)native_ext_t::fp32_atomic_load_store;
+    if ((fltAtom.fp32Flags & atomic_add) == atomic_add)
+        native_extensions |= (uint64_t)native_ext_t::fp32_atomic_add;
+    if ((fltAtom.fp32Flags & atomic_add) == atomic_min_max)
+        native_extensions |= (uint64_t)native_ext_t::fp32_atomic_min_max;
+
+    if ((fltAtom.fp64Flags & atomic_load_store) == atomic_load_store)
+        native_extensions |= (uint64_t)native_ext_t::fp64_atomic_load_store;
+    if ((fltAtom.fp64Flags & atomic_add) == atomic_add)
+        native_extensions |= (uint64_t)native_ext_t::fp64_atomic_add;
+    if ((fltAtom.fp64Flags & atomic_add) == atomic_min_max)
+        native_extensions |= (uint64_t)native_ext_t::fp64_atomic_min_max;
+
+    return status::success;
+}
+
+status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count) {
+    auto eucnt = ze_eu_count_ext_t();
+    auto deviceProps = ze_device_properties_t();
+    deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+    deviceProps.pNext = &eucnt;
+
+    CHECK(func_zeDeviceGetProperties(device, &deviceProps));
+    eu_count = eucnt.numTotalEUs;
+    return status::success;
+}
+
+status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
+        ze_context_handle_t context, uint32_t &ip_version,
+        compute::gpu_arch_t &gpu_arch, int &gpu_product_family,
+        int &stepping_id, uint64_t &native_extensions, bool &mayiuse_systolic,
+#if XE3P
+        bool &mayiuse_ngen_kernels, bool &is_efficient_64bit) {
+#else
+        bool &mayiuse_ngen_kernels) {
+#endif
+    using namespace ngen;
+    Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
+            context, device);
+    HW hw = getCore(product.family);
+
+    gpu_arch = jit::convert_ngen_arch_to_dnnl(hw);
+    gpu_product_family = static_cast<int>(product.family);
+    stepping_id = product.stepping;
+
+    mayiuse_systolic = false;
+    CHECK(get_l0_device_enabled_systolic_intel(device, mayiuse_systolic));
+
+    CHECK(get_l0_device_enabled_native_float_atomics(
+            device, native_extensions));
+
+    auto status
+            = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
+    if (status != status::success) mayiuse_ngen_kernels = false;
+#if XE3P
+    is_efficient_64bit
+            = LevelZeroCodeGenerator<HW::Unknown>::detectEfficient64Bit(
+                    context, device, hw);
+#endif
+    ip_version = 0;
+    return get_device_ip(device, ip_version);
 }
 
 } // namespace sycl

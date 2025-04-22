@@ -24,7 +24,7 @@
 #include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -77,22 +77,24 @@ struct ref_reorder_t : public gpu_primitive_t {
 
             VDISPATCH_REORDER(
                     utils::one_of(sdt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, s32, s8, u8, s4, u4, f64),
+                            f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REORDER(
                     utils::one_of(ddt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, s32, s8, u8, s4, u4, f64),
+                            f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_REORDER(
-                    IMPLICATION(utils::one_of(ddt, f8_e4m3, f8_e5m2, f4_e2m1),
+                    IMPLICATION(utils::one_of(ddt, f8_e4m3, f8_e5m2, f4_e2m1,
+                                        f4_e3m0),
                             utils::one_of(sdt, f64, f32, f16, bf16, f8_e5m2,
-                                    f8_e4m3, f4_e2m1, ddt)),
+                                    f8_e4m3, f4_e2m1, f4_e3m0, ddt)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REORDER(
-                    IMPLICATION(utils::one_of(sdt, f8_e4m3, f8_e5m2, f4_e2m1),
+                    IMPLICATION(utils::one_of(sdt, f8_e4m3, f8_e5m2, f4_e2m1,
+                                        f4_e3m0),
                             utils::one_of(ddt, f64, f32, f16, bf16, f8_e5m2,
-                                    f8_e4m3, f4_e2m1, sdt)),
+                                    f8_e4m3, f4_e2m1, f4_e3m0, sdt)),
                     VERBOSE_UNSUPPORTED_DT);
 
             auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
@@ -121,8 +123,10 @@ struct ref_reorder_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_REORDER_SC(init_conf(engine), "init_conf()");
-            init_scratchpad();
+            VDISPATCH_REORDER_SC(maybe_create_zp_precompute_conv_pd(dst_engine),
+                    "failed to create nested zp precompute convolution");
 
+            init_scratchpad();
             return status::success;
         }
 
@@ -137,6 +141,9 @@ struct ref_reorder_t : public gpu_primitive_t {
     };
 
     status_t init(impl::engine_t *engine) override {
+        CHECK(pd()->maybe_create_zp_precompute_conv(
+                zp_precomp_conv_, engine, this));
+
         compute::kernel_ctx_t kernel_ctx;
 
         auto status = pd()->init_kernel_ctx(kernel_ctx);
@@ -161,6 +168,7 @@ struct ref_reorder_t : public gpu_primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::vector<compute::kernel_t> kernels_;
+    std::shared_ptr<impl::primitive_t> zp_precomp_conv_;
 };
 
 } // namespace ocl

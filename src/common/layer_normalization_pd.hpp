@@ -157,8 +157,8 @@ private:
 };
 
 struct layer_normalization_fwd_pd_t : public layer_normalization_pd_t {
-    typedef layer_normalization_fwd_pd_t base_class;
-    typedef layer_normalization_fwd_pd_t hint_class;
+    using base_class = layer_normalization_fwd_pd_t;
+    using hint_class = layer_normalization_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (arg == DNNL_ARG_SRC) return arg_usage_t::input;
@@ -248,19 +248,27 @@ protected:
         return false;
     }
 
-    bool attr_scales_ok() const {
+    bool attr_scales_ok(const std::vector<int> &supported_args
+            = {DNNL_ARG_SRC, DNNL_ARG_DST}) const {
+        using namespace data_type;
         const auto &scales = attr()->scales_;
-        bool ok = true;
-        for (const auto &e : scales.scales_) {
-            ok = ok && e.second.mask_ == 0;
+        bool ok = scales.has_default_values(supported_args);
+
+        for (const auto &arg : supported_args) {
+            if (!scales.has_default_values(arg)) {
+                // TODO: disallow non-int8 scales?
+                // const data_type_t dt = arg_md(arg)->data_type;
+                // ok = ok && utils::one_of(dt, s8, u8);
+                ok = ok && scales.get_mask(arg) == 0;
+            }
         }
         return ok;
     }
 };
 
 struct layer_normalization_bwd_pd_t : public layer_normalization_pd_t {
-    typedef layer_normalization_bwd_pd_t base_class;
-    typedef layer_normalization_fwd_pd_t hint_class;
+    using base_class = layer_normalization_bwd_pd_t;
+    using hint_class = layer_normalization_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
         if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_MEAN, DNNL_ARG_VARIANCE,

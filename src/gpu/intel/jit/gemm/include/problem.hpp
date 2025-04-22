@@ -65,7 +65,7 @@ struct MatrixAddressing {
     uint8_t crosspack = 1;          // Crosspack for packed layouts.
     uint8_t alignment;              // Alignment for all addresses, offsets, and leading dimensions.
     uint8_t panelLength = 0;        // Length of the panel for packed layouts = #cols/rows for Pc/Pr respectively.
-    uint8_t padA[1] = {};
+    bool needA64 = false;
     uint16_t tileR = 0, tileC = 0;  // Tiling (0 if none) for packed layouts.
 
     void setAlignment(int align) { alignment = static_cast<uint8_t>(sanitizeAlign(align)); }
@@ -310,6 +310,8 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
         if (Ta.isF8()) Ta = Type::f16;
         if (Tb.isF8()) Tb = Type::f16;
     }
+        if (Ta.isF4()) Ta = Type::f16;
+        if (Tb.isF4()) Tb = Type::f16;
 
     if (hw > HW::Gen9 && !systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

@@ -597,17 +597,17 @@ std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
             continue;
 
         assert(mask >= 0);
-        v_masks.emplace_back(std::make_pair(
-                DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | arg, mask));
+        v_masks.emplace_back(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | arg, mask);
     }
     return v_masks;
 }
 
-bool attr_t::is_def(bool skip_fpmath) const {
+bool attr_t::is_def(bool skip_fpmath, bool skip_acc_mode) const {
     return scales.is_def() && zero_points.is_def() && post_ops.is_def()
             && scratchpad_mode == get_default_scratchpad_mode()
             && IMPLICATION(!skip_fpmath, fpmath_mode.is_def())
-            && acc_mode == dnnl_accumulation_mode_strict
+            && IMPLICATION(
+                    !skip_acc_mode, acc_mode == dnnl_accumulation_mode_strict)
             && rounding_mode.is_def() && deterministic.is_def()
             && dropout.is_def();
 }
@@ -920,19 +920,25 @@ std::ostream &dump_global_params(std::ostream &s) {
 #endif
     if (canonical || cold_cache_mode != default_cold_cache_mode)
         s << "--cold-cache=" << cold_cache_mode << " ";
+    if (canonical || execution_mode != execution_mode_t::direct)
+        s << "--execution-mode=" << execution_mode2str(execution_mode) << " ";
 
     return s;
 }
 
-dnnl_engine_kind_t str2engine_kind(const char *str) {
-    const char *param = "cpu";
-    if (!strncasecmp(param, str, strlen(param))) return dnnl_cpu;
-
-    param = "gpu";
-    if (!strncasecmp(param, str, strlen(param))) return dnnl_gpu;
-
-    assert(!"not expected");
-    return dnnl_cpu;
+dnnl_engine_kind_t str2engine_kind(const std::string &s) {
+    if (s == "cpu") {
+        return dnnl_cpu;
+    } else if (s == "gpu") {
+        return dnnl_gpu;
+    } else {
+        BENCHDNN_PRINT(0,
+                "Error: engine kind supports values \'cpu\' and \'gpu\' only. "
+                "Given input: %s\n",
+                s.c_str());
+        SAFE_V(FAIL);
+    }
+    return dnnl_any_engine;
 }
 
 dnnl_scratchpad_mode_t str2scratchpad_mode(const char *str) {

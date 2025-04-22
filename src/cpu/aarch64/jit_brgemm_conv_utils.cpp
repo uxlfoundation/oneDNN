@@ -1759,19 +1759,23 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const int prelu_ind = p.find(primitive_kind::prelu);
     jcp.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
 
+    const auto &zp = attr.zero_points_;
     jcp.src_zero_point
             = get_zp_type(attr, DNNL_ARG_SRC) != brgemm_broadcast_t::none;
     jcp.dst_zero_point
             = get_zp_type(attr, DNNL_ARG_DST) != brgemm_broadcast_t::none;
 
-    const bool has_zero_points = jcp.src_zero_point || jcp.dst_zero_point;
-    const bool params_ok
-            = IMPLICATION(has_zero_points, utils::one_of(jcp.src_dt, u8, s8))
-            && IMPLICATION(
-                    jcp.src_zero_point, attr.zero_points_.common(DNNL_ARG_SRC))
-            && IMPLICATION(
-                    jcp.dst_zero_point, attr.zero_points_.common(DNNL_ARG_DST));
-    if (!params_ok) return status::unimplemented;
+    VDISPATCH_CONV_IC(IMPLICATION(jcp.src_zero_point || jcp.dst_zero_point,
+                              utils::one_of(jcp.src_dt, s8, u8)),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    VDISPATCH_CONV_IC(
+            IMPLICATION(jcp.src_zero_point, zp.get_mask(DNNL_ARG_SRC) == 0),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    VDISPATCH_CONV_IC(
+            IMPLICATION(jcp.dst_zero_point, zp.get_mask(DNNL_ARG_DST) == 0),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     jcp.nthr = nthreads;
     jcp.kh_sets = 1;
@@ -1993,7 +1997,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.with_scales = !src_scales.has_default_values()
             || !wei_scales.has_default_values()
             || jcp.scale_adjust_factor != 1.0f;
-    jcp.is_oc_scale = wei_scales.mask_ != 0;
+    jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
     // disables the shape with small ic but large spatial
     // or specific large spatial shapes for int8 conv
@@ -2190,7 +2194,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.with_scales = !src_scales.has_default_values()
             || !wei_scales.has_default_values()
             || jcp.scale_adjust_factor != 1.0f;
-    jcp.is_oc_scale = wei_scales.mask_ != 0;
+    jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
     // enable ununroll_bd_loop for big shapes to reduce kernel sizes
     jcp.ununroll_bd_loop

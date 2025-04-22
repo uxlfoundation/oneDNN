@@ -46,6 +46,7 @@ GPU_DEFINE_PARSE_ENUM(send_kind_t, send_kind_names)
 // Send operation kind.
 enum class send_op_t {
     undef,
+    atomic_add,
     atomic_fadd,
 #if XE3P
     atomic_bfadd,
@@ -58,10 +59,23 @@ enum class send_op_t {
     store,
     store_2d,
 };
-
-std::ostream &operator<<(std::ostream &out, const send_op_t value);
 bool is_atomic(send_op_t op);
 send_op_t atomic_send_op(const type_t &type, bool has_atomic_fp64);
+
+static auto send_op_names = nstl::to_array({
+        make_enum_name(send_op_t::undef, "undef"),
+        make_enum_name(send_op_t::atomic_add, "atomic_add"),
+        make_enum_name(send_op_t::atomic_fadd, "atomic_fadd"),
+        make_enum_name(send_op_t::atomic_bfadd, "atomic_bfadd"),
+        make_enum_name(send_op_t::atomic_cmpwr, "atomic_cmpwr"),
+        make_enum_name(send_op_t::load, "load"),
+        make_enum_name(send_op_t::load_2d, "load_2d"),
+        make_enum_name(send_op_t::prefetch, "prefetch"),
+        make_enum_name(send_op_t::prefetch_2d, "prefetch_2d"),
+        make_enum_name(send_op_t::store, "store"),
+        make_enum_name(send_op_t::store_2d, "store_2d"),
+});
+GPU_DEFINE_PARSE_ENUM(send_op_t, send_op_names)
 
 // Send address model.
 enum class send_address_t {
@@ -193,7 +207,7 @@ public:
     }
     std::string str() const override {
         std::ostringstream oss;
-        oss << op;
+        oss << to_string(op);
         oss << ".";
         oss << type.str();
         if (is_scattered()) oss << "x" << slots;
@@ -229,7 +243,10 @@ public:
         return call({mem_buf, mem_off, reg_buf, mask, x, y, pattern});
     }
 
-    bool is_atomic() const { return op == send_op_t::atomic_fadd; }
+    bool is_atomic() const {
+        return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd,
+                send_op_t::atomic_bfadd, send_op_t::atomic_cmpwr);
+    }
     bool is_load() const { return op == send_op_t::load; }
     bool is_load_2d() const { return op == send_op_t::load_2d; }
     bool is_prefetch() const { return op == send_op_t::prefetch; }
@@ -259,7 +276,7 @@ public:
     }
 
     int payload_type_stride() const {
-        ir_assert(!is_2d());
+        gpu_assert(!is_2d());
         return std::max(4, type.size());
     }
 
@@ -298,7 +315,7 @@ public:
 
         if (is_scattered()) return type.size();
 
-        ir_error_not_expected();
+        gpu_error_not_expected();
         return 0;
     }
 
@@ -307,7 +324,7 @@ public:
         int masks = ir_utils::safe_divide(type.size() * slots, mask_size());
         if (hw < ngen::HW::XeHPC && is_block() && masks > 16) {
             // Round-robin masking, 16 bits are reused with dword granularity.
-            ir_assert(masks % 16 == 0);
+            gpu_assert(masks % 16 == 0);
             masks = 16;
         }
         return masks;
@@ -390,11 +407,11 @@ private:
         , fill_buf(zero_out)
         , block_2d_info(block_2d_info)
         , cache_hint(cache_hint) {
-        ir_assert(utils::one_of(op, send_op_t::load_2d, send_op_t::store_2d,
+        gpu_assert(utils::one_of(op, send_op_t::load_2d, send_op_t::store_2d,
                 send_op_t::prefetch_2d));
         if (is_store_2d()) {
-            ir_assert(!block_2d_info.vnni);
-            ir_assert(!block_2d_info.transpose);
+            gpu_assert(!block_2d_info.vnni);
+            gpu_assert(!block_2d_info.transpose);
         }
     }
 };

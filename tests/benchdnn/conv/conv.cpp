@@ -222,8 +222,11 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     auto wei_d = dnn_mem_t::init_md(prb->ndims + prb->has_groups,
             prb->wei_dims().data(), force_f32_dt ? dnnl_f32 : prb->get_dt(WEI),
             prb->wtag, prb->strides[STRIDES_WEI]);
-    auto bia_d = dnn_mem_t::init_md(1, prb->bia_dims().data(),
-            force_f32_dt ? dnnl_f32 : prb->get_dt(BIA), tag::any);
+    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> bia_d {};
+    if (prb->bia_dt() != dnnl_data_type_undef) {
+        bia_d = dnn_mem_t::init_md(1, prb->bia_dims().data(),
+                force_f32_dt ? dnnl_f32 : prb->get_dt(BIA), tag::any);
+    }
     auto dst_d = dnn_mem_t::init_md(prb->ndims, prb->dst_dims().data(),
             force_f32_dt ? dnnl_f32 : prb->get_dt(DST), prb->dtag,
             prb->strides[STRIDES_DST]);
@@ -253,8 +256,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
                         | DNNL_ARG_WEIGHTS,
                 wei_mask);
     }
-    const auto dw_bia_dt = prb->dir == FWD_B ? dnnl_f32 : dnnl_data_type_undef;
-    attr_args.prepare_dw_post_op(prb->attr, prb->get_dt(WEI), dw_bia_dt);
+    attr_args.prepare_dw_post_op(prb->attr, prb->get_dt(WEI), prb->bia_dt());
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args));
 
@@ -262,7 +264,6 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
         case FWD_D:
         case FWD_B:
         case FWD_I:
-            if (prb->dir != FWD_B) bia_d.reset(nullptr);
             TIME_C_PD(DNN_SAFE_STATUS(
                     dnnl_convolution_forward_primitive_desc_create(
                             &init_pd_args.pd, init_pd_args.engine,
@@ -285,7 +286,6 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             break;
         case BWD_W:
         case BWD_WB:
-            if (prb->dir == BWD_W) bia_d.reset(nullptr);
             TIME_C_PD(DNN_SAFE_STATUS(
                     dnnl_convolution_backward_weights_primitive_desc_create(
                             &init_pd_args.pd, init_pd_args.engine, alg, src_d,
@@ -325,50 +325,34 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
     update_cpu_ref_attrs(cpu_attr);
     std::vector<std::vector<dnnl_data_type_t>> prim_ref_dt {
             prb->dt, {dnnl_f32}};
-    if (is_cpu()) prim_ref_dt.erase(prim_ref_dt.begin());
-    dnnl_primitive_t prim_ref_ {};
-
-    for (const auto &prim_ref_dt_i : prim_ref_dt) {
-        prb_t prb_cpu {*prb, prb->dir, prim_ref_dt_i, tag::any, tag::any,
-                tag::any, {vdims_t(STRIDES_SIZE)}, DIRECT, prb->mb, cpu_attr,
-                prb->ctx_init, prb->ctx_exe, prb->impl_filter};
-
-        init_pd_args_t<prb_t> init_pd_args(
-                /* res = */ nullptr, get_cpu_engine(), &prb_cpu, prb->dir,
-                /* hint = */ nullptr, /* src_md = */ nullptr);
-        init_pd(init_pd_args);
-
-        benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> pdw;
-        // `is_service_prim=true` prevents from filtering the implementation
-        // by name which is intended through a `get_prim_ref_impl_filter()`.
-        // As `fetch_impl` doesn't have any further logic related to it, it's
-        // safe to set it to `false`.
-        fetch_impl(pdw, init_pd_args, get_prim_ref_impl_filter(),
-                /* res = */ nullptr,
-                /* is_service_prim = */ false);
-
-        // Prim desc wasn't created - try the next set...
-        if (!pdw) continue;
-
-        auto st = dnnl_primitive_create(&prim_ref_, pdw);
-        // Primitive wasn't created - try the next set...
-        if (st != dnnl_success) continue;
-
-        BENCHDNN_PRINT(5, "CPU reference oneDNN implementation: %s\n",
-                query_impl_info(pdw).c_str());
-        res->prim_ref_repro = prb_cpu.str();
-        prim_ref.reset(prim_ref_);
-        return OK;
+    // If there's no bias, undef data type should be used for prim_ref as well.
+    dnnl_data_type_t cpu_bia_dt
+            = prb->bia_dt() == dnnl_data_type_undef ? prb->bia_dt() : dnnl_f32;
+    std::vector<dnnl_data_type_t> prim_ref_bia_dt {prb->bia_dt(), cpu_bia_dt};
+    if (is_cpu()) {
+        prim_ref_dt.erase(prim_ref_dt.begin());
+        prim_ref_bia_dt.erase(prim_ref_bia_dt.begin());
     }
 
-    prim_ref.reset(prim_ref_);
+    for_(const auto &prim_ref_dt_i : prim_ref_dt)
+    for (const auto &prim_ref_bia_dt_i : prim_ref_bia_dt) {
+        prb_t prb_cpu {*prb, prb->dir, prim_ref_dt_i, prim_ref_bia_dt_i,
+                tag::any, tag::any, tag::any, {vdims_t(STRIDES_SIZE)}, DIRECT,
+                prb->mb, cpu_attr, prb->ctx_init, prb->ctx_exe,
+                prb->impl_filter};
+
+        auto st = init_prim_ref_common(prim_ref, &prb_cpu, res);
+        if (st == OK) return OK;
+    }
+
+    prim_ref.reset(nullptr);
     return OK;
 }
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
-    skip_unimplemented_data_type(
-            {prb->get_dt(SRC), prb->get_dt(WEI), prb->get_dt(DST)}, prb->dir,
-            res);
+    skip_unimplemented_data_type({prb->get_dt(SRC), prb->get_dt(WEI),
+                                         prb->get_dt(BIA), prb->get_dt(DST)},
+            prb->dir, res);
     skip_unimplemented_sum_po(prb->attr, res, dnnl_convolution,
             prb->get_dt(SRC), prb->get_dt(DST));
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_convolution);
@@ -550,7 +534,7 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
         check_kinds = {SRC};
     } else if (prb->dir & FLAG_BWD && prb->dir & FLAG_WEI) {
         check_kinds = {WEI};
-        if (prb->dir & FLAG_BIA) check_kinds.push_back(BIA);
+        if (prb->bia_dt() != dnnl_data_type_undef) check_kinds.push_back(BIA);
     } else {
         assert(!"unexpected!");
         SAFE_V(FAIL);
@@ -568,11 +552,26 @@ int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     return OK;
 }
 
-int check_cacheit(
-        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
+int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
-    SAFE(check_caches(v_prim[0], prb, res), WARN);
-    // Don't check caches for CPU prim as the reference.
+    if (has_bench_mode_bit(mode_bit_t::exec)) {
+        const auto &prim_ref = v_prim[1];
+        if (prim_ref) {
+            // Copy res to avoid save/restore state and reason.
+            res_t res_copy = *res;
+            SAFE(check_total_size(&res_copy, prim_ref), WARN);
+            if (res_copy.state == SKIPPED) {
+                v_prim[1].reset(nullptr);
+                SAFE(check_total_size(res), WARN);
+            }
+        } else {
+            SAFE(check_total_size(res), WARN);
+        }
+    }
+    if (has_bench_mode_bit(mode_bit_t::corr)) {
+        SAFE(check_caches(v_prim[0], prb, res), WARN);
+        // Don't check caches for CPU prim as the reference.
+    }
     return OK;
 }
 

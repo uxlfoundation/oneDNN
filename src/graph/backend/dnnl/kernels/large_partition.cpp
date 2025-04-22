@@ -36,6 +36,8 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
         pass_pipeline_t &pipeline) {
     // Directly lower down (1 to 1 mapping)
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    // Decompose select to binary ops if necessary
+    BACKEND_DNNL_ADD_PASS(pipeline, decompose_select_to_binary_ops);
 
     // Indirectly lower down (N to 1 mapping)
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_reciprocal_mul_to_div);
@@ -133,6 +135,11 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
 void larger_partition_kernel_t::setup_pipeline_stage2(pass_pipeline_t &pipeline,
         memory_planner_t &mem_planner, bool enable_constant_cache) {
     pipeline.reset_visualize_arg(true, false);
+    // do constant propagation here so that we can
+    // prepare constant info for other optimizations.
+    if (enable_constant_cache) {
+        BACKEND_DNNL_ADD_PASS(pipeline, constant_propagation);
+    }
     BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_transpose_to_matmul);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_matmul);

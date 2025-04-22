@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019-2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -111,8 +111,14 @@ public:
 
         storage->usm_ptr_ = decltype(usm_ptr_)(usm_ptr_.get(), [](void *) {});
         storage->usm_kind_ = usm_kind_;
+        storage->set_offset(offset());
 
         return storage;
+    }
+
+    std::unique_ptr<memory_storage_t> clone_ptr_off(
+            size_t offset) const override {
+        return get_sub_storage(offset, 0);
     }
 
     in_memory_arg_t get_in_memory_arg(

@@ -423,6 +423,8 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
             strategy.reverse[LoopM] = true;
         else if (mod == "rn")
             strategy.reverse[LoopN] = true;
+        else if (mod == "wt")
+            strategy.tlbWarmup = true;
         else if (mod == "kb" || mod == "kv") {
             if (mod == "kb") strategy.kParallel = true;
             if (mod == "kv") {
@@ -605,6 +607,13 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
 
     if (strategy.persistent && !strategy.linearOrder()) strategy.cWalkOrder = WalkOrder::SimpleLinear;
 
+    // Use new LSC messages on Xe2+
+    if (hw >= ngen::HW::Xe2) {
+       strategy.A.newDP = strategy.A_prefetch.newDP = true;
+       strategy.B.newDP = strategy.B_prefetch.newDP = true;
+       strategy.C.newDP = strategy.C_prefetch.newDP = true;
+    }
+
     size_t poCount = problem.postOps.len();
     strategy.binary.resize(poCount);
     for (auto &astrategy: strategy.binary) {
@@ -621,13 +630,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     if (problem.aoPtrDims <= 2) strategy.AO.base = A64;
     if (problem.boPtrDims <= 2) strategy.BO.base = A64;
 
-    // Use new LSC messages on Xe2+
-    if (hw >= ngen::HW::Xe2) {
-       strategy.A.newDP = strategy.A_prefetch.newDP = true;
-       strategy.B.newDP = strategy.B_prefetch.newDP = true;
-       strategy.C.newDP = strategy.C_prefetch.newDP = true;
-    }
-
     strategy.AO.newDP = strategy.A_scale.newDP = strategy.A.newDP;
     strategy.BO.newDP = strategy.B_scale.newDP = strategy.B.newDP;
 }
@@ -635,6 +637,9 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
 void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, const char *tags)
 {
     auto *gemmAStrategy = &strategy.A, *gemmBStrategy = &strategy.B;
+    if (problem.A.needA64) strategy.A.forceA64();
+    if (problem.B.needA64) strategy.B.forceA64();
+    if (problem.C.needA64) strategy.C.forceA64();
 
     // 2D block accesses use 2D addressing where supported.
     auto use2DAddressing = [](MatrixAddressingStrategy &astrategy) {
@@ -927,6 +932,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.panelCheck)                s << " up";
     if (strategy.reverse[LoopM])            s << " rm";
     if (strategy.reverse[LoopN])            s << " rn";
+    if (strategy.tlbWarmup)                 s << " wt";
 
     if (strategy.checkAdd32 && !strategy.emulate.emulate64) s << " ch";
     if (!strategy.checkAdd32 && strategy.emulate.emulate64) s << " nch";

@@ -280,7 +280,7 @@ public:
      * \param list of partitions
      */
     graph::status_t get_ordered_partitions(
-            std::vector<graph::partition_t *> &partitions);
+            std::vector<graph::partition_t *> &partitions) const;
 
     // Finalize the graph after finishing adding ops.
     graph::status_t finalize();
@@ -295,7 +295,7 @@ public:
     // This function is used to infer shape for all the ops in a graph.
     // Before calling this function, the inputs value of the graph should
     // have valid shape
-    graph::status_t infer_shape() {
+    graph::status_t infer_shape() const {
         using value_ptr = std::shared_ptr<value_t>;
 
         // Check inputs shape
@@ -346,6 +346,7 @@ public:
 
     // This function is used to set user given logical tensors for inputs and
     // outputs of a graph.
+    // NOLINTNEXTLINE(readability-make-member-function-const)
     graph::status_t set_user_inputs_outputs(
             const std::vector<graph::logical_tensor_t> &inputs,
             const std::vector<graph::logical_tensor_t> &outputs) {

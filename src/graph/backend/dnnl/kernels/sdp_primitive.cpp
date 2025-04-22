@@ -19,7 +19,7 @@
 #include "common/sdpa_pd.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "gpu/intel/ocl/ocl_stream.hpp"
+#include "gpu/intel/ocl/stream.hpp"
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #include "gpu/intel/sycl/stream.hpp"
 #endif
@@ -45,6 +45,10 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
         const dnnl_partition_impl_t *part, const engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
+// sdp_primitive_kernel_t only supports Intel GPU.
+#if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR != DNNL_VENDOR_INTEL
+    return status::unimplemented;
+#endif
     p_engine_ = make_dnnl_engine(*g_engine);
     g_alloc_
             = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
@@ -63,6 +67,7 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
     pass_pipeline_t pipeline = pass_pipeline_t(vis);
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_implicit_causal_mask);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
     if (quantized) {
         BACKEND_DNNL_ADD_PASS(pipeline, lift_up_typecast);
@@ -140,13 +145,6 @@ void sdp_primitive_kernel_t<quantized>::prepare_args_set(
     for (const auto &mem_idx : res->get_mems_use_external_outputs()) {
         mem_idx.first.set_data_handle(
                 outputs[mem_idx.second].get_data_handle());
-    }
-
-    grantor_t var_grantor = memory_planner_.internal_temporary_grantor(
-            scratchpad.get_buffer());
-
-    for (auto &mem_offkey : res->get_mems_use_internal_temporary()) {
-        mem_offkey.first.set_data_handle(var_grantor.get(mem_offkey.second));
     }
 }
 
@@ -241,7 +239,10 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
         const std::vector<tensor_t> &outputs,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
-
+// sdp_primitive_kernel_t only supports Intel GPU.
+#if DNNL_GPU_VENDOR != DNNL_VENDOR_INTEL
+    return status::unimplemented;
+#endif
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -305,9 +306,8 @@ status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
     exec_ctx_t ctx(p_stream.get(), std::move(args));
 
     // TODO (pc): refactor
-    auto *ocl_stream
-            = dnnl::impl::utils::downcast<gpu::intel::ocl::ocl_stream_t *>(
-                    p_stream.get());
+    auto *ocl_stream = dnnl::impl::utils::downcast<gpu::intel::ocl::stream_t *>(
+            p_stream.get());
 
     ocl_stream->before_exec_hook();
 

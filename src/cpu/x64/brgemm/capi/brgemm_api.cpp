@@ -25,6 +25,7 @@
 #include "cpu/x64/amx_tile_configure.hpp"
 
 #include "cpu/x64/brgemm/brgemm.hpp"
+#include "cpu/x64/brgemm/brgemm_utils.hpp"
 
 #include "cpu/x64/brgemm/capi/brgemm_api.hpp"
 
@@ -144,6 +145,11 @@ status_t brgemm_t::finalize() {
         VCHECK_BRGEMM_STATUS(status, false, "brgemm_desc_set_attr failed");
     }
 
+    status = brgemm_desc_finalize(&brgemm_desc_);
+    if (status != status::success) {
+        VCHECK_BRGEMM_STATUS(status, false, "brgemm_desc_finalize failed");
+    }
+
     // Note: API can't take a compensation buffer externally. Users must add
     // compensation on their own as a binary post-op.
     brgemm_desc_.req_s8s8_compensation = false;
@@ -151,9 +157,23 @@ status_t brgemm_t::finalize() {
     return status::success;
 }
 
-pack_type_t brgemm_t::get_B_pack_type() const {
-    if (brgemm_desc_.is_b_data_layout_vnni()) return pack_type::pack32;
-    return pack_type::no_trans;
+status_t brgemm_t::get_B_pack_type(
+        pack_type_t *pack_type, data_type_t dt_a, data_type_t dt_b) {
+    // Use a descriptor to obtain the ISA to have compatible values when the
+    // user creates an object.
+    brgemm_desc_t brg {};
+    brg.dt_a = dt_a;
+    brg.dt_b = dt_b;
+    init_kernel_datatype(&brg, dt_a, dt_b);
+    brgemm_utils::set_isa_impl(&brg);
+    if (brg.isa_impl == cpu_isa_t::isa_undef) {
+        VCHECK_BRGEMM_STATUS(
+                status::unimplemented, false, "get_B_pack_type failed");
+    }
+    const bool has_vnni_layout = brgemm_desc_t::is_b_data_layout_vnni(
+            dt_a, dt_b, /* brgattr.b_is_vnni = */ false, brg.isa_impl);
+    *pack_type = has_vnni_layout ? pack_type::pack32 : pack_type::no_trans;
+    return status::success;
 }
 
 size_t brgemm_t::get_scratchpad_size() const {
@@ -259,10 +279,9 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     // TODO: delegate extra memory to scratchpad?
     std::vector<float> wei_scales_v(N_);
 
-    const bool has_src_scales
-            = !attr_.scales_.get(DNNL_ARG_SRC).has_default_values();
+    const bool has_src_scales = !attr_.scales_.has_default_values(DNNL_ARG_SRC);
     const bool has_wei_scales
-            = !attr_.scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
+            = !attr_.scales_.has_default_values(DNNL_ARG_WEIGHTS);
 
     // Save src scale value to re-use it.
     float src_scale_val = 1.f;
@@ -279,7 +298,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         const void *wei_scales_ptr = attr_params->get_scales(DNNL_ARG_WEIGHTS);
         if (wei_scales_ptr == nullptr) return status::invalid_arguments;
 
-        int wei_mask = attr_.scales_.get(DNNL_ARG_WEIGHTS).mask_;
+        int wei_mask = attr_.scales_.get_mask(DNNL_ARG_WEIGHTS);
         if (wei_mask > 0) {
             for (dim_t i = 0; i < N_; i++) {
                 const float wei_scale_val = cpu::io::load_float_value(
@@ -300,7 +319,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
 
     // Destination scales. Require manual extending to full simd broadcast.
     alignas(64) float dst_scales_buf[16] = {0};
-    if (!attr_.scales_.get(DNNL_ARG_DST).has_default_values()) {
+    if (!attr_.scales_.has_default_values(DNNL_ARG_DST)) {
         const void *dst_scales_ptr = attr_params->get_scales(DNNL_ARG_DST);
         if (dst_scales_ptr == nullptr) return status::invalid_arguments;
 
@@ -334,7 +353,8 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
 status_t brgemm_t::create_verbose_info() {
 #if defined(DISABLE_VERBOSE)
     return status::success;
-#else
+#endif
+
     const auto &d = brgemm_desc_;
     std::stringstream ss;
 
@@ -362,7 +382,6 @@ status_t brgemm_t::create_verbose_info() {
 
     verbose_info_ = ss.str();
     return status::success;
-#endif
 }
 
 dnnl_transform::dnnl_transform(dim_t K, dim_t N, pack_type_t in_pack_type,
@@ -476,7 +495,8 @@ status_t transform_t::execute(const void *src, void *dst) const {
 status_t transform_t::create_verbose_info() {
 #if defined(DISABLE_VERBOSE)
     return status::success;
-#else
+#endif
+
     std::stringstream ss;
 
     memory_desc_t src_md;
@@ -493,7 +513,6 @@ status_t transform_t::create_verbose_info() {
 
     verbose_info_ = ss.str();
     return status::success;
-#endif
 }
 
 ////////////////
@@ -607,10 +626,8 @@ status_t dnnl_brgemm_finalize(brgemm_t *brgemm) {
 }
 
 status_t dnnl_brgemm_get_B_pack_type(
-        const brgemm_t *brgemm, dnnl_pack_type_t *pack_type) {
-    if (brgemm == nullptr) return invalid_arguments;
-
-    if (pack_type) *pack_type = brgemm->get_B_pack_type();
+        dnnl_pack_type_t *pack_type, data_type_t dt_a, data_type_t dt_b) {
+    if (pack_type) { return brgemm_t::get_B_pack_type(pack_type, dt_a, dt_b); }
     return status::success;
 }
 
@@ -680,6 +697,8 @@ status_t dnnl_transform_create(transform_t **transform, dim_t K, dim_t N,
         pack_type_t in_pack_type, dim_t in_ld, dim_t out_ld, data_type_t in_dt,
         data_type_t out_dt) {
     if (transform == nullptr) return status::invalid_arguments;
+    VCHECK_BRGEMM(utils::one_of(out_ld, 16, 32, 48, 64),
+            "Transform routine supports only \'out_ld\' of 16, 32, 48, or 64.");
 
     *transform
             = new transform_t(K, N, in_pack_type, in_ld, out_ld, in_dt, out_dt);

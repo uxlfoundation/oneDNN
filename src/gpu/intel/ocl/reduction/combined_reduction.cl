@@ -144,7 +144,7 @@ void reverse_indexing(dim_t dst_off, int *res) {
 }
 #endif
 
-__attribute__((overloadable)) void write(
+__attribute__((overloadable)) void write_dst(
         __global DST_DATA_T *dst, DST_DATA_T val) {
     *dst = val;
 }
@@ -158,22 +158,27 @@ void write_padded_zeros(__global DST_DATA_T *dst) {
     for (int i = 0; i < DST_Z0_SIZE0; i++) {
         for (int j = 0; j < DST_Z1_SIZE0; j++) {
             if (i == 0 && j == 0) continue;
-            write(dst + i * DST_Z0_STRIDE0 + j * DST_Z1_STRIDE0, TO_DST(0.0f));
+            write_dst(dst + i * DST_Z0_STRIDE0 + j * DST_Z1_STRIDE0,
+                    TO_DST(0.0f));
         }
     }
 #elif DST_Z0_IS_REDUCED
     for (int i = 1; i < DST_Z0_SIZE0; i++) {
-        write(dst + i * DST_Z0_STRIDE0, TO_DST(0.0f));
+        write_dst(dst + i * DST_Z0_STRIDE0, TO_DST(0.0f));
     }
 #elif DST_Z1_IS_REDUCED
     for (int j = 1; j < DST_Z1_SIZE0; j++) {
-        write(dst + j * DST_Z1_STRIDE0, TO_DST(0.0f));
+        write_dst(dst + j * DST_Z1_STRIDE0, TO_DST(0.0f));
     }
 #endif
 }
 
 #if INNER_DIM_SIZE < SUBGROUP_SIZE
+#if INNER_DIM_SIZE == 0
+#define SLM_PER_SG 1
+#else
 #define SLM_PER_SG INNER_DIM_SIZE
+#endif // INNER_DIM_SIZE == 0
 #else
 #define SLM_PER_SG SUBGROUP_SIZE
 #endif
@@ -307,7 +312,7 @@ combined_reduce(
             }
 #endif
             if (is_dst_zero_padded(dst_off)) res = 0.0f;
-            write(dst + dst_off, IS_FINAL ? TO_DST(res) : res);
+            write_dst(dst + dst_off, IS_FINAL ? TO_DST(res) : res);
             DUMP("Wrote dst[%ld] = %f\n", dst_off, res);
             write_padded_zeros(dst + dst_off);
             DUMP("dst[%ld] <- %f\n", dst_off, TO_DST(res));

@@ -364,7 +364,20 @@ bool node_outputs_matcher_t::match_op_consumers() {
             auto node_consumer = current_node_output_.second[k];
             pb_node_t *out_node = node_consumer->first;
             // check if the out_node has been matched by previous out_ops
-            if (node_oport_matched_cons.count(k)) continue;
+            if (node_oport_matched_cons.count(k)) {
+                if (out_node->get_node_kind() == pb_node_kind::PB_NODE_KIND_OP)
+                    continue;
+                if (out_node->get_node_kind()
+                        == pb_node_kind::PB_NODE_KIND_ALTERNATION)
+                    continue;
+                // For repetition case, check if multi consumers exist
+                repetition_t *rep_node = dynamic_cast<repetition_t *>(out_node);
+                if (rep_node->get_body()->get_inner_consumer(0) == nullptr)
+                    continue;
+                if (rep_node->get_body()->get_inner_consumer(0)->size() == 1)
+                    continue;
+            }
+
             binding_t out_bind(BIND_IN, out_op, op_consumer.get_offset(),
                     out_node, node_consumer->second);
 
@@ -964,9 +977,11 @@ bool match_alternation(const binding_t &bind_arg, match_context_t *ctx,
             } else {
                 // alternation is restricted to have only 1 in port
                 if (local_ctx.in_port_map.size() != 1) return false;
-                op_t *current_op = local_ctx.in_port_map.find(0)->second.first;
-                size_t current_port
-                        = local_ctx.in_port_map.find(0)->second.second;
+                const auto &iter = local_ctx.in_port_map.find(0);
+                if (iter == local_ctx.in_port_map.end()) return false;
+
+                op_t *current_op = iter->second.first;
+                size_t current_port = iter->second.second;
                 binding_t current_bind(BIND_OUT, current_op, current_port,
                         bind_arg.bind_node, bind_arg.bind_port);
                 return match_node_inputs(current_bind, ctx, matched_op_map);
@@ -1071,8 +1086,10 @@ bool repetition_matcher_t::prepare_next_matching_round(
             // for next round's match
             iport_t iport = pmap_.second;
             // start op for last round's match
-            op_t *start_op
-                    = local_cached_ctx.in_port_map.find(iport)->second.first;
+            const auto &it_iport = local_cached_ctx.in_port_map.find(iport);
+            if (it_iport == local_cached_ctx.in_port_map.end()) return false;
+
+            op_t *start_op = it_iport->second.first;
             pb_op_t *start_pb_op = updated_op_map_[start_op];
             op_t *next_op = nullptr;
             size_t next_op_iport = 0;
@@ -1105,8 +1122,10 @@ bool repetition_matcher_t::prepare_next_matching_round(
     } else { // backward matching
         single_iter_bind_.bind_kind = BIND_OUT;
         iport_t iport = pmap_.second;
-        op_t *current_op
-                = local_cached_ctx.in_port_map.find(iport)->second.first;
+        const auto &it_iport = local_cached_ctx.in_port_map.find(iport);
+        if (it_iport == local_cached_ctx.in_port_map.end()) return false;
+
+        op_t *current_op = it_iport->second.first;
         if (iport >= current_op->num_inputs()) return true;
         auto in_value = current_op->get_input_value(iport);
         single_iter_bind_.bind_op = &(in_value->get_producer());
@@ -1179,11 +1198,11 @@ bool repetition_matcher_t::match_next_op(const binding_t &bind_arg) {
         assertm(bind_arg.bind_node->get_inputs().size() <= 1,
                 "repetition is restricted to have only 1 input");
         if (bind_arg.bind_node->get_inputs().size() == 1) {
-            op_t *current_op = rep_global_ctx_.in_port_map.find(pmap_.second)
-                                       ->second.first;
-            size_t current_port
-                    = rep_global_ctx_.in_port_map.find(pmap_.second)
-                              ->second.second;
+            const auto &iter = rep_global_ctx_.in_port_map.find(pmap_.second);
+            if (iter == rep_global_ctx_.in_port_map.end()) return false;
+
+            op_t *current_op = iter->second.first;
+            size_t current_port = iter->second.second;
             binding_t current_bind(BIND_OUT, current_op, current_port,
                     rep_node_, bind_arg.bind_port);
             if (!match_node_inputs(current_bind, parent_ctx_, updated_op_map_))

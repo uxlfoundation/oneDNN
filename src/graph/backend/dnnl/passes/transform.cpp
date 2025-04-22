@@ -40,10 +40,9 @@
 #include "graph/backend/dnnl/passes/transform.hpp"
 #include "graph/backend/dnnl/passes/utils.hpp"
 
-#define VCHECK_UNIMPLEMENTED(cond, msg, ...) \
-    VCONDCHECK(graph, create, check, compile, (cond), status::unimplemented, \
-            msg, ##__VA_ARGS__);
-
+#define VCHECK_TRANSFORM(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, transform, (cond), status, msg, \
+            ##__VA_ARGS__);
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -260,8 +259,9 @@ status_t convert_to_runtime_src_scales(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &cur_op : scales_ops) {
-        assertm(cur_op->num_outputs() == 1,
-                "scale_op should have only one output value.");
+        VCHECK_TRANSFORM(cur_op->num_outputs() == 1, status::invalid_graph_op,
+                "scale_op should have only one output value, but got %zu",
+                cur_op->num_outputs());
         auto out_val = cur_op->get_output_values()[0];
         auto consumers = out_val->get_consumers();
         if (consumers.empty()) continue;
@@ -318,8 +318,9 @@ status_t convert_to_runtime_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &zp_op : zp_ops) {
-        assertm(zp_op->num_outputs() == 1,
-                "zp_op should have only one output value.");
+        VCHECK_TRANSFORM(zp_op->num_outputs() == 1, status::invalid_graph_op,
+                "zp_op should have only one output value, but got %zu",
+                zp_op->num_outputs());
         auto out_val = zp_op->get_output_values()[0];
         auto consumers = out_val->get_consumers();
 
@@ -377,8 +378,9 @@ status_t convert_to_runtime_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &zp_op : zp_ops) {
-        assertm(zp_op->num_outputs() == 1,
-                "zp_op should have only one output value.");
+        VCHECK_TRANSFORM(zp_op->num_outputs() == 1, status::invalid_graph_op,
+                "zp_op should have only one output value, but got %zu",
+                zp_op->num_outputs());
         auto in_val = zp_op->get_input_values()[0];
         bool is_output_zps = in_val->has_producer()
                 && impl::utils::one_of(in_val->get_producer().get_kind(),
@@ -426,8 +428,10 @@ status_t fold_mul_scales(std::shared_ptr<subgraph_t> &sg) {
                     || visited.count(cur_op.get()) != 0)
                 continue;
 
-            assertm(cur_op->num_outputs() == 1,
-                    "cur_op should have only one output value.");
+            VCHECK_TRANSFORM(cur_op->num_outputs() == 1, false,
+                    "dnnl_mul_scales should have only one output value, but "
+                    "got %zu",
+                    cur_op->num_outputs());
             auto out_val = cur_op->get_output_values()[0];
             auto consumers = out_val->get_consumers();
             if (consumers.empty()) continue;
@@ -435,8 +439,7 @@ status_t fold_mul_scales(std::shared_ptr<subgraph_t> &sg) {
             auto &consumer_op = consumers[0].get_op();
             if (consumer_op.get_kind() != op_kind::dnnl_mul_scales) continue;
 
-            folding_groups.emplace_back(
-                    std::pair<op_t *, op_t *> {cur_op.get(), &consumer_op});
+            folding_groups.emplace_back(cur_op.get(), &consumer_op);
             visited.insert(cur_op.get());
             visited.insert(&consumer_op);
         }
@@ -493,8 +496,10 @@ impl::status_t fold_sub_zps_add_zps(std::shared_ptr<subgraph_t> &sg) {
                     || visited.count(cur_op.get()) != 0)
                 continue;
 
-            assertm(cur_op->num_outputs() == 1,
-                    "cur_op should have only one output value.");
+            VCHECK_TRANSFORM(cur_op->num_outputs() == 1, false,
+                    "dnnl_sub_zps should have only one output value, but got "
+                    "%zu",
+                    cur_op->num_outputs());
             auto out_val = cur_op->get_output_values()[0];
             auto consumers = out_val->get_consumers();
             if (consumers.empty()) continue;
@@ -502,8 +507,7 @@ impl::status_t fold_sub_zps_add_zps(std::shared_ptr<subgraph_t> &sg) {
             auto &consumer_op = consumers[0].get_op();
             if (consumer_op.get_kind() != op_kind::dnnl_add_zps) continue;
 
-            folding_groups.emplace_back(
-                    std::pair<op_t *, op_t *> {cur_op.get(), &consumer_op});
+            folding_groups.emplace_back(cur_op.get(), &consumer_op);
             visited.insert(cur_op.get());
             visited.insert(&consumer_op);
         }
@@ -593,8 +597,12 @@ status_t fuse_to_int8_concat(std::shared_ptr<subgraph_t> &sg) {
             rewriter.fuse_op_to_successor(scale_op.shared_from_this());
         }
 
-        assertm(concat_op->get_output_value(0)->get_consumers().size() == 1,
-                "concat's successor op should only have one consumer.");
+        VCHECK_TRANSFORM(
+                concat_op->get_output_value(0)->get_consumers().size() == 1,
+                status::invalid_graph,
+                "concat's successor op should only have one consumer, but got "
+                "%zu",
+                concat_op->get_output_value(0)->get_consumers().size());
         op_t &scale_op
                 = concat_op->get_output_value(0)->get_consumers()[0].get_op();
         op_t &zp_op = scale_op.get_output_value(0)->get_consumers()[0].get_op();
@@ -839,13 +847,14 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             if (not_fusible) { return status::success; }
 
             // push fusible pair to fuse group for later fusion
-            fuse_groups.emplace_back(std::pair<op_t *, op_t *> {op, &post_op});
+            fuse_groups.emplace_back(op, &post_op);
             visited.insert(op);
             visited.insert(&post_op);
             return status::success;
         });
 
-        if (ret != status::success) return ret;
+        VCHECK_TRANSFORM(ret == status::success, ret,
+                "Error finding fusible post_op groups");
 
         if (fuse_groups.empty()) {
             changed = false;
@@ -992,14 +1001,12 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
 
     bool changed = true;
     do {
-        auto ret = fuse_post_ops_func(changed);
-        if (ret != status::success) return ret;
+        CHECK(fuse_post_ops_func(changed));
         cnt++;
     } while (changed && cnt <= max_num_limit);
 
-    assertm(cnt <= max_num_limit + 1,
-            "Failed to fuse all post ops since there has unsupported ones.");
-    if (cnt > max_num_limit + 1) return status::unimplemented;
+    VCHECK_TRANSFORM(cnt <= max_num_limit + 1, status::unimplemented,
+            "Failed to fuse all post ops since there has unsupported ones");
     return status::success;
 }
 
@@ -1019,8 +1026,9 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &zp_op : zp_ops) {
-        assertm(zp_op->num_outputs() == 1,
-                "zp_op should have only one output value.");
+        VCHECK_TRANSFORM(zp_op->num_outputs() == 1, status::invalid_graph_op,
+                "zp_op should have only one output value, but got %zu",
+                zp_op->num_outputs());
         auto out_val = zp_op->get_output_values()[0];
         auto consumers = out_val->get_consumers();
 
@@ -1071,7 +1079,7 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
                 auto zps = zp_op->get_attr<std::vector<int64_t>>(op_attr::zps);
                 not_all_zero = !utils::all_zero(zps);
                 if (not_all_zero) {
-                    assertm(zps.size() == 1,
+                    VCHECK_TRANSFORM(zps.size() == 1, status::unimplemented,
                             "zp attr only support scalar zp, need to use "
                             "runtime arg to support vector zp");
                     fusion_info.set_zero_points(
@@ -1105,8 +1113,9 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &scale_op : scales_ops) {
-        assertm(scale_op->num_outputs() == 1,
-                "scale_op should have only one output value.");
+        VCHECK_TRANSFORM(scale_op->num_outputs() == 1, status::invalid_graph_op,
+                "scale_op should have only one output value, but got %zu",
+                scale_op->num_outputs());
         auto out_val = scale_op->get_output_values()[0];
         auto consumers = out_val->get_consumers();
         if (consumers.empty()) continue;
@@ -1132,10 +1141,15 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                 int ndims = scale_op->get_input_value(0)
                                     ->get_logical_tensor()
                                     .ndims;
-                if ((!trans_flag && axis != ndims - 1 && axis != -1)
-                        || (trans_flag && axis != ndims - 2 && axis != -2)) {
-                    return status::unimplemented;
-                }
+                VCHECK_TRANSFORM(
+                        (!trans_flag && (axis == ndims - 1 || axis == -1))
+                                || (trans_flag
+                                        && (axis == ndims - 2 || axis == -2)),
+                        status::unimplemented,
+                        "Matmul only support applying per channel scale "
+                        "along the last dimension for DNNL_ARG_WEIGHTS. "
+                        "trans_flag: %d, axis: %lld, ndims: %d",
+                        trans_flag, axis, ndims);
             }
             int64_t key = -1;
             if (next_op.has_attr(op_attr::fusion_info_key)) {
@@ -1161,7 +1175,8 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                         scale_op->shared_from_this(), true, offset);
                 rewriter.to_remove(scale_op->shared_from_this());
             } else {
-                assertm(false, "src scales must be runtime scales.");
+                VCHECK_TRANSFORM(false, status::unimplemented,
+                        "src scales must be runtime scales.");
             }
         }
     }
@@ -1191,8 +1206,7 @@ status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
         if (consumers.size() != 1) continue;
         auto &next_op = consumers[0].get_op();
         if (next_op.get_kind() != op_kind::dnnl_mul_scales) continue;
-        fuse_groups.emplace_back(
-                std::pair<op_t *, op_t *> {cur_op.get(), &next_op});
+        fuse_groups.emplace_back(cur_op.get(), &next_op);
         visited.insert(cur_op.get());
         visited.insert(&next_op);
     }
@@ -1315,8 +1329,9 @@ status_t fuse_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &zp_op : zp_ops) {
-        assertm(zp_op->num_outputs() == 1,
-                "zp_op should have only one output value.");
+        VCHECK_TRANSFORM(zp_op->num_outputs() == 1, status::invalid_graph_op,
+                "zp_op should have only one output value, but got %zu",
+                zp_op->num_outputs());
         auto out_val = zp_op->get_output_values()[0];
         auto consumers = out_val->get_consumers();
 
@@ -2052,8 +2067,7 @@ status_t fuse_reciprocal_mul_to_div(std::shared_ptr<subgraph_t> &sg) {
         size_t mul_other_offset = 1 - offset;
         mul_other_offsets.emplace_back(mul_other_offset);
 
-        div_patterns.emplace_back(
-                std::pair<op_t *, op_t *> {cur_op.get(), &csm_op});
+        div_patterns.emplace_back(cur_op.get(), &csm_op);
     }
 
     if (div_patterns.empty()) return status::success;
@@ -2259,7 +2273,9 @@ status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg) {
                     = binary_doable(ltw(src0_lt).vdims(), ltw(src1_lt).vdims());
         }
 
-        if (!shape_check_ok) return status::invalid_shape;
+        VCHECK_TRANSFORM(shape_check_ok, status::invalid_shape,
+                "Binary op shape check failed for op: %s .",
+                cur_op->get_name().c_str());
 
         // insert unsqueeze op
         int32_t src0_ndims = src0_lt.ndims;
@@ -2267,6 +2283,9 @@ status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         int32_t target_ndims = std::max(src0_ndims, src1_ndims);
         std::vector<int32_t> in_ndims {src0_ndims, src1_ndims};
         for (size_t i = 0; i < cur_op->num_inputs(); ++i) {
+            // For binary select op, broadcast for the third input is
+            // unsupported.
+            if (i == 2) { continue; }
             if (in_ndims[i] == target_ndims) { continue; }
 
             std::vector<int64_t> axes(target_ndims - in_ndims[i]);
@@ -2293,6 +2312,147 @@ status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         cur_op->set_attr<bool>(op_attr::canonicalized, true);
     }
 
+    rewriter.run();
+    return infer_shape(sg);
+}
+
+status_t decompose_select_to_binary_ops(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
+    for (auto &op : sg->get_ops()) {
+        if (op->get_kind() != op_kind::dnnl_binary) continue;
+        const algorithm algo = static_cast<dnnl::algorithm>(
+                op->get_attr<int64_t>(op_attr::alg_kind));
+
+        if (algo != algorithm::binary_select) continue;
+
+        // For the binary select primitive, broadcast semantics are not
+        // supported for the third conditional input tensor. For this case, the
+        // shape of the conditional input tensor must match that of the source 0
+        // tensor.
+        // The binary select primitive is unsupported on GPU.
+        const bool require_broadcast = need_broadcast_for_inputs(op, 0, 2);
+        if (!require_broadcast && sg->get_engine_kind() != engine_kind::gpu)
+            continue;
+
+        auto in_vals = op->get_input_values();
+        auto out_vals = op->get_output_values();
+
+        auto src0 = in_vals[0];
+        auto src1 = in_vals[1];
+        auto cond = in_vals[2];
+        cond->set_data_type(dnnl::impl::data_type::u8);
+
+        //TODO: This reorder can be removed once eltwise_clip support int8 input
+        op_ptr type_cast = std::make_shared<op_t>(op_kind::dnnl_reorder);
+        type_cast->set_attr<bool>(op_attr::change_layout, false);
+
+        op_ptr clip = std::make_shared<op_t>(op_kind::dnnl_eltwise);
+        clip->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::eltwise_clip));
+        clip->set_attr<float>(op_attr::alpha, 0.f);
+        clip->set_attr<float>(op_attr::beta, 1.f);
+
+        // After reorder and clip. The cond value is 0 or 1.
+        // Then output = src0.*cond+src1.*(cond*-1 + 1)
+        op_ptr mul1 = std::make_shared<op_t>(op_kind::dnnl_binary);
+        mul1->merge_attributes(op->get_attributes());
+        mul1->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::binary_mul));
+
+        op_ptr mul2 = std::make_shared<op_t>(op_kind::dnnl_binary);
+        mul2->merge_attributes(op->get_attributes());
+        mul2->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::binary_mul));
+
+        op_ptr linear = std::make_shared<op_t>(op_kind::dnnl_eltwise);
+        linear->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::eltwise_linear));
+        const float alpha_value = -1.0f, beta_value = 1.0f;
+        linear->set_attr<float>(op_attr::alpha, alpha_value);
+        linear->set_attr<float>(op_attr::beta, beta_value);
+
+        op_ptr add = std::make_shared<op_t>(op_kind::dnnl_binary);
+        add->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::binary_add));
+
+        // reconnect
+        src0->remove_consumer(*op, 0);
+        src1->remove_consumer(*op, 1);
+        cond->remove_consumer(*op, 2);
+
+        // first reorder and clip
+        cond->add_consumer(*type_cast, 0);
+        type_cast->add_input(cond);
+        logical_tensor_t float_cond = empty_logical_tensor_with_default_id();
+        auto float_cond_val
+                = std::make_shared<value_t>(*type_cast, 0, float_cond, true);
+        float_cond_val->set_data_type(dnnl::impl::data_type::f32);
+        type_cast->add_output(float_cond_val);
+        insert_empty_scratchpad(type_cast);
+
+        float_cond_val->add_consumer(*clip, 0);
+        clip->add_input(float_cond_val);
+        logical_tensor_t clip_cond = empty_logical_tensor_with_default_id();
+        auto clip_cond_val
+                = std::make_shared<value_t>(*clip, 0, clip_cond, true);
+        clip_cond_val->set_data_type(
+                float_cond_val->get_logical_tensor().data_type);
+        clip->add_output(clip_cond_val);
+        insert_empty_scratchpad(clip);
+
+        // first multiply
+        src0->add_consumer(*mul1, 0);
+        clip_cond_val->add_consumer(*mul1, 1);
+        mul1->add_input(src0);
+        mul1->add_input(clip_cond_val);
+
+        logical_tensor_t src0_cond = empty_logical_tensor_with_default_id();
+        auto src0_val = std::make_shared<value_t>(*mul1, 0, src0_cond, true);
+        src0_val->set_data_type(src0->get_logical_tensor().data_type);
+        mul1->add_output(src0_val);
+        insert_empty_scratchpad(mul1);
+
+        //cond.*{-1} + 1
+        clip_cond_val->add_consumer(*linear, 0);
+        linear->add_input(clip_cond_val);
+
+        logical_tensor_t cond_inv = empty_logical_tensor_with_default_id();
+        auto cond_inv_val
+                = std::make_shared<value_t>(*linear, 0, cond_inv, true);
+        cond_inv_val->set_data_type(
+                clip_cond_val->get_logical_tensor().data_type);
+        linear->add_output(cond_inv_val);
+        insert_empty_scratchpad(linear);
+
+        //src1.*(cond_inv)
+
+        src1->add_consumer(*mul2, 0);
+        cond_inv_val->add_consumer(*mul2, 1);
+        mul2->add_input(src1);
+        mul2->add_input(cond_inv_val);
+
+        logical_tensor_t src1_cond = empty_logical_tensor_with_default_id();
+        auto src1_val = std::make_shared<value_t>(*mul2, 0, src1_cond, true);
+        src1_val->set_data_type(src1->get_logical_tensor().data_type);
+        mul2->add_output(src1_val);
+        insert_empty_scratchpad(mul2);
+
+        src0_val->add_consumer(*add, 0);
+        src1_val->add_consumer(*add, 1);
+        add->add_input(src0_val);
+        add->add_input(src1_val);
+        add->add_output(out_vals[0]);
+        insert_empty_scratchpad(add);
+
+        // add new ops and delete select op
+        rewriter.to_insert(type_cast);
+        rewriter.to_insert(clip);
+        rewriter.to_insert(mul1);
+        rewriter.to_insert(linear);
+        rewriter.to_insert(mul2);
+        rewriter.to_insert(add);
+        rewriter.to_remove(op);
+    }
     rewriter.run();
     return infer_shape(sg);
 }
@@ -2418,7 +2578,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             }
 
             // push fusible pair to fuse group for later fusion
-            fuse_groups.emplace_back(std::pair<op_t *, op_t *> {op, &next_op});
+            fuse_groups.emplace_back(op, &next_op);
             visited.insert(op);
             visited.insert(&next_op);
             // destroy md before return
@@ -2426,7 +2586,8 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             return status::success;
         });
 
-        if (ret != status::success) return ret;
+        VCHECK_TRANSFORM(ret == status::success, ret,
+                "Error finding adjacent reorders.");
 
         if (fuse_groups.empty()) {
             changed = false;
@@ -2554,8 +2715,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             const auto &pd = reorder_executable_t::create_desc(
                     fused_op, *p_engine, mgr, pd_cache);
             const memory::desc scratchpad_desc = pd.scratchpad_desc();
-            auto status = fill_layout_info(scratchpad_val, scratchpad_desc);
-            if (status != status::success) return status;
+            CHECK(fill_layout_info(scratchpad_val, scratchpad_desc));
 
             rewriter.to_insert(fused_op);
             rewriter.to_remove(op1->shared_from_this());
@@ -2570,13 +2730,12 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
 
     bool changed = true;
     do {
-        auto ret = fuse_two_adjacent_reorders(changed);
-        if (ret != status::success) return ret;
+        CHECK(fuse_two_adjacent_reorders(changed));
         cnt++;
     } while (changed && cnt <= max_num_limit);
 
-    assertm(cnt <= max_num_limit + 1, "reorder fusion failed.");
-    if (cnt > max_num_limit + 1) return status::unimplemented;
+    VCHECK_TRANSFORM(cnt <= max_num_limit + 1, status::unimplemented,
+            "Reorder fusion failed.");
 
     return status::success;
 }
@@ -2722,8 +2881,7 @@ status_t fuse_dynamic_mul_scales_add_zps(std::shared_ptr<subgraph_t> &sg) {
                 || !consumer_op.get_attr<bool>(op_attr::with_runtime_zps))
             continue;
 
-        fuse_groups.emplace_back(std::pair<op_ptr, op_ptr> {
-                cur_op, (&consumer_op)->shared_from_this()});
+        fuse_groups.emplace_back(cur_op, (&consumer_op)->shared_from_this());
         visited.insert(cur_op.get());
         visited.insert(&consumer_op);
     }
@@ -2799,8 +2957,7 @@ status_t fuse_dynamic_sub_zps_mul_scales(std::shared_ptr<subgraph_t> &sg) {
                 || !consumer_op.get_attr<bool>(op_attr::with_runtime_scales))
             continue;
 
-        fuse_groups.emplace_back(std::pair<op_ptr, op_ptr> {
-                cur_op, (&consumer_op)->shared_from_this()});
+        fuse_groups.emplace_back(cur_op, (&consumer_op)->shared_from_this());
         visited.insert(cur_op.get());
         visited.insert(&consumer_op);
     }
@@ -2964,11 +3121,11 @@ status_t reorder_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         };
 
         if (qtype == "per_channel") {
-            VCHECK_UNIMPLEMENTED(
-                    (!(cur_op->has_attr(op_attr::with_runtime_src_zps)
-                            || cur_op->has_attr(
-                                    op_attr::with_runtime_dst_zps))),
-                    "reorder primitive does not support zero points for "
+            VCHECK_TRANSFORM((!(cur_op->has_attr(op_attr::with_runtime_src_zps)
+                                     || cur_op->has_attr(
+                                             op_attr::with_runtime_dst_zps))),
+                    status::unimplemented,
+                    "Reorder primitive does not support zero points for "
                     "per-channel quantization");
         }
 
@@ -3099,15 +3256,13 @@ status_t common_reorder_elimination(std::shared_ptr<subgraph_t> &sg) {
 
     bool changed = true;
     do {
-        auto ret = cse_func(changed);
-        if (ret != status::success) return ret;
+        CHECK(cse_func(changed));
         cnt++;
     } while (changed && cnt <= max_iter_num);
 
-    assertm(cnt <= max_iter_num + 1,
+    VCHECK_TRANSFORM(cnt <= max_iter_num + 1, status::unimplemented,
             "Failed to eliminate common reorders since the pass can't "
             "converge.");
-    if (cnt > max_iter_num + 1) return status::unimplemented;
 
     return status::success;
 }
@@ -3204,22 +3359,31 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
             continue;
 
         op_t &scales_in0_op = bin_in0_val->get_producer();
-        assertm(scales_in0_op.get_kind() == op_kind::dnnl_mul_scales,
-                "the first predecessor of a binary op should be mul_scales.");
+        VCHECK_TRANSFORM(scales_in0_op.get_kind() == op_kind::dnnl_mul_scales,
+                status::invalid_graph,
+                "the first predecessor of a binary op should be mul_scales. "
+                "but got %s",
+                scales_in0_op.get_name().c_str());
         if (scales_in0_op.has_attr(op_attr::with_runtime_scales)
                 && scales_in0_op.get_attr<bool>(op_attr::with_runtime_scales))
             continue;
 
         op_t &scales_in1_op = bin_in1_val->get_producer();
-        assertm(scales_in1_op.get_kind() == op_kind::dnnl_mul_scales,
-                "the second predecessor of a binary op should be mul_scales.");
+        VCHECK_TRANSFORM(scales_in1_op.get_kind() == op_kind::dnnl_mul_scales,
+                status::invalid_graph,
+                "the second predecessor of a binary op should be mul_scales. "
+                "but got %s",
+                scales_in1_op.get_name().c_str());
         if (scales_in1_op.has_attr(op_attr::with_runtime_scales)
                 && scales_in1_op.get_attr<bool>(op_attr::with_runtime_scales))
             continue;
 
         op_t &scales_out_op = bin_out_val->get_consumers()[0].get_op();
-        assertm(scales_out_op.get_kind() == op_kind::dnnl_mul_scales,
-                "the successor of a binary op should be mul_scales.");
+        VCHECK_TRANSFORM(scales_out_op.get_kind() == op_kind::dnnl_mul_scales,
+                status::invalid_graph,
+                "the successor predecessor of a binary op should be "
+                "mul_scales. but got %s",
+                scales_out_op.get_name().c_str());
         if (scales_out_op.has_attr(op_attr::with_runtime_scales)
                 && scales_out_op.get_attr<bool>(op_attr::with_runtime_scales))
             continue;
@@ -3259,9 +3423,10 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
         const auto multiplier = std::multiplies<float>();
         switch (bin_kind) {
             case dnnl::algorithm::binary_add:
-                assertm(std::all_of(in0_scales.begin(), in0_scales.end(),
+                VCHECK_TRANSFORM(
+                        std::all_of(in0_scales.begin(), in0_scales.end(),
                                 [](float v) { return v != 0.f; }),
-                        "scales can't be zero");
+                        status::invalid_arguments, "scales can't be zero");
                 new_scales_in0
                         = fuse_scales(in0_scales, inv_out_scales, multiplier);
                 new_scales_in1
@@ -3281,7 +3446,8 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
                         {&scales_in0_op, &scales_in1_op, &scales_out_op});
                 break;
             default:
-                assertm(false, "unsupported binary post-op was provided.");
+                VCHECK_TRANSFORM(false, status::unimplemented,
+                        "unsupported binary post-op was provided.");
                 break;
         }
 
@@ -3410,8 +3576,7 @@ impl::status_t lift_up_typecast(std::shared_ptr<subgraph_t> &sg) {
                     || is_layout_reorder(producer);
             if (!ok) continue;
 
-            to_be_swapped.emplace_back(
-                    std::pair<op_t *, op_t *> {producer, op.get()});
+            to_be_swapped.emplace_back(producer, op.get());
         }
 
         if (to_be_swapped.empty()) break;
@@ -3448,8 +3613,7 @@ impl::status_t lift_up_quantize(std::shared_ptr<subgraph_t> &sg) {
                     || is_layout_reorder(producer);
             if (!ok) continue;
 
-            to_be_swapped.emplace_back(
-                    std::pair<op_t *, op_t *> {producer, op.get()});
+            to_be_swapped.emplace_back(producer, op.get());
         }
 
         if (to_be_swapped.empty()) break;
@@ -3790,9 +3954,7 @@ impl::status_t swap_relu_mul_scales(std::shared_ptr<subgraph_t> &sg) {
                     = producer->get_input_value(0)->get_producer();
             if (prv_op.get_kind() == op_kind::dnnl_batchnorm
                     && !prv_op.get_attr<bool>(op_attr::is_training)) {
-                to_be_swapped.emplace_back(
-                        std::pair<graph::op_t *, graph::op_t *> {
-                                producer, op.get()});
+                to_be_swapped.emplace_back(producer, op.get());
             } else {
                 continue;
             }
@@ -3808,6 +3970,90 @@ impl::status_t swap_relu_mul_scales(std::shared_ptr<subgraph_t> &sg) {
         rewriter.run();
     }
     return infer_shape(sg);
+}
+
+status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
+    std::vector<std::vector<op_ptr>> op_lists;
+    for (auto &cur_op : sg->get_ops()) {
+        // check if cur_op is GreaterEqual
+        if (cur_op->get_kind() != op_kind::dnnl_binary) continue;
+        if (static_cast<dnnl::algorithm>(
+                    cur_op->get_attr<int64_t>(op_attr::alg_kind))
+                != dnnl::algorithm::binary_ge)
+            continue;
+
+        // check if in_ops are GenIndex
+        auto in_val0 = cur_op->get_input_value(0);
+        if (!in_val0->has_producer()) continue;
+        auto &in_op0 = in_val0->get_producer();
+        if (in_op0.get_kind() != op_kind::dnnl_gen_index) continue;
+        if (in_op0.get_attr<int64_t>(op_attr::axis) != 2) continue;
+
+        auto in_val1 = cur_op->get_input_value(1);
+        if (!in_val1->has_producer()) continue;
+        auto &in_op1 = in_val1->get_producer();
+        if (in_op1.get_kind() != op_kind::dnnl_gen_index) continue;
+        if (in_op1.get_attr<int64_t>(op_attr::axis) != 3) continue;
+
+        // check if out_op is Select
+        auto out_val = cur_op->get_output_value(0);
+        if (out_val->get_consumers().size() != 1) continue;
+        auto &out_op = out_val->get_consumers()[0].get_op();
+        if (out_op.get_kind() != op_kind::dnnl_binary) continue;
+        if (static_cast<dnnl::algorithm>(
+                    out_op.get_attr<int64_t>(op_attr::alg_kind))
+                != dnnl::algorithm::binary_select)
+            continue;
+
+        // check if GenIndex and Select share the same input
+        if (in_op0.get_input_value(0) != in_op1.get_input_value(0)) continue;
+        if (in_op0.get_input_value(0) != out_op.get_input_value(0)) continue;
+
+        // ops in the list: GenIndex_row, GenIndex_col, GreaterEqual, Select
+        std::vector<op_ptr> list = {in_op0.shared_from_this(),
+                in_op1.shared_from_this(), cur_op, out_op.shared_from_this()};
+        op_lists.emplace_back(list);
+    }
+
+    if (op_lists.empty()) return status::success;
+
+    subgraph_rewriter_t rewriter(sg);
+    for (auto &list : op_lists) {
+        op_ptr mask_op = std::make_shared<op_t>(op_kind::dnnl_mask);
+
+        // connect inputs for mask_op
+        auto in_val0 = list[0]->get_input_value(0);
+        in_val0->remove_consumer(*list[0], 0);
+        in_val0->remove_consumer(*list[1], 0);
+        in_val0->remove_consumer(*list[3], 0);
+        mask_op->connect_input(0, in_val0);
+
+        auto in_val1 = list[3]->get_input_value(1);
+        in_val1->remove_consumer(*list[3], 1);
+        mask_op->connect_input(1, in_val1);
+
+        // connect output for mask op
+        auto out_val = list[3]->get_output_value(0);
+        out_val->set_producer(*mask_op);
+        mask_op->add_output(out_val);
+
+        // set attrs for mask_op
+        const auto axis_row = list[0]->get_attr<int64_t>(op_attr::axis);
+        const auto axis_col = list[1]->get_attr<int64_t>(op_attr::axis);
+        mask_op->set_attr(op_attr::axis_row, axis_row);
+        mask_op->set_attr(op_attr::axis_col, axis_col);
+
+        // remove original ops
+        for (const auto &op : list) {
+            rewriter.to_remove(op);
+        }
+
+        // add mask_op to subgraph
+        rewriter.to_insert(mask_op);
+    }
+
+    rewriter.run();
+    return status::success;
 }
 
 impl::status_t fold_pre_mul_scale_into_bn(std::shared_ptr<subgraph_t> &sg) {

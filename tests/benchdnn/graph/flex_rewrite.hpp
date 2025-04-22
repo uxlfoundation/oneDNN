@@ -29,13 +29,14 @@ struct flex_rewrite {
     flex_rewrite(const std::map<size_t, std::string> &in_shapes,
             const std::map<size_t, std::string> &op_attrs,
             const graph_fpmath_mode_t &fpmath_mode, const int64_t mb,
-            const dnnl_data_type_t dt)
-
+            const dnnl_data_type_t dt,
+            const std::map<size_t, dnnl_data_type_t> &dt_map)
         : in_shapes_(in_shapes)
         , op_attrs_(op_attrs)
         , fpmath_mode_(fpmath_mode)
         , mb_(mb)
-        , dt_(dt) {}
+        , dt_(dt)
+        , dt_map_(dt_map) {}
 
     void rewrite(deserialized_graph &dgraph);
 
@@ -46,7 +47,9 @@ private:
     std::map<size_t, std::string> op_attrs_;
     graph_fpmath_mode_t fpmath_mode_;
     int64_t mb_;
-    dnnl_data_type_t dt_;
+    dnnl_data_type_t dt_; // Updates whole graph with a single dt value.
+    std::map<size_t, dnnl_data_type_t>
+            dt_map_; // Updates specific LT with selected dt values.
 
     void split_ncx(const std::string &data_format, dims_t &in, int64_t &n,
             int64_t &c, dims_t &x) const;
@@ -70,6 +73,11 @@ private:
             bool change_stride);
     void graph_attrs_rewrite(deserialized_graph &dgraph);
     void dt_rewrite(deserialized_graph &dgraph);
+    void dt_map_rewrite(deserialized_graph &dgraph);
+    // Rewrite some linked attribute and shapes, such as group-shape and
+    // scale/zp shape of dynamic dequantization for per-group quantization, to
+    // simplify the cml input of rewriting.
+    void rewrite_linked_shape_and_attr(deserialized_graph &dgraph);
 };
 
 } // namespace graph

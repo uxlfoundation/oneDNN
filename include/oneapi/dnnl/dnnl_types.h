@@ -1045,6 +1045,8 @@ typedef enum {
     dnnl_BAcd8a8b,
     dnnl_BAcde8a8b,
     dnnl_aCBdef8b8c,
+    dnnl_abdEC16e4c,
+    dnnl_abDC16d4c,
 
     /// Just a sentinel, not real memory format tag. Must be changed after new
     /// format tag is added.
@@ -1180,10 +1182,12 @@ typedef enum {
     /// 5D LSTM projection tensor
     dnnl_ldOi16o = dnnl_abDc16d,
     dnnl_ldOi32o = dnnl_abDc32d,
+    dnnl_ldOI16o4i = dnnl_abDC16d4c,
     dnnl_ldOI32o4i = dnnl_abDC32d4c,
     dnnl_ldIo32i = dnnl_abCd32c,
     /// 6D RNN weights tensor
     dnnl_ldgOi16o = dnnl_abdEc16e,
+    dnnl_ldgOI16o4i = dnnl_abdEC16e4c,
     dnnl_ldgOi32o = dnnl_abdEc32e,
     dnnl_ldgOI32o2i = dnnl_abdEC32e2c,
     dnnl_ldgOI32o4i = dnnl_abdEC32e4c,
@@ -2547,6 +2551,12 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 
 /// Bias tensor argument.
 #define DNNL_ARG_BIAS 41
+
+/// Reduce tensor argument.
+#define DNNL_ARG_REDUCE 42
+
+/// Note: when adding a new macro after `DNNL_ARG_REDUCE` please reserve a
+/// space for potential indices for `DNNL_ARG_REDUCE`.
 
 /// Mean values tensor argument.
 #define DNNL_ARG_MEAN 49

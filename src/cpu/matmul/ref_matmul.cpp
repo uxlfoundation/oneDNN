@@ -88,16 +88,10 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &attr_zps = pd()->attr()->zero_points_;
     const bool with_wei_zero_points
             = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
-    int wei_zp_mask = 0;
-    attr_zps.get(DNNL_ARG_WEIGHTS, &wei_zp_mask);
+    int wei_zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
     const auto &wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_ndims = attr_zps.get_groups_ndims(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_k = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[0]
-            : 1;
-    const auto wei_zp_group_n = wei_zp_group_ndims > 0
-            ? attr_zps.get_groups(DNNL_ARG_WEIGHTS)[1]
-            : 1;
+    const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
+    const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_zp_md {};
     CHECK(matmul_helper_t::get_quant_md(wei_zp_md, ndims, weights_d.dims(),
@@ -112,25 +106,18 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     // arg scales section
     const auto &attr_scales = pd()->attr()->scales_;
-    const bool with_src_scales
-            = !attr_scales.get(DNNL_ARG_SRC).has_default_values();
+    const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const bool with_wei_scales
-            = !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_values();
-    const bool with_dst_scales
-            = !attr_scales.get(DNNL_ARG_DST).has_default_values();
-    const auto wei_scale_mask = attr_scales.get(DNNL_ARG_WEIGHTS).mask_;
+            = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
+    const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
+    const auto wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
     const dim_t wei_scale_stride_n
             = (wei_scale_mask & pd()->wei_qmask_N()) ? 1 : 0;
-    const auto &wei_scale_dt = attr_scales.get(DNNL_ARG_WEIGHTS).data_type_;
+    const auto &wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_scales_d
             = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    const auto wei_scale_group_ndim = attr_scales.get(DNNL_ARG_WEIGHTS).ndims_;
-    const auto wei_scale_group_k = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[0]
-            : 1;
-    const auto wei_scale_group_n = wei_scale_group_ndim > 0
-            ? attr_scales.get(DNNL_ARG_WEIGHTS).group_dims_[1]
-            : 1;
+    const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
+    const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_scale_md {};
     CHECK(matmul_helper_t::get_quant_md(wei_scale_md, ndims, weights_d.dims(),

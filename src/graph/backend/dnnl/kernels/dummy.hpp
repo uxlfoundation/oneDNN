@@ -38,9 +38,9 @@ private:
     std::shared_ptr<subgraph_t> subgraph_;
 
 public:
-    dummy_kernel_t() {}
+    dummy_kernel_t() = default;
 
-    ~dummy_kernel_t() override {}
+    ~dummy_kernel_t() override = default;
 
     status_t compile_impl(const dnnl_partition_impl_t *part,
             const engine_t *g_engine,

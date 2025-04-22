@@ -52,7 +52,7 @@ struct MatchParamsBase
     int nExtraReqs = 0;
     const StrategyRequirement *extraReqs = nullptr;
 
-    MatchParamsBase() {}
+    MatchParamsBase() = default;
     MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem);
 
 protected:
@@ -61,10 +61,11 @@ protected:
 
 struct MatchParams : public MatchParamsBase
 {
-    MatchParams() : MatchParamsBase() {}
+    MatchParams() = default;
     MatchParams(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem)
             : MatchParamsBase(hw, systolicAvailable, isIntegrated, problem) {}
 
+    // NOLINTNEXTLINE(bugprone-copy-constructor-init)
     MatchParams(const MatchParams &other) { *this = other; }
     MatchParams &operator=(const MatchParams &other) {
         static_cast<MatchParamsBase &>(*this) = other;
@@ -100,10 +101,8 @@ const kcatalog::Entry *upper_bound(const kcatalog::Catalog &catalog, const kcata
 
 class EntryIterator {
 public:
-    EntryIterator(const kcatalog::Catalog &catalog_, const MatchParams &pattern_): catalog(catalog_), pattern(pattern_) {
-        begin = lower_bound(catalog_, pattern_.selector);
-        end   = upper_bound(catalog_, pattern_.selector);
-        current = begin;
+    EntryIterator(const kcatalog::Catalog &catalog_, const MatchParams &pattern_)
+        : catalog(catalog_), pattern(pattern_), begin(lower_bound(catalog_, pattern_.selector)), end(upper_bound(catalog_, pattern_.selector)), current(begin) {
         findNextMatch();
     }
 

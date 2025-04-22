@@ -2358,8 +2358,8 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const auto zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
-    jcp.zp_src_is_common = zp.common(
-            DNNL_ARG_SRC); // otherwise, it's per-channel (not supported)
+    // If it's not per-tensor, then it's per-channel (not supported)
+    jcp.zp_src_is_common = zp.get_mask(DNNL_ARG_SRC) == 0;
 
     VDISPATCH_CONV_IC(
             !(!IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common)
@@ -2655,7 +2655,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
-    jcp.is_oc_scale = wei_scales.mask_ != 0;
+    jcp.is_oc_scale = wei_scales.get_mask() > 0;
     jcp.dst_scale = !dst_scales.has_default_values();
 
     // Note: currently unsupported, results in seg-fault
@@ -3225,7 +3225,7 @@ void jit_avx512_core_amx_bwd_data_kernel_t::store_output_vector_xf16(
                 vpslld(zmm_in, zmm_in, 16);
                 break;
             case data_type::f16: vcvtph2ps(zmm_in_k, addr); break;
-            case data_type::f32: vaddps(zmm_in_k, addr); return;
+            case data_type::f32: vmovups(zmm_in_k, addr); break;
             default: assert(!"Unsupported data type in xf16 conv");
         }
         vaddps(zmm_out, zmm_in);
@@ -3912,6 +3912,18 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
             = jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0;
     jcp.typesize_acc = sizeof(int32_t);
 
+    const dim_t src_size = (dim_t)jcp.mb * jcp.id * jcp.ih * jcp.iw
+            * (jcp.is_nspc ? jcp.ic : rnd_up(jcp.ic, jcp.ic_block))
+            * jcp.typesize_in;
+    VDISPATCH_CONV_IC(src_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
+            "src size > INT_MAX is not supported");
+
+    const dim_t dst_size = (dim_t)jcp.mb * jcp.od * jcp.oh * jcp.ow
+            * (jcp.is_nspc ? jcp.oc : rnd_up(jcp.oc, jcp.oc_block))
+            * jcp.typesize_out;
+    VDISPATCH_CONV_IC(dst_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
+            "dst size > INT_MAX is not supported");
+
     jcp.nb_ic = jcp.ic / jcp.ic_block;
     jcp.nb_oc = jcp.oc / jcp.oc_block;
     jcp.nb_oc_int = div_up(jcp.oc, jcp.oc_block_int);
@@ -3969,7 +3981,7 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
-    jcp.is_ic_scale = wei_scales.mask_ != 0;
+    jcp.is_ic_scale = wei_scales.get_mask() > 0;
     jcp.dst_scale = !dst_scales.has_default_values();
 
     return status::success;
@@ -5396,12 +5408,23 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
         jcp.nthr_ic_b = nthr_ic_b;
 
         // TODO: Optimize memory allocation when threaded on height and depth
-        jcp.tr_src_buf_size = jcp.tr_iw * jcp.ic_block * jcp.ih * jcp.id;
+        jcp.tr_src_buf_size = static_cast<size_t>(jcp.tr_iw) * jcp.ic_block
+                * jcp.ih * jcp.id;
+        const auto src_max_size = jcp.tr_src_buf_size * jcp.typesize_in;
+        VDISPATCH_CONV_IC(src_max_size <= INT_MAX, VERBOSE_UNSUPPORTED_FEATURE,
+                "scr size > INT_MAX is not supported");
+
         jcp.tr_src_buf_count = jcp.global_transpose
                 ? jcp.nthr_mb * jcp.nb_ic * jcp.ngroups
                 : jcp.nthr;
 
-        jcp.tr_diff_dst_buf_size = jcp.tr_ow * jcp.oc_block * jcp.oh * jcp.od;
+        jcp.tr_diff_dst_buf_size = static_cast<size_t>(jcp.tr_ow) * jcp.oc_block
+                * jcp.oh * jcp.od;
+        const auto diff_dst_max_size
+                = jcp.tr_diff_dst_buf_size * jcp.typesize_in;
+        VDISPATCH_CONV_IC(diff_dst_max_size <= INT_MAX,
+                VERBOSE_UNSUPPORTED_FEATURE,
+                "diff_dst size > INT_MAX is not supported");
         jcp.tr_diff_dst_buf_count = jcp.global_transpose
                 ? jcp.nthr_mb * jcp.nb_oc * jcp.ngroups
                 : jcp.nthr;
@@ -5449,8 +5472,9 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_scratchpad(
     if (IMPLICATION(jcp.nthr_mb == 1,
                 (jcp.with_bias && jcp.bia_dt == data_type::bf16)
                         || jcp.wei_dt == data_type::bf16)) {
-        const size_t wei_size = jcp.ngroups * jcp.nb_oc * jcp.oc_block
-                * jcp.nb_ic * jcp.ic_block * jcp.kh * jcp.kw * jcp.kd;
+        const size_t wei_size = static_cast<size_t>(jcp.ngroups) * jcp.nb_oc
+                * jcp.oc_block * jcp.nb_ic * jcp.ic_block * jcp.kh * jcp.kw
+                * jcp.kd;
         const size_t bia_size
                 = jcp.with_bias * jcp.ngroups * jcp.nb_oc * jcp.oc_block;
 

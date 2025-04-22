@@ -37,6 +37,8 @@ static const int max_slot_size = 8;
 
 enum class send_op_t {
     undef,
+    atomic_add,
+    atomic_bfadd,
     atomic_fadd,
     load,
     prefetch,
@@ -45,6 +47,8 @@ enum class send_op_t {
 
 static auto send_op_names = nstl::to_array({
         make_enum_name(send_op_t::undef, "undef"),
+        make_enum_name(send_op_t::atomic_add, "atomic_add"),
+        make_enum_name(send_op_t::atomic_bfadd, "atomic_bfadd"),
         make_enum_name(send_op_t::atomic_fadd, "atomic_fadd"),
         make_enum_name(send_op_t::load, "load"),
         make_enum_name(send_op_t::prefetch, "prefetch"),
@@ -52,6 +56,11 @@ static auto send_op_names = nstl::to_array({
 });
 
 GPU_DEFINE_PARSE_ENUM(send_op_t, send_op_names)
+
+inline bool is_atomic(send_op_t op) {
+    return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd,
+            send_op_t::atomic_bfadd);
+}
 
 enum class send_address_t {
     undef,
@@ -433,7 +442,7 @@ struct send_1d_plan_t : public base_plan_t {
         if (!desc.base_alignment_ok(addr_inc, prover)) return false;
         std::vector<expr_t> mask_incs(nmasks());
         auto coord = it.coord();
-        ir_assert(reg_layout.offset_in_bytes(coord) == reg_off);
+        gpu_assert(reg_layout.offset_in_bytes(coord) == reg_off);
         for (int i = 0; i < nmasks(); i++) {
             mask_incs[i] = mask_desc[i].to_expr(coord, /*with_const=*/false);
         }
@@ -516,14 +525,16 @@ struct send_2d_desc_t {
         auto pitch_bytes = P * type.size();
         int base_align = block_2d_base_alignment(hw);
         int x_align = block_2d_x_alignment(type.size());
-        if (!prover.require(width_bytes >= 64)) return false;
-        if (!prover.require(width_bytes <= (1 << 24))) return false;
-        if (!prover.require(width_bytes % std::max(4, type.size()) == 0))
+        if (!prover.require(width_bytes >= block_2d_min_dim())) return false;
+        if (!prover.require(width_bytes <= block_2d_max_dim())) return false;
+        if (!prover.require(
+                    width_bytes % block_2d_w_alignment(type.size()) == 0))
             return false;
-        if (!prover.require(H <= (1 << 24))) return false;
-        if (!prover.require(pitch_bytes >= 64)) return false;
-        if (!prover.require(pitch_bytes <= (1 << 24))) return false;
-        if (!prover.require(pitch_bytes % 8 == 0)) return false;
+        if (!prover.require(H <= block_2d_max_dim())) return false;
+        if (!prover.require(pitch_bytes >= block_2d_min_dim())) return false;
+        if (!prover.require(pitch_bytes <= block_2d_max_dim())) return false;
+        if (!prover.require(pitch_bytes % block_2d_pitch_alignment(hw) == 0))
+            return false;
         if (!prover.require(base % base_align == 0)) return false;
         if (!prover.require(x_base % x_align == 0)) return false;
         return true;
@@ -549,7 +560,7 @@ struct send_2d_desc_t {
                     stride = utils::rnd_up(stride, grf_size / type.size());
                     break;
                 case pad_kind_t::none: break;
-                default: ir_error_not_expected();
+                default: gpu_error_not_expected();
             }
             cur_stride = stride;
         };
@@ -749,15 +760,15 @@ private:
         int inner_elems = inner_last.elems();
         int inner_bytes = type_size * inner_elems;
         int slot_size = ir_utils::max_pow2_divisor(inner_bytes);
-        if (params.op == send_op_t::atomic_fadd) slot_size = type_size;
+        if (is_atomic(params.op)) slot_size = type_size;
         int grf_size = plan.hw.grf_size();
 
         if (slot_size < grf_size)
             slot_size = std::min(max_slot_size, slot_size);
         if (type_size < slot_size && slot_size < 4) slot_size = type_size;
 
-        ir_assert(inner_bytes % slot_size == 0);
-        ir_assert(slot_size % type_size == 0);
+        gpu_assert(inner_bytes % slot_size == 0);
+        gpu_assert(slot_size % type_size == 0);
         bool is_scattered = (slot_size <= max_slot_size);
         if (is_scattered && params.kind == send_kind_t::block)
             return send_plan_t();
@@ -797,8 +808,8 @@ private:
 
         int elem_stride = 1;
         if (slot_stride > slot_size) {
-            ir_assert(slot_size < 4);
-            ir_assert(type_size == slot_size);
+            gpu_assert(slot_size < 4);
+            gpu_assert(type_size == slot_size);
             elem_stride = ir_utils::safe_div(slot_stride, slot_size);
         }
         auto reg_layout = middle_last.sub_layout(elem_stride);
@@ -843,7 +854,7 @@ private:
         int grf_size = params.hw.grf_size();
         auto reg_layout = desc.reg_layout(grf_size, view.layout().desc());
         int entry_reg_size = utils::rnd_up(reg_layout.size(), grf_size);
-        ir_assert(entry_reg_size <= params.max_entry_reg_size);
+        gpu_assert(entry_reg_size <= params.max_entry_reg_size);
         reg_layout.pad_bytes(grf_size);
 
         auto entry_tile = reg_layout.int_dim_sizes();
@@ -900,8 +911,7 @@ private:
             if (params.kind == send_kind_t::scattered
                     && inner_bytes > max_slot_size * max_slots)
                 break;
-            if (params.op == send_op_t::atomic_fadd && it.elems() > max_slots)
-                break;
+            if (is_atomic(params.op) && it.elems() > max_slots) break;
             inner_last = it;
         }
         return inner_last;
@@ -914,7 +924,7 @@ private:
         const int max_type_size = 512;
         if (desc.type_size <= max_type_size) return;
 
-        ir_assert(desc.type_size % max_type_size == 0);
+        gpu_assert(desc.type_size % max_type_size == 0);
         send_1d_plan_t new_plan;
         new_plan.desc = desc;
         new_plan.desc.type_size = max_type_size;
@@ -938,11 +948,11 @@ private:
 
 inline send_plan_t create_send_plan(const send_params_t &params,
         const view_t &view, bool allow_fail = false) {
-    ir_assert(params.max_entry_reg_size > 0);
+    gpu_assert(params.max_entry_reg_size > 0);
     send_plan_builder_t spb(params, view);
     auto plan = spb.build();
     if (!plan) {
-        if (!allow_fail) ir_error_not_expected() << "Cannot create send plan.";
+        if (!allow_fail) gpu_error_not_expected() << "Cannot create send plan.";
     }
     return plan;
 }

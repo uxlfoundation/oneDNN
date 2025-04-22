@@ -103,7 +103,7 @@ public:
         std::sort(pvars_.begin(), pvars_.end());
         // Duplicates are not expected.
         for (int i = 1; i < size(); i++) {
-            ir_assert(pvars_[i] != pvars_[i - 1]);
+            gpu_assert(pvars_[i] != pvars_[i - 1]);
         }
     }
 
@@ -166,7 +166,7 @@ public:
     void stringify(std::ostream &out) const { stringify_impl(out); }
 
     void stringify_impl(std::ostream &out, const std::string &sep = "*") const {
-        ir_assert(size() > 0);
+        gpu_assert(size() > 0);
         bool is_first = true;
         for (auto &p : pvars_) {
             if (!is_first) out << sep;
@@ -198,13 +198,13 @@ private:
         if (auto *var = e.as_ptr<const_var_t>())
             return {pvar_t::from_var(*var)};
         if (auto *op = e.as_ptr<binary_op_t>()) {
-            ir_assert(op->op_kind == op_kind_t::_mul);
+            gpu_assert(op->op_kind == op_kind_t::_mul);
             auto a_params = split(op->a);
             auto b_params = split(op->b);
             a_params.insert(a_params.end(), b_params.begin(), b_params.end());
             return a_params;
         }
-        ir_error_not_expected() << "Unknown expression: " << e;
+        gpu_error_not_expected() << "Unknown expression: " << e;
         return {};
     }
 
@@ -223,7 +223,7 @@ public:
             value_ = to_cpp<int>(e);
         } else {
             pvar_ = pvar_t::from_var(e);
-            ir_assert(!pvar_.is_undef()) << e;
+            gpu_assert(!pvar_.is_undef()) << e;
         }
         is_undef_ = false;
     }
@@ -232,7 +232,7 @@ public:
             value_ = std::stoi(s);
         } else {
             pvar_ = pvar_t(s);
-            ir_assert(!pvar_.is_undef()) << s;
+            gpu_assert(!pvar_.is_undef()) << s;
         }
         is_undef_ = false;
     }
@@ -240,16 +240,16 @@ public:
     bool is_pvar() const { return !is_undef_ && !pvar_.is_undef(); }
     bool is_value() const { return !is_undef_ && pvar_.is_undef(); }
     const pvar_t &pvar() const {
-        ir_assert(is_pvar());
+        gpu_assert(is_pvar());
         return pvar_;
     }
     dim_t value() const {
-        ir_assert(is_value());
+        gpu_assert(is_value());
         return value_;
     }
     template <typename T>
     T to_int(const pvar_map_t<T> &values) const {
-        ir_assert(!is_undef());
+        gpu_assert(!is_undef());
         if (is_value()) return value_;
         return values.at(pvar_);
     }
@@ -290,7 +290,7 @@ public:
             const req_rhs_entry_t &e0, const req_rhs_entry_t &e1 = {}) {
         entries_[0] = e0;
         entries_[1] = e1;
-        ir_assert(!entries_[0].is_undef());
+        gpu_assert(!entries_[0].is_undef());
     }
     req_rhs_t(const expr_t &e0, const expr_t &e1)
         : req_rhs_t(req_rhs_entry_t(e0), req_rhs_entry_t(e1)) {}
@@ -298,18 +298,18 @@ public:
     bool is_pvar() const { return size() == 1 && entries_[0].is_pvar(); }
     bool is_value() const { return size() == 1 && entries_[0].is_value(); }
     const pvar_t &pvar() const {
-        ir_assert(is_pvar());
+        gpu_assert(is_pvar());
         return entries_[0].pvar();
     }
     dim_t value() const {
-        ir_assert(is_value());
+        gpu_assert(is_value());
         return entries_[0].value();
     }
     int size() const {
         return !entries_[0].is_undef() + !entries_[1].is_undef();
     }
     const req_rhs_entry_t &operator[](int idx) const {
-        ir_assert(idx >= 0 && idx < size());
+        gpu_assert(idx >= 0 && idx < size());
         return entries_[idx];
     }
     bool operator==(const req_rhs_t &other) const {
@@ -339,7 +339,7 @@ public:
                 if (values.has(entries_[i].pvar())) {
                     value *= values.at(entries_[i].pvar());
                 } else {
-                    ir_assert(pvar.is_undef());
+                    gpu_assert(pvar.is_undef());
                     pvar = entries_[i].pvar();
                 }
             }
@@ -366,7 +366,7 @@ public:
     void parse(std::istream &in) {
         auto s = jit::parse<std::string>(in);
         auto parts = gpu_utils::split(s, "*");
-        ir_assert(!parts.empty() && (int)parts.size() <= max_entries);
+        gpu_assert(!parts.empty() && (int)parts.size() <= max_entries);
         for (int i = 0; i < (int)parts.size(); i++) {
             entries_[i] = req_rhs_entry_t(parts[i]);
         }
@@ -411,6 +411,16 @@ bool has_req_op(const std::string &s) {
     return false;
 }
 
+bool is_pvar_product(const expr_t &e) {
+    if (auto *var = e.as_ptr<const_var_t>())
+        return !pvar_t::from_var(*var).is_undef();
+    if (auto *op = e.as_ptr<binary_op_t>()) {
+        if (op->op_kind != op_kind_t::_mul) return false;
+        return is_pvar_product(op->a) && is_pvar_product(op->b);
+    }
+    return false;
+}
+
 class req_impl_t {
 public:
     req_impl_t() = default;
@@ -418,7 +428,7 @@ public:
         if (try_init_mod_eq_0(e)) return;
         if (try_init_or_eq(e)) return;
         if (try_init(e)) return;
-        ir_error_not_expected() << "Cannot handle expression: " << e;
+        gpu_error_not_expected() << "Cannot handle expression: " << e;
     }
     req_impl_t(req_kind_t kind, const req_lhs_t &lhs, const req_rhs_t &rhs)
         : kind_(kind), lhs_(lhs), rhs_(rhs) {}
@@ -445,13 +455,13 @@ public:
         if (rhs_.size() != 1) return;
         int factor = lhs_.substitute(values);
         if (factor != 1) {
-            ir_assert(rhs().value() % factor == 0);
+            gpu_assert(rhs().value() % factor == 0);
             rhs_ = req_rhs_t(rhs().value() / factor);
         }
         if (lhs_.size() == 0) {
             // Fully reduced, check that the requirement evaluates to true and
             // reset it to skip later.
-            ir_assert(fits(pvar_map_t<dim_t>()));
+            gpu_assert(fits(pvar_map_t<dim_t>()));
             *this = req_impl_t();
         }
     }
@@ -476,11 +486,11 @@ public:
             case req_kind_t::ge: ret = lhs_val >= rhs_val; break;
             case req_kind_t::le: ret = lhs_val <= rhs_val; break;
             case req_kind_t::mod_eq_0: ret = (lhs_val % rhs_val) == 0; break;
-            default: ir_error_not_expected();
+            default: gpu_error_not_expected();
         }
-        ir_check(ret) << "Requirement is not satisfied: " << str()
-                      << ". LHS evaluates to " << lhs_val
-                      << ", RHS evaluates to " << rhs_val;
+        gpu_check(ret) << "Requirement is not satisfied: " << str()
+                       << ". LHS evaluates to " << lhs_val
+                       << ", RHS evaluates to " << rhs_val;
         return ret;
     }
 
@@ -516,7 +526,7 @@ public:
                 out << delim << to_string(kind_) << delim;
                 out << lhs_[1] << delim << "==" << delim << rhs_[1];
                 break;
-            default: ir_error_not_expected() << "kind: " << to_string(kind_);
+            default: gpu_error_not_expected() << "kind: " << to_string(kind_);
         }
     }
 
@@ -532,7 +542,7 @@ public:
             auto mod_pos = s_lhs.find("%");
             expr_t lhs;
             if (mod_pos != std::string::npos) {
-                ir_assert(op == req_kind_t::eq);
+                gpu_assert(op == req_kind_t::eq);
                 kind_ = req_kind_t::mod_eq_0;
                 auto s_mod_lhs = s_lhs.substr(0, mod_pos);
                 auto s_mod_rhs = s_lhs.substr(mod_pos + 1);
@@ -552,7 +562,7 @@ public:
             }
             return;
         }
-        ir_error_not_expected() << s;
+        gpu_error_not_expected() << s;
     }
 
     std::string str() const {
@@ -568,6 +578,7 @@ private:
     bool try_init_mod_eq_0(const expr_t &e) {
         expr_t a, b;
         if (!is_a_mod_b_eq_0(e, a, b)) return false;
+        if (!is_pvar_product(a)) return false;
         kind_ = req_kind_t::mod_eq_0;
         lhs_ = req_lhs_t(a);
         rhs_ = req_rhs_t(b);
@@ -594,14 +605,16 @@ private:
             case op_kind_t::_le: kind_ = req_kind_t::le; break;
             default: return false;
         }
-        ir_assert(is_const(op->b)) << "Unexpected non-const RHS: " << op->b;
+        gpu_assert(is_const(op->b)) << "Unexpected non-const RHS: " << op->b;
         auto *div_a_op = op->a.as_ptr<binary_op_t>();
         if (div_a_op && div_a_op->op_kind == op_kind_t::_div) {
+            if (!is_pvar_product(div_a_op->a)) return false;
             lhs_ = req_lhs_t(div_a_op->a);
             rhs_ = req_rhs_t(
                     req_rhs_entry_t(op->b), req_rhs_entry_t(div_a_op->b));
             return true;
         }
+        if (!is_pvar_product(op->a)) return false;
         lhs_ = req_lhs_t(op->a);
         rhs_ = req_rhs_t(op->b);
         return true;
@@ -661,7 +674,7 @@ void prb_reqs_t::add(const expr_t &_e) {
     auto e = simplify_expr(_e);
     if (auto *imm = e.as_ptr<bool_imm_t>()) {
         if (imm->value) return;
-        ir_error_not_expected() << _e;
+        gpu_error_not_expected() << _e;
     }
     add_if_not_found(req_impl_t(e));
 }
@@ -675,6 +688,10 @@ void prb_reqs_t::add(const pvar_map_t<dim_t> &values) {
     for (auto &v : values) {
         set(v, values[v]);
     }
+}
+
+void prb_reqs_t::add_no_simplify(const expr_t &e) {
+    add_if_not_found(req_impl_t(e));
 }
 
 void prb_reqs_t::set(const pvar_t &pvar, dim_t value) {
@@ -694,7 +711,7 @@ prover_t prb_reqs_t::prover(const prb_reqs_t &parent, bool can_update) {
 
 bool prb_reqs_t::fits(const pvar_map_t<dim_t> &values) const {
     for (auto &r : reqs_) {
-        ir_check(r.impl().fits(values));
+        gpu_check(r.impl().fits(values));
     }
     return true;
 }
@@ -750,89 +767,6 @@ std::string prb_reqs_t::str() const {
     std::ostringstream oss;
     stringify_impl(oss, "\n", " ");
     return oss.str();
-}
-
-void prb_reqs_t::merge(std::vector<prb_reqs_t> reqs_vec,
-        const std::vector<int> &factor_vec, const pvar_t &factor_dim,
-        prb_reqs_t &out_reqs) {
-    ir_assert(reqs_vec.size() == factor_vec.size());
-    auto &reqs0 = reqs_vec[0];
-    int vec_size = (int)reqs_vec.size();
-    auto get_reqs_size
-            = [&](int vec_idx) { return (int)reqs_vec[vec_idx].reqs_.size(); };
-    auto get_req = [&](int vec_idx, int req_idx) -> req_impl_t & {
-        return reqs_vec[vec_idx].reqs_[req_idx].impl();
-    };
-    for (auto &r : reqs_vec) {
-        // TODO: Remove.
-        r.simplify();
-    }
-    if (reqs0.reqs_.empty()) {
-        out_reqs = prb_reqs_t();
-        return;
-    }
-    out_reqs = prb_reqs_t();
-
-    // Handle common requirements.
-    for (int i = 0; i < get_reqs_size(0); i++) {
-        auto &r0 = get_req(0, i);
-        std::vector<int> idxs(vec_size, -1);
-        for (int j = 0; j < vec_size; j++) {
-            for (int k = 0; k < get_reqs_size(j); k++) {
-                if (r0 == get_req(j, k)) {
-                    idxs[j] = (int)k;
-                    break;
-                }
-            }
-        }
-        if (std::all_of(idxs.begin(), idxs.end(),
-                    [](int idx) { return idx != -1; })) {
-            out_reqs.reqs_.push_back(r0);
-            for (int j = 0; j < vec_size; j++) {
-                get_req(j, idxs[j]) = req_impl_t();
-            }
-        }
-    }
-
-    // Try scaling LHS based on factor_vec for the remaining requirements.
-    for (int i = 0; i < get_reqs_size(0); i++) {
-        auto &r0 = get_req(0, i);
-        if (r0.rhs().size() != 1 || !r0.rhs().is_value()) continue;
-        dim_t base = r0.rhs().value() * factor_vec[0];
-        std::vector<int> idxs(vec_size, -1);
-        for (int j = 0; j < vec_size; j++) {
-            for (int k = 0; k < get_reqs_size(j); k++) {
-                auto &rj = get_req(j, k);
-                if (rj.lhs() != r0.lhs()) continue;
-                if (rj.rhs().size() != 1 || !rj.rhs().is_value()) continue;
-                dim_t base_j = rj.rhs().value() * factor_vec[j];
-                if (base_j == base) {
-                    idxs[j] = k;
-                    break;
-                }
-            }
-        }
-        if (std::all_of(idxs.begin(), idxs.end(),
-                    [](int idx) { return idx != -1; })) {
-            auto pvars = r0.lhs().pvars();
-            pvars.push_back(factor_dim);
-            out_reqs.reqs_.emplace_back(
-                    req_impl_t(r0.kind(), req_lhs_t(pvars), req_rhs_t(base)));
-            for (int j = 0; j < vec_size; j++) {
-                get_req(j, idxs[j]) = req_impl_t();
-            }
-        }
-    }
-
-    // Add the remaing requirements.
-    for (int i = 0; i < vec_size; i++) {
-        for (int j = 0; j < get_reqs_size(i); j++) {
-            auto &r = get_req(i, j);
-            if (r.is_undef()) continue;
-            out_reqs.reqs_.emplace_back(r);
-        }
-    }
-    out_reqs.simplify();
 }
 
 prb_reqs_t::req_t::req_t() : impl_(utils::make_unique<req_impl_t>()) {}
@@ -926,6 +860,8 @@ dim_t prb_reqs_t::max_factor(const pvar_t &pvar) const {
     dim_t ret = 1;
     for (auto &r : reqs_) {
         auto &ri = r.impl();
+        if (ri.kind() == req_kind_t::eq && ri.lhs() == pvar)
+            return ri.rhs().value();
         if (ri.kind() == req_kind_t::mod_eq_0 && ri.lhs() == pvar
                 && ri.rhs().is_value()) {
             ret = std::max(ret, ri.rhs().value());
@@ -941,7 +877,7 @@ bool prb_reqs_t::is_equal(const pvar_t &pvar, dim_t value) const {
 
 bool prb_reqs_t::implies(const prb_reqs_t &other) const {
     for (auto &req : other.reqs_) {
-        ir_check(can_prove(req.impl())) << "Cannot prove: " << req.impl();
+        gpu_check(can_prove(req.impl())) << "Cannot prove: " << req.impl();
     }
     return true;
 }

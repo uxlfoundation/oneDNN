@@ -207,11 +207,10 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
         }
     }
 
-    /* Temporarily reuse XeHPC strategies for Xe2 until more Xe2 strategies are
+    /* Temporarily reuse XeHPC/Xe2 strategies for Xe2/Xe3 until more strategies are
        in the catalog*/
-    const auto pattern_hw = patterns[0].selector.hw;
     if (!bestEntry
-            && (one_of(pattern_hw, kcatalog::HWTagXe2,  kcatalog::HWTagXe3
+            && (one_of(patterns[0].selector.hw, kcatalog::HWTagXe2,  kcatalog::HWTagXe3
 #if XE3P
 		       ,kcatalog::HWTagXe3p
 #endif
@@ -219,14 +218,14 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
         std::vector<MatchParams> override_patterns;
         override_patterns.reserve(npatterns);
         auto tag = kcatalog::HWTagXeHPC;
-	switch (pattern_hw){
-	       default: break;
-	       case kcatalog::HWTagXe3: tag = kcatalog::HWTagXe2; break;
+	    switch (patterns[0].selector.hw){
+	        default: break;
+	        case kcatalog::HWTagXe3: tag = kcatalog::HWTagXe2; break;
 #if XE3P
-	       case kcatalog::HWTagXe3p: tag = kcatalog::HWTagXe3; break;
+	        case kcatalog::HWTagXe3p: tag = kcatalog::HWTagXe3; break;
 #endif
-		     }
-	for (int i = 0; i < npatterns; i++) {
+		}
+        for (int i = 0; i < npatterns; i++) {
             override_patterns.emplace_back(patterns[i]);
             override_patterns.back().selector.hw = tag;
         }
@@ -267,6 +266,7 @@ const kcatalog::Entry *lower_bound(const kcatalog::Catalog &catalog, const kcata
 const kcatalog::Entry *upper_bound(const kcatalog::Catalog &catalog, const kcatalog::Selector &selector) {
     return upper_lower_bound<true>(catalog, selector);
 }
+
 
 MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem_)
 {

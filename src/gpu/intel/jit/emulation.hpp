@@ -17,6 +17,13 @@
 #ifndef GPU_INTEL_JIT_EMULATION_HPP
 #define GPU_INTEL_JIT_EMULATION_HPP
 
+#include "common/utils.hpp"
+#include "ngen/ngen.hpp"
+
+#ifdef NGEN_ENABLE_SOURCE_LOCATION
+#include <source_location>
+#endif
+
 #include <exception>
 
 namespace dnnl {
@@ -25,7 +32,7 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-struct EmulationStrategy {
+struct EmulationStrategy { // NOLINT(readability-identifier-naming)
     // Emulate 64-bit arithmetic (required for GenXLP)
     bool emulate64 = false;
     // Emulate DW x DW -> DW multiplication (required for Gen12)
@@ -59,7 +66,7 @@ struct EmulationStrategy {
     }
 };
 
-struct EmulationState {
+struct EmulationState { // NOLINT(readability-identifier-naming)
     ngen::GRF temp[2]; // Temporary GRFs for use in emulation sequences
     ngen::FlagRegister
             flag; // Flag register for use in emulating 64-bit adds (optional, avoids temporary registers/acc)
@@ -68,10 +75,19 @@ struct EmulationState {
 
 // Implementation wrapped as static methods in non-instantiated class.
 // Clients should declare EmulationImplementation as a friend.
-struct EmulationImplementation {
+struct EmulationImplementation { // NOLINT(readability-identifier-naming)
+#ifdef NGEN_ENABLE_SOURCE_LOCATION
+    [[noreturn]] static void stub(
+            std::source_location where = std::source_location::current()) {
+        throw std::runtime_error(std::string("Unimplemented (at ")
+                + std::string(where.file_name()) + ":"
+                + std::to_string(where.line()) + ")");
+    }
+#else
     [[noreturn]] static void stub() {
         throw std::runtime_error("Unimplemented");
     }
+#endif
 
     template <typename DT, typename O>
     static void applyDefaultType(O &op) {
@@ -243,54 +259,70 @@ struct EmulationImplementation {
     template <typename DT = void, typename Generator>
     static void emov(Generator &g, const ngen::InstructionModifier &mod,
             ngen::RegData dst, ngen::RegData src0,
-            const EmulationStrategy &strategy) {
+            const EmulationStrategy &strategy, ngen::SourceLocation loc = {}) {
         using namespace ngen;
         applyDefaultType<DT>(dst);
         applyDefaultType<DT>(src0);
 
         bool dstQ = isQW(dst);
         bool s0Q = isQW(src0);
-        bool s0D = isDW(src0);
         bool isDF = (src0.getType() == DataType::df
                 && dst.getType() == DataType::df);
         bool unaligned = (mod.getExecSize() > 1 && src0.getHS() != 0
                 && src0.getOffset() != dst.getOffset());
+        bool emulateDF = isDF && unaligned && g.hardware >= ngen::HW::XeHP;
 
-        if ((dstQ && s0D) && strategy.emulate64) {
-            if (src0.getNeg()) stub();
-            bool s0Signed = isSigned(src0.getType());
-            RegData dstHi, dstLo;
-            splitToDW(dst, dstLo, dstHi);
-            g.mov(mod, dstLo, src0);
-            if (!s0Signed)
-                g.mov(mod, dstHi, 0);
-            else
-                g.asr(mod, dstHi, dstLo, uint16_t(31));
-        } else if (((dstQ || s0Q) && strategy.emulate64)
-                || (isDF && unaligned && g.hardware >= ngen::HW::XeHP)) {
-            if (dstQ != s0Q) stub();
+        if ((strategy.emulate64 && dstQ) || emulateDF) {
+            switch (src0.getType()) {
+                case DataType::ub:
+                case DataType::uw:
+                case DataType::ud: {
+                    RegData dstHi, dstLo;
+                    splitToDW(dst, dstLo, dstHi);
+                    g.mov(mod, dstLo, src0, loc);
+                    g.mov(mod, dstHi, 0, loc);
+                    break;
+                }
+                case DataType::d: {
+                    if (src0.getNeg()) stub();
+                    RegData dstHi, dstLo;
+                    splitToDW(dst, dstLo, dstHi);
+                    g.mov(mod, dstLo, src0, loc);
+                    g.asr(mod, dstHi, src0, uint16_t(31), loc);
+                    break;
+                }
+                case DataType::q:
+                case DataType::uq:
+                case DataType::df: {
+                    if (dstQ != s0Q) stub();
 
-            auto mod2x = mod;
-            mod2x.setExecSize(mod.getExecSize() * 2);
+                    auto mod2x = mod;
+                    mod2x.setExecSize(mod.getExecSize() * 2);
 
-            makeDWPair(dst, mod.getExecSize());
-            makeDWPair(src0, mod.getExecSize());
-            g.mov(mod2x, dst, src0);
+                    makeDWPair(dst, mod.getExecSize());
+                    makeDWPair(src0, mod.getExecSize());
+                    g.mov(mod2x, dst, src0, loc);
+                    break;
+                }
+                default: stub(); break;
+            }
+        } else if (strategy.emulate64 && s0Q) {
+            stub();
         } else if (dst.getType() == DataType::f
                 && src0.getType() == DataType::bf
                 && (src0.getHS() != 1 || mod.getExecSize() == 1)) {
             // Emulate bf16->f32 upconversion
             dst.setType(DataType::ud);
             src0.setType(DataType::uw);
-            g.shl(mod, dst, src0, 16);
+            g.shl(mod, dst, src0, 16, loc);
         } else
-            g.mov(mod, dst, src0);
+            g.mov(mod, dst, src0, loc);
     }
 
     template <typename DT = void, typename Generator>
     static void emov(Generator &g, const ngen::InstructionModifier &mod,
             ngen::RegData dst, ngen::Immediate src0,
-            const EmulationStrategy &strategy) {
+            const EmulationStrategy &strategy, ngen::SourceLocation loc = {}) {
         using namespace ngen;
         applyDefaultType<DT>(dst);
         applyDefaultType<DT>(src0);
@@ -313,14 +345,14 @@ struct EmulationImplementation {
 
                 downgradeToDW(dst);
                 dst.setRegion(0, 0, 1);
-                g.mov(mod2x, dst, s0Lo);
+                g.mov(mod2x, dst, s0Lo, loc);
             } else {
                 splitToDW(dst, dstLo, dstHi);
-                g.mov(mod, dstLo, s0Lo);
-                g.mov(mod, dstHi, s0Hi);
+                g.mov(mod, dstLo, s0Lo, loc);
+                g.mov(mod, dstHi, s0Hi, loc);
             }
         } else
-            g.mov(mod, dst, src0);
+            g.mov(mod, dst, src0, loc);
     }
 
     template <typename Generator>
@@ -328,7 +360,7 @@ struct EmulationImplementation {
             const ngen::InstructionModifier &mod, bool &doSub,
             const ngen::Immediate &src1, ngen::Immediate &s1LoPos,
             const ngen::Immediate &s1Lo, const ngen::Immediate &s1Hi, bool &s1Q,
-            const ngen::GRF (&temp)[2]) {
+            const ngen::GRF (&temp)[2], const ngen::SourceLocation &loc) {
         using namespace ngen;
         uint64_t raw = static_cast<uint64_t>(src1);
         if (src1.getType() == DataType::d) {
@@ -347,15 +379,15 @@ struct EmulationImplementation {
             const ngen::InstructionModifier &mod, bool &doSub,
             const ngen::RegData &src1, ngen::RegData &s1LoPos,
             ngen::RegData &s1Lo, ngen::RegData &s1Hi, bool &s1Q,
-            const ngen::GRF (&temp)[2]) {
+            const ngen::GRF (&temp)[2], const ngen::SourceLocation &loc) {
         using namespace ngen;
         s1Q = true;
         s1Hi = temp[0].d();
         if (s1Lo.getNeg()) {
-            g.asr(mod, s1Hi, -s1Lo, uint16_t(31));
+            g.asr(mod, s1Hi, -s1Lo, uint16_t(31), loc);
             s1Hi = -s1Hi;
         } else
-            g.asr(mod, s1Hi, s1Lo, uint16_t(31));
+            g.asr(mod, s1Hi, s1Lo, uint16_t(31), loc);
         s1Lo.setType(DataType::ud);
     }
 
@@ -374,18 +406,18 @@ struct EmulationImplementation {
     template <typename Generator>
     static void eaddFixupQD(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::FlagRegister &flag, const ngen::RegData &dstHi,
-            const ngen::RegData &src1) {
+            const ngen::RegData &src1, const ngen::SourceLocation &loc) {
         if ((src1.getBytes() < 8) && isSigned(src1.getType())) {
             // Add sign extension of src1 to high 32 bits of dst (inefficient but rarely used path).
-            g.cmp(mod | (src1.getNeg() ? g.le : g.lt) | flag, src1, 0);
-            g.add(mod | flag, dstHi, dstHi, -1);
+            g.cmp(mod | (src1.getNeg() ? g.le : g.lt) | flag, src1, 0, loc);
+            g.add(mod | flag, dstHi, dstHi, -1, loc);
         }
     }
 
     template <typename Generator>
     static void eaddFixupQD(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::FlagRegister &flag, const ngen::RegData &dstHi,
-            const ngen::Immediate &src1) {
+            const ngen::Immediate &src1, const ngen::SourceLocation &loc) {
         /* no-op */
     }
 
@@ -399,7 +431,8 @@ struct EmulationImplementation {
     template <typename DT = void, typename S1, typename Generator>
     static void eaddInternal(Generator &g, const ngen::InstructionModifier &mod,
             ngen::RegData dst, ngen::RegData src0, S1 src1,
-            const EmulationStrategy &strategy, const EmulationState &state) {
+            const EmulationStrategy &strategy, const EmulationState &state,
+            const ngen::SourceLocation &loc) {
         using namespace ngen;
         const auto &temp = state.temp;
 
@@ -418,24 +451,24 @@ struct EmulationImplementation {
             splitToDW(dst, dstLo, dstHi);
             splitToDW(src0, s0Lo, s0Hi);
             splitToDW(src1, s1Lo, s1Hi);
-            g.add(mod, dstLo, s0Lo, s1Lo);
+            g.add(mod, dstLo, s0Lo, s1Lo, loc);
 
             if (s0Q && s1Q) {
                 if (!equal(dstHi, s0Hi) && !equal(dstHi, s1Hi))
-                    g.add(mod, dstHi, s0Hi, s1Hi);
+                    g.add(mod, dstHi, s0Hi, s1Hi, loc);
             } else if (s0Q) {
-                if (!equal(dstHi, s0Hi)) g.mov(mod, dstHi, s0Hi);
+                if (!equal(dstHi, s0Hi)) g.mov(mod, dstHi, s0Hi, loc);
             } else if (s1Q) {
-                if (!equal(dstHi, s1Hi)) g.mov(mod, dstHi, s1Hi);
+                if (!equal(dstHi, s1Hi)) g.mov(mod, dstHi, s1Hi, loc);
             } else
-                g.mov(mod, dstHi, uint16_t(0));
+                g.mov(mod, dstHi, uint16_t(0), loc);
         } else if (!strategy.emulate64)
-            g.add(mod, dst, src0, src1);
+            g.add(mod, dst, src0, src1, loc);
         else {
             if (!dstQ) {
                 downgradeToDW(src0);
                 downgradeToDW(src1);
-                g.add(mod, dst, src0, src1);
+                g.add(mod, dst, src0, src1, loc);
             } else {
                 RegData dstHi, dstLo, s0Hi, s0Lo;
                 S1 s1Hi, s1Lo, s1LoPos;
@@ -465,19 +498,19 @@ struct EmulationImplementation {
                         neg = false;
                     }
 
-                    g.add(mod | Mx | g.ov | flag, dstLo, s0LoUD, s1LoMod);
+                    g.add(mod | Mx | g.ov | flag, dstLo, s0LoUD, s1LoMod, loc);
                     if (s0Q && s1Q)
-                        g.add(mod, dstHi, s0Hi, s1Hi);
+                        g.add(mod, dstHi, s0Hi, s1Hi, loc);
                     else if (s0Q && !equal(dstHi, s0Hi))
-                        g.mov(mod, dstHi, s0Hi);
+                        g.mov(mod, dstHi, s0Hi, loc);
                     else if (s1Q && !equal(dstHi, s1Hi))
-                        g.mov(mod, dstHi, s1Hi);
+                        g.mov(mod, dstHi, s1Hi, loc);
                     else if (!s0Q && !s1Q)
-                        g.mov(mod, dstHi, 0);
+                        g.mov(mod, dstHi, 0, loc);
                     g.add(mod | Mx | (revFlag ? ~flag : flag), dstHi, dstHi,
-                            neg ? -1 : +1);
-                    eaddFixupQD(g, mod | Mx, flag, dstHi, src0);
-                    eaddFixupQD(g, mod | Mx, flag, dstHi, src1);
+                            neg ? -1 : +1, loc);
+                    eaddFixupQD(g, mod | Mx, flag, dstHi, src0, loc);
+                    eaddFixupQD(g, mod | Mx, flag, dstHi, src1, loc);
                 } else {
                     // Slow path: addc/subb + acc.
                     RegData carry = temp[0].ud();
@@ -490,12 +523,12 @@ struct EmulationImplementation {
                         if (s0Signed) {
                             s0Q = true;
                             s0Hi = temp[0].d();
-                            g.asr(mod, s0Hi, s0Lo, uint16_t(31));
+                            g.asr(mod, s0Hi, s0Lo, uint16_t(31), loc);
                             s0Lo.setType(DataType::ud);
                             if (s0Lo.getNeg()) s0Hi = -s0Hi;
                         } else
                             eaddSignExtend1(g, mod, doSub, src1, s1LoPos, s1Lo,
-                                    s1Hi, s1Q, temp);
+                                    s1Hi, s1Q, temp, loc);
                         carry = temp[1].ud();
                         lateCarry = true;
                     }
@@ -507,41 +540,41 @@ struct EmulationImplementation {
                     // Compute low 32 bits, saving carry/borrow.
                     if (dstLo.getOffset() != 0) {
                         doSub ? g.subb(mod, g.null.retype(s0Lo.getType()), s0Lo,
-                                s1LoPos)
+                                s1LoPos, loc)
                               : g.addc(mod, g.null.retype(s0Lo.getType()), s0Lo,
-                                      s1Lo);
-                        g.add(mod, dstLo, s0Lo, s1Lo);
+                                      s1Lo, loc);
+                        g.add(mod, dstLo, s0Lo, s1Lo, loc);
                     } else if ((mod.getExecSize() > 1)
                             && !isUnitStride(dstLo)) {
                         subDstLo = temp[1].ud();
-                        doSub ? g.subb(mod, subDstLo, s0Lo, s1LoPos)
-                              : g.addc(mod, subDstLo, s0Lo, s1Lo);
+                        doSub ? g.subb(mod, subDstLo, s0Lo, s1LoPos, loc)
+                              : g.addc(mod, subDstLo, s0Lo, s1Lo, loc);
                     } else {
-                        doSub ? g.subb(mod, dstLo, s0Lo, s1LoPos)
-                              : g.addc(mod, dstLo, s0Lo, s1Lo);
+                        doSub ? g.subb(mod, dstLo, s0Lo, s1LoPos, loc)
+                              : g.addc(mod, dstLo, s0Lo, s1Lo, loc);
                     }
 
                     // Retrieve carry from accumulator, unless it conflicts with subDstLo.
-                    if (!lateCarry) g.mov(mod, carry, g.acc0.ud());
+                    if (!lateCarry) g.mov(mod, carry, g.acc0.ud(), loc);
 
                     // Move low 32-bits to final resting place, if needed.
-                    if (subDstLo.isValid()) g.mov(mod, dstLo, subDstLo);
+                    if (subDstLo.isValid()) g.mov(mod, dstLo, subDstLo, loc);
 
                     // Retrieve carry from accumulator once subDstLo isn't needed.
-                    if (lateCarry) g.mov(mod, carry, g.acc0.ud());
+                    if (lateCarry) g.mov(mod, carry, g.acc0.ud(), loc);
 
                     if (doSub) carry = -carry;
 
                     // Compute high 32 bits of sum.
                     if (s0Q && s1Q) {
-                        g.add(mod, dstHi, s0Hi, s1Hi);
-                        g.add(mod, dstHi, carry, dstHi);
+                        g.add(mod, dstHi, s0Hi, s1Hi, loc);
+                        g.add(mod, dstHi, carry, dstHi, loc);
                     } else if (s0Q)
-                        g.add(mod, dstHi, carry, s0Hi);
+                        g.add(mod, dstHi, carry, s0Hi, loc);
                     else if (s1Q)
-                        g.add(mod, dstHi, carry, s1Hi);
+                        g.add(mod, dstHi, carry, s1Hi, loc);
                     else
-                        g.mov(mod, dstHi, carry);
+                        g.mov(mod, dstHi, carry, loc);
                 }
             }
         }
@@ -551,27 +584,28 @@ struct EmulationImplementation {
     static void eadd(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::RegData &dst, const ngen::RegData &src0,
             const ngen::RegData &src1, const EmulationStrategy &strategy,
-            const EmulationState &state) {
+            const EmulationState &state, ngen::SourceLocation loc = {}) {
         if (src0.getNeg() && !src1.getNeg() && strategy.emulate64
                 && !strategy.emulate64_add32)
-            eaddInternal<DT>(g, mod, dst, src1, src0, strategy, state);
+            eaddInternal<DT>(g, mod, dst, src1, src0, strategy, state, loc);
         else
-            eaddInternal<DT>(g, mod, dst, src0, src1, strategy, state);
+            eaddInternal<DT>(g, mod, dst, src0, src1, strategy, state, loc);
     }
 
     template <typename DT = void, typename Generator>
     static void eadd(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::RegData &dst, const ngen::RegData &src0,
             ngen::Immediate src1, const EmulationStrategy &strategy,
-            const EmulationState &state) {
-        eaddInternal<DT>(g, mod, dst, src0, src1, strategy, state);
+            const EmulationState &state, ngen::SourceLocation loc = {}) {
+        eaddInternal<DT>(g, mod, dst, src0, src1, strategy, state, loc);
     }
 
     // Integer multiplication, emulating 32x32 multiplication as configured.
     template <typename DT = void, typename S1, typename Generator>
     static void emulInternal(Generator &g, const ngen::InstructionModifier &mod,
             ngen::RegData dst, ngen::RegData src0, S1 src1,
-            const EmulationStrategy &strategy, const EmulationState &state) {
+            const EmulationStrategy &strategy, const EmulationState &state,
+            const ngen::SourceLocation &loc) {
         using namespace ngen;
         applyDefaultType<DT>(dst);
         applyDefaultType<DT>(src0);
@@ -592,9 +626,21 @@ struct EmulationImplementation {
         auto mulHiType = (s0Signed || s1Signed) ? DataType::d : DataType::ud;
 
         bool emulate64 = strategy.emulate64_mul;
+        bool emulateDWxDW = strategy.emulateDWxDW;
 
         if (s0Q) {
-            stub();
+            if (s1Q || !dstQ) stub();
+            auto temp = s1Signed ? state.temp[0].d() : state.temp[0].ud();
+            auto &src1Reg = [&]() -> ngen::RegData & {
+                if (s1Immed || s1W) {
+                    g.mov(mod, temp, src1, loc);
+                    return temp;
+                } else {
+                    return *reinterpret_cast<ngen::RegData *>(&src1);
+                }
+            }();
+            return emulInternal(
+                    g, mod, dst, src1Reg, src0, strategy, state, loc);
         } else if (s1Q) {
             if (!s0D || !dstQ) stub();
             auto s0Type = src0.getType();
@@ -612,43 +658,53 @@ struct EmulationImplementation {
                     = g.acc0.retype(s0Type)[dstLo.getOffset()](dstLo.getHS());
             auto accHi
                     = g.acc0.retype(s0Type)[dstHi.getOffset()](dstHi.getHS());
-            g.mul(mod, accHi, src0, s1W2);
-            g.macl(mod, dstHi, src0, s1Hi);
-            g.mul(mod, accLo, src0, s1W0);
-            g.mach(mod, dstLo, src0, s1Lo);
-            g.add(mod, dstHi, dstHi, dstLo);
-            g.mov(mod, dstLo, accLo);
+            g.mul(mod, accHi, src0, s1W2, loc);
+            g.macl(mod, dstHi, src0, s1Hi, loc);
+            g.mul(mod, accLo, src0, s1W0, loc);
+            g.mach(mod, dstLo, src0, s1Lo, loc);
+            g.add(mod, dstHi, dstHi, dstLo, loc);
+            g.mov(mod, dstLo, accLo, loc);
         } else if (dstQ && s0W && s1W) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
 
-            g.mul(mod, dstLo, src0, src1);
+            g.mul(mod, dstLo, src0, src1, loc);
 
             dstHi.setType(mulHiType);
             dstLo.setType(mulHiType);
 
             if (s0Signed || s1Signed)
-                g.asr(mod, dstHi, dstLo, 31);
+                g.asr(mod, dstHi, dstLo, 31, loc);
             else
-                g.mov(mod, dstHi, 0);
+                g.mov(mod, dstHi, 0, loc);
         } else if (dstQ && s0W && s1D) {
             stub();
         } else if (dstQ && s0D
-                && ((s1W && !s1Immed) || ((s1W || s1D) && emulate64))) {
+                && (((s1W && !s1Immed) && emulateDWxDW)
+                        || ((s1W || s1D) && emulate64))) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
 
             auto acc = g.acc0.retype(mulHiType)[dstLo.getOffset()](
                     dstLo.getHS());
 
-            g.mul(mod, acc, src0, lowWord(src1));
+            g.mul(mod, acc, src0, lowWord(src1), loc);
             if (s1D)
-                g.mach(mod, dstLo, src0, expandDW(src1));
+                g.mach(mod, dstLo, src0, expandDW(src1), loc);
             else
-                g.mach(mod, dstLo, src0, int32_t(0));
-            g.mov(mod, dstHi, dstLo);
-            g.mov(mod, dstLo, acc);
-        } else if (dstD && s0D && s1D && strategy.emulateDWxDW) {
+                g.mach(mod, dstLo, src0, int32_t(0), loc);
+            g.mov(mod, dstHi, dstLo, loc);
+            g.mov(mod, dstLo, acc, loc);
+#if XE3P
+        } else if (dstQ && s0D && ((s1W && !s1Immed) && !emulateDWxDW)) {
+            RegData dstLo, dstHi;
+            splitToDW(dst, dstLo, dstHi);
+            if(dstLo.getBase() == src0.getBase() && src0.getOffset() == dstLo.getOffset())
+                stub();
+            g.mov(mod, dstLo, src1);
+            g.mul(mod, dst, src0, dstLo);
+#endif
+        } else if (dstD && s0D && s1D && emulateDWxDW) {
             int ne1 = ngen::GRF::bytes(g.hardware) >> 2;
 
             for (int r = 0; r < mod.getExecSize(); r += ne1) {
@@ -660,13 +716,13 @@ struct EmulationImplementation {
                 auto dummy = g.null.retype(mulHiType)[dst.getOffset()](
                         dst.getHS());
 
-                g.mul(mmod, acc, src0, lowWord(src1));
+                g.mul(mmod, acc, src0, lowWord(src1), loc);
 
                 if (g.hardware < HW::Gen10) {
-                    g.mach(mmod, dummy, src0, expandDW(src1));
-                    g.mov(mmod, dst, acc);
+                    g.mach(mmod, dummy, src0, expandDW(src1), loc);
+                    g.mov(mmod, dst, acc, loc);
                 } else {
-                    g.macl(mmod, dst, src0, expandDW(src1));
+                    g.macl(mmod, dst, src0, expandDW(src1), loc);
                 }
 
                 regionVSAdvance(g.hardware, dst, ne1);
@@ -674,38 +730,39 @@ struct EmulationImplementation {
                 regionVSAdvance(g.hardware, src1, ne1);
             }
         } else
-            g.mul(mod, dst, src0, src1);
+            g.mul(mod, dst, src0, src1, loc);
     }
 
     template <typename DT = void, typename Generator>
     static void emul(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::RegData &dst, const ngen::RegData &src0,
             const ngen::RegData &src1, const EmulationStrategy &strategy,
-            const EmulationState &state) {
-        emulInternal<DT>(g, mod, dst, src0, src1, strategy, state);
+            const EmulationState &state, ngen::SourceLocation loc = {}) {
+        emulInternal<DT>(g, mod, dst, src0, src1, strategy, state, loc);
     }
 
     template <typename DT = void, typename Generator>
     static void emul(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::RegData &dst, const ngen::RegData &src0,
             ngen::Immediate src1, const EmulationStrategy &strategy,
-            const EmulationState &state) {
-        emulInternal<DT>(g, mod, dst, src0, src1, strategy, state);
+            const EmulationState &state, ngen::SourceLocation loc = {}) {
+        emulInternal<DT>(g, mod, dst, src0, src1, strategy, state, loc);
     }
 
     template <typename S1, typename Generator>
     static void emul32High(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::RegData &dstHi, const ngen::RegData &src0,
-            const S1 &src1) {
-        g.mul(mod, g.acc0.ud(dstHi.getOffset()), src0, lowWord(src1));
-        g.mach(mod, dstHi, src0, src1);
+            const S1 &src1, ngen::SourceLocation loc = {}) {
+        g.mul(mod, g.acc0.ud(dstHi.getOffset()), src0, lowWord(src1), loc);
+        g.mach(mod, dstHi, src0, src1, loc);
     }
 
     // Shift left, emulating 64-bit arithmetic if configured.
     template <typename DT = void, typename Generator>
     static void eshl(Generator &g, const ngen::InstructionModifier &mod,
             ngen::RegData dst, ngen::RegData src0, uint16_t src1,
-            const EmulationStrategy &strategy, const EmulationState &state) {
+            const EmulationStrategy &strategy, const EmulationState &state,
+            ngen::SourceLocation loc = {}) {
         using namespace ngen;
         const auto &temp = state.temp;
 
@@ -716,7 +773,7 @@ struct EmulationImplementation {
         bool s0Q = isQW(src0);
 
         if (src1 == 0) {
-            emov<DT, Generator>(g, mod, dst, src0, strategy);
+            emov<DT, Generator>(g, mod, dst, src0, strategy, loc);
             return;
         }
 
@@ -730,20 +787,20 @@ struct EmulationImplementation {
             splitToDW(dst, dstLo, dstHi);
 
             if (s0Q) {
-                splitToDW(dst, s0Lo, s0Hi);
+                splitToDW(src0, s0Lo, s0Hi);
 
-                g.shr(mod, acc, s0Lo, uint16_t(32 - src1));
-                g.shl(mod, dstHi, s0Hi, src1);
-                g.shl(mod, dstLo, s0Lo, src1);
-                g.or_(mod, dstHi, acc, dstHi);
+                g.shr(mod, acc, s0Lo, uint16_t(32 - src1), loc);
+                g.shl(mod, dstHi, s0Hi, src1, loc);
+                g.shl(mod, dstLo, s0Lo, src1, loc);
+                g.or_(mod, dstHi, acc, dstHi, loc);
             } else {
                 dstHi.setType(DataType::ud);
-                g.shl(mod, dstLo, src0, src1);
-                g.shr(mod, dstHi, src0, uint16_t(32 - src1));
+                g.shl(mod, dstLo, src0, src1, loc);
+                g.shr(mod, dstHi, src0, uint16_t(32 - src1), loc);
             }
         } else {
             if (s0Q && !dstQ) downgradeToDW(src0);
-            g.shl(mod, dst, src0, src1);
+            g.shl(mod, dst, src0, src1, loc);
         }
     }
 
@@ -751,7 +808,8 @@ struct EmulationImplementation {
     template <typename DT = void, typename Generator>
     static void eshr(Generator &g, const ngen::InstructionModifier &mod,
             ngen::RegData dst, ngen::RegData src0, uint16_t src1,
-            const EmulationStrategy &strategy, const EmulationState &state) {
+            const EmulationStrategy &strategy, const EmulationState &state,
+            ngen::SourceLocation loc = {}) {
         using namespace ngen;
         const auto &temp = state.temp;
 
@@ -762,7 +820,7 @@ struct EmulationImplementation {
         bool s0Q = isQW(src0);
 
         if (src1 == 0) {
-            emov<DT, Generator>(g, mod, dst, src0, strategy);
+            emov<DT, Generator>(g, mod, dst, src0, strategy, loc);
             return;
         }
 
@@ -776,23 +834,23 @@ struct EmulationImplementation {
             splitToDW(dst, dstLo, dstHi);
 
             if (s0Q) {
-                splitToDW(dst, s0Lo, s0Hi);
+                splitToDW(src0, s0Lo, s0Hi);
 
-                g.shl(mod, acc, s0Lo, uint16_t(32 - src1));
-                g.shr(mod, dstLo, s0Lo, src1);
-                isSigned(src0.getType()) ? g.asr(mod, dstHi, s0Hi, src1)
-                                         : g.shr(mod, dstHi, s0Hi, src1);
-                g.or_(mod, dstLo, acc, dstLo);
+                g.shl(mod, acc, s0Lo, uint16_t(32 - src1), loc);
+                g.shr(mod, dstLo, s0Lo, src1, loc);
+                isSigned(src0.getType()) ? g.asr(mod, dstHi, s0Hi, src1, loc)
+                                         : g.shr(mod, dstHi, s0Hi, src1, loc);
+                g.or_(mod, dstLo, acc, dstLo, loc);
             } else {
                 dstLo.setType(dstHi.getType());
-                isSigned(src0.getType()) ? g.asr(mod, dstLo, src0, src1)
-                                         : g.shr(mod, dstLo, src0, src1);
-                g.mov(mod, dstHi, uint16_t(0));
+                isSigned(src0.getType()) ? g.asr(mod, dstLo, src0, src1, loc)
+                                         : g.shr(mod, dstLo, src0, src1, loc);
+                g.mov(mod, dstHi, uint16_t(0), loc);
             }
         } else {
             if (s0Q && !dstQ) downgradeToDW(src0);
-            isSigned(src0.getType()) ? g.asr(mod, dst, src0, src1)
-                                     : g.shr(mod, dst, src0, src1);
+            isSigned(src0.getType()) ? g.asr(mod, dst, src0, src1, loc)
+                                     : g.shr(mod, dst, src0, src1, loc);
         }
     }
 
@@ -800,18 +858,19 @@ struct EmulationImplementation {
     template <typename DT = void, typename Generator>
     static void emulConstant(Generator &g, const ngen::InstructionModifier &mod,
             const ngen::RegData &dst, const ngen::RegData &src0, int32_t src1,
-            const EmulationStrategy &strategy, const EmulationState &state) {
+            const EmulationStrategy &strategy, const EmulationState &state,
+            ngen::SourceLocation loc = {}) {
         if (src1 == 0)
-            emov<DT>(g, mod, dst, uint16_t(0), strategy);
+            emov<DT>(g, mod, dst, uint16_t(0), strategy, loc);
         else if (src1 == 1) {
-            if (dst != src0) emov<DT>(g, mod, dst, src0, strategy);
+            if (dst != src0) emov<DT>(g, mod, dst, src0, strategy, loc);
         } else if (ngen::utils::is_zero_or_pow2(src1))
             eshl<DT>(g, mod, dst, src0, uint16_t(ngen::utils::log2(src1)),
-                    strategy, state);
+                    strategy, state, loc);
         else if (src1 > 0)
-            emul<DT>(g, mod, dst, src0, uint32_t(src1), strategy, state);
+            emul<DT>(g, mod, dst, src0, uint32_t(src1), strategy, state, loc);
         else
-            emul<DT>(g, mod, dst, src0, int32_t(src1), strategy, state);
+            emul<DT>(g, mod, dst, src0, int32_t(src1), strategy, state, loc);
     }
 }; // struct EmulationHelper
 

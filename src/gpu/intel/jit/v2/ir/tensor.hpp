@@ -192,7 +192,7 @@ struct layout_raw_tag_entry_t {
         : letter(letter), block(block), is_blocked(is_blocked) {}
 
     dim_idx_t index() const {
-        ir_assert(letter >= 'a' && letter < 'x');
+        gpu_assert(letter >= 'a' && letter < 'x');
         return letter - 'a';
     }
     bool is_outer() const { return !is_blocked || (is_blocked && block == 0); }
@@ -257,9 +257,7 @@ public:
         return !operator==(other);
     }
 
-    void stringify(std::ostream &out) const {
-        jit::stringify(out, to_tag(collapse_x().entries()));
-    }
+    void stringify(std::ostream &out) const { out << str(); }
 
     void parse(std::istream &in) {
         auto tag = jit::parse<std::string>(in);
@@ -271,15 +269,12 @@ private:
     void init_entries(const std::string &s);
     bool has_x() const;
     void expand_x(dim_idx_t ndims);
-    layout_raw_tag_t collapse_x() const;
     std::vector<bool> skip_mask(
             const layout_desc_t &desc, const pvar_tile_t &sizes) const;
     static std::vector<std::pair<char, int>> parse_letter_blocks(
             const std::string &tag);
     static std::vector<layout_raw_tag_entry_t> to_entries(
             const std::string &tag);
-    static std::string to_tag(
-            const std::vector<layout_raw_tag_entry_t> &entries);
 
     bool is_any_ = false;
     std::vector<layout_raw_tag_entry_t> entries_;
@@ -305,12 +300,20 @@ public:
     const layout_raw_tag_t &raw_tag() const { return raw_tag_; }
     bool matches(const layout_tag_t &other, const pvar_tile_t &sizes,
             bool check_type = true) const;
+    layout_tag_t with_type(const type_t &new_type) const {
+        return layout_tag_t(desc_, new_type, raw_tag_);
+    }
     std::string str() const;
     IR_DEFINE_DUMP()
 
-#if __cplusplus >= 202002L
-    bool operator==(const layout_tag_t &other) const = default;
-#endif
+    bool operator==(const layout_tag_t &other) const {
+        return (desc_ == other.desc_) && (type_ == other.type_)
+                && (raw_tag_ == other.raw_tag_);
+    }
+
+    bool operator!=(const layout_tag_t &other) const {
+        return !operator==(other);
+    }
 
     void stringify(std::ostream &out) const {
         jit::stringify(out, raw_tag_);
@@ -322,7 +325,7 @@ public:
         desc_ = layout_desc_t();
         auto s = stream_parse<std::string>(in);
         auto parts = gpu_utils::split(s, ":");
-        ir_assert(parts.size() == 2);
+        gpu_assert(parts.size() == 2);
         jit::parse(parts[0], raw_tag_);
         jit::parse(parts[1], type_);
     }
@@ -376,7 +379,7 @@ public:
     bool has_const_strides() const;
     pvar_tile_t int_dim_sizes() const;
     pvar_map_t<expr_t> dim_sizes() const;
-    int inner_block(const pvar_t &dim) const;
+    int inner_block(const pvar_t &dim, bool with_outer = true) const;
     int inner_stride() const;
     expr_t stride(const pvar_t &dim, int dim_block_idx = 0) const;
     expr_t shift_in_bytes(const std::vector<int> &block_off) const;
@@ -469,7 +472,7 @@ public:
     }
 
     const block_t &operator*() const {
-        ir_assert(!is_end());
+        gpu_assert(!is_end());
         return block_;
     }
 

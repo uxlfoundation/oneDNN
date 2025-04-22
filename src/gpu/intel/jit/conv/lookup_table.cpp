@@ -49,7 +49,7 @@ conv_lookup_table_t::conv_lookup_table_t(const char **entries) {
         {
             std::ostringstream oss;
             e.stringify(oss);
-            ir_assert(oss.str() == *entries)
+            gpu_assert(oss.str() == *entries)
                     << "parsed from:\n  " << *entries << "\nstringified to\n  "
                     << oss.str();
         }

@@ -177,7 +177,6 @@ protected:
         return *this;
     }
 
-protected:
     void init_desc(engine_kind_t src_engine_kind, engine_kind_t dst_engine_kind,
             bool is_cross_engine) {
         desc_ = reorder_desc_t();

@@ -73,9 +73,12 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
     int cpoDiv = 1;
     if (Txo_int.isInt8()) Txo_int = Type::s16, cpoDiv = 2;
 
-    if (downScale)
+    if (downScale) {
+#if XE3P
+        if(!state.useBDPAS)
+#endif
         Tx_scaleOp = Tx;
-    else if (xs2D && (Txs.paddedSize() > Tx.paddedSize())) {
+    } else if (xs2D && (Txs.paddedSize() > Tx.paddedSize())) {
         lateScale = true;
         Txs_int = Tx_scaleOp = problem.Tc;
     }
@@ -164,9 +167,23 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
         crosspack = 1;
     int cpo = div_up(crosspack, cpoDiv);
 
-    auto makeQRepack = [&](Type Txq, Type Txq_int, vector<RegisterBlock> &repack, vector<RegisterBlock> &src, int m, int n, int cp) {
-        if (cp > 1 || (cColMajor && (cp != src[0].crosspack)) || Txq != Txq_int)
-            makeUnbackedRegLayout(Txq_int, repack, m, n, wantCM, cp, tileR, tileC, false);
+    auto makeQRepack = [&, tileR, tileC](Type Txq, Type Txq_int, vector<RegisterBlock> &repack, vector<RegisterBlock> &src, int m, int n, int cp) mutable {
+        if (cp > 1 || (cColMajor && (cp != src[0].crosspack)) || Txq != Txq_int) {
+            bool allowPartialRegs = false;
+#if XE3P
+            // Native MXFP DPAS support
+            if (state.useBDPAS) {
+                allowPartialRegs = true;
+                cp = 1;
+                if (isA)
+                    tileR = problem.aqGroupK;
+                else
+                    tileC = problem.bqGroupK;
+            }
+#endif
+            makeUnbackedRegLayout(Txq_int, repack, m, n, wantCM, cp, tileR, tileC, allowPartialRegs);
+
+        }
     };
 
     if (xo2D) makeQRepack(Txo, Txo_int,    Xr_offsetLayout, X_offsetLayout, r,  c,  cpo);
@@ -510,13 +527,23 @@ void BLASKernelGenerator<hw>::gemmDequantizeAB(bool doA, Type Tsrc, Type Tdst,
             convert(src, Tsrc, Tx1_int, strategy, state);
 
         if (xo2D) {
+#if XE3P
+            if (!state.useBDPAS)
+#endif
+            {
             gemmDequantizeOperation(doA, Tx1_int, Txo_int, BinaryOp::Sub, layoutDst, oLayout, dst, oRegs, hab, problem, state);
             convert(dst, Tx1_int, Tx2_int, strategy, state);
+            }
         }
 
         if (xs2D) {
+#if XE3P
+            if (!state.useBDPAS)
+#endif
+            {
             gemmDequantizeOperation(doA, Tx_scaleInt, Tx_scaleOp, BinaryOp::Mul, layoutDst, sLayout, dst, sRegs, hab, problem, state);
             convert(dst, Tx_scaleInt, Tdst, strategy, state);
+            }
         }
     }
 

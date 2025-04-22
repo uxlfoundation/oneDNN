@@ -24,7 +24,7 @@
 #include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -42,14 +42,8 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
                 impl::engine_t *dst_engine) {
-            // Note: currently rnn_u8s8_compensation and rnn_s8s8_compensation
-            // have common bit so we have to perform additional checks to
-            // separate these two cases
-            VDISPATCH_REORDER(
-                    !IMPLICATION(dst_md()->extra.flags
-                                    & memory_extra_flags::rnn_u8s8_compensation,
-                            types::extra_flag_rnn_s8s8_compensation_is_set(
-                                    dst_md()->extra.flags)),
+            VDISPATCH_REORDER(dst_md()->extra.flags
+                            & memory_extra_flags::rnn_u8s8_compensation,
                     VERBOSE_BAD_FLAGS);
 
             VDISPATCH_REORDER(utils::one_of(src_engine->kind(),

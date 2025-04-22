@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,6 +58,7 @@ bool canonical {false};
 bool mem_check {true};
 std::string skip_impl;
 stat_t benchdnn_stat {0};
+summary_t summary {};
 std::string driver_name;
 
 double max_ms_per_prb {default_max_ms_per_prb};
@@ -75,6 +76,8 @@ bool allow_enum_tags_only {true};
 int test_start {0};
 bool attr_same_pd_check {false};
 bool check_ref_impl {false};
+
+execution_mode_t execution_mode {execution_mode_t::direct};
 
 int main(int argc, char **argv) {
     using namespace parser;
@@ -142,15 +145,39 @@ int main(int argc, char **argv) {
         zeropad::bench(--argc, ++argv);
     } else if (!strcmp("--brgemm", argv[0])) {
         brgemm::bench(--argc, ++argv);
-#ifdef BUILD_GRAPH
+        brgemm::brgemm_finalize();
     } else if (!strcmp("--graph", argv[0])) {
+#ifdef BUILD_GRAPH
         graph::bench(--argc, ++argv);
+#else
+        printf("Error: the library was built without Graph API support.\n");
+        exit(1);
 #endif
     } else {
-        fprintf(stderr, "err: unknown driver\n");
+        printf("Error: can't parse the driver name \'%s\'.\n", argv[0]);
+        exit(1);
     }
 
     total_time.stamp();
+
+    if (has_bench_mode_bit(mode_bit_t::corr) && summary.failed_cases
+            && !benchdnn_stat.failed_cases.empty()) {
+        printf("===========================================================\n");
+        printf("= Failed cases summary (--summary=no-failures to disable) =\n");
+        printf("===========================================================\n");
+        const size_t n_cases = benchdnn_stat.failed_cases.size();
+        size_t n_printed = 0;
+        for (const auto &e : benchdnn_stat.failed_cases) {
+            printf("%s\n", e.second.c_str());
+            n_printed++;
+            if (n_printed < 10) continue;
+            if (n_cases > n_printed) {
+                printf("(... %zu more cases ...)\n", n_cases - n_printed);
+            }
+            break;
+        }
+        printf("============================\n");
+    }
 
     printf("tests:%d passed:%d skipped:%d mistrusted:%d unimplemented:%d "
            "invalid_arguments:%d failed:%d listed:%d\n",

@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include <algorithm>
+#include "primitive_attr.hpp"
 #include "primitive_desc.hpp"
 #include "type_helpers.hpp"
 #include "utils.hpp"
@@ -190,11 +191,9 @@ size_t get_md_hash(const memory_desc_t &md) {
 
     if (md.extra.flags != dnnl_memory_extra_flag_none) {
         seed = hash_combine(seed, md.extra.flags);
-        if ((md.extra.flags
-                    & (dnnl_memory_extra_flag_compensation_conv_s8s8
-                            | dnnl_memory_extra_flag_rnn_u8s8_compensation))
-                && !types::extra_flag_rnn_s8s8_compensation_is_set(
-                        md.extra.flags)) {
+        if (md.extra.flags
+                & (dnnl_memory_extra_flag_compensation_conv_s8s8
+                        | dnnl_memory_extra_flag_rnn_u8s8_compensation)) {
             seed = hash_combine(seed, md.extra.compensation_mask);
         }
 
@@ -206,45 +205,17 @@ size_t get_md_hash(const memory_desc_t &md) {
                 & dnnl_memory_extra_flag_compensation_conv_asymmetric_src) {
             seed = hash_combine(seed, md.extra.asymm_compensation_mask);
         }
+
+        if (md.extra.flags
+                & dnnl_memory_extra_flag_compensation_gpu_conv_asymmetric_src) {
+            seed = get_array_hash(seed, md.extra.idhw, 3);
+            seed = get_array_hash(seed, md.extra.odhw, 3);
+            seed = get_array_hash(seed, md.extra.pdhw, 3);
+            seed = get_array_hash(seed, md.extra.ddhw, 3);
+            seed = hash_combine(seed, md.extra.dst_size);
+        }
     }
     // Combined hash for a memory descriptor
-    return seed;
-}
-
-// Generate a hash for runtime scales
-size_t get_runtime_scale_hash(const runtime_scales_t &scales) {
-    size_t seed = 0;
-    seed = hash_combine(seed, scales.mask_);
-    // scales: groups
-    const int ndims = scales.ndims_;
-    seed = hash_combine(seed, ndims);
-    if (ndims > 0) seed = get_array_hash(seed, scales.group_dims_, ndims);
-    // scales: data type
-    seed = hash_combine(seed, static_cast<size_t>(scales.data_type_));
-    return seed;
-}
-
-// Generate a hash for zero points
-size_t get_zero_points_hash(const zero_points_t &zps) {
-    size_t seed = 0;
-    for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
-        if (!zps.has_default_values(arg)) {
-            // zero_points: arg
-            seed = hash_combine(seed, arg);
-
-            int mask = 0;
-            zps.get(arg, &mask);
-            // zero_points: mask
-            seed = hash_combine(seed, mask);
-            // zero points: groups
-            const int ndims = zps.get_groups_ndims(arg);
-            seed = hash_combine(seed, ndims);
-            if (ndims > 0)
-                seed = get_array_hash(seed, zps.get_groups(arg), ndims);
-            // zero points: data type
-            seed = hash_combine(
-                    seed, static_cast<size_t>(zps.get_data_type(arg)));
-        }
     return seed;
 }
 
@@ -269,16 +240,12 @@ size_t get_attr_hash(const primitive_attr_t &attr) {
     }
 
     if (!attr.scales_.has_default_values()) {
-        // go through scales for all arguments
-        for (const auto &p : attr.scales_.scales_) {
-            // scales: arg
-            seed = hash_combine(seed, p.first);
-            // scales: mask
-            seed = hash_combine(seed, get_runtime_scale_hash(p.second));
-        }
+        seed = hash_combine(seed, attr.scales_.get_hash());
     }
 
-    seed = hash_combine(seed, get_zero_points_hash(attr.zero_points_));
+    if (!attr.zero_points_.has_default_values()) {
+        seed = hash_combine(seed, attr.zero_points_.get_hash());
+    }
 
     // post_ops: entry[:]
     for (int i = 0; i < attr.post_ops_.len(); i++) {
@@ -569,6 +536,9 @@ size_t get_desc_hash(const matmul_desc_t &desc) {
     seed = hash_combine(seed, get_md_hash(desc.weights_desc));
     seed = hash_combine(seed, get_md_hash(desc.bias_desc));
     seed = hash_combine(seed, get_md_hash(desc.dst_desc));
+    seed = hash_combine(seed, get_md_hash(desc.reduce_desc));
+    // Reduce kind.
+    seed = hash_combine(seed, static_cast<size_t>(desc.reduce_kind));
     // Accumulator type
     seed = hash_combine(seed, static_cast<size_t>(desc.accum_data_type));
     // Combined hash for matmul op desc
@@ -766,16 +736,17 @@ size_t get_desc_hash(const sdpa_desc_t &desc) {
     seed = hash_combine(seed, get_md_hash(desc.q_desc));
     seed = hash_combine(seed, get_md_hash(desc.k_desc));
     seed = hash_combine(seed, get_md_hash(desc.v_desc));
-    seed = hash_combine(seed, get_runtime_scale_hash(desc.kq_scales));
-    seed = hash_combine(seed, get_zero_points_hash(desc.kq_zero_points));
-    seed = hash_combine(seed, get_runtime_scale_hash(desc.vs_scales));
-    seed = hash_combine(seed, get_zero_points_hash(desc.vs_zero_points));
+    seed = hash_combine(seed, desc.kq_scales.get_hash());
+    seed = hash_combine(seed, desc.kq_zero_points.get_hash());
+    seed = hash_combine(seed, desc.vs_scales.get_hash());
+    seed = hash_combine(seed, desc.vs_zero_points.get_hash());
     seed = hash_combine(seed, get_md_hash(desc.dst_desc));
     seed = hash_combine(seed, get_md_hash(desc.attn_mask_desc));
     // Scale type
     seed = hash_combine(seed, static_cast<size_t>(desc.scale_dt));
     seed = hash_combine(seed, desc.invert_scale);
     seed = hash_combine(seed, desc.kv_head_number);
+    seed = hash_combine(seed, desc.causal_mask);
     // Combined hash for sdpa desc
     return seed;
 }

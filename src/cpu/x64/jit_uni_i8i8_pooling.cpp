@@ -160,8 +160,8 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator {
     // thus we need to take into account ratio of sizes s32/i8 = 4
     static constexpr data_type_t avg_proc_dt = data_type::s32;
     enum : int {
-        s32_to_i8_ratio = sizeof(typename prec_traits<avg_proc_dt>::type)
-                / sizeof(typename prec_traits<data_type::u8>::type),
+        s32_to_i8_ratio = sizeof(typename prec_traits_t<avg_proc_dt>::type)
+                / sizeof(typename prec_traits_t<data_type::u8>::type),
         max_num_ll = s32_to_i8_ratio,
         mmx_msk_base_reg = 3
     };
@@ -292,7 +292,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_max_op(
 
     if (masked) {
         if (jpp.src_dt == s32)
-            for (int64_t i = 0; i < jpp.c_tail; i++)
+            for (size_t i = 0; i < static_cast<size_t>(jpp.c_tail); i++)
                 pinsrd(vreg_src(jj),
                         ptr[aux_reg_src_w + offset + i * data_type_size(s32)],
                         i);
@@ -382,7 +382,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_avg_op(
 
     if (jpp.src_dt == s32) {
         if (masked)
-            for (int64_t i = 0; i < jpp.c_tail; i++)
+            for (size_t i = 0; i < static_cast<size_t>(jpp.c_tail); i++)
                 pinsrd(vr_src,
                         ptr[aux_reg_src_w + offset + i * data_type_size(s32)],
                         i);
@@ -547,7 +547,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_max_op(
 
     if (masked) {
         if (jpp.src_dt == s32)
-            for (int i = 0; i < jpp.c_tail; i++)
+            for (size_t i = 0; i < static_cast<size_t>(jpp.c_tail); i++)
                 pextrd(ptr[reg_ptr_dst_i8 + offset + i * data_type_size(s32)],
                         vreg_dst(jj), i);
         else if (utils::one_of(jpp.src_dt, u8, s8))
@@ -663,7 +663,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_avg_op(
 
     if (jpp.src_dt == s32) {
         if (masked)
-            for (int i = 0; i < jpp.c_tail; i++)
+            for (size_t i = 0; i < static_cast<size_t>(jpp.c_tail); i++)
                 pextrd(ptr[reg_ptr_dst_i8 + offset + i * data_type_size(s32)],
                         vr_dst, i);
         else

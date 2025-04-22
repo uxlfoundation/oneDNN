@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -172,26 +172,38 @@ status_t deconv_attr_check(const deconvolution_desc_t &desc,
         // Check scales
         if (!attr->scales_.has_default_values()) {
             const auto &sc = attr->scales_;
-            const int mask_src = sc.get(DNNL_ARG_SRC).mask_;
-            const int mask_wei = sc.get(DNNL_ARG_WEIGHTS).mask_;
-            const int mask_dst = sc.get(DNNL_ARG_DST).mask_;
             const bool with_groups
                     = desc.src_desc.ndims != desc.weights_desc.ndims;
-            VCHECK_DECONV_UNIMPL(utils::everyone_is(0, mask_src, mask_dst)
-                            && utils::one_of(mask_wei, 0, with_groups ? 3 : 1),
+            VCHECK_DECONV_UNIMPL(
+                    IMPLICATION(!sc.has_default_values(DNNL_ARG_SRC),
+                            sc.get_mask(DNNL_ARG_SRC) == 0),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCHECK_DECONV_UNIMPL(
+                    IMPLICATION(!sc.has_default_values(DNNL_ARG_WEIGHTS),
+                            utils::one_of(sc.get_mask(DNNL_ARG_WEIGHTS), 0,
+                                    with_groups ? 3 : 1)),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCHECK_DECONV_UNIMPL(
+                    IMPLICATION(!sc.has_default_values(DNNL_ARG_DST),
+                            sc.get_mask(DNNL_ARG_DST) == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check zero points
         if (!attr->zero_points_.has_default_values()) {
             const auto &zp = attr->zero_points_;
-            int mask_src = 0, mask_dst = 0;
-            zp.get(DNNL_ARG_SRC, &mask_src);
-            zp.get(DNNL_ARG_DST, &mask_dst);
 
-            VCHECK_DECONV_UNIMPL(zp.has_default_values(DNNL_ARG_WEIGHTS)
-                            && (mask_src == 0 || mask_src == 1 << 1)
-                            && (mask_dst == 0 || mask_dst == 1 << 1),
+            VCHECK_DECONV_UNIMPL(
+                    IMPLICATION(!zp.has_default_values(DNNL_ARG_SRC),
+                            utils::one_of(
+                                    zp.get_mask(DNNL_ARG_SRC), 0, 1 << 1)),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+            VCHECK_DECONV_UNIMPL(zp.has_default_values(DNNL_ARG_WEIGHTS),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+            VCHECK_DECONV_UNIMPL(
+                    IMPLICATION(!zp.has_default_values(DNNL_ARG_DST),
+                            utils::one_of(
+                                    zp.get_mask(DNNL_ARG_DST), 0, 1 << 1)),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
 
@@ -207,6 +219,9 @@ status_t deconv_attr_check(const deconvolution_desc_t &desc,
             VCHECK_DECONV_UNIMPL(
                     po.check_sum_consistency(dst_dt, is_int8, true),
                     VERBOSE_UNSUPPORTED_POSTOP);
+
+            // Note: verbose support is inside the call.
+            CHECK(po.validate_binary_with_dst_consistency(&desc.dst_desc));
         }
     } else {
         auto bwd_attr_mask = smask_t::fpmath_mode;

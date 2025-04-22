@@ -50,7 +50,7 @@ struct cublas_params : cublas_base_params {
             return status::unimplemented;
         }
 
-        with_dst_scale_ = !attr->scales_.get(DNNL_ARG_DST).has_default_values();
+        with_dst_scale_ = !attr->scales_.has_default_values(DNNL_ARG_DST);
         with_separate_bias_ = with_bias;
         if ((with_separate_bias_)
                 && (bias_md->data_type != dst_md->data_type)) {

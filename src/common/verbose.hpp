@@ -57,14 +57,14 @@ inline constexpr size_t get_file_name_offset(T (&str)[1]) {
     return 0;
 }
 template <typename T, T v>
-struct const_expr_value {
+struct const_expr_value_t {
     static constexpr const T value = v;
 };
 
 } // namespace utility
 
 #define UTILITY_CONST_EXPR_VALUE(exp) \
-    utility::const_expr_value<decltype(exp), exp>::value
+    utility::const_expr_value_t<decltype(exp), exp>::value
 
 #define __FILENAME__ (&__FILE__[utility::get_file_name_offset(__FILE__)])
 
@@ -175,6 +175,9 @@ struct verbose_t {
         // the upper 8 bits are reserved for devinfo levels
         debuginfo = 1 << 24,
         //
+        level1 = error | exec_profile | warn,
+        level2 = error | exec_profile | warn | create_profile,
+
         all = (uint32_t)-1,
     };
 
@@ -254,6 +257,8 @@ get_verbose_to_log_level_map() {
             verbose_to_log_map {
                     {verbose_t::all, log_manager_t::trace},
                     {verbose_t::debuginfo, log_manager_t::debug},
+                    {verbose_t::level1, log_manager_t::info},
+                    {verbose_t::level2, log_manager_t::info},
                     {verbose_t::create_dispatch, log_manager_t::info},
                     {verbose_t::create_check, log_manager_t::info},
                     {verbose_t::create_profile, log_manager_t::info},
@@ -377,6 +382,7 @@ std::string md2fmt_str(
         const char *name, const memory_desc_t *md, format_kind_t user_format);
 std::string md2dim_str(
         const memory_desc_t *md, dims_type_t dims_type = dims_type_t::dims);
+std::string arg2str(int arg);
 // Returns a verbose string of dimensions or descriptor from src, wei, and/or
 // dst memory descs. Can be called externally to provide info about actual
 // values of runtime dimensions.

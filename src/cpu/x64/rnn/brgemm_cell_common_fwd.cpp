@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     , C_cell_(scratch_cell)
     , LDAl_(rnn_.src_layer_ld(cell_position))
     , LDAi_(rnn_.src_iter_ld(cell_position))
-    , max_nthr_(rnn_.nthr)
+    , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
                                            : rnn_.N_blocks)
     , m_blocking_(rnn_.M_blocks)
@@ -452,7 +452,7 @@ brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::brgemm_dst_proj_t(
     , C_(output)
     , LDC_(rnn_.is_cell_dt_f32() ? rnn_.dst_layer_ld(cell_position, true)
                                  : rnn_.scratch_gates_ld)
-    , max_nthr_(rnn_.nthr)
+    , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , work_amount_proj_(rnn_.Nproj_blocks * rnn_.M_blocks)
     , B_n_offset_(rnn_.Kprojpadded * rnn_.n_block)
     , Bp_kb_offset_(rnn_.kproj_block * rnn_.n_block)
@@ -601,7 +601,7 @@ brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
     , LDAl_(rnn_.src_layer_ld(cell_position))
     , LDAi_p1_(rnn_.src_iter_ld(cell_position))
     , LDAi_p2_(rnn_.dst_iter_part2_ld(cell_position))
-    , max_nthr_(rnn_.nthr)
+    , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
                                            : rnn_.N_blocks)
     , m_blocking_(rnn_.M_blocks)
@@ -688,9 +688,8 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = 2
-            * nstl::max(rnn_.KB1_blocks + 1,
-                    nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
+    const int max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
+            nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
 
@@ -913,7 +912,7 @@ brgemm_merged_layer_t<src_t, weights_t, scratch_t,
     , Bl_(w_layer)
     , C_(scratch_gates)
     , LDAl_(rnn_.src_layer_ld(cell_position))
-    , max_nthr_(rnn_.nthr)
+    , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
                                            : rnn_.N_blocks)
     , m_blocking_(rnn_.Mlayermerged_blocks)

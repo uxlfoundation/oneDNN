@@ -52,15 +52,25 @@ sdpa_config_t xehpg_h32_s64 = {16, 16, 16, 8, 4, 4, 2, 8};
 sdpa_config_t xehpg_h32_s32 = {8, 8, 8, 8, 4, 4, 4, 4};
 sdpa_config_t xehpg_h32_2nd = {8, 32, 16, 8, 8, 1, 2, 4};
 
+sdpa_config_t xehpg_q_h32 = {32, 16, 16, 16, 2, 8, 2, 8};
+sdpa_config_t xehpg_q_h32_2nd = {32, 16, 8, 8, 8, 1, 4, 2};
+
 sdpa_config_t xehpg_h64 = {32, 16, 16, 16, 4, 8, 4, 8};
 sdpa_config_t xehpg_h64_s128 = {16, 16, 16, 16, 4, 8, 4, 8};
 sdpa_config_t xehpg_h64_s64 = {32, 16, 16, 8, 8, 4, 4, 8};
 sdpa_config_t xehpg_h64_2nd = {8, 16, 16, 8, 8, 1, 4, 2};
 
+sdpa_config_t xehpg_q_h64 = {32, 16, 16, 16, 4, 4, 4, 4};
+sdpa_config_t xehpg_q_h64_2nd = {16, 16, 8, 8, 16, 1, 8, 2};
+
 sdpa_config_t xehpg_h128 = {16, 16, 32, 8, 8, 4, 4, 8};
 sdpa_config_t xehpg_h128_s32 = {16, 16, 16, 8, 16, 2, 8, 4};
 sdpa_config_t xehpg_h128_2nd = {8, 16, 16, 8, 16, 1, 8, 2};
 sdpa_config_t xehpg_h128_s256_2nd = {8, 16, 32, 8, 8, 1, 4, 2};
+
+sdpa_config_t xehpg_q_h128 = {32, 16, 16, 16, 8, 2, 8, 2};
+sdpa_config_t xehpg_q_h128_2nd = {16, 8, 16, 8, 8, 2, 8, 2};
+sdpa_config_t xehpg_q_h128_s64_2nd = {16, 16, 16, 8, 16, 1, 8, 2};
 
 sdpa_config_t xehpg_h256 = {16, 16, 32, 8, 16, 2, 8, 4};
 sdpa_config_t xehpg_h256_s128 = {8, 16, 32, 16, 8, 4, 8, 4};
@@ -79,28 +89,53 @@ sdpa_config_t xehpc_h64_s32 = {16, 16, 16, 16, 4, 2, 4, 2};
 sdpa_config_t xehpc_h64_2nd = {32, 32, 32, 16, 4, 1, 2, 2};
 sdpa_config_t xehpc_h64_s64_2nd = {16, 16, 16, 16, 4, 1, 4, 1};
 
+sdpa_config_t xehpc_q_h64 = {16, 64, 32, 16, 8, 4, 2, 16};
+
 sdpa_config_t xehpc_h128 = {16, 64, 32, 16, 16, 2, 4, 8};
 sdpa_config_t xehpc_h128_s64 = {16, 32, 32, 32, 4, 2, 4, 2};
 sdpa_config_t xehpc_h128_s32 = {16, 16, 16, 16, 8, 2, 8, 2};
 sdpa_config_t xehpc_h128_2nd = {32, 32, 32, 16, 8, 1, 4, 2};
 
+sdpa_config_t xehpc_q_h128 = {16, 64, 32, 16, 16, 2, 4, 8};
+sdpa_config_t xehpc_q_h128_s64 = {16, 16, 32, 16, 4, 4, 4, 4};
+sdpa_config_t xehpc_q_h128_s32 = {16, 16, 32, 16, 4, 2, 4, 2};
+sdpa_config_t xehpc_q_h128_2nd = {16, 16, 16, 16, 8, 1, 8, 1};
+sdpa_config_t xehpc_q_h128_s32_2nd = {16, 32, 32, 16, 8, 1, 4, 2};
+
 sdpa_config_t xehpc_h256 = {16, 32, 32, 32, 8, 4, 8, 4};
 sdpa_config_t xehpc_h256_s64 = {16, 32, 32, 32, 8, 1, 8, 1};
 sdpa_config_t xehpc_h256_2nd = {16, 16, 16, 16, 16, 1, 16, 1};
 
-sdpa_config_t *choose_config_xehpg(dim_t head_size, dim_t seq, dim_t thin_q) {
+sdpa_config_t *choose_config_xehpg(
+        dim_t head_size, dim_t seq, bool thin_q, bool quantized) {
     if (head_size <= 32) {
+        if (quantized && seq >= 128) {
+            if (thin_q) return &xehpg_q_h32_2nd;
+            return &xehpg_q_h32;
+        }
         if (thin_q) return &xehpg_h32_2nd;
         if (seq <= 32) return &xehpg_h32_s32;
         if (seq <= 64) return &xehpg_h32_s64;
         if (seq <= 256) return &xehpg_h32_s256;
         return &xehpg_h32;
     } else if (head_size <= 64) {
+        if (quantized) {
+            if (thin_q) return &xehpg_q_h64_2nd;
+            return &xehpg_q_h64;
+        }
         if (thin_q) return &xehpg_h64_2nd;
         if (seq <= 64) return &xehpg_h64_s64;
         if (seq <= 128) return &xehpg_h64_s128;
         return &xehpg_h64;
     } else if (head_size <= 128) {
+        if (quantized) {
+            if (thin_q) {
+                if (seq <= 64) return &xehpg_q_h128_s64_2nd;
+                return &xehpg_q_h128_2nd;
+            }
+            if (seq <= 32) return &xehpg_h128_s32;
+            return &xehpg_q_h128;
+        }
         if (thin_q) {
             if (seq <= 256) return &xehpg_h128_s256_2nd;
             return &xehpg_h128_2nd;
@@ -120,7 +155,8 @@ sdpa_config_t *choose_config_xehpg(dim_t head_size, dim_t seq, dim_t thin_q) {
     return nullptr;
 }
 
-sdpa_config_t *choose_config_xehpc(dim_t head_size, dim_t seq, bool thin_q) {
+sdpa_config_t *choose_config_xehpc(
+        dim_t head_size, dim_t seq, bool thin_q, bool quantized) {
     if (head_size <= 32) {
         if (thin_q) return &xehpc_h32_2nd;
         if (seq <= 32) return &xehpc_h32_s32;
@@ -130,10 +166,20 @@ sdpa_config_t *choose_config_xehpc(dim_t head_size, dim_t seq, bool thin_q) {
             if (seq <= 64) return &xehpc_h64_s64_2nd;
             return &xehpc_h64_2nd;
         }
+        if (quantized && seq >= 256) return &xehpc_q_h64;
         if (seq <= 32) return &xehpc_h64_s32;
         if (seq <= 64) return &xehpc_h64_s64;
         return &xehpc_h64;
     } else if (head_size <= 128) {
+        if (quantized) {
+            if (thin_q) {
+                if (seq <= 32) return &xehpc_q_h128_s32_2nd;
+                return &xehpc_q_h128_2nd;
+            }
+            if (seq <= 32) return &xehpc_q_h128_s32;
+            if (seq <= 64) return &xehpc_q_h128_s64;
+            return &xehpc_q_h128;
+        }
         if (thin_q) return &xehpc_h128_2nd;
         if (seq <= 32) return &xehpc_h128_s32;
         if (seq <= 64) return &xehpc_h128_s64;
@@ -157,17 +203,18 @@ sdpa_config_t *choose_config_xehpc(dim_t head_size, dim_t seq, bool thin_q) {
 ///   |  3 (1100) | true    |
 ///   |  1 (1000) | true    |
 ///   |  8 (0001) | false   |
-bool with_quantize_common(const runtime_scales_t &scales) {
-    return !scales.has_default_values()
-            && (((scales.mask_ & 3) != 0 && (scales.mask_ & 12) == 0)
-                    || scales.mask_ == 0);
+bool with_quantize_common(const quant_entry_t &scale_entry) {
+    return !scale_entry.has_default_values()
+            && (((scale_entry.get_mask() & 3) != 0
+                        && (scale_entry.get_mask() & 12) == 0)
+                    || scale_entry.get_mask() == 0);
 }
 
 /// Returns true if a common zero points value is used for each slice of the
 /// tensor operation
 bool with_quantize_common(const zero_points_t &zp) {
-    int mask = zp.get(DNNL_ARG_WEIGHTS);
-    return !zp.has_default_values()
+    int mask = zp.get_mask(DNNL_ARG_WEIGHTS);
+    return !zp.has_default_values(DNNL_ARG_WEIGHTS)
             && (((mask & 3) != 0 && (mask & 12) == 0) || mask == 0);
 }
 
@@ -190,19 +237,38 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     /* Retrieve pre-tuned kernel configuration */
     sdpa_config_t *config = nullptr;
     bool thin_q = (d->queries() <= 16);
+    bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
+            || with_value_zp();
 
     switch (arch_) {
         case arch_t::xe_hpg:
-            config = choose_config_xehpg(d->head_size(), d->keys(), thin_q);
+            config = choose_config_xehpg(
+                    d->head_size(), d->keys(), thin_q, quantized);
             break;
         case arch_t::xe_hpc:
         case arch_t::xe2:
         case arch_t::xe3:
-            config = choose_config_xehpc(d->head_size(), d->keys(), thin_q);
+            config = choose_config_xehpc(
+                    d->head_size(), d->keys(), thin_q, quantized);
         default: break;
     }
 
     if (!config) return status::unimplemented;
+
+    VDISPATCH_SDPA(config->unroll_n_kq * config->wg_n_kq
+                            == config->unroll_n_vs * config->wg_n_vs
+                    && config->unroll_n_kq % config->unroll_n_vs == 0,
+            "[CONFIG] The config KQ work_group tile N(%d) axis must equal "
+            "VS work_group tile N(%d) axis and KQ subgroup tile N(%d) axis "
+            "must be divisible by VS subgroup tile N(%d) axis",
+            config->unroll_n_kq * config->wg_n_kq,
+            config->unroll_n_vs * config->wg_n_vs, config->unroll_n_kq,
+            config->unroll_n_vs);
+
+    VDISPATCH_SDPA(config->unroll_m_vs * config->wg_m_vs >= d->head_size(),
+            "[CONFIG] The config work_group tile M(%d) axis must be "
+            "greater than or equal to head size(%ld)",
+            config->unroll_m_vs * config->wg_m_vs, d->head_size());
 
     /* Get device information */
     HWInformation hw_info;
@@ -227,7 +293,13 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     GEMMProblem problem;
     problem.Ta_ext = jit::convert_dnnl_to_kernel_type(key_md()->data_type);
     problem.Tb_ext = jit::convert_dnnl_to_kernel_type(qry_md()->data_type);
-    problem.Ta = problem.Tb = Type::f16;
+    if (qry_md()->data_type == data_type::f16) {
+        problem.Ta = problem.Tb = Type::f16;
+    } else if (qry_md()->data_type == data_type::bf16) {
+        problem.Ta = problem.Tb = Type::bf16;
+    } else {
+        VDISPATCH_SDPA(false, "Data-type not supported for GEMM micro kernels");
+    }
     problem.Tc = problem.Tc_ext = Type::f32;
     problem.Ts = problem.Tc;
 
@@ -238,17 +310,20 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     micro::GEMMProtocol::Options opts_kq;
     opts_kq.localB = true;
     opts_kq.slmPtr = true;
+
     if (with_key_scales() && !kq_common_scales) {
         auto scale_dt = key_scales_dt();
         problem_kq.Ta_scale = jit::convert_dnnl_to_kernel_type(scale_dt);
-        problem_kq.A_scale.alignment = uint8_t(types::data_type_size(scale_dt));
+        problem_kq.A_scale.setAlignment(
+                int8_t(d->keys() * types::data_type_size(scale_dt)));
         problem_kq.A_scale.layout = MatrixLayout::N;
         problem_kq.aScale2D = true;
     }
     if (with_key_zp()) {
         auto zp_dt = key_zp_dt();
         problem_kq.Tao = jit::convert_dnnl_to_kernel_type(zp_dt);
-        problem_kq.AO.alignment = uint8_t(types::data_type_size(zp_dt));
+        problem_kq.AO.setAlignment(
+                int8_t(d->keys() * types::data_type_size(zp_dt)));
         problem_kq.AO.layout = MatrixLayout::N;
         problem_kq.aoPtrDims = kq_common_zp ? 0 : 2;
         problem_kq.aOffset = ABOffset::Calc;
@@ -312,21 +387,24 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     if (with_value_scales() && !vs_common_scales) {
         auto scale_dt = value_scales_dt();
         problem_vs.Ta_scale = jit::convert_dnnl_to_kernel_type(scale_dt);
-        problem_vs.A_scale.alignment = uint8_t(types::data_type_size(scale_dt));
+        problem_vs.A_scale.setAlignment(uint8_t(d->head_size()
+                / value_group_size() * types::data_type_size(scale_dt)));
         problem_vs.A_scale.layout = MatrixLayout::N;
         problem_vs.aScale2D = true;
     }
     if (with_value_zp()) {
         auto zp_dt = value_zp_dt();
         problem_vs.Tao = jit::convert_dnnl_to_kernel_type(zp_dt);
-        problem_vs.AO.alignment = uint8_t(types::data_type_size(zp_dt));
+        problem_vs.AO.setAlignment(uint8_t(d->head_size() / value_group_size()
+                * types::data_type_size(zp_dt)));
         problem_vs.AO.layout = MatrixLayout::N;
         problem_vs.aoPtrDims = vs_common_zp ? 0 : 2;
         problem_vs.aOffset = ABOffset::Calc;
     }
     if (with_value_scales() || with_value_zp()) {
-        problem_vs.aqGroupM
-                = (vs_common_scales || vs_common_zp) ? 1 : value_group_size();
+        problem_vs.aqGroupM = (vs_common_scales || vs_common_zp)
+                ? 1
+                : utils::rnd_up_pow2(value_group_size());
         problem_vs.aqGroupK = 1;
     }
     opts_vs.scaleA = with_value_scales() && !vs_common_scales;
@@ -398,7 +476,12 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     kernel_ctx.define_int("NDIMS", ndims);
 
     def_data_type(kernel_ctx, key_mdw.data_type(), "KEY");
+    def_data_type(kernel_ctx, qry_mdw.data_type(), "QRY");
     def_data_type(kernel_ctx, val_mdw.data_type(), "VAL");
+    def_data_type(kernel_ctx, dst_mdw.data_type(), "DST");
+    if (pd()->with_attn_mask()) {
+        def_data_type(kernel_ctx, msk_mdw.data_type(), "MSK");
+    }
 
     def_data_type(kernel_ctx, pd()->key_scales_dt(), "KEY_ATTR_SCALES");
     def_data_type(kernel_ctx, pd()->value_scales_dt(), "VAL_ATTR_SCALES");
@@ -466,9 +549,12 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     kernel_ctx.define_int("INVERT_SCALE", d->invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
 
-    kernel_ctx.define_int("WITH_ATTN_MASK", pd()->with_attn_mask());
+    kernel_ctx.define_int("WITH_ATTN_MASK",
+            pd()->with_attn_mask() && !pd()->with_causal_mask());
     kernel_ctx.define_int(
             "BROADCAST_MASK_Q", msk_mdw.dims()[pd_t::mask_q_index] == 1);
+
+    kernel_ctx.define_int("WITH_CAUSAL_MASK", pd()->with_causal_mask());
 
     kernel_ctx.define_int("SUBGROUP_SIZE", pd()->sg_size());
     kernel_ctx.define_int("D_MAX", pd()->d_max());
@@ -560,14 +646,14 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     arg_list.set(2, val);
     arg_list.set(3, dst);
     arg_list.set(4, scale);
-    arg_list.set(5, attn_mask);
-    arg_list.set(6, (int)D);
-    arg_list.set(7, (int)K);
-    arg_list.set(8, (int)Q);
-    arg_list.set(9, key_scales);
-    arg_list.set(10, key_zp);
-    arg_list.set(11, value_scales);
-    arg_list.set(12, value_zp);
+    arg_list.set(5, (int)D);
+    arg_list.set(6, (int)K);
+    arg_list.set(7, (int)Q);
+    arg_list.set(8, key_scales);
+    arg_list.set(9, key_zp);
+    arg_list.set(10, value_scales);
+    arg_list.set(11, value_zp);
+    if (pd()->with_attn_mask()) arg_list.set(12, attn_mask);
 
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;

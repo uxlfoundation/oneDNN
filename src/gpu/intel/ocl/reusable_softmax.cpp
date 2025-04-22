@@ -81,7 +81,7 @@ static std::vector<dim_idx_t> get_dims(size_t ndims) {
 }
 
 status_t reusable_softmax_fwd_t::pd_t::init_dispatch_default_reusable(
-        engine_t *engine) {
+        gpu::engine_t *engine) {
     using dims_vec_t = std::vector<dim_idx_t>;
 
     dims_vec_t src_dim_ids(memory_desc_wrapper(src_md()).ndims());
@@ -112,7 +112,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_default_reusable(
 }
 
 status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
-        engine_t *engine, const size_t num_workers_per_workgroup) {
+        gpu::engine_t *engine, const size_t num_workers_per_workgroup) {
 
     const memory_desc_wrapper src_mdw(src_md());
     std::vector<dim_idx_t> dims_ids = get_dims(src_mdw.ndims());
@@ -179,6 +179,20 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     CHECK(dispatch_config.generate(dispatch, lws_strat));
     conf.gws_params = dispatch.get_compile_params();
     rt_conf.gws_params = dispatch.get_runtime_params();
+
+    auto dispatch_lws = dispatch.get_runtime_params().nd_range.local_range();
+    auto dispatch_gws = dispatch.get_runtime_params().nd_range.global_range();
+
+    auto *device_info = compute_engine->device_info();
+    const size_t multiple_of_sg_lws
+            = utils::rnd_up(dispatch_lws[0], device_info->max_subgroup_size());
+
+    compute::range_t softmax_gws
+            = {multiple_of_sg_lws, dispatch_gws[1], dispatch_gws[2]};
+    compute::range_t softmax_lws
+            = {multiple_of_sg_lws, dispatch_lws[1], dispatch_lws[2]};
+    compute::nd_range_t softmax_ndrange(softmax_gws, softmax_lws);
+    rt_conf.gws_params.nd_range = softmax_ndrange;
 
     return status::success;
 }

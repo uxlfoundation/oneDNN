@@ -38,9 +38,8 @@ plan_registry_t::plan_registry_t(const char **entries) {
             std::ostringstream oss;
             e.stringify(oss);
             if (oss.str() != *entries) {
-                ir_warning()
-                        << "parsed from:\n  " << *entries
-                        << "\nstringified to\n  " << oss.str() << std::endl;
+                gpu_warning() << "parsed from:\n  " << *entries
+                              << "\nstringified to\n  " << oss.str();
             }
         }
 #endif
@@ -51,13 +50,20 @@ plan_registry_t::plan_registry_t(const char **entries) {
 
 kernel_desc_t plan_registry_t::find_best(const problem_t &prb) const {
     kernel_desc_t best;
-    float best_eff = 0;
+    float min_time = std::numeric_limits<float>::max();
     for (auto &e : entries_) {
         if (!e.desc.can_fit(prb)) continue;
-        float eff = e.model.eff(prb, e.desc);
-        if (eff > best_eff) {
-            best_eff = eff;
+        float time = e.model_set.time(prb, e.desc);
+        if (time < min_time) {
+            min_time = time;
             best = e.desc;
+        }
+        auto desc = to_stream_k(e.desc);
+        if (desc.is_empty() || !desc.can_fit(prb)) continue;
+        time = e.model_set.time(prb, desc);
+        if (time < min_time) {
+            min_time = time;
+            best = desc;
         }
     }
     return best;
@@ -83,17 +89,36 @@ void plan_registry_t::parse(std::istream &in) {
 }
 
 void plan_registry_t::entry_t::stringify(std::ostream &out) const {
-    ir_assert(desc.is_finalized) << "Cannot stringify non-finalized descriptor";
     jit::stringify(out, desc);
     out << " model=";
-    jit::stringify(out, model);
+    jit::stringify(out, model_set);
 }
 
 void plan_registry_t::entry_t::parse(std::istream &in) {
     jit::parse(in, desc);
-    desc.is_finalized = true;
     stream_match(in, "model=");
-    jit::parse(in, model);
+    jit::parse(in, model_set);
+}
+
+std::string plan_registry_t::entry_t::str() const {
+    if (is_empty()) return "(empty)";
+    std::ostringstream oss;
+    oss << ir_utils::add_tag("Desc", desc.str());
+    if (!model_set.is_empty()) {
+        oss << std::endl;
+        oss << ir_utils::add_tag("Model", model_set.str());
+    }
+    return oss.str();
+}
+
+std::string plan_registry_t::entry_t::registry_str() const {
+    gpu_assert(!desc.is_empty() && !model_set.is_empty())
+            << "Need both descriptor/model for kernel registry";
+    std::ostringstream oss;
+    jit::stringify(oss, desc);
+    oss << " model=";
+    model_set.stringify(oss);
+    return oss.str();
 }
 
 struct plan_registry_instance_t {
@@ -109,9 +134,8 @@ struct plan_registry_instance_t {
             std::ifstream in(registry_path);
             if (in.good()) {
                 registry.parse(in);
-                ir_info() << "Loaded kernel registry from " << registry_path
-                          << " with " << registry.size() << " entries"
-                          << std::endl;
+                gpu_info() << "Loaded kernel registry from " << registry_path
+                           << " with " << registry.size() << " entries";
                 return;
             }
         }

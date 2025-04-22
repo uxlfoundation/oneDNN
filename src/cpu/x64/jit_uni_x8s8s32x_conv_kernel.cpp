@@ -1315,14 +1315,14 @@ status_t jit_uni_x8s8s32x_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
 
-    jcp.is_oc_scale = wei_scales.mask_ != 0;
+    jcp.is_oc_scale = wei_scales.get_mask() > 0;
     jcp.dst_scale = !dst_scales.has_default_values();
 
     const auto zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     jcp.zp_src_is_common
-            = zp.common(DNNL_ARG_SRC); // otherwise, it's per-channel
+            = zp.get_mask(DNNL_ARG_SRC) == 0; // otherwise, it's per-channel
     assert(IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common));
 
     VDISPATCH_CONV_IC(
@@ -1614,7 +1614,7 @@ void jit_uni_x8s8s32x_fwd_kernel<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {
 
-    const int mask = attr.scales_.get(DNNL_ARG_WEIGHTS).mask_;
+    const int mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
     const dim_t scales_count
             = mask == 0 ? 1 : static_cast<dim_t>(jcp.oc) * jcp.ngroups;
     dim_t count = scales_count == 1 ? (dim_t)8 : scales_count;

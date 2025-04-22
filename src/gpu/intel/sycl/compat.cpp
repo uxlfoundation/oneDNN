@@ -20,7 +20,7 @@
 #include "gpu/intel/utils.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
 
-#include "gpu/intel/sycl/l0/level_zero/ze_api.h"
+#include "level_zero/ze_api.h"
 
 #if __has_include(<sycl/backend/opencl.hpp>)
 #include <sycl/backend/opencl.hpp>

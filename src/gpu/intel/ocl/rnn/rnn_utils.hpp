@@ -21,7 +21,7 @@
 #include "common/memory_desc_wrapper.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/ocl/ocl_utils.hpp"
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 #include "gpu/intel/serialization.hpp"
 
@@ -805,7 +805,7 @@ struct scratch_t : public data_helper_t {
         diff_ht_ = scratchpad.get_memory_storage(key_rnn_diff_ht);
     }
 
-    struct gemm_pds {
+    struct gemm_pds_t {
         const primitive_desc_t *iter_fwd_pd;
         const primitive_desc_t *iter_fwd_2_pd;
         const primitive_desc_t *layer_fwd_pd;
@@ -821,7 +821,7 @@ struct scratch_t : public data_helper_t {
     };
 
     static void book(memory_tracking::registrar_t &scratchpad,
-            const conf_t &rnn_conf, const gemm_pds &gemms) {
+            const conf_t &rnn_conf, const gemm_pds_t &gemms) {
         using namespace memory_tracking::names;
         if (rnn_conf.scratch_gates_size > 0)
             scratchpad.book(key_rnn_gates, rnn_conf.scratch_gates_size, 1,

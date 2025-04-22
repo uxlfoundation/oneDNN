@@ -630,7 +630,7 @@ struct rnn_conf_t {
     int dhc_block_peephole, dhc_tail_peephole, dhc_blocks_peephole;
     bool brgemm_fwd_iter_layer_fuse_possible = false;
 
-    dim_t nthr;
+    int nthr;
 #if DNNL_X64
     x64::cpu_isa_t brgemm_isa;
 #endif
@@ -683,7 +683,7 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.dst_iter_c_dt = dst_iter_c_d.is_zero() ? data_type::f32
                                                : dst_iter_c_d.data_type();
 
-    rnn.cell_dt = data_traits<typename T::src_layer_t>::data_type;
+    rnn.cell_dt = data_traits_t<typename T::src_layer_t>::data_type;
     switch (rd.direction) {
         case dnnl_unidirectional_left2right: rnn.exec_dir = l2r; break;
         case dnnl_unidirectional_right2left: rnn.exec_dir = r2l; break;
@@ -858,8 +858,6 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.use_matmul = !rnn.is_brgemm && rnn.is_fwd // TODO: Enable BWD
     // TODO: Below checks are for legacy and a performance study is
     // required to avoid regressions.
-    // TODO: using matmul is disabled for SYCL runtime for now.
-    // Enable it after memory handles issue fix
 #if DNNL_X64
             && IMPLICATION(
                     rnn.is_cell_dt_bf16(), !x64::mayiuse(x64::avx512_core))
@@ -867,8 +865,7 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
                     x64::mayiuse(x64::avx2)
                             && utils::one_of(rd.cell_kind,
                                     alg_kind::vanilla_gru,
-                                    alg_kind::vanilla_augru))
-            && (DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL);
+                                    alg_kind::vanilla_augru));
 #else
             && !rnn.is_cell_dt_f32() && !rnn.is_cell_dt_int8();
 #endif

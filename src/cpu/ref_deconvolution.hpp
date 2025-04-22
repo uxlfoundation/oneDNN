@@ -173,6 +173,16 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                                             alg_kind::deconvolution_direct,
                                             alg_kind::deconvolution_winograd),
                     VERBOSE_BAD_ALGORITHM);
+            // This implementation will check data types requirements through
+            // an underlying convolution implementation, however, convolution
+            // might be called without bias, thus, need to check bias data type
+            // if it was requested.
+            if (with_bias()) {
+                const auto bia_type = invariant_wei_md(1)->data_type;
+                VDISPATCH_DECONVOLUTION(utils::one_of(bia_type, f32, bf16, f16,
+                                                f8_e5m2, f8_e4m3),
+                        VERBOSE_UNSUPPORTED_DT);
+            }
             VDISPATCH_DECONVOLUTION(attr()->has_default_values(skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_DECONVOLUTION(
@@ -254,16 +264,25 @@ struct ref_deconvolution_fwd_t : public primitive_t {
         }
 
         bool zero_points_ok() const {
-            using namespace data_type;
-            int mask_src = 0, mask_dst = 0;
-            attr()->zero_points_.get(DNNL_ARG_SRC, &mask_src);
-            attr()->zero_points_.get(DNNL_ARG_DST, &mask_dst);
+            const auto &zp = attr()->zero_points_;
 
-            return IMPLICATION(!utils::one_of(src_md()->data_type, s8, u8),
-                           attr()->zero_points_.has_default_values())
-                    && attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS)
-                    && (mask_src == 0 || mask_src == 1 << 1)
-                    && (mask_dst == 0 || mask_dst == 1 << 1);
+            using namespace data_type;
+            bool ok = IMPLICATION(!utils::one_of(src_md()->data_type, s8, u8),
+                    zp.has_default_values());
+            if (!ok) return false;
+
+            if (!zp.has_default_values(DNNL_ARG_SRC)) {
+                int mask_src = zp.get_mask(DNNL_ARG_SRC);
+                ok = utils::one_of(mask_src, 0, (1 << 1));
+                if (!ok) return false;
+            }
+            if (!zp.has_default_values(DNNL_ARG_DST)) {
+                int mask_dst = zp.get_mask(DNNL_ARG_DST);
+                ok = utils::one_of(mask_dst, 0, (1 << 1));
+                if (!ok) return false;
+            }
+
+            return zp.has_default_values(DNNL_ARG_WEIGHTS);
         }
     };
 
@@ -392,7 +411,7 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
         }
     };
 
-    typedef typename prec_traits<data_type::f32>::type data_t;
+    using data_t = typename prec_traits_t<data_type::f32>::type;
 
     ref_deconvolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
 
@@ -464,18 +483,31 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
-            auto src_type = desc()->src_desc.data_type;
-            auto dwei_type = desc()->diff_weights_desc.data_type;
-            auto ddst_type = desc()->diff_dst_desc.data_type;
+            auto src_type = invariant_src_md()->data_type;
+            auto wei_type = invariant_wei_md(0)->data_type;
+            auto dst_type = invariant_dst_md()->data_type;
             VDISPATCH_DECONVOLUTION(
                     desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_DECONVOLUTION(utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_DECONVOLUTION(ddst_type == src_type,
+            VDISPATCH_DECONVOLUTION(dst_type == src_type,
                     VERBOSE_INCONSISTENT_DT, "diff_dst", "src");
-            VDISPATCH_DECONVOLUTION(utils::one_of(dwei_type, src_type, f32),
+            VDISPATCH_DECONVOLUTION(utils::one_of(wei_type, src_type, f32),
                     VERBOSE_UNSUPPORTED_DT);
+            // This implementation will check data types requirements through
+            // an underlying convolution implementation, however, convolution
+            // might be called without bias, thus, need to check bias data type
+            // if it was requested.
+            if (with_bias()) {
+                const auto bia_type = invariant_wei_md(1)->data_type;
+                VDISPATCH_DECONVOLUTION(utils::one_of(bia_type, f32, bf16, f16)
+                                && (bia_type == dst_type
+                                        || (bia_type == f32
+                                                && utils::one_of(
+                                                        dst_type, bf16, f16))),
+                        VERBOSE_UNSUPPORTED_DT);
+            }
             VDISPATCH_DECONVOLUTION(utils::one_of(desc()->alg_kind,
                                             alg_kind::deconvolution_direct,
                                             alg_kind::deconvolution_winograd),
@@ -534,18 +566,18 @@ private:
 
     template <data_type_t dbia_type, data_type_t ddst_type>
     void compute_bwd_bias_ncdhw(
-            typename prec_traits<dbia_type>::type *diff_bias,
-            const typename prec_traits<ddst_type>::type *diff_dst) const;
+            typename prec_traits_t<dbia_type>::type *diff_bias,
+            const typename prec_traits_t<ddst_type>::type *diff_dst) const;
 
     template <data_type_t dbia_type, data_type_t ddst_type>
     void compute_bwd_bias_ndhwc(
-            typename prec_traits<dbia_type>::type *diff_bias,
-            const typename prec_traits<ddst_type>::type *diff_dst) const;
+            typename prec_traits_t<dbia_type>::type *diff_bias,
+            const typename prec_traits_t<ddst_type>::type *diff_dst) const;
 
     template <data_type_t dbia_type, data_type_t ddst_type, dim_t blksize>
     void compute_bwd_bias_nCdhwXc(
-            typename prec_traits<dbia_type>::type *diff_bias,
-            const typename prec_traits<ddst_type>::type *diff_dst) const;
+            typename prec_traits_t<dbia_type>::type *diff_bias,
+            const typename prec_traits_t<ddst_type>::type *diff_dst) const;
 
     template <data_type_t dbia_type, data_type_t ddst_type>
     void compute_bias(const exec_ctx_t &ctx) const;

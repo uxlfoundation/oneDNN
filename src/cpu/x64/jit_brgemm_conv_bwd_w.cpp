@@ -133,20 +133,32 @@ status_t brgemm_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
                 brgattr.hint_expected_B_size = 0;
                 brgattr.hint_expected_C_size = 0;
 
-                brgattr.wary_tail_read = false;
+                brgattr.wary_A_k_tail_read = false;
                 brgattr.bd_mask_level = jcp_.use_M_mask;
 
                 brgattr.max_top_vpad = 0;
                 brgattr.max_bottom_vpad = 0;
 
-                brgattr.LDA2 = jcp_.tr_iw * jcp_.ih_block * jcp_.id;
-                brgattr.LDB2
-                        = jcp_.tr_ow * jcp_.oc_block * jcp_.oh_block * jcp_.od;
+                const auto lda2_size = static_cast<size_t>(jcp_.tr_iw)
+                        * jcp_.ih_block * jcp_.id;
+                VDISPATCH_CONV_IC(lda2_size <= INT_MAX,
+                        VERBOSE_UNSUPPORTED_FEATURE,
+                        "lda2_size > INT_MAX is not supported");
+                brgattr.LDA2 = lda2_size;
+
+                const auto ldb2_size = static_cast<size_t>(jcp_.tr_ow)
+                        * jcp_.oc_block * jcp_.oh_block * jcp_.od;
+                VDISPATCH_CONV_IC(ldb2_size <= INT_MAX,
+                        VERBOSE_UNSUPPORTED_FEATURE,
+                        "ldb2_size > INT_MAX is not supported");
+                brgattr.LDB2 = ldb2_size;
+
                 brgattr.LDC2_M = jcp_.oc_block * jcp_.kd * jcp_.kh * jcp_.kw;
                 brgattr.LDC2_N = jcp_.nb_ic * jcp_.ic_block * jcp_.oc_block
                         * jcp_.kd * jcp_.kh * jcp_.kw;
 
                 CHECK(brgemm_desc_set_attr(&brg, brgattr));
+                CHECK(brgemm_desc_finalize(&brg));
 
                 brgs_->insert(brg_idx, brg);
             }

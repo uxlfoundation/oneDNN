@@ -104,7 +104,20 @@ struct Address2DParams {
 };
 
 // Cached set of leading dimension multiples for address increments.
-using LDIncrements = std::vector<std::pair<int, SubregisterPair>>;
+struct LDIncrements {
+    using value_type = std::pair<int, SubregisterPair>;
+    LDIncrements(const MatrixAddressingStrategy &s): type(s.base.isA64() ? ngen::DataType::q : ngen::DataType::ud) {}
+
+    std::vector<value_type>::iterator begin() { return increments.begin(); }
+    std::vector<value_type>::const_iterator begin() const { return increments.begin(); }
+    std::vector<value_type>::iterator end() { return increments.end(); }
+    std::vector<value_type>::const_iterator end() const { return increments.end(); }
+    void push_back(const value_type & v) { increments.push_back(v); }
+    void clear() { increments.clear(); }
+
+    ngen::DataType type;
+    std::vector<value_type> increments;
+};
 
 // Assignment of a logical mask to an variable and virtual flag register.
 struct MaskAssignment {
@@ -137,7 +150,7 @@ struct CommonState {
     ngen::FlagRegister flagSwizzle;
     EmulationState emulate;
     ngen::GRFRange eatomicAddRegs[2];
-    ngen::GRFRange remaskRegs[2];
+    ngen::GRFRange remaskRegs[3];
     VirtualFlag vflagEAtomicAdd;
     VirtualFlag blockEMask;
     ngen::Label blockDone;
@@ -302,6 +315,9 @@ struct GEMMState : public CommonState {
     ngen::GRF betaCheckReturn;
     ngen::Subregister statusFlagAddr;                        // uq
     bool systolicSumA = false, systolicSumB = false;
+#if XE3P    
+    bool useBDPAS = false;
+#endif
     bool lateKLoopCheck = false;
     bool splitBarrierAlways = false;
     int ka_loadRem, kb_loadRem;
@@ -398,7 +414,13 @@ struct GEMMState : public CommonState {
         ngen::InstructionModifier depAddr[4];
     } sysgemm;
 
-    GEMMState(ngen::HW hw) : CommonState(hw) {}
+    GEMMState(ngen::HW hw, const GEMMStrategy& strategy) : CommonState(hw),
+                                                           ldaIncrements(strategy.A),
+                                                           ldbIncrements(strategy.B),
+                                                           ldaoIncrements(strategy.AO),
+                                                           ldboIncrements(strategy.BO),
+                                                           ldasIncrements(strategy.A_scale),
+                                                           ldbsIncrements(strategy.B_scale) {}
 
     int internalSIMD() const { return simd32KMasks ? 32 : 16; }
 

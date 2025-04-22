@@ -35,8 +35,8 @@ layout_t insert_dimension(const layout_t &layout, dim_idx_t dim_idx) {
 }
 
 layout_t remove_size_1_dimension(const layout_t &layout, dim_idx_t dim_idx) {
-    ir_assert(0 <= dim_idx && dim_idx < layout.ndims());
-    ir_assert(layout.dim(dim_idx) == 1);
+    gpu_assert(dim_idx != dim_idx::invalid && dim_idx < layout.ndims());
+    gpu_assert(layout.dim(dim_idx) == 1);
     dim_assignment_t a(layout.ndims(), layout.ndims() - 1);
     for (dim_idx_t i = 0; i < layout.ndims(); i++) {
         if (i == dim_idx) continue;
@@ -85,13 +85,13 @@ layout_t normalize_conv_groups(const layout_t &layout, bool with_groups,
         dim_t groups, bool is_dw, bool add_groups, bool is_wei) {
     if (with_groups == add_groups) return layout;
     if (is_wei) {
-        ir_assert(groups == 1)
+        gpu_assert(groups == 1)
                 << "Adding/removing groups can be done only for single group.";
         if (add_groups) return insert_dimension(layout, 0);
         return remove_size_1_dimension(layout, 0);
     }
 
-    ir_assert(!with_groups) << "Unexpected groups in source/destination.";
+    gpu_assert(!with_groups) << "Unexpected groups in source/destination.";
     if (is_dw) groups = layout.dim(1);
     if (layout.dim(1) == 1) groups = 1;
     return split_dimension(layout, /*dim_idx=*/1, groups);
@@ -130,14 +130,14 @@ void normalize_conv_layouts(layout_t &src_layout, layout_t &wei_layout,
             g > 1 ? dst_layout.dim(1) / oc : 1, is_dw, dhw_map, add_groups,
             /*is_wei=*/false);
     if (add_groups && !bia_layout.is_empty()) {
-        ir_assert(bia_layout.ndims() == 1) << bia_layout;
+        gpu_assert(bia_layout.ndims() == 1) << bia_layout;
         bia_layout = split_dimension(bia_layout, 0, g);
     }
 }
 
 uint32_t conv_post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
     dim_idx_t cp_ndims = cp_view().nvdims();
-    ir_assert(cp_ndims >= 3);
+    gpu_assert(cp_ndims >= 3);
     // Add groups to match ngcdhw layout.
     bool add_groups = (cp_view().vvars()[1].as<var_t>().name == "g");
     // Number of dimensions before normalization.
@@ -152,7 +152,7 @@ uint32_t conv_post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
             /*add_groups=*/false, /*is_wei=*/false);
     // Split channels into groups and channels to match ngcdhw layout.
     if (add_groups) cvt_dims.insert(cvt_dims.begin() + 1, cvt_dims[1]);
-    ir_assert(cvt_dims.size() == cp_ndims);
+    gpu_assert(cvt_dims.size() == cp_ndims);
 
     uint32_t mask = 0;
     for (dim_idx_t i = 0; i < cp_ndims; i++) {
@@ -163,7 +163,7 @@ uint32_t conv_post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
 
 void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
         std::vector<dim_t> &dims, std::vector<dim_t> &padded_dims) {
-    ir_assert(layout.ndims() == dim_idx_t(dims.size()));
+    gpu_assert(layout.ndims() == dim_idx_t(dims.size()));
     if (layout.ndims() < ndims) {
         layout = layout_t(layout.type(), ndims, layout.offset(),
                 layout.blocks(), /*do_normalize=*/false);
@@ -175,9 +175,11 @@ void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
 // this method only gets called when ZP precompute is in order;
 // in all other cases ZPs are applied ad-hoc, without a post-op
 view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
-    auto map_o2k = [](view_t &v, dim_idx_t idx, dim_t O, dim_t I, dim_t KD,
-                           dim_t P, dim_t S) {
-        const bool needs_right_bound = ((O - 1) * S + (KD - P) >= I);
+    auto map_o2k = [this](view_t &v, dim_idx_t idx, dim_t O, dim_t I, dim_t K,
+                           dim_t D, dim_t P, dim_t S) {
+        const auto KD = (K - 1) * (D + 1) + 1;
+        const auto KDP = (KD > 1) ? KD - P : 0;
+        const bool needs_right_bound = (O - 1) * S + KDP >= I;
         expr_t o = v.vvars()[idx];
         if (KD >= I) {
             o = o * S;
@@ -186,7 +188,13 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
             dim_t off = P;
             if (P > 0) l = binary_op_t::make(op_kind_t::_min, o * S - P, 0);
             if (needs_right_bound) {
-                r = binary_op_t::make(op_kind_t::_max, o * S + (KD - P), I);
+                if (schedule_.var_bound(o) > O) {
+                    auto q = binary_op_t::make(
+                            op_kind_t::_min, o * S + KDP, (O - 1) * S + KDP);
+                    r = binary_op_t::make(op_kind_t::_max, q, I);
+                } else {
+                    r = binary_op_t::make(op_kind_t::_max, o * S + KDP, I);
+                }
                 off -= I;
             }
             o = (!l.is_empty()) ? l : o;
@@ -203,7 +211,7 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     const auto &vars = cp_view().vvars();
     auto dst = normalize_conv_layout(zp_dst_, /*with_groups=*/false, prb_.g,
             prb_.is_dw, prb_.dhw_map, /*add_groups=*/true, /*is_wei=*/false);
-    ir_assert((vars.size() == 6) && (dst.ndims() == 6));
+    gpu_assert((vars.size() == 6) && (dst.ndims() == 6));
 
     bool non_1_spatials[3] = {false, false, false};
     std::vector<block_t> new_blk;
@@ -218,9 +226,6 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     }
     dst = layout_t(dst.type(), dst.ndims(), dst.offset(), new_blk, false);
 
-    const auto KDD = (prb_.kd - 1) * (prb_.dd + 1) + 1;
-    const auto KDH = (prb_.kh - 1) * (prb_.dh + 1) + 1;
-    const auto KDW = (prb_.kw - 1) * (prb_.dw + 1) + 1;
     view_t view(vars, 6);
     view.set_vdim(vars[0], 1); // mb
     view.set_vdim(vars[1], prb_.g);
@@ -228,16 +233,16 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     view.set_tdim(0, vars[0]);
     view.set_tdim(1, vars[1]);
     view.set_tdim(2, vars[2]);
-    map_o2k(view, 3, prb_.od, prb_.id, KDD, prb_.pd, prb_.sd);
-    map_o2k(view, 4, prb_.oh, prb_.ih, KDH, prb_.ph, prb_.sh);
-    map_o2k(view, 5, prb_.ow, prb_.iw, KDW, prb_.pw, prb_.sw);
+    map_o2k(view, 3, prb_.od, prb_.id, prb_.kd, prb_.dd, prb_.pd, prb_.sd);
+    map_o2k(view, 4, prb_.oh, prb_.ih, prb_.kh, prb_.dh, prb_.ph, prb_.sh);
+    map_o2k(view, 5, prb_.ow, prb_.iw, prb_.kw, prb_.dw, prb_.pw, prb_.sw);
     view.set_tlayout(dst);
     return view;
 }
 
 view_t conv_post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     dim_idx_t cp_ndims = cp_view().nvdims();
-    ir_assert(cp_ndims >= 3);
+    gpu_assert(cp_ndims >= 3);
     // Add groups to match ngcdhw layout.
     bool add_groups = (cp_view().vvars()[1].as<var_t>().name == "g");
     layout_t layout(md, /*do_normalize=*/false);
@@ -252,7 +257,7 @@ view_t conv_post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     padded_dims = normalize_conv_dims(padded_dims, /*with_groups=*/false,
             prb_.g, prb_.is_dw, prb_.dhw_map, add_groups,
             /*is_wei=*/false);
-    ir_assert(layout.ndims() == cp_ndims) << "Incompatible dimensions.";
+    gpu_assert(layout.ndims() == cp_ndims) << "Incompatible dimensions.";
     uint32_t bound_check_mask = 0;
     for (dim_idx_t i = 0; i < cp_ndims; i++) {
         if (dims[i] == 1) continue; // Broadcast, no bound check needed.

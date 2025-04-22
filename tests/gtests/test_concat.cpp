@@ -156,6 +156,7 @@ protected:
         memory::data_type data_type = data_traits_t<data_t>::data_type;
 
         std::vector<memory::desc> srcs_md;
+        srcs_md.reserve(p.srcs_cds.size());
         std::vector<memory> srcs;
         for (size_t i = 0; i < p.srcs_cds.size(); i++)
             srcs_md.emplace_back(p.srcs_cds[i], data_type, p.srcs_format[i]);

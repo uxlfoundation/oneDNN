@@ -203,6 +203,7 @@ protected:
         auto strm = make_stream(eng);
 
         std::vector<memory::desc> srcs_md;
+        srcs_md.reserve(num_srcs);
         std::vector<memory> srcs;
 
         for (size_t i = 0; i < num_srcs; i++)

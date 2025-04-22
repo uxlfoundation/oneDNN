@@ -38,7 +38,7 @@ public:
     displace_args_t() = default;
     displace_args_t(const deserialized_op_t &op, size_t offset,
             const deserialized_lt_t &lt, filling_type_t type,
-            fill_cfg_t cfg = {})
+            const fill_cfg_t &cfg = {})
         : main_op_(op)
         , main_op_offset_(offset)
         , tensor_(lt)

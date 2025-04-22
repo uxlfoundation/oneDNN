@@ -196,9 +196,9 @@ TEST(test_concat_compile, ConcatWithMoreInputs) {
 
     graph::compiled_partition_t cp(p);
 
-    std::vector<const graph::logical_tensor_t *> inputs;
+    std::vector<const graph::logical_tensor_t *> inputs(num_inputs);
     for (size_t i = 0; i < num_inputs; ++i) {
-        inputs.push_back(&input_lts[i]);
+        inputs[i] = &input_lts[i];
     }
     std::vector<const graph::logical_tensor_t *> outputs {&dst_lt};
     auto ret = p.compile(&cp, inputs, outputs, eng);

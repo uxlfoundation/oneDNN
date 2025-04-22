@@ -242,6 +242,7 @@ int measure_perf(timer::timer_t &t,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
         res_t *res) {
     std::vector<perf_function_t> perf_func_v;
+    perf_func_v.reserve(cp_v.size());
     for (size_t i = 0; i < cp_v.size(); i++) {
         perf_func_v.emplace_back(std::bind(&compiled_partition_executor,
                 cp_v[i], std::placeholders::_1, std::placeholders::_2,

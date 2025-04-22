@@ -259,7 +259,7 @@ static inline bool allclose(const test_tensor_t &a, const test_tensor_t &b,
 #pragma GCC diagnostic pop
 #endif
 
-static inline size_t product(std::vector<int64_t> &in) {
+static inline size_t product(const std::vector<int64_t> &in) {
     if (in.empty()) return 0;
     int64_t prod = std::accumulate(in.begin(), in.end(),
             static_cast<int64_t>(1), std::multiplies<int64_t>());

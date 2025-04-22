@@ -6849,8 +6849,8 @@ TEST(test_convolution_execute_subgraph_int8, ShareCachedWeights) {
     std::vector<std::shared_ptr<graph::compiled_partition_t>> cps;
     for (size_t i = 0; i < src_shapes.size(); ++i) {
         std::cout << "---------------\n";
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         src_u8 = utils::logical_tensor_init(1, src_shape, graph::data_type::u8);
         dst_f32 = utils::logical_tensor_init(

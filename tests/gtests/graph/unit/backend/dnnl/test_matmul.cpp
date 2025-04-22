@@ -352,8 +352,8 @@ TEST(test_matmul_execute, MatmulNdx1d) {
 
     for (size_t w_idx = 0; w_idx < weight_shapes.size(); ++w_idx) {
         for (size_t idx = 0; idx < src_shapes.size(); idx++) {
-            auto src_shape = src_shapes[idx];
-            auto dst_shape = dst_shapes[idx + w_idx * src_shapes.size()];
+            const auto &src_shape = src_shapes[idx];
+            const auto &dst_shape = dst_shapes[idx + w_idx * src_shapes.size()];
 
             std::vector<float> src_data(product(src_shape));
             std::vector<float> weight_data(product(weight_shapes[w_idx]));
@@ -448,8 +448,9 @@ TEST(test_matmul_execute, Matmul1dxNd) {
 
     for (size_t idx = 0; idx < src_shapes.size(); ++idx) {
         for (size_t w_idx = 0; w_idx < weight_shapes.size(); w_idx++) {
-            auto src_shape = src_shapes[idx];
-            auto dst_shape = dst_shapes[w_idx + idx * weight_shapes.size()];
+            const auto &src_shape = src_shapes[idx];
+            const auto &dst_shape
+                    = dst_shapes[w_idx + idx * weight_shapes.size()];
 
             std::vector<float> src_data(product(src_shape));
             std::vector<float> weight_data(product(weight_shapes[w_idx]));
@@ -973,10 +974,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx2d) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -1133,10 +1134,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulU8U8) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<uint8_t> weight_data(product(weight_shape));
@@ -1272,9 +1273,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx1d) {
     for (size_t i = 0; i < weight_shapes.size(); ++i) {
         for (size_t j = 0; j < src_shapes.size(); ++j) {
             // prepare fp32 data
-            std::vector<int64_t> src_shape = src_shapes[j];
-            std::vector<int64_t> weight_shape = weight_shapes[i];
-            std::vector<int64_t> dst_shape
+            const std::vector<int64_t> &src_shape = src_shapes[j];
+            const std::vector<int64_t> &weight_shape = weight_shapes[i];
+            const std::vector<int64_t> &dst_shape
                     = dst_shapes[j + i * src_shapes.size()];
 
             std::vector<uint8_t> src_data(product(src_shape));
@@ -1427,10 +1428,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx2dWithTranspose) {
     for (size_t i = 0; i < src_shapes.size(); ++i) {
         for (size_t j = 0; j < weight_shapes.size(); ++j) {
             // prepare fp32 data
-            std::vector<int64_t> src_shape = src_shapes[i];
-            std::vector<int64_t> weight_shape = weight_shapes[j];
-            std::vector<int64_t> bias_shape {1};
-            std::vector<int64_t> dst_shape = dst_shapes[i];
+            const std::vector<int64_t> &src_shape = src_shapes[i];
+            const std::vector<int64_t> &weight_shape = weight_shapes[j];
+            const std::vector<int64_t> bias_shape {1};
+            const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
             std::vector<uint8_t> src_data(product(src_shape));
             std::vector<int8_t> weight_data(product(weight_shape));
@@ -1601,10 +1602,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumNdx2d) {
     for_(const auto &other_qtype : other_qtypes)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -1808,10 +1809,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasBinary) {
     for_(size_t j = 0; j < weight_shapes.size(); ++j)
     for (const auto &binary_kind : binary_kinds) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -1995,10 +1996,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasAddMul) {
         if (engine->kind() == graph::engine_kind::gpu && qtype == "per_channel")
             continue;
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -2208,10 +2209,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasNdx2dX8s8f32) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -2348,9 +2349,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulNdx2dX8s8f32) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -2478,10 +2479,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasGeluNdx2dX8s8f32) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -2697,10 +2698,10 @@ TEST(test_matmul_execute_subgraph_int8, Matmul2dx3dWithTranspose) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {1};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {1};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<int8_t> weight_data(product(weight_shape));
@@ -2852,10 +2853,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumGetInplacePair_CPU) {
     for_(const auto &other_qtype : other_qtypes)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         float scale_src = 1 / 255.f; // map to 0~255
         float scale_other = 1 / 127.f;
@@ -4754,10 +4755,10 @@ TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasSumNdx2d) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<float> weight_data(product(weight_shape));
@@ -4978,9 +4979,9 @@ TEST(test_matmul_execute_subgraph_int8, U8S8U8MatmulAddF32) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<float> weight_data(product(weight_shape));
@@ -5155,10 +5156,10 @@ TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasNdx2dWithTranspose) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         std::vector<uint8_t> src_data(product(src_shape));
         std::vector<float> weight_data(product(weight_shape));
@@ -5338,10 +5339,10 @@ TEST(test_matmul_execute_subgraph_int8, QuantWeiMatmulBiasReluNdx2d) {
     for_(size_t i = 0; i < src_shapes.size(); ++i)
     for (size_t j = 0; j < weight_shapes.size(); ++j) {
         // prepare fp32 data
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> weight_shape = weight_shapes[j];
-        std::vector<int64_t> bias_shape {2};
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &weight_shape = weight_shapes[j];
+        const std::vector<int64_t> bias_shape {2};
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         float scale_src = 1 / 255.f; // map to 0~255
         float scale_out = 1;
@@ -7984,8 +7985,8 @@ TEST(test_matmul_execute_subgraph_int8, ShareCachedWeight) {
     dnnl::graph::set_constant_tensor_cache_capacity(
             static_cast<engine::kind>(engine->kind()), 1024);
     for (size_t i = 0; i < src_shapes.size(); ++i) {
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         src_u8 = utils::logical_tensor_init(1, src_shape, graph::data_type::u8);
         dst_s8 = utils::logical_tensor_init(8, dst_shape, graph::data_type::s8);
@@ -8131,8 +8132,8 @@ TEST(test_matmul_execute_subgraph_int8, NoShareCachedWeight) {
     }
 
     for (size_t i = 0; i < src_shapes.size(); ++i) {
-        std::vector<int64_t> src_shape = src_shapes[i];
-        std::vector<int64_t> dst_shape = dst_shapes[i];
+        const std::vector<int64_t> &src_shape = src_shapes[i];
+        const std::vector<int64_t> &dst_shape = dst_shapes[i];
 
         src_u8 = utils::logical_tensor_init(1, src_shape, graph::data_type::u8);
         dst_s8 = utils::logical_tensor_init(8, dst_shape, graph::data_type::s8);

@@ -451,8 +451,7 @@ struct host_scalar_executable_t : public op_executable_t {
 
         auto prim = dnnl::reorder(src_mem, dst_mem);
 
-        auto sycl_deps = deps;
-        auto e = dnnl::sycl_interop::execute(prim, stream, args, sycl_deps);
+        auto e = dnnl::sycl_interop::execute(prim, stream, args, deps);
         if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
         return e;
     }
@@ -475,8 +474,7 @@ struct host_scalar_executable_t : public op_executable_t {
 
         auto prim = dnnl::reorder(src_mem, dst_mem);
 
-        auto ocl_deps = deps;
-        auto e = dnnl::ocl_interop::execute(prim, stream, args, ocl_deps);
+        auto e = dnnl::ocl_interop::execute(prim, stream, args, deps);
         return e;
     }
 #endif

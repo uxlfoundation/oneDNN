@@ -70,6 +70,7 @@ using SerializationStream = dnnl::impl::serialization_stream_t;
 
 enum class BinaryOp;
 using PostOps = dnnl::impl::gpu::intel::gpu_post_ops_t;
+// NOLINTBEGIN(readability-identifier-naming)
 struct PostOpsProblem {
     PostOpsProblem() = default;
     PostOpsProblem(PostOps &&ops) : ops(std::move(ops)) {};
@@ -158,6 +159,7 @@ struct PostOpsProblem {
         injector.compute(C_grfs, C_ngrf, seed.getBase(), seed.getOffset(), t);
     }
 };
+// NOLINTEND(readability-identifier-naming)
 
 } // namespace gemmstone
 #endif

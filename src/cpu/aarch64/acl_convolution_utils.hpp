@@ -170,6 +170,10 @@ status_t execute_forward_conv_acl(const exec_ctx_t &ctx,
                     arm_compute::TensorShape(aux_mem[id].size), 1,
                     arm_compute::DataType::U8);
             auto buffer = scratchpad.get<void>(key.second);
+            // Set Im2Col input buffer
+            // Temporary fix for https://github.com/uxlfoundation/oneDNN/issues/2303
+            if (id == 10) { std::memset(buffer, 0, aux_mem[id].size); }
+
             tmp_tensors[id].allocator()->init(info, aux_mem[id].alignment);
             tmp_tensors[id].allocator()->import_memory(buffer);
             pack.add_tensor(aux_mem[id].slot, &tmp_tensors[id]);

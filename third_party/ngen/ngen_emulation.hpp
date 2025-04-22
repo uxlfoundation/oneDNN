@@ -559,11 +559,11 @@ struct EmulationImplementation {
 
         bool emulate64 = strategy.emulate64_mul;
 
-        if (s0Q) {
-            if (!s1D || !dstQ) stub();
+        if (s0Q && !s1Q) {
+            if (!dstQ) stub();
             auto temp = s1Signed ? state.temp[0].d() : state.temp[0].ud();
             auto &src1Reg = [&]() -> RegData & {
-                if (s1Immed || s1W) {
+                if (s1Immed || !s1D) {
                     g.mov(mod, temp, src1, loc);
                     return temp;
                 } else {

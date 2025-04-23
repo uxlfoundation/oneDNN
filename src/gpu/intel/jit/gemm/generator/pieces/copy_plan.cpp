@@ -2155,32 +2155,51 @@ void CopyPlan::legalizeRegions()
             int d0o = i.dst.offset;
             int s0s = i.src0.stride;
             int s0o = i.src0.offset;
+            bool strideOK = true, offsetOK = true;
 
             if (!isW(dt)  && !isB(dt))  stub();
             if (!isW(s0t) && !isB(s0t)) stub();
 
             if (isW(s0t)) {
-                canSwizzle &= (s0s <= 2);
+                strideOK &= (s0s <= 2);
                 if (s0s == 2) {
-                    if (isW(dt))
-                        canSwizzle &= (s0o / 2 == d0o % 16);
-                    else
-                        canSwizzle &= (s0o == d0o % 32);
+                    if (isW(dt)) {
+                        offsetOK &= (s0o / 2 == d0o % 16);
+                        d0o = (s0o / 2) % 16;
+                    } else {
+                        offsetOK &= (s0o == d0o % 32);
+                        d0o = s0o % 32;
+                    }
                 }
             } else {
                 if (isW(dt) || d0s > 1)
                     s0s /= 2;
                 if (isW(dt))
                     d0o *= 2;
-                canSwizzle &= (s0s <= 4);
-                if (s0s >= 2)
-                    canSwizzle &= (d0o % (64 / s0s) == s0o / s0s);
+                strideOK &= (s0s <= 4);
+                if (s0s >= 2) {
+                    offsetOK &= (d0o % (64 / s0s) == s0o / s0s);
+                    auto saveD0O = d0o;
+                    d0o = s0o / s0s;
+                    if (isW(dt)) {
+                        if (d0o & 1)
+                            s0o = (saveD0O % (64 / s0s)) * s0s; /* move src rather than dst */
+                        else
+                            d0o /= 2;
+                    }
+                }
             }
 
-            if (!canSwizzle) {
+            if (!strideOK) {
                 int istride = 4 / getBytes(dt);
                 (i.src0.byteStride() < i.dst.byteStride()) ? restrideSrc0(i, istride)
                                                            : restrideDst(i, istride);
+                continue;
+            }
+
+            if (!offsetOK) {
+                (s0o != i.src0.offset) ? repositionSrc(i, 0, i.src0.stride, s0o)
+                                       : repositionDst(i,    i.dst.stride,  d0o);
             }
         }
     }

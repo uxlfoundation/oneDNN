@@ -27,17 +27,8 @@ cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds) {
                         kind, orig_data_type, data_type, get_cfg_map(kind)});
     }
 
-    // Use wider dst to test proper u8 loads.
-    const bool is_int8_and_wide_dst = this->get_dt(SRC) == dnnl_u8
-            && dnnl_data_type_size(this->get_dt(WEI)) == 1
-            && dnnl_data_type_size(this->get_dt(DST)) >= 4;
-    if (is_int8_and_wide_dst) { set_range_max(SRC, 160); }
-
-    BENCHDNN_PRINT(6,
-            "[FILL_CFG] SRC_%s=[%d;%d]; WEI_%s=[%d;%d]; DST_%s=[%d;%d];\n",
-            dt2str(this->get_dt(SRC)), get_range_min(SRC), get_range_max(SRC),
-            dt2str(this->get_dt(WEI)), get_range_min(WEI), get_range_max(WEI),
-            dt2str(this->get_dt(DST)), get_range_min(DST), get_range_max(DST));
+    adjust_ranges();
+    print_fill_cfg_verbose();
 }
 
 // Adjust density based on accumulation chain.
@@ -46,7 +37,6 @@ float cfg_t::get_density(const cfg_t::density_args_t &density_args) const {
     if (density_args.data_kind != SRC) return density;
 
     const int64_t safe_n_acc = get_safe_n_acc();
-    assert(safe_n_acc > 0);
 
     // Bump density for some empiric value for int8 validation to hit saturation
     // bound.

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,21 +27,8 @@ cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds) {
                         kind, orig_data_type, data_type, get_cfg_map(kind)});
     }
 
-    const bool is_u8u8
-            = this->get_dt(SRC) == dnnl_u8 && this->get_dt(WEI) == dnnl_u8;
-    // u8u8 case requires SRC entry to be adjusted.
-    if (is_u8u8) {
-        this->set_range_max(SRC, 1);
-        // Non-s32 or non-f32 destination won't help to catch errors.
-        // Leave basic enabling in this case.
-        const bool dst_ok = this->get_dt(DST) == dnnl_f32
-                || this->get_dt(DST) == dnnl_s32;
-        if (!dst_ok) this->set_range_max(WEI, 8);
-    }
-
-    BENCHDNN_PRINT(6, "%s SRC_%s=[%d;%d] : WEI_%s=[%d;%d]\n", "[FILL_CFG]",
-            dt2str(this->get_dt(SRC)), get_range_min(SRC), get_range_max(SRC),
-            dt2str(this->get_dt(WEI)), get_range_min(WEI), get_range_max(WEI));
+    adjust_ranges();
+    print_fill_cfg_verbose({SRC, WEI});
 }
 
 // Adjust density based on accumulation chain.
@@ -51,7 +38,6 @@ float cfg_t::get_density(const cfg_t::density_args_t &density_args) const {
         return density;
 
     const int64_t safe_n_acc = get_safe_n_acc();
-    assert(safe_n_acc > 0);
 
     // Bump density for some empiric value for int8 validation to hit saturation
     // bound.

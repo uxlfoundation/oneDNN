@@ -720,6 +720,14 @@ static constexpr bool is_dev_mode() {
     return false;
 #endif
 }
+// Helper to avoid #ifdefs for DNNL_PPC64
+static constexpr bool is_ppc64() {
+#if defined(DNNL_PPC64)
+    return true;
+#else
+    return false;
+#endif
+}
 
 // std::optional? std::maybe? std::whatever
 template <typename T>

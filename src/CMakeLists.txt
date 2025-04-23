@@ -77,7 +77,7 @@ if(DNNL_EXPERIMENTAL)
 endif()
 
 if(DNNL_EXPERIMENTAL_UKERNEL)
-    if(DNNL_TARGET_ARCH STREQUAL "X64" OR DNNL_TARGET_ARCH STREQUAL "AARCH64")
+    if(DNNL_TARGET_ARCH STREQUAL "X64" OR DNNL_TARGET_ARCH STREQUAL "AARCH64" OR DNNL_TARGET_ARCH STREQUAL "PPC64")
         message(STATUS "Experimental functionality for ukernels is enabled")
     else()
         message(FATAL_ERROR "ukernel API isn't supported for ${DNNL_TARGET_ARCH}.")

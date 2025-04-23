@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -554,6 +555,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
 
 template struct brgemm_1x1_convolution_fwd_t<sve_512>;
 template struct brgemm_1x1_convolution_fwd_t<sve_256>;
+template struct brgemm_1x1_convolution_fwd_t<sve_128>;
 
 } // namespace aarch64
 } // namespace cpu

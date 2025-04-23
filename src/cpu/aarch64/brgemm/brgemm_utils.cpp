@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2022-2023 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -104,7 +104,7 @@ status_t set_isa_impl(brgemm_t *brg) {
         return status::unimplemented;
     } else if (brg->is_f32 || brg->is_int8) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
-                is_isa_ok(sve_256), sve_256);
+                is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
         return status::success;
     }
     return status::success;
@@ -190,9 +190,8 @@ status_t brgemm_blocking(brgemm_t *brg) {
     if (brg->isa_impl == isa_undef) return status::unimplemented;
     assert(!brg->is_dgmm); // should not be called from brdgmm
     set_brg_vmm(brg);
-    if (!(brg->is_zmm || brg->is_ymm)) return status::unimplemented;
 
-    const int simd_w = is_superset(brg->isa_impl, sve_512) ? 16 : 8;
+    const int simd_w = isa_max_vlen(brg->isa_impl) / brg->typesize_C;
     brg->ld_block = simd_w;
     brg->ldb = brg->load_dim / brg->ld_block;
     brg->ldb_tail = brg->load_dim % brg->ld_block;
@@ -384,8 +383,9 @@ status_t init_brdgmm_conf(brgemm_t *brg, cpu_isa_t isa,
     };
 
     if (brg->is_f32) {
+        // Can this be replaced by just the isa? Maybe exclude asimd?
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
-                is_isa_ok(sve_256), sve_256);
+                is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
     }
 
     brg->is_dgmm = true;

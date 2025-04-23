@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018-2023 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2023 Arm Ltd. and affiliates 
+* Copyright 2023,2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -213,6 +213,7 @@ static inline int isa_max_vlen(cpu_isa_t isa) {
         return 0;
 };
 
+// SVE length in bytes
 static inline uint64_t get_sve_length() {
     return cpu().getSveLen();
 }

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -905,7 +905,7 @@ void jit_brgemm_kernel_t::apply_post_ops(
 }
 
 static inline bool isa_has_masks(cpu_isa_t isa) {
-    return is_superset(isa, sve_256);
+    return is_superset(isa, sve_128);
 }
 
 void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
@@ -1854,6 +1854,9 @@ void jit_brgemm_kernel_t::generate() {
             break;
         case sve_256:
             simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
+            break;
+        case sve_128:
+            simd_w_ = cpu_isa_traits<sve_128>::vlen / sizeof(float);
             break;
         default: {
             assert(!"unsupported isa");

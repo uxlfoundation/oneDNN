@@ -758,14 +758,14 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
             if (scaleA && !doBSum) {
                 int hs = (h / problem.aqGroupK) % state.kaqLate;
                 scale[nscale] = findBlockReg(state.Ta_scaleInt, state.Ar_scaleLayout,
-                                             i, hs, state.Ar_scaleRegs, nes[0], sblock);
+                                             i, hs, state.Ar_scaleRegs, nes[nscale], sblock);
                 scaleStride[nscale] = globalCM ? 1 : 0;
                 nscale++;
             }
             if (scaleB && !doASum) {
                 int hs = (h / problem.bqGroupK) % state.kbqLate;
                 scale[nscale] = findBlockReg(state.Tb_scaleInt, state.Br_scaleLayout,
-                                             hs, j, state.Br_scaleRegs, nes[1], sblock);
+                                             hs, j, state.Br_scaleRegs, nes[nscale], sblock);
                 scaleStride[nscale] = globalCM ? 0 : 1;
                 nscale++;
             }

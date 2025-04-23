@@ -117,7 +117,7 @@ struct sycl_deletor_t {
     sycl_deletor_t() = delete;
     ::sycl::context ctx_;
     sycl_deletor_t(const ::sycl::context &ctx) : ctx_(ctx) {}
-    void operator()(void *ptr) {
+    void operator()(void *ptr) const {
         if (ptr) ::sycl::free(ptr, ctx_);
     }
 };
@@ -578,7 +578,6 @@ public:
         // executed in the order in which they are submitted. Don't need to wait
         // event.
         is_free_ptr_[ptr] = true;
-        return;
     }
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL

@@ -41,6 +41,8 @@
 #if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_reorder.hpp"
 #endif
+#elif DNNL_PPC64
+#include "cpu/ppc64/ppc64_gemm_reorder.hpp"
 #endif
 
 #include "cpu/rnn/rnn_reorders.hpp"

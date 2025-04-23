@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,16 +45,16 @@ std::string to_string(ctx_kind kind) {
 
 } // namespace
 
-struct sycl_engine_test_params {
+struct sycl_engine_test_params_t {
     dev_kind adev_kind;
     ctx_kind actx_kind;
     dnnl_status_t expected_status;
 };
 
-class sycl_engine_test
-    : public ::testing::TestWithParam<sycl_engine_test_params> {
+class sycl_engine_test_t
+    : public ::testing::TestWithParam<sycl_engine_test_params_t> {
 protected:
-    virtual void SetUp() {
+    void SetUp() override {
         for (auto &plat : platform::get_platforms()) {
             for (auto &dev : plat.get_devices()) {
                 if (dev.is_gpu()) {
@@ -84,7 +84,7 @@ protected:
         }
     }
 
-    virtual void TearDown() {}
+    void TearDown() override {}
 
     std::unique_ptr<device> cpu_dev, cpu_only_dev;
     std::unique_ptr<device> gpu_dev, gpu_only_dev;
@@ -92,7 +92,7 @@ protected:
     std::unique_ptr<context> gpu_ctx, gpu_only_ctx;
 };
 
-TEST_P(sycl_engine_test, BasicInterop) {
+TEST_P(sycl_engine_test_t, BasicInterop) {
     auto param = GetParam();
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
     SKIP_IF(param.adev_kind != dev_kind::gpu
@@ -145,7 +145,7 @@ TEST_P(sycl_engine_test, BasicInterop) {
             param.expected_status != dnnl_success, param.expected_status);
 }
 
-TEST_P(sycl_engine_test, SubDevice) {
+TEST_P(sycl_engine_test_t, SubDevice) {
     auto param = GetParam();
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
     SKIP_IF(param.adev_kind != dev_kind::gpu
@@ -157,7 +157,7 @@ TEST_P(sycl_engine_test, SubDevice) {
             "Don't test for failed scenarios");
     SKIP_IF(!gpu_dev.get(), "Non GPU doesn't support sub-devices");
 
-    auto &dev = *gpu_dev.get();
+    auto &dev = *gpu_dev;
     auto max_sub_devices
             = dev.get_info<info::device::partition_max_sub_devices>();
     SKIP_IF(max_sub_devices < 2, "This GPU doesn't support sub-devices");
@@ -205,7 +205,7 @@ TEST_P(sycl_engine_test, SubDevice) {
 }
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
-TEST_P(sycl_engine_test, non_sycl_cpu_runtime) {
+TEST_P(sycl_engine_test_t, non_sycl_cpu_runtime) {
     try {
         device dev(dnnl::impl::xpu::sycl::compat::cpu_selector_v);
         context ctx(dev);
@@ -218,15 +218,15 @@ TEST_P(sycl_engine_test, non_sycl_cpu_runtime) {
 }
 #endif
 
-INSTANTIATE_TEST_SUITE_P(Simple, sycl_engine_test,
-        ::testing::Values(sycl_engine_test_params {dev_kind::gpu, ctx_kind::gpu,
-                                  dnnl_success},
-                sycl_engine_test_params {
+INSTANTIATE_TEST_SUITE_P(Simple, sycl_engine_test_t,
+        ::testing::Values(sycl_engine_test_params_t {dev_kind::gpu,
+                                  ctx_kind::gpu, dnnl_success},
+                sycl_engine_test_params_t {
                         dev_kind::cpu, ctx_kind::cpu, dnnl_success}));
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-INSTANTIATE_TEST_SUITE_P(InvalidArgs, sycl_engine_test,
-        ::testing::Values(sycl_engine_test_params {dev_kind::cpu_only,
+INSTANTIATE_TEST_SUITE_P(InvalidArgs, sycl_engine_test_t,
+        ::testing::Values(sycl_engine_test_params_t {dev_kind::cpu_only,
                 ctx_kind::gpu_only, dnnl_invalid_arguments}));
 #endif
 

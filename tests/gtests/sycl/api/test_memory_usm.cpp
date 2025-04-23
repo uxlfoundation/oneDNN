@@ -29,7 +29,7 @@ namespace dnnl {
 
 class fill_kernel;
 
-class sycl_memory_usm_test : public ::testing::TestWithParam<engine::kind> {
+class sycl_memory_usm_test_t : public ::testing::TestWithParam<engine::kind> {
     using usm_unique_ptr_t = std::unique_ptr<void, std::function<void(void *)>>;
 
 protected:
@@ -57,7 +57,7 @@ protected:
     }
 };
 
-TEST_P(sycl_memory_usm_test, Constructor) {
+TEST_P(sycl_memory_usm_test_t, Constructor) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -97,7 +97,7 @@ TEST_P(sycl_memory_usm_test, Constructor) {
     }
 }
 
-TEST_P(sycl_memory_usm_test, ConstructorNone) {
+TEST_P(sycl_memory_usm_test_t, ConstructorNone) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -118,7 +118,7 @@ TEST_P(sycl_memory_usm_test, ConstructorNone) {
     ASSERT_EQ(nullptr, mem.get_data_handle());
 }
 
-TEST_P(sycl_memory_usm_test, ConstructorAllocate) {
+TEST_P(sycl_memory_usm_test_t, ConstructorAllocate) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -149,7 +149,7 @@ TEST_P(sycl_memory_usm_test, ConstructorAllocate) {
     mem.unmap_data(mapped_ptr);
 }
 
-TEST_P(sycl_memory_usm_test, DefaultConstructor) {
+TEST_P(sycl_memory_usm_test_t, DefaultConstructor) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -181,7 +181,7 @@ TEST_P(sycl_memory_usm_test, DefaultConstructor) {
 
 /// This test checks if passing system allocated memory(e.g. using malloc)
 /// will throw if passed into the make_memory
-TEST_P(sycl_memory_usm_test, ErrorMakeMemoryUsingSystemMemory) {
+TEST_P(sycl_memory_usm_test_t, ErrorMakeMemoryUsingSystemMemory) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -211,7 +211,7 @@ TEST_P(sycl_memory_usm_test, ErrorMakeMemoryUsingSystemMemory) {
 
 /// This test checks if passing system allocated memory(e.g. using malloc)
 /// will throw if passed into the make_memory
-TEST_P(sycl_memory_usm_test, ErrorMemoryConstructorUsingSystemMemory) {
+TEST_P(sycl_memory_usm_test_t, ErrorMemoryConstructorUsingSystemMemory) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -236,7 +236,7 @@ TEST_P(sycl_memory_usm_test, ErrorMemoryConstructorUsingSystemMemory) {
     }
 }
 
-TEST_P(sycl_memory_usm_test, MemoryOutOfScope) {
+TEST_P(sycl_memory_usm_test_t, MemoryOutOfScope) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
 
@@ -266,7 +266,7 @@ TEST_P(sycl_memory_usm_test, MemoryOutOfScope) {
     s.wait();
 }
 
-TEST_P(sycl_memory_usm_test, TestSparseMemoryCreation) {
+TEST_P(sycl_memory_usm_test_t, TestSparseMemoryCreation) {
     engine::kind eng_kind = GetParam();
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
@@ -316,7 +316,7 @@ TEST_P(sycl_memory_usm_test, TestSparseMemoryCreation) {
     ASSERT_EQ(mem.get_data_handle(2), usm_col_indices.get());
 }
 
-TEST_P(sycl_memory_usm_test, TestSparseMemoryMapUnmap) {
+TEST_P(sycl_memory_usm_test_t, TestSparseMemoryMapUnmap) {
     engine::kind eng_kind = GetParam();
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
@@ -381,7 +381,7 @@ TEST_P(sycl_memory_usm_test, TestSparseMemoryMapUnmap) {
 }
 
 namespace {
-struct PrintToStringParamName {
+struct print_to_string_param_name_t {
     template <class ParamType>
     std::string operator()(
             const ::testing::TestParamInfo<ParamType> &info) const {
@@ -390,8 +390,8 @@ struct PrintToStringParamName {
 };
 } // namespace
 
-INSTANTIATE_TEST_SUITE_P(Simple, sycl_memory_usm_test,
+INSTANTIATE_TEST_SUITE_P(Simple, sycl_memory_usm_test_t,
         ::testing::Values(engine::kind::cpu, engine::kind::gpu),
-        PrintToStringParamName());
+        print_to_string_param_name_t());
 
 } // namespace dnnl

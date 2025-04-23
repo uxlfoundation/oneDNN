@@ -200,7 +200,7 @@ status_t create_ocl_engine(
         std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t>
                 *ocl_engine,
         const gpu::intel::sycl::engine_t *engine) {
-    const auto sycl_ctx = engine->context();
+    const auto &sycl_ctx = engine->context();
     return create_ocl_engine(ocl_engine, engine->device(), &sycl_ctx);
 }
 

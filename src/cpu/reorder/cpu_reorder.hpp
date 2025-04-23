@@ -38,6 +38,8 @@
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_reorder.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_reorders.hpp"
+#elif DNNL_PPC64
+#include "cpu/ppc64/ppc64_gemm_reorder.hpp"
 #endif
 
 #if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL

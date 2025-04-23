@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -2293,6 +2293,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = (jcp.s8s8_compensation_required || jcp.src_zero_point)
             && !everyone_is(0, jcp.t_pad, jcp.back_pad, jcp.f_pad, jcp.b_pad,
                     jcp.l_pad, jcp.r_pad);
+
+    // Dispatch the shapes to VNNI for better performance
+    // TODO: optimize the perf for zero point with large buffer on AMX
+    if (is_amx(isa) && jcp.src_zero_point && jcp.exec_type == exec_trans
+            && (jcp.l_pad > 0 || jcp.r_pad > 0) && jcp.oc * jcp.ow > 8192)
+        VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
+                VERBOSE_IMPL_HEURISTIC_FAIL,
+                "no optimization for zero point on amx")
 
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf

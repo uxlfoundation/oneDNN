@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -2366,6 +2366,12 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                     || !IMPLICATION(jcp.dst_zero_point || jcp.src_zero_point,
                             is_int8_convolution)),
             VERBOSE_UNSUPPORTED_ZP_CFG);
+
+    // Dispatch the shapes to VNNI for better performance
+    const bool req_zp_large_buffer = jcp.src_zero_point
+            && jcp.oc * jcp.ow > 8192 && (jcp.r_pad > 0 || jcp.l_pad > 0);
+    VDISPATCH_CONV_IC(!req_zp_large_buffer, VERBOSE_IMPL_HEURISTIC_FAIL,
+            "no optimization for zero point on AMX");
 
     // Calculate zero-point padding values outside of the main JIT-kernel
     // and store the results in an auxiliary buffer.

@@ -43,7 +43,7 @@
 
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_PPC64
-#include "cpu/ppc64/ppc64_gemm_driver.hpp"
+#include "cpu/ppc64/gemm/gemm_driver.hpp"
 using namespace dnnl::impl::cpu::ppc64;
 #elif DNNL_S390X
 #include "cpu/s390x/gemm.h"
@@ -219,11 +219,10 @@ dnnl_status_t gemm_s8u8s32(const char *transa, const char *transb,
     }
 #elif DNNL_PPC64
 #ifdef __MMA__
-    int ATflag = (*transa == 'T') || (*transa == 't');
-    int BTflag = (*transb == 'T') || (*transb == 't');
 
-    return cblas_gemm_s8x8s32_ppc64(ATflag, BTflag, offsetc, *M, *N, *K, *alpha,
-            A, *LDA, ao, B, *LDB, bo, C, *beta, *LDC, co, 0);
+    status = gemm_driver(transa, transb, offsetc, M, N, K, alpha, A, LDA, ao, B,
+            LDB, bo, beta, C, LDC, co, false);
+    if (status != status::unimplemented) return status;
 #endif
 #elif DNNL_S390X
 #if defined(__VX__)
@@ -269,18 +268,9 @@ dnnl_status_t gemm_s8s8s32(const char *transa, const char *transb,
 
 #if DNNL_PPC64
 #ifdef __MMA__
-    int ATflag = (*transa == 'T') || (*transa == 't');
-    int BTflag = (*transb == 'T') || (*transb == 't');
-
-    // Note please that the coercion of "B" and "bo" from int8_t to uint8_t is
-    // accompanied by the last parameter being set to "1" instead of "0", as
-    // in the analogous call in the previous routine above.
-    // This last parameter flags the fact of the coercion, so the called routine
-    // can process "B" and "bo" appropriately.
-
-    return cblas_gemm_s8x8s32_ppc64(ATflag, BTflag, offsetc, *M, *N, *K, *alpha,
-            A, *LDA, ao, (const uint8_t *)B, *LDB, (const uint8_t *)bo, C,
-            *beta, *LDC, co, 1);
+    status = gemm_driver(transa, transb, offsetc, M, N, K, alpha, A, LDA, ao, B,
+            LDB, bo, beta, C, LDC, co, false);
+    if (status != status::unimplemented) return status;
 #endif
 #elif DNNL_S390X
 #if defined(__VX__)

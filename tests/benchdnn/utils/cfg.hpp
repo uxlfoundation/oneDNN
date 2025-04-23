@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -176,15 +176,45 @@ protected:
     // SUM_1_N(VALUES) <= N_ACC * MAX_VALUE <= PREC;  It's a top estimate
     // MAX_VALUE = MAX_VAL_SRC * MAX_VAL_WEI;
     // SAFE_N_ACC <= PREC / MAX_VALUE;
-    int64_t get_safe_n_acc(
-            const std::vector<data_kind_t> &kinds = {SRC, WEI}) const {
+    //
+    // However, there're very low precision data types with `MAX_DIGITS` being
+    // very low. For such types, just return a predefined number of safe
+    // elements to avoid adjusting every parent config and to let all the
+    // spectrum of values to appear in the output to test conversions to those
+    // data types.
+    //
+    // `check_n_acc` == false will let non-postive value to be returned. This
+    // is needed to let `adjust_ranges_for_safe_n_acc` modify iteratively cfg
+    // values until ranges will fit the output range nicely.
+    int64_t get_safe_n_acc(const std::vector<data_kind_t> &kinds = {SRC, WEI},
+            bool check_n_acc = true) const {
+        const int64_t safe_digits = get_safe_digits();
+        if (safe_digits <= 0) {
+            BENCHDNN_PRINT(
+                    0, "%s\n", "[CFG] Error: safe digits is non-positive.");
+            SAFE_V(FAIL);
+        } else if (safe_digits <= 2) {
+            // fp4 category.
+            return 1;
+        } else if (safe_digits <= 4) {
+            // fp8/int4 category. Hopefully, int4 won't ever make it to DST.
+            return 2;
+        }
+
         int64_t max_value = 1;
         for (auto k : kinds) {
             const auto &cfg_entry = cfg_entry_.at(k);
             max_value *= cfg_entry.get_range_abs_max();
         }
-        const int64_t safe_digits = get_safe_digits();
         const int64_t safe_n_acc = (1LL << safe_digits) / max_value;
+        if (check_n_acc && safe_n_acc <= 0) {
+            BENCHDNN_PRINT(0,
+                    "[CFG] Error: there's no safe accumulation chain for a "
+                    "given data type combination. Safe_digits=%d, "
+                    "max_value=%d.\n",
+                    static_cast<int>(safe_digits), static_cast<int>(max_value));
+            SAFE_V(FAIL);
+        }
         return safe_n_acc;
     }
 
@@ -195,6 +225,60 @@ protected:
     void set_range_max(data_kind_t dk, int new_value) {
         cfg_entry_.at(dk).set_range_max(new_value);
     }
+
+    void print_fill_cfg_verbose(
+            const std::vector<data_kind_t> &kinds = {SRC, WEI, DST}) const {
+        constexpr int verbose_level = 6;
+        if (verbose < verbose_level) return;
+
+        std::string s("[FILL_CFG]");
+        for (const auto &k : kinds) {
+            s += " " + std::string(data_kind2str(k)) + "_" + dt2str(get_dt(k))
+                    + "=[" + std::to_string(get_range_min(k)) + ";"
+                    + std::to_string(get_range_max(k)) + "];";
+        }
+        BENCHDNN_PRINT(verbose_level, "%s\n", s.c_str());
+    }
+
+    // Use larger values for SRC to test proper u8 loads when DST data type
+    // allows it.
+    void adjust_ranges_for_u8_load() {
+        const bool is_int8_and_wide_dst = get_dt(SRC) == dnnl_u8
+                && dnnl_data_type_size(get_dt(WEI)) == 1
+                && dnnl_data_type_size(get_dt(DST)) >= 4;
+        if (is_int8_and_wide_dst) { set_range_max(SRC, 160); }
+    }
+
+    // For s8s8 weights have to be even to comply with adjust_scale of 0.5f.
+    // Divide the range by factor of two here, and multiply values by factor
+    // of two when do filling.
+    void adjust_ranges_for_s8s8() {
+        const bool is_s8s8 = get_dt(SRC) == dnnl_s8 && get_dt(WEI) == dnnl_s8;
+        if (is_s8s8) {
+            set_range_min(WEI, -2);
+            set_range_max(WEI, 2);
+        }
+    }
+
+    // u8 weights will have big value set for kernels to distinguish s8 loads
+    // from u8 since those use different instructions. However, when DST data
+    // type is narrow, big value will make the library to saturate which leads
+    // to false positive results. Adjust big value for that case.
+    // This adjustment is somewhat opposite to `adjust_ranges_for_u8_load`.
+    void adjust_ranges_for_u8u8() {
+        const bool is_u8u8 = get_dt(SRC) == dnnl_u8 && get_dt(WEI) == dnnl_u8;
+        if (is_u8u8) {
+            // Adjust SRC entry to fit for u8u8 to fit any dst data type.
+            set_range_max(SRC, 1);
+
+            // Any data type but 4-bit wide in DST is not enough to catch
+            // incorrect loads. Leave filling to fit the basic validation
+            // purpose.
+            const bool is_wide_dst = dnnl_data_type_size(get_dt(DST)) >= 4;
+            if (!is_wide_dst) set_range_max(WEI, 8);
+        }
+    }
+
     // Configuration like f32:f32:s8 may trigger an assert `safe_n_acc <= 0`.
     // It can be solved only at construction stage by adjusting min and max
     // range values. It's not expected to be triggered for regular configs since
@@ -203,7 +287,8 @@ protected:
     // by a factor of two until at least a single result of multiplication fits
     // the output data type range.
     void adjust_ranges_for_safe_n_acc() {
-        int64_t safe_n_acc = get_safe_n_acc();
+        int64_t safe_n_acc
+                = get_safe_n_acc({SRC, WEI}, /* check_n_acc = */ false);
         data_kind_t cur_kind = SRC;
         while (safe_n_acc < 1) {
             set_range_min(cur_kind, get_range_min(cur_kind) / 2);
@@ -214,6 +299,15 @@ protected:
             safe_n_acc = (1LL << get_safe_digits()) / max_value;
             cur_kind = cur_kind == SRC ? WEI : SRC;
         }
+    }
+
+    // A collection of functions that adjust data filling ranges to fit
+    // numerical properties or requested data types.
+    void adjust_ranges() {
+        adjust_ranges_for_u8_load();
+        adjust_ranges_for_s8s8();
+        adjust_ranges_for_u8u8();
+        adjust_ranges_for_safe_n_acc();
     }
 };
 

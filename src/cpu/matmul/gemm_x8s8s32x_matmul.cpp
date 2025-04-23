@@ -290,7 +290,8 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             == (1 << (ndims - 1));
 
     std::atomic<status_t> st(status::success);
-    if (!use_single_gemm_call) {
+
+    if (!use_single_gemm_call && !is_ppc64()){
         const int src_mask
                 = utils::get_dims_mask(dst_d.dims(), src_d.dims(), ndims);
         const int wei_mask

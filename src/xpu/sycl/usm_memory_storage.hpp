@@ -91,9 +91,9 @@ public:
                 ::sycl::usm::alloc::unknown);
     }
 
-    virtual std::unique_ptr<memory_storage_t> get_sub_storage(
+    std::unique_ptr<memory_storage_t> get_sub_storage(
             size_t offset, size_t size) const override {
-        void *sub_ptr = usm_ptr_.get()
+        void *sub_ptr = usm_ptr_
                 ? reinterpret_cast<uint8_t *>(usm_ptr_.get()) + offset
                 : nullptr;
         auto storage = utils::make_unique<usm_memory_storage_t>(engine());

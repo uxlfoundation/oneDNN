@@ -32,7 +32,6 @@ using dnnl::impl::engine_t;
 using dnnl::impl::memory_desc_t;
 using dnnl::impl::memory_t;
 using dnnl::impl::status_t;
-using ::sycl::context;
 using ::sycl::get_pointer_type;
 
 status_t dnnl_sycl_interop_memory_create_v2(memory_t **memory,

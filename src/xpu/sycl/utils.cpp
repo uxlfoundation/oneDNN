@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -309,7 +309,7 @@ status_t get_device_index(size_t *index, const ::sycl::device &dev) {
     auto backend = get_backend(dev);
     auto devices = get_devices(dev_type, backend);
 
-    VERROR_ENGINE(devices.size() > 0, status::invalid_arguments,
+    VERROR_ENGINE(!devices.empty(), status::invalid_arguments,
             "%s devices queried but not found",
             xpu::sycl::to_string(dev_type).c_str());
 

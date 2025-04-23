@@ -272,7 +272,8 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const gemm_based::params_t &params = pd()->params();
     const bool use_single_gemm_call = pd()->has_runtime_dims_or_strides()
             ? helper.use_single_gemm_call_optimization(po)
-            : params.use_single_gemm_call_optimization_;
+            : ((platform::is_ppc64() && ndims == 2)
+                    || params.use_single_gemm_call_optimization_);
     bool dst_is_acc = params.dst_is_acc_;
     int32_t *acc = dst_is_acc
             ? reinterpret_cast<int32_t *>(dst)
@@ -297,6 +298,7 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             == (1 << (ndims - 1));
 
     std::atomic<status_t> st(status::success);
+
     if (!use_single_gemm_call) {
         const int src_mask
                 = utils::get_dims_mask(dst_d.dims(), src_d.dims(), ndims);

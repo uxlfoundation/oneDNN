@@ -1563,6 +1563,9 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
             period = outerProductCount(hw, problem, strategy);
         }
 
+        if (strategy.kInterleave)
+            period = gcd(period, strategy.kInterleaveChunk);
+
         makeUnbackedRegLayout(Tc_compute, state.Cr_layout, Cr_unrollM, Cr_unrollN, globalCM, 1, strategy.C.tileR, strategy.C.tileC, true);
     }
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
+#include "common/utils.hpp"
 
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_brgemm_primitive_conf.hpp"
@@ -197,19 +198,15 @@ private:
     }
 
     void generate() override {
-        size_t simd_w_ = 0;
-        switch (brg_.isa_impl) {
-            case sve_512:
-                simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-                break;
-            case sve_256:
-                simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-                break;
-            default: {
-                assert(!"unsupported isa");
-                return;
-            }
+
+        if (!utils::one_of(brg_.isa_impl, sve_512, sve_256, sve_128)) {
+            assert(!"unsupported isa: jit_brgemm_kernel_t only supports SVE "
+                    "512, 256 and 128, this should have been checked earlier "
+                    "in the implementation");
         }
+
+        size_t simd_w_ = simd_elems(data_type::f32, brg_.isa_impl);
+
         preamble();
         if (simd_w_ != cpu_sveLen / sizeof(float)) {
             set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
@@ -854,19 +851,11 @@ private:
     }
 
     void generate() override {
-        size_t simd_w_ = 0;
-        switch (brg.isa_impl) {
-            case sve_512:
-                simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-                break;
-            case sve_256:
-                simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-                break;
-            default: {
-                assert(!"unsupported isa");
-                return;
-            }
-        }
+        if (!utils::one_of(brg.isa_impl, sve_512, sve_256, sve_128))
+            assert(!"unsupported isa: only SVE 512, 256 and 128 supported");
+
+        size_t simd_w_ = simd_elems(data_type::f32, brg.isa_impl);
+
         preamble();
         if (simd_w_ != cpu_sveLen / sizeof(float)) {
             set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);

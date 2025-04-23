@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -931,7 +931,7 @@ void jit_brgemm_kernel_t::apply_post_ops(
 }
 
 static inline bool isa_has_masks(cpu_isa_t isa) {
-    return is_superset(isa, sve_256);
+    return is_superset(isa, sve_128);
 }
 
 void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
@@ -1947,19 +1947,15 @@ void jit_brgemm_kernel_t::bdb_loop() {
 }
 
 void jit_brgemm_kernel_t::generate() {
-    size_t simd_w_ = 0;
-    switch (brg.isa_impl) {
-        case sve_512:
-            simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-            break;
-        case sve_256:
-            simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-            break;
-        default: {
-            assert(!"unsupported isa");
-            return;
-        }
+
+    if (!one_of(brg.isa_impl, sve_512, sve_256, sve_128)) {
+        assert(!"unsupported isa: jit_brgemm_kernel_t only supports SVE 512, "
+                "256 and 128, this should have been checked earlier in the "
+                "implementation");
     }
+
+    size_t simd_w_ = simd_elems(data_type::f32, brg.isa_impl);
+
     preamble();
     if (simd_w_ != cpu_sveLen / sizeof(float)) {
         set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);

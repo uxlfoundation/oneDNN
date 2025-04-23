@@ -106,7 +106,7 @@ status_t set_isa_impl(brgemm_t *brg) {
         return status::unimplemented;
     } else if (brg->is_f32 || brg->is_bf16 || brg->is_int8) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
-                is_isa_ok(sve_256), sve_256);
+                is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
         return status::success;
     }
     return status::success;
@@ -192,10 +192,8 @@ status_t brgemm_blocking(brgemm_t *brg) {
     if (brg->isa_impl == isa_undef) return status::unimplemented;
     assert(!brg->is_dgmm); // should not be called from brdgmm
     set_brg_vmm(brg);
-    if (!(brg->is_zmm || brg->is_ymm)) return status::unimplemented;
 
-    const int simd_w = is_superset(brg->isa_impl, sve_512) ? 16 : 8;
-    brg->ld_block = simd_w;
+    brg->ld_block = simd_elems(brg->dt_c, brg->isa_impl);
     brg->ldb = brg->load_dim / brg->ld_block;
     brg->ldb_tail = brg->load_dim % brg->ld_block;
 

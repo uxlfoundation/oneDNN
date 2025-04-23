@@ -95,7 +95,8 @@ struct gemm_matmul_t : public gpu_primitive_t {
                           return status::success;
                       };
             if (!attr()->zero_points_.has_default_values()) {
-                CHECK(map_gemm_zp(DNNL_ARG_SRC, DNNL_ARG_B));
+                CHECK(map_gemm_zp(
+                        DNNL_ARG_SRC, DNNL_ARG_B, false, orig_dims - 2));
                 CHECK(map_gemm_zp(
                         DNNL_ARG_WEIGHTS, DNNL_ARG_A, false, orig_dims - 2));
                 CHECK(map_gemm_zp(DNNL_ARG_DST, DNNL_ARG_C));
@@ -244,9 +245,12 @@ struct gemm_matmul_t : public gpu_primitive_t {
                         for (auto i : {DNNL_ARG_WEIGHTS, DNNL_ARG_SRC})
                             CHECK(adjust_scales_mask(
                                     scales, i, orig_dims - reshape_size));
-                    if (!attr()->zero_points_.has_default_values())
+                    if (!attr()->zero_points_.has_default_values()) {
                         CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, DNNL_ARG_A, true,
                                 orig_dims - reshape_size));
+                        CHECK(map_gemm_zp(DNNL_ARG_SRC, DNNL_ARG_B, true,
+                                orig_dims - reshape_size));
+                    }
                     post_ops = tmp_post_ops;
                     gemm_attr.scales_ = std::move(scales);
                     a_md = &a_md_reshaped;

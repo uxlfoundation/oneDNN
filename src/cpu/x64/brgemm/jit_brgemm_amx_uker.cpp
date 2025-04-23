@@ -186,6 +186,8 @@ private:
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
 
+    const reg64_t reg_long_offt = r11;
+
     constexpr static int abi_param1_offs_ = 0;
     constexpr static int reg_zp_comp_a_offs_ = 8;
     constexpr static int reg_zp_comp_b_offs_ = 16;
@@ -1004,7 +1006,8 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
 
                 auto zmm = accm(bd);
                 const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
-                auto addr = EVEX_compress_addr(reg_D, d_offset);
+                auto addr = EVEX_compress_addr_safe(
+                        reg_D, d_offset, reg_long_offt);
 
                 cvt2ps(brg.sum_dt, zmm_prev_dst, addr, true, false, k_mask);
                 if (p_sum_zp_reg_set) vsubps(zmm_prev_dst, zmm_sum_zp);
@@ -1121,7 +1124,8 @@ void jit_brgemm_amx_uker_base_t::prefetch_CD_range(brgemm_iteration_t &bi,
         if (!is_out_bd(bi.bdi, bdb, bd)) continue;
         if (bi.apply_postops) {
             const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
-            auto ptr_D = EVEX_compress_addr(reg_D, d_offset);
+            auto ptr_D
+                    = EVEX_compress_addr_safe(reg_D, d_offset, reg_long_offt);
             uni_prefetch(ptr_D, pft, true);
         } else if (are_post_ops_applicable_) {
             //            TODO: split hints C and D hints
@@ -1328,7 +1332,8 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         }
 
         const auto c_offset = C_offset(bi, bdb, bd, bi.ldi->pos(ldb));
-        const auto ptr_C = EVEX_compress_addr(reg_C, c_offset);
+        const auto ptr_C
+                = EVEX_compress_addr_safe(reg_C, c_offset, reg_long_offt);
 
         if (need_to_apply_alpha_beta_ || bi.skip_accumulation)
             apply_alpha_beta_to_vector(
@@ -1480,8 +1485,8 @@ void jit_brgemm_amx_uker_base_t::store_vector(
     const auto c_offset = C_offset(bi, bdb, inp_bd, ldb_pos);
     const auto d_offset = D_offset(bi, bdb, inp_bd, ldb_pos);
 
-    auto ptr_C = EVEX_compress_addr(reg_C, c_offset);
-    auto ptr_D = EVEX_compress_addr(reg_D, d_offset);
+    auto ptr_C = EVEX_compress_addr_safe(reg_C, c_offset, reg_long_offt);
+    auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_long_offt);
 
     if (bi.apply_postops)
         store_vector_with_post_ops(vreg_acc.getIdx(), ptr_D, is_ld_tail);

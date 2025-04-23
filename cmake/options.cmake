@@ -368,8 +368,6 @@ set(DNNL_USE_CLANG_TIDY "NONE" CACHE STRING
     - NONE (default)
       Clang-tidy is disabled.
     - CHECK
-      Enables checks from .clang-tidy for source code
-    - CHECK_ALL
       Enables checks from .clang-tidy.
     - FIX
       Enables checks from .clang-tidy and fix found issues.

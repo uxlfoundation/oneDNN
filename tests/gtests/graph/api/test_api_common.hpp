@@ -138,11 +138,11 @@ struct allocator_handle_t {
 };
 static allocator_handle_t allocator_handle;
 
-struct sycl_deletor {
-    sycl_deletor() = delete;
+struct sycl_deletor_t {
+    sycl_deletor_t() = delete;
     ::sycl::context ctx_;
-    sycl_deletor(const ::sycl::context &ctx) : ctx_(ctx) {}
-    void operator()(void *ptr) {
+    sycl_deletor_t(const ::sycl::context &ctx) : ctx_(ctx) {}
+    void operator()(void *ptr) const {
         if (ptr) ::sycl::free(ptr, ctx_);
     }
 };

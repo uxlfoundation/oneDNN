@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -101,20 +101,20 @@ TEST(SYCLApi, CompiledPartitionExecute) {
     outputs_ts.reserve(outputs.size());
     for (const auto &in : inputs) {
         size_t mem_size = in.get_mem_size();
-        data_buffers.push_back({});
+        data_buffers.emplace_back();
         data_buffers.back().reset(::sycl::malloc_shared(mem_size,
                                           q.get_device(), q.get_context()),
-                sycl_deletor {q.get_context()});
-        inputs_ts.push_back(tensor {in, eng, data_buffers.back().get()});
+                sycl_deletor_t {q.get_context()});
+        inputs_ts.emplace_back(in, eng, data_buffers.back().get());
     }
 
     for (const auto &out : outputs) {
         size_t mem_size = out.get_mem_size();
-        data_buffers.push_back({});
+        data_buffers.emplace_back();
         data_buffers.back().reset(::sycl::malloc_device(mem_size,
                                           q.get_device(), q.get_context()),
-                sycl_deletor {q.get_context()});
-        outputs_ts.push_back(tensor {out, eng, data_buffers.back().get()});
+                sycl_deletor_t {q.get_context()});
+        outputs_ts.emplace_back(out, eng, data_buffers.back().get());
     }
 
     cp.execute(strm, inputs_ts, outputs_ts);
@@ -164,20 +164,20 @@ TEST(SYCLApi, CompiledPartitionInteropExecute) {
     outputs_ts.reserve(outputs.size());
     for (const auto &in : inputs) {
         size_t mem_size = in.get_mem_size();
-        data_buffers.push_back({});
+        data_buffers.emplace_back();
         data_buffers.back().reset(::sycl::malloc_shared(mem_size,
                                           q.get_device(), q.get_context()),
-                sycl_deletor {q.get_context()});
-        inputs_ts.push_back(tensor {in, eng, data_buffers.back().get()});
+                sycl_deletor_t {q.get_context()});
+        inputs_ts.emplace_back(in, eng, data_buffers.back().get());
     }
 
     for (const auto &out : outputs) {
         size_t mem_size = out.get_mem_size();
-        data_buffers.push_back({});
+        data_buffers.emplace_back();
         data_buffers.back().reset(::sycl::malloc_device(mem_size,
                                           q.get_device(), q.get_context()),
-                sycl_deletor {q.get_context()});
-        outputs_ts.push_back(tensor {out, eng, data_buffers.back().get()});
+                sycl_deletor_t {q.get_context()});
+        outputs_ts.emplace_back(out, eng, data_buffers.back().get());
     }
 
     sycl_interop::execute(cp, strm, inputs_ts, outputs_ts);

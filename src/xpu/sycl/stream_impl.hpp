@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public:
     ~stream_impl_t() override = default;
 
     status_t set_queue(::sycl::queue queue) {
-        queue_.reset(new ::sycl::queue(queue));
+        queue_.reset(new ::sycl::queue(std::move(queue)));
         return status::success;
     }
 

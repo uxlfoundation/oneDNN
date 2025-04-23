@@ -34,7 +34,7 @@ namespace impl {
 namespace xpu {
 namespace sycl {
 
-void print_verbose_header(engine_kind_t kind) {
+inline void print_verbose_header(engine_kind_t kind) {
     engine_factory_t factory(kind);
     auto s_engine_kind = (kind == engine_kind::cpu ? "cpu" : "gpu");
 
@@ -92,7 +92,7 @@ void print_verbose_header(engine_kind_t kind) {
     }
 }
 
-void print_verbose_header() {
+inline void print_verbose_header() {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
     print_verbose_header(engine_kind::cpu);
 #endif

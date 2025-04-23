@@ -32,6 +32,10 @@ struct event_t : public xpu::event_t {
     event_t(const std::vector<::sycl::event> &event) : events(event) {}
     event_t(std::vector<::sycl::event> &&event) : events(std::move(event)) {}
     event_t(const event_t &) = default;
+    event_t &operator=(event_t &&other) {
+        std::swap(events, other.events);
+        return *this;
+    }
     event_t &operator=(const event_t &other) {
         events = other.events;
         return *this;

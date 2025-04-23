@@ -51,7 +51,7 @@ public:
         if (!handle) return status::success;
 
         auto *buf_u8_ptr = static_cast<xpu::sycl::buffer_u8_t *>(handle);
-        buffer_.reset(new xpu::sycl::buffer_u8_t(*buf_u8_ptr));
+        buffer_ = std::make_shared<xpu::sycl::buffer_u8_t>(*buf_u8_ptr);
         return status::success;
     }
 

@@ -43,7 +43,8 @@ struct cpu_stream_t : public stream_t {
         dnnl::threadpool_interop::threadpool_iface *tp;
         auto rc = this->get_threadpool(&tp);
         if (rc == status::success) {
-            if (tp->get_flags() & threadpool_interop::threadpool_iface::ASYNCHRONOUS)
+            if (tp->get_flags()
+                    & threadpool_interop::threadpool_iface::ASYNCHRONOUS)
                 tp->wait();
         }
 #endif
@@ -63,7 +64,9 @@ struct cpu_stream_t : public stream_t {
 
     void after_exec_hook(std::unique_ptr<exec_ctx_t> &ctx) override {
         exec_ctx_t *ctx_ptr = ctx.release();
-        parallel(1, [&, ctx_ptr] { delete ctx_ptr; });
+        dnnl::impl::parallel(1, [ctx_ptr](int, int) {
+            delete ctx_ptr;
+        });
         threadpool_utils::deactivate_threadpool();
     }
 #endif

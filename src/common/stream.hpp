@@ -43,13 +43,15 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 
     virtual dnnl::impl::status_t enqueue_primitive(
             const primitive_iface_t *primitive_iface,
-            dnnl::impl::exec_ctx_t &ctx);
+            std::unique_ptr<dnnl::impl::exec_ctx_t> &ctx);
 
     /** blocks until all submitted primitives to the stream are completed */
     virtual dnnl::impl::status_t wait() = 0;
 
     virtual void before_exec_hook() {}
-    virtual void after_exec_hook() {}
+    virtual void after_exec_hook(std::unique_ptr<dnnl::impl::exec_ctx_t> &ctx) {
+        //ctx.release();
+    }
 
     virtual dnnl::impl::status_t reset_profiling() {
         if (!is_profiling_enabled())

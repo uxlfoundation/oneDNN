@@ -140,8 +140,10 @@ struct exec_ctx_t {
     const resource_mapper_t *get_resource_mapper() const;
     void set_resource_mapper(const resource_mapper_t *resource_mapper);
 
-    void set_ctx_resource(std::unique_ptr<resource_t> &&r) {
-        ctx_resource_ = std::move(r);
+    void set_ctx_resource(resource_t *r) { ctx_resource_ = r; };
+    template <typename T>
+    T *get_ctx_resource() {
+        return utils::downcast<T *>(ctx_resource_);
     };
 
 private:
@@ -152,7 +154,7 @@ private:
     const resource_mapper_t *resource_mapper_ = nullptr;
     const memory_tracking::grantor_t *scratchpad_grantor_ = nullptr;
     // This one is not tied to primitive, just execution context
-    std::unique_ptr<resource_t> ctx_resource_;
+    resource_t *ctx_resource_ = nullptr;
 };
 
 } // namespace impl

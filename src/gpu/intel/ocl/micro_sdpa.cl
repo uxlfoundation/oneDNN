@@ -397,7 +397,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     /* Main loop over k blocks */
     for (int k0 = 0; k0 < k; k0 += ugemm_kq_wg_tile_m) {
         bool first = (k0 == 0);
-        bool last = (k0 + ugemm_kq_wg_tile_m >= k);
+        int knext = k0 + ugemm_kq_wg_tile_m;
+        bool last = (knext >= k);
 
         uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
         uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
@@ -627,8 +628,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             const uint stride_k = 1;
 #endif
 
+            const global KEY_DATA_T *K_next = K + (knext)*stride_k;
             cooperative_prefetch_2d_k(
-                    /* ptr */ K + (k0 + ugemm_kq_wg_tile_m) * stride_k,
+                    /* ptr */ K_next,
                     /* r */ k - k0 - ugemm_kq_wg_tile_m,
                     /* c */ d,
                     /* rmax */ ugemm_kq_wg_tile_m,
@@ -639,8 +641,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     /* sg_size */ SUBGROUP_SIZE,
                     /* cache*/ LSC_LDCC_L1C_L3C);
 #if KEY_SCALES == QUANTIZE_2D
+            const global KEY_ATTR_SCALES_DATA_T *K_scales_next
+                    = K_scales + knext;
             cooperative_prefetch_2d_maybe_rem(
-                    /* ptr */ K_scales + (k0 + ugemm_kq_wg_tile_m),
+                    /* ptr */ K_scales_next,
                     /* r */ k - k0 - ugemm_kq_wg_tile_m,
                     /* c */ num_key_groups,
                     /* rmax */ ugemm_kq_wg_tile_m,
@@ -652,8 +656,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     /* cache */ LSC_LDCC_L1C_L3C);
 #endif
 #if KEY_ZERO_POINTS == QUANTIZE_2D
+            const global KEY_ATTR_ZP_DATA_T *K_zp_next = K_zp + knext;
             cooperative_prefetch_2d_maybe_rem(
-                    /* ptr */ K_zp + (k0 + ugemm_kq_wg_tile_m),
+                    /* ptr */ K_zp_next,
                     /* r */ k - k0 - ugemm_kq_wg_tile_m,
                     /* c */ num_key_groups,
                     /* rmax */ ugemm_kq_wg_tile_m,
@@ -672,7 +677,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         if (!last) {
 #if BROADCAST_MASK_Q
             cooperative_prefetch_2d_maybe_rem(
-                    /* ptr */ msk + k0 + ugemm_kq_wg_tile_m,
+                    /* ptr */ msk + knext,
                     /* r */ k - k0,
                     /* c */ 1,
                     /* rmax */ ugemm_kq_wg_tile_m,

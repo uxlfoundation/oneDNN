@@ -117,15 +117,15 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
 }
 
 bool matmul_amx_blocking_params_macro_t::divs_are_acceptable() const {
-    bool unacceptable_m_div = m_per_thread < min_m_dim && nthr_m_ > 1;
-    bool unacceptable_k_div = k_per_thread < min_k_dim && nthr_k_ > 1;
+    bool unacceptable_m_div = m_per_thread < min_m_elem && nthr_m_ > 1;
+    bool unacceptable_k_div = k_per_thread < min_k_elem && nthr_k_ > 1;
     bool unacceptable_n_div;
-    if (nthr_k_ == 1 && k_per_thread < k_threshold_write_bound_layer) {
+    if (nthr_k_ == 1 && k_per_thread < k_threshold_write_bound_layer_elem) {
         // The layer is write-bound (small K) and no reduction (C becomes non-consecutive)
-        unacceptable_n_div
-                = n_per_thread < min_n_dim_write_bound_layer && nthr_n_ > 1;
+        unacceptable_n_div = n_per_thread < min_n_dim_write_bound_layer_elem
+                && nthr_n_ > 1;
     } else {
-        unacceptable_n_div = n_per_thread < min_n_dim && nthr_n_ > 1;
+        unacceptable_n_div = n_per_thread < min_n_elem && nthr_n_ > 1;
     }
 
     bool unacceptable_b_div = nthr_b_ > (size_t)batch;
@@ -155,6 +155,16 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
     matmul_amx_blocking_params_macro_t current_blocking(bgmmc);
     assert(bgmmc.tr_a_dt_sz == bgmmc.tr_b_dt_sz);
     current_blocking.gemm_dt_sz = bgmmc.tr_a_dt_sz;
+    current_blocking.min_m_elem = current_blocking.min_m_dim;
+    current_blocking.min_k_elem
+            = current_blocking.min_k_dim / current_blocking.gemm_dt_sz;
+    current_blocking.min_n_elem = current_blocking.min_n_dim / bgmmc.c_dt_sz;
+    current_blocking.k_threshold_write_bound_layer_elem
+            = current_blocking.k_threshold_write_bound_layer
+            / current_blocking.gemm_dt_sz;
+    current_blocking.min_n_dim_write_bound_layer_elem
+            = current_blocking.min_n_dim_write_bound_layer
+            / current_blocking.gemm_dt_sz;
 
     for (size_t nthr_to_check = bgmmc.nthr; nthr_to_check > 0;
             nthr_to_check--) {

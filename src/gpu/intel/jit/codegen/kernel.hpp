@@ -202,7 +202,7 @@ public:
 
     template <typename... ngen_generator_args>
     ir_kernel_base_t(const exec_config_t &exec_cfg,
-            const kernel_iface_t &kernel_iface, ngen_generator_args... args)
+            const kernel_iface_t &kernel_iface, ngen_generator_args &&...args)
         : ngen_generator_t(std::forward<ngen_generator_args>(args)...)
         , kernel_iface_(kernel_iface)
         , exec_cfg_(exec_cfg)

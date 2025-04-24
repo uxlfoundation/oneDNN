@@ -1041,7 +1041,7 @@ public:
         auto compute_loop_stmt
                 = find_stmt_group(root_, stmt_label_t::compute_loop());
         if (!compute_loop_stmt.has_value()) return root_;
-        auto compute_loop = compute_loop_stmt.value();
+        const auto &compute_loop = compute_loop_stmt.value();
         auto loop_nest = compute_loop_nest_t(compute_loop, ir_ctx_);
         auto &loops = loop_nest.loops();
 

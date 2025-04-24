@@ -142,7 +142,7 @@ struct send_hint_t {
     enum send_dim_idx { block = 0, w = 1, h = 2 };
     using slayout_t = stride_layout_t<dim_type_t>;
     using hint_t = send_hint_t<dim_type_t>;
-    dim_t operator[](dim_type_t i) const {
+    dim_t operator[](const dim_type_t &i) const {
         return (hint_.count(i) == 0 ? 0 : hint_.at(i));
     }
     dim_t &operator[](dim_type_t i) { return hint_[i]; }
@@ -188,12 +188,12 @@ struct send_hint_t {
         hint_[i.dim] = (hint_.count(i.dim) == 0) ? base : hint_[i.dim] * base;
     }
 
-    void set_dim(dim_type_t idx, send_dim_idx i) { w_dims_[idx] |= i; }
-    bool is_w_dim(dim_type_t idx) const {
+    void set_dim(const dim_type_t &idx, send_dim_idx i) { w_dims_[idx] |= i; }
+    bool is_w_dim(const dim_type_t &idx) const {
         if (w_dims_.count(idx) == 0) return false;
         return (w_dims_.at(idx)) & send_dim_idx::w;
     }
-    bool is_h_dim(dim_type_t idx) const {
+    bool is_h_dim(const dim_type_t &idx) const {
         if (w_dims_.count(idx) == 0) return false;
         return w_dims_.at(idx) & send_dim_idx::h;
     }

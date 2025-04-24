@@ -180,7 +180,7 @@ public:
         auto parts = gpu_utils::split(s, "*");
         std::vector<expr_t> args;
         for (auto &p : parts) {
-            pvars_.push_back(pvar_t(p));
+            pvars_.emplace_back(p);
         }
     }
 
@@ -214,27 +214,24 @@ private:
 class req_rhs_entry_t {
 public:
     req_rhs_entry_t() = default;
-    explicit req_rhs_entry_t(dim_t value) : value_(value) { is_undef_ = false; }
-    explicit req_rhs_entry_t(const pvar_t &pvar) : pvar_(pvar) {
-        is_undef_ = false;
-    }
-    explicit req_rhs_entry_t(const expr_t &e) {
+    explicit req_rhs_entry_t(dim_t value) : is_undef_(false), value_(value) {}
+    explicit req_rhs_entry_t(const pvar_t &pvar)
+        : is_undef_(false), pvar_(pvar) {}
+    explicit req_rhs_entry_t(const expr_t &e) : is_undef_(false) {
         if (is_const(e)) {
             value_ = to_cpp<int>(e);
         } else {
             pvar_ = pvar_t::from_var(e);
             gpu_assert(!pvar_.is_undef()) << e;
         }
-        is_undef_ = false;
     }
-    explicit req_rhs_entry_t(const std::string &s) {
+    explicit req_rhs_entry_t(const std::string &s) : is_undef_(false) {
         if (!s.empty() && std::isdigit(s[0])) {
             value_ = std::stoi(s);
         } else {
             pvar_ = pvar_t(s);
             gpu_assert(!pvar_.is_undef()) << s;
         }
-        is_undef_ = false;
     }
     bool is_undef() const { return is_undef_; }
     bool is_pvar() const { return !is_undef_ && !pvar_.is_undef(); }

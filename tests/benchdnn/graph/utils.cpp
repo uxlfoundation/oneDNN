@@ -543,7 +543,7 @@ dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind) {
                             dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::Reorder, dnnl_driver_t::reorder},
                     {dnnl::graph::op::kind::Round, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Select, dnnl_driver_t::custom},
+                    {dnnl::graph::op::kind::Select, dnnl_driver_t::binary},
                     {dnnl::graph::op::kind::Sigmoid, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::SigmoidBackward,
                             dnnl_driver_t::eltwise},
@@ -1164,7 +1164,7 @@ int get_prim_arg_name_from_graph_op_input_offset(
         } break;
         case dnnl::graph::op::kind::Select: {
             if (input_offset == 0)
-                return DNNL_ARG_WEIGHTS;
+                return DNNL_ARG_SRC_2;
             else if (input_offset == 1)
                 return DNNL_ARG_SRC_0;
             else if (input_offset == 2)

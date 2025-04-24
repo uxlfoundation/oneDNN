@@ -100,4 +100,47 @@
 
 # additional tests for internal padding concat kernel
 --reset
---batch=test_concat_ip
+--dtag=aBc32b,aBc16b,aBc8b,aBc4b
+--sdt=f32,f16,bf16,s8
+--ddt=f32,f16,bf16,s8
+--stag=aBc32b:aBc32b,aBc16b:aBc16b,aBc8b:aBc8b,aBc4b:aBc4b
+--axis=1
+4x33x17:4x32x17
+4x34x17:4x32x17
+4x129x17:4x129x17
+4x33x16:4x32x16
+4x33x4096:4x32x4096
+4x129x16:4x129x16
+4x129x4096:4x129x4096
+
+# tests w/small internal padding concat
+--reset
+--dtag=aBc4b
+--stag=aBc4b:aBc4b
+--axis=1
+# src0 < elems_per_sg
+4x2x8:4x2x8
+# sg_size > boundary (no trailing blocks)
+4x34x8:4x4x8
+# boundary_blocks only
+4x2x32:4x2x32
+
+# large internal padding concat for idx_t=ulong
+--reset
+--dtag=aBc32b
+--stag=aBc32b:aBc32b
+--axis=1
+--sdt=bf16 --ddt=bf16 4x337810x992:4x17x992
+
+# test varying internal padding tags/formats
+--reset
+--sdt=u8
+--ddt=u8
+--axis=1
+--stag=aBcd32b:aBcd32b
+--dtag=aBcd32b
+4x33x8x8:4x32x8x8
+
+--stag=ABcd32a32b:ABcd32a32b
+--dtag=ABcd32a32b
+4x33x8x8:4x32x8x8

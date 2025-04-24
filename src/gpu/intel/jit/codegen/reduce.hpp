@@ -54,7 +54,7 @@ public:
         tensor_t tile = find_1d_tile(src_layout_, dst_layout_);
         int tile_elems = (int)tile.elems();
         auto src_tile_layout = src_layout_.map(tile);
-        auto src_tile_blocks = src_tile_layout.blocks();
+        const auto &src_tile_blocks = src_tile_layout.blocks();
         gpu_assert(src_tile_blocks.size() <= 1);
         ngen_register_scope_t block_scope(scope.register_allocator());
         int src_stride

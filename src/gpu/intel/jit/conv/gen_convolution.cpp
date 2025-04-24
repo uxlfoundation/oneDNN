@@ -507,7 +507,7 @@ status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -528,7 +528,7 @@ status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 
@@ -537,7 +537,7 @@ status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
 }
 
 status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
-    impl_.reset(new gen_convolution_t());
+    impl_ = std::make_shared<gen_convolution_t>();
     return impl_->init(this, engine);
 }
 

@@ -172,6 +172,7 @@ public:
         }
 
         vec_bcast = make_add(base_args);
+        vec_off.reserve(args.size());
         for (auto &a : args)
             vec_off.emplace_back(make_add(difference(a, base_args)));
 

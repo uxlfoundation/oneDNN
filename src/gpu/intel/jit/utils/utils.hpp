@@ -1062,7 +1062,7 @@ public:
     }
 
 private:
-    int find_entry_index(const std::string name) const {
+    int find_entry_index(const std::string &name) const {
         for (int i = 0; i < (int)entries_.size(); i++) {
             if (entries_[i].matches_relaxed(name)) return i;
         }

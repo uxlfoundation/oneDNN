@@ -71,7 +71,7 @@ conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
     ir_utils::debug_profiler_t profile("Conv Kernel Construction Profile");
     // Build IR for the kernel.
     conv_ir_builder_t builder(cfg, kernel_info, zp_dst);
-    stmt_t body = builder.stmt();
+    const stmt_t &body = builder.stmt();
     profile.stamp("Kernel Builder");
 
     alloc_manager_t alloc_mgr(body);

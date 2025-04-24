@@ -45,7 +45,7 @@ public:
                 {GENERATOR_NAME, GENERATOR_LINE}) {
         set_kernel_iface(kernel_info.iface());
         pooling_ir_builder_t builder(cfg, kernel_info, pd);
-        stmt_t body = builder.stmt();
+        const stmt_t &body = builder.stmt();
         setup_interface(body);
 
         // Generate assembly from IR.

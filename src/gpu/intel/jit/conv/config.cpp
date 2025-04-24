@@ -1662,7 +1662,7 @@ walk_order_t compute_walk_order(const conv_config_t &cfg) {
 
     // Add M/N blocks until the full footprint fits L3 cache.
     pvar_tile_t grid_inner;
-    pvar_tile_t rem_tile = grid_tile;
+    const pvar_tile_t &rem_tile = grid_tile;
     ab_bytes = inner_bytes;
     mn_walker_t mn_walker(rem_tile, cfg.prb());
     while (mn_walker.has_next()) {

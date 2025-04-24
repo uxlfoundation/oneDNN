@@ -96,77 +96,6 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
 }
 } // namespace genindex
 
-namespace select {
-// SELECT OP
-// DNNL_ARG_WEIGHTS: cond
-// DNNL_ARG_SRC_0: src_0
-// DNNL_ARG_SRC_1: src_1
-// DNNL_ARG_DST: dst
-// dst[i] = cond[i] ? src_0[i] : src_1[i]
-
-std::vector<int> exec_args = {
-        DNNL_ARG_WEIGHTS,
-        DNNL_ARG_SRC_0,
-        DNNL_ARG_SRC_1,
-        DNNL_ARG_DST,
-};
-
-int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
-        const prb_t *prb, res_t *res) {
-
-    const auto &ref_engine = get_cpu_engine();
-
-    for (auto &entry : mem_map) {
-        const int exec_arg = entry.first;
-        auto &mem = entry.second;
-
-        ref_mem_map.emplace(exec_arg,
-                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                        /* prefill = */ false));
-        auto &ref_mem = ref_mem_map[exec_arg];
-
-        switch (exec_arg) {
-            case DNNL_ARG_SRC_0:
-                SAFE(::custom::fill_mem(mem, ref_mem, 0, 4), WARN);
-                break;
-            case DNNL_ARG_SRC_1:
-                SAFE(::custom::fill_mem(mem, ref_mem, -2, 1), WARN);
-                break;
-            case DNNL_ARG_WEIGHTS:
-                SAFE(::custom::fill_mem(mem, ref_mem, 0, 1), WARN);
-                break;
-            default: break;
-        }
-    }
-    return OK;
-}
-
-int execute(const prb_t *prb, const args_t &args, res_t *res) {
-    const dnn_mem_t &src0 = args.find(DNNL_ARG_SRC_0);
-    const dnn_mem_t &src1 = args.find(DNNL_ARG_SRC_1);
-    const dnn_mem_t &wei = args.find(DNNL_ARG_WEIGHTS);
-    dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
-
-    benchdnn_parallel_nd(dst.nelems(), [&](int64_t index) {
-        size_t offsrc0 = 0, offsrc1 = 0, offwei = 0, offdst = 0;
-        for (int i = 0; i < dst.ndims(); i++) {
-            // calculate the idx on each dimension
-            int idx = index % dst.dims()[i];
-            index /= dst.dims()[i];
-            // accumulate offset for each arg
-            offwei += wei.strides()[i] * (wei.dims()[i] < 2 ? 0 : idx);
-            offsrc0 += src0.strides()[i] * (src0.dims()[i] < 2 ? 0 : idx);
-            offsrc1 += src1.strides()[i] * (src1.dims()[i] < 2 ? 0 : idx);
-            offdst += dst.strides()[i] * (dst.dims()[i] < 2 ? 0 : idx);
-        }
-        dst.set_elem(offdst,
-                wei.get_elem(offwei) ? src0.get_elem(offsrc0)
-                                     : src1.get_elem(offsrc1));
-    });
-    return OK;
-}
-} // namespace select
-
 namespace transpose {
 // TRANSPOSE OP
 // DNNL_ARG_SRC: src
@@ -277,7 +206,6 @@ std::vector<int> supported_exec_args(const prb_t *prb) {
     std::vector<int> exec_args;
     switch (prb->alg) {
         case GENINDEX: return ::custom::genindex::exec_args;
-        case SELECT: return ::custom::select::exec_args;
         case TRANSPOSE: return ::custom::transpose::exec_args;
         case RESHAPE: return ::custom::reshape::exec_args;
         default: assert(!"unknown alg"); break;
@@ -289,7 +217,6 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
         const args_t &ref_args) {
     switch (prb->alg) {
         case GENINDEX:
-        case SELECT:
         case TRANSPOSE:
         case RESHAPE: cmp.set_zero_trust_percent(100.f); break;
         default: assert(!"unknown alg"); break;
@@ -360,11 +287,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                          ref_mem_map, mem_map, prb, res),
                     WARN);
             break;
-        case SELECT:
-            SAFE(::custom::select::init_ref_memory_args(
-                         ref_mem_map, mem_map, prb, res),
-                    WARN);
-            break;
         case TRANSPOSE:
             SAFE(::custom::transpose::init_ref_memory_args(
                          ref_mem_map, mem_map, prb, res),
@@ -388,7 +310,6 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
     int ret = FAILED;
     switch (prb->alg) {
         case GENINDEX: ret = ::custom::genindex::execute(prb, args, res); break;
-        case SELECT: ret = ::custom::select::execute(prb, args, res); break;
         case TRANSPOSE:
             ret = ::custom::transpose::execute(prb, args, res);
             break;

@@ -56,6 +56,7 @@ protected:
                               : pd_->src_md()->data_type;
     }
     bool is_bf16() const { return data_type() == data_type::bf16; }
+    bool is_f16() const { return data_type() == data_type::f16; }
     int dtype_size() const { return types::data_type_size(data_type()); }
 };
 
@@ -126,6 +127,25 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
                     {vmm_src.getIdx(), tmp0.getIdx()});
             bfcvt(vmm_src.h, P_ALL_ONE, vmm_src.s);
             bfcvtnt(vmm_src.h, P_ALL_ONE, tmp0.s);
+        } else if (is_f16()) {
+            // Convert FP16 to FP32, apply eltwise op, then convert back to FP16:
+            // - upcast FP16 to FP32 using fcvt
+            // - compute eltwise alg in FP32
+            // - downcast FP32 back to FP16 using fcvt, and pack result
+            mov(tmp0.s, P_ALL_ONE, vmm_src.s);
+            fcvt(vmm_src.s, P_ALL_ONE, vmm_src.h);
+            // Next two lines could be replaced by fcvtlt(tmp0.s, P_ALL_ONE, tmp0.h)
+            // Not currently implemented in xbyak
+            lsr(tmp0.s, tmp0.s, 16);
+            fcvt(tmp0.s, P_ALL_ONE, tmp0.h);
+            eltwise_injector_->compute_vector_range(
+                    {vmm_src.getIdx(), tmp0.getIdx()});
+            fcvt(vmm_src.h, P_ALL_ONE, vmm_src.s);
+            // Next three lines could be replaced by fcvtnt(vmm_src.h, P_ALL_ONE, tmp0.s)
+            // Not currently implemented in xbyak
+            fcvt(tmp0.h, P_ALL_ONE, tmp0.s);
+            lsl(tmp0.s, tmp0.s, 16);
+            orr(vmm_src.h, P_ALL_ONE, tmp0.h);
         } else {
             eltwise_injector_->compute_vector(vmm_src.getIdx());
         }
@@ -159,6 +179,14 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
             eltwise_injector_->compute_vector(v_bf16.getIdx());
             bfcvt(ZReg(v_bf16[0].getIdx()).h, P_ALL_ONE,
                     ZReg(v_bf16[0].getIdx()).s);
+        } else if (is_f16()) {
+            ld1(v_f16[0], ptr(reg_src));
+            // Convert FP16 input to FP32, apply eltwise op, then convert back to FP16
+            fcvt(ZReg(v_f16[0].getIdx()).s, P_ALL_ONE,
+                    ZReg(v_f16[0].getIdx()).h);
+            eltwise_injector_->compute_vector(v_f16.getIdx());
+            fcvt(ZReg(v_f16[0].getIdx()).h, P_ALL_ONE,
+                    ZReg(v_f16[0].getIdx()).s);
         } else {
             ld1(xmm_src[0], ptr(reg_src));
             eltwise_injector_->compute_vector(xmm_src.getIdx());
@@ -170,6 +198,8 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel {
         }
         if (is_bf16()) {
             st1(v_bf16[0], ptr(reg_dst));
+        } else if (is_f16()) {
+            st1(v_f16[0], ptr(reg_dst));
         } else {
             st1(xmm_src[0], ptr(reg_dst));
         }
@@ -206,6 +236,7 @@ private:
 
     VReg4S xmm_src {1};
     VReg8H v_bf16 {1};
+    VReg8H v_f16 {1};
     TReg vmm_src {1};
     VReg4S xmm_diff_dst {2};
     TRegS vmm_diff_dst {2};
@@ -353,11 +384,13 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
 template struct jit_uni_eltwise_fwd_t<sve_512, data_type::f32>;
 template struct jit_uni_eltwise_fwd_t<sve_256, data_type::f32>;
 template struct jit_uni_eltwise_fwd_t<sve_256, data_type::bf16>;
+template struct jit_uni_eltwise_fwd_t<sve_256, data_type::f16>;
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<sve_512, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<sve_256, data_type::f32>;
 template struct jit_uni_eltwise_bwd_t<sve_128, data_type::f32>;
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::bf16>;
+template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f16>;
 
 } // namespace aarch64
 } // namespace cpu

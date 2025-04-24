@@ -136,6 +136,9 @@ struct brgemm_matmul_conf_t {
     int nthr;
     int nthr_k = 1, nthr_m = 1, nthr_n = 1, nthr_b = 1;
 
+    bool is_thread_chunks_exec_order_horizontal;
+    brgemm_kernel_hint_mem_advice_t mem_advice;
+
     // Auxiliary values for init_config() and execute()
     dim_t a_dt_sz, b_dt_sz, c_dt_sz, acc_dt_sz, bias_dt_sz, reduce_dt_sz;
 
@@ -216,6 +219,7 @@ struct brgemm_matmul_conf_t {
     bool is_f32_f16 = false;
     bool is_f32_bf16 = false;
     bool is_int4_weights = false;
+    bool is_tf32 = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
     bool is_runtime_N = false;
@@ -270,6 +274,7 @@ struct brgemm_matmul_conf_utils_t {
             // use b_buffer for AMX when:
             // - not bf32 && using non-blocked weights
             // - is bf32
+            // - is tf32
             return IMPLICATION(!wei_down_convert_to_vnni(), !bgmmc.blocked_B)
                     || bgmmc.packed_sparse_weights;
 
@@ -337,6 +342,8 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_bf32() const { return bf32_dt; }
 
+    inline bool is_tf32() const { return tf32_dt; }
+
     inline bool is_bf16_with_int_wei() const { return bf16_with_int_wei_dt; }
 
     inline bool is_f32_f16() const { return f32_f16_dt; }
@@ -356,7 +363,8 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline bool wei_down_convert_to_vnni() const {
-        return (bf32_dt || f16_with_int_wei_dt || bf16_with_int_wei_dt)
+        return (bf32_dt || tf32_dt || f16_with_int_wei_dt
+                       || bf16_with_int_wei_dt)
                 && get_blocked_B();
     }
 
@@ -379,10 +387,9 @@ struct brgemm_matmul_conf_utils_t {
 private:
     brgemm_matmul_conf_t &bgmmc;
 
-    const bool f32_dt, bf16_dt, f16_dt, f8_dt, int8_dt, bf32_dt;
+    const bool f32_dt, bf16_dt, f16_dt, f8_dt, int8_dt, bf32_dt, tf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
             f32_bf16_dt, f16_with_int_wei_dt;
-
     const bool A_any_layout;
     const bool B_any_layout;
     const bool C_any_layout;
@@ -417,6 +424,8 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         const brgemm_matmul_conf_t &bgmmc);
 
 int get_n_block_from_tag(format_tag_t matrix_b_tag);
+
+void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 
 bool is_batch_layout_trivial(const memory_desc_wrapper &mdw, const dim_t batch);
 

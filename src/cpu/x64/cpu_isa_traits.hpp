@@ -79,6 +79,7 @@ enum cpu_isa_bit_t : unsigned {
     amx_int8_bit = 1u << 15,
     amx_bf16_bit = 1u << 16,
     amx_fp16_bit = 1u << 17,
+    amx_2_bit = 1u << 18,
 
     // Fill in hints from most significant bit to least significant bit
     prefer_ymm_bit = 1u << (cpu_isa_total_bits - 1),
@@ -89,6 +90,7 @@ enum cpu_isa_bit_t : unsigned {
     avx10 = avx2_bit | vex_vnni_bit | evex_core_bit | evex_core_vnni_bit
             | evex_core_bf16_bit | evex_core_fp16_bit,
     avx10_1 = (1 << avx10_version_bit_start) | avx10,
+    avx10_2 = (2 << avx10_version_bit_start) | avx10 | vex_vnni_2_bit,
 };
 
 dnnl_cpu_isa_hints_t DNNL_API get_cpu_isa_hints(bool soft = false);
@@ -136,8 +138,13 @@ enum cpu_isa_t : unsigned {
     avx512_core_amx = avx10_1_512_amx,
     avx10_1_512_amx_fp16 = avx10_1_512_amx | amx_fp16,
     avx512_core_amx_fp16 = avx10_1_512_amx_fp16,
+    avx10_2_512 = avx10_2 | xmm_bit | ymm_bit | zmm_bit,
+    avx10_2_512_amx_2
+    = avx10_2_512 | amx_tile | amx_int8 | amx_bf16 | amx_fp16 | amx_2_bit,
     // NOTES: 1. isa_all by default has no isa specific hints
-    isa_all = ~0u & ~cpu_isa_hints_utils::hints_mask,
+    isa_all = ~0u & ~cpu_isa_hints_utils::hints_mask
+            & (~avx10_version_bits | (1 << avx10_version_bit_start))
+            & ~amx_2_bit,
 };
 
 std::string isa2str(cpu_isa_t isa);
@@ -336,6 +343,20 @@ struct cpu_isa_traits_t<avx10_1_512_amx_fp16> {
     static constexpr const char *user_option_env = "avx10_1_512_amx_fp16";
 };
 
+template <>
+struct cpu_isa_traits_t<avx10_2_512> : public cpu_isa_traits_t<avx512_core> {
+    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx10_2_512;
+    static constexpr const char *user_option_env = "avx10_2_512";
+};
+
+template <>
+struct cpu_isa_traits_t<avx10_2_512_amx_2>
+    : public cpu_isa_traits_t<avx10_2_512> {
+    static constexpr dnnl_cpu_isa_t user_option_val
+            = dnnl_cpu_isa_avx10_2_512_amx_2;
+    static constexpr const char *user_option_env = "avx10_2_512_amx_2";
+};
+
 inline const Xbyak::util::Cpu &cpu() {
     const static Xbyak::util::Cpu cpu_;
     return cpu_;
@@ -360,9 +381,16 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     using namespace Xbyak::util;
 
     unsigned cpu_isa_mask = x64::get_max_cpu_isa_mask(soft);
-    unsigned cpu_isa_no_hints = cpu_isa & ~cpu_isa_hints_utils::hints_mask;
+    unsigned cpu_isa_no_hints
+            = cpu_isa & ~cpu_isa_hints_utils::hints_mask & ~avx10_version_bits;
+    const auto cpu_avx10_version
+            = get_avx10_version(static_cast<cpu_isa_t>(cpu_isa_mask));
+    const auto isa_avx10_version = get_avx10_version(cpu_isa);
 
     if ((cpu_isa_mask & cpu_isa_no_hints) != cpu_isa_no_hints) return false;
+    // AVX10 version N+1 will include all the features and capabilities
+    // included in version N, and not vice versa.
+    if (cpu_avx10_version < isa_avx10_version) return false;
 
     switch (cpu_isa) {
         case sse41: REG_SSE41_ISA(return cpu().has(Cpu::tSSE41));
@@ -395,6 +423,10 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
             REG_AVX512_ISA(return cpu().has(Cpu::tAVX512_FP16)
                     && mayiuse(avx512_core_bf16, soft)
                     && mayiuse(avx2_vnni, soft));
+        case avx10_2_512:
+            REG_AVX512_ISA(return cpu().getAVX10version() >= 2
+                    && cpu().has(Cpu::tAVX512F) && mayiuse(avx2_vnni_2, soft)
+                    && cpu().has(Cpu::tAPX_F));
         case amx_tile:
             REG_AMX_ISA(return cpu().has(Cpu::tAMX_TILE)
                     && x64::amx::is_available());
@@ -414,6 +446,11 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case avx512_core_amx_fp16:
             REG_AMX_ISA(return mayiuse(avx512_core_amx, soft)
                     && mayiuse(amx_fp16, soft));
+        case avx10_2_512_amx_2:
+            REG_AMX_ISA(return mayiuse(avx10_2_512, soft)
+                    && mayiuse(amx_tile, soft) && cpu().has(Cpu::tAMX_TRANSPOSE)
+                    && cpu().has(Cpu::tAMX_TF32) && cpu().has(Cpu::tAMX_AVX512)
+                    && cpu().has(Cpu::tAMX_MOVRS) && cpu().has(Cpu::tAMX_FP8));
         case isa_all: return false;
         case isa_undef: return true;
     }
@@ -425,7 +462,8 @@ inline bool isa_has_int8_vnni(cpu_isa_t isa) {
 }
 
 inline bool isa_has_s8s8(cpu_isa_t isa) {
-    return is_superset(isa, amx_int8) || is_superset(isa, avx2_vnni_2);
+    return is_superset(isa, avx2_vnni_2) || is_superset(isa, avx10_2_512)
+            || is_superset(isa, amx_int8);
 }
 
 inline bool isa_has_bf16(cpu_isa_t isa) {
@@ -434,6 +472,12 @@ inline bool isa_has_bf16(cpu_isa_t isa) {
 
 inline bool isa_has_masks(cpu_isa_t isa) {
     return is_superset(isa, avx512_core);
+}
+
+// Check if the ISA has saturating conversion support
+inline bool isa_has_sat_cvt(cpu_isa_t isa, data_type_t dt) {
+    return utils::one_of(dt, data_type::u8, data_type::s8)
+            && is_superset(isa, avx10_2_512);
 }
 
 inline int isa_max_vlen(cpu_isa_t isa) {
@@ -486,6 +530,8 @@ inline int isa_num_vregs(cpu_isa_t isa) {
     (isa) == avx10_1_512 ? prefix STRINGIFY(avx10_1_512) : \
     (isa) == avx10_1_512_amx ? prefix STRINGIFY(avx10_1_512_amx) : \
     (isa) == avx10_1_512_amx_fp16 ? prefix STRINGIFY(avx10_1_512_amx_fp16) : \
+    (isa) == avx10_2_512 ? prefix STRINGIFY(avx10_2_512) : \
+    (isa) == avx10_2_512_amx_2 ? prefix STRINGIFY(avx10_2_512_amx_2) : \
     prefix suffix_if_any)
 /* clang-format on */
 
@@ -493,28 +539,19 @@ inline int isa_num_vregs(cpu_isa_t isa) {
 // CPU ISAs with non-native instruction support.
 inline data_type_t get_mac_emu_data_type(const data_type_t data_type,
         const cpu_isa_t isa, const bool req_emulation = true) {
+    if (!req_emulation) return data_type;
     using namespace data_type;
-    if (req_emulation) switch (data_type) {
-            case bf16:
-                if (utils::one_of(isa, avx2, avx2_vnni_2, avx512_core))
-                    return f32;
-                break;
-            case f16:
-                if (utils::one_of(isa, avx2, avx2_vnni_2, avx512_core,
-                            avx512_core_fp16))
-                    return f32;
-                break;
-            case f8_e5m2:
-            case f8_e4m3:
-                if (isa == avx10_1_512_amx_fp16) return f16;
-                break;
-            case f32:
-            case s32:
-            case s8:
-            case u8:
-            case data_type::undef:
-            default: return data_type;
-        }
+    switch (data_type) {
+        case bf16:
+            if (utils::one_of(isa, avx2, avx2_vnni_2, avx512_core)) return f32;
+            break;
+        case f16:
+            if (utils::one_of(
+                        isa, avx2, avx2_vnni_2, avx512_core, avx512_core_fp16))
+                return f32;
+            break;
+        default: return data_type;
+    }
     return data_type;
 }
 

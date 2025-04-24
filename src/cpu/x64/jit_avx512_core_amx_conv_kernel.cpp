@@ -5681,7 +5681,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
 
             // process A,B,C,D,E,F,G,H channels
             // load and process for <A,B,C,D>
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst]);
             // copy upper bytes to second ymm
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
             // each yreg_bias_ddst contains 8 float values in vnni layout for <A, B> and for <C, D> correspondingly
@@ -5690,7 +5690,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
             vhaddps(yreg_bias_ddst00, yreg_bias_ddst0, yreg_bias_ddst1);
 
             // load and process for <E,F,G,H>
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 16]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 16]);
             // copy upper bytes to second ymm
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
             // each yreg_bias_ddst contains 8 float values in vnni layout for <E, F> and for <G, H> correspondingly
@@ -5704,12 +5704,11 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::compute_diff_bias_row(int ocb) {
             vaddps(yreg_bias_acc0, yreg_bias_acc0, yreg_bias_ddst00);
 
             // process I,J,K,L,M,N,O,P channels in same way as A,B,C,D,E,F,G,H
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 32]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 32]);
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
 
             vhaddps(yreg_bias_ddst00, yreg_bias_ddst0, yreg_bias_ddst1);
-
-            f8_emu->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 48]);
+            f8_cvt->vcvt_f8_to_f32(zmm_load, ptr[reg_ddst + 48]);
             vextractf64x4(yreg_bias_ddst1, zmm_load, 1);
             vhaddps(yreg_bias_ddst01, yreg_bias_ddst0, yreg_bias_ddst1);
 
@@ -5840,10 +5839,10 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::generate() {
         vpbroadcastw(vreg_bias_unit, reg_unit_val);
     }
     if (jcp.ddst_dt == f8_e5m2)
-        f8_emu = utils::make_unique<fp8_emulation_e5m2_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e5m2_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_mask, emu_scratch);
     else if (jcp.ddst_dt == f8_e4m3)
-        f8_emu = utils::make_unique<fp8_emulation_e4m3_t>(this, emu_reserv_1,
+        f8_cvt = utils::make_unique<fp8_conversion_e4m3_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_reserv_4, emu_reserv_5,
                 emu_scratch);
 
@@ -5875,7 +5874,7 @@ void jit_avx512_core_amx_bwd_bias_kernel_t::generate() {
 
     postamble();
 
-    if (f8_emu) f8_emu->prepare_table();
+    if (f8_cvt) f8_cvt->prepare_table();
 
     if (one_of(jcp.ddst_dt, f8_e5m2, f8_e4m3)) {
         align(64);

@@ -70,12 +70,12 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
             || has_f8_e4m3_binary_postops) {
         if (utils::one_of(data_type::f8_e5m2, ajpp.src_dt, ajpp.dst_dt)
                 || has_f8_e5m2_binary_postops)
-            f8_e5m2_emu_ = utils::make_unique<fp8_emulation_e5m2_t>(this,
+            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
                     fp8_emu_reserv_1, fp8_emu_reserv_2, fp8_emu_reserv_3,
                     fp8_tmp_mask, fp8_emu_reg64);
         if (utils::one_of(data_type::f8_e4m3, ajpp.src_dt, ajpp.dst_dt)
                 || has_f8_e4m3_binary_postops)
-            f8_e4m3_emu_ = utils::make_unique<fp8_emulation_e4m3_t>(this,
+            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,
                     fp8_emu_reserv_1, fp8_emu_reserv_2, fp8_emu_reserv_3,
                     fp8_emu_reserv_4, fp8_emu_reserv_5, fp8_emu_reg64);
     }
@@ -99,8 +99,8 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
                 use_exact_tail_scalar_bcast};
 
         const binary_injector::static_params_t bsp {reg_param,
-                get_supported_bcast_strategies(), rhs_sp, f8_e5m2_emu_.get(),
-                f8_e4m3_emu_.get()};
+                get_supported_bcast_strategies(), rhs_sp, f8_e5m2_cvt_.get(),
+                f8_e4m3_cvt_.get()};
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<isa>>(
@@ -1537,8 +1537,8 @@ void jit_uni_pool_kernel_t<isa>::generate() {
 
     if (jpp.with_eltwise && postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
-    if (f8_e5m2_emu_) f8_e5m2_emu_->prepare_table();
-    if (f8_e4m3_emu_) f8_e4m3_emu_->prepare_table();
+    if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+    if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
     io_.prepare_table_fp8();
 }
 

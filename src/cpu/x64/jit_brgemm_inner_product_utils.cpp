@@ -172,7 +172,8 @@ jit_brgemm_ip_conf_t::get_desired_weights_tag() const {
     const bool is_xf16 = utils::one_of(jbgp.wei_dt, bf16, f16);
     const bool is_fp8 = utils::one_of(jbgp.wei_dt, f8_e5m2, f8_e4m3);
     const bool is_not_vnni_tag = jbgp.wei_dt == f32
-            || (jbgp.wei_dt == f16 && jbgp.isa == avx512_core_fp16);
+            || (jbgp.wei_dt == f16
+                    && one_of(jbgp.isa, avx512_core_fp16, avx10_2_512));
     if (is_not_vnni_tag) {
         if (is_superset(jbgp.isa, avx512_core))
             return {{64,
@@ -1261,7 +1262,7 @@ status_t jit_brgemm_ip_bwd_w_conf_t::init_conf(cpu_isa_t isa,
 }
 
 size_t buf_dt_size(data_type_t dt, cpu_isa_t isa) {
-    const auto buf_dt = isa == avx512_core_fp16 && dt == data_type::f16
+    const auto buf_dt = one_of(isa, avx512_core_fp16) && dt == data_type::f16
             ? data_type::f32
             : dt;
     return types::data_type_size(buf_dt);
@@ -1366,7 +1367,8 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
 
     if (!IMPLICATION(is_int8,
                 one_of(isa, avx2_vnni, avx2_vnni_2, avx512_core,
-                        avx512_core_vnni, avx512_core_amx)))
+                        avx512_core_vnni, avx512_core_amx, avx10_2_512,
+                        avx10_2_512_amx_2)))
         return status::unimplemented;
     if (!IMPLICATION(is_bf16,
                 one_of(isa, avx2_vnni_2, avx512_core_bf16, avx512_core_amx)))
@@ -1374,8 +1376,8 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     if (!IMPLICATION(is_f32, jbgp.is_bf32 || one_of(isa, avx512_core, avx2)))
         return status::unimplemented;
     if (!IMPLICATION(is_f16,
-                one_of(isa, avx2_vnni_2, avx512_core_fp16,
-                        avx512_core_amx_fp16)))
+                one_of(isa, avx2_vnni_2, avx512_core_fp16, avx512_core_amx_fp16,
+                        avx10_2_512)))
         return status::unimplemented;
     if (!IMPLICATION(is_fp8, one_of(isa, avx512_core_amx_fp16)))
         return status::unimplemented;
@@ -1401,8 +1403,7 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
             = (jbgp.os <= 16 && jbgp.ic <= amx_row && jbgp.oc <= amx_row)
             || (jbgp.ic <= max_size && jbgp.oc <= max_size && jbgp.mb == 1
                     && jbgp.ic % amx_row != 0);
-    if (one_of(jbgp.isa, avx512_core_amx, avx512_core_amx) && is_small_shapes)
-        return status::unimplemented;
+    if (jbgp.is_amx && is_small_shapes) return status::unimplemented;
 
     auto set_or_check_tags = [&]() -> status_t {
         using namespace format_tag;

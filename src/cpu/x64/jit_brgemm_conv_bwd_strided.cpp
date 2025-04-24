@@ -156,7 +156,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto KD = ndims_pick(jcp_.kd, 1, 1);
     const auto KH = ndims_pick(jcp_.kh, jcp_.kh, 1);
-
     const auto KD_BLOCK = ndims_pick(jcp_.kd_block, 1, 1);
     const auto KH_BLOCK = ndims_pick(jcp_.kh_block, jcp_.kh_block, 1);
 
@@ -260,7 +259,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, jcp_.src_dt, jcp_.wei_dt,
             false, false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB,
-            jcp_.LDC, vM, vN, vK, strides_ptr));
+            jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_tf32));
 
     brgemm_attr_t brgattr;
     brgattr.use_uker = jcp_.use_uker;
@@ -1657,6 +1656,8 @@ template struct brgemm_convolution_bwd_strided_t<avx512_core>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_vnni>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_bf16>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_fp16>;
+template struct brgemm_convolution_bwd_strided_t<avx10_2_512>;
+template struct brgemm_convolution_bwd_strided_t<avx10_2_512_amx_2>;
 
 } // namespace x64
 

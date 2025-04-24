@@ -52,7 +52,8 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, brgemm_layout_t layout, float alpha, float beta,
         dim_t LDA, dim_t LDB, dim_t LDC, dim_t M, dim_t N, dim_t K,
-        const brgemm_strides_t *strides = nullptr, bool is_bf32 = false);
+        const brgemm_strides_t *strides = nullptr, bool is_bf32 = false,
+        bool is_tf32 = false);
 
 /* The purpose of this function is to enable initialization of brgemm values
  * and then call additional functions like blocking heuristics without

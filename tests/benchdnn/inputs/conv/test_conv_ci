@@ -88,11 +88,11 @@
 --attr-post-ops=
 --attr-zero-points=,src:common:2+dst:common:1,src:per_dim_1+dst:per_dim_1,src:per_dim_1+dst:common:1
 --batch=shapes_basic
-# BF32
+# BF32 and TF32
 --reset
 --dir=FWD_D,BWD_D
 --dt=f32
---stag=any
---dtag=any
---attr-fpmath=bf16
+--stag=any,axb
+--dtag=any,axb
+--attr-fpmath=bf16,tf32
 --batch=shapes_basic

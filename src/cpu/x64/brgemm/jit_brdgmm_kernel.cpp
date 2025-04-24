@@ -483,9 +483,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
     if (brg.is_bf16_emu) bf16_emu_->init_vcvtneps2bf16();
 
     for (int m = 0; m < m_blocks; m++) {
+        auto vmm_lbound = vmm_tmp(0);
+        auto vmm_ubound = vmm_tmp(1);
         if (dt_requires_saturation) {
-            auto vmm_lbound = vmm_tmp(0);
-            auto vmm_ubound = vmm_tmp(1);
             for_(int n = 0; n < n_blocks; n++)
             for (int v_i = 0; v_i < v_substep; ++v_i) {
                 if (get_substep_simd(n, v_i, has_n_tail) <= 0) continue;
@@ -502,9 +502,18 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
             auto addr = ptr[reg_aux_D + offset];
             auto vmm = accm(m_blocks, n_blocks, m, n, v_i);
             auto vmm_low = Vmm_low_t(vmm.getIdx());
+            auto xmm = Xmm(vmm.getIdx());
             const bool mask_flag = substep_simd < simd_w_;
             const Vmm r_vmm = maybe_mask(vmm, mask_flag, true);
             const Vmm_low_t r_vmm_low = maybe_mask(vmm_low, mask_flag, true);
+            const Xmm r_xmm = maybe_mask(xmm, mask_flag, true);
+            if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+                assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
+                auto vmm_perm = Vmm(vmm_ubound.getIdx());
+                vpermb(vmm, vmm_perm, vmm);
+                vmovdqu8(addr, r_xmm);
+                continue;
+            }
             if (IMPLICATION(mask_flag, isa_has_masks(brg.isa_impl))) {
                 switch (brg.dt_d) {
                     case data_type::f32:

@@ -84,6 +84,37 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag) {
     }
 }
 
+void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
+
+    dim_t parallel_work_amount = bgmmc.batch * bgmmc.M_chunks * bgmmc.N_chunks;
+    int nthr_bmn = bgmmc.nthr / bgmmc.nthr_k;
+    dim_t start {0}, end {0};
+    balance211(parallel_work_amount, nthr_bmn, 0, start, end);
+    dim_t nchunks_per_thread = end - start;
+
+    // memory advice feature heuristic is based on the performance tests done
+    // on simulator and lets the tile loading snoop for other cores caches if
+    // the A/B matrices are shared. thus, if already shared, no need to fetch
+    // from lower level memories the assumption is that if we don't divide
+    // the C matrix evenly on row chunks per thread, then it worth checking
+    // mem advice as there will be sharing
+    if (bgmmc.is_thread_chunks_exec_order_horizontal) {
+        bgmmc.mem_advice
+                = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_B;
+        if (nchunks_per_thread % bgmmc.N_chunks)
+            bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
+                    brgemm_hint_mem_advice_A_B;
+    } else {
+        assert(bgmmc.is_thread_chunks_exec_order_horizontal
+                && "this mode is not operational at the moment");
+        bgmmc.mem_advice
+                = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_A;
+        if (nchunks_per_thread % bgmmc.M_chunks)
+            bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
+                    brgemm_hint_mem_advice_A_B;
+    }
+}
+
 // TODO: add support of post-ops with multiple binary and eltwise execution
 bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
         const memory_desc_wrapper &dst_d,
@@ -182,14 +213,16 @@ status_t check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     const bool ok
             = IMPLICATION(bm_conf_utils.is_f32(),
-                      one_of(isa, avx512_core, avx2) || bm_conf_utils.is_bf32())
+                      one_of(isa, avx512_core, avx2) || bm_conf_utils.is_bf32()
+                              || bm_conf_utils.is_tf32())
             && IMPLICATION(bm_conf_utils.is_int8(),
                     is_superset(isa, avx512_core)
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
                     one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2))
             && IMPLICATION(bm_conf_utils.is_f16(),
-                    one_of(isa, avx512_core_amx_fp16, avx512_core_fp16,
+                    one_of(isa, avx10_2_512, avx10_2_512_amx_2,
+                            avx512_core_amx_fp16, avx512_core_fp16,
                             avx2_vnni_2))
             // `avx512_core_amx_fp16` is not supported for plain upconversion
             // as HW supports native compute.
@@ -218,6 +251,7 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_f16(), bm_conf_utils.is_f32_f16(),
                       bm_conf_utils.is_f32_bf16(), bm_conf_utils.is_bf32(),
                       bm_conf_utils.is_f8(), bm_conf_utils.is_int8(),
+                      bm_conf_utils.is_tf32(),
                       bm_conf_utils.is_bf16_with_int_wei(),
                       bm_conf_utils.is_f16_with_int_wei())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
@@ -244,6 +278,9 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , bf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
               && isa == avx512_core_amx)
+    , tf32_dt(f32_dt
+              && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
+              && isa == avx10_2_512_amx_2)
     , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
                       fpmath_mode::any)
@@ -400,7 +437,7 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                 = (this->is_bf16() || this->is_f32() || this->is_bf32()
                           || this->is_f16() || this->is_f32_f16()
                           || this->is_f32_bf16() || this->is_bf16_with_int_wei()
-                          || this->is_f16_with_int_wei())
+                          || this->is_f16_with_int_wei() || this->is_tf32())
                 && !xf16_avx2_vnni_2;
         bgmmc.src_tag = is_adbc_allowed
                 ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
@@ -517,7 +554,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     // Note: bf32 assumes f32 blocking
     if (this->is_f32() || this->is_bf32() || this->is_f16()
             || this->is_f32_f16() || this->is_f32_bf16()
-            || this->is_f16_with_int_wei())
+            || this->is_f16_with_int_wei() || this->is_tf32())
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c : BA16a64b;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c : BA16a48b;
@@ -1152,6 +1189,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.s8s8_compensation_required = bgmmc.src_dt == s8 && !isa_has_s8s8(isa);
     bgmmc.ndims = dst_d.ndims();
 
+    bgmmc.is_thread_chunks_exec_order_horizontal = true;
+    bgmmc.mem_advice
+            = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_undef;
+
     const bool is_wei_any = weights_d.format_kind() == format_kind::any
             || weights_d.is_sparse_packed_desc();
     brgemm_matmul_conf_utils_t bm_conf_utils(bgmmc, isa, attr,
@@ -1173,6 +1214,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(bgmmc.wei_dt == s8, VERBOSE_UNSUPPORTED_DT);
     }
     bgmmc.is_bf32 = bm_conf_utils.is_bf32();
+    bgmmc.is_tf32 = bm_conf_utils.is_tf32();
     bgmmc.is_bf16_with_int_wei = bm_conf_utils.is_bf16_with_int_wei();
     bgmmc.is_f16_with_int_wei = bm_conf_utils.is_f16_with_int_wei();
     bgmmc.is_f32_f16 = bm_conf_utils.is_f32_f16();
@@ -1429,7 +1471,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_MEM_STRIDE);
     }
 
-    const bool is_copy_a_required = (bgmmc.is_amx && bm_conf_utils.is_bf32())
+    const bool is_copy_a_required
+            = (bgmmc.is_amx
+                      && (bm_conf_utils.is_bf32() || bm_conf_utils.is_tf32()))
             || ((bm_conf_utils.is_f16() || bm_conf_utils.is_f16_with_int_wei())
                     && isa == avx512_core_fp16)
             || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
@@ -1525,6 +1569,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             = is_batch_layout_trivial(weights_d, bgmmc.batch);
     bgmmc.is_dst_batch_layout_trivial
             = is_batch_layout_trivial(dst_d, bgmmc.batch);
+
+    // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
     bgmmc.use_buffer_reduce
@@ -1559,6 +1605,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                               bgmmc.B_strides[2] % 2 == 0),
                 VERBOSE_BAD_DIM);
     }
+
+    // init mem advice heuristic based on bmn threads and excution scan order
+    if (is_superset(isa, avx10_2_512_amx_2)) mem_advice_init(bgmmc);
 
     // Dispatch small shapes to VNNI for better performance
     const bool runtime_dims
@@ -1680,6 +1729,10 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
     conf.src_zp_type = brgemm_broadcast_t::none;
     conf.has_zero_point_a = false;
     conf.has_zero_point_b = false;
+
+    conf.is_thread_chunks_exec_order_horizontal = true;
+    conf.mem_advice
+            = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_undef;
 
     return status::success;
 }
@@ -1824,8 +1877,14 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                                           wei_stride / factor)
                 * factor;
     } else if (bgmmc.transposed_B) {
-        bgmmc.copy_B_wei_stride
-                = (wei_d.strides()[bgmmc.ndims - 1] * bgmmc.b_dt_sz);
+        if (wei_d.strides()[bgmmc.ndims - 1] == 1) {
+            const auto b_stride_elems
+                    = bgmmc.req_wei_vnni_downconvert ? bgmmc.LDB : bgmmc.N;
+            bgmmc.copy_B_wei_stride = b_stride_elems * bgmmc.b_dt_sz;
+        } else {
+            bgmmc.copy_B_wei_stride
+                    = wei_d.strides()[bgmmc.ndims - 1] * bgmmc.b_dt_sz;
+        }
     } else if (bgmmc.is_runtime_N) {
         bgmmc.copy_B_wei_stride = bgmmc.N;
     } else if (bgmmc.blocked_B) {

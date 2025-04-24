@@ -161,7 +161,7 @@ public:
 
     void operator()(memory_desc_t &) const;
 
-    bool is_internal_padding_concat() const {
+    bool has_internal_padding() const {
         return (padding_type_ == padding_t::internal);
     }
 

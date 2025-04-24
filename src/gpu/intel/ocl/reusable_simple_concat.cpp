@@ -336,7 +336,7 @@ static status_t init_conf_common(impl::engine_t *engine, const concat_pd_t *pd,
         if (!normalize.add_source(src_md)) { return status::unimplemented; }
     }
 
-    if (normalize.is_internal_padding_concat()) {
+    if (normalize.has_internal_padding()) {
         status_t s = try_normalize_ip_concat2(
                 conf, rt_conf, engine, pd, normalize);
         if (s == status::success) { return s; }

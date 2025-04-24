@@ -148,8 +148,11 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     if (status != status::success) return status;
 
     VDEBUGINFO(4, primitive, sdpa,
-            "kq_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d, "
+            "D=%d,K=%ld,%s%s%s"
+            "kq_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d,"
             "vs_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
+            d->head_size(), d->keys(), thin_q ? "thin_q," : "",
+            quantized ? "quant," : "", is_integrated ? "integrated" : "",
             config->unroll_m_kq * config->wg_m_kq,
             config->unroll_n_kq * config->wg_n_kq, config->unroll_m_kq,
             config->unroll_n_kq, config->wg_m_kq, config->wg_n_kq,
@@ -379,7 +382,9 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     def_offsets(key_off, kernel_ctx, "KEY", ndims);
     def_offsets(val_off, kernel_ctx, "VAL", ndims);
     def_offsets(dst_off, kernel_ctx, "DST", ndims);
-    def_offsets(msk_off, kernel_ctx, "MSK", ndims);
+    if (pd()->with_attn_mask()) {
+        def_offsets(msk_off, kernel_ctx, "MSK", ndims);
+    }
     kernel_ctx.define_int("NDIMS", ndims);
 
     def_data_type(kernel_ctx, key_mdw.data_type(), "KEY");

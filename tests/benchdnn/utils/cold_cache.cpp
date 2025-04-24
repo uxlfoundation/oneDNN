@@ -117,8 +117,9 @@ cold_cache_t::cold_cache_t(
             smart_bytes(hot_args_size).c_str(),
             smart_bytes(cold_args_size).c_str());
 
-    const size_t cold_mem_pool_size
-            = MAX2(cache_size_upper_bound - hot_args_size, 0);
+    const size_t cold_mem_pool_size = cache_size_upper_bound > hot_args_size
+            ? cache_size_upper_bound - hot_args_size
+            : 0;
 
     size_t n_mem_pool_buffers = 0;
     // If `cold_args_size` are greater then allowed pool_size, it means there's

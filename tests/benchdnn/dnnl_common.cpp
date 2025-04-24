@@ -1221,10 +1221,10 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     bool fits_cpu_ram = cpu_and_device_size
             <= (is_cpu() ? benchdnn_cpu_limit : benchdnn_combined_limit);
 
-    set_zmalloc_max_expected_size(
-            is_cpu() ? cpu_and_device_size : total_size_cpu);
-    // Check combined size against CPU capacity as the simpler method to account
-    // for integrated devices and mapping/unmapping memory.
+    // Save the expected value to set at `doit`, otherwise, the check doesn't
+    // work correctly. See `zmalloc_expected_size` comment.
+    res->mem_size_args.zmalloc_expected_size
+            = is_cpu() ? cpu_and_device_size : total_size_cpu;
 
     if (!fits_cpu_ram) {
         std::string prim_ref_msg

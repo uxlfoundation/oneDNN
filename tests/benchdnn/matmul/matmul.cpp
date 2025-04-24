@@ -969,6 +969,9 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
             if (res_copy.state == SKIPPED) {
                 v_prim[1].reset(nullptr);
                 SAFE(check_total_size(res), WARN);
+            } else {
+                // Copy estimations back to original `res`.
+                *res = res_copy;
             }
         } else {
             SAFE(check_total_size(res), WARN);
@@ -991,6 +994,8 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = v_prim[0];
     const auto &prim_ref = v_prim[1];
 

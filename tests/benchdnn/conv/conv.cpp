@@ -109,6 +109,15 @@ int check_reorder_presence(
             = prb->get_dt(WEI) == dnnl_s8 && prb->get_dt(SRC) == dt_check;
     const bool is_def_zp = prb->attr.zero_points.is_def(DNNL_ARG_SRC);
     if (wei_x8x8 || !is_def_zp) {
+        // A work around zmalloc registry checker: temporarily increase the
+        // capacity just for this check since there's no simple way to account
+        // for memory allocated here to verify an extra reorder.
+        size_t extra_reorder_mem_size
+                = (dnnl_memory_desc_get_size(mem_fp.md_) / 4)
+                + dnnl_memory_desc_get_size(mem_dt.md_);
+        res->mem_size_args.zmalloc_expected_size += extra_reorder_mem_size;
+        set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
         // Check that s8 -> s8_comp exists in the library since users may have
         // already quantized data.
         dnn_mem_t mem_fp_s8(mem_fp.md_, dnnl_s8, tag::abx, get_cpu_engine(),
@@ -120,6 +129,14 @@ int check_reorder_presence(
         SAFE(mem_dt.size() == mem_dt_s8.size() ? OK : FAIL, WARN);
         int rc = std::memcmp((void *)mem_dt, (void *)mem_dt_s8, mem_dt.size());
         SAFE(rc == 0 ? OK : FAIL, WARN);
+
+        // Subtract to restore the original size.
+        res->mem_size_args.zmalloc_expected_size -= extra_reorder_mem_size;
+    }
+    // Must be done in a separate scope to have extra memory objects destroyed
+    // before updating the limit to an original value.
+    if (wei_x8x8 || !is_def_zp) {
+        set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
     }
 
     return OK;
@@ -574,6 +591,9 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
             if (res_copy.state == SKIPPED) {
                 v_prim[1].reset(nullptr);
                 SAFE(check_total_size(res), WARN);
+            } else {
+                // Copy estimations back to original `res`.
+                *res = res_copy;
             }
         } else {
             SAFE(check_total_size(res), WARN);
@@ -588,6 +608,15 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+    // TODO: move Winograd's reference implementation scratchpad to a dedicated
+    // class for ability to query sizes.
+    // So far, just increase the size twice and let it roll.
+    if (prb->alg == WINO) {
+        set_zmalloc_max_expected_size(
+                2 * res->mem_size_args.zmalloc_expected_size);
+    }
+
     const auto &prim = v_prim[0];
     const auto &prim_ref = v_prim[1];
 

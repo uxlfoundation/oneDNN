@@ -21,10 +21,23 @@
 #include "cpu/platform.hpp"
 
 #include "allocator.hpp"
+#include "dnnl_common.hpp"
 #include "utils.hpp"
 #include "utils/timer.hpp"
 
 namespace graph {
+
+bool is_async(const dnnl_engine_t &engine) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    if (is_cpu(engine))
+        return dnnl::testing::get_threadpool()->get_flags()
+                & dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS;
+#else
+    if (is_cpu(engine)) return DNNL_CPU_RUNTIME == DNNL_RUNTIME_DPCPP;
+#endif
+    // all supported GPU runtimes are async
+    return is_gpu(engine);
+}
 
 bdnn_state_t convert_state(const dnnl_status_t &s) {
     switch (s) {
@@ -220,14 +233,15 @@ int measure_perf(timer::timer_t &t, std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
         res_t *res) {
+    const auto &engine = get_test_engine();
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         // enable GPU profiling, Nvidia/AMD dose not support profiling.
         int ret = OK;
-        if (is_cpu() && !is_sycl_engine()) {
-            ret = measure_perf_individual(
+        if (is_async(engine)) {
+            ret = measure_perf_aggregate(
                     t, perf_func_v, inputs_v, outputs_v, res);
         } else {
-            ret = measure_perf_aggregate(
+            ret = measure_perf_individual(
                     t, perf_func_v, inputs_v, outputs_v, res);
         }
         return ret;

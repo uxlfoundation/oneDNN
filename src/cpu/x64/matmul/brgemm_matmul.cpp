@@ -1199,7 +1199,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     brg_matmul_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd,
             const float *oscales, int32_t src_zp, int32_t wei_zp,
             int32_t dst_zp, const float *dst_scales,
-            std::shared_ptr<matmul_helper_t> helper)
+            const std::shared_ptr<matmul_helper_t> &helper)
         : bgmmc_(pd->get_brgemm_matmul_conf())
         , src_d_(pd->src_md())
         , wei_d_(pd->weights_md())

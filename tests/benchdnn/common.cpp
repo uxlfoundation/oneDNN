@@ -270,7 +270,8 @@ struct memory_registry_t {
     }
 
     void set_expected_max(size_t size) {
-        expected_max_ = size;
+        constexpr float expected_trh = 1.1f; // Smooth out small allocations.
+        expected_max_ = static_cast<size_t>(expected_trh * size);
         has_warned_ = false;
         warn_size_check();
     }
@@ -278,12 +279,19 @@ struct memory_registry_t {
 private:
     size_t size() const { return total_size_; }
     void warn_size_check() {
-        if (expected_max_ != unset_ && !has_warned_
-                && total_size_ > expected_max_) {
-            // Switch to WARNING once existing failures are resolved
+        const bool is_max_set = expected_max_ != unset_;
+        // Verify the total amount of allocated memory when it starts exceeding
+        // 1 GB threshold. Small amount of memory is highly unlikely cause OOM.
+        // There's an idea to add a portion of RAM into account as well, keep
+        // only 1 GB so far to check if it proves working well.
+        const bool is_total_size_big = total_size_ >= 1024 * 1024 * 1024;
+        const bool is_total_size_unexpected = total_size_ > expected_max_;
+        if (!has_warned_ && is_max_set && is_total_size_big
+                && is_total_size_unexpected) {
             BENCHDNN_PRINT(0,
-                    "[CHECK_MEM][INFO]: memory use underestimated, "
-                    "zmalloc allocations exceed %s\n",
+                    "[CHECK_MEM][ERROR]: Memory use is underestimated. Current "
+                    "allocation size: %s; expected size: %s.\n",
+                    smart_bytes(total_size_).c_str(),
                     smart_bytes(expected_max_).c_str());
             // Prevent spamming logs with subsequent overflowing allocations;
             has_warned_ = true;

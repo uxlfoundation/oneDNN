@@ -119,7 +119,7 @@ g2ic2ih1iw2oc4oh1ow2kh1kw1ph0pw0
 --stag=axb,abx
 --wtag=xba,abx
 --dtag=axb,abx
---dir=FWD_B,BWD_WB --mb=2 --batch=shapes_basic_gpu
+--dir=FWD_B,BWD_WB --mb=2 --batch=shapes_ci_gpu
 
 # regression test cases
 --batch=test_conv_regression_gpu
@@ -136,7 +136,7 @@ mb128ic3ih230oc64oh112kh7sh2ph0
 --mb=2,16
 --dir=FWD_B --stag=any
 --batch=set_gpu
---batch=shapes_basic_gpu
+--batch=shapes_ci_gpu
 
 # fp8 Stochastic Rounding
 --reset
@@ -144,7 +144,7 @@ mb128ic3ih230oc64oh112kh7sh2ph0
 --mb=2,16
 --dir=FWD_B
 --attr-rounding-mode=dst:stochastic
---batch=shapes_basic_gpu
+--batch=shapes_ci_gpu
 
 # mixed fp8
 --reset --mb=1 --dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16 --dir=fwd_d --batch=shapes_basic
@@ -155,7 +155,7 @@ mb128ic3ih230oc64oh112kh7sh2ph0
                       wei:common:2:bf16+src:common:2:bf16+dst:common:2:bf16,\
                       wei:per_oc:f32+dst:per_oc:f32,\
                       wei:common:2:f32+src:common:2:f32+dst:common:2:f32
---batch=shapes_basic_gpu
+--batch=shapes_ci_gpu
 
 # Test fp4
 --reset

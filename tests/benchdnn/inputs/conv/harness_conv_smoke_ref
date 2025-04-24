@@ -59,7 +59,7 @@
                       wei:common:2:bf16+src:common:2:bf16+dst:common:2:bf16,\
                       wei:per_oc:f32+dst:per_oc:f32,\
                       wei:common:2:f32+src:common:2:f32+dst:common:2:f32
---batch=shapes_basic_gpu
+--batch=shapes_ci_gpu
 
 
 # strided conv

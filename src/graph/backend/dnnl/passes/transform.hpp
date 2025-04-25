@@ -47,6 +47,7 @@ status_t replace_quant_data_with_binary_post_op(
         std::shared_ptr<subgraph_t> &sg);
 
 status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg);
+status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg);
 
 status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg);
 

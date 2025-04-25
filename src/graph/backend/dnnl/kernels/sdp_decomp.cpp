@@ -77,7 +77,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     }
     BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, binary_broadcast_swap);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
+    BACKEND_DNNL_ADD_PASS(pipeline, sdp_fuse_post_ops);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
     if (quantized) {
         BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);

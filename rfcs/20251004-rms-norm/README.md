@@ -139,14 +139,13 @@ as they wouldn't need to adjust how outputs are handled in case of LayerNorm and
 An additional flag for LayerNorm to enable RMSNorm will be added to the `--flags` option.
 
 ```
-`--flags=[|G|C|H|R]` -- layer normalization flags, default `none`; where
+`--flags=[|G|C|H|M]` -- layer normalization flags, default `none`; where
             multiple simultaneous flags are supported.
             `G` is dnnl_use_global_stats;
             `C` is dnnl_use_scale;
             `H` is dnnl_use_shift;
-            `R` is dnnl_use_rms_norm;
-            Refer to [layer normalization primitive](https://uxlfoundation.github.io/oneDNN/dev_guide_layer_normalization.html)
-            for details.
+            `M` is dnnl_use_rms_norm;
+            ...
 ```
 
 Note: If the flag is named `dnnl_{use, force}_zero_mean`, the option will be updated to `--flags=[|G|C|H|Z]`.

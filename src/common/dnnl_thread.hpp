@@ -76,8 +76,9 @@ inline void dnnl_thr_barrier() {
 }
 
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
-#include "tbb/parallel_for.h"
-#include "tbb/task_arena.h"
+
+#include "common/dnnl_thread_tbb_proxy.hpp"
+
 #define DNNL_THR_SYNC 0
 inline int dnnl_get_max_threads() {
     return tbb::this_task_arena::max_concurrency();

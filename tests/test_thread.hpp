@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -325,8 +325,8 @@ auto execute_in_thr_ctx(const thr_ctx_t &ctx, F &&f, Args_t &...args)
 // limitation that can be worked around by doing explicit finalization.
 // The API to do that was introduced in 2021.6.0. When using an older TBB
 // runtime the crash may still happen.
+// Appropriate header lives in a `src/common/dnnl_thread_tbb_proxy.hpp`.
 #if DNNL_TBB_NEED_EXPLICIT_FINALIZE
-#include "tbb/global_control.h"
 inline void finalize_tbb() {
     oneapi::tbb::task_scheduler_handle handle
             = oneapi::tbb::task_scheduler_handle {oneapi::tbb::attach {}};

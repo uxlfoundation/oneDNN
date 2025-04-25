@@ -56,7 +56,7 @@ static const char api_version[] = API_VERSION "\0\n@(#) $Revision$\n";
 #endif
 
 #ifndef ITT_ATTRIBUTE_FALLTHROUGH
-#if (HAS_CPP_ATTR(fallthrough) || HAS_C_ATTR(fallthrough)) && (__cplusplus >= 201703L || _MSVC_LANG >= 201703L)
+#if (HAS_CPP_ATTR(fallthrough) || HAS_C_ATTR(fallthrough)) && ((defined(__cplusplus) && __cplusplus >= 201703L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L))
 #define ITT_ATTRIBUTE_FALLTHROUGH [[fallthrough]]
 #elif HAS_CPP_ATTR(gnu::fallthrough)
 #define ITT_ATTRIBUTE_FALLTHROUGH [[gnu::fallthrough]]

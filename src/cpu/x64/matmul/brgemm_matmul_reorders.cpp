@@ -371,42 +371,22 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
         const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace utils;
 
-    const auto src = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
-    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_TO);
-    const memory_desc_wrapper &src_d = pd()->src_md();
-    const memory_desc_wrapper &dst_d = pd()->dst_md();
-    const auto sdt_sz = types::data_type_size(src_d.data_type());
-    const auto type_o = dst_d.data_type();
-    const auto ddt_sz = types::data_type_size(type_o);
-    const auto src_typesz_scale
-            = utils::one_of(src_d.data_type(), data_type::s4, data_type::u4)
-            ? 2
-            : 1;
-
     const auto &kernel_conf = pd()->matmul_conf_for_reorder_;
-    const size_t comp_offset_bytes
-            = dst_d.size() - dst_d.additional_buffer_size();
-    const size_t s8s8_comp_size_bytes = kernel_conf.s8s8_compensation_required
-            ? dst_d.additional_buffer_size(
-                    memory_extra_flags::compensation_conv_s8s8)
-            : 0;
-    const size_t zp_comp_offset_bytes
-            = comp_offset_bytes + s8s8_comp_size_bytes;
-    int32_t *cp = kernel_conf.s8s8_compensation_required
-            ? reinterpret_cast<int32_t *>(dst + comp_offset_bytes)
-            : nullptr;
-    int32_t *zp = kernel_conf.has_zero_point_a
-            ? reinterpret_cast<int32_t *>(dst + zp_comp_offset_bytes)
-            : nullptr;
 
-    const int ndims = src_d.ndims();
     if (kernel_conf.N <= 0) {
         parallel_nd(kernel_conf.batch,
                 utils::div_up(kernel_conf.K, kernel_conf.K_blk),
                 utils::div_up(kernel_conf.M, kernel_conf.M_blk),
-                [&](const dim_t batch, const dim_t k_blk, const dim_t m_blk) {
+                [this, ctx](const dim_t batch, const dim_t k_blk,
+                        const dim_t m_blk) {
+                    const auto &kernel_conf = pd()->matmul_conf_for_reorder_;
                     auto ker_exec_ctx
                             = matmul::jit_brgemm_matmul_copy_a_t::ctx_t();
+                    const auto src = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
+                    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_TO);
+                    const memory_desc_wrapper &src_d = pd()->src_md();
+                    const memory_desc_wrapper &dst_d = pd()->dst_md();
+
                     ker_exec_ctx.current_K_blk
                             = kernel_conf.K_blk * (k_blk + 1) > kernel_conf.K
                             ? kernel_conf.K % kernel_conf.K_blk
@@ -434,12 +414,47 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
 
     } else {
 
+        parallel_nd(kernel_conf.batch, div_up(kernel_conf.N, kernel_conf.N_blk),
+                [this, ctx](dim_t batch, dim_t n_blk_idx) {
 #define get_blk_off(md, dt_sz, batch, d0, d1) \
     (ndims == 3 ? (dt_sz) * (md).blk_off((batch), (d0), (d1)) \
                 : (dt_sz) * (md).blk_off((d0), (d1)))
+                    const auto &kernel_conf = pd()->matmul_conf_for_reorder_;
+                    const auto src = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
+                    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_TO);
+                    const memory_desc_wrapper &src_d = pd()->src_md();
+                    const memory_desc_wrapper &dst_d = pd()->dst_md();
 
-        parallel_nd(kernel_conf.batch, div_up(kernel_conf.N, kernel_conf.N_blk),
-                [&](dim_t batch, dim_t n_blk_idx) {
+                    const int ndims = src_d.ndims();
+
+                    const auto sdt_sz
+                            = types::data_type_size(src_d.data_type());
+                    const auto type_o = dst_d.data_type();
+                    const auto ddt_sz = types::data_type_size(type_o);
+                    const auto src_typesz_scale
+                            = utils::one_of(src_d.data_type(), data_type::s4,
+                                      data_type::u4)
+                            ? 2
+                            : 1;
+
+                    const size_t comp_offset_bytes
+                            = dst_d.size() - dst_d.additional_buffer_size();
+                    const size_t s8s8_comp_size_bytes
+                            = kernel_conf.s8s8_compensation_required
+                            ? dst_d.additional_buffer_size(
+                                    memory_extra_flags::compensation_conv_s8s8)
+                            : 0;
+                    const size_t zp_comp_offset_bytes
+                            = comp_offset_bytes + s8s8_comp_size_bytes;
+                    int32_t *cp = kernel_conf.s8s8_compensation_required
+                            ? reinterpret_cast<int32_t *>(
+                                    dst + comp_offset_bytes)
+                            : nullptr;
+                    int32_t *zp = kernel_conf.has_zero_point_a
+                            ? reinterpret_cast<int32_t *>(
+                                    dst + zp_comp_offset_bytes)
+                            : nullptr;
+
                     const auto n = n_blk_idx * kernel_conf.N_blk;
                     const bool is_N_tail
                             = (kernel_conf.N - n) < kernel_conf.N_blk;
@@ -506,9 +521,8 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
                         array_set(&dst[dst_offset + dst_zero_out_offset], 0,
                                 elems_to_zero);
                     }
-                });
-
 #undef get_blk_off
+                });
     }
     return status::success;
 }

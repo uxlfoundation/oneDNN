@@ -53,6 +53,10 @@ endif()
 # the macros to avoid code duplication and ensure consistency.
 macro(platform_unix_and_mingw_common_ccxx_flags var)
     append(${var} "-Wall -Wno-unknown-pragmas")
+    # TODO: remove Aarch64 limitation when ACL hits are resolved.
+    if(NOT DNNL_TARGET_ARCH STREQUAL "AARCH64")
+        append(${var} "-Wundef")
+    endif()
     append_if(DNNL_WERROR ${var} "-Werror")
     append(${var} "-fvisibility=internal")
 endmacro()

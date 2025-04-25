@@ -251,14 +251,11 @@ void transpose_dt(const conv_gemm_conf_t &jcp, const T *__restrict im,
             for (dim_t icb = 0; icb < nb_ic; icb++) {
                 const T *__restrict im_icb = im_w + icb * ic_block;
                 T *__restrict imtr_icb = imtr_w + icb * ic_block * ic_stride;
-                PRAGMA_OMP_SIMD()
-                for (dim_t ic = 0; ic < ic_block; ic++) {
+                for (dim_t ic = 0; ic < ic_block; ic++)
                     imtr_icb[ic * ic_stride] = im_icb[ic] + shift;
-                }
             }
-            for (dim_t ic = ic_blocked; ic < jcp.ic; ic++) {
+            for (dim_t ic = ic_blocked; ic < jcp.ic; ic++)
                 imtr_w[ic * ic_stride] = im_w[ic] + shift;
-            }
         }
     });
 }
@@ -747,12 +744,9 @@ void col2im_dt(const conv_gemm_conf_t &jcp, const orig_T *__restrict _col,
 
         for_(dim_t id = d_s; id < d_e; ++id)
         for_(dim_t ih = h_s; ih < h_e; ++ih)
-        for (dim_t iw = w_s; iw < w_e; ++iw) {
-            PRAGMA_OMP_SIMD()
-            for (dim_t ic = 0; ic < jcp.ic; ++ic) {
-                im[((id * jcp.ih + ih) * jcp.iw + iw) * jcp.ic + ic] = 0;
-            }
-        }
+        for_(dim_t iw = w_s; iw < w_e; ++iw)
+        for (dim_t ic = 0; ic < jcp.ic; ++ic)
+            im[((id * jcp.ih + ih) * jcp.iw + iw) * jcp.ic + ic] = 0;
 
         // TODO: reduce region: [0.. oh] --> [h_s * sh .. h_e * sh]
         for_(dim_t od = 0; od < jcp.od; ++od)
@@ -781,10 +775,8 @@ void col2im_dt(const conv_gemm_conf_t &jcp, const orig_T *__restrict _col,
                             * jcp.ic;
                     const size_t im_idx
                             = ((id * jcp.ih + ih) * jcp.iw + iw) * jcp.ic;
-                    PRAGMA_OMP_SIMD()
-                    for (dim_t ic = 0; ic < jcp.ic; ++ic) {
+                    for (dim_t ic = 0; ic < jcp.ic; ++ic)
                         im[im_idx + ic] += col[col_idx + ic];
-                    }
                 }
             }
         }
@@ -922,7 +914,6 @@ void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
         const float *__restrict col_icb = col + ic * col_step;
 
         if (spatial_step == 0) {
-            PRAGMA_OMP_SIMD()
             for (dim_t is = 0; is < iS; ++is)
                 img_ithr[is] = 0.;
         }
@@ -963,7 +954,6 @@ void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
     auto ker = [&](dim_t ic) {
         float *__restrict im_ = im + ic * im_step;
         const float *__restrict col_ = col + ic * col_step;
-        PRAGMA_OMP_SIMD()
         for (dim_t is = 0; is < iS; ++is)
             im_[is] = 0.;
 
@@ -2195,15 +2185,11 @@ void bwd_weights_reduction_par_nspc(int ithr, int nthr, size_t g_start,
                     = diff_weights + (w * jcp.ngroups + g) * jcp.oc;
             const float *__restrict ws_ptr = ws_base + w * jcp.oc;
             if (tidx == 0) {
-                PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (auto oc = 0; oc < jcp.oc; ++oc)
                     dwei_ptr[oc] = ws_ptr[oc];
-                }
             } else {
-                PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (auto oc = 0; oc < jcp.oc; ++oc)
                     dwei_ptr[oc] += ws_ptr[oc];
-                }
             }
         }
     }

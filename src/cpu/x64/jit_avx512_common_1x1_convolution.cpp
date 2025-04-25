@@ -696,10 +696,8 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
                 const int zero_work
                         = (nb_ic * jcp.ic_block - jcp.ic_without_padding)
                         * jcp.oc_block;
-                PRAGMA_OMP_SIMD()
-                for (int o = 0; o < zero_work; ++o) {
+                for (int o = 0; o < zero_work; ++o)
                     z_wei[o] = 0;
-                }
             }
         }
     };
@@ -936,7 +934,6 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
                         d_bias[o] = 0.;
 
                 for (int os = 0; os < jcp.os; ++os) {
-                    PRAGMA_OMP_SIMD()
                     for (int o = 0; o < max_oc; ++o)
                         d_bias[o] += d_dst[o];
                     d_dst += sp_shift;

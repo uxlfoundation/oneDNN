@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -64,7 +64,6 @@ void cvt_float_to_bfloat16(bfloat16_t *out, const float *inp, size_t nelems) {
     }
 #endif
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = inp[i];
 }
@@ -79,7 +78,6 @@ void cvt_bfloat16_to_float(float *out, const bfloat16_t *inp, size_t nelems) {
     }
 #endif
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = inp[i];
 }
@@ -100,7 +98,6 @@ void add_floats_and_cvt_to_bfloat16(
     }
 #endif
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = inp0[i] + inp1[i];
 }

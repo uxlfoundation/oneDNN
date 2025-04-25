@@ -135,8 +135,6 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
         float *const __restrict mean_ptr = &mean[N_start];
         float *const __restrict var_ptr = &variance[N_start];
         const size_t block_size = N_end - N_start;
-        // Note: manual unrolling for scale and shift due to clang issue.
-        //       see: CLANG_WA_01_SAFE_TO_USE_OMP_SIMD
         for (size_t offset = 0; offset < block_size; offset++) {
             float v_mean = 0, v_variance = 0;
             if (calculate_stats) {
@@ -163,7 +161,6 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
 
             const float inv_sqrtvar = 1.f / sqrtf(v_variance + eps);
             if (use_scale && use_shift) {
-                PRAGMA_OMP_SIMD()
                 for (dim_t c = 0; c < C; ++c) {
                     const float sm = scale[c] * inv_sqrtvar;
                     const float sv = shift[c];
@@ -180,7 +177,6 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     io::store_float_value(dst_dt, d, dst_ptr, off);
                 }
             } else if (use_scale) {
-                PRAGMA_OMP_SIMD()
                 for (dim_t c = 0; c < C; ++c) {
                     const float sm = scale[c] * inv_sqrtvar;
                     const size_t off = c + C * offset;
@@ -196,7 +192,6 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     io::store_float_value(dst_dt, d, dst_ptr, off);
                 }
             } else if (use_shift) {
-                PRAGMA_OMP_SIMD()
                 for (dim_t c = 0; c < C; ++c) {
                     const float sm = 1.f * inv_sqrtvar;
                     const float sv = shift[c];
@@ -213,7 +208,6 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     io::store_float_value(dst_dt, d, dst_ptr, off);
                 }
             } else {
-                PRAGMA_OMP_SIMD()
                 for (dim_t c = 0; c < C; ++c) {
                     const float sm = 1.f * inv_sqrtvar;
                     const size_t off = c + C * offset;
@@ -352,7 +346,6 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
         float *my_diff_gamma = reduce + C * ithr;
         float *my_diff_beta = reduce + C * nthr + C * ithr;
 
-        PRAGMA_OMP_SIMD()
         for (dim_t c = 0; c < C; c++) {
             my_diff_gamma[c] = 0.;
             my_diff_beta[c] = 0.;
@@ -360,8 +353,6 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
 
         for (size_t offset = 0; offset < block_size; offset++) {
             inv_sqrtvar_ptr[offset] = 1.f / sqrtf(var_ptr[offset] + eps);
-
-            PRAGMA_OMP_SIMD()
             for (dim_t c = 0; c < C; c++) {
                 const size_t off = c + C * offset;
                 float s = io::load_float_value(src_dt, src_ptr, off);
@@ -398,8 +389,6 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
         const float *mean_ptr = &mean[N_start];
         float *const inv_sqrtvar_ptr = &inv_sqrtvar[N_start];
 
-        // Note: manual unrolling for scale and shift due to clang issue.
-        //       see: CLANG_WA_01_SAFE_TO_USE_OMP_SIMD
         float dd_gamma, dd_gamma_x;
         for (size_t offset = 0; offset < block_size; offset++) {
             // reduce gamma
@@ -431,7 +420,6 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
 
             // calculate diff_dst
             if (use_scale) {
-                PRAGMA_OMP_SIMD()
                 for (dim_t c = 0; c < C; c++) {
                     const size_t off = c + C * offset;
                     float dd = io::load_float_value(
@@ -447,7 +435,6 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
                     io::store_float_value(diff_src_dt, ds, diff_src_ptr, off);
                 }
             } else {
-                PRAGMA_OMP_SIMD()
                 for (dim_t c = 0; c < C; c++) {
                     const size_t off = c + C * offset;
                     float dd = io::load_float_value(

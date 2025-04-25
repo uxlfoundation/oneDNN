@@ -498,7 +498,6 @@ void jit_avx2_convolution_bwd_weights_t::execute_backward_weights(
                         ocb * jcp.oc_block, jcp.oc, jcp.oc_block);
 
                 for (int dhw = 0; dhw < jcp.od * jcp.oh * jcp.ow; ++dhw) {
-                    PRAGMA_OMP_SIMD()
                     for (int o = 0; o < max_oc; ++o)
                         d_bias[o] += d_dst[o];
                     d_dst += is_ddst_layout_nxc ? jcp.ngroups * jcp.oc

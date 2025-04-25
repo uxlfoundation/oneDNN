@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -77,16 +77,11 @@ status_t simple_sum_t<src_data_type, dst_data_type>::execute(
     };
 
     auto sum_block = [&](dim_t start, dim_t end, int ithr) {
-        PRAGMA_OMP_SIMD()
-        for (dim_t e = start; e < end; e++) {
+        for (dim_t e = start; e < end; e++)
             output[e] = dst_data_t(scales[0] * input_ptrs[0][e]);
-        }
-        for (int a = 1; a < num_arrs; a++) {
-            PRAGMA_OMP_SIMD()
-            for (dim_t e = start; e < end; e++) {
-                output[e] += dst_data_t(scales[a] * input_ptrs[a][e]);
-            }
-        }
+        for_(int a = 1; a < num_arrs; a++)
+        for (dim_t e = start; e < end; e++)
+            output[e] += dst_data_t(scales[a] * input_ptrs[a][e]);
     };
 
     const int max_nthr = pd()->nthr_;

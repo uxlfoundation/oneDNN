@@ -37,10 +37,8 @@ namespace {
 void copy_A(bool isTransA, dim_t K, const bfloat16_t *A, const dim_t lda,
         bfloat16_t *ws) {
     for (dim_t k = 0; k < K; k++) {
-        PRAGMA_OMP_SIMD()
-        for (dim_t i = 0; i < unroll_factor<bfloat16_t>::m; i++) {
+        for (dim_t i = 0; i < unroll_factor<bfloat16_t>::m; i++)
             ws[i] = isTransA ? A[i * lda + k] : A[i + k * lda];
-        }
         ws += unroll_factor<bfloat16_t>::m;
     }
 }
@@ -54,7 +52,6 @@ void kernel_mxn(dim_t K, const bfloat16_t *A, const dim_t lda,
     for (dim_t k = 0; k < K; k++) {
         for (dim_t j = 0; j < unroll_factor<bfloat16_t>::n; j++) {
             bfloat16_t b = isTransB ? B[j + k * ldb] : B[k + j * ldb];
-            PRAGMA_OMP_SIMD()
             for (dim_t i = 0; i < unroll_factor<bfloat16_t>::m; i++) {
                 bfloat16_t a = isTransA ? A[i * lda + k] : A[i + lda * k];
                 c[i + unroll_factor<bfloat16_t>::m * j] += a * b;
@@ -62,7 +59,6 @@ void kernel_mxn(dim_t K, const bfloat16_t *A, const dim_t lda,
         }
     }
     for (dim_t j = 0; j < unroll_factor<bfloat16_t>::n; j++) {
-        PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < unroll_factor<bfloat16_t>::m; i++) {
             C[i + j * ldc] = (beta == 0.f)
                     ? alpha * c[i + unroll_factor<bfloat16_t>::m * j]

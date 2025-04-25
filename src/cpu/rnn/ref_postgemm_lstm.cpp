@@ -94,7 +94,6 @@ void lstm_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src_dt, T4 to_float,
 
     const auto postgemm_call = [&](int i) {
         const int n_elem = block_step / (int)sizeof(scratch_data_t);
-        PRAGMA_OMP_SIMD()
         for (int j = 0; j < n_elem; j++) {
             float gate_i_arg
                     = to_float(scratch_gates(i, 0, j), 0, j) + bias(0, j);
@@ -302,7 +301,6 @@ void lstm_bwd_postgemm_template(T1 func1, T2 to_src_dt, const float *cscale,
             rnn, diff_dst_iter_c_);
 
     parallel_nd(rnn.mb, [&](dim_t i) {
-        PRAGMA_OMP_SIMD()
         for (int j = 0; j < rnn.dhc; j++) {
             const float Ct = dst_iter_c(i, j);
             /// @todo save it in the workspace in fwd pass or recompute it to

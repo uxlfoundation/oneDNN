@@ -613,7 +613,6 @@ void jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16>::execute_reduction(
 
             for (int g = 0; g < nb_ch; ++g) {
                 /* Reduction on Bias */
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     size_t bias_offset = g * ch_block + g_block;
                     diff_bias[bias_offset]
@@ -676,7 +675,6 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
         const int nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
         for (int g = 0; g < nb_ch; ++g) {
             if (jcp.with_bias) {
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t bias_offset
                             = static_cast<size_t>(g * ch_block + g_block);
@@ -688,7 +686,6 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
             for_(int kh = 0; kh < jcp.kh; ++kh)
             for (int kw = 0; kw < jcp.kw; ++kw) {
                 const size_t wei_sp_offset = (g * jcp.kh + kh) * jcp.kw + kw;
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t wei_offset = static_cast<size_t>(
                             wei_sp_offset * ch_block + g_block);
@@ -758,7 +755,6 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             const int bias_ch_tail = jcp.ch_tail;
             const int nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
             for (int g = 0; g < nb_ch; ++g) {
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t bias_offset
                             = static_cast<size_t>(g * ch_block + g_block);
@@ -846,7 +842,6 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                 const bool compute_ch_tail
                         = (NB_CH == jcp.nb_ch - 1) && bias_ch_tail > 0;
                 if (!compute_ch_tail) {
-                    PRAGMA_OMP_SIMD()
                     for (int g_block = 0; g_block < ch_block; ++g_block) {
                         const size_t bias_offset
                                 = static_cast<size_t>(nb_ch_offset + g_block);
@@ -915,7 +910,6 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction_nxc(
         const int nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
         for (int g = 0; g < nb_ch; ++g) {
             if (compute_bias) {
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t bias_offset
                             = static_cast<size_t>(g * ch_block + g_block);
@@ -928,7 +922,6 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction_nxc(
             for (int kw = 0; kw < jcp.kw; ++kw) {
                 const size_t wei_sp_offset
                         = static_cast<size_t>((g * jcp.kh + kh) * jcp.kw + kw);
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t wei_offset = static_cast<size_t>(
                             wei_sp_offset * ch_block + g_block);

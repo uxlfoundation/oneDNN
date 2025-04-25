@@ -98,7 +98,6 @@ struct cpu_reorder_pd_t : public reorder_pd_t {
                     key_reorder_precomputed_dst_scales);
             if (!loc_scales) return nullptr;
 
-            PRAGMA_OMP_SIMD()
             for (size_t c = 0; c < count; c++)
                 loc_scales[c] = 1.f / dst_scales[c];
 

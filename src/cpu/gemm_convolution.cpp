@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -105,7 +105,6 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
     if (jcp.im2col_sz && is_problem_3d) {
         // jit_gemm_convolution_utils::im2col_dt_3d() requires external
         // data initialization by zeroes
-        PRAGMA_OMP_SIMD()
         for (ptrdiff_t i = 0; i < jcp.im2col_sz; i++)
             col[i] = 0.0f;
     }
@@ -170,12 +169,9 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
                                 = bia_base ? bia_base + g * jcp.oc : nullptr;
                         data_t *__restrict dst_arr = dst + os * dst_os_stride;
 
-                        if (jcp.with_bias) {
-                            PRAGMA_OMP_SIMD()
-                            for (size_t oc = start_oc; oc <= end_oc; oc++) {
+                        if (jcp.with_bias)
+                            for (size_t oc = start_oc; oc <= end_oc; oc++)
                                 dst_arr[oc] += bia_arr[oc];
-                            }
-                        }
 
                         if (jcp.with_eltwise || jcp.with_binary) {
                             bool fast_relu_done = false;
@@ -187,7 +183,6 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
                                 if (eltwise.alg == alg_kind::eltwise_relu) {
                                     const auto alpha = eltwise.alpha;
                                     const auto scale = eltwise.scale;
-                                    PRAGMA_OMP_SIMD()
                                     for (size_t oc = start_oc; oc <= end_oc;
                                             oc++) {
                                         if (dst_arr[oc] < 0)
@@ -324,7 +319,6 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                                 data_t b = jcp.with_bias ? bias[oc_start + oc]
                                                          : 0;
                                 data_t *d_ = _dst + oc * M;
-                                PRAGMA_OMP_SIMD()
                                 for (int oS = 0; oS < m; ++oS) {
                                     d_[oS] += b;
                                     if (d_[oS] < 0) d_[oS] *= eltwise.alpha;
@@ -344,9 +338,9 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                             args.dst_md = pd()->dst_md();
                             args.l_offset = d_ - dst;
 
-                            PRAGMA_OMP_SIMD()
-                            for (int oS = 0; oS < m; ++oS) {
+                            for (int oS = 0; oS < m; ++oS)
                                 d_[oS] += b;
+                            for (int oS = 0; oS < m; ++oS) {
                                 post_ops_->execute(d_[oS], args);
                                 args.l_offset++;
                             }
@@ -357,10 +351,8 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                     parallel_nd(step.oc, [&](dim_t oc) {
                         data_t b = bias[oc_start + oc];
                         data_t *d_ = _dst + oc * M;
-                        PRAGMA_OMP_SIMD()
-                        for (int oS = 0; oS < m; ++oS) {
+                        for (int oS = 0; oS < m; ++oS)
                             d_[oS] += b;
-                        }
                     });
                 }
             }
@@ -512,10 +504,8 @@ status_t gemm_convolution_bwd_data_t::execute_backward_data_thr_nspc(
                 data_t *__restrict diff_src_arr
                         = diff_src + is * diff_src_os_stride;
                 const data_t *__restrict acc_arr = acc + is * jcp.ic;
-                PRAGMA_OMP_SIMD()
-                for (int ic = 0; ic < jcp.ic; ic++) {
+                for (int ic = 0; ic < jcp.ic; ic++)
                     diff_src_arr[ic] = acc_arr[ic];
-                }
             });
         }
         nd_iterator_step(n, jcp.mb, g, jcp.ngroups);
@@ -660,7 +650,6 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
             if (is_problem_3d) {
                 // jit_gemm_convolution_utils::im2col_3d() requires external
                 // data initialization by zeroes
-                PRAGMA_OMP_SIMD()
                 for (ptrdiff_t i = 0; i < jcp.im2col_sz; i++)
                     _col[i] = 0.0f;
             }
@@ -768,9 +757,8 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
                 const int width_stride = jcp.ngroups * jcp.oc;
 
                 PRAGMA_OMP_SIMD(reduction(+ : db))
-                for (int ow = 0; ow < jcp.ow; ++ow) {
+                for (int ow = 0; ow < jcp.ow; ++ow)
                     db += diff_dst_arr[ow * width_stride];
-                }
             }
             diff_bias[g * jcp.oc + oc] = db;
         });
@@ -930,9 +918,8 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_ncsp(
                 for_(dim_t od = 0; od < jcp.od; ++od)
                 for (dim_t oh = 0; oh < jcp.oh; ++oh) {
                     PRAGMA_OMP_SIMD(reduction(+ : db))
-                    for (dim_t ow = 0; ow < jcp.ow; ++ow) {
+                    for (dim_t ow = 0; ow < jcp.ow; ++ow)
                         db += diff_dst[offset + ow];
-                    }
                     offset += jcp.ow;
                 }
             }

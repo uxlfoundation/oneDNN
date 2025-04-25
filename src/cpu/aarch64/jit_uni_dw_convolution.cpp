@@ -441,7 +441,6 @@ void jit_uni_dw_convolution_bwd_weights_t<sve_256,
 
             for (int g = 0; g < jcp.nb_ch; ++g) {
                 /* Reduction on Bias */
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     size_t bias_offset = g * ch_block + g_block;
                     diff_bias[bias_offset]
@@ -509,7 +508,6 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         for (int g = 0; g < jcp.nb_ch; ++g) {
             /* Reduction on Bias */
             if (jcp.with_bias) {
-                PRAGMA_OMP_SIMD()
                 for (int g_block = 0; g_block < ch_block; ++g_block) {
                     size_t bias_offset = g * ch_block + g_block;
                     diff_bias[bias_offset]

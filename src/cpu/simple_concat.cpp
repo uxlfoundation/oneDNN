@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -83,7 +83,6 @@ status_t simple_concat_t<data_type>::execute(const exec_ctx_t &ctx) const {
                 const data_t *i = iptrs[a] + start;
                 data_t *o = optrs[a] + start;
 
-                PRAGMA_OMP_SIMD()
                 for (dim_t e = 0; e < end - start; ++e)
                     o[e] = i[e];
             }
@@ -144,7 +143,6 @@ status_t simple_concat_t<data_type>::execute(const exec_ctx_t &ctx) const {
                         ++ptro;
                         ++ptri;
                     }
-                    PRAGMA_OMP_SIMD()
                     for (size_t e = 0; e < main_part; ++e) {
                         *(reinterpret_cast<uint32_t *>(ptro))
                                 = *(reinterpret_cast<const uint32_t *>(ptri));
@@ -160,7 +158,6 @@ status_t simple_concat_t<data_type>::execute(const exec_ctx_t &ctx) const {
                     std::memcpy(o, i, nelems_to_copy[a] * sizeof(data_t));
                 }
 #else
-                PRAGMA_OMP_SIMD()
                 for (dim_t e = 0; e < nelems_to_copy[a]; ++e) o[e] = i[e];
 #endif
             });

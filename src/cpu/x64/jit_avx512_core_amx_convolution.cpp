@@ -212,7 +212,6 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                 ? &zp_flags_[ithr * oc_chunks * ngroups]
                 : nullptr;
         if (zp_pbuff_parallel_block) {
-            PRAGMA_OMP_SIMD()
             for (int oc = 0; oc < oc_chunks * ngroups; oc++)
                 zp_flags[oc] = true;
         }
@@ -584,7 +583,6 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                 ? &zp_flags_[ithr * oc_chunks * ngroups]
                 : nullptr;
         if (zp_pbuff_parallel_block) {
-            PRAGMA_OMP_SIMD()
             for (int oc = 0; oc < oc_chunks * ngroups; oc++)
                 zp_flags[oc] = true;
         }

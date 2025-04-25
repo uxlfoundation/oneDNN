@@ -1286,7 +1286,6 @@ void copy_init_layer_fwd_template(const rnn_conf_t &rnn,
                 cvt_float_to_bfloat16(
                         (bfloat16_t *)ws_l2r_ptr, (const float *)xxt, rnn.slc);
             } else {
-                PRAGMA_OMP_SIMD()
                 for (int c = 0; c < rnn.slc; c++)
                     ws_l2r_ptr[c] = xxt[c];
             }
@@ -1296,7 +1295,6 @@ void copy_init_layer_fwd_template(const rnn_conf_t &rnn,
                 cvt_float_to_bfloat16(
                         (bfloat16_t *)ws_r2l_ptr, (const float *)xxt, rnn.slc);
             } else {
-                PRAGMA_OMP_SIMD()
                 for (int c = 0; c < rnn.slc; c++)
                     ws_r2l_ptr[c] = xxt[c];
             }
@@ -1445,7 +1443,6 @@ void copy_init_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
                     const auto *ss
                             = &src_iter_[src_iter_d.blk_off(lay, dir, b, 0)];
                     auto *dd = &ws_states_iter(lay + 1, dir, 0, b, 0);
-                    PRAGMA_OMP_SIMD()
                     for (int s = 0; s < rnn.sic; s++)
                         dd[s] = maybe_q(ss[s]);
                 });
@@ -1574,11 +1571,9 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 
     const auto copy_vec = [&](dst_layer_dt *dd, const src_data_t *ss) {
         if (dequantize_at_copy) {
-            PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dlc; s++)
                 dd[s] = (dst_layer_dt)(((float)ss[s] - shift) / scale);
         } else {
-            PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dlc; s++)
                 dd[s] = (dst_layer_dt)ss[s];
         }
@@ -1586,7 +1581,6 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 
     const auto acc_vec = [&](dst_layer_dt *dd, const src_data_t *ss) {
         if (dequantize) {
-            PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dlc; s++) {
                 float val = (float)ss[s] + dd[s];
                 val = q10n::qz_a1b0_t<float, src_data_t>()(val);
@@ -1594,12 +1588,10 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
             }
         } else if (rnn_u8u8_case
                 || rnn_s8s8_case) { // instead of checking for rnn.is_int8()
-            PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dlc; s++)
                 dd[s] = q10n::saturate<dst_layer_dt, int16_t>(
                         (int16_t)dd[s] + (int16_t)ss[s]);
         } else {
-            PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dlc; s++)
                 dd[s] += (dst_layer_dt)ss[s];
         }
@@ -1736,11 +1728,9 @@ void copy_res_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
             && pd->dst_md(1)->data_type == data_type::f32 && rnn.is_int8_conf();
     const auto copy_vec = [&](dst_iter_dt *dd, const src_data_t *ss) {
         if (dequantize) {
-            PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dic; s++)
                 dd[s] = (dst_iter_dt)(((float)ss[s] - data_shift) / data_scale);
         } else {
-            PRAGMA_OMP_SIMD()
             for (int s = 0; s < rnn.dic; s++)
                 dd[s] = (dst_iter_dt)ss[s];
         }
@@ -1849,7 +1839,6 @@ rnn_bias_prepare_sig_templ(copy_bias_to_scratch) {
 
     parallel_nd(static_cast<dim_t>(rnn.n_layer) * rnn.n_dir, [&](dim_t i) {
         const int off = i * rnn.n_bias * rnn.dhc;
-        PRAGMA_OMP_SIMD()
         for (int j = 0; j < rnn.n_bias * rnn.dhc; j++)
             scratch_bias_[off + j] = b_[off + j];
     });

@@ -748,10 +748,8 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
                 const int zero_work
                         = (jcp.nb_bcast * jcp.ic_block - jcp.ic_without_padding)
                         * jcp.oc_block;
-                PRAGMA_OMP_SIMD()
-                for (int o = 0; o < zero_work; ++o) {
+                for (int o = 0; o < zero_work; ++o)
                     z_wei[o] = 0;
-                }
             }
         }
     };

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -143,24 +143,19 @@ struct gemm_info_t {
 
         // Calculate op(A) row sum.
         if (!is_trans) {
-            PRAGMA_OMP_SIMD()
             for (dim_t i = 0; i < m; i++)
                 a_row_sum[i] = 0;
 
-            for (dim_t j = 0; j < k; j++) {
-                PRAGMA_OMP_SIMD()
-                for (dim_t i = 0; i < m; i++) {
-                    a_row_sum[i] += src[i + j * ld];
-                }
-            }
+            for_(dim_t j = 0; j < k; j++)
+            for (dim_t i = 0; i < m; i++)
+                a_row_sum[i] += src[i + j * ld];
         } else {
             for (dim_t i = 0; i < m; i++) {
                 c_t acc = 0;
 
                 PRAGMA_OMP_SIMD(reduction(+ : acc))
-                for (dim_t j = 0; j < k; j++) {
+                for (dim_t j = 0; j < k; j++)
                     acc += src[j + i * ld];
-                }
 
                 a_row_sum[i] = acc;
             }
@@ -191,15 +186,12 @@ struct gemm_info_t {
                 b_col_sum[j] = acc;
             }
         } else {
-            PRAGMA_OMP_SIMD()
             for (dim_t j = 0; j < n; j++)
                 b_col_sum[j] = 0;
 
-            for (dim_t i = 0; i < k; i++) {
-                PRAGMA_OMP_SIMD()
-                for (dim_t j = 0; j < n; j++)
-                    b_col_sum[j] += src[j + i * ld];
-            }
+            for_(dim_t i = 0; i < k; i++)
+            for (dim_t j = 0; j < n; j++)
+                b_col_sum[j] += src[j + i * ld];
         }
     }
 

@@ -268,7 +268,6 @@ static void sum_matrices(dim_t m, dim_t n, mat_t *__restrict dst, dim_t ld_dst,
         mat_t *__restrict src, dim_t ld_src) {
 
     for (dim_t j = 0; j < n; j++) {
-        PRAGMA_OMP_SIMD()
         for (int i = 0; i < m; i++)
             dst[i + j * ld_dst] += src[i + j * ld_src];
     }

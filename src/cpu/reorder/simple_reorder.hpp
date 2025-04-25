@@ -1262,7 +1262,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         auto ker_out = [&](const data_t<type_i> *inp, data_t<type_o> *out,
                                const float *src_scales, const float *dst_scales,
                                const dim_t g_block) {
-            PRAGMA_OMP_SIMD()
             for (dim_t g = 0; g < g_block; g++) {
                 const auto i_off = g * input_d.blocking_desc().strides[0];
                 const float src_scale
@@ -1278,17 +1277,13 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
          * compiler-generated bug which results in seg-fault. */
         auto ker_s8 = [&](const data_t<type_o> *out, int32_t *cp,
                               const dim_t g_block) {
-            PRAGMA_OMP_SIMD()
-            for (dim_t g = 0; g < g_block; g++) {
+            for (dim_t g = 0; g < g_block; g++)
                 cp[g * OC] -= 128 * (int32_t)(out[g]);
-            }
         };
         auto ker_zp = [&](const data_t<type_o> *out, int32_t *zp,
                               const dim_t g_block) {
-            PRAGMA_OMP_SIMD()
-            for (dim_t g = 0; g < g_block; g++) {
+            for (dim_t g = 0; g < g_block; g++)
                 zp[g * OC] -= (int32_t)(out[g]);
-            }
         };
 
         size_t offset = output_d.size() - output_d.additional_buffer_size();
@@ -1302,7 +1297,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 : nullptr;
 
         parallel_nd((Gp / blksize) * OC, [&](dim_t ib) {
-            PRAGMA_OMP_SIMD()
             for (dim_t i = 0; i < blksize; i++) {
                 if (req_comp) cp[ib * blksize + i] = 0;
                 if (has_asymmetric_comp) zp[ib * blksize + i] = 0;
@@ -1331,11 +1325,9 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     if (req_comp) ker_s8(out, &cp[offset], g_block);
                     if (has_asymmetric_comp) ker_zp(out, &zp[offset], g_block);
 
-                    if (zero_padding_needed) {
-                        PRAGMA_OMP_SIMD()
+                    if (zero_padding_needed)
                         for (int off = g_block; off < blksize; off++)
                             out[off] = 0;
-                    }
                 }
             }
         });
@@ -1635,10 +1627,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                                 : blksize_i;
                         const auto pad_start = block_i + o_off;
                         const auto pad_end = pad_size + o_off;
-                        PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; i++) {
+                        for (int i = pad_start; i < pad_end; i++)
                             o[i] = 0;
-                        }
                     }
                 }
             } else {
@@ -1660,10 +1650,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                                 : blksize_i;
                         const auto pad_start = block_i + o_off;
                         const auto pad_end = pad_size + o_off;
-                        PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; i++) {
+                        for (int i = pad_start; i < pad_end; i++)
                             o[i] = 0;
-                        }
                     }
                 }
             }
@@ -1785,10 +1773,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         // zero padding
                         const auto pad_start = block + l * l_blk_stride;
                         const auto pad_end = blksize + l * l_blk_stride;
-                        PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; ++i) {
+                        for (int i = pad_start; i < pad_end; ++i)
                             o[i] = 0;
-                        }
                     }
                 }
             } else {
@@ -1806,10 +1792,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         // zero padding
                         const auto pad_start = block + l * l_blk_stride;
                         const auto pad_end = blksize + l * l_blk_stride;
-                        PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; ++i) {
+                        for (int i = pad_start; i < pad_end; ++i)
                             o[i] = 0;
-                        }
                     }
                 }
             }
@@ -1968,19 +1952,15 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     }
                     if (order_keep && block_h1 < blksize_1) {
                         // zero padding
-                        PRAGMA_OMP_SIMD()
-                        for (int h1 = block_h1; h1 < blksize_1; h1++) {
+                        for (int h1 = block_h1; h1 < blksize_1; h1++)
                             o[blk_off(h0, h1)] = 0;
-                        }
                     }
                 }
                 if (order_keep && block_h0 < blksize_0) {
                     // zero padding
                     for (int h0 = block_h0; h0 < blksize_0; h0++) {
-                        PRAGMA_OMP_SIMD()
-                        for (int h1 = 0; h1 < blksize_1; ++h1) {
+                        for (int h1 = 0; h1 < blksize_1; ++h1)
                             o[blk_off(h0, h1)] = 0;
-                        }
                     }
                 }
             } else {
@@ -1997,19 +1977,15 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     }
                     if (order_keep && block_h1 < blksize_1) {
                         // zero padding
-                        PRAGMA_OMP_SIMD()
-                        for (int h1 = block_h1; h1 < blksize_1; h1++) {
+                        for (int h1 = block_h1; h1 < blksize_1; h1++)
                             o[blk_off(h0, h1)] = 0;
-                        }
                     }
                 }
                 if (order_keep && block_h0 < blksize_0) {
                     // zero padding
                     for (int h0 = block_h0; h0 < blksize_0; h0++) {
-                        PRAGMA_OMP_SIMD()
-                        for (int h1 = 0; h1 < blksize_1; ++h1) {
+                        for (int h1 = 0; h1 < blksize_1; ++h1)
                             o[blk_off(h0, h1)] = 0;
-                        }
                     }
                 }
             }
@@ -2096,26 +2072,22 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             end = end * block_size;
 
             if (alpha == 1.0 && beta == 0.0) {
-                PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
                     output[e]
                             = q10n::qz_a1b0_t<data_t<type_i>, data_t<type_o>>()(
                                     input[e]);
                 }
             } else if (alpha == 1.0) {
-                PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
                     output[e] = q10n::qz_a1_t<data_t<type_i>, data_t<type_o>>()(
                             input[e], output[e], beta);
                 }
             } else if (beta == 0.0) {
-                PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
                     output[e] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                             input[e], alpha);
                 }
             } else {
-                PRAGMA_OMP_SIMD()
                 for (size_t e = start; e < end; ++e) {
                     output[e] = q10n::qz_t<data_t<type_i>, data_t<type_o>>()(
                             input[e], output[e], alpha, beta);
@@ -2124,25 +2096,21 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
             if (rem_elems != 0 && ithr == nthr - 1) {
                 if (alpha == 1.0 && beta == 0.0) {
-                    PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
                         output[e] = q10n::qz_a1b0_t<data_t<type_i>,
                                 data_t<type_o>>()(input[e]);
                     }
                 } else if (alpha == 1.0) {
-                    PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
                         output[e] = q10n::qz_a1_t<data_t<type_i>,
                                 data_t<type_o>>()(input[e], output[e], beta);
                     }
                 } else if (beta == 0.0) {
-                    PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
                         output[e] = q10n::qz_b0_t<data_t<type_i>,
                                 data_t<type_o>>()(input[e], alpha);
                     }
                 } else {
-                    PRAGMA_OMP_SIMD()
                     for (size_t e = nelems - rem_elems; e < nelems; ++e) {
                         output[e]
                                 = q10n::qz_t<data_t<type_i>, data_t<type_o>>()(
@@ -2217,10 +2185,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 parallel(0, [&](const int ithr, const int nthr) {
                     dim_t start {0}, end {0};
                     balance211(work_amount_zero, nthr, ithr, start, end);
-                    PRAGMA_OMP_SIMD()
-                    for (dim_t idx = start; idx < end; idx++) {
+                    for (dim_t idx = start; idx < end; idx++)
                         wspace[idx] = 0;
-                    }
                 });
             }
 
@@ -2228,7 +2194,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             parallel(0, [&](const int ithr, const int nthr) {
                 dim_t start {0}, end {0};
                 balance211(work_amount, nthr, ithr, start, end);
-                PRAGMA_OMP_SIMD()
                 for (dim_t idx = start; idx < end; idx++) {
                     const auto i_off = input_d.off_l(idx);
                     const auto o_off = output_d.off_l(idx);
@@ -2249,7 +2214,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         parallel(0, [&](const int ithr, const int nthr) {
             dim_t start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
-            PRAGMA_OMP_SIMD()
             for (dim_t j = start; j < end; j++) {
                 const auto idx = 2 * j;
 
@@ -2342,7 +2306,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             auto u8_input = reinterpret_cast<const uint8_t *>(input);
             dim_t start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
-            PRAGMA_OMP_SIMD()
             for (dim_t j = start; j < end; j++) {
                 const auto idx = 2 * j;
                 const auto i_off = need_second_pass ? idx : input_d.off_l(idx);
@@ -2473,7 +2436,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 while (start < end) {
                     dim_t work_rem = end - start;
                     dim_t dim1_e = std::min(dim1_s + work_rem, nelems_no_d0);
-                    PRAGMA_OMP_SIMD()
                     for (dim_t e = dim1_s; e < dim1_e; ++e) {
                         output[os * n + e]
                                 = _qz_a1b0<type_i, type_o>()(input[is * n + e]);
@@ -2490,7 +2452,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 while (start < end) {
                     dim_t work_rem = end - start;
                     dim_t dim1_e = std::min(dim1_s + work_rem, nelems_no_d0);
-                    PRAGMA_OMP_SIMD()
                     for (dim_t e = dim1_s; e < dim1_e; ++e) {
                         output[os * n + e]
                                 = _qz<type_i, type_o>()(input[is * n + e],

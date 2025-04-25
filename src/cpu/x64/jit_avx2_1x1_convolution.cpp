@@ -676,10 +676,8 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
                 const int zero_work
                         = (nb_ic * jcp.ic_block - jcp.ic_without_padding)
                         * jcp.oc_block;
-                PRAGMA_OMP_SIMD()
-                for (int o = 0; o < zero_work; ++o) {
+                for (int o = 0; o < zero_work; ++o)
                     z_wei[o] = 0;
-                }
             }
         }
     };
@@ -809,7 +807,6 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
                 const int max_oc = this_block_size(
                         ocb * jcp.oc_block, jcp.oc, jcp.oc_block);
                 for (int hw = 0; hw < jcp.os; ++hw) {
-                    PRAGMA_OMP_SIMD()
                     for (int o = 0; o < max_oc; ++o)
                         d_bias[o] += d_dst[o];
                     d_dst += spatial_shift;

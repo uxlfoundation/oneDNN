@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -245,7 +245,6 @@ void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
                     : (ithr_OCB * nthr_MB + ithr_MB) * OC_per_thread;
             float *db = diff_bias_acc + db_offset;
 
-            PRAGMA_OMP_SIMD()
             for (dim_t oc = 0; oc < oc_len; ++oc)
                 db[oc] = 0;
 
@@ -275,7 +274,6 @@ void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
             for (dim_t thr_MB = 1; thr_MB < nthr_MB; ++thr_MB) {
                 const float *thr_db = db + thr_MB * OC_per_thread;
 
-                PRAGMA_OMP_SIMD()
                 for (dim_t oc = 0; oc < oc_len; ++oc)
                     db[oc] += thr_db[oc];
             }
@@ -283,7 +281,6 @@ void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
             if (diff_bias_d.data_type() == data_type::f32) {
                 float *res = &((float *)diff_bias)[oc_s];
 
-                PRAGMA_OMP_SIMD()
                 for (dim_t oc = 0; oc < oc_len; ++oc)
                     res[oc] = db[oc];
             } else {

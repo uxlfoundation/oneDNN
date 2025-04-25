@@ -71,11 +71,10 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_ncdhw(const exec_ctx_t &ctx,
     parallel_nd(MB, OC, [&](dim_t mb, dim_t oc) {
         const dim_t off = (mb * OC + oc) * SP;
         float b = io::load_float_value(bias_d.data_type(), bias, oc);
-        PRAGMA_OMP_SIMD()
+        // Use f32 if attributes happen after bias to get precise answer.
+        auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
         for (dim_t sp = 0; sp < SP; ++sp) {
             float d = conv_output[off + sp];
-            // Use f32 if attributes happen after bias to get precise answer.
-            auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
             io::store_float_value(dt, d + b, dst, off + sp);
         }
     });
@@ -93,12 +92,11 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_ndhwc(const exec_ctx_t &ctx,
 
     parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
         const dim_t off = (mb * SP + sp) * OC;
-        PRAGMA_OMP_SIMD()
+        // Use f32 if attributes happen after bias to get precise answer.
+        auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
         for (dim_t oc = 0; oc < OC; ++oc) {
             float b = io::load_float_value(bias_d.data_type(), bias, oc);
             float d = conv_output[off + oc];
-            // Use f32 if attributes happen after bias to get precise answer.
-            auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
             io::store_float_value(dt, d + b, dst, off + oc);
         }
     });
@@ -122,16 +120,14 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_nCdhwXc(const exec_ctx_t &ctx,
                 const dim_t off = mb * stride_mb + oc * SP + sp * blk_size;
                 const dim_t blk = nstl::min(blk_size, OC - oc);
 
-                PRAGMA_OMP_SIMD()
+                // Use f32 if attributes happen after bias to get precise
+                // answer.
+                auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
                 for (dim_t i = 0; i < blk_size; ++i) {
                     float b = i < blk ? io::load_float_value(
                                       bias_d.data_type(), bias, oc + i)
                                       : 0;
                     float d = conv_output[off + i];
-                    // Use f32 if attributes happen after bias to get precise
-                    // answer.
-                    auto dt = non_default_attr ? data_type::f32
-                                               : dst_d.data_type();
                     io::store_float_value(dt, d + b, dst, off + i);
                 }
             });
@@ -604,12 +600,11 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ncdhw(
 
     parallel_nd(OC, [&](dim_t oc) {
         float db = 0;
-        for (dim_t mb = 0; mb < MB; ++mb) {
-            PRAGMA_OMP_SIMD(reduction(+ : db))
-            for (dim_t sp = 0; sp < SP; ++sp) {
-                auto offset = (size_t)(mb * OC + oc) * SP + sp;
-                db += diff_dst[offset];
-            }
+        PRAGMA_OMP_SIMD(collapse(2) reduction(+ : db))
+        for_(dim_t mb = 0; mb < MB; ++mb)
+        for (dim_t sp = 0; sp < SP; ++sp) {
+            const dim_t offset = (mb * OC + oc) * SP + sp;
+            db += diff_dst[offset];
         }
         diff_bias[oc] = db;
     });
@@ -625,12 +620,11 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ndhwc(
 
     parallel_nd(OC, [&](dim_t oc) {
         float db = 0;
-        for (dim_t mb = 0; mb < MB; ++mb) {
-            PRAGMA_OMP_SIMD(reduction(+ : db))
-            for (dim_t sp = 0; sp < SP; ++sp) {
-                const dim_t offset = (mb * SP + sp) * OC + oc;
-                db += diff_dst[offset];
-            }
+        PRAGMA_OMP_SIMD(collapse(2) reduction(+ : db))
+        for_(dim_t mb = 0; mb < MB; ++mb)
+        for (dim_t sp = 0; sp < SP; ++sp) {
+            const dim_t offset = (mb * SP + sp) * OC + oc;
+            db += diff_dst[offset];
         }
         diff_bias[oc]
                 = static_cast<typename prec_traits_t<dbia_type>::type>(db);
@@ -652,19 +646,15 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_nCdhwXc(
     parallel_nd(utils::div_up(OC, blksize), [&](dim_t ocb) {
         float db[blksize] = {0};
 
-        for (dim_t mb = 0; mb < MB; ++mb) {
-            for (dim_t sp = 0; sp < SP; ++sp) {
-                auto offset = mb * stride_mb + (ocb * SP + sp) * blksize;
-
-                PRAGMA_OMP_SIMD()
-                for (dim_t i = 0; i < blksize; ++i)
-                    db[i] += diff_dst[offset + i];
-            }
+        for_(dim_t mb = 0; mb < MB; ++mb)
+        for (dim_t sp = 0; sp < SP; ++sp) {
+            auto offset = mb * stride_mb + (ocb * SP + sp) * blksize;
+            for (dim_t i = 0; i < blksize; ++i)
+                db[i] += diff_dst[offset + i];
         }
 
         const dim_t blk = nstl::min(blksize, OC - ocb * blksize);
 
-        PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < blk; ++i)
             diff_bias[ocb * blksize + i] = db[i];
     });

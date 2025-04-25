@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -164,17 +164,12 @@ status_t gemm_inner_product_bwd_weights_t<data_type>::execute_backward_weights(
             oc_s = std::min(oc_s * blksize, OC);
             oc_e = std::min(oc_e * blksize, OC);
 
-            PRAGMA_OMP_SIMD()
-            for (dim_t oc = oc_s; oc < oc_e; ++oc) {
+            for (dim_t oc = oc_s; oc < oc_e; ++oc)
                 diff_bias[oc] = diff_dst[oc];
-            }
 
-            for (dim_t mb = 1; mb < MB; ++mb) {
-                PRAGMA_OMP_SIMD()
-                for (dim_t oc = oc_s; oc < oc_e; ++oc) {
-                    diff_bias[oc] += diff_dst[mb * OC + oc];
-                }
-            }
+            for_(dim_t mb = 1; mb < MB; ++mb)
+            for (dim_t oc = oc_s; oc < oc_e; ++oc)
+                diff_bias[oc] += diff_dst[mb * OC + oc];
         });
     }
 

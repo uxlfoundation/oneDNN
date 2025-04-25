@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -102,10 +102,8 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
                                 _src);
                     }
                     PRAGMA_OMP_SIMD(reduction(+ : m))
-                    for (dim_t sp = 0; sp < sp_block_nelems; sp++) {
-                        float s = src_f32[sp];
-                        m += s;
-                    }
+                    for (dim_t sp = 0; sp < sp_block_nelems; sp++)
+                        m += src_f32[sp];
                     _src += sp_block_nelems * src_d.data_type_size();
                 }
                 if (sp_block_reminder) {
@@ -121,10 +119,8 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
                                 _src);
                     }
                     PRAGMA_OMP_SIMD(reduction(+ : m))
-                    for (dim_t sp = 0; sp < sp_block_reminder; sp++) {
-                        float s = src_f32[sp];
-                        m += s;
-                    }
+                    for (dim_t sp = 0; sp < sp_block_reminder; sp++)
+                        m += src_f32[sp];
                 }
             }
             m /= SP * C_PER_G;
@@ -210,7 +206,6 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
                 } else {
                     dst_f32 = reinterpret_cast<float *__restrict>(_dst);
                 }
-                PRAGMA_OMP_SIMD()
                 for (dim_t sp = 0; sp < sp_block_nelems; sp++) {
                     float s = src_f32[sp];
                     float gn_res = sm * (s - m) + sv;
@@ -241,7 +236,6 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
                 } else {
                     dst_f32 = reinterpret_cast<float *__restrict>(_dst);
                 }
-                PRAGMA_OMP_SIMD()
                 for (dim_t sp = 0; sp < sp_block_reminder; sp++) {
                     float s = src_f32[sp];
                     float gn_res = sm * (s - m) + sv;

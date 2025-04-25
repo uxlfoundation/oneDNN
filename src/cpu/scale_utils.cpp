@@ -113,7 +113,6 @@ const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
                         = wei_scale_per_ic ? wei_scale_per_oc ? OC : 1 : 0;
                 const auto wei_scale_stride_oc = wei_scale_per_oc ? 1 : 0;
                 assert(count == wei_scale_count);
-                PRAGMA_OMP_SIMD()
                 for_(int ic = 0; ic < IC; ic++)
                 for (int oc = 0; oc < wei_scale_stride_ic; oc++) {
                     const auto wei_scale_idx = wei_scale_stride_oc * oc
@@ -126,7 +125,6 @@ const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
                             * scale_adjust_factor;
                 }
             } else {
-                PRAGMA_OMP_SIMD()
                 for (dim_t c = 0; c < count; c++) {
                     const float wei_scales_val
                             = io::load_float_value(wei_scale_dt, wei_scales, c);

@@ -1885,7 +1885,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
             const int base_offset = get_bb_idx(b_idx, bgmmc_.bcast_B_desc)
                             * rnd_up(bgmmc_.N, bgmmc_.wei_n_blk)
                     + n_blk_idx * bgmmc_.wei_n_blk;
-            PRAGMA_OMP_SIMD()
             for (int b = 0; b < bgmmc_.wei_n_blk; b++)
                 zp_comp[b] = -zero_point_a_negative_val_
                         * reorder_zp_a_comp_ptr_[base_offset + b];

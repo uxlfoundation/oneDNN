@@ -189,7 +189,6 @@ dnnl_status_t pack_no_copy(const T *src, dim_t ld_src, dim_t nrows, dim_t ncols,
             auto src_col = src + j * ld_src;
             auto dst_col = dst + j * ld_dst;
 
-            PRAGMA_OMP_SIMD()
             for (dim_t i = 0; i < nrows_dst; i++)
                 if (is_f32)
                     dst_col[i] = alpha * src_col[i];
@@ -202,7 +201,6 @@ dnnl_status_t pack_no_copy(const T *src, dim_t ld_src, dim_t nrows, dim_t ncols,
             auto src_col = src + j;
             auto dst_col = dst + j * ld_dst;
 
-            PRAGMA_OMP_SIMD()
             for (dim_t i = 0; i < nrows_dst; i++)
                 if (is_f32)
                     dst_col[i] = alpha * src_col[i * ld_src];

@@ -184,7 +184,6 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
         }
         if (zero_padding) {
             const auto tail = src_d.padded_dims()[axis] - src_d.dims()[axis];
-            PRAGMA_OMP_SIMD()
             for (int i = 0; i < tail; i++)
                 io::store_float_value(
                         dst_d.data_type(), 0, dst_data, channels_ + i);

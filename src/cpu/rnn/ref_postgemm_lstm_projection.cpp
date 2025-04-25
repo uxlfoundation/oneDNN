@@ -119,7 +119,6 @@ rnn_postgemm_sig(rnn_postgemm_fwd_u8_t::lstm_projection_postgemm) {
 
     auto postgemm_call = [&](int i) {
         const int n_elem = block_step / (int)sizeof(dst_layer_t);
-        PRAGMA_OMP_SIMD()
         for (int j = 0; j < n_elem; j++) {
             const int scratch_off = i * rnn.scratch_gates_ld + j;
             const int dst_off = i * dst_layer_ld + j;
@@ -163,7 +162,6 @@ rnn_postgemm_sig(rnn_postgemm_fwd_s8_t::lstm_projection_postgemm) {
 
     const auto postgemm_call = [&](dim_t i) {
         const int n_elem = block_step / (int)sizeof(dst_layer_t);
-        PRAGMA_OMP_SIMD()
         for (int j = 0; j < n_elem; j++) {
             const int scratch_off = i * rnn.scratch_gates_ld + j;
             const int dst_off = i * dst_layer_ld + j;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -169,9 +169,8 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
                                     src + soff);
                         }
                         PRAGMA_OMP_SIMD(reduction(+ : sum))
-                        for (dim_t sp = S_s; sp < S_e; ++sp) {
+                        for (dim_t sp = S_s; sp < S_e; ++sp)
                             sum += scr_fp32[sp];
-                        }
                     }
                     ws_reduce[ws_iter_off + SP_N_ithr * C_blks_per_iter + c]
                             = sum;
@@ -263,9 +262,6 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
                         _src = reinterpret_cast<const acc_data_t *>(
                                 src + s_off);
                     }
-#if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
-                    PRAGMA_OMP_SIMD()
-#endif
                     for (dim_t sp = S_s; sp < S_e; ++sp) {
                         size_t d_off = s_off + sp;
                         acc_data_t bn_res = sm * (_src[sp] - mean[off]) + sv;
@@ -496,9 +492,6 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
                         _src = reinterpret_cast<const acc_data_t *>(
                                 src + s_off);
                     }
-#if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
-                    PRAGMA_OMP_SIMD()
-#endif
                     for (dim_t sp = S_s; sp < S_e; ++sp) {
                         const dim_t d_off = s_off + sp;
                         acc_data_t v_diff_src;

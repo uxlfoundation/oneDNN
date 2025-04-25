@@ -132,7 +132,6 @@ status_t jit_uni_shuffle_t<isa>::precompute_offsets() {
         // Precompute input offsets using transposed axis
         parallel_nd(CB, [&](dim_t cb) {
             const int blk_end = nstl::min(blk_size, C - cb * blk_size);
-            PRAGMA_OMP_SIMD()
             for (int cc = 0; cc < blk_end; ++cc) {
                 const int off = cb * blk_size + cc;
                 const int &input_c = rev_transposed_[off];

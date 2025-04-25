@@ -438,7 +438,6 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_thr_nspc(
                 = reinterpret_cast<uint16_t *__restrict>(col);
         constexpr uint16_t zero_val = 0;
 
-        PRAGMA_OMP_SIMD()
         for (ptrdiff_t i = 0; i < jcp.im2col_sz; i++)
             col_r[i] = zero_val;
     }
@@ -768,7 +767,6 @@ status_t gemm_bf16_convolution_bwd_data_t<
                                 = diff_src + is * diff_src_os_stride;
                         const acc_data_t *__restrict acc_loc
                                 = acc + is * jcp.ic;
-                        PRAGMA_OMP_SIMD()
                         for (int ic = 0; ic < jcp.ic; ++ic)
                             diff_src_loc[ic] = acc_loc[ic];
                     });
@@ -1022,7 +1020,6 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
                         = reinterpret_cast<uint16_t *__restrict>(_col);
                 constexpr uint16_t zero_val = 0;
 
-                PRAGMA_OMP_SIMD()
                 for (ptrdiff_t i = 0; i < jcp.im2col_sz; i++)
                     _col_r[i] = zero_val;
             }
@@ -1139,9 +1136,8 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
                                 * width_stride;
 
                 PRAGMA_OMP_SIMD(reduction(+ : db))
-                for (dim_t ow = 0; ow < jcp.ow; ++ow) {
+                for (dim_t ow = 0; ow < jcp.ow; ++ow)
                     db += diff_dst_arr[ow * width_stride];
-                }
             }
             diff_bias[g * jcp.oc + oc] = db;
         });
@@ -1333,13 +1329,12 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
             dim_t offset_ = g * dst_step + oc * K;
             for (dim_t mb = 0; mb < jcp.mb; ++mb) {
                 dim_t offset = offset_ + mb * jcp.ngroups * dst_step;
+                PRAGMA_OMP_SIMD(collapse(3) reduction(+ : db) linear(offset))
                 for_(dim_t od = 0; od < jcp.od; ++od)
-                for (dim_t oh = 0; oh < jcp.oh; ++oh) {
-                    PRAGMA_OMP_SIMD(reduction(+ : db))
-                    for (dim_t ow = 0; ow < jcp.ow; ++ow) {
-                        db += diff_dst[offset];
-                        offset++;
-                    }
+                for_(dim_t oh = 0; oh < jcp.oh; ++oh)
+                for (dim_t ow = 0; ow < jcp.ow; ++ow) {
+                    db += diff_dst[offset];
+                    offset++;
                 }
             }
             diff_bias[g * jcp.oc + oc] = db;

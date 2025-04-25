@@ -38,10 +38,8 @@ template <typename data_t>
 void copy_A(
         bool isTransA, dim_t K, const data_t *A, const dim_t lda, data_t *ws) {
     for (dim_t k = 0; k < K; k++) {
-        PRAGMA_OMP_SIMD()
-        for (dim_t i = 0; i < unroll_factor<data_t>::m; i++) {
+        for (dim_t i = 0; i < unroll_factor<data_t>::m; i++)
             ws[i] = isTransA ? A[i * lda + k] : A[i + k * lda];
-        }
         ws += unroll_factor<data_t>::m;
     }
 }
@@ -55,7 +53,6 @@ void kernel_mxn(dim_t K, const data_t *A, const dim_t lda, const data_t *B,
     for (dim_t k = 0; k < K; k++) {
         for (dim_t j = 0; j < unroll_factor<data_t>::n; j++) {
             data_t b = isTransB ? B[j + k * ldb] : B[k + j * ldb];
-            PRAGMA_OMP_SIMD()
             for (dim_t i = 0; i < unroll_factor<data_t>::m; i++) {
                 data_t a = isTransA ? A[i * lda + k] : A[i + lda * k];
                 c[i + unroll_factor<data_t>::m * j] += a * b;
@@ -63,7 +60,6 @@ void kernel_mxn(dim_t K, const data_t *A, const dim_t lda, const data_t *B,
         }
     }
     for (dim_t j = 0; j < unroll_factor<data_t>::n; j++) {
-        PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < unroll_factor<data_t>::m; i++) {
             C[i + j * ldc] = (beta == static_cast<data_t>(0.))
                     ? alpha * c[i + unroll_factor<data_t>::m * j]

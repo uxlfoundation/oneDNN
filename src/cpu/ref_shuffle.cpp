@@ -66,28 +66,11 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
     if (axis == 1
             && one_of(
                     tag, nChw16c, nChw8c, nChw4c, nCdhw16c, nCdhw8c, nCdhw4c)) {
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
-#pragma omp parallel for collapse(3) schedule(static)
-        for_(dim_t mb = 0; mb < MB; ++mb)
-        for_(dim_t cb = 0; cb < C; cb += blksize)
-        for (dim_t sp = 0; sp < SP; ++sp) {
-            const dim_t off = mb * stride_mb + sp * blksize;
-            const dim_t output_off = off + cb * SP;
-            PRAGMA_OMP_SIMD()
-            for (dim_t cc = 0; cc < nstl::min(blksize, C - cb); ++cc) {
-                const dim_t input_c = rev_transposed_[cb + cc];
-                const dim_t input_off = off + input_c / blksize * SP * blksize
-                        + input_c % blksize;
-                output[output_off + cc] = input[input_off];
-            }
-        }
-#else
         parallel_nd(MB, utils::div_up(C, blksize), SP,
                 [&](dim_t mb, dim_t c, dim_t sp) {
                     const dim_t off = mb * stride_mb + sp * blksize;
                     const dim_t cb = c * blksize;
                     const dim_t output_off = off + cb * SP;
-                    PRAGMA_OMP_SIMD()
                     for (dim_t cc = 0; cc < nstl::min(blksize, C - cb); ++cc) {
                         const dim_t input_c = rev_transposed_[cb + cc];
                         const dim_t input_off = off
@@ -96,11 +79,9 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
                         output[output_off + cc] = input[input_off];
                     }
                 });
-#endif
     } else if (axis == 1 && one_of(tag, nhwc, ndhwc)) {
         parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
             const dim_t off = mb * stride_mb + sp * C;
-            PRAGMA_OMP_SIMD()
             for (dim_t c = 0; c < C; ++c)
                 output[off + c] = input[off + rev_transposed_[c]];
         });
@@ -108,10 +89,8 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
         parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
             const dim_t output_off = mb * stride_mb + c * SP;
             const dim_t input_off = mb * stride_mb + rev_transposed_[c] * SP;
-            PRAGMA_OMP_SIMD()
-            for (dim_t sp = 0; sp < SP; ++sp) {
+            for (dim_t sp = 0; sp < SP; ++sp)
                 output[output_off + sp] = input[input_off + sp];
-            }
         });
     } else {
         auto dims = pd()->desc()->src_desc.dims;

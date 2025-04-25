@@ -49,19 +49,14 @@ static inline void gemv_n_kernel(const dim_t m, const dim_t n, float alpha,
         gemv_n_kern(&m, &n, &alpha, a, &lda, x, &incx, y, &incy);
     } else {
         if (incx == 1) {
-            for (dim_t i = 0; i < n; i++) {
-                PRAGMA_OMP_SIMD()
-                for (dim_t j = 0; j < m; j++) {
-                    y[j] += alpha * x[i] * a[j + i * lda];
-                }
-            }
+            for_(dim_t i = 0; i < n; i++)
+            for (dim_t j = 0; j < m; j++)
+                y[j] += alpha * x[i] * a[j + i * lda];
         } else {
             dim_t idx = incx < 0 ? (1 - n) * incx : 0;
             for (dim_t i = 0; i < n; i++) {
-                PRAGMA_OMP_SIMD()
-                for (dim_t j = 0; j < m; j++) {
+                for (dim_t j = 0; j < m; j++)
                     y[j] += alpha * x[idx] * a[j + i * lda];
-                }
                 idx += incx;
             }
         }
@@ -123,15 +118,11 @@ static inline void gemv_kernel_driver(const int trans, const dim_t m,
     if (beta != 1.0f) {
         if (incy == 1) {
             if (beta == 0.0f) {
-                PRAGMA_OMP_SIMD()
-                for (dim_t i = 0; i < y_dim; i++) {
+                for (dim_t i = 0; i < y_dim; i++)
                     y[i] = (c_t)0.0f;
-                }
             } else {
-                PRAGMA_OMP_SIMD()
-                for (dim_t i = 0; i < y_dim; i++) {
+                for (dim_t i = 0; i < y_dim; i++)
                     y[i] *= beta;
-                }
             }
         } else {
             if (beta == 0.0f) {
@@ -166,7 +157,6 @@ static inline void gemv_kernel_driver(const int trans, const dim_t m,
                 m_blk = m - i;
                 if (m_blk > M_BLK) m_blk = M_BLK;
 
-                PRAGMA_OMP_SIMD()
                 for (dim_t j = 0; j < m_blk; j++)
                     ytmp[j] = (c_t)0.0;
 
@@ -379,16 +369,15 @@ void sum_ybufs(
 
     // Reduction in each thread.
     part_1d(m, ithr, nthr, (c_t *)nullptr, off_m, thread_m);
-    if (incy == 1)
-        for (int buf_id = 0; buf_id < nbufs; buf_id++) {
-            PRAGMA_OMP_SIMD()
-            for (dim_t i = off_m; i < off_m + thread_m; i++)
-                y[i] += ybuf[i + buf_id * m];
-        }
-    else
-        for (int buf_id = 0; buf_id < nbufs; buf_id++)
-            for (dim_t i = off_m; i < off_m + thread_m; i++)
-                y[i * incy] += ybuf[i + buf_id * m];
+    if (incy == 1) {
+        for_(int buf_id = 0; buf_id < nbufs; buf_id++)
+        for (dim_t i = off_m; i < off_m + thread_m; i++)
+            y[i] += ybuf[i + buf_id * m];
+    } else {
+        for_(int buf_id = 0; buf_id < nbufs; buf_id++)
+        for (dim_t i = off_m; i < off_m + thread_m; i++)
+            y[i * incy] += ybuf[i + buf_id * m];
+    }
 }
 
 template <typename a_t, typename b_t, typename c_t>

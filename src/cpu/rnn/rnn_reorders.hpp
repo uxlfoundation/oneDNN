@@ -97,7 +97,6 @@ static inline void quantize_goi(int8_t *scratch_quantized,
     assert(scales != nullptr);
     parallel_nd(L * D, G * O, [&](dim_t ld, dim_t go) {
         const float s = scales[(mask == 0) ? 0 : go];
-        PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < I; i++) {
             scratch_quantized[ld * I * G * O + i * G * O + go]
                     = q10n::qz_b0_t<in_data_t, int8_t>()(
@@ -134,26 +133,22 @@ static inline void compensate_igo(float *compensation,
                 = scratch_compensation + ithr * scratch_comp_sz;
         for (int ld = LD_s; ld < LD_e; ld++) {
             if (I == 1) {
-                PRAGMA_OMP_SIMD()
                 for (int go = GO_s; go < GO_e; go++)
                     compensation[ld * G * O + go] = q10n::saturate<float>(
                             scratch_quantized[ld * I * G * O + go]);
             } else {
                 // We split the loop on I in three to avoid conditionals or zeroing compensation
                 int i = 0;
-                PRAGMA_OMP_SIMD()
                 for (int go = GO_s; go < GO_e; go++)
                     compensation_s32[go]
                             = scratch_quantized[go + G * O * (i + I * (ld))];
                 // 1 <= i < I-1
                 for (i = 1; i < I - 1; i++) {
-                    PRAGMA_OMP_SIMD()
                     for (int go = GO_s; go < GO_e; go++)
                         compensation_s32[go] += scratch_quantized[go
                                 + G * O * (i + I * (ld))];
                 }
                 // i = I-1
-                PRAGMA_OMP_SIMD()
                 for (int go = GO_s; go < GO_e; go++)
                     compensation[ld * G * O + go] = q10n::saturate<float>(
                             compensation_s32[go]
@@ -172,11 +167,10 @@ static inline void compensate_goi(float *compensation,
 
     parallel_nd(L * D, G * O, [&](dim_t ld, dim_t go) {
         int32_t compensation_s32 = 0;
-        PRAGMA_OMP_SIMD()
-        for (dim_t i = 0; i < I; i++) {
+        PRAGMA_OMP_SIMD(reduction(+ : compensation_s32))
+        for (dim_t i = 0; i < I; i++)
             compensation_s32
                     += scratch_quantized[ld * I * G * O + i * G * O + go];
-        }
         // TODO: do not convert to f32 if this compensation is not
         // going to be added to a bias (e.g. like in lstm
         // projection where it is directly added to the s32
@@ -268,7 +262,6 @@ private:
                 const dim_t off_out = output_d.off_l(i * inner_dim);
                 const in_data_t *__restrict i_ = input + off_in;
                 out_data_t *__restrict o_ = output + off_out;
-                PRAGMA_OMP_SIMD()
                 for (int j = 0; j < inner_dim; ++j) {
                     const float in = (float)i_[j] * scale + shift;
                     o_[j] = q10n::qz_a1b0_t<float, out_data_t>()(in);
@@ -926,7 +919,6 @@ private:
         };
         const auto kernel_plain_to_blocked
                 = [&](const out_data_t *inp, out_data_t *out, int ib, int ob) {
-                      PRAGMA_OMP_SIMD()
                       for (int i = 0; i < i_block * o_block; i++)
                           out[i] = 0;
 

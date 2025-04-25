@@ -234,7 +234,6 @@ simple_resampling_kernel_t<src_type, dst_type>::create_nearest() const {
             const dim_t offset
                     = id * stride_d_ + ih * stride_h_ + iw * stride_w_;
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float res = static_cast<float>(src[offset + innermost_el]);
@@ -273,16 +272,15 @@ simple_resampling_kernel_t<src_type, dst_type>::create_nearest() const {
             const dim_t oh_end = oh_idx(ih + 1.f) * stride_h_;
             const dim_t od_end = od_idx(id + 1.f) * stride_d_;
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float sum = 0;
+                PRAGMA_OMP_SIMD(collapse(3) reduction(+ : sum))
                 for_(dim_t od = od_start; od < od_end; od += stride_d_)
                 for_(dim_t oh = oh_start; oh < oh_end; oh += stride_h_)
-                for (dim_t ow = ow_start; ow < ow_end; ow += stride_w_) {
+                for (dim_t ow = ow_start; ow < ow_end; ow += stride_w_)
                     sum += static_cast<float>(
                             diff_dst[od + oh + ow + innermost_el]);
-                }
                 diff_src[innermost_el]
                         = cpu::q10n::saturate_and_round<dst_data_t>(sum);
             }
@@ -300,10 +298,10 @@ simple_resampling_kernel_t<src_type, dst_type>::create_linear() const {
             const linear_coeffs_t &iw
                     = linear_coeffs_[pd_->OD() + pd_->OH() + ow];
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float res = 0;
+                PRAGMA_OMP_SIMD(reduction(+ : res))
                 for (int k = 0; k < 2; k++)
                     res += static_cast<float>(
                                    src[iw.idx[k] * stride_w_ + innermost_el])
@@ -329,7 +327,6 @@ simple_resampling_kernel_t<src_type, dst_type>::create_linear() const {
                     = bwd_linear_coeffs_[pd_->ID() + pd_->IH() + iw];
             MAYBE_UNUSED(preserve_zero_padding);
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float sum = 0;
@@ -359,10 +356,10 @@ simple_resampling_kernel_t<src_type, dst_type>::create_bilinear() const {
             const linear_coeffs_t &iw
                     = linear_coeffs_[pd_->OD() + pd_->OH() + ow];
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float res = 0;
+                PRAGMA_OMP_SIMD(collapse(2) reduction(+ : res))
                 for_(int j = 0; j < 2; j++)
                 for (int k = 0; k < 2; k++)
                     res += static_cast<float>(src[ih.idx[j] * stride_h_
@@ -390,21 +387,22 @@ simple_resampling_kernel_t<src_type, dst_type>::create_bilinear() const {
                     = bwd_linear_coeffs_[pd_->ID() + pd_->IH() + iw];
             MAYBE_UNUSED(preserve_zero_padding);
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float sum = 0;
                 for_(int j = 0; j < 2; j++)
-                for_(int k = 0; k < 2; k++)
-                for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
-                for (dim_t ow = w.start[k]; ow < w.end[k]; ow++) {
-                    sum += static_cast<float>(diff_dst[oh * stride_h_
-                                   + ow * stride_w_ + innermost_el])
-                            * bwd_linear_weights_[2 * (pd_->OD() + oh) + j]
-                            * bwd_linear_weights_[2
-                                            * (pd_->OD() + pd_->OH() + ow)
-                                    + k];
+                for (int k = 0; k < 2; k++) {
+                    PRAGMA_OMP_SIMD(collapse(2) reduction(+ : sum))
+                    for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
+                    for (dim_t ow = w.start[k]; ow < w.end[k]; ow++)
+                        sum += static_cast<float>(diff_dst[oh * stride_h_
+                                       + ow * stride_w_ + innermost_el])
+                                * bwd_linear_weights_[2 * (pd_->OD() + oh) + j]
+                                * bwd_linear_weights_[2
+                                                * (pd_->OD() + pd_->OH() + ow)
+                                        + k];
                 }
+
                 diff_src[innermost_el]
                         = cpu::q10n::saturate_and_round<dst_data_t>(sum);
             }
@@ -424,10 +422,10 @@ simple_resampling_kernel_t<src_type, dst_type>::create_trilinear() const {
             const linear_coeffs_t &iw
                     = linear_coeffs_[pd_->OD() + pd_->OH() + ow];
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float res = 0;
+                PRAGMA_OMP_SIMD(collapse(3) reduction(+ : res))
                 for_(int i = 0; i < 2; i++)
                 for_(int j = 0; j < 2; j++)
                 for (int k = 0; k < 2; k++)
@@ -458,25 +456,26 @@ simple_resampling_kernel_t<src_type, dst_type>::create_trilinear() const {
                     = bwd_linear_coeffs_[pd_->ID() + pd_->IH() + iw];
             MAYBE_UNUSED(preserve_zero_padding);
 
-            PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float sum = 0;
                 for_(int i = 0; i < 2; i++)
                 for_(int j = 0; j < 2; j++)
-                for_(int k = 0; k < 2; k++)
-                for_(dim_t od = d.start[i]; od < d.end[i]; od++)
-                for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
-                for (dim_t ow = w.start[k]; ow < w.end[k]; ow++) {
-                    sum += static_cast<float>(
-                                   diff_dst[od * stride_d_ + oh * stride_h_
-                                           + ow * stride_w_ + innermost_el])
-                            * bwd_linear_weights_[2 * od + i]
-                            * bwd_linear_weights_[2 * (pd_->OD() + oh) + j]
-                            * bwd_linear_weights_[2
-                                            * (pd_->OD() + pd_->OH() + ow)
-                                    + k];
+                for (int k = 0; k < 2; k++) {
+                    PRAGMA_OMP_SIMD(collapse(3) reduction(+ : sum))
+                    for_(dim_t od = d.start[i]; od < d.end[i]; od++)
+                    for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
+                    for (dim_t ow = w.start[k]; ow < w.end[k]; ow++)
+                        sum += static_cast<float>(
+                                       diff_dst[od * stride_d_ + oh * stride_h_
+                                               + ow * stride_w_ + innermost_el])
+                                * bwd_linear_weights_[2 * od + i]
+                                * bwd_linear_weights_[2 * (pd_->OD() + oh) + j]
+                                * bwd_linear_weights_[2
+                                                * (pd_->OD() + pd_->OH() + ow)
+                                        + k];
                 }
+
                 diff_src[innermost_el]
                         = cpu::q10n::saturate_and_round<dst_data_t>(sum);
             }

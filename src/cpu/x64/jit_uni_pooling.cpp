@@ -1360,7 +1360,6 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
                 parallel_nd(jpp.mb, jpp.id, [&](dim_t n, dim_t id) {
                     const size_t offset
                             = ((size_t)n * jpp.id + id) * chunk_size;
-                    PRAGMA_OMP_SIMD()
                     for (size_t idx = 0; idx < chunk_size; ++idx)
                         diff_src[offset + idx] = zero_val;
                 });
@@ -1373,7 +1372,6 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
                                 const size_t offset
                                         = ((size_t)n * jpp.nb_c + b_c)
                                         * chunk_size;
-                                PRAGMA_OMP_SIMD()
                                 for (size_t idx = 0; idx < chunk_size; ++idx)
                                     diff_src[offset + idx] = zero_val;
                             });

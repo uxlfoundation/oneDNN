@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -190,7 +190,6 @@ void cvt_f8_e5m2_to_float(float *out, const float8_e5m2_t *inp, size_t nelems) {
 
     // TODO: implement and use jit conversion kernel for DNNL_X64
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = inp[i];
 }
@@ -199,7 +198,6 @@ void cvt_f8_e4m3_to_float(float *out, const float8_e4m3_t *inp, size_t nelems) {
 
     // TODO: implement and use jit conversion kernel for DNNL_X64
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = inp[i];
 }
@@ -208,7 +206,6 @@ void cvt_float_to_f8_e5m2(float8_e5m2_t *out, const float *inp, size_t nelems) {
 
     // TODO: implement and use jit conversion kernel for DNNL_X64
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = static_cast<float8_e5m2_t>(inp[i]);
 }
@@ -217,7 +214,6 @@ void cvt_float_to_f8_e4m3(float8_e4m3_t *out, const float *inp, size_t nelems) {
 
     // TODO: implement and use jit conversion kernel for DNNL_X64
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = static_cast<float8_e4m3_t>(inp[i]);
 }
@@ -227,7 +223,6 @@ void add_floats_and_cvt_to_f8_e5m2(float8_e5m2_t *out, const float *inp0,
 
     // TODO: implement and use jit conversion kernel for DNNL_X64
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = static_cast<float8_e5m2_t>(inp0[i] + inp1[i]);
 }
@@ -237,7 +232,6 @@ void add_floats_and_cvt_to_f8_e4m3(float8_e4m3_t *out, const float *inp0,
 
     // TODO: implement and use jit conversion kernel for DNNL_X64
 
-    PRAGMA_OMP_SIMD()
     for (size_t i = 0; i < nelems; ++i)
         out[i] = static_cast<float8_e4m3_t>(inp0[i] + inp1[i]);
 }

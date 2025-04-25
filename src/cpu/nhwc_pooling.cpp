@@ -32,17 +32,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-// Intel's LLVM-based compiler on Windows generates incorrect code with
-// PRAGMA_OMP_SIMD in some particular cases.
-// TODO: The issue above seems to be an additional one to the issue mentioned
-//       in `CLANG_WA_01_SAFE_TO_USE_OMP_SIMD`. Once the later is resolved,
-//       check specifically the former one, maybe it will go away as well.
-#if ((defined _WIN32) && (defined __INTEL_CLANG_COMPILER))
-#define SAFE_TO_USE_OMP_SIMD (0 && CLANG_WA_01_SAFE_TO_USE_OMP_SIMD)
-#else
-#define SAFE_TO_USE_OMP_SIMD (1 && CLANG_WA_01_SAFE_TO_USE_OMP_SIMD)
-#endif
-
 #define MEM_D(name) name##_d
 
 #define DECLARE_READ_STRIDES(name) \
@@ -84,15 +73,12 @@ void nhwc_pooling_fwd_t<d_type>::array_nhwc_max(const dim_t n, ker_data_t *dst,
         const ker_data_t *src, unsigned char *ws, const size_t ws_offset,
         const data_type_t ws_dt, const int index) const {
     assert(ws);
-#if SAFE_TO_USE_OMP_SIMD
-    PRAGMA_OMP_SIMD()
-#endif
     for (dim_t oc = 0; oc < n; ++oc) {
         const auto s = src[oc];
         ker_data_t mv = dst[oc];
 
         // update index of maximum
-#if defined __INTEL_COMPILER
+#if defined(__INTEL_COMPILER)
         if (s > mv) {
             // if (ws && (s > mv)) {
             assert(ws_dt == data_type::u8 || ws_dt == data_type::s32);
@@ -106,10 +92,7 @@ void nhwc_pooling_fwd_t<d_type>::array_nhwc_max(const dim_t n, ker_data_t *dst,
         // Need to add explicit predicates for GCC to vectorize this.
         // And although the resulting code is ugly, it is still 4 times
         // faster than scalar
-        assert(ws_dt == data_type::u8 || ws_dt == data_type::s32);
-
         if (ws_dt == data_type::u8) {
-            assert(0 <= index && index <= 255);
             const unsigned char predicate = (s > mv) ? 0xff : 0;
             unsigned char current_value = ws[ws_offset + oc];
             current_value = (predicate & (unsigned char)index)
@@ -134,9 +117,6 @@ void nhwc_pooling_fwd_t<d_type>::array_nhwc_initialize(const dim_t n,
         ker_data_t *dst, unsigned char *ws, const size_t ws_offset,
         const data_type_t ws_dt) const {
     assert(ws && (ws_dt == data_type::u8 || ws_dt == data_type::s32));
-#if SAFE_TO_USE_OMP_SIMD
-    PRAGMA_OMP_SIMD()
-#endif
     for (dim_t oc = 0; oc < n; ++oc) {
         if (ws_dt == data_type::u8)
             ws[ws_offset + oc] = 0;
@@ -218,10 +198,8 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
             //    array_nhwc_initialize, array_nhwc_max
             if (!ws) {
                 auto *const d = dst + dst_offset_init;
-                PRAGMA_OMP_SIMD()
-                for (dim_t oc = 0; oc < OC; ++oc) {
+                for (dim_t oc = 0; oc < OC; ++oc)
                     d[oc] = nstl::numeric_limits<data_t>::lowest();
-                }
             } else {
                 array_nhwc_initialize(
                         OC, dst + dst_offset_init, ws, ws_offset_init, ws_dt);
@@ -244,10 +222,8 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
                 if (!ws) {
                     auto *const s = src + src_offset_init;
                     auto *const d = dst + dst_offset_init;
-                    PRAGMA_OMP_SIMD()
-                    for (dim_t oc = 0; oc < OC; ++oc) {
+                    for (dim_t oc = 0; oc < OC; ++oc)
                         d[oc] = nstl::max(s[oc], d[oc]);
-                    }
                 } else {
                     array_nhwc_max(OC, dst + dst_offset_init,
                             src + src_offset_init, ws, ws_offset_init, ws_dt,
@@ -389,11 +365,9 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
                     // into separate helper routines:
                     //    array_nhwc_initialize, array_nhwc_max
                     if (!ws) {
-                        PRAGMA_OMP_SIMD()
-                        for (dim_t oc = 0; oc < OC; ++oc) {
+                        for (dim_t oc = 0; oc < OC; ++oc)
                             dst_f32[oc]
                                     = nstl::numeric_limits<data_t>::lowest();
-                        }
                     } else {
                         array_nhwc_initialize(
                                 OC, dst_f32, ws, ws_offset_init, ws_dt);
@@ -417,11 +391,9 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
                         types::cvt_to_float(src_f32, &src[src_offset_init], OC);
 
                         if (!ws) {
-                            PRAGMA_OMP_SIMD()
-                            for (dim_t oc = 0; oc < OC; ++oc) {
+                            for (dim_t oc = 0; oc < OC; ++oc)
                                 dst_f32[oc]
                                         = nstl::max(src_f32[oc], dst_f32[oc]);
-                            }
                         } else {
                             array_nhwc_max(OC, dst_f32, src_f32, ws,
                                     ws_offset_init, ws_dt,
@@ -572,9 +544,6 @@ status_t nhwc_pooling_bwd_t<data_type::f32>::execute_backward(
                 const int *intws_ = (int *)ws + ws_offset_init;
                 const bool ws_is_u8 = MEM_D(ws).data_type() == data_type::u8;
 
-#if SAFE_TO_USE_OMP_SIMD
-                PRAGMA_OMP_SIMD()
-#endif
                 for (dim_t oc = 0; oc < OC; ++oc) {
                     const dim_t index_from_ws = ws_is_u8 ? ws_[oc] : intws_[oc];
                     const data_t d = diff_dst[dst_offset_init + oc];
@@ -604,7 +573,6 @@ status_t nhwc_pooling_bwd_t<data_type::f32>::execute_backward(
                         : (ih_end - ih_start) * (iw_end - iw_start)
                                 * (id_end - id_start);
 
-                PRAGMA_OMP_SIMD()
                 for (dim_t oc = 0; oc < OC; ++oc) {
                     const data_t d = diff_dst[dst_offset_init + oc];
                     // Check if kernel windows are disjoint, in this case
@@ -728,9 +696,6 @@ status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
                         const bool ws_is_u8
                                 = MEM_D(ws).data_type() == data_type::u8;
 
-#if SAFE_TO_USE_OMP_SIMD
-                        PRAGMA_OMP_SIMD()
-#endif
                         for (dim_t oc = 0; oc < OC; ++oc) {
                             const int index_from_ws
                                     = ws_is_u8 ? ws_[oc] : intws_[oc];
@@ -761,7 +726,6 @@ status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
                                 : (ih_end - ih_start) * (iw_end - iw_start)
                                         * (id_end - id_start);
 
-                        PRAGMA_OMP_SIMD()
                         for (dim_t oc = 0; oc < OC; ++oc) {
                             // Check if kernel windows are disjoint, in this case
                             // there's no update needed and we just write there once

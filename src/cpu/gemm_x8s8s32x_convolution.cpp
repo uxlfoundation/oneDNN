@@ -51,10 +51,8 @@ const int32_t *mul_zp_src_comp_from_wei_by_zp_src(const int zp_comp_size,
             const int32_t *__restrict const src = zp_src_comp_from_wei + shift;
             int32_t *__restrict dst = zp_src_comp_scratch_dst + shift;
 
-            PRAGMA_OMP_SIMD()
-            for (int i = 0; i < cache_line_size; ++i) {
+            for (int i = 0; i < cache_line_size; ++i)
                 dst[i] = src[i] * zp_src;
-            }
         });
     }
 
@@ -63,10 +61,8 @@ const int32_t *mul_zp_src_comp_from_wei_by_zp_src(const int zp_comp_size,
         const int32_t *__restrict const src = zp_src_comp_from_wei + shift;
         int32_t *__restrict dst = zp_src_comp_scratch_dst + shift;
 
-        PRAGMA_OMP_SIMD()
-        for (int i = 0; i < res.rem; ++i) {
+        for (int i = 0; i < res.rem; ++i)
             dst[i] = src[i] * zp_src;
-        }
     }
 
     return zp_src_comp_scratch_dst;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2022 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -150,7 +150,6 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
                     dim_t c = c_blk * blksize;
                     const dim_t off = mb * stride_mb + c * H * W
                             + (h * W + w) * blksize;
-                    PRAGMA_OMP_SIMD()
                     for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
                         ker(&dst[off + cc], mb, c + cc, 0, h, w);
                 });
@@ -317,7 +316,6 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
                     dim_t c = c_blk * blksize;
                     const dim_t off = mb * stride_mb + c * H * W
                             + (h * W + w) * blksize;
-                    PRAGMA_OMP_SIMD()
                     for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
                         ker(&diff_src[off + cc], mb, c + cc, 0, h, w);
                 });

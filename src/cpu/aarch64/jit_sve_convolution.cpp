@@ -1699,7 +1699,6 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
                 for (int o = 0; o < jcp.oc_block; ++o)
                     d_bias[o] = 0;
             for (int hw = 0; hw < jcp.oh * jcp.ow * jcp.od; ++hw) {
-                PRAGMA_OMP_SIMD()
                 for (int o = 0; o < max_oc; ++o)
                     d_bias[o] += d_dst[o];
                 d_dst += is_ddst_layout_nxc ? jcp.ngroups * jcp.oc

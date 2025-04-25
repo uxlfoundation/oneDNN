@@ -17,26 +17,9 @@
 #ifndef COMMON_COMPILER_WORKAROUNDS_HPP
 #define COMMON_COMPILER_WORKAROUNDS_HPP
 
-// Workaround 01: clang.
-//
-// Clang has an issue [1] with `#pragma omp simd` that might lead to segfault.
-// The essential conditions are:
-//  1. Optimization level is O1 or O2. Surprisingly, O3 is fine.
-//  2. Conditional check inside the vectorization loop.
-// Since there is no reliable way to determine the first condition, we disable
-// vectorization for clang altogether for now.
-//
-// [1] https://bugs.llvm.org/show_bug.cgi?id=48104
-#if (defined __clang_major__) && (__clang_major__ < 13)
-#define CLANG_WA_01_SAFE_TO_USE_OMP_SIMD 0
-#else
-#define CLANG_WA_01_SAFE_TO_USE_OMP_SIMD 1
-#endif
-
 // Workaround 02: clang.
 //
 // Clang generates incorrect code with OMP_SIMD in some particular cases.
-// Unlike CLANG_WA_01_SAFE_TO_USE_OMP_SIMD, the issue happens even with -O3.
 #if (defined __clang_major__) && (__clang_major__ < 13)
 #define CLANG_WA_02_SAFE_TO_USE_OMP_SIMD 0
 #else

@@ -2848,10 +2848,6 @@ status_t jit_blk_reorder_t::init(engine_t *engine) {
 }
 
 status_t jit_blk_reorder_t::execute(exec_ctx_t &ctx) const {
-    const auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
-    auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
 
     // kernel handle 2-dimension tiles, a tail is possible
     auto &prb = this->pd()->prb_;
@@ -2859,23 +2855,31 @@ status_t jit_blk_reorder_t::execute(exec_ctx_t &ctx) const {
     for (int i = 2; i < prb.ndims; ++i) {
         BH *= prb.nodes[i].n;
     }
-
+    auto bh_stride = BH == 1 ? 0 : prb.is(2);
     auto block_sz = prb.n(0);
     auto n1 = prb.n(1);
-    auto i1 = prb.is(1);
-    auto o1 = prb.os(1);
     auto FL = (n1 + block_sz - 1) / block_sz;
-    auto bh_stride = BH == 1 ? 0 : prb.is(2);
 
-    auto itype_sz_ = data_type_size(pd()->prb_.itype);
-    auto otype_sz_ = data_type_size(pd()->prb_.otype);
+    parallel_nd(BH, FL, [this, bh_stride, &ctx](dim_t bh, dim_t fl) {
+        const auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
+        auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
+        DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
+        DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
+        auto &prb = this->pd()->prb_;
+        auto block_sz = prb.n(0);
+        auto n1 = prb.n(1);
+        auto i1 = prb.is(1);
+        auto o1 = prb.os(1);
 
-    parallel_nd(BH, FL, [&](dim_t bh, dim_t fl) {
+        auto itype_sz_ = data_type_size(pd()->prb_.itype);
+        auto otype_sz_ = data_type_size(pd()->prb_.otype);
+
         auto fl_b = fl * block_sz;
         auto bh_b = bh_stride * bh;
         auto *i = in + (bh_b + fl_b * i1) * itype_sz_;
         auto *o = out + (bh_b + fl_b * o1) * otype_sz_;
         (*kernel_)(i, o, n1 - fl_b < block_sz, src_zp, dst_zp);
+        return status::success;
     });
 
     return status::success;

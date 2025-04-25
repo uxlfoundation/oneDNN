@@ -358,7 +358,6 @@ status_t jit_uni_reorder_direct_copy_t::init(engine_t *engine) {
 status_t jit_uni_reorder_direct_copy_t::execute(exec_ctx_t &ctx) const {
     const auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
     auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
-
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const auto src_dt_size = src_d.data_type_size();
@@ -371,7 +370,14 @@ status_t jit_uni_reorder_direct_copy_t::execute(exec_ctx_t &ctx) const {
             = static_cast<dim_t>(kernel_->get_max_unroll()) * simd_w;
     int nthr = nelems < thr_granularity ? 1 : 0;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [this, in, out](const int ithr, const int nthr) {
+        const memory_desc_wrapper src_d(pd()->src_md());
+        const memory_desc_wrapper dst_d(pd()->dst_md());
+        const auto src_dt_size = src_d.data_type_size();
+        const auto dst_dt_size = dst_d.data_type_size();
+        const auto nelems = src_d.nelems(true);
+        const int simd_w = isa_max_vlen(pd()->isa_) / sizeof(float);
+
         dim_t start {0}, end {0};
 
         balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);

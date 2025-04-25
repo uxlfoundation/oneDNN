@@ -64,7 +64,7 @@ struct brgemm_matmul_copy_reorder_t : public primitive_t {
     }
 
 private:
-    status_t execute_body(const exec_ctx_t &ctx) const;
+    status_t execute_body(exec_ctx_t &ctx) const;
     status_t execute(exec_ctx_t &ctx) const override {
         return execute_body(ctx);
     }

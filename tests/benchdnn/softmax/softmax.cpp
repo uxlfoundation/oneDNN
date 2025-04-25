@@ -248,7 +248,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const float trh_coeff_bwd = (prb->dir & FLAG_FWD) ? 1.f : 4.f;
     const float trh_f32 = trh_coeff_log * trh_coeff_bwd * trh_coeff_f32
             * epsilon_dt(trh_dt);
-#if DNNL_AARCH64 || defined(DNNL_SYCL_HIP) || defined(DNNL_SYCL_CUDA)
+#if defined(DNNL_AARCH64) || defined(DNNL_SYCL_HIP) || defined(DNNL_SYCL_CUDA)
     // MIOpen and ACL softmax accumulate in F16, but oneDNN now expects accumulation in
     // F32, this partially reverts 6727bbe8. For more information on ACL softmax, see
     // https://github.com/uxlfoundation/oneDNN/issues/1819
@@ -281,7 +281,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
 
     const auto softmax_add_check
             = [&](const compare::compare_t::driver_check_func_args_t &args) {
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
                   auto diff_trh = epsilon_dt(args.dt);
 #else
                   auto diff_trh = epsilon_dt(dnnl_f32);

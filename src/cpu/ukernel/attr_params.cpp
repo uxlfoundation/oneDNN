@@ -16,6 +16,8 @@
 
 #include "oneapi/dnnl/dnnl_ukernel.h"
 
+#include "cpu/platform.hpp"
+
 #include "cpu/ukernel/c_types_map.hpp"
 
 #if DNNL_X64

@@ -6,6 +6,8 @@ if(WIN32 AND DNNL_WITH_SYCL)
     append(CMAKE_CXX_FLAGS "-Wno-ignored-attributes")
 endif()
 
+string(REGEX REPLACE "-Wundef" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+
 set(TARGET_NAME dnnl_gtest)
 set(MAIN_SRC "src/gtest-all.cc")
 source_group("" FILES ${MAIN_SRC})

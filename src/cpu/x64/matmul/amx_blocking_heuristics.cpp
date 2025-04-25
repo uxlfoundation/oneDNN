@@ -155,16 +155,13 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
     matmul_amx_blocking_params_macro_t current_blocking(bgmmc);
     assert(bgmmc.tr_a_dt_sz == bgmmc.tr_b_dt_sz);
     current_blocking.gemm_dt_sz = bgmmc.tr_a_dt_sz;
-    current_blocking.min_m_elem = current_blocking.min_m_dim;
-    current_blocking.min_k_elem
-            = current_blocking.min_k_dim / current_blocking.gemm_dt_sz;
-    current_blocking.min_n_elem = current_blocking.min_n_dim / bgmmc.c_dt_sz;
+    current_blocking.min_m_elem = min_m_dim;
+    current_blocking.min_k_elem = min_k_dim / current_blocking.gemm_dt_sz;
+    current_blocking.min_n_elem = min_n_dim / bgmmc.c_dt_sz;
     current_blocking.k_threshold_write_bound_layer_elem
-            = current_blocking.k_threshold_write_bound_layer
-            / current_blocking.gemm_dt_sz;
+            = k_threshold_write_bound_layer / current_blocking.gemm_dt_sz;
     current_blocking.min_n_dim_write_bound_layer_elem
-            = current_blocking.min_n_dim_write_bound_layer
-            / current_blocking.gemm_dt_sz;
+            = min_n_dim_write_bound_layer / current_blocking.gemm_dt_sz;
 
     for (size_t nthr_to_check = bgmmc.nthr; nthr_to_check > 0;
             nthr_to_check--) {

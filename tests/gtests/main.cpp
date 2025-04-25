@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2022 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
 
         ::testing::AddGlobalTestEnvironment(new dnnl_environment_t());
 
-#if _WIN32
+#if defined(_WIN32)
         // Safety cleanup.
         system("where /q umdh && del pre_cpu.txt");
         system("where /q umdh && del post_cpu.txt");
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
         result = RUN_ALL_TESTS();
     }
 
-#if _WIN32
+#if defined(_WIN32)
     // Get second snapshot.
     system("where /q umdh && umdh -pn:tests.exe -f:post_cpu.txt");
 

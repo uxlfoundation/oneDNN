@@ -640,7 +640,7 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     if (prb->dir & FLAG_FWD) {
 // ACL lnorm does not return mean and variance, so these tests would fail
 // even if the normalization layer worked correctly
-#if !(DNNL_AARCH64_USE_ACL)
+#if !defined(DNNL_AARCH64_USE_ACL)
         if (!(prb->flags & GLOB_STATS) && !(prb->dir & FLAG_INF)) {
             check_kinds.push_back(MEAN);
             check_kinds.push_back(VAR);

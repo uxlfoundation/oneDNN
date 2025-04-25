@@ -41,7 +41,8 @@ using half = dnnl::impl::float16_t;
 #define NGEN_HALF_TYPE
 
 #if (!defined(NDEBUG) || defined(DNNL_DEV_MODE)) \
-        && (__cplusplus >= 202002L || _MSVC_LANG >= 202002L)
+        && (__cplusplus >= 202002L \
+                || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L))
 #if __has_include(<version>)
 #include <version>
 #if __cpp_lib_source_location >= 201907L

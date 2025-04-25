@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ namespace gpu {
 #if defined(DNNL_WITH_SYCL) \
         && ((DNNL_GPU_VENDOR == DNNL_VENDOR_GENERIC) \
                 || (DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA) \
-                || (DNNL_AMD_ENABLE_SYCL_KERNELS == 1))
+                || defined(DNNL_AMD_ENABLE_SYCL_KERNELS))
 #define DNNL_GPU_GENERIC_SYCL_ONLY(...) __VA_ARGS__
 #define GENERIC_SYCL_KERNELS_ENABLED
 #else

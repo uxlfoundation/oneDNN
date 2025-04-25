@@ -70,7 +70,13 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
                 dims2str(select_cond_dims).c_str(),
                 dims2str(select_src0_dims).c_str());
     }
-
+    VCHECK_SDP_DECOMP(ltw(inputs[graph_inport[1]]).data_type()
+                    == ltw(inputs[graph_inport[4]]).data_type(),
+            false,
+            "Key and value should have the same data type. But got key:%s, "
+            "value:%s",
+            dnnl_dt2str(ltw(inputs[graph_inport[1]]).data_type()),
+            dnnl_dt2str(ltw(inputs[graph_inport[4]]).data_type()));
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
 // between batch_size, num_head_q and thread number to determine whether to use

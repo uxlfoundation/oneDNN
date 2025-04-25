@@ -93,6 +93,7 @@ struct brgemm_strides_t {
     dim_t stride_b;
 };
 
+// NOLINTBEGIN(modernize-use-using)
 // memory advice feature heuristic is based on the performance tests done
 // on simulator and lets the tile loading snoop for other cores caches if
 // the A/B matrices are shared. thus, if already shared, no need to fetch
@@ -122,6 +123,7 @@ typedef enum {
     // between threads
     brgemm_hint_mem_advice_A_B,
 } brgemm_kernel_hint_mem_advice_t;
+// NOLINTEND(modernize-use-using)
 
 struct brgemm_prf_t {
     int dist0 {-1};

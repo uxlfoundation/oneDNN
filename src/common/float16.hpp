@@ -136,15 +136,6 @@ void cvt_float16_to_float(float *out, const float16_t *inp, size_t nelems);
 void add_floats_and_cvt_to_float16(
         float16_t *out, const float *inp0, const float *inp1, size_t nelems);
 
-#if DNNL_X64
-namespace cpu {
-namespace x64 {
-bool DNNL_API try_cvt_f16_to_f32(float *, const float16_t *);
-bool DNNL_API try_cvt_f32_to_f16(float16_t *, const float *);
-} // namespace x64
-} // namespace cpu
-#endif
-
 } // namespace impl
 } // namespace dnnl
 

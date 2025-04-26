@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,10 @@
 #include "tests/test_isa_common.hpp"
 
 #include "src/common/bit_cast.hpp"
-#include "src/common/float8.hpp"
+
+#if DNNL_X64
+#include "src/cpu/x64/jit_avx512_core_fp8cvt.hpp"
+#endif
 
 using dnnl::impl::utils::bit_cast;
 

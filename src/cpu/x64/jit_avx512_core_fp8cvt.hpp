@@ -213,16 +213,16 @@ private:
     f32_convert_mode_t mode_;
 };
 
-bool try_cvt_f8_e5m2_to_f32(float *out, const float8_e5m2_t *inp);
-bool try_cvt_f8_e4m3_to_f32(float *out, const float8_e4m3_t *inp);
-bool try_cvt_f8_e5m2_to_f16(float16_t *out, const float8_e5m2_t *inp);
-bool try_cvt_f8_e4m3_to_f16(float16_t *out, const float8_e4m3_t *inp);
-bool try_cvt_f16_to_f8_e5m2(float8_e5m2_t *out, const float16_t *inp);
-bool try_cvt_f16_to_f8_e4m3(float8_e4m3_t *out, const float16_t *inp);
-bool try_cvt_f32_to_f8_e5m2(float8_e5m2_t *out, const float *inp);
-bool try_cvt_f32_to_f8_e4m3(float8_e4m3_t *out, const float *inp);
-bool try_cvt_f16_to_f32(float *out, const float16_t *inp);
-bool try_cvt_f32_to_f16(float16_t *out, const float *inp);
+bool DNNL_API try_cvt_f8_e5m2_to_f32(float *out, const float8_e5m2_t *inp);
+bool DNNL_API try_cvt_f8_e4m3_to_f32(float *out, const float8_e4m3_t *inp);
+bool DNNL_API try_cvt_f8_e5m2_to_f16(float16_t *out, const float8_e5m2_t *inp);
+bool DNNL_API try_cvt_f8_e4m3_to_f16(float16_t *out, const float8_e4m3_t *inp);
+bool DNNL_API try_cvt_f16_to_f8_e5m2(float8_e5m2_t *out, const float16_t *inp);
+bool DNNL_API try_cvt_f16_to_f8_e4m3(float8_e4m3_t *out, const float16_t *inp);
+bool DNNL_API try_cvt_f32_to_f8_e5m2(float8_e5m2_t *out, const float *inp);
+bool DNNL_API try_cvt_f32_to_f8_e4m3(float8_e4m3_t *out, const float *inp);
+bool DNNL_API try_cvt_f16_to_f32(float *out, const float16_t *inp);
+bool DNNL_API try_cvt_f32_to_f16(float16_t *out, const float *inp);
 
 } // namespace x64
 } // namespace cpu

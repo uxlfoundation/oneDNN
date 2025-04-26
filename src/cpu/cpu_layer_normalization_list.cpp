@@ -24,10 +24,10 @@
 #include "cpu/x64/jit_uni_layer_normalization.hpp"
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_layer_normalization.hpp"
-#endif
 using namespace dnnl::impl::cpu::aarch64;
+#endif
 #endif
 
 namespace dnnl {

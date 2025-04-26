@@ -34,7 +34,7 @@
 #include "cpu/x64/cpu_isa_traits.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/cpu_isa_traits.hpp"
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 // For checking if fp16 isa is supported on the platform
 #include "arm_compute/core/CPP/CPPTypes.h"
 #endif
@@ -126,7 +126,7 @@ bool has_data_type_support(data_type_t data_type) {
 #if DNNL_X64
             return x64::mayiuse(x64::avx512_core_fp16)
                     || x64::mayiuse(x64::avx2_vnni_2);
-#elif DNNL_AARCH64_USE_ACL
+#elif defined(DNNL_AARCH64_USE_ACL)
             return arm_compute::CPUInfo::get().has_fp16();
 #else
             return false;
@@ -155,7 +155,7 @@ bool has_training_support(data_type_t data_type) {
 #if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
             return true;
 #endif
-#elif DNNL_AARCH64_USE_ACL
+#elif defined(DNNL_AARCH64_USE_ACL)
             return arm_compute::CPUInfo::get().has_bf16();
 #else
             return false;
@@ -163,7 +163,7 @@ bool has_training_support(data_type_t data_type) {
         case data_type::f16:
 #if DNNL_X64
             return x64::mayiuse(x64::avx512_core_fp16);
-#elif DNNL_AARCH64_USE_ACL
+#elif defined(DNNL_AARCH64_USE_ACL)
             return arm_compute::CPUInfo::get().has_fp16();
 #else
             return false;
@@ -209,7 +209,7 @@ unsigned get_per_core_cache_size(int level) {
 unsigned get_num_cores() {
 #if DNNL_X64
     return x64::cpu().getNumCores(Xbyak::util::CoreLevel);
-#elif DNNL_AARCH64_USE_ACL
+#elif defined(DNNL_AARCH64_USE_ACL)
     return aarch64::cpu().getNumCores(Xbyak_aarch64::util::CoreLevel);
 #else
     return 1;

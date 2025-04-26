@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2022 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@
 #include "cpu/x64/prelu/jit_prelu_forward.hpp"
 
 using namespace dnnl::impl::cpu::x64;
-#elif DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#elif DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_prelu.hpp"
 using namespace dnnl::impl::cpu::aarch64;
 #endif

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
 * Copyright 2021-2022, 2025 Arm Ltd. and affiliates
 *
@@ -27,7 +27,7 @@ using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_eltwise.hpp"
 #include "cpu/aarch64/jit_uni_eltwise_int.hpp"
-#if DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_eltwise.hpp"
 #endif // DNNL_AARCH64_USE_ACL
 using namespace dnnl::impl::cpu::aarch64;

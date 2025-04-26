@@ -27,15 +27,16 @@ input data, which helps improve stability and convergence.
 RMSNorm, on the other hand, skips the re-centering step and normalizes using only
 the root mean square statistic (`RMS`):
 ```math
-RMS(t, n) = \sqrt{\frac{1}{C} \sum_{c} src(t, n, c)^2 + \epsilon}
+RMS(t, n) = \sqrt{\frac{1}{C} \sum_{c} src(t, n, c)^2 }
 ```
-The `epsilon` is added to avoid further dividing by zero.
-Note that it is not always the part of the definition for `RMS` statistics.
 
 This results in a simpler normalization formula:
 ```math
-dst(t, n, c) = \frac{src(t, n, c)}{RMS(t, n)} * \gamma(c) + \beta(c)
+dst(t, n, c) = \frac{src(t, n, c)}{\sqrt{\frac{1}{C} \sum_{c} src(t, n, c)^2 + \epsilon}} * \gamma(c) + \beta(c)
 ```
+
+The `epsilon` is added to avoid further dividing by zero.
+Note that it is not always the part of the definition for `RMS` statistics.
 
 TLDR; RMSNorm could be considered a simplified version of
 LayerNorm where the mean is assumed to be zero. As a result, the variance is

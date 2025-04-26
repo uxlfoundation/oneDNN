@@ -38,10 +38,9 @@
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_reorder.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_reorders.hpp"
-#endif
-
-#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_reorder.hpp"
+#endif
 #endif
 
 #include "cpu/rnn/rnn_reorders.hpp"

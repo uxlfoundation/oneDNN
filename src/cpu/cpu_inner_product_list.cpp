@@ -27,11 +27,11 @@
 #include "cpu/x64/jit_brgemm_inner_product.hpp"
 #include "cpu/x64/matmul_inner_product.hpp"
 using namespace dnnl::impl::cpu::x64;
-#endif
-
-#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#elif DNNL_AARCH64
+#if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_inner_product.hpp"
 using namespace dnnl::impl::cpu::aarch64;
+#endif
 #endif
 
 namespace dnnl {

@@ -475,3 +475,6 @@ OpenCL and the OpenCL logo are trademarks of Apple Inc. used by permission
 by Khronos.
 
 (C) Intel Corporation
+
+
+add test mr

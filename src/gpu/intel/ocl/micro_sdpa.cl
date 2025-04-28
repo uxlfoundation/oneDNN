@@ -319,8 +319,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     float iscale = native_recip(scale);
 #endif
 #else
-    float scale = 1.0;
-    float iscale = 1.0;
+    float scale = 1.0f;
+    float iscale = 1.0f;
 #endif
     scale *= 1.442695f; // log2(e)
 

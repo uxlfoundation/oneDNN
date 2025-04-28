@@ -292,6 +292,8 @@ bool parse_perf_template(const char *&pt, const char *pt_def,
 bool parse_batch(const bench_f bench, const char *str,
         const std::string &option_name = "batch");
 
+bool parse_db(const char *str);
+
 bool parse_help(const char *str, const std::string &option_name = "help");
 bool parse_main_help(const char *str, const std::string &option_name = "help");
 
@@ -318,7 +320,7 @@ bool parse_driver_shared_settings(S &s, const S &def, const char *str) {
             || parse_perf_template(s.perf_template,
                     base_settings_t::perf_template_def, s.perf_template_csv(),
                     str)
-            || parse_reset(s, str) || parse_help(str);
+            || parse_reset(s, str) || parse_db(str) || parse_help(str);
 }
 
 void catch_unknown_options(const char *str);

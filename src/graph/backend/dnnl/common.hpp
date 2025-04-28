@@ -144,16 +144,6 @@ dnnl::memory::format_tag get_format_tag(const dnnl::memory::desc &md);
 size_t generate_constant_md_hash(
         size_t part_id, const std::vector<dnnl::memory::desc> &const_mds);
 
-#ifndef NDEBUG
-#define BACKEND_DNNL_ENFORCE(condition, message) \
-    do { \
-        error::wrap_c_api((condition) ? dnnl_success : dnnl_invalid_arguments, \
-                (message)); \
-    } while (false)
-#else
-#define BACKEND_DNNL_ENFORCE(condition, message)
-#endif
-
 #define BACKEND_DNNL_CHECK(statement) \
     do { \
         status_t ret = (statement); \

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -102,6 +102,17 @@ status_t primitive_execute(
         status = stream->enqueue_primitive(primitive_iface, ctx);
         stream->wait();
         double duration_ms = get_msec() - start_ms;
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+        if (stream->is_async_verbose_enabled()) {
+            stream->reset_tracker();
+            auto track_info = stream->get_async_tracking_stats();
+            VINFO(start_ms, primitive, exec, VERBOSE_profile,
+                    track_info.c_str());
+            stream->reset_tracker();
+        }
+#endif
+
         if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency
             // on `exec_ctx_t` type.

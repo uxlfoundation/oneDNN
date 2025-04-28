@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 
 #include "utils/cold_cache.hpp"
 #include "utils/parser.hpp"
@@ -968,6 +969,14 @@ bool parse_batch(const bench_f bench, const char *str,
     };
     return parse_single_value_option(
             status, FAIL, str2batch, str, option_name, help);
+}
+
+bool parse_db(const char *str) {
+    static const std::string help
+            = "FILE\n    Instructs the driver to skip previous test results in "
+              "FILE.\n";
+    int status = OK;
+    return parse_single_value_option(status, FAIL, setup_db, str, "diff-db", help);
 }
 
 bool parse_help(const char *str, const std::string &option_name /* = "help"*/) {

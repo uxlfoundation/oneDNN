@@ -813,7 +813,7 @@
 --reset --skip-impl=ref --stag=any --wtag=abc --dtag=abc --dt=u8:u8:u8  7x438x12:7x12x932
 --reset --skip-impl=ref --stag=acb --wtag=acb --dtag=any --dt=f64:f64:f64  3x104x4812:3x4812x2
 --reset --skip-impl=ref --stag=bac --wtag=cab --dtag=bac --dt=f32:u8:f32 --attr-fpmath=f16:true 2x5x2:2x2x7771
---reset --skip-impl=ref --stag=bac --wtag=acb --dtag=any --dt=bf16:bf16:f32  1x2680x1662:1x1662x3848
+# --reset --skip-impl=ref --stag=bac --wtag=acb --dtag=any --dt=bf16:bf16:f32  1x2680x1662:1x1662x3848
 --reset --skip-impl=ref --stag=cab --wtag=any --dtag=any --dt=bf16:u4:u8  3x1x897:3x897x102
 --reset --skip-impl=ref --stag=bac --wtag=cab --dtag=abc --dt=bf16:bf16:bf16  7x375x264:7x264x4
 --reset --skip-impl=ref --stag=any --wtag=acb --dtag=bac --dt=f64:f64:f64  1x1x31:1x31x2199

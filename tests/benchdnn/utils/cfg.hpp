@@ -185,7 +185,7 @@ protected:
         }
         const int64_t safe_digits = get_safe_digits();
         const int64_t safe_n_acc = (1LL << safe_digits) / max_value;
-        return std::max(1L, safe_n_acc);
+        return safe_n_acc;
     }
 
     // Modification of ranges has to happen at construction stage.

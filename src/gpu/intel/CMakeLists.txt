@@ -35,6 +35,13 @@ if(DNNL_WITH_SYCL)
     add_subdirectory(sycl)
 endif()
 
+
+if(NOT DNNL_EXPERIMENTAL_ASYNC_VERBOSE)
+    # avoid building and linking asynchrous verbose mode if the functionality is disabled
+    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ocl/async_verbose.*")
+    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/sycl/async_verbose.*")
+endif()
+
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS

@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2024 Intel Corporation
+# Copyright 2024-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,11 @@ file(GLOB SOURCES
 # - Only enable the generic SYCL kernels for AMD vendor if target architecture has been specified.
 if(DNNL_SYCL_GENERIC OR DNNL_SYCL_CUDA OR DNNL_AMD_ENABLE_SYCL_KERNELS)
     add_subdirectory(sycl)
+endif()
+
+if(NOT DNNL_EXPERIMENTAL_ASYNC_VERBOSE)
+    # avoid building and linking asynchrous verbose mode if the functionality is disabled
+    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/async_verbose.hpp")
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_generic)

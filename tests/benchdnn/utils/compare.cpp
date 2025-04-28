@@ -267,9 +267,11 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
     dnn_mem_t exp_f32_plain;
-    if (has_prim_ref_
-            && (query_md_data_type(exp_mem.md_) != dnnl_f32
-                    || !check_md_consistency_with_tag(exp_mem.md_, tag::abx))) {
+    const bool is_prim_ref_dst_mem_f32_abx
+            = query_md_data_type(exp_mem.md_) == dnnl_f32
+            && IMPLICATION(has_prim_ref_,
+                    check_md_consistency_with_tag(exp_mem.md_, tag::abx));
+    if (!is_prim_ref_dst_mem_f32_abx) {
         exp_f32_plain
                 = dnn_mem_t(exp_mem, dnnl_f32, tag::abx, get_cpu_engine());
     }

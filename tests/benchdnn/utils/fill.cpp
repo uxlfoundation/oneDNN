@@ -233,10 +233,19 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
                     : gen_real(int_seed);
         };
 
-        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            float val = get_val();
-            mem_ref.set_f32_elem(
-                    idx, round_to_nearest_representable(round_dt, val));
+        if (mem_ref.dt() == dnnl_f32) {
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                float val = get_val();
+                mem_ref.set_f32_elem(
+                        idx, round_to_nearest_representable(round_dt, val));
+            }
+        } else {
+            // There are some rare scenarios when mem_ref is not f32.
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                float val = get_val();
+                mem_ref.set_elem(
+                        idx, round_to_nearest_representable(round_dt, val));
+            }
         }
     });
 
@@ -271,8 +280,10 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
             return orig_val;
         };
 
-        const float elem_first_val = adjust_val(mem_ref.get_f32_elem(0));
-        mem_ref.set_f32_elem(
+        // There are some rare scenarios when mem_ref is not f32. Since it's a
+        // single element per tensor, can call a regular interface.
+        const float elem_first_val = adjust_val(mem_ref.get_elem(0));
+        mem_ref.set_elem(
                 0, round_to_nearest_representable(round_dt, elem_first_val));
     }
 

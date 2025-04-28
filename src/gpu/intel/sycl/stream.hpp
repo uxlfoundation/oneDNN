@@ -81,6 +81,19 @@ struct stream_t : public gpu::intel::compute::compute_stream_t {
         return profiler_->get_info(data_kind, num_entries, data);
     }
 
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+    status_t reset_async_tracker() override {
+        if (!is_async_verbose_enabled()) return status::invalid_arguments;
+        async_tracker_->reset();
+        return status::success;
+    }
+
+    std::string get_async_tracking_stats() const override {
+        if (!is_async_verbose_enabled()) return status::invalid_arguments;
+        return async_tracker_->get_info(data_kind, num_entries, data);
+    }
+#endif
+
     ::sycl::queue &queue() const { return *impl()->queue(); }
 
     status_t enqueue_primitive(const primitive_iface_t *prim_iface,

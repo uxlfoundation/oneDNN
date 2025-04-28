@@ -1,5 +1,5 @@
 Proposal for Introduction to Primitives in DNNL
-==========================================
+===============================================
 
 ## 1. Introduction
 
@@ -11,7 +11,7 @@ DNNL directly, as opposed to using it via a framework.
 ---
 
 Currently, the [Basic
-Concepts](https://intel.github.io/mkl-dnn/dev_guide_basic_concepts.html)
+Concepts](https://uxlfoundation.github.io/oneDNN/dev_guide_basic_concepts.html)
 documentation defines key concepts that are part of the DNNL programming model,
 such as memory object, primitive descriptor, etc. While this page provides all
 the necessary details to the user, there is no quick way for the user to (i) see
@@ -30,11 +30,11 @@ DNNL API.
 Consequently, the goals of this proposal are the following:
 
 1. Include a diagram on the [Basic
-   Concepts](https://intel.github.io/mkl-dnn/dev_guide_basic_concepts.html) page
+   Concepts](https://uxlfoundation.github.io/oneDNN/dev_guide_basic_concepts.html) page
    with a high level overview of the key concepts within DNNL programming model, and
 
 2. Develop a set of simple examples for all primitives currently supported by DNNL (c.f.
-   [DNNL dev guide](https://intel.github.io/mkl-dnn/index.html)).
+   [DNNL dev guide](https://uxlfoundation.github.io/oneDNN/index.html).
 
 ---
 
@@ -48,7 +48,7 @@ specific workflow will be discussed.
 ## 2. DNNL Documentation
 
 The [Basic
-Concepts](https://intel.github.io/mkl-dnn/dev_guide_basic_concepts.html) page
+Concepts](https://uxlfoundation.github.io/oneDNN/dev_guide_basic_concepts.html) page
 will be updated with a diagram of the DNNL programming model. This will provide
 a high level overview of the key concepts in DNNL to the user and the
 interaction between them. Below is an example of such diagram:
@@ -62,13 +62,13 @@ may be looking similar to a workflow, the diagram is not intended to demonstrate
 the workflow of a specific primitive, primarily because (i) it is not practical
 to generalize primitive specific aspects in one simple diagram, and (ii) the
 diagram fits within the context of the [Basic
-Concepts](https://intel.github.io/mkl-dnn/dev_guide_basic_concepts.html) page,
+Concepts](https://uxlfoundation.github.io/oneDNN/dev_guide_basic_concepts.html) page,
 where no primitive specific aspects are discussed.
 
 ## 3. Primitive examples
 
 The structure of these examples will be similar to
-`mkl-dnn/examples/getting_started.cpp`, thereby making them simple.
+`examples/getting_started.cpp`, thereby making them simple.
 
 ~~~cpp
 
@@ -116,8 +116,8 @@ divided into the three sections discussed in [DNNL
 Documentation](#2.-DNNL-Documentation) above.
 
 The filenames will be `{primitive}_forward.cpp`. The examples will be located in
-`mkl-dnn/examples/primitives` primarily to separate these from existing codes
-inside `mkl-dnn/examples`. The new primitive examples will also be written in
+`examples/primitives` primarily to separate these from existing codes
+inside `examples`. The new primitive examples will also be written in
 C++ only at first, and additional C files may be provided at some later stage.
 The primitive-specific documentation page will provide a link to the
 corresponding example file, under `API Reference`.

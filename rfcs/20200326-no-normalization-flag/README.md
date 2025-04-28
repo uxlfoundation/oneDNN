@@ -14,9 +14,9 @@ normalization flag, and the library currently supports four options:
 In terms of primitive functionality, by providing any of the above flags the
 user is also required to provide additional input for the primitive execution,
 in particular allocated memory regions for, e.g., mean and variance (c.f. [Batch
-Normalization](https://intel.github.io/mkl-dnn/dev_guide_batch_normalization.html),
+Normalization](https://uxlfoundation.github.io/oneDNN/dev_guide_batch_normalization.html),
 [Layer
-Normalization](https://intel.github.io/mkl-dnn/dev_guide_layer_normalization.html)
+Normalization](https://uxlfoundation.github.io/oneDNN/dev_guide_layer_normalization.html)
 documentation).
 
 The library does not provide any flag for the situation when the user wishes to

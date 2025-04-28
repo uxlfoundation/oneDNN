@@ -9,9 +9,9 @@ Dilated pooling is simply regular pooling but the pixels/voxels you use in each
 
 ### Motivation
 Improve Pytorch performance, PyTorch Community argues Max_pool2d is slow in
-native CPU path, so if MKLDNN can support it, may be can get a good performance.
-- [MKL-DNN isuee](https://github.com/intel/mkl-dnn/issues/325)
-- [PyTorch isuee](https://github.com/pytorch/pytorch/issues/34675)
+native CPU path, so if DNNL can support it, may be can get a good performance.
+- [DNNL issue](https://github.com/uxlfoundation/oneDNN/issues/325)
+- [PyTorch issue](https://github.com/pytorch/pytorch/issues/34675)
 
 ### Simple measurement from the PyTorch community
 

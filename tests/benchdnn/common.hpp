@@ -178,6 +178,9 @@ using bench_f = int (*)(int, char **);
 std::string locate_file(const std::string &fname);
 int batch(const char *fname, bench_f bench);
 
+int setup_db(const char *fname);
+const std::unordered_map<std::string, uint64_t> &get_db();
+
 /* returns 1 with given probability */
 int flip_coin(ptrdiff_t seed, float probability);
 

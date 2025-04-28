@@ -568,6 +568,49 @@ int batch(const char *fname, bench_f bench) {
     return bench(static_cast<int>(c_opts.size()), c_opts.data());
 }
 
+std::unordered_map<std::string, uint64_t> &db_mut() {
+    static std::unordered_map<std::string, uint64_t> db;
+    return db;
+}
+
+const std::unordered_map<std::string, uint64_t> &get_db() {
+    return db_mut();
+}
+
+int setup_db(const char *fname) {
+    if (fname == nullptr || fname[0] == 0) return OK;
+    std::ifstream fstream(fname);
+    std::string line;
+    auto &db = db_mut();
+    while (std::getline(fstream, line)) {
+        auto id_start = line.find("impl_id: ", 0);
+        if (id_start == std::string::npos) continue;
+        const char *id_str = &line[id_start + 9];
+        if (id_str[0] != '0' || id_str[1] != 'x') continue;
+        uint64_t id = strtoul(id_str + 2, nullptr, 16);
+
+        auto repro_start = line.find("__REPRO: ", 0);
+        if (repro_start == std::string::npos) continue;
+        auto mode_modifier_start = line.find("--mode-modifier=", 0);
+        auto mode_start = line.find("--mode=", 0);
+        if (mode_modifier_start != std::string::npos) {
+            repro_start = mode_modifier_start + 17;
+            while (line[repro_start] == ' ')
+                repro_start++;
+        } else if (mode_start != std::string::npos) {
+            repro_start = mode_start + 8;
+            while (line[repro_start] == ' ')
+                repro_start++;
+        } else
+            repro_start += 9;
+        std::string prb_str = line.substr(repro_start, std::string::npos);
+
+        if (id != 0) db[prb_str] = id;
+    }
+
+    return OK;
+}
+
 int flip_coin(ptrdiff_t seed, float probability) {
     const ptrdiff_t big_prime = 1000003;
     const ptrdiff_t prime = 753737;

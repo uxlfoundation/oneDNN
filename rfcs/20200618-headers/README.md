@@ -6,7 +6,7 @@ New headers structure and namespaces are needed for cross-component and oneAPI
 branding alignment. The request from the oneAPI program is to put oneDNN
 headers under the `oneapi` and also to provide a corresponding namespace. The
 changes will have to be reflected in the
-[spec](https://github.com/oneapi-src/oneAPI-spec/tree/master/source/elements/oneDNN).
+[spec](https://github.com/uxlfoundation/oneAPI-spec/tree/main/source/elements/oneDNN).
 
 The main concern is how to keep backward compatibility with the existing code.
 The secondary concern is maintenance burden.
@@ -14,7 +14,7 @@ The secondary concern is maintenance burden.
 ## Proposal
 
 The following changes are to be implemented in the
-[`dev-v2`](https://github.com/oneapi-src/onednn/tree/dev-v2) branch but will
+[`dev-v2`](https://github.com/uxlfoundation/onednn/tree/dev-v2) branch but will
 eventually be part of master.
 
 ### Namespace changes
@@ -30,7 +30,7 @@ namespace oneapi { namespace dnnl = ::dnnl; }
 ```
 
 The new namespace must be reflected in the
-[spec](https://github.com/oneapi-src/oneAPI-spec/tree/master/source/elements/oneDNN).
+[spec](https://github.com/uxlfoundation/oneAPI-spec/tree/main/source/elements/oneDNN).
 There is no recommendation on whether longer or shorted namespace should be
 used in the spec yet; this is outside of the scope of this RFC.
 

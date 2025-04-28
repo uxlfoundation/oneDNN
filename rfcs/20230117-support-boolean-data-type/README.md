@@ -2,7 +2,7 @@
 
 ## Motivation
 
-According to the [proposal](https://github.com/oneapi-src/onednn/pull/1529),
+According to the [proposal](https://github.com/uxlfoundation/onednn/pull/1529),
 graph compiler backend will be added to the implementation of graph component.  
 
 Currently, boolean data type and `Select` operation are only used in fusion
@@ -15,7 +15,7 @@ in oneDNN Graph API to support graph compiler distilBert model optimization.
 whose data type is Boolean. Similarly hereinafter.）
 
 Currently, this RFC is mainly for graph compiler backend, and need to be merged
-with the [RFC](https://github.com/oneapi-src/onednn/pull/1529) of adding graph compiler backend into graph component in the same release version.
+with the [RFC](https://github.com/uxlfoundation/onednn/pull/1529) of adding graph compiler backend into graph component in the same release version.
 
 ## support Boolean data type in oneDNN
 

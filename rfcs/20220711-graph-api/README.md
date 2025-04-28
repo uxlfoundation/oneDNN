@@ -75,11 +75,11 @@ works on Intel CPU with AVX-512 only. Extending oneDNN graph compiler to work on
 other hardware architectures and ISAs are out of scope for the current RFC.
 
 oneDNN graph API and implementation have been developed for more than one year
-on [dev-graph branch](https://github.com/oneapi-src/oneDNN/tree/dev-graph) in
+on [dev-graph branch](https://github.com/uxlfoundation/oneDNN/tree/dev-graph) in
 oneDNN repository. During the period, five technical preview versions were
 released internally or externally to demonstrate the API concepts and usage. Th
 alpha release of
-[graph-v0.5](https://github.com/oneapi-src/oneDNN/releases/tag/graph-v0.5) was
+[graph-v0.5](https://github.com/uxlfoundation/oneDNN/releases/tag/graph-v0.5) was
 integrated into stock PyTorch successfully and released since [PyTorch
 v1.12](https://github.com/pytorch/pytorch/releases/tag/v1.12.0). oneDNN graph
 API preview has been also integrated in [Intel Extension for
@@ -308,7 +308,7 @@ extended in the future according to user requirements.
 
 During the technical previews, separated `engine`, `stream`, and `thread pool`
 APIs were developed to reduce the dependency on oneDNN internals. When proposing
-to merge graph API into oneDNN master, we are also proposing to reuse oneDNN's
+to merge graph API into oneDNN main, we are also proposing to reuse oneDNN's
 existing `engin`, `stream`, `thread pool`, and other common types and APIs. A
 separate [RFC](merge-common-api.md) describes the reuse of oneDNN `engine`,
 `stream`, and `thread pool` API. Another
@@ -316,7 +316,7 @@ separate [RFC](merge-common-api.md) describes the reuse of oneDNN `engine`,
 code and exceptions on C++ API. We suggest users who are familiar with dev-graph
 and oneDNN graph previews to read the above two sub-RFCs to understand the API
 changes compared with preview versions. We also plan to provide a transition
-guide to help dev-graph users migrating to oneDNN master and future releases.
+guide to help dev-graph users migrating to oneDNN main and future releases.
 
 Graph API contains both C++ API and C API. The C API ensures the ABI
 compatibility while C++ provides more convenience. Introducing graph APIs will
@@ -435,15 +435,15 @@ users request to access the feature through a programmable API.
 
 ## Next steps
 
-* Fork oneDNN master and merge dev-graph into it with the proposed code and
+* Fork oneDNN main and merge dev-graph into it with the proposed code and
   directory structure.
 * Release oneDNN Graph beta from the fork in Q3 2022 to demonstrate the overview
   of primitive and graph API together and seek for feedbacks from oneDNN
   community. (Update: this is done in
-  [graph-v0.6](https://github.com/oneapi-src/oneDNN/releases/tag/graph-v0.6))
-* Merge graph API into oneDNN master and release it as a new experimental
+  [graph-v0.6](https://github.com/uxlfoundation/oneDNN/releases/tag/graph-v0.6))
+* Merge graph API into oneDNN main and release it as a new experimental
   feature in oneDNN v3.0.
-* Keep evolving graph API and develop new features on oneDNN master. Follow
+* Keep evolving graph API and develop new features on oneDNN main. Follow
   oneDNN production plan and roadmap.
 * Maintain dev-graph until graph API is release in oneDNN v3.0. All users will
   be recommended to upgrade.

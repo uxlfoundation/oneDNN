@@ -49,8 +49,8 @@ As indicated by the formula of Swish, the proposal is to support it via the
 combination of Sigmoid and Multiply operations which are already supported in
 oneDNN Graph API.
 
-- [Sigmoid operation](https://oneapi-src.github.io/oneDNN/dev_guide_op_sigmoid.html)
-- [Multiply operation](https://oneapi-src.github.io/oneDNN/dev_guide_op_multiply.html)
+- [Sigmoid operation](https://uxlfoundation.github.io/oneDNN/dev_guide_op_sigmoid.html)
+- [Multiply operation](https://uxlfoundation.github.io/oneDNN/dev_guide_op_multiply.html)
 
 With that, a Swish operation with default `factor` can ben programed as below:
 
@@ -181,7 +181,7 @@ can extend the library in the following options:
 7. SiLU operation in PyTorch, https://pytorch.org/docs/stable/generated/torch.nn.SiLU.html
 8. Swish operation in OpenVINO, https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/activation/swish-4.html
 9. PR for Swish operation in ONNX, https://github.com/onnx/onnx/pull/5964
-10. Swish in oneDNN, https://oneapi-src.github.io/oneDNN/dev_guide_eltwise.html
+10. Swish in oneDNN, https://uxlfoundation.github.io/oneDNN/dev_guide_eltwise.html
 11. Swish in cuDNN, https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-graph-library.html#cudnnpointwisemode-t
 12. Swish implementation in Huggingface repository, https://github.com/search?q=org%3Ahuggingface%20swish&type=code
 
@@ -194,6 +194,6 @@ can extend the library in the following options:
 [7]: https://pytorch.org/docs/stable/generated/torch.nn.SiLU.html
 [8]: https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/activation/swish-4.html
 [9]: https://github.com/onnx/onnx/pull/5964
-[10]: https://oneapi-src.github.io/oneDNN/dev_guide_eltwise.html
+[10]: https://uxlfoundation.github.io/oneDNN/dev_guide_eltwise.html
 [11]: https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-graph-library.html#cudnnpointwisemode-t
 [12]: https://github.com/search?q=org%3Ahuggingface%20swish&type=code

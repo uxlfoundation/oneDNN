@@ -13,7 +13,7 @@ them in both primitive and graph API. We will start from engine API which is the
 basic for the other two.
 
 Please note graph APIs mentioned in this document are based on [oneDNN graph
-v0.5 release](https://github.com/oneapi-src/oneDNN/releases/tag/graph-v0.5)
+v0.5 release](https://github.com/uxlfoundation/oneDNN/releases/tag/graph-v0.5)
 which is slightly different from what they look on the latest dev-graph.
 
 ## Existing engine API

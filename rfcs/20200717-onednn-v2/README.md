@@ -3,8 +3,8 @@
 The objective of this RFC is to discuss the changes in the upcoming oneDNN
 v2.0, which will introduce the support for DPC++ programming model.
 The plan is to merge
-[`dev-v2`](https://github.com/oneapi-src/oneDNN/tree/dev-v2) branch into
-[`master`](https://github.com/oneapi-src/oneDNN/tree/master). The exact date
+[`dev-v2`](https://github.com/uxlfoundation/oneDNN/tree/dev-v2) branch into
+[`main`](https://github.com/uxlfoundation/oneDNN/tree/main). The exact date
 is TBD, but would probably happen around October 2020.
 
 One of the goals is to make v2.0 API backwards compatible with v1.x as much as

@@ -16,7 +16,7 @@ when he tried to optimize the inference pipeline of a popular face-related
 application - PReLU takes 47% of time in his application.
 
 Currently oneDNN supports ReLU activation function in
-[eltwise operations](https://oneapi-src.github.io/oneDNN/dev_guide_eltwise.html).
+[eltwise operations](https://uxlfoundation.github.io/oneDNN/dev_guide_eltwise.html).
 LeakyReLU can be achieved by specifying non zero alpha parameter. PReLU is
 specific variant of LeakyReLU, where alpha is learnable parameter. It comes
 with two flavors:

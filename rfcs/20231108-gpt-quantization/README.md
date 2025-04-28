@@ -264,7 +264,7 @@ typedef enum {
 [1]: https://arxiv.org/pdf/2210.17323.pdf
 [2]: https://github.com/openvinotoolkit/openvino/pull/20607
 [3]: https://github.com/openvinotoolkit/openvino/pull/20572
-[4]: https://github.com/oneapi-src/oneDNN/pull/1736 
+[4]: https://github.com/uxlfoundation/oneDNN/pull/1736 
 
 ---
 

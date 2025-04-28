@@ -34,7 +34,7 @@ Consequently, the goals of this proposal are the following:
    with a high level overview of the key concepts within DNNL programming model, and
 
 2. Develop a set of simple examples for all primitives currently supported by DNNL (c.f.
-   [DNNL dev guide](https://uxlfoundation.github.io/oneDNN/index.html).
+   [DNNL dev guide](https://uxlfoundation.github.io/oneDNN/index.html)).
 
 ---
 

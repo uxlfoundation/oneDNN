@@ -2,7 +2,7 @@
 
 ## Background
 
-oneDNN Graph API was proposed and implemented on oneDNN master as an
+oneDNN Graph API was proposed and implemented on oneDNN main as an
 experimental feature in October, 2022. Since then,
 
 - The Graph API was released as an experimental feature in oneDNN v3.0.
@@ -12,7 +12,7 @@ experimental feature in October, 2022. Since then,
 - A new benchdnn graph driver was designed and implemented to support
   correctness and performance benchmark for the Graph API.
 - Frontend frameworks have been migrating the Graph API integrations from the
-  legacy dev-graph branch to oneDNN master and v3.0 release.
+  legacy dev-graph branch to oneDNN main and v3.0 release.
 
 As an experimental feature, the Graph API and implementation depend on a new
 build option `ONEDNN_BUILD_GRAPH` which is OFF by default in oneDNN's build
@@ -42,7 +42,7 @@ The corresponding build option document will be changed accordingly.
 ### Work with other build options
 
 As described in [build options
-document](https://oneapi-src.github.io/oneDNN/dev_guide_build_options.html#graph-component-limitations),
+document](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#graph-component-limitations),
 Graph API and the build option `ONEDNN_BUILD_GRAPH` do not work with some values
 of other build options. Specifying the options and values simultaneously in one
 build will lead to a CMake error. Turning `ONEDNN_BUILD_GRAPH` ON by default
@@ -114,7 +114,7 @@ validation behavior of the jobs.
 
 ### Release
 
-It's proposed to implement the changes on oneDNN master branch and release them
+It's proposed to implement the changes on oneDNN main branch and release them
 in oneDNN v3.1 as a general available feature.
 
 (EOD)

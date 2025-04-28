@@ -277,7 +277,7 @@ attribute use_affine. So we may have GroupNorm as follows:
 [2]: https://pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html#torch.nn.GroupNorm
 [3]: https://docs.openvino.ai/nightly/openvino_docs_ops_normalization_GroupNormalization_12.html
 [4]: https://onnx.ai/onnx/operators/onnx__GroupNormalization.html
-[5]: https://oneapi-src.github.io/oneDNN/dev_guide_group_normalization.html
+[5]: https://uxlfoundation.github.io/oneDNN/dev_guide_group_normalization.html
 [6]: https://github.com/keras-team/keras/blob/master/keras/layers/normalization/group_normalization.py#L148C1-L153C65
 [7]: https://github.com/pytorch/pytorch/blob/c77a4a409654dbc0ac4a528c37873b0acb1be32d/aten/src/ATen/native/native_functions.yaml#L3089
 [8]: https://onnx.ai/onnx/operators/onnx__InstanceNormalization.html

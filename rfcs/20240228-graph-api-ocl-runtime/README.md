@@ -282,12 +282,12 @@ enough and can be reused to validate OpenCL GPU.
 
 ## References
 
-1. https://github.com/oneapi-src/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/src/CMakeLists.txt#L136
-2. https://github.com/oneapi-src/oneDNN/pull/1745
-3. https://github.com/oneapi-src/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/graph/utils.cpp#L77
-4. https://github.com/oneapi-src/oneDNN/tree/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/inputs/graph
+1. https://github.com/uxlfoundation/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/src/CMakeLists.txt#L136
+2. https://github.com/uxlfoundation/oneDNN/pull/1745
+3. https://github.com/uxlfoundation/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/graph/utils.cpp#L77
+4. https://github.com/uxlfoundation/oneDNN/tree/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/inputs/graph
 
-[1]: https://github.com/oneapi-src/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/src/CMakeLists.txt#L136
-[2]: https://github.com/oneapi-src/oneDNN/pull/1745
-[3]: https://github.com/oneapi-src/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/graph/utils.cpp#L77
-[4]: https://github.com/oneapi-src/oneDNN/tree/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/inputs/graph
+[1]: https://github.com/uxlfoundation/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/src/CMakeLists.txt#L136
+[2]: https://github.com/uxlfoundation/oneDNN/pull/1745
+[3]: https://github.com/uxlfoundation/oneDNN/blob/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/graph/utils.cpp#L77
+[4]: https://github.com/uxlfoundation/oneDNN/tree/de69d44024ab4f64b20deb7aa066a65c867f1123/tests/benchdnn/inputs/graph

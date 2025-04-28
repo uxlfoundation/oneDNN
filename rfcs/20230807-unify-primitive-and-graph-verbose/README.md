@@ -4,7 +4,7 @@
 
 The goal for this RFC is to demonstrate an unified approach for enabling graph
 verbose functionality that can capture information from [Graph
-API](https://oneapi-src.github.io/oneDNN/graph_extension.html) and present the
+API](https://uxlfoundation.github.io/oneDNN/graph_extension.html) and present the
 results in oneDNN verbose output.
 
 ## Current Graph Verbose
@@ -91,7 +91,7 @@ prefers to support filtering the verbose by the components from public API, such
 as `primitive`, `graph`, `convolution`, `matmul`, etc. Currently, the
 implementation of this RFC have an initial support for filtering profile verbose
 by `primitive`, `graph`, `gemm_api` or
-[primitive::kind](https://github.com/oneapi-src/oneDNN/blob/master/include/oneapi/dnnl/dnnl.hpp).
+[primitive::kind](https://github.com/uxlfoundation/oneDNN/blob/main/include/oneapi/dnnl/dnnl.hpp).
 e.g.
 
 - `ONEDNN_VERBOSE=profile_exec,filter=graph` will print verbose of
@@ -161,7 +161,7 @@ happen in `verbose_converter` side to only convert verbose from primitive API.
 
 ## Release
 
-It's proposed to implement the changes on oneDNN master branch and release them
+It's proposed to implement the changes on oneDNN main branch and release them
 in oneDNN v3.3 as a general available feature.
 
 (EOD)

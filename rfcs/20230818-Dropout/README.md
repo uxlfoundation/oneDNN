@@ -4,7 +4,7 @@
 
 In many DNN and GNN models, [Dropout](https://en.wikipedia.org/wiki/Convolutional_neural_network#Dropout) is used to improve training results. In some cases, this layer can take a significant amount of time. To enhance the performance of training, we want to optimize it and, as a result, fuse it with the previous primitive.
 
-This idea was [proposed](https://github.com/oneapi-src/oneDNN/pull/760) some time ago.
+This idea was [proposed](https://github.com/uxlfoundation/oneDNN/pull/760) some time ago.
 Between post-op and attribute implementation, the primitive attribute was chosen to support complex primitives, like, RNN, where post-op semantics are not well defined.
 
 ## Proposal

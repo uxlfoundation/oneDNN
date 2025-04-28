@@ -27,7 +27,7 @@ and properties:
 * No OneDNN API changes since `avx512_core` is already defined while
   `avx512_common` is not:
 
-[include/oneapi/dnnl/dnnl_types.h](https://github.com/oneapi-src/oneDNN/tree/master/include/oneapi/dnnl/dnnl_types.h):
+[include/oneapi/dnnl/dnnl_types.h](https://github.com/uxlfoundation/oneDNN/tree/main/include/oneapi/dnnl/dnnl_types.h):
 ```diff
 /// CPU instruction set flags
 typedef enum {
@@ -41,7 +41,7 @@ typedef enum {
 * Because `avx512_core` is already a superset of `avx512_common`, the properties
   will be consolidated into `avx512_core`:
 
-[src/cpu/x64/cpu_isa_traits.hpp](https://github.com/oneapi-src/oneDNN/tree/master/src/cpu/x64/cpu_isa_traits.hpp):
+[src/cpu/x64/cpu_isa_traits.hpp](https://github.com/uxlfoundation/oneDNN/tree/main/src/cpu/x64/cpu_isa_traits.hpp):
 ```diff
 bool mayiuse(const cpu_isa_t cpu_isa) {
     (...)
@@ -99,7 +99,7 @@ definitions in OneDNN.
 * Requires updating OneDNN's API, potentially leaving `dnnl_cpu_isa_avx512_core`
   for backward compatibility:
 
-[include/oneapi/dnnl/dnnl_types.h](https://github.com/oneapi-src/oneDNN/tree/master/include/oneapi/dnnl/dnnl_types.h):
+[include/oneapi/dnnl/dnnl_types.h](https://github.com/uxlfoundation/oneDNN/tree/main/include/oneapi/dnnl/dnnl_types.h):
 ```diff
 /// CPU instruction set flags
 typedef enum {
@@ -125,7 +125,7 @@ definitions (e.g. `avx512_core_vnni` will become `avx512_vnni`,
 
 * Requires the most API changes and throughout OneDNNs cpu/x64 source:
 
-[include/oneapi/dnnl/dnnl_types.h](https://github.com/oneapi-src/oneDNN/tree/master/include/oneapi/dnnl/dnnl_types.h)
+[include/oneapi/dnnl/dnnl_types.h](https://github.com/uxlfoundation/oneDNN/tree/main/include/oneapi/dnnl/dnnl_types.h)
 
 ```diff
 /// CPU instruction set flags
@@ -157,7 +157,7 @@ typedef enum {
 
 ## Additional Changes
 With the removal of `ver_4fma` in `enum conv_version_t` (defined in
-[src/cpu/x64/jit_primitive_conf.hpp](https://github.com/oneapi-src/oneDNN/tree/master/src/cpu/x64/jit_primitive_conf.hpp)),
+[src/cpu/x64/jit_primitive_conf.hpp](https://github.com/uxlfoundation/oneDNN/tree/main/src/cpu/x64/jit_primitive_conf.hpp)),
 differentiating between the `fma` and `ver_avx512_core` entries is redundant.
 Furthermore, there is an additional value called `ver_vnni` used for the
 `avx512_core_vnni` and `avx2_vnni` code paths when int8 instructions are

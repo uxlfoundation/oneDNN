@@ -193,7 +193,7 @@ representation, and not expose a knob to select row/column major.
 
 The API will be limited to support downconversion/upconversion before
 computation in a similar way that
-[dnnl::fpmath_mode](https://oneapi-src.github.io/oneDNN/dev_guide_attributes_fpmath_mode.html#)
+[dnnl::fpmath_mode](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_fpmath_mode.html#)
 provides.
 
 If a user wants to implement quantized computation with zero-point,

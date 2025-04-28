@@ -18,28 +18,28 @@ dependency to the existing AArch64 builds.
 Considerable progress has been made recently to enable oneDNN builds on non-x64
 platforms, including AArch64:
 
-- [#658](https://github.com/oneapi-src/oneDNN/pull/658),
-followed by [#685](https://github.com/oneapi-src/oneDNN/pull/685)
-and [#694](https://github.com/oneapi-src/oneDNN/pull/693)
+- [#658](https://github.com/uxlfoundation/oneDNN/pull/658),
+followed by [#685](https://github.com/uxlfoundation/oneDNN/pull/685)
+and [#694](https://github.com/uxlfoundation/oneDNN/pull/693)
 enabled oneDNN to build natively on AArch64 machines.
 
-- ["DNNL CPU Code Organisation Adjustments"](https://github.com/oneapi-src/oneDNN/tree/rfcs/rfcs/20200401-cpu-dir-structure)
+- ["DNNL CPU Code Organisation Adjustments"](https://github.com/uxlfoundation/oneDNN/tree/rfcs/rfcs/20200401-cpu-dir-structure)
 outlined significant changes to the CPU code organisation, which
-were implemented with [#698](https://github.com/oneapi-src/oneDNN/pull/698)
+were implemented with [#698](https://github.com/uxlfoundation/oneDNN/pull/698)
 and included in the oneDNN v1.5 release.
 
-- [#694](https://github.com/oneapi-src/oneDNN/pull/694) and
-[#712](https://github.com/oneapi-src/oneDNN/pull/712) added support for
+- [#694](https://github.com/uxlfoundation/oneDNN/pull/694) and
+[#712](https://github.com/uxlfoundation/oneDNN/pull/712) added support for
 open-source, public, AArch64 CI using
 [Drone CI](https://cloud.drone.io/oneapi-src/oneDNN).
 
-- [#741](https://github.com/oneapi-src/oneDNN/pull/741) exposed support for
+- [#741](https://github.com/uxlfoundation/oneDNN/pull/741) exposed support for
 external 'vendor' BLAS libraries on AArch64, specifically Arm Performance
 Libraries
 [(ArmPL)](https://developer.arm.com/tools-and-software/server-and-hpc/compile/arm-compiler-for-linux/arm-performance-libraries).
 This was extended to cover the recent
 [freely-downloadable release of ArmPL](https://developer.arm.com/tools-and-software/server-and-hpc/downloads/arm-performance-libraries)
-and added to the build documentation with [#741](https://github.com/oneapi-src/oneDNN/pull/741).
+and added to the build documentation with [#741](https://github.com/uxlfoundation/oneDNN/pull/741).
 
 
 ### Background
@@ -108,7 +108,7 @@ version of ArmCL, which will be entirely independent of oneDNN's CMake flags.
 
 A new directory, `src/cpu/aarch64`, will be required for AArch64 specific code,
 this is consistent with the library restructuring implemented in
-[#698](https://github.com/oneapi-src/oneDNN/pull/698). The new directory would
+[#698](https://github.com/uxlfoundation/oneDNN/pull/698). The new directory would
 be integrated into the CMake build system with the following changes:
 
 - Addition of new source directory `src/cpu/aarch64`,
@@ -255,12 +255,12 @@ compare_data<data_t_dst>(dst_ref, c_dst, 1e-2);
 ~~~
 
 and fail if it is incorrect (for example,
-[test\_convolution\_eltwise\_forward](https://github.com/oneapi-src/oneDNN/blob/master/tests/gtests/test_convolution_eltwise_forward_common.hpp#L215-L221),
-[test\_deconvolution](https://github.com/oneapi-src/oneDNN/blob/master/tests/gtests/test_deconvolution.cpp#L423-L429),
-[test\_convolution\_forward\_f32](https://github.com/oneapi-src/oneDNN/blob/master/tests/gtests/test_convolution_forward_common.hpp#L206-L212) etc.). ArmCL-base convolution is
+[test\_convolution\_eltwise\_forward](https://github.com/uxlfoundation/oneDNN/blob/main/tests/gtests/test_convolution_eltwise_forward_common.hpp#L215-L221),
+[test\_deconvolution](https://github.com/uxlfoundation/oneDNN/blob/main/tests/gtests/test_deconvolution.cpp#L423-L429),
+[test\_convolution\_forward\_f32](https://github.com/uxlfoundation/oneDNN/blob/main/tests/gtests/test_convolution_forward_common.hpp#L206-L212) etc.). ArmCL-base convolution is
 called in a number of tests with output validation, covering cases with
 strides > 1,
-dilations, padding ([test\_global\_scratchpad](https://github.com/oneapi-src/oneDNN/blob/master/tests/gtests/test_global_scratchpad.cpp#L93-L94)
+dilations, padding ([test\_global\_scratchpad](https://github.com/uxlfoundation/oneDNN/blob/main/tests/gtests/test_global_scratchpad.cpp#L93-L94)
 also checks the case with asymmetric padding), different activation functions.
 It passes these tests, meaning than it
 provides the same functionality as `CPU_INSTANCE(gemm_convolution_fwd_t)` for

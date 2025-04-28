@@ -87,7 +87,7 @@ Regarding tensor memory:
   [PyTorch](https://pytorch.org/docs/stable/dlpack.html),
   [Tensorflow](https://www.tensorflow.org/api_docs/python/tf/experimental/dlpack/from_dlpack),
   [TVM](https://tvm.apache.org/docs/reference/api/python/contrib.html#module-tvm.contrib.dlpack), etc.
-  To interact with dlpack, oneDNN graph's [Tensor](https://oneapi-src.github.io/oneDNN/class_dnnl_graph_tensor.html#details-classdnnl-1-1graph-1-1tensor)
+  To interact with dlpack, oneDNN graph's [Tensor](https://uxlfoundation.github.io/oneDNN/class_dnnl_graph_tensor.html#details-classdnnl-1-1graph-1-1tensor)
   needs to map from/to dlpack’s [DLManagedTensor](https://github.com/dmlc/dlpack/blob/master/include/dlpack/dlpack.h#L157-L170),
   which will require API changes in oneDNN graph API.
 

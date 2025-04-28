@@ -23,7 +23,7 @@ Logging options in oneDNN will be enabled as an experimental feature by setting 
 A basic requirement for implementing logging support will be to define the run-time variables which the user can specify to manage oneDNN data logging: 
 - For the simple case where the logging mechanism involves directly dumping the verbose outputs into a logfile, this can be accomplished with one control variable for specifying the logfile path (`ONEDNN_VERBOSE_LOGFILE=/path/to/file`).
 Specifying `ONEDNN_VERBOSE_LOGFILE` automatically enables logging of the verbose output to the user-specified file while in the default case, the data is directly printed to `stdout`.
-In this scenario, the data recorded in the logfile mirrors the printed verbose mode information, hence, the logged data can be managed using oneDNN [runtime controls](https://oneapi-src.github.io/oneDNN/dev_guide_verbose.html?highlight=onednn_verbose#run-time-controls) for the verbose mode.
+In this scenario, the data recorded in the logfile mirrors the printed verbose mode information, hence, the logged data can be managed using oneDNN [runtime controls](https://uxlfoundation.github.io/oneDNN/dev_guide_verbose.html?highlight=onednn_verbose#run-time-controls) for the verbose mode.
 - By default, data will be recorded using a rotating lazy logger with a file size specified by `ONEDNN_VERBOSE_LOGFILE_SIZE(=1024*1024*50)` and the number of rotating files specified by `ONEDNN_VERBOSE_NUM_LOGFILES(=5)`.
 - An additional runtime variable `ONEDNN_VERBOSE_LOG_WITH_CONSOLE` will also the user to print to both the logfiles and to `stdout`. 
 
@@ -39,7 +39,7 @@ In this scenario, the data recorded in the logfile mirrors the printed verbose m
 #define SPDLOG_LEVEL_OFF 6 
 ```
 
-The type of tracing information logged for each of these levels is evident from their names. Comparing with the different [verbose modes](https://oneapi-src.github.io/oneDNN/dev_guide_verbose.html?highlight=onednn_verbose#run-time-controls) defined for oneDNN, these logging levels can be aligned with the verbose modes as follows:
+The type of tracing information logged for each of these levels is evident from their names. Comparing with the different [verbose modes](https://uxlfoundation.github.io/oneDNN/dev_guide_verbose.html?highlight=onednn_verbose#run-time-controls) defined for oneDNN, these logging levels can be aligned with the verbose modes as follows:
 
 |   | `spdlog` Level        | oneDNN Verbose Mode                                              |
 |---|-----------------------|------------------------------------------------------------------|
@@ -54,7 +54,7 @@ The type of tracing information logged for each of these levels is evident from 
 With this alignment, the tracing information printed out for each verbose mode can be also logged at the aligned level. Obviously, the logging level here is determined from the value of the `ONEDNN_VERBOSE` variable. 
 
 ### 4. Formatting Specifications for Logging
-The printed verbose information when `ONEDNN_VERBOSE=all` is formatted and contains the following fields as described [here](https://oneapi-src.github.io/oneDNN/dev_guide_verbose.html#decrypting-the-output):
+The printed verbose information when `ONEDNN_VERBOSE=all` is formatted and contains the following fields as described [here](https://uxlfoundation.github.io/oneDNN/dev_guide_verbose.html#decrypting-the-output):
 ```
 onednn_verbose,primitive,info,template:timestamp,operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
 onednn_verbose,graph,info,template:timestamp,operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,backend,exec_time

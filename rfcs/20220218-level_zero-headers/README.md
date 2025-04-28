@@ -68,7 +68,7 @@ will trickle down to their minimal requirements.
 ### 3.b Detect Level Zero runtime version at runtime
 Currently, calls to Level Zero are actually wrapped in oneDNN (example
 of
-[zeKernelcreate](https://github.com/oneapi-src/oneDNN/blob/dd2abf12b06b0a82cebe531d3b2f440e71cadb64/src/sycl/level_zero_utils.cpp#L141-L152)). Here
+[zeKernelcreate](https://github.com/uxlfoundation/oneDNN/blob/dd2abf12b06b0a82cebe531d3b2f440e71cadb64/src/sycl/level_zero_utils.cpp#L141-L152)). Here
 we would add another level of wrappers, with one wrapper per major
 version of Level Zero (e.g. `dnnl::zeKernelcreate_v1` and
 `dnnl::zekernelcreate_v2`). The current wrappers

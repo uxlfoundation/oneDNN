@@ -4,10 +4,10 @@
 
 The goal for this RFC is to demonstrate an approach for enabling `DNNL_RUNTIME_THREADPOOL` support in oneDNN built with [Compute Library for Arm® Architecture (ACL)](https://github.com/ARM-software/ComputeLibrary).
 
-The implementation available [here](https://github.com/cfRod/oneDNN/tree/poc-threadpool) can be tested using oneDNN's [threadpool](https://github.com/oneapi-src/oneDNN/blob/master/tests/test_thread.cpp#L85) test class available in `tests/test_thread.cpp`.
+The implementation available [here](https://github.com/cfRod/oneDNN/tree/poc-threadpool) can be tested using oneDNN's [threadpool](https://github.com/uxlfoundation/oneDNN/blob/main/tests/test_thread.cpp#L85) test class available in `tests/test_thread.cpp`.
 By enabling support for threadpool, Compute Library can leverage the existing Eigen threadpool defined in oneDNN.
 
-This is presented as a basis for future work and includes a minimal set of changes to certain files in oneDNN's `src/cpu` directory, and, the addition of a custom scheduler implementation to oneDNN's `src/cpu/aarch64` directory, that enables ACL to run operations using oneDNN's threadpool via the [threadpool_iface](https://github.com/oneapi-src/oneDNN/blob/c0c5582d671bf573a576f4e63b2edeb02fbd0f8a/include/oneapi/dnnl/dnnl_threadpool_iface.hpp#L33). This scheduler implementation is based on ACL's public [scheduler interface](https://github.com/ARM-software/ComputeLibrary/blob/master/arm_compute/runtime/IScheduler.h). Additionally, some changes to `CMakeLists` are also required to exclude the scheduler sources for other runtime builds.
+This is presented as a basis for future work and includes a minimal set of changes to certain files in oneDNN's `src/cpu` directory, and, the addition of a custom scheduler implementation to oneDNN's `src/cpu/aarch64` directory, that enables ACL to run operations using oneDNN's threadpool via the [threadpool_iface](https://github.com/uxlfoundation/oneDNN/blob/c0c5582d671bf573a576f4e63b2edeb02fbd0f8a/include/oneapi/dnnl/dnnl_threadpool_iface.hpp#L33). This scheduler implementation is based on ACL's public [scheduler interface](https://github.com/ARM-software/ComputeLibrary/blob/master/arm_compute/runtime/IScheduler.h). Additionally, some changes to `CMakeLists` are also required to exclude the scheduler sources for other runtime builds.
 
 ### Motivation
 
@@ -34,7 +34,7 @@ The current version of a oneDNN+ACL build makes use of the default [CPPScheduler
 
  `ThreadpoolScheduler` class definition: [link](https://github.com/cfRod/oneDNN/blob/poc-threadpool/src/cpu/aarch64/acl_threadpool_scheduler.hpp)
 
- The [`run_workload()`](https://github.com/cfRod/oneDNN/blob/caa172e5c86977edb398cbf16d26e443d51b2da4/src/cpu/aarch64/acl_threadpool_scheduler.cpp#L101) of the `ThreadpoolScheduler` is the key function that  is responsible for the distribution of work across threads and will use oneDNN's threapool object to run the operations in parallel. The threadpool object is retrieved by the function `get_active_threadpool()` and is used to call `parallel_for()` which will call Eigen's [`Schedule()`](https://github.com/oneapi-src/oneDNN/blob/c0c5582d671bf573a576f4e63b2edeb02fbd0f8a/tests/test_thread.cpp#L104). The thread ID via `ithr` is then used by `process_workload()` to assign workloads to threads.
+ The [`run_workload()`](https://github.com/cfRod/oneDNN/blob/caa172e5c86977edb398cbf16d26e443d51b2da4/src/cpu/aarch64/acl_threadpool_scheduler.cpp#L101) of the `ThreadpoolScheduler` is the key function that  is responsible for the distribution of work across threads and will use oneDNN's threapool object to run the operations in parallel. The threadpool object is retrieved by the function `get_active_threadpool()` and is used to call `parallel_for()` which will call Eigen's [`Schedule()`](https://github.com/uxlfoundation/oneDNN/blob/c0c5582d671bf573a576f4e63b2edeb02fbd0f8a/tests/test_thread.cpp#L104). The thread ID via `ithr` is then used by `process_workload()` to assign workloads to threads.
  ~~~c++
 void ThreadpoolScheduler::run_workloads(
         std::vector<arm_compute::IScheduler::Workload> &workloads) {
@@ -63,7 +63,7 @@ void ThreadpoolScheduler::run_workloads(
 
 ###  Changes to `src/cpu/aarch64/CMakeLists`
 
-A modified `CMakeLists` ensures that the ThreadpoolScheduler sources, i.e. `src/cpu/aarch64/acl_threadpool_scheduler.[cpp/hpp]` are excluded during the build phase for runtimes other than THREADPOOL. For non-ACL builds, these sources prefixed with `acl_*` are automatically excluded [here](https://github.com/oneapi-src/oneDNN/blob/c0c5582d671bf573a576f4e63b2edeb02fbd0f8a/src/cpu/aarch64/CMakeLists.txt#L29).
+A modified `CMakeLists` ensures that the ThreadpoolScheduler sources, i.e. `src/cpu/aarch64/acl_threadpool_scheduler.[cpp/hpp]` are excluded during the build phase for runtimes other than THREADPOOL. For non-ACL builds, these sources prefixed with `acl_*` are automatically excluded [here](https://github.com/uxlfoundation/oneDNN/blob/c0c5582d671bf573a576f4e63b2edeb02fbd0f8a/src/cpu/aarch64/CMakeLists.txt#L29).
 
 
 The following steps will be required to get a oneDNN and
@@ -101,7 +101,7 @@ if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 
 ### Add ACL runtime specific methods to oneDNN's engine creation step: `src/cpu/cpu_engine.hpp`
 
-The creation of the ThreadpoolScheduler object and setting is done during the execution creation phase, i.e. at the [`engine_create(https://github.com/oneapi-src/oneDNN/blob/b7fd832ace0d893fe44ea3688de75ff04747eae0/src/cpu/cpu_engine.hpp#L163)`](). A single scheduler is set, ensuring that it is only called once and is used across different ACL-enabled primitives.
+The creation of the ThreadpoolScheduler object and setting is done during the execution creation phase, i.e. at the [`engine_create(https://github.com/uxlfoundation/oneDNN/blob/b7fd832ace0d893fe44ea3688de75ff04747eae0/src/cpu/cpu_engine.hpp#L163)`](). A single scheduler is set, ensuring that it is only called once and is used across different ACL-enabled primitives.
 
 ~~~c++
     status_t engine_create(engine_t **engine, size_t index) const override {
@@ -162,7 +162,7 @@ Changes to `src/cpu/gemm/gemm.hpp`  conditionally adds `cpu_isa_traits.hpp` for 
 
 ### Minor changes to `src/cpu/platform.cpp`
 
-Adding of the function [`num_threads_hint()`]((https://github.com/ARM-software/ComputeLibrary/blob/c66f0e08bacd1041a4e5a7fda0eadbd868521a18/src/common/cpuinfo/CpuInfo.cpp#L362)) function from ACL ensures that oneDNN's `get_num_cores()` returns the number of threads available for use on AArch64 platforms. If a threadpool is available, [def_max_threads](https://github.com/oneapi-src/oneDNN/blob/3ca144dd41819a100b857260d03c5e627e4c2c83/src/common/dnnl_thread.hpp#L107) is the maximum number of threads available on the platform, as identified by ACL.
+Adding of the function [`num_threads_hint()`]((https://github.com/ARM-software/ComputeLibrary/blob/c66f0e08bacd1041a4e5a7fda0eadbd868521a18/src/common/cpuinfo/CpuInfo.cpp#L362)) function from ACL ensures that oneDNN's `get_num_cores()` returns the number of threads available for use on AArch64 platforms. If a threadpool is available, [def_max_threads](https://github.com/uxlfoundation/oneDNN/blob/3ca144dd41819a100b857260d03c5e627e4c2c83/src/common/dnnl_thread.hpp#L107) is the maximum number of threads available on the platform, as identified by ACL.
 
 ~~~c++
 unsigned get_num_cores() {

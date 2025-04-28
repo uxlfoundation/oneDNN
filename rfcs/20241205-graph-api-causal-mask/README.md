@@ -462,15 +462,15 @@ concrete.
 
 ## References
 
-1. Matrix representing causal mask, [https://arxiv.org/pdf/1910.10683](https://arxiv.org/pdf/1910.10683)
-2. oneDNN Graph SDPA pattern, [https://oneapi-src.github.io/oneDNN/dev_guide_graph_sdpa.html](https://oneapi-src.github.io/oneDNN/dev_guide_graph_sdpa.html)
-3. cuDNN Graph API support for causal mask, [https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop](https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop)
-4. cuDNN Frontend API support for causal mask, [https://github.com/NVIDIA/cudnn-frontend/blob/936021bfed8c91dc416af1588b2c4eca631a9e45/docs/operations/Attention.md](https://github.com/NVIDIA/cudnn-frontend/blob/936021bfed8c91dc416af1588b2c4eca631a9e45/docs/operations/Attention.md)
-5. PyTorch Aten SDPA operator implementation, [https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/transformers/attention.cpp#L699](https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/transformers/attention.cpp#L699)
-6. PyTorch support for bottom-right causal mask, [https://pytorch.org/docs/2.6/generated/torch.nn.attention.bias.CausalBias.html#torch.nn.attention.bias.CausalBias](https://pytorch.org/docs/2.6/generated/torch.nn.attention.bias.CausalBias.html#torch.nn.attention.bias.CausalBias)
-7. BERT implementation in PyTorch benchmarks, [https://github.com/pytorch/benchmark/blob/364420aeca07d9519840a5b6e771035e4dff9d72/torchbenchmark/models/BERT_pytorch/bert_pytorch/model/attention/single.py#L35](https://github.com/pytorch/benchmark/blob/364420aeca07d9519840a5b6e771035e4dff9d72/torchbenchmark/models/BERT_pytorch/bert_pytorch/model/attention/single.py#L35)
-8. PyTorch SDPA function, [https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
-9. gpt-fast, [https://github.com/pytorch-labs/gpt-fast/blob/32971d3129541c5bfb4f715abc33d1c5f408d204/model.py#L211](https://github.com/pytorch-labs/gpt-fast/blob/32971d3129541c5bfb4f715abc33d1c5f408d204/model.py#L211)
-10. nano_gpt implementation in PyTorch benchmarks, [https://github.com/pytorch/benchmark/blob/364420aeca07d9519840a5b6e771035e4dff9d72/torchbenchmark/models/nanogpt/model.py#L103](https://github.com/pytorch/benchmark/blob/364420aeca07d9519840a5b6e771035e4dff9d72/torchbenchmark/models/nanogpt/model.py#L103)
-11. PyTorch CPU flash attention implementation, [https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/cpu/FlashAttentionKernel.cpp#L635-L643](https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/cpu/FlashAttentionKernel.cpp#L635-L643)
-12. OpenVINO SDPA operation, [https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/sequence/scaled-dot-product-attention.html](https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/sequence/scaled-dot-product-attention.html)
+1. Matrix representing causal mask, https://arxiv.org/pdf/1910.10683
+2. oneDNN Graph SDPA pattern, https://uxlfoundation.github.io/oneDNN/dev_guide_graph_sdpa.html
+3. cuDNN Graph API support for causal mask, https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop
+4. cuDNN Frontend API support for causal mask, https://github.com/NVIDIA/cudnn-frontend/blob/936021bfed8c91dc416af1588b2c4eca631a9e45/docs/operations/Attention.md
+5. PyTorch Aten SDPA operator implementation, https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/transformers/attention.cpp#L699
+6. PyTorch support for bottom-right causal mask, https://pytorch.org/docs/2.6/generated/torch.nn.attention.bias.CausalBias.html#torch.nn.attention.bias.CausalBias
+7. BERT implementation in PyTorch benchmarks, https://github.com/pytorch/benchmark/blob/364420aeca07d9519840a5b6e771035e4dff9d72/torchbenchmark/models/BERT_pytorch/bert_pytorch/model/attention/single.py#L35
+8. PyTorch SDPA function, https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+9. gpt-fast, https://github.com/pytorch-labs/gpt-fast/blob/32971d3129541c5bfb4f715abc33d1c5f408d204/model.py#L211
+10. nano_gpt implementation in PyTorch benchmarks, https://github.com/pytorch/benchmark/blob/364420aeca07d9519840a5b6e771035e4dff9d72/torchbenchmark/models/nanogpt/model.py#L103
+11. PyTorch CPU flash attention implementation, https://github.com/pytorch/pytorch/blob/6afcec0c582cb852fcf673ea3b6ce12e4b9da01d/aten/src/ATen/native/cpu/FlashAttentionKernel.cpp#L635-L643
+12. OpenVINO SDPA operation, https://docs.openvino.ai/2024/documentation/openvino-ir-format/operation-sets/operation-specs/sequence/scaled-dot-product-attention.html

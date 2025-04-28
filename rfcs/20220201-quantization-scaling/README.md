@@ -400,8 +400,8 @@ The are a few problems:
 1. [OpenVino int8 support][1]
 2. [Softmax v2][2]
 
-[1]: https://github.com/oneapi-src/oneDNN/tree/rfcs/rfcs/20200428-openvino-int8-support
-[2]: https://github.com/oneapi-src/oneDNN/tree/rfcs/rfcs/20211207-softmax-v2
+[1]: https://github.com/uxlfoundation/oneDNN/tree/rfcs/rfcs/20200428-openvino-int8-support
+[2]: https://github.com/uxlfoundation/oneDNN/tree/rfcs/rfcs/20211207-softmax-v2
 
 ---
 

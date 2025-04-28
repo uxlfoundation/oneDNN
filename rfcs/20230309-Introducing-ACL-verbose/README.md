@@ -4,7 +4,7 @@
 
 The goal for this RFC is to demonstrate an approach for enabling ACL verbose functionality that can capture low-level kernel information from [Compute Library for the Arm® Architecture (ACL)](https://github.com/ARM-software/ComputeLibrary) and kernel timing measurements and present the results in a oneDNN-style verbose output.
 
-The implementation available [here](https://github.com/oneapi-src/oneDNN/compare/master...cfRod:oneDNN:acl_benchmark_scheduler) can be tested on a oneDNN build with ACL backend using examples and benchdnn, by setting `ONEDNN_VERBOSE=2`
+The implementation available [here](https://github.com/uxlfoundation/oneDNN/compare/main...cfRod:oneDNN:acl_benchmark_scheduler) can be tested on a oneDNN build with ACL backend using examples and benchdnn, by setting `ONEDNN_VERBOSE=2`
 By enabling ACL verbose in oneDNN, this implementation provides developers a unified logging interface to capture both high-level oneDNN primitive information with low-level ACL kernel information in one log.
 
 This includes a minimal set of changes to oneDNN's `src/cpu/cpu_engine.hpp`, and, the addition of a benchmark scheduler implementation to oneDNN's `src/cpu/aarch64` directory. This scheduler implementation acts a wrapper scheduler that intercepts the actual scheduler used during primitive execution and is based on ACL's public [scheduler interface](https://github.com/ARM-software/ComputeLibrary/blob/master/arm_compute/runtime/IScheduler.h). A similar implementation exists in ACL's testing framework `libarm_compute_test_framework.a` called [Interceptor](https://github.com/ARM-software/ComputeLibrary/blob/cfb1c3035cbfc31a2fe8491c7df13e911698e2b6/tests/framework/instruments/SchedulerTimer.cpp#L53). However, using the Interceptor class introduces an additional build dependency on ACL's test framework, changes to the `execute()` method for each acl-based primitive and issues with supporting schedulers external to ACL (E.g `acl_threadpool_scheduler`).
@@ -48,7 +48,7 @@ The key changes required are listed below:
 
 - Adding a custom BenchmarkScheduler implementation inside `src/cpu/aarch64/`
 - Method to set BenchmarkScheduler `acl_set_benchmark_scheduler_tp()` for threadpool scheduler and `acl_set_benchmark_scheduler_default()` for default schedulers in `src/cpu/aarch64/acl_thread.*`.
-_Note: ACL can be built with different schedulers such as [OMPScheduler](https://github.com/ARM-software/ComputeLibrary/blob/main/arm_compute/runtime/OMP/OMPScheduler.h), [CPPScheduler](https://github.com/ARM-software/ComputeLibrary/blob/main/arm_compute/runtime/CPP/CPPScheduler.h) or linked to an external custom scheduler [ThreadpoolScheduler](https://github.com/oneapi-src/oneDNN/blob/4a7b48c4b6bfafcd07c222d7365fc42c1d9b224c/src/cpu/aarch64/acl_threadpool_scheduler.hpp)
+_Note: ACL can be built with different schedulers such as [OMPScheduler](https://github.com/ARM-software/ComputeLibrary/blob/main/arm_compute/runtime/OMP/OMPScheduler.h), [CPPScheduler](https://github.com/ARM-software/ComputeLibrary/blob/main/arm_compute/runtime/CPP/CPPScheduler.h) or linked to an external custom scheduler [ThreadpoolScheduler](https://github.com/uxlfoundation/oneDNN/blob/4a7b48c4b6bfafcd07c222d7365fc42c1d9b224c/src/cpu/aarch64/acl_threadpool_scheduler.hpp)
 - Call `acl_set_threading()` in `src/cpu/cpu_engine.hpp`
 
 ### Adding a custom BenchmarkScheduler implementation inside `src/cpu/aarch64/`
@@ -103,7 +103,7 @@ All lines beginning with `onednn_acl_verbose` contain ACL specific information.
 ACL provides the necessary infrastructure to plug in an external custom scheduler via methods such as [Scheduler::set()](https://github.com/ARM-software/ComputeLibrary/blob/7dcb9fadb98cad05fca72de3273311d570d98b4e/src/runtime/Scheduler.cpp#L128)
 which sets a custom scheduler in ACL and a [Scheduler::get()](https://github.com/ARM-software/ComputeLibrary/blob/7dcb9fadb98cad05fca72de3273311d570d98b4e/src/runtime/Scheduler.cpp#L94) that can retrieve the scheduler used.
 In the case where ACL is built with its own internal ACL scheduler (CPPScheduler or OMPScheduler), the `Scheduler::get()` will retrieve the raw pointer to the `real_scheduler` from ACL and passed it to the constructor of BenchmarkScheduler.
-In the case of an external custom scheduler, the ThreadpoolScheduler is instantiated outside of ACL (i.e in oneDNN in [acl_set_custom_scheduler()](https://github.com/oneapi-src/oneDNN/blob/master/src/cpu/aarch64/acl_thread.cpp#L44), therefore, the raw pointer to the custom scheduler can be directly passed after its creation to the BenchmarkScheduler.
+In the case of an external custom scheduler, the ThreadpoolScheduler is instantiated outside of ACL (i.e in oneDNN in [acl_set_custom_scheduler()](https://github.com/uxlfoundation/oneDNN/blob/main/src/cpu/aarch64/acl_thread.cpp#L44), therefore, the raw pointer to the custom scheduler can be directly passed after its creation to the BenchmarkScheduler.
 ~~~c++
 void acl_set_benchmark_scheduler_tp() {
     static std::once_flag flag_once;

@@ -9,11 +9,11 @@ This gets expanded in TF graph.
 
 It becomes a bottleneck for the Attention layer in DIEN. Currently oneDNN
 supports PReLu only as
-[standalone primitive](https://oneapi-src.github.io/oneDNN/dev_guide_prelu.html).
+[standalone primitive](https://uxlfoundation.github.io/oneDNN/dev_guide_prelu.html).
 
 ## Proposal
 
-Extend [supported postops list](https://oneapi-src.github.io/oneDNN/dev_guide_attributes_post_ops.html)
+Extend [supported postops list](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_post_ops.html)
 by adding PReLU forward inference postop.
 
 

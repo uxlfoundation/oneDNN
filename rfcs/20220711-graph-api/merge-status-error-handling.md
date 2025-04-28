@@ -6,7 +6,7 @@ on C API and the exception on C++ API. It will also help users to have a unified
 way to handle the error and exceptions returned by oneDNN API.
 
 Please note graph APIs mentioned in this document are based on [oneDNN graph
-v0.5 release](https://github.com/oneapi-src/oneDNN/releases/tag/graph-v0.5)
+v0.5 release](https://github.com/uxlfoundation/oneDNN/releases/tag/graph-v0.5)
 which is slightly different from what they look on the latest dev-graph.
 
 ## Existing approach in oneDNN Graph technical preview

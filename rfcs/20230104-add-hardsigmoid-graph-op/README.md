@@ -87,4 +87,4 @@ Corresponding operation documents should be added to `doc/graph/operations/`.
 2. https://www.tensorflow.org/api_docs/python/tf/keras/activations/hard_sigmoid
 3. https://docs.openvino.ai/latest/openvino_docs_ops_activation_HardSigmoid_1.html
 4. https://github.com/onnx/onnx/blob/main/docs/Operators.md#hardsigmoid
-5. https://oneapi-src.github.io/oneDNN/dev_guide_eltwise.html
+5. https://uxlfoundation.github.io/oneDNN/dev_guide_eltwise.html

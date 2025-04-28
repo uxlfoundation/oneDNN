@@ -134,7 +134,7 @@ const int nnz = 12;
 auto coo_md = memory::desc::coo({128, 64}, f32, nnz, s32);
 ```
 
-The following example shows how size and data type can be queried for the COO memory descriptor for the different buffers. Here, the [`dnnl_memory_desc_get_size_v2()`](https://oneapi-src.github.io/oneDNN/group_dnnl_api_memory.html#doxid-group-dnnl-api-memory-1gad8ada49d1107442436109ec1de73f370) function works for sorted COO in the same manner as for CSR with the exception of the data buffers. For CSR, this buffer contains the pointers to the compressed row indices of the sparse data whereas for the COO format, all data indices are uncompressed. Hence, querying the buffer size for any index>0 returns the same value. The same is true for querying the data type with `dnnl_memory_desc_query_v2()` as the data type is shared by all the index buffers.
+The following example shows how size and data type can be queried for the COO memory descriptor for the different buffers. Here, the [`dnnl_memory_desc_get_size_v2()`](https://uxlfoundation.github.io/oneDNN/group_dnnl_api_memory.html#doxid-group-dnnl-api-memory-1gad8ada49d1107442436109ec1de73f370) function works for sorted COO in the same manner as for CSR with the exception of the data buffers. For CSR, this buffer contains the pointers to the compressed row indices of the sparse data whereas for the COO format, all data indices are uncompressed. Hence, querying the buffer size for any index>0 returns the same value. The same is true for querying the data type with `dnnl_memory_desc_query_v2()` as the data type is shared by all the index buffers.
 
 ```cpp
 const size_t values_size = dnnl_memory_desc_get_size_v2(coo_md, 0),;

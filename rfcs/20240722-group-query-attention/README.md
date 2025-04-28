@@ -27,9 +27,9 @@ MHA, MQA, and GQA.
 ![attention](attention.png)
 
 oneDNN already supports Scaled Dot-Product Attention (SDPA) through Graph API
-([document](https://oneapi-src.github.io/oneDNN/dev_guide_graph_sdpa.html#doxid-dev-guide-graph-sdpa)
+([document](https://uxlfoundation.github.io/oneDNN/dev_guide_graph_sdpa.html#doxid-dev-guide-graph-sdpa)
 and
-[examples](https://github.com/oneapi-src/oneDNN/blob/main/examples/graph/sdpa.cpp)).
+[examples](https://github.com/uxlfoundation/oneDNN/blob/main/examples/graph/sdpa.cpp)).
 This proposal aims to extend the support from SDPA to cover GQA.
 
 ## GQA in PyTorch

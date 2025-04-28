@@ -46,11 +46,11 @@ availability.
 - Get rid of `--allow-unimpl` flag support to avoid potential leak of functional
   support. All known unsupported cases to be covered in benchdnn sources. Such
   problems will be marked as SKIPPED and provide a short description explaining
-  the skipping reason. [The change is already in master.]
+  the skipping reason. [The change is already in main branch.]
 
 - Move all benchdnn inputs to a common nomenclature: test, harness, option_set,
   set and shapes files. Uniform and update documentation what each entity means
-  and what restrictions apply. [The update is already in master.]
+  and what restrictions apply. [The update is already in main branch.]
 
 - Move most shapes functional testing to Nightly testing and uniform the
   coverage between CPU and GPU backends to avoid bug leaks.

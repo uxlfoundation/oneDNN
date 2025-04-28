@@ -5,7 +5,7 @@
 Request comes from DGP graph lib community https://www.dgl.ai. Logsigmoid is
 used in AWS embedding models https://bit.ly/30kWI1f. Currently logsigmoid can be
 implemented with oneDNN by using two eltwise
-(https://oneapi-src.github.io/oneDNN/dev_guide_eltwise.html) operations
+(https://uxlfoundation.github.io/oneDNN/dev_guide_eltwise.html) operations
 logistic and log. Unfortunately current eltwise ops are not fusable.
 Logistic loads data from memory, make computations, stores data and next log
 loads logistic output from memory and stores data (2x loads and 2x stores). While
@@ -13,7 +13,7 @@ it could be possibly 1x load and 1x store if these operations were combined.
 Eltwise is memory bound primitive, so additional loads and store has performance
 impact.
 
-Naming convention taken from: https://oneapi-src.github.io/oneDNN/dev_guide_eltwise.html
+Naming convention taken from: https://uxlfoundation.github.io/oneDNN/dev_guide_eltwise.html
 FWD derivative calculated using https://www.wolframalpha.com/input/?i=d%2Fdx%28log%281%2F%281%2Bexp%28-x%29%29%29%29
 
 Formulas:

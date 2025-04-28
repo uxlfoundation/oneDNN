@@ -2,7 +2,7 @@
 
 ## Problem Statement.
 This follows up this
-[RFC](https://github.com/oneapi-src/oneDNN/tree/rfcs/rfcs/20210510-binary-size-reduction)
+[RFC](https://github.com/uxlfoundation/oneDNN/tree/rfcs/rfcs/20210510-binary-size-reduction)
 and proposes additional build knob to control functionality by ISA. It may
 provide additional save up to 5 MB, which is around ten percent (~10%) from
 current full binary size, based on selected ISA.

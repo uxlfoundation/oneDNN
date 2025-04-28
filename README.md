@@ -38,9 +38,9 @@ the discussion.
 The RFC life-cycle is:
 
 1. A design author writes up a design and opens a PR to the
-   [`rfcs`](https://github.com/oneapi-src/oneDNN/tree/rfcs) branch. The PR
+   [`rfcs`](https://github.com/uxlfoundation/oneDNN/tree/rfcs) branch. The PR
    should be labeled as an
-   [`RFC`](https://github.com/oneapi-src/oneDNN/labels/RFC) and contain the
+   [`RFC`](https://github.com/uxlfoundation/oneDNN/labels/RFC) and contain the
    short description of the objective.
    It is quite handy if the PR description contains a link to the RFC
    directory that will automatically render the RFC's `README.md`.

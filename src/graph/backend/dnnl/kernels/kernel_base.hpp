@@ -24,12 +24,7 @@
 #include "graph/interface/c_types_map.hpp"
 #include "graph/interface/logical_tensor.hpp"
 
-// required for dnnl::engine
-#include "oneapi/dnnl/dnnl.hpp"
-
-#ifdef DNNL_WITH_SYCL
-#include "oneapi/dnnl/dnnl_sycl.hpp"
-#endif
+#include "graph/backend/dnnl/common.hpp"
 
 namespace dnnl {
 namespace impl {

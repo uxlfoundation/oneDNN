@@ -24,8 +24,6 @@
 #include <utility>
 #include <vector>
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 #include "common/dnnl_thread.hpp"
 
 #include "graph/interface/c_types_map.hpp"

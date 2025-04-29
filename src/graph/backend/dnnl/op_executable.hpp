@@ -27,31 +27,14 @@
 #include "common/primitive.hpp"
 #include "common/sdpa_utils.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
-#ifdef DNNL_WITH_SYCL
-#include "oneapi/dnnl/dnnl_sycl.hpp"
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "graph/utils/ocl_check.hpp"
-#include "graph/utils/ocl_usm_utils.hpp"
-
-#include "xpu/ocl/usm_utils.hpp"
-
-#include "oneapi/dnnl/dnnl_ocl.hpp"
-#endif
-
-#include <graph/utils/utils.hpp>
-
-#include "graph/interface/backend.hpp"
-
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/fusion_info.hpp"
-#include "graph/backend/dnnl/internal_attrs.hpp"
+// #include "graph/backend/dnnl/internal_attrs.hpp"
+
+#include "graph/utils/utils.hpp"
 
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
-
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/compute_stream.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -61,6 +44,13 @@
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/stream.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "graph/utils/ocl_check.hpp"
+#include "graph/utils/ocl_usm_utils.hpp"
+
+#include "xpu/ocl/usm_utils.hpp"
 #endif
 
 namespace dnnl {

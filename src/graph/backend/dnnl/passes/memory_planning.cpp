@@ -31,8 +31,6 @@
 #include "graph/backend/dnnl/passes/memory_planning.hpp"
 #include "graph/backend/dnnl/passes/utils.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 #define VCHECK_MEMORY_PLANNING(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, memory_planning, (cond), status, msg, \
             ##__VA_ARGS__);

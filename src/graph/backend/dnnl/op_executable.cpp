@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *******************************************************************************/
-#include <map>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,18 +21,10 @@
 #include <type_traits>
 #include <unordered_map>
 
-#include "oneapi/dnnl/dnnl.hpp"
-
-#include <graph/utils/utils.hpp>
-
 #include "common/dnnl_thread.hpp"
 
-#include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_constant_tensor_cache.hpp"
-#include "graph/backend/dnnl/fusion_info.hpp"
-#include "graph/backend/dnnl/internal_attrs.hpp"
 #include "graph/backend/dnnl/op_executable.hpp"
-#include "graph/backend/dnnl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

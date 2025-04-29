@@ -29,7 +29,6 @@
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include "cpu/cpu_stream.hpp"
-#include "oneapi/dnnl/dnnl_threadpool.h"
 #endif
 
 namespace dnnl {

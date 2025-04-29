@@ -18,19 +18,8 @@
 #include <string>
 #include <vector>
 
-#include "oneapi/dnnl/dnnl.hpp"
-
-#include "graph/interface/c_types_map.hpp"
-#include "graph/interface/value.hpp"
-
-#include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/layout_propagator.hpp"
 #include "graph/backend/dnnl/op_executable.hpp"
-
-#include "graph/interface/shape_infer.hpp"
-
-#include "graph/backend/dnnl/dnnl_shape_infer.hpp"
-#include "graph/backend/dnnl/internal_attrs.hpp"
 
 namespace dnnl {
 namespace impl {

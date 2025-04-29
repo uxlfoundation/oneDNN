@@ -36,8 +36,6 @@
 #include "graph/backend/dnnl/passes/utils.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace graph {

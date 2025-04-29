@@ -32,8 +32,6 @@
 #include "graph/backend/dnnl/scratchpad.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace graph {

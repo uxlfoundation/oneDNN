@@ -14,29 +14,9 @@
  * limitations under the License.
  *******************************************************************************/
 
-#include <algorithm>
-#include <chrono>
-#include <fstream>
-#include <limits>
-#include <memory>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <vector>
-#include <unordered_map>
-#include <unordered_set>
-
-#include "graph/interface/shape_infer.hpp"
-#include "graph/interface/value.hpp"
-#include "graph/utils/debug.hpp"
+#include "graph/backend/dnnl/subgraph.hpp"
 
 #include "graph/backend/dnnl/common.hpp"
-#include "graph/backend/dnnl/dnnl_backend.hpp"
-#include "graph/backend/dnnl/internal_attrs.hpp"
-#include "graph/backend/dnnl/subgraph.hpp"
-#include "graph/backend/dnnl/utils.hpp"
-
-#include "dnnl.hpp"
 
 namespace dnnl {
 namespace impl {

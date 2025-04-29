@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2023 Intel Corporation
+ * Copyright 2023-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,9 @@
 
 #include <utility>
 
-#include "graph/utils/any.hpp"
-#include "graph/utils/utils.hpp"
-
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/layout_id_mgr.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
 #ifdef DNNL_GRAPH_LAYOUT_DEBUG
 #include "oneapi/dnnl/dnnl_debug.h"
 static const size_t LAST_TAG

@@ -15,10 +15,11 @@
 *******************************************************************************/
 
 #include <algorithm>
-#include "graph/interface/shape_infer.hpp"
-#include "oneapi/dnnl/dnnl.hpp"
 #include <unordered_set>
 
+#include "graph/interface/shape_infer.hpp"
+
+#include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_shape_infer.hpp"
 #include "graph/backend/dnnl/internal_attrs.hpp"
 

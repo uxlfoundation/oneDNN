@@ -24,12 +24,6 @@
 
 #include "graph/backend/dnnl/common.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
-
-#ifdef DNNL_WITH_SYCL
-#include "oneapi/dnnl/dnnl_sycl.hpp"
-#endif
-
 namespace dnnl {
 namespace impl {
 namespace graph {

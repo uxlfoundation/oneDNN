@@ -17,30 +17,18 @@
 #define GRAPH_BACKEND_DNNL_SUBGRAPH_HPP
 
 #include <algorithm>
-#include <functional>
-#include <iostream>
-#include <map>
+#include <fstream>
+#include <limits>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
-#include <unordered_map>
-#include <unordered_set>
 
 #include "graph/interface/c_types_map.hpp"
 #include "graph/interface/graph.hpp"
-#include "graph/interface/graph_attr.hpp"
 #include "graph/interface/op.hpp"
-#include "graph/interface/value.hpp"
-#include "graph/utils/utils.hpp"
 
-#include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/fusion_info.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
-#include "graph/backend/dnnl/utils.hpp"
-
-#include "dnnl.hpp"
 
 namespace dnnl {
 namespace impl {

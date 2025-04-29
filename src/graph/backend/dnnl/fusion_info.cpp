@@ -14,27 +14,8 @@
  * limitations under the License.
  *******************************************************************************/
 
-#include <algorithm>
-#include <functional>
-#include <map>
-#include <memory>
-#include <set>
-#include <string>
-#include <utility>
-#include <vector>
-#include <unordered_map>
-
-#include "graph/interface/c_types_map.hpp"
-#include "graph/interface/op.hpp"
-#include "graph/interface/value.hpp"
-#include "graph/utils/utils.hpp"
-
 #include "graph/backend/dnnl/fusion_info.hpp"
-#include "graph/backend/dnnl/internal_attrs.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
-#include "graph/backend/dnnl/utils.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
 namespace dnnl {
 namespace impl {
 namespace graph {

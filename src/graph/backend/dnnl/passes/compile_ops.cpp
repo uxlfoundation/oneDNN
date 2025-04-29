@@ -25,8 +25,6 @@
 #include "graph/backend/dnnl/op_executable.hpp"
 #include "graph/backend/dnnl/passes/compile_ops.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 #define VCHECK_COMPILE_OPS(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, compile_ops, (cond), status, msg, \
             ##__VA_ARGS__);

@@ -22,10 +22,9 @@
 #include <vector>
 #include <type_traits>
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 #include "graph/interface/c_types_map.hpp"
 
+#include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/fusion_info.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
 

@@ -31,23 +31,9 @@
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_backend.hpp"
 
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
 const size_t DNNL_CPU_MEMALIGNMENT = 64;
-#endif
-
-#ifdef DNNL_WITH_SYCL
-#include "oneapi/dnnl/dnnl_sycl.hpp"
 const size_t DNNL_SYCL_MEMALIGNMENT = 64;
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "oneapi/dnnl/dnnl_ocl.hpp"
 const size_t DNNL_OCL_MEMALIGNMENT = 0;
-#endif
-
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-#include "oneapi/dnnl/dnnl_threadpool.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {

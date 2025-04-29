@@ -24,7 +24,18 @@
 #include <unordered_map>
 
 #include "oneapi/dnnl/dnnl.hpp"
-#include "oneapi/dnnl/dnnl_graph_types.h"
+
+#ifdef DNNL_WITH_SYCL
+#include "oneapi/dnnl/dnnl_sycl.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "oneapi/dnnl/dnnl_ocl.hpp"
+#endif
+
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
+#endif
 
 #include "graph/interface/allocator.hpp"
 #include "graph/interface/constant_tensor_cache.hpp"

@@ -18,8 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 #include "graph/interface/c_types_map.hpp"
 #include "graph/interface/value.hpp"
 

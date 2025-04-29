@@ -39,8 +39,6 @@
 #include "graph/backend/dnnl/subgraph.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
-#include "oneapi/dnnl/dnnl.hpp"
-
 #define VCHECK_UTILS(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, utils, (cond), status, msg, ##__VA_ARGS__);
 

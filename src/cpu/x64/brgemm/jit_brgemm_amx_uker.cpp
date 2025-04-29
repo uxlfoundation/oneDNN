@@ -262,10 +262,10 @@ private:
     struct dim_iteration_t {
         size_t idx = 0;
         std::vector<iteration_block_t> blocks;
-        virtual bool operator==(const dim_iteration_t &rhs) const {
+        bool operator==(const dim_iteration_t &rhs) const {
             return blocks == rhs.blocks;
         }
-        virtual bool operator!=(const dim_iteration_t &rhs) const {
+        bool operator!=(const dim_iteration_t &rhs) const {
             return !operator==(rhs);
         }
 
@@ -297,9 +297,6 @@ private:
             // only last block may be different
             return ((n - 1) * blocks[0].block + blocks[n - 1].block);
         }
-
-        dim_iteration_t() = default;
-        virtual ~dim_iteration_t() = default;
     };
 
     struct bd_iteration_t : public dim_iteration_t {
@@ -312,18 +309,13 @@ private:
         bd_iteration_t *similar {nullptr};
         Label lstart;
 
-        bool operator==(const dim_iteration_t &_rhs) const override {
-            // `downcast` will catch a type mismatch in debug mode.
-            // Note: it supports only a pointer type so far.
-            const bd_iteration_t &rhs
-                    = *utils::downcast<const bd_iteration_t *>(&_rhs);
-            bool res = dim_iteration_t::operator==(rhs)
-                    && A_shift == rhs.A_shift && C_shift == rhs.C_shift
-                    && D_shift == rhs.D_shift && bd_mask == rhs.bd_mask
+        bool operator==(const bd_iteration_t &rhs) const {
+            return dim_iteration_t::operator==(rhs) && A_shift == rhs.A_shift
+                    && C_shift == rhs.C_shift && D_shift == rhs.D_shift
+                    && bd_mask == rhs.bd_mask
                     && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift;
-            return res;
         }
-        bool operator!=(const dim_iteration_t &_rhs) const override {
+        bool operator!=(const bd_iteration_t &_rhs) const {
             return !operator==(_rhs);
         }
     };
